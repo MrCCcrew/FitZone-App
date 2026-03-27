@@ -84,7 +84,8 @@
       "Bash(\"/c/Program Files/nodejs/node.exe\" /c/Fitzone/make-fitzone32.mjs)",
       "Bash(\"/c/Program Files/nodejs/node.exe\" /c/Fitzone/deploy32.mjs)",
       "Bash(\"/c/Program Files/nodejs/node.exe\" /c/Fitzone/deploy33.mjs)",
-      "Bash(\"/c/Program Files/nodejs/node.exe\" /c/Fitzone/make-fitzone33.mjs)"
+      "Bash(\"/c/Program Files/nodejs/node.exe\" /c/Fitzone/make-fitzone33.mjs)",
+      "Bash(dir C:Fitzone /b)"
     ],
     "additionalDirectories": [
       "\\tmp"
