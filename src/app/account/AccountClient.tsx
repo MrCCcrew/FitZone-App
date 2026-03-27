@@ -1,0 +1,1056 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
+import { format, differenceInDays } from "date-fns";
+import { ar } from "date-fns/locale";
+
+// ─── Types ─────────────────────────────────────────────────────────────────────
+interface AccountData {
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    phone: string;
+    role: string;
+    createdAt: string;
+    emailVerified: string | null;
+  };
+  membership: {
+    plan: string;
+    startDate: string;
+    endDate: string;
+    status: string;
+    features: string[];
+    maxClasses: number;
+    classesUsed: number;
+  } | null;
+  wallet: {
+    balance: number;
+    transactions: { id: string; amount: number; type: string; description: string; createdAt: string }[];
+  };
+  rewards: {
+    points: number;
+    tier: string;
+    history: { id: string; points: number; reason: string; createdAt: string }[];
+  };
+  referral: { code: string; totalEarned: number } | null;
+  bookings: {
+    id: string;
+    className: string;
+    trainerName: string;
+    date: string;
+    time: string;
+    status: string;
+    type: string;
+  }[];
+  orders: {
+    id: string;
+    total: number;
+    status: string;
+    createdAt: string;
+    items: { name: string; quantity: number; price: number }[];
+  }[];
+  notifications: {
+    id: string;
+    title: string;
+    body: string;
+    type: string;
+    isRead: boolean;
+    createdAt: string;
+  }[];
+}
+
+// ─── Config ────────────────────────────────────────────────────────────────────
+const TIER_CONFIG = {
+  bronze:   { label: "برونزي",  color: "text-amber-700",  bg: "bg-amber-900/20",  border: "border-amber-700/30",  next: 1000 },
+  silver:   { label: "فضي",    color: "text-gray-300",   bg: "bg-gray-700/30",   border: "border-gray-500/30",   next: 2000 },
+  gold:     { label: "ذهبي",   color: "text-yellow-400", bg: "bg-yellow-900/20", border: "border-yellow-500/30", next: 3000 },
+  platinum: { label: "بلاتيني", color: "text-purple-400", bg: "bg-purple-900/20", border: "border-purple-500/30", next: null },
+};
+
+const STATUS_MAP: Record<string, { label: string; color: string }> = {
+  confirmed: { label: "مؤكد",         color: "bg-blue-500/20 text-blue-400" },
+  attended:  { label: "حضرت",         color: "bg-green-500/20 text-green-400" },
+  cancelled: { label: "ملغي",         color: "bg-red-500/20 text-red-400" },
+  noshow:    { label: "لم تحضر",      color: "bg-gray-500/20 text-gray-400" },
+  pending:   { label: "معلق",         color: "bg-yellow-500/20 text-yellow-400" },
+  delivered: { label: "تم التسليم",   color: "bg-green-500/20 text-green-400" },
+  active:    { label: "نشط",          color: "bg-green-500/20 text-green-400" },
+  expired:   { label: "منتهي",        color: "bg-red-500/20 text-red-400" },
+};
+
+const NOTIF_ICONS: Record<string, string> = {
+  success: "✅", info: "ℹ️", warning: "⚠️", error: "❌",
+};
+
+const TABS = [
+  { id: "profile",       label: "الملف الشخصي", icon: "👤" },
+  { id: "membership",    label: "الاشتراك",      icon: "💳" },
+  { id: "bookings",      label: "الحجوزات",      icon: "📅" },
+  { id: "orders",        label: "الطلبات",       icon: "📦" },
+  { id: "wallet",        label: "المحفظة",       icon: "🏅" },
+  { id: "notifications", label: "الإشعارات",     icon: "🔔" },
+  { id: "complaints",    label: "الشكاوى",       icon: "📩" },
+] as const;
+type TabId = typeof TABS[number]["id"];
+
+function isTabId(value: string | null): value is TabId {
+  return TABS.some((tab) => tab.id === value);
+}
+
+// ─── Shared UI helpers ─────────────────────────────────────────────────────────
+const INPUT = "w-full bg-gray-800 border border-gray-700 focus:border-red-500 rounded-xl px-4 py-2.5 text-white text-sm outline-none transition-colors placeholder-gray-600";
+const CARD  = "bg-gray-900/60 border border-gray-800 rounded-2xl p-5";
+
+function StatCard({ icon, label, value, sub, color = "text-white" }: { icon: string; label: string; value: string; sub?: string; color?: string }) {
+  return (
+    <div className={CARD + " text-center"}>
+      <div className="text-2xl mb-2">{icon}</div>
+      <div className={`text-xl font-black ${color}`}>{value}</div>
+      <div className="text-gray-400 text-xs font-medium mt-0.5">{label}</div>
+      {sub && <div className="text-gray-600 text-xs mt-0.5">{sub}</div>}
+    </div>
+  );
+}
+
+// ─── Tab: Profile ─────────────────────────────────────────────────────────────
+function ProfileTab({ user }: { user: AccountData["user"] }) {
+  const [form, setForm] = useState({ name: user.name, phone: user.phone || "" });
+  const [passForm, setPassForm] = useState({ current: "", next: "", confirm: "" });
+  const [saved, setSaved] = useState(false);
+  const [verifyCode, setVerifyCode] = useState("");
+  const [verifyLoading, setVerifyLoading] = useState(false);
+  const [verifyResult, setVerifyResult] = useState<{ ok?: boolean; msg?: string } | null>(null);
+  const [isVerified, setIsVerified] = useState(!!user.emailVerified);
+  const [resendLoading, setResendLoading] = useState(false);
+
+  const save = (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  const joined = format(new Date(user.createdAt), "d MMMM yyyy", { locale: ar });
+
+  const submitVerify = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setVerifyLoading(true);
+    setVerifyResult(null);
+    try {
+      const res = await fetch("/api/auth/verify-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: verifyCode }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setIsVerified(true);
+        setVerifyResult({ ok: true, msg: "✅ تم تفعيل بريدك الإلكتروني بنجاح!" });
+      } else {
+        setVerifyResult({ ok: false, msg: data.error ?? "كود غير صحيح" });
+      }
+    } catch {
+      setVerifyResult({ ok: false, msg: "حدث خطأ، حاولي مرة أخرى" });
+    } finally {
+      setVerifyLoading(false);
+    }
+  };
+
+  const resendCode = async () => {
+    setResendLoading(true);
+    try {
+      await fetch("/api/auth/resend-verification", { method: "POST" });
+      setVerifyResult({ ok: true, msg: "📧 تم إرسال كود جديد على بريدك الإلكتروني" });
+    } catch {
+      setVerifyResult({ ok: false, msg: "تعذر إرسال الكود" });
+    } finally {
+      setResendLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-5">
+      {saved && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-green-600 text-white px-6 py-3 rounded-xl font-bold shadow-xl">
+          ✅ تم حفظ البيانات بنجاح
+        </div>
+      )}
+
+      {/* Email verification banner */}
+      {!isVerified && (
+        <div className="bg-yellow-900/30 border border-yellow-600/40 rounded-2xl p-5">
+          <div className="flex items-center gap-3 mb-3">
+            <span className="text-2xl">📧</span>
+            <div>
+              <div className="text-yellow-400 font-black text-sm">بريدك الإلكتروني غير مفعّل</div>
+              <div className="text-gray-400 text-xs mt-0.5">أدخلي كود التفعيل الذي أُرسل إلى {user.email}</div>
+            </div>
+          </div>
+          <form onSubmit={submitVerify} className="flex gap-2">
+            <input
+              value={verifyCode}
+              onChange={(e) => setVerifyCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              placeholder="000000"
+              dir="ltr"
+              maxLength={6}
+              className="flex-1 bg-gray-800 border border-gray-700 focus:border-yellow-500 rounded-xl px-4 py-2.5 text-white text-center text-lg font-black tracking-widest outline-none"
+            />
+            <button
+              type="submit"
+              disabled={verifyLoading || verifyCode.length !== 6}
+              className="bg-yellow-600 hover:bg-yellow-700 disabled:opacity-50 text-white font-black px-5 py-2.5 rounded-xl transition-colors text-sm whitespace-nowrap"
+            >
+              {verifyLoading ? "..." : "تفعيل"}
+            </button>
+          </form>
+          {verifyResult && (
+            <div className={`mt-2 text-sm font-bold ${verifyResult.ok ? "text-green-400" : "text-red-400"}`}>
+              {verifyResult.msg}
+            </div>
+          )}
+          <button onClick={resendCode} disabled={resendLoading} className="mt-2 text-xs text-gray-500 hover:text-yellow-400 transition-colors">
+            {resendLoading ? "جاري الإرسال..." : "لم يصلك الكود؟ أعيدي الإرسال"}
+          </button>
+        </div>
+      )}
+
+      {/* Profile card */}
+      <div className={CARD + " flex items-center gap-5"}>
+        <div className="w-20 h-20 rounded-full bg-gradient-to-br from-red-600 to-red-900 flex items-center justify-center text-white font-black text-3xl shrink-0">
+          {user.name?.[0] ?? "ع"}
+        </div>
+        <div className="flex-1">
+          <div className="text-white font-black text-xl">{user.name}</div>
+          <div className="flex items-center gap-2 text-gray-400 text-sm" dir="ltr">
+            {user.email}
+            {isVerified
+              ? <span className="text-green-400 text-xs">✅ مفعّل</span>
+              : <span className="text-yellow-500 text-xs">⚠️ غير مفعّل</span>
+            }
+          </div>
+          <div className="flex items-center gap-3 mt-2">
+            <span className="text-xs bg-red-600/20 text-red-400 border border-red-600/30 px-2 py-0.5 rounded-full font-bold">
+              {user.role === "admin" ? "مدير" : user.role === "staff" ? "إدارة" : user.role === "trainer" ? "مدرب" : "عضو"}
+            </span>
+            <span className="text-gray-600 text-xs">عضو منذ {joined}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Edit form */}
+      <div className={CARD}>
+        <h3 className="text-white font-black mb-4">تعديل البيانات الشخصية</h3>
+        <form onSubmit={save} className="space-y-4">
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-gray-500 text-xs mb-1.5">الاسم الكامل</label>
+              <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={INPUT} />
+            </div>
+            <div>
+              <label className="block text-gray-500 text-xs mb-1.5">رقم الهاتف</label>
+              <input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className={INPUT} dir="ltr" placeholder="01XXXXXXXXX" />
+            </div>
+          </div>
+          <div>
+            <label className="block text-gray-500 text-xs mb-1.5">البريد الإلكتروني</label>
+            <input value={user.email} disabled className={INPUT + " opacity-50 cursor-not-allowed"} dir="ltr" />
+          </div>
+          <button type="submit" className="bg-red-600 hover:bg-red-700 text-white font-black px-6 py-2.5 rounded-xl transition-colors text-sm">
+            💾 حفظ التغييرات
+          </button>
+        </form>
+      </div>
+
+      {/* Change password */}
+      <div className={CARD}>
+        <h3 className="text-white font-black mb-4">تغيير كلمة المرور</h3>
+        <form onSubmit={(e) => { e.preventDefault(); setSaved(true); setTimeout(() => setSaved(false), 2000); }} className="space-y-4">
+          <div>
+            <label className="block text-gray-500 text-xs mb-1.5">كلمة المرور الحالية</label>
+            <input type="password" value={passForm.current} onChange={(e) => setPassForm({ ...passForm, current: e.target.value })} className={INPUT} placeholder="••••••••" dir="ltr" />
+          </div>
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-gray-500 text-xs mb-1.5">كلمة المرور الجديدة</label>
+              <input type="password" value={passForm.next} onChange={(e) => setPassForm({ ...passForm, next: e.target.value })} className={INPUT} placeholder="••••••••" dir="ltr" />
+            </div>
+            <div>
+              <label className="block text-gray-500 text-xs mb-1.5">تأكيد كلمة المرور</label>
+              <input type="password" value={passForm.confirm} onChange={(e) => setPassForm({ ...passForm, confirm: e.target.value })} className={INPUT} placeholder="••••••••" dir="ltr" />
+            </div>
+          </div>
+          <button type="submit" className="bg-gray-700 hover:bg-gray-600 text-white font-bold px-6 py-2.5 rounded-xl transition-colors text-sm">
+            🔒 تحديث كلمة المرور
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ─── Tab: Membership ──────────────────────────────────────────────────────────
+function MembershipTab({ membership }: { membership: AccountData["membership"] }) {
+  if (!membership) {
+    return (
+      <div className={CARD + " text-center py-12"}>
+        <div className="text-5xl mb-4">💳</div>
+        <h3 className="text-white font-black text-xl mb-2">لا يوجد اشتراك نشط</h3>
+        <p className="text-gray-400 mb-6">اشترك الآن وابدأ رحلتك الرياضية</p>
+        <a href="/#plans" className="inline-block bg-red-600 hover:bg-red-700 text-white font-black px-8 py-3 rounded-xl transition-colors">
+          🔥 اشترك الآن
+        </a>
+      </div>
+    );
+  }
+
+  const start = new Date(membership.startDate);
+  const end   = new Date(membership.endDate);
+  const today = new Date();
+  const totalDays   = differenceInDays(end, start);
+  const remaining   = Math.max(0, differenceInDays(end, today));
+  const elapsed     = totalDays - remaining;
+  const progress    = Math.min(100, Math.round((elapsed / totalDays) * 100));
+  const classesLeft = membership.maxClasses === -1 ? null : membership.maxClasses - membership.classesUsed;
+
+  return (
+    <div className="space-y-5">
+      {/* Main plan card */}
+      <div className="bg-gradient-to-br from-red-950/40 to-black border border-red-600/40 rounded-2xl p-6">
+        <div className="flex items-start justify-between mb-4">
+          <div>
+            <div className="text-gray-400 text-xs mb-1">باقتك الحالية</div>
+            <div className="text-3xl font-black text-white">{membership.plan}</div>
+          </div>
+          <span className={`text-xs px-3 py-1.5 rounded-full font-black ${STATUS_MAP[membership.status]?.color ?? "text-white bg-gray-700"}`}>
+            {STATUS_MAP[membership.status]?.label ?? membership.status}
+          </span>
+        </div>
+
+        {/* Progress */}
+        <div className="mb-4">
+          <div className="flex justify-between text-xs text-gray-400 mb-2">
+            <span>بدأت {format(start, "d MMM yyyy", { locale: ar })}</span>
+            <span>تنتهي {format(end, "d MMM yyyy", { locale: ar })}</span>
+          </div>
+          <div className="h-2.5 bg-gray-800 rounded-full overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all ${remaining <= 7 ? "bg-red-500" : "bg-gradient-to-r from-red-600 to-yellow-500"}`}
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+          <div className="flex justify-between text-xs mt-1">
+            <span className="text-gray-500">{elapsed} يوم مضى</span>
+            <span className={remaining <= 7 ? "text-red-400 font-bold" : "text-green-400 font-bold"}>{remaining} يوم متبقٍ</span>
+          </div>
+        </div>
+
+        {/* Stats row */}
+        <div className="grid grid-cols-3 gap-3">
+          <div className="bg-black/40 rounded-xl p-3 text-center">
+            <div className="text-yellow-400 font-black text-lg">{remaining}</div>
+            <div className="text-gray-500 text-xs">يوم متبقي</div>
+          </div>
+          <div className="bg-black/40 rounded-xl p-3 text-center">
+            <div className="text-white font-black text-lg">{membership.classesUsed}</div>
+            <div className="text-gray-500 text-xs">كلاسات حضرتها</div>
+          </div>
+          <div className="bg-black/40 rounded-xl p-3 text-center">
+            <div className="text-green-400 font-black text-lg">{classesLeft === null ? "∞" : classesLeft}</div>
+            <div className="text-gray-500 text-xs">كلاسات متبقية</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Features */}
+      <div className={CARD}>
+        <h3 className="text-white font-black mb-4">مميزات باقتك</h3>
+        <div className="space-y-2.5">
+          {membership.features.map((f, i) => (
+            <div key={i} className="flex items-center gap-3 text-gray-300 text-sm">
+              <span className="text-red-500 font-black shrink-0">✓</span>
+              {f}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Renewal CTA */}
+      {remaining <= 10 && (
+        <div className="bg-red-950/30 border border-red-600/40 rounded-2xl p-5 flex items-center justify-between gap-4">
+          <div>
+            <div className="text-red-400 font-black">⚠️ اشتراكك ينتهي قريباً</div>
+            <div className="text-gray-400 text-sm mt-1">جدد الآن واحصل على 100 جنيه في محفظتك</div>
+          </div>
+          <a href="/#plans" className="shrink-0 bg-red-600 hover:bg-red-700 text-white font-black px-5 py-2.5 rounded-xl transition-colors text-sm">
+            جدد الآن
+          </a>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Tab: Bookings ────────────────────────────────────────────────────────────
+function BookingsTab({ bookings }: { bookings: AccountData["bookings"] }) {
+  const [items, setItems] = useState(bookings);
+  const [filter, setFilter] = useState<"upcoming" | "past">("upcoming");
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const today = new Date();
+  const upcoming = items.filter((b) => new Date(b.date) >= today && b.status === "confirmed");
+  const past     = items.filter((b) => new Date(b.date) < today  || b.status === "attended" || b.status === "cancelled");
+  const shown    = filter === "upcoming" ? upcoming : past;
+  const TYPE_EMOJI: Record<string, string> = { cardio: "🏃", strength: "🏋️", yoga: "🧘", boxing: "🥊", swimming: "🏊", dance: "💃" };
+  const cancelBooking = async (bookingId: string) => {
+    if (cancellingId) return;
+    setCancellingId(bookingId);
+    try {
+      const res = await fetch("/api/bookings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bookingId }),
+      });
+      const data = await res.json() as { error?: string };
+      if (!res.ok) {
+        alert(data.error ?? "تعذر إلغاء الحجز حاليًا.");
+        return;
+      }
+      setItems((current) =>
+        current.map((item) =>
+          item.id === bookingId ? { ...item, status: "cancelled" } : item,
+        ),
+      );
+    } catch {
+      alert("حدث خطأ أثناء إلغاء الحجز.");
+    } finally {
+      setCancellingId(null);
+    }
+  };
+  return (
+    <div className="space-y-4">
+      {/* Tabs */}
+      <div className="flex gap-2">
+        {[["upcoming", `القادمة (${upcoming.length})`], ["past", `السابقة (${past.length})`]].map(([v, l]) => (
+          <button key={v} onClick={() => setFilter(v as typeof filter)} className={`px-5 py-2 rounded-xl text-sm font-bold transition-colors ${filter === v ? "bg-red-600 text-white" : "bg-gray-800 text-gray-400 hover:bg-gray-700"}`}>
+            {l}
+          </button>
+        ))}
+      </div>
+      {shown.length === 0 ? (
+        <div className={CARD + " text-center py-10"}>
+          <div className="text-4xl mb-3">📅</div>
+          <p className="text-gray-400">{filter === "upcoming" ? "لا توجد حجوزات قادمة حاليًا." : "لا توجد حجوزات سابقة حتى الآن."}</p>
+          {filter === "upcoming" && (
+            <a href="/#classes" className="mt-4 inline-block bg-red-600 text-white font-bold px-5 py-2 rounded-xl text-sm">استعرضي الكلاسات</a>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {shown.map((b) => (
+            <div key={b.id} className={CARD + " flex items-center gap-4"}>
+              <div className="text-3xl shrink-0">{TYPE_EMOJI[b.type] ?? ""}</div>
+              <div className="flex-1 min-w-0">
+                <div className="text-white font-black">{b.className}</div>
+                <div className="text-gray-400 text-xs">مع {b.trainerName}</div>
+                <div className="text-gray-500 text-xs mt-1">
+                  {format(new Date(b.date), "EEEE d MMMM", { locale: ar })}  {b.time}
+                </div>
+              </div>
+              <div className="flex flex-col items-end gap-2">
+                <span className={`text-xs px-2.5 py-1 rounded-full font-bold ${STATUS_MAP[b.status]?.color ?? "bg-gray-700 text-gray-300"}`}>
+                  {STATUS_MAP[b.status]?.label ?? b.status}
+                </span>
+                {b.status === "confirmed" && (
+                  <button
+                    onClick={() => cancelBooking(b.id)}
+                    disabled={cancellingId === b.id}
+                    className="text-red-500 hover:text-red-400 text-xs font-medium transition-colors disabled:opacity-50"
+                  >
+                    {cancellingId === b.id ? "جارٍ الإلغاء..." : "إلغاء الحجز"}
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Tab: Orders ──────────────────────────────────────────────────────────────
+function OrdersTab({ orders }: { orders: AccountData["orders"] }) {
+  const [items, setItems] = useState(orders);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const cancelOrder = async (orderId: string) => {
+    if (cancellingId) return;
+    setCancellingId(orderId);
+    try {
+      const res = await fetch("/api/orders", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId }),
+      });
+      const data = await res.json() as { error?: string };
+      if (!res.ok) {
+        alert(data.error ?? "تعذر إلغاء الطلب حاليًا.");
+        return;
+      }
+      setItems((current) =>
+        current.map((item) =>
+          item.id === orderId ? { ...item, status: "cancelled" } : item,
+        ),
+      );
+    } catch {
+      alert("حدث خطأ أثناء إلغاء الطلب.");
+    } finally {
+      setCancellingId(null);
+    }
+  };
+  if (items.length === 0) {
+    return (
+      <div className={CARD + " text-center py-10"}>
+        <div className="text-4xl mb-3">🛍️</div>
+        <p className="text-gray-400 mb-4">لا توجد طلبات حتى الآن.</p>
+        <a href="/#shop" className="inline-block bg-red-600 text-white font-bold px-5 py-2 rounded-xl text-sm">اذهبي إلى المتجر</a>
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-3">
+      {items.map((o) => (
+        <div key={o.id} className={CARD}>
+          <div className="flex items-center gap-3 cursor-pointer" onClick={() => setExpanded(expanded === o.id ? null : o.id)}>
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-gray-500 text-xs font-mono">#{o.id.slice(-6).toUpperCase()}</span>
+                <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${STATUS_MAP[o.status]?.color ?? "bg-gray-700 text-gray-300"}`}>
+                  {STATUS_MAP[o.status]?.label ?? o.status}
+                </span>
+              </div>
+              <div className="text-gray-500 text-xs">
+                {format(new Date(o.createdAt), "d MMMM yyyy", { locale: ar })} · {o.items.length} منتج
+              </div>
+            </div>
+            <div className="text-yellow-400 font-black">{o.total.toLocaleString("ar-EG")} ج.م</div>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={`w-4 h-4 text-gray-500 transition-transform ${expanded === o.id ? "rotate-180" : ""}`}>
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </div>
+          {expanded === o.id && (
+            <div className="mt-4 pt-4 border-t border-gray-800 space-y-2">
+              {o.items.map((item, i) => (
+                <div key={i} className="flex items-center justify-between text-sm">
+                  <span className="text-gray-300">{item.name} × {item.quantity}</span>
+                  <span className="text-gray-400">{(item.price * item.quantity).toLocaleString("ar-EG")} ج.م</span>
+                </div>
+              ))}
+              <div className="flex justify-between font-black text-sm pt-2 border-t border-gray-800">
+                <span className="text-white">الإجمالي</span>
+                <span className="text-yellow-400">{o.total.toLocaleString("ar-EG")} ج.م</span>
+              </div>
+              {['pending', 'confirmed'].includes(o.status) && (
+                <button
+                  onClick={() => cancelOrder(o.id)}
+                  disabled={cancellingId === o.id}
+                  className="mt-3 text-red-500 hover:text-red-400 text-xs font-bold transition-colors disabled:opacity-50"
+                >
+                  {cancellingId === o.id ? "جارٍ الإلغاء..." : "إلغاء الطلب"}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Tab: Wallet & Points ─────────────────────────────────────────────────────
+function WalletTab({
+  wallet, rewards, referral,
+}: { wallet: AccountData["wallet"]; rewards: AccountData["rewards"]; referral: AccountData["referral"] | null }) {
+  const [activeSection, setActiveSection] = useState<"wallet" | "points">("wallet");
+  const [copied, setCopied]   = useState(false);
+
+  const tier = TIER_CONFIG[rewards.tier as keyof typeof TIER_CONFIG] ?? TIER_CONFIG.bronze;
+
+  const copyCode = () => {
+    if (referral) { navigator.clipboard.writeText(referral.code); setCopied(true); setTimeout(() => setCopied(false), 2000); }
+  };
+
+  const TOPUP_AMOUNTS = [50, 100, 200, 500];
+
+  return (
+    <div className="space-y-5">
+      {/* Toggle */}
+      <div className="flex gap-2">
+        {[["wallet", "💳 المحفظة"], ["points", "🏅 النقاط"]].map(([v, l]) => (
+          <button key={v} onClick={() => setActiveSection(v as typeof activeSection)} className={`px-5 py-2 rounded-xl text-sm font-bold transition-colors ${activeSection === v ? "bg-red-600 text-white" : "bg-gray-800 text-gray-400 hover:bg-gray-700"}`}>
+            {l}
+          </button>
+        ))}
+      </div>
+
+      {activeSection === "wallet" && (
+        <>
+          {/* Balance card */}
+          <div className="bg-gradient-to-br from-blue-950/40 to-black border border-blue-500/30 rounded-2xl p-6 text-center">
+            <div className="text-gray-400 text-sm mb-1">رصيد المحفظة</div>
+            <div className="text-4xl font-black text-white mb-1">{wallet.balance.toLocaleString("ar-EG")}</div>
+            <div className="text-gray-400">جنيه مصري</div>
+          </div>
+
+          {/* Quick top-up */}
+          <div className={CARD}>
+            <h4 className="text-white font-black mb-3">شحن سريع</h4>
+            <div className="grid grid-cols-4 gap-2 mb-3">
+              {TOPUP_AMOUNTS.map((v) => (
+                <button key={v} className="bg-gray-800 hover:bg-blue-600 text-white font-bold py-2 rounded-xl text-sm transition-colors">
+                  {v} ج.م
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <input type="number" placeholder="مبلغ مخصص..." className={INPUT} dir="ltr" />
+              <button className="bg-blue-600 hover:bg-blue-700 text-white font-black px-5 rounded-xl transition-colors text-sm whitespace-nowrap">شحن</button>
+            </div>
+          </div>
+
+          {/* Transactions */}
+          <div className={CARD}>
+            <h4 className="text-white font-black mb-4">سجل المعاملات</h4>
+            <div className="space-y-3">
+              {wallet.transactions.map((tx) => (
+                <div key={tx.id} className="flex items-center gap-3 py-2 border-b border-gray-800/60 last:border-0">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-black ${tx.type === "credit" ? "bg-green-900/40 text-green-400" : "bg-red-900/40 text-red-400"}`}>
+                    {tx.type === "credit" ? "+" : "-"}
+                  </div>
+                  <div className="flex-1">
+                    <div className="text-gray-300 text-sm">{tx.description}</div>
+                    <div className="text-gray-600 text-xs">{format(new Date(tx.createdAt), "d MMM yyyy", { locale: ar })}</div>
+                  </div>
+                  <span className={`font-black text-sm ${tx.type === "credit" ? "text-green-400" : "text-red-400"}`}>
+                    {tx.type === "credit" ? "+" : "-"}{Math.abs(tx.amount)} ج.م
+                  </span>
+                </div>
+              ))}
+              {wallet.transactions.length === 0 && <p className="text-gray-600 text-sm text-center py-4">لا يوجد معاملات</p>}
+            </div>
+          </div>
+        </>
+      )}
+
+      {activeSection === "points" && (
+        <>
+          {/* Points & tier card */}
+          <div className={`${tier.bg} border ${tier.border} rounded-2xl p-6`}>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <div className="text-gray-400 text-xs mb-1">مستواك</div>
+                <div className={`text-2xl font-black ${tier.color}`}>
+                  {tier.label}
+                  {rewards.tier === "platinum" && " 👑"}
+                  {rewards.tier === "gold"     && " 🥇"}
+                  {rewards.tier === "silver"   && " 🥈"}
+                  {rewards.tier === "bronze"   && " 🥉"}
+                </div>
+              </div>
+              <div className="text-center">
+                <div className="text-3xl font-black text-white">{rewards.points.toLocaleString("ar-EG")}</div>
+                <div className="text-gray-400 text-xs">نقطة</div>
+              </div>
+            </div>
+
+            {tier.next && (
+              <>
+                <div className="flex justify-between text-xs text-gray-400 mb-1">
+                  <span>تقدمك للمستوى التالي</span>
+                  <span>{tier.next - rewards.points} نقطة متبقية</span>
+                </div>
+                <div className="h-2 bg-black/40 rounded-full overflow-hidden">
+                  <div className={`h-full rounded-full ${tier.color.replace("text-", "bg-")}`} style={{ width: `${Math.min(100, (rewards.points / tier.next) * 100)}%` }} />
+                </div>
+              </>
+            )}
+
+            <div className="mt-4 pt-4 border-t border-white/10 text-center">
+              <div className="text-gray-400 text-xs">قيمة نقاطك</div>
+              <div className="text-yellow-400 font-black text-xl">{Math.floor(rewards.points / 10)} ج.م</div>
+            </div>
+          </div>
+
+          {/* Points history */}
+          <div className={CARD}>
+            <h4 className="text-white font-black mb-4">تاريخ النقاط</h4>
+            <div className="space-y-3">
+              {rewards.history.map((h) => (
+                <div key={h.id} className="flex items-center gap-3 py-2 border-b border-gray-800/60 last:border-0">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black ${h.points >= 0 ? "bg-yellow-900/40 text-yellow-400" : "bg-gray-800 text-gray-400"}`}>
+                    {h.points >= 0 ? "+" : ""}
+                  </div>
+                  <div className="flex-1">
+                    <div className="text-gray-300 text-sm">{h.reason}</div>
+                    <div className="text-gray-600 text-xs">{format(new Date(h.createdAt), "d MMM yyyy", { locale: ar })}</div>
+                  </div>
+                  <span className={`font-black text-sm ${h.points >= 0 ? "text-yellow-400" : "text-gray-500"}`}>
+                    {h.points >= 0 ? "+" : ""}{h.points}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Referral */}
+          {referral && (
+            <div className="bg-yellow-950/20 border border-yellow-500/30 rounded-2xl p-5">
+              <h4 className="text-white font-black mb-2">🎁 كود الإحالة الخاص بك</h4>
+              <p className="text-gray-400 text-sm mb-4">شارك كودك مع أصدقائك واحصل على 50 جنيه لكل عضو جديد</p>
+              <div className="flex gap-2">
+                <div className="flex-1 bg-black border border-yellow-500/30 rounded-xl px-4 py-2.5 text-yellow-400 font-black text-center tracking-widest" dir="ltr">
+                  {referral.code}
+                </div>
+                <button onClick={copyCode} className={`px-4 rounded-xl font-bold text-sm transition-colors ${copied ? "bg-green-600 text-white" : "bg-yellow-500 hover:bg-yellow-400 text-black"}`}>
+                  {copied ? "تم النسخ" : "نسخ"}
+                </button>
+              </div>
+              <div className="mt-3 text-center text-gray-400 text-xs">
+                إجمالي ما كسبته: <span className="text-yellow-400 font-black">{referral.totalEarned} ج.م</span>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─── Tab: Complaints ──────────────────────────────────────────────────────────
+const COMPLAINT_STATUS_LABELS: Record<string, string> = {
+  "open": "مفتوحة", "in-progress": "قيد المعالجة", "resolved": "تم الحل", "closed": "مغلقة",
+};
+const COMPLAINT_STATUS_COLORS: Record<string, string> = {
+  "open": "bg-red-900/30 text-red-400", "in-progress": "bg-yellow-900/30 text-yellow-400",
+  "resolved": "bg-green-900/30 text-green-400", "closed": "bg-gray-800 text-gray-500",
+};
+
+interface ComplaintItem {
+  id: string; subject: string; message: string; status: string;
+  adminNote?: string | null; createdAt: string;
+}
+
+function ComplaintsTab() {
+  const [complaints, setComplaints] = useState<ComplaintItem[]>([]);
+  const [loading, setLoading]       = useState(true);
+  const [form, setForm]             = useState({ subject: "", message: "" });
+  const [sending, setSending]       = useState(false);
+  const [toast, setToast]           = useState("");
+  const [expanded, setExpanded]     = useState<string | null>(null);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/complaints");
+      if (res.ok) setComplaints(await res.json());
+    } finally { setLoading(false); }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.subject.trim() || !form.message.trim()) return;
+    setSending(true);
+    try {
+      const res = await fetch("/api/complaints", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      if (res.ok) {
+        setForm({ subject: "", message: "" });
+        setToast("✅ تم إرسال شكواك بنجاح، سيتم الرد قريباً");
+        setTimeout(() => setToast(""), 4000);
+        await load();
+      } else {
+        setToast("❌ حدث خطأ، حاول مرة أخرى");
+        setTimeout(() => setToast(""), 3000);
+      }
+    } finally { setSending(false); }
+  };
+
+  return (
+    <div className="space-y-5">
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-gray-800 border border-gray-600 text-white px-6 py-3 rounded-2xl shadow-2xl text-sm font-medium z-50">
+          {toast}
+        </div>
+      )}
+
+      {/* Submit form */}
+      <div className={CARD}>
+        <h3 className="text-white font-black mb-4">📩 إرسال شكوى أو اقتراح</h3>
+        <form onSubmit={submit} className="space-y-4">
+          <div>
+            <label className="block text-gray-500 text-xs mb-1.5">الموضوع</label>
+            <input
+              value={form.subject} onChange={e => setForm(f => ({ ...f, subject: e.target.value }))}
+              placeholder="اكتب موضوع شكواك..."
+              className={INPUT} required
+            />
+          </div>
+          <div>
+            <label className="block text-gray-500 text-xs mb-1.5">تفاصيل الشكوى</label>
+            <textarea
+              value={form.message} onChange={e => setForm(f => ({ ...f, message: e.target.value }))}
+              placeholder="اشرح شكواك بالتفصيل..."
+              rows={4} required
+              className="w-full bg-gray-800 border border-gray-700 focus:border-red-500 rounded-xl px-4 py-2.5 text-white text-sm outline-none transition-colors placeholder-gray-600 resize-none"
+            />
+          </div>
+          <button type="submit" disabled={sending}
+            className="bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-black px-6 py-2.5 rounded-xl transition-colors text-sm">
+            {sending ? "جارٍ الإرسال..." : "إرسال الشكوى"}
+          </button>
+        </form>
+      </div>
+
+      {/* Past complaints */}
+      <div className={CARD}>
+        <h3 className="text-white font-black mb-4">شكاواي السابقة</h3>
+        {loading ? (
+          <p className="text-gray-500 text-sm text-center py-6">جارٍ التحميل...</p>
+        ) : complaints.length === 0 ? (
+          <div className="text-center py-8">
+            <div className="text-4xl mb-2">📭</div>
+            <p className="text-gray-500 text-sm">لا يوجد شكاوى بعد</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {complaints.map((c) => (
+              <div key={c.id} className="bg-gray-800/50 border border-gray-700 rounded-xl overflow-hidden">
+                <div
+                  className="flex items-center gap-3 p-4 cursor-pointer"
+                  onClick={() => setExpanded(expanded === c.id ? null : c.id)}
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="text-white font-bold text-sm truncate">{c.subject}</div>
+                    <div className="text-gray-500 text-xs mt-0.5">
+                      {format(new Date(c.createdAt), "d MMMM yyyy", { locale: ar })}
+                    </div>
+                  </div>
+                  <span className={`text-xs px-2.5 py-1 rounded-full font-bold shrink-0 ${COMPLAINT_STATUS_COLORS[c.status] ?? "bg-gray-800 text-gray-500"}`}>
+                    {COMPLAINT_STATUS_LABELS[c.status] ?? c.status}
+                  </span>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
+                    className={`w-4 h-4 text-gray-500 transition-transform shrink-0 ${expanded === c.id ? "rotate-180" : ""}`}>
+                    <polyline points="6 9 12 15 18 9" />
+                  </svg>
+                </div>
+                {expanded === c.id && (
+                  <div className="px-4 pb-4 border-t border-gray-700 pt-3 space-y-3">
+                    <p className="text-gray-300 text-sm leading-relaxed">{c.message}</p>
+                    {c.adminNote && (
+                      <div className="bg-blue-950/30 border border-blue-800/50 rounded-xl p-3">
+                        <div className="text-blue-400 text-xs font-bold mb-1">💬 رد الإدارة:</div>
+                        <p className="text-gray-300 text-sm">{c.adminNote}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Tab: Notifications ───────────────────────────────────────────────────────
+function NotificationsTab({ notifications: init }: { notifications: AccountData["notifications"] }) {
+  const [notifs, setNotifs] = useState(init);
+  const unread = notifs.filter((n) => !n.isRead).length;
+
+  const markAll = async () => {
+    setNotifs((ns) => ns.map((n) => ({ ...n, isRead: true })));
+    await fetch("/api/notifications", {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ markAllRead: true }),
+    });
+  };
+  const markOne = async (id: string) => {
+    setNotifs((ns) => ns.map((n) => n.id === id ? { ...n, isRead: true } : n));
+    await fetch("/api/notifications", {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ notificationId: id }),
+    });
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <span className="text-gray-400 text-sm">{unread} غير مقروءة</span>
+        {unread > 0 && (
+          <button onClick={markAll} className="text-red-500 hover:text-red-400 text-sm font-medium transition-colors">
+            تحديد الكل كمقروء
+          </button>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        {notifs.map((n) => (
+          <div
+            key={n.id}
+            onClick={() => markOne(n.id)}
+            className={`${CARD} flex items-start gap-4 cursor-pointer transition-all hover:border-gray-700 ${!n.isRead ? "border-red-600/30 bg-red-950/10" : ""}`}
+          >
+            <span className="text-xl shrink-0 mt-0.5">{NOTIF_ICONS[n.type] ?? ""}</span>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1">
+                <span className={`text-sm font-black ${n.isRead ? "text-gray-300" : "text-white"}`}>{n.title}</span>
+                {!n.isRead && <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" />}
+              </div>
+              <p className="text-gray-400 text-xs leading-relaxed">{n.body}</p>
+              <span className="text-gray-600 text-xs mt-1 block">
+                {format(new Date(n.createdAt), "d MMM yyyy", { locale: ar })}
+              </span>
+            </div>
+          </div>
+        ))}
+        {notifs.length === 0 && (
+          <div className={CARD + " text-center py-10"}>
+            <div className="text-4xl mb-2">🔔</div>
+            <p className="text-gray-400">لا يوجد إشعارات</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Component ────────────────────────────────────────────────────────────
+export default function AccountClient({ data }: { data: AccountData }) {
+  const searchParams = useSearchParams();
+  const requestedTab = searchParams.get("tab");
+  const [activeTab, setActiveTab]     = useState<TabId>(isTabId(requestedTab) ? requestedTab : "profile");
+  const [loggingOut, setLoggingOut]   = useState(false);
+
+  useEffect(() => {
+    const nextTab = searchParams.get("tab");
+    if (isTabId(nextTab)) {
+      setActiveTab(nextTab);
+    }
+  }, [searchParams]);
+
+  const unreadCount = data.notifications.filter((n) => !n.isRead).length;
+
+  const handleLogout = async () => {
+    setLoggingOut(true);
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } finally {
+      window.location.href = "/";
+    }
+  };
+
+  const membershipDaysLeft = data.membership
+    ? Math.max(0, differenceInDays(new Date(data.membership.endDate), new Date()))
+    : 0;
+
+  return (
+    <div dir="rtl" className="min-h-screen bg-black text-white">
+      {/* ── Header ── */}
+      <div className="bg-gray-950 border-b border-gray-800">
+        <div className="max-w-5xl mx-auto px-4 py-6">
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 rounded-full bg-gradient-to-br from-red-600 to-red-900 flex items-center justify-center text-white font-black text-xl shrink-0">
+              {data.user.name?.[0] ?? "ع"}
+            </div>
+            <div className="flex-1">
+              <h1 className="text-xl font-black text-white">{data.user.name}</h1>
+              <div className="flex items-center gap-3 mt-1 flex-wrap">
+                {data.membership && (
+                  <span className="text-xs bg-red-600/20 text-red-400 border border-red-600/30 px-2.5 py-0.5 rounded-full font-bold">
+                    {data.membership.plan}
+                  </span>
+                )}
+                {data.rewards && (
+                  <span className={`text-xs px-2.5 py-0.5 rounded-full font-bold ${TIER_CONFIG[data.rewards.tier as keyof typeof TIER_CONFIG]?.bg ?? ""} ${TIER_CONFIG[data.rewards.tier as keyof typeof TIER_CONFIG]?.color ?? "text-gray-400"}`}>
+                    {TIER_CONFIG[data.rewards.tier as keyof typeof TIER_CONFIG]?.label ?? data.rewards.tier}
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="hidden sm:flex items-center gap-2">
+              <a href="/" className="flex items-center gap-1.5 text-gray-500 hover:text-white transition-colors text-sm">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                الرئيسية
+              </a>
+              <button
+                onClick={handleLogout}
+                disabled={loggingOut}
+                className="flex items-center gap-1.5 text-gray-600 hover:text-red-400 transition-colors text-sm disabled:opacity-50"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
+                  <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                {loggingOut ? "جارٍ الخروج..." : "تسجيل الخروج"}
+              </button>
+            </div>
+          </div>
+
+          {/* Quick stats */}
+          <div className="grid grid-cols-4 gap-3 mt-5">
+            <StatCard icon="💳" label="رصيد المحفظة"   value={`${data.wallet.balance.toLocaleString("ar-EG")} ج.م`} color="text-blue-400" />
+            <StatCard icon="🏅" label="نقاط الولاء"    value={data.rewards.points.toLocaleString("ar-EG")} color="text-yellow-400" />
+            <StatCard icon="📅" label="أيام الاشتراك"  value={membershipDaysLeft > 0 ? `${membershipDaysLeft} يوم` : "منتهي"} color={membershipDaysLeft > 7 ? "text-green-400" : "text-red-400"} />
+            <StatCard icon="🔔" label="إشعارات جديدة"  value={unreadCount.toString()} color={unreadCount > 0 ? "text-red-400" : "text-gray-400"} />
+          </div>
+        </div>
+      </div>
+
+      {/* ── Body ── */}
+      <div className="max-w-5xl mx-auto px-4 py-6">
+        <div className="flex gap-6 flex-col lg:flex-row">
+          {/* Sidebar tabs */}
+          <aside className="lg:w-52 shrink-0">
+            <nav className="flex lg:flex-col gap-1 flex-wrap">
+              {TABS.map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-sm font-medium transition-all text-right w-full ${
+                    activeTab === tab.id
+                      ? "bg-red-600 text-white shadow-lg shadow-red-900/30"
+                      : "text-gray-400 hover:bg-gray-900 hover:text-white"
+                  }`}
+                >
+                  <span>{tab.icon}</span>
+                  <span>{tab.label}</span>
+                  {tab.id === "notifications" && unreadCount > 0 && (
+                    <span className="mr-auto bg-red-500 text-white text-xs font-black w-5 h-5 rounded-full flex items-center justify-center">
+                      {unreadCount}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </nav>
+          </aside>
+
+          {/* Content */}
+          <main className="flex-1 min-w-0">
+            {activeTab === "profile"       && <ProfileTab       user={data.user} />}
+            {activeTab === "membership"    && <MembershipTab    membership={data.membership} />}
+            {activeTab === "bookings"      && <BookingsTab      bookings={data.bookings} />}
+            {activeTab === "orders"        && <OrdersTab        orders={data.orders} />}
+            {activeTab === "wallet"        && <WalletTab        wallet={data.wallet} rewards={data.rewards} referral={data.referral} />}
+            {activeTab === "notifications" && <NotificationsTab notifications={data.notifications} />}
+            {activeTab === "complaints"    && <ComplaintsTab />}
+          </main>
+        </div>
+      </div>
+    </div>
+  );
+}
+
