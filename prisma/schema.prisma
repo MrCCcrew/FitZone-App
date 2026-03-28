@@ -355,7 +355,7 @@ model ChatMessage {
   sessionId  String
   senderType String   // user | bot | admin | staff | system
   senderName String?
-  content    String
+  content    String   @db.Text
   metadata   String?
   createdAt  DateTime @default(now())
 
