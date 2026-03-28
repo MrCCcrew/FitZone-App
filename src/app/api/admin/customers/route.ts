@@ -27,7 +27,7 @@ function buildStatus(user: {
   if (!latest) return "expired";
   if (latest.status === "cancelled") return "suspended";
 
-  const active = user.memberships.find((m) => m.status === "active");
+  const active = user.memberships.find((membership) => membership.status === "active");
   if (!active) return "expired";
   if (active.endDate < new Date()) return "expired";
   return "active";
@@ -77,12 +77,24 @@ async function applyMembership(userId: string, planName?: string, status?: Custo
     return;
   }
 
-  if (!planName || planName === "بدون اشتراك") {
+  let nextPlanName = planName;
+
+  if ((!nextPlanName || nextPlanName === "بدون اشتراك") && status === "active") {
+    const latestMembership = await db.userMembership.findFirst({
+      where: { userId },
+      include: { membership: true },
+      orderBy: { startDate: "desc" },
+    });
+
+    nextPlanName = latestMembership?.membership.name;
+  }
+
+  if (!nextPlanName || nextPlanName === "بدون اشتراك") {
     return;
   }
 
   const plan = await db.membership.findFirst({
-    where: { name: planName, isActive: true },
+    where: { name: nextPlanName, isActive: true },
   });
 
   if (!plan) return;
@@ -226,12 +238,12 @@ export async function POST(req: Request) {
     const { name, email, phone, password, plan, status, points, balance } = payload;
 
     if (!email || !name) {
-      return NextResponse.json({ error: "الاسم والبريد مطلوبان" }, { status: 400 });
+      return NextResponse.json({ error: "الاسم والبريد الإلكتروني مطلوبان" }, { status: 400 });
     }
 
     const existing = await db.user.findUnique({ where: { email } });
     if (existing) {
-      return NextResponse.json({ error: "البريد مسجل بالفعل" }, { status: 409 });
+      return NextResponse.json({ error: "البريد الإلكتروني مسجل بالفعل" }, { status: 409 });
     }
 
     const hashed = await bcryptjs.hash(password ?? "FitZone123!", 12);
@@ -292,7 +304,7 @@ export async function PATCH(req: Request) {
     const { id, name, email, phone, status, plan, points, balance } = payload;
 
     if (!id) {
-      return NextResponse.json({ error: "id مطلوب" }, { status: 400 });
+      return NextResponse.json({ error: "معرّف العميل مطلوب" }, { status: 400 });
     }
 
     const data: Record<string, unknown> = {};
@@ -337,7 +349,7 @@ export async function DELETE(req: Request) {
   try {
     const { id } = (await req.json()) as { id?: string };
     if (!id) {
-      return NextResponse.json({ error: "id مطلوب" }, { status: 400 });
+      return NextResponse.json({ error: "معرّف العميل مطلوب" }, { status: 400 });
     }
 
     await db.user.delete({ where: { id } });

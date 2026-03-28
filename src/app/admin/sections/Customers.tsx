@@ -76,8 +76,12 @@ export default function Customers() {
     setEditCustomer(null); setSaving(false);
   };
 
-  const setStatus = async (id: string, status: Customer["status"]) => {
-    await fetch("/api/admin/customers", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, status }) });
+  const setStatus = async (id: string, status: Customer["status"], plan?: string) => {
+    await fetch("/api/admin/customers", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, status, plan }),
+    });
     await fetchAll();
   };
 
@@ -190,8 +194,8 @@ export default function Customers() {
                         <button onClick={() => setViewCustomer(c)} className="text-gray-500 hover:text-white text-xs px-2 py-1 rounded-lg hover:bg-gray-700 transition-colors">عرض</button>
                         <button onClick={() => setEditCustomer(c)} className="text-gray-500 hover:text-yellow-400 text-xs px-2 py-1 rounded-lg hover:bg-gray-700 transition-colors">تعديل</button>
                         {c.status === "active"
-                          ? <button onClick={() => setStatus(c.id, "suspended")} className="text-gray-500 hover:text-yellow-500 text-xs px-2 py-1 rounded-lg hover:bg-gray-700 transition-colors">إيقاف</button>
-                          : <button onClick={() => setStatus(c.id, "active")} className="text-gray-500 hover:text-green-400 text-xs px-2 py-1 rounded-lg hover:bg-gray-700 transition-colors">تفعيل</button>}
+                          ? <button onClick={() => setStatus(c.id, "suspended", c.plan)} className="text-gray-500 hover:text-yellow-500 text-xs px-2 py-1 rounded-lg hover:bg-gray-700 transition-colors">إيقاف</button>
+                          : <button onClick={() => setStatus(c.id, "active", c.plan)} className="text-gray-500 hover:text-green-400 text-xs px-2 py-1 rounded-lg hover:bg-gray-700 transition-colors">تفعيل</button>}
                         <button onClick={() => setConfirmDelete(c)} className="text-gray-500 hover:text-red-500 text-xs px-2 py-1 rounded-lg hover:bg-gray-700 transition-colors">حذف</button>
                       </div>
                     </td>
@@ -248,8 +252,8 @@ export default function Customers() {
             </div>
 
             {viewCustomer.status === "active"
-              ? <button onClick={() => { setStatus(viewCustomer.id, "suspended"); setViewCustomer(null); }} className="w-full bg-gray-800 hover:bg-gray-700 text-yellow-400 font-bold py-2.5 rounded-xl transition-colors text-sm">⛔ إيقاف العضوية</button>
-              : <button onClick={() => { setStatus(viewCustomer.id, "active"); setViewCustomer(null); }} className="w-full bg-gray-800 hover:bg-gray-700 text-green-400 font-bold py-2.5 rounded-xl transition-colors text-sm">✅ تفعيل العضوية</button>}
+              ? <button onClick={() => { setStatus(viewCustomer.id, "suspended", viewCustomer.plan); setViewCustomer(null); }} className="w-full bg-gray-800 hover:bg-gray-700 text-yellow-400 font-bold py-2.5 rounded-xl transition-colors text-sm">⛔ إيقاف العضوية</button>
+              : <button onClick={() => { setStatus(viewCustomer.id, "active", viewCustomer.plan); setViewCustomer(null); }} className="w-full bg-gray-800 hover:bg-gray-700 text-green-400 font-bold py-2.5 rounded-xl transition-colors text-sm">✅ تفعيل العضوية</button>}
           </div>
         </Modal>
       )}
