@@ -904,17 +904,19 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                   boxShadow: "0 20px 70px rgba(233,30,99,.18)",
                 }}
               >
-                <div
-                  style={{
-                    display: "flex",
-                    width: `${heroSlides.length * 100}%`,
-                    transform: `translateX(${heroSlideIndex * -100 / heroSlides.length}%)`,
-                    transition: "transform 700ms ease",
-                    height: "100%",
-                  }}
-                >
+                <div style={{ position: "relative", height: "100%", minHeight: viewportWidth() < 768 ? 280 : 430, padding: 14 }}>
                   {heroSlides.map((slide, index) => (
-                    <div key={`${slide}-${index}`} style={{ width: `${100 / heroSlides.length}%`, padding: 14, flexShrink: 0 }}>
+                    <div
+                      key={`${slide}-${index}`}
+                      style={{
+                        position: "absolute",
+                        inset: 14,
+                        opacity: index === heroSlideIndex ? 1 : 0,
+                        transform: index === heroSlideIndex ? "scale(1)" : "scale(1.035)",
+                        transition: "opacity 700ms ease, transform 700ms ease",
+                        pointerEvents: index === heroSlideIndex ? "auto" : "none",
+                      }}
+                    >
                       <div style={{ height: "100%", overflow: "hidden", borderRadius: 22, position: "relative" }}>
                         <img
                           src={slide}
@@ -922,6 +924,22 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                           style={{ width: "100%", height: viewportWidth() < 768 ? 280 : 430, objectFit: "cover", display: "block" }}
                         />
                         <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(26,8,18,.05), rgba(26,8,18,.28))" }} />
+                        <div
+                          style={{
+                            position: "absolute",
+                            top: 16,
+                            left: 16,
+                            background: "rgba(26,8,18,.55)",
+                            color: "#fff",
+                            border: `1px solid ${C.border}`,
+                            borderRadius: 999,
+                            padding: "6px 12px",
+                            fontSize: 12,
+                            fontWeight: 700,
+                          }}
+                        >
+                          صورة {index + 1} من {heroSlides.length}
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -1014,7 +1032,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
             {memberships.map(m => (
               <div key={m.name} className={`card card-hover`} style={{ padding: 32, position: "relative", border: m.popular ? `2px solid ${C.red}` : `1px solid ${C.border}`, transform: m.popular ? "scale(1.03)" : "none" }}>
                 {m.popular && (
-                  <div style={{ position: "absolute", top: -14, left: "50%", transform: "translateX(-50%)", background: C.red, color: "#fff", padding: "4px 20px", borderRadius: 4, fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>⭐ الأكثر شعبية</div>
+                  <div style={{ position: "absolute", top: -10, left: "50%", transform: "translateX(-50%)", background: C.red, color: "#fff", padding: "4px 20px", borderRadius: 4, fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>⭐ الأكثر شعبية</div>
                 )}
                 <h3 style={{ fontSize: 20, fontWeight: 900, color: C.white }}>باقة {m.name}</h3>
                 <div style={{ margin: "16px 0 24px" }}>

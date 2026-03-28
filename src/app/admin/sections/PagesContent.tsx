@@ -127,6 +127,15 @@ function HeroTab({ data, onChange }: { data: HeroData; onChange: (d: HeroData) =
   const [uploadError, setUploadError] = useState("");
 
   const update = <K extends keyof HeroData>(key: K, value: HeroData[K]) => onChange({ ...data, [key]: value });
+  const moveSlide = (index: number, direction: -1 | 1) => {
+    const nextIndex = index + direction;
+    if (nextIndex < 0 || nextIndex >= data.slides.length) return;
+
+    const slides = [...data.slides];
+    const [movedSlide] = slides.splice(index, 1);
+    slides.splice(nextIndex, 0, movedSlide);
+    onChange({ ...data, slides });
+  };
 
   const updateStat = (index: number, key: keyof HeroStat, value: string) => {
     const stats = [...data.stats];
