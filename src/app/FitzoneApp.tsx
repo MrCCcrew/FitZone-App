@@ -3,22 +3,22 @@ import { useState, useEffect } from "react";
 
 // ─── FIT ZONE BRAND COLORS ─────────────────────────────────────────────────
 const C = {
-  bg: "#0A0A0A",
-  bgCard: "#141414",
-  bgCard2: "#1C1C1C",
-  border: "#2A2A2A",
-  red: "#E63916",
-  redDark: "#B52D10",
-  redLight: "#FF4D25",
+  bg: "#FFF5F8",
+  bgCard: "#FFFFFF",
+  bgCard2: "#FFF0F5",
+  border: "#F5D0DC",
+  red: "#E91E63",
+  redDark: "#C2185B",
+  redLight: "#F06292",
   gold: "#C8A200",
   goldLight: "#F0C420",
   goldDark: "#8A6E00",
-  white: "#FFFFFF",
-  gray: "#9A9A9A",
-  grayLight: "#C5C5C5",
-  grayDark: "#3A3A3A",
-  success: "#22C55E",
-  successDark: "#16A34A",
+  white: "#1A0812",
+  gray: "#7A5B68",
+  grayLight: "#B090A0",
+  grayDark: "#E8D0D8",
+  success: "#16A34A",
+  successDark: "#166534",
 };
 
 const css = `
@@ -29,24 +29,24 @@ const css = `
   .app{min-height:100vh;}
 
   .btn-primary{background:${C.red};color:#fff;border:none;padding:12px 28px;border-radius:6px;font-family:'Cairo',sans-serif;font-size:15px;font-weight:700;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;gap:8px;letter-spacing:.3px;}
-  .btn-primary:hover{background:${C.redLight};transform:translateY(-1px);box-shadow:0 6px 20px rgba(230,57,22,.35);}
+  .btn-primary:hover{background:${C.redLight};transform:translateY(-1px);box-shadow:0 6px 20px rgba(233,30,99,.35);}
   .btn-gold{background:linear-gradient(135deg,${C.gold},${C.goldLight});color:#000;border:none;padding:12px 28px;border-radius:6px;font-family:'Cairo',sans-serif;font-size:15px;font-weight:700;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;gap:8px;}
   .btn-gold:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(200,162,0,.35);}
   .btn-outline{background:transparent;color:${C.red};border:2px solid ${C.red};padding:10px 26px;border-radius:6px;font-family:'Cairo',sans-serif;font-size:15px;font-weight:700;cursor:pointer;transition:all .2s;}
   .btn-outline:hover{background:${C.red};color:#fff;}
   .btn-outline-gold{background:transparent;color:${C.gold};border:1.5px solid ${C.gold};padding:8px 20px;border-radius:6px;font-family:'Cairo',sans-serif;font-size:14px;font-weight:600;cursor:pointer;transition:all .2s;}
   .btn-outline-gold:hover{background:${C.gold};color:#000;}
-  .btn-ghost{background:rgba(255,255,255,.06);color:${C.white};border:1px solid ${C.border};padding:10px 22px;border-radius:6px;font-family:'Cairo',sans-serif;font-size:14px;font-weight:600;cursor:pointer;transition:all .2s;}
-  .btn-ghost:hover{background:rgba(255,255,255,.12);}
+  .btn-ghost{background:rgba(233,30,99,.06);color:${C.white};border:1px solid ${C.border};padding:10px 22px;border-radius:6px;font-family:'Cairo',sans-serif;font-size:14px;font-weight:600;cursor:pointer;transition:all .2s;}
+  .btn-ghost:hover{background:rgba(233,30,99,.12);}
 
   .card{background:${C.bgCard};border-radius:12px;border:1px solid ${C.border};overflow:hidden;}
   .card-hover{transition:transform .2s,border-color .2s,box-shadow .2s;}
-  .card-hover:hover{transform:translateY(-3px);border-color:${C.red}55;box-shadow:0 8px 32px rgba(230,57,22,.12);}
+  .card-hover:hover{transform:translateY(-3px);border-color:${C.red}55;box-shadow:0 8px 32px rgba(233,30,99,.12);}
 
   .section{padding:72px 0;}
   .container{max-width:1280px;margin:0 auto;padding:0 24px;}
 
-  .tag{display:inline-flex;align-items:center;background:rgba(230,57,22,.15);color:${C.red};padding:4px 14px;border-radius:4px;font-size:12px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;}
+  .tag{display:inline-flex;align-items:center;background:rgba(233,30,99,.15);color:${C.red};padding:4px 14px;border-radius:4px;font-size:12px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;}
   .tag-gold{background:rgba(200,162,0,.15);color:${C.gold};padding:4px 14px;border-radius:4px;font-size:11px;font-weight:700;display:inline-flex;align-items:center;}
   .badge{display:inline-flex;align-items:center;background:${C.red};color:#fff;padding:3px 10px;border-radius:4px;font-size:11px;font-weight:700;}
   .badge-gold{background:${C.gold};color:#000;}
@@ -88,11 +88,26 @@ const css = `
     .hide-desktop{display:none!important;}
   }
 
-  .glow-red{box-shadow:0 0 30px rgba(230,57,22,.2);}
+  .glow-red{box-shadow:0 0 30px rgba(233,30,99,.2);}
   .glow-gold{box-shadow:0 0 30px rgba(200,162,0,.2);}
 
   .noise-overlay::after{content:'';position:absolute;inset:0;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.03'/%3E%3C/svg%3E");pointer-events:none;}
 `;
+
+let publicApiPromise: Promise<Record<string, unknown>> | null = null;
+
+function loadPublicApi() {
+  if (!publicApiPromise) {
+    publicApiPromise = fetch("/api/public")
+      .then((r) => r.json())
+      .catch((error) => {
+        publicApiPromise = null;
+        throw error;
+      });
+  }
+
+  return publicApiPromise;
+}
 
 // ─── ICONS ─────────────────────────────────────────────────────────────────
 const I = ({ n, s = 20, c = "currentColor" }: { n: string; s?: number; c?: string }) => {
@@ -164,22 +179,22 @@ const GymImg = ({ type = "hero", w = "100%", h = 300 }: { type?: string; w?: str
       content: (
         <>
           <rect x="0" y="0" width="100%" height="100%" fill="url(#heroGrad)"/>
-          <defs><radialGradient id="heroGrad" cx="30%" cy="50%"><stop offset="0%" stopColor="#3D1208"/><stop offset="100%" stopColor="#0A0A0A"/></radialGradient></defs>
+          <defs><radialGradient id="heroGrad" cx="30%" cy="50%"><stop offset="0%" stopColor="#FFD6E8"/><stop offset="100%" stopColor="#FFF5F8"/></radialGradient></defs>
           {/* Gym equipment silhouettes */}
-          <ellipse cx="75%" cy="85%" rx="120" ry="40" fill="#1A1A1A" opacity=".8"/>
-          <rect x="60%" y="35%" width="8" height="50%" fill="#252525" rx="3"/>
-          <rect x="55%" y="40%" width="18%" height="8" fill="#2A2A2A" rx="2"/>
-          <ellipse cx="55%" cy="40%" rx="18" ry="18" fill="#222"/>
-          <ellipse cx="73%" cy="40%" rx="18" ry="18" fill="#222"/>
+          <ellipse cx="75%" cy="85%" rx="120" ry="40" fill="#E91E63" opacity=".1"/>
+          <rect x="60%" y="35%" width="8" height="50%" fill="#E91E63" opacity=".4" rx="3"/>
+          <rect x="55%" y="40%" width="18%" height="8" fill="#C2185B" opacity=".5" rx="2"/>
+          <ellipse cx="55%" cy="40%" rx="18" ry="18" fill="#E91E63" opacity=".35"/>
+          <ellipse cx="73%" cy="40%" rx="18" ry="18" fill="#E91E63" opacity=".35"/>
           {/* Athlete outline */}
-          <ellipse cx="32%" cy="28%" rx="22" ry="22" fill="#E63916" opacity=".15"/>
-          <ellipse cx="32%" cy="21%" rx="8" ry="8" fill="#888"/>
-          <path d="M 112 87 Q 128 75 144 87 L 140 165 L 128 156 L 116 165 Z" fill="#999"/>
+          <ellipse cx="32%" cy="28%" rx="22" ry="22" fill="#E91E63" opacity=".15"/>
+          <ellipse cx="32%" cy="21%" rx="8" ry="8" fill="#C2185B"/>
+          <path d="M 112 87 Q 128 75 144 87 L 140 165 L 128 156 L 116 165 Z" fill="#E91E63" opacity=".7"/>
           {/* FITZONE on wall */}
-          <rect x="15%" y="60%" width="35%" height="22" fill="#E63916" opacity=".15" rx="2"/>
-          <text x="32%" y="74%" textAnchor="middle" fontSize="18" fontWeight="900" fill="#E63916" fontFamily="'Cairo',sans-serif" letterSpacing="3" opacity=".8">FITZONE</text>
+          <rect x="15%" y="60%" width="35%" height="22" fill="#E91E63" opacity=".15" rx="2"/>
+          <text x="32%" y="74%" textAnchor="middle" fontSize="18" fontWeight="900" fill="#E91E63" fontFamily="'Cairo',sans-serif" letterSpacing="3" opacity=".8">FITZONE</text>
           {/* Red glow */}
-          <radialGradient id="redGlow" cx="32%" cy="50%"><stop offset="0%" stopColor="#E63916" stopOpacity=".08"/><stop offset="100%" stopColor="#E63916" stopOpacity="0"/></radialGradient>
+          <radialGradient id="redGlow" cx="32%" cy="50%"><stop offset="0%" stopColor="#E91E63" stopOpacity=".08"/><stop offset="100%" stopColor="#E91E63" stopOpacity="0"/></radialGradient>
           <rect x="0" y="0" width="100%" height="100%" fill="url(#redGlow)"/>
         </>
       )
@@ -187,7 +202,7 @@ const GymImg = ({ type = "hero", w = "100%", h = 300 }: { type?: string; w?: str
     yoga: {
       content: (
         <>
-          <defs><linearGradient id="yg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#1A0030"/><stop offset="100%" stopColor="#0A0A0A"/></linearGradient></defs>
+          <defs><linearGradient id="yg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#F3E8FF"/><stop offset="100%" stopColor="#FFF5F8"/></linearGradient></defs>
           <rect width="100%" height="100%" fill="url(#yg)"/>
           <circle cx="50%" cy="40%" r="60" fill="rgba(139,0,200,.1)"/>
           <ellipse cx="50%" cy="42%" rx="12" ry="12" fill="#666"/>
@@ -200,9 +215,9 @@ const GymImg = ({ type = "hero", w = "100%", h = 300 }: { type?: string; w?: str
     zumba: {
       content: (
         <>
-          <defs><linearGradient id="zg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#2D0A08"/><stop offset="100%" stopColor="#0A0A0A"/></linearGradient></defs>
+          <defs><linearGradient id="zg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#FFE4E8"/><stop offset="100%" stopColor="#FFF5F8"/></linearGradient></defs>
           <rect width="100%" height="100%" fill="url(#zg)"/>
-          <circle cx="50%" cy="40%" r="50" fill="rgba(230,57,22,.12)"/>
+          <circle cx="50%" cy="40%" r="50" fill="rgba(233,30,99,.12)"/>
           <ellipse cx="50%" cy="36%" rx="11" ry="11" fill="#888"/>
           <path d="M 176 132 Q 192 120 208 126 Q 224 132 232 156 L 208 198 L 192 192 Z" fill="#777"/>
           <text x="50%" y="86%" textAnchor="middle" fontSize="14" fontWeight="700" fill={C.red} fontFamily="'Cairo',sans-serif">زومبا</text>
@@ -213,7 +228,7 @@ const GymImg = ({ type = "hero", w = "100%", h = 300 }: { type?: string; w?: str
     strength: {
       content: (
         <>
-          <defs><linearGradient id="sg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#1A1000"/><stop offset="100%" stopColor="#080808"/></linearGradient></defs>
+          <defs><linearGradient id="sg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#FFECF0"/><stop offset="100%" stopColor="#080808"/></linearGradient></defs>
           <rect width="100%" height="100%" fill="url(#sg)"/>
           <rect x="30%" y="35%" width="40%" height="8" fill="#333" rx="3"/>
           <ellipse cx="30%" cy="39%" rx="18" ry="18" fill="#2A2A2A" stroke="#444" strokeWidth="2"/>
@@ -226,7 +241,7 @@ const GymImg = ({ type = "hero", w = "100%", h = 300 }: { type?: string; w?: str
     pilates: {
       content: (
         <>
-          <defs><linearGradient id="pg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#001A2D"/><stop offset="100%" stopColor="#0A0A0A"/></linearGradient></defs>
+          <defs><linearGradient id="pg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#E0F0FF"/><stop offset="100%" stopColor="#FFF5F8"/></linearGradient></defs>
           <rect width="100%" height="100%" fill="url(#pg)"/>
           <circle cx="50%" cy="40%" r="45" fill="rgba(14,165,233,.08)"/>
           <ellipse cx="50%" cy="35%" rx="11" ry="11" fill="#777"/>
@@ -239,7 +254,7 @@ const GymImg = ({ type = "hero", w = "100%", h = 300 }: { type?: string; w?: str
     cardio: {
       content: (
         <>
-          <defs><linearGradient id="cg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#1A0800"/><stop offset="100%" stopColor="#0A0A0A"/></linearGradient></defs>
+          <defs><linearGradient id="cg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#FFE8F0"/><stop offset="100%" stopColor="#FFF5F8"/></linearGradient></defs>
           <rect width="100%" height="100%" fill="url(#cg)"/>
           <circle cx="50%" cy="38%" r="50" fill="rgba(249,115,22,.1)"/>
           <text x="50%" y="45%" textAnchor="middle" fontSize="28" fill="rgba(249,115,22,.6)">⚡</text>
@@ -251,49 +266,49 @@ const GymImg = ({ type = "hero", w = "100%", h = 300 }: { type?: string; w?: str
     trainer1: {
       content: (
         <>
-          <defs><radialGradient id="t1g" cx="50%" cy="40%"><stop offset="0%" stopColor="#3D1208"/><stop offset="100%" stopColor="#0A0A0A"/></radialGradient></defs>
+          <defs><radialGradient id="t1g" cx="50%" cy="40%"><stop offset="0%" stopColor="#FFD6E8"/><stop offset="100%" stopColor="#FFF5F8"/></radialGradient></defs>
           <rect width="100%" height="100%" fill="url(#t1g)"/>
-          <circle cx="50%" cy="38%" r="45" fill="rgba(230,57,22,.08)"/>
-          <ellipse cx="50%" cy="32%" rx="20" ry="20" fill="#333"/>
-          <path d="M 144 144 Q 200 126 256 144 L 248 240 L 200 228 L 152 240 Z" fill="#3A3A3A"/>
+          <circle cx="50%" cy="38%" r="45" fill="rgba(233,30,99,.08)"/>
+          <ellipse cx="50%" cy="32%" rx="20" ry="20" fill="#C2185B"/>
+          <path d="M 144 144 Q 200 126 256 144 L 248 240 L 200 228 L 152 240 Z" fill="#E91E63" opacity=".7"/>
           <rect x="5%" y="78%" width="90%" height="1" fill={C.border}/>
           <text x="50%" y="90%" textAnchor="middle" fontSize="11" fontWeight="700" fill={C.white} fontFamily="'Cairo',sans-serif">هبة زارع</text>
-          <text x="50%" y="98%" textAnchor="middle" fontSize="8" fill={C.gold} fontFamily="'Cairo',sans-serif">مدربة رئيسية</text>
+          <text x="50%" y="98%" textAnchor="middle" fontSize="8" fill="#eaa2be" fontFamily="'Cairo',sans-serif">مدربة رئيسية</text>
         </>
       )
     },
     trainer2: {
       content: (
         <>
-          <defs><radialGradient id="t2g" cx="50%" cy="40%"><stop offset="0%" stopColor="#100020"/><stop offset="100%" stopColor="#0A0A0A"/></radialGradient></defs>
+          <defs><radialGradient id="t2g" cx="50%" cy="40%"><stop offset="0%" stopColor="#F5E0FF"/><stop offset="100%" stopColor="#FFF5F8"/></radialGradient></defs>
           <rect width="100%" height="100%" fill="url(#t2g)"/>
           <circle cx="50%" cy="38%" r="45" fill="rgba(139,0,200,.08)"/>
-          <ellipse cx="50%" cy="32%" rx="20" ry="20" fill="#2D2D2D"/>
-          <path d="M 144 144 Q 200 126 256 144 L 248 240 L 200 228 L 152 240 Z" fill="#333"/>
+          <ellipse cx="50%" cy="32%" rx="20" ry="20" fill="#C2185B"/>
+          <path d="M 144 144 Q 200 126 256 144 L 248 240 L 200 228 L 152 240 Z" fill="#E91E63" opacity=".7"/>
           <rect x="5%" y="78%" width="90%" height="1" fill={C.border}/>
           <text x="50%" y="90%" textAnchor="middle" fontSize="11" fontWeight="700" fill={C.white} fontFamily="'Cairo',sans-serif">منال علي</text>
-          <text x="50%" y="98%" textAnchor="middle" fontSize="8" fill="#9B59B6" fontFamily="'Cairo',sans-serif">مدربة يوجا</text>
+          <text x="50%" y="98%" textAnchor="middle" fontSize="8" fill="#c6adff" fontFamily="'Cairo',sans-serif">مدربة يوجا</text>
         </>
       )
     },
     trainer3: {
       content: (
         <>
-          <defs><radialGradient id="t3g" cx="50%" cy="40%"><stop offset="0%" stopColor="#0D1800"/><stop offset="100%" stopColor="#0A0A0A"/></radialGradient></defs>
+          <defs><radialGradient id="t3g" cx="50%" cy="40%"><stop offset="0%" stopColor="#E8F5E0"/><stop offset="100%" stopColor="#FFF5F8"/></radialGradient></defs>
           <rect width="100%" height="100%" fill="url(#t3g)"/>
           <circle cx="50%" cy="38%" r="45" fill="rgba(34,197,94,.08)"/>
-          <ellipse cx="50%" cy="32%" rx="20" ry="20" fill="#2A2A2A"/>
-          <path d="M 144 144 Q 200 126 256 144 L 248 240 L 200 228 L 152 240 Z" fill="#303030"/>
+          <ellipse cx="50%" cy="32%" rx="20" ry="20" fill="#C2185B"/>
+          <path d="M 144 144 Q 200 126 256 144 L 248 240 L 200 228 L 152 240 Z" fill="#E91E63" opacity=".7"/>
           <rect x="5%" y="78%" width="90%" height="1" fill={C.border}/>
           <text x="50%" y="90%" textAnchor="middle" fontSize="11" fontWeight="700" fill={C.white} fontFamily="'Cairo',sans-serif">سحر كمال</text>
-          <text x="50%" y="98%" textAnchor="middle" fontSize="8" fill={C.success} fontFamily="'Cairo',sans-serif">مدربة قوة</text>
+          <text x="50%" y="98%" textAnchor="middle" fontSize="8" fill="#93ccc7" fontFamily="'Cairo',sans-serif">مدربة قوة</text>
         </>
       )
     },
     product1: {
       content: (
         <>
-          <defs><linearGradient id="pr1" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#1A1A1A"/><stop offset="100%" stopColor="#0D0D0D"/></linearGradient></defs>
+          <defs><linearGradient id="pr1" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#FFD6E8"/><stop offset="100%" stopColor="#FFF5F8"/></linearGradient></defs>
           <rect width="100%" height="100%" fill="url(#pr1)"/>
           <text x="50%" y="48%" textAnchor="middle" fontSize="48" fill="rgba(200,162,0,.7)">👟</text>
           <rect x="15%" y="68%" width="70%" height="1" fill={C.border}/>
@@ -304,7 +319,7 @@ const GymImg = ({ type = "hero", w = "100%", h = 300 }: { type?: string; w?: str
     product2: {
       content: (
         <>
-          <defs><linearGradient id="pr2" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#0D1A0D"/><stop offset="100%" stopColor="#0A0A0A"/></linearGradient></defs>
+          <defs><linearGradient id="pr2" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#E8F5E0"/><stop offset="100%" stopColor="#FFF5F8"/></linearGradient></defs>
           <rect width="100%" height="100%" fill="url(#pr2)"/>
           <text x="50%" y="48%" textAnchor="middle" fontSize="48" fill="rgba(34,197,94,.7)">🥤</text>
           <rect x="15%" y="68%" width="70%" height="1" fill={C.border}/>
@@ -315,9 +330,9 @@ const GymImg = ({ type = "hero", w = "100%", h = 300 }: { type?: string; w?: str
     product3: {
       content: (
         <>
-          <defs><linearGradient id="pr3" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#1A100D"/><stop offset="100%" stopColor="#0A0A0A"/></linearGradient></defs>
+          <defs><linearGradient id="pr3" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#FFF0E8"/><stop offset="100%" stopColor="#FFF5F8"/></linearGradient></defs>
           <rect width="100%" height="100%" fill="url(#pr3)"/>
-          <text x="50%" y="48%" textAnchor="middle" fontSize="48" fill="rgba(230,57,22,.7)">🏋️</text>
+          <text x="50%" y="48%" textAnchor="middle" fontSize="48" fill="rgba(233,30,99,.7)">🏋️</text>
           <rect x="15%" y="68%" width="70%" height="1" fill={C.border}/>
           <text x="50%" y="82%" textAnchor="middle" fontSize="11" fill={C.gray} fontFamily="'Cairo',sans-serif">معدات رياضية</text>
         </>
@@ -326,10 +341,10 @@ const GymImg = ({ type = "hero", w = "100%", h = 300 }: { type?: string; w?: str
     blog: {
       content: (
         <>
-          <defs><linearGradient id="blg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#1A0500"/><stop offset="100%" stopColor="#0A0A0A"/></linearGradient></defs>
+          <defs><linearGradient id="blg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#FFE0EC"/><stop offset="100%" stopColor="#FFF5F8"/></linearGradient></defs>
           <rect width="100%" height="100%" fill="url(#blg)"/>
-          <circle cx="50%" cy="40%" r="40" fill="rgba(230,57,22,.08)"/>
-          <text x="50%" y="50%" textAnchor="middle" fontSize="32" fill="rgba(230,57,22,.6)">📰</text>
+          <circle cx="50%" cy="40%" r="40" fill="rgba(233,30,99,.08)"/>
+          <text x="50%" y="50%" textAnchor="middle" fontSize="32" fill="rgba(233,30,99,.6)">📰</text>
           <text x="50%" y="80%" textAnchor="middle" fontSize="10" fill={C.gray} fontFamily="'Cairo',sans-serif">FIT ZONE BLOG</text>
         </>
       )
@@ -339,8 +354,8 @@ const GymImg = ({ type = "hero", w = "100%", h = 300 }: { type?: string; w?: str
         <>
           <defs>
             <linearGradient id="og" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#1A0800"/>
-              <stop offset="100%" stopColor="#0D0D0D"/>
+              <stop offset="0%" stopColor="#FFE8F0"/>
+              <stop offset="100%" stopColor="#FFF5F8"/>
             </linearGradient>
           </defs>
           <rect width="100%" height="100%" fill="url(#og)"/>
@@ -354,28 +369,35 @@ const GymImg = ({ type = "hero", w = "100%", h = 300 }: { type?: string; w?: str
       content: (
         <>
           <defs>
-            <linearGradient id="grg" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#1A0800"/>
-              <stop offset="100%" stopColor="#050505"/>
+            <linearGradient id="grg" x1="0%" y1="100%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#FCE4EC"/>
+              <stop offset="50%" stopColor="#FFF0F5"/>
+              <stop offset="100%" stopColor="#F8BBD9"/>
             </linearGradient>
           </defs>
           <rect width="100%" height="100%" fill="url(#grg)"/>
-          {/* Gym interior simulation */}
-          <rect x="0" y="60%" width="100%" height="40%" fill="#111"/>
-          <rect x="10%" y="40%" width="3" height="60%" fill="#2A2A2A"/>
-          <rect x="30%" y="38%" width="3" height="60%" fill="#2A2A2A"/>
-          <rect x="50%" y="40%" width="3" height="60%" fill="#2A2A2A"/>
-          <rect x="70%" y="38%" width="3" height="60%" fill="#2A2A2A"/>
-          <rect x="90%" y="40%" width="3" height="60%" fill="#2A2A2A"/>
-          {/* Dumbbells on rack */}
-          {[15,25,35,45,55,65,75,85].map((x,i) => (
-            <ellipse key={i} cx={`${x}%`} cy="85%" rx="12" ry="6" fill={i%2===0?"#2D2D2D":"#252525"} stroke="#333" strokeWidth=".5"/>
+          {/* Floating animated circles */}
+          {[
+            { cx:48,  cy:180, r:55, color:"#E91E63", op:.12, dur:"6s",  delay:"0s" },
+            { cx:112, cy:390, r:35, color:"#F06292", op:.18, dur:"8s",  delay:"1s" },
+            { cx:180, cy:120, r:70, color:"#F48FB1", op:.10, dur:"7s",  delay:"2s" },
+            { cx:248, cy:450, r:45, color:"#E91E63", op:.14, dur:"9s",  delay:"0.5s" },
+            { cx:312, cy:240, r:60, color:"#F06292", op:.12, dur:"6.5s",delay:"1.5s" },
+            { cx:360, cy:480, r:30, color:"#F48FB1", op:.20, dur:"7.5s",delay:"3s" },
+            { cx:20,  cy:420, r:40, color:"#E91E63", op:.10, dur:"8.5s",delay:"2.5s" },
+            { cx:220, cy:330, r:25, color:"#F06292", op:.16, dur:"5.5s",delay:"4s" },
+          ].map((c,i) => (
+            <circle key={i} cx={c.cx} cy={c.cy} r={c.r} fill={c.color} opacity={c.op}>
+              <animate attributeName="cy" values={`${c.cy};${c.cy - 35};${c.cy}`} dur={c.dur} begin={c.delay} repeatCount="indefinite" calcMode="spline" keySplines="0.4 0 0.6 1;0.4 0 0.6 1"/>
+              <animate attributeName="r"  values={`${c.r};${Math.round(c.r*1.2)};${c.r}`} dur={c.dur} begin={c.delay} repeatCount="indefinite" calcMode="spline" keySplines="0.4 0 0.6 1;0.4 0 0.6 1"/>
+              <animate attributeName="opacity" values={`${c.op};${+(c.op*1.6).toFixed(2)};${c.op}`} dur={c.dur} begin={c.delay} repeatCount="indefinite" calcMode="spline" keySplines="0.4 0 0.6 1;0.4 0 0.6 1"/>
+            </circle>
           ))}
           {/* FITZONE sign */}
-          <rect x="15%" y="20%" width="70%" height="28" fill="rgba(230,57,22,.2)" rx="3"/>
+          <rect x="15%" y="20%" width="70%" height="28" fill="rgba(233,30,99,.15)" rx="3"/>
           <text x="50%" y="38%" textAnchor="middle" fontSize="16" fontWeight="900" fill={C.red} fontFamily="'Cairo',sans-serif" letterSpacing="4">FITZONE</text>
-          {/* Atmosphere */}
-          <radialGradient id="atmG" cx="50%" cy="80%"><stop offset="0%" stopColor="#E63916" stopOpacity=".06"/><stop offset="100%" stopColor="transparent"/></radialGradient>
+          {/* Glow */}
+          <radialGradient id="atmG" cx="50%" cy="50%"><stop offset="0%" stopColor="#E91E63" stopOpacity=".1"/><stop offset="100%" stopColor="transparent"/></radialGradient>
           <rect x="0" y="0" width="100%" height="100%" fill="url(#atmG)"/>
         </>
       )
@@ -391,7 +413,19 @@ const GymImg = ({ type = "hero", w = "100%", h = 300 }: { type?: string; w?: str
 
 // ─── HEADER ─────────────────────────────────────────────────────────────────
 const DEFAULT_TOP_BAR = "💪 01001514535 · بني سويف · أول نادي للسيدات والأطفال";
-const Header = ({ currentPage, navigate, cartCount = 0, walletBalance = "0" }: { currentPage: string; navigate: (p: string) => void; cartCount?: number; walletBalance?: string }) => {
+const Header = ({
+  currentPage,
+  navigate,
+  cartCount = 0,
+  walletBalance = "0",
+  summary,
+}: {
+  currentPage: string;
+  navigate: (p: string) => void;
+  cartCount?: number;
+  walletBalance?: string;
+  summary?: UserSummary | null;
+}) => {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [announcements, setAnnouncements] = useState<string[]>([]);
   const [annIndex, setAnnIndex] = useState(0);
@@ -422,7 +456,7 @@ const Header = ({ currentPage, navigate, cartCount = 0, walletBalance = "0" }: {
     { id: "blog", label: "المدونة" },
   ];
   return (
-    <header style={{ background: "rgba(10,10,10,.95)", backdropFilter: "blur(12px)", borderBottom: `1px solid ${C.border}`, position: "sticky", top: 0, zIndex: 100 }}>
+    <header style={{ background: "rgba(255,245,248,.97)", backdropFilter: "blur(12px)", borderBottom: `1px solid ${C.border}`, position: "sticky", top: 0, zIndex: 100 }}>
       {/* Top bar */}
       <div style={{ background: C.red, padding: "6px 0", textAlign: "center" }}>
         <span style={{ fontSize: 12, fontWeight: 600, color: "#fff" }}>{announcements.length > 0 ? announcements[annIndex] : DEFAULT_TOP_BAR}</span>
@@ -443,7 +477,7 @@ const Header = ({ currentPage, navigate, cartCount = 0, walletBalance = "0" }: {
           ))}
         </nav>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <button onClick={() => navigate("wallet")} style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(230,57,22,.12)", border: `1px solid ${C.red}33`, borderRadius: 6, padding: "6px 12px", cursor: "pointer", color: C.red, fontSize: 12, fontWeight: 700, fontFamily: "'Cairo', sans-serif" }}>
+          <button onClick={() => navigate("wallet")} style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(233,30,99,.12)", border: `1px solid ${C.red}33`, borderRadius: 6, padding: "6px 12px", cursor: "pointer", color: C.red, fontSize: 12, fontWeight: 700, fontFamily: "'Cairo', sans-serif" }}>
             <I n="wallet" s={14} c={C.red} />
             <span className="hide-mobile">{walletBalance} ج.م</span>
           </button>
@@ -451,8 +485,25 @@ const Header = ({ currentPage, navigate, cartCount = 0, walletBalance = "0" }: {
             <I n="cart" s={20} c={C.gray} />
             {cartCount > 0 && <span style={{ position: "absolute", top: 2, left: 2, width: 16, height: 16, background: C.red, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: "#fff", fontWeight: 700 }}>{cartCount}</span>}
           </button>
-          <button onClick={() => navigate("account")} style={{ background: "none", border: "none", cursor: "pointer", padding: 8 }}>
-            <I n="user" s={20} c={C.gray} />
+          <button
+            onClick={() => navigate("account")}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              background: summary?.authenticated ? "rgba(233,30,99,.12)" : "none",
+              border: summary?.authenticated ? `1px solid ${C.red}33` : "none",
+              borderRadius: 8,
+              cursor: "pointer",
+              padding: "8px 10px",
+              color: summary?.authenticated ? C.red : C.gray,
+              fontFamily: "'Cairo', sans-serif",
+            }}
+          >
+            <I n="user" s={20} c={summary?.authenticated ? C.red : C.gray} />
+            <span className="hide-mobile" style={{ fontSize: 12, fontWeight: 700 }}>
+              {summary?.authenticated ? (summary.user?.name || "حسابي") : "تسجيل الدخول"}
+            </span>
           </button>
           <button className="btn-primary hide-mobile" onClick={() => navigate("memberships")} style={{ padding: "8px 18px", fontSize: 13 }}>
             اشتركي الآن
@@ -478,7 +529,7 @@ const Header = ({ currentPage, navigate, cartCount = 0, walletBalance = "0" }: {
 
 // ─── FOOTER ─────────────────────────────────────────────────────────────────
 const Footer = ({ navigate }: { navigate: (p: string) => void }) => (
-  <footer style={{ background: "#080808", borderTop: `1px solid ${C.border}`, padding: "64px 0 32px" }}>
+  <footer style={{ background: "#F8ECF0", borderTop: `1px solid ${C.border}`, padding: "64px 0 32px" }}>
     <div className="container">
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 40, marginBottom: 48 }}>
         <div>
@@ -556,6 +607,17 @@ function responsiveColumns(mobile: string, tablet: string, desktop: string) {
   if (width < 768) return mobile;
   if (width < 1024) return tablet;
   return desktop;
+}
+
+function useWindowWidth() {
+  const [w, setW] = useState(1280);
+  useEffect(() => {
+    setW(window.innerWidth);
+    const h = () => setW(window.innerWidth);
+    window.addEventListener("resize", h);
+    return () => window.removeEventListener("resize", h);
+  }, []);
+  return w;
 }
 
 type UserSummary = {
@@ -645,9 +707,13 @@ const DEFAULT_HOME_MEMBERSHIPS = [
 ];
 const HOME_PLAN_COLORS = [C.gray, C.red, C.gold, "#A855F7", "#3498DB"];
 const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summary: UserSummary | null }) => {
+  const _w = useWindowWidth();
+  // Shadow module-level functions with reactive versions (fixes SSR hydration mismatch)
+  const viewportWidth = () => _w;
+  const responsiveColumns = (mobile: string, tablet: string, desktop: string) => _w < 768 ? mobile : _w < 1024 ? tablet : desktop;
   const classes = [
     { icon: "🧘", name: "يوجا", count: "12 كلاس", color: "#9B59B6", bg: "rgba(155,89,182,.1)", border: "rgba(155,89,182,.3)" },
-    { icon: "💃", name: "زومبا", count: "8 كلاسات", color: C.red, bg: "rgba(230,57,22,.08)", border: "rgba(230,57,22,.2)" },
+    { icon: "💃", name: "زومبا", count: "8 كلاسات", color: C.red, bg: "rgba(233,30,99,.08)", border: "rgba(233,30,99,.2)" },
     { icon: "🏋️", name: "قوة", count: "15 كلاس", color: C.gold, bg: "rgba(200,162,0,.08)", border: "rgba(200,162,0,.2)" },
     { icon: "🤸", name: "بيلاتس", count: "10 كلاسات", color: "#0EA5E9", bg: "rgba(14,165,233,.08)", border: "rgba(14,165,233,.2)" },
     { icon: "🏃", name: "كارديو", count: "6 كلاسات", color: "#F97316", bg: "rgba(249,115,22,.08)", border: "rgba(249,115,22,.2)" },
@@ -655,11 +721,17 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
   const [memberships, setMemberships] = useState(DEFAULT_HOME_MEMBERSHIPS);
   const [trainers, setTrainers] = useState([
     { name: "هبة زارع", specialty: "مدربة رئيسية · يوجا وقوة", rating: 4.9, sessions: 520, type: "trainer1" },
-    { name: "منال علي", specialty: "زومبا وكارديو", rating: 4.8, sessions: 380, type: "trainer2" },
-    { name: "سحر كمال", specialty: "قوة وبيلاتس", rating: 4.9, sessions: 415, type: "trainer3" },
+    { name: "منال علي", specialty: "مدربة زومبا وكارديو", rating: 4.8, sessions: 380, type: "trainer2" },
+    { name: "سحر كمال", specialty: "مدربة قوة وبيلاتس", rating: 4.9, sessions: 415, type: "trainer3" },
   ]);
+  const [testimonials, setTestimonials] = useState<PublicTestimonial[]>([
+    { displayName: "أميرة السيد", content: "أفضل جيم في بني سويف. المدربات محترفات جدًا والأجواء تشجعك على الاستمرار.", rating: 5 },
+    { displayName: "هنا محمد", content: "الجدول مرن ومناسب جدًا وأنصح به لأي سيدة تريد الالتزام بانتظام.", rating: 5 },
+    { displayName: "ريم أحمد", content: "الحجز يتم بسرعة وسهولة من الموقع والتجربة ممتازة.", rating: 5 },
+  ]);
+  const [products, setProducts] = useState<StoreProduct[]>(DEFAULT_PRODUCTS.slice(0, 3));
   useEffect(() => {
-    fetch("/api/public").then(r => r.json()).then(d => {
+    loadPublicApi().then(d => {
       if (Array.isArray(d.memberships) && d.memberships.length > 0) {
         setMemberships(d.memberships.slice(0, 3).map((mb: { name: string; price: number; features: string[] }, i: number) => ({
           name: mb.name,
@@ -681,18 +753,28 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
         });
         if (dbTrainers.length > 0) setTrainers(dbTrainers.slice(0, 6));
       }
+      if (Array.isArray(d.testimonials) && d.testimonials.length > 0) {
+        setTestimonials(d.testimonials.slice(0, 6));
+      }
+      if (Array.isArray(d.products) && d.products.length > 0) {
+        setProducts(d.products.slice(0, 3).map((p: { id?: string; name: string; price: number; oldPrice: number | null; category: string; categoryLabel?: string; sizeType?: "none" | "clothing" | "shoes"; images?: string[]; sizes?: string[]; colors?: string[] }, i: number) => ({
+          id: p.id,
+          name: p.name,
+          price: p.price,
+          oldPrice: p.oldPrice,
+          type: `product${(i % 3) + 1}`,
+          cat: p.categoryLabel ?? catMap[p.category] ?? p.category,
+          categoryKey: p.category,
+          sizeType: p.sizeType ?? "none",
+          sizes: Array.isArray(p.sizes) ? p.sizes.filter(Boolean) : [],
+          colors: Array.isArray(p.colors) ? p.colors.filter(Boolean) : [],
+          badge: p.oldPrice ? `خصم ${Math.round((1 - p.price / p.oldPrice) * 100)}%` : null,
+          rating: 4.7,
+          images: Array.isArray(p.images) ? p.images.filter(Boolean) : [],
+        })));
+      }
     }).catch(() => {});
   }, []);
-  const testimonials = [
-    { name: "أميرة السيد", text: "أفضل جيم في بني سويف. المدربات محترفات جدًا والأجواء تشجعك على الاستمرار. خسرت 15 كيلو في 4 شهور.", rating: 5 },
-    { name: "هنا محمد", text: "من أول اشتراك حسيت بفرق. الجدول مرن ومناسب جدًا، وأنصح به لأي سيدة تريد الالتزام بانتظام.", rating: 5 },
-    { name: "ريم أحمد", text: "المحفظة ونقاط المكافآت وفروا عليّ كثيرًا، والحجز يتم بسرعة وسهولة من الموقع.", rating: 5 },
-  ];
-  const products = [
-    { name: "حذاء رياضي Luna", price: 850, oldPrice: 1200, type: "product1", badge: "الأكثر مبيعًا" },
-    { name: "بروتين نسائي 1kg", price: 450, oldPrice: null, type: "product2", badge: null },
-    { name: "طقم معدات يوجا", price: 680, oldPrice: 900, type: "product3", badge: "خصم 25%" },
-  ];
   const schedulePreview = [
     { time: "07:00", name: "يوجا الصباح", trainer: "هبة", spots: 5, color: "#9B59B6" },
     { time: "09:00", name: "زومبا", trainer: "منال", spots: 2, color: C.red },
@@ -719,7 +801,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
       <section style={{ position: "relative", minHeight: viewportWidth() < 768 ? 520 : 600, display: "flex", alignItems: "center", overflow: "hidden" }}>
         <div style={{ position: "absolute", inset: 0 }}>
           <GymImg type="gymReal" w="100%" h={600} />
-          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg, rgba(10,10,10,.95) 40%, rgba(10,10,10,.5) 100%)" }} />
+          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg, rgba(252,228,236,.85) 30%, rgba(255,240,245,.4) 100%)" }} />
         </div>
         <div className="container" style={{ position: "relative", zIndex: 1 }}>
           <div style={{ maxWidth: 580 }}>
@@ -751,7 +833,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
         </div>
         {/* Floating card */}
         <div style={{ position: "absolute", left: viewportWidth() < 768 ? "auto" : "5%", right: viewportWidth() < 768 ? 16 : "auto", bottom: viewportWidth() < 768 ? 16 : 40, background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 12, padding: "14px 20px", display: viewportWidth() < 768 ? "none" : "flex", alignItems: "center", gap: 12, zIndex: 2 }}>
-          <div style={{ width: 36, height: 36, background: "rgba(230,57,22,.15)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center" }}>🏆</div>
+          <div style={{ width: 36, height: 36, background: "rgba(233,30,99,.15)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center" }}>🏆</div>
           <div>
             <div style={{ fontWeight: 700, fontSize: 13, color: C.white }}>{summary?.authenticated ? (summary.user?.name || "عضوة جديدة") : "مشتركات اليوم"}</div>
             <div style={{ fontSize: 11, color: C.red }}>{summary?.authenticated ? `الباقة: ${summary.membership?.name ?? "بدون اشتراك"}` : "+12 عضوة جديدة"}</div>
@@ -770,7 +852,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
               { icon: "wallet", label: "شحن المحفظة", page: "wallet", sub: "بونص حتى 15%" },
             ].map(({ icon, label, page, sub }) => (
               <button key={page} onClick={() => navigate(page)} style={{ background: "none", border: "none", borderLeft: `1px solid ${C.border}`, padding: "20px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: 14, fontFamily: "'Cairo', sans-serif", transition: "background .2s" }}>
-                <div style={{ width: 44, height: 44, background: "rgba(230,57,22,.12)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <div style={{ width: 44, height: 44, background: "rgba(233,30,99,.12)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                   <I n={icon} s={20} c={C.red} />
                 </div>
                 <div style={{ textAlign: "right" }}>
@@ -871,15 +953,15 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
       </section>
 
       {/* ─ WALLET + REWARDS BANNER ─ */}
-      <section style={{ background: `linear-gradient(135deg, #1A0800 0%, ${C.bgCard} 100%)`, borderTop: `1px solid ${C.border}`, borderBottom: `1px solid ${C.border}`, padding: "64px 0" }}>
+      <section style={{ background: `linear-gradient(135deg, #FFE8F0 0%, ${C.bgCard} 100%)`, borderTop: `1px solid ${C.border}`, borderBottom: `1px solid ${C.border}`, padding: "64px 0" }}>
         <div className="container" style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr", "1fr 1fr"), gap: 48, alignItems: "center" }}>
           <div>
-            <span className="tag-gold" style={{ marginBottom: 16, display: "inline-flex" }}>💳 نظام المحفظة والمكافآت</span>
-            <h2 style={{ fontSize: 36, fontWeight: 900, color: C.white, marginBottom: 16, lineHeight: 1.2 }}>اشحني محفظتك<br /><span style={{ color: C.gold }}>واكسبي أكثر</span></h2>
+            <span className="tag" style={{ marginBottom: 16, display: "inline-flex" }}>💳 نظام المحفظة والمكافآت</span>
+            <h2 style={{ fontSize: 36, fontWeight: 900, color: C.white, marginBottom: 16, lineHeight: 1.2 }}>اشحني محفظتك<br /><span style={{ color: C.red }}>واكسبي أكثر</span></h2>
             <p style={{ color: C.gray, fontSize: 15, lineHeight: 1.8, marginBottom: 28 }}>بونص إضافي مع كل شحن! اشحني بـ 200 ج.م واحصلي على 20 ج.م إضافية. اكسبي نقاط مع كل عملية واستبديليها بخصومات حصرية.</p>
             <div style={{ display: "flex", gap: 12 }}>
-              <button className="btn-gold" onClick={() => navigate("wallet")} style={{ fontSize: 14, padding: "11px 24px" }}>
-                <I n="wallet" s={16} c="#000" /> اشحني الآن
+              <button className="btn-primary" onClick={() => navigate("wallet")} style={{ fontSize: 14, padding: "11px 24px" }}>
+                <I n="wallet" s={16} c="#fff" /> اشحني الآن
               </button>
               <button className="btn-ghost" onClick={() => navigate("rewards")} style={{ fontSize: 14 }}>نقاطي</button>
             </div>
@@ -908,9 +990,9 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
           </div>
           <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 24 }}>
             {products.map(p => (
-              <div key={p.name} className="card card-hover" style={{ cursor: "pointer" }} onClick={() => navigate("productDetail")}>
+              <div key={p.id ?? p.name} className="card card-hover" style={{ cursor: "pointer" }} onClick={() => { if (typeof window !== "undefined") { window.sessionStorage.setItem(PRODUCT_STORAGE_KEY, JSON.stringify(p)); } navigate("productDetail"); }}>
                 <div style={{ height: 200, position: "relative" }}>
-                  <GymImg type={p.type} w="100%" h={200} />
+                  <ProductVisual product={p} h={200} />
                   {p.badge && <span className="badge" style={{ position: "absolute", top: 12, right: 12 }}>{p.badge}</span>}
                 </div>
                 <div style={{ padding: 20 }}>
@@ -919,7 +1001,11 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                     <span style={{ fontWeight: 900, color: C.red, fontSize: 20 }}>{p.price} ج.م</span>
                     {p.oldPrice && <span style={{ textDecoration: "line-through", color: C.gray, fontSize: 13 }}>{p.oldPrice} ج.م</span>}
                   </div>
-                  <button className="btn-primary" style={{ width: "100%", justifyContent: "center", padding: "10px", fontSize: 13 }}>
+                  <button className="btn-primary" style={{ width: "100%", justifyContent: "center", padding: "10px", fontSize: 13 }} onClick={(e) => {
+                    e.stopPropagation();
+                    addToCart({ productId: p.id ?? p.name, name: p.name, price: p.price, qty: 1, size: p.sizeType === "none" ? null : p.sizes?.[0] ?? null, type: p.type });
+                    navigate("cart");
+                  }}>
                     <I n="cart" s={14} c="#fff" /> أضيفي للسلة
                   </button>
                 </div>
@@ -956,10 +1042,10 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                   <h3 style={{ fontWeight: 800, fontSize: 17, color: C.white }}>{t.name}</h3>
                   <p style={{ color: C.red, fontSize: 13, fontWeight: 600, marginTop: 4, marginBottom: 16 }}>{t.specialty}</p>
                   <div style={{ display: "flex", justifyContent: "center", gap: 24, marginBottom: 16 }}>
-                    <div><div style={{ fontWeight: 700, color: C.gold }}>⭐ {t.rating}</div><div style={{ fontSize: 11, color: C.gray }}>التقييم</div></div>
+                    <div><div style={{ fontWeight: 700, color: C.red }}>⭐ {t.rating}</div><div style={{ fontSize: 11, color: C.gray }}>التقييم</div></div>
                     <div><div style={{ fontWeight: 700, color: C.white }}>{t.sessions}</div><div style={{ fontSize: 11, color: C.gray }}>جلسة</div></div>
                   </div>
-                  <button className="btn-outline-gold" style={{ width: "100%" }} onClick={() => navigate("trainers")}>عرض الملف</button>
+                  <button className="btn-outline" style={{ width: "100%" }} onClick={() => navigate("trainers")}>عرض الملف</button>
                 </div>
               </div>
             ))}
@@ -974,18 +1060,21 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
             <h2 className="section-title">قالت عنا <span>العضوات</span></h2>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 24 }}>
-            {testimonials.map(t => (
-              <div key={t.name} className="card" style={{ padding: 28, borderRight: `3px solid ${C.red}` }}>
-                <div style={{ display: "flex", marginBottom: 12 }}>
-                  {[...Array(t.rating)].map((_,i) => <span key={i} style={{ color: C.gold, fontSize: 16 }}>⭐</span>)}
+            {testimonials.map((t, index) => {
+              const name = t.displayName || t.user?.name || "عميلة";
+              return (
+                <div key={t.id ?? `${name}-${index}`} className="card" style={{ padding: 28, borderRight: `3px solid ${C.red}` }}>
+                  <div style={{ display: "flex", marginBottom: 12 }}>
+                    {[...Array(t.rating)].map((_,i) => <span key={i} style={{ color: C.gold, fontSize: 16 }}>⭐</span>)}
+                  </div>
+                  <p style={{ color: C.gray, lineHeight: 1.8, fontSize: 14, marginBottom: 20 }}>"{t.content}"</p>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <div style={{ width: 38, height: 38, background: "rgba(233,30,99,.2)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", color: C.red, fontWeight: 700 }}>{name[0]}</div>
+                    <span style={{ fontWeight: 700, fontSize: 13, color: C.white }}>{name}</span>
+                  </div>
                 </div>
-                <p style={{ color: C.gray, lineHeight: 1.8, fontSize: 14, marginBottom: 20 }}>"{t.text}"</p>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <div style={{ width: 38, height: 38, background: "rgba(230,57,22,.2)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", color: C.red, fontWeight: 700 }}>{t.name[0]}</div>
-                  <span style={{ fontWeight: 700, fontSize: 13, color: C.white }}>{t.name}</span>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </section>
@@ -1008,8 +1097,14 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
   const [plans, setPlans] = useState<PlanItem[]>(DEFAULT_PLANS);
   const [subscribing, setSubscribing] = useState<string | null>(null);
   const [subMsg, setSubMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [verifyModal, setVerifyModal] = useState<{ plan: PlanItem } | null>(null);
+  const [verifyCode, setVerifyCode] = useState("");
+  const [verifyLoading, setVerifyLoading] = useState(false);
+  const [verifyMsg, setVerifyMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [resendLoading, setResendLoading] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
   useEffect(() => {
-    fetch("/api/public").then(r => r.json()).then(d => {
+    loadPublicApi().then(d => {
       if (Array.isArray(d.memberships) && d.memberships.length > 0) {
         setPlans(d.memberships.map((mb: { id: string; name: string; price: number; features: string[] }, i: number) => ({
           id: mb.id,
@@ -1039,11 +1134,24 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
       });
       clearTimeout(timer);
       if (res.status === 401) {
-        window.location.href = `/login?callbackUrl=${encodeURIComponent("/account")}`;
+        setSubMsg({ text: "⚠️ يجب تسجيل الدخول أولاً يابطلة للاشتراك — جارٍ تحويلك لصفحة الدخول...", ok: false });
+        setTimeout(() => {
+          window.location.href = `/login?callbackUrl=${encodeURIComponent("/?page=memberships")}`;
+        }, 1500);
         return;
       }
-      const data = await res.json() as { error?: string };
-      if (!res.ok) { setSubMsg({ text: data.error || "حدث خطأ", ok: false }); return; }
+      const data = await res.json() as { error?: string; needsVerification?: boolean };
+      if (!res.ok) {
+        if (data.needsVerification) {
+          setVerifyModal({ plan });
+          setVerifyCode(""); setVerifyMsg(null);
+          // أرسل كود تفعيل تلقائياً
+          fetch("/api/auth/resend-verification", { method: "POST" }).catch(() => {});
+        } else {
+          setSubMsg({ text: data.error || "حدث خطأ", ok: false });
+        }
+        return;
+      }
       setSubMsg({ text: `✅ تم الاشتراك في باقة ${plan.name} بنجاح!`, ok: true });
       setTimeout(() => { window.location.href = "/account"; }, 1500);
     } catch (err: unknown) {
@@ -1057,6 +1165,46 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
       setSubscribing(null);
     }
   };
+
+  const handleVerify = async () => {
+    if (!verifyCode.trim() || verifyLoading) return;
+    setVerifyLoading(true);
+    setVerifyMsg(null);
+    try {
+      const res = await fetch("/api/auth/verify-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: verifyCode.trim() }),
+      });
+      const data = await res.json() as { error?: string };
+      if (!res.ok) { setVerifyMsg({ text: data.error || "كود غير صحيح", ok: false }); return; }
+      setVerifyMsg({ text: "✅ تم تفعيل حسابك بنجاح! جارٍ الاشتراك...", ok: true });
+      // أعد الاشتراك تلقائياً بعد التفعيل
+      const pendingPlan = verifyModal?.plan;
+      setVerifyModal(null);
+      if (pendingPlan) setTimeout(() => handleSubscribe(pendingPlan), 800);
+    } catch {
+      setVerifyMsg({ text: "تعذر الاتصال بالخادم", ok: false });
+    } finally {
+      setVerifyLoading(false);
+    }
+  };
+
+  const handleResend = async () => {
+    if (resendLoading || resendCooldown > 0) return;
+    setResendLoading(true);
+    try {
+      await fetch("/api/auth/resend-verification", { method: "POST" });
+      setVerifyMsg({ text: "تم إرسال كود جديد إلى بريدك الإلكتروني", ok: true });
+      setResendCooldown(60);
+      const interval = setInterval(() => setResendCooldown(p => { if (p <= 1) { clearInterval(interval); return 0; } return p - 1; }), 1000);
+    } catch {
+      setVerifyMsg({ text: "تعذر إرسال الكود", ok: false });
+    } finally {
+      setResendLoading(false);
+    }
+  };
+
   const faqs = [
     { q: "هل يمكن إلغاء الاشتراك في أي وقت؟", a: "نعم، يمكنك إلغاء اشتراكك في أي وقت. سيستمر الاشتراك حتى نهاية الفترة المدفوعة." },
     { q: "كيف أحجز الكلاسات؟", a: "بعد الاشتراك، يمكنك الحجز مباشرة من صفحة الجدول الأسبوعي أو من تفاصيل الكلاس." },
@@ -1067,7 +1215,57 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
 
   return (
     <div>
-      <section style={{ background: `linear-gradient(135deg, #1A0500, ${C.bg})`, padding: "64px 0" }}>
+      {/* ─ VERIFY EMAIL MODAL ─ */}
+      {verifyModal && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 16, background: "rgba(233,30,99,.1)", backdropFilter: "blur(6px)" }}>
+          <div style={{ background: "#fff", borderRadius: 20, padding: 32, maxWidth: 420, width: "100%", boxShadow: "0 24px 60px rgba(233,30,99,.2)", border: `1px solid ${C.border}`, textAlign: "center" }}>
+            <div style={{ fontSize: 48, marginBottom: 12 }}>📧</div>
+            <h2 style={{ fontWeight: 900, fontSize: 22, color: C.white, marginBottom: 8 }}>تفعيل الحساب أولاً</h2>
+            <p style={{ color: C.gray, fontSize: 14, lineHeight: 1.8, marginBottom: 24 }}>
+              تم إرسال كود التفعيل إلى بريدك الإلكتروني.<br />
+              أدخل الكود للمتابعة والاشتراك في باقة <strong style={{ color: C.red }}>{verifyModal.plan.name}</strong>
+            </p>
+            <input
+              value={verifyCode}
+              onChange={e => setVerifyCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              onKeyDown={e => e.key === "Enter" && handleVerify()}
+              placeholder="xxxxxx"
+              maxLength={6}
+              dir="ltr"
+              style={{ width: "100%", textAlign: "center", fontSize: 28, fontWeight: 900, letterSpacing: 8, padding: "12px 16px", borderRadius: 12, border: `2px solid ${verifyCode.length === 6 ? C.red : C.border}`, outline: "none", marginBottom: 16, color: C.white, transition: "border .2s" }}
+            />
+            {verifyMsg && (
+              <div style={{ marginBottom: 14, padding: "10px 14px", borderRadius: 10, background: verifyMsg.ok ? "#dcfce7" : "#fee2e2", color: verifyMsg.ok ? "#166534" : "#991b1b", fontWeight: 700, fontSize: 13 }}>
+                {verifyMsg.text}
+              </div>
+            )}
+            <button
+              onClick={handleVerify}
+              disabled={verifyLoading || verifyCode.length < 4}
+              style={{ width: "100%", background: `linear-gradient(135deg, ${C.red}, ${C.redLight})`, color: "#fff", border: "none", borderRadius: 12, padding: "13px 0", fontWeight: 900, fontSize: 16, cursor: verifyLoading || verifyCode.length < 4 ? "not-allowed" : "pointer", opacity: verifyLoading || verifyCode.length < 4 ? 0.6 : 1, marginBottom: 12, transition: "opacity .2s", fontFamily: "'Cairo', sans-serif" }}
+            >
+              {verifyLoading ? "جارٍ التفعيل..." : "تفعيل وإتمام الاشتراك"}
+            </button>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <button
+                onClick={handleResend}
+                disabled={resendLoading || resendCooldown > 0}
+                style={{ background: "none", border: "none", color: resendCooldown > 0 ? C.gray : C.red, fontSize: 13, fontWeight: 600, cursor: resendCooldown > 0 ? "default" : "pointer", fontFamily: "'Cairo', sans-serif" }}
+              >
+                {resendCooldown > 0 ? `إعادة الإرسال بعد ${resendCooldown}ث` : "إعادة إرسال الكود"}
+              </button>
+              <button
+                onClick={() => setVerifyModal(null)}
+                style={{ background: "none", border: "none", color: C.gray, fontSize: 13, cursor: "pointer", fontFamily: "'Cairo', sans-serif" }}
+              >
+                إلغاء
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <section style={{ background: `linear-gradient(135deg, #FFE0EC, ${C.bg})`, padding: "64px 0" }}>
         <div className="container" style={{ textAlign: "center" }}>
           <span className="tag" style={{ marginBottom: 16, display: "inline-block" }}>الأسعار والباقات</span>
           <h1 style={{ fontSize: viewportWidth() < 768 ? 32 : 44, fontWeight: 900, marginBottom: 12, color: C.white }}>اختاري <span style={{ color: C.red }}>باقتك المناسبة</span></h1>
@@ -1084,7 +1282,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
       <section className="section">
         <div className="container">
           {subMsg && (
-            <div style={{ marginBottom: 20, padding: "14px 20px", borderRadius: 8, background: subMsg.ok ? "#14532d" : "#450a0a", color: subMsg.ok ? "#86efac" : "#fca5a5", fontWeight: 700, textAlign: "center", fontSize: 14 }}>
+            <div style={{ marginBottom: 20, padding: "14px 20px", borderRadius: 8, background: subMsg.ok ? "#dcfce7" : "#fee2e2", color: subMsg.ok ? "#166534" : "#991b1b", fontWeight: 700, textAlign: "center", fontSize: 14 }}>
               {subMsg.text}
             </div>
           )}
@@ -1105,11 +1303,11 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                 ))}
                 <button
                   onClick={() => handleSubscribe(p)}
-                  disabled={subscribing === p.id}
+                  disabled={p.id !== null && subscribing === p.id}
                   className="btn-primary"
-                  style={{ width: "100%", justifyContent: "center", marginTop: 20, background: p.popular ? C.red : "transparent", border: `2px solid ${p.color}`, color: p.popular ? "#fff" : p.color, fontFamily: "'Cairo', sans-serif", padding: "10px", borderRadius: 6, fontSize: 13, fontWeight: 700, cursor: subscribing === p.id ? "not-allowed" : "pointer", transition: "all .2s", opacity: subscribing === p.id ? 0.7 : 1 }}
+                  style={{ width: "100%", justifyContent: "center", marginTop: 20, background: p.popular ? C.red : "transparent", border: `2px solid ${p.color}`, color: p.popular ? "#fff" : p.color, fontFamily: "'Cairo', sans-serif", padding: "10px", borderRadius: 6, fontSize: 13, fontWeight: 700, cursor: (p.id !== null && subscribing === p.id) ? "not-allowed" : "pointer", transition: "all .2s", opacity: (p.id !== null && subscribing === p.id) ? 0.7 : 1 }}
                 >
-                  {subscribing === p.id ? "جارٍ الاشتراك..." : "اشتركي الآن"}
+                  {(p.id !== null && subscribing === p.id) ? "جارٍ الاشتراك..." : "اشتركي الآن"}
                 </button>
               </div>
             ))}
@@ -1150,7 +1348,7 @@ const DEFAULT_OFFERS = [
 const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
   const [offers, setOffers] = useState(DEFAULT_OFFERS);
   useEffect(() => {
-    fetch("/api/public").then(r => r.json()).then(d => {
+    loadPublicApi().then(d => {
       if (Array.isArray(d.offers) && d.offers.length > 0) {
         const COLORS = [C.gold, C.red, "#9B59B6", "#3498DB", "#27AE60"];
         setOffers(d.offers.map((o: {title: string; discount: string; desc: string; expiresAt: string}, i: number) => ({
@@ -1167,8 +1365,8 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
 
   return (
     <div>
-      <section style={{ background: `linear-gradient(135deg, #1A0500, #100D00, ${C.bg})`, padding: "64px 0", textAlign: "center", position: "relative", overflow: "hidden" }}>
-        <div style={{ position: "absolute", inset: 0, background: "radial-gradient(circle at 30% 50%, rgba(200,162,0,.08), transparent 60%), radial-gradient(circle at 70% 50%, rgba(230,57,22,.08), transparent 60%)" }} />
+      <section style={{ background: `linear-gradient(135deg, #FFE0EC, #FFF5F8, ${C.bg})`, padding: "64px 0", textAlign: "center", position: "relative", overflow: "hidden" }}>
+        <div style={{ position: "absolute", inset: 0, background: "radial-gradient(circle at 30% 50%, rgba(200,162,0,.08), transparent 60%), radial-gradient(circle at 70% 50%, rgba(233,30,99,.08), transparent 60%)" }} />
         <div className="container" style={{ position: "relative" }}>
           <div style={{ fontSize: viewportWidth() < 768 ? 42 : 56, marginBottom: 16 }}>🔥</div>
           <h1 style={{ fontSize: viewportWidth() < 768 ? 32 : 44, fontWeight: 900, color: C.white, marginBottom: 12 }}>أفضل <span style={{ color: C.red }}>العروض الحالية</span> </h1>
@@ -1239,7 +1437,7 @@ const ClassesPage = ({ navigate }: { navigate: (p: string) => void }) => {
   const types = ["الكل", "يوجا", "زومبا", "قوة", "بيلاتس", "كارديو"];
   const [classes, setClasses] = useState<PublicClass[]>(DEFAULT_CLASSES);
   useEffect(() => {
-    fetch("/api/public").then(r => r.json()).then(d => {
+    loadPublicApi().then(d => {
       if (Array.isArray(d.classes) && d.classes.length > 0) {
         setClasses(d.classes.map((c: PublicClass) => ({
           ...c,
@@ -1256,7 +1454,7 @@ const ClassesPage = ({ navigate }: { navigate: (p: string) => void }) => {
 
   return (
     <div>
-      <section style={{ background: `linear-gradient(135deg, #1A0500, ${C.bg})`, padding: "48px 0" }}>
+      <section style={{ background: `linear-gradient(135deg, #FFE0EC, ${C.bg})`, padding: "48px 0" }}>
         <div className="container">
           <h1 style={{ fontSize: viewportWidth() < 768 ? 30 : 40, fontWeight: 900, color: C.white, marginBottom: 8 }}>كلاساتنا</h1>
           <p style={{ color: C.gray, fontSize: 15, marginBottom: 24 }}>اكتشفي كلاساتنا المتنوعة واحجزي مكانك الآن</p>
@@ -1402,7 +1600,7 @@ const ClassDetailPage = ({ navigate }: { navigate: (p: string) => void }) => {
           </div>
           <div className="card" style={{ padding: 24, position: viewportWidth() < 1024 ? "static" : "sticky", top: 86 }}>
             <h3 style={{ fontWeight: 800, fontSize: 17, color: C.white, marginBottom: 16 }}>اختاري الموعد</h3>
-            {bookingMsg && <div style={{ marginBottom: 12, padding: "12px 14px", borderRadius: 8, background: bookingMsg.ok ? "#14532d" : "#450a0a", color: bookingMsg.ok ? "#86efac" : "#fca5a5", fontWeight: 700, fontSize: 13 }}>{bookingMsg.text}</div>}
+            {bookingMsg && <div style={{ marginBottom: 12, padding: "12px 14px", borderRadius: 8, background: bookingMsg.ok ? "#dcfce7" : "#fee2e2", color: bookingMsg.ok ? "#166534" : "#991b1b", fontWeight: 700, fontSize: 13 }}>{bookingMsg.text}</div>}
             {sessions.map(s => (
               <div key={s.id} className="card" style={{ padding: 14, marginBottom: 12, border: `1px solid ${C.border}` }}>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
@@ -1423,10 +1621,10 @@ const ClassDetailPage = ({ navigate }: { navigate: (p: string) => void }) => {
               </div>
             ))}
             <div className="divider" />
-            <div style={{ background: "rgba(200,162,0,.08)", border: `1px solid ${C.gold}33`, borderRadius: 8, padding: 14 }}>
+            <div style={{ background: "rgba(233,30,99,.08)", border: `1px solid ${C.red}33`, borderRadius: 8, padding: 14 }}>
               <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
-                <I n="wallet" s={15} c={C.gold} />
-                  <span style={{ fontWeight: 700, fontSize: 13, color: C.gold }}>ميزة الاشتراك والحجز</span>
+                <I n="wallet" s={15} c={C.red} />
+                  <span style={{ fontWeight: 700, fontSize: 13, color: C.red }}>ميزة الاشتراك والحجز</span>
               </div>
               <p style={{ fontSize: 11, color: C.gray }}>احجزي حصتك الآن، وسيظهر الحجز مباشرة داخل صفحة حسابك.</p>
             </div>
@@ -1460,7 +1658,7 @@ const SchedulePage = ({ navigate }: { navigate: (p: string) => void }) => {
 
   return (
     <div>
-      <section style={{ background: `linear-gradient(135deg, #1A0500, ${C.bg})`, padding: "48px 0 32px" }}>
+      <section style={{ background: `linear-gradient(135deg, #FFE0EC, ${C.bg})`, padding: "48px 0 32px" }}>
         <div className="container">
           <h1 style={{ fontSize: viewportWidth() < 768 ? 30 : 40, fontWeight: 900, color: C.white, marginBottom: 8 }}>الجدول الأسبوعي</h1>
           <p style={{ color: C.gray, fontSize: 15 }}>اكتشفي مواعيد الكلاسات لأسبوعكِ</p>
@@ -1514,23 +1712,44 @@ type StoreProduct = {
   oldPrice: number | null;
   type: string;
   cat: string;
+  categoryKey?: string;
+  sizeType?: "none" | "clothing" | "shoes";
   badge: string | null;
   rating: number;
   description?: string;
   images?: string[];
   sizes?: string[];
+  colors?: string[];
+};
+
+type StoreCategory = {
+  key: string;
+  label: string;
+  sizeType: "none" | "clothing" | "shoes";
+};
+
+type PublicTestimonial = {
+  id?: string;
+  displayName?: string | null;
+  content: string;
+  rating: number;
+  user?: { name?: string | null } | null;
 };
 
 const PRODUCT_STORAGE_KEY = "fitzone:selected-product";
 const DEFAULT_PRODUCTS: StoreProduct[] = [
-  { name: "حذاء Luna Sport", price: 850, oldPrice: 1200, type: "product1", cat: "أحذية", badge: "الأكثر مبيعًا", rating: 4.9 },
-  { name: "بروتين وايت لايت 1kg", price: 450, oldPrice: null as number | null, type: "product2", cat: "مكملات", badge: null as string | null, rating: 4.7 },
-  { name: "طقم معدات يوغا", price: 680, oldPrice: 900, type: "product3", cat: "معدات", badge: "خصم 25%", rating: 4.8 },
-  { name: "حذاء Flex Run", price: 720, oldPrice: null as number | null, type: "product1", cat: "أحذية", badge: null as string | null, rating: 4.6 },
-  { name: "أوميغا 3 نسائي", price: 220, oldPrice: 300, type: "product2", cat: "مكملات", badge: "خصم 27%", rating: 4.9 },
-  { name: "طقم أدوات تمدد", price: 350, oldPrice: null as number | null, type: "product3", cat: "معدات", badge: null as string | null, rating: 4.5 },
+  { name: "حذاء Luna Sport", price: 850, oldPrice: 1200, type: "product1", cat: "أحذية", categoryKey: "shoes", sizeType: "shoes", badge: "الأكثر مبيعًا", rating: 4.9, sizes: ["37", "38", "39", "40"] },
+  { name: "بروتين وايت لايت 1kg", price: 450, oldPrice: null as number | null, type: "product2", cat: "مكملات", categoryKey: "supplement", sizeType: "none", badge: null as string | null, rating: 4.7 },
+  { name: "طقم معدات يوغا", price: 680, oldPrice: 900, type: "product3", cat: "معدات", categoryKey: "gear", sizeType: "none", badge: "خصم 25%", rating: 4.8 },
+  { name: "تيشيرت رياضي", price: 320, oldPrice: null as number | null, type: "product1", cat: "ملابس", categoryKey: "clothing", sizeType: "clothing", badge: null as string | null, rating: 4.6, sizes: ["S", "M", "L", "XL"] },
 ];
-const catMap: Record<string, string> = { gear: "معدات", supplement: "مكملات", clothing: "ملابس", accessory: "إكسسوار" };
+const DEFAULT_STORE_CATEGORIES: StoreCategory[] = [
+  { key: "shoes", label: "أحذية", sizeType: "shoes" },
+  { key: "clothing", label: "ملابس", sizeType: "clothing" },
+  { key: "supplement", label: "مكملات", sizeType: "none" },
+  { key: "gear", label: "معدات", sizeType: "none" },
+];
+const catMap: Record<string, string> = { gear: "معدات", supplement: "مكملات", clothing: "ملابس", accessory: "إكسسوار", shoes: "أحذية" };
 const ProductVisual = ({ product, h = 200 }: { product: StoreProduct; h?: number }) => {
   const firstImage = product.images?.[0];
 
@@ -1546,22 +1765,12 @@ const getProductRecommendationScore = (product: StoreProduct, searchTerm: string
   if (!term) return 0;
 
   let score = 0;
-  const haystacks = [
-    product.name,
-    product.description ?? "",
-    product.cat,
-    ...(product.sizes ?? []),
-  ].map((value) => value.toLowerCase());
+  const haystacks = [product.name, product.description ?? "", product.cat, ...(product.sizes ?? [])].map((value) => value.toLowerCase());
 
   haystacks.forEach((value, index) => {
-    if (value.includes(term)) {
-      score += index === 0 ? 5 : 2;
-    }
-
+    if (value.includes(term)) score += index === 0 ? 5 : 2;
     term.split(/\s+/).filter(Boolean).forEach((part) => {
-      if (part.length > 1 && value.includes(part)) {
-        score += index === 0 ? 2 : 1;
-      }
+      if (part.length > 1 && value.includes(part)) score += index === 0 ? 2 : 1;
     });
   });
 
@@ -1571,34 +1780,50 @@ const getProductRecommendationScore = (product: StoreProduct, searchTerm: string
 const ShopPage = ({ navigate }: { navigate: (p: string) => void }) => {
   const [cat, setCat] = useState("الكل");
   const [search, setSearch] = useState("");
-  const categories = ["الكل", "أحذية", "ملابس", "مكملات", "معدات"];
+  const [categories, setCategories] = useState<StoreCategory[]>(DEFAULT_STORE_CATEGORIES);
   const [products, setProducts] = useState<StoreProduct[]>(DEFAULT_PRODUCTS);
+
   useEffect(() => {
-    fetch("/api/public").then(r => r.json()).then(d => {
-      if (Array.isArray(d.products) && d.products.length > 0) {
-        setProducts(d.products.map((p: {id?: string; name: string; price: number; oldPrice: number | null; category: string; description?: string; images?: string[]; sizes?: string[]}, i: number) => ({
-          id: p.id ?? `api-${i}`, name: p.name, price: p.price, oldPrice: p.oldPrice,
-          description: p.description ?? "", images: Array.isArray(p.images) ? p.images.filter(Boolean) : [], sizes: Array.isArray(p.sizes) ? p.sizes.filter(Boolean) : [],
-          type: `product${(i % 3) + 1}` as string, cat: catMap[p.category] ?? "",
-          badge: p.oldPrice ? `خصم ${Math.round((1 - p.price / p.oldPrice) * 100)}%` : null,
-          rating: 4.7,
-        })));
-      }
-    }).catch(() => {});
+    loadPublicApi()
+      .then((d) => {
+        if (Array.isArray(d.categories) && d.categories.length > 0) {
+          setCategories(d.categories.map((item: { key: string; label: string; sizeType: "none" | "clothing" | "shoes" }) => ({ key: item.key, label: item.label, sizeType: item.sizeType })));
+        }
+        if (Array.isArray(d.products) && d.products.length > 0) {
+          setProducts(d.products.map((p: {id?: string; name: string; price: number; oldPrice: number | null; category: string; categoryLabel?: string; sizeType?: "none" | "clothing" | "shoes"; description?: string; images?: string[]; sizes?: string[]; colors?: string[]}, i: number) => ({
+            id: p.id ?? `api-${i}`,
+            name: p.name,
+            price: p.price,
+            oldPrice: p.oldPrice,
+            description: p.description ?? "",
+            images: Array.isArray(p.images) ? p.images.filter(Boolean) : [],
+            sizes: Array.isArray(p.sizes) ? p.sizes.filter(Boolean) : [],
+            colors: Array.isArray(p.colors) ? p.colors.filter(Boolean) : [],
+            type: `product${(i % 3) + 1}`,
+            cat: p.categoryLabel ?? catMap[p.category] ?? p.category,
+            categoryKey: p.category,
+            sizeType: p.sizeType ?? "none",
+            badge: p.oldPrice ? `خصم ${Math.round((1 - p.price / p.oldPrice) * 100)}%` : null,
+            rating: 4.7,
+          })));
+        }
+      })
+      .catch(() => {});
   }, []);
+
+  const categoryButtons = ["الكل", ...categories.map((item) => item.label)];
   const filtered = products.filter((p) => {
     const matchesCategory = cat === "الكل" || p.cat === cat;
     const term = search.trim().toLowerCase();
     if (!term) return matchesCategory;
-
-    const matchesSearch =
+    return matchesCategory && (
       p.name.toLowerCase().includes(term) ||
       (p.description ?? "").toLowerCase().includes(term) ||
       p.cat.toLowerCase().includes(term) ||
-      (p.sizes ?? []).some((size) => size.toLowerCase().includes(term));
-
-    return matchesCategory && matchesSearch;
+      (p.sizes ?? []).some((size) => size.toLowerCase().includes(term))
+    );
   });
+
   const recommended = search.trim()
     ? [...products]
         .map((product) => ({ product, score: getProductRecommendationScore(product, search) }))
@@ -1610,17 +1835,17 @@ const ShopPage = ({ navigate }: { navigate: (p: string) => void }) => {
 
   return (
     <div>
-      <section style={{ background: `linear-gradient(135deg, #1A0500, ${C.bg})`, padding: "48px 0" }}>
+      <section style={{ background: `linear-gradient(135deg, #FFE0EC, ${C.bg})`, padding: "48px 0" }}>
         <div className="container">
           <h1 style={{ fontSize: viewportWidth() < 768 ? 30 : 40, fontWeight: 900, color: C.white, marginBottom: 8 }}>المتجر الرياضي</h1>
-          <p style={{ color: C.gray, fontSize: 15 }}>منتجات رياضية مختارة خصيصًا لكِ</p>
+          <p style={{ color: C.gray, fontSize: 15 }}>منتجات مختارة لتعزيز أهدافك</p>
         </div>
       </section>
       <section className="section">
         <div className="container">
           <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginBottom: 32 }}>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {categories.map(c => <button key={c} className={`tab ${cat === c ? "active" : ""}`} onClick={() => setCat(c)}>{c}</button>)}
+              {categoryButtons.map((label) => <button key={label} className={`tab ${cat === label ? "active" : ""}`} onClick={() => setCat(label)}>{label}</button>)}
             </div>
             <div style={{ position: "relative", minWidth: 260, flex: "1 1 260px", maxWidth: 360 }}>
               <input className="input" placeholder="ابحثي عن منتج أو مقاس أو وصف..." value={search} onChange={e => setSearch(e.target.value)} style={{ paddingRight: 44 }} />
@@ -1633,32 +1858,18 @@ const ShopPage = ({ navigate }: { navigate: (p: string) => void }) => {
                 <div style={{ height: 200, position: "relative" }}>
                   <ProductVisual product={p} h={200} />
                   {p.badge && <span className="badge" style={{ position: "absolute", top: 12, right: 12 }}>{p.badge}</span>}
-                  <button style={{ position: "absolute", top: 12, left: 12, background: "rgba(0,0,0,.5)", border: "none", width: 30, height: 30, borderRadius: 6, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    <I n="heart" s={13} c={C.red} />
-                  </button>
                 </div>
                 <div style={{ padding: 18 }}>
-                  <div style={{ display: "flex", marginBottom: 6 }}>
-                    {[...Array(5)].map((_,i) => <span key={i} style={{ color: i < Math.floor(p.rating) ? C.gold : C.border, fontSize: 12 }}></span>)}
-                    <span style={{ fontSize: 11, color: C.gray, marginRight: 4 }}>({p.rating})</span>
-                  </div>
                   <h3 style={{ fontWeight: 700, fontSize: 14, marginBottom: 10, color: C.white }}>{p.name}</h3>
                   {p.description && <p style={{ color: C.gray, fontSize: 12, lineHeight: 1.7, marginBottom: 10, minHeight: 40 }}>{p.description.slice(0, 70)}{p.description.length > 70 ? "..." : ""}</p>}
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
                     <span style={{ fontWeight: 900, color: C.red, fontSize: 20 }}>{p.price} ج.م</span>
-                    {p.oldPrice && <span style={{ textDecoration: "line-through", color: C.grayDark, fontSize: 12 }}>{p.oldPrice}</span>}
+                    {p.oldPrice && <span style={{ textDecoration: "line-through", color: C.grayDark, fontSize: 12 }}>{p.oldPrice} ج.م</span>}
                   </div>
-                  {p.sizes && p.sizes.length > 0 && <div style={{ color: C.gray, fontSize: 11, marginBottom: 12 }}>المقاسات: {p.sizes.slice(0, 3).join(" - ")}</div>}
+                  {p.sizeType !== "none" && p.sizes && p.sizes.length > 0 && <div style={{ color: C.gray, fontSize: 11, marginBottom: 12 }}>المقاسات: {p.sizes.slice(0, 4).join(" - ")}</div>}
                   <button className="btn-primary" style={{ width: "100%", justifyContent: "center", padding: "8px", fontSize: 12 }} onClick={e => {
                     e.stopPropagation();
-                    addToCart({
-                      productId: p.id ?? p.name,
-                      name: p.name,
-                      price: p.price,
-                      qty: 1,
-                      size: p.sizes?.[0] ?? null,
-                      type: p.type,
-                    });
+                    addToCart({ productId: p.id ?? p.name, name: p.name, price: p.price, qty: 1, size: p.sizeType === "none" ? null : p.sizes?.[0] ?? null, type: p.type });
                     navigate("cart");
                   }}>
                     <I n="cart" s={13} c="#fff" /> أضيفي للسلة
@@ -1669,24 +1880,16 @@ const ShopPage = ({ navigate }: { navigate: (p: string) => void }) => {
           </div>
           {search.trim() && recommended.length > 0 && (
             <div style={{ marginTop: 48 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
-                <div>
-                  <h2 style={{ fontSize: 24, fontWeight: 900, color: C.white, marginBottom: 6 }}>منتجات مقترحة</h2>
-                  <p style={{ color: C.gray, fontSize: 13 }}>منتجات قريبة من بحثك الحالي</p>
-                </div>
-                <span className="tag-gold">Recommendation</span>
-              </div>
+              <h2 style={{ fontSize: 24, fontWeight: 900, color: C.white, marginBottom: 16 }}>منتجات مقترحة</h2>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 20 }}>
                 {recommended.map((p) => (
                   <div key={`recommended-${p.id ?? p.name}`} className="card card-hover" style={{ cursor: "pointer" }} onClick={() => { if (typeof window !== "undefined") { window.sessionStorage.setItem(PRODUCT_STORAGE_KEY, JSON.stringify(p)); } navigate("productDetail"); }}>
-                    <div style={{ height: 170 }}>
-                      <ProductVisual product={p} h={170} />
-                    </div>
+                    <div style={{ height: 170 }}><ProductVisual product={p} h={170} /></div>
                     <div style={{ padding: 16 }}>
                       <h3 style={{ fontWeight: 700, fontSize: 14, marginBottom: 10, color: C.white }}>{p.name}</h3>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         <span style={{ fontWeight: 900, color: C.red, fontSize: 18 }}>{p.price} ج.م</span>
-                        {p.oldPrice && <span style={{ textDecoration: "line-through", color: C.grayDark, fontSize: 12 }}>{p.oldPrice}</span>}
+                        {p.oldPrice && <span style={{ textDecoration: "line-through", color: C.grayDark, fontSize: 12 }}>{p.oldPrice} ج.م</span>}
                       </div>
                     </div>
                   </div>
@@ -1700,32 +1903,30 @@ const ShopPage = ({ navigate }: { navigate: (p: string) => void }) => {
   );
 };
 
-// ─── PRODUCT DETAIL ───────────────────────────────────────────────────────────
 const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: string) => void; walletBalance?: number }) => {
   const [qty, setQty] = useState(1);
   const [product, setProduct] = useState<StoreProduct>(DEFAULT_PRODUCTS[0]);
   const [selectedImage, setSelectedImage] = useState(0);
-  const [selectedSize, setSelectedSize] = useState("M");
+  const [selectedSize, setSelectedSize] = useState<string | null>(null);
   const [selectedColor, setSelectedColor] = useState(C.red);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-
     const stored = window.sessionStorage.getItem(PRODUCT_STORAGE_KEY);
     if (!stored) return;
-
     try {
       const parsed = JSON.parse(stored) as StoreProduct;
       setProduct(parsed);
-      setSelectedSize(parsed.sizes?.[0] ?? "M");
+      setSelectedSize(parsed.sizeType === "none" ? null : parsed.sizes?.[0] ?? null);
       setSelectedImage(0);
     } catch {
-      // ignore invalid session storage payload
+      // ignore invalid payload
     }
   }, []);
 
   const gallery = product.images && product.images.length > 0 ? product.images : [product.type];
-  const sizes = product.sizes && product.sizes.length > 0 ? product.sizes : ["36", "37", "38", "39", "40", "41"];
+  const fallbackSizes = product.sizeType === "shoes" ? ["36", "37", "38", "39", "40", "41"] : product.sizeType === "clothing" ? ["S", "M", "L", "XL"] : [];
+  const sizes = product.sizes && product.sizes.length > 0 ? product.sizes : fallbackSizes;
 
   return (
     <div>
@@ -1743,7 +1944,7 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
               {gallery.map((item, i) => (
                 <div key={`${product.id ?? product.name}-${i}`} onClick={() => setSelectedImage(i)} style={{ borderRadius: 8, overflow: "hidden", border: i === selectedImage ? `2px solid ${C.red}` : `1px solid ${C.border}`, cursor: "pointer" }}>
                   {product.images && product.images.length > 0 ? (
-                    <img src={item} alt={`${product.name}-${i + 1}`} style={{ width: "100%", height: 70, objectFit: "cover", display: "block", background: C.bgCard2 }} />
+                    <img src={String(item)} alt={`${product.name}-${i + 1}`} style={{ width: "100%", height: 70, objectFit: "cover", display: "block", background: C.bgCard2 }} />
                   ) : (
                     <GymImg type={String(item)} w="100%" h={70} />
                   )}
@@ -1754,69 +1955,55 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
           <div>
             <span className="tag" style={{ marginBottom: 12, display: "inline-flex" }}>{product.cat}</span>
             <h1 style={{ fontSize: 30, fontWeight: 900, color: C.white, marginBottom: 12 }}>{product.name}</h1>
-            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
-              <div style={{ display: "flex" }}>{[...Array(5)].map((_,i) => <span key={i} style={{ color: C.gold, fontSize: 18 }}></span>)}</div>
-              <span style={{ color: C.gray, fontSize: 13 }}>{product.rating} (128 )</span>
-            </div>
             <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 24 }}>
               <span style={{ fontSize: viewportWidth() < 768 ? 34 : 42, fontWeight: 900, color: C.red }}>{product.price}</span>
               <span style={{ color: C.gray }}>ج.م</span>
               {product.oldPrice && <span style={{ textDecoration: "line-through", color: C.grayDark, fontSize: 16 }}>{product.oldPrice} ج.م</span>}
               {product.badge && <span className="badge">{product.badge}</span>}
             </div>
-            {product.description && <p style={{ color: C.grayLight, lineHeight: 1.9, marginBottom: 24, fontSize: 14 }}>{product.description}</p>}
-            <div className="divider" />
-            <div style={{ marginBottom: 20 }}>
-              <h3 style={{ fontWeight: 700, color: C.white, marginBottom: 10 }}>المقاس</h3>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                {sizes.map(s => (
-                  <button key={s} onClick={() => setSelectedSize(s)} style={{ minWidth: 42, height: 42, padding: "0 10px", borderRadius: 8, border: selectedSize === s ? `2px solid ${C.red}` : `1px solid ${C.border}`, background: selectedSize === s ? "rgba(230,57,22,.15)" : C.bgCard2, color: selectedSize === s ? C.red : C.gray, fontWeight: 700, cursor: "pointer", fontFamily: "'Cairo', sans-serif", fontSize: 13 }}>{s}</button>
-                ))}
+            {product.description && <p style={{ color: C.gray, lineHeight: 1.9, marginBottom: 24 }}>{product.description}</p>}
+
+            {product.sizeType !== "none" && sizes.length > 0 && (
+              <div style={{ marginBottom: 24 }}>
+                <div style={{ color: C.white, fontWeight: 700, marginBottom: 10 }}>المقاس</div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {sizes.map((size) => (
+                    <button key={size} onClick={() => setSelectedSize(size)} style={{ minWidth: 44, padding: "10px 14px", borderRadius: 8, border: `1px solid ${selectedSize === size ? C.red : C.border}`, background: selectedSize === size ? C.red : C.bgCard, color: selectedSize === size ? "#fff" : C.white, cursor: "pointer", fontFamily: "'Cairo', sans-serif", fontWeight: 700 }}>
+                      {size}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
-            <div style={{ marginBottom: 24 }}>
-              <h3 style={{ fontWeight: 700, color: C.white, marginBottom: 10 }}>اللون</h3>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                {[C.red, C.gold, "#1F2937", "#9B59B6"].map(col => (
-                  <button key={col} onClick={() => setSelectedColor(col)} style={{ width: 34, height: 34, borderRadius: "50%", background: col, border: selectedColor === col ? `3px solid ${C.white}` : "3px solid transparent", cursor: "pointer" }} />
-                ))}
+            )}
+
+            {!!product.colors?.length && (
+              <div style={{ marginBottom: 24 }}>
+                <div style={{ color: C.white, fontWeight: 700, marginBottom: 10 }}>اللون</div>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  {product.colors.map((color) => (
+                    <button key={color} onClick={() => setSelectedColor(color)} style={{ width: 30, height: 30, borderRadius: "50%", border: `2px solid ${selectedColor === color ? C.red : C.border}`, background: color, cursor: "pointer" }} />
+                  ))}
+                </div>
               </div>
-            </div>
-            <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 24 }}>
+            )}
+
+            <div style={{ display: "flex", gap: 12, marginBottom: 24, alignItems: "center" }}>
               <div style={{ display: "flex", alignItems: "center", border: `1px solid ${C.border}`, borderRadius: 8, overflow: "hidden" }}>
-                <button onClick={() => setQty(Math.max(1, qty-1))} style={{ width: 38, height: 38, background: C.bgCard2, border: "none", cursor: "pointer", color: C.white, fontSize: 18 }}>-</button>
-                <span style={{ width: 38, textAlign: "center", fontWeight: 700, color: C.white }}>{qty}</span>
-                <button onClick={() => setQty(qty+1)} style={{ width: 38, height: 38, background: C.bgCard2, border: "none", cursor: "pointer", color: C.white, fontSize: 18 }}>+</button>
+                <button onClick={() => setQty((value) => Math.max(1, value - 1))} style={{ padding: "10px 14px", border: "none", background: C.bgCard, cursor: "pointer" }}>-</button>
+                <div style={{ padding: "10px 16px", minWidth: 46, textAlign: "center" }}>{qty}</div>
+                <button onClick={() => setQty((value) => value + 1)} style={{ padding: "10px 14px", border: "none", background: C.bgCard, cursor: "pointer" }}>+</button>
               </div>
-              <span style={{ color: C.gray, fontSize: 13 }}>الإجمالي: <strong style={{ color: C.red }}>{qty * product.price} ج.م</strong></span>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              <button className="btn-primary" style={{ width: "100%", justifyContent: "center", padding: "14px", fontSize: 15 }} onClick={() => {
-                addToCart({
-                  productId: product.id ?? product.name,
-                  name: product.name,
-                  price: product.price,
-                  qty,
-                  size: selectedSize,
-                  type: product.type,
-                });
+              <button className="btn-primary" style={{ flex: 1, justifyContent: "center" }} onClick={() => {
+                addToCart({ productId: product.id ?? product.name, name: product.name, price: product.price, qty, size: product.sizeType === "none" ? null : selectedSize, type: product.type });
                 navigate("cart");
               }}>
-                <I n="cart" s={18} c="#fff" /> أضيفي للسلة
-              </button>
-              <button className="btn-outline" style={{ width: "100%", justifyContent: "center", padding: "14px", fontSize: 15 }} onClick={() => navigate("checkout")}>
-                اشتري الآن
-              </button>
-              <button style={{ width: "100%", padding: "12px", borderRadius: 6, border: `1.5px solid ${C.gold}`, background: "rgba(200,162,0,.08)", color: C.gold, fontFamily: "'Cairo', sans-serif", fontSize: 13, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }} onClick={() => navigate("checkout")}>
-                <I n="wallet" s={15} c={C.gold} /> الدفع من المحفظة (الرصيد: {formatCurrency(walletBalance)})
+                <I n="cart" s={16} c="#fff" /> أضيفي للسلة
               </button>
             </div>
-            <div style={{ background: C.bgCard2, borderRadius: 10, padding: 14, marginTop: 18 }}>
-              {[["truck","شحن داخل بني سويف مجاني"],["repeat","إرجاع خلال 14 يوم"],["check","ضمان المنتج الأصلي"]].map(([icon, text]) => (
-                <div key={text} style={{ display: "flex", gap: 10, alignItems: "center", padding: "6px 0", fontSize: 12, color: C.gray }}>
-                  <I n={icon} s={14} c={C.success} /> {text}
-                </div>
-              ))}
+
+            <div className="card" style={{ padding: 18 }}>
+              <div style={{ color: C.gray, fontSize: 13, marginBottom: 8 }}>الرصيد الحالي بالمحفظة</div>
+              <div style={{ color: C.gold, fontWeight: 900, fontSize: 24 }}>{walletBalance.toLocaleString("ar-EG")} ج.م</div>
             </div>
           </div>
         </div>
@@ -1825,23 +2012,6 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
   );
 };
 
-const RedirectToAccountTab = ({ tab }: { tab: "profile" | "wallet" | "membership" | "bookings" | "orders" | "notifications" }) => {
-  useEffect(() => {
-    window.location.href = `/account?tab=${tab}`;
-  }, [tab]);
-
-  return (
-    <div className="container" style={{ minHeight: "50vh", display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center", padding: "48px 24px" }}>
-      <div>
-        <div style={{ fontSize: 42, marginBottom: 14 }}>⏳</div>
-        <h2 style={{ color: C.white, fontWeight: 800, fontSize: 24, marginBottom: 10 }}>جارٍ التحويل...</h2>
-        <p style={{ color: C.gray, fontSize: 14 }}>سيتم تحويلك إلى الصفحة المطلوبة.</p>
-      </div>
-    </div>
-  );
-};
-
-// ─── CART / CHECKOUT ──────────────────────────────────────────────────────────
 const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summary: UserSummary | null }) => {
   const [step, setStep] = useState("cart");
   const [payMethod, setPayMethod] = useState("card");
@@ -1986,7 +2156,7 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
 
       <div className="container" style={{ padding: "40px 24px" }}>
         {orderMsg && (
-          <div style={{ marginBottom: 20, padding: "14px 18px", borderRadius: 10, background: orderMsg.ok ? "#14532d" : "#450a0a", color: orderMsg.ok ? "#86efac" : "#fca5a5", fontWeight: 700 }}>
+          <div style={{ marginBottom: 20, padding: "14px 18px", borderRadius: 10, background: orderMsg.ok ? "#dcfce7" : "#fee2e2", color: orderMsg.ok ? "#166534" : "#991b1b", fontWeight: 700 }}>
             {orderMsg.text}
           </div>
         )}
@@ -2059,8 +2229,8 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                 <h2 style={{ fontWeight: 800, fontSize: 22, color: C.white, marginBottom: 20 }}>طريقة الدفع</h2>
                 <div className="card" style={{ padding: 20 }}>
                   {[["card","💳","بطاقة بنكية"],["instapay","⚡","إنستا باي"],["wallet","👛",`المحفظة (${formatCurrency(summary?.walletBalance ?? 0)})`],["wallet-card","🎁","محفظة + بطاقة"]].map(([id,icon,label]) => (
-                    <div key={id} onClick={() => setPayMethod(id)} style={{ display: "flex", alignItems: "center", gap: 14, padding: 14, borderRadius: 8, border: payMethod === id ? `2px solid ${C.red}` : `1px solid ${C.border}`, marginBottom: 10, cursor: "pointer", background: payMethod === id ? "rgba(230,57,22,.08)" : "transparent" }}>
-                      <div style={{ width: 40, height: 40, borderRadius: 8, background: payMethod === id ? "rgba(230,57,22,.2)" : C.bgCard2, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>{icon}</div>
+                    <div key={id} onClick={() => setPayMethod(id)} style={{ display: "flex", alignItems: "center", gap: 14, padding: 14, borderRadius: 8, border: payMethod === id ? `2px solid ${C.red}` : `1px solid ${C.border}`, marginBottom: 10, cursor: "pointer", background: payMethod === id ? "rgba(233,30,99,.08)" : "transparent" }}>
+                      <div style={{ width: 40, height: 40, borderRadius: 8, background: payMethod === id ? "rgba(233,30,99,.2)" : C.bgCard2, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>{icon}</div>
                       <span style={{ fontWeight: 600, fontSize: 14, color: payMethod === id ? C.white : C.gray }}>{label}</span>
                       {payMethod === id && <I n="check" s={16} c={C.red} />}
                     </div>
@@ -2126,7 +2296,7 @@ const WalletPage = () => {
 
   return (
     <div>
-      <section style={{ background: `linear-gradient(135deg, #1A0800, #0D0D0D)`, padding: "64px 0", textAlign: "center", position: "relative" }}>
+      <section style={{ background: `linear-gradient(135deg, #FFE8F0, #FFF5F8)`, padding: "64px 0", textAlign: "center", position: "relative" }}>
         <div style={{ position: "absolute", inset: 0, background: "radial-gradient(circle at 50% 60%, rgba(200,162,0,.1), transparent 60%)" }} />
         <div className="container" style={{ position: "relative" }}>
           <div style={{ fontSize: 52, marginBottom: 16 }}>💳</div>
@@ -2145,7 +2315,7 @@ const WalletPage = () => {
             <p style={{ color: C.gray, fontSize: 13, marginBottom: 24 }}>اشحني واحصلي على بونص إضافي!</p>
             <div style={{ display: "flex", gap: 10, marginBottom: 24, flexWrap: "wrap" }}>
               {options.map(opt => (
-                <button key={opt} onClick={() => setAmount(opt)} style={{ position: "relative", padding: "12px 22px", border: amount === opt ? `2px solid ${C.red}` : `1px solid ${C.border}`, borderRadius: 8, background: amount === opt ? "rgba(230,57,22,.12)" : C.bgCard2, color: amount === opt ? C.red : C.gray, fontWeight: 700, cursor: "pointer", fontFamily: "'Cairo', sans-serif" }}>
+                <button key={opt} onClick={() => setAmount(opt)} style={{ position: "relative", padding: "12px 22px", border: amount === opt ? `2px solid ${C.red}` : `1px solid ${C.border}`, borderRadius: 8, background: amount === opt ? "rgba(233,30,99,.12)" : C.bgCard2, color: amount === opt ? C.red : C.gray, fontWeight: 700, cursor: "pointer", fontFamily: "'Cairo', sans-serif" }}>
                   {opt} ج.م
                   {opt >= 200 && <span className="badge badge-gold" style={{ position: "absolute", top: -10, left: -8, fontSize: 10, padding: "2px 6px", borderRadius: 4 }}>+{Math.round(opt * 0.1)} بونص</span>}
                 </button>
@@ -2218,7 +2388,7 @@ const RewardsPage = () => {
 
   return (
     <div>
-      <section style={{ background: `linear-gradient(135deg, #1A1000, ${C.bg})`, padding: "60px 0", textAlign: "center" }}>
+      <section style={{ background: `linear-gradient(135deg, #FFECF0, ${C.bg})`, padding: "60px 0", textAlign: "center" }}>
         <div className="container">
           <div style={{ fontSize: viewportWidth() < 768 ? 40 : 52, marginBottom: 12 }}>⭐</div>
           <h1 style={{ fontSize: viewportWidth() < 768 ? 32 : 42, fontWeight: 900, color: C.white, marginBottom: 8 }}>نقاط <span style={{ color: C.gold }}>المكافآت</span></h1>
@@ -2279,7 +2449,7 @@ const ReferralPage = () => {
 
   return (
     <div>
-      <section style={{ background: `linear-gradient(135deg, #1A0500, ${C.bg})`, padding: "64px 0", textAlign: "center" }}>
+      <section style={{ background: `linear-gradient(135deg, #FFE0EC, ${C.bg})`, padding: "64px 0", textAlign: "center" }}>
         <div className="container">
           <div style={{ fontSize: viewportWidth() < 768 ? 44 : 60, marginBottom: 14 }}>🎁</div>
           <h1 style={{ fontSize: viewportWidth() < 768 ? 32 : 44, fontWeight: 900, color: C.white, marginBottom: 12 }}>ادعي صاحبتك <span style={{ color: C.red }}>واربحا معًا!</span></h1>
@@ -2291,7 +2461,7 @@ const ReferralPage = () => {
           <div className="card" style={{ padding: 36, textAlign: "center", marginBottom: 28, border: `1px solid ${C.red}33` }}>
             <h2 style={{ fontWeight: 800, fontSize: 20, color: C.white, marginBottom: 6 }}>كودك الخاص</h2>
             <p style={{ color: C.gray, fontSize: 13, marginBottom: 22 }}>شاركيه مع صديقاتك واكسبي المكافآت</p>
-            <div style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "center", flexWrap: "wrap", background: "rgba(230,57,22,.08)", border: `1px solid ${C.red}33`, borderRadius: 10, padding: "14px 20px", marginBottom: 18 }}>
+            <div style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "center", flexWrap: "wrap", background: "rgba(233,30,99,.08)", border: `1px solid ${C.red}33`, borderRadius: 10, padding: "14px 20px", marginBottom: 18 }}>
               <span style={{ fontSize: 22, fontWeight: 900, color: C.red, letterSpacing: 2, fontFamily: "monospace" }}>{code}</span>
               <button onClick={copy} style={{ background: copied ? C.success : C.red, border: "none", borderRadius: 6, padding: "7px 14px", color: "#fff", fontFamily: "'Cairo', sans-serif", fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
                 {copied ? <><I n="check" s={13} c="#fff" /> تم النسخ</> : <><I n="copy" s={13} c="#fff" /> نسخ الكود</>}
@@ -2360,9 +2530,9 @@ const AccountPage = ({ navigate }: { navigate: (p: string) => void }) => {
 
   return (
     <div>
-      <div style={{ background: `linear-gradient(135deg, #1A0500, ${C.bgCard})`, borderBottom: `1px solid ${C.border}`, padding: "28px 0" }}>
+      <div style={{ background: `linear-gradient(135deg, #FFE0EC, ${C.bgCard})`, borderBottom: `1px solid ${C.border}`, padding: "28px 0" }}>
         <div className="container" style={{ display: "flex", alignItems: "center", gap: 18 }}>
-          <div style={{ width: 64, height: 64, background: "rgba(230,57,22,.2)", border: `2px solid ${C.red}`, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", color: C.red, fontWeight: 900, fontSize: 26 }}>ف</div>
+          <div style={{ width: 64, height: 64, background: "rgba(233,30,99,.2)", border: `2px solid ${C.red}`, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", color: C.red, fontWeight: 900, fontSize: 26 }}>ف</div>
           <div>
             <h1 style={{ fontSize: 24, fontWeight: 900, color: C.white }}>فاطمة محمد</h1>
             <p style={{ color: C.gray, fontSize: 13 }}>fatma@example.com آ· عضوة منذ يناير ٢٠٢٤</p>
@@ -2374,7 +2544,7 @@ const AccountPage = ({ navigate }: { navigate: (p: string) => void }) => {
         <aside>
           <div className="card" style={{ padding: 8 }}>
             {tabs.map(t => (
-              <button key={t.id} onClick={() => setActiveTab(t.id)} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "11px 14px", borderRadius: 8, border: "none", background: activeTab === t.id ? "rgba(230,57,22,.12)" : "none", color: activeTab === t.id ? C.red : C.gray, fontFamily: "'Cairo', sans-serif", fontSize: 13, fontWeight: 600, cursor: "pointer", textAlign: "right" }}>
+              <button key={t.id} onClick={() => setActiveTab(t.id)} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "11px 14px", borderRadius: 8, border: "none", background: activeTab === t.id ? "rgba(233,30,99,.12)" : "none", color: activeTab === t.id ? C.red : C.gray, fontFamily: "'Cairo', sans-serif", fontSize: 13, fontWeight: 600, cursor: "pointer", textAlign: "right" }}>
                 <I n={t.icon} s={15} c={activeTab === t.id ? C.red : C.gray} /> {t.label}
               </button>
             ))}
@@ -2399,7 +2569,7 @@ const AccountPage = ({ navigate }: { navigate: (p: string) => void }) => {
               </div>
               <div className="card" style={{ padding: 20 }}>
                 <h3 style={{ fontWeight: 800, color: C.white, marginBottom: 14 }}>الحجز القادم</h3>
-                <div style={{ background: "rgba(230,57,22,.08)", border: `1px solid ${C.red}22`, borderRadius: 8, padding: 14, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ background: "rgba(233,30,99,.08)", border: `1px solid ${C.red}22`, borderRadius: 8, padding: 14, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div>
                     <div style={{ fontWeight: 700, fontSize: 15, color: C.white }}>يوجا الصباح</div>
                     <div style={{ color: C.gray, fontSize: 12, marginTop: 3 }}>الأحد ١٥ يناير آ· ٧:٠٠ ص آ· مع هبة زارع</div>
@@ -2418,7 +2588,7 @@ const AccountPage = ({ navigate }: { navigate: (p: string) => void }) => {
                     <div style={{ fontWeight: 700, fontSize: 14, color: C.white }}>{b.name}</div>
                     <div style={{ color: C.gray, fontSize: 12, marginTop: 3 }}>{b.date} آ· {b.time} آ· مع {b.trainer}</div>
                   </div>
-                  <span style={{ padding: "3px 12px", borderRadius: 4, fontSize: 11, fontWeight: 600, background: b.status === "confirmed" ? "rgba(34,197,94,.12)" : b.status === "pending" ? "rgba(230,57,22,.12)" : "rgba(239,68,68,.1)", color: b.status === "confirmed" ? C.success : b.status === "pending" ? C.red : "#EF4444" }}>
+                  <span style={{ padding: "3px 12px", borderRadius: 4, fontSize: 11, fontWeight: 600, background: b.status === "confirmed" ? "rgba(34,197,94,.12)" : b.status === "pending" ? "rgba(233,30,99,.12)" : "rgba(239,68,68,.1)", color: b.status === "confirmed" ? C.success : b.status === "pending" ? C.red : "#EF4444" }}>
                     {b.status}
                   </span>
                 </div>
@@ -2487,7 +2657,7 @@ const TrainersPage = () => {
 
   return (
     <div>
-      <section style={{ background: `linear-gradient(135deg, #1A0500, ${C.bg})`, padding: "60px 0", textAlign: "center" }}>
+      <section style={{ background: `linear-gradient(135deg, #FFE0EC, ${C.bg})`, padding: "60px 0", textAlign: "center" }}>
         <div className="container">
           <span className="tag" style={{ marginBottom: 14, display: "inline-block" }}>فريقنا</span>
           <h1 style={{ fontSize: viewportWidth() < 768 ? 32 : 44, fontWeight: 900, color: C.white, marginBottom: 12 }}>مدرباتنا <span style={{ color: C.red }}>المحترفات</span></h1>
@@ -2568,7 +2738,7 @@ const BlogPage = () => {
 
   return (
     <div>
-      <section style={{ background: `linear-gradient(135deg, #1A0500, ${C.bg})`, padding: "48px 0" }}>
+      <section style={{ background: `linear-gradient(135deg, #FFE0EC, ${C.bg})`, padding: "48px 0" }}>
         <div className="container">
           <h1 style={{ fontSize: viewportWidth() < 768 ? 30 : 40, fontWeight: 900, color: C.white, marginBottom: 8 }}>مدونة <span style={{ color: C.red }}>فيت زون</span></h1>
           <p style={{ color: C.gray, fontSize: 15 }}>نصائح ومقالات في اللياقة والصحة النسائية</p>
@@ -2631,7 +2801,7 @@ const ContactPage = () => {
 
   return (
     <div>
-      <section style={{ background: `linear-gradient(135deg, #1A0500, ${C.bg})`, padding: "60px 0", textAlign: "center" }}>
+      <section style={{ background: `linear-gradient(135deg, #FFE0EC, ${C.bg})`, padding: "60px 0", textAlign: "center" }}>
         <div className="container">
           <h1 style={{ fontSize: viewportWidth() < 768 ? 32 : 44, fontWeight: 900, color: C.white, marginBottom: 10 }}>تواصلي <span style={{ color: C.red }}>معنا</span></h1>
           <p style={{ color: C.gray, fontSize: 17 }}>إحنا موجودين عشانك في أي وقت 💪</p>
@@ -2658,7 +2828,7 @@ const ContactPage = () => {
                       </div>
                     )}
                     {contactResult === "error" && (
-                      <div style={{ marginBottom: 14, padding: "10px 14px", borderRadius: 8, background: "rgba(230,57,22,.08)", border: "1px solid rgba(230,57,22,.25)", color: C.red, fontSize: 13 }}>
+                      <div style={{ marginBottom: 14, padding: "10px 14px", borderRadius: 8, background: "rgba(233,30,99,.08)", border: "1px solid rgba(233,30,99,.25)", color: C.red, fontSize: 13 }}>
                         حدث خطأ أثناء الإرسال. حاولي مرة أخرى أو تواصلي عبر واتساب.
                       </div>
                     )}
@@ -2707,14 +2877,14 @@ const ContactPage = () => {
               <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 28 }}>
                 {[["phone","01001514535 / +20 1001514535"],["mail","itsfitzoone@gmail.com"],["map","بني سويف، مقابل بنك القاهرة، بجوار شاهر للسياحة فوق كازيون"],["clock","أحد-خميس: ٧ص-١٠م | جمعة-سبت: ٨ص-٨م"]].map(([icon, text]) => (
                   <div key={icon} className="card" style={{ padding: 16, display: "flex", gap: 14, alignItems: "flex-start" }}>
-                    <div style={{ width: 40, height: 40, background: "rgba(230,57,22,.12)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    <div style={{ width: 40, height: 40, background: "rgba(233,30,99,.12)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                       <I n={icon} s={18} c={C.red} />
                     </div>
                     <span style={{ color: C.grayLight, fontSize: 13, lineHeight: 1.7 }}>{text}</span>
                   </div>
                 ))}
               </div>
-              <div style={{ background: "rgba(230,57,22,.08)", border: `1px solid ${C.red}33`, borderRadius: 10, padding: 20 }}>
+              <div style={{ background: "rgba(233,30,99,.08)", border: `1px solid ${C.red}33`, borderRadius: 10, padding: 20 }}>
                 <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 12 }}>
                   <span style={{ fontSize: 20 }}>📱</span>
                   <span style={{ fontWeight: 700, color: C.white }}>تواصل سريع</span>
@@ -2746,16 +2916,79 @@ const ContactPage = () => {
 };
 
 // ─── APP ROOT ─────────────────────────────────────────────────────────────────
+function RedirectToAccountTab({ tab }: { tab: string }) {
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.location.href = `/account?tab=${tab}`;
+  }, [tab]);
+
+  return null;
+}
+
 export default function App() {
   const [page, setPage] = useState("home");
   const [summary, setSummary] = useState<UserSummary | null>(null);
   const [cartCount, setCartCount] = useState(0);
 
   useEffect(() => {
-    fetch("/api/me/summary")
-      .then((response) => response.json())
-      .then((data) => setSummary(data))
-      .catch(() => setSummary({ authenticated: false }));
+    if (typeof window === "undefined") return;
+
+    const pageFromUrl = new URL(window.location.href).searchParams.get("page");
+    if (pageFromUrl) {
+      setPage(pageFromUrl);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const url = new URL(window.location.href);
+    if (page === "home") {
+      url.searchParams.delete("page");
+    } else {
+      url.searchParams.set("page", page);
+    }
+
+    window.history.replaceState({}, "", url.toString());
+  }, [page]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadSummary = async () => {
+      try {
+        const response = await fetch("/api/me/summary", {
+          cache: "no-store",
+          credentials: "same-origin",
+          headers: {
+            "cache-control": "no-store",
+          },
+        });
+        const data = await response.json();
+        if (!cancelled) {
+          setSummary(data);
+        }
+      } catch {
+        if (!cancelled) {
+          setSummary({ authenticated: false });
+        }
+      }
+    };
+
+    void loadSummary();
+
+    const refresh = () => {
+      void loadSummary();
+    };
+
+    window.addEventListener("focus", refresh);
+    window.addEventListener("pageshow", refresh);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener("pageshow", refresh);
+    };
   }, []);
 
   useEffect(() => {
@@ -2811,7 +3044,13 @@ export default function App() {
   return (
     <div className="app">
       <style>{css}</style>
-      <Header currentPage={page} navigate={navigate} cartCount={cartCount} walletBalance={(summary?.walletBalance ?? 0).toLocaleString("ar-EG")} />
+      <Header
+        currentPage={page}
+        navigate={navigate}
+        cartCount={cartCount}
+        walletBalance={(summary?.walletBalance ?? 0).toLocaleString("ar-EG")}
+        summary={summary}
+      />
       <main>{pages[page as keyof typeof pages] || pages.home}</main>
       <Footer navigate={navigate} />
     </div>

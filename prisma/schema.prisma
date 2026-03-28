@@ -71,6 +71,7 @@ model User {
   referral      Referral?
   notifications Notification[]
   complaints    Complaint[]
+  testimonials  Testimonial[]
   handledChatSessions ChatSession[]  @relation("AssignedSupport")
   supportPresence     SupportPresence?
 }
@@ -173,7 +174,7 @@ model Product {
   description String?
   price       Float
   oldPrice    Float?
-  category    String  // supplement | gear | clothing | accessory
+  category    String
   stock       Int     @default(0)
   images      String? // JSON array of URLs
   sizes       String? // JSON array
@@ -288,6 +289,17 @@ model Offer {
   isActive    Boolean  @default(true)
 }
 
+model ProductCategory {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  label     String
+  sizeType  String   @default("none") // none | clothing | shoes
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 // ─── Complaint ────────────────────────────────────────────────────────────────
 
 model Complaint {
@@ -363,4 +375,17 @@ model ChatKnowledgeEntry {
   updatedAt DateTime @updatedAt
 }
 
+model Testimonial {
+  id          String   @id @default(cuid())
+  userId      String
+  displayName String?
+  content     String
+  rating      Int      @default(5)
+  status      String   @default("pending") // pending | approved | rejected
+  adminNote   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
 

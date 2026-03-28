@@ -31,7 +31,8 @@ export async function POST() {
       data: { identifier: fullUser.email, token: code, expires },
     });
 
-    await sendVerificationEmail(fullUser.email, fullUser.name ?? "العضوة", code);
+    sendVerificationEmail(fullUser.email, fullUser.name ?? "العضوة", code)
+      .catch((e) => console.error("[RESEND_EMAIL]", e));
 
     return NextResponse.json({ success: true });
   } catch (err) {

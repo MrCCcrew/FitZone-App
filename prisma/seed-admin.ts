@@ -6,7 +6,11 @@ import bcryptjs from "bcryptjs";
 import { db } from "../src/lib/db";
 
 async function main() {
-  const password = process.env.ADMIN_PASSWORD ?? process.env.ADMIN_PANEL_PASSWORD ?? "Admin123!";
+  const password = process.env.ADMIN_PASSWORD ?? process.env.ADMIN_PANEL_PASSWORD;
+  if (!password) {
+    throw new Error("ADMIN_PASSWORD or ADMIN_PANEL_PASSWORD must be set before running seed-admin.");
+  }
+
   const hashedPassword = await bcryptjs.hash(password, 12);
   const defaultUsers = [
     { name: "FitZone Admin", email: "admin@fitzoneland.com", role: "admin" as const },

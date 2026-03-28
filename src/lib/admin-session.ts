@@ -13,7 +13,10 @@ type AdminSessionPayload = {
 };
 
 function getSessionSecret() {
-  return process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || "fitzone-admin-secret";
+  const secret = process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET;
+  if (secret) return secret;
+  if (process.env.NODE_ENV !== "production") return "fitzone-admin-dev-secret";
+  throw new Error("AUTH_SECRET is required in production");
 }
 
 function encodeBase64Url(value: string) {

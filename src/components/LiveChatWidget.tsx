@@ -81,7 +81,7 @@ export default function LiveChatWidget() {
       if (stored || sessionId) {
         loadSession(stored || sessionId).catch(() => {});
       }
-    }, 8000);
+    }, 30000);
 
     return () => clearInterval(interval);
   }, [sessionId]);
@@ -129,12 +129,12 @@ export default function LiveChatWidget() {
           height: 64,
           borderRadius: "999px",
           border: "none",
-          background: "linear-gradient(135deg, #E63916, #FF6A3D)",
+          background: "linear-gradient(135deg, #E91E63, #F06292)",
           color: "#fff",
           fontSize: 14,
           fontWeight: 900,
           cursor: "pointer",
-          boxShadow: "0 12px 30px rgba(230,57,22,.35)",
+          boxShadow: "0 12px 30px rgba(233,30,99,.35)",
         }}
       >
         Chat
@@ -149,24 +149,24 @@ export default function LiveChatWidget() {
             zIndex: 80,
             width: 360,
             maxWidth: "calc(100vw - 24px)",
-            background: "#0f0f10",
-            border: "1px solid #2A2A2A",
+            background: "#FFF5F8",
+            border: "1px solid #F5D0DC",
             borderRadius: 24,
             overflow: "hidden",
-            boxShadow: "0 18px 50px rgba(0,0,0,.4)",
+            boxShadow: "0 18px 50px rgba(233,30,99,.15)",
           }}
         >
-          <div style={{ padding: 16, borderBottom: "1px solid #2A2A2A", background: "#151515" }}>
+          <div style={{ padding: 16, borderBottom: "1px solid #F5D0DC", background: "linear-gradient(135deg, #E91E63, #F06292)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
               <div>
                 <div style={{ color: "#fff", fontWeight: 900, fontSize: 16 }}>مساعد فت زون</div>
-                <div style={{ color: online ? "#4ade80" : "#9ca3af", fontSize: 12 }}>
+                <div style={{ color: online ? "#d4fce4" : "#ffe0ef", fontSize: 12 }}>
                   {online ? "الدعم المباشر متاح الآن" : "الرد الآلي متاح الآن"}
                 </div>
               </div>
               <button
                 onClick={() => setOpen(false)}
-                style={{ background: "none", border: "none", color: "#888", fontSize: 20, cursor: "pointer" }}
+                style={{ background: "none", border: "none", color: "#fff", fontSize: 20, cursor: "pointer" }}
               >
                 ×
               </button>
@@ -176,10 +176,10 @@ export default function LiveChatWidget() {
           <div
             style={{
               padding: 12,
-              borderBottom: "1px solid #222",
+              borderBottom: "1px solid #F5D0DC",
               display: "grid",
               gap: 8,
-              background: "#111",
+              background: "#FFF0F5",
             }}
           >
             <input
@@ -210,7 +210,7 @@ export default function LiveChatWidget() {
             </div>
           </div>
 
-          <div style={{ height: 340, overflowY: "auto", padding: 14, background: "#0a0a0a" }}>
+          <div style={{ height: 340, overflowY: "auto", padding: 14, background: "#FFF5F8" }}>
             {messages.map((message) => {
               const isUser = message.senderType === "user";
               const isSupport = message.senderType === "admin" || message.senderType === "staff";
@@ -230,16 +230,16 @@ export default function LiveChatWidget() {
                       padding: "12px 14px",
                       borderRadius: 18,
                       background: isUser
-                        ? "#1b1b1d"
+                        ? "#FFFFFF"
                         : isSupport
-                          ? "rgba(230,57,22,.14)"
-                          : "rgba(200,162,0,.12)",
-                      color: "#fff",
+                          ? "rgba(233,30,99,.12)"
+                          : "rgba(233,30,99,.07)",
+                      color: "#1A0812",
                       border: isUser
-                        ? "1px solid #2A2A2A"
+                        ? "1px solid #F5D0DC"
                         : isSupport
-                          ? "1px solid rgba(230,57,22,.2)"
-                          : "1px solid rgba(200,162,0,.2)",
+                          ? "1px solid rgba(233,30,99,.25)"
+                          : "1px solid rgba(233,30,99,.15)",
                       lineHeight: 1.8,
                       fontSize: 13,
                     }}
@@ -264,14 +264,14 @@ export default function LiveChatWidget() {
                   marginTop: 12,
                   padding: 14,
                   borderRadius: 18,
-                  background: "rgba(230,57,22,.08)",
-                  border: "1px solid rgba(230,57,22,.2)",
+                  background: "rgba(233,30,99,.08)",
+                  border: "1px solid rgba(233,30,99,.25)",
                 }}
               >
-                <div style={{ color: "#fff", fontWeight: 800, marginBottom: 6 }}>
+                <div style={{ color: "#E91E63", fontWeight: 800, marginBottom: 6 }}>
                   الباقة المقترحة
                 </div>
-                <div style={{ color: "#ddd", fontSize: 13 }}>
+                <div style={{ color: "#7A5B68", fontSize: 13 }}>
                   {recommendedMembership.name} - {recommendedMembership.price} ج.م
                 </div>
               </div>
@@ -283,8 +283,8 @@ export default function LiveChatWidget() {
               display: "flex",
               gap: 8,
               padding: 12,
-              borderTop: "1px solid #222",
-              background: "#111",
+              borderTop: "1px solid #F5D0DC",
+              background: "#FFF0F5",
             }}
           >
             <textarea
@@ -299,7 +299,7 @@ export default function LiveChatWidget() {
               style={{
                 border: "none",
                 borderRadius: 16,
-                background: "#E63916",
+                background: "linear-gradient(135deg, #E91E63, #F06292)",
                 color: "#fff",
                 padding: "0 18px",
                 fontWeight: 800,
@@ -318,9 +318,9 @@ export default function LiveChatWidget() {
 
 const inputStyle: CSSProperties = {
   width: "100%",
-  background: "#0a0a0a",
-  color: "#fff",
-  border: "1px solid #2A2A2A",
+  background: "#FFFFFF",
+  color: "#1A0812",
+  border: "1px solid #F5D0DC",
   borderRadius: 14,
   padding: "10px 12px",
   outline: "none",
@@ -328,9 +328,9 @@ const inputStyle: CSSProperties = {
 };
 
 const quickButtonStyle: CSSProperties = {
-  background: "rgba(255,255,255,.06)",
-  border: "1px solid #2A2A2A",
-  color: "#ddd",
+  background: "rgba(233,30,99,.08)",
+  border: "1px solid rgba(233,30,99,.2)",
+  color: "#E91E63",
   borderRadius: 999,
   padding: "8px 12px",
   cursor: "pointer",

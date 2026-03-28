@@ -81,17 +81,21 @@ const STATUS_MAP: Record<string, { label: string; color: string }> = {
 };
 
 const NOTIF_ICONS: Record<string, string> = {
-  success: "✅", info: "ℹ️", warning: "⚠️", error: "❌",
+  success: "\u2705",
+  info: "\u2139\uFE0F",
+  warning: "\u26A0\uFE0F",
+  error: "\u274C",
 };
 
 const TABS = [
-  { id: "profile",       label: "الملف الشخصي", icon: "👤" },
-  { id: "membership",    label: "الاشتراك",      icon: "💳" },
-  { id: "bookings",      label: "الحجوزات",      icon: "📅" },
-  { id: "orders",        label: "الطلبات",       icon: "📦" },
-  { id: "wallet",        label: "المحفظة",       icon: "🏅" },
-  { id: "notifications", label: "الإشعارات",     icon: "🔔" },
-  { id: "complaints",    label: "الشكاوى",       icon: "📩" },
+  { id: "profile", label: "\u0627\u0644\u0645\u0644\u0641 \u0627\u0644\u0634\u062e\u0635\u064a", icon: "\u25CE" },
+  { id: "membership", label: "\u0627\u0644\u0627\u0634\u062a\u0631\u0627\u0643", icon: "\u25C8" },
+  { id: "bookings", label: "\u0627\u0644\u062d\u062c\u0648\u0632\u0627\u062a", icon: "\u25A3" },
+  { id: "orders", label: "\u0627\u0644\u0637\u0644\u0628\u0627\u062a", icon: "\u25A4" },
+  { id: "wallet", label: "\u0627\u0644\u0645\u062d\u0641\u0638\u0629", icon: "\u00A4" },
+  { id: "reviews", label: "\u0622\u0631\u0627\u0626\u064a", icon: "\u270E" },
+  { id: "notifications", label: "\u0627\u0644\u0625\u0634\u0639\u0627\u0631\u0627\u062a", icon: "\u2731" },
+  { id: "complaints", label: "\u0627\u0644\u0634\u0643\u0627\u0648\u0649", icon: "\u2612" },
 ] as const;
 type TabId = typeof TABS[number]["id"];
 
@@ -100,8 +104,8 @@ function isTabId(value: string | null): value is TabId {
 }
 
 // ─── Shared UI helpers ─────────────────────────────────────────────────────────
-const INPUT = "w-full bg-gray-800 border border-gray-700 focus:border-red-500 rounded-xl px-4 py-2.5 text-white text-sm outline-none transition-colors placeholder-gray-600";
-const CARD  = "bg-gray-900/60 border border-gray-800 rounded-2xl p-5";
+const INPUT = "w-full rounded-xl border border-[#ffbcdb]/20 bg-[#3f1426]/85 px-4 py-2.5 text-sm text-[#fff4f8] outline-none transition-colors placeholder:text-[#caa0b0] focus:border-pink-400";
+const CARD  = "rounded-2xl border border-[#ffbcdb]/20 bg-[#3f1426]/85 p-5 text-[#fff4f8] shadow-[0_24px_70px_rgba(17,5,10,0.28)] backdrop-blur-xl";
 
 function StatCard({ icon, label, value, sub, color = "text-white" }: { icon: string; label: string; value: string; sub?: string; color?: string }) {
   return (
@@ -727,6 +731,99 @@ function WalletTab({
 }
 
 // ─── Tab: Complaints ──────────────────────────────────────────────────────────
+type ReviewItem = {
+  id: string;
+  displayName: string | null;
+  content: string;
+  rating: number;
+  status: "pending" | "approved" | "rejected";
+  adminNote?: string | null;
+  createdAt: string;
+};
+
+function ReviewsTab({ user }: { user: AccountData["user"] }) {
+  const [items, setItems] = useState<ReviewItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({ id: "", displayName: user.name, content: "", rating: 5 });
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/testimonials", { cache: "no-store" });
+      if (res.ok) setItems(await res.json());
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { void load(); }, []);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.content.trim()) return;
+    setSaving(true);
+    try {
+      await fetch("/api/testimonials", {
+        method: form.id ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      setForm({ id: "", displayName: user.name, content: "", rating: 5 });
+      await load();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-5">
+      <div className={CARD}>
+        <h3 className="text-white font-black mb-4">{"\u0623\u0636\u064a\u0641\u064a \u0631\u0623\u064a\u0643 \u0644\u064a\u0638\u0647\u0631 \u0628\u0639\u062f \u0645\u0631\u0627\u062c\u0639\u0629 \u0627\u0644\u0625\u062f\u0627\u0631\u0629 \u0639\u0644\u0649 \u0627\u0644\u0635\u0641\u062d\u0629 \u0627\u0644\u0631\u0626\u064a\u0633\u064a\u0629"}</h3>
+        <form onSubmit={submit} className="space-y-4">
+          <input value={form.displayName} onChange={(e) => setForm({ ...form, displayName: e.target.value })} className={INPUT} placeholder={"\u0627\u0644\u0627\u0633\u0645 \u0627\u0644\u0645\u0639\u0631\u0648\u0636"} />
+          <select value={form.rating} onChange={(e) => setForm({ ...form, rating: Number(e.target.value) })} className={INPUT}>
+            {[5,4,3,2,1].map((rating) => <option key={rating} value={rating}>{rating} {"\u0646\u062c\u0648\u0645"}</option>)}
+          </select>
+          <textarea value={form.content} onChange={(e) => setForm({ ...form, content: e.target.value })} rows={4} className={`${INPUT} resize-none`} placeholder={"\u0627\u0643\u062a\u0628\u064a \u062a\u062c\u0631\u0628\u062a\u0643..."} />
+          <button type="submit" disabled={saving} className="bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-black px-6 py-2.5 rounded-xl transition-colors text-sm">
+            {saving ? "\u062c\u0627\u0631\u064d \u0627\u0644\u062d\u0641\u0638..." : form.id ? "\u062a\u062d\u062f\u064a\u062b \u0627\u0644\u0631\u0623\u064a" : "\u0625\u0636\u0627\u0641\u0629 \u0627\u0644\u0631\u0623\u064a"}
+          </button>
+        </form>
+      </div>
+
+      <div className={CARD}>
+        <h3 className="text-white font-black mb-4">{"\u0622\u0631\u0627\u0626\u064a \u0627\u0644\u0633\u0627\u0628\u0642\u0629"}</h3>
+        {loading ? (
+          <p className="text-gray-500 text-sm text-center py-6">{"\u062c\u0627\u0631\u064d \u062a\u062d\u0645\u064a\u0644 \u0627\u0644\u0622\u0631\u0627\u0621..."}</p>
+        ) : items.length === 0 ? (
+          <p className="text-gray-500 text-sm text-center py-6">{"\u0644\u0627 \u062a\u0648\u062c\u062f \u0622\u0631\u0627\u0621 \u0628\u0639\u062f"}</p>
+        ) : (
+          <div className="space-y-3">
+            {items.map((item) => (
+              <div key={item.id} className="rounded-xl border border-gray-700 bg-gray-800/50 p-4">
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <div className="text-white font-bold">{item.displayName || user.name}</div>
+                  <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${item.status === "approved" ? "bg-green-500/20 text-green-400" : item.status === "rejected" ? "bg-red-500/20 text-red-400" : "bg-yellow-500/20 text-yellow-400"}`}>
+                    {item.status === "approved" ? "\u0645\u0646\u0634\u0648\u0631" : item.status === "rejected" ? "\u0645\u0631\u0641\u0648\u0636" : "\u0645\u0631\u0627\u062c\u0639\u0629"}
+                  </span>
+                </div>
+                <div className="mb-2 text-yellow-400">{"?".repeat(item.rating)}</div>
+                <p className="text-sm leading-relaxed text-gray-300">{item.content}</p>
+                {item.adminNote && <div className="mt-3 text-xs text-red-300">{"\u0645\u0644\u0627\u062d\u0638\u0629 \u0627\u0644\u0625\u062f\u0627\u0631\u0629:"} {item.adminNote}</div>}
+                <div className="mt-3 flex gap-3">
+                  <button type="button" onClick={() => setForm({ id: item.id, displayName: item.displayName || user.name, content: item.content, rating: item.rating })} className="text-sm font-bold text-yellow-400">{"\u062a\u0639\u062f\u064a\u0644"}</button>
+                  <button type="button" onClick={async () => { await fetch("/api/testimonials", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: item.id }) }); await load(); }} className="text-sm font-bold text-red-400">{"\u062d\u0630\u0641"}</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 const COMPLAINT_STATUS_LABELS: Record<string, string> = {
   "open": "مفتوحة", "in-progress": "قيد المعالجة", "resolved": "تم الحل", "closed": "مغلقة",
 };
@@ -948,9 +1045,9 @@ export default function AccountClient({ data }: { data: AccountData }) {
   const handleLogout = async () => {
     setLoggingOut(true);
     try {
-      await fetch("/api/auth/logout", { method: "POST" });
+      await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin", cache: "no-store" });
     } finally {
-      window.location.href = "/";
+      window.location.replace(`/?logout=${Date.now()}`);
     }
   };
 
@@ -959,19 +1056,19 @@ export default function AccountClient({ data }: { data: AccountData }) {
     : 0;
 
   return (
-    <div dir="rtl" className="min-h-screen bg-black text-white">
+    <div dir="rtl" className="account-theme min-h-screen bg-[radial-gradient(circle_at_top,rgba(255,140,190,0.22),transparent_34%),radial-gradient(circle_at_bottom_left,rgba(255,186,216,0.16),transparent_30%),linear-gradient(180deg,#2a0f1b_0%,#391320_48%,#4a1b2d_100%)] text-[#fff4f8]">
       {/* ── Header ── */}
-      <div className="bg-gray-950 border-b border-gray-800">
+      <div className="border-b border-[#ffbcdb]/20 bg-[#14060d]/92 backdrop-blur-xl">
         <div className="max-w-5xl mx-auto px-4 py-6">
           <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-full bg-gradient-to-br from-red-600 to-red-900 flex items-center justify-center text-white font-black text-xl shrink-0">
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-pink-500 via-fuchsia-500 to-pink-800 text-xl font-black text-white shadow-[0_18px_40px_rgba(190,24,93,0.35)]">
               {data.user.name?.[0] ?? "ع"}
             </div>
             <div className="flex-1">
-              <h1 className="text-xl font-black text-white">{data.user.name}</h1>
+              <h1 className="text-xl font-black text-[#fff7fb]">{data.user.name}</h1>
               <div className="flex items-center gap-3 mt-1 flex-wrap">
                 {data.membership && (
-                  <span className="text-xs bg-red-600/20 text-red-400 border border-red-600/30 px-2.5 py-0.5 rounded-full font-bold">
+                  <span className="rounded-full border border-pink-300/20 bg-pink-500/15 px-2.5 py-0.5 text-xs font-bold text-pink-200">
                     {data.membership.plan}
                   </span>
                 )}
@@ -983,14 +1080,14 @@ export default function AccountClient({ data }: { data: AccountData }) {
               </div>
             </div>
             <div className="hidden sm:flex items-center gap-2">
-              <a href="/" className="flex items-center gap-1.5 text-gray-500 hover:text-white transition-colors text-sm">
+              <a href="/" className="flex items-center gap-1.5 text-[#d7aabd] transition-colors text-sm hover:text-white">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
                 الرئيسية
               </a>
               <button
                 onClick={handleLogout}
                 disabled={loggingOut}
-                className="flex items-center gap-1.5 text-gray-600 hover:text-red-400 transition-colors text-sm disabled:opacity-50"
+                className="flex items-center gap-1.5 text-[#c896aa] transition-colors text-sm hover:text-pink-300 disabled:opacity-50"
               >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
                   <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" strokeLinecap="round" strokeLinejoin="round" />
@@ -1022,8 +1119,8 @@ export default function AccountClient({ data }: { data: AccountData }) {
                   onClick={() => setActiveTab(tab.id)}
                   className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-sm font-medium transition-all text-right w-full ${
                     activeTab === tab.id
-                      ? "bg-red-600 text-white shadow-lg shadow-red-900/30"
-                      : "text-gray-400 hover:bg-gray-900 hover:text-white"
+                      ? "bg-gradient-to-r from-pink-600 to-pink-500 text-white shadow-[0_18px_40px_rgba(190,24,93,0.34)]"
+                      : "text-[#d7aabd] hover:bg-[rgba(255,130,186,0.14)] hover:text-white"
                   }`}
                 >
                   <span>{tab.icon}</span>
@@ -1045,6 +1142,7 @@ export default function AccountClient({ data }: { data: AccountData }) {
             {activeTab === "bookings"      && <BookingsTab      bookings={data.bookings} />}
             {activeTab === "orders"        && <OrdersTab        orders={data.orders} />}
             {activeTab === "wallet"        && <WalletTab        wallet={data.wallet} rewards={data.rewards} referral={data.referral} />}
+            {activeTab === "reviews"       && <ReviewsTab      user={data.user} />}
             {activeTab === "notifications" && <NotificationsTab notifications={data.notifications} />}
             {activeTab === "complaints"    && <ComplaintsTab />}
           </main>

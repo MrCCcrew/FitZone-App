@@ -1,8 +1,9 @@
 import { randomUUID } from "crypto";
-import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 import { NextResponse } from "next/server";
+import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { requireAdminFeature } from "@/lib/admin-guard";
+import { getMissingR2Env, getR2Client, R2_BUCKET, R2_PUBLIC_URL } from "@/lib/r2";
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 const ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
@@ -20,6 +21,16 @@ function getExtension(fileName: string, mimeType: string) {
 export async function POST(req: Request) {
   const guard = await requireAdminFeature("products");
   if ("error" in guard) return guard.error;
+
+  const missingEnv = getMissingR2Env();
+  if (missingEnv.length > 0) {
+    return NextResponse.json(
+      {
+        error: `Image upload is not configured. Missing env vars: ${missingEnv.join(", ")}`,
+      },
+      { status: 503 }
+    );
+  }
 
   const formData = await req.formData();
   const file = formData.get("file");
@@ -41,17 +52,21 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid file extension" }, { status: 400 });
   }
 
-  const uploadsDir = path.join(process.cwd(), "public", "uploads", "products");
-  await mkdir(uploadsDir, { recursive: true });
-
   const fileName = `${Date.now()}-${randomUUID()}${extension}`;
-  const filePath = path.join(uploadsDir, fileName);
+  const key = `products/${fileName}`;
   const buffer = Buffer.from(await file.arrayBuffer());
 
-  await writeFile(filePath, buffer);
+  await getR2Client().send(
+    new PutObjectCommand({
+      Bucket: R2_BUCKET,
+      Key: key,
+      Body: buffer,
+      ContentType: file.type,
+    })
+  );
 
   return NextResponse.json({
-    url: `/uploads/products/${fileName}`,
+    url: `${R2_PUBLIC_URL}/${key}`,
     fileName,
   });
 }

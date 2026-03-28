@@ -1,9 +1,19 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { generateBotReply, serializeMessages } from "@/lib/chatbot";
+import { applyRateLimit, getClientIp } from "@/lib/rate-limit";
 
 export async function POST(req: Request) {
   try {
+    const clientIp = getClientIp(req);
+    const limit = applyRateLimit(`chat-message:${clientIp}`, 25, 5 * 60 * 1000);
+    if (!limit.ok) {
+      return NextResponse.json(
+        { error: "Too many messages. Please slow down.", messages: [] },
+        { status: 429, headers: { "Retry-After": String(Math.ceil(limit.retryAfterMs / 1000)) } },
+      );
+    }
+
     const { sessionId, content, visitorName, visitorPhone } = await req.json();
 
     if (!sessionId || !content?.trim()) {

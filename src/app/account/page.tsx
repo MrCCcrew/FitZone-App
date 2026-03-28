@@ -137,7 +137,7 @@ async function getAccountData(userId: string) {
 export default async function AccountPage() {
   const user = await getCurrentAppUser();
   if (!user) {
-    redirect("https://fitzoneland.com/login?callbackUrl=%2Faccount");
+    redirect("/login?callbackUrl=%2Faccount");
   }
 
   const data = await getAccountData(user.id);

@@ -1,44 +1,37 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import type { Product, Order } from "../types";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { Order, Product, ProductCategory } from "../types";
 
-const CAT_LABELS: Record<Product["category"], string> = { supplement: "مكملات", gear: "معدات", clothing: "ملابس", accessory: "إكسسوار" };
-const CAT_COLORS: Record<Product["category"], string> = { supplement: "bg-blue-500/20 text-blue-400", gear: "bg-orange-500/20 text-orange-400", clothing: "bg-pink-500/20 text-pink-400", accessory: "bg-purple-500/20 text-purple-400" };
-const ORDER_STATUS: Record<Order["status"], { label: string; color: string }> = {
-  pending: { label: "معلق", color: "bg-yellow-500/20 text-yellow-400" },
-  confirmed: { label: "مؤكد", color: "bg-blue-500/20 text-blue-400" },
-  delivered: { label: "تم التسليم", color: "bg-green-500/20 text-green-400" },
-  cancelled: { label: "ملغي", color: "bg-red-500/20 text-red-400" },
-};
+const INPUT = "w-full rounded-xl border border-gray-700 bg-gray-800 px-4 py-2.5 text-sm text-white outline-none";
+const CLOTHING = ["XS", "S", "M", "L", "XL", "XXL"];
+const SHOES = Array.from({ length: 27 }, (_, i) => String(i + 20));
 
-const EMPTY: Omit<Product, "id" | "sold"> = {
+type EditableProduct = Omit<Product, "id" | "sold"> & { id?: string };
+type EditableCategory = ProductCategory | { id?: string; key: string; label: string; sizeType: "none" | "clothing" | "shoes"; sortOrder: number; active: boolean };
+
+const EMPTY_PRODUCT: EditableProduct = {
   name: "",
   category: "supplement",
   price: 0,
   oldPrice: null,
   stock: 0,
   active: true,
-  emoji: "📦",
+  emoji: "🛍️",
   description: "",
   images: [],
   sizes: [],
+  colors: [],
+  sizeType: "none",
 };
 
-const INPUT = "w-full bg-gray-800 border border-gray-700 focus:border-red-500 rounded-xl px-4 py-2.5 text-white text-sm outline-none transition-colors";
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return <div><label className="block text-gray-500 text-xs mb-1.5">{label}</label>{children}</div>;
-}
-
-function Modal({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
+function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
-      <div className="relative bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-5">
-          <h3 className="text-white font-black text-lg">{title}</h3>
-          <button onClick={onClose} className="text-gray-500 hover:text-white text-2xl leading-none">×</button>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={onClose}>
+      <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-gray-700 bg-gray-900 p-5" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="text-lg font-black text-white">{title}</h3>
+          <button onClick={onClose} className="text-xl text-gray-500">×</button>
         </div>
         {children}
       </div>
@@ -54,178 +47,177 @@ function fromList(value?: string[]) {
   return Array.isArray(value) ? value.join("\n") : "";
 }
 
+function toggle(arr: string[] | undefined, value: string) {
+  const list = arr ?? [];
+  return list.includes(value) ? list.filter((item) => item !== value) : [...list, value];
+}
+
 export default function Products() {
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [categories, setCategories] = useState<ProductCategory[]>([]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [modal, setModal] = useState<Product | Omit<Product, "id" | "sold"> | null>(null);
   const [tab, setTab] = useState<"products" | "orders">("products");
   const [search, setSearch] = useState("");
-  const [catFilter, setCatFilter] = useState<string>("الكل");
+  const [filter, setFilter] = useState("all");
+  const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [productModal, setProductModal] = useState<EditableProduct | null>(null);
+  const [categoryModal, setCategoryModal] = useState<EditableCategory | null>(null);
 
-  const fetchAll = useCallback(async () => {
+  const load = useCallback(async () => {
     setLoading(true);
-    const [p, o] = await Promise.all([
-      fetch("/api/admin/products").then((r) => r.json()),
-      fetch("/api/admin/orders").then((r) => r.json()),
-    ]);
-    setProducts(Array.isArray(p) ? p : []);
-    setOrders(Array.isArray(o) ? o : []);
-    setLoading(false);
+    try {
+      const [p, o, c] = await Promise.all([
+        fetch("/api/admin/products", { cache: "no-store" }).then((r) => r.json()),
+        fetch("/api/admin/orders", { cache: "no-store" }).then((r) => r.json()),
+        fetch("/api/admin/product-categories", { cache: "no-store" }).then((r) => r.json()),
+      ]);
+      setProducts(Array.isArray(p) ? p : []);
+      setOrders(Array.isArray(o) ? o : []);
+      setCategories(Array.isArray(c) ? c : []);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
-    fetchAll();
-  }, [fetchAll]);
+    void load();
+  }, [load]);
 
-  const save = async () => {
-    if (!modal) return;
+  const categoryMap = useMemo(() => new Map(categories.map((item) => [item.key, item])), [categories]);
+  const sizeType = productModal ? categoryMap.get(productModal.category)?.sizeType ?? "none" : "none";
+
+  const filteredProducts = products.filter((product) => {
+    const searchOk = !search.trim() || product.name.includes(search) || (product.description ?? "").includes(search);
+    const filterOk = filter === "all" || product.category === filter;
+    return searchOk && filterOk;
+  });
+
+  const saveProduct = async () => {
+    if (!productModal) return;
     setSaving(true);
-    const isEdit = "id" in modal;
-    await fetch("/api/admin/products", {
-      method: isEdit ? "PATCH" : "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(modal),
-    });
-    await fetchAll();
-    setModal(null);
-    setSaving(false);
-  };
-
-  const toggleProduct = async (id: string, active: boolean) => {
-    await fetch("/api/admin/products", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, active: !active }) });
-    await fetchAll();
-  };
-
-  const deleteProduct = async (id: string) => {
-    if (!confirm("حذف المنتج؟")) return;
-    await fetch("/api/admin/products", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
-    await fetchAll();
-  };
-
-  const updateOrderStatus = async (id: string, status: Order["status"]) => {
-    await fetch("/api/admin/orders", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, status }) });
-    await fetchAll();
-  };
-
-  const uploadImage = async (file: File) => {
-    const formData = new FormData();
-    formData.append("file", file);
-
-    const res = await fetch("/api/admin/uploads", {
-      method: "POST",
-      body: formData,
-    });
-
-    if (!res.ok) {
-      throw new Error("فشل رفع الصورة");
+    try {
+      await fetch("/api/admin/products", {
+        method: productModal.id ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...productModal, sizes: sizeType === "none" ? [] : productModal.sizes ?? [] }),
+      });
+      await load();
+      setProductModal(null);
+    } finally {
+      setSaving(false);
     }
-
-    return res.json() as Promise<{ url: string }>;
   };
 
-  const handleImageUpload = async (files: FileList | null) => {
-    if (!modal || !files?.length) return;
+  const saveCategory = async () => {
+    if (!categoryModal) return;
+    setSaving(true);
+    try {
+      await fetch("/api/admin/product-categories", {
+        method: categoryModal.id ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(categoryModal),
+      });
+      await load();
+      setCategoryModal(null);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const uploadImages = async (files: FileList | null) => {
+    if (!productModal || !files?.length) return;
     setUploading(true);
     try {
-      const uploaded: string[] = [];
+      const urls: string[] = [];
       for (const file of Array.from(files)) {
-        const result = await uploadImage(file);
-        uploaded.push(result.url);
+        const formData = new FormData();
+        formData.append("file", file);
+        const response = await fetch("/api/admin/uploads", { method: "POST", body: formData });
+        const data = await response.json();
+        if (response.ok && data.url) urls.push(data.url);
       }
-      setModal({
-        ...modal,
-        images: [...(modal.images ?? []), ...uploaded],
-      });
+      setProductModal((current) => current ? { ...current, images: [...(current.images ?? []), ...urls] } : current);
     } finally {
       setUploading(false);
     }
   };
 
-  if (loading) return <div className="flex items-center justify-center h-64"><div className="text-gray-500 text-sm">جارٍ تحميل المنتجات والطلبات...</div></div>;
-
-  const filteredProducts = products.filter((p) => {
-    const matchSearch = p.name.includes(search);
-    const matchCat = catFilter === "الكل" || p.category === catFilter;
-    return matchSearch && matchCat;
-  });
-
-  const totalRevenue = products.reduce((s, p) => s + p.price * p.sold, 0);
+  if (loading) return <div className="flex h-64 items-center justify-center text-sm text-gray-500">جارٍ التحميل...</div>;
 
   return (
     <div className="space-y-6">
       <div className="flex gap-2">
-        {[["products", "📦 المنتجات"], ["orders", "🛒 الطلبات"]].map(([v, l]) => (
-          <button key={v} onClick={() => setTab(v as typeof tab)} className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-colors ${tab === v ? "bg-red-600 text-white" : "bg-gray-800 text-gray-400 hover:bg-gray-700"}`}>
-            {l}
-          </button>
-        ))}
+        <button onClick={() => setTab("products")} className={`rounded-xl px-5 py-2.5 text-sm font-bold ${tab === "products" ? "bg-red-600 text-white" : "bg-gray-800 text-gray-400"}`}>المنتجات</button>
+        <button onClick={() => setTab("orders")} className={`rounded-xl px-5 py-2.5 text-sm font-bold ${tab === "orders" ? "bg-red-600 text-white" : "bg-gray-800 text-gray-400"}`}>الطلبات</button>
       </div>
 
       {tab === "products" && (
         <>
-          <div className="grid grid-cols-4 gap-3">
-            {[
-              ["إجمالي المنتجات", products.length, "text-white"],
-              ["منتجات نشطة", products.filter((p) => p.active).length, "text-green-400"],
-              ["مبيعات إجمالية", products.reduce((s, p) => s + p.sold, 0), "text-yellow-400"],
-              ["إيراد المبيعات", totalRevenue.toLocaleString("ar-EG") + " ج.م", "text-red-400"],
-            ].map(([label, val, color]) => (
-              <div key={label as string} className="bg-gray-900/60 border border-gray-800 rounded-xl p-4 text-center">
-                <div className={`text-xl font-black ${color}`}>{val}</div>
-                <div className="text-gray-500 text-xs mt-1">{label}</div>
+          <div className="grid gap-4 xl:grid-cols-[1.5fr,1fr]">
+            <div className="rounded-2xl border border-gray-800 bg-gray-900/60 p-5">
+              <div className="mb-4 flex items-center justify-between">
+                <div>
+                  <h3 className="font-black text-white">أقسام المنتجات</h3>
+                  <p className="text-xs text-gray-500">كل قسم يمكن ربطه بمقاسات ملابس أو أحذية أو بدون مقاسات.</p>
+                </div>
+                <button onClick={() => setCategoryModal({ key: "", label: "", sizeType: "none", sortOrder: categories.length, active: true })} className="rounded-xl bg-pink-600 px-4 py-2 text-sm font-bold text-white">+ قسم</button>
               </div>
-            ))}
-          </div>
-
-          <div className="flex flex-wrap gap-3">
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="ابحث عن منتج..."
-              className="flex-1 min-w-48 bg-gray-800 border border-gray-700 focus:border-red-500 rounded-xl px-4 py-2.5 text-white text-sm outline-none transition-colors placeholder-gray-600"
-            />
-            <div className="flex gap-1">
-              {["الكل", ...Object.keys(CAT_LABELS)].map((c) => (
-                <button key={c} onClick={() => setCatFilter(c)} className={`px-3 py-2 rounded-xl text-xs font-bold transition-colors ${catFilter === c ? "bg-yellow-500 text-black" : "bg-gray-800 text-gray-400 hover:bg-gray-700"}`}>
-                  {c === "الكل" ? "الكل" : CAT_LABELS[c as Product["category"]]}
-                </button>
-              ))}
-            </div>
-            <button onClick={() => setModal(EMPTY)} className="bg-red-600 hover:bg-red-700 text-white font-bold px-4 py-2.5 rounded-xl text-sm transition-colors">
-              + منتج جديد
-            </button>
-          </div>
-
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredProducts.map((p) => (
-              <div key={p.id} className={`bg-gray-900/60 border rounded-2xl p-5 transition-all ${p.active ? "border-gray-800" : "border-gray-800 opacity-60"}`}>
-                <div className="flex items-start justify-between mb-3">
-                  <span className="text-4xl">{p.emoji}</span>
-                  <div className="flex items-center gap-2">
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${CAT_COLORS[p.category]}`}>{CAT_LABELS[p.category]}</span>
-                    <button onClick={() => toggleProduct(p.id, p.active)} className={`relative w-10 h-5 rounded-full transition-colors ${p.active ? "bg-green-600" : "bg-gray-700"}`}>
-                      <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all shadow ${p.active ? "right-0.5" : "left-0.5"}`} />
-                    </button>
+              <div className="grid gap-3 md:grid-cols-2">
+                {categories.map((category) => (
+                  <div key={category.id} className="rounded-xl border border-gray-800 bg-black/20 p-4">
+                    <div className="font-bold text-white">{category.label}</div>
+                    <div className="text-xs text-gray-500">{category.key}</div>
+                    <div className="mt-2 text-xs text-gray-400">
+                      {category.sizeType === "clothing" ? "مقاسات ملابس" : category.sizeType === "shoes" ? "مقاسات أحذية" : "بدون مقاسات"}
+                    </div>
+                    <div className="mt-3 flex gap-2">
+                      <button onClick={() => setCategoryModal(category)} className="flex-1 rounded-lg bg-gray-800 px-3 py-2 text-xs text-white">تعديل</button>
+                      <button onClick={async () => {
+                        const res = await fetch("/api/admin/product-categories", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: category.id }) });
+                        if (!res.ok) {
+                          const data = await res.json().catch(() => ({}));
+                          window.alert(data.error ?? "تعذر حذف القسم");
+                          return;
+                        }
+                        await load();
+                      }} className="rounded-lg bg-red-950/50 px-3 py-2 text-xs text-red-300">حذف</button>
+                    </div>
                   </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-gray-800 bg-gray-900/60 p-5">
+              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ابحث عن منتج..." className={INPUT} />
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button onClick={() => setFilter("all")} className={`rounded-xl px-3 py-2 text-xs font-bold ${filter === "all" ? "bg-yellow-500 text-black" : "bg-gray-800 text-gray-400"}`}>الكل</button>
+                {categories.map((category) => (
+                  <button key={category.id} onClick={() => setFilter(category.key)} className={`rounded-xl px-3 py-2 text-xs font-bold ${filter === category.key ? "bg-yellow-500 text-black" : "bg-gray-800 text-gray-400"}`}>{category.label}</button>
+                ))}
+              </div>
+              <button onClick={() => setProductModal({ ...EMPTY_PRODUCT, category: categories[0]?.key ?? "supplement" })} className="mt-4 w-full rounded-xl bg-red-600 px-4 py-2.5 text-sm font-bold text-white">+ منتج جديد</button>
+            </div>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {filteredProducts.map((product) => (
+              <div key={product.id} className="rounded-2xl border border-gray-800 bg-gray-900/60 p-5">
+                <div className="mb-3 flex items-start justify-between">
+                  <span className="text-4xl">{product.emoji}</span>
+                  <span className="rounded-full bg-pink-500/20 px-2 py-1 text-xs text-pink-300">{product.categoryLabel ?? categoryMap.get(product.category)?.label ?? product.category}</span>
                 </div>
-                <h4 className="text-white font-black mb-1">{p.name}</h4>
-                {p.description && <p className="text-gray-500 text-xs mb-2 line-clamp-2">{p.description}</p>}
-                <div className="text-yellow-400 font-black text-lg mb-1">{p.price.toLocaleString("ar-EG")} ج.م</div>
-                <div className="flex gap-4 text-xs text-gray-400 mb-2">
-                  <span>المخزون: <span className={p.stock <= 10 ? "text-red-400 font-bold" : "text-gray-300"}>{p.stock}</span></span>
-                  <span>المبيعات: <span className="text-gray-300">{p.sold}</span></span>
-                </div>
-                <div className="flex gap-3 text-[11px] text-gray-500 mb-3">
-                  <span>صور: {p.images?.length ?? 0}</span>
-                  <span>مقاسات: {p.sizes?.length ?? 0}</span>
-                </div>
-                {p.stock <= 10 && <div className="text-xs text-red-400 bg-red-900/20 px-2 py-1 rounded-lg mb-3">⚠️ مخزون منخفض</div>}
-                <div className="flex gap-2">
-                  <button onClick={() => setModal(p)} className="flex-1 bg-gray-700 hover:bg-gray-600 text-white text-xs font-bold py-2 rounded-lg transition-colors">تعديل</button>
-                  <button onClick={() => deleteProduct(p.id)} className="bg-red-900/50 hover:bg-red-800 text-red-400 text-xs font-bold py-2 px-3 rounded-lg transition-colors">حذف</button>
+                <h4 className="font-black text-white">{product.name}</h4>
+                <div className="mt-1 text-sm text-yellow-400">{product.price.toLocaleString("ar-EG")} ج.م</div>
+                <div className="mt-2 text-xs text-gray-500">صور: {product.images?.length ?? 0} | مقاسات: {product.sizes?.length ?? 0}</div>
+                <div className="mt-3 flex gap-2">
+                  <button onClick={() => setProductModal({ ...product })} className="flex-1 rounded-lg bg-gray-800 px-3 py-2 text-xs text-white">تعديل</button>
+                  <button onClick={async () => {
+                    if (!window.confirm("حذف المنتج؟")) return;
+                    await fetch("/api/admin/products", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: product.id }) });
+                    await load();
+                  }} className="rounded-lg bg-red-950/50 px-3 py-2 text-xs text-red-300">حذف</button>
                 </div>
               </div>
             ))}
@@ -234,145 +226,107 @@ export default function Products() {
       )}
 
       {tab === "orders" && (
-        <div className="bg-gray-900/60 border border-gray-800 rounded-2xl overflow-hidden">
-          <div className="p-4 border-b border-gray-800 flex items-center justify-between">
-            <h3 className="text-white font-black">الطلبات</h3>
-            <div className="flex gap-2 text-xs">
-              {Object.entries(ORDER_STATUS).map(([k, v]) => (
-                <span key={k} className={`px-2 py-1 rounded-full font-bold ${v.color}`}>
-                  {orders.filter((o) => o.status === k).length} {v.label}
-                </span>
-              ))}
-            </div>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-800 text-gray-500 text-xs">
-                  {["رقم الطلب", "العميل", "المنتج", "الكمية", "الإجمالي", "التاريخ", "الحالة", ""].map((h) => (
-                    <th key={h} className="text-right py-3 px-4 font-medium">{h}</th>
-                  ))}
+        <div className="overflow-hidden rounded-2xl border border-gray-800 bg-gray-900/60">
+          <table className="w-full text-sm">
+            <thead className="border-b border-gray-800 text-xs text-gray-500">
+              <tr>
+                {["العميل", "المنتج", "الكمية", "الإجمالي", "الحالة"].map((header) => <th key={header} className="px-4 py-3 text-right">{header}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {orders.map((order) => (
+                <tr key={order.id} className="border-b border-gray-800/50">
+                  <td className="px-4 py-3 text-white">{order.customerName}</td>
+                  <td className="px-4 py-3 text-gray-300">{order.product}</td>
+                  <td className="px-4 py-3 text-gray-300">{order.quantity}</td>
+                  <td className="px-4 py-3 text-yellow-400">{order.total.toLocaleString("ar-EG")} ج.م</td>
+                  <td className="px-4 py-3">
+                    <select value={order.status} onChange={async (e) => {
+                      await fetch("/api/admin/orders", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: order.id, status: e.target.value }) });
+                      await load();
+                    }} className="rounded-lg border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-white">
+                      <option value="pending">معلق</option>
+                      <option value="confirmed">مؤكد</option>
+                      <option value="delivered">تم التسليم</option>
+                      <option value="cancelled">ملغي</option>
+                    </select>
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {orders.map((order) => (
-                  <tr key={order.id} className="border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors">
-                    <td className="py-3 px-4 text-gray-500 text-xs font-mono">#{order.id}</td>
-                    <td className="py-3 px-4 text-white font-medium">{order.customerName}</td>
-                    <td className="py-3 px-4 text-gray-400">{order.product}</td>
-                    <td className="py-3 px-4 text-gray-400">{order.quantity}</td>
-                    <td className="py-3 px-4 text-yellow-400 font-bold">{order.total.toLocaleString("ar-EG")} ج.م</td>
-                    <td className="py-3 px-4 text-gray-500 text-xs">{order.date}</td>
-                    <td className="py-3 px-4">
-                      <span className={`text-xs px-2 py-1 rounded-full font-bold ${ORDER_STATUS[order.status].color}`}>
-                        {ORDER_STATUS[order.status].label}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4">
-                      <select
-                        value={order.status}
-                        onChange={(e) => updateOrderStatus(order.id, e.target.value as Order["status"])}
-                        className="bg-gray-800 border border-gray-700 text-white text-xs rounded-lg px-2 py-1 outline-none"
-                      >
-                        <option value="pending">معلق</option>
-                        <option value="confirmed">مؤكد</option>
-                        <option value="delivered">تم التسليم</option>
-                        <option value="cancelled">ملغي</option>
-                      </select>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 
-      {modal && (
-        <Modal title={"id" in modal ? "تعديل المنتج" : "منتج جديد"} onClose={() => setModal(null)}>
+      {productModal && (
+        <Modal title={productModal.id ? "تعديل المنتج" : "منتج جديد"} onClose={() => setProductModal(null)}>
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <Field label="الأيقونة">
-                <input value={modal.emoji} onChange={(e) => setModal({ ...modal, emoji: e.target.value })} className={INPUT} />
-              </Field>
-              <Field label="الفئة">
-                <select value={modal.category} onChange={(e) => setModal({ ...modal, category: e.target.value as Product["category"] })} className={INPUT}>
-                  {Object.entries(CAT_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                </select>
-              </Field>
+            <div className="grid gap-4 md:grid-cols-2">
+              <input value={productModal.name} onChange={(e) => setProductModal({ ...productModal, name: e.target.value })} placeholder="اسم المنتج" className={INPUT} />
+              <select value={productModal.category} onChange={(e) => setProductModal({ ...productModal, category: e.target.value, sizes: [] })} className={INPUT}>
+                {categories.map((category) => <option key={category.id} value={category.key}>{category.label}</option>)}
+              </select>
+              <input value={productModal.emoji} onChange={(e) => setProductModal({ ...productModal, emoji: e.target.value })} placeholder="أيقونة" className={INPUT} />
+              <input type="number" value={productModal.stock} onChange={(e) => setProductModal({ ...productModal, stock: Number(e.target.value) })} placeholder="المخزون" className={INPUT} />
+              <input type="number" value={productModal.price} onChange={(e) => setProductModal({ ...productModal, price: Number(e.target.value) })} placeholder="السعر" className={INPUT} />
+              <input type="number" value={productModal.oldPrice ?? ""} onChange={(e) => setProductModal({ ...productModal, oldPrice: e.target.value ? Number(e.target.value) : null })} placeholder="السعر قبل الخصم" className={INPUT} />
             </div>
 
-            <Field label="اسم المنتج">
-              <input value={modal.name} onChange={(e) => setModal({ ...modal, name: e.target.value })} className={INPUT} />
-            </Field>
+            <textarea value={productModal.description ?? ""} onChange={(e) => setProductModal({ ...productModal, description: e.target.value })} placeholder="وصف المنتج" rows={3} className={`${INPUT} resize-none`} />
 
-            <div className="grid grid-cols-2 gap-4">
-              <Field label="السعر (ج.م)">
-                <input type="number" value={modal.price} onChange={(e) => setModal({ ...modal, price: +e.target.value })} className={INPUT} dir="ltr" />
-              </Field>
-              <Field label="السعر قبل الخصم">
-                <input type="number" value={modal.oldPrice ?? 0} onChange={(e) => setModal({ ...modal, oldPrice: e.target.value ? +e.target.value : null })} className={INPUT} dir="ltr" />
-              </Field>
+            <div className="space-y-3">
+              <input type="file" multiple accept="image/*" onChange={(e) => { void uploadImages(e.target.files); e.currentTarget.value = ""; }} className="block w-full text-sm text-gray-400 file:ml-3 file:rounded-lg file:border-0 file:bg-red-600 file:px-4 file:py-2 file:text-sm file:font-bold file:text-white" />
+              {uploading && <div className="text-xs text-yellow-400">جارٍ رفع الصور...</div>}
+              <textarea value={fromList(productModal.images)} onChange={(e) => setProductModal({ ...productModal, images: toList(e.target.value) })} rows={4} className={`${INPUT} resize-none`} placeholder="رابط في كل سطر" />
+              {!!productModal.images?.length && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {productModal.images.map((image, index) => (
+                    <div key={`${image}-${index}`} className="rounded-xl border border-gray-700 bg-gray-800 p-2">
+                      <img src={image} alt={`product-${index + 1}`} className="mb-2 h-28 w-full rounded-lg object-cover" />
+                      <button type="button" onClick={() => setProductModal({ ...productModal, images: productModal.images?.filter((_, i) => i !== index) ?? [] })} className="w-full text-xs text-red-400">حذف الصورة</button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
-            <Field label="المخزون">
-              <input type="number" value={modal.stock} onChange={(e) => setModal({ ...modal, stock: +e.target.value })} className={INPUT} dir="ltr" />
-            </Field>
-
-            <Field label="وصف المنتج">
-              <textarea value={modal.description ?? ""} onChange={(e) => setModal({ ...modal, description: e.target.value })} rows={3} className={`${INPUT} resize-none`} />
-            </Field>
-
-            <Field label="روابط الصور - كل رابط في سطر">
-              <div className="space-y-3">
-                <input
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp,image/gif"
-                  multiple
-                  onChange={(e) => { void handleImageUpload(e.target.files); e.currentTarget.value = ""; }}
-                  className="block w-full text-sm text-gray-400 file:ml-3 file:rounded-lg file:border-0 file:bg-red-600 file:px-4 file:py-2 file:text-sm file:font-bold file:text-white hover:file:bg-red-700"
-                />
-                {uploading && <div className="text-xs text-yellow-400">جارٍ رفع الصور...</div>}
-                <textarea
-                  value={fromList(modal.images)}
-                  onChange={(e) => setModal({ ...modal, images: toList(e.target.value) })}
-                  rows={4}
-                  placeholder={"يمكنك أيضًا إدخال روابط صور يدويًا هنا"}
-                  className={`${INPUT} resize-none`}
-                  dir="ltr"
-                />
-                {!!modal.images?.length && (
-                  <div className="grid grid-cols-2 gap-3">
-                    {modal.images.map((image, index) => (
-                      <div key={`${image}-${index}`} className="bg-gray-800 rounded-xl p-2 border border-gray-700">
-                        <img src={image} alt={`product-${index + 1}`} className="w-full h-28 object-cover rounded-lg mb-2" />
-                        <button
-                          type="button"
-                          onClick={() => setModal({ ...modal, images: modal.images?.filter((_, i) => i !== index) ?? [] })}
-                          className="w-full text-xs text-red-400 hover:text-red-300 transition-colors"
-                        >
-                          حذف الصورة
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
+            {sizeType !== "none" && (
+              <div className="flex flex-wrap gap-2">
+                {(sizeType === "shoes" ? SHOES : CLOTHING).map((size) => (
+                  <button key={size} type="button" onClick={() => setProductModal({ ...productModal, sizes: toggle(productModal.sizes, size) })} className={`rounded-lg border px-3 py-1.5 text-xs font-bold ${productModal.sizes?.includes(size) ? "border-red-600 bg-red-600 text-white" : "border-gray-700 bg-gray-800 text-gray-400"}`}>
+                    {size}
+                  </button>
+                ))}
               </div>
-            </Field>
+            )}
 
-            <Field label="المقاسات - كل مقاس في سطر أو مفصول بفاصلة">
-              <textarea
-                value={fromList(modal.sizes)}
-                onChange={(e) => setModal({ ...modal, sizes: toList(e.target.value) })}
-                rows={3}
-                placeholder={"36\n37\n38\nM\nL\nXL"}
-                className={`${INPUT} resize-none`}
-              />
-            </Field>
+            <div className="flex flex-wrap gap-2">
+              {["#111111", "#FFFFFF", "#6B7280", "#EF4444", "#3B82F6", "#22C55E", "#EC4899", "#D4A574"].map((color) => (
+                <button key={color} type="button" onClick={() => setProductModal({ ...productModal, colors: toggle(productModal.colors, color) })} className={`h-8 w-8 rounded-full border-2 ${productModal.colors?.includes(color) ? "border-red-500" : "border-gray-600"}`} style={{ backgroundColor: color }} />
+              ))}
+            </div>
 
-            <button onClick={save} disabled={saving} className="w-full bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-black py-3 rounded-xl transition-colors">
-              {saving ? "جارٍ الحفظ..." : "💾 حفظ المنتج"}
-            </button>
+            <button onClick={() => void saveProduct()} disabled={saving} className="w-full rounded-xl bg-red-600 py-3 font-black text-white disabled:opacity-50">{saving ? "جارٍ الحفظ..." : "حفظ المنتج"}</button>
+          </div>
+        </Modal>
+      )}
+
+      {categoryModal && (
+        <Modal title={categoryModal.id ? "تعديل القسم" : "قسم جديد"} onClose={() => setCategoryModal(null)}>
+          <div className="space-y-4">
+            <input value={categoryModal.label} onChange={(e) => setCategoryModal({ ...categoryModal, label: e.target.value })} placeholder="اسم القسم" className={INPUT} />
+            <input value={categoryModal.key} onChange={(e) => setCategoryModal({ ...categoryModal, key: e.target.value })} placeholder="المفتاح" className={INPUT} dir="ltr" />
+            <select value={categoryModal.sizeType} onChange={(e) => setCategoryModal({ ...categoryModal, sizeType: e.target.value as "none" | "clothing" | "shoes" })} className={INPUT}>
+              <option value="none">بدون مقاسات</option>
+              <option value="clothing">مقاسات ملابس</option>
+              <option value="shoes">مقاسات أحذية</option>
+            </select>
+            <input type="number" value={categoryModal.sortOrder} onChange={(e) => setCategoryModal({ ...categoryModal, sortOrder: Number(e.target.value) })} placeholder="الترتيب" className={INPUT} />
+            <select value={categoryModal.active ? "active" : "inactive"} onChange={(e) => setCategoryModal({ ...categoryModal, active: e.target.value === "active" })} className={INPUT}>
+              <option value="active">نشط</option>
+              <option value="inactive">مخفي</option>
+            </select>
+            <button onClick={() => void saveCategory()} disabled={saving} className="w-full rounded-xl bg-pink-600 py-3 font-black text-white disabled:opacity-50">{saving ? "جارٍ الحفظ..." : "حفظ القسم"}</button>
           </div>
         </Modal>
       )}

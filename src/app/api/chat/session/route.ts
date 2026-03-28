@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { initializeChatSession, serializeMessages } from "@/lib/chatbot";
+import { applyRateLimit, getClientIp } from "@/lib/rate-limit";
 
 export async function GET(req: NextRequest) {
   try {
@@ -32,8 +33,17 @@ export async function GET(req: NextRequest) {
   }
 }
 
-export async function POST() {
+export async function POST(req: Request) {
   try {
+    const clientIp = getClientIp(req);
+    const limit = applyRateLimit(`chat-session:${clientIp}`, 10, 10 * 60 * 1000);
+    if (!limit.ok) {
+      return NextResponse.json(
+        { error: "Too many chat session requests. Please try again shortly.", messages: [] },
+        { status: 429, headers: { "Retry-After": String(Math.ceil(limit.retryAfterMs / 1000)) } },
+      );
+    }
+
     const session = await db.chatSession.create({
       data: {},
     });

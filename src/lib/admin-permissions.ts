@@ -11,12 +11,13 @@ export type AdminFeature =
   | "classes"
   | "customers"
   | "products"
+  | "reviews"
   | "orders"
   | "balance"
   | "chat"
   | "complaints";
 
-const STAFF_SECTIONS: Section[] = ["pages", "knowledge", "subscriptions", "classes", "customers", "chat"];
+const STAFF_SECTIONS: Section[] = ["pages", "knowledge", "subscriptions", "classes", "customers", "chat", "reviews"];
 const ADMIN_SECTIONS: Section[] = [
   "overview",
   "pages",
@@ -24,13 +25,14 @@ const ADMIN_SECTIONS: Section[] = [
   "subscriptions",
   "classes",
   "products",
+  "reviews",
   "balance",
   "customers",
   "chat",
   "complaints",
 ];
 
-const STAFF_FEATURES: AdminFeature[] = ["site-content", "knowledge", "memberships", "offers", "classes", "customers", "chat"];
+const STAFF_FEATURES: AdminFeature[] = ["site-content", "knowledge", "memberships", "offers", "classes", "customers", "chat", "reviews"];
 const ADMIN_FEATURES: AdminFeature[] = [
   "overview",
   "site-content",
@@ -40,6 +42,7 @@ const ADMIN_FEATURES: AdminFeature[] = [
   "classes",
   "customers",
   "products",
+  "reviews",
   "orders",
   "balance",
   "chat",

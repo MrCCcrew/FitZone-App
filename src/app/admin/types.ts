@@ -5,6 +5,7 @@ export type Section =
   | "subscriptions"
   | "classes"
   | "products"
+  | "reviews"
   | "balance"
   | "customers"
   | "chat"
@@ -60,7 +61,9 @@ export interface GymClass {
 export interface Product {
   id: string;
   name: string;
-  category: "supplement" | "gear" | "clothing" | "accessory";
+  category: string;
+  categoryLabel?: string;
+  sizeType?: "none" | "clothing" | "shoes";
   price: number;
   oldPrice?: number | null;
   stock: number;
@@ -70,6 +73,16 @@ export interface Product {
   description?: string;
   images?: string[];
   sizes?: string[];
+  colors?: string[];
+}
+
+export interface ProductCategory {
+  id: string;
+  key: string;
+  label: string;
+  sizeType: "none" | "clothing" | "shoes";
+  sortOrder: number;
+  active: boolean;
 }
 
 export interface Order {
@@ -143,4 +156,15 @@ export interface ChatKnowledgeEntry {
   priority: number;
   active: boolean;
   updatedAt: string;
+}
+
+export interface Testimonial {
+  id: string;
+  displayName: string;
+  content: string;
+  rating: number;
+  status: "pending" | "approved" | "rejected";
+  adminNote?: string | null;
+  createdAt: string;
+  user: { id: string; name: string | null; email: string | null };
 }

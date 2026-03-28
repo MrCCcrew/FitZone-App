@@ -6,6 +6,15 @@ const globalForPrisma = globalThis as unknown as {
   prismaAdapter: PrismaMariaDb | undefined;
 };
 
+function getConnectionLimit() {
+  const raw = Number(process.env.DB_CONNECTION_LIMIT ?? process.env.PRISMA_CONNECTION_LIMIT ?? "");
+  if (Number.isFinite(raw) && raw > 0) {
+    return Math.min(Math.max(Math.floor(raw), 1), 10);
+  }
+
+  return process.env.NODE_ENV === "production" ? 5 : 2;
+}
+
 function normalizeDatabaseUrl(value: string) {
   let trimmed = value.trim();
 
@@ -43,7 +52,7 @@ function getAdapter() {
     charset: "utf8mb4",
     connectTimeout: 5000,
     idleTimeout: 300,
-    connectionLimit: process.env.NODE_ENV === "production" ? 3 : 2,
+    connectionLimit: getConnectionLimit(),
   });
 
   globalForPrisma.prismaAdapter = adapter;
@@ -57,8 +66,6 @@ const prisma =
     log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
   });
 
-if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.prisma = prisma;
-}
+globalForPrisma.prisma = prisma;
 
 export const db = prisma;

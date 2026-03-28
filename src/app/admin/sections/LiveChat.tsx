@@ -38,13 +38,19 @@ export default function LiveChat() {
     loadSessions().catch(() => setLoading(false));
     const poll = setInterval(() => {
       loadSessions().catch(() => {});
+    }, 25000);
+
+    const presencePulse = setInterval(() => {
       fetch("/api/chat/admin/presence", { method: "POST" }).catch(() => {});
-    }, 10000);
+    }, 60000);
 
     fetch("/api/chat/admin/presence", { method: "POST" }).catch(() => {});
 
-    return () => clearInterval(poll);
-  }, [selectedId]);
+    return () => {
+      clearInterval(poll);
+      clearInterval(presencePulse);
+    };
+  }, []);
 
   const updateSession = async (payload: Record<string, unknown>) => {
     if (!selected) return;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ComponentType } from "react";
 import { useRouter } from "next/navigation";
 import type { Section } from "./types";
 import { canAccessAdminSection, getDefaultAdminSection, isAdminRole } from "@/lib/admin-permissions";
@@ -10,6 +10,7 @@ import ChatKnowledge from "./sections/ChatKnowledge";
 import Subscriptions from "./sections/Subscriptions";
 import Classes from "./sections/Classes";
 import Products from "./sections/Products";
+import Testimonials from "./sections/Testimonials";
 import Balance from "./sections/Balance";
 import Customers from "./sections/Customers";
 import LiveChat from "./sections/LiveChat";
@@ -20,8 +21,9 @@ const NAV: { id: Section; label: string; icon: string; badge?: string }[] = [
   { id: "pages", label: "الصفحات والمحتوى", icon: "📄" },
   { id: "knowledge", label: "قاعدة معرفة البوت", icon: "KB" },
   { id: "subscriptions", label: "الاشتراكات والعروض", icon: "🎯" },
-  { id: "classes", label: "الكلاسات والجدول", icon: "🏋️" },
-  { id: "products", label: "المنتجات والطلبات", icon: "🛒" },
+  { id: "classes", label: "الكلاسات والجدول", icon: "🗓️" },
+  { id: "products", label: "المنتجات والطلبات", icon: "🛍️" },
+  { id: "reviews", label: "آراء العملاء", icon: "⭐" },
   { id: "balance", label: "الرصيد والنقاط", icon: "💰" },
   { id: "chat", label: "الدردشة المباشرة", icon: "💬" },
   { id: "customers", label: "العملاء", icon: "👥" },
@@ -35,19 +37,21 @@ const SECTION_TITLES: Record<Section, string> = {
   subscriptions: "إدارة الاشتراكات والعروض",
   classes: "إدارة الكلاسات والجدول",
   products: "إدارة المنتجات والطلبات",
+  reviews: "إدارة آراء العملاء",
   balance: "إدارة الرصيد والنقاط",
   chat: "الدردشة المباشرة",
   customers: "إدارة العملاء",
   complaints: "إدارة الشكاوى",
 };
 
-const SECTIONS: Record<Section, React.ComponentType> = {
+const SECTIONS: Record<Section, ComponentType> = {
   overview: Overview,
   pages: PagesContent,
   knowledge: ChatKnowledge,
   subscriptions: Subscriptions,
   classes: Classes,
   products: Products,
+  reviews: Testimonials,
   balance: Balance,
   chat: LiveChat,
   customers: Customers,
@@ -102,7 +106,7 @@ export default function AdminPanel() {
       }
     }
 
-    loadSession();
+    void loadSession();
     return () => {
       cancelled = true;
     };
@@ -127,7 +131,7 @@ export default function AdminPanel() {
 
   if (status === "loading") {
     return (
-      <div dir="rtl" className="flex min-h-screen items-center justify-center bg-black text-white">
+      <div dir="rtl" className="admin-theme flex min-h-screen items-center justify-center bg-[linear-gradient(180deg,#2a0f1b_0%,#391320_48%,#4a1b2d_100%)] text-[#fff4f8]">
         <div className="text-center">
           <div className="mb-3 text-3xl">⏳</div>
           <div className="text-sm text-gray-400">جارٍ تحميل لوحة الإدارة...</div>
@@ -138,7 +142,7 @@ export default function AdminPanel() {
 
   if (!session?.user || !isAdminRole(role)) {
     return (
-      <div dir="rtl" className="flex min-h-screen items-center justify-center bg-black text-white">
+      <div dir="rtl" className="admin-theme flex min-h-screen items-center justify-center bg-[linear-gradient(180deg,#2a0f1b_0%,#391320_48%,#4a1b2d_100%)] text-[#fff4f8]">
         <div className="text-center">
           <div className="mb-3 text-3xl">🔒</div>
           <div className="text-sm text-gray-400">جارٍ التحقق من صلاحيات الدخول...</div>
@@ -156,30 +160,30 @@ export default function AdminPanel() {
   const handleLogout = async () => {
     setLoggingOut(true);
     try {
-      await fetch("/api/admin/logout", { method: "POST" });
+      await fetch("/api/admin/logout", { method: "POST", credentials: "same-origin", cache: "no-store" });
     } finally {
-      window.location.href = "/admin/login";
+      window.location.replace(`/admin/login?logout=${Date.now()}`);
     }
   };
 
-  const adminName = session.user?.name ?? "المدير العام";
-  const adminEmail = session.user?.email ?? "admin@fitzoneland.com";
+  const adminName = session.user.name ?? "المدير العام";
+  const adminEmail = session.user.email ?? "admin@fitzoneland.com";
   const adminInitial = adminName.charAt(0);
 
   return (
-    <div dir="rtl" className="flex min-h-screen overflow-hidden bg-black text-white lg:h-screen">
+    <div dir="rtl" className="admin-theme flex min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top,rgba(255,140,190,0.22),transparent_34%),radial-gradient(circle_at_bottom_left,rgba(255,186,216,0.16),transparent_30%),linear-gradient(180deg,#2a0f1b_0%,#391320_48%,#4a1b2d_100%)] text-[#fff4f8] lg:h-screen">
       {sidebarOpen && <div className="fixed inset-0 z-30 bg-black/60 lg:hidden" onClick={() => setSidebarOpen(false)} />}
 
       <aside
-        className={`fixed inset-y-0 right-0 z-40 flex w-64 flex-col border-l border-gray-800 bg-gray-950 transition-transform duration-300 ease-in-out lg:static ${
+        className={`fixed inset-y-0 right-0 z-40 flex w-64 flex-col border-l border-[rgba(255,188,219,0.16)] bg-[rgba(41,13,25,0.78)] backdrop-blur-xl transition-transform duration-300 ease-in-out lg:static ${
           sidebarOpen ? "translate-x-0" : "translate-x-full lg:translate-x-0"
         }`}
       >
-        <div className="flex items-center justify-between border-b border-gray-800 px-5 py-5">
+        <div className="flex items-center justify-between border-b border-[rgba(255,188,219,0.16)] px-5 py-5">
           <div className="flex items-center gap-1.5" dir="ltr">
             <span className="text-xl font-black text-red-600">FIT</span>
-            <span className="text-xl font-black text-yellow-400">ZONE</span>
-            <span className="rounded-full bg-gray-800 px-1.5 py-0.5 text-[10px] font-bold text-gray-500">ADMIN</span>
+            <span className="text-xl font-black text-pink-300">ZONE</span>
+            <span className="rounded-full bg-pink-500/12 px-1.5 py-0.5 text-[10px] font-bold text-pink-200">ADMIN</span>
           </div>
           <button onClick={() => setSidebarOpen(false)} className="text-gray-500 transition-colors hover:text-white lg:hidden">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-5 w-5">
@@ -189,14 +193,14 @@ export default function AdminPanel() {
           </button>
         </div>
 
-        <div className="border-b border-gray-800 px-5 py-4">
+        <div className="border-b border-[rgba(255,188,219,0.16)] px-5 py-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-red-700 to-red-900 text-sm font-black">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-pink-500 via-fuchsia-500 to-pink-800 text-sm font-black shadow-[0_18px_40px_rgba(190,24,93,0.35)]">
               {adminInitial}
             </div>
             <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-bold text-white">{adminName}</div>
-              <div className="truncate text-xs text-gray-500">{adminEmail}</div>
+              <div className="truncate text-sm font-bold text-[#fff7fb]">{adminName}</div>
+              <div className="truncate text-xs text-[#d7aabd]">{adminEmail}</div>
             </div>
           </div>
         </div>
@@ -207,7 +211,7 @@ export default function AdminPanel() {
               key={item.id}
               onClick={() => navigate(item.id)}
               className={`w-full rounded-xl px-4 py-2.5 text-right text-sm font-medium transition-all ${
-                safeActive === item.id ? "bg-red-600 text-white shadow-lg shadow-red-900/30" : "text-gray-400 hover:bg-gray-800 hover:text-white"
+                safeActive === item.id ? "bg-gradient-to-r from-pink-600 to-pink-500 text-white shadow-[0_18px_40px_rgba(190,24,93,0.34)]" : "text-[#d7aabd] hover:bg-[rgba(255,130,186,0.14)] hover:text-white"
               }`}
             >
               <span className="flex items-center gap-3">
@@ -223,8 +227,8 @@ export default function AdminPanel() {
           ))}
         </nav>
 
-        <div className="space-y-1 border-t border-gray-800 px-3 py-4">
-          <a href="/" className="flex items-center gap-3 rounded-xl px-4 py-2.5 text-sm text-gray-500 transition-all hover:bg-gray-800 hover:text-white">
+        <div className="space-y-1 border-t border-[rgba(255,188,219,0.16)] px-3 py-4">
+          <a href="/" className="flex items-center gap-3 rounded-xl px-4 py-2.5 text-sm text-[#d7aabd] transition-all hover:bg-[rgba(255,130,186,0.14)] hover:text-white">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-4 w-4 rotate-180">
               <path d="M19 12H5M12 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
@@ -244,7 +248,7 @@ export default function AdminPanel() {
       </aside>
 
       <div className="flex flex-1 flex-col overflow-hidden">
-        <header className="flex items-center justify-between border-b border-gray-800 bg-gray-950/80 px-6 py-4 backdrop-blur">
+        <header className="flex items-center justify-between border-b border-[#ffbcdb]/20 bg-[#14060d]/92 px-6 py-4 backdrop-blur-xl">
           <div className="flex items-center gap-3">
             <button onClick={() => setSidebarOpen(true)} className="text-gray-400 transition-colors hover:text-white lg:hidden">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-5 w-5">
@@ -260,7 +264,7 @@ export default function AdminPanel() {
           </div>
 
           <div className="flex items-center gap-3">
-            <span className="hidden text-xs text-gray-500 sm:block">
+            <span className="hidden text-xs text-[#d7aabd] sm:block">
               {new Date().toLocaleDateString("ar-EG", {
                 weekday: "long",
                 year: "numeric",
@@ -271,7 +275,7 @@ export default function AdminPanel() {
             <button
               onClick={() => navigate("complaints")}
               disabled={!canAccessAdminSection(role, "complaints")}
-              className="relative rounded-xl bg-gray-800 p-2 text-gray-400 transition-colors hover:bg-gray-700 hover:text-white disabled:opacity-40"
+              className="relative rounded-xl bg-[rgba(63,20,38,0.76)] p-2 text-[#d7aabd] transition-colors hover:bg-[rgba(255,130,186,0.14)] hover:text-white disabled:opacity-40"
               title="الشكاوى"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-5 w-5">
