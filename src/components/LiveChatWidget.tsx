@@ -19,10 +19,17 @@ type ChatSessionPayload = {
   visitorPhone?: string | null;
   messages: ChatMessage[];
   recommendedMembership?: { id: string; name: string; price: number } | null;
+  error?: string;
 };
 
 const STORAGE_KEY = "fitzone-live-chat-session";
 const VISITOR_KEY = "fitzone-live-chat-visitor";
+
+function normalizeSessionId(raw: string | null) {
+  const value = raw?.trim();
+  if (!value || value === "undefined" || value === "null") return "";
+  return value;
+}
 
 function parseStoredVisitor(raw: string | null) {
   if (!raw) return { name: "", phone: "" };
@@ -50,6 +57,7 @@ export default function LiveChatWidget() {
   const [status, setStatus] = useState<"open" | "live" | "resolved">("open");
   const [recommendedMembership, setRecommendedMembership] =
     useState<ChatSessionPayload["recommendedMembership"]>(null);
+  const [error, setError] = useState("");
 
   const lastMessageId = useMemo(() => messages[messages.length - 1]?.id, [messages]);
 
@@ -72,14 +80,15 @@ export default function LiveChatWidget() {
 
   const applyPayload = (data: ChatSessionPayload) => {
     setSessionId(data.id);
-    setMessages(data.messages ?? []);
+    setMessages(Array.isArray(data.messages) ? data.messages : []);
     setRecommendedMembership(data.recommendedMembership ?? null);
     setStatus(data.status ?? "open");
+    setError(data.error ?? "");
 
     if (data.status === "resolved") {
       clearStoredSession();
       setSessionId("");
-    } else if (typeof window !== "undefined") {
+    } else if (typeof window !== "undefined" && data.id) {
       window.sessionStorage.setItem(STORAGE_KEY, data.id);
     }
   };
@@ -90,11 +99,16 @@ export default function LiveChatWidget() {
     setRecommendedMembership(null);
     setStatus("open");
     setInput("");
+    setError("");
 
     const res = await fetch("/api/chat/session", { method: "POST" });
-    if (!res.ok) return "";
+    const data = (await res.json().catch(() => ({}))) as ChatSessionPayload;
 
-    const data = (await res.json()) as ChatSessionPayload;
+    if (!res.ok || !data?.id) {
+      setError(data.error ?? "تعذر بدء المحادثة الآن. حاول مرة أخرى بعد قليل.");
+      return "";
+    }
+
     applyPayload(data);
 
     if (name.trim() || phone.trim()) {
@@ -106,14 +120,22 @@ export default function LiveChatWidget() {
 
   const loadPresence = async () => {
     const res = await fetch("/api/chat/presence", { cache: "no-store" });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({ online: false }));
     setOnline(Boolean(data.online));
   };
 
   const loadSession = async (id: string) => {
-    const res = await fetch(`/api/chat/session?sessionId=${id}`, { cache: "no-store" });
-    if (!res.ok) return;
-    const data = (await res.json()) as ChatSessionPayload;
+    const validId = normalizeSessionId(id);
+    if (!validId) return;
+
+    const res = await fetch(`/api/chat/session?sessionId=${validId}`, { cache: "no-store" });
+    const data = (await res.json().catch(() => ({}))) as ChatSessionPayload;
+    if (!res.ok || !data?.id) {
+      clearStoredSession();
+      if (open) setError(data.error ?? "تعذر تحميل المحادثة الحالية.");
+      return;
+    }
+
     applyPayload(data);
   };
 
@@ -123,7 +145,9 @@ export default function LiveChatWidget() {
       phone: phone.trim(),
     };
 
-    const storedId = typeof window !== "undefined" ? window.sessionStorage.getItem(STORAGE_KEY) : null;
+    const storedId = normalizeSessionId(
+      typeof window !== "undefined" ? window.sessionStorage.getItem(STORAGE_KEY) : null,
+    );
     const storedVisitor = parseStoredVisitor(
       typeof window !== "undefined" ? window.sessionStorage.getItem(VISITOR_KEY) : null,
     );
@@ -151,7 +175,9 @@ export default function LiveChatWidget() {
   useEffect(() => {
     loadPresence().catch(() => {});
 
-    const storedId = typeof window !== "undefined" ? window.sessionStorage.getItem(STORAGE_KEY) : null;
+    const storedId = normalizeSessionId(
+      typeof window !== "undefined" ? window.sessionStorage.getItem(STORAGE_KEY) : null,
+    );
     const storedVisitor = parseStoredVisitor(
       typeof window !== "undefined" ? window.sessionStorage.getItem(VISITOR_KEY) : null,
     );
@@ -165,14 +191,16 @@ export default function LiveChatWidget() {
 
     const interval = setInterval(() => {
       loadPresence().catch(() => {});
-      const latest = typeof window !== "undefined" ? window.sessionStorage.getItem(STORAGE_KEY) : null;
+      const latest = normalizeSessionId(
+        typeof window !== "undefined" ? window.sessionStorage.getItem(STORAGE_KEY) : null,
+      );
       if (latest) {
         loadSession(latest).catch(() => {});
       }
     }, 30000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [open]);
 
   useEffect(() => {
     const latest = messages[messages.length - 1];
@@ -188,34 +216,39 @@ export default function LiveChatWidget() {
     if (!content) return;
 
     setLoading(true);
-    const id = await ensureSession();
-    if (!id) {
-      setLoading(false);
-      return;
-    }
+    setError("");
 
-    if (name.trim() || phone.trim()) {
-      saveVisitorIdentity(name, phone);
-    }
+    try {
+      const id = await ensureSession();
+      if (!id) return;
 
-    const res = await fetch("/api/chat/message", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        sessionId: id,
-        content,
-        visitorName: name,
-        visitorPhone: phone,
-      }),
-    });
+      if (name.trim() || phone.trim()) {
+        saveVisitorIdentity(name, phone);
+      }
 
-    if (res.ok) {
-      const data = (await res.json()) as ChatSessionPayload;
+      const res = await fetch("/api/chat/message", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: id,
+          content,
+          visitorName: name,
+          visitorPhone: phone,
+        }),
+      });
+
+      const data = (await res.json().catch(() => ({}))) as ChatSessionPayload;
+
+      if (!res.ok) {
+        setError(data.error ?? "تعذر إرسال الرسالة الآن.");
+        return;
+      }
+
       applyPayload(data);
       setInput("");
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
   return (
@@ -313,6 +346,21 @@ export default function LiveChatWidget() {
                 موظف مباشر
               </button>
             </div>
+            {error && (
+              <div
+                style={{
+                  background: "rgba(190,24,93,.08)",
+                  border: "1px solid rgba(190,24,93,.2)",
+                  color: "#BE185D",
+                  borderRadius: 12,
+                  padding: "10px 12px",
+                  fontSize: 12,
+                  lineHeight: 1.7,
+                }}
+              >
+                {error}
+              </div>
+            )}
           </div>
 
           <div style={{ height: 340, overflowY: "auto", padding: 14, background: "#FFF5F8" }}>

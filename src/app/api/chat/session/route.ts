@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
     });
   } catch (error) {
     console.error("[CHAT_SESSION_GET]", error);
-    return NextResponse.json({ error: "الخدمة غير متاحة مؤقتًا.", messages: [] }, { status: 200 });
+    return NextResponse.json({ error: "الخدمة غير متاحة مؤقتًا.", messages: [] }, { status: 500 });
   }
 }
 
@@ -61,6 +61,6 @@ export async function POST(req: Request) {
     });
   } catch (error) {
     console.error("[CHAT_SESSION_POST]", error);
-    return NextResponse.json({ error: "الخدمة غير متاحة مؤقتًا.", messages: [] }, { status: 200 });
+    return NextResponse.json({ error: "الخدمة غير متاحة مؤقتًا.", messages: [] }, { status: 500 });
   }
 }

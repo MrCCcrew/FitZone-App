@@ -64,6 +64,6 @@ export async function POST(req: Request) {
     });
   } catch (error) {
     console.error("[CHAT_MESSAGE_POST]", error);
-    return NextResponse.json({ error: "الخدمة غير متاحة مؤقتًا.", messages: [] }, { status: 200 });
+    return NextResponse.json({ error: "الخدمة غير متاحة مؤقتًا.", messages: [] }, { status: 500 });
   }
 }
