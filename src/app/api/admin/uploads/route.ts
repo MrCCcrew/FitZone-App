@@ -19,54 +19,64 @@ function getExtension(fileName: string, mimeType: string) {
 }
 
 export async function POST(req: Request) {
-  const guard = await requireAdminFeature("products");
-  if ("error" in guard) return guard.error;
+  try {
+    const guard = await requireAdminFeature("products");
+    if ("error" in guard) return guard.error;
 
-  const missingEnv = getMissingR2Env();
-  if (missingEnv.length > 0) {
+    const missingEnv = getMissingR2Env();
+    if (missingEnv.length > 0) {
+      return NextResponse.json(
+        {
+          error: `رفع الصور غير مُعدّ حاليًا. المتغيرات الناقصة: ${missingEnv.join(", ")}`,
+        },
+        { status: 503 }
+      );
+    }
+
+    const formData = await req.formData();
+    const file = formData.get("file");
+
+    if (!(file instanceof File)) {
+      return NextResponse.json({ error: "لم يتم اختيار ملف للرفع." }, { status: 400 });
+    }
+
+    if (!ALLOWED_TYPES.has(file.type)) {
+      return NextResponse.json({ error: "نوع الملف غير مدعوم. ارفع JPG أو PNG أو WEBP أو GIF." }, { status: 400 });
+    }
+
+    if (file.size > MAX_FILE_SIZE) {
+      return NextResponse.json({ error: "حجم الصورة كبير جدًا. الحد الأقصى 5 ميجابايت." }, { status: 400 });
+    }
+
+    const extension = getExtension(file.name, file.type);
+    if (!extension) {
+      return NextResponse.json({ error: "امتداد الملف غير صالح." }, { status: 400 });
+    }
+
+    const fileName = `${Date.now()}-${randomUUID()}${extension}`;
+    const key = `products/${fileName}`;
+    const buffer = Buffer.from(await file.arrayBuffer());
+
+    await getR2Client().send(
+      new PutObjectCommand({
+        Bucket: R2_BUCKET,
+        Key: key,
+        Body: buffer,
+        ContentType: file.type,
+      })
+    );
+
+    return NextResponse.json({
+      url: `${R2_PUBLIC_URL}/${key}`,
+      fileName,
+    });
+  } catch (error) {
+    console.error("[ADMIN_UPLOAD]", error);
     return NextResponse.json(
       {
-        error: `Image upload is not configured. Missing env vars: ${missingEnv.join(", ")}`,
+        error: "تعذر رفع الصورة حاليًا. تأكد من إعدادات R2 أو حجم الصورة ثم حاول مرة أخرى.",
       },
-      { status: 503 }
+      { status: 500 }
     );
   }
-
-  const formData = await req.formData();
-  const file = formData.get("file");
-
-  if (!(file instanceof File)) {
-    return NextResponse.json({ error: "No file uploaded" }, { status: 400 });
-  }
-
-  if (!ALLOWED_TYPES.has(file.type)) {
-    return NextResponse.json({ error: "Unsupported file type" }, { status: 400 });
-  }
-
-  if (file.size > MAX_FILE_SIZE) {
-    return NextResponse.json({ error: "File is too large" }, { status: 400 });
-  }
-
-  const extension = getExtension(file.name, file.type);
-  if (!extension) {
-    return NextResponse.json({ error: "Invalid file extension" }, { status: 400 });
-  }
-
-  const fileName = `${Date.now()}-${randomUUID()}${extension}`;
-  const key = `products/${fileName}`;
-  const buffer = Buffer.from(await file.arrayBuffer());
-
-  await getR2Client().send(
-    new PutObjectCommand({
-      Bucket: R2_BUCKET,
-      Key: key,
-      Body: buffer,
-      ContentType: file.type,
-    })
-  );
-
-  return NextResponse.json({
-    url: `${R2_PUBLIC_URL}/${key}`,
-    fileName,
-  });
 }

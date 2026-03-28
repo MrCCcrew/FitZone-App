@@ -3,6 +3,22 @@
 import { useState } from "react";
 import Link from "next/link";
 
+function EyeIcon({ open }: { open: boolean }) {
+  return open ? (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} className="h-5 w-5">
+      <path d="M3 3l18 18" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M10.6 10.6A2 2 0 0012 16a2 2 0 001.4-.6" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M9.9 4.2A10.9 10.9 0 0112 4c5.4 0 9.4 3.8 10 8-.2 1.4-.8 2.7-1.7 3.9" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M6.2 6.3A11.1 11.1 0 002 12c.6 4.2 4.6 8 10 8 1.8 0 3.4-.4 4.8-1.1" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ) : (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} className="h-5 w-5">
+      <path d="M2 12c.6-4.2 4.6-8 10-8s9.4 3.8 10 8c-.6 4.2-4.6 8-10 8S2.6 16.2 2 12z" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
 export default function RegisterPage() {
   const [form, setForm] = useState({ name: "", email: "", phone: "", password: "", confirm: "" });
   const [error, setError] = useState("");
@@ -48,7 +64,7 @@ export default function RegisterPage() {
 
       window.location.href = "/";
     } catch {
-      setError("تعذر إنشاء الحساب حاليًا. حاولي مرة أخرى بعد قليل.");
+      setError("تعذر إنشاء الحساب حاليًا. حاول مرة أخرى بعد قليل.");
     } finally {
       setLoading(false);
     }
@@ -120,29 +136,29 @@ export default function RegisterPage() {
             </div>
 
             <div>
-              <label className="mb-1.5 block text-sm text-gray-300">???????? ????????????</label>
+              <label className="mb-1.5 block text-sm text-gray-300">كلمة المرور</label>
               <div className="relative">
                 <input
                   type={showPassword ? "text" : "password"}
                   required
                   value={form.password}
                   onChange={set("password")}
-                  placeholder="6 ???????? ?????? ??????????"
+                  placeholder="6 أحرف على الأقل"
                   className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 pl-12 text-sm text-white placeholder:text-gray-500 transition-colors focus:border-pink-400 focus:outline-none"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword((value) => !value)}
                   className="absolute inset-y-0 left-0 flex w-12 items-center justify-center text-gray-400 transition-colors hover:text-pink-200"
-                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  aria-label={showPassword ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"}
                 >
-                  {showPassword ? "??" : "??"}
+                  <EyeIcon open={showPassword} />
                 </button>
               </div>
             </div>
 
             <div>
-              <label className="mb-1.5 block text-sm text-gray-300">?????????? ???????? ????????????</label>
+              <label className="mb-1.5 block text-sm text-gray-300">تأكيد كلمة المرور</label>
               <div className="relative">
                 <input
                   type={showConfirmPassword ? "text" : "password"}
@@ -156,9 +172,9 @@ export default function RegisterPage() {
                   type="button"
                   onClick={() => setShowConfirmPassword((value) => !value)}
                   className="absolute inset-y-0 left-0 flex w-12 items-center justify-center text-gray-400 transition-colors hover:text-pink-200"
-                  aria-label={showConfirmPassword ? "Hide password confirmation" : "Show password confirmation"}
+                  aria-label={showConfirmPassword ? "إخفاء تأكيد كلمة المرور" : "إظهار تأكيد كلمة المرور"}
                 >
-                  {showConfirmPassword ? "??" : "??"}
+                  <EyeIcon open={showConfirmPassword} />
                 </button>
               </div>
             </div>

@@ -1720,6 +1720,7 @@ type StoreProduct = {
   images?: string[];
   sizes?: string[];
   colors?: string[];
+  reviewCount?: number;
 };
 
 type StoreCategory = {
@@ -1750,6 +1751,40 @@ const DEFAULT_STORE_CATEGORIES: StoreCategory[] = [
   { key: "gear", label: "معدات", sizeType: "none" },
 ];
 const catMap: Record<string, string> = { gear: "معدات", supplement: "مكملات", clothing: "ملابس", accessory: "إكسسوار", shoes: "أحذية" };
+const mapApiProductToStoreProduct = (
+  p: {
+    id?: string;
+    name: string;
+    price: number;
+    oldPrice: number | null;
+    category: string;
+    categoryLabel?: string;
+    sizeType?: "none" | "clothing" | "shoes";
+    description?: string;
+    images?: string[];
+    sizes?: string[];
+    colors?: string[];
+    rating?: number;
+    reviewCount?: number;
+  },
+  i: number,
+): StoreProduct => ({
+  id: p.id ?? `api-${i}`,
+  name: p.name,
+  price: p.price,
+  oldPrice: p.oldPrice,
+  description: p.description ?? "",
+  images: Array.isArray(p.images) ? p.images.filter(Boolean) : [],
+  sizes: Array.isArray(p.sizes) ? p.sizes.filter(Boolean) : [],
+  colors: Array.isArray(p.colors) ? p.colors.filter(Boolean) : [],
+  type: `product${(i % 3) + 1}`,
+  cat: p.categoryLabel ?? catMap[p.category] ?? p.category,
+  categoryKey: p.category,
+  sizeType: p.sizeType ?? "none",
+  badge: p.oldPrice ? `خصم ${Math.round((1 - p.price / p.oldPrice) * 100)}%` : null,
+  rating: typeof p.rating === "number" && p.rating > 0 ? p.rating : 4.7,
+  reviewCount: typeof p.reviewCount === "number" ? p.reviewCount : 0,
+});
 const ProductVisual = ({ product, h = 200 }: { product: StoreProduct; h?: number }) => {
   const firstImage = product.images?.[0];
 
@@ -1790,22 +1825,28 @@ const ShopPage = ({ navigate }: { navigate: (p: string) => void }) => {
           setCategories(d.categories.map((item: { key: string; label: string; sizeType: "none" | "clothing" | "shoes" }) => ({ key: item.key, label: item.label, sizeType: item.sizeType })));
         }
         if (Array.isArray(d.products) && d.products.length > 0) {
-          setProducts(d.products.map((p: {id?: string; name: string; price: number; oldPrice: number | null; category: string; categoryLabel?: string; sizeType?: "none" | "clothing" | "shoes"; description?: string; images?: string[]; sizes?: string[]; colors?: string[]}, i: number) => ({
-            id: p.id ?? `api-${i}`,
-            name: p.name,
-            price: p.price,
-            oldPrice: p.oldPrice,
-            description: p.description ?? "",
-            images: Array.isArray(p.images) ? p.images.filter(Boolean) : [],
-            sizes: Array.isArray(p.sizes) ? p.sizes.filter(Boolean) : [],
-            colors: Array.isArray(p.colors) ? p.colors.filter(Boolean) : [],
-            type: `product${(i % 3) + 1}`,
-            cat: p.categoryLabel ?? catMap[p.category] ?? p.category,
-            categoryKey: p.category,
-            sizeType: p.sizeType ?? "none",
-            badge: p.oldPrice ? `خصم ${Math.round((1 - p.price / p.oldPrice) * 100)}%` : null,
-            rating: 4.7,
-          })));
+          setProducts(
+            d.products.map(
+              (
+                p: {
+                  id?: string;
+                  name: string;
+                  price: number;
+                  oldPrice: number | null;
+                  category: string;
+                  categoryLabel?: string;
+                  sizeType?: "none" | "clothing" | "shoes";
+                  description?: string;
+                  images?: string[];
+                  sizes?: string[];
+                  colors?: string[];
+                  rating?: number;
+                  reviewCount?: number;
+                },
+                i: number,
+              ) => mapApiProductToStoreProduct(p, i),
+            ),
+          );
         }
       })
       .catch(() => {});
@@ -1903,12 +1944,29 @@ const ShopPage = ({ navigate }: { navigate: (p: string) => void }) => {
   );
 };
 
+type ProductReviewItem = {
+  id: string;
+  rating: number;
+  content: string;
+  createdAt: string;
+  user: { id: string; name: string };
+};
+
 const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: string) => void; walletBalance?: number }) => {
   const [qty, setQty] = useState(1);
   const [product, setProduct] = useState<StoreProduct>(DEFAULT_PRODUCTS[0]);
+  const [catalog, setCatalog] = useState<StoreProduct[]>(DEFAULT_PRODUCTS);
   const [selectedImage, setSelectedImage] = useState(0);
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
   const [selectedColor, setSelectedColor] = useState(C.red);
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewContent, setReviewContent] = useState("");
+  const [reviewMessage, setReviewMessage] = useState<{ text: string; ok: boolean } | null>(null);
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [reviewsLoading, setReviewsLoading] = useState(false);
+  const [averageRating, setAverageRating] = useState(0);
+  const [reviewCount, setReviewCount] = useState(0);
+  const [reviews, setReviews] = useState<ProductReviewItem[]>([]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1924,9 +1982,112 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
     }
   }, []);
 
+  useEffect(() => {
+    loadPublicApi()
+      .then((d) => {
+        if (Array.isArray(d.products) && d.products.length > 0) {
+          const mapped = d.products.map((item: {
+            id?: string;
+            name: string;
+            price: number;
+            oldPrice: number | null;
+            category: string;
+            categoryLabel?: string;
+            sizeType?: "none" | "clothing" | "shoes";
+            description?: string;
+            images?: string[];
+            sizes?: string[];
+            colors?: string[];
+            rating?: number;
+            reviewCount?: number;
+          }, index: number) => mapApiProductToStoreProduct(item, index));
+          setCatalog(mapped);
+          const refreshed = mapped.find((item) => item.id && item.id === product.id);
+          if (refreshed) {
+            setProduct(refreshed);
+            setSelectedSize(refreshed.sizeType === "none" ? null : refreshed.sizes?.[0] ?? null);
+          }
+        }
+      })
+      .catch(() => {});
+  }, [product.id]);
+
+  useEffect(() => {
+    if (!product.id) {
+      setReviews([]);
+      setAverageRating(product.rating ?? 0);
+      setReviewCount(product.reviewCount ?? 0);
+      return;
+    }
+
+    setReviewsLoading(true);
+    fetch(`/api/products/${product.id}/reviews`, { cache: "no-store" })
+      .then(async (response) => {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(data.error ?? "تعذر تحميل مراجعات المنتج.");
+        }
+        setReviews(Array.isArray(data.reviews) ? data.reviews : []);
+        setAverageRating(typeof data.averageRating === "number" ? data.averageRating : 0);
+        setReviewCount(typeof data.count === "number" ? data.count : 0);
+      })
+      .catch(() => {
+        setReviews([]);
+        setAverageRating(product.rating ?? 0);
+        setReviewCount(product.reviewCount ?? 0);
+      })
+      .finally(() => setReviewsLoading(false));
+  }, [product.id, product.rating, product.reviewCount]);
+
   const gallery = product.images && product.images.length > 0 ? product.images : [product.type];
   const fallbackSizes = product.sizeType === "shoes" ? ["36", "37", "38", "39", "40", "41"] : product.sizeType === "clothing" ? ["S", "M", "L", "XL"] : [];
   const sizes = product.sizes && product.sizes.length > 0 ? product.sizes : fallbackSizes;
+  const relatedProducts = catalog.filter((item) => item.id !== product.id && item.categoryKey === product.categoryKey).slice(0, 4);
+
+  const submitReview = async () => {
+    if (!product.id) {
+      setReviewMessage({ text: "هذا المنتج غير مربوط بقاعدة البيانات بعد.", ok: false });
+      return;
+    }
+
+    setReviewSubmitting(true);
+    setReviewMessage(null);
+    try {
+      const response = await fetch(`/api/products/${product.id}/reviews`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          rating: reviewRating,
+          content: reviewContent,
+        }),
+      });
+
+      if (response.status === 401) {
+        window.location.href = `/login?callbackUrl=${encodeURIComponent("/shop")}`;
+        return;
+      }
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setReviewMessage({ text: data.error ?? "تعذر إرسال تقييمك حاليًا.", ok: false });
+        return;
+      }
+
+      setReviewMessage({ text: "تم حفظ تقييمك بنجاح.", ok: true });
+      setReviewContent("");
+      const reload = await fetch(`/api/products/${product.id}/reviews`, { cache: "no-store" });
+      const reloadData = await reload.json().catch(() => ({}));
+      if (reload.ok) {
+        setReviews(Array.isArray(reloadData.reviews) ? reloadData.reviews : []);
+        setAverageRating(typeof reloadData.averageRating === "number" ? reloadData.averageRating : 0);
+        setReviewCount(typeof reloadData.count === "number" ? reloadData.count : 0);
+      }
+    } catch {
+      setReviewMessage({ text: "حدث خطأ غير متوقع أثناء إرسال التقييم.", ok: false });
+    } finally {
+      setReviewSubmitting(false);
+    }
+  };
 
   return (
     <div>
@@ -1955,11 +2116,22 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
           <div>
             <span className="tag" style={{ marginBottom: 12, display: "inline-flex" }}>{product.cat}</span>
             <h1 style={{ fontSize: 30, fontWeight: 900, color: C.white, marginBottom: 12 }}>{product.name}</h1>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 24 }}>
+            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginBottom: 18 }}>
               <span style={{ fontSize: viewportWidth() < 768 ? 34 : 42, fontWeight: 900, color: C.red }}>{product.price}</span>
               <span style={{ color: C.gray }}>ج.م</span>
               {product.oldPrice && <span style={{ textDecoration: "line-through", color: C.grayDark, fontSize: 16 }}>{product.oldPrice} ج.م</span>}
               {product.badge && <span className="badge">{product.badge}</span>}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 24, flexWrap: "wrap" }}>
+              <div style={{ color: C.gold, fontWeight: 800 }}>
+                {"★".repeat(Math.max(1, Math.round(averageRating || product.rating || 0)))}
+              </div>
+              <div style={{ color: C.gray, fontSize: 13 }}>
+                {averageRating > 0 ? averageRating.toFixed(1) : product.rating.toFixed(1)} من 5
+              </div>
+              <div style={{ color: C.grayDark, fontSize: 13 }}>
+                {reviewCount} تقييم
+              </div>
             </div>
             {product.description && <p style={{ color: C.gray, lineHeight: 1.9, marginBottom: 24 }}>{product.description}</p>}
 
@@ -2007,6 +2179,97 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
             </div>
           </div>
         </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr", "1.1fr 1fr"), gap: 32, marginTop: 56 }}>
+          <div className="card" style={{ padding: 24 }}>
+            <h2 style={{ fontWeight: 900, fontSize: 24, color: C.white, marginBottom: 18 }}>أضيفي تقييمك</h2>
+            <p style={{ color: C.gray, fontSize: 13, lineHeight: 1.8, marginBottom: 18 }}>اكتبي رأيك في المنتج، وسيظهر التقييم باسم حسابك بعد الحفظ.</p>
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ color: C.white, fontWeight: 700, marginBottom: 8 }}>تقييمك</div>
+              <div style={{ display: "flex", gap: 6 }}>
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <button key={star} type="button" onClick={() => setReviewRating(star)} style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: 28, color: star <= reviewRating ? C.gold : C.border }}>
+                    ★
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ color: C.white, fontWeight: 700, marginBottom: 8 }}>مراجعتك</div>
+              <textarea value={reviewContent} onChange={(e) => setReviewContent(e.target.value)} rows={6} placeholder="اكتبي رأيك في المنتج، الجودة، المقاس أو التجربة العامة." className="input" style={{ resize: "vertical", minHeight: 160 }} />
+            </div>
+            {reviewMessage && (
+              <div style={{ marginBottom: 16, padding: "12px 14px", borderRadius: 12, background: reviewMessage.ok ? "rgba(34,197,94,.12)" : "rgba(239,68,68,.12)", color: reviewMessage.ok ? C.success : "#fca5a5", fontSize: 13, fontWeight: 700 }}>
+                {reviewMessage.text}
+              </div>
+            )}
+            <button className="btn-primary" style={{ justifyContent: "center", minWidth: 170 }} disabled={reviewSubmitting} onClick={() => { void submitReview(); }}>
+              {reviewSubmitting ? "جارٍ الإرسال..." : "إرسال التقييم"}
+            </button>
+          </div>
+
+          <div className="card" style={{ padding: 24 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18, gap: 12, flexWrap: "wrap" }}>
+              <h2 style={{ fontWeight: 900, fontSize: 24, color: C.white }}>تقييمات العملاء</h2>
+              <div style={{ color: C.gray, fontSize: 13 }}>
+                متوسط التقييم: <span style={{ color: C.gold, fontWeight: 800 }}>{averageRating > 0 ? averageRating.toFixed(1) : product.rating.toFixed(1)}</span>
+              </div>
+            </div>
+            {reviewsLoading ? (
+              <div style={{ color: C.gray }}>جارٍ تحميل التقييمات...</div>
+            ) : reviews.length === 0 ? (
+              <div style={{ color: C.gray, lineHeight: 1.8 }}>لا توجد تقييمات لهذا المنتج بعد. كوني أول من يضيف مراجعة.</div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                {reviews.map((review) => (
+                  <div key={review.id} style={{ display: "grid", gridTemplateColumns: "56px 1fr", gap: 14, alignItems: "start", paddingBottom: 16, borderBottom: `1px solid ${C.border}` }}>
+                    <div style={{ width: 56, height: 56, borderRadius: "50%", background: "rgba(255,255,255,.08)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, color: C.white }}>
+                      {review.user.name.slice(0, 1)}
+                    </div>
+                    <div>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 8 }}>
+                        <div style={{ fontWeight: 800, color: C.white }}>{review.user.name}</div>
+                        <div style={{ color: C.grayDark, fontSize: 12 }}>{new Date(review.createdAt).toLocaleDateString("ar-EG", { day: "numeric", month: "long", year: "numeric" })}</div>
+                      </div>
+                      <div style={{ color: C.gold, marginBottom: 8 }}>{"★".repeat(review.rating)}{"☆".repeat(5 - review.rating)}</div>
+                      <div style={{ color: C.gray, lineHeight: 1.9, fontSize: 14 }}>{review.content}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {relatedProducts.length > 0 && (
+          <div style={{ marginTop: 56 }}>
+            <h2 style={{ fontSize: 28, fontWeight: 900, color: C.white, marginBottom: 18 }}>منتجات ذات صلة</h2>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 20 }}>
+              {relatedProducts.map((item) => (
+                <div key={`related-${item.id ?? item.name}`} className="card card-hover" style={{ cursor: "pointer" }} onClick={() => {
+                  if (typeof window !== "undefined") {
+                    window.sessionStorage.setItem(PRODUCT_STORAGE_KEY, JSON.stringify(item));
+                  }
+                  setProduct(item);
+                  setSelectedImage(0);
+                  setSelectedSize(item.sizeType === "none" ? null : item.sizes?.[0] ?? null);
+                  setReviewMessage(null);
+                  window.scrollTo({ top: 0, behavior: "smooth" });
+                }}>
+                  <div style={{ height: 170 }}><ProductVisual product={item} h={170} /></div>
+                  <div style={{ padding: 16 }}>
+                    <h3 style={{ fontWeight: 700, fontSize: 14, marginBottom: 10, color: C.white }}>{item.name}</h3>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                      <span style={{ fontWeight: 900, color: C.red, fontSize: 18 }}>{item.price} ج.م</span>
+                      {item.oldPrice && <span style={{ textDecoration: "line-through", color: C.grayDark, fontSize: 12 }}>{item.oldPrice} ج.م</span>}
+                    </div>
+                    <div style={{ color: C.gold, fontSize: 13 }}>⭐ {item.rating.toFixed(1)} {item.reviewCount ? `(${item.reviewCount})` : ""}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -3056,6 +3319,7 @@ export default function App() {
     </div>
   );
 }
+
 
 
 

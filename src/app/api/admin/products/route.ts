@@ -9,7 +9,7 @@ async function checkAdmin() {
 }
 
 const EMOJI: Record<string, string> = {
-  supplement: "💊",
+  supplement: "🧴",
   gear: "🏋️",
   clothing: "👕",
   accessory: "🧢",
@@ -77,7 +77,7 @@ export async function POST(req: Request) {
   const { name, category, price, oldPrice, stock, description, images, sizes, colors } = body;
 
   if (!name || price == null) {
-    return NextResponse.json({ error: "بيانات ناقصة" }, { status: 400 });
+    return NextResponse.json({ error: "بيانات المنتج ناقصة." }, { status: 400 });
   }
 
   const categoryRecord = await db.productCategory.findFirst({
@@ -126,7 +126,7 @@ export async function PATCH(req: Request) {
   const { id, active, ...rest } = body;
 
   if (!id) {
-    return NextResponse.json({ error: "id مطلوب" }, { status: 400 });
+    return NextResponse.json({ error: "معرّف المنتج مطلوب." }, { status: 400 });
   }
 
   const data: Record<string, unknown> = {};
@@ -161,7 +161,7 @@ export async function DELETE(req: Request) {
 
   const { id } = await req.json();
   if (!id) {
-    return NextResponse.json({ error: "id مطلوب" }, { status: 400 });
+    return NextResponse.json({ error: "معرّف المنتج مطلوب." }, { status: 400 });
   }
 
   await db.product.delete({ where: { id: String(id) } });

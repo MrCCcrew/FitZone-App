@@ -59,6 +59,8 @@ type PublicPayload = {
     images: string[];
     sizes: string[];
     colors: string[];
+    rating: number;
+    reviewCount: number;
   }>;
   testimonials: Array<{
     id: string;
@@ -141,6 +143,13 @@ export async function GET() {
         }),
         db.product.findMany({
           where: { isActive: true },
+          include: {
+            reviews: {
+              select: {
+                rating: true,
+              },
+            },
+          },
           orderBy: { price: "asc" },
         }),
         db.testimonial.findMany({
@@ -200,6 +209,11 @@ export async function GET() {
       })),
       products: products.map((product) => {
         const category = categoryMeta.get(product.category);
+        const reviewCount = product.reviews.length;
+        const rating =
+          reviewCount > 0
+            ? product.reviews.reduce((sum, review) => sum + review.rating, 0) / reviewCount
+            : 0;
 
         return {
           id: product.id,
@@ -213,6 +227,8 @@ export async function GET() {
           images: parseJsonArray(product.images),
           sizes: parseJsonArray(product.sizes),
           colors: parseJsonArray(product.colors),
+          rating,
+          reviewCount,
         };
       }),
       testimonials: testimonials.map((testimonial) => {

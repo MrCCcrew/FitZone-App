@@ -72,6 +72,7 @@ model User {
   notifications Notification[]
   complaints    Complaint[]
   testimonials  Testimonial[]
+  productReviews ProductReview[]
   handledChatSessions ChatSession[]  @relation("AssignedSupport")
   supportPresence     SupportPresence?
 }
@@ -182,6 +183,22 @@ model Product {
   isActive    Boolean @default(true)
 
   orderItems OrderItem[]
+  reviews    ProductReview[]
+}
+
+model ProductReview {
+  id        String   @id @default(cuid())
+  productId String
+  userId    String
+  rating    Int
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, userId])
 }
 
 model Order {
@@ -388,4 +405,3 @@ model Testimonial {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
-

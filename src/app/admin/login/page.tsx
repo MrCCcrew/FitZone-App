@@ -48,7 +48,7 @@ function AdminLoginForm() {
 
       window.location.href = "/admin";
     } catch {
-      setError("تعذر تسجيل دخول الإدارة حاليًا. حاولي مرة أخرى بعد قليل.");
+      setError("تعذر تسجيل دخول الإدارة حاليًا. حاول مرة أخرى بعد قليل.");
     } finally {
       setLoading(false);
     }
