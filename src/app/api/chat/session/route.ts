@@ -6,6 +6,7 @@ import { applyRateLimit, getClientIp } from "@/lib/rate-limit";
 export async function GET(req: NextRequest) {
   try {
     const sessionId = req.nextUrl.searchParams.get("sessionId");
+
     if (!sessionId) {
       return NextResponse.json({ error: "معرف الجلسة مطلوب." }, { status: 400 });
     }
@@ -37,6 +38,7 @@ export async function POST(req: Request) {
   try {
     const clientIp = getClientIp(req);
     const limit = applyRateLimit(`chat-session:${clientIp}`, 10, 10 * 60 * 1000);
+
     if (!limit.ok) {
       return NextResponse.json(
         { error: "تم إنشاء جلسات كثيرة في وقت قصير. حاول مرة أخرى بعد قليل.", messages: [] },
@@ -45,7 +47,10 @@ export async function POST(req: Request) {
     }
 
     const session = await db.chatSession.create({
-      data: {},
+      data: {
+        status: "open",
+        mode: "bot",
+      },
     });
 
     const initialized = await initializeChatSession(session.id);

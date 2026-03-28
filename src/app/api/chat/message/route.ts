@@ -7,6 +7,7 @@ export async function POST(req: Request) {
   try {
     const clientIp = getClientIp(req);
     const limit = applyRateLimit(`chat-message:${clientIp}`, 25, 5 * 60 * 1000);
+
     if (!limit.ok) {
       return NextResponse.json(
         { error: "تم إرسال رسائل كثيرة في وقت قصير. حاول مرة أخرى بعد قليل.", messages: [] },
@@ -38,7 +39,7 @@ export async function POST(req: Request) {
       data: {
         sessionId,
         senderType: "user",
-        senderName: visitorName?.trim() || "زائر",
+        senderName: visitorName?.trim() || "العميل",
         content: content.trim(),
       },
     });

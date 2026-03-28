@@ -9,16 +9,34 @@ type ChatMessage = {
   senderName?: string | null;
   content: string;
   createdAt: string;
-  metadata?: { membershipId?: string } | null;
+  metadata?: { membershipId?: string; closeSession?: boolean } | null;
 };
 
 type ChatSessionPayload = {
   id: string;
+  status?: "open" | "live" | "resolved";
+  visitorName?: string | null;
+  visitorPhone?: string | null;
   messages: ChatMessage[];
   recommendedMembership?: { id: string; name: string; price: number } | null;
 };
 
 const STORAGE_KEY = "fitzone-live-chat-session";
+const VISITOR_KEY = "fitzone-live-chat-visitor";
+
+function parseStoredVisitor(raw: string | null) {
+  if (!raw) return { name: "", phone: "" };
+
+  try {
+    const parsed = JSON.parse(raw) as { name?: string; phone?: string };
+    return {
+      name: parsed.name?.trim() ?? "",
+      phone: parsed.phone?.trim() ?? "",
+    };
+  } catch {
+    return { name: "", phone: "" };
+  }
+}
 
 export default function LiveChatWidget() {
   const [open, setOpen] = useState(false);
@@ -29,10 +47,62 @@ export default function LiveChatWidget() {
   const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(false);
   const [online, setOnline] = useState(false);
+  const [status, setStatus] = useState<"open" | "live" | "resolved">("open");
   const [recommendedMembership, setRecommendedMembership] =
     useState<ChatSessionPayload["recommendedMembership"]>(null);
 
   const lastMessageId = useMemo(() => messages[messages.length - 1]?.id, [messages]);
+
+  const clearStoredSession = () => {
+    if (typeof window === "undefined") return;
+    window.sessionStorage.removeItem(STORAGE_KEY);
+    window.sessionStorage.removeItem(VISITOR_KEY);
+  };
+
+  const saveVisitorIdentity = (visitorName: string, visitorPhone: string) => {
+    if (typeof window === "undefined") return;
+    window.sessionStorage.setItem(
+      VISITOR_KEY,
+      JSON.stringify({
+        name: visitorName.trim(),
+        phone: visitorPhone.trim(),
+      }),
+    );
+  };
+
+  const applyPayload = (data: ChatSessionPayload) => {
+    setSessionId(data.id);
+    setMessages(data.messages ?? []);
+    setRecommendedMembership(data.recommendedMembership ?? null);
+    setStatus(data.status ?? "open");
+
+    if (data.status === "resolved") {
+      clearStoredSession();
+      setSessionId("");
+    } else if (typeof window !== "undefined") {
+      window.sessionStorage.setItem(STORAGE_KEY, data.id);
+    }
+  };
+
+  const createFreshSession = async () => {
+    clearStoredSession();
+    setMessages([]);
+    setRecommendedMembership(null);
+    setStatus("open");
+    setInput("");
+
+    const res = await fetch("/api/chat/session", { method: "POST" });
+    if (!res.ok) return "";
+
+    const data = (await res.json()) as ChatSessionPayload;
+    applyPayload(data);
+
+    if (name.trim() || phone.trim()) {
+      saveVisitorIdentity(name, phone);
+    }
+
+    return data.id;
+  };
 
   const loadPresence = async () => {
     const res = await fetch("/api/chat/presence", { cache: "no-store" });
@@ -44,47 +114,74 @@ export default function LiveChatWidget() {
     const res = await fetch(`/api/chat/session?sessionId=${id}`, { cache: "no-store" });
     if (!res.ok) return;
     const data = (await res.json()) as ChatSessionPayload;
-    setMessages(data.messages ?? []);
-    setRecommendedMembership(data.recommendedMembership ?? null);
+    applyPayload(data);
   };
 
   const ensureSession = async () => {
+    const currentIdentity = {
+      name: name.trim(),
+      phone: phone.trim(),
+    };
+
+    const storedId = typeof window !== "undefined" ? window.sessionStorage.getItem(STORAGE_KEY) : null;
+    const storedVisitor = parseStoredVisitor(
+      typeof window !== "undefined" ? window.sessionStorage.getItem(VISITOR_KEY) : null,
+    );
+
+    if (storedId) {
+      const visitorChanged =
+        (currentIdentity.name && storedVisitor.name && currentIdentity.name !== storedVisitor.name) ||
+        (currentIdentity.phone && storedVisitor.phone && currentIdentity.phone !== storedVisitor.phone);
+
+      if (visitorChanged) {
+        return createFreshSession();
+      }
+
+      if (!sessionId) {
+        await loadSession(storedId);
+      }
+
+      return storedId;
+    }
+
     if (sessionId) return sessionId;
-
-    const stored = typeof window !== "undefined" ? window.sessionStorage.getItem(STORAGE_KEY) : null;
-    if (stored) {
-      setSessionId(stored);
-      await loadSession(stored);
-      return stored;
-    }
-
-    const res = await fetch("/api/chat/session", { method: "POST" });
-    const data = (await res.json()) as ChatSessionPayload;
-    if (typeof window !== "undefined") {
-      window.sessionStorage.setItem(STORAGE_KEY, data.id);
-    }
-    setSessionId(data.id);
-    setMessages(data.messages ?? []);
-    return data.id;
+    return createFreshSession();
   };
 
   useEffect(() => {
     loadPresence().catch(() => {});
-    const stored = typeof window !== "undefined" ? window.sessionStorage.getItem(STORAGE_KEY) : null;
-    if (stored) {
-      setSessionId(stored);
-      loadSession(stored).catch(() => {});
+
+    const storedId = typeof window !== "undefined" ? window.sessionStorage.getItem(STORAGE_KEY) : null;
+    const storedVisitor = parseStoredVisitor(
+      typeof window !== "undefined" ? window.sessionStorage.getItem(VISITOR_KEY) : null,
+    );
+
+    if (storedVisitor.name) setName(storedVisitor.name);
+    if (storedVisitor.phone) setPhone(storedVisitor.phone);
+
+    if (storedId) {
+      loadSession(storedId).catch(() => {});
     }
 
     const interval = setInterval(() => {
       loadPresence().catch(() => {});
-      if (stored || sessionId) {
-        loadSession(stored || sessionId).catch(() => {});
+      const latest = typeof window !== "undefined" ? window.sessionStorage.getItem(STORAGE_KEY) : null;
+      if (latest) {
+        loadSession(latest).catch(() => {});
       }
     }, 30000);
 
     return () => clearInterval(interval);
-  }, [sessionId]);
+  }, []);
+
+  useEffect(() => {
+    const latest = messages[messages.length - 1];
+    if (latest?.metadata?.closeSession) {
+      clearStoredSession();
+      setSessionId("");
+      setStatus("resolved");
+    }
+  }, [messages]);
 
   const sendMessage = async (preset?: string) => {
     const content = (preset ?? input).trim();
@@ -92,6 +189,15 @@ export default function LiveChatWidget() {
 
     setLoading(true);
     const id = await ensureSession();
+    if (!id) {
+      setLoading(false);
+      return;
+    }
+
+    if (name.trim() || phone.trim()) {
+      saveVisitorIdentity(name, phone);
+    }
+
     const res = await fetch("/api/chat/message", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -105,8 +211,7 @@ export default function LiveChatWidget() {
 
     if (res.ok) {
       const data = (await res.json()) as ChatSessionPayload;
-      setMessages(data.messages ?? []);
-      setRecommendedMembership(data.recommendedMembership ?? null);
+      applyPayload(data);
       setInput("");
     }
 
@@ -159,17 +264,33 @@ export default function LiveChatWidget() {
           <div style={{ padding: 16, borderBottom: "1px solid #F5D0DC", background: "linear-gradient(135deg, #E91E63, #F06292)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
               <div>
-                <div style={{ color: "#fff", fontWeight: 900, fontSize: 16 }}>مساعد فت زون</div>
+                <div style={{ color: "#fff", fontWeight: 900, fontSize: 16 }}>مساعد فيت زون</div>
                 <div style={{ color: online ? "#d4fce4" : "#ffe0ef", fontSize: 12 }}>
                   {online ? "الدعم المباشر متاح الآن" : "الرد الآلي متاح الآن"}
                 </div>
               </div>
-              <button
-                onClick={() => setOpen(false)}
-                style={{ background: "none", border: "none", color: "#fff", fontSize: 20, cursor: "pointer" }}
-              >
-                ×
-              </button>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <button
+                  onClick={() => createFreshSession().catch(() => {})}
+                  style={{
+                    background: "rgba(255,255,255,.18)",
+                    border: "1px solid rgba(255,255,255,.28)",
+                    color: "#fff",
+                    fontSize: 12,
+                    borderRadius: 999,
+                    padding: "6px 10px",
+                    cursor: "pointer",
+                  }}
+                >
+                  محادثة جديدة
+                </button>
+                <button
+                  onClick={() => setOpen(false)}
+                  style={{ background: "none", border: "none", color: "#fff", fontSize: 20, cursor: "pointer" }}
+                >
+                  ×
+                </button>
+              </div>
             </div>
           </div>
 
@@ -182,29 +303,13 @@ export default function LiveChatWidget() {
               background: "#FFF0F5",
             }}
           >
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="اسمك"
-              style={inputStyle}
-            />
-            <input
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="رقم الجوال"
-              style={inputStyle}
-            />
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="اسمك" style={inputStyle} />
+            <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="رقم الجوال" style={inputStyle} />
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <button
-                onClick={() => sendMessage("أريد ترشيح باقة مناسبة")}
-                style={quickButtonStyle}
-              >
+              <button onClick={() => sendMessage("أريد ترشيح باقة مناسبة")} style={quickButtonStyle}>
                 ترشيح باقة
               </button>
-              <button
-                onClick={() => sendMessage("أريد التحدث مع موظف")}
-                style={quickButtonStyle}
-              >
+              <button onClick={() => sendMessage("أريد التحدث مع موظف")} style={quickButtonStyle}>
                 موظف مباشر
               </button>
             </div>
@@ -245,12 +350,7 @@ export default function LiveChatWidget() {
                     }}
                   >
                     <div style={{ fontSize: 11, opacity: 0.65, marginBottom: 4 }}>
-                      {message.senderName ||
-                        (isUser
-                          ? "أنت"
-                          : message.senderType === "bot"
-                            ? "مساعد فت زون"
-                            : "الدعم")}
+                      {message.senderName || (isUser ? "أنت" : message.senderType === "bot" ? "مساعد فيت زون" : "الدعم")}
                     </div>
                     <div style={{ whiteSpace: "pre-wrap" }}>{message.content}</div>
                   </div>
@@ -258,7 +358,7 @@ export default function LiveChatWidget() {
               );
             })}
 
-            {recommendedMembership && (
+            {recommendedMembership && status !== "resolved" && (
               <div
                 style={{
                   marginTop: 12,
@@ -268,9 +368,7 @@ export default function LiveChatWidget() {
                   border: "1px solid rgba(233,30,99,.25)",
                 }}
               >
-                <div style={{ color: "#E91E63", fontWeight: 800, marginBottom: 6 }}>
-                  الباقة المقترحة
-                </div>
+                <div style={{ color: "#E91E63", fontWeight: 800, marginBottom: 6 }}>الباقة المقترحة</div>
                 <div style={{ color: "#7A5B68", fontSize: 13 }}>
                   {recommendedMembership.name} - {recommendedMembership.price} ج.م
                 </div>
@@ -290,7 +388,7 @@ export default function LiveChatWidget() {
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="اكتب سؤالك عن التخسيس أو اللياقة أو الباقة..."
+              placeholder="اكتب سؤالك عن اللياقة أو التغذية أو الباقة..."
               style={{ ...inputStyle, minHeight: 52, resize: "none", flex: 1 }}
             />
             <button

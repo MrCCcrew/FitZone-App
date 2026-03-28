@@ -32,6 +32,7 @@ type QuestionnaireAnswers = {
 type ChatContext = {
   stage: QuestionKey | "done";
   answers: QuestionnaireAnswers;
+  awaitingContinuation?: boolean;
 };
 
 type FaqEntry = {
@@ -56,18 +57,18 @@ const QUESTION_ORDER: QuestionKey[] = [
 ];
 
 const QUESTION_TEXT: Record<QuestionKey, string> = {
-  goal: "أهلًا بك في فت زون. ما هدفك الأساسي الآن: خسارة الوزن، شد الجسم، بناء العضلات، أم تحسين اللياقة العامة؟",
-  gender: "لترشيح أدق، هل أنت ذكر أم أنثى؟",
+  goal: "أهلًا بك في فيت زون. ما هدفك الأساسي حاليًا: خسارة الوزن، بناء العضلات، شد الجسم، أم تحسين اللياقة العامة؟",
+  gender: "هل أنت ذكر أم أنثى؟ هذا يساعدني على ترشيح أنسب خطة لك.",
   age: "كم عمرك؟ اكتب الرقم فقط.",
-  height: "ما طولك بالسنتيمتر؟ مثال: 175",
-  weight: "ما وزنك الحالي بالكيلو؟ مثال: 82",
+  height: "ما طولك بالسنتيمتر؟ مثال: 170",
+  weight: "ما وزنك الحالي بالكيلو؟ مثال: 78",
   activity: "ما مستوى نشاطك اليومي خارج التمرين: قليل، متوسط، أم عالٍ؟",
   experience: "ما مستواك الحالي في التمرين: مبتدئ، متوسط، أم متقدم؟",
   frequency: "كم مرة تتوقع أن تتمرن أسبوعيًا؟ مثال: 2 أو 4 أو 6",
-  classes: "هل تفضل الكلاسات الجماعية مثل الزومبا أو الكارديو أو اليوجا؟ اكتب نعم أو لا.",
+  classes: "هل تفضل الكلاسات الجماعية مثل الزومبا أو اليوجا أو الكارديو؟ اكتب نعم أو لا.",
   injuries: "هل لديك إصابة أو ألم متكرر أو حالة صحية يجب مراعاتها؟ اكتب نعم أو لا.",
-  meals: "كيف هو نظام أكلك حاليًا: ضعيف، متوسط، أم جيد؟",
-  budget: "ما الميزانية الشهرية المناسبة لك تقريبًا بالجنيه؟",
+  meals: "كيف هو نظام أكلك الحالي: ضعيف، متوسط، أم جيد؟",
+  budget: "ما الميزانية الشهرية المناسبة لك تقريبًا بالجنيه المصري؟",
 };
 
 const DEFAULT_CONTEXT: ChatContext = {
@@ -79,47 +80,42 @@ const FAQ_ENTRIES: FaqEntry[] = [
   {
     keywords: ["تخسيس", "تنحيف", "نزول وزن", "حرق", "دهون", "رجيم"],
     answer:
-      "خسارة الوزن الحقيقية تعتمد على عجز سعرات معتدل مع تمارين مقاومة وكارديو ونوم جيد. الهدف ليس الحرمان، بل الاستمرار والحفاظ على الكتلة العضلية.",
+      "خسارة الوزن تعتمد على عجز سعرات معتدل مع تمارين مقاومة وكارديو وحركة يومية جيدة. الهدف ليس الحرمان، بل الاستمرار ونتيجة ثابتة.",
   },
   {
     keywords: ["عضل", "عضلات", "تضخيم", "كتلة", "بناء جسم"],
     answer:
-      "بناء العضلات يحتاج تمارين مقاومة منتظمة، بروتين كافٍ، وزيادة حمل تدريجية. أفضل نتيجة تكون عادة مع التزام من 3 إلى 5 أيام أسبوعيًا.",
+      "بناء العضلات يحتاج تمارين مقاومة منتظمة، بروتين كافٍ، ونوم جيد. أفضل نتيجة تظهر مع الالتزام وزيادة الحمل التدريجية.",
   },
   {
     keywords: ["شد", "نحت", "قوام"],
     answer:
-      "شد الجسم يحتاج دمج تمارين مقاومة مع كارديو معتدل وتحكم جيد في التغذية، وليس الاعتماد على الكارديو فقط.",
+      "شد الجسم يحتاج دمج تمارين مقاومة مع كارديو معتدل وتنظيم الأكل، وليس الاعتماد على الكارديو وحده.",
   },
   {
-    keywords: ["أكل", "غذاء", "دايت", "وجبات", "سعرات", "سناك"],
+    keywords: ["أكل", "غذاء", "دايت", "وجبات", "سعرات"],
     answer:
-      "أفضل نظام غذائي هو الذي تستطيع الالتزام به. نبدأ عادة بتنظيم الوجبات، رفع البروتين، زيادة الخضار، وتقليل المشروبات السكرية والأطعمة عالية السعرات.",
+      "أفضل نظام غذائي هو الذي يمكنك الالتزام به. ابدأ بتنظيم الوجبات، رفع البروتين، الإكثار من الخضار، وتقليل السكريات العالية.",
   },
   {
     keywords: ["مكمل", "مكملات", "بروتين", "كرياتين"],
     answer:
-      "المكملات ليست الأساس. الأولوية دائمًا للأكل والنوم والتمرين. وإذا لديك حالة صحية خاصة فاستشر مختصًا قبل استخدام أي مكمل.",
-  },
-  {
-    keywords: ["كارديو", "مشي", "جري", "دهون"],
-    answer:
-      "الكارديو مفيد جدًا لصحة القلب وزيادة الصرف الحراري، لكن أفضل نتيجة غالبًا تكون عند دمجه مع تمارين مقاومة للحفاظ على الشكل والعضلات.",
-  },
-  {
-    keywords: ["سعر", "أسعار", "اشتراك", "باقات", "باقة"],
-    answer:
-      "لدينا أكثر من باقة حسب الهدف والميزانية وعدد مرات التمرين. أقدر أرشح لك الأنسب إذا أكملت معي التقييم السريع.",
+      "المكملات ليست الأساس. الأولوية دائمًا للأكل والنوم والتمرين. وإذا كانت لديك حالة صحية خاصة فاستشر مختصًا قبل استخدام أي مكمل.",
   },
   {
     keywords: ["إصابة", "ألم", "ركبة", "ظهر", "مفصل"],
     answer:
-      "إذا لديك إصابة أو ألم متكرر، فالأفضل أن نراعي ذلك عند اختيار التمارين ونبدأ بشكل تدريجي. وفي الحالات الطبية المستمرة يفضل الرجوع إلى مختص.",
+      "إذا لديك إصابة أو ألم متكرر، فالأفضل اختيار برنامج تدريجي ومراعاة التمارين المناسبة لحالتك، ومع الحالات المستمرة يفضّل مراجعة مختص.",
   },
   {
-    keywords: ["كلاس", "كلاسات", "حجز", "يوجا", "زومبا", "مواعيد"],
+    keywords: ["أسعار", "سعر", "اشتراك", "باقات", "باقة"],
     answer:
-      "أقدر أساعدك في ترشيح باقة مناسبة أو أحولك للدعم المباشر. وإذا كنت تريد موظفًا مباشرة فاكتب: أريد التحدث مع موظف.",
+      "لدينا أكثر من باقة حسب هدفك وميزانيتك وعدد مرات التمرين. أكمل معي التقييم وسأرشح لك الباقة الأقرب بشكل أوضح.",
+  },
+  {
+    keywords: ["كلاس", "كلاسات", "يوجا", "زومبا", "حجز"],
+    answer:
+      "يمكنني ترشيح باقة مناسبة أو تحويلك إلى الدعم المباشر. وإذا كنت تريد موظفًا مباشرة فاكتب: أريد التحدث مع موظف.",
   },
 ];
 
@@ -139,6 +135,7 @@ function parseContext(context?: string | null): ChatContext {
     return {
       stage: parsed.stage ?? "goal",
       answers: parsed.answers ?? {},
+      awaitingContinuation: Boolean(parsed.awaitingContinuation),
     };
   } catch {
     return DEFAULT_CONTEXT;
@@ -181,8 +178,8 @@ function parseAnswer(key: QuestionKey, message: string): QuestionnaireAnswers[Qu
 
   if (key === "goal") {
     if (/(تخسيس|تنحيف|وزن|دهون|حرق)/.test(normalized)) return "weight-loss";
-    if (/(عضل|عضلات|كتله|بناء|تضخيم)/.test(normalized)) return "muscle-gain";
-    if (/(شد|قوام|نحت)/.test(normalized)) return "toning";
+    if (/(عضل|عضلات|تضخيم|بناء)/.test(normalized)) return "muscle-gain";
+    if (/(شد|نحت|قوام)/.test(normalized)) return "toning";
     if (/(لياقه|fitness|صحه|نشاط)/.test(normalized)) return "general-fitness";
     return undefined;
   }
@@ -229,6 +226,7 @@ function parseAnswer(key: QuestionKey, message: string): QuestionnaireAnswers[Qu
       if (numeric <= 5) return "medium";
       return "high";
     }
+
     if (/(مرتين|ثلاث|2|3)/.test(normalized)) return "low";
     if (/(اربع|خمس|4|5)/.test(normalized)) return "medium";
     if (/(يومي|شبه يومي|6|7)/.test(normalized)) return "high";
@@ -242,7 +240,7 @@ function parseAnswer(key: QuestionKey, message: string): QuestionnaireAnswers[Qu
   }
 
   if (key === "meals") {
-    if (/(ضعيف|سيء|عشوائي|مش منظم)/.test(normalized)) return "poor";
+    if (/(ضعيف|سيئ|عشوائي|مش منظم)/.test(normalized)) return "poor";
     if (/(متوسط|عادي)/.test(normalized)) return "average";
     if (/(جيد|ممتاز|منظم|ملتزم)/.test(normalized)) return "good";
     return undefined;
@@ -318,15 +316,15 @@ function buildTrainingAdvice(answers: QuestionnaireAnswers) {
     return "الأنسب لك غالبًا 4 إلى 5 أيام تمارين مقاومة مع زيادة حمل تدريجية وتقليل الكارديو الزائد.";
   }
   if (answers.goal === "toning") {
-    return "الأنسب لك غالبًا دمج تمارين مقاومة منتظمة مع كارديو معتدل وتحكم جيد في الأكل.";
+    return "الأنسب لك دمج تمارين مقاومة منتظمة مع كارديو معتدل وتحكم جيد في الأكل.";
   }
-  return "الأنسب لك غالبًا برنامج متوازن يجمع بين المقاومة والكارديو والحركة اليومية.";
+  return "الأنسب لك برنامج متوازن يجمع بين المقاومة والكارديو والحركة اليومية.";
 }
 
 function buildNutritionAdvice(answers: QuestionnaireAnswers) {
   const quality =
     answers.meals === "poor"
-      ? "ابدأ بتنظيم 3 وجبات واضحة يوميًا وتقليل الحلويات والمشروبات عالية السعرات."
+      ? "ابدأ بتنظيم 3 وجبات واضحة يوميًا وتقليل الحلويات والمشروبات العالية بالسعرات."
       : answers.meals === "average"
         ? "حاول رفع جودة الأكل بزيادة البروتين والخضار وتنظيم الوجبات الخفيفة."
         : "استمر على جودة الأكل الحالية مع ضبط الكميات بما يناسب هدفك.";
@@ -340,8 +338,9 @@ function buildNutritionAdvice(answers: QuestionnaireAnswers) {
 
 function buildSafetyAdvice(answers: QuestionnaireAnswers) {
   if (answers.injuries === "yes") {
-    return "بما أنك ذكرت وجود إصابة أو ألم متكرر، فالأفضل البدء تدريجيًا واختيار تمارين مناسبة، ومع الحالات المستمرة يفضل الرجوع إلى مختص.";
+    return "بما أنك ذكرت وجود إصابة أو ألم متكرر، فالأفضل البدء تدريجيًا واختيار تمارين مناسبة، ومع الحالات المستمرة يفضّل الرجوع إلى مختص.";
   }
+
   return "إذا شعرت بألم غير طبيعي أثناء التمرين فأوقف التمرين وراجع المدرب أو المختص.";
 }
 
@@ -489,7 +488,7 @@ function buildMembershipReason(answers: QuestionnaireAnswers, membershipName?: s
   if (answers.injuries === "yes") reasons.push("تحتاج باقة تسمح بمرونة ومراعاة حالتك");
 
   if (reasons.length === 0) {
-    return `الباقة الأقرب لك حاليًا هي ${membershipName} لأنها الأقرب لهدفك ومستوى التزامك الحالي.`;
+    return `الباقة الأقرب لك حاليًا هي ${membershipName} لأنها الأنسب لهدفك ومستوى التزامك الحالي.`;
   }
 
   return `رشحت لك باقة ${membershipName} لأن ${reasons.slice(0, 3).join("، ")}.`;
@@ -503,7 +502,7 @@ function buildClientSummary(answers: QuestionnaireAnswers) {
     `الوزن: ${answers.weight ?? "غير محدد"} كجم`,
     `النشاط اليومي: ${activityLabel(answers.activity)}`,
     `الخبرة: ${experienceLabel(answers.experience)}`,
-    `عدد التمرين المتوقع: ${frequencyLabel(answers.frequency)}`,
+    `عدد مرات التمرين المتوقع: ${frequencyLabel(answers.frequency)}`,
     `يفضل الكلاسات: ${yesNoLabel(answers.classes)}`,
     `يوجد إصابات أو آلام: ${yesNoLabel(answers.injuries)}`,
     `مستوى الأكل الحالي: ${mealsLabel(answers.meals)}`,
@@ -520,7 +519,7 @@ function buildFinalAssessment(answers: QuestionnaireAnswers, membershipName?: st
   const reason = buildMembershipReason(answers, membershipName);
 
   const lines = [
-    "أنهيت تقييمك المبدئي، وهذه خلاصة سريعة مبنية على إجاباتك:",
+    "أنهيت تقييمك المبدئي، وهذه خلاصة واضحة مبنية على إجاباتك:",
     buildClientSummary(answers),
     bmi ? `مؤشر كتلة الجسم التقريبي لديك: ${bmi} (${bmiState}).` : null,
     calories
@@ -531,10 +530,8 @@ function buildFinalAssessment(answers: QuestionnaireAnswers, membershipName?: st
     `تنبيه مهم: ${buildSafetyAdvice(answers)}`,
     membershipName
       ? `${reason}${membershipPrice ? ` وسعرها ${membershipPrice} ج.م.` : ""}`
-      : "لم أجد باقة مفعلة مناسبة في النظام الآن، لكن أقدر أحولك مباشرة لموظف يساعدك.",
-    membershipName
-      ? "إذا أحببت، أقدر أشرح لك لماذا هذه الباقة هي الأقرب لك، أو أحولك مباشرة للدعم لإكمال الاشتراك."
-      : null,
+      : "لم أجد باقة مفعلة مناسبة في النظام الآن، لكن يمكنني تحويلك إلى الدعم المباشر لإكمال الترشيح.",
+    "هل يمكنني مساعدتك في أي شيء تاني؟ اكتب نعم للاستمرار أو لا لإنهاء المحادثة.",
   ].filter(Boolean);
 
   return lines.join("\n\n");
@@ -551,10 +548,22 @@ async function fallbackGeneralReply(message: string, stage: ChatContext["stage"]
 
   const question = nextQuestion(stage);
   if (question) {
-    return `أقدر أساعدك في اللياقة، التغذية، واختيار الاشتراك المناسب. ${question}`;
+    return `يمكنني مساعدتك في اللياقة، التغذية، واختيار الاشتراك المناسب. ${question}`;
   }
 
-  return "أقدر أساعدك في التقييم المبدئي للياقة أو التخسيس أو بناء العضلات، ثم أرشح لك الباقة الأقرب أو أحولك للدعم المباشر.";
+  return "يمكنني مساعدتك في تقييم اللياقة أو التخسيس أو بناء العضلات، ثم أرشح لك الباقة الأقرب أو أحولك إلى الدعم المباشر.";
+}
+
+async function createBotMessage(sessionId: string, content: string, metadata?: Record<string, unknown>) {
+  await db.chatMessage.create({
+    data: {
+      sessionId,
+      senderType: "bot",
+      senderName: "مساعد فيت زون",
+      content,
+      metadata: metadata ? JSON.stringify(metadata) : null,
+    },
+  });
 }
 
 export async function initializeChatSession(sessionId: string) {
@@ -566,136 +575,238 @@ export async function initializeChatSession(sessionId: string) {
   if (!session) return null;
   if (session.messages.length > 0) return session;
 
-  await db.chatMessage.create({
+  await createBotMessage(
+    sessionId,
+    `${QUESTION_TEXT.goal}\n\nبعد إجاباتك سأعطيك تقييمًا مبدئيًا واضحًا وملخصًا لحالتك، ثم أرشح لك الباقة الأقرب لاحتياجك.`,
+  );
+
+  await db.chatSession.update({
+    where: { id: sessionId },
     data: {
-      sessionId,
-      senderType: "bot",
-      senderName: "مساعد فت زون",
-      content: `${QUESTION_TEXT.goal}\n\nبعد إجاباتك سأعطيك تقييمًا مبدئيًا واضحًا، وملخصًا لبياناتك، وأرشح لك الباقة الأقرب لاحتياجك.`,
+      context: serializeContext(DEFAULT_CONTEXT),
+      status: "open",
+      mode: "bot",
+      lastMessageAt: new Date(),
     },
   });
 
   return db.chatSession.findUnique({
     where: { id: sessionId },
-    include: { messages: { orderBy: { createdAt: "asc" } } },
+    include: {
+      messages: { orderBy: { createdAt: "asc" } },
+      recommendedMembership: true,
+      assignedTo: { select: { id: true, name: true, email: true, role: true } },
+    },
   });
 }
 
+async function closeConversation(sessionId: string) {
+  await db.chatSession.update({
+    where: { id: sessionId },
+    data: {
+      status: "resolved",
+      mode: "bot",
+      context: serializeContext({
+        stage: "done",
+        answers: {},
+        awaitingContinuation: false,
+      }),
+      recommendedMembershipId: null,
+      lastMessageAt: new Date(),
+    },
+  });
+
+  await createBotMessage(sessionId, "تم إنهاء المحادثة الحالية. إذا أرسلت رسالة جديدة سأبدأ معك محادثة جديدة بالكامل.", {
+    closeSession: true,
+  });
+}
+
+async function transferToLiveSupport(sessionId: string) {
+  const support = await db.user.findFirst({
+    where: {
+      role: { in: ["admin", "staff"] },
+      supportPresence: { isOnline: true },
+    },
+    include: { supportPresence: true },
+    orderBy: { createdAt: "asc" },
+  });
+
+  await db.chatSession.update({
+    where: { id: sessionId },
+    data: {
+      mode: "live",
+      status: "live",
+      assignedToId: support?.id ?? null,
+      lastMessageAt: new Date(),
+    },
+  });
+
+  await db.chatMessage.create({
+    data: {
+      sessionId,
+      senderType: "system",
+      senderName: "النظام",
+      content: support
+        ? `تم تحويل المحادثة إلى ${support.name || support.email || "موظف الدعم"} وسيقوم بالرد عليك قريبًا.`
+        : "تم تسجيل طلبك للتحدث مع موظف. لا يوجد موظف متاح الآن، وسيتم الرد عليك عند توفر الدعم.",
+    },
+  });
+}
+
+function isPositiveReply(text: string) {
+  return /^(نعم|ايوه|أيوه|اكيد|أكيد|yes|y|طبعا|طبعا)/i.test(text.trim());
+}
+
+function isNegativeReply(text: string) {
+  return /^(لا|لأ|لاء|مش|كفاية|خلاص|no|n)/i.test(text.trim());
+}
+
+function wantsLiveSupport(text: string) {
+  const normalized = normalizeArabic(text);
+  return /(موظف|خدمه عملاء|دعم|بشر|حد يكلمني|اكلم موظف|التحدث مع موظف)/.test(normalized);
+}
+
 export async function generateBotReply(sessionId: string, userMessage: string) {
-  const session = await db.chatSession.findUnique({ where: { id: sessionId } });
+  const session = await db.chatSession.findUnique({
+    where: { id: sessionId },
+    include: { recommendedMembership: true },
+  });
+
   if (!session) return null;
 
   const context = parseContext(session.context);
-  const stage = context.stage;
-  const normalized = normalizeArabic(userMessage);
 
-  if (/موظف|ادمن|انسان|شخص حقيقي|خدمه عملاء|دعم مباشر/.test(normalized)) {
-    const onlineCount = await db.supportPresence.count({
-      where: { isOnline: true, lastSeenAt: { gte: new Date(Date.now() - 2 * 60 * 1000) } },
-    });
-
-    const content =
-      onlineCount > 0
-        ? "تم تحويل المحادثة للدعم المباشر. يوجد مسؤول متاح الآن وسيتم الرد عليك هنا خلال لحظات."
-        : "تم تسجيل طلبك للدعم المباشر. إذا لم يكن أحد متاحًا الآن فسأستمر معك لحين دخول الإدارة.";
-
-    await db.chatSession.update({
+  if (wantsLiveSupport(userMessage)) {
+    await transferToLiveSupport(sessionId);
+    return db.chatSession.findUnique({
       where: { id: sessionId },
-      data: { mode: "live", status: "live", lastMessageAt: new Date() },
-    });
-
-    return db.chatMessage.create({
-      data: {
-        sessionId,
-        senderType: "bot",
-        senderName: "مساعد فت زون",
-        content,
+      include: {
+        messages: { orderBy: { createdAt: "asc" } },
+        recommendedMembership: true,
+        assignedTo: { select: { id: true, name: true, email: true, role: true } },
       },
     });
   }
 
-  if (stage !== "done") {
-    const parsedAnswer = parseAnswer(stage, userMessage);
+  if (context.stage === "done" && context.awaitingContinuation) {
+    if (isPositiveReply(userMessage)) {
+      const updatedContext: ChatContext = {
+        ...context,
+        awaitingContinuation: false,
+      };
 
-    if (!parsedAnswer) {
-      return db.chatMessage.create({
-        data: {
-          sessionId,
-          senderType: "bot",
-          senderName: "مساعد فت زون",
-          content: await fallbackGeneralReply(userMessage, stage),
-        },
-      });
-    }
-
-    const nextAnswers = {
-      ...context.answers,
-      [stage]: parsedAnswer,
-    };
-
-    const nextStage = getNextStage(stage);
-
-    if (nextStage !== "done") {
       await db.chatSession.update({
         where: { id: sessionId },
         data: {
-          context: serializeContext({ stage: nextStage, answers: nextAnswers }),
+          context: serializeContext(updatedContext),
+          status: "open",
           lastMessageAt: new Date(),
         },
       });
 
-      return db.chatMessage.create({
-        data: {
-          sessionId,
-          senderType: "bot",
-          senderName: "مساعد فت زون",
-          content: nextQuestion(nextStage) ?? "ممتاز، أكمل معي.",
-        },
-      });
+      await createBotMessage(
+        sessionId,
+        "أكيد، أنا معك. اكتب سؤالك الجديد أو قل لي هل تريد الاستفسار عن التمارين أو التغذية أو الباقات أو الكلاسات.",
+      );
+    } else if (isNegativeReply(userMessage)) {
+      await closeConversation(sessionId);
+    } else {
+      await createBotMessage(
+        sessionId,
+        "إذا كنت تريد الاستمرار اكتب نعم، وإذا كنت تريد إنهاء المحادثة الحالية اكتب لا.",
+      );
     }
 
-    const recommendation = await recommendMembership(nextAnswers);
-    const assessment = buildFinalAssessment(nextAnswers, recommendation?.name, recommendation?.price);
-
-    await db.chatSession.update({
+    return db.chatSession.findUnique({
       where: { id: sessionId },
-      data: {
-        context: serializeContext({ stage: "done", answers: nextAnswers }),
-        recommendedMembershipId: recommendation?.id,
-        lastMessageAt: new Date(),
-      },
-    });
-
-    return db.chatMessage.create({
-      data: {
-        sessionId,
-        senderType: "bot",
-        senderName: "مساعد فت زون",
-        content: assessment,
-        metadata: JSON.stringify({
-          membershipId: recommendation?.id ?? null,
-          summary: nextAnswers,
-        }),
+      include: {
+        messages: { orderBy: { createdAt: "asc" } },
+        recommendedMembership: true,
+        assignedTo: { select: { id: true, name: true, email: true, role: true } },
       },
     });
   }
 
-  const recommendation = session.recommendedMembershipId
-    ? await db.membership.findUnique({ where: { id: session.recommendedMembershipId } })
-    : null;
-  const storedEntries = await loadKnowledgeEntries();
-  const faq = matchFaq(userMessage, [...storedEntries, ...FAQ_ENTRIES]);
+  if (context.stage === "done") {
+    const reply = await fallbackGeneralReply(userMessage, context.stage);
+    await createBotMessage(sessionId, reply);
+    return db.chatSession.findUnique({
+      where: { id: sessionId },
+      include: {
+        messages: { orderBy: { createdAt: "asc" } },
+        recommendedMembership: true,
+        assignedTo: { select: { id: true, name: true, email: true, role: true } },
+      },
+    });
+  }
 
-  return db.chatMessage.create({
-    data: {
+  const parsedAnswer = parseAnswer(context.stage, userMessage);
+
+  if (typeof parsedAnswer === "undefined") {
+    const faqReply = await fallbackGeneralReply(userMessage, context.stage);
+    await createBotMessage(sessionId, faqReply);
+
+    return db.chatSession.findUnique({
+      where: { id: sessionId },
+      include: {
+        messages: { orderBy: { createdAt: "asc" } },
+        recommendedMembership: true,
+        assignedTo: { select: { id: true, name: true, email: true, role: true } },
+      },
+    });
+  }
+
+  const updatedAnswers: QuestionnaireAnswers = {
+    ...context.answers,
+    [context.stage]: parsedAnswer,
+  };
+
+  const nextStage = getNextStage(context.stage);
+
+  if (nextStage === "done") {
+    const membership = await recommendMembership(updatedAnswers);
+    const finalReply = buildFinalAssessment(updatedAnswers, membership?.name, membership?.price);
+
+    await db.chatSession.update({
+      where: { id: sessionId },
+      data: {
+        context: serializeContext({
+          stage: "done",
+          answers: updatedAnswers,
+          awaitingContinuation: true,
+        }),
+        recommendedMembershipId: membership?.id ?? null,
+        status: "open",
+        lastMessageAt: new Date(),
+      },
+    });
+
+    await createBotMessage(
       sessionId,
-      senderType: "bot",
-      senderName: "مساعد فت زون",
-      content:
-        faq?.answer ||
-        (recommendation
-          ? `ما زالت الباقة الأقرب لك هي ${recommendation.name} بسعر ${recommendation.price} ج.م. إذا أحببت، أشرح لك سبب الترشيح أو أحولك مباشرة إلى موظف لإكمال الاشتراك.`
-          : "أقدر أساعدك في أسئلة اللياقة والتغذية واختيار الباقة المناسبة، أو أحولك للدعم المباشر."),
+      finalReply,
+      membership ? { membershipId: membership.id } : undefined,
+    );
+  } else {
+    await db.chatSession.update({
+      where: { id: sessionId },
+      data: {
+        context: serializeContext({
+          stage: nextStage,
+          answers: updatedAnswers,
+        }),
+        lastMessageAt: new Date(),
+      },
+    });
+
+    await createBotMessage(sessionId, QUESTION_TEXT[nextStage]);
+  }
+
+  return db.chatSession.findUnique({
+    where: { id: sessionId },
+    include: {
+      messages: { orderBy: { createdAt: "asc" } },
+      recommendedMembership: true,
+      assignedTo: { select: { id: true, name: true, email: true, role: true } },
     },
   });
 }
