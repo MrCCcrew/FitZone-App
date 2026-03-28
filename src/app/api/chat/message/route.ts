@@ -9,7 +9,7 @@ export async function POST(req: Request) {
     const limit = applyRateLimit(`chat-message:${clientIp}`, 25, 5 * 60 * 1000);
     if (!limit.ok) {
       return NextResponse.json(
-        { error: "Too many messages. Please slow down.", messages: [] },
+        { error: "تم إرسال رسائل كثيرة في وقت قصير. حاول مرة أخرى بعد قليل.", messages: [] },
         { status: 429, headers: { "Retry-After": String(Math.ceil(limit.retryAfterMs / 1000)) } },
       );
     }
@@ -17,12 +17,12 @@ export async function POST(req: Request) {
     const { sessionId, content, visitorName, visitorPhone } = await req.json();
 
     if (!sessionId || !content?.trim()) {
-      return NextResponse.json({ error: "بيانات الرسالة غير مكتملة" }, { status: 400 });
+      return NextResponse.json({ error: "بيانات الرسالة غير مكتملة." }, { status: 400 });
     }
 
     const session = await db.chatSession.findUnique({ where: { id: sessionId } });
     if (!session) {
-      return NextResponse.json({ error: "جلسة المحادثة غير موجودة" }, { status: 404 });
+      return NextResponse.json({ error: "جلسة المحادثة غير موجودة." }, { status: 404 });
     }
 
     await db.chatSession.update({
@@ -63,6 +63,6 @@ export async function POST(req: Request) {
     });
   } catch (error) {
     console.error("[CHAT_MESSAGE_POST]", error);
-    return NextResponse.json({ error: "الخدمة غير متاحة مؤقتًا", messages: [] }, { status: 200 });
+    return NextResponse.json({ error: "الخدمة غير متاحة مؤقتًا.", messages: [] }, { status: 200 });
   }
 }

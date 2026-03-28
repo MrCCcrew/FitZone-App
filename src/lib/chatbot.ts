@@ -56,18 +56,18 @@ const QUESTION_ORDER: QuestionKey[] = [
 ];
 
 const QUESTION_TEXT: Record<QuestionKey, string> = {
-  goal: "أهلاً بك في فت زون. ما هدفك الأساسي الآن: التخسيس، شد الجسم، بناء العضلات، أم اللياقة العامة؟",
-  gender: "لأجل ترشيح أدق، هل أنت ذكر أم أنثى؟",
+  goal: "أهلًا بك في فت زون. ما هدفك الأساسي الآن: خسارة الوزن، شد الجسم، بناء العضلات، أم تحسين اللياقة العامة؟",
+  gender: "لترشيح أدق، هل أنت ذكر أم أنثى؟",
   age: "كم عمرك؟ اكتب الرقم فقط.",
   height: "ما طولك بالسنتيمتر؟ مثال: 175",
   weight: "ما وزنك الحالي بالكيلو؟ مثال: 82",
   activity: "ما مستوى نشاطك اليومي خارج التمرين: قليل، متوسط، أم عالٍ؟",
   experience: "ما مستواك الحالي في التمرين: مبتدئ، متوسط، أم متقدم؟",
-  frequency: "كم مرة تتوقع أن تتمرن أسبوعياً؟ 2-3 مرات، 4-5 مرات، أم شبه يومي؟",
-  classes: "هل تفضل الكلاسات الجماعية مثل الكارديو أو الزومبا أو اليوجا؟ اكتب نعم أو لا.",
+  frequency: "كم مرة تتوقع أن تتمرن أسبوعيًا؟ مثال: 2 أو 4 أو 6",
+  classes: "هل تفضل الكلاسات الجماعية مثل الزومبا أو الكارديو أو اليوجا؟ اكتب نعم أو لا.",
   injuries: "هل لديك إصابة أو ألم متكرر أو حالة صحية يجب مراعاتها؟ اكتب نعم أو لا.",
-  meals: "كيف هو نظام أكلك حالياً: ضعيف، متوسط، أم جيد؟",
-  budget: "ما الميزانية الشهرية المناسبة لك تقريباً بالجنيه؟",
+  meals: "كيف هو نظام أكلك حاليًا: ضعيف، متوسط، أم جيد؟",
+  budget: "ما الميزانية الشهرية المناسبة لك تقريبًا بالجنيه؟",
 };
 
 const DEFAULT_CONTEXT: ChatContext = {
@@ -79,32 +79,32 @@ const FAQ_ENTRIES: FaqEntry[] = [
   {
     keywords: ["تخسيس", "تنحيف", "نزول وزن", "حرق", "دهون", "رجيم"],
     answer:
-      "التخسيس الفعلي يعتمد على عجز سعرات مناسب مع تمارين مقاومة وكارديو ونوم جيد. الهدف ليس الحرمان، بل الاستمرارية والحفاظ على الكتلة العضلية.",
+      "خسارة الوزن الحقيقية تعتمد على عجز سعرات معتدل مع تمارين مقاومة وكارديو ونوم جيد. الهدف ليس الحرمان، بل الاستمرار والحفاظ على الكتلة العضلية.",
   },
   {
     keywords: ["عضل", "عضلات", "تضخيم", "كتلة", "بناء جسم"],
     answer:
-      "بناء العضلات يحتاج تمارين مقاومة منتظمة، بروتين كافٍ، وزيادة حمل تدريجية. أفضل نتيجة تكون غالباً مع الالتزام من 3 إلى 5 أيام أسبوعياً.",
+      "بناء العضلات يحتاج تمارين مقاومة منتظمة، بروتين كافٍ، وزيادة حمل تدريجية. أفضل نتيجة تكون عادة مع التزام من 3 إلى 5 أيام أسبوعيًا.",
   },
   {
     keywords: ["شد", "نحت", "قوام"],
     answer:
-      "شد الجسم يحتاج دمج تمارين مقاومة مع تحكم جيد في التغذية وتقليل نسبة الدهون بشكل تدريجي، وليس كارديو فقط.",
+      "شد الجسم يحتاج دمج تمارين مقاومة مع كارديو معتدل وتحكم جيد في التغذية، وليس الاعتماد على الكارديو فقط.",
   },
   {
     keywords: ["أكل", "غذاء", "دايت", "وجبات", "سعرات", "سناك"],
     answer:
-      "أفضل نظام غذائي هو الذي تستطيع الالتزام به. نبدأ عادة بتنظيم الوجبات، رفع البروتين، زيادة الخضار، وتقليل المشروبات السكرية والأطعمة العالية بالسعرات.",
+      "أفضل نظام غذائي هو الذي تستطيع الالتزام به. نبدأ عادة بتنظيم الوجبات، رفع البروتين، زيادة الخضار، وتقليل المشروبات السكرية والأطعمة عالية السعرات.",
   },
   {
     keywords: ["مكمل", "مكملات", "بروتين", "كرياتين"],
     answer:
-      "المكملات ليست الأساس. الأولوية دائماً للأكل والنوم والتمرين. وإذا لديك حالة صحية خاصة فاستشر مختصاً قبل استخدام أي مكمل.",
+      "المكملات ليست الأساس. الأولوية دائمًا للأكل والنوم والتمرين. وإذا لديك حالة صحية خاصة فاستشر مختصًا قبل استخدام أي مكمل.",
   },
   {
     keywords: ["كارديو", "مشي", "جري", "دهون"],
     answer:
-      "الكارديو مفيد جداً لصحة القلب وزيادة الصرف الحراري، لكن أفضل نتيجة عادة تكون عند دمجه مع تمارين مقاومة للحفاظ على الشكل والعضلات.",
+      "الكارديو مفيد جدًا لصحة القلب وزيادة الصرف الحراري، لكن أفضل نتيجة غالبًا تكون عند دمجه مع تمارين مقاومة للحفاظ على الشكل والعضلات.",
   },
   {
     keywords: ["سعر", "أسعار", "اشتراك", "باقات", "باقة"],
@@ -119,7 +119,7 @@ const FAQ_ENTRIES: FaqEntry[] = [
   {
     keywords: ["كلاس", "كلاسات", "حجز", "يوجا", "زومبا", "مواعيد"],
     answer:
-      "يمكنني مساعدتك في ترشيح باقة مناسبة أو تحويلك للدعم المباشر. وإذا كنت تريد موظفاً مباشرة فاكتب: أريد التحدث مع موظف.",
+      "أقدر أساعدك في ترشيح باقة مناسبة أو أحولك للدعم المباشر. وإذا كنت تريد موظفًا مباشرة فاكتب: أريد التحدث مع موظف.",
   },
 ];
 
@@ -211,7 +211,7 @@ function parseAnswer(key: QuestionKey, message: string): QuestionnaireAnswers[Qu
   if (key === "activity") {
     if (/(قليل|ضعيف|منخفض)/.test(normalized)) return "low";
     if (/(متوسط|عادي)/.test(normalized)) return "medium";
-    if (/(عال|مرتفع|كثير)/.test(normalized)) return "high";
+    if (/(عالي|عال|مرتفع|كثير)/.test(normalized)) return "high";
     return undefined;
   }
 
@@ -291,7 +291,7 @@ function estimateCalories(answers: QuestionnaireAnswers) {
     return {
       maintenance,
       target: Math.max(1200, maintenance - 350),
-      note: "ابدأ بعجز معتدل حتى تحافظ على نشاطك وكتلتك العضلية.",
+      note: "نرشح لك عجزًا معتدلًا حتى تحافظ على نشاطك وكتلتك العضلية.",
     };
   }
 
@@ -299,50 +299,92 @@ function estimateCalories(answers: QuestionnaireAnswers) {
     return {
       maintenance,
       target: maintenance + 250,
-      note: "ابدأ بفائض بسيط مع بروتين كافٍ وتمارين مقاومة منتظمة.",
+      note: "الأفضل فائض بسيط مع بروتين كافٍ وتمارين مقاومة منتظمة.",
     };
   }
 
   return {
     maintenance,
     target: maintenance,
-    note: "حافظ على سعرات قريبة من احتياجك اليومي مع توزيع جيد للبروتين.",
+    note: "الأفضل الحفاظ على سعرات قريبة من احتياجك اليومي مع توزيع جيد للبروتين.",
   };
 }
 
 function buildTrainingAdvice(answers: QuestionnaireAnswers) {
   if (answers.goal === "weight-loss") {
-    return "الأنسب لك غالباً: 3 إلى 5 أيام مقاومة أسبوعياً مع 2 إلى 4 حصص كارديو خفيف إلى متوسط وحركة يومية جيدة.";
+    return "الأنسب لك غالبًا 3 إلى 5 أيام مقاومة أسبوعيًا مع 2 إلى 4 حصص كارديو خفيف إلى متوسط وحركة يومية جيدة.";
   }
   if (answers.goal === "muscle-gain") {
-    return "الأنسب لك غالباً: 4 إلى 5 أيام تمارين مقاومة مع زيادة حمل تدريجية وتقليل الكارديو الزائد.";
+    return "الأنسب لك غالبًا 4 إلى 5 أيام تمارين مقاومة مع زيادة حمل تدريجية وتقليل الكارديو الزائد.";
   }
   if (answers.goal === "toning") {
-    return "الأنسب لك غالباً: دمج تمارين مقاومة منتظمة مع كارديو معتدل وتحكم جيد في الأكل.";
+    return "الأنسب لك غالبًا دمج تمارين مقاومة منتظمة مع كارديو معتدل وتحكم جيد في الأكل.";
   }
-  return "الأنسب لك غالباً: برنامج متوازن يجمع بين المقاومة والكارديو والحركة اليومية.";
+  return "الأنسب لك غالبًا برنامج متوازن يجمع بين المقاومة والكارديو والحركة اليومية.";
 }
 
 function buildNutritionAdvice(answers: QuestionnaireAnswers) {
   const quality =
     answers.meals === "poor"
-      ? "ابدأ بتنظيم 3 وجبات واضحة يومياً وتقليل الحلويات والمشروبات العالية بالسعرات."
+      ? "ابدأ بتنظيم 3 وجبات واضحة يوميًا وتقليل الحلويات والمشروبات عالية السعرات."
       : answers.meals === "average"
         ? "حاول رفع جودة الأكل بزيادة البروتين والخضار وتنظيم الوجبات الخفيفة."
         : "استمر على جودة الأكل الحالية مع ضبط الكميات بما يناسب هدفك.";
 
   const protein = answers.weight
-    ? `استهدف بروتيناً يومياً بين ${Math.round(answers.weight * 1.4)} و${Math.round(answers.weight * 2)} جرام تقريباً.`
-    : "احرص على بروتين كافٍ يومياً.";
+    ? `واستهدف بروتينًا يوميًا بين ${Math.round(answers.weight * 1.4)} و${Math.round(answers.weight * 2)} جرام تقريبًا.`
+    : "واحرص على بروتين كافٍ يوميًا.";
 
   return `${quality} ${protein}`;
 }
 
 function buildSafetyAdvice(answers: QuestionnaireAnswers) {
   if (answers.injuries === "yes") {
-    return "بما أنك ذكرت وجود إصابة أو ألم متكرر، فالأفضل البدء تدريجياً ومراعاة التمارين المناسبة، ومع الحالات المستمرة يفضل الرجوع إلى مختص.";
+    return "بما أنك ذكرت وجود إصابة أو ألم متكرر، فالأفضل البدء تدريجيًا واختيار تمارين مناسبة، ومع الحالات المستمرة يفضل الرجوع إلى مختص.";
   }
   return "إذا شعرت بألم غير طبيعي أثناء التمرين فأوقف التمرين وراجع المدرب أو المختص.";
+}
+
+function goalLabel(goal?: QuestionnaireAnswers["goal"]) {
+  if (goal === "weight-loss") return "خسارة الوزن";
+  if (goal === "muscle-gain") return "بناء العضلات";
+  if (goal === "toning") return "شد الجسم";
+  if (goal === "general-fitness") return "تحسين اللياقة العامة";
+  return "غير محدد";
+}
+
+function experienceLabel(experience?: QuestionnaireAnswers["experience"]) {
+  if (experience === "beginner") return "مبتدئ";
+  if (experience === "intermediate") return "متوسط";
+  if (experience === "advanced") return "متقدم";
+  return "غير محدد";
+}
+
+function frequencyLabel(frequency?: QuestionnaireAnswers["frequency"]) {
+  if (frequency === "low") return "2 إلى 3 مرات أسبوعيًا";
+  if (frequency === "medium") return "4 إلى 5 مرات أسبوعيًا";
+  if (frequency === "high") return "6 مرات أو أكثر أسبوعيًا";
+  return "غير محدد";
+}
+
+function activityLabel(activity?: QuestionnaireAnswers["activity"]) {
+  if (activity === "low") return "قليل";
+  if (activity === "medium") return "متوسط";
+  if (activity === "high") return "عالٍ";
+  return "غير محدد";
+}
+
+function mealsLabel(meals?: QuestionnaireAnswers["meals"]) {
+  if (meals === "poor") return "ضعيف";
+  if (meals === "average") return "متوسط";
+  if (meals === "good") return "جيد";
+  return "غير محدد";
+}
+
+function yesNoLabel(value?: "yes" | "no") {
+  if (value === "yes") return "نعم";
+  if (value === "no") return "لا";
+  return "غير محدد";
 }
 
 async function recommendMembership(answers: QuestionnaireAnswers) {
@@ -366,11 +408,11 @@ async function recommendMembership(answers: QuestionnaireAnswers) {
       .toLowerCase();
 
     if (answers.goal === "weight-loss" && /(cardio|كارديو|زومبا|يوجا|تغذيه)/i.test(features)) score += 5;
-    if (answers.goal === "muscle-gain" && /(strength|مدرب|عضل|جلسات)/i.test(features)) score += 5;
+    if (answers.goal === "muscle-gain" && /(strength|مدرب|عضل|جلسات|مقاومه)/i.test(features)) score += 5;
     if (answers.goal === "toning" && /(classes|كلاسات|يوجا|تقييم)/i.test(features)) score += 4;
     if (answers.classes === "yes" && /(classes|كلاسات|يوجا|زومبا)/i.test(features)) score += 4;
     if (answers.frequency === "high" && (membership.maxClasses === -1 || membership.maxClasses >= 12)) score += 4;
-    if (answers.frequency === "medium" && membership.maxClasses >= 8) score += 3;
+    if (answers.frequency === "medium" && (membership.maxClasses === -1 || membership.maxClasses >= 8)) score += 3;
     if (answers.experience === "beginner" && membership.price <= 700) score += 3;
     if (answers.experience === "advanced" && membership.price >= 500) score += 2;
     if (answers.injuries === "yes" && /(مدرب|جلسات|متابعه)/i.test(features)) score += 3;
@@ -432,22 +474,66 @@ function matchFaq(message: string, entries: FaqEntry[]) {
   return bestScore >= 3 ? bestEntry : null;
 }
 
+function buildMembershipReason(answers: QuestionnaireAnswers, membershipName?: string) {
+  if (!membershipName) return null;
+
+  const reasons: string[] = [];
+
+  if (answers.goal === "weight-loss") reasons.push("هدفك الحالي هو خسارة الوزن");
+  if (answers.goal === "muscle-gain") reasons.push("هدفك الحالي هو بناء العضلات");
+  if (answers.goal === "toning") reasons.push("هدفك الحالي هو شد الجسم");
+  if (answers.classes === "yes") reasons.push("أنت مهتم بالكلاسات الجماعية");
+  if (answers.frequency === "high") reasons.push("معدل تمرينك المتوقع مرتفع");
+  if (answers.frequency === "medium") reasons.push("معدل تمرينك المتوقع متوسط ومنتظم");
+  if (typeof answers.budget === "number") reasons.push(`ميزانيتك التقريبية في حدود ${answers.budget} ج.م`);
+  if (answers.injuries === "yes") reasons.push("تحتاج باقة تسمح بمرونة ومراعاة حالتك");
+
+  if (reasons.length === 0) {
+    return `الباقة الأقرب لك حاليًا هي ${membershipName} لأنها الأقرب لهدفك ومستوى التزامك الحالي.`;
+  }
+
+  return `رشحت لك باقة ${membershipName} لأن ${reasons.slice(0, 3).join("، ")}.`;
+}
+
+function buildClientSummary(answers: QuestionnaireAnswers) {
+  const summary = [
+    `الهدف: ${goalLabel(answers.goal)}`,
+    `العمر: ${answers.age ?? "غير محدد"} سنة`,
+    `الطول: ${answers.height ?? "غير محدد"} سم`,
+    `الوزن: ${answers.weight ?? "غير محدد"} كجم`,
+    `النشاط اليومي: ${activityLabel(answers.activity)}`,
+    `الخبرة: ${experienceLabel(answers.experience)}`,
+    `عدد التمرين المتوقع: ${frequencyLabel(answers.frequency)}`,
+    `يفضل الكلاسات: ${yesNoLabel(answers.classes)}`,
+    `يوجد إصابات أو آلام: ${yesNoLabel(answers.injuries)}`,
+    `مستوى الأكل الحالي: ${mealsLabel(answers.meals)}`,
+    `الميزانية: ${answers.budget ? `${answers.budget} ج.م` : "غير محددة"}`,
+  ];
+
+  return summary.join("\n");
+}
+
 function buildFinalAssessment(answers: QuestionnaireAnswers, membershipName?: string, membershipPrice?: number) {
   const bmi = computeBmi(answers.weight, answers.height);
   const bmiState = bmiLabel(bmi);
   const calories = estimateCalories(answers);
+  const reason = buildMembershipReason(answers, membershipName);
 
   const lines = [
-    "هذا تقييم مبدئي آلي لمساعدتك في اختيار المسار الأنسب داخل النادي.",
-    bmi ? `مؤشر الكتلة التقريبي لديك: ${bmi} (${bmiState}).` : null,
+    "أنهيت تقييمك المبدئي، وهذه خلاصة سريعة مبنية على إجاباتك:",
+    buildClientSummary(answers),
+    bmi ? `مؤشر كتلة الجسم التقريبي لديك: ${bmi} (${bmiState}).` : null,
     calories
-      ? `سعرات المحافظة التقريبية: ${calories.maintenance}، والهدف المقترح حالياً: ${calories.target}. ${calories.note}`
+      ? `سعرات الحفاظ التقريبية: ${calories.maintenance}، والهدف الغذائي المبدئي المناسب لك حاليًا: ${calories.target}. ${calories.note}`
       : null,
-    buildTrainingAdvice(answers),
-    buildNutritionAdvice(answers),
-    buildSafetyAdvice(answers),
+    `الخطة التدريبية المقترحة: ${buildTrainingAdvice(answers)}`,
+    `النصيحة الغذائية: ${buildNutritionAdvice(answers)}`,
+    `تنبيه مهم: ${buildSafetyAdvice(answers)}`,
     membershipName
-      ? `الباقة الأقرب لك حالياً هي: ${membershipName}${membershipPrice ? ` بسعر ${membershipPrice} ج.م` : ""}.`
+      ? `${reason}${membershipPrice ? ` وسعرها ${membershipPrice} ج.م.` : ""}`
+      : "لم أجد باقة مفعلة مناسبة في النظام الآن، لكن أقدر أحولك مباشرة لموظف يساعدك.",
+    membershipName
+      ? "إذا أحببت، أقدر أشرح لك لماذا هذه الباقة هي الأقرب لك، أو أحولك مباشرة للدعم لإكمال الاشتراك."
       : null,
   ].filter(Boolean);
 
@@ -460,15 +546,15 @@ async function fallbackGeneralReply(message: string, stage: ChatContext["stage"]
 
   if (faq) {
     const question = nextQuestion(stage);
-    return question ? `${faq.answer}\n\nإذا أردت أكمل معك التقييم: ${question}` : faq.answer;
+    return question ? `${faq.answer}\n\nولو تحب نكمل التقييم خطوة بخطوة: ${question}` : faq.answer;
   }
 
   const question = nextQuestion(stage);
   if (question) {
-    return `أستطيع مساعدتك في التخسيس واللياقة والتغذية واختيار الاشتراك المناسب. ${question}`;
+    return `أقدر أساعدك في اللياقة، التغذية، واختيار الاشتراك المناسب. ${question}`;
   }
 
-  return "أستطيع مساعدتك في التقييم المبدئي للياقة أو التخسيس أو بناء العضلات، ثم أرشح لك الباقة المناسبة أو أحولك لموظف مباشر.";
+  return "أقدر أساعدك في التقييم المبدئي للياقة أو التخسيس أو بناء العضلات، ثم أرشح لك الباقة الأقرب أو أحولك للدعم المباشر.";
 }
 
 export async function initializeChatSession(sessionId: string) {
@@ -485,7 +571,7 @@ export async function initializeChatSession(sessionId: string) {
       sessionId,
       senderType: "bot",
       senderName: "مساعد فت زون",
-      content: `${QUESTION_TEXT.goal}\n\nبعد الإجابات سأعطيك تقييماً مبدئياً وأرشح لك الباقة الأقرب لك.`,
+      content: `${QUESTION_TEXT.goal}\n\nبعد إجاباتك سأعطيك تقييمًا مبدئيًا واضحًا، وملخصًا لبياناتك، وأرشح لك الباقة الأقرب لاحتياجك.`,
     },
   });
 
@@ -511,7 +597,7 @@ export async function generateBotReply(sessionId: string, userMessage: string) {
     const content =
       onlineCount > 0
         ? "تم تحويل المحادثة للدعم المباشر. يوجد مسؤول متاح الآن وسيتم الرد عليك هنا خلال لحظات."
-        : "تم تسجيل طلبك للدعم المباشر. إذا لم يكن أحد متاحاً الآن فسأستمر معك لحين دخول الإدارة.";
+        : "تم تسجيل طلبك للدعم المباشر. إذا لم يكن أحد متاحًا الآن فسأستمر معك لحين دخول الإدارة.";
 
     await db.chatSession.update({
       where: { id: sessionId },
@@ -585,8 +671,11 @@ export async function generateBotReply(sessionId: string, userMessage: string) {
         sessionId,
         senderType: "bot",
         senderName: "مساعد فت زون",
-        content: `${assessment}\n\nإذا أردت أسئلة إضافية أو موظفاً مباشراً فاكتب: أريد التحدث مع موظف.`,
-        metadata: recommendation ? JSON.stringify({ membershipId: recommendation.id }) : null,
+        content: assessment,
+        metadata: JSON.stringify({
+          membershipId: recommendation?.id ?? null,
+          summary: nextAnswers,
+        }),
       },
     });
   }
@@ -605,8 +694,8 @@ export async function generateBotReply(sessionId: string, userMessage: string) {
       content:
         faq?.answer ||
         (recommendation
-          ? `ما زالت الباقة الأقرب لك هي ${recommendation.name}. إذا أردت أشرح لك سبب الترشيح أو أحولك لموظف مباشر.`
-          : "أستطيع مساعدتك في أسئلة التخسيس واللياقة والتغذية واختيار الباقة المناسبة، أو تحويلك للدعم المباشر."),
+          ? `ما زالت الباقة الأقرب لك هي ${recommendation.name} بسعر ${recommendation.price} ج.م. إذا أحببت، أشرح لك سبب الترشيح أو أحولك مباشرة إلى موظف لإكمال الاشتراك.`
+          : "أقدر أساعدك في أسئلة اللياقة والتغذية واختيار الباقة المناسبة، أو أحولك للدعم المباشر."),
     },
   });
 }

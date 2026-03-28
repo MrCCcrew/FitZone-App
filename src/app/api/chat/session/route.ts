@@ -7,7 +7,7 @@ export async function GET(req: NextRequest) {
   try {
     const sessionId = req.nextUrl.searchParams.get("sessionId");
     if (!sessionId) {
-      return NextResponse.json({ error: "معرف الجلسة مطلوب" }, { status: 400 });
+      return NextResponse.json({ error: "معرف الجلسة مطلوب." }, { status: 400 });
     }
 
     const session = await db.chatSession.findUnique({
@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
     });
 
     if (!session) {
-      return NextResponse.json({ error: "جلسة المحادثة غير موجودة" }, { status: 404 });
+      return NextResponse.json({ error: "جلسة المحادثة غير موجودة." }, { status: 404 });
     }
 
     return NextResponse.json({
@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
     });
   } catch (error) {
     console.error("[CHAT_SESSION_GET]", error);
-    return NextResponse.json({ error: "الخدمة غير متاحة مؤقتًا", messages: [] }, { status: 200 });
+    return NextResponse.json({ error: "الخدمة غير متاحة مؤقتًا.", messages: [] }, { status: 200 });
   }
 }
 
@@ -39,7 +39,7 @@ export async function POST(req: Request) {
     const limit = applyRateLimit(`chat-session:${clientIp}`, 10, 10 * 60 * 1000);
     if (!limit.ok) {
       return NextResponse.json(
-        { error: "Too many chat session requests. Please try again shortly.", messages: [] },
+        { error: "تم إنشاء جلسات كثيرة في وقت قصير. حاول مرة أخرى بعد قليل.", messages: [] },
         { status: 429, headers: { "Retry-After": String(Math.ceil(limit.retryAfterMs / 1000)) } },
       );
     }
@@ -56,6 +56,6 @@ export async function POST(req: Request) {
     });
   } catch (error) {
     console.error("[CHAT_SESSION_POST]", error);
-    return NextResponse.json({ error: "الخدمة غير متاحة مؤقتًا", messages: [] }, { status: 200 });
+    return NextResponse.json({ error: "الخدمة غير متاحة مؤقتًا.", messages: [] }, { status: 200 });
   }
 }
