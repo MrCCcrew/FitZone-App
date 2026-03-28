@@ -1,271 +1,441 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 type Tab = "hero" | "contact" | "trainers" | "announcements" | "about";
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
-  { id: "hero",          label: "الصفحة الرئيسية",  icon: "🏠" },
-  { id: "contact",       label: "تواصل معنا",        icon: "📞" },
-  { id: "trainers",      label: "المدربون",          icon: "💪" },
-  { id: "announcements", label: "الإعلانات",         icon: "📣" },
-  { id: "about",         label: "عن النادي",         icon: "ℹ️" },
+  { id: "hero", label: "الصفحة الرئيسية", icon: "🏠" },
+  { id: "contact", label: "تواصل معنا", icon: "📞" },
+  { id: "trainers", label: "المدربات", icon: "🏋️" },
+  { id: "announcements", label: "الإعلانات", icon: "📣" },
+  { id: "about", label: "عن النادي", icon: "ℹ️" },
 ];
+
+type HeroStat = { value: string; label: string };
+type HeroData = {
+  badge: string;
+  headline1: string;
+  headline2: string;
+  headline3: string;
+  subtext: string;
+  ctaPrimary: string;
+  ctaSecondary: string;
+  stats: HeroStat[];
+  slides: string[];
+};
+
+type ContactData = {
+  phone: string;
+  whatsapp: string;
+  email: string;
+  address: string;
+  hours: string;
+  facebook: string;
+  instagram: string;
+  mapEmbed: string;
+};
+
+type Trainer = { name: string; specialty: string; bio: string; rating: number; sessions: number; emoji: string };
+type Announcement = { id: string; text: string; active: boolean };
+type AboutData = { name: string; city: string; founded: string; description: string; vision: string };
 
 const DEFAULTS: Record<Tab, unknown> = {
   hero: {
-    badge:       "نادي فيت زون — بني سويف",
-    headline1:   "حوّل",
-    headline2:   "جسمك",
-    headline3:   "وحياتك",
-    subtext:     "أحدث الأجهزة · أفضل المدربين · جو احترافي في قلب بني سويف",
-    ctaPrimary:  "ابدأ رحلتك",
-    ctaSecondary:"شاهد الكلاسات",
+    badge: "أول نادي للسيدات في بني سويف",
+    headline1: "ابدئي رحلتك",
+    headline2: "FIT ZONE",
+    headline3: "مع",
+    subtext: "النادي الوحيد المخصص للسيدات والأطفال. كلاسات متنوعة، مدربات محترفات، ونتائج حقيقية في بيئة آمنة ومريحة.",
+    ctaPrimary: "اشتركي الآن",
+    ctaSecondary: "احجزي كلاس تجريبي",
     stats: [
-      { value: "+500", label: "عضو نشط" },
-      { value: "15",   label: "مدرب محترف" },
-      { value: "20+",  label: "كلاس أسبوعياً" },
-      { value: "4",    label: "سنوات خبرة" },
+      { value: "500+", label: "عضوة نشطة" },
+      { value: "50+", label: "كلاس أسبوعيًا" },
+      { value: "3", label: "مدربات محترفات" },
     ],
-  },
+    slides: [],
+  } satisfies HeroData,
   contact: {
-    phone: "01001234567", whatsapp: "01001234567", email: "info@fitzone.eg",
-    address: "شارع الجمهورية، بني سويف", hours: "السبت – الخميس: 6 ص – 11 م",
-    facebook: "https://facebook.com/fitzone.benisuef",
-    instagram: "https://instagram.com/fitzone.benisuef", mapEmbed: "",
-  },
+    phone: "01001234567",
+    whatsapp: "01001234567",
+    email: "info@fitzone.eg",
+    address: "بني سويف - مصر",
+    hours: "السبت - الخميس: 6 ص - 11 م",
+    facebook: "",
+    instagram: "",
+    mapEmbed: "",
+  } satisfies ContactData,
   trainers: [
-    { name: "أحمد حسن",    specialty: "كمال الأجسام",  bio: "بطل محلي في كمال الأجسام، خبرة 8 سنوات", rating: 4.9, sessions: 1240, emoji: "💪" },
-    { name: "سارة محمد",   specialty: "يوجا وتأمل",    bio: "معلمة يوجا معتمدة", rating: 4.8, sessions: 890, emoji: "🧘" },
-    { name: "محمود علي",   specialty: "كروس فيت",      bio: "مدرب كروس فيت معتمد، خبرة 6 سنوات", rating: 4.9, sessions: 1050, emoji: "🏋️" },
-    { name: "نورا إبراهيم", specialty: "رقص ودانس",   bio: "راقصة متخصصة في التعليم الجماعي", rating: 4.7, sessions: 670, emoji: "💃" },
-    { name: "خالد عمر",    specialty: "ملاكمة",        bio: "بطل ملاكمة سابق، مدرب معتمد", rating: 4.8, sessions: 820, emoji: "🥊" },
-  ],
+    { name: "هبة زارع", specialty: "مدربة رئيسية", bio: "خبرة كبيرة في التدريب النسائي.", rating: 4.9, sessions: 520, emoji: "🏋️" },
+  ] satisfies Trainer[],
   announcements: [
-    { id: "1", text: "🎉 عرض خاص: اشترك في الباقة السنوية واحصل على شهر مجاناً!", active: true },
-    { id: "2", text: "🏋️ كلاس جديد: CrossFit للمبتدئين كل يوم سبت الساعة 7 صباحاً", active: true },
-  ],
+    { id: "1", text: "عرض خاص لفترة محدودة", active: true },
+  ] satisfies Announcement[],
   about: {
-    name: "نادي فيت زون", city: "بني سويف، مصر", founded: "2020",
-    description: "نادي فيت زون هو الوجهة الأولى للياقة البدنية في بني سويف. نقدم أحدث الأجهزة وأفضل المدربين في بيئة احترافية ومحفزة.",
-    vision: "نسعى لتكون فيت زون المرجع الأول للياقة البدنية في صعيد مصر.",
-  },
+    name: "نادي فيت زون",
+    city: "بني سويف - مصر",
+    founded: "2020",
+    description: "نادي رياضي مخصص للسيدات والأطفال مع تجربة تدريب عصرية ومريحة.",
+    vision: "أن نكون الوجهة الأولى للياقة النسائية في بني سويف.",
+  } satisfies AboutData,
 };
 
-// ── Reusable helpers ──────────────────────────────────────────────────────────
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return <div><label className="block text-gray-400 text-xs mb-1.5">{label}</label>{children}</div>;
-}
-function TInput({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
   return (
-    <input type="text" value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
-      className="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2 text-white placeholder-gray-600 focus:outline-none focus:border-red-600 text-sm" />
-  );
-}
-function TTextarea({ value, onChange, rows = 3 }: { value: string; onChange: (v: string) => void; rows?: number }) {
-  return (
-    <textarea value={value} onChange={e => onChange(e.target.value)} rows={rows}
-      className="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2 text-white placeholder-gray-600 focus:outline-none focus:border-red-600 text-sm resize-none" />
+    <div>
+      <label className="mb-1.5 block text-xs text-gray-400">{label}</label>
+      {children}
+    </div>
   );
 }
 
-// ── Hero ──────────────────────────────────────────────────────────────────────
-type HeroData = { badge: string; headline1: string; headline2: string; headline3: string; subtext: string; ctaPrimary: string; ctaSecondary: string; stats: { value: string; label: string }[] };
-function HeroTab({ data, onChange }: { data: HeroData; onChange: (d: unknown) => void }) {
-  const upd = (k: keyof HeroData, v: unknown) => onChange({ ...data, [k]: v });
-  const updStat = (i: number, k: string, v: string) => {
-    const stats = [...data.stats]; stats[i] = { ...stats[i], [k]: v }; onChange({ ...data, stats });
+function TInput({ value, onChange, placeholder = "" }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
+  return (
+    <input
+      type="text"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      className="w-full rounded-xl border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-white placeholder-gray-600 focus:border-red-600 focus:outline-none"
+    />
+  );
+}
+
+function TTextarea({ value, onChange, rows = 3, placeholder = "" }: { value: string; onChange: (v: string) => void; rows?: number; placeholder?: string }) {
+  return (
+    <textarea
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      rows={rows}
+      placeholder={placeholder}
+      className="w-full resize-none rounded-xl border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-white placeholder-gray-600 focus:border-red-600 focus:outline-none"
+    />
+  );
+}
+
+function listToText(items?: string[]) {
+  return Array.isArray(items) ? items.join("\n") : "";
+}
+
+function textToList(value: string) {
+  return value.split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
+}
+
+function HeroTab({ data, onChange }: { data: HeroData; onChange: (d: HeroData) => void }) {
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+
+  const update = <K extends keyof HeroData>(key: K, value: HeroData[K]) => onChange({ ...data, [key]: value });
+
+  const updateStat = (index: number, key: keyof HeroStat, value: string) => {
+    const stats = [...data.stats];
+    stats[index] = { ...stats[index], [key]: value };
+    onChange({ ...data, stats });
   };
+
+  const addStat = () => onChange({ ...data, stats: [...data.stats, { value: "", label: "" }] });
+  const removeStat = (index: number) => onChange({ ...data, stats: data.stats.filter((_, i) => i !== index) });
+
+  const uploadSlides = async (files: FileList | null) => {
+    if (!files?.length) return;
+    setUploading(true);
+    setUploadError("");
+    try {
+      const urls: string[] = [];
+      for (const file of Array.from(files)) {
+        const formData = new FormData();
+        formData.append("file", file);
+        const response = await fetch("/api/admin/uploads", { method: "POST", body: formData });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error ?? `تعذر رفع الصورة: ${file.name}`);
+        if (payload.url) urls.push(payload.url);
+      }
+      onChange({ ...data, slides: [...data.slides, ...urls] });
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : "تعذر رفع الصور الآن.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Field label="النص الصغير (badge)"><TInput value={data.badge} onChange={v => upd("badge", v)} /></Field>
-        <Field label="الكلمة الأولى"><TInput value={data.headline1} onChange={v => upd("headline1", v)} /></Field>
-        <Field label="الكلمة المميزة (أحمر)"><TInput value={data.headline2} onChange={v => upd("headline2", v)} /></Field>
-        <Field label="الكلمة الثالثة"><TInput value={data.headline3} onChange={v => upd("headline3", v)} /></Field>
-        <Field label="زر CTA الأول"><TInput value={data.ctaPrimary} onChange={v => upd("ctaPrimary", v)} /></Field>
-        <Field label="زر CTA الثاني"><TInput value={data.ctaSecondary} onChange={v => upd("ctaSecondary", v)} /></Field>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <Field label="الشريط الصغير أعلى العنوان">
+          <TInput value={data.badge} onChange={(v) => update("badge", v)} placeholder="أول نادي للسيدات في بني سويف" />
+        </Field>
+        <Field label="زر الدعوة الأساسي">
+          <TInput value={data.ctaPrimary} onChange={(v) => update("ctaPrimary", v)} placeholder="اشتركي الآن" />
+        </Field>
+        <Field label="السطر الأول من العنوان">
+          <TInput value={data.headline1} onChange={(v) => update("headline1", v)} placeholder="ابدئي رحلتك" />
+        </Field>
+        <Field label="زر الدعوة الثانوي">
+          <TInput value={data.ctaSecondary} onChange={(v) => update("ctaSecondary", v)} placeholder="احجزي كلاس تجريبي" />
+        </Field>
+        <Field label="الكلمة المميزة">
+          <TInput value={data.headline2} onChange={(v) => update("headline2", v)} placeholder="FIT ZONE" />
+        </Field>
+        <Field label="الكلمة الأخيرة">
+          <TInput value={data.headline3} onChange={(v) => update("headline3", v)} placeholder="مع" />
+        </Field>
       </div>
-      <Field label="النص التوضيحي"><TTextarea value={data.subtext} onChange={v => upd("subtext", v)} rows={2} /></Field>
+
+      <Field label="الوصف التعريفي">
+        <TTextarea value={data.subtext} onChange={(v) => update("subtext", v)} rows={3} />
+      </Field>
+
+      <div className="rounded-2xl border border-gray-800 bg-black/20 p-4">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div>
+            <div className="font-bold text-white">سلايدر الصور الرئيسي</div>
+            <div className="mt-1 text-xs leading-6 text-gray-400">أضف 5 صور أو أكثر لتظهر بشكل متكرر داخل الهيرو في الجهة اليسرى.</div>
+          </div>
+          <div className="text-xs text-emerald-300">عدد الصور: {data.slides.length}</div>
+        </div>
+
+        <input
+          type="file"
+          multiple
+          accept="image/*"
+          onChange={(e) => {
+            void uploadSlides(e.target.files);
+            e.currentTarget.value = "";
+          }}
+          className="block w-full text-sm text-gray-400 file:ml-3 file:rounded-lg file:border-0 file:bg-red-600 file:px-4 file:py-2 file:text-sm file:font-bold file:text-white"
+        />
+        {uploading && <div className="mt-3 text-xs text-yellow-400">جارٍ رفع صور السلايدر...</div>}
+        {uploadError && <div className="mt-3 rounded-xl border border-red-500/30 bg-red-950/30 px-4 py-3 text-xs text-red-200">{uploadError}</div>}
+
+        <div className="mt-4">
+          <Field label="روابط الصور اليدوية - رابط واحد في كل سطر">
+            <TTextarea value={listToText(data.slides)} onChange={(v) => update("slides", textToList(v))} rows={5} placeholder="https://example.com/hero-slide-1.jpg" />
+          </Field>
+        </div>
+
+        {!!data.slides.length && (
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {data.slides.map((slide, index) => (
+              <div key={`${slide}-${index}`} className="overflow-hidden rounded-2xl border border-gray-800 bg-gray-900">
+                <img src={slide} alt={`hero-slide-${index + 1}`} className="h-32 w-full object-cover" />
+                <button
+                  type="button"
+                  onClick={() => update("slides", data.slides.filter((_, i) => i !== index))}
+                  className="w-full border-t border-gray-800 px-3 py-2 text-xs text-red-300"
+                >
+                  حذف الصورة
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       <div>
-        <div className="text-gray-400 text-xs mb-3">الإحصائيات</div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {data.stats.map((s, i) => (
-            <div key={i} className="bg-gray-900 border border-gray-800 rounded-xl p-3 space-y-2">
-              <TInput value={s.value} onChange={v => updStat(i, "value", v)} placeholder="القيمة" />
-              <TInput value={s.label} onChange={v => updStat(i, "label", v)} placeholder="الوصف" />
+        <div className="mb-3 text-xs text-gray-400">الإحصائيات المختصرة أسفل أزرار الهيرو</div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {data.stats.map((item, index) => (
+            <div key={index} className="rounded-2xl border border-gray-800 bg-gray-900 p-3">
+              <div className="grid gap-3">
+                <TInput value={item.value} onChange={(v) => updateStat(index, "value", v)} placeholder="500+" />
+                <TInput value={item.label} onChange={(v) => updateStat(index, "label", v)} placeholder="عضوة نشطة" />
+                <button type="button" onClick={() => removeStat(index)} className="text-xs text-red-400">
+                  حذف الإحصائية
+                </button>
+              </div>
             </div>
           ))}
         </div>
+        <button type="button" onClick={addStat} className="mt-3 rounded-xl border border-dashed border-gray-700 px-4 py-2 text-sm text-gray-300">
+          + إضافة إحصائية
+        </button>
       </div>
     </div>
   );
 }
 
-// ── Contact ───────────────────────────────────────────────────────────────────
-function ContactTab({ data, onChange }: { data: Record<string, string>; onChange: (d: unknown) => void }) {
-  const upd = (k: string, v: string) => onChange({ ...data, [k]: v });
+function ContactTab({ data, onChange }: { data: ContactData; onChange: (d: ContactData) => void }) {
+  const update = <K extends keyof ContactData>(key: K, value: ContactData[K]) => onChange({ ...data, [key]: value });
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-      <Field label="رقم الهاتف"><TInput value={data.phone ?? ""} onChange={v => upd("phone", v)} placeholder="01xxxxxxxxx" /></Field>
-      <Field label="واتساب"><TInput value={data.whatsapp ?? ""} onChange={v => upd("whatsapp", v)} placeholder="01xxxxxxxxx" /></Field>
-      <Field label="البريد الإلكتروني"><TInput value={data.email ?? ""} onChange={v => upd("email", v)} placeholder="info@fitzone.eg" /></Field>
-      <Field label="العنوان"><TInput value={data.address ?? ""} onChange={v => upd("address", v)} /></Field>
-      <Field label="مواعيد العمل"><TInput value={data.hours ?? ""} onChange={v => upd("hours", v)} /></Field>
-      <Field label="فيسبوك"><TInput value={data.facebook ?? ""} onChange={v => upd("facebook", v)} /></Field>
-      <Field label="إنستغرام"><TInput value={data.instagram ?? ""} onChange={v => upd("instagram", v)} /></Field>
-      <Field label="رابط الخريطة"><TInput value={data.mapEmbed ?? ""} onChange={v => upd("mapEmbed", v)} /></Field>
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <Field label="رقم الهاتف"><TInput value={data.phone} onChange={(v) => update("phone", v)} /></Field>
+      <Field label="واتساب"><TInput value={data.whatsapp} onChange={(v) => update("whatsapp", v)} /></Field>
+      <Field label="البريد الإلكتروني"><TInput value={data.email} onChange={(v) => update("email", v)} /></Field>
+      <Field label="العنوان"><TInput value={data.address} onChange={(v) => update("address", v)} /></Field>
+      <Field label="مواعيد العمل"><TInput value={data.hours} onChange={(v) => update("hours", v)} /></Field>
+      <Field label="فيسبوك"><TInput value={data.facebook} onChange={(v) => update("facebook", v)} /></Field>
+      <Field label="إنستجرام"><TInput value={data.instagram} onChange={(v) => update("instagram", v)} /></Field>
+      <Field label="رابط الخريطة"><TInput value={data.mapEmbed} onChange={(v) => update("mapEmbed", v)} /></Field>
     </div>
   );
 }
 
-// ── Trainers ──────────────────────────────────────────────────────────────────
-type Trainer = { name: string; specialty: string; bio: string; rating: number; sessions: number; emoji: string };
-function TrainersTab({ data, onChange }: { data: Trainer[]; onChange: (d: unknown) => void }) {
-  const upd = (i: number, k: keyof Trainer, v: string | number) => { const a = [...data]; a[i] = { ...a[i], [k]: v }; onChange(a); };
-  const add = () => onChange([...data, { name: "مدرب جديد", specialty: "", bio: "", rating: 5.0, sessions: 0, emoji: "💪" }]);
-  const remove = (i: number) => onChange(data.filter((_, idx) => idx !== i));
+function TrainersTab({ data, onChange }: { data: Trainer[]; onChange: (d: Trainer[]) => void }) {
+  const update = (index: number, key: keyof Trainer, value: string | number) => {
+    const next = [...data];
+    next[index] = { ...next[index], [key]: value };
+    onChange(next);
+  };
   return (
     <div className="space-y-4">
-      {data.map((t, i) => (
-        <div key={i} className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
-          <div className="flex items-center justify-between mb-3">
-            <span className="font-bold text-white flex items-center gap-2"><span className="text-xl">{t.emoji}</span>{t.name}</span>
-            <button onClick={() => remove(i)} className="text-red-500 hover:text-red-400 text-xs">حذف</button>
+      {data.map((trainer, index) => (
+        <div key={index} className="rounded-2xl border border-gray-800 bg-gray-900 p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <div className="font-bold text-white">{trainer.name}</div>
+            <button type="button" onClick={() => onChange(data.filter((_, i) => i !== index))} className="text-xs text-red-400">حذف</button>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <Field label="الاسم"><TInput value={t.name} onChange={v => upd(i, "name", v)} /></Field>
-            <Field label="التخصص"><TInput value={t.specialty} onChange={v => upd(i, "specialty", v)} /></Field>
-            <Field label="Emoji"><TInput value={t.emoji} onChange={v => upd(i, "emoji", v)} /></Field>
-            <Field label="التقييم">
-              <input type="number" min={1} max={5} step={0.1} value={t.rating} onChange={e => upd(i, "rating", parseFloat(e.target.value))}
-                className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none" />
-            </Field>
-            <Field label="عدد الجلسات">
-              <input type="number" min={0} value={t.sessions} onChange={e => upd(i, "sessions", parseInt(e.target.value))}
-                className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none" />
-            </Field>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <Field label="الاسم"><TInput value={trainer.name} onChange={(v) => update(index, "name", v)} /></Field>
+            <Field label="التخصص"><TInput value={trainer.specialty} onChange={(v) => update(index, "specialty", v)} /></Field>
+            <Field label="الأيقونة"><TInput value={trainer.emoji} onChange={(v) => update(index, "emoji", v)} /></Field>
+            <Field label="التقييم"><TInput value={String(trainer.rating)} onChange={(v) => update(index, "rating", Number(v) || 0)} /></Field>
+            <Field label="عدد الجلسات"><TInput value={String(trainer.sessions)} onChange={(v) => update(index, "sessions", Number(v) || 0)} /></Field>
           </div>
-          <div className="mt-3"><Field label="نبذة"><TTextarea value={t.bio} onChange={v => upd(i, "bio", v)} rows={2} /></Field></div>
+          <div className="mt-3">
+            <Field label="نبذة قصيرة"><TTextarea value={trainer.bio} onChange={(v) => update(index, "bio", v)} rows={2} /></Field>
+          </div>
         </div>
       ))}
-      <button onClick={add} className="w-full border-2 border-dashed border-gray-700 hover:border-red-600 text-gray-500 hover:text-red-500 py-3 rounded-2xl text-sm transition-colors">
-        + إضافة مدرب
+      <button
+        type="button"
+        onClick={() => onChange([...data, { name: "مدربة جديدة", specialty: "", bio: "", rating: 5, sessions: 0, emoji: "🏋️" }])}
+        className="w-full rounded-xl border border-dashed border-gray-700 px-4 py-3 text-sm text-gray-300"
+      >
+        + إضافة مدربة
       </button>
     </div>
   );
 }
 
-// ── Announcements ─────────────────────────────────────────────────────────────
-type Ann = { id: string; text: string; active: boolean };
-function AnnouncementsTab({ data, onChange }: { data: Ann[]; onChange: (d: unknown) => void }) {
-  const upd = (i: number, k: keyof Ann, v: string | boolean) => { const a = [...data]; a[i] = { ...a[i], [k]: v }; onChange(a); };
-  const add = () => onChange([...data, { id: Date.now().toString(), text: "إعلان جديد", active: true }]);
-  const remove = (i: number) => onChange(data.filter((_, idx) => idx !== i));
+function AnnouncementsTab({ data, onChange }: { data: Announcement[]; onChange: (d: Announcement[]) => void }) {
+  const update = (index: number, key: keyof Announcement, value: string | boolean) => {
+    const next = [...data];
+    next[index] = { ...next[index], [key]: value };
+    onChange(next);
+  };
   return (
     <div className="space-y-3">
-      {data.map((a, i) => (
-        <div key={a.id} className="bg-gray-900 border border-gray-800 rounded-xl p-4 flex items-center gap-3">
-          <label className="relative inline-flex items-center cursor-pointer shrink-0">
-            <input type="checkbox" checked={a.active} onChange={e => upd(i, "active", e.target.checked)} className="sr-only peer" />
-            <div className="w-9 h-5 bg-gray-700 peer-checked:bg-red-600 rounded-full peer after:content-[''] after:absolute after:top-0.5 after:start-[4px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-full" />
-          </label>
-          <input type="text" value={a.text} onChange={e => upd(i, "text", e.target.value)}
-            className="flex-1 bg-transparent text-gray-200 text-sm focus:outline-none border-b border-gray-700 focus:border-red-600 pb-1 transition-colors" />
-          <button onClick={() => remove(i)} className="text-gray-600 hover:text-red-500 transition-colors text-xl leading-none shrink-0">✕</button>
+      {data.map((announcement, index) => (
+        <div key={announcement.id} className="flex items-center gap-3 rounded-xl border border-gray-800 bg-gray-900 p-4">
+          <input type="checkbox" checked={announcement.active} onChange={(e) => update(index, "active", e.target.checked)} />
+          <input
+            type="text"
+            value={announcement.text}
+            onChange={(e) => update(index, "text", e.target.value)}
+            className="flex-1 border-b border-gray-700 bg-transparent pb-1 text-sm text-gray-200 focus:border-red-600 focus:outline-none"
+          />
+          <button type="button" onClick={() => onChange(data.filter((_, i) => i !== index))} className="text-red-400">حذف</button>
         </div>
       ))}
-      <button onClick={add} className="w-full border-2 border-dashed border-gray-700 hover:border-red-600 text-gray-500 hover:text-red-500 py-3 rounded-xl text-sm transition-colors">
+      <button
+        type="button"
+        onClick={() => onChange([...data, { id: Date.now().toString(), text: "إعلان جديد", active: true }])}
+        className="w-full rounded-xl border border-dashed border-gray-700 px-4 py-3 text-sm text-gray-300"
+      >
         + إضافة إعلان
       </button>
     </div>
   );
 }
 
-// ── About ─────────────────────────────────────────────────────────────────────
-function AboutTab({ data, onChange }: { data: Record<string, string>; onChange: (d: unknown) => void }) {
-  const upd = (k: string, v: string) => onChange({ ...data, [k]: v });
+function AboutTab({ data, onChange }: { data: AboutData; onChange: (d: AboutData) => void }) {
+  const update = <K extends keyof AboutData>(key: K, value: AboutData[K]) => onChange({ ...data, [key]: value });
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Field label="اسم النادي"><TInput value={data.name ?? ""} onChange={v => upd("name", v)} /></Field>
-        <Field label="المدينة"><TInput value={data.city ?? ""} onChange={v => upd("city", v)} /></Field>
-        <Field label="سنة التأسيس"><TInput value={data.founded ?? ""} onChange={v => upd("founded", v)} /></Field>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <Field label="اسم النادي"><TInput value={data.name} onChange={(v) => update("name", v)} /></Field>
+        <Field label="المدينة"><TInput value={data.city} onChange={(v) => update("city", v)} /></Field>
+        <Field label="سنة التأسيس"><TInput value={data.founded} onChange={(v) => update("founded", v)} /></Field>
       </div>
-      <Field label="وصف النادي"><TTextarea value={data.description ?? ""} onChange={v => upd("description", v)} rows={3} /></Field>
-      <Field label="رسالة النادي / الرؤية"><TTextarea value={data.vision ?? ""} onChange={v => upd("vision", v)} rows={2} /></Field>
+      <Field label="وصف النادي"><TTextarea value={data.description} onChange={(v) => update("description", v)} rows={3} /></Field>
+      <Field label="الرؤية"><TTextarea value={data.vision} onChange={(v) => update("vision", v)} rows={2} /></Field>
     </div>
   );
 }
 
-// ── Main ──────────────────────────────────────────────────────────────────────
 export default function PagesContent() {
   const [activeTab, setActiveTab] = useState<Tab>("hero");
-  const [content, setContent]     = useState<Record<Tab, unknown>>(DEFAULTS as Record<Tab, unknown>);
-  const [loading, setLoading]     = useState(true);
-  const [saving, setSaving]       = useState(false);
-  const [toast, setToast]         = useState("");
+  const [content, setContent] = useState<Record<Tab, unknown>>(DEFAULTS as Record<Tab, unknown>);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState("");
 
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/site-content?sections=hero,contact,trainers,announcements,about");
-      if (res.ok) {
-        const data = await res.json();
-        setContent(prev => ({ ...prev, ...data }));
+      const response = await fetch("/api/site-content?sections=hero,contact,trainers,announcements,about", { cache: "no-store" });
+      if (response.ok) {
+        const data = await response.json();
+        setContent((prev) => ({ ...prev, ...data }));
       }
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => { loadAll(); }, [loadAll]);
+  useEffect(() => {
+    void loadAll();
+  }, [loadAll]);
 
-  const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(""), 3000); };
+  const updateContent = (value: unknown) => setContent((prev) => ({ ...prev, [activeTab]: value }));
+
+  const showToast = (message: string) => {
+    setToast(message);
+    window.setTimeout(() => setToast(""), 3000);
+  };
 
   const save = async () => {
     setSaving(true);
     try {
-      const res = await fetch("/api/site-content", {
-        method: "PUT", headers: { "Content-Type": "application/json" },
+      const response = await fetch("/api/site-content", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ section: activeTab, content: content[activeTab] }),
       });
-      showToast(res.ok ? "✅ تم الحفظ بنجاح" : "❌ حدث خطأ في الحفظ");
+      showToast(response.ok ? "تم حفظ التغييرات بنجاح." : "حدث خطأ أثناء الحفظ.");
     } finally {
       setSaving(false);
     }
   };
 
-  const upd = (v: unknown) => setContent(prev => ({ ...prev, [activeTab]: v }));
-
   return (
     <div className="space-y-6">
-      {/* Tabs */}
-      <div className="flex gap-2 flex-wrap">
-        {TABS.map(t => (
-          <button key={t.id} onClick={() => setActiveTab(t.id)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-colors ${activeTab === t.id ? "bg-red-600 text-white" : "bg-gray-800 text-gray-400 hover:text-white"}`}>
-            <span>{t.icon}</span><span>{t.label}</span>
+      <div className="flex flex-wrap gap-2">
+        {TABS.map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-colors ${activeTab === tab.id ? "bg-red-600 text-white" : "bg-gray-800 text-gray-400 hover:text-white"}`}
+          >
+            <span>{tab.icon}</span>
+            <span>{tab.label}</span>
           </button>
         ))}
       </div>
 
-      {/* Panel */}
-      <div className="bg-gray-950 border border-gray-800 rounded-2xl">
-        <div className="flex items-center justify-between p-5 border-b border-gray-800">
+      <div className="rounded-2xl border border-gray-800 bg-gray-950">
+        <div className="flex items-center justify-between border-b border-gray-800 p-5">
           <div>
-            <h2 className="text-white font-black text-base">
-              {TABS.find(t => t.id === activeTab)?.icon} {TABS.find(t => t.id === activeTab)?.label}
+            <h2 className="text-base font-black text-white">
+              {TABS.find((tab) => tab.id === activeTab)?.icon} {TABS.find((tab) => tab.id === activeTab)?.label}
             </h2>
-            <p className="text-gray-500 text-xs mt-0.5">التغييرات تُحفظ في قاعدة البيانات</p>
+            <p className="mt-0.5 text-xs text-gray-500">كل التعديلات هنا تُحفظ مباشرة داخل قاعدة البيانات وتظهر في الموقع بعد الحفظ.</p>
           </div>
           <div className="flex gap-2">
-            <button onClick={() => setContent(prev => ({ ...prev, [activeTab]: DEFAULTS[activeTab] }))}
-              className="px-4 py-2 rounded-xl text-sm bg-gray-800 hover:bg-gray-700 text-gray-300 transition-colors">
+            <button
+              type="button"
+              onClick={() => setContent((prev) => ({ ...prev, [activeTab]: DEFAULTS[activeTab] }))}
+              className="rounded-xl bg-gray-800 px-4 py-2 text-sm text-gray-300 transition-colors hover:bg-gray-700"
+            >
               إعادة تعيين
             </button>
-            <button onClick={save} disabled={saving || loading}
-              className="px-4 py-2 rounded-xl text-sm bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-medium transition-colors">
+            <button
+              type="button"
+              onClick={() => void save()}
+              disabled={saving || loading}
+              className="rounded-xl bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:opacity-50"
+            >
               {saving ? "جارٍ الحفظ..." : "حفظ التغييرات"}
             </button>
           </div>
@@ -273,22 +443,21 @@ export default function PagesContent() {
 
         <div className="p-5">
           {loading ? (
-            <div className="text-center text-gray-500 py-12">جارٍ تحميل المحتوى...</div>
+            <div className="py-12 text-center text-gray-500">جارٍ تحميل المحتوى...</div>
           ) : (
             <>
-              {activeTab === "hero"          && <HeroTab          data={content.hero as HeroData}             onChange={upd} />}
-              {activeTab === "contact"       && <ContactTab       data={content.contact as Record<string,string>}  onChange={upd} />}
-              {activeTab === "trainers"      && <TrainersTab      data={content.trainers as Trainer[]}         onChange={upd} />}
-              {activeTab === "announcements" && <AnnouncementsTab data={content.announcements as Ann[]}        onChange={upd} />}
-              {activeTab === "about"         && <AboutTab         data={content.about as Record<string,string>} onChange={upd} />}
+              {activeTab === "hero" && <HeroTab data={content.hero as HeroData} onChange={(d) => updateContent(d)} />}
+              {activeTab === "contact" && <ContactTab data={content.contact as ContactData} onChange={(d) => updateContent(d)} />}
+              {activeTab === "trainers" && <TrainersTab data={content.trainers as Trainer[]} onChange={(d) => updateContent(d)} />}
+              {activeTab === "announcements" && <AnnouncementsTab data={content.announcements as Announcement[]} onChange={(d) => updateContent(d)} />}
+              {activeTab === "about" && <AboutTab data={content.about as AboutData} onChange={(d) => updateContent(d)} />}
             </>
           )}
         </div>
       </div>
 
-      {/* Toast */}
       {toast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-gray-800 border border-gray-600 text-white px-6 py-3 rounded-2xl shadow-2xl text-sm font-medium z-50">
+        <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-2xl border border-gray-600 bg-gray-800 px-6 py-3 text-sm font-medium text-white shadow-2xl">
           {toast}
         </div>
       )}

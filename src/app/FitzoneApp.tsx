@@ -706,6 +706,24 @@ const DEFAULT_HOME_MEMBERSHIPS = [
   { name: "بريميوم", price: 999, period: "شهر", features: ["كل مزايا برو", "4 جلسات خاصة", "خصم 25% متجر", "أولوية الحجز"], color: C.gold, popular: false },
 ];
 const HOME_PLAN_COLORS = [C.gray, C.red, C.gold, "#A855F7", "#3498DB"];
+const DEFAULT_HERO_SLIDES = [
+  "https://images.unsplash.com/photo-1518611012118-696072aa579a?auto=format&fit=crop&w=1200&q=80",
+  "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?auto=format&fit=crop&w=1200&q=80",
+  "https://images.unsplash.com/photo-1518310383802-640c2de311b2?auto=format&fit=crop&w=1200&q=80",
+  "https://images.unsplash.com/photo-1517838277536-f5f99be501cd?auto=format&fit=crop&w=1200&q=80",
+  "https://images.unsplash.com/photo-1517838277536-f5f99be501cd?auto=format&fit=crop&w=1200&q=80&sat=-20",
+];
+type HomeHeroContent = {
+  badge: string;
+  headline1: string;
+  headline2: string;
+  headline3: string;
+  subtext: string;
+  ctaPrimary: string;
+  ctaSecondary: string;
+  slides: string[];
+  stats: { value: string; label: string }[];
+};
 const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summary: UserSummary | null }) => {
   const _w = useWindowWidth();
   // Shadow module-level functions with reactive versions (fixes SSR hydration mismatch)
@@ -730,6 +748,22 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
     { displayName: "ريم أحمد", content: "الحجز يتم بسرعة وسهولة من الموقع والتجربة ممتازة.", rating: 5 },
   ]);
   const [products, setProducts] = useState<StoreProduct[]>(DEFAULT_PRODUCTS.slice(0, 3));
+  const [heroContent, setHeroContent] = useState<HomeHeroContent>({
+    badge: "أول نادي للسيدات في بني سويف",
+    headline1: "ابدئي رحلتك",
+    headline2: "FIT ZONE",
+    headline3: "مع",
+    subtext: "النادي الوحيد المخصص للسيدات والأطفال. كلاسات متنوعة، مدربات محترفات، ونتائج حقيقية في بيئة آمنة ومريحة.",
+    ctaPrimary: "اشتركي الآن",
+    ctaSecondary: "احجزي كلاس تجريبي",
+    slides: DEFAULT_HERO_SLIDES,
+    stats: [
+      { value: "500+", label: "عضوة نشطة" },
+      { value: "50+", label: "كلاس أسبوعيًا" },
+      { value: "3", label: "مدربات محترفات" },
+    ],
+  });
+  const [heroSlideIndex, setHeroSlideIndex] = useState(0);
   useEffect(() => {
     loadPublicApi().then(d => {
       if (Array.isArray(d.memberships) && d.memberships.length > 0) {
@@ -775,6 +809,30 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
       }
     }).catch(() => {});
   }, []);
+  useEffect(() => {
+    fetch("/api/site-content?sections=hero", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.hero && typeof d.hero === "object") {
+          const next = d.hero as Partial<HomeHeroContent>;
+          setHeroContent((current) => ({
+            ...current,
+            ...next,
+            slides: Array.isArray(next.slides) && next.slides.length > 0 ? next.slides.filter(Boolean) : current.slides,
+            stats: Array.isArray(next.stats) && next.stats.length > 0 ? next.stats : current.stats,
+          }));
+        }
+      })
+      .catch(() => {});
+  }, []);
+  useEffect(() => {
+    const slides = heroContent.slides?.length ? heroContent.slides : DEFAULT_HERO_SLIDES;
+    if (slides.length <= 1) return;
+    const timer = setInterval(() => {
+      setHeroSlideIndex((current) => (current + 1) % slides.length);
+    }, 2800);
+    return () => clearInterval(timer);
+  }, [heroContent.slides]);
   const schedulePreview = [
     { time: "07:00", name: "يوجا الصباح", trainer: "هبة", spots: 5, color: "#9B59B6" },
     { time: "09:00", name: "زومبا", trainer: "منال", spots: 2, color: C.red },
@@ -794,6 +852,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
     ["🎁", summary?.authenticated ? `${summary?.referralEarned ?? 0} ج.م` : "20%", summary?.authenticated ? "مكافآت الإحالة" : "خصم الإحالة"],
     ["📦", summary?.membership?.name ?? getTierLabel(summary?.rewardTier), summary?.membership ? "الاشتراك النشط" : "مستوى العضوية"],
   ];
+  const heroSlides = heroContent.slides?.length ? heroContent.slides : DEFAULT_HERO_SLIDES;
 
   return (
     <div>
@@ -804,21 +863,22 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
           <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg, rgba(252,228,236,.85) 30%, rgba(255,240,245,.4) 100%)" }} />
         </div>
         <div className="container" style={{ position: "relative", zIndex: 1 }}>
-          <div style={{ maxWidth: 580 }}>
-            <div className="tag" style={{ marginBottom: 20, display: "inline-flex" }}>💪 أول نادي للسيدات في بني سويف</div>
+          <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr", "1.1fr .9fr"), gap: 32, alignItems: "center" }}>
+            <div style={{ maxWidth: 580, order: viewportWidth() < 1024 ? 2 : 1 }}>
+            <div className="tag" style={{ marginBottom: 20, display: "inline-flex" }}>💪 {heroContent.badge}</div>
             <h1 style={{ fontSize: viewportWidth() < 768 ? 34 : 56, fontWeight: 900, lineHeight: 1.1, color: C.white, marginBottom: 20 }}>
-              ابدئي رحلتك<br />
-              مع <span style={{ color: C.red, textShadow: `0 0 30px ${C.red}66` }}>FIT ZONE</span>
+              {heroContent.headline1}<br />
+              {heroContent.headline3} <span style={{ color: C.red, textShadow: `0 0 30px ${C.red}66` }}>{heroContent.headline2}</span>
             </h1>
             <p style={{ fontSize: viewportWidth() < 768 ? 15 : 17, color: C.gray, lineHeight: 1.8, marginBottom: 36, maxWidth: 460 }}>
-              النادي الوحيد المخصص للسيدات والأطفال. كلاسات متنوعة، مدربات محترفات، ونتائج حقيقية في بيئة آمنة ومريحة.
+              {heroContent.subtext}
             </p>
             <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
               <button className="btn-primary" onClick={() => navigate("memberships")} style={{ fontSize: 16, padding: "14px 36px" }}>
-                <I n="star" s={16} c="#fff" /> اشتركي الآن
+                <I n="star" s={16} c="#fff" /> {heroContent.ctaPrimary}
               </button>
               <button className="btn-outline" onClick={() => navigate("classes")} style={{ fontSize: 16, padding: "14px 36px" }}>
-                احجزي كلاس تجريبي
+                {heroContent.ctaSecondary}
               </button>
             </div>
             <div style={{ display: "flex", gap: viewportWidth() < 768 ? 20 : 40, marginTop: 48, flexWrap: "wrap" }}>
@@ -828,6 +888,63 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                   <div style={{ fontSize: 12, color: C.gray, marginTop: 2 }}>{l}</div>
                 </div>
               ))}
+            </div>
+          </div>
+            <div style={{ order: viewportWidth() < 1024 ? 1 : 2 }}>
+              <div
+                className="card glow-red"
+                style={{
+                  position: "relative",
+                  overflow: "hidden",
+                  minHeight: viewportWidth() < 768 ? 280 : 430,
+                  borderRadius: 28,
+                  background: "rgba(255,255,255,.55)",
+                  backdropFilter: "blur(12px)",
+                  border: `1px solid ${C.border}`,
+                  boxShadow: "0 20px 70px rgba(233,30,99,.18)",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    width: `${heroSlides.length * 100}%`,
+                    transform: `translateX(${heroSlideIndex * -100 / heroSlides.length}%)`,
+                    transition: "transform 700ms ease",
+                    height: "100%",
+                  }}
+                >
+                  {heroSlides.map((slide, index) => (
+                    <div key={`${slide}-${index}`} style={{ width: `${100 / heroSlides.length}%`, padding: 14, flexShrink: 0 }}>
+                      <div style={{ height: "100%", overflow: "hidden", borderRadius: 22, position: "relative" }}>
+                        <img
+                          src={slide}
+                          alt={`hero-slide-${index + 1}`}
+                          style={{ width: "100%", height: viewportWidth() < 768 ? 280 : 430, objectFit: "cover", display: "block" }}
+                        />
+                        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(26,8,18,.05), rgba(26,8,18,.28))" }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ position: "absolute", right: 18, bottom: 18, display: "flex", gap: 8 }}>
+                  {heroSlides.map((_, index) => (
+                    <button
+                      key={index}
+                      type="button"
+                      onClick={() => setHeroSlideIndex(index)}
+                      style={{
+                        width: index === heroSlideIndex ? 26 : 10,
+                        height: 10,
+                        borderRadius: 999,
+                        border: "none",
+                        background: index === heroSlideIndex ? C.red : "rgba(255,255,255,.65)",
+                        cursor: "pointer",
+                        transition: "all .2s ease",
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -1957,6 +2074,8 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
   const [product, setProduct] = useState<StoreProduct>(DEFAULT_PRODUCTS[0]);
   const [catalog, setCatalog] = useState<StoreProduct[]>(DEFAULT_PRODUCTS);
   const [selectedImage, setSelectedImage] = useState(0);
+  const [imageZoomed, setImageZoomed] = useState(false);
+  const [zoomOrigin, setZoomOrigin] = useState("50% 50%");
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
   const [selectedColor, setSelectedColor] = useState(C.red);
   const [reviewRating, setReviewRating] = useState(5);
@@ -2089,16 +2208,63 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
     }
   };
 
+  const handleZoomMove = (event: React.MouseEvent<HTMLDivElement>) => {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const x = ((event.clientX - bounds.left) / bounds.width) * 100;
+    const y = ((event.clientY - bounds.top) / bounds.height) * 100;
+    setZoomOrigin(`${x}% ${y}%`);
+  };
+
   return (
     <div>
       <div className="container" style={{ padding: "48px 24px" }}>
         <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr", "1fr 1fr"), gap: 48, alignItems: "start" }}>
           <div>
-            <div style={{ borderRadius: 12, overflow: "hidden", marginBottom: 12 }}>
+            <div
+              style={{ borderRadius: 12, overflow: "hidden", marginBottom: 12, position: "relative", cursor: product.images && product.images.length > 0 ? "zoom-in" : "default" }}
+              onMouseMove={handleZoomMove}
+              onMouseEnter={() => setImageZoomed(true)}
+              onMouseLeave={() => {
+                setImageZoomed(false);
+                setZoomOrigin("50% 50%");
+              }}
+            >
               {product.images && product.images.length > 0 ? (
-                <img src={product.images[selectedImage]} alt={product.name} style={{ width: "100%", height: viewportWidth() < 768 ? 300 : 380, objectFit: "cover", display: "block", background: C.bgCard2 }} />
+                <img
+                  src={product.images[selectedImage]}
+                  alt={product.name}
+                  style={{
+                    width: "100%",
+                    height: viewportWidth() < 768 ? 300 : 380,
+                    objectFit: "cover",
+                    display: "block",
+                    background: C.bgCard2,
+                    transform: imageZoomed ? "scale(1.9)" : "scale(1)",
+                    transformOrigin: zoomOrigin,
+                    transition: imageZoomed ? "transform 120ms ease-out" : "transform 220ms ease",
+                  }}
+                />
               ) : (
                 <GymImg type={product.type} w="100%" h={viewportWidth() < 768 ? 300 : 380} />
+              )}
+              {product.images && product.images.length > 1 && (
+                <div
+                  style={{
+                    position: "absolute",
+                    left: 12,
+                    bottom: 12,
+                    background: "rgba(26,8,18,.72)",
+                    color: "#fff",
+                    border: `1px solid ${C.border}`,
+                    borderRadius: 999,
+                    padding: "6px 12px",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    backdropFilter: "blur(8px)",
+                  }}
+                >
+                  {selectedImage + 1} / {product.images.length}
+                </div>
               )}
             </div>
             <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("repeat(3, 1fr)", "repeat(4, 1fr)", "repeat(4, 1fr)"), gap: 8 }}>

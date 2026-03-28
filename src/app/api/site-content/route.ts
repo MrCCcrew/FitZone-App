@@ -2,7 +2,6 @@ import { NextResponse, NextRequest } from "next/server";
 import { requireAdminFeature } from "@/lib/admin-guard";
 import { db } from "@/lib/db";
 
-// GET /api/site-content?sections=hero,contact,announcements
 export async function GET(req: NextRequest) {
   const sections = req.nextUrl.searchParams.get("sections")?.split(",").filter(Boolean);
 
@@ -11,15 +10,17 @@ export async function GET(req: NextRequest) {
   });
 
   const result: Record<string, unknown> = {};
-  for (const r of records) {
-    try { result[r.section] = JSON.parse(r.content); }
-    catch { result[r.section] = r.content; }
+  for (const record of records) {
+    try {
+      result[record.section] = JSON.parse(record.content);
+    } catch {
+      result[record.section] = record.content;
+    }
   }
 
   return NextResponse.json(result);
 }
 
-// PUT /api/site-content  — admin only
 export async function PUT(req: Request) {
   const guard = await requireAdminFeature("site-content");
   if ("error" in guard) return guard.error;
@@ -30,7 +31,7 @@ export async function PUT(req: Request) {
   }
 
   const record = await db.siteContent.upsert({
-    where:  { section },
+    where: { section },
     update: { content: JSON.stringify(content) },
     create: { section, content: JSON.stringify(content) },
   });
