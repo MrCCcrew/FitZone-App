@@ -1,8 +1,8 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 function EyeIcon({ open }: { open: boolean }) {
   return open ? (
@@ -22,28 +22,26 @@ function EyeIcon({ open }: { open: boolean }) {
 
 function normalizeCallbackUrl(value: string | null) {
   if (!value) return "/";
-
-  if (value.startsWith("/")) {
-    return value;
-  }
+  if (value.startsWith("/")) return value;
 
   try {
     const url = new URL(value);
     if (url.hostname === "fitzoneland.com" || url.hostname === "www.fitzoneland.com") {
       return `${url.pathname}${url.search}${url.hash}` || "/";
     }
-  } catch {
-    return "/";
-  }
+  } catch {}
 
   return "/";
 }
 
 function LoginForm() {
   const params = useSearchParams();
-  const callbackUrl = normalizeCallbackUrl(params.get("callbackUrl"));
+  const router = useRouter();
+  const callbackUrl = useMemo(() => normalizeCallbackUrl(params.get("callbackUrl")), [params]);
+  const verified = params.get("verified");
+  const verifiedEmail = params.get("email");
 
-  const [form, setForm] = useState({ email: "", password: "" });
+  const [form, setForm] = useState({ email: verifiedEmail ?? "", password: "" });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -65,7 +63,12 @@ function LoginForm() {
       const data = contentType.includes("application/json") ? await res.json() : null;
 
       if (!res.ok) {
-        setError(data?.error || "البريد الإلكتروني أو كلمة المرور غير صحيحة");
+        if (data?.requiresVerification && data?.email) {
+          router.push(`/verify-email?email=${encodeURIComponent(data.email)}&callbackUrl=${encodeURIComponent(callbackUrl)}`);
+          return;
+        }
+
+        setError(data?.error || "البريد الإلكتروني أو كلمة المرور غير صحيحة.");
         return;
       }
 
@@ -94,6 +97,12 @@ function LoginForm() {
         <div className="rounded-3xl border border-white/10 bg-white/5 p-8 shadow-[0_30px_80px_rgba(0,0,0,0.45)] backdrop-blur-xl">
           <h1 className="mb-2 text-2xl font-black text-white">تسجيل الدخول</h1>
           <p className="mb-6 text-sm text-gray-400">أهلًا بك في فيت زون</p>
+
+          {verified ? (
+            <div className="mb-5 rounded-xl border border-emerald-500/30 bg-emerald-950/30 px-4 py-3 text-sm text-emerald-300">
+              تم تفعيل بريدك الإلكتروني بنجاح. يمكنك تسجيل الدخول الآن.
+            </div>
+          ) : null}
 
           {error ? (
             <div className="mb-5 rounded-xl border border-red-500/30 bg-red-950/40 px-4 py-3 text-sm text-red-300">
@@ -160,7 +169,7 @@ function LoginForm() {
         </div>
 
         <p className="mt-4 text-center text-xs text-gray-500">
-          هل أنت مدير؟{" "}
+          هل أنت من فريق الإدارة؟{" "}
           <Link href="/admin/login" className="text-pink-200 transition-colors hover:text-pink-100">
             تسجيل دخول الإدارة
           </Link>

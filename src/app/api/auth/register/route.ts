@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
 import bcryptjs from "bcryptjs";
 import { db } from "@/lib/db";
-import { APP_SESSION_COOKIE, createAppSessionToken, getAppSessionCookieOptions } from "@/lib/app-session";
-import { ADMIN_SESSION_COOKIE, getAdminSessionCookieOptions } from "@/lib/admin-session";
 import { sendVerificationEmail } from "@/lib/email";
+import { ADMIN_SESSION_COOKIE, getAdminSessionCookieOptions } from "@/lib/admin-session";
 import { applyRateLimit, getClientIp } from "@/lib/rate-limit";
 
 export async function POST(req: Request) {
@@ -12,7 +11,7 @@ export async function POST(req: Request) {
     const limit = applyRateLimit(`register:${clientIp}`, 5, 10 * 60 * 1000);
     if (!limit.ok) {
       return NextResponse.json(
-        { error: "Too many registration attempts. Please try again shortly." },
+        { error: "عدد محاولات التسجيل كبير جدًا. حاول مرة أخرى بعد قليل." },
         { status: 429, headers: { "Retry-After": String(Math.ceil(limit.retryAfterMs / 1000)) } },
       );
     }
@@ -26,15 +25,37 @@ export async function POST(req: Request) {
 
     if (!normalizedName || !normalizedEmail || !normalizedPassword) {
       return NextResponse.json(
-        { error: "الاسم والبريد الإلكتروني وكلمة المرور مطلوبة" },
+        { error: "الاسم والبريد الإلكتروني وكلمة المرور مطلوبة." },
         { status: 400 },
       );
     }
 
     const existing = await db.user.findUnique({ where: { email: normalizedEmail } });
     if (existing) {
+      if (!existing.emailVerified) {
+        const code = String(Math.floor(100000 + Math.random() * 900000));
+        const expires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+        await db.verificationToken.deleteMany({ where: { identifier: normalizedEmail } });
+        await db.verificationToken.create({
+          data: { identifier: normalizedEmail, token: code, expires },
+        });
+
+        const emailSent = await sendVerificationEmail(normalizedEmail, existing.name ?? normalizedName, code);
+
+        return NextResponse.json(
+          {
+            error: "هذا البريد مسجل بالفعل لكنه غير مفعل.",
+            requiresVerification: true,
+            email: normalizedEmail,
+            emailSent,
+          },
+          { status: 409 },
+        );
+      }
+
       return NextResponse.json(
-        { error: "البريد الإلكتروني مسجل بالفعل" },
+        { error: "هذا البريد الإلكتروني مسجل بالفعل." },
         { status: 409 },
       );
     }
@@ -60,27 +81,21 @@ export async function POST(req: Request) {
       return createdUser;
     });
 
-    // إنشاء كود التفعيل وإرساله بالبريد
-    try {
-      const code = String(Math.floor(100000 + Math.random() * 900000));
-      const expires = new Date(Date.now() + 24 * 60 * 60 * 1000);
-      await db.verificationToken.deleteMany({ where: { identifier: normalizedEmail } });
-      await db.verificationToken.create({
-        data: { identifier: normalizedEmail, token: code, expires },
-      });
-      // fire-and-forget عشان ما نعلقش التسجيل
-      sendVerificationEmail(normalizedEmail, normalizedName, code)
-        .catch((emailError) => console.error("[REGISTER_EMAIL]", emailError));
-    } catch (emailError) {
-      console.error("[REGISTER_TOKEN]", emailError);
-    }
+    const code = String(Math.floor(100000 + Math.random() * 900000));
+    const expires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    await db.verificationToken.deleteMany({ where: { identifier: normalizedEmail } });
+    await db.verificationToken.create({
+      data: { identifier: normalizedEmail, token: code, expires },
+    });
+
+    const emailSent = await sendVerificationEmail(normalizedEmail, normalizedName, code);
 
     try {
       await db.notification.create({
         data: {
           userId: user.id,
-          title: "مرحبًا بك في فيت زون",
-          body: `أهلًا ${normalizedName}، تم إنشاء حسابك بنجاح ويمكنك الآن استكشاف الاشتراكات والحجوزات.`,
+          title: "مرحبًا بك في FitZone",
+          body: "تم إنشاء حسابك بنجاح. أدخل رمز التفعيل المرسل إلى بريدك الإلكتروني لإكمال التفعيل.",
           type: "success",
         },
       });
@@ -88,20 +103,21 @@ export async function POST(req: Request) {
       console.error("[REGISTER_NOTIFICATION]", notificationError);
     }
 
-    const token = createAppSessionToken({
-      id: user.id,
-      email: user.email ?? normalizedEmail,
-      name: user.name ?? normalizedName,
-      role: user.role as "member" | "admin" | "staff" | "trainer",
+    const response = NextResponse.json({
+      success: true,
+      requiresVerification: true,
+      email: normalizedEmail,
+      emailSent,
     });
 
-    const response = NextResponse.json({ success: true });
-    const cookieOptions = getAppSessionCookieOptions();
-    response.cookies.set(ADMIN_SESSION_COOKIE, "", { ...getAdminSessionCookieOptions(), maxAge: 0 });
-    response.cookies.set(APP_SESSION_COOKIE, token, cookieOptions);
+    response.cookies.set(ADMIN_SESSION_COOKIE, "", {
+      ...getAdminSessionCookieOptions(),
+      maxAge: 0,
+    });
+
     return response;
   } catch (error) {
     console.error("[REGISTER]", error);
-    return NextResponse.json({ error: "حدث خطأ في الخادم" }, { status: 500 });
+    return NextResponse.json({ error: "حدث خطأ في الخادم." }, { status: 500 });
   }
 }

@@ -14,7 +14,7 @@ export async function POST(req: Request) {
     const limit = applyRateLimit(`app-login:${clientIp}`, 8, 5 * 60 * 1000);
     if (!limit.ok) {
       return NextResponse.json(
-        { error: "Too many login attempts. Please try again shortly." },
+        { error: "عدد محاولات تسجيل الدخول كبير جدًا. حاول مرة أخرى بعد قليل." },
         { status: 429, headers: { "Retry-After": String(Math.ceil(limit.retryAfterMs / 1000)) } },
       );
     }
@@ -24,7 +24,10 @@ export async function POST(req: Request) {
     const normalizedPassword = String(password ?? "");
 
     if (!normalizedEmail || !normalizedPassword) {
-      return NextResponse.json({ error: "البريد الإلكتروني وكلمة المرور مطلوبان" }, { status: 400 });
+      return NextResponse.json(
+        { error: "البريد الإلكتروني وكلمة المرور مطلوبان." },
+        { status: 400 },
+      );
     }
 
     const user = await db.user.findUnique({
@@ -35,21 +38,40 @@ export async function POST(req: Request) {
         email: true,
         password: true,
         role: true,
+        emailVerified: true,
       },
     });
+
     if (!user?.password) {
-      return NextResponse.json({ error: "البريد الإلكتروني أو كلمة المرور غير صحيحة" }, { status: 401 });
+      return NextResponse.json(
+        { error: "البريد الإلكتروني أو كلمة المرور غير صحيحة." },
+        { status: 401 },
+      );
     }
 
     const valid = user.password.startsWith("$2") && (await bcryptjs.compare(normalizedPassword, user.password));
     if (!valid) {
-      return NextResponse.json({ error: "البريد الإلكتروني أو كلمة المرور غير صحيحة" }, { status: 401 });
+      return NextResponse.json(
+        { error: "البريد الإلكتروني أو كلمة المرور غير صحيحة." },
+        { status: 401 },
+      );
+    }
+
+    if (!user.emailVerified) {
+      return NextResponse.json(
+        {
+          error: "يجب تفعيل البريد الإلكتروني أولًا.",
+          requiresVerification: true,
+          email: user.email ?? normalizedEmail,
+        },
+        { status: 403 },
+      );
     }
 
     const token = createAppSessionToken({
       id: user.id,
       email: user.email ?? normalizedEmail,
-      name: user.name ?? "عضو فيت زون",
+      name: user.name ?? "عضو FitZone",
       role: user.role as "member" | "admin" | "staff" | "trainer",
     });
 
@@ -68,6 +90,6 @@ export async function POST(req: Request) {
     return response;
   } catch (error) {
     console.error("[APP_LOGIN]", error);
-    return NextResponse.json({ error: "حدث خطأ في الخادم" }, { status: 500 });
+    return NextResponse.json({ error: "حدث خطأ في الخادم." }, { status: 500 });
   }
 }

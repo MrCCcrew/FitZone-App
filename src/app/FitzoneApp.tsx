@@ -573,7 +573,7 @@ const Footer = ({ navigate }: { navigate: (p: string) => void }) => (
         </div>
       </div>
       <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 24, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
-        <p style={{ color: C.grayDark, fontSize: 12 }}>© 2025 FIT ZONE Fitness Club. جميع الحقوق محفوظة.</p>
+        <p style={{ color: C.grayDark, fontSize: 12 }}>© 2026 FIT ZONE Fitness Club. جميع الحقوق محفوظة.</p>
         <div style={{ display: "flex", gap: 4 }}>
           <span style={{ color: C.grayDark, fontSize: 11 }}>صُمم بـ ♥ لفريق فيت زون</span>
         </div>
@@ -1032,7 +1032,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
             {memberships.map(m => (
               <div key={m.name} className={`card card-hover`} style={{ padding: 32, position: "relative", border: m.popular ? `2px solid ${C.red}` : `1px solid ${C.border}`, transform: m.popular ? "scale(1.03)" : "none" }}>
                 {m.popular && (
-                  <div style={{ position: "absolute", top: -10, left: "50%", transform: "translateX(-50%)", background: C.red, color: "#fff", padding: "4px 20px", borderRadius: 4, fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>⭐ الأكثر شعبية</div>
+                  <div style={{ position: "absolute", top: -5, left: "50%", transform: "translateX(-50%)", background: C.red, color: "#fff", padding: "4px 20px", borderRadius: 4, fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>⭐ الأكثر شعبية</div>
                 )}
                 <h3 style={{ fontSize: 20, fontWeight: 900, color: C.white }}>باقة {m.name}</h3>
                 <div style={{ margin: "16px 0 24px" }}>
@@ -3457,6 +3457,11 @@ export default function App() {
     };
 
     if (p in accountTabs) {
+      if (summary?.authenticated && (summary.user?.role === "admin" || summary.user?.role === "staff")) {
+        window.location.href = "/admin";
+        return;
+      }
+
       const target = `/account?tab=${accountTabs[p]}`;
       window.location.href = summary?.authenticated
         ? target

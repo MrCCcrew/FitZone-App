@@ -22,19 +22,25 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PUT(req: Request) {
-  const guard = await requireAdminFeature("site-content");
-  if ("error" in guard) return guard.error;
+  try {
+    const guard = await requireAdminFeature("site-content");
+    if ("error" in guard) return guard.error;
 
-  const { section, content } = await req.json();
-  if (!section || content === undefined) {
-    return NextResponse.json({ error: "القسم والمحتوى مطلوبان" }, { status: 400 });
+    const { section, content } = await req.json();
+    if (!section || content === undefined) {
+      return NextResponse.json({ error: "القسم والمحتوى مطلوبان." }, { status: 400 });
+    }
+
+    const payload = JSON.stringify(content);
+    const record = await db.siteContent.upsert({
+      where: { section },
+      update: { content: payload },
+      create: { section, content: payload },
+    });
+
+    return NextResponse.json(record);
+  } catch (error) {
+    console.error("[SITE_CONTENT_PUT]", error);
+    return NextResponse.json({ error: "تعذر حفظ المحتوى حاليًا." }, { status: 500 });
   }
-
-  const record = await db.siteContent.upsert({
-    where: { section },
-    update: { content: JSON.stringify(content) },
-    create: { section, content: JSON.stringify(content) },
-  });
-
-  return NextResponse.json(record);
 }

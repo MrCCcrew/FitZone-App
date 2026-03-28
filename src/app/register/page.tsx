@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 function EyeIcon({ open }: { open: boolean }) {
   return open ? (
@@ -20,8 +21,10 @@ function EyeIcon({ open }: { open: boolean }) {
 }
 
 export default function RegisterPage() {
+  const router = useRouter();
   const [form, setForm] = useState({ name: "", email: "", phone: "", password: "", confirm: "" });
   const [error, setError] = useState("");
+  const [info, setInfo] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -29,14 +32,15 @@ export default function RegisterPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    setInfo("");
 
     if (form.password !== form.confirm) {
-      setError("كلمتا المرور غير متطابقتين");
+      setError("كلمتا المرور غير متطابقتين.");
       return;
     }
 
     if (form.password.length < 6) {
-      setError("كلمة المرور يجب أن تكون 6 أحرف على الأقل");
+      setError("كلمة المرور يجب أن تكون 6 أحرف على الأقل.");
       return;
     }
 
@@ -57,12 +61,21 @@ export default function RegisterPage() {
       const contentType = res.headers.get("content-type") ?? "";
       const data = contentType.includes("application/json") ? await res.json() : null;
 
-      if (!res.ok) {
-        setError(data?.error || "حدث خطأ أثناء إنشاء الحساب");
+      if ((res.ok || res.status === 409) && data?.requiresVerification && data?.email) {
+        const search = new URLSearchParams({ email: data.email });
+        if (data.emailSent === false) {
+          search.set("sent", "0");
+        }
+        router.push(`/verify-email?${search.toString()}`);
         return;
       }
 
-      window.location.href = "/";
+      if (!res.ok) {
+        setError(data?.error || "حدث خطأ أثناء إنشاء الحساب.");
+        return;
+      }
+
+      setInfo("تم إنشاء الحساب. جارٍ تحويلك إلى صفحة التفعيل...");
     } catch {
       setError("تعذر إنشاء الحساب حاليًا. حاول مرة أخرى بعد قليل.");
     } finally {
@@ -96,6 +109,12 @@ export default function RegisterPage() {
           {error ? (
             <div className="mb-5 rounded-xl border border-red-500/30 bg-red-950/40 px-4 py-3 text-sm text-red-300">
               {error}
+            </div>
+          ) : null}
+
+          {info ? (
+            <div className="mb-5 rounded-xl border border-emerald-500/30 bg-emerald-950/30 px-4 py-3 text-sm text-emerald-300">
+              {info}
             </div>
           ) : null}
 
