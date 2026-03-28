@@ -172,7 +172,7 @@ model Booking {
 model Product {
   id          String  @id @default(cuid())
   name        String
-  description String?
+  description String? @db.Text
   price       Float
   oldPrice    Float?
   category    String
