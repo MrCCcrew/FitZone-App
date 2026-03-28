@@ -1,4 +1,4 @@
-import { NextResponse, NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { requireAdminFeature } from "@/lib/admin-guard";
 import { db } from "@/lib/db";
 
@@ -27,7 +27,7 @@ export async function PUT(req: Request) {
 
   const { section, content } = await req.json();
   if (!section || content === undefined) {
-    return NextResponse.json({ error: "section و content مطلوبان" }, { status: 400 });
+    return NextResponse.json({ error: "القسم والمحتوى مطلوبان" }, { status: 400 });
   }
 
   const record = await db.siteContent.upsert({

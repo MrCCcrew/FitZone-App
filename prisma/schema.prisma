@@ -376,7 +376,7 @@ model SupportPresence {
 model SiteContent {
   id        String   @id @default(cuid())
   section   String   @unique // hero | contact | trainers | blog | announcements | about
-  content   String   // JSON string
+  content   String   @db.LongText // JSON string
   updatedAt DateTime @updatedAt
 }
 
