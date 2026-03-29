@@ -867,7 +867,37 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
         </div>
         <div className="container" style={{ position: "relative", zIndex: 1 }}>
           <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr", "1.1fr .9fr"), gap: 32, alignItems: "center" }}>
-            <div style={{ maxWidth: 580, order: viewportWidth() < 1024 ? 2 : 1 }}>
+            <div
+              style={{
+                maxWidth: 580,
+                order: viewportWidth() < 1024 ? 2 : 1,
+                position: "relative",
+                paddingRight: viewportWidth() < 1200 ? 0 : 170,
+              }}
+            >
+            {viewportWidth() >= 1200 && (
+              <div
+                style={{
+                  position: "absolute",
+                  right: -14,
+                  bottom: 18,
+                  width: 190,
+                  pointerEvents: "none",
+                  filter: "drop-shadow(0 18px 36px rgba(122, 35, 83, .16))",
+                }}
+              >
+                <img
+                  src="/hero-heba.png"
+                  alt="مدربة فيت زون"
+                  style={{
+                    width: "100%",
+                    height: "auto",
+                    display: "block",
+                    objectFit: "contain",
+                  }}
+                />
+              </div>
+            )}
             <div className="tag" style={{ marginBottom: 20, display: "inline-flex" }}>💪 {heroContent.badge}</div>
             <h1 style={{ fontSize: viewportWidth() < 768 ? 34 : 56, fontWeight: 900, lineHeight: 1.1, color: C.white, marginBottom: 20 }}>
               {heroContent.headline1}<br />
@@ -895,19 +925,25 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
           </div>
             <div style={{ order: viewportWidth() < 1024 ? 1 : 2 }}>
               <div
-                className="card glow-red"
                 style={{
                   position: "relative",
-                  overflow: "hidden",
                   minHeight: viewportWidth() < 768 ? 280 : 430,
-                  borderRadius: 28,
-                  background: "rgba(255,255,255,.55)",
-                  backdropFilter: "blur(12px)",
-                  border: `1px solid ${C.border}`,
-                  boxShadow: "0 20px 70px rgba(233,30,99,.18)",
                 }}
               >
-                <div style={{ position: "relative", height: "100%", minHeight: viewportWidth() < 768 ? 280 : 430, padding: 14 }}>
+                <div
+                  className="card glow-red"
+                  style={{
+                    position: "relative",
+                    overflow: "hidden",
+                    minHeight: viewportWidth() < 768 ? 280 : 430,
+                    borderRadius: 28,
+                    background: "rgba(255,255,255,.55)",
+                    backdropFilter: "blur(12px)",
+                    border: `1px solid ${C.border}`,
+                    boxShadow: "0 20px 70px rgba(233,30,99,.18)",
+                  }}
+                >
+                  <div style={{ position: "relative", height: "100%", minHeight: viewportWidth() < 768 ? 280 : 430, padding: 14 }}>
                   {heroSlides.map((slide, index) => (
                     <div
                       key={`${slide}-${index}`}
@@ -946,24 +982,25 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                       </div>
                     </div>
                   ))}
-                </div>
-                <div style={{ position: "absolute", right: 18, bottom: 18, display: "flex", gap: 8 }}>
-                  {heroSlides.map((_, index) => (
-                    <button
-                      key={index}
-                      type="button"
-                      onClick={() => setHeroSlideIndex(index)}
-                      style={{
-                        width: index === heroSlideIndex ? 26 : 10,
-                        height: 10,
-                        borderRadius: 999,
-                        border: "none",
-                        background: index === heroSlideIndex ? C.red : "rgba(255,255,255,.65)",
-                        cursor: "pointer",
-                        transition: "all .2s ease",
-                      }}
-                    />
-                  ))}
+                  </div>
+                  <div style={{ position: "absolute", right: 18, bottom: 18, display: "flex", gap: 8 }}>
+                    {heroSlides.map((_, index) => (
+                      <button
+                        key={index}
+                        type="button"
+                        onClick={() => setHeroSlideIndex(index)}
+                        style={{
+                          width: index === heroSlideIndex ? 26 : 10,
+                          height: 10,
+                          borderRadius: 999,
+                          border: "none",
+                          background: index === heroSlideIndex ? C.red : "rgba(255,255,255,.65)",
+                          cursor: "pointer",
+                          transition: "all .2s ease",
+                        }}
+                      />
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
