@@ -156,19 +156,22 @@ const I = ({ n, s = 20, c = "currentColor" }: { n: string; s?: number; c?: strin
 
 // ─── FIT ZONE LOGO ─────────────────────────────────────────────────────────
 const FZLogo = ({ size = 40 }) => (
-  <svg width={size} height={size} viewBox="0 0 60 60">
-    <circle cx="30" cy="30" r="29" fill="#1A1A1A" stroke={C.gold} strokeWidth="1.5"/>
-    <circle cx="30" cy="30" r="26" fill="none" stroke={C.red} strokeWidth=".5" strokeDasharray="2 3"/>
-    {/* Athlete silhouette */}
-    <ellipse cx="30" cy="16" rx="3.5" ry="3.5" fill={C.white}/>
-    <path d="M24 26 Q30 22 36 26 L34 38 L30 35 L26 38 Z" fill={C.white}/>
-    <path d="M26 38 L23 46 M34 38 L37 46" stroke={C.white} strokeWidth="2" strokeLinecap="round"/>
-    <path d="M28 26 L20 30 M32 26 L40 30" stroke={C.white} strokeWidth="2" strokeLinecap="round"/>
-    {/* Small figure icons */}
-    {[-12,-6,0,6,12].map((x,i) => <circle key={i} cx={30+x} cy={53} r="1.2" fill={C.gold} opacity={i===2?1:.6}/>)}
-    {/* FIT ZONE text */}
-    <text x="30" y="50" textAnchor="middle" fontSize="6" fontWeight="bold" fill={C.gold} fontFamily="'Cairo',sans-serif" letterSpacing=".5">FIT ZONE</text>
-  </svg>
+  <img
+    src="/fitzone-logo.jpeg"
+    alt="Fit Zone Logo"
+    width={size}
+    height={size}
+    style={{
+      width: size,
+      height: size,
+      objectFit: "cover",
+      display: "block",
+      borderRadius: "50%",
+      border: "1px solid rgba(120, 33, 79, 0.35)",
+      boxShadow: "0 8px 20px rgba(190, 83, 145, 0.16)",
+      background: "#fff",
+    }}
+  />
 );
 
 // ─── GYM VISUAL PLACEHOLDERS ───────────────────────────────────────────────
@@ -461,12 +464,12 @@ const Header = ({
       <div style={{ background: C.red, padding: "6px 0", textAlign: "center" }}>
         <span style={{ fontSize: 12, fontWeight: 600, color: "#fff" }}>{announcements.length > 0 ? announcements[annIndex] : DEFAULT_TOP_BAR}</span>
       </div>
-      <div className="container" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", height: 64 }}>
+      <div className="container" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", height: 78 }}>
         <div onClick={() => navigate("home")} style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: 10 }}>
-          <FZLogo size={42} />
+          <FZLogo size={56} />
           <div>
-            <div style={{ fontSize: 18, fontWeight: 900, color: C.white, letterSpacing: 1, lineHeight: 1 }}>FIT ZONE</div>
-            <div style={{ fontSize: 10, color: C.gold, letterSpacing: 2, lineHeight: 1 }}>FITNESS CLUB</div>
+            <div style={{ fontSize: 19, fontWeight: 900, color: C.white, letterSpacing: 1, lineHeight: 1 }}>FIT ZONE</div>
+            <div style={{ fontSize: 10, color: C.gold, letterSpacing: 2, lineHeight: 1.1, marginTop: 3 }}>FITNESS CLUB</div>
           </div>
         </div>
         <nav className="hide-mobile" style={{ display: "flex", gap: 2 }}>
@@ -573,9 +576,9 @@ const Footer = ({ navigate }: { navigate: (p: string) => void }) => (
         </div>
       </div>
       <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 24, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
-        <p style={{ color: C.grayDark, fontSize: 12 }}>© 2026 FIT ZONE Fitness Club. جميع الحقوق محفوظة.</p>
+        <p style={{ color: C.goldDark, fontSize: 12 }}>© 2026 FIT ZONE Fitness Club. جميع الحقوق محفوظة.</p>
         <div style={{ display: "flex", gap: 4 }}>
-          <span style={{ color: C.grayDark, fontSize: 11 }}>صُمم بـ ♥ لفريق فيت زون</span>
+          <span style={{ color: C.goldDark, fontSize: 11 }}>صُمم بـ ♥ لفريق فيت زون</span>
         </div>
       </div>
     </div>
@@ -1424,7 +1427,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
           <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr 1fr", "repeat(4, 1fr)", "repeat(4, 1fr)"), gap: 20 }}>
             {plans.map(p => (
               <div key={p.name} className="card" style={{ padding: 28, position: "relative", border: p.popular ? `2px solid ${C.red}` : `1px solid ${C.border}` }}>
-                {p.popular && <div style={{ position: "absolute", top: -12, right: 16, background: C.red, color: "#fff", padding: "3px 14px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>الأكثر شعبية</div>}
+                {p.popular && <div style={{ position: "absolute", top: -5, right: 16, background: C.red, color: "#fff", padding: "3px 14px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>الأكثر شعبية</div>}
                 <h3 style={{ fontWeight: 900, fontSize: 20, color: C.white }}>باقة {p.name}</h3>
                 <div style={{ margin: "14px 0 20px" }}>
                   <span style={{ fontSize: 38, fontWeight: 900, color: p.color }}>{tab === "monthly" ? p.m : p.a}</span>
