@@ -1,27 +1,73 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Customer } from "../types";
+import { AdminCard, AdminEmptyState, AdminSectionShell } from "./shared";
 
-const STATUS_CONFIG: Record<Customer["status"], { label: string; color: string; dot: string }> = {
-  active:    { label: "نشط",    color: "bg-green-500/20 text-green-400",  dot: "bg-green-400" },
-  suspended: { label: "موقوف", color: "bg-yellow-500/20 text-yellow-400", dot: "bg-yellow-400" },
-  expired:   { label: "منتهي",  color: "bg-red-500/20 text-red-400",     dot: "bg-red-400" },
+const INPUT =
+  "w-full rounded-xl border border-gray-700 bg-gray-800 px-4 py-2.5 text-sm text-white outline-none transition-colors focus:border-[#ff4f93]";
+
+const STATUS_CONFIG: Record<
+  Customer["status"],
+  { label: string; badgeClass: string; dotClass: string }
+> = {
+  active: {
+    label: "نشط",
+    badgeClass: "bg-emerald-500/15 text-emerald-300",
+    dotClass: "bg-emerald-400",
+  },
+  suspended: {
+    label: "موقوف",
+    badgeClass: "bg-amber-500/15 text-amber-300",
+    dotClass: "bg-amber-400",
+  },
+  expired: {
+    label: "منتهي",
+    badgeClass: "bg-rose-500/15 text-rose-300",
+    dotClass: "bg-rose-400",
+  },
 };
-const PLAN_COLORS: Record<string, string> = { "أساسي": "text-gray-400", "بلاتيني": "text-red-400", "VIP": "text-yellow-400", "سنوي VIP": "text-purple-400" };
-const INPUT = "w-full bg-gray-800 border border-gray-700 focus:border-red-500 rounded-xl px-4 py-2.5 text-white text-sm outline-none transition-colors";
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return <div><label className="block text-gray-500 text-xs mb-1.5">{label}</label>{children}</div>;
-}
-function Modal({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
+const PLAN_COLORS: Record<string, string> = {
+  "أساسي": "text-[#d7aabd]",
+  "بلاتيني": "text-[#ff97bf]",
+  VIP: "text-[#ffd166]",
+  "سنوي VIP": "text-[#c084fc]",
+};
+
+const EMPTY_CUSTOMER: Omit<Customer, "id"> = {
+  name: "",
+  phone: "",
+  email: "",
+  plan: "أساسي",
+  status: "active",
+  joinDate: new Date().toISOString().slice(0, 10),
+  points: 0,
+  balance: 0,
+  avatar: "ع",
+};
+
+function Modal({
+  title,
+  onClose,
+  children,
+}: {
+  title: string;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
-      <div className="relative bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-5">
-          <h3 className="text-white font-black text-lg">{title}</h3>
-          <button onClick={onClose} className="text-gray-500 hover:text-white text-2xl leading-none">×</button>
+      <div
+        className="relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-[26px] border border-[rgba(255,188,219,0.16)] bg-[rgba(56,18,34,0.94)] p-6 shadow-[0_24px_70px_rgba(17,5,10,0.38)]"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="mb-5 flex items-center justify-between">
+          <h3 className="text-lg font-black text-[#fff4f8]">{title}</h3>
+          <button onClick={onClose} className="text-2xl leading-none text-[#d7aabd] transition-colors hover:text-white">
+            ×
+          </button>
         </div>
         {children}
       </div>
@@ -29,16 +75,25 @@ function Modal({ title, children, onClose }: { title: string; children: React.Re
   );
 }
 
-const EMPTY: Omit<Customer, "id"> = {
-  name: "", phone: "", email: "", plan: "أساسي",
-  status: "active", joinDate: new Date().toISOString().split("T")[0],
-  points: 0, balance: 0, avatar: "؟",
-};
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="block space-y-2">
+      <span className="text-xs text-[#d7aabd]">{label}</span>
+      {children}
+    </label>
+  );
+}
 
 export default function Customers() {
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [loading, setLoading]     = useState(true);
-  const [saving, setSaving]       = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
   const [planFilter, setPlanFilter] = useState("الكل");
   const [statusFilter, setStatusFilter] = useState("الكل");
@@ -46,273 +101,511 @@ export default function Customers() {
   const [editCustomer, setEditCustomer] = useState<Customer | Omit<Customer, "id"> | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Customer | null>(null);
 
-  const fetchAll = useCallback(async () => {
+  const loadCustomers = useCallback(async () => {
     setLoading(true);
-    const data = await fetch("/api/admin/customers").then(r => r.json());
-    setCustomers(Array.isArray(data) ? data : []);
-    setLoading(false);
+    try {
+      const response = await fetch("/api/admin/customers", { cache: "no-store" });
+      const payload = await response.json();
+      setCustomers(Array.isArray(payload) ? payload : []);
+    } finally {
+      setLoading(false);
+    }
   }, []);
-  useEffect(() => { fetchAll(); }, [fetchAll]);
 
-  const filtered = customers.filter((c) => {
-    const matchSearch = c.name.includes(search) || c.phone.includes(search) || c.email.includes(search);
-    const matchPlan = planFilter === "الكل" || c.plan === planFilter;
-    const matchStatus = statusFilter === "الكل" || c.status === statusFilter;
-    return matchSearch && matchPlan && matchStatus;
-  });
+  useEffect(() => {
+    void loadCustomers();
+  }, [loadCustomers]);
 
-  const plans = Array.from(new Set(customers.map((c) => c.plan)));
+  const planOptions = useMemo(() => Array.from(new Set(customers.map((customer) => customer.plan))), [customers]);
+
+  const filteredCustomers = useMemo(() => {
+    return customers.filter((customer) => {
+      const text = `${customer.name} ${customer.phone} ${customer.email}`.toLowerCase();
+      const matchesSearch = !search.trim() || text.includes(search.toLowerCase());
+      const matchesPlan = planFilter === "الكل" || customer.plan === planFilter;
+      const matchesStatus = statusFilter === "الكل" || customer.status === statusFilter;
+      return matchesSearch && matchesPlan && matchesStatus;
+    });
+  }, [customers, planFilter, search, statusFilter]);
 
   const saveCustomer = async () => {
     if (!editCustomer) return;
     setSaving(true);
-    const isEdit = "id" in editCustomer;
-    await fetch("/api/admin/customers", {
-      method:  isEdit ? "PATCH" : "POST",
-      headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify(editCustomer),
-    });
-    await fetchAll();
-    setEditCustomer(null); setSaving(false);
+    try {
+      const isEdit = "id" in editCustomer;
+      const response = await fetch("/api/admin/customers", {
+        method: isEdit ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(editCustomer),
+      });
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        window.alert(payload.error ?? "تعذر حفظ بيانات العميل.");
+        return;
+      }
+
+      await loadCustomers();
+      setEditCustomer(null);
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const setStatus = async (id: string, status: Customer["status"], plan?: string) => {
-    await fetch("/api/admin/customers", {
+  const updateStatus = async (id: string, status: Customer["status"], plan?: string) => {
+    const response = await fetch("/api/admin/customers", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id, status, plan }),
     });
-    await fetchAll();
+
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      window.alert(payload.error ?? "تعذر تحديث حالة العميل.");
+      return;
+    }
+
+    await loadCustomers();
   };
 
   const deleteCustomer = async (id: string) => {
-    await fetch("/api/admin/customers", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
-    setConfirmDelete(null); setViewCustomer(null);
-    await fetchAll();
+    const response = await fetch("/api/admin/customers", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      window.alert(payload.error ?? "تعذر حذف العميل.");
+      return;
+    }
+
+    setConfirmDelete(null);
+    setViewCustomer(null);
+    await loadCustomers();
   };
 
-  if (loading) return (
-    <div className="flex items-center justify-center h-64">
-      <div className="text-gray-500 text-sm">جارٍ تحميل بيانات الأعضاء...</div>
-    </div>
-  );
+  const stats = [
+    {
+      label: "إجمالي العملاء",
+      value: customers.length.toLocaleString("ar-EG"),
+      accent: "text-[#fff4f8]",
+    },
+    {
+      label: "عملاء نشطون",
+      value: customers.filter((customer) => customer.status === "active").length.toLocaleString("ar-EG"),
+      accent: "text-emerald-300",
+    },
+    {
+      label: "عملاء موقوفون",
+      value: customers.filter((customer) => customer.status === "suspended").length.toLocaleString("ar-EG"),
+      accent: "text-amber-300",
+    },
+    {
+      label: "اشتراكات منتهية",
+      value: customers.filter((customer) => customer.status === "expired").length.toLocaleString("ar-EG"),
+      accent: "text-rose-300",
+    },
+  ];
+
+  if (loading) {
+    return (
+      <AdminSectionShell title="العملاء" subtitle="إدارة الحسابات والاشتراكات وحالة كل عميل.">
+        <AdminCard className="flex h-64 items-center justify-center">
+          <div className="text-sm text-[#d7aabd]">جارٍ تحميل بيانات العملاء...</div>
+        </AdminCard>
+      </AdminSectionShell>
+    );
+  }
 
   return (
-    <div className="space-y-6">
-      {/* Stats */}
-      <div className="grid grid-cols-4 gap-3">
-        {[
-          ["إجمالي الأعضاء", customers.length, "text-white"],
-          ["أعضاء نشطون", customers.filter(c => c.status === "active").length, "text-green-400"],
-          ["موقوفون", customers.filter(c => c.status === "suspended").length, "text-yellow-400"],
-          ["منتهية اشتراكاتهم", customers.filter(c => c.status === "expired").length, "text-red-400"],
-        ].map(([label, val, color]) => (
-          <div key={label as string} className="bg-gray-900/60 border border-gray-800 rounded-xl p-4 text-center">
-            <div className={`text-2xl font-black ${color}`}>{val}</div>
-            <div className="text-gray-500 text-xs mt-1">{label}</div>
-          </div>
+    <AdminSectionShell
+      title="العملاء"
+      subtitle="راجع البيانات الأساسية والاشتراك والرصيد والنقاط لكل عميل."
+      actions={
+        <button
+          onClick={() => setEditCustomer(EMPTY_CUSTOMER)}
+          className="rounded-xl bg-[#ff4f93] px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-[#ff2f7d]"
+        >
+          + عميل جديد
+        </button>
+      }
+    >
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {stats.map((stat) => (
+          <AdminCard key={stat.label}>
+            <div className={`text-2xl font-black ${stat.accent}`}>{stat.value}</div>
+            <div className="mt-1 text-sm text-[#d7aabd]">{stat.label}</div>
+          </AdminCard>
         ))}
       </div>
 
-      {/* Toolbar */}
-      <div className="flex flex-wrap gap-3">
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="ابحث بالاسم أو الهاتف أو الإيميل..."
-          className="flex-1 min-w-56 bg-gray-800 border border-gray-700 focus:border-red-500 rounded-xl px-4 py-2.5 text-white text-sm outline-none transition-colors placeholder-gray-600"
-        />
-        <select value={planFilter} onChange={(e) => setPlanFilter(e.target.value)} className="bg-gray-800 border border-gray-700 text-white text-sm rounded-xl px-3 py-2 outline-none">
-          <option>الكل</option>
-          {plans.map((p) => <option key={p}>{p}</option>)}
-        </select>
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="bg-gray-800 border border-gray-700 text-white text-sm rounded-xl px-3 py-2 outline-none">
-          <option>الكل</option>
-          <option value="active">نشط</option>
-          <option value="suspended">موقوف</option>
-          <option value="expired">منتهي</option>
-        </select>
-        <button onClick={() => setEditCustomer(EMPTY)} className="bg-red-600 hover:bg-red-700 text-white font-bold px-4 py-2.5 rounded-xl text-sm transition-colors whitespace-nowrap">
-          + عضو جديد
-        </button>
-      </div>
+      <AdminCard>
+        <div className="flex flex-wrap gap-3">
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="ابحث بالاسم أو الهاتف أو البريد الإلكتروني..."
+            className="min-w-60 flex-1 rounded-xl border border-gray-700 bg-gray-800 px-4 py-2.5 text-sm text-white outline-none transition-colors focus:border-[#ff4f93] placeholder:text-gray-500"
+          />
 
-      {/* Table */}
-      <div className="bg-gray-900/60 border border-gray-800 rounded-2xl overflow-hidden">
-        <div className="p-4 border-b border-gray-800 flex items-center justify-between">
-          <span className="text-gray-400 text-sm">{filtered.length} عضو</span>
-          <div className="flex gap-2">
-            {Object.entries(STATUS_CONFIG).map(([k, v]) => (
-              <span key={k} className={`text-xs px-2 py-0.5 rounded-full font-medium ${v.color}`}>
-                {customers.filter(c => c.status === k).length} {v.label}
+          <select
+            value={planFilter}
+            onChange={(event) => setPlanFilter(event.target.value)}
+            className={INPUT}
+          >
+            <option value="الكل">كل الباقات</option>
+            {planOptions.map((plan) => (
+              <option key={plan} value={plan}>
+                {plan}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value)}
+            className={INPUT}
+          >
+            <option value="الكل">كل الحالات</option>
+            <option value="active">نشط</option>
+            <option value="suspended">موقوف</option>
+            <option value="expired">منتهي</option>
+          </select>
+        </div>
+      </AdminCard>
+
+      <AdminCard className="overflow-hidden p-0">
+        <div className="flex items-center justify-between border-b border-[rgba(255,188,219,0.14)] px-5 py-4">
+          <div className="text-sm text-[#d7aabd]">{filteredCustomers.length.toLocaleString("ar-EG")} عميل</div>
+          <div className="flex flex-wrap gap-2">
+            {Object.entries(STATUS_CONFIG).map(([key, config]) => (
+              <span key={key} className={`rounded-full px-3 py-1 text-xs font-bold ${config.badgeClass}`}>
+                {customers.filter((customer) => customer.status === key).length.toLocaleString("ar-EG")} {config.label}
               </span>
             ))}
           </div>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-800 text-gray-500 text-xs">
-                {["العضو", "الهاتف", "الباقة", "الحالة", "الانضمام", "النقاط", "الرصيد", ""].map((h) => (
-                  <th key={h} className="text-right py-3 px-4 font-medium">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((c) => {
-                const sc = STATUS_CONFIG[c.status];
-                return (
-                  <tr key={c.id} className="border-b border-gray-800/50 hover:bg-gray-800/20 transition-colors group">
-                    <td className="py-3 px-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-red-700 to-red-900 flex items-center justify-center text-white font-black">
-                          {c.avatar}
-                        </div>
-                        <div>
-                          <button onClick={() => setViewCustomer(c)} className="text-white font-medium hover:text-yellow-400 transition-colors text-right">
-                            {c.name}
-                          </button>
-                          <div className="text-gray-500 text-xs">{c.email}</div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-3 px-4 text-gray-400 text-xs" dir="ltr">{c.phone}</td>
-                    <td className="py-3 px-4 font-bold text-sm">
-                      <span className={PLAN_COLORS[c.plan] ?? "text-gray-400"}>{c.plan}</span>
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-bold ${sc.color}`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${sc.dot}`} />
-                        {sc.label}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-gray-500 text-xs">{c.joinDate}</td>
-                    <td className="py-3 px-4 text-yellow-400 font-bold">{c.points.toLocaleString("ar-EG")}</td>
-                    <td className="py-3 px-4 text-blue-400 font-bold">{c.balance.toLocaleString("ar-EG")} ج.م</td>
-                    <td className="py-3 px-4">
-                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={() => setViewCustomer(c)} className="text-gray-500 hover:text-white text-xs px-2 py-1 rounded-lg hover:bg-gray-700 transition-colors">عرض</button>
-                        <button onClick={() => setEditCustomer(c)} className="text-gray-500 hover:text-yellow-400 text-xs px-2 py-1 rounded-lg hover:bg-gray-700 transition-colors">تعديل</button>
-                        {c.status === "active"
-                          ? <button onClick={() => setStatus(c.id, "suspended", c.plan)} className="text-gray-500 hover:text-yellow-500 text-xs px-2 py-1 rounded-lg hover:bg-gray-700 transition-colors">إيقاف</button>
-                          : <button onClick={() => setStatus(c.id, "active", c.plan)} className="text-gray-500 hover:text-green-400 text-xs px-2 py-1 rounded-lg hover:bg-gray-700 transition-colors">تفعيل</button>}
-                        <button onClick={() => setConfirmDelete(c)} className="text-gray-500 hover:text-red-500 text-xs px-2 py-1 rounded-lg hover:bg-gray-700 transition-colors">حذف</button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
 
-      {/* View modal */}
+        {filteredCustomers.length === 0 ? (
+          <div className="p-5">
+            <AdminEmptyState
+              title="لا يوجد عملاء مطابقون"
+              description="جرّب تغيير البحث أو الفلاتر، أو أضف عميلًا جديدًا من الزر العلوي."
+            />
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[980px] text-sm">
+              <thead>
+                <tr className="border-b border-[rgba(255,188,219,0.12)] text-right text-xs text-[#d7aabd]">
+                  {["العميل", "الهاتف", "الباقة", "الحالة", "تاريخ الانضمام", "النقاط", "الرصيد", "الإجراءات"].map(
+                    (header) => (
+                      <th key={header} className="px-5 py-4 font-medium">
+                        {header}
+                      </th>
+                    ),
+                  )}
+                </tr>
+              </thead>
+              <tbody>
+                {filteredCustomers.map((customer) => {
+                  const status = STATUS_CONFIG[customer.status];
+
+                  return (
+                    <tr
+                      key={customer.id}
+                      className="border-b border-[rgba(255,188,219,0.08)] transition-colors hover:bg-white/[0.03]"
+                    >
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-[#ff4f93] to-[#7a1d47] text-sm font-black text-white shadow-[0_18px_40px_rgba(190,24,93,0.22)]">
+                            {customer.avatar}
+                          </div>
+                          <div>
+                            <button
+                              onClick={() => setViewCustomer(customer)}
+                              className="font-bold text-[#fff4f8] transition-colors hover:text-[#ffd166]"
+                            >
+                              {customer.name}
+                            </button>
+                            <div className="mt-1 text-xs text-[#d7aabd]">{customer.email}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-5 py-4 text-[#d7aabd]" dir="ltr">
+                        {customer.phone}
+                      </td>
+                      <td className={`px-5 py-4 font-bold ${PLAN_COLORS[customer.plan] ?? "text-[#d7aabd]"}`}>
+                        {customer.plan}
+                      </td>
+                      <td className="px-5 py-4">
+                        <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-bold ${status.badgeClass}`}>
+                          <span className={`h-2 w-2 rounded-full ${status.dotClass}`} />
+                          {status.label}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4 text-[#d7aabd]">{customer.joinDate}</td>
+                      <td className="px-5 py-4 font-bold text-[#ffd166]">
+                        {customer.points.toLocaleString("ar-EG")}
+                      </td>
+                      <td className="px-5 py-4 font-bold text-[#8bc5ff]">
+                        {customer.balance.toLocaleString("ar-EG")} ج.م
+                      </td>
+                      <td className="px-5 py-4">
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            onClick={() => setViewCustomer(customer)}
+                            className="rounded-lg bg-white/5 px-3 py-2 text-xs text-[#fff4f8] transition-colors hover:bg-white/10"
+                          >
+                            عرض
+                          </button>
+                          <button
+                            onClick={() => setEditCustomer(customer)}
+                            className="rounded-lg bg-white/5 px-3 py-2 text-xs text-[#ffd166] transition-colors hover:bg-white/10"
+                          >
+                            تعديل
+                          </button>
+                          {customer.status === "active" ? (
+                            <button
+                              onClick={() => void updateStatus(customer.id, "suspended", customer.plan)}
+                              className="rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-300 transition-colors hover:bg-amber-500/20"
+                            >
+                              إيقاف
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => void updateStatus(customer.id, "active", customer.plan)}
+                              className="rounded-lg bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300 transition-colors hover:bg-emerald-500/20"
+                            >
+                              تفعيل
+                            </button>
+                          )}
+                          <button
+                            onClick={() => setConfirmDelete(customer)}
+                            className="rounded-lg bg-rose-500/10 px-3 py-2 text-xs text-rose-300 transition-colors hover:bg-rose-500/20"
+                          >
+                            حذف
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </AdminCard>
+
       {viewCustomer && (
-        <Modal title="ملف العضو" onClose={() => setViewCustomer(null)}>
+        <Modal title="ملف العميل" onClose={() => setViewCustomer(null)}>
           <div className="space-y-5">
             <div className="flex items-center gap-4">
-              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-red-700 to-red-900 flex items-center justify-center text-white font-black text-2xl">
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-[#ff4f93] to-[#7a1d47] text-2xl font-black text-white">
                 {viewCustomer.avatar}
               </div>
               <div>
-                <div className="text-white font-black text-xl">{viewCustomer.name}</div>
-                <div className={`text-sm font-bold mt-1 ${PLAN_COLORS[viewCustomer.plan]}`}>{viewCustomer.plan}</div>
-                <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-bold mt-1 ${STATUS_CONFIG[viewCustomer.status].color}`}>
-                  <span className={`w-1.5 h-1.5 rounded-full ${STATUS_CONFIG[viewCustomer.status].dot}`} />
-                  {STATUS_CONFIG[viewCustomer.status].label}
-                </span>
+                <div className="text-xl font-black text-[#fff4f8]">{viewCustomer.name}</div>
+                <div className={`mt-1 text-sm font-bold ${PLAN_COLORS[viewCustomer.plan] ?? "text-[#d7aabd]"}`}>
+                  {viewCustomer.plan}
+                </div>
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-3">
-              {[["🏅", "النقاط", viewCustomer.points.toLocaleString("ar-EG")],
-                ["💳", "الرصيد", viewCustomer.balance.toLocaleString("ar-EG") + " ج.م"],
-                ["📅", "الانضمام", viewCustomer.joinDate]].map(([icon, label, val]) => (
-                <div key={label} className="bg-gray-800 rounded-xl p-3 text-center">
-                  <div className="text-xl mb-1">{icon}</div>
-                  <div className="text-white font-black text-sm">{val}</div>
-                  <div className="text-gray-500 text-xs">{label}</div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              {[
+                { label: "النقاط", value: viewCustomer.points.toLocaleString("ar-EG"), accent: "text-[#ffd166]" },
+                { label: "الرصيد", value: `${viewCustomer.balance.toLocaleString("ar-EG")} ج.م`, accent: "text-[#8bc5ff]" },
+                { label: "الانضمام", value: viewCustomer.joinDate, accent: "text-[#fff4f8]" },
+              ].map((item) => (
+                <div key={item.label} className="rounded-2xl border border-[rgba(255,188,219,0.12)] bg-black/15 p-4 text-center">
+                  <div className={`text-lg font-black ${item.accent}`}>{item.value}</div>
+                  <div className="mt-1 text-xs text-[#d7aabd]">{item.label}</div>
                 </div>
               ))}
             </div>
 
-            <div className="space-y-2">
-              {[["الهاتف", viewCustomer.phone], ["الإيميل", viewCustomer.email]].map(([k, v]) => (
-                <div key={k} className="flex items-center justify-between bg-gray-800 rounded-xl px-4 py-3">
-                  <span className="text-gray-500 text-sm">{k}</span>
-                  <span className="text-white font-medium text-sm" dir="ltr">{v}</span>
+            <div className="space-y-3">
+              {[
+                { label: "الهاتف", value: viewCustomer.phone, dir: "ltr" as const },
+                { label: "البريد الإلكتروني", value: viewCustomer.email, dir: "ltr" as const },
+              ].map((row) => (
+                <div
+                  key={row.label}
+                  className="flex items-center justify-between rounded-2xl border border-[rgba(255,188,219,0.12)] bg-black/15 px-4 py-3"
+                >
+                  <span className="text-sm text-[#d7aabd]">{row.label}</span>
+                  <span className="text-sm font-medium text-[#fff4f8]" dir={row.dir}>
+                    {row.value}
+                  </span>
                 </div>
               ))}
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
-              <button onClick={() => { setEditCustomer(viewCustomer); setViewCustomer(null); }} className="bg-yellow-500 hover:bg-yellow-400 text-black font-black py-2.5 rounded-xl transition-colors text-sm">✏️ تعديل</button>
-              <button onClick={() => { setConfirmDelete(viewCustomer); setViewCustomer(null); }} className="bg-red-900/50 hover:bg-red-800 text-red-400 font-bold py-2.5 rounded-xl transition-colors text-sm">🗑️ حذف</button>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <button
+                onClick={() => {
+                  setEditCustomer(viewCustomer);
+                  setViewCustomer(null);
+                }}
+                className="rounded-xl bg-[#ff4f93] py-3 text-sm font-black text-white transition-colors hover:bg-[#ff2f7d]"
+              >
+                تعديل البيانات
+              </button>
+              <button
+                onClick={() => {
+                  setConfirmDelete(viewCustomer);
+                  setViewCustomer(null);
+                }}
+                className="rounded-xl bg-rose-500/15 py-3 text-sm font-bold text-rose-300 transition-colors hover:bg-rose-500/25"
+              >
+                حذف العميل
+              </button>
             </div>
 
-            {viewCustomer.status === "active"
-              ? <button onClick={() => { setStatus(viewCustomer.id, "suspended", viewCustomer.plan); setViewCustomer(null); }} className="w-full bg-gray-800 hover:bg-gray-700 text-yellow-400 font-bold py-2.5 rounded-xl transition-colors text-sm">⛔ إيقاف العضوية</button>
-              : <button onClick={() => { setStatus(viewCustomer.id, "active", viewCustomer.plan); setViewCustomer(null); }} className="w-full bg-gray-800 hover:bg-gray-700 text-green-400 font-bold py-2.5 rounded-xl transition-colors text-sm">✅ تفعيل العضوية</button>}
+            {viewCustomer.status === "active" ? (
+              <button
+                onClick={() => {
+                  void updateStatus(viewCustomer.id, "suspended", viewCustomer.plan);
+                  setViewCustomer(null);
+                }}
+                className="w-full rounded-xl bg-amber-500/12 py-3 text-sm font-bold text-amber-300 transition-colors hover:bg-amber-500/20"
+              >
+                إيقاف العضوية
+              </button>
+            ) : (
+              <button
+                onClick={() => {
+                  void updateStatus(viewCustomer.id, "active", viewCustomer.plan);
+                  setViewCustomer(null);
+                }}
+                className="w-full rounded-xl bg-emerald-500/12 py-3 text-sm font-bold text-emerald-300 transition-colors hover:bg-emerald-500/20"
+              >
+                تفعيل العضوية
+              </button>
+            )}
           </div>
         </Modal>
       )}
 
-      {/* Edit modal */}
       {editCustomer && (
-        <Modal title={"id" in editCustomer ? "تعديل بيانات العضو" : "عضو جديد"} onClose={() => setEditCustomer(null)}>
+        <Modal title={"id" in editCustomer ? "تعديل بيانات العميل" : "إضافة عميل جديد"} onClose={() => setEditCustomer(null)}>
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-4 sm:grid-cols-2">
               <Field label="الاسم الكامل">
-                <input value={editCustomer.name} onChange={(e) => setEditCustomer({ ...editCustomer, name: e.target.value })} className={INPUT} />
+                <input
+                  value={editCustomer.name}
+                  onChange={(event) => setEditCustomer({ ...editCustomer, name: event.target.value })}
+                  className={INPUT}
+                />
               </Field>
               <Field label="رقم الهاتف">
-                <input value={editCustomer.phone} onChange={(e) => setEditCustomer({ ...editCustomer, phone: e.target.value })} className={INPUT} dir="ltr" />
+                <input
+                  value={editCustomer.phone}
+                  onChange={(event) => setEditCustomer({ ...editCustomer, phone: event.target.value })}
+                  className={INPUT}
+                  dir="ltr"
+                />
               </Field>
             </div>
+
             <Field label="البريد الإلكتروني">
-              <input type="email" value={editCustomer.email} onChange={(e) => setEditCustomer({ ...editCustomer, email: e.target.value })} className={INPUT} dir="ltr" />
+              <input
+                type="email"
+                value={editCustomer.email}
+                onChange={(event) => setEditCustomer({ ...editCustomer, email: event.target.value })}
+                className={INPUT}
+                dir="ltr"
+              />
             </Field>
-            <div className="grid grid-cols-2 gap-4">
+
+            <div className="grid gap-4 sm:grid-cols-2">
               <Field label="الباقة">
-                <select value={editCustomer.plan} onChange={(e) => setEditCustomer({ ...editCustomer, plan: e.target.value })} className={INPUT}>
-                  <option>أساسي</option><option>بلاتيني</option><option>VIP</option><option>سنوي VIP</option>
+                <select
+                  value={editCustomer.plan}
+                  onChange={(event) => setEditCustomer({ ...editCustomer, plan: event.target.value })}
+                  className={INPUT}
+                >
+                  <option value="أساسي">أساسي</option>
+                  <option value="بلاتيني">بلاتيني</option>
+                  <option value="VIP">VIP</option>
+                  <option value="سنوي VIP">سنوي VIP</option>
                 </select>
               </Field>
               <Field label="الحالة">
-                <select value={editCustomer.status} onChange={(e) => setEditCustomer({ ...editCustomer, status: e.target.value as Customer["status"] })} className={INPUT}>
+                <select
+                  value={editCustomer.status}
+                  onChange={(event) =>
+                    setEditCustomer({ ...editCustomer, status: event.target.value as Customer["status"] })
+                  }
+                  className={INPUT}
+                >
                   <option value="active">نشط</option>
                   <option value="suspended">موقوف</option>
                   <option value="expired">منتهي</option>
                 </select>
               </Field>
               <Field label="النقاط">
-                <input type="number" value={editCustomer.points} onChange={(e) => setEditCustomer({ ...editCustomer, points: +e.target.value })} className={INPUT} dir="ltr" />
+                <input
+                  type="number"
+                  value={editCustomer.points}
+                  onChange={(event) => setEditCustomer({ ...editCustomer, points: Number(event.target.value) })}
+                  className={INPUT}
+                  dir="ltr"
+                />
               </Field>
-              <Field label="الرصيد (ج.م)">
-                <input type="number" value={editCustomer.balance} onChange={(e) => setEditCustomer({ ...editCustomer, balance: +e.target.value })} className={INPUT} dir="ltr" />
+              <Field label="الرصيد">
+                <input
+                  type="number"
+                  value={editCustomer.balance}
+                  onChange={(event) => setEditCustomer({ ...editCustomer, balance: Number(event.target.value) })}
+                  className={INPUT}
+                  dir="ltr"
+                />
               </Field>
             </div>
-            <button onClick={saveCustomer} disabled={saving} className="w-full bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-black py-3 rounded-xl transition-colors">{saving ? "جارٍ الحفظ..." : "💾 حفظ البيانات"}</button>
+
+            <button
+              onClick={() => void saveCustomer()}
+              disabled={saving}
+              className="w-full rounded-xl bg-[#ff4f93] py-3 text-sm font-black text-white transition-colors hover:bg-[#ff2f7d] disabled:opacity-50"
+            >
+              {saving ? "جارٍ حفظ البيانات..." : "حفظ بيانات العميل"}
+            </button>
           </div>
         </Modal>
       )}
 
-      {/* Confirm delete */}
       {confirmDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setConfirmDelete(null)} />
-          <div className="relative bg-gray-900 border border-red-800 rounded-2xl p-6 w-full max-w-sm text-center">
-            <div className="text-5xl mb-4">⚠️</div>
-            <h3 className="text-white font-black text-lg mb-2">تأكيد الحذف</h3>
-            <p className="text-gray-400 text-sm mb-6">هل أنت متأكد من حذف <span className="text-red-400 font-bold">{confirmDelete.name}</span>؟ لا يمكن التراجع عن هذا الإجراء.</p>
-            <div className="flex gap-3">
-              <button onClick={() => setConfirmDelete(null)} className="flex-1 bg-gray-800 hover:bg-gray-700 text-white font-bold py-3 rounded-xl transition-colors">إلغاء</button>
-              <button onClick={() => deleteCustomer(confirmDelete.id)} className="flex-1 bg-red-600 hover:bg-red-700 text-white font-black py-3 rounded-xl transition-colors">نعم، احذف</button>
+        <Modal title="تأكيد الحذف" onClose={() => setConfirmDelete(null)}>
+          <div className="space-y-5 text-center">
+            <div className="text-5xl">⚠️</div>
+            <div>
+              <div className="text-lg font-black text-[#fff4f8]">هل تريد حذف هذا العميل؟</div>
+              <p className="mt-2 text-sm leading-7 text-[#d7aabd]">
+                سيتم حذف <span className="font-bold text-rose-300">{confirmDelete.name}</span> من قاعدة البيانات، ولا يمكن
+                التراجع عن هذه الخطوة.
+              </p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <button
+                onClick={() => setConfirmDelete(null)}
+                className="rounded-xl bg-white/5 py-3 text-sm font-bold text-[#fff4f8] transition-colors hover:bg-white/10"
+              >
+                إلغاء
+              </button>
+              <button
+                onClick={() => void deleteCustomer(confirmDelete.id)}
+                className="rounded-xl bg-rose-500 py-3 text-sm font-black text-white transition-colors hover:bg-rose-400"
+              >
+                نعم، احذف العميل
+              </button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
-    </div>
+    </AdminSectionShell>
   );
 }
