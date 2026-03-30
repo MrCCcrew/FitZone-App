@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminFeature } from "@/lib/admin-guard";
 import { db } from "@/lib/db";
+import { clearPublicApiCache } from "@/lib/public-cache";
 
 export async function GET(req: NextRequest) {
   const sections = req.nextUrl.searchParams.get("sections")?.split(",").filter(Boolean);
@@ -28,7 +29,7 @@ export async function PUT(req: Request) {
 
     const { section, content } = await req.json();
     if (!section || content === undefined) {
-      return NextResponse.json({ error: "القسم والمحتوى مطلوبان." }, { status: 400 });
+      return NextResponse.json({ error: "اسم القسم والمحتوى مطلوبان." }, { status: 400 });
     }
 
     const payload = JSON.stringify(content);
@@ -38,9 +39,10 @@ export async function PUT(req: Request) {
       create: { section, content: payload },
     });
 
+    clearPublicApiCache();
     return NextResponse.json(record);
   } catch (error) {
     console.error("[SITE_CONTENT_PUT]", error);
-    return NextResponse.json({ error: "تعذر حفظ المحتوى حاليًا." }, { status: 500 });
+    return NextResponse.json({ error: "تعذر حفظ محتوى الصفحة الآن." }, { status: 500 });
   }
 }

@@ -4,6 +4,7 @@ export type Section =
   | "knowledge"
   | "subscriptions"
   | "classes"
+  | "trainers"
   | "products"
   | "reviews"
   | "balance"
@@ -63,6 +64,21 @@ export interface GymClass {
   enrolled: number;
   type: "cardio" | "strength" | "yoga" | "boxing" | "swimming" | "dance";
   active: boolean;
+}
+
+export interface Trainer {
+  id: string;
+  name: string;
+  specialty: string;
+  bio?: string | null;
+  certifications: string[];
+  rating: number;
+  sessionsCount: number;
+  image?: string | null;
+  classesCount: number;
+  active: boolean;
+  showOnHome: boolean;
+  sortOrder: number;
 }
 
 export interface Product {

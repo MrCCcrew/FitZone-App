@@ -96,9 +96,17 @@ const css = `
 
 let publicApiPromise: Promise<Record<string, unknown>> | null = null;
 
-function loadPublicApi() {
+function resetPublicApiCache() {
+  publicApiPromise = null;
+}
+
+function loadPublicApi(force = false) {
+  if (force) {
+    resetPublicApiCache();
+  }
+
   if (!publicApiPromise) {
-    publicApiPromise = fetch("/api/public")
+    publicApiPromise = fetch("/api/public", { cache: "no-store" })
       .then((r) => r.json())
       .catch((error) => {
         publicApiPromise = null;
@@ -164,12 +172,8 @@ const FZLogo = ({ size = 40 }) => (
     style={{
       width: size,
       height: size,
-      objectFit: "cover",
+      objectFit: "contain",
       display: "block",
-      borderRadius: "50%",
-      border: "1px solid rgba(120, 33, 79, 0.35)",
-      boxShadow: "0 8px 20px rgba(190, 83, 145, 0.16)",
-      background: "#fff",
       flexShrink: 0,
     }}
   />
@@ -675,6 +679,29 @@ type PublicOffer = {
   expiresAt: string;
 };
 
+type PublicTrainer = {
+  id: string;
+  name: string;
+  specialty: string;
+  bio: string;
+  certifications: string[];
+  rating: number;
+  sessionsCount: number;
+  image: string | null;
+  showOnHome: boolean;
+  sortOrder: number;
+  classesCount: number;
+};
+
+type TrainersPageContent = {
+  badge: string;
+  title: string;
+  subtitle: string;
+  description: string;
+  highlight: string;
+  ctaLabel: string;
+};
+
 const CART_STORAGE_KEY = "fitzone:cart";
 const CLASS_STORAGE_KEY = "fitzone:selected-class";
 
@@ -772,10 +799,46 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
     { icon: "🏃", name: "كارديو", count: "6 كلاسات", color: "#F97316", bg: "rgba(249,115,22,.08)", border: "rgba(249,115,22,.2)" },
   ];
   const [memberships, setMemberships] = useState(DEFAULT_HOME_MEMBERSHIPS);
-  const [trainers, setTrainers] = useState([
-    { name: "هبة زارع", specialty: "مدربة رئيسية · يوجا وقوة", rating: 4.9, sessions: 520, type: "trainer1" },
-    { name: "منال علي", specialty: "مدربة زومبا وكارديو", rating: 4.8, sessions: 380, type: "trainer2" },
-    { name: "سحر كمال", specialty: "مدربة قوة وبيلاتس", rating: 4.9, sessions: 415, type: "trainer3" },
+  const [trainers, setTrainers] = useState<PublicTrainer[]>([
+    {
+      id: "trainer-1",
+      name: "هبة زارع",
+      specialty: "مدربة رئيسية · يوجا وقوة",
+      bio: "",
+      certifications: [],
+      rating: 4.9,
+      sessionsCount: 520,
+      image: null,
+      showOnHome: true,
+      sortOrder: 0,
+      classesCount: 12,
+    },
+    {
+      id: "trainer-2",
+      name: "منال علي",
+      specialty: "مدربة زومبا وكارديو",
+      bio: "",
+      certifications: [],
+      rating: 4.8,
+      sessionsCount: 380,
+      image: null,
+      showOnHome: true,
+      sortOrder: 1,
+      classesCount: 10,
+    },
+    {
+      id: "trainer-3",
+      name: "سحر كمال",
+      specialty: "مدربة قوة وبيلاتس",
+      bio: "",
+      certifications: [],
+      rating: 4.9,
+      sessionsCount: 415,
+      image: null,
+      showOnHome: true,
+      sortOrder: 2,
+      classesCount: 9,
+    },
   ]);
   const [testimonials, setTestimonials] = useState<PublicTestimonial[]>([
     { displayName: "أميرة السيد", content: "أفضل جيم في بني سويف. المدربات محترفات جدًا والأجواء تشجعك على الاستمرار.", rating: 5 },
@@ -804,7 +867,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
   const [heroSlideIndex, setHeroSlideIndex] = useState(0);
   const [offerNow, setOfferNow] = useState(Date.now());
   useEffect(() => {
-    loadPublicApi().then(d => {
+    loadPublicApi(true).then(d => {
       if (Array.isArray(d.memberships) && d.memberships.length > 0) {
         setMemberships(d.memberships.slice(0, 3).map((mb: { name: string; price: number; features: string[] }, i: number) => ({
           name: mb.name,
@@ -815,16 +878,13 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
           popular: i === 1,
         })));
       }
-      if (Array.isArray(d.classes) && d.classes.length > 0) {
-        const seen = new Set<string>();
-        const dbTrainers: { name: string; specialty: string; rating: number; sessions: number; type: string }[] = [];
-        (d.classes as { trainer: string; trainerSpecialty?: string }[]).forEach((c, i) => {
-          if (!seen.has(c.trainer)) {
-            seen.add(c.trainer);
-            dbTrainers.push({ name: c.trainer, specialty: c.trainerSpecialty ?? "", rating: 4.8, sessions: 400 - i * 20, type: `trainer${(dbTrainers.length % 3) + 1}` });
-          }
-        });
-        if (dbTrainers.length > 0) setTrainers(dbTrainers.slice(0, 6));
+      if (Array.isArray(d.trainers) && d.trainers.length > 0) {
+        setTrainers(
+          (d.trainers as PublicTrainer[])
+            .filter((trainer) => trainer.showOnHome)
+            .sort((a, b) => a.sortOrder - b.sortOrder)
+            .slice(0, 6),
+        );
       }
       if (Array.isArray(d.testimonials) && d.testimonials.length > 0) {
         setTestimonials(d.testimonials.slice(0, 6));
@@ -930,7 +990,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
       }
 
       setSpecialOfferMessage({ text: "تم الاشتراك في العرض الخاص بنجاح.", ok: true });
-      await loadPublicApi().then((d) => {
+      await loadPublicApi(true).then((d) => {
         if (Array.isArray(d.offers)) {
           const highlighted = (d.offers as PublicOffer[]).find((offer) => offer.type === "special" && offer.showOnHome);
           setSpecialOffer(highlighted ?? null);
@@ -1403,15 +1463,21 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
             <p className="section-sub">فريق من أفضل المدربات لمساعدتك في تحقيق أهدافك</p>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 24 }}>
-            {trainers.map(t => (
-              <div key={t.name} className="card card-hover" style={{ padding: 0, overflow: "hidden", textAlign: "center" }}>
-                <div style={{ height: 200 }}><GymImg type={t.type} w="100%" h={200} /></div>
+            {trainers.map((t, index) => (
+              <div key={t.id} className="card card-hover" style={{ padding: 0, overflow: "hidden", textAlign: "center" }}>
+                <div style={{ height: 220, background: "#fff" }}>
+                  {t.image ? (
+                    <img src={t.image} alt={t.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  ) : (
+                    <GymImg type={`trainer${(index % 3) + 1}`} w="100%" h={220} />
+                  )}
+                </div>
                 <div style={{ padding: "20px 24px 24px" }}>
                   <h3 style={{ fontWeight: 800, fontSize: 17, color: C.white }}>{t.name}</h3>
                   <p style={{ color: C.red, fontSize: 13, fontWeight: 600, marginTop: 4, marginBottom: 16 }}>{t.specialty}</p>
                   <div style={{ display: "flex", justifyContent: "center", gap: 24, marginBottom: 16 }}>
                     <div><div style={{ fontWeight: 700, color: C.red }}>⭐ {t.rating}</div><div style={{ fontSize: 11, color: C.gray }}>التقييم</div></div>
-                    <div><div style={{ fontWeight: 700, color: C.white }}>{t.sessions}</div><div style={{ fontSize: 11, color: C.gray }}>جلسة</div></div>
+                    <div><div style={{ fontWeight: 700, color: C.white }}>{t.sessionsCount}</div><div style={{ fontSize: 11, color: C.gray }}>جلسة</div></div>
                   </div>
                   <button className="btn-outline" style={{ width: "100%" }} onClick={() => navigate("trainers")}>عرض الملف</button>
                 </div>
@@ -3367,43 +3433,76 @@ const AccountPage = ({ navigate }: { navigate: (p: string) => void }) => {
 
 // ─── TRAINERS PAGE ────────────────────────────────────────────────────────────
 const TrainersPage = () => {
-  const trainers = [
-    { name: "هبة زارع", specialty: "يوجا & قوة", bio: "المدربة المؤسسة لفيت زون. حاصلة على شهادات دولية في اليوغا والتدريب القوة. خبرة 8 سنوات.", rating: 4.9, sessions: 520, type: "trainer1", certs: ["RYT-500","ACE-CPT"] },
-    { name: "منال علي", specialty: "زومبا & كارديو", bio: "بطلة زومبا مصر ٢٠٢٢. متخصصة في الكارديو الحاري وكلاسات الرقص. طاقتها بتعدي!", rating: 4.8, sessions: 380, type: "trainer2", certs: ["Zumba B1","AFAA"] },
-    { name: "سحر كمال", specialty: "بيلاتس & إطالة", bio: "متخصصة في البيلاتس العلاجي وإعادة التأهيل. مثالية لحالات الإصابات والأمهات الجدد.", rating: 4.9, sessions: 415, type: "trainer3", certs: ["BASI Pilates","CPT"] },
-    { name: "دينا عمر", specialty: "تأمل & يوجا", bio: "مدربة روحية تجمع اليوغا بالتأمل لتحقيق التوازن الداخلي. كلاساتها هادية ومريحة.", rating: 4.7, sessions: 290, type: "trainer1", certs: ["RYT-200","Mindfulness"] },
-    { name: "ريم حسن", specialty: "HIIT & كارديو", bio: "متخصصة في تمارين الشدة العالية. هتحرقي أكتر سعرات في وقت أقل مع ريم!", rating: 4.8, sessions: 350, type: "trainer2", certs: ["NASM-CPT","HIIT Cert"] },
-    { name: "نور محمد", specialty: "قوة & لياقة عامة", bio: "مدربة القوة والتحمل. متخصصة في تشكيل الجسم وبناء العضلات النسائية.", rating: 4.9, sessions: 460, type: "trainer3", certs: ["NSCA","FMS Level 2"] },
-  ];
+  const [trainers, setTrainers] = useState<PublicTrainer[]>([]);
+  const [pageContent, setPageContent] = useState<TrainersPageContent>({
+    badge: "فريقنا",
+    title: "مدرباتنا المحترفات",
+    subtitle: "أفضل فريق تدريبي في بني سويف",
+    description: "تعرفي على فريق المدربات في فيت زون واختاري المدربة الأقرب لهدفك التدريبي.",
+    highlight: "تخصصات واضحة وصور احترافية وسجل جلسات لكل مدربة",
+    ctaLabel: "احجزي مع المدربة المناسبة",
+  });
+
+  useEffect(() => {
+    loadPublicApi().then((data) => {
+      if (Array.isArray(data.trainers)) {
+        setTrainers(data.trainers as PublicTrainer[]);
+      }
+      if (data.trainersPage && typeof data.trainersPage === "object") {
+        setPageContent((current) => ({
+          ...current,
+          ...(data.trainersPage as Partial<TrainersPageContent>),
+        }));
+      }
+    }).catch(() => {});
+  }, []);
 
   return (
     <div>
       <section style={{ background: `linear-gradient(135deg, #FFE0EC, ${C.bg})`, padding: "60px 0", textAlign: "center" }}>
         <div className="container">
-          <span className="tag" style={{ marginBottom: 14, display: "inline-block" }}>فريقنا</span>
-          <h1 style={{ fontSize: viewportWidth() < 768 ? 32 : 44, fontWeight: 900, color: C.white, marginBottom: 12 }}>مدرباتنا <span style={{ color: C.red }}>المحترفات</span></h1>
-          <p style={{ color: C.gray, fontSize: 17 }}>أفضل فريق تدريبي في بني سويف</p>
+          <span className="tag" style={{ marginBottom: 14, display: "inline-block" }}>{pageContent.badge}</span>
+          <h1 style={{ fontSize: viewportWidth() < 768 ? 32 : 44, fontWeight: 900, color: C.white, marginBottom: 12 }}>
+            {pageContent.title}
+          </h1>
+          <p style={{ color: C.gray, fontSize: 17, marginBottom: 8 }}>{pageContent.subtitle}</p>
+          <p style={{ color: C.gray, fontSize: 15, maxWidth: 760, margin: "0 auto", lineHeight: 1.9 }}>{pageContent.description}</p>
+          <div style={{ marginTop: 18, color: C.red, fontWeight: 700, fontSize: 14 }}>{pageContent.highlight}</div>
         </div>
       </section>
       <section className="section">
         <div className="container">
           <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 24 }}>
-            {trainers.map(t => (
-              <div key={t.name} className="card card-hover" style={{ overflow: "hidden" }}>
-                <div style={{ height: 200 }}><GymImg type={t.type} w="100%" h={200} /></div>
+            {trainers.map((t, index) => (
+              <div key={t.id} className="card card-hover" style={{ overflow: "hidden" }}>
+                <div style={{ height: 260, background: "#fff" }}>
+                  {t.image ? (
+                    <img src={t.image} alt={t.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  ) : (
+                    <GymImg type={`trainer${(index % 3) + 1}`} w="100%" h={260} />
+                  )}
+                </div>
                 <div style={{ padding: 22 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
                     <h3 style={{ fontWeight: 800, fontSize: 17, color: C.white }}>{t.name}</h3>
                     <span style={{ color: C.gold, fontWeight: 700, fontSize: 13 }}>⭐ {t.rating}</span>
                   </div>
                   <p style={{ color: C.red, fontSize: 12, fontWeight: 600, marginBottom: 10 }}>{t.specialty}</p>
-                  <p style={{ color: C.gray, fontSize: 12, lineHeight: 1.7, marginBottom: 14 }}>{t.bio}</p>
+                  <p style={{ color: C.gray, fontSize: 12, lineHeight: 1.8, marginBottom: 14 }}>{t.bio}</p>
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
-                    {t.certs.map(c => <span key={c} className="tag-gold" style={{ fontSize: 10 }}>{c}</span>)}
+                    {t.certifications.map((cert) => (
+                      <span key={cert} className="tag-gold" style={{ fontSize: 10 }}>
+                        {cert}
+                      </span>
+                    ))}
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ fontSize: 12, color: C.gray }}>{t.sessions} جلسة</span>
-                    <button className="btn-outline-gold" style={{ padding: "5px 14px", fontSize: 11 }}>عرض الملف</button>
+                    <span style={{ fontSize: 12, color: C.gray }}>
+                      {t.sessionsCount} جلسة · {t.classesCount} كلاسات
+                    </span>
+                    <button className="btn-outline-gold" style={{ padding: "5px 14px", fontSize: 11 }}>
+                      {pageContent.ctaLabel}
+                    </button>
                   </div>
                 </div>
               </div>

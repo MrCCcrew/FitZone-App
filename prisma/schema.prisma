@@ -118,6 +118,9 @@ model Trainer {
   rating         Float   @default(5.0)
   sessionsCount  Int     @default(0)
   image          String?
+  isActive       Boolean @default(true)
+  showOnHome     Boolean @default(true)
+  sortOrder      Int     @default(0)
 
   classes Class[]
 }

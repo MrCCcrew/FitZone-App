@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { ensureDefaultProductCategories } from "@/lib/product-categories";
+import { getPublicApiCache, setPublicApiCache } from "@/lib/public-cache";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 30;
@@ -55,6 +56,27 @@ type PublicPayload = {
       availableSpots: number;
     }>;
   }>;
+  trainers: Array<{
+    id: string;
+    name: string;
+    specialty: string;
+    bio: string;
+    certifications: string[];
+    rating: number;
+    sessionsCount: number;
+    image: string | null;
+    showOnHome: boolean;
+    sortOrder: number;
+    classesCount: number;
+  }>;
+  trainersPage: {
+    badge: string;
+    title: string;
+    subtitle: string;
+    description: string;
+    highlight: string;
+    ctaLabel: string;
+  } | null;
   products: Array<{
     id: string;
     name: string;
@@ -80,14 +102,12 @@ type PublicPayload = {
   }>;
 };
 
-const globalForPublicApi = globalThis as unknown as {
-  fitzonePublicApiCache?: { expiresAt: number; payload: PublicPayload };
-};
-
 const EMPTY_PAYLOAD: PublicPayload = {
   memberships: [],
   offers: [],
   classes: [],
+  trainers: [],
+  trainersPage: null,
   products: [],
   categories: [],
   testimonials: [],
@@ -119,7 +139,7 @@ function normalizeOfferType(value: string | null | undefined): "percentage" | "f
 export async function GET() {
   try {
     const now = Date.now();
-    const cached = globalForPublicApi.fitzonePublicApiCache;
+    const cached = getPublicApiCache();
 
     if (cached && cached.expiresAt > now) {
       return NextResponse.json(cached.payload, { headers: RESPONSE_HEADERS });
@@ -127,7 +147,7 @@ export async function GET() {
 
     await ensureDefaultProductCategories();
 
-    const [categories, memberships, offers, classes, products, testimonials] =
+    const [categories, memberships, offers, classes, trainers, siteContent, products, testimonials] =
       await Promise.all([
         db.productCategory.findMany({
           where: { isActive: true },
@@ -152,6 +172,20 @@ export async function GET() {
             },
           },
           orderBy: { name: "asc" },
+        }),
+        db.trainer.findMany({
+          where: { isActive: true },
+          include: {
+            _count: {
+              select: {
+                classes: true,
+              },
+            },
+          },
+          orderBy: [{ showOnHome: "desc" }, { sortOrder: "asc" }, { name: "asc" }],
+        }),
+        db.siteContent.findMany({
+          where: { section: { in: ["trainersPage"] } },
         }),
         db.product.findMany({
           where: { isActive: true },
@@ -227,6 +261,28 @@ export async function GET() {
           availableSpots: schedule.availableSpots,
         })),
       })),
+      trainers: trainers.map((trainer) => ({
+        id: trainer.id,
+        name: trainer.name,
+        specialty: trainer.specialty,
+        bio: trainer.bio ?? "",
+        certifications: parseJsonArray(trainer.certifications),
+        rating: trainer.rating,
+        sessionsCount: trainer.sessionsCount,
+        image: trainer.image,
+        showOnHome: trainer.showOnHome,
+        sortOrder: trainer.sortOrder,
+        classesCount: trainer._count.classes,
+      })),
+      trainersPage: (() => {
+        const record = siteContent.find((item) => item.section === "trainersPage");
+        if (!record) return null;
+        try {
+          return JSON.parse(record.content);
+        } catch {
+          return null;
+        }
+      })(),
       products: products.map((product) => {
         const category = categoryMeta.get(product.category);
         const reviewCount = product.reviews.length;
@@ -265,10 +321,10 @@ export async function GET() {
       }),
     };
 
-    globalForPublicApi.fitzonePublicApiCache = {
+    setPublicApiCache({
       expiresAt: now + 30_000,
       payload,
-    };
+    });
 
     return NextResponse.json(payload, { headers: RESPONSE_HEADERS });
   } catch (error) {
