@@ -11,6 +11,10 @@ function toDateString(value: Date) {
   return value.toISOString().slice(0, 16);
 }
 
+function normalizeOfferType(value: string | null | undefined): "percentage" | "fixed" | "special" {
+  return value === "fixed" || value === "special" ? value : "percentage";
+}
+
 function mapOffer(
   offer: {
     id: string;
@@ -34,7 +38,7 @@ function mapOffer(
     id: offer.id,
     title: offer.title,
     discount: offer.discount,
-    type: (offer.type || "percentage") as "percentage" | "fixed" | "special",
+    type: normalizeOfferType(offer.type),
     appliesTo: offer.appliesTo ?? offer.membership?.name ?? "جميع الباقات",
     membershipId: offer.membershipId,
     validUntil: toDateString(offer.expiresAt),
@@ -67,16 +71,12 @@ export async function POST(req: Request) {
 
   try {
     const body = await req.json();
-    const type = typeof body.type === "string" ? body.type : "percentage";
+    const type = normalizeOfferType(typeof body.type === "string" ? body.type : "percentage");
     const title = typeof body.title === "string" ? body.title.trim() : "";
     const validUntil = typeof body.validUntil === "string" ? body.validUntil : "";
 
     if (!title || !validUntil) {
       return NextResponse.json({ error: "يرجى إدخال عنوان العرض ووقت انتهائه." }, { status: 400 });
-    }
-
-    if (type === "special" && !body.membershipId) {
-      return NextResponse.json({ error: "اختاري الباقة المرتبطة بالعرض الخاص أولًا." }, { status: 400 });
     }
 
     if (type === "special" && (body.specialPrice == null || Number(body.specialPrice) <= 0)) {
@@ -88,15 +88,15 @@ export async function POST(req: Request) {
         title,
         type,
         discount: Number(body.discount ?? 0),
-        description: typeof body.description === "string" ? body.description.trim() : null,
-        appliesTo: typeof body.appliesTo === "string" ? body.appliesTo.trim() : null,
+        description: typeof body.description === "string" ? body.description.trim() || null : null,
+        appliesTo: typeof body.appliesTo === "string" ? body.appliesTo.trim() || null : null,
         expiresAt: new Date(validUntil),
         isActive: body.active !== false,
         membershipId: body.membershipId || null,
-        specialPrice: body.specialPrice != null ? Number(body.specialPrice) : null,
-        maxSubscribers: body.maxSubscribers != null && body.maxSubscribers !== ""
-          ? Number(body.maxSubscribers)
-          : null,
+        specialPrice: body.specialPrice != null && body.specialPrice !== "" ? Number(body.specialPrice) : null,
+        maxSubscribers:
+          body.maxSubscribers != null && body.maxSubscribers !== "" ? Number(body.maxSubscribers) : null,
+        currentSubscribers: Number(body.currentSubscribers ?? 0),
         image: typeof body.image === "string" && body.image.trim() ? body.image.trim() : null,
         showOnHome: Boolean(body.showOnHome),
       },
@@ -118,13 +118,13 @@ export async function PATCH(req: Request) {
     const body = await req.json();
     const id = typeof body.id === "string" ? body.id : "";
     if (!id) {
-      return NextResponse.json({ error: "معرف العرض مطلوب." }, { status: 400 });
+      return NextResponse.json({ error: "معرّف العرض مطلوب." }, { status: 400 });
     }
 
     const data: Record<string, unknown> = {};
 
     if (body.title !== undefined) data.title = String(body.title).trim();
-    if (body.type !== undefined) data.type = String(body.type);
+    if (body.type !== undefined) data.type = normalizeOfferType(String(body.type));
     if (body.discount !== undefined) data.discount = Number(body.discount ?? 0);
     if (body.description !== undefined) data.description = body.description ? String(body.description).trim() : null;
     if (body.appliesTo !== undefined) data.appliesTo = body.appliesTo ? String(body.appliesTo).trim() : null;
@@ -135,9 +135,8 @@ export async function PATCH(req: Request) {
       data.specialPrice = body.specialPrice != null && body.specialPrice !== "" ? Number(body.specialPrice) : null;
     }
     if (body.maxSubscribers !== undefined) {
-      data.maxSubscribers = body.maxSubscribers != null && body.maxSubscribers !== ""
-        ? Number(body.maxSubscribers)
-        : null;
+      data.maxSubscribers =
+        body.maxSubscribers != null && body.maxSubscribers !== "" ? Number(body.maxSubscribers) : null;
     }
     if (body.currentSubscribers !== undefined) data.currentSubscribers = Number(body.currentSubscribers ?? 0);
     if (body.image !== undefined) data.image = body.image ? String(body.image).trim() : null;
@@ -163,7 +162,7 @@ export async function DELETE(req: Request) {
   try {
     const { id } = await req.json();
     if (!id) {
-      return NextResponse.json({ error: "معرف العرض مطلوب." }, { status: 400 });
+      return NextResponse.json({ error: "معرّف العرض مطلوب." }, { status: 400 });
     }
 
     await db.offer.delete({ where: { id } });

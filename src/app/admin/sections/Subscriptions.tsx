@@ -110,11 +110,16 @@ export default function Subscriptions() {
     setSaving(true);
     try {
       const isEdit = "id" in offerModal && Boolean(offerModal.id);
-      await fetch("/api/admin/offers", {
+      const response = await fetch("/api/admin/offers", {
         method: isEdit ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(offerModal),
       });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        alert(payload?.error || "تعذر حفظ العرض حاليًا.");
+        return;
+      }
       await fetchData();
       setOfferModal(null);
     } finally {
