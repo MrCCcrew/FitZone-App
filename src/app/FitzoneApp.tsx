@@ -156,22 +156,35 @@ const I = ({ n, s = 20, c = "currentColor" }: { n: string; s?: number; c?: strin
 
 // ─── FIT ZONE LOGO ─────────────────────────────────────────────────────────
 const FZLogo = ({ size = 40 }) => (
-  <img
-    src="/fitzone-logo.jpeg"
-    alt="Fit Zone Logo"
-    width={size}
-    height={size}
+  <div
     style={{
       width: size,
       height: size,
-      objectFit: "cover",
-      display: "block",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
       borderRadius: "50%",
-      border: "1px solid rgba(120, 33, 79, 0.35)",
-      boxShadow: "0 8px 20px rgba(190, 83, 145, 0.16)",
-      background: "#fff",
+      padding: size * 0.08,
+      background: "rgba(255,255,255,.92)",
+      border: "1px solid rgba(120, 33, 79, 0.18)",
+      boxShadow: "0 8px 20px rgba(190, 83, 145, 0.12)",
+      overflow: "hidden",
+      flexShrink: 0,
     }}
-  />
+  >
+    <img
+      src="/fitzone-logo.jpeg"
+      alt="Fit Zone Logo"
+      width={size}
+      height={size}
+      style={{
+        width: "100%",
+        height: "100%",
+        objectFit: "contain",
+        display: "block",
+      }}
+    />
+  </div>
 );
 
 // ─── GYM VISUAL PLACEHOLDERS ───────────────────────────────────────────────
