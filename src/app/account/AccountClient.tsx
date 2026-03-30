@@ -128,6 +128,12 @@ function ProfileTab({ user }: { user: AccountData["user"] }) {
   const [verifyResult, setVerifyResult] = useState<{ ok?: boolean; msg?: string } | null>(null);
   const [isVerified, setIsVerified] = useState(!!user.emailVerified);
   const [resendLoading, setResendLoading] = useState(false);
+  const loggingOut = false;
+  const handleLogout = () => {
+    if (typeof window !== "undefined") {
+      window.location.assign("/login");
+    }
+  };
 
   const save = (e: React.FormEvent) => {
     e.preventDefault();
@@ -189,6 +195,25 @@ function ProfileTab({ user }: { user: AccountData["user"] }) {
             <div>
               <div className="text-yellow-400 font-black text-sm">بريدك الإلكتروني غير مفعّل</div>
               <div className="text-gray-400 text-xs mt-0.5">أدخلي كود التفعيل الذي أُرسل إلى {user.email}</div>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2 sm:hidden">
+              <a
+                href="/"
+                className="flex items-center gap-1.5 rounded-xl border border-[#ffbcdb]/20 bg-white/5 px-3 py-2 text-sm text-[#d7aabd] transition-colors hover:text-white"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-4 w-4"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                ط§ظ„ط±ط¦ظٹط³ظٹط©
+              </a>
+              <button
+                onClick={handleLogout}
+                disabled={loggingOut}
+                className="flex items-center gap-1.5 rounded-xl border border-pink-300/20 bg-pink-500/10 px-3 py-2 text-sm text-[#ffd6e7] transition-colors hover:bg-pink-500/15 disabled:opacity-50"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-4 w-4">
+                  <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                {loggingOut ? "ط¬ط§ط±ظچ ط§ظ„ط®ط±ظˆط¬..." : "طھط³ط¬ظٹظ„ ط§ظ„ط®ط±ظˆط¬"}
+              </button>
             </div>
           </div>
           <form onSubmit={submitVerify} className="flex gap-2">
@@ -1097,8 +1122,28 @@ export default function AccountClient({ data }: { data: AccountData }) {
             </div>
           </div>
 
+          <div className="mt-4 flex flex-wrap gap-2 sm:hidden">
+            <a
+              href="/"
+              className="flex items-center gap-1.5 rounded-xl border border-[#ffbcdb]/20 bg-white/5 px-3 py-2 text-sm text-[#d7aabd] transition-colors hover:text-white"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-4 w-4"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+              ط§ظ„ط±ط¦ظٹط³ظٹط©
+            </a>
+            <button
+              onClick={handleLogout}
+              disabled={loggingOut}
+              className="flex items-center gap-1.5 rounded-xl border border-pink-300/20 bg-pink-500/10 px-3 py-2 text-sm text-[#ffd6e7] transition-colors hover:bg-pink-500/15 disabled:opacity-50"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-4 w-4">
+                <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              {loggingOut ? "ط¬ط§ط±ظچ ط§ظ„ط®ط±ظˆط¬..." : "طھط³ط¬ظٹظ„ ط§ظ„ط®ط±ظˆط¬"}
+            </button>
+          </div>
+
           {/* Quick stats */}
-          <div className="grid grid-cols-4 gap-3 mt-5">
+          <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
             <StatCard icon="💳" label="رصيد المحفظة"   value={`${data.wallet.balance.toLocaleString("ar-EG")} ج.م`} color="text-blue-400" />
             <StatCard icon="🏅" label="نقاط الولاء"    value={data.rewards.points.toLocaleString("ar-EG")} color="text-yellow-400" />
             <StatCard icon="📅" label="أيام الاشتراك"  value={membershipDaysLeft > 0 ? `${membershipDaysLeft} يوم` : "منتهي"} color={membershipDaysLeft > 7 ? "text-green-400" : "text-red-400"} />
@@ -1111,13 +1156,13 @@ export default function AccountClient({ data }: { data: AccountData }) {
       <div className="max-w-5xl mx-auto px-4 py-6">
         <div className="flex gap-6 flex-col lg:flex-row">
           {/* Sidebar tabs */}
-          <aside className="lg:w-52 shrink-0">
-            <nav className="flex lg:flex-col gap-1 flex-wrap">
+          <aside className="shrink-0 lg:w-52">
+            <nav className="flex gap-1 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible">
               {TABS.map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-sm font-medium transition-all text-right w-full ${
+                  className={`flex min-w-max items-center gap-2.5 rounded-xl px-4 py-2.5 text-right text-sm font-medium transition-all lg:w-full ${
                     activeTab === tab.id
                       ? "bg-gradient-to-r from-pink-600 to-pink-500 text-white shadow-[0_18px_40px_rgba(190,24,93,0.34)]"
                       : "text-[#d7aabd] hover:bg-[rgba(255,130,186,0.14)] hover:text-white"

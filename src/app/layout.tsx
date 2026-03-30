@@ -1,7 +1,7 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Providers from "./Providers";
-import './globals.css';
+import "./globals.css";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -15,9 +15,24 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "FitZone Fitness Club | بني سويف",
-  description: "أول نادي لياقة بدنية للسيدات والأطفال في بني سويف",
+  description: "أول نادي لياقة بدنية للسيدات والأطفال في بني سويف.",
   metadataBase: new URL("https://fitzoneland.com"),
   alternates: { canonical: "https://fitzoneland.com" },
+  applicationName: "FitZone",
+  icons: {
+    icon: "/fitzone-logo.jpeg",
+    shortcut: "/fitzone-logo.jpeg",
+    apple: "/fitzone-logo.jpeg",
+  },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "FitZone",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#e91e63",
 };
 
 export default function RootLayout({

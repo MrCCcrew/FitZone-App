@@ -312,6 +312,68 @@
   .account-theme .bg-red-950\/10 {
     background-color: rgba(255, 120, 182, 0.12) !important;
   }
+
+  .account-theme .bg-yellow-900\/30 > .flex.items-center.gap-3.mb-3 > .mt-4.flex.flex-wrap.gap-2.sm\:hidden {
+    display: none;
+  }
+
+  .admin-theme .space-y-6 > section,
+  .admin-theme .space-y-6 > div.rounded-2xl,
+  .admin-theme .space-y-5 > section,
+  .admin-theme .space-y-5 > div.rounded-2xl {
+    box-shadow: 0 24px 70px rgba(17, 5, 10, 0.28);
+    backdrop-filter: blur(18px);
+  }
+
+  .admin-theme input,
+  .admin-theme textarea,
+  .admin-theme select {
+    min-height: 2.9rem;
+    border-radius: 0.95rem;
+  }
+
+  .admin-theme table {
+    overflow: hidden;
+    border-radius: 1rem;
+  }
+
+  .admin-theme ::-webkit-scrollbar,
+  .account-theme ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  .admin-theme ::-webkit-scrollbar-thumb,
+  .account-theme ::-webkit-scrollbar-thumb {
+    border: 2px solid transparent;
+    border-radius: 9999px;
+    background: rgba(255, 156, 202, 0.35);
+    background-clip: padding-box;
+  }
+
+  .admin-theme ::-webkit-scrollbar-track,
+  .account-theme ::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.03);
+  }
+}
+
+@media (max-width: 1024px) {
+  .admin-theme [class*="px-6"] {
+    padding-right: 1rem;
+    padding-left: 1rem;
+  }
+
+  .account-theme [class*="max-w-5xl"] {
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 640px) {
+  .admin-theme .space-y-6 > section,
+  .admin-theme .space-y-6 > div.rounded-2xl,
+  .account-theme .rounded-2xl {
+    border-radius: 1.25rem;
+  }
 }
 
 @keyframes fitzone-float-a {
