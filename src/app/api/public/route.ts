@@ -25,8 +25,16 @@ type PublicPayload = {
   offers: Array<{
     id: string;
     title: string;
-    discount: string;
-    desc: string;
+    type: "percentage" | "fixed" | "special";
+    discount: number;
+    specialPrice: number | null;
+    description: string;
+    appliesTo: string;
+    membershipId: string | null;
+    image: string | null;
+    showOnHome: boolean;
+    maxSubscribers: number | null;
+    currentSubscribers: number;
     expiresAt: string;
   }>;
   classes: Array<{
@@ -102,6 +110,10 @@ function parseJsonArray(value: string | null) {
 
 function normalizeSizeType(value: string | null | undefined): ProductSizeType {
   return value === "clothing" || value === "shoes" ? value : "none";
+}
+
+function normalizeOfferType(value: string | null | undefined): "percentage" | "fixed" | "special" {
+  return value === "fixed" || value === "special" ? value : "percentage";
 }
 
 export async function GET() {
@@ -185,8 +197,16 @@ export async function GET() {
       offers: offers.map((offer) => ({
         id: offer.id,
         title: offer.title,
-        discount: `${offer.discount}%`,
-        desc: offer.description ?? "",
+        type: normalizeOfferType(offer.type),
+        discount: offer.discount,
+        specialPrice: offer.specialPrice,
+        description: offer.description ?? "",
+        appliesTo: offer.appliesTo ?? "",
+        membershipId: offer.membershipId,
+        image: offer.image,
+        showOnHome: offer.showOnHome,
+        maxSubscribers: offer.maxSubscribers,
+        currentSubscribers: offer.currentSubscribers,
         expiresAt: offer.expiresAt.toISOString(),
       })),
       classes: classes.map((gymClass) => ({

@@ -156,35 +156,23 @@ const I = ({ n, s = 20, c = "currentColor" }: { n: string; s?: number; c?: strin
 
 // ─── FIT ZONE LOGO ─────────────────────────────────────────────────────────
 const FZLogo = ({ size = 40 }) => (
-  <div
+  <img
+    src="/fitzone-logo.jpeg"
+    alt="Fit Zone Logo"
+    width={size}
+    height={size}
     style={{
       width: size,
       height: size,
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
+      objectFit: "cover",
+      display: "block",
       borderRadius: "50%",
-      padding: size * 0.08,
-      background: "rgba(255,255,255,.92)",
-      border: "1px solid rgba(120, 33, 79, 0.18)",
-      boxShadow: "0 8px 20px rgba(190, 83, 145, 0.12)",
-      overflow: "hidden",
+      border: "1px solid rgba(120, 33, 79, 0.35)",
+      boxShadow: "0 8px 20px rgba(190, 83, 145, 0.16)",
+      background: "#fff",
       flexShrink: 0,
     }}
-  >
-    <img
-      src="/fitzone-logo.jpeg"
-      alt="Fit Zone Logo"
-      width={size}
-      height={size}
-      style={{
-        width: "100%",
-        height: "100%",
-        objectFit: "contain",
-        display: "block",
-      }}
-    />
-  </div>
+  />
 );
 
 // ─── GYM VISUAL PLACEHOLDERS ───────────────────────────────────────────────
@@ -671,6 +659,22 @@ type PublicClass = {
   schedules: { id: string; date: string; time: string; availableSpots: number }[];
 };
 
+type PublicOffer = {
+  id: string;
+  title: string;
+  type: "percentage" | "fixed" | "special";
+  discount: number;
+  specialPrice: number | null;
+  description: string;
+  appliesTo: string;
+  membershipId: string | null;
+  image: string | null;
+  showOnHome: boolean;
+  maxSubscribers: number | null;
+  currentSubscribers: number;
+  expiresAt: string;
+};
+
 const CART_STORAGE_KEY = "fitzone:cart";
 const CLASS_STORAGE_KEY = "fitzone:selected-class";
 
@@ -714,6 +718,21 @@ function getTierLabel(tier?: string) {
   if (tier === "gold") return "ذهبي";
   if (tier === "silver") return "فضي";
   return "برونزي";
+}
+
+function getCountdownParts(expiresAt: string) {
+  const diff = new Date(expiresAt).getTime() - Date.now();
+  if (diff <= 0) {
+    return { expired: true, days: 0, hours: 0, minutes: 0, seconds: 0 };
+  }
+
+  const totalSeconds = Math.floor(diff / 1000);
+  const days = Math.floor(totalSeconds / (24 * 60 * 60));
+  const hours = Math.floor((totalSeconds % (24 * 60 * 60)) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  return { expired: false, days, hours, minutes, seconds };
 }
 // ─── HOME PAGE ───────────────────────────────────────────────────────────────
 const DEFAULT_HOME_MEMBERSHIPS = [
@@ -764,6 +783,9 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
     { displayName: "ريم أحمد", content: "الحجز يتم بسرعة وسهولة من الموقع والتجربة ممتازة.", rating: 5 },
   ]);
   const [products, setProducts] = useState<StoreProduct[]>(DEFAULT_PRODUCTS.slice(0, 3));
+  const [specialOffer, setSpecialOffer] = useState<PublicOffer | null>(null);
+  const [specialOfferLoading, setSpecialOfferLoading] = useState(false);
+  const [specialOfferMessage, setSpecialOfferMessage] = useState<{ text: string; ok: boolean } | null>(null);
   const [heroContent, setHeroContent] = useState<HomeHeroContent>({
     badge: "أول نادي للسيدات في بني سويف",
     headline1: "ابدئي رحلتك",
@@ -780,6 +802,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
     ],
   });
   const [heroSlideIndex, setHeroSlideIndex] = useState(0);
+  const [offerNow, setOfferNow] = useState(Date.now());
   useEffect(() => {
     loadPublicApi().then(d => {
       if (Array.isArray(d.memberships) && d.memberships.length > 0) {
@@ -823,6 +846,10 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
           images: Array.isArray(p.images) ? p.images.filter(Boolean) : [],
         })));
       }
+      if (Array.isArray(d.offers)) {
+        const highlighted = (d.offers as PublicOffer[]).find((offer) => offer.type === "special" && offer.showOnHome);
+        setSpecialOffer(highlighted ?? null);
+      }
     }).catch(() => {});
   }, []);
   useEffect(() => {
@@ -849,6 +876,11 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
     }, 2800);
     return () => clearInterval(timer);
   }, [heroContent.slides]);
+  useEffect(() => {
+    if (!specialOffer) return;
+    const timer = setInterval(() => setOfferNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [specialOffer]);
   const schedulePreview = [
     { time: "07:00", name: "يوجا الصباح", trainer: "هبة", spots: 5, color: "#9B59B6" },
     { time: "09:00", name: "زومبا", trainer: "منال", spots: 2, color: C.red },
@@ -869,6 +901,47 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
     ["📦", summary?.membership?.name ?? getTierLabel(summary?.rewardTier), summary?.membership ? "الاشتراك النشط" : "مستوى العضوية"],
   ];
   const heroSlides = heroContent.slides?.length ? heroContent.slides : DEFAULT_HERO_SLIDES;
+  const offerCountdown = specialOffer ? getCountdownParts(specialOffer.expiresAt) : null;
+  const remainingSubscribers =
+    specialOffer?.maxSubscribers != null
+      ? Math.max(specialOffer.maxSubscribers - specialOffer.currentSubscribers, 0)
+      : null;
+
+  const handleSpecialOfferSubscribe = async () => {
+    if (!specialOffer) return;
+    if (!summary?.authenticated) {
+      window.location.href = `/login?callbackUrl=${encodeURIComponent("/?page=home")}`;
+      return;
+    }
+
+    setSpecialOfferLoading(true);
+    setSpecialOfferMessage(null);
+    try {
+      const response = await fetch("/api/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ offerId: specialOffer.id }),
+      });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        setSpecialOfferMessage({ text: payload.error || "تعذر الاشتراك في العرض الآن.", ok: false });
+        return;
+      }
+
+      setSpecialOfferMessage({ text: "تم الاشتراك في العرض الخاص بنجاح.", ok: true });
+      await loadPublicApi().then((d) => {
+        if (Array.isArray(d.offers)) {
+          const highlighted = (d.offers as PublicOffer[]).find((offer) => offer.type === "special" && offer.showOnHome);
+          setSpecialOffer(highlighted ?? null);
+        }
+      }).catch(() => {});
+    } catch {
+      setSpecialOfferMessage({ text: "تعذر الاتصال بالخادم أثناء الاشتراك.", ok: false });
+    } finally {
+      setSpecialOfferLoading(false);
+    }
+  };
 
   return (
     <div>
@@ -1028,6 +1101,113 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
           </div>
         </div>
       </section>
+
+      {specialOffer && (
+        <section style={{ padding: "18px 0 8px" }}>
+          <div className="container">
+            <div
+              className="card"
+              style={{
+                border: `1px solid ${C.red}33`,
+                background: "linear-gradient(135deg, rgba(233,30,99,.08), rgba(255,255,255,.95))",
+                overflow: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: responsiveColumns("1fr", "1fr", "1.1fr .9fr"),
+                  gap: 0,
+                  alignItems: "stretch",
+                }}
+              >
+                <div style={{ padding: viewportWidth() < 768 ? 22 : 32, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+                  <span className="badge" style={{ width: "fit-content", marginBottom: 14, background: C.red }}>
+                    عرض خاص محدود
+                  </span>
+                  <h2 style={{ fontSize: viewportWidth() < 768 ? 24 : 34, fontWeight: 900, color: C.white, marginBottom: 10, lineHeight: 1.3 }}>
+                    {specialOffer.title}
+                  </h2>
+                  <p style={{ color: C.gray, fontSize: 14, lineHeight: 1.9, marginBottom: 18 }}>
+                    {specialOffer.description || "عرض خاص لفترة محدودة على إحدى باقات النادي."}
+                  </p>
+                  <div style={{ display: "flex", gap: 18, flexWrap: "wrap", marginBottom: 18 }}>
+                    <div>
+                      <div style={{ fontSize: 30, fontWeight: 900, color: C.red }}>
+                        {formatCurrency(specialOffer.specialPrice ?? 0)}
+                      </div>
+                      <div style={{ fontSize: 12, color: C.gray }}>قيمة الاشتراك أثناء العرض</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 24, fontWeight: 900, color: C.white }}>
+                        {specialOffer.currentSubscribers.toLocaleString("ar-EG")}
+                      </div>
+                      <div style={{ fontSize: 12, color: C.gray }}>اشتركن بالفعل</div>
+                    </div>
+                    {remainingSubscribers != null && (
+                      <div>
+                        <div style={{ fontSize: 24, fontWeight: 900, color: C.gold }}>
+                          {remainingSubscribers.toLocaleString("ar-EG")}
+                        </div>
+                        <div style={{ fontSize: 12, color: C.gray }}>المقاعد المتبقية</div>
+                      </div>
+                    )}
+                  </div>
+
+                  {offerCountdown && (
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 20 }}>
+                      {[
+                        { label: "يوم", value: offerCountdown.days },
+                        { label: "ساعة", value: offerCountdown.hours },
+                        { label: "دقيقة", value: offerCountdown.minutes },
+                        { label: "ثانية", value: offerCountdown.seconds },
+                      ].map((item) => (
+                        <div key={item.label} style={{ minWidth: 74, borderRadius: 14, background: "rgba(255,255,255,.88)", border: `1px solid ${C.border}`, padding: "10px 12px", textAlign: "center" }}>
+                          <div style={{ fontSize: 22, fontWeight: 900, color: offerCountdown.expired ? C.gray : C.red }}>
+                            {String(item.value).padStart(2, "0")}
+                          </div>
+                          <div style={{ fontSize: 11, color: C.gray }}>{item.label}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+                    <button className="btn-primary" onClick={handleSpecialOfferSubscribe} disabled={specialOfferLoading || offerCountdown?.expired}>
+                      {specialOfferLoading ? "جارٍ التنفيذ..." : offerCountdown?.expired ? "انتهى العرض" : "اشتركي في العرض"}
+                    </button>
+                    <button className="btn-outline" onClick={() => navigate("offers")}>تفاصيل العرض</button>
+                  </div>
+
+                  {specialOfferMessage && (
+                    <div
+                      style={{
+                        marginTop: 14,
+                        borderRadius: 12,
+                        padding: "10px 14px",
+                        background: specialOfferMessage.ok ? "rgba(22,163,74,.1)" : "rgba(233,30,99,.1)",
+                        color: specialOfferMessage.ok ? C.successDark : C.redDark,
+                        fontSize: 13,
+                        fontWeight: 700,
+                      }}
+                    >
+                      {specialOfferMessage.text}
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ minHeight: viewportWidth() < 768 ? 280 : 360, background: "#fff0f5" }}>
+                  <img
+                    src={specialOffer.image || heroSlides[0]}
+                    alt={specialOffer.title}
+                    style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* ─ QUICK ACTIONS ─ */}
       <section style={{ background: C.bgCard, borderBottom: `1px solid ${C.border}`, padding: "0" }}>
@@ -1528,10 +1708,39 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
 };
 
 // ─── OFFERS PAGE ──────────────────────────────────────────────────────────────
-const DEFAULT_OFFERS = [
-  { title: "عرض رمضان", discount: "30%", desc: "خصم على كل الاشتراكات طول الشهر الكريم", badge: "ًںŒ™", expires: "٣ أيام", color: C.gold },
-  { title: "العضوة الجديدة", discount: "50%", desc: "أول شهر بنص التمن للعضوات الجدد فقط!", badge: "✨", expires: "دائم", color: C.red },
-  { title: "باقة الصاحبتين", discount: "20%", desc: "اشتركي مع صديقتك وكلتيكما تأخدوا خصم", badge: "💯‍♀️", expires: "أسبوع", color: "#9B59B6" },
+const DEFAULT_OFFERS: Array<PublicOffer & { color: string }> = [
+  {
+    id: "default-special",
+    title: "العرض الذهبي",
+    type: "special",
+    discount: 0,
+    specialPrice: 399,
+    description: "اشتراك لفترة محدودة بعدد مقاعد قليل وسعر مميز.",
+    appliesTo: "باقة برو",
+    membershipId: null,
+    image: null,
+    showOnHome: true,
+    maxSubscribers: 40,
+    currentSubscribers: 12,
+    expiresAt: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+    color: C.red,
+  },
+  {
+    id: "default-offer-1",
+    title: "خصم العضوات الجديدات",
+    type: "percentage",
+    discount: 20,
+    specialPrice: null,
+    description: "خصم على أول اشتراك للعضوات الجديدات.",
+    appliesTo: "جميع الباقات",
+    membershipId: null,
+    image: null,
+    showOnHome: false,
+    maxSubscribers: null,
+    currentSubscribers: 0,
+    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+    color: C.gold,
+  },
 ];
 const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
   const [offers, setOffers] = useState(DEFAULT_OFFERS);
@@ -1539,9 +1748,9 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
     loadPublicApi().then(d => {
       if (Array.isArray(d.offers) && d.offers.length > 0) {
         const COLORS = [C.gold, C.red, "#9B59B6", "#3498DB", "#27AE60"];
-        setOffers(d.offers.map((o: {title: string; discount: string; desc: string; expiresAt: string}, i: number) => ({
-          title: o.title, discount: o.discount, desc: o.desc, badge: "🎁",
-          expires: new Date(o.expiresAt).toLocaleDateString("ar-EG"), color: COLORS[i % COLORS.length],
+        setOffers((d.offers as PublicOffer[]).map((offer, i) => ({
+          ...offer,
+          color: COLORS[i % COLORS.length],
         })));
       }
     }).catch(() => {});
@@ -1566,25 +1775,37 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
         <div className="container">
           <h2 className="section-title" style={{ marginBottom: 32 }}>العروض <span>الحالية</span></h2>
           <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 24 }}>
-            {offers.map(o => (
-              <div key={o.title} className="card card-hover" style={{ padding: 0, overflow: "hidden", border: `1px solid ${o.color}33` }}>
+            {offers.map(o => {
+              const countdown = getCountdownParts(o.expiresAt);
+              const remaining = o.maxSubscribers != null ? Math.max(o.maxSubscribers - o.currentSubscribers, 0) : null;
+              return (
+              <div key={o.id} className="card card-hover" style={{ padding: 0, overflow: "hidden", border: `1px solid ${o.color}33` }}>
                 <div style={{ background: `linear-gradient(135deg, ${o.color}33, ${o.color}11)`, padding: "36px 24px", textAlign: "center", borderBottom: `1px solid ${o.color}22` }}>
-                  <div style={{ fontSize: viewportWidth() < 768 ? 34 : 44, marginBottom: 12 }}>{o.badge}</div>
-                  <div style={{ fontSize: 56, fontWeight: 900, color: o.color, lineHeight: 1 }}>{o.discount}</div>
-                  <div style={{ color: C.gray, fontSize: 13, marginTop: 4 }}>خصم</div>
+                  <div style={{ fontSize: viewportWidth() < 768 ? 34 : 44, marginBottom: 12 }}>{o.type === "special" ? "⏳" : "🎁"}</div>
+                  <div style={{ fontSize: 56, fontWeight: 900, color: o.color, lineHeight: 1 }}>
+                    {o.type === "special" ? formatCurrency(o.specialPrice ?? 0) : o.type === "percentage" ? `${o.discount}%` : `${o.discount} ج.م`}
+                  </div>
+                  <div style={{ color: C.gray, fontSize: 13, marginTop: 4 }}>
+                    {o.type === "special" ? "سعر العرض الخاص" : "قيمة الخصم"}
+                  </div>
                 </div>
                 <div style={{ padding: "20px 24px" }}>
                   <h3 style={{ fontWeight: 800, fontSize: 18, color: C.white, marginBottom: 8 }}>{o.title}</h3>
-                  <p style={{ color: C.gray, fontSize: 13, marginBottom: 16 }}>{o.desc}</p>
+                  <p style={{ color: C.gray, fontSize: 13, marginBottom: 16 }}>{o.description}</p>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16 }}>
-                    <span style={{ fontSize: 12, color: C.gray }}>⏰ ينتهي خلال: {o.expires}</span>
+                    <span style={{ fontSize: 12, color: C.gray }}>
+                      ⏰ {countdown.expired ? "انتهى العرض" : `ينتهي في ${countdown.days} يوم`}
+                    </span>
+                    {remaining != null && (
+                      <span style={{ fontSize: 12, color: C.gray }}>المتبقي: {remaining}</span>
+                    )}
                   </div>
-                  <button style={{ width: "100%", padding: "10px", borderRadius: 6, border: `2px solid ${o.color}`, background: "transparent", color: o.color, fontFamily: "'Cairo', sans-serif", fontSize: 14, fontWeight: 700, cursor: "pointer" }} onClick={() => navigate("memberships")}>
-                    استفيدي الآن
+                  <button style={{ width: "100%", padding: "10px", borderRadius: 6, border: `2px solid ${o.color}`, background: "transparent", color: o.color, fontFamily: "'Cairo', sans-serif", fontSize: 14, fontWeight: 700, cursor: "pointer" }} onClick={() => navigate(o.type === "special" ? "home" : "memberships")}>
+                    {o.type === "special" ? "اشتركي في العرض" : "استفيدي الآن"}
                   </button>
                 </div>
               </div>
-            ))}
+            )})}
           </div>
 
           <h2 className="section-title" style={{ marginTop: 64, marginBottom: 32 }}>الباقات <span>المجمعة</span></h2>

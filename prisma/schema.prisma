@@ -92,6 +92,7 @@ model Membership {
 
   userMemberships UserMembership[]
   recommendedFor  ChatSession[]
+  offers          Offer[]
 }
 
 model UserMembership {
@@ -298,12 +299,22 @@ model Notification {
 // ─── Offer ────────────────────────────────────────────────────────────────────
 
 model Offer {
-  id          String   @id @default(cuid())
-  title       String
-  discount    Float
-  description String?
-  expiresAt   DateTime
-  isActive    Boolean  @default(true)
+  id                 String      @id @default(cuid())
+  title              String
+  type               String      @default("percentage") // percentage | fixed | special
+  discount           Float
+  description        String?     @db.Text
+  appliesTo          String?
+  expiresAt          DateTime
+  isActive           Boolean     @default(true)
+  membershipId       String?
+  specialPrice       Float?
+  maxSubscribers     Int?
+  currentSubscribers Int         @default(0)
+  image              String?
+  showOnHome         Boolean     @default(false)
+
+  membership Membership? @relation(fields: [membershipId], references: [id])
 }
 
 model ProductCategory {

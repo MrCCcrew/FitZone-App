@@ -7,63 +7,169 @@ async function checkAdmin() {
   return "error" in guard ? guard.error : null;
 }
 
+function toDateString(value: Date) {
+  return value.toISOString().slice(0, 16);
+}
+
+function mapOffer(
+  offer: {
+    id: string;
+    title: string;
+    discount: number;
+    type: string;
+    appliesTo: string | null;
+    membershipId: string | null;
+    expiresAt: Date;
+    isActive: boolean;
+    description: string | null;
+    specialPrice: number | null;
+    maxSubscribers: number | null;
+    currentSubscribers: number;
+    image: string | null;
+    showOnHome: boolean;
+    membership?: { name: string } | null;
+  },
+) {
+  return {
+    id: offer.id,
+    title: offer.title,
+    discount: offer.discount,
+    type: (offer.type || "percentage") as "percentage" | "fixed" | "special",
+    appliesTo: offer.appliesTo ?? offer.membership?.name ?? "جميع الباقات",
+    membershipId: offer.membershipId,
+    validUntil: toDateString(offer.expiresAt),
+    active: offer.isActive,
+    usedCount: offer.currentSubscribers,
+    description: offer.description ?? "",
+    specialPrice: offer.specialPrice,
+    maxSubscribers: offer.maxSubscribers,
+    currentSubscribers: offer.currentSubscribers,
+    image: offer.image,
+    showOnHome: offer.showOnHome,
+  };
+}
+
 export async function GET() {
-  const err = await checkAdmin(); if (err) return err;
+  const err = await checkAdmin();
+  if (err) return err;
 
-  const rows = await db.offer.findMany({ orderBy: { expiresAt: "asc" } });
+  const offers = await db.offer.findMany({
+    include: { membership: { select: { name: true } } },
+    orderBy: [{ showOnHome: "desc" }, { expiresAt: "asc" }],
+  });
 
-  return NextResponse.json(rows.map(o => ({
-    id:          o.id,
-    title:       o.title,
-    discount:    o.discount,
-    type:        "percentage",
-    appliesTo:   o.description ?? "جميع الباقات",
-    validUntil:  o.expiresAt.toISOString().slice(0, 10),
-    active:      o.isActive,
-    usedCount:   0,
-  })));
+  return NextResponse.json(offers.map(mapOffer));
 }
 
 export async function POST(req: Request) {
-  const err = await checkAdmin(); if (err) return err;
-  const body = await req.json();
-  const { title, discount, type, appliesTo, validUntil } = body;
-  if (!title || discount == null || !validUntil)
-    return NextResponse.json({ error: "بيانات ناقصة" }, { status: 400 });
+  const err = await checkAdmin();
+  if (err) return err;
 
-  const o = await db.offer.create({
-    data: {
-      title,
-      discount:    Number(discount),
-      description: appliesTo ?? "جميع الباقات",
-      expiresAt:   new Date(validUntil),
-      isActive:    true,
-    },
-  });
-  return NextResponse.json({ id: o.id, title: o.title, discount: o.discount, type: type ?? "percentage", appliesTo: o.description ?? "", validUntil: o.expiresAt.toISOString().slice(0,10), active: o.isActive, usedCount: 0 });
+  try {
+    const body = await req.json();
+    const type = typeof body.type === "string" ? body.type : "percentage";
+    const title = typeof body.title === "string" ? body.title.trim() : "";
+    const validUntil = typeof body.validUntil === "string" ? body.validUntil : "";
+
+    if (!title || !validUntil) {
+      return NextResponse.json({ error: "يرجى إدخال عنوان العرض ووقت انتهائه." }, { status: 400 });
+    }
+
+    if (type === "special" && !body.membershipId) {
+      return NextResponse.json({ error: "اختاري الباقة المرتبطة بالعرض الخاص أولًا." }, { status: 400 });
+    }
+
+    if (type === "special" && (body.specialPrice == null || Number(body.specialPrice) <= 0)) {
+      return NextResponse.json({ error: "أدخلي قيمة الاشتراك الخاصة بالعرض." }, { status: 400 });
+    }
+
+    const created = await db.offer.create({
+      data: {
+        title,
+        type,
+        discount: Number(body.discount ?? 0),
+        description: typeof body.description === "string" ? body.description.trim() : null,
+        appliesTo: typeof body.appliesTo === "string" ? body.appliesTo.trim() : null,
+        expiresAt: new Date(validUntil),
+        isActive: body.active !== false,
+        membershipId: body.membershipId || null,
+        specialPrice: body.specialPrice != null ? Number(body.specialPrice) : null,
+        maxSubscribers: body.maxSubscribers != null && body.maxSubscribers !== ""
+          ? Number(body.maxSubscribers)
+          : null,
+        image: typeof body.image === "string" && body.image.trim() ? body.image.trim() : null,
+        showOnHome: Boolean(body.showOnHome),
+      },
+      include: { membership: { select: { name: true } } },
+    });
+
+    return NextResponse.json(mapOffer(created));
+  } catch (error) {
+    console.error("[ADMIN_OFFERS_POST]", error);
+    return NextResponse.json({ error: "تعذر حفظ العرض حاليًا." }, { status: 500 });
+  }
 }
 
 export async function PATCH(req: Request) {
-  const err = await checkAdmin(); if (err) return err;
-  const body = await req.json();
-  const { id, title, discount, appliesTo, validUntil, active } = body;
-  if (!id) return NextResponse.json({ error: "id مطلوب" }, { status: 400 });
+  const err = await checkAdmin();
+  if (err) return err;
 
-  const data: Record<string, unknown> = {};
-  if (title      !== undefined) data.title       = title;
-  if (discount   !== undefined) data.discount    = Number(discount);
-  if (appliesTo  !== undefined) data.description = appliesTo;
-  if (validUntil !== undefined) data.expiresAt   = new Date(validUntil);
-  if (active     !== undefined) data.isActive    = active;
+  try {
+    const body = await req.json();
+    const id = typeof body.id === "string" ? body.id : "";
+    if (!id) {
+      return NextResponse.json({ error: "معرف العرض مطلوب." }, { status: 400 });
+    }
 
-  const o = await db.offer.update({ where: { id }, data });
-  return NextResponse.json({ id: o.id, title: o.title, discount: o.discount, type: "percentage", appliesTo: o.description ?? "", validUntil: o.expiresAt.toISOString().slice(0,10), active: o.isActive, usedCount: 0 });
+    const data: Record<string, unknown> = {};
+
+    if (body.title !== undefined) data.title = String(body.title).trim();
+    if (body.type !== undefined) data.type = String(body.type);
+    if (body.discount !== undefined) data.discount = Number(body.discount ?? 0);
+    if (body.description !== undefined) data.description = body.description ? String(body.description).trim() : null;
+    if (body.appliesTo !== undefined) data.appliesTo = body.appliesTo ? String(body.appliesTo).trim() : null;
+    if (body.validUntil !== undefined) data.expiresAt = new Date(String(body.validUntil));
+    if (body.active !== undefined) data.isActive = Boolean(body.active);
+    if (body.membershipId !== undefined) data.membershipId = body.membershipId || null;
+    if (body.specialPrice !== undefined) {
+      data.specialPrice = body.specialPrice != null && body.specialPrice !== "" ? Number(body.specialPrice) : null;
+    }
+    if (body.maxSubscribers !== undefined) {
+      data.maxSubscribers = body.maxSubscribers != null && body.maxSubscribers !== ""
+        ? Number(body.maxSubscribers)
+        : null;
+    }
+    if (body.currentSubscribers !== undefined) data.currentSubscribers = Number(body.currentSubscribers ?? 0);
+    if (body.image !== undefined) data.image = body.image ? String(body.image).trim() : null;
+    if (body.showOnHome !== undefined) data.showOnHome = Boolean(body.showOnHome);
+
+    const updated = await db.offer.update({
+      where: { id },
+      data,
+      include: { membership: { select: { name: true } } },
+    });
+
+    return NextResponse.json(mapOffer(updated));
+  } catch (error) {
+    console.error("[ADMIN_OFFERS_PATCH]", error);
+    return NextResponse.json({ error: "تعذر تحديث العرض حاليًا." }, { status: 500 });
+  }
 }
 
 export async function DELETE(req: Request) {
-  const err = await checkAdmin(); if (err) return err;
-  const { id } = await req.json();
-  if (!id) return NextResponse.json({ error: "id مطلوب" }, { status: 400 });
-  await db.offer.delete({ where: { id } });
-  return NextResponse.json({ success: true });
+  const err = await checkAdmin();
+  if (err) return err;
+
+  try {
+    const { id } = await req.json();
+    if (!id) {
+      return NextResponse.json({ error: "معرف العرض مطلوب." }, { status: 400 });
+    }
+
+    await db.offer.delete({ where: { id } });
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("[ADMIN_OFFERS_DELETE]", error);
+    return NextResponse.json({ error: "تعذر حذف العرض حاليًا." }, { status: 500 });
+  }
 }

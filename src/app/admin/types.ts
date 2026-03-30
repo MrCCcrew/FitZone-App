@@ -38,11 +38,18 @@ export interface Offer {
   id: string;
   title: string;
   discount: number;
-  type: "percentage" | "fixed";
+  type: "percentage" | "fixed" | "special";
   appliesTo: string;
+  membershipId?: string | null;
   validUntil: string;
   active: boolean;
   usedCount: number;
+  description?: string;
+  specialPrice?: number | null;
+  maxSubscribers?: number | null;
+  currentSubscribers?: number;
+  image?: string | null;
+  showOnHome?: boolean;
 }
 
 export interface GymClass {

@@ -8,84 +8,147 @@ export async function POST(req: Request) {
   const userId = user?.id;
 
   if (!userId) {
-    return NextResponse.json({ error: "يجب تسجيل الدخول أولًا يا بطلة" }, { status: 401 });
+    return NextResponse.json({ error: "يجب تسجيل الدخول أولًا قبل الاشتراك." }, { status: 401 });
   }
 
-  const { membershipId } = await req.json();
-  if (!membershipId) {
-    return NextResponse.json({ error: "يرجى اختيار باقةاولا يابطلة" }, { status: 400 });
+  const { membershipId, offerId } = await req.json();
+  if (!membershipId && !offerId) {
+    return NextResponse.json({ error: "يرجى اختيار الباقة أو العرض أولًا." }, { status: 400 });
   }
 
-  // تحقق من تفعيل البريد الإلكتروني
-  const userRecord = await db.user.findUnique({ where: { id: userId }, select: { emailVerified: true } });
+  const userRecord = await db.user.findUnique({
+    where: { id: userId },
+    select: { emailVerified: true, email: true, name: true },
+  });
+
   if (!userRecord?.emailVerified) {
-    return NextResponse.json({ error: "يجب تفعيل حسابك أولاً قبل الاشتراك يا بطلة", needsVerification: true }, { status: 403 });
+    return NextResponse.json(
+      { error: "يجب تفعيل الحساب أولًا قبل إتمام الاشتراك.", needsVerification: true },
+      { status: 403 },
+    );
   }
 
-  const plan = await db.membership.findUnique({ where: { id: membershipId } });
-  if (!plan) {
-    return NextResponse.json({ error: "الباقة غير موجودة يا بطلة" }, { status: 404 });
-  }
+  const result = await db.$transaction(async (tx) => {
+    let resolvedMembershipId = membershipId as string | undefined;
+    let offerTitle: string | null = null;
+    let walletBonus = 0;
 
-  await db.userMembership.updateMany({
-    where: { userId, status: "active" },
-    data: { status: "expired" },
-  });
+    if (offerId) {
+      const offer = await tx.offer.findUnique({ where: { id: offerId } });
+      if (!offer || !offer.isActive || offer.expiresAt <= new Date()) {
+        throw new Error("العرض الخاص غير متاح الآن.");
+      }
+      if (offer.type !== "special" || !offer.membershipId) {
+        throw new Error("هذا العرض غير صالح للاشتراك المباشر.");
+      }
+      if (offer.maxSubscribers != null && offer.currentSubscribers >= offer.maxSubscribers) {
+        throw new Error("اكتمل عدد المشتركات في هذا العرض.");
+      }
 
-  const startDate = new Date();
-  const endDate = new Date();
-  endDate.setDate(endDate.getDate() + plan.duration);
+      resolvedMembershipId = offer.membershipId;
+      offerTitle = offer.title;
+    }
 
-  const sub = await db.userMembership.create({
-    data: {
-      userId,
-      membershipId: plan.id,
-      startDate,
-      endDate,
-      status: "active",
-    },
-  });
+    if (!resolvedMembershipId) {
+      throw new Error("تعذر تحديد الباقة المطلوبة.");
+    }
 
-  if (plan.walletBonus && plan.walletBonus > 0) {
-    const wallet = await db.wallet.upsert({
-      where: { userId },
-      update: { balance: { increment: plan.walletBonus } },
-      create: { userId, balance: plan.walletBonus },
+    const plan = await tx.membership.findUnique({ where: { id: resolvedMembershipId } });
+    if (!plan) {
+      throw new Error("الباقة غير موجودة.");
+    }
+
+    walletBonus = plan.walletBonus ?? 0;
+
+    await tx.userMembership.updateMany({
+      where: { userId, status: "active" },
+      data: { status: "expired" },
     });
 
-    await db.walletTransaction.create({
+    const startDate = new Date();
+    const endDate = new Date();
+    endDate.setDate(endDate.getDate() + plan.duration);
+
+    const subscription = await tx.userMembership.create({
       data: {
-        walletId: wallet.id,
-        amount: plan.walletBonus,
-        type: "credit",
-        description: `مكافأة الاشتراك في باقة ${plan.name}`,
+        userId,
+        membershipId: plan.id,
+        startDate,
+        endDate,
+        status: "active",
       },
     });
-  }
 
-  await db.notification.create({
-    data: {
-      userId,
-      title: `تم الاشتراك في باقة ${plan.name}!`,
-      body: `اشتراكك نشط حتى ${endDate.toLocaleDateString("ar-EG")}. استمتع بكل مميزات الباقة!`,
-      type: "success",
-    },
+    if (offerId) {
+      await tx.offer.update({
+        where: { id: offerId },
+        data: {
+          currentSubscribers: {
+            increment: 1,
+          },
+        },
+      });
+    }
+
+    if (walletBonus > 0) {
+      const wallet = await tx.wallet.upsert({
+        where: { userId },
+        update: { balance: { increment: walletBonus } },
+        create: { userId, balance: walletBonus },
+      });
+
+      await tx.walletTransaction.create({
+        data: {
+          walletId: wallet.id,
+          amount: walletBonus,
+          type: "credit",
+          description: offerTitle
+            ? `مكافأة الاشتراك في ${offerTitle}`
+            : `مكافأة الاشتراك في باقة ${plan.name}`,
+        },
+      });
+    }
+
+    await tx.notification.create({
+      data: {
+        userId,
+        title: offerTitle ? `تم الاشتراك في ${offerTitle}!` : `تم الاشتراك في باقة ${plan.name}!`,
+        body: offerTitle
+          ? `اشتراكك في العرض الخاص أصبح نشطًا حتى ${endDate.toLocaleDateString("ar-EG")}.`
+          : `اشتراكك أصبح نشطًا حتى ${endDate.toLocaleDateString("ar-EG")}.`,
+        type: "success",
+      },
+    });
+
+    return {
+      subscriptionId: subscription.id,
+      planName: plan.name,
+      endDate,
+      walletBonus,
+      offerTitle,
+    };
+  }).catch((error: unknown) => {
+    const message = error instanceof Error ? error.message : "تعذر إتمام الاشتراك حاليًا.";
+    return { error: message };
   });
 
-  // إرسال بريد تأكيد الاشتراك (fire-and-forget — لا نستنى الإيميل عشان ما نعلقش الاستجابة)
-  db.user.findUnique({ where: { id: userId }, select: { email: true, name: true } })
-    .then((fullUser) => {
-      if (fullUser?.email) {
-        return sendSubscriptionEmail(
-          fullUser.email,
-          fullUser.name ?? "العضوة",
-          plan.name,
-          endDate,
-          plan.walletBonus ?? 0,
-        );
-      }
-    })
-    .catch((emailError) => console.error("[SUBSCRIBE_EMAIL]", emailError));
+  if ("error" in result) {
+    return NextResponse.json({ error: result.error }, { status: 400 });
+  }
 
-  return NextResponse.json({ success: true, subscriptionId: sub.id, endDate: endDate.toISOString() });
+  if (userRecord.email) {
+    void sendSubscriptionEmail(
+      userRecord.email,
+      userRecord.name ?? "العضوة",
+      result.offerTitle ?? result.planName,
+      result.endDate,
+      result.walletBonus,
+    ).catch((error) => console.error("[SUBSCRIBE_EMAIL]", error));
+  }
+
+  return NextResponse.json({
+    success: true,
+    subscriptionId: result.subscriptionId,
+    endDate: result.endDate.toISOString(),
+  });
 }
