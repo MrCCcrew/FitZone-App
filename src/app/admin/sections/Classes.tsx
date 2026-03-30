@@ -1,29 +1,143 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { GymClass } from "../types";
 
-const DAYS = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
-const TYPE_LABELS: Record<GymClass["type"], string> = { cardio: "كارديو", strength: "مقاومة", yoga: "يوغا", boxing: "ملاكمة", swimming: "سباحة", dance: "رقص" };
-const TYPE_COLORS: Record<GymClass["type"], string> = { cardio: "bg-orange-500/20 text-orange-400", strength: "bg-red-500/20 text-red-400", yoga: "bg-purple-500/20 text-purple-400", boxing: "bg-blue-500/20 text-blue-400", swimming: "bg-cyan-500/20 text-cyan-400", dance: "bg-pink-500/20 text-pink-400" };
-type ApiTrainer = { id: string; name: string; specialty: string };
-const EMPTY_TRAINER_ID = "";
-const EMPTY: Omit<GymClass, "id"> & { trainerId?: string } = { name: "", trainer: "", trainerId: EMPTY_TRAINER_ID, day: DAYS[0], time: "06:00", duration: 60, capacity: 15, enrolled: 0, type: "strength", active: true };
+type ApiTrainer = {
+  id: string;
+  name: string;
+  specialty: string;
+};
 
-const INPUT = "w-full bg-gray-800 border border-gray-700 focus:border-red-500 rounded-xl px-4 py-2.5 text-white text-sm outline-none transition-colors";
+const DAYS = [
+  "الأحد",
+  "الاثنين",
+  "الثلاثاء",
+  "الأربعاء",
+  "الخميس",
+  "الجمعة",
+  "السبت",
+];
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return <div><label className="block text-gray-500 text-xs mb-1.5">{label}</label>{children}</div>;
+const PRESET_TYPES = [
+  { value: "cardio", label: "كارديو" },
+  { value: "strength", label: "قوة" },
+  { value: "yoga", label: "يوجا" },
+  { value: "boxing", label: "ملاكمة" },
+  { value: "swimming", label: "سباحة" },
+  { value: "dance", label: "رقص" },
+  { value: "pilates", label: "بيلاتس" },
+  { value: "zumba", label: "زومبا" },
+];
+
+const TYPE_COLOR_MAP: Record<string, string> = {
+  cardio: "bg-orange-500/15 text-orange-300 border-orange-500/30",
+  strength: "bg-red-500/15 text-red-300 border-red-500/30",
+  yoga: "bg-purple-500/15 text-purple-300 border-purple-500/30",
+  boxing: "bg-blue-500/15 text-blue-300 border-blue-500/30",
+  swimming: "bg-cyan-500/15 text-cyan-300 border-cyan-500/30",
+  dance: "bg-pink-500/15 text-pink-300 border-pink-500/30",
+  pilates: "bg-sky-500/15 text-sky-300 border-sky-500/30",
+  zumba: "bg-fuchsia-500/15 text-fuchsia-300 border-fuchsia-500/30",
+};
+
+const INPUT =
+  "w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition placeholder:text-white/35 focus:border-fuchsia-400/60 focus:bg-white/10";
+
+type ClassModalState = {
+  id?: string;
+  name: string;
+  trainer: string;
+  trainerId: string;
+  day: string;
+  time: string;
+  duration: number;
+  capacity: number;
+  enrolled: number;
+  type: string;
+  active: boolean;
+  typePreset: string;
+  customType: string;
+};
+
+const EMPTY_MODAL: ClassModalState = {
+  name: "",
+  trainer: "",
+  trainerId: "",
+  day: DAYS[0],
+  time: "06:00",
+  duration: 60,
+  capacity: 15,
+  enrolled: 0,
+  type: "strength",
+  active: true,
+  typePreset: "strength",
+  customType: "",
+};
+
+function normalizeTypeLabel(type: string) {
+  const normalized = type.trim();
+  if (!normalized) return "غير محدد";
+  const preset = PRESET_TYPES.find(
+    (item) =>
+      item.value.toLowerCase() === normalized.toLowerCase() ||
+      item.label === normalized,
+  );
+  return preset?.label ?? normalized;
 }
 
-function Modal({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
+function resolveTypeColor(type: string) {
+  return TYPE_COLOR_MAP[type.toLowerCase()] ?? "bg-white/10 text-white/75 border-white/15";
+}
+
+function createModalState(item?: GymClass) {
+  if (!item) return EMPTY_MODAL;
+  const preset = PRESET_TYPES.find(
+    (entry) =>
+      entry.value.toLowerCase() === item.type.toLowerCase() ||
+      entry.label === item.type,
+  );
+
+  return {
+    ...item,
+    trainerId: "",
+    typePreset: preset?.value ?? "custom",
+    customType: preset ? "" : item.type,
+  };
+}
+
+function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
-      <div className="relative bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-5">
-          <h3 className="text-white font-black text-lg">{title}</h3>
-          <button onClick={onClose} className="text-gray-500 hover:text-white text-2xl leading-none">×</button>
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-3">
+        <label className="text-sm font-semibold text-white/85">{label}</label>
+        {hint ? <span className="text-[11px] text-white/45">{hint}</span> : null}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function Modal({
+  title,
+  children,
+  onClose,
+}: {
+  title: string;
+  children: React.ReactNode;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-sm" onClick={onClose}>
+      <div
+        className="w-full max-w-3xl rounded-3xl border border-white/10 bg-[#2a0f1f] p-6 shadow-2xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="mb-6 flex items-center justify-between">
+          <h3 className="text-xl font-black text-white">{title}</h3>
+          <button onClick={onClose} className="rounded-full border border-white/10 px-3 py-1 text-lg text-white/70 transition hover:border-white/20 hover:text-white">
+            ×
+          </button>
         </div>
         {children}
       </div>
@@ -32,177 +146,348 @@ function Modal({ title, children, onClose }: { title: string; children: React.Re
 }
 
 export default function Classes() {
-  const [classes, setClasses]     = useState<GymClass[]>([]);
-  const [trainers, setTrainers]   = useState<ApiTrainer[]>([]);
-  const [loading, setLoading]     = useState(true);
-  const [saving, setSaving]       = useState(false);
-  const [modal, setModal] = useState<(GymClass & { trainerId?: string }) | (Omit<GymClass, "id"> & { trainerId?: string }) | null>(null);
-  const [view, setView] = useState<"list" | "schedule">("schedule");
-  const [filterDay, setFilterDay] = useState<string>("الكل");
+  const [classes, setClasses] = useState<GymClass[]>([]);
+  const [trainers, setTrainers] = useState<ApiTrainer[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [view, setView] = useState<"schedule" | "list">("schedule");
+  const [filterDay, setFilterDay] = useState("الكل");
+  const [filterType, setFilterType] = useState("الكل");
+  const [modal, setModal] = useState<ClassModalState | null>(null);
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
-    const d = await fetch("/api/admin/classes").then(r => r.json());
-    setClasses(Array.isArray(d.classes) ? d.classes : []);
-    setTrainers(Array.isArray(d.trainers) ? d.trainers : []);
-    setLoading(false);
+    try {
+      const response = await fetch("/api/admin/classes", { cache: "no-store" });
+      const payload = (await response.json()) as {
+        classes?: GymClass[];
+        trainers?: ApiTrainer[];
+      };
+
+      setClasses(Array.isArray(payload.classes) ? payload.classes : []);
+      setTrainers(Array.isArray(payload.trainers) ? payload.trainers : []);
+    } finally {
+      setLoading(false);
+    }
   }, []);
-  useEffect(() => { fetchAll(); }, [fetchAll]);
 
-  const save = async () => {
-    if (!modal) return;
-    setSaving(true);
-    const isEdit = "id" in modal;
-    const payload = {
-      ...(isEdit && { id: (modal as GymClass).id }),
-      name:      modal.name,
-      trainerId: (modal as GymClass & { trainerId?: string }).trainerId ?? trainers[0]?.id,
-      type:      modal.type,
-      duration:  modal.duration,
-      intensity: "medium",
-      maxSpots:  modal.capacity,
-      price:     0,
-      active:    modal.active,
-      day:       modal.day,
-      time:      modal.time,
-    };
-    await fetch("/api/admin/classes", {
-      method:  isEdit ? "PATCH" : "POST",
-      headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify(payload),
+  useEffect(() => {
+    void fetchAll();
+  }, [fetchAll]);
+
+  useEffect(() => {
+    if (!modal || modal.trainerId || trainers.length === 0) return;
+    const firstTrainer = trainers[0];
+    setModal((current) =>
+      current
+        ? {
+            ...current,
+            trainerId: firstTrainer.id,
+            trainer: firstTrainer.name,
+          }
+        : current,
+    );
+  }, [modal, trainers]);
+
+  const typeOptions = useMemo(() => {
+    const dynamic = Array.from(
+      new Set(classes.map((item) => normalizeTypeLabel(item.type)).filter(Boolean)),
+    );
+    return ["الكل", ...dynamic];
+  }, [classes]);
+
+  const displayedClasses = useMemo(() => {
+    return classes.filter((item) => {
+      const matchesDay = filterDay === "الكل" || item.day === filterDay;
+      const matchesType =
+        filterType === "الكل" || normalizeTypeLabel(item.type) === filterType;
+      return matchesDay && matchesType;
     });
-    await fetchAll();
-    setModal(null); setSaving(false);
-  };
+  }, [classes, filterDay, filterType]);
 
-  const toggle = async (id: string, active: boolean) => {
-    await fetch("/api/admin/classes", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, active: !active }) });
-    await fetchAll();
-  };
-  const del = async (id: string) => {
-    if (!confirm("حذف الكلاس؟")) return;
-    await fetch("/api/admin/classes", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
-    await fetchAll();
-  };
+  const stats = useMemo(() => {
+    const totalCapacity = classes.reduce((sum, item) => sum + item.capacity, 0);
+    const totalEnrolled = classes.reduce((sum, item) => sum + item.enrolled, 0);
+    return [
+      { label: "إجمالي الكلاسات", value: classes.length, tone: "text-white" },
+      {
+        label: "الكلاسات النشطة",
+        value: classes.filter((item) => item.active).length,
+        tone: "text-emerald-300",
+      },
+      { label: "إجمالي المسجلين", value: totalEnrolled, tone: "text-fuchsia-300" },
+      {
+        label: "متوسط الإشغال",
+        value: totalCapacity > 0 ? `${Math.round((totalEnrolled / totalCapacity) * 100)}%` : "0%",
+        tone: "text-amber-300",
+      },
+    ];
+  }, [classes]);
 
-  if (loading) return <div className="flex items-center justify-center h-64"><div className="text-gray-500 text-sm">جارٍ تحميل الكلاسات...</div></div>;
+  async function saveClass() {
+    if (!modal) return;
 
-  const displayed = filterDay === "الكل" ? classes : classes.filter((c) => c.day === filterDay);
+    const resolvedType =
+      modal.typePreset === "custom"
+        ? modal.customType.trim()
+        : modal.typePreset.trim();
+
+    if (!modal.name.trim()) {
+      alert("اسم الكلاس مطلوب.");
+      return;
+    }
+    if (!modal.trainerId) {
+      alert("اختَر المدربة أولًا.");
+      return;
+    }
+    if (!resolvedType) {
+      alert("اكتب نوع الكلاس أو اختَره من القائمة.");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const selectedTrainer = trainers.find((item) => item.id === modal.trainerId);
+      const isEdit = Boolean(modal.id);
+      const response = await fetch("/api/admin/classes", {
+        method: isEdit ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...(modal.id ? { id: modal.id } : {}),
+          name: modal.name.trim(),
+          trainerId: modal.trainerId,
+          type: resolvedType,
+          duration: Number(modal.duration) || 60,
+          intensity: "medium",
+          maxSpots: Number(modal.capacity) || 15,
+          price: 0,
+          active: modal.active,
+          day: modal.day,
+          time: modal.time,
+          trainer: selectedTrainer?.name ?? modal.trainer,
+        }),
+      });
+
+      const payload = (await response.json().catch(() => ({}))) as { error?: string };
+      if (!response.ok) {
+        alert(payload.error ?? "تعذر حفظ بيانات الكلاس الآن.");
+        return;
+      }
+
+      await fetchAll();
+      setModal(null);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function toggleClass(item: GymClass) {
+    const response = await fetch("/api/admin/classes", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: item.id, active: !item.active }),
+    });
+    if (!response.ok) {
+      alert("تعذر تحديث حالة الكلاس الآن.");
+      return;
+    }
+    await fetchAll();
+  }
+
+  async function deleteClass(id: string) {
+    if (!confirm("هل تريد حذف هذا الكلاس؟")) return;
+    const response = await fetch("/api/admin/classes", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    if (!response.ok) {
+      alert("تعذر حذف الكلاس الآن.");
+      return;
+    }
+    await fetchAll();
+  }
+
+  if (loading) {
+    return (
+      <div className="flex h-56 items-center justify-center rounded-3xl border border-white/10 bg-white/5 text-sm text-white/60">
+        جارٍ تحميل الكلاسات...
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      {/* Toolbar */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          {["schedule", "list"].map((v) => (
-            <button key={v} onClick={() => setView(v as typeof view)} className={`px-4 py-2 rounded-xl text-sm font-bold transition-colors ${view === v ? "bg-red-600 text-white" : "bg-gray-800 text-gray-400 hover:bg-gray-700"}`}>
-              {v === "schedule" ? "📅 الجدول" : "📋 القائمة"}
-            </button>
-          ))}
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="flex gap-1 flex-wrap">
-            {["الكل", ...DAYS].map((d) => (
-              <button key={d} onClick={() => setFilterDay(d)} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${filterDay === d ? "bg-yellow-500 text-black" : "bg-gray-800 text-gray-400 hover:bg-gray-700"}`}>
-                {d}
-              </button>
-            ))}
-          </div>
-          <button onClick={() => setModal(EMPTY)} className="bg-red-600 hover:bg-red-700 text-white font-bold px-4 py-2 rounded-xl text-sm transition-colors whitespace-nowrap">
-            + كلاس جديد
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => setView("schedule")}
+            className={`rounded-xl px-4 py-2 text-sm font-bold transition ${
+              view === "schedule" ? "bg-fuchsia-600 text-white" : "bg-white/5 text-white/65 hover:bg-white/10"
+            }`}
+          >
+            عرض الجدول
+          </button>
+          <button
+            onClick={() => setView("list")}
+            className={`rounded-xl px-4 py-2 text-sm font-bold transition ${
+              view === "list" ? "bg-fuchsia-600 text-white" : "bg-white/5 text-white/65 hover:bg-white/10"
+            }`}
+          >
+            عرض القائمة
           </button>
         </div>
+
+        <button
+          onClick={() => setModal(createModalState())}
+          className="rounded-2xl bg-fuchsia-600 px-5 py-3 text-sm font-black text-white transition hover:bg-fuchsia-500"
+        >
+          + إضافة كلاس جديد
+        </button>
       </div>
 
-      {/* Stats bar */}
-      <div className="grid grid-cols-4 gap-3">
-        {[
-          ["إجمالي الكلاسات", classes.length, "text-white"],
-          ["كلاسات نشطة", classes.filter(c => c.active).length, "text-green-400"],
-          ["إجمالي المسجلين", classes.reduce((s, c) => s + c.enrolled, 0), "text-yellow-400"],
-          ["متوسط الامتلاء", Math.round(classes.reduce((s, c) => s + (c.enrolled / c.capacity) * 100, 0) / classes.length) + "%", "text-red-400"],
-        ].map(([label, val, color]) => (
-          <div key={label as string} className="bg-gray-900/60 border border-gray-800 rounded-xl p-4 text-center">
-            <div className={`text-2xl font-black ${color}`}>{val}</div>
-            <div className="text-gray-500 text-xs mt-1">{label}</div>
+      <div className="grid gap-3 md:grid-cols-4">
+        {stats.map((item) => (
+          <div key={item.label} className="rounded-2xl border border-white/10 bg-white/5 p-4 text-center">
+            <div className={`text-2xl font-black ${item.tone}`}>{item.value}</div>
+            <div className="mt-1 text-xs text-white/55">{item.label}</div>
           </div>
         ))}
       </div>
 
-      {/* Schedule view */}
-      {view === "schedule" && (
-        <div className="bg-gray-900/60 border border-gray-800 rounded-2xl overflow-hidden">
-          <div className="grid grid-cols-7 text-center border-b border-gray-800">
-            {DAYS.map((d) => (
-              <div key={d} className="py-3 text-xs font-bold text-gray-400 border-l border-gray-800 first:border-l-0">{d}</div>
+      <div className="grid gap-4 rounded-3xl border border-white/10 bg-white/5 p-5 lg:grid-cols-[1fr_auto_auto]">
+        <div className="flex flex-wrap gap-2">
+          {["الكل", ...DAYS].map((day) => (
+            <button
+              key={day}
+              onClick={() => setFilterDay(day)}
+              className={`rounded-xl px-3 py-2 text-xs font-bold transition ${
+                filterDay === day ? "bg-amber-400 text-black" : "bg-white/5 text-white/65 hover:bg-white/10"
+              }`}
+            >
+              {day}
+            </button>
+          ))}
+        </div>
+
+        <select
+          value={filterType}
+          onChange={(event) => setFilterType(event.target.value)}
+          className={`${INPUT} min-w-[180px]`}
+        >
+          {typeOptions.map((type) => (
+            <option key={type} value={type} className="bg-[#2a0f1f]">
+              {type}
+            </option>
+          ))}
+        </select>
+
+        <div className="rounded-2xl border border-dashed border-white/15 bg-black/10 px-4 py-3 text-xs text-white/55">
+          أضف نوعًا جديدًا من داخل نموذج الكلاس وسيظهر تلقائيًا في الفلاتر والواجهة العامة.
+        </div>
+      </div>
+
+      {view === "schedule" ? (
+        <div className="overflow-hidden rounded-3xl border border-white/10 bg-white/5">
+          <div className="grid grid-cols-7 border-b border-white/10 text-center">
+            {DAYS.map((day) => (
+              <div key={day} className="border-s border-white/10 px-2 py-4 text-xs font-bold text-white/55 first:border-s-0">
+                {day}
+              </div>
             ))}
           </div>
-          <div className="grid grid-cols-7 min-h-48">
+          <div className="grid min-h-[320px] grid-cols-7">
             {DAYS.map((day) => (
-              <div key={day} className="border-l border-gray-800 first:border-l-0 p-2 space-y-1.5">
-                {classes.filter((c) => c.day === day).map((cls) => (
-                  <button
-                    key={cls.id}
-                    onClick={() => setModal(cls)}
-                    className={`w-full text-right p-2 rounded-lg border transition-all hover:scale-[1.02] ${cls.active ? "border-gray-700 bg-gray-800/80" : "border-gray-800 bg-gray-900 opacity-50"}`}
-                  >
-                    <div className="text-white text-xs font-black leading-tight">{cls.name}</div>
-                    <div className="text-gray-500 text-[10px]">{cls.time}</div>
-                    <div className={`text-[10px] px-1.5 py-0.5 rounded-full inline-block mt-1 ${TYPE_COLORS[cls.type]}`}>
-                      {TYPE_LABELS[cls.type]}
-                    </div>
-                    <div className="mt-1 h-1 bg-gray-700 rounded-full overflow-hidden">
-                      <div className={`h-full rounded-full ${cls.enrolled / cls.capacity >= 0.9 ? "bg-red-500" : "bg-green-500"}`} style={{ width: `${(cls.enrolled / cls.capacity) * 100}%` }} />
-                    </div>
-                    <div className="text-gray-600 text-[9px] mt-0.5">{cls.enrolled}/{cls.capacity}</div>
-                  </button>
-                ))}
+              <div key={day} className="space-y-2 border-s border-white/10 p-3 first:border-s-0">
+                {classes
+                  .filter((item) => item.day === day)
+                  .map((item) => {
+                    const occupancy = item.capacity > 0 ? Math.min(100, Math.round((item.enrolled / item.capacity) * 100)) : 0;
+                    return (
+                      <button
+                        key={item.id}
+                        onClick={() => setModal(createModalState(item))}
+                        className={`w-full rounded-2xl border p-3 text-right transition hover:scale-[1.01] ${
+                          item.active ? "border-white/10 bg-black/15" : "border-white/5 bg-black/5 opacity-55"
+                        }`}
+                      >
+                        <div className="text-sm font-black text-white">{item.name}</div>
+                        <div className="mt-1 text-xs text-white/45">{item.time}</div>
+                        <div className={`mt-2 inline-flex rounded-full border px-2 py-1 text-[11px] font-bold ${resolveTypeColor(item.type)}`}>
+                          {normalizeTypeLabel(item.type)}
+                        </div>
+                        <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
+                          <div className="h-full rounded-full bg-fuchsia-500" style={{ width: `${occupancy}%` }} />
+                        </div>
+                        <div className="mt-1 text-[10px] text-white/45">
+                          {item.enrolled}/{item.capacity}
+                        </div>
+                      </button>
+                    );
+                  })}
               </div>
             ))}
           </div>
         </div>
-      )}
-
-      {/* List view */}
-      {view === "list" && (
-        <div className="bg-gray-900/60 border border-gray-800 rounded-2xl overflow-hidden">
+      ) : (
+        <div className="overflow-hidden rounded-3xl border border-white/10 bg-white/5">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full min-w-[950px] text-sm">
               <thead>
-                <tr className="border-b border-gray-800 text-gray-500 text-xs">
-                  {["الكلاس", "المدرب", "اليوم", "الوقت", "المدة", "الامتلاء", "النوع", "الحالة", ""].map((h) => (
-                    <th key={h} className="text-right py-3 px-4 font-medium">{h}</th>
+                <tr className="border-b border-white/10 text-right text-xs text-white/45">
+                  {["الكلاس", "المدربة", "اليوم", "الوقت", "المدة", "الإشغال", "النوع", "الحالة", "إجراءات"].map((head) => (
+                    <th key={head} className="px-4 py-4 font-medium">
+                      {head}
+                    </th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {displayed.map((cls) => (
-                  <tr key={cls.id} className="border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors">
-                    <td className="py-3 px-4 text-white font-bold">{cls.name}</td>
-                    <td className="py-3 px-4 text-gray-400">{cls.trainer}</td>
-                    <td className="py-3 px-4 text-gray-400">{cls.day}</td>
-                    <td className="py-3 px-4 text-gray-400" dir="ltr">{cls.time}</td>
-                    <td className="py-3 px-4 text-gray-400">{cls.duration} دقيقة</td>
-                    <td className="py-3 px-4">
-                      <div className="flex items-center gap-2">
-                        <div className="w-16 h-1.5 bg-gray-700 rounded-full overflow-hidden">
-                          <div className={`h-full rounded-full ${cls.enrolled / cls.capacity >= 0.9 ? "bg-red-500" : "bg-green-500"}`} style={{ width: `${(cls.enrolled / cls.capacity) * 100}%` }} />
-                        </div>
-                        <span className="text-gray-400 text-xs">{cls.enrolled}/{cls.capacity}</span>
-                      </div>
+                {displayedClasses.map((item) => (
+                  <tr key={item.id} className="border-b border-white/10 last:border-b-0">
+                    <td className="px-4 py-4 font-bold text-white">{item.name}</td>
+                    <td className="px-4 py-4 text-white/70">{item.trainer}</td>
+                    <td className="px-4 py-4 text-white/70">{item.day}</td>
+                    <td className="px-4 py-4 text-white/70" dir="ltr">
+                      {item.time}
                     </td>
-                    <td className="py-3 px-4">
-                      <span className={`text-xs px-2 py-1 rounded-full font-medium ${TYPE_COLORS[cls.type]}`}>{TYPE_LABELS[cls.type]}</span>
+                    <td className="px-4 py-4 text-white/70">{item.duration} دقيقة</td>
+                    <td className="px-4 py-4 text-white/70">
+                      {item.enrolled}/{item.capacity}
                     </td>
-                    <td className="py-3 px-4">
-                      <button onClick={() => toggle(cls.id, cls.active)} className={`relative w-10 h-5 rounded-full transition-colors ${cls.active ? "bg-green-600" : "bg-gray-700"}`}>
-                        <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all shadow ${cls.active ? "right-0.5" : "left-0.5"}`} />
+                    <td className="px-4 py-4">
+                      <span className={`inline-flex rounded-full border px-2 py-1 text-xs font-bold ${resolveTypeColor(item.type)}`}>
+                        {normalizeTypeLabel(item.type)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-4">
+                      <button
+                        onClick={() => void toggleClass(item)}
+                        className={`relative h-6 w-12 rounded-full transition ${
+                          item.active ? "bg-emerald-500/70" : "bg-white/15"
+                        }`}
+                      >
+                        <span
+                          className={`absolute top-1 h-4 w-4 rounded-full bg-white transition ${
+                            item.active ? "right-1" : "left-1"
+                          }`}
+                        />
                       </button>
                     </td>
-                    <td className="py-3 px-4">
-                      <div className="flex gap-2">
-                        <button onClick={() => setModal(cls)} className="text-gray-500 hover:text-yellow-400 transition-colors text-xs">تعديل</button>
-                        <button onClick={() => del(cls.id)} className="text-gray-500 hover:text-red-500 transition-colors text-xs">حذف</button>
+                    <td className="px-4 py-4">
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          onClick={() => setModal(createModalState(item))}
+                          className="rounded-xl border border-white/10 px-3 py-2 text-xs font-bold text-white/70 transition hover:border-fuchsia-400/40 hover:text-white"
+                        >
+                          تعديل
+                        </button>
+                        <button
+                          onClick={() => void deleteClass(item.id)}
+                          className="rounded-xl border border-red-500/20 px-3 py-2 text-xs font-bold text-red-300 transition hover:bg-red-500/10"
+                        >
+                          حذف
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -213,44 +498,163 @@ export default function Classes() {
         </div>
       )}
 
-      {/* Modal */}
-      {modal && (
-        <Modal title={"id" in modal ? "تعديل الكلاس" : "كلاس جديد"} onClose={() => setModal(null)}>
-          <div className="space-y-4">
+      {modal ? (
+        <Modal title={modal.id ? "تعديل الكلاس" : "إضافة كلاس جديد"} onClose={() => setModal(null)}>
+          <div className="grid gap-4 md:grid-cols-2">
             <Field label="اسم الكلاس">
-              <input value={modal.name} onChange={(e) => setModal({ ...modal, name: e.target.value })} className={INPUT} />
+              <input
+                value={modal.name}
+                onChange={(event) => setModal({ ...modal, name: event.target.value })}
+                className={INPUT}
+                placeholder="مثال: يوجا الصباح"
+              />
             </Field>
-            <div className="grid grid-cols-2 gap-4">
-              <Field label="المدرب">
-                <select value={(modal as GymClass & { trainerId?: string }).trainerId ?? ""} onChange={(e) => { const t = trainers.find(x => x.id === e.target.value); setModal({ ...modal, trainerId: e.target.value, trainer: t?.name ?? "" }); }} className={INPUT}>
-                  {trainers.map((t) => <option key={t.id} value={t.id}>{t.name} — {t.specialty}</option>)}
-                  {trainers.length === 0 && <option>لا يوجد مدربون — أضف مدرب أولاً</option>}
-                </select>
-              </Field>
-              <Field label="النوع">
-                <select value={modal.type} onChange={(e) => setModal({ ...modal, type: e.target.value as GymClass["type"] })} className={INPUT}>
-                  {Object.entries(TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                </select>
-              </Field>
-              <Field label="اليوم">
-                <select value={modal.day} onChange={(e) => setModal({ ...modal, day: e.target.value })} className={INPUT}>
-                  {DAYS.map((d) => <option key={d}>{d}</option>)}
-                </select>
-              </Field>
-              <Field label="الوقت">
-                <input type="time" value={modal.time} onChange={(e) => setModal({ ...modal, time: e.target.value })} className={INPUT} dir="ltr" />
-              </Field>
-              <Field label="المدة (دقيقة)">
-                <input type="number" value={modal.duration} onChange={(e) => setModal({ ...modal, duration: +e.target.value })} className={INPUT} dir="ltr" />
-              </Field>
-              <Field label="السعة">
-                <input type="number" value={modal.capacity} onChange={(e) => setModal({ ...modal, capacity: +e.target.value })} className={INPUT} dir="ltr" />
-              </Field>
+
+            <Field label="المدربة">
+              <select
+                value={modal.trainerId}
+                onChange={(event) => {
+                  const trainer = trainers.find((item) => item.id === event.target.value);
+                  setModal({
+                    ...modal,
+                    trainerId: event.target.value,
+                    trainer: trainer?.name ?? "",
+                  });
+                }}
+                className={INPUT}
+              >
+                <option value="" className="bg-[#2a0f1f]">
+                  اختَر المدربة
+                </option>
+                {trainers.map((trainer) => (
+                  <option key={trainer.id} value={trainer.id} className="bg-[#2a0f1f]">
+                    {trainer.name} - {trainer.specialty}
+                  </option>
+                ))}
+              </select>
+            </Field>
+
+            <Field label="نوع الكلاس" hint="يمكنك اختيار نوع جاهز أو كتابة نوع جديد">
+              <select
+                value={modal.typePreset}
+                onChange={(event) => {
+                  const preset = event.target.value;
+                  setModal({
+                    ...modal,
+                    typePreset: preset,
+                    type: preset === "custom" ? modal.customType : preset,
+                  });
+                }}
+                className={INPUT}
+              >
+                {PRESET_TYPES.map((type) => (
+                  <option key={type.value} value={type.value} className="bg-[#2a0f1f]">
+                    {type.label}
+                  </option>
+                ))}
+                <option value="custom" className="bg-[#2a0f1f]">
+                  نوع جديد
+                </option>
+              </select>
+            </Field>
+
+            <Field label="اسم النوع الجديد" hint="مثال: كروس فيت أو ستيب">
+              <input
+                value={modal.customType}
+                onChange={(event) =>
+                  setModal({
+                    ...modal,
+                    customType: event.target.value,
+                    type: modal.typePreset === "custom" ? event.target.value : modal.type,
+                  })
+                }
+                className={INPUT}
+                placeholder="اكتب النوع إذا اخترت نوع جديد"
+                disabled={modal.typePreset !== "custom"}
+              />
+            </Field>
+
+            <Field label="اليوم">
+              <select
+                value={modal.day}
+                onChange={(event) => setModal({ ...modal, day: event.target.value })}
+                className={INPUT}
+              >
+                {DAYS.map((day) => (
+                  <option key={day} value={day} className="bg-[#2a0f1f]">
+                    {day}
+                  </option>
+                ))}
+              </select>
+            </Field>
+
+            <Field label="الوقت">
+              <input
+                type="time"
+                value={modal.time}
+                onChange={(event) => setModal({ ...modal, time: event.target.value })}
+                className={INPUT}
+                dir="ltr"
+              />
+            </Field>
+
+            <Field label="المدة بالدقائق">
+              <input
+                type="number"
+                value={modal.duration}
+                onChange={(event) => setModal({ ...modal, duration: Number(event.target.value) || 0 })}
+                className={INPUT}
+                dir="ltr"
+              />
+            </Field>
+
+            <Field label="السعة القصوى">
+              <input
+                type="number"
+                value={modal.capacity}
+                onChange={(event) => setModal({ ...modal, capacity: Number(event.target.value) || 0 })}
+                className={INPUT}
+                dir="ltr"
+              />
+            </Field>
+          </div>
+
+          <div className="mt-5 flex items-center justify-between rounded-2xl border border-white/10 bg-black/10 px-4 py-3">
+            <div>
+              <div className="text-sm font-bold text-white">تفعيل الكلاس</div>
+              <div className="text-xs text-white/45">يمكن إخفاء الكلاس مؤقتًا بدون حذفه.</div>
             </div>
-            <button onClick={save} disabled={saving} className="w-full bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-black py-3 rounded-xl transition-colors">{saving ? "جارٍ الحفظ..." : "💾 حفظ الكلاس"}</button>
+            <button
+              onClick={() => setModal({ ...modal, active: !modal.active })}
+              className={`relative h-7 w-14 rounded-full transition ${
+                modal.active ? "bg-emerald-500/70" : "bg-white/15"
+              }`}
+            >
+              <span
+                className={`absolute top-1.5 h-4 w-4 rounded-full bg-white transition ${
+                  modal.active ? "right-1.5" : "left-1.5"
+                }`}
+              />
+            </button>
+          </div>
+
+          <div className="mt-6 flex flex-wrap justify-end gap-3">
+            <button
+              onClick={() => setModal(null)}
+              className="rounded-2xl border border-white/10 px-5 py-3 text-sm font-bold text-white/70 transition hover:border-white/20 hover:text-white"
+            >
+              إلغاء
+            </button>
+            <button
+              onClick={() => void saveClass()}
+              disabled={saving}
+              className="rounded-2xl bg-fuchsia-600 px-6 py-3 text-sm font-black text-white transition hover:bg-fuchsia-500 disabled:opacity-60"
+            >
+              {saving ? "جارٍ حفظ الكلاس..." : "حفظ الكلاس"}
+            </button>
           </div>
         </Modal>
-      )}
+      ) : null}
     </div>
   );
 }

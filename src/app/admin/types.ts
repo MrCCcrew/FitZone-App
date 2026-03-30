@@ -62,7 +62,7 @@ export interface GymClass {
   duration: number;
   capacity: number;
   enrolled: number;
-  type: "cardio" | "strength" | "yoga" | "boxing" | "swimming" | "dance";
+  type: string;
   active: boolean;
 }
 

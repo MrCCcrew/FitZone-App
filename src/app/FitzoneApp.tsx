@@ -1882,11 +1882,28 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
 // ─── CLASSES PAGE ─────────────────────────────────────────────────────────────
 const DEFAULT_CLASSES: PublicClass[] = [];
 const intMap: Record<string, string> = { low: "خفيف", medium: "متوسط", high: "عالي", extreme: "عالي جدًا" };
-const classTypeMap: Record<string, string> = { yoga: "يوجا", zumba: "زومبا", strength: "قوة", pilates: "بيلاتس", cardio: "كارديو" };
+const classTypeMap: Record<string, string> = {
+  yoga: "يوجا",
+  zumba: "زومبا",
+  strength: "قوة",
+  pilates: "بيلاتس",
+  cardio: "كارديو",
+  boxing: "ملاكمة",
+  swimming: "سباحة",
+  dance: "رقص",
+};
+const gymImageKnownTypes = new Set(["yoga", "zumba", "strength", "pilates", "cardio", "boxing", "swimming", "dance"]);
+function getClassTypeLabel(type: string) {
+  const normalized = type?.trim();
+  if (!normalized) return "غير محدد";
+  return classTypeMap[normalized] ?? normalized;
+}
+function resolveClassImageType(type: string) {
+  return gymImageKnownTypes.has(type) ? type : "cardio";
+}
 const ClassesPage = ({ navigate }: { navigate: (p: string) => void }) => {
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState("الكل");
-  const types = ["الكل", "يوجا", "زومبا", "قوة", "بيلاتس", "كارديو"];
   const [classes, setClasses] = useState<PublicClass[]>(DEFAULT_CLASSES);
   useEffect(() => {
     loadPublicApi().then(d => {
@@ -1899,8 +1916,9 @@ const ClassesPage = ({ navigate }: { navigate: (p: string) => void }) => {
     }).catch(() => {});
   }, []);
   const intensityColors: Record<string, string> = { "خفيف": C.success, "متوسط": "#EAB308", "عالي": C.red, "عالي جدًا": "#A855F7" };
+  const types = ["الكل", ...Array.from(new Set(classes.map(c => getClassTypeLabel(c.type)).filter(Boolean)))];
   const filtered = classes.filter(c =>
-    (filterType === "الكل" || classTypeMap[c.type] === filterType) &&
+    (filterType === "الكل" || getClassTypeLabel(c.type) === filterType) &&
     (search === "" || c.name.includes(search) || c.trainer.includes(search))
   );
 
@@ -1927,7 +1945,7 @@ const ClassesPage = ({ navigate }: { navigate: (p: string) => void }) => {
               const spots = firstSchedule?.availableSpots ?? c.maxSpots;
               return (
               <div key={c.id} className="card card-hover" style={{ cursor: "pointer" }} onClick={() => { if (typeof window !== "undefined") { window.sessionStorage.setItem(CLASS_STORAGE_KEY, JSON.stringify(c)); } navigate("classDetail"); }}>
-                <div style={{ height: 180 }}><GymImg type={c.type} w="100%" h={180} /></div>
+                <div style={{ height: 180 }}><GymImg type={resolveClassImageType(c.type)} w="100%" h={180} /></div>
                 <div style={{ padding: 20 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
                     <h3 style={{ fontWeight: 800, fontSize: 16, color: C.white }}>{c.name}</h3>
@@ -2006,10 +2024,10 @@ const ClassDetailPage = ({ navigate }: { navigate: (p: string) => void }) => {
   return (
     <div>
       <div style={{ height: 340, position: "relative" }}>
-        <GymImg type={gymClass?.type ?? "yoga"} w="100%" h={340} />
+        <GymImg type={resolveClassImageType(gymClass?.type ?? "yoga")} w="100%" h={340} />
         <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom, rgba(10,10,10,.3) 0%, rgba(10,10,10,.85) 100%)" }} />
         <div style={{ position: "absolute", bottom: 32, left: 0, right: 0 }}><div className="container">
-          <span className="tag" style={{ marginBottom: 12, display: "inline-flex" }}>{classTypeMap[gymClass?.type ?? "yoga"] ?? ""}</span>
+          <span className="tag" style={{ marginBottom: 12, display: "inline-flex" }}>{getClassTypeLabel(gymClass?.type ?? "yoga")}</span>
           <h1 style={{ color: C.white, fontSize: 38, fontWeight: 900 }}>{gymClass?.name ?? " "}</h1>
           <div style={{ display: "flex", gap: 16, marginTop: 10, flexWrap: "wrap" }}>
             {[["clock", gymClass?.duration ?? ""],["fire", gymClass?.intensity ?? ""],["users", `${sessions[0]?.availableSpots ?? gymClass?.maxSpots ?? 0} مقعد متاح`]].map(([icon, text]) => (
@@ -3416,7 +3434,7 @@ const TrainersPage = () => {
     title: "مدرباتنا المحترفات",
     subtitle: "أفضل فريق تدريبي في بني سويف",
     description: "تعرفي على فريق المدربات في فيت زون واختاري المدربة الأقرب لهدفك التدريبي.",
-    highlight: "تخصصات واضحة وصور احترافية وسجل جلسات لكل مدربة",
+    highlight: "تخصصات واضحة وسجل جلسات لكل مدربة",
     ctaLabel: "احجزي مع المدربة المناسبة",
   });
 
