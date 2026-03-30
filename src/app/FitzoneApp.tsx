@@ -1018,32 +1018,9 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                 maxWidth: 580,
                 order: viewportWidth() < 1024 ? 2 : 1,
                 position: "relative",
-                paddingRight: viewportWidth() < 1200 ? 0 : 170,
+                paddingRight: 0,
               }}
             >
-            {viewportWidth() >= 1200 && (
-              <div
-                style={{
-                  position: "absolute",
-                  right: -14,
-                  bottom: 18,
-                  width: 190,
-                  pointerEvents: "none",
-                  filter: "drop-shadow(0 18px 36px rgba(122, 35, 83, .16))",
-                }}
-              >
-                <img
-                  src="/hero-heba.png"
-                  alt="مدربة فيت زون"
-                  style={{
-                    width: "100%",
-                    height: "auto",
-                    display: "block",
-                    objectFit: "contain",
-                  }}
-                />
-              </div>
-            )}
             <div className="tag" style={{ marginBottom: 20, display: "inline-flex" }}>💪 {heroContent.badge}</div>
             <h1 style={{ fontSize: viewportWidth() < 768 ? 34 : 56, fontWeight: 900, lineHeight: 1.1, color: C.white, marginBottom: 20 }}>
               {heroContent.headline1}<br />
@@ -1123,7 +1100,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                             fontWeight: 700,
                           }}
                         >
-                          صورة {index + 1} من {heroSlides.length}
+                          {index + 1} من {heroSlides.length}
                         </div>
                       </div>
                     </div>
