@@ -24,6 +24,7 @@ const ADMIN_SECTIONS: Section[] = [
   "pages",
   "knowledge",
   "subscriptions",
+  "payments",
   "classes",
   "trainers",
   "products",

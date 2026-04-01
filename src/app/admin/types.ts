@@ -3,6 +3,7 @@ export type Section =
   | "pages"
   | "knowledge"
   | "subscriptions"
+  | "payments"
   | "classes"
   | "trainers"
   | "products"

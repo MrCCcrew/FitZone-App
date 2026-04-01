@@ -12,6 +12,7 @@ import Overview from "./sections/Overview";
 import PagesContent from "./sections/PagesContent";
 import ChatKnowledge from "./sections/ChatKnowledge";
 import Subscriptions from "./sections/Subscriptions";
+import Payments from "./sections/Payments";
 import Classes from "./sections/Classes";
 import Trainers from "./sections/Trainers";
 import Products from "./sections/Products";
@@ -26,6 +27,7 @@ const NAV: { id: Section; label: string; icon: string }[] = [
   { id: "pages", label: "الصفحات والمحتوى", icon: "📄" },
   { id: "knowledge", label: "قاعدة معرفة البوت", icon: "KB" },
   { id: "subscriptions", label: "الاشتراكات والعروض", icon: "🎯" },
+  { id: "payments", label: "المدفوعات", icon: "💳" },
   { id: "classes", label: "الكلاسات والجدول", icon: "📅" },
   { id: "trainers", label: "المدربات", icon: "🏋️" },
   { id: "products", label: "المنتجات والطلبات", icon: "🛍️" },
@@ -41,6 +43,7 @@ const TITLES: Record<Section, string> = {
   pages: "إدارة الصفحات والمحتوى",
   knowledge: "قاعدة معرفة البوت",
   subscriptions: "إدارة الاشتراكات والعروض",
+  payments: "المدفوعات",
   classes: "إدارة الكلاسات والجدول",
   trainers: "إدارة المدربات",
   products: "إدارة المنتجات والطلبات",
@@ -56,6 +59,7 @@ const SECTIONS: Record<Section, ComponentType> = {
   pages: PagesContent,
   knowledge: ChatKnowledge,
   subscriptions: Subscriptions,
+  payments: Payments,
   classes: Classes,
   trainers: Trainers,
   products: Products,
