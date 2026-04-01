@@ -285,13 +285,16 @@ export default function LiveChatWidget() {
             bottom: 96,
             right: 20,
             zIndex: 80,
-            width: 360,
+            width: "min(380px, calc(100vw - 24px))",
             maxWidth: "calc(100vw - 24px)",
+            maxHeight: "calc(100vh - 116px)",
             background: "#FFF5F8",
             border: "1px solid #F5D0DC",
             borderRadius: 24,
             overflow: "hidden",
             boxShadow: "0 18px 50px rgba(233,30,99,.15)",
+            display: "flex",
+            flexDirection: "column",
           }}
         >
           <div style={{ padding: 16, borderBottom: "1px solid #F5D0DC", background: "linear-gradient(135deg, #E91E63, #F06292)" }}>
@@ -363,7 +366,16 @@ export default function LiveChatWidget() {
             )}
           </div>
 
-          <div style={{ height: 340, overflowY: "auto", padding: 14, background: "#FFF5F8" }}>
+          <div
+            style={{
+              flex: 1,
+              minHeight: 220,
+              maxHeight: "calc(100vh - 360px)",
+              overflowY: "auto",
+              padding: 14,
+              background: "#FFF5F8",
+            }}
+          >
             {messages.map((message) => {
               const isUser = message.senderType === "user";
               const isSupport = message.senderType === "admin" || message.senderType === "staff";
