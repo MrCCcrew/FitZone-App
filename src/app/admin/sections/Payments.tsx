@@ -15,6 +15,18 @@ type PaymentProvidersResponse = {
   defaultProvider?: string | null;
 };
 
+type PaymentSettings = {
+  activeProvider: string;
+  merchantId: string;
+  publicKey: string;
+  iframeId: string;
+  returnUrl: string;
+  cancelUrl: string;
+  webhookUrl: string;
+  sandboxMode: boolean;
+  notes: string;
+};
+
 type PaymentTransactionRow = {
   id: string;
   customerName: string;
@@ -27,6 +39,18 @@ type PaymentTransactionRow = {
   status: "pending" | "requires_action" | "paid" | "failed" | "cancelled" | "expired";
   paymentMethod: string;
   createdAt: string;
+};
+
+const DEFAULT_SETTINGS: PaymentSettings = {
+  activeProvider: "manual",
+  merchantId: "",
+  publicKey: "",
+  iframeId: "",
+  returnUrl: "https://fitzoneland.com/account",
+  cancelUrl: "https://fitzoneland.com/account",
+  webhookUrl: "https://fitzoneland.com/api/payments/webhook/manual",
+  sandboxMode: true,
+  notes: "",
 };
 
 const STATUS_OPTIONS: { value: PaymentTransactionRow["status"]; label: string }[] = [
@@ -47,35 +71,49 @@ const STATUS_STYLES: Record<PaymentTransactionRow["status"], string> = {
   expired: "bg-fuchsia-500/15 text-fuchsia-200 border-fuchsia-400/20",
 };
 
+function getPurposeLabel(purpose: string) {
+  if (purpose === "membership") return "اشتراك";
+  if (purpose === "order") return "طلب متجر";
+  if (purpose === "wallet_topup") return "شحن محفظة";
+  return purpose;
+}
+
 export default function Payments() {
   const [providers, setProviders] = useState<PaymentProviderSummary[]>([]);
   const [defaultProvider, setDefaultProvider] = useState<string | null>(null);
   const [transactions, setTransactions] = useState<PaymentTransactionRow[]>([]);
+  const [settings, setSettings] = useState<PaymentSettings>(DEFAULT_SETTINGS);
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [savingSettings, setSavingSettings] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
 
     async function load() {
       try {
-        const [providersRes, transactionsRes] = await Promise.all([
+        const [providersRes, transactionsRes, settingsRes] = await Promise.all([
           fetch("/api/payments/providers", { cache: "no-store" }),
           fetch("/api/admin/payments", { cache: "no-store" }),
+          fetch("/api/admin/payments/settings", { cache: "no-store" }),
         ]);
 
         const providersPayload = (await providersRes.json()) as PaymentProvidersResponse;
         const transactionsPayload = (await transactionsRes.json()) as PaymentTransactionRow[];
+        const settingsPayload = (await settingsRes.json()) as PaymentSettings;
 
         if (!cancelled) {
           setProviders(providersPayload.providers ?? []);
           setDefaultProvider(providersPayload.defaultProvider ?? null);
           setTransactions(Array.isArray(transactionsPayload) ? transactionsPayload : []);
+          setSettings({ ...DEFAULT_SETTINGS, ...(settingsPayload ?? {}) });
         }
       } catch {
         if (!cancelled) {
           setProviders([]);
+          setDefaultProvider(null);
           setTransactions([]);
+          setSettings(DEFAULT_SETTINGS);
         }
       } finally {
         if (!cancelled) {
@@ -97,11 +135,7 @@ export default function Payments() {
       .filter((item) => item.status === "paid")
       .reduce((sum, item) => sum + Number(item.amount || 0), 0);
 
-    return {
-      paidCount,
-      pendingCount,
-      paidAmount,
-    };
+    return { paidCount, pendingCount, paidAmount };
   }, [transactions]);
 
   async function handleStatusChange(transactionId: string, status: PaymentTransactionRow["status"]) {
@@ -112,17 +146,15 @@ export default function Payments() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ transactionId, status }),
       });
-      const payload = (await response.json()) as { error?: string; transaction?: PaymentTransactionRow };
 
+      const payload = (await response.json()) as { error?: string; transaction?: PaymentTransactionRow };
       if (!response.ok) {
         window.alert(payload.error ?? "تعذر تحديث حالة المعاملة.");
         return;
       }
 
       setTransactions((current) =>
-        current.map((item) =>
-          item.id === transactionId && payload.transaction ? { ...item, ...payload.transaction } : item,
-        ),
+        current.map((item) => (item.id === transactionId && payload.transaction ? { ...item, ...payload.transaction } : item)),
       );
     } catch {
       window.alert("حدث خطأ أثناء تحديث حالة المعاملة.");
@@ -131,10 +163,34 @@ export default function Payments() {
     }
   }
 
+  async function saveSettings() {
+    setSavingSettings(true);
+    try {
+      const response = await fetch("/api/admin/payments/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(settings),
+      });
+
+      const payload = (await response.json()) as { error?: string; settings?: PaymentSettings };
+      if (!response.ok) {
+        window.alert(payload.error ?? "تعذر حفظ إعدادات الدفع.");
+        return;
+      }
+
+      setSettings({ ...DEFAULT_SETTINGS, ...(payload.settings ?? settings) });
+      window.alert("تم حفظ إعدادات الدفع بنجاح.");
+    } catch {
+      window.alert("حدث خطأ أثناء حفظ إعدادات الدفع.");
+    } finally {
+      setSavingSettings(false);
+    }
+  }
+
   return (
     <AdminSectionShell
       title="المدفوعات"
-      subtitle="قسم مستقل يجهز المشروع لربط بوابات الدفع لاحقًا، دون أي تضارب مع الطلبات أو الاشتراكات الحالية."
+      subtitle="قسم مستقل يجهز المشروع لربط بوابات الدفع لاحقًا دون أي تضارب مع الطلبات أو الاشتراكات الحالية."
     >
       <div className="grid gap-4 md:grid-cols-3">
         <AdminCard>
@@ -145,18 +201,142 @@ export default function Payments() {
         <AdminCard>
           <div className="text-sm text-[#d7aabd]">المعاملات المدفوعة</div>
           <div className="mt-2 text-3xl font-black text-emerald-300">{summary.paidCount.toLocaleString("ar-EG")}</div>
-          <div className="mt-2 text-xs text-[#d7aabd]">
-            بإجمالي {summary.paidAmount.toLocaleString("ar-EG")} ج.م
-          </div>
+          <div className="mt-2 text-xs text-[#d7aabd]">بإجمالي {summary.paidAmount.toLocaleString("ar-EG")} ج.م</div>
         </AdminCard>
         <AdminCard>
           <div className="text-sm text-[#d7aabd]">بانتظار المتابعة</div>
           <div className="mt-2 text-3xl font-black text-amber-300">{summary.pendingCount.toLocaleString("ar-EG")}</div>
-          <div className="mt-2 text-xs text-[#d7aabd]">
-            المزوّد الافتراضي: {defaultProvider ?? "غير محدد"}
-          </div>
+          <div className="mt-2 text-xs text-[#d7aabd]">المزوّد الافتراضي: {defaultProvider ?? "غير محدد"}</div>
         </AdminCard>
       </div>
+
+      <AdminCard>
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h3 className="text-lg font-black text-[#fff4f8]">إعدادات الدفع</h3>
+            <p className="mt-1 text-sm leading-6 text-[#d7aabd]">
+              هذا القسم لتنظيم مزوّد الدفع النشط وروابط الرجوع وبيانات التشغيل العامة. المفاتيح السرية نفسها تبقى داخل ملفات البيئة على السيرفر.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void saveSettings()}
+            disabled={savingSettings}
+            className="rounded-2xl bg-pink-600 px-5 py-3 text-sm font-black text-white transition-colors hover:bg-pink-500 disabled:opacity-50"
+          >
+            {savingSettings ? "جارٍ حفظ الإعدادات..." : "حفظ الإعدادات"}
+          </button>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-bold text-[#d7aabd]">المزوّد النشط</span>
+            <select
+              value={settings.activeProvider}
+              onChange={(event) =>
+                setSettings((current) => ({
+                  ...current,
+                  activeProvider: event.target.value,
+                  webhookUrl: `https://fitzoneland.com/api/payments/webhook/${event.target.value}`,
+                }))
+              }
+              className="w-full rounded-xl border border-[rgba(255,188,219,0.18)] bg-[rgba(255,255,255,0.05)] px-3 py-2 text-sm text-[#fff4f8] outline-none transition focus:border-pink-400"
+            >
+              {providers.map((provider) => (
+                <option key={provider.key} value={provider.key} className="bg-[#34111f]">
+                  {provider.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-bold text-[#d7aabd]">معرّف التاجر أو الحساب</span>
+            <input
+              type="text"
+              value={settings.merchantId}
+              onChange={(event) => setSettings((current) => ({ ...current, merchantId: event.target.value }))}
+              className="w-full rounded-xl border border-[rgba(255,188,219,0.18)] bg-[rgba(255,255,255,0.05)] px-3 py-2 text-sm text-[#fff4f8] outline-none transition focus:border-pink-400"
+            />
+          </label>
+
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-bold text-[#d7aabd]">المفتاح العام Public Key</span>
+            <input
+              type="text"
+              value={settings.publicKey}
+              onChange={(event) => setSettings((current) => ({ ...current, publicKey: event.target.value }))}
+              className="w-full rounded-xl border border-[rgba(255,188,219,0.18)] bg-[rgba(255,255,255,0.05)] px-3 py-2 text-sm text-[#fff4f8] outline-none transition focus:border-pink-400"
+            />
+          </label>
+
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-bold text-[#d7aabd]">Integration أو Iframe ID</span>
+            <input
+              type="text"
+              value={settings.iframeId}
+              onChange={(event) => setSettings((current) => ({ ...current, iframeId: event.target.value }))}
+              className="w-full rounded-xl border border-[rgba(255,188,219,0.18)] bg-[rgba(255,255,255,0.05)] px-3 py-2 text-sm text-[#fff4f8] outline-none transition focus:border-pink-400"
+            />
+          </label>
+
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-bold text-[#d7aabd]">رابط الرجوع بعد الدفع</span>
+            <input
+              type="text"
+              value={settings.returnUrl}
+              onChange={(event) => setSettings((current) => ({ ...current, returnUrl: event.target.value }))}
+              className="w-full rounded-xl border border-[rgba(255,188,219,0.18)] bg-[rgba(255,255,255,0.05)] px-3 py-2 text-sm text-[#fff4f8] outline-none transition focus:border-pink-400"
+            />
+          </label>
+
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-bold text-[#d7aabd]">رابط الإلغاء أو الفشل</span>
+            <input
+              type="text"
+              value={settings.cancelUrl}
+              onChange={(event) => setSettings((current) => ({ ...current, cancelUrl: event.target.value }))}
+              className="w-full rounded-xl border border-[rgba(255,188,219,0.18)] bg-[rgba(255,255,255,0.05)] px-3 py-2 text-sm text-[#fff4f8] outline-none transition focus:border-pink-400"
+            />
+          </label>
+        </div>
+
+        <div className="mt-4 grid gap-4">
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-bold text-[#d7aabd]">رابط Webhook</span>
+            <input
+              type="text"
+              value={settings.webhookUrl}
+              onChange={(event) => setSettings((current) => ({ ...current, webhookUrl: event.target.value }))}
+              className="w-full rounded-xl border border-[rgba(255,188,219,0.18)] bg-[rgba(255,255,255,0.05)] px-3 py-2 text-sm text-[#fff4f8] outline-none transition focus:border-pink-400"
+            />
+          </label>
+
+          <label className="flex items-center gap-3 rounded-2xl border border-[rgba(255,188,219,0.12)] bg-black/10 px-4 py-3 text-sm text-[#fff4f8]">
+            <input
+              type="checkbox"
+              checked={settings.sandboxMode}
+              onChange={(event) => setSettings((current) => ({ ...current, sandboxMode: event.target.checked }))}
+            />
+            تشغيل وضع الاختبار Sandbox
+          </label>
+
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-bold text-[#d7aabd]">ملاحظات تشغيلية</span>
+            <textarea
+              value={settings.notes}
+              onChange={(event) => setSettings((current) => ({ ...current, notes: event.target.value }))}
+              rows={4}
+              className="w-full rounded-xl border border-[rgba(255,188,219,0.18)] bg-[rgba(255,255,255,0.05)] px-3 py-2 text-sm text-[#fff4f8] outline-none transition focus:border-pink-400"
+              placeholder="مثال: نستخدم Paymob في البداية، بينما المفتاح السري محفوظ فقط داخل .env على السيرفر."
+            />
+          </label>
+
+          <div className="rounded-2xl border border-amber-400/20 bg-amber-500/10 px-4 py-3 text-xs leading-6 text-amber-100">
+            لا تحفظ المفاتيح السرية مثل Server Key أو Secret Key داخل هذه الشاشة. استخدم هذه الصفحة للتهيئة العامة فقط، واحفظ القيم السرية في ملفات البيئة على السيرفر.
+          </div>
+        </div>
+      </AdminCard>
 
       <AdminCard>
         <div className="mb-4">
@@ -174,10 +354,7 @@ export default function Payments() {
         ) : (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             {providers.map((provider) => (
-              <div
-                key={provider.key}
-                className="rounded-[22px] border border-[rgba(255,188,219,0.14)] bg-black/10 p-4"
-              >
+              <div key={provider.key} className="rounded-[22px] border border-[rgba(255,188,219,0.14)] bg-black/10 p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <div className="text-base font-black text-[#fff4f8]">{provider.label}</div>
@@ -248,13 +425,7 @@ export default function Payments() {
                         {transaction.customerEmail ?? transaction.customerPhone ?? "بدون بيانات إضافية"}
                       </div>
                     </td>
-                    <td className="px-3 py-3 align-top">
-                      {transaction.purpose === "membership"
-                        ? "اشتراك"
-                        : transaction.purpose === "order"
-                          ? "طلب متجر"
-                          : "شحن محفظة"}
-                    </td>
+                    <td className="px-3 py-3 align-top">{getPurposeLabel(transaction.purpose)}</td>
                     <td className="px-3 py-3 align-top font-bold">{transaction.provider}</td>
                     <td className="px-3 py-3 align-top font-bold">
                       {Number(transaction.amount).toLocaleString("ar-EG")} {transaction.currency}
