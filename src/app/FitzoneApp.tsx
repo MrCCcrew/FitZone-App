@@ -144,6 +144,7 @@ const I = ({ n, s = 20, c = "currentColor" }: { n: string; s?: number; c?: strin
     map: "M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z M12 10a2 2 0 100-4 2 2 0 000 4z",
     phone: "M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.88a19.79 19.79 0 01-3.07-8.67A2 2 0 012 1h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L6.09 8.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z",
     mail: "M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z M22 6l-10 7L2 6",
+    facebook: "M18 2h-3a5 5 0 00-5 5v3H7v4h3v8h4v-8h3.2l.8-4H14V7a1 1 0 011-1h3z",
     calendar: "M19 4H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V6a2 2 0 00-2-2z M16 2v4 M8 2v4 M3 10h18",
     award: "M12 15a7 7 0 100-14 7 7 0 000 14z M8.21 13.89L7 23l5-3 5 3-1.21-9.12",
     box: "M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z M3.27 6.96L12 12.01l8.73-5.05 M12 22.08V12",
@@ -199,7 +200,7 @@ const GymImg = ({ type = "hero", w = "100%", h = 300 }: { type?: string; w?: str
           <ellipse cx="32%" cy="21%" rx="8" ry="8" fill="#C2185B"/>
           <path d="M 112 87 Q 128 75 144 87 L 140 165 L 128 156 L 116 165 Z" fill="#E91E63" opacity=".7"/>
           {/* FITZONE on wall */}
-          <rect x="15%" y="60%" width="35%" height="22" fill="#E91E63" opacity=".15" rx="2"/>
+          <rect x="15%" y="60%" width="35%" height="5" fill="#E91E63" opacity=".15" rx="2"/>
           <text x="32%" y="74%" textAnchor="middle" fontSize="18" fontWeight="900" fill="#E91E63" fontFamily="'Cairo',sans-serif" letterSpacing="3" opacity=".8">FITZONE</text>
           {/* Red glow */}
           <radialGradient id="redGlow" cx="32%" cy="50%"><stop offset="0%" stopColor="#E91E63" stopOpacity=".08"/><stop offset="100%" stopColor="#E91E63" stopOpacity="0"/></radialGradient>
@@ -536,7 +537,26 @@ const Header = ({
 };
 
 // ─── FOOTER ─────────────────────────────────────────────────────────────────
-const Footer = ({ navigate }: { navigate: (p: string) => void }) => (
+const Footer = ({ navigate }: { navigate: (p: string) => void }) => {
+  const [contact, setContact] = useState<PublicContact>(DEFAULT_CONTACT);
+
+  useEffect(() => {
+    loadPublicApi()
+      .then((data) => {
+        if (data.contact && typeof data.contact === "object") {
+          setContact((current) => ({ ...current, ...(data.contact as Partial<PublicContact>) }));
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const socialLinks = [
+    { key: "facebook", href: normalizeExternalUrl(contact.facebook), color: "#1877F2" },
+    { key: "instagram", href: normalizeExternalUrl(contact.instagram), color: "#E1306C" },
+    { key: "whatsapp", href: normalizeWhatsappLink(contact.whatsapp), color: "#25D366" },
+  ].filter((item) => item.href);
+
+  return (
   <footer style={{ background: "#F8ECF0", borderTop: `1px solid ${C.border}`, padding: "64px 0 32px" }}>
     <div className="container">
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 40, marginBottom: 48 }}>
@@ -550,10 +570,17 @@ const Footer = ({ navigate }: { navigate: (p: string) => void }) => (
           </div>
           <p style={{ color: C.gray, fontSize: 13, lineHeight: 1.8, marginBottom: 16 }}>أول نادي لياقة بدنية للسيدات والأطفال في بني سويف. جودة عالية، مدربات محترفات، ونتائج حقيقية.</p>
           <div style={{ display: "flex", gap: 10 }}>
-            {[["instagram","#E1306C"],["whatsapp","#25D366"]].map(([icon, col]) => (
-              <button key={icon} style={{ width: 34, height: 34, background: C.bgCard2, border: `1px solid ${C.border}`, borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
-                <I n={icon} s={16} c={col} />
-              </button>
+            {socialLinks.map(({ key, href, color }) => (
+              <a
+                key={key}
+                href={href}
+                target="_blank"
+                rel="noreferrer"
+                aria-label={key}
+                style={{ width: 34, height: 34, background: C.bgCard2, border: `1px solid ${C.border}`, borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", textDecoration: "none" }}
+              >
+                <I n={key} s={16} c={color} />
+              </a>
             ))}
           </div>
         </div>
@@ -573,7 +600,7 @@ const Footer = ({ navigate }: { navigate: (p: string) => void }) => (
         ))}
         <div>
           <h4 style={{ fontWeight: 700, marginBottom: 16, color: C.white, fontSize: 14 }}>معلومات التواصل</h4>
-          {[["phone","01001514535"],["mail","itsfitzoone@gmail.com"],["map","بني سويف، مقابل بنك القاهرة"]].map(([icon, text]) => (
+          {[["phone", contact.phone], ["mail", contact.email], ["map", contact.address]].map(([icon, text]) => (
             <div key={text} style={{ display: "flex", gap: 8, alignItems: "flex-start", marginBottom: 10, color: C.gray, fontSize: 12 }}>
               <I n={icon} s={14} c={C.red} /><span>{text}</span>
             </div>
@@ -588,7 +615,8 @@ const Footer = ({ navigate }: { navigate: (p: string) => void }) => (
       </div>
     </div>
   </footer>
-);
+  );
+};
 
 
 function useViewportFlags() {
@@ -693,6 +721,17 @@ type PublicTrainer = {
   classesCount: number;
 };
 
+type PublicContact = {
+  phone: string;
+  whatsapp: string;
+  email: string;
+  address: string;
+  hours: string;
+  facebook: string;
+  instagram: string;
+  mapEmbed: string;
+};
+
 type TrainersPageContent = {
   badge: string;
   title: string;
@@ -760,6 +799,41 @@ function getCountdownParts(expiresAt: string) {
   const seconds = totalSeconds % 60;
 
   return { expired: false, days, hours, minutes, seconds };
+}
+
+const DEFAULT_CONTACT: PublicContact = {
+  phone: "01001514535",
+  whatsapp: "01001514535",
+  email: "itsfitzoone@gmail.com",
+  address: "بني سويف، مقابل بنك القاهرة",
+  hours: "أحد-خميس: ٧ص-١٠م | جمعة-سبت: ٨ص-٨م",
+  facebook: "",
+  instagram: "",
+  mapEmbed: "",
+};
+
+function normalizeExternalUrl(value?: string) {
+  const trimmed = (value ?? "").trim();
+  if (!trimmed) return "";
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+}
+
+function normalizeWhatsappLink(value?: string) {
+  const trimmed = (value ?? "").trim();
+  if (!trimmed) return "";
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+
+  const digits = trimmed.replace(/[^\d+]/g, "");
+  if (!digits) return "";
+
+  const normalized = digits.startsWith("+")
+    ? digits.slice(1)
+    : digits.startsWith("0")
+      ? `2${digits}`
+      : digits;
+
+  return `https://wa.me/${normalized}`;
 }
 // ─── HOME PAGE ───────────────────────────────────────────────────────────────
 const DEFAULT_HOME_MEMBERSHIPS = [
@@ -3606,6 +3680,7 @@ const ContactPage = () => {
   const [contactMessage, setContactMessage] = useState("");
   const [contactLoading, setContactLoading] = useState(false);
   const [contactResult, setContactResult] = useState<"success" | "error" | "auth" | null>(null);
+  const [contactInfo, setContactInfo] = useState<PublicContact>(DEFAULT_CONTACT);
   const faqs = [
     { q: "إيه ساعات العمل؟", a: "بنشتغل من الأحد للخميس من الساعة ٧ الصبح لـ ١٠ بالليل، والجمعة والسبت من ٨ الصبح لـ ٨ بالليل." },
     { q: "هل في كلاسات للأطفال؟", a: "أيوه! عندنا برامج مخصصة للأطفال من سن ٤ سنوات. تواصلي معنا لمعرفة التفاصيل." },
@@ -3613,6 +3688,18 @@ const ContactPage = () => {
     { q: "إيه طرق الدفع المتاحة؟", a: "نقبل كاش، بطاقات دفع، انستاباي، والمحفظة الرقمية." },
     { q: "هل في عروض للمجموعات؟", a: "أيوه! في عروض خاصة للمجموعات من ٤ أشخاص فأكثر بخصومات لحد ٣٠٪." },
   ];
+
+  useEffect(() => {
+    loadPublicApi()
+      .then((data) => {
+        if (data.contact && typeof data.contact === "object") {
+          setContactInfo((current) => ({ ...current, ...(data.contact as Partial<PublicContact>) }));
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const whatsappLink = normalizeWhatsappLink(contactInfo.whatsapp);
 
   return (
     <div>
@@ -3690,7 +3777,12 @@ const ContactPage = () => {
             <div>
               <h2 className="section-title" style={{ marginBottom: 24 }}>معلومات <span>التواصل</span></h2>
               <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 28 }}>
-                {[["phone","01001514535 / +20 1001514535"],["mail","itsfitzoone@gmail.com"],["map","بني سويف، مقابل بنك القاهرة، بجوار شاهر للسياحة فوق كازيون"],["clock","أحد-خميس: ٧ص-١٠م | جمعة-سبت: ٨ص-٨م"]].map(([icon, text]) => (
+                {[
+                  ["phone", contactInfo.phone],
+                  ["mail", contactInfo.email],
+                  ["map", contactInfo.address],
+                  ["clock", contactInfo.hours],
+                ].map(([icon, text]) => (
                   <div key={icon} className="card" style={{ padding: 16, display: "flex", gap: 14, alignItems: "flex-start" }}>
                     <div style={{ width: 40, height: 40, background: "rgba(233,30,99,.12)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                       <I n={icon} s={18} c={C.red} />
@@ -3705,8 +3797,8 @@ const ContactPage = () => {
                   <span style={{ fontWeight: 700, color: C.white }}>تواصل سريع</span>
                 </div>
                 <div style={{ display: "flex", gap: 10 }}>
-                  <a href="tel:01001514535" style={{ flex: 1, background: C.red, color: "#fff", padding: "10px", borderRadius: 6, textAlign: "center", textDecoration: "none", fontFamily: "'Cairo', sans-serif", fontWeight: 700, fontSize: 13 }}>📞 اتصال</a>
-                  <a href="https://wa.me/201001514535" style={{ flex: 1, background: "#25D366", color: "#fff", padding: "10px", borderRadius: 6, textAlign: "center", textDecoration: "none", fontFamily: "'Cairo', sans-serif", fontWeight: 700, fontSize: 13 }}>💬 واتساب</a>
+                  <a href={`tel:${contactInfo.phone || "01001514535"}`} style={{ flex: 1, background: C.red, color: "#fff", padding: "10px", borderRadius: 6, textAlign: "center", textDecoration: "none", fontFamily: "'Cairo', sans-serif", fontWeight: 700, fontSize: 13 }}>📞 اتصال</a>
+                  <a href={whatsappLink || "#"} target="_blank" rel="noreferrer" style={{ flex: 1, background: "#25D366", color: "#fff", padding: "10px", borderRadius: 6, textAlign: "center", textDecoration: "none", fontFamily: "'Cairo', sans-serif", fontWeight: 700, fontSize: 13, pointerEvents: whatsappLink ? "auto" : "none", opacity: whatsappLink ? 1 : 0.6 }}>💬 واتساب</a>
                 </div>
               </div>
             </div>

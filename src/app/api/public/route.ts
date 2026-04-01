@@ -9,6 +9,16 @@ export const revalidate = 30;
 type ProductSizeType = "none" | "clothing" | "shoes";
 
 type PublicPayload = {
+  contact: {
+    phone: string;
+    whatsapp: string;
+    email: string;
+    address: string;
+    hours: string;
+    facebook: string;
+    instagram: string;
+    mapEmbed: string;
+  };
   categories: Array<{
     key: string;
     label: string;
@@ -103,6 +113,16 @@ type PublicPayload = {
 };
 
 const EMPTY_PAYLOAD: PublicPayload = {
+  contact: {
+    phone: "",
+    whatsapp: "",
+    email: "",
+    address: "",
+    hours: "",
+    facebook: "",
+    instagram: "",
+    mapEmbed: "",
+  },
   memberships: [],
   offers: [],
   classes: [],
@@ -134,6 +154,21 @@ function normalizeSizeType(value: string | null | undefined): ProductSizeType {
 
 function normalizeOfferType(value: string | null | undefined): "percentage" | "fixed" | "special" {
   return value === "fixed" || value === "special" ? value : "percentage";
+}
+
+function parseSiteContentRecord<T>(records: Array<{ section: string; content: string }>, section: string, fallback: T): T {
+  const record = records.find((item) => item.section === section);
+  if (!record) return fallback;
+
+  try {
+    const parsed = JSON.parse(record.content);
+    if (fallback && typeof fallback === "object" && !Array.isArray(fallback)) {
+      return { ...(fallback as Record<string, unknown>), ...(parsed as Record<string, unknown>) } as T;
+    }
+    return parsed as T;
+  } catch {
+    return fallback;
+  }
 }
 
 export async function GET() {
@@ -185,7 +220,7 @@ export async function GET() {
           orderBy: [{ showOnHome: "desc" }, { sortOrder: "asc" }, { name: "asc" }],
         }),
         db.siteContent.findMany({
-          where: { section: { in: ["trainersPage"] } },
+          where: { section: { in: ["trainersPage", "contact"] } },
         }),
         db.product.findMany({
           where: { isActive: true },
@@ -214,6 +249,7 @@ export async function GET() {
     );
 
     const payload: PublicPayload = {
+      contact: parseSiteContentRecord(siteContent, "contact", EMPTY_PAYLOAD.contact),
       categories: categories.map((category) => ({
         key: category.key,
         label: category.label,
@@ -275,13 +311,8 @@ export async function GET() {
         classesCount: trainer._count.classes,
       })),
       trainersPage: (() => {
-        const record = siteContent.find((item) => item.section === "trainersPage");
-        if (!record) return null;
-        try {
-          return JSON.parse(record.content);
-        } catch {
-          return null;
-        }
+        const content = parseSiteContentRecord<PublicPayload["trainersPage"]>(siteContent, "trainersPage", null);
+        return content;
       })(),
       products: products.map((product) => {
         const category = categoryMeta.get(product.category);
