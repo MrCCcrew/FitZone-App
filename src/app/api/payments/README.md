@@ -12,6 +12,8 @@ This folder isolates payment-provider integration from orders, subscriptions, an
 
 - `GET /api/payments/providers`
 - `POST /api/payments/checkout`
+- `POST /api/payments/order-intent`
+- `POST /api/payments/membership-intent`
 - `GET /api/payments/verify/:transactionId`
 - `POST /api/payments/webhook/:provider`
 - `GET /api/admin/payments`
