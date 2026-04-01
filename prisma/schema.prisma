@@ -66,6 +66,7 @@ model User {
   memberships   UserMembership[]
   bookings      Booking[]
   orders        Order[]
+  paymentTransactions PaymentTransaction[]
   wallet        Wallet?
   rewardPoints  RewardPoints?
   referral      Referral?
@@ -216,6 +217,7 @@ model Order {
 
   user  User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   items OrderItem[]
+  paymentTransactions PaymentTransaction[]
 }
 
 model OrderItem {
@@ -228,6 +230,40 @@ model OrderItem {
 
   order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
   product Product @relation(fields: [productId], references: [id])
+}
+
+model PaymentTransaction {
+  id                String    @id @default(cuid())
+  userId            String
+  orderId           String?
+  membershipId      String?
+  offerId           String?
+  purpose           String    // order | membership | wallet_topup
+  provider          String    // manual | paymob | paytabs | custom
+  providerReference String?   @unique
+  externalReference String?   @unique
+  amount            Float
+  currency          String    @default("EGP")
+  status            String    @default("pending") // pending | requires_action | paid | failed | cancelled | expired
+  paymentMethod     String    @default("card")
+  checkoutUrl       String?
+  iframeUrl         String?
+  returnUrl         String?
+  cancelUrl         String?
+  providerPayload   String?   @db.LongText
+  metadata          String?   @db.LongText
+  expiresAt         DateTime?
+  paidAt            DateTime?
+  failedAt          DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  order Order? @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@index([userId, status])
+  @@index([orderId])
+  @@index([provider, status])
 }
 
 // ─── Wallet ───────────────────────────────────────────────────────────────────
