@@ -553,8 +553,8 @@ const Footer = ({ navigate }: { navigate: (p: string) => void }) => {
   const socialLinks = [
     { key: "facebook", href: normalizeExternalUrl(contact.facebook), color: "#1877F2" },
     { key: "instagram", href: normalizeExternalUrl(contact.instagram), color: "#E1306C" },
-    { key: "whatsapp", href: normalizeWhatsappLink(contact.whatsapp), color: "#25D366" },
-  ].filter((item) => item.href);
+    { key: "whatsapp", href: normalizeWhatsappLink(contact.whatsapp || "01001514535"), color: "#25D366" },
+  ];
 
   return (
   <footer style={{ background: "#F8ECF0", borderTop: `1px solid ${C.border}`, padding: "64px 0 32px" }}>
@@ -571,16 +571,27 @@ const Footer = ({ navigate }: { navigate: (p: string) => void }) => {
           <p style={{ color: C.gray, fontSize: 13, lineHeight: 1.8, marginBottom: 16 }}>أول نادي لياقة بدنية للسيدات والأطفال في بني سويف. جودة عالية، مدربات محترفات، ونتائج حقيقية.</p>
           <div style={{ display: "flex", gap: 10 }}>
             {socialLinks.map(({ key, href, color }) => (
-              <a
-                key={key}
-                href={href}
-                target="_blank"
-                rel="noreferrer"
-                aria-label={key}
-                style={{ width: 34, height: 34, background: C.bgCard2, border: `1px solid ${C.border}`, borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", textDecoration: "none" }}
-              >
-                <I n={key} s={16} c={color} />
-              </a>
+              href ? (
+                <a
+                  key={key}
+                  href={href}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label={key}
+                  style={{ width: 34, height: 34, background: C.bgCard2, border: `1px solid ${C.border}`, borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", textDecoration: "none" }}
+                >
+                  <I n={key} s={16} c={color} />
+                </a>
+              ) : (
+                <button
+                  key={key}
+                  type="button"
+                  aria-label={key}
+                  style={{ width: 34, height: 34, background: C.bgCard2, border: `1px solid ${C.border}`, borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", cursor: "default", opacity: 0.65 }}
+                >
+                  <I n={key} s={16} c={color} />
+                </button>
+              )
             ))}
           </div>
         </div>
