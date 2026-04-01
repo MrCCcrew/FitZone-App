@@ -6,7 +6,8 @@ export function proxy(request: NextRequest) {
   if (host === "www.fitzoneland.com") {
     const url = request.nextUrl.clone();
     url.protocol = "https";
-    url.host = "fitzoneland.com";
+    url.hostname = "fitzoneland.com";
+    url.port = "";
     return NextResponse.redirect(url, 308);
   }
 
