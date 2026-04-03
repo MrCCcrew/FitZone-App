@@ -139,6 +139,7 @@ model Class {
   trainerId   String
   category    String? // القسم الرئيسي
   type        String  // cardio | strength | yoga | boxing | swimming | dance
+  subType     String? // التصنيف الفرعي
   duration    Int     // minutes
   intensity   String  // low | medium | high | extreme
   maxSpots    Int     @default(15)

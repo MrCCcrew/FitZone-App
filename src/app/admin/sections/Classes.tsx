@@ -46,6 +46,29 @@ const CATEGORY_OPTIONS = [
   "أنواع الزومبا",
 ];
 
+const CATEGORY_TYPE_MAP: Record<string, string[]> = {
+  التخسيس: ["زومبا", "فيتنس", "كروس فيت"],
+  "التهدئة والإطالة": ["بيلاتس", "يوجا"],
+  "القوة البدنية والرشاقة": ["بيلدينج", "فيتنس", "كروس فيت"],
+  "زيادة الوزن وريشيب": ["بيلدينج"],
+  "الترفيه والرقص": ["رقص شرقي", "زومبا"],
+  "إطالة ومرونة وريلاكس": ["يوجا", "بيلاتس"],
+  "تأهيل إصابات": ["ميني برايفت", "برايفت", "برنامج مخصص"],
+  "شد وتنسيق الجسم": ["زومبا", "فيتنس", "بيلدينج", "بيلاتس"],
+  "ألعاب الدفاع عن النفس": ["سلف ديفنس", "كاراتيه", "كيك بوكس"],
+  "تأهيل عسكري": ["برنامج مخصص", "إعداد تربية وتعليم", "كلية الشرطة", "إعداد ضباط حربية"],
+  "قسم الأطفال": ["فيتنس أطفال", "كيك بوكس", "كاراتيه", "جمباز", "زومبا"],
+  "قسم الفيتنس": ["كارديو", "استيب", "Stick", "Swiss Ball", "Body Pump", "إيروبك", "HIIT", "Tabata", "بيلاتس"],
+  "أنواع الزومبا": ["زومبا لاتيني", "زومبا أفريقي", "زومبا هندي"],
+};
+
+const TYPE_SUBTYPE_MAP: Record<string, string[]> = {
+  زومبا: ["زومبا لاتيني", "زومبا أفريقي", "زومبا هندي"],
+  "زومبا لاتيني": ["زومبا لاتيني"],
+  "زومبا أفريقي": ["زومبا أفريقي"],
+  "زومبا هندي": ["زومبا هندي"],
+};
+
 const TYPE_COLOR_MAP: Record<string, string> = {
   cardio: "bg-orange-500/15 text-orange-300 border-orange-500/30",
   strength: "bg-red-500/15 text-red-300 border-red-500/30",
@@ -72,15 +95,18 @@ type ClassModalState = {
   enrolled: number;
   category: string;
   type: string;
+  subType: string;
   active: boolean;
   categoryPreset: string;
   customCategory: string;
   typePreset: string;
   customType: string;
+  subTypePreset: string;
+  customSubType: string;
 };
 
 const EMPTY_MODAL: ClassModalState = {
-  name: "",
+  name: "التخسيس",
   trainer: "",
   trainerId: "",
   day: DAYS[0],
@@ -90,11 +116,14 @@ const EMPTY_MODAL: ClassModalState = {
   enrolled: 0,
   category: "التخسيس",
   type: "strength",
+  subType: "",
   active: true,
   categoryPreset: "التخسيس",
   customCategory: "",
   typePreset: "strength",
   customType: "",
+  subTypePreset: "",
+  customSubType: "",
 };
 
 function normalizeTypeLabel(type: string) {
@@ -114,11 +143,9 @@ function resolveTypeColor(type: string) {
 
 function createModalState(item?: GymClass) {
   if (!item) return EMPTY_MODAL;
-  const preset = PRESET_TYPES.find(
-    (entry) =>
-      entry.value.toLowerCase() === item.type.toLowerCase() ||
-      entry.label === item.type,
-  );
+  const category = item.category ?? "";
+  const presetList = CATEGORY_TYPE_MAP[category] ?? [];
+  const hasPreset = presetList.some((entry) => entry === item.type);
 
   return {
     ...item,
@@ -126,8 +153,11 @@ function createModalState(item?: GymClass) {
     category: item.category ?? "",
     categoryPreset: item.category && CATEGORY_OPTIONS.includes(item.category) ? item.category : "custom",
     customCategory: item.category && CATEGORY_OPTIONS.includes(item.category) ? "" : item.category ?? "",
-    typePreset: preset?.value ?? "custom",
-    customType: preset ? "" : item.type,
+    typePreset: hasPreset ? item.type : "custom",
+    customType: hasPreset ? "" : item.type,
+    subType: item.subType ?? "",
+    subTypePreset: item.subType ?? "",
+    customSubType: item.subType ?? "",
   };
 }
 
@@ -221,6 +251,26 @@ export default function Classes() {
     return ["الكل", ...dynamic];
   }, [classes]);
 
+  const availableTypes = useMemo(() => {
+    if (!modal) return [];
+    const category =
+      modal.categoryPreset === "custom"
+        ? modal.customCategory.trim()
+        : modal.categoryPreset.trim();
+    const mapped = CATEGORY_TYPE_MAP[category] ?? [];
+    if (mapped.length > 0) return mapped;
+    return Array.from(new Set(classes.map((item) => normalizeTypeLabel(item.type)).filter(Boolean)));
+  }, [modal?.categoryPreset, modal?.customCategory, classes]);
+
+  const availableSubTypes = useMemo(() => {
+    if (!modal) return [];
+    const typeLabel =
+      modal.typePreset === "custom"
+        ? modal.customType.trim()
+        : modal.typePreset.trim();
+    return TYPE_SUBTYPE_MAP[typeLabel] ?? [];
+  }, [modal?.typePreset, modal?.customType]);
+
   const displayedClasses = useMemo(() => {
     return classes.filter((item) => {
       const matchesDay = filterDay === "الكل" || item.day === filterDay;
@@ -260,6 +310,10 @@ export default function Classes() {
       modal.typePreset === "custom"
         ? modal.customType.trim()
         : modal.typePreset.trim();
+    const resolvedSubType =
+      modal.subTypePreset === "custom"
+        ? modal.customSubType.trim()
+        : modal.subTypePreset.trim();
 
     if (!modal.name.trim()) {
       alert("اسم الكلاس مطلوب.");
@@ -283,10 +337,11 @@ export default function Classes() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...(modal.id ? { id: modal.id } : {}),
-          name: modal.name.trim(),
+          name: resolvedCategory,
           trainerId: modal.trainerId,
           category: resolvedCategory,
           type: resolvedType,
+          subType: resolvedSubType,
           duration: Number(modal.duration) || 60,
           intensity: "medium",
           maxSpots: Number(modal.capacity) || 15,
@@ -449,6 +504,9 @@ export default function Classes() {
                         <div className={`mt-2 inline-flex rounded-full border px-2 py-1 text-[11px] font-bold ${resolveTypeColor(item.type)}`}>
                           {normalizeTypeLabel(item.type)}
                         </div>
+                        {item.subType ? (
+                          <div className="mt-1 text-[11px] text-white/55">{item.subType}</div>
+                        ) : null}
                         <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
                           <div className="h-full rounded-full bg-fuchsia-500" style={{ width: `${occupancy}%` }} />
                         </div>
@@ -495,6 +553,9 @@ export default function Classes() {
                       <span className={`inline-flex rounded-full border px-2 py-1 text-xs font-bold ${resolveTypeColor(item.type)}`}>
                         {normalizeTypeLabel(item.type)}
                       </span>
+                      {item.subType ? (
+                        <div className="mt-1 text-[11px] text-white/55">{item.subType}</div>
+                      ) : null}
                     </td>
                     <td className="px-4 py-4">
                       <button
@@ -537,12 +598,13 @@ export default function Classes() {
       {modal ? (
         <Modal title={modal.id ? "تعديل الكلاس" : "إضافة كلاس جديد"} onClose={() => setModal(null)}>
           <div className="grid gap-4 md:grid-cols-2">
-            <Field label="اسم الكلاس">
+            <Field label="اسم القسم">
               <input
                 value={modal.name}
                 onChange={(event) => setModal({ ...modal, name: event.target.value })}
                 className={INPUT}
-                placeholder="مثال: يوجا الصباح"
+                placeholder="يتم تعبئته من القسم"
+                readOnly
               />
             </Field>
 
@@ -570,7 +632,7 @@ export default function Classes() {
               </select>
             </Field>
 
-            <Field label="نوع الكلاس" hint="يمكنك اختيار نوع جاهز أو كتابة نوع جديد">
+            <Field label="نوع القسم" hint="يمكنك اختيار نوع جاهز أو كتابة نوع جديد">
               <select
                 value={modal.typePreset}
                 onChange={(event) => {
@@ -579,13 +641,16 @@ export default function Classes() {
                     ...modal,
                     typePreset: preset,
                     type: preset === "custom" ? modal.customType : preset,
+                    subTypePreset: "",
+                    subType: "",
+                    customSubType: "",
                   });
                 }}
                 className={INPUT}
               >
-                {PRESET_TYPES.map((type) => (
-                  <option key={type.value} value={type.value} className="bg-[#2a0f1f]">
-                    {type.label}
+                {availableTypes.map((type) => (
+                  <option key={type} value={type} className="bg-[#2a0f1f]">
+                    {type}
                   </option>
                 ))}
                 <option value="custom" className="bg-[#2a0f1f]">
@@ -607,6 +672,47 @@ export default function Classes() {
                 className={INPUT}
                 placeholder="اكتب النوع إذا اخترت نوع جديد"
                 disabled={modal.typePreset !== "custom"}
+              />
+            </Field>
+
+            <Field label="تصنيف النوع" hint="اختياري، مثل: زومبا لاتيني أو أفريقي">
+              <select
+                value={modal.subTypePreset}
+                onChange={(event) => {
+                  const preset = event.target.value;
+                  setModal({
+                    ...modal,
+                    subTypePreset: preset,
+                    subType: preset === "custom" ? modal.customSubType : preset,
+                  });
+                }}
+                className={INPUT}
+              >
+                <option value="" className="bg-[#2a0f1f]">بدون تصنيف</option>
+                {availableSubTypes.map((type) => (
+                  <option key={type} value={type} className="bg-[#2a0f1f]">
+                    {type}
+                  </option>
+                ))}
+                <option value="custom" className="bg-[#2a0f1f]">
+                  تصنيف جديد
+                </option>
+              </select>
+            </Field>
+
+            <Field label="اسم التصنيف الجديد" hint="مثال: زومبا لاتيني">
+              <input
+                value={modal.customSubType}
+                onChange={(event) =>
+                  setModal({
+                    ...modal,
+                    customSubType: event.target.value,
+                    subType: modal.subTypePreset === "custom" ? event.target.value : modal.subType,
+                  })
+                }
+                className={INPUT}
+                placeholder="اكتب التصنيف إذا اخترت تصنيف جديد"
+                disabled={modal.subTypePreset !== "custom"}
               />
             </Field>
 
@@ -680,10 +786,20 @@ export default function Classes() {
                 value={modal.categoryPreset}
                 onChange={(event) => {
                   const preset = event.target.value;
+                  const nextCategory = preset === "custom" ? modal.customCategory : preset;
+                  const nextTypes = CATEGORY_TYPE_MAP[nextCategory] ?? [];
+                  const nextType = nextTypes[0] ?? "";
                   setModal({
                     ...modal,
                     categoryPreset: preset,
-                    category: preset === "custom" ? modal.customCategory : preset,
+                    category: nextCategory,
+                    name: nextCategory,
+                    typePreset: nextType ? nextType : "custom",
+                    type: nextType,
+                    customType: nextType ? "" : modal.customType,
+                    subTypePreset: "",
+                    subType: "",
+                    customSubType: "",
                   });
                 }}
                 className={INPUT}
@@ -707,6 +823,7 @@ export default function Classes() {
                     ...modal,
                     customCategory: event.target.value,
                     category: modal.categoryPreset === "custom" ? event.target.value : modal.category,
+                    name: modal.categoryPreset === "custom" ? event.target.value : modal.name,
                   })
                 }
                 className={INPUT}

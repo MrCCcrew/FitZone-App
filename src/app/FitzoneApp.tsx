@@ -696,7 +696,9 @@ type PublicClass = {
   trainerSpecialty?: string;
   duration: string;
   intensity: string;
+  category?: string | null;
   type: string;
+  subType?: string | null;
   price: number;
   maxSpots: number;
   schedules: { id: string; date: string; time: string; availableSpots: number }[];

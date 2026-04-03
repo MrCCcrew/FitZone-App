@@ -70,7 +70,9 @@ type PublicPayload = {
     trainerSpecialty: string;
     duration: string;
     intensity: string;
+    category: string | null;
     type: string;
+    subType: string | null;
     price: number;
     maxSpots: number;
     schedules: Array<{
@@ -334,7 +336,9 @@ export async function GET() {
         trainerSpecialty: gymClass.trainer.specialty ?? "",
         duration: `${gymClass.duration} دقيقة`,
         intensity: gymClass.intensity,
+        category: gymClass.category ?? null,
         type: gymClass.type,
+        subType: gymClass.subType ?? null,
         price: gymClass.price,
         maxSpots: gymClass.maxSpots,
         schedules: gymClass.schedules.map((schedule) => ({

@@ -73,6 +73,7 @@ export interface GymClass {
   enrolled: number;
   category?: string | null;
   type: string;
+  subType?: string | null;
   active: boolean;
 }
 
