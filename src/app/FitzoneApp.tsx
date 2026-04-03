@@ -550,40 +550,6 @@ const Footer = ({ navigate }: { navigate: (p: string) => void }) => {
       .catch(() => {});
   }, []);
 
-  const rootGoals = useMemo(() => goals.filter((goal) => !goal.parentId), [goals]);
-  const gamesRoot = useMemo(() => rootGoals.find((goal) => goal.kind === "games_root"), [rootGoals]);
-  const gamesChildren = useMemo(
-    () => goals.filter((goal) => goal.parentId && goal.parentId === gamesRoot?.id),
-    [goals, gamesRoot?.id],
-  );
-  const gamesChildIds = useMemo(() => gamesChildren.map((goal) => goal.id), [gamesChildren]);
-  const gamesActive =
-    (gamesRoot ? selectedGoals.includes(gamesRoot.id) : false) ||
-    gamesChildren.some((goal) => selectedGoals.includes(goal.id));
-
-  const toggleGoal = (goalId: string) => {
-    setSelectedGoals((prev) => {
-      const exists = prev.includes(goalId);
-      if (!exists) return [...prev, goalId];
-      const next = prev.filter((id) => id !== goalId);
-      if (gamesRoot && goalId === gamesRoot.id) {
-        return next.filter((id) => !gamesChildIds.includes(id));
-      }
-      return next;
-    });
-  };
-
-  const filteredPlans = useMemo(() => {
-    if (selectedGoals.length === 0) return [];
-    const byGoal = plans.filter((plan) => {
-      const ids = plan.goalIds ?? [];
-      if (ids.length === 0) return true;
-      return ids.some((id) => selectedGoals.includes(id));
-    });
-    if (tab === "all") return byGoal;
-    return byGoal.filter((plan) => (plan.cycle ?? "custom") === tab);
-  }, [plans, selectedGoals, tab]);
-
   const socialLinks = [
     { key: "facebook", href: normalizeExternalUrl(contact.facebook), color: "#1877F2" },
     { key: "instagram", href: normalizeExternalUrl(contact.instagram), color: "#E1306C" },
@@ -1709,6 +1675,40 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
       })
       .catch(() => {});
   }, []);
+
+  const rootGoals = useMemo(() => goals.filter((goal) => !goal.parentId), [goals]);
+  const gamesRoot = useMemo(() => rootGoals.find((goal) => goal.kind === "games_root"), [rootGoals]);
+  const gamesChildren = useMemo(
+    () => goals.filter((goal) => goal.parentId && goal.parentId === gamesRoot?.id),
+    [goals, gamesRoot?.id],
+  );
+  const gamesChildIds = useMemo(() => gamesChildren.map((goal) => goal.id), [gamesChildren]);
+  const gamesActive =
+    (gamesRoot ? selectedGoals.includes(gamesRoot.id) : false) ||
+    gamesChildren.some((goal) => selectedGoals.includes(goal.id));
+
+  const toggleGoal = (goalId: string) => {
+    setSelectedGoals((prev) => {
+      const exists = prev.includes(goalId);
+      if (!exists) return [...prev, goalId];
+      const next = prev.filter((id) => id !== goalId);
+      if (gamesRoot && goalId === gamesRoot.id) {
+        return next.filter((id) => !gamesChildIds.includes(id));
+      }
+      return next;
+    });
+  };
+
+  const filteredPlans = useMemo(() => {
+    if (selectedGoals.length === 0) return [];
+    const byGoal = plans.filter((plan) => {
+      const ids = plan.goalIds ?? [];
+      if (ids.length === 0) return true;
+      return ids.some((id) => selectedGoals.includes(id));
+    });
+    if (tab === "all") return byGoal;
+    return byGoal.filter((plan) => (plan.cycle ?? "custom") === tab);
+  }, [plans, selectedGoals, tab]);
 
   const handleSubscribe = async (plan: PlanItem) => {
     if (!plan.id) { navigate("register"); return; }
