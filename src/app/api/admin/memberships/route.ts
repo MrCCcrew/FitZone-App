@@ -7,8 +7,10 @@ async function checkAdmin() {
   return "error" in guard ? guard.error : null;
 }
 
-const cycleFromDays = (d: number) => (d <= 31 ? "monthly" : d <= 100 ? "quarterly" : d <= 200 ? "semi_annual" : "annual");
-const labelToDays = (l: string) => (l === "monthly" ? 30 : l === "quarterly" ? 90 : l === "semi_annual" ? 180 : 365);
+const cycleFromDays = (d: number) =>
+  d <= 31 ? "monthly" : d <= 100 ? "quarterly" : d <= 200 ? "semi_annual" : "annual";
+const labelToDays = (l: string) =>
+  l === "monthly" ? 30 : l === "quarterly" ? 90 : l === "semi_annual" ? 180 : 365;
 
 export async function GET(req: Request) {
   const err = await checkAdmin();
@@ -20,6 +22,7 @@ export async function GET(req: Request) {
   const rows = await db.membership.findMany({
     where: kind ? { kind } : undefined,
     orderBy: { name: "asc" },
+    include: { goals: { select: { goalId: true } } },
   });
 
   const plans = await Promise.all(
@@ -44,6 +47,7 @@ export async function GET(req: Request) {
         })(),
         active: m.isActive,
         membersCount,
+        goalIds: m.goals.map((goal) => goal.goalId),
       };
     }),
   );
@@ -55,16 +59,19 @@ export async function POST(req: Request) {
   const err = await checkAdmin();
   if (err) return err;
   const body = await req.json();
-  const { name, price, duration, durationDays, features, kind, cycle, sessionsCount } = body;
+  const { name, price, duration, durationDays, features, kind, cycle, sessionsCount, goalIds } = body;
   if (!name || price == null) return NextResponse.json({ error: "بيانات ناقصة" }, { status: 400 });
 
-  const days = typeof durationDays === "number"
-    ? durationDays
-    : typeof duration === "number"
-      ? duration
-      : typeof duration === "string"
-        ? labelToDays(duration)
-        : 30;
+  const days =
+    typeof durationDays === "number"
+      ? durationDays
+      : typeof duration === "number"
+        ? duration
+        : typeof duration === "string"
+          ? labelToDays(duration)
+          : 30;
+
+  const goals = Array.isArray(goalIds) ? goalIds.filter((id) => typeof id === "string" && id.trim()) : [];
 
   const m = await db.membership.create({
     data: {
@@ -76,6 +83,13 @@ export async function POST(req: Request) {
       sessionsCount: sessionsCount == null ? null : Number(sessionsCount),
       features: JSON.stringify(features ?? []),
       isActive: true,
+      goals: goals.length
+        ? {
+            createMany: {
+              data: goals.map((goalId) => ({ goalId })),
+            },
+          }
+        : undefined,
     },
   });
 
@@ -90,6 +104,7 @@ export async function POST(req: Request) {
     features: features ?? [],
     active: true,
     membersCount: 0,
+    goalIds: goals,
   });
 }
 
@@ -97,7 +112,7 @@ export async function PATCH(req: Request) {
   const err = await checkAdmin();
   if (err) return err;
   const body = await req.json();
-  const { id, name, price, duration, durationDays, features, active, kind, cycle, sessionsCount } = body;
+  const { id, name, price, duration, durationDays, features, active, kind, cycle, sessionsCount, goalIds } = body;
   if (!id) return NextResponse.json({ error: "id مطلوب" }, { status: 400 });
 
   const data: Record<string, unknown> = {};
@@ -112,8 +127,22 @@ export async function PATCH(req: Request) {
   if (sessionsCount !== undefined) data.sessionsCount = sessionsCount == null ? null : Number(sessionsCount);
   if (features !== undefined) data.features = JSON.stringify(features);
   if (active !== undefined) data.isActive = active;
+  if (Array.isArray(goalIds)) {
+    data.goals = {
+      deleteMany: {},
+      createMany: {
+        data: goalIds
+          .filter((goalId: unknown) => typeof goalId === "string" && goalId.trim())
+          .map((goalId: string) => ({ goalId })),
+      },
+    };
+  }
 
-  const m = await db.membership.update({ where: { id }, data });
+  const m = await db.membership.update({
+    where: { id },
+    data,
+    include: { goals: { select: { goalId: true } } },
+  });
   const membersCount = await db.userMembership.count({ where: { membershipId: id, status: "active" } });
   return NextResponse.json({
     id: m.id,
@@ -132,6 +161,7 @@ export async function PATCH(req: Request) {
     })(),
     active: m.isActive,
     membersCount,
+    goalIds: m.goals.map((goal) => goal.goalId),
   });
 }
 

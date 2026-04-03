@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import type { Plan } from "../types";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { Goal, Plan } from "../types";
 import { AdminCard, AdminEmptyState, AdminSectionShell } from "./shared";
 
 const INPUT =
@@ -15,6 +15,7 @@ const EMPTY_PLAN: Omit<Plan, "id" | "membersCount"> = {
   features: [],
   active: true,
   kind: "package",
+  goalIds: [],
 };
 
 function Modal({
@@ -67,6 +68,7 @@ function Field({
 
 export default function Packages() {
   const [plans, setPlans] = useState<Plan[]>([]);
+  const [goals, setGoals] = useState<Goal[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [featureInput, setFeatureInput] = useState("");
@@ -75,9 +77,14 @@ export default function Packages() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await fetch("/api/admin/memberships?kind=package", { cache: "no-store" });
-      const payload = await response.json();
+      const [plansResponse, goalsResponse] = await Promise.all([
+        fetch("/api/admin/memberships?kind=package", { cache: "no-store" }),
+        fetch("/api/admin/goals", { cache: "no-store" }),
+      ]);
+      const payload = await plansResponse.json();
+      const goalsPayload = await goalsResponse.json();
       setPlans(Array.isArray(payload) ? payload : []);
+      setGoals(Array.isArray(goalsPayload) ? goalsPayload.filter((goal) => goal.active) : []);
     } finally {
       setLoading(false);
     }
@@ -87,6 +94,8 @@ export default function Packages() {
     void loadData();
   }, [loadData]);
 
+  const goalLookup = useMemo(() => new Map(goals.map((goal) => [goal.id, goal.name])), [goals]);
+
   const addFeature = () => {
     if (!planModal || !featureInput.trim()) return;
     setPlanModal({
@@ -94,6 +103,15 @@ export default function Packages() {
       features: [...(planModal.features ?? []), featureInput.trim()],
     });
     setFeatureInput("");
+  };
+
+  const toggleGoalForPlan = (goalId: string) => {
+    if (!planModal) return;
+    const current = planModal.goalIds ?? [];
+    setPlanModal({
+      ...planModal,
+      goalIds: current.includes(goalId) ? current.filter((id) => id !== goalId) : [...current, goalId],
+    });
   };
 
   const savePlan = async () => {
@@ -184,7 +202,7 @@ export default function Packages() {
         </div>
 
         {plans.length === 0 ? (
-          <AdminEmptyState title="لا توجد باقات بعد" description="ابدأ بإضافة أول باقة لتظهر في صفحة الباقات." />
+          <AdminEmptyState title="لا توجد باقات بعد" description="ابدئي بإضافة أول باقة لتظهر في صفحة الباقات." />
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             {plans.map((plan) => (
@@ -216,6 +234,11 @@ export default function Packages() {
                 <div className="text-2xl font-black text-[#ffd166]">{plan.price.toLocaleString("ar-EG")}</div>
                 <div className="text-xs text-[#d7aabd]">ج.م</div>
                 <div className="mt-3 text-xs text-[#d7aabd]">{plan.membersCount.toLocaleString("ar-EG")} مشتركة نشطة</div>
+                {plan.goalIds?.length ? (
+                  <div className="mt-2 text-xs text-[#d7aabd]">
+                    الأهداف: {plan.goalIds.map((goalId) => goalLookup.get(goalId) ?? "هدف").join("، ")}
+                  </div>
+                ) : null}
 
                 <ul className="mt-4 space-y-2">
                   {plan.features.map((feature, index) => (
@@ -247,13 +270,7 @@ export default function Packages() {
       </AdminCard>
 
       {planModal ? (
-        <Modal
-          title={"id" in planModal && planModal.id ? "تعديل الباقة" : "إضافة باقة"}
-          onClose={() => {
-            setPlanModal(null);
-            setFeatureInput("");
-          }}
-        >
+        <Modal title={"id" in planModal && planModal.id ? "تعديل الباقة" : "إضافة باقة"} onClose={() => { setPlanModal(null); setFeatureInput(""); }}>
           <div className="space-y-4">
             <Field label="اسم الباقة">
               <input value={planModal.name} onChange={(event) => setPlanModal({ ...planModal, name: event.target.value })} className={INPUT} />
@@ -261,55 +278,48 @@ export default function Packages() {
 
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="السعر">
-                <input
-                  type="number"
-                  value={planModal.price}
-                  onChange={(event) => setPlanModal({ ...planModal, price: Number(event.target.value) })}
-                  className={INPUT}
-                  dir="ltr"
-                />
+                <input type="number" value={planModal.price} onChange={(event) => setPlanModal({ ...planModal, price: Number(event.target.value) })} className={INPUT} dir="ltr" />
               </Field>
 
               <Field label="مدة التدريب (بالأيام)">
-                <input
-                  type="number"
-                  value={planModal.duration}
-                  onChange={(event) => setPlanModal({ ...planModal, duration: Number(event.target.value) })}
-                  className={INPUT}
-                  dir="ltr"
-                />
+                <input type="number" value={planModal.duration} onChange={(event) => setPlanModal({ ...planModal, duration: Number(event.target.value) })} className={INPUT} dir="ltr" />
               </Field>
             </div>
 
+            <Field label="الأهداف المرتبطة" hint="اختاري الأهداف التي يظهر معها هذه الباقة في رحلة الاختيار.">
+              <div className="grid gap-2 sm:grid-cols-2">
+                {goals.map((goal) => {
+                  const active = planModal.goalIds?.includes(goal.id);
+                  return (
+                    <button
+                      key={goal.id}
+                      type="button"
+                      onClick={() => toggleGoalForPlan(goal.id)}
+                      className={`flex items-center justify-between rounded-xl border px-4 py-3 text-xs font-bold transition-colors ${
+                        active
+                          ? "border-[#ff4f93] bg-[#ff4f93]/10 text-[#fff4f8]"
+                          : "border-[rgba(255,188,219,0.12)] bg-black/15 text-[#d7aabd]"
+                      }`}
+                    >
+                      <span>{goal.name}</span>
+                      <span>{active ? "✓" : ""}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </Field>
+
             <Field label="مميزات الباقة" hint="أضف كل ميزة ثم اضغط زر الإضافة لتظهر ضمن قائمة الباقة.">
               <div className="mb-3 flex gap-2">
-                <input
-                  value={featureInput}
-                  onChange={(event) => setFeatureInput(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      addFeature();
-                    }
-                  }}
-                  placeholder="مثال: قياس إنبودي أو متابعة غذائية"
-                  className={INPUT}
-                />
-                <button
-                  type="button"
-                  onClick={addFeature}
-                  className="rounded-lg bg-[#ff4f93] px-4 text-sm font-black text-white transition-colors hover:bg-[#ff2f7d]"
-                >
+                <input value={featureInput} onChange={(event) => setFeatureInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addFeature(); } }} placeholder="مثال: قياس إنبودي أو متابعة غذائية" className={INPUT} />
+                <button type="button" onClick={addFeature} className="rounded-lg bg-[#ff4f93] px-4 text-sm font-black text-white transition-colors hover:bg-[#ff2f7d]">
                   +
                 </button>
               </div>
 
               <div className="space-y-2">
                 {(planModal.features ?? []).map((feature, index) => (
-                  <div
-                    key={`${feature}-${index}`}
-                    className="flex items-center gap-2 rounded-xl border border-[rgba(255,188,219,0.12)] bg-black/15 px-4 py-3"
-                  >
+                  <div key={`${feature}-${index}`} className="flex items-center gap-2 rounded-xl border border-[rgba(255,188,219,0.12)] bg-black/15 px-4 py-3">
                     <span className="text-[#ff97bf]">✓</span>
                     <span className="flex-1 text-sm text-[#fff4f8]">{feature}</span>
                     <button
@@ -329,11 +339,7 @@ export default function Packages() {
               </div>
             </Field>
 
-            <button
-              onClick={() => void savePlan()}
-              disabled={saving}
-              className="w-full rounded-xl bg-[#ff4f93] py-3 text-sm font-black text-white transition-colors hover:bg-[#ff2f7d] disabled:opacity-50"
-            >
+            <button onClick={() => void savePlan()} disabled={saving} className="w-full rounded-xl bg-[#ff4f93] py-3 text-sm font-black text-white transition-colors hover:bg-[#ff2f7d] disabled:opacity-50">
               {saving ? "جاري حفظ الباقة..." : "حفظ الباقة"}
             </button>
           </div>

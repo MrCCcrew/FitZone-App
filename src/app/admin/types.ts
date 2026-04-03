@@ -41,6 +41,7 @@ export interface Plan {
   features: string[];
   active: boolean;
   membersCount: number;
+  goalIds?: string[];
 }
 
 export interface Offer {

@@ -97,6 +97,7 @@ model Membership {
   userMemberships UserMembership[]
   recommendedFor  ChatSession[]
   offers          Offer[]
+  goals           MembershipGoal[]
 }
 
 model UserMembership {
@@ -407,6 +408,20 @@ model ClubGoal {
   parent      ClubGoal?         @relation("GoalHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
   children    ClubGoal[]        @relation("GoalHierarchy")
   classRules  GoalClassRule[]
+  membershipGoals MembershipGoal[]
+}
+
+model MembershipGoal {
+  id           String   @id @default(cuid())
+  membershipId String
+  goalId       String
+  createdAt    DateTime @default(now())
+
+  membership Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  goal       ClubGoal   @relation(fields: [goalId], references: [id], onDelete: Cascade)
+
+  @@unique([membershipId, goalId])
+  @@index([goalId])
 }
 
 model HealthQuestion {

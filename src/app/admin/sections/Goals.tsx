@@ -177,7 +177,7 @@ export default function Goals() {
   return (
     <AdminSectionShell
       title="الأهداف"
-      subtitle="حدد أهداف العميل الرئيسية والفرعية (مثل الألعاب للكبار أو الأطفال) مع صور توضيحية."
+      subtitle="حددي أهداف العميل الرئيسية والفرعية (مثل الألعاب للكبار أو الأطفال) مع صور توضيحية."
       actions={
         <button
           onClick={() => setGoalModal({ ...EMPTY_GOAL })}
@@ -192,7 +192,7 @@ export default function Goals() {
           <div className="text-sm text-[#d7aabd]">جاري تحميل الأهداف...</div>
         </AdminCard>
       ) : goals.length === 0 ? (
-        <AdminEmptyState title="لا توجد أهداف بعد" description="ابدأ بإضافة الأهداف حتى تظهر في رحلة الاشتراك." />
+        <AdminEmptyState title="لا توجد أهداف بعد" description="ابدئي بإضافة الأهداف حتى تظهر في رحلة الاشتراك." />
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {goals.map((goal) => (

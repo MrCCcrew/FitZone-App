@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { Offer, Plan } from "../types";
+import type { Goal, Offer, Plan } from "../types";
 import { AdminCard, AdminEmptyState, AdminSectionShell } from "./shared";
 
 const INPUT =
@@ -16,6 +16,7 @@ const EMPTY_PLAN: Omit<Plan, "id" | "membersCount"> = {
   features: [],
   active: true,
   kind: "subscription",
+  goalIds: [],
 };
 
 const EMPTY_OFFER: Omit<Offer, "id" | "usedCount" | "currentSubscribers"> = {
@@ -93,6 +94,7 @@ export default function Subscriptions() {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [allPlans, setAllPlans] = useState<Plan[]>([]);
   const [offers, setOffers] = useState<Offer[]>([]);
+  const [goals, setGoals] = useState<Goal[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [featureInput, setFeatureInput] = useState("");
@@ -103,18 +105,21 @@ export default function Subscriptions() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [plansResponse, allPlansResponse, offersResponse] = await Promise.all([
+      const [plansResponse, allPlansResponse, offersResponse, goalsResponse] = await Promise.all([
         fetch("/api/admin/memberships?kind=subscription", { cache: "no-store" }),
         fetch("/api/admin/memberships", { cache: "no-store" }),
         fetch("/api/admin/offers", { cache: "no-store" }),
+        fetch("/api/admin/goals", { cache: "no-store" }),
       ]);
 
       const plansPayload = await plansResponse.json();
       const allPlansPayload = await allPlansResponse.json();
       const offersPayload = await offersResponse.json();
+      const goalsPayload = await goalsResponse.json();
       setPlans(Array.isArray(plansPayload) ? plansPayload : []);
       setAllPlans(Array.isArray(allPlansPayload) ? allPlansPayload : []);
       setOffers(Array.isArray(offersPayload) ? offersPayload : []);
+      setGoals(Array.isArray(goalsPayload) ? goalsPayload.filter((goal) => goal.active) : []);
     } finally {
       setLoading(false);
     }
@@ -133,6 +138,8 @@ export default function Subscriptions() {
     [allPlans],
   );
 
+  const goalLookup = useMemo(() => new Map(goals.map((goal) => [goal.id, goal.name])), [goals]);
+
   const addFeature = () => {
     if (!planModal || !featureInput.trim()) return;
     setPlanModal({
@@ -140,6 +147,15 @@ export default function Subscriptions() {
       features: [...(planModal.features ?? []), featureInput.trim()],
     });
     setFeatureInput("");
+  };
+
+  const toggleGoalForPlan = (goalId: string) => {
+    if (!planModal) return;
+    const current = planModal.goalIds ?? [];
+    setPlanModal({
+      ...planModal,
+      goalIds: current.includes(goalId) ? current.filter((id) => id !== goalId) : [...current, goalId],
+    });
   };
 
   const savePlan = async () => {
@@ -214,7 +230,7 @@ export default function Subscriptions() {
 
       const payload = await response.json().catch(() => null);
       if (!response.ok) {
-        window.alert(payload?.error ?? "تعذر حفظ العرض حاليًا.");
+        window.alert(payload?.error ?? "تعذر حفظ العرض حالياً.");
         return;
       }
 
@@ -311,10 +327,7 @@ export default function Subscriptions() {
         </div>
 
         {plans.length === 0 ? (
-          <AdminEmptyState
-            title="لا توجد اشتراكات بعد"
-            description="ابدأ بإضافة أول اشتراك ليظهر في صفحة الاشتراكات ولوحة الإدارة."
-          />
+          <AdminEmptyState title="لا توجد اشتراكات بعد" description="ابدئي بإضافة أول اشتراك ليظهر في صفحة الاشتراكات ولوحة الإدارة." />
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             {plans.map((plan) => (
@@ -348,10 +361,13 @@ export default function Subscriptions() {
                 <div className="mt-2 text-xs text-[#d7aabd]">
                   {plan.sessionsCount ? `عدد الحصص: ${plan.sessionsCount}` : "عدد الحصص غير محدد"}
                 </div>
-                <div className="mt-1 text-xs text-[#d7aabd]">
-                  مدة التدريب: {plan.duration} يوم
-                </div>
+                <div className="mt-1 text-xs text-[#d7aabd]">مدة التدريب: {plan.duration} يوم</div>
                 <div className="mt-1 text-xs text-[#d7aabd]">{plan.membersCount.toLocaleString("ar-EG")} مشتركة نشطة</div>
+                {plan.goalIds?.length ? (
+                  <div className="mt-2 text-xs text-[#d7aabd]">
+                    الأهداف: {plan.goalIds.map((goalId) => goalLookup.get(goalId) ?? "هدف").join("، ")}
+                  </div>
+                ) : null}
 
                 <ul className="mt-4 space-y-2">
                   {plan.features.map((feature, index) => (
@@ -408,10 +424,7 @@ export default function Subscriptions() {
         </div>
 
         {offers.length === 0 ? (
-          <AdminEmptyState
-            title="لا توجد عروض بعد"
-            description="أضف عرضًا عاديًا أو عرضًا خاصًا مع صورة ومدة وعدد مشتركات ليظهر للعميل بشكل مميز."
-          />
+          <AdminEmptyState title="لا توجد عروض بعد" description="أضف عرضًا عاديًا أو عرضًا خاصًا مع صورة ومدة وعدد مشتركين ليظهر للعميل بشكل مميز." />
         ) : (
           <div className="space-y-4">
             {offers.map((offer) => {
@@ -420,10 +433,7 @@ export default function Subscriptions() {
                 offer.maxSubscribers != null ? Math.max(offer.maxSubscribers - currentSubscribers, 0) : null;
 
               return (
-                <div
-                  key={offer.id}
-                  className="rounded-[24px] border border-[rgba(255,188,219,0.14)] bg-black/15 p-5"
-                >
+                <div key={offer.id} className="rounded-[24px] border border-[rgba(255,188,219,0.14)] bg-black/15 p-5">
                   <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                     <div className="flex flex-1 gap-4">
                       {offer.image ? (
@@ -450,11 +460,7 @@ export default function Subscriptions() {
                                   : "bg-[#8bc5ff]/15 text-[#8bc5ff]"
                             }`}
                           >
-                            {offer.type === "special"
-                              ? "عرض خاص"
-                              : offer.type === "fixed"
-                                ? "خصم بمبلغ ثابت"
-                                : "خصم بنسبة"}
+                            {offer.type === "special" ? "عرض خاص" : offer.type === "fixed" ? "خصم بمبلغ ثابت" : "خصم بنسبة"}
                           </span>
                           {offer.showOnHome ? (
                             <span className="rounded-full bg-[#ff4f93]/15 px-3 py-1 text-xs font-bold text-[#ff97bf]">
@@ -474,7 +480,7 @@ export default function Subscriptions() {
                               <span>
                                 الباقة أو الاشتراك:{" "}
                                 {offer.membershipId
-                                  ? planOptions.find((plan) => plan.id === offer.membershipId)?.label ?? "مرتبط بباقة أو اشتراك"
+                                  ? planOptions.find((plan) => plan.id === offer.membershipId)?.label ?? "مرتبط باشتراك"
                                   : "غير مرتبط"}
                               </span>
                             </>
@@ -520,13 +526,7 @@ export default function Subscriptions() {
       </AdminCard>
 
       {planModal ? (
-        <Modal
-          title={"id" in planModal && planModal.id ? "تعديل الاشتراك" : "إضافة اشتراك"}
-          onClose={() => {
-            setPlanModal(null);
-            setFeatureInput("");
-          }}
-        >
+        <Modal title={"id" in planModal && planModal.id ? "تعديل الاشتراك" : "إضافة اشتراك"} onClose={() => { setPlanModal(null); setFeatureInput(""); }}>
           <div className="space-y-4">
             <Field label="اسم الاشتراك">
               <input value={planModal.name} onChange={(event) => setPlanModal({ ...planModal, name: event.target.value })} className={INPUT} />
@@ -534,21 +534,11 @@ export default function Subscriptions() {
 
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="السعر">
-                <input
-                  type="number"
-                  value={planModal.price}
-                  onChange={(event) => setPlanModal({ ...planModal, price: Number(event.target.value) })}
-                  className={INPUT}
-                  dir="ltr"
-                />
+                <input type="number" value={planModal.price} onChange={(event) => setPlanModal({ ...planModal, price: Number(event.target.value) })} className={INPUT} dir="ltr" />
               </Field>
 
               <Field label="الدورة">
-                <select
-                  value={planModal.cycle ?? "monthly"}
-                  onChange={(event) => setPlanModal({ ...planModal, cycle: event.target.value as Plan["cycle"] })}
-                  className={INPUT}
-                >
+                <select value={planModal.cycle ?? "monthly"} onChange={(event) => setPlanModal({ ...planModal, cycle: event.target.value as Plan["cycle"] })} className={INPUT}>
                   <option value="monthly">شهري</option>
                   <option value="quarterly">ربع سنوي</option>
                   <option value="semi_annual">نصف سنوي</option>
@@ -560,56 +550,47 @@ export default function Subscriptions() {
 
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="عدد الحصص">
-                <input
-                  type="number"
-                  value={planModal.sessionsCount ?? ""}
-                  onChange={(event) =>
-                    setPlanModal({ ...planModal, sessionsCount: event.target.value ? Number(event.target.value) : null })
-                  }
-                  className={INPUT}
-                  dir="ltr"
-                />
+                <input type="number" value={planModal.sessionsCount ?? ""} onChange={(event) => setPlanModal({ ...planModal, sessionsCount: event.target.value ? Number(event.target.value) : null })} className={INPUT} dir="ltr" />
               </Field>
               <Field label="مدة التدريب (بالأيام)">
-                <input
-                  type="number"
-                  value={planModal.duration}
-                  onChange={(event) => setPlanModal({ ...planModal, duration: Number(event.target.value) })}
-                  className={INPUT}
-                  dir="ltr"
-                />
+                <input type="number" value={planModal.duration} onChange={(event) => setPlanModal({ ...planModal, duration: Number(event.target.value) })} className={INPUT} dir="ltr" />
               </Field>
             </div>
 
+            <Field label="الأهداف المرتبطة" hint="اختاري الأهداف التي يظهر معها هذا الاشتراك في رحلة الاختيار.">
+              <div className="grid gap-2 sm:grid-cols-2">
+                {goals.map((goal) => {
+                  const active = planModal.goalIds?.includes(goal.id);
+                  return (
+                    <button
+                      key={goal.id}
+                      type="button"
+                      onClick={() => toggleGoalForPlan(goal.id)}
+                      className={`flex items-center justify-between rounded-xl border px-4 py-3 text-xs font-bold transition-colors ${
+                        active
+                          ? "border-[#ff4f93] bg-[#ff4f93]/10 text-[#fff4f8]"
+                          : "border-[rgba(255,188,219,0.12)] bg-black/15 text-[#d7aabd]"
+                      }`}
+                    >
+                      <span>{goal.name}</span>
+                      <span>{active ? "✓" : ""}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </Field>
+
             <Field label="مميزات الاشتراك" hint="أضف كل ميزة ثم اضغط زر الإضافة لتظهر ضمن قائمة الاشتراك.">
               <div className="mb-3 flex gap-2">
-                <input
-                  value={featureInput}
-                  onChange={(event) => setFeatureInput(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      addFeature();
-                    }
-                  }}
-                  placeholder="مثال: متابعة شهرية مع المدربة"
-                  className={INPUT}
-                />
-                <button
-                  type="button"
-                  onClick={addFeature}
-                  className="rounded-lg bg-[#ff4f93] px-4 text-sm font-black text-white transition-colors hover:bg-[#ff2f7d]"
-                >
+                <input value={featureInput} onChange={(event) => setFeatureInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addFeature(); } }} placeholder="مثال: متابعة شهرية مع المدربة" className={INPUT} />
+                <button type="button" onClick={addFeature} className="rounded-lg bg-[#ff4f93] px-4 text-sm font-black text-white transition-colors hover:bg-[#ff2f7d]">
                   +
                 </button>
               </div>
 
               <div className="space-y-2">
                 {(planModal.features ?? []).map((feature, index) => (
-                  <div
-                    key={`${feature}-${index}`}
-                    className="flex items-center gap-2 rounded-xl border border-[rgba(255,188,219,0.12)] bg-black/15 px-4 py-3"
-                  >
+                  <div key={`${feature}-${index}`} className="flex items-center gap-2 rounded-xl border border-[rgba(255,188,219,0.12)] bg-black/15 px-4 py-3">
                     <span className="text-[#ff97bf]">✓</span>
                     <span className="flex-1 text-sm text-[#fff4f8]">{feature}</span>
                     <button
@@ -629,11 +610,7 @@ export default function Subscriptions() {
               </div>
             </Field>
 
-            <button
-              onClick={() => void savePlan()}
-              disabled={saving}
-              className="w-full rounded-xl bg-[#ff4f93] py-3 text-sm font-black text-white transition-colors hover:bg-[#ff2f7d] disabled:opacity-50"
-            >
+            <button onClick={() => void savePlan()} disabled={saving} className="w-full rounded-xl bg-[#ff4f93] py-3 text-sm font-black text-white transition-colors hover:bg-[#ff2f7d] disabled:opacity-50">
               {saving ? "جاري حفظ الاشتراك..." : "حفظ الاشتراك"}
             </button>
           </div>
@@ -641,16 +618,7 @@ export default function Subscriptions() {
       ) : null}
 
       {offerModal ? (
-        <Modal
-          title={
-            "id" in offerModal && offerModal.id
-              ? "تعديل العرض"
-              : offerModal.type === "special"
-                ? "إضافة عرض خاص"
-                : "إضافة عرض عادي"
-          }
-          onClose={() => setOfferModal(null)}
-        >
+        <Modal title={"id" in offerModal && offerModal.id ? "تعديل العرض" : offerModal.type === "special" ? "إضافة عرض خاص" : "إضافة عرض عادي"} onClose={() => setOfferModal(null)}>
           <div className="space-y-4">
             <Field label="نوع العرض">
               <select value={offerModal.type} onChange={(event) => setOfferModal({ ...offerModal, type: event.target.value as Offer["type"] })} className={INPUT}>
@@ -665,12 +633,7 @@ export default function Subscriptions() {
             </Field>
 
             <Field label="وصف مختصر" hint="يظهر هذا النص للعميل داخل الصفحة الرئيسية وصفحة الاشتراكات إن فُعّل العرض هناك.">
-              <textarea
-                value={offerModal.description ?? ""}
-                onChange={(event) => setOfferModal({ ...offerModal, description: event.target.value })}
-                className={`${INPUT} min-h-24 resize-y`}
-                placeholder="صف العرض بشكل مختصر ومقنع."
-              />
+              <textarea value={offerModal.description ?? ""} onChange={(event) => setOfferModal({ ...offerModal, description: event.target.value })} className={`${INPUT} min-h-24 resize-y`} placeholder="صف العرض بشكل مختصر ومقنع." />
             </Field>
 
             {offerModal.type === "special" ? (
@@ -699,55 +662,26 @@ export default function Subscriptions() {
 
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Field label="قيمة الاشتراك الخاصة">
-                    <input
-                      type="number"
-                      value={offerModal.specialPrice ?? 0}
-                      onChange={(event) => setOfferModal({ ...offerModal, specialPrice: Number(event.target.value) })}
-                      className={INPUT}
-                      dir="ltr"
-                    />
+                    <input type="number" value={offerModal.specialPrice ?? 0} onChange={(event) => setOfferModal({ ...offerModal, specialPrice: Number(event.target.value) })} className={INPUT} dir="ltr" />
                   </Field>
                   <Field label="الحد الأقصى للمشتركات">
-                    <input
-                      type="number"
-                      value={offerModal.maxSubscribers ?? 0}
-                      onChange={(event) => setOfferModal({ ...offerModal, maxSubscribers: Number(event.target.value) })}
-                      className={INPUT}
-                      dir="ltr"
-                    />
+                    <input type="number" value={offerModal.maxSubscribers ?? 0} onChange={(event) => setOfferModal({ ...offerModal, maxSubscribers: Number(event.target.value) })} className={INPUT} dir="ltr" />
                   </Field>
                 </div>
               </>
             ) : (
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field label="قيمة الخصم">
-                  <input
-                    type="number"
-                    value={offerModal.discount}
-                    onChange={(event) => setOfferModal({ ...offerModal, discount: Number(event.target.value) })}
-                    className={INPUT}
-                    dir="ltr"
-                  />
+                  <input type="number" value={offerModal.discount} onChange={(event) => setOfferModal({ ...offerModal, discount: Number(event.target.value) })} className={INPUT} dir="ltr" />
                 </Field>
                 <Field label="ينطبق على">
-                  <input
-                    value={offerModal.appliesTo}
-                    onChange={(event) => setOfferModal({ ...offerModal, appliesTo: event.target.value })}
-                    className={INPUT}
-                    placeholder="مثال: جميع الاشتراكات أو فئة محددة"
-                  />
+                  <input value={offerModal.appliesTo} onChange={(event) => setOfferModal({ ...offerModal, appliesTo: event.target.value })} className={INPUT} placeholder="مثال: جميع الاشتراكات أو فئة محددة" />
                 </Field>
               </div>
             )}
 
             <Field label="ينتهي العرض في">
-              <input
-                type="datetime-local"
-                value={offerModal.validUntil}
-                onChange={(event) => setOfferModal({ ...offerModal, validUntil: event.target.value })}
-                className={INPUT}
-                dir="ltr"
-              />
+              <input type="datetime-local" value={offerModal.validUntil} onChange={(event) => setOfferModal({ ...offerModal, validUntil: event.target.value })} className={INPUT} dir="ltr" />
             </Field>
 
             <Field label="صورة العرض" hint="المقاس الموصى به 1600×900 بنسبة 16:9 حتى يظهر بوضوح في الصفحة الرئيسية.">
@@ -763,25 +697,14 @@ export default function Subscriptions() {
                   }}
                   className={INPUT}
                 />
-                <input
-                  value={offerModal.image ?? ""}
-                  onChange={(event) => setOfferModal({ ...offerModal, image: event.target.value })}
-                  className={INPUT}
-                  placeholder="أو ضع رابط الصورة المباشر"
-                />
+                <input value={offerModal.image ?? ""} onChange={(event) => setOfferModal({ ...offerModal, image: event.target.value })} className={INPUT} placeholder="أو ضع رابط الصورة المباشر" />
                 {uploadingImage ? <div className="text-xs text-[#d7aabd]">جاري رفع صورة العرض...</div> : null}
-                {offerModal.image ? (
-                  <img src={offerModal.image} alt="صورة العرض" className="h-44 w-full rounded-2xl border border-[rgba(255,188,219,0.14)] object-cover" />
-                ) : null}
+                {offerModal.image ? <img src={offerModal.image} alt="صورة العرض" className="h-44 w-full rounded-2xl border border-[rgba(255,188,219,0.14)] object-cover" /> : null}
               </div>
             </Field>
 
             <label className="flex items-center gap-3 rounded-2xl border border-[rgba(255,188,219,0.12)] bg-black/15 px-4 py-3 text-sm text-[#fff4f8]">
-              <input
-                type="checkbox"
-                checked={offerModal.showOnHome}
-                onChange={(event) => setOfferModal({ ...offerModal, showOnHome: event.target.checked })}
-              />
+              <input type="checkbox" checked={offerModal.showOnHome} onChange={(event) => setOfferModal({ ...offerModal, showOnHome: event.target.checked })} />
               إظهار هذا العرض بشكل مميز في الصفحة الرئيسية
             </label>
 
@@ -789,9 +712,7 @@ export default function Subscriptions() {
               onClick={() => void saveOffer()}
               disabled={saving || uploadingImage}
               className={`w-full rounded-xl py-3 text-sm font-black transition-colors disabled:opacity-50 ${
-                offerModal.type === "special"
-                  ? "bg-[#c026d3] text-white hover:bg-[#d946ef]"
-                  : "bg-[#ffd166] text-black hover:bg-[#ffcc55]"
+                offerModal.type === "special" ? "bg-[#c026d3] text-white hover:bg-[#d946ef]" : "bg-[#ffd166] text-black hover:bg-[#ffcc55]"
               }`}
             >
               {saving ? "جاري حفظ العرض..." : offerModal.type === "special" ? "حفظ العرض الخاص" : "حفظ العرض"}

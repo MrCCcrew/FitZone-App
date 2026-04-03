@@ -550,6 +550,40 @@ const Footer = ({ navigate }: { navigate: (p: string) => void }) => {
       .catch(() => {});
   }, []);
 
+  const rootGoals = useMemo(() => goals.filter((goal) => !goal.parentId), [goals]);
+  const gamesRoot = useMemo(() => rootGoals.find((goal) => goal.kind === "games_root"), [rootGoals]);
+  const gamesChildren = useMemo(
+    () => goals.filter((goal) => goal.parentId && goal.parentId === gamesRoot?.id),
+    [goals, gamesRoot?.id],
+  );
+  const gamesChildIds = useMemo(() => gamesChildren.map((goal) => goal.id), [gamesChildren]);
+  const gamesActive =
+    (gamesRoot ? selectedGoals.includes(gamesRoot.id) : false) ||
+    gamesChildren.some((goal) => selectedGoals.includes(goal.id));
+
+  const toggleGoal = (goalId: string) => {
+    setSelectedGoals((prev) => {
+      const exists = prev.includes(goalId);
+      if (!exists) return [...prev, goalId];
+      const next = prev.filter((id) => id !== goalId);
+      if (gamesRoot && goalId === gamesRoot.id) {
+        return next.filter((id) => !gamesChildIds.includes(id));
+      }
+      return next;
+    });
+  };
+
+  const filteredPlans = useMemo(() => {
+    if (selectedGoals.length === 0) return [];
+    const byGoal = plans.filter((plan) => {
+      const ids = plan.goalIds ?? [];
+      if (ids.length === 0) return true;
+      return ids.some((id) => selectedGoals.includes(id));
+    });
+    if (tab === "all") return byGoal;
+    return byGoal.filter((plan) => (plan.cycle ?? "custom") === tab);
+  }, [plans, selectedGoals, tab]);
+
   const socialLinks = [
     { key: "facebook", href: normalizeExternalUrl(contact.facebook), color: "#1877F2" },
     { key: "instagram", href: normalizeExternalUrl(contact.instagram), color: "#E1306C" },
@@ -718,6 +752,31 @@ type PublicOffer = {
   expiresAt: string;
 };
 
+type PublicGoal = {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string | null;
+  image?: string | null;
+  kind: string;
+  parentId?: string | null;
+  sortOrder: number;
+};
+
+type PublicMembership = {
+  id: string;
+  name: string;
+  price: number;
+  durationDays: number;
+  cycle: string | null;
+  sessionsCount: number | null;
+  features: string[];
+  walletBonus: number;
+  gift: string | null;
+  kind: string;
+  goalIds: string[];
+};
+
 type PublicTrainer = {
   id: string;
   name: string;
@@ -853,6 +912,17 @@ const DEFAULT_HOME_MEMBERSHIPS = [
   { name: "بريميوم", price: 999, period: "شهر", features: ["كل مزايا برو", "4 جلسات خاصة", "خصم 25% متجر", "أولوية الحجز"], color: C.gold, popular: false },
 ];
 const HOME_PLAN_COLORS = [C.gray, C.red, C.gold, "#A855F7", "#3498DB"];
+const cycleLabel = (cycle?: string | null, days?: number) => {
+  if (cycle === "monthly") return "شهري";
+  if (cycle === "quarterly") return "ربع سنوي";
+  if (cycle === "semi_annual") return "نصف سنوي";
+  if (cycle === "annual") return "سنوي";
+  if (cycle === "custom") return "مخصص";
+  if (days && days <= 31) return "شهري";
+  if (days && days <= 100) return "ربع سنوي";
+  if (days && days <= 200) return "نصف سنوي";
+  return "سنوي";
+};
 const DEFAULT_HERO_SLIDES = [
   "https://images.unsplash.com/photo-1518611012118-696072aa579a?auto=format&fit=crop&w=1200&q=80",
   "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?auto=format&fit=crop&w=1200&q=80",
@@ -954,10 +1024,11 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
   useEffect(() => {
     loadPublicApi(true).then(d => {
       if (Array.isArray(d.memberships) && d.memberships.length > 0) {
-        setMemberships(d.memberships.slice(0, 3).map((mb: { name: string; price: number; features: string[] }, i: number) => ({
+        const subscriptions = (d.memberships as PublicMembership[]).filter((mb) => mb.kind === "subscription");
+        setMemberships(subscriptions.slice(0, 3).map((mb, i) => ({
           name: mb.name,
           price: mb.price,
-          period: "شهر",
+          period: cycleLabel(mb.cycle, mb.durationDays),
           features: Array.isArray(mb.features) ? mb.features.slice(0, 4) : [],
           color: HOME_PLAN_COLORS[i % HOME_PLAN_COLORS.length],
           popular: i === 1,
@@ -1579,18 +1650,31 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
 };
 
 // ─── MEMBERSHIPS PAGE ─────────────────────────────────────────────────────────
-type PlanItem = { id: string | null; name: string; m: number; a: number; features: string[]; color: string; popular: boolean };
+type PlanItem = {
+  id: string | null;
+  name: string;
+  price: number;
+  durationDays: number;
+  cycle: string | null;
+  sessionsCount: number | null;
+  features: string[];
+  color: string;
+  popular: boolean;
+  goalIds: string[];
+};
 const DEFAULT_PLANS: PlanItem[] = [
-  { id: null, name: "ليت",    m: 299,  a: 239,  features: ["دخول الصالة 6 أيام","تمارين القلب","خزائن آمنة"], color: C.gray, popular: false },
-  { id: null, name: "برو",    m: 599,  a: 479,  features: ["دخول غير محدود","مدربة خاصة","خصم 10% في المتجر","محفظة رقمية"], color: C.red, popular: true },
-  { id: null, name: "بريميوم",m: 999,  a: 799,  features: ["دخول غير محدود","مدربتان خاصتان","خصم 25% في المتجر","أولوية الحجز","4 جلسات خاصة"], color: C.gold, popular: false },
-  { id: null, name: "VIP",    m: 1499, a: 1199, features: ["دخول غير محدود","مدربة مخصصة","خصم 40% في المتجر","حجز VIP","8 جلسات خاصة"], color: "#A855F7", popular: false },
+  { id: null, name: "ليت", price: 299, durationDays: 30, cycle: "monthly", sessionsCount: 8, features: ["دخول الصالة 6 أيام","تمارين القلب","خزائن آمنة"], color: C.gray, popular: false, goalIds: [] },
+  { id: null, name: "برو", price: 599, durationDays: 30, cycle: "monthly", sessionsCount: 12, features: ["دخول غير محدود","مدربة خاصة","خصم 10% في المتجر","محفظة رقمية"], color: C.red, popular: true, goalIds: [] },
+  { id: null, name: "بريميوم", price: 999, durationDays: 30, cycle: "monthly", sessionsCount: 12, features: ["دخول غير محدود","مدربتان خاصتان","خصم 25% في المتجر","أولوية الحجز","4 جلسات خاصة"], color: C.gold, popular: false, goalIds: [] },
+  { id: null, name: "VIP", price: 1499, durationDays: 30, cycle: "monthly", sessionsCount: 12, features: ["دخول غير محدود","مدربة مخصصة","خصم 40% في المتجر","حجز VIP","8 جلسات خاصة"], color: "#A855F7", popular: false, goalIds: [] },
 ];
 const PLAN_COLORS = [C.gray, C.red, C.gold, "#A855F7", "#3498DB", "#27AE60"];
 const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
-  const [tab, setTab] = useState("monthly");
+  const [tab, setTab] = useState<"all" | "monthly" | "quarterly" | "semi_annual" | "annual" | "custom">("all");
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   const [plans, setPlans] = useState<PlanItem[]>(DEFAULT_PLANS);
+  const [goals, setGoals] = useState<PublicGoal[]>([]);
+  const [selectedGoals, setSelectedGoals] = useState<string[]>([]);
   const [subscribing, setSubscribing] = useState<string | null>(null);
   const [subMsg, setSubMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [verifyModal, setVerifyModal] = useState<{ plan: PlanItem } | null>(null);
@@ -1600,19 +1684,30 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
   const [resendLoading, setResendLoading] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
   useEffect(() => {
-    loadPublicApi().then(d => {
-      if (Array.isArray(d.memberships) && d.memberships.length > 0) {
-        setPlans(d.memberships.map((mb: { id: string; name: string; price: number; features: string[] }, i: number) => ({
-          id: mb.id,
-          name: mb.name,
-          m: mb.price,
-          a: Math.round(mb.price * 0.8),
-          features: Array.isArray(mb.features) ? mb.features : [],
-          color: PLAN_COLORS[i % PLAN_COLORS.length],
-          popular: i === 1,
-        })));
-      }
-    }).catch(() => {});
+    loadPublicApi()
+      .then((d) => {
+        if (Array.isArray(d.goals)) {
+          setGoals((d.goals as PublicGoal[]).sort((a, b) => a.sortOrder - b.sortOrder));
+        }
+        if (Array.isArray(d.memberships) && d.memberships.length > 0) {
+          const subscriptions = (d.memberships as PublicMembership[]).filter((mb) => mb.kind === "subscription");
+          setPlans(
+            subscriptions.map((mb, i) => ({
+              id: mb.id,
+              name: mb.name,
+              price: mb.price,
+              durationDays: mb.durationDays,
+              cycle: mb.cycle,
+              sessionsCount: mb.sessionsCount,
+              features: Array.isArray(mb.features) ? mb.features : [],
+              color: PLAN_COLORS[i % PLAN_COLORS.length],
+              popular: i === 1,
+              goalIds: Array.isArray(mb.goalIds) ? mb.goalIds : [],
+            })),
+          );
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const handleSubscribe = async (plan: PlanItem) => {
@@ -1708,6 +1803,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
     { q: "ما طرق الدفع المتاحة؟", a: "نقبل النقدي، بطاقات الدفع، إنستاباي، والمحفظة الرقمية." },
     { q: "هل يوجد كلاسات للأطفال؟", a: "نعم! لدينا برامج مخصصة للأطفال من سن 4 سنوات فأكثر." },
   ];
+  const primaryPlan = filteredPlans[0] ?? plans[0];
 
   return (
     <div>
@@ -1766,12 +1862,90 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
           <span className="tag" style={{ marginBottom: 16, display: "inline-block" }}>الأسعار والباقات</span>
           <h1 style={{ fontSize: viewportWidth() < 768 ? 32 : 44, fontWeight: 900, marginBottom: 12, color: C.white }}>اختاري <span style={{ color: C.red }}>باقتك المناسبة</span></h1>
           <p style={{ color: C.gray, fontSize: 16, marginBottom: 32 }}>كلاسات ممتازة بأسعار مناسبة تبدأ من 299 ج.م / شهر</p>
-          <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
+          <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
+            <button className={`tab ${tab === "all" ? "active" : ""}`} onClick={() => setTab("all")}>الكل</button>
             <button className={`tab ${tab === "monthly" ? "active" : ""}`} onClick={() => setTab("monthly")}>شهري</button>
-            <button className={`tab ${tab === "annual" ? "active" : ""}`} onClick={() => setTab("annual")}>
-              سنوي <span style={{ background: C.red, color: "#fff", borderRadius: 4, padding: "1px 8px", fontSize: 11, marginRight: 6 }}>وفري 20%</span>
-            </button>
+            <button className={`tab ${tab === "quarterly" ? "active" : ""}`} onClick={() => setTab("quarterly")}>ربع سنوي</button>
+            <button className={`tab ${tab === "semi_annual" ? "active" : ""}`} onClick={() => setTab("semi_annual")}>نصف سنوي</button>
+            <button className={`tab ${tab === "annual" ? "active" : ""}`} onClick={() => setTab("annual")}>سنوي</button>
+            <button className={`tab ${tab === "custom" ? "active" : ""}`} onClick={() => setTab("custom")}>مخصص</button>
           </div>
+        </div>
+      </section>
+
+      <section className="section" style={{ paddingTop: 36 }}>
+        <div className="container">
+          <div style={{ textAlign: "center", marginBottom: 28 }}>
+            <h2 className="section-title">اختاري هدفك <span>الرياضي</span></h2>
+            <p className="section-sub">يمكنك اختيار أكثر من هدف لعرض الاشتراكات المناسبة لكل هدف.</p>
+          </div>
+
+          {goals.length === 0 ? (
+            <div className="card" style={{ padding: 20, textAlign: "center", color: C.gray }}>
+              جاري تحميل الأهداف...
+            </div>
+          ) : (
+            <>
+              <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 16 }}>
+                {rootGoals.map((goal) => {
+                  const active = selectedGoals.includes(goal.id);
+                  return (
+                    <button
+                      key={goal.id}
+                      onClick={() => toggleGoal(goal.id)}
+                      className="card card-hover"
+                      style={{
+                        border: active ? `2px solid ${C.red}` : `1px solid ${C.border}`,
+                        padding: 14,
+                        textAlign: "center",
+                        background: active ? "rgba(233,30,99,.08)" : C.bgCard,
+                        cursor: "pointer",
+                      }}
+                    >
+                      <div style={{ height: 120, borderRadius: 12, overflow: "hidden", marginBottom: 12, background: "rgba(233,30,99,.08)" }}>
+                        {goal.image ? (
+                          <img src={goal.image} alt={goal.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                        ) : (
+                          <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: C.gray, fontWeight: 700 }}>
+                            {goal.name}
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ fontWeight: 800, fontSize: 14, color: C.white }}>{goal.name}</div>
+                      {goal.description ? <div style={{ marginTop: 6, color: C.gray, fontSize: 12 }}>{goal.description}</div> : null}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {gamesActive && gamesChildren.length > 0 ? (
+                <div className="card" style={{ marginTop: 24, padding: 20 }}>
+                  <div style={{ fontWeight: 800, marginBottom: 12, color: C.white }}>اختاري نوع الألعاب</div>
+                  <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 12 }}>
+                    {gamesChildren.map((goal) => {
+                      const active = selectedGoals.includes(goal.id);
+                      return (
+                        <button
+                          key={goal.id}
+                          onClick={() => toggleGoal(goal.id)}
+                          className="card"
+                          style={{
+                            border: active ? `2px solid ${C.red}` : `1px solid ${C.border}`,
+                            padding: 14,
+                            textAlign: "center",
+                            background: active ? "rgba(233,30,99,.08)" : C.bgCard,
+                            cursor: "pointer",
+                          }}
+                        >
+                          <div style={{ fontWeight: 800, fontSize: 13, color: C.white }}>{goal.name}</div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+            </>
+          )}
         </div>
       </section>
 
@@ -1782,32 +1956,46 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
               {subMsg.text}
             </div>
           )}
-          <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr 1fr", "repeat(4, 1fr)", "repeat(4, 1fr)"), gap: 20 }}>
-            {plans.map(p => (
-              <div key={p.name} className="card" style={{ padding: 28, position: "relative", border: p.popular ? `2px solid ${C.red}` : `1px solid ${C.border}` }}>
-                {p.popular && <div style={{ position: "absolute", top: -5, right: 16, background: C.red, color: "#fff", padding: "3px 14px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>الأكثر شعبية</div>}
-                <h3 style={{ fontWeight: 900, fontSize: 20, color: C.white }}>باقة {p.name}</h3>
-                <div style={{ margin: "14px 0 20px" }}>
-                  <span style={{ fontSize: 38, fontWeight: 900, color: p.color }}>{tab === "monthly" ? p.m : p.a}</span>
-                  <span style={{ color: C.gray, fontSize: 12 }}> ج.م / شهر</span>
-                </div>
-                {p.features.map((feat, fi) => (
-                  <div key={fi} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0", borderBottom: `1px solid ${C.border}`, fontSize: 12 }}>
-                    <span style={{ color: p.color, fontWeight: 900, fontSize: 14 }}>✓</span>
-                    <span style={{ color: C.grayLight }}>{feat}</span>
+          {selectedGoals.length === 0 ? (
+            <div className="card" style={{ padding: 20, textAlign: "center", color: C.gray }}>
+              اختاري هدفًا أو أكثر لعرض الاشتراكات المناسبة.
+            </div>
+          ) : filteredPlans.length === 0 ? (
+            <div className="card" style={{ padding: 20, textAlign: "center", color: C.gray }}>
+              لا توجد اشتراكات مرتبطة بالأهداف المختارة حالياً.
+            </div>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr 1fr", "repeat(4, 1fr)", "repeat(4, 1fr)"), gap: 20 }}>
+              {filteredPlans.map((p) => (
+                <div key={p.name} className="card" style={{ padding: 28, position: "relative", border: p.popular ? `2px solid ${C.red}` : `1px solid ${C.border}` }}>
+                  {p.popular && <div style={{ position: "absolute", top: -5, right: 16, background: C.red, color: "#fff", padding: "3px 14px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>الأكثر شعبية</div>}
+                  <h3 style={{ fontWeight: 900, fontSize: 20, color: C.white }}>{p.name}</h3>
+                  <div style={{ margin: "14px 0 20px" }}>
+                    <span style={{ fontSize: 38, fontWeight: 900, color: p.color }}>{formatCurrency(p.price)}</span>
+                    <span style={{ color: C.gray, fontSize: 12 }}> {cycleLabel(p.cycle, p.durationDays)}</span>
                   </div>
-                ))}
-                <button
-                  onClick={() => handleSubscribe(p)}
-                  disabled={p.id !== null && subscribing === p.id}
-                  className="btn-primary"
-                  style={{ width: "100%", justifyContent: "center", marginTop: 20, background: p.popular ? C.red : "transparent", border: `2px solid ${p.color}`, color: p.popular ? "#fff" : p.color, fontFamily: "'Cairo', sans-serif", padding: "10px", borderRadius: 6, fontSize: 13, fontWeight: 700, cursor: (p.id !== null && subscribing === p.id) ? "not-allowed" : "pointer", transition: "all .2s", opacity: (p.id !== null && subscribing === p.id) ? 0.7 : 1 }}
-                >
-                  {(p.id !== null && subscribing === p.id) ? "جارٍ الاشتراك..." : "اشتركي الآن"}
-                </button>
-              </div>
-            ))}
-          </div>
+                  <div style={{ display: "flex", gap: 12, color: C.gray, fontSize: 12, marginBottom: 10, flexWrap: "wrap" }}>
+                    {p.sessionsCount ? <span>عدد الحصص: {p.sessionsCount}</span> : null}
+                    <span>المدة: {p.durationDays} يوم</span>
+                  </div>
+                  {p.features.map((feat, fi) => (
+                    <div key={fi} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0", borderBottom: `1px solid ${C.border}`, fontSize: 12 }}>
+                      <span style={{ color: p.color, fontWeight: 900, fontSize: 14 }}>✓</span>
+                      <span style={{ color: C.grayLight }}>{feat}</span>
+                    </div>
+                  ))}
+                  <button
+                    onClick={() => handleSubscribe(p)}
+                    disabled={p.id !== null && subscribing === p.id}
+                    className="btn-primary"
+                    style={{ width: "100%", justifyContent: "center", marginTop: 20, background: p.popular ? C.red : "transparent", border: `2px solid ${p.color}`, color: p.popular ? "#fff" : p.color, fontFamily: "'Cairo', sans-serif", padding: "10px", borderRadius: 6, fontSize: 13, fontWeight: 700, cursor: (p.id !== null && subscribing === p.id) ? "not-allowed" : "pointer", transition: "all .2s", opacity: (p.id !== null && subscribing === p.id) ? 0.7 : 1 }}
+                  >
+                    {(p.id !== null && subscribing === p.id) ? "جارٍ الاشتراك..." : "اشتركي الآن"}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </section>
 
@@ -1828,7 +2016,14 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
       <div style={{ position: viewportWidth() < 768 ? "static" : "sticky", bottom: 0, background: C.bgCard, borderTop: `1px solid ${C.border}`, padding: "14px 0", zIndex: 50 }}>
         <div className="container" style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 16 }}>
           <p style={{ fontWeight: 600, color: C.gray, fontSize: 14 }}>مستعدة تبدئي رحلتك مع فيت زون؟</p>
-          <button className="btn-primary" style={{ padding: "10px 32px" }} onClick={() => handleSubscribe(plans[1] ?? plans[0])}>ابدئي الآن</button>
+          <button
+            className="btn-primary"
+            style={{ padding: "10px 32px", opacity: selectedGoals.length === 0 || !primaryPlan ? 0.6 : 1 }}
+            onClick={() => primaryPlan && handleSubscribe(primaryPlan)}
+            disabled={selectedGoals.length === 0 || !primaryPlan}
+          >
+            ابدئي الآن
+          </button>
         </div>
       </div>
     </div>

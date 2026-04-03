@@ -24,14 +24,28 @@ type PublicPayload = {
     label: string;
     sizeType: ProductSizeType;
   }>;
+  goals: Array<{
+    id: string;
+    name: string;
+    slug: string;
+    description: string | null;
+    image: string | null;
+    kind: string;
+    parentId: string | null;
+    sortOrder: number;
+  }>;
   memberships: Array<{
     id: string;
     name: string;
     price: number;
-    duration: string;
+    durationDays: number;
+    cycle: string | null;
+    sessionsCount: number | null;
     features: string[];
     walletBonus: number;
     gift: string | null;
+    kind: string;
+    goalIds: string[];
   }>;
   offers: Array<{
     id: string;
@@ -123,6 +137,7 @@ const EMPTY_PAYLOAD: PublicPayload = {
     instagram: "",
     mapEmbed: "",
   },
+  goals: [],
   memberships: [],
   offers: [],
   classes: [],
@@ -137,8 +152,8 @@ const RESPONSE_HEADERS = {
   "Cache-Control": "public, max-age=30, s-maxage=30, stale-while-revalidate=120",
 } as const;
 
-const daysToLabel = (days: number) =>
-  days <= 31 ? "monthly" : days <= 100 ? "quarterly" : "annual";
+const cycleFromMembership = (cycle: string | null, days: number) =>
+  cycle ?? (days <= 31 ? "monthly" : days <= 100 ? "quarterly" : days <= 200 ? "semi_annual" : "annual");
 
 function parseJsonArray(value: string | null) {
   try {
@@ -182,14 +197,19 @@ export async function GET() {
 
     await ensureDefaultProductCategories();
 
-    const [categories, memberships, offers, classes, trainers, siteContent, products, testimonials] =
+    const [categories, goals, memberships, offers, classes, trainers, siteContent, products, testimonials] =
       await Promise.all([
         db.productCategory.findMany({
           where: { isActive: true },
           orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
         }),
+        db.clubGoal.findMany({
+          where: { isActive: true },
+          orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+        }),
         db.membership.findMany({
           where: { isActive: true },
+          include: { goals: { select: { goalId: true } } },
           orderBy: { price: "asc" },
         }),
         db.offer.findMany({
@@ -255,14 +275,28 @@ export async function GET() {
         label: category.label,
         sizeType: normalizeSizeType(category.sizeType),
       })),
+      goals: goals.map((goal) => ({
+        id: goal.id,
+        name: goal.name,
+        slug: goal.slug,
+        description: goal.description,
+        image: goal.image,
+        kind: goal.kind,
+        parentId: goal.parentId,
+        sortOrder: goal.sortOrder,
+      })),
       memberships: memberships.map((membership) => ({
         id: membership.id,
         name: membership.name,
         price: membership.price,
-        duration: daysToLabel(membership.duration),
+        durationDays: membership.duration,
+        cycle: cycleFromMembership(membership.cycle, membership.duration),
+        sessionsCount: membership.sessionsCount ?? null,
         features: parseJsonArray(membership.features),
         walletBonus: membership.walletBonus,
         gift: membership.gift,
+        kind: membership.kind,
+        goalIds: membership.goals.map((goal) => goal.goalId),
       })),
       offers: offers.map((offer) => ({
         id: offer.id,
