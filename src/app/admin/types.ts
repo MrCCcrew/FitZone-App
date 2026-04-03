@@ -3,6 +3,10 @@ export type Section =
   | "pages"
   | "knowledge"
   | "subscriptions"
+  | "goals"
+  | "programs"
+  | "delivery"
+  | "health"
   | "payments"
   | "classes"
   | "trainers"
@@ -137,6 +141,76 @@ export interface PageSection {
   label: string;
   visible: boolean;
   order: number;
+}
+
+export interface Goal {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string | null;
+  image?: string | null;
+  kind: string;
+  parentId?: string | null;
+  parent?: { id: string; name: string } | null;
+  sortOrder: number;
+  active: boolean;
+  childrenCount?: number;
+  linkedProgramsCount?: number;
+  enrollmentsCount?: number;
+}
+
+export interface Program {
+  id: string;
+  title: string;
+  slug: string;
+  type: "subscription" | "package";
+  audience: string;
+  billingCycle?: string | null;
+  sessionsCount?: number | null;
+  durationDays?: number | null;
+  validityDays?: number | null;
+  basePrice: number;
+  salePrice?: number | null;
+  compareAtPrice?: number | null;
+  classSessionPrice?: number | null;
+  description?: string | null;
+  image?: string | null;
+  active: boolean;
+  showOnHome: boolean;
+  sortOrder: number;
+  surveyEnabled: boolean;
+  scheduleManagedByAdmin: boolean;
+  features?: string[];
+  goals?: Array<{ id: string; name: string; slug: string; kind: string; isPrimary?: boolean; sortOrder?: number }>;
+  consumables?: Array<{ id: string; productId: string; productName: string; quantity: number; notes?: string | null; stock?: number }>;
+  schedules?: Array<{ id: string; label: string; audience?: string | null; timetableJson: string; notes?: string | null; isDefault: boolean; active: boolean; sortOrder: number }>;
+  enrollmentsCount?: number;
+  offersCount?: number;
+}
+
+export interface DeliveryOption {
+  id: string;
+  name: string;
+  type: "courier" | "pickup";
+  description?: string | null;
+  fee: number;
+  estimatedDaysMin?: number | null;
+  estimatedDaysMax?: number | null;
+  active: boolean;
+  showCashOnDelivery: boolean;
+  sortOrder: number;
+  ordersCount?: number;
+}
+
+export interface HealthQuestion {
+  id: string;
+  title: string;
+  slug: string;
+  prompt: string;
+  active: boolean;
+  sortOrder: number;
+  restrictedClassTypes?: string[];
+  restrictions?: Array<{ id: string; classType: string; notes?: string | null }>;
 }
 
 export interface Complaint {

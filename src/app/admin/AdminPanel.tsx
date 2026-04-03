@@ -3,15 +3,15 @@
 import { useEffect, useState, type ComponentType } from "react";
 import { useRouter } from "next/navigation";
 import type { Section } from "./types";
-import {
-  canAccessAdminSection,
-  getDefaultAdminSection,
-  isAdminRole,
-} from "@/lib/admin-permissions";
+import { canAccessAdminSection, getDefaultAdminSection, isAdminRole } from "@/lib/admin-permissions";
 import Overview from "./sections/Overview";
 import PagesContent from "./sections/PagesContent";
 import ChatKnowledge from "./sections/ChatKnowledge";
 import Subscriptions from "./sections/Subscriptions";
+import Goals from "./sections/Goals";
+import Programs from "./sections/Programs";
+import DeliveryOptions from "./sections/DeliveryOptions";
+import HealthQuestions from "./sections/HealthQuestions";
 import Payments from "./sections/Payments";
 import Classes from "./sections/Classes";
 import Trainers from "./sections/Trainers";
@@ -24,18 +24,22 @@ import Complaints from "./sections/Complaints";
 
 const NAV: { id: Section; label: string; icon: string }[] = [
   { id: "overview", label: "لوحة التحكم", icon: "📊" },
-  { id: "pages", label: "الصفحات والمحتوى", icon: "📄" },
+  { id: "pages", label: "الصفحات والمحتوى", icon: "🧩" },
   { id: "knowledge", label: "قاعدة معرفة البوت", icon: "KB" },
-  { id: "subscriptions", label: "الاشتراكات والعروض", icon: "🎯" },
+  { id: "subscriptions", label: "الاشتراكات والعروض", icon: "🎟️" },
+  { id: "goals", label: "الأهداف", icon: "🎯" },
+  { id: "programs", label: "البرامج والباقات", icon: "📦" },
+  { id: "delivery", label: "شركات التوصيل", icon: "🚚" },
+  { id: "health", label: "استبيان الإصابات", icon: "🩺" },
   { id: "payments", label: "المدفوعات", icon: "💳" },
-  { id: "classes", label: "الكلاسات والجدول", icon: "📅" },
-  { id: "trainers", label: "المدربات", icon: "🏋️" },
+  { id: "classes", label: "الكلاسات والجدول", icon: "🗓️" },
+  { id: "trainers", label: "المدربات", icon: "👩‍🏫" },
   { id: "products", label: "المنتجات والطلبات", icon: "🛍️" },
   { id: "reviews", label: "آراء العملاء", icon: "⭐" },
   { id: "balance", label: "الرصيد والنقاط", icon: "💰" },
   { id: "chat", label: "الدردشة المباشرة", icon: "💬" },
   { id: "customers", label: "العملاء", icon: "👥" },
-  { id: "complaints", label: "الشكاوى", icon: "📝" },
+  { id: "complaints", label: "الشكاوى", icon: "📄" },
 ];
 
 const TITLES: Record<Section, string> = {
@@ -43,6 +47,10 @@ const TITLES: Record<Section, string> = {
   pages: "إدارة الصفحات والمحتوى",
   knowledge: "قاعدة معرفة البوت",
   subscriptions: "إدارة الاشتراكات والعروض",
+  goals: "إدارة الأهداف",
+  programs: "إدارة البرامج والباقات",
+  delivery: "إدارة شركات التوصيل",
+  health: "إدارة استبيان الإصابات",
   payments: "المدفوعات",
   classes: "إدارة الكلاسات والجدول",
   trainers: "إدارة المدربات",
@@ -59,6 +67,10 @@ const SECTIONS: Record<Section, ComponentType> = {
   pages: PagesContent,
   knowledge: ChatKnowledge,
   subscriptions: Subscriptions,
+  goals: Goals,
+  programs: Programs,
+  delivery: DeliveryOptions,
+  health: HealthQuestions,
   payments: Payments,
   classes: Classes,
   trainers: Trainers,
@@ -168,7 +180,7 @@ export default function AdminPanel() {
       >
         <div className="text-center">
           <div className="mb-3 text-3xl">⌛</div>
-          <div className="text-sm text-[#d7aabd]">جارٍ تحميل لوحة الإدارة...</div>
+          <div className="text-sm text-[#d7aabd]">جاري تحميل لوحة الإدارة...</div>
         </div>
       </div>
     );
@@ -182,7 +194,7 @@ export default function AdminPanel() {
       >
         <div className="text-center">
           <div className="mb-3 text-3xl">🔒</div>
-          <div className="text-sm text-[#d7aabd]">جارٍ التحقق من صلاحيات الدخول...</div>
+          <div className="text-sm text-[#d7aabd]">جاري التحقق من صلاحيات الدخول...</div>
         </div>
       </div>
     );
@@ -197,9 +209,7 @@ export default function AdminPanel() {
       dir="rtl"
       className="admin-theme flex min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top,rgba(255,140,190,0.22),transparent_34%),radial-gradient(circle_at_bottom_left,rgba(255,186,216,0.16),transparent_30%),linear-gradient(180deg,#2a0f1b_0%,#391320_48%,#4a1b2d_100%)] text-[#fff4f8] lg:h-screen"
     >
-      {sidebarOpen && (
-        <div className="fixed inset-0 z-30 bg-black/60 lg:hidden" onClick={() => setSidebarOpen(false)} />
-      )}
+      {sidebarOpen && <div className="fixed inset-0 z-30 bg-black/60 lg:hidden" onClick={() => setSidebarOpen(false)} />}
 
       <aside
         className={`fixed inset-y-0 right-0 z-40 flex w-72 flex-col border-l border-[rgba(255,188,219,0.16)] bg-[rgba(41,13,25,0.82)] backdrop-blur-xl transition-transform duration-300 ease-in-out lg:static ${
@@ -210,15 +220,10 @@ export default function AdminPanel() {
           <div className="flex items-center gap-1.5" dir="ltr">
             <span className="text-xl font-black text-red-500">FIT</span>
             <span className="text-xl font-black text-pink-300">ZONE</span>
-            <span className="rounded-full bg-pink-500/12 px-1.5 py-0.5 text-[10px] font-bold text-pink-200">
-              ADMIN
-            </span>
+            <span className="rounded-full bg-pink-500/12 px-1.5 py-0.5 text-[10px] font-bold text-pink-200">ADMIN</span>
           </div>
-          <button
-            onClick={() => setSidebarOpen(false)}
-            className="text-gray-500 transition-colors hover:text-white lg:hidden"
-          >
-            ✕
+          <button onClick={() => setSidebarOpen(false)} className="text-gray-500 transition-colors hover:text-white lg:hidden">
+            ×
           </button>
         </div>
 
@@ -266,8 +271,8 @@ export default function AdminPanel() {
             disabled={loggingOut}
             className="flex w-full items-center gap-3 rounded-xl px-4 py-2.5 text-sm text-red-400 transition-all hover:bg-red-950/40 hover:text-red-300 disabled:opacity-50"
           >
-            <span>⇠</span>
-            {loggingOut ? "جارٍ تسجيل الخروج..." : "تسجيل الخروج"}
+            <span>⇥</span>
+            {loggingOut ? "جاري تسجيل الخروج..." : "تسجيل الخروج"}
           </button>
         </div>
       </aside>
@@ -275,10 +280,7 @@ export default function AdminPanel() {
       <div className="flex flex-1 flex-col overflow-hidden">
         <header className="flex items-center justify-between border-b border-[#ffbcdb]/20 bg-[#14060d]/92 px-6 py-4 backdrop-blur-xl">
           <div className="flex items-center gap-3">
-            <button
-              onClick={() => setSidebarOpen(true)}
-              className="text-gray-400 transition-colors hover:text-white lg:hidden"
-            >
+            <button onClick={() => setSidebarOpen(true)} className="text-gray-400 transition-colors hover:text-white lg:hidden">
               ☰
             </button>
             <div>

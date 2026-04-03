@@ -76,6 +76,7 @@ model User {
   productReviews ProductReview[]
   handledChatSessions ChatSession[]  @relation("AssignedSupport")
   supportPresence     SupportPresence?
+  programEnrollments  ProgramEnrollment[]
 }
 
 // ─── Membership ───────────────────────────────────────────────────────────────
@@ -182,6 +183,12 @@ model Product {
   oldPrice    Float?
   category    String
   stock       Int     @default(0)
+  sku         String? @unique
+  unitLabel   String?
+  trackInventory   Boolean @default(true)
+  averageCost      Float   @default(0)
+  lastPurchaseCost Float   @default(0)
+  reorderLevel     Int     @default(0)
   images      String? // JSON array of URLs
   sizes       String? // JSON array
   colors      String? // JSON array
@@ -189,6 +196,9 @@ model Product {
 
   orderItems OrderItem[]
   reviews    ProductReview[]
+  stockMovements      InventoryMovement[]    @relation("InventoryProduct")
+  receiptItems        InventoryReceiptItem[] @relation("InventoryReceiptProduct")
+  programConsumables  ProgramConsumable[]    @relation("ProgramConsumableProduct")
 }
 
 model ProductReview {
@@ -209,13 +219,25 @@ model ProductReview {
 model Order {
   id            String   @id @default(cuid())
   userId        String
+  businessUnit  String   @default("store") // store | club
+  subtotal      Float    @default(0)
+  discountTotal Float    @default(0)
+  shippingFee   Float    @default(0)
   total         Float
   status        String   @default("pending") // pending | confirmed | delivered | cancelled
+  deliveryOptionId String?
+  deliveryLabel String?
+  estimatedDeliveryDays Int?
+  isClubPickup  Boolean  @default(false)
+  recipientName String?
+  recipientPhone String?
   address       String?
+  notes         String?  @db.Text
   paymentMethod String   @default("card")
   createdAt     DateTime @default(now())
 
   user  User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deliveryOption DeliveryOption? @relation(fields: [deliveryOptionId], references: [id], onDelete: SetNull)
   items OrderItem[]
   paymentTransactions PaymentTransaction[]
 }
@@ -238,7 +260,9 @@ model PaymentTransaction {
   orderId           String?
   membershipId      String?
   offerId           String?
+  programEnrollmentId String?
   purpose           String    // order | membership | wallet_topup
+  businessUnit      String    @default("store") // store | club
   provider          String    // manual | paymob | paytabs | custom
   providerReference String?   @unique
   externalReference String?   @unique
@@ -347,6 +371,7 @@ model Offer {
   expiresAt          DateTime
   isActive           Boolean     @default(true)
   membershipId       String?
+  programId          String?
   specialPrice       Float?
   maxSubscribers     Int?
   currentSubscribers Int         @default(0)
@@ -354,6 +379,7 @@ model Offer {
   showOnHome         Boolean     @default(false)
 
   membership Membership? @relation(fields: [membershipId], references: [id])
+  program    Program?    @relation(fields: [programId], references: [id])
 }
 
 model ProductCategory {
@@ -365,6 +391,228 @@ model ProductCategory {
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model ClubGoal {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?  @db.Text
+  image       String?
+  kind        String   @default("standard") // standard | games_root | games_adults | games_children
+  parentId    String?
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  parent      ClubGoal?         @relation("GoalHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children    ClubGoal[]        @relation("GoalHierarchy")
+  programGoals ProgramGoal[]
+  classRules  GoalClassRule[]
+  enrollments ProgramEnrollment[]
+}
+
+model Program {
+  id                    String   @id @default(cuid())
+  title                 String
+  slug                  String   @unique
+  type                  String   // subscription | package
+  audience              String   @default("women") // women | adults | children | mixed
+  billingCycle          String?  // monthly | quarterly | semi_annual | annual | custom
+  sessionsCount         Int?
+  durationDays          Int?
+  validityDays          Int?
+  basePrice             Float
+  salePrice             Float?
+  compareAtPrice        Float?
+  classSessionPrice     Float?
+  description           String?  @db.LongText
+  image                 String?
+  isActive              Boolean  @default(true)
+  showOnHome            Boolean  @default(false)
+  sortOrder             Int      @default(0)
+  surveyEnabled         Boolean  @default(true)
+  scheduleManagedByAdmin Boolean @default(true)
+  features              String?  @db.LongText
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  goalMappings  ProgramGoal[]
+  consumables   ProgramConsumable[]
+  offers        Offer[]
+  schedules     ProgramSchedule[]
+  enrollments   ProgramEnrollment[]
+}
+
+model ProgramGoal {
+  id         String   @id @default(cuid())
+  programId  String
+  goalId     String
+  isPrimary  Boolean  @default(false)
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  program Program  @relation(fields: [programId], references: [id], onDelete: Cascade)
+  goal    ClubGoal @relation(fields: [goalId], references: [id], onDelete: Cascade)
+
+  @@unique([programId, goalId])
+}
+
+model ProgramConsumable {
+  id         String   @id @default(cuid())
+  programId  String
+  productId  String
+  quantity   Int      @default(1)
+  notes      String?  @db.Text
+  createdAt  DateTime @default(now())
+
+  program Program @relation(fields: [programId], references: [id], onDelete: Cascade)
+  product Product @relation("ProgramConsumableProduct", fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([programId, productId])
+}
+
+model ProgramSchedule {
+  id           String   @id @default(cuid())
+  programId    String
+  label        String
+  audience     String?
+  timetableJson String  @db.LongText
+  notes        String?  @db.Text
+  isDefault    Boolean  @default(false)
+  isActive     Boolean  @default(true)
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  program Program @relation(fields: [programId], references: [id], onDelete: Cascade)
+}
+
+model HealthQuestion {
+  id          String   @id @default(cuid())
+  title       String
+  slug        String   @unique
+  prompt      String
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  restrictions HealthQuestionRestriction[]
+}
+
+model HealthQuestionRestriction {
+  id         String   @id @default(cuid())
+  questionId String
+  classType  String
+  notes      String?  @db.Text
+  createdAt  DateTime @default(now())
+
+  question HealthQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([questionId, classType])
+}
+
+model GoalClassRule {
+  id         String   @id @default(cuid())
+  goalId     String
+  classType  String
+  rule       String   @default("recommended") // recommended | blocked | optional
+  notes      String?  @db.Text
+  createdAt  DateTime @default(now())
+
+  goal ClubGoal @relation(fields: [goalId], references: [id], onDelete: Cascade)
+
+  @@unique([goalId, classType, rule])
+}
+
+model ProgramEnrollment {
+  id                 String   @id @default(cuid())
+  userId             String
+  programId          String
+  sourceGoalId       String?
+  status             String   @default("draft") // draft | survey_pending | schedule_pending | confirmation_pending | payment_pending | active | cancelled | completed
+  selectedGoalsJson  String?  @db.LongText
+  questionnaireJson  String?  @db.LongText
+  proposedScheduleJson String? @db.LongText
+  scheduleSentAt     DateTime?
+  confirmedAt        DateTime?
+  startsAt           DateTime?
+  endsAt             DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  program    Program  @relation(fields: [programId], references: [id], onDelete: Cascade)
+  sourceGoal ClubGoal? @relation(fields: [sourceGoalId], references: [id], onDelete: SetNull)
+
+  @@index([userId, status])
+  @@index([programId, status])
+}
+
+model DeliveryOption {
+  id                 String   @id @default(cuid())
+  name               String
+  type               String   @default("courier") // courier | pickup
+  description        String?  @db.Text
+  fee                Float    @default(0)
+  estimatedDaysMin   Int?
+  estimatedDaysMax   Int?
+  isActive           Boolean  @default(true)
+  showCashOnDelivery Boolean  @default(false)
+  sortOrder          Int      @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  orders Order[]
+}
+
+model InventoryReceipt {
+  id              String   @id @default(cuid())
+  referenceNumber String?  @unique
+  supplierName    String?
+  notes           String?  @db.Text
+  receivedAt      DateTime @default(now())
+  status          String   @default("posted") // draft | posted | cancelled
+  totalCost       Float    @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  items InventoryReceiptItem[]
+}
+
+model InventoryReceiptItem {
+  id         String   @id @default(cuid())
+  receiptId  String
+  productId  String
+  quantity   Int
+  unitCost   Float
+  totalCost  Float
+  createdAt  DateTime @default(now())
+
+  receipt InventoryReceipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  product Product          @relation("InventoryReceiptProduct", fields: [productId], references: [id], onDelete: Cascade)
+}
+
+model InventoryMovement {
+  id                String   @id @default(cuid())
+  productId         String
+  type              String   // purchase | sale | adjustment | package_consumption | return
+  quantityChange    Int
+  quantityBefore    Int
+  quantityAfter     Int
+  unitCost          Float?
+  averageCostBefore Float?
+  averageCostAfter  Float?
+  referenceType     String?
+  referenceId       String?
+  notes             String?  @db.Text
+  createdAt         DateTime @default(now())
+
+  product Product @relation("InventoryProduct", fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId, createdAt])
 }
 
 // ─── Complaint ────────────────────────────────────────────────────────────────
