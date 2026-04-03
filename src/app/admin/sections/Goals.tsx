@@ -95,9 +95,7 @@ export default function Goals() {
     void loadGoals();
   }, [loadGoals]);
 
-  const parentOptions = useMemo(() => {
-    return goals.filter((goal) => !goal.parentId);
-  }, [goals]);
+  const parentOptions = useMemo(() => goals.filter((goal) => !goal.parentId), [goals]);
 
   const saveGoal = async () => {
     if (!goalModal) return;
@@ -219,9 +217,7 @@ export default function Goals() {
                     </span>
                   </div>
                   <div className="mt-1 text-xs text-[#d7aabd]">الرابط: {goal.slug}</div>
-                  {goal.parent ? (
-                    <div className="mt-1 text-xs text-[#d7aabd]">تابع: {goal.parent.name}</div>
-                  ) : null}
+                  {goal.parent ? <div className="mt-1 text-xs text-[#d7aabd]">تابع: {goal.parent.name}</div> : null}
                 </div>
                 <button
                   onClick={() => void toggleGoal(goal)}
@@ -238,8 +234,6 @@ export default function Goals() {
               {goal.description ? <p className="text-sm leading-6 text-[#d7aabd]">{goal.description}</p> : null}
 
               <div className="flex flex-wrap gap-2 text-xs text-[#d7aabd]">
-                <span>برامج مرتبطة: {goal.linkedProgramsCount?.toLocaleString("ar-EG") ?? 0}</span>
-                <span>طلبات اشتراك: {goal.enrollmentsCount?.toLocaleString("ar-EG") ?? 0}</span>
                 <span>أهداف فرعية: {goal.childrenCount?.toLocaleString("ar-EG") ?? 0}</span>
               </div>
 
@@ -266,14 +260,10 @@ export default function Goals() {
         <Modal title={"id" in goalModal ? "تعديل الهدف" : "إضافة هدف جديد"} onClose={() => setGoalModal(null)}>
           <div className="space-y-4">
             <Field label="اسم الهدف">
-              <input
-                value={goalModal.name}
-                onChange={(event) => setGoalModal({ ...goalModal, name: event.target.value })}
-                className={INPUT}
-              />
+              <input value={goalModal.name} onChange={(event) => setGoalModal({ ...goalModal, name: event.target.value })} className={INPUT} />
             </Field>
 
-            <Field label="الرابط المختصر" hint="يستخدم داخل الروابط، اتركه فارغًا ليتم توليده تلقائيًا.">
+            <Field label="الرابط المختصر" hint="يُستخدم داخل الروابط، اتركه فارغًا ليتم توليده تلقائيًا.">
               <input
                 value={goalModal.slug ?? ""}
                 onChange={(event) => setGoalModal({ ...goalModal, slug: event.target.value })}
@@ -283,11 +273,7 @@ export default function Goals() {
             </Field>
 
             <Field label="نوع الهدف">
-              <select
-                value={goalModal.kind}
-                onChange={(event) => setGoalModal({ ...goalModal, kind: event.target.value })}
-                className={INPUT}
-              >
+              <select value={goalModal.kind} onChange={(event) => setGoalModal({ ...goalModal, kind: event.target.value })} className={INPUT}>
                 <option value="standard">هدف عادي</option>
                 <option value="games_root">قسم الألعاب (جذر)</option>
                 <option value="games_adults">ألعاب للكبار</option>
@@ -295,7 +281,7 @@ export default function Goals() {
               </select>
             </Field>
 
-            <Field label="هدف تابع" hint="اختياري. يستخدم عند تقسيم هدف الألعاب إلى كبار وأطفال.">
+            <Field label="هدف تابع" hint="اختياري. يُستخدم عند تقسيم هدف الألعاب إلى كبار وأطفال.">
               <select
                 value={goalModal.parentId ?? ""}
                 onChange={(event) => setGoalModal({ ...goalModal, parentId: event.target.value || null })}
@@ -318,7 +304,7 @@ export default function Goals() {
               />
             </Field>
 
-            <Field label="صورة الهدف" hint="المقاس الموصى به 900 × 900 ليظهر بشكل مربع واضح.">
+            <Field label="صورة الهدف" hint="المقاس الموصى به 900×900 ليظهر بشكل مربع واضح.">
               <div className="space-y-3">
                 <input
                   type="file"

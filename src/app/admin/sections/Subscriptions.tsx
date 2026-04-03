@@ -13,6 +13,7 @@ const EMPTY_PLAN: Omit<Plan, "id" | "membersCount"> = {
   duration: "monthly",
   features: [],
   active: true,
+  kind: "subscription",
 };
 
 const EMPTY_OFFER: Omit<Offer, "id" | "usedCount" | "currentSubscribers"> = {
@@ -98,7 +99,7 @@ export default function Subscriptions() {
     setLoading(true);
     try {
       const [plansResponse, offersResponse] = await Promise.all([
-        fetch("/api/admin/memberships", { cache: "no-store" }),
+        fetch("/api/admin/memberships?kind=subscription", { cache: "no-store" }),
         fetch("/api/admin/offers", { cache: "no-store" }),
       ]);
 
@@ -137,12 +138,12 @@ export default function Subscriptions() {
       const response = await fetch("/api/admin/memberships", {
         method: isEdit ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(planModal),
+        body: JSON.stringify({ ...planModal, kind: "subscription" }),
       });
 
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
-        window.alert(payload.error ?? "تعذر حفظ الباقة.");
+        window.alert(payload.error ?? "تعذر حفظ الاشتراك.");
         return;
       }
 
@@ -155,7 +156,7 @@ export default function Subscriptions() {
   };
 
   const deletePlan = async (id: string) => {
-    if (!window.confirm("هل تريد حذف هذه الباقة؟")) return;
+    if (!window.confirm("هل تريد حذف هذا الاشتراك؟")) return;
 
     const response = await fetch("/api/admin/memberships", {
       method: "DELETE",
@@ -165,7 +166,7 @@ export default function Subscriptions() {
 
     if (!response.ok) {
       const payload = await response.json().catch(() => ({}));
-      window.alert(payload.error ?? "تعذر حذف الباقة.");
+      window.alert(payload.error ?? "تعذر حذف الاشتراك.");
       return;
     }
 
@@ -181,7 +182,7 @@ export default function Subscriptions() {
 
     if (!response.ok) {
       const payload = await response.json().catch(() => ({}));
-      window.alert(payload.error ?? "تعذر تحديث حالة الباقة.");
+      window.alert(payload.error ?? "تعذر تحديث حالة الاشتراك.");
       return;
     }
 
@@ -271,36 +272,36 @@ export default function Subscriptions() {
 
   if (loading) {
     return (
-      <AdminSectionShell title="الاشتراكات والعروض" subtitle="إدارة الباقات والعروض الخاصة والخصومات.">
+      <AdminSectionShell title="الاشتراكات والعروض" subtitle="إدارة الاشتراكات والعروض الخاصة والخصومات.">
         <AdminCard className="flex h-64 items-center justify-center">
-          <div className="text-sm text-[#d7aabd]">جارٍ تحميل الباقات والعروض...</div>
+          <div className="text-sm text-[#d7aabd]">جاري تحميل الاشتراكات والعروض...</div>
         </AdminCard>
       </AdminSectionShell>
     );
   }
 
   return (
-    <AdminSectionShell title="الاشتراكات والعروض" subtitle="أنشئ باقات العضوية والعروض الخاصة وخصص ظهورها في الصفحة الرئيسية.">
+    <AdminSectionShell title="الاشتراكات والعروض" subtitle="أنشئ اشتراكات العضوية والعروض الخاصة وخصص ظهورها في الصفحة الرئيسية.">
       <AdminCard>
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h3 className="text-lg font-black text-[#fff4f8]">باقات الاشتراك</h3>
+            <h3 className="text-lg font-black text-[#fff4f8]">اشتراكات النادي</h3>
             <p className="mt-1 text-sm text-[#d7aabd]">
-              {plans.length.toLocaleString("ar-EG")} باقات - {plans.filter((plan) => plan.active).length.toLocaleString("ar-EG")} باقات نشطة
+              {plans.length.toLocaleString("ar-EG")} اشتراك - {plans.filter((plan) => plan.active).length.toLocaleString("ar-EG")} اشتراك نشط
             </p>
           </div>
           <button
-            onClick={() => setPlanModal(EMPTY_PLAN)}
+            onClick={() => setPlanModal({ ...EMPTY_PLAN })}
             className="rounded-xl bg-[#ff4f93] px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-[#ff2f7d]"
           >
-            + إضافة باقة
+            + إضافة اشتراك
           </button>
         </div>
 
         {plans.length === 0 ? (
           <AdminEmptyState
-            title="لا توجد باقات بعد"
-            description="ابدأ بإضافة أول باقة اشتراك لتظهر في صفحة النادي وفي شاشة الإدارة."
+            title="لا توجد اشتراكات بعد"
+            description="ابدأ بإضافة أول اشتراك ليظهر في صفحة الاشتراكات ولوحة الإدارة."
           />
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -391,7 +392,7 @@ export default function Subscriptions() {
         {offers.length === 0 ? (
           <AdminEmptyState
             title="لا توجد عروض بعد"
-            description="أضف عرضًا عاديًا أو عرضًا خاصًا مع صورة ومدة وعدد مشتركين ليظهر للعميل بشكل مميز."
+            description="أضف عرضًا عاديًا أو عرضًا خاصًا مع صورة ومدة وعدد مشتركات ليظهر للعميل بشكل مميز."
           />
         ) : (
           <div className="space-y-4">
@@ -450,12 +451,10 @@ export default function Subscriptions() {
                           {offer.type === "special" ? (
                             <>
                               <span>السعر الخاص: {Number(offer.specialPrice || 0).toLocaleString("ar-EG")} ج.م</span>
-                              <span>المشتركات الحاليّات: {currentSubscribers.toLocaleString("ar-EG")}</span>
-                              {offer.maxSubscribers != null ? (
-                                <span>المتبقي: {remaining?.toLocaleString("ar-EG")}</span>
-                              ) : null}
+                              <span>المشتركات الحالية: {currentSubscribers.toLocaleString("ar-EG")}</span>
+                              {offer.maxSubscribers != null ? <span>المتبقي: {remaining?.toLocaleString("ar-EG")}</span> : null}
                               <span>
-                                الباقة: {offer.membershipId ? planOptions.find((plan) => plan.id === offer.membershipId)?.label ?? "مرتبطة بباقة" : "غير مرتبطة بباقة"}
+                                الاشتراك: {offer.membershipId ? planOptions.find((plan) => plan.id === offer.membershipId)?.label ?? "مرتبط باشتراك" : "غير مرتبط باشتراك"}
                               </span>
                             </>
                           ) : (
@@ -500,17 +499,16 @@ export default function Subscriptions() {
       </AdminCard>
 
       {planModal ? (
-        <Modal title={"id" in planModal && planModal.id ? "تعديل الباقة" : "إضافة باقة"} onClose={() => {
-          setPlanModal(null);
-          setFeatureInput("");
-        }}>
+        <Modal
+          title={"id" in planModal && planModal.id ? "تعديل الاشتراك" : "إضافة اشتراك"}
+          onClose={() => {
+            setPlanModal(null);
+            setFeatureInput("");
+          }}
+        >
           <div className="space-y-4">
-            <Field label="اسم الباقة">
-              <input
-                value={planModal.name}
-                onChange={(event) => setPlanModal({ ...planModal, name: event.target.value })}
-                className={INPUT}
-              />
+            <Field label="اسم الاشتراك">
+              <input value={planModal.name} onChange={(event) => setPlanModal({ ...planModal, name: event.target.value })} className={INPUT} />
             </Field>
 
             <div className="grid gap-4 sm:grid-cols-2">
@@ -537,7 +535,7 @@ export default function Subscriptions() {
               </Field>
             </div>
 
-            <Field label="مميزات الباقة" hint="أضف كل ميزة ثم اضغط زر الإضافة لتظهر ضمن قائمة الباقة.">
+            <Field label="مميزات الاشتراك" hint="أضف كل ميزة ثم اضغط زر الإضافة لتظهر ضمن قائمة الاشتراك.">
               <div className="mb-3 flex gap-2">
                 <input
                   value={featureInput}
@@ -590,7 +588,7 @@ export default function Subscriptions() {
               disabled={saving}
               className="w-full rounded-xl bg-[#ff4f93] py-3 text-sm font-black text-white transition-colors hover:bg-[#ff2f7d] disabled:opacity-50"
             >
-              {saving ? "جارٍ حفظ الباقة..." : "حفظ الباقة"}
+              {saving ? "جاري حفظ الاشتراك..." : "حفظ الاشتراك"}
             </button>
           </div>
         </Modal>
@@ -609,11 +607,7 @@ export default function Subscriptions() {
         >
           <div className="space-y-4">
             <Field label="نوع العرض">
-              <select
-                value={offerModal.type}
-                onChange={(event) => setOfferModal({ ...offerModal, type: event.target.value as Offer["type"] })}
-                className={INPUT}
-              >
+              <select value={offerModal.type} onChange={(event) => setOfferModal({ ...offerModal, type: event.target.value as Offer["type"] })} className={INPUT}>
                 <option value="special">عرض خاص</option>
                 <option value="percentage">خصم بنسبة</option>
                 <option value="fixed">خصم بمبلغ ثابت</option>
@@ -621,12 +615,7 @@ export default function Subscriptions() {
             </Field>
 
             <Field label="عنوان العرض">
-              <input
-                value={offerModal.title}
-                onChange={(event) => setOfferModal({ ...offerModal, title: event.target.value })}
-                className={INPUT}
-                placeholder="مثال: عرض الصيف"
-              />
+              <input value={offerModal.title} onChange={(event) => setOfferModal({ ...offerModal, title: event.target.value })} className={INPUT} placeholder="مثال: عرض الصيف" />
             </Field>
 
             <Field label="وصف مختصر" hint="يظهر هذا النص للعميل داخل الصفحة الرئيسية وصفحة الاشتراكات إن فُعّل العرض هناك.">
@@ -640,7 +629,7 @@ export default function Subscriptions() {
 
             {offerModal.type === "special" ? (
               <>
-                <Field label="الباقة المرتبطة" hint="اختياري. يمكنك تركه فارغًا لو كان العرض الخاص غير مرتبط بباقة محددة.">
+                <Field label="الاشتراك المرتبط" hint="اختياري. يمكنك تركه فارغًا لو كان العرض الخاص غير مرتبط باشتراك محدد.">
                   <select
                     value={offerModal.membershipId ?? ""}
                     onChange={(event) => {
@@ -653,7 +642,7 @@ export default function Subscriptions() {
                     }}
                     className={INPUT}
                   >
-                    <option value="">غير مرتبط بباقة</option>
+                    <option value="">غير مرتبط باشتراك</option>
                     {planOptions.map((plan) => (
                       <option key={plan.id} value={plan.id}>
                         {plan.label}
@@ -672,7 +661,7 @@ export default function Subscriptions() {
                       dir="ltr"
                     />
                   </Field>
-                  <Field label="الحد الأقصى للمشتركين">
+                  <Field label="الحد الأقصى للمشتركات">
                     <input
                       type="number"
                       value={offerModal.maxSubscribers ?? 0}
@@ -715,10 +704,7 @@ export default function Subscriptions() {
               />
             </Field>
 
-            <Field
-              label="صورة العرض"
-              hint="المقاس الموصى به 1600 × 900 بكسل بنسبة 16:9 حتى تظهر بوضوح في الصفحة الرئيسية."
-            >
+            <Field label="صورة العرض" hint="المقاس الموصى به 1600×900 بنسبة 16:9 حتى يظهر بوضوح في الصفحة الرئيسية.">
               <div className="space-y-3">
                 <input
                   type="file"
@@ -737,13 +723,9 @@ export default function Subscriptions() {
                   className={INPUT}
                   placeholder="أو ضع رابط الصورة المباشر"
                 />
-                {uploadingImage ? <div className="text-xs text-[#d7aabd]">جارٍ رفع صورة العرض...</div> : null}
+                {uploadingImage ? <div className="text-xs text-[#d7aabd]">جاري رفع صورة العرض...</div> : null}
                 {offerModal.image ? (
-                  <img
-                    src={offerModal.image}
-                    alt="صورة العرض"
-                    className="h-44 w-full rounded-2xl border border-[rgba(255,188,219,0.14)] object-cover"
-                  />
+                  <img src={offerModal.image} alt="صورة العرض" className="h-44 w-full rounded-2xl border border-[rgba(255,188,219,0.14)] object-cover" />
                 ) : null}
               </div>
             </Field>
@@ -766,11 +748,7 @@ export default function Subscriptions() {
                   : "bg-[#ffd166] text-black hover:bg-[#ffcc55]"
               }`}
             >
-              {saving
-                ? "جارٍ حفظ العرض..."
-                : offerModal.type === "special"
-                  ? "حفظ العرض الخاص"
-                  : "حفظ العرض"}
+              {saving ? "جاري حفظ العرض..." : offerModal.type === "special" ? "حفظ العرض الخاص" : "حفظ العرض"}
             </button>
           </div>
         </Modal>

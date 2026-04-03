@@ -44,13 +44,7 @@ export async function GET() {
     orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
     include: {
       parent: { select: { id: true, name: true } },
-      _count: {
-        select: {
-          children: true,
-          programGoals: true,
-          enrollments: true,
-        },
-      },
+      _count: { select: { children: true } },
     },
   });
 
@@ -59,8 +53,6 @@ export async function GET() {
       ...mapGoal(goal),
       parent: goal.parent ? { id: goal.parent.id, name: goal.parent.name } : null,
       childrenCount: goal._count.children,
-      linkedProgramsCount: goal._count.programGoals,
-      enrollmentsCount: goal._count.enrollments,
     })),
   );
 }
@@ -187,16 +179,6 @@ export async function DELETE(req: Request) {
   const body = (await req.json()) as { id?: string };
   if (!body.id) {
     return NextResponse.json({ error: "معرف الهدف مطلوب." }, { status: 400 });
-  }
-
-  const linkedPrograms = await db.programGoal.count({ where: { goalId: body.id } });
-  const linkedEnrollments = await db.programEnrollment.count({ where: { sourceGoalId: body.id } });
-
-  if (linkedPrograms > 0 || linkedEnrollments > 0) {
-    return NextResponse.json(
-      { error: "لا يمكن حذف الهدف لأنه مرتبط ببرامج أو طلبات اشتراك." },
-      { status: 400 },
-    );
   }
 
   await db.clubGoal.delete({ where: { id: body.id } });

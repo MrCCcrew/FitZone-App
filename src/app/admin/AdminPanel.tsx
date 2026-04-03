@@ -8,8 +8,8 @@ import Overview from "./sections/Overview";
 import PagesContent from "./sections/PagesContent";
 import ChatKnowledge from "./sections/ChatKnowledge";
 import Subscriptions from "./sections/Subscriptions";
+import Packages from "./sections/Packages";
 import Goals from "./sections/Goals";
-import Programs from "./sections/Programs";
 import DeliveryOptions from "./sections/DeliveryOptions";
 import HealthQuestions from "./sections/HealthQuestions";
 import Payments from "./sections/Payments";
@@ -24,22 +24,22 @@ import Complaints from "./sections/Complaints";
 
 const NAV: { id: Section; label: string; icon: string }[] = [
   { id: "overview", label: "لوحة التحكم", icon: "📊" },
-  { id: "pages", label: "الصفحات والمحتوى", icon: "🧩" },
+  { id: "pages", label: "الصفحات والمحتوى", icon: "📝" },
   { id: "knowledge", label: "قاعدة معرفة البوت", icon: "KB" },
-  { id: "subscriptions", label: "الاشتراكات والعروض", icon: "🎟️" },
+  { id: "subscriptions", label: "الاشتراكات والعروض", icon: "🏷️" },
+  { id: "packages", label: "الباقات", icon: "🎁" },
   { id: "goals", label: "الأهداف", icon: "🎯" },
-  { id: "programs", label: "البرامج والباقات", icon: "📦" },
   { id: "delivery", label: "شركات التوصيل", icon: "🚚" },
   { id: "health", label: "استبيان الإصابات", icon: "🩺" },
   { id: "payments", label: "المدفوعات", icon: "💳" },
-  { id: "classes", label: "الكلاسات والجدول", icon: "🗓️" },
+  { id: "classes", label: "الكلاسات والجدول", icon: "📅" },
   { id: "trainers", label: "المدربات", icon: "👩‍🏫" },
-  { id: "products", label: "المنتجات والطلبات", icon: "🛍️" },
+  { id: "products", label: "المنتجات والطلبات", icon: "🛒" },
   { id: "reviews", label: "آراء العملاء", icon: "⭐" },
   { id: "balance", label: "الرصيد والنقاط", icon: "💰" },
   { id: "chat", label: "الدردشة المباشرة", icon: "💬" },
   { id: "customers", label: "العملاء", icon: "👥" },
-  { id: "complaints", label: "الشكاوى", icon: "📄" },
+  { id: "complaints", label: "الشكاوى", icon: "📣" },
 ];
 
 const TITLES: Record<Section, string> = {
@@ -47,8 +47,8 @@ const TITLES: Record<Section, string> = {
   pages: "إدارة الصفحات والمحتوى",
   knowledge: "قاعدة معرفة البوت",
   subscriptions: "إدارة الاشتراكات والعروض",
+  packages: "إدارة الباقات",
   goals: "إدارة الأهداف",
-  programs: "إدارة البرامج والباقات",
   delivery: "إدارة شركات التوصيل",
   health: "إدارة استبيان الإصابات",
   payments: "المدفوعات",
@@ -67,8 +67,8 @@ const SECTIONS: Record<Section, ComponentType> = {
   pages: PagesContent,
   knowledge: ChatKnowledge,
   subscriptions: Subscriptions,
+  packages: Packages,
   goals: Goals,
-  programs: Programs,
   delivery: DeliveryOptions,
   health: HealthQuestions,
   payments: Payments,
@@ -193,7 +193,7 @@ export default function AdminPanel() {
         className="admin-theme flex min-h-screen items-center justify-center bg-[linear-gradient(180deg,#2a0f1b_0%,#391320_48%,#4a1b2d_100%)] text-[#fff4f8]"
       >
         <div className="text-center">
-          <div className="mb-3 text-3xl">🔒</div>
+          <div className="mb-3 text-3xl">🚫</div>
           <div className="text-sm text-[#d7aabd]">جاري التحقق من صلاحيات الدخول...</div>
         </div>
       </div>

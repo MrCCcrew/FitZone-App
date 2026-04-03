@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAdminFeature } from "@/lib/admin-guard";
 import { db } from "@/lib/db";
+import { clearPublicApiCache } from "@/lib/public-cache";
 
 async function checkAdmin() {
   const guard = await requireAdminFeature("offers");
@@ -39,7 +40,7 @@ function mapOffer(
     title: offer.title,
     discount: offer.discount,
     type: normalizeOfferType(offer.type),
-    appliesTo: offer.appliesTo ?? offer.membership?.name ?? "جميع الباقات",
+    appliesTo: offer.appliesTo ?? offer.membership?.name ?? "جميع الاشتراكات",
     membershipId: offer.membershipId,
     validUntil: toDateString(offer.expiresAt),
     active: offer.isActive,
@@ -103,6 +104,7 @@ export async function POST(req: Request) {
       include: { membership: { select: { name: true } } },
     });
 
+    clearPublicApiCache();
     return NextResponse.json(mapOffer(created));
   } catch (error) {
     console.error("[ADMIN_OFFERS_POST]", error);
@@ -118,7 +120,7 @@ export async function PATCH(req: Request) {
     const body = await req.json();
     const id = typeof body.id === "string" ? body.id : "";
     if (!id) {
-      return NextResponse.json({ error: "معرّف العرض مطلوب." }, { status: 400 });
+      return NextResponse.json({ error: "معرف العرض مطلوب." }, { status: 400 });
     }
 
     const data: Record<string, unknown> = {};
@@ -148,6 +150,7 @@ export async function PATCH(req: Request) {
       include: { membership: { select: { name: true } } },
     });
 
+    clearPublicApiCache();
     return NextResponse.json(mapOffer(updated));
   } catch (error) {
     console.error("[ADMIN_OFFERS_PATCH]", error);
@@ -162,10 +165,11 @@ export async function DELETE(req: Request) {
   try {
     const { id } = await req.json();
     if (!id) {
-      return NextResponse.json({ error: "معرّف العرض مطلوب." }, { status: 400 });
+      return NextResponse.json({ error: "معرف العرض مطلوب." }, { status: 400 });
     }
 
     await db.offer.delete({ where: { id } });
+    clearPublicApiCache();
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("[ADMIN_OFFERS_DELETE]", error);

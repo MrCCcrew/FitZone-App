@@ -18,14 +18,14 @@ export type AdminFeature =
   | "chat"
   | "complaints";
 
-const STAFF_SECTIONS: Section[] = ["pages", "knowledge", "subscriptions", "classes", "trainers", "customers", "chat", "reviews"];
+const STAFF_SECTIONS: Section[] = ["pages", "knowledge", "subscriptions", "packages", "classes", "trainers", "customers", "chat", "reviews"];
 const ADMIN_SECTIONS: Section[] = [
   "overview",
   "pages",
   "knowledge",
   "subscriptions",
+  "packages",
   "goals",
-  "programs",
   "delivery",
   "health",
   "payments",

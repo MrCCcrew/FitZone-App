@@ -76,7 +76,6 @@ model User {
   productReviews ProductReview[]
   handledChatSessions ChatSession[]  @relation("AssignedSupport")
   supportPresence     SupportPresence?
-  programEnrollments  ProgramEnrollment[]
 }
 
 // ─── Membership ───────────────────────────────────────────────────────────────
@@ -84,6 +83,7 @@ model User {
 model Membership {
   id          String  @id @default(cuid())
   name        String
+  kind        String  @default("subscription") // subscription | package
   price       Float
   duration    Int     // days
   features    String  // JSON array stored as string
@@ -198,7 +198,6 @@ model Product {
   reviews    ProductReview[]
   stockMovements      InventoryMovement[]    @relation("InventoryProduct")
   receiptItems        InventoryReceiptItem[] @relation("InventoryReceiptProduct")
-  programConsumables  ProgramConsumable[]    @relation("ProgramConsumableProduct")
 }
 
 model ProductReview {
@@ -260,7 +259,6 @@ model PaymentTransaction {
   orderId           String?
   membershipId      String?
   offerId           String?
-  programEnrollmentId String?
   purpose           String    // order | membership | wallet_topup
   businessUnit      String    @default("store") // store | club
   provider          String    // manual | paymob | paytabs | custom
@@ -371,7 +369,6 @@ model Offer {
   expiresAt          DateTime
   isActive           Boolean     @default(true)
   membershipId       String?
-  programId          String?
   specialPrice       Float?
   maxSubscribers     Int?
   currentSubscribers Int         @default(0)
@@ -379,7 +376,6 @@ model Offer {
   showOnHome         Boolean     @default(false)
 
   membership Membership? @relation(fields: [membershipId], references: [id])
-  program    Program?    @relation(fields: [programId], references: [id])
 }
 
 model ProductCategory {
@@ -408,85 +404,7 @@ model ClubGoal {
 
   parent      ClubGoal?         @relation("GoalHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
   children    ClubGoal[]        @relation("GoalHierarchy")
-  programGoals ProgramGoal[]
   classRules  GoalClassRule[]
-  enrollments ProgramEnrollment[]
-}
-
-model Program {
-  id                    String   @id @default(cuid())
-  title                 String
-  slug                  String   @unique
-  type                  String   // subscription | package
-  audience              String   @default("women") // women | adults | children | mixed
-  billingCycle          String?  // monthly | quarterly | semi_annual | annual | custom
-  sessionsCount         Int?
-  durationDays          Int?
-  validityDays          Int?
-  basePrice             Float
-  salePrice             Float?
-  compareAtPrice        Float?
-  classSessionPrice     Float?
-  description           String?  @db.LongText
-  image                 String?
-  isActive              Boolean  @default(true)
-  showOnHome            Boolean  @default(false)
-  sortOrder             Int      @default(0)
-  surveyEnabled         Boolean  @default(true)
-  scheduleManagedByAdmin Boolean @default(true)
-  features              String?  @db.LongText
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
-
-  goalMappings  ProgramGoal[]
-  consumables   ProgramConsumable[]
-  offers        Offer[]
-  schedules     ProgramSchedule[]
-  enrollments   ProgramEnrollment[]
-}
-
-model ProgramGoal {
-  id         String   @id @default(cuid())
-  programId  String
-  goalId     String
-  isPrimary  Boolean  @default(false)
-  sortOrder  Int      @default(0)
-  createdAt  DateTime @default(now())
-
-  program Program  @relation(fields: [programId], references: [id], onDelete: Cascade)
-  goal    ClubGoal @relation(fields: [goalId], references: [id], onDelete: Cascade)
-
-  @@unique([programId, goalId])
-}
-
-model ProgramConsumable {
-  id         String   @id @default(cuid())
-  programId  String
-  productId  String
-  quantity   Int      @default(1)
-  notes      String?  @db.Text
-  createdAt  DateTime @default(now())
-
-  program Program @relation(fields: [programId], references: [id], onDelete: Cascade)
-  product Product @relation("ProgramConsumableProduct", fields: [productId], references: [id], onDelete: Cascade)
-
-  @@unique([programId, productId])
-}
-
-model ProgramSchedule {
-  id           String   @id @default(cuid())
-  programId    String
-  label        String
-  audience     String?
-  timetableJson String  @db.LongText
-  notes        String?  @db.Text
-  isDefault    Boolean  @default(false)
-  isActive     Boolean  @default(true)
-  sortOrder    Int      @default(0)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  program Program @relation(fields: [programId], references: [id], onDelete: Cascade)
 }
 
 model HealthQuestion {
@@ -527,29 +445,6 @@ model GoalClassRule {
   @@unique([goalId, classType, rule])
 }
 
-model ProgramEnrollment {
-  id                 String   @id @default(cuid())
-  userId             String
-  programId          String
-  sourceGoalId       String?
-  status             String   @default("draft") // draft | survey_pending | schedule_pending | confirmation_pending | payment_pending | active | cancelled | completed
-  selectedGoalsJson  String?  @db.LongText
-  questionnaireJson  String?  @db.LongText
-  proposedScheduleJson String? @db.LongText
-  scheduleSentAt     DateTime?
-  confirmedAt        DateTime?
-  startsAt           DateTime?
-  endsAt             DateTime?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
-
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  program    Program  @relation(fields: [programId], references: [id], onDelete: Cascade)
-  sourceGoal ClubGoal? @relation(fields: [sourceGoalId], references: [id], onDelete: SetNull)
-
-  @@index([userId, status])
-  @@index([programId, status])
-}
 
 model DeliveryOption {
   id                 String   @id @default(cuid())
