@@ -743,6 +743,14 @@ type PublicMembership = {
   goalIds: string[];
 };
 
+type PublicHealthQuestion = {
+  id: string;
+  title: string;
+  prompt: string;
+  sortOrder: number;
+  restrictedClassTypes: string[];
+};
+
 type PublicTrainer = {
   id: string;
   name: string;
@@ -779,6 +787,27 @@ type TrainersPageContent = {
 
 const CART_STORAGE_KEY = "fitzone:cart";
 const CLASS_STORAGE_KEY = "fitzone:selected-class";
+
+const CLASS_TYPE_LABELS: Record<string, string> = {
+  fitness: "فيتنس",
+  cardio: "كارديو",
+  zumba: "زومبا",
+  yoga: "يوجا",
+  pilates: "بيلاتس",
+  strength: "قوة",
+  crossfit: "كروس فيت",
+  boxing: "كيك بوكس",
+  kickboxing: "كيك بوكس",
+  selfdefense: "سلف ديفنس",
+  karate: "كاراتيه",
+  kids: "أطفال",
+  dance: "رقص شرقي",
+};
+
+function formatClassType(value: string) {
+  const key = value.trim().toLowerCase();
+  return CLASS_TYPE_LABELS[key] ?? value;
+}
 
 function readCart(): CartItem[] {
   if (typeof window === "undefined") return [];
@@ -1640,6 +1669,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   const [plans, setPlans] = useState<PlanItem[]>(DEFAULT_PLANS);
   const [goals, setGoals] = useState<PublicGoal[]>([]);
+  const [healthQuestions, setHealthQuestions] = useState<PublicHealthQuestion[]>([]);
   const [selectedGoals, setSelectedGoals] = useState<string[]>([]);
   const [subscribing, setSubscribing] = useState<string | null>(null);
   const [subMsg, setSubMsg] = useState<{ text: string; ok: boolean } | null>(null);
@@ -1649,11 +1679,19 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
   const [verifyMsg, setVerifyMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [resendLoading, setResendLoading] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
+  const [surveyPlan, setSurveyPlan] = useState<PlanItem | null>(null);
+  const [surveyAnswers, setSurveyAnswers] = useState<Record<string, boolean | null>>({});
+  const [surveyError, setSurveyError] = useState<string | null>(null);
   useEffect(() => {
     loadPublicApi()
       .then((d) => {
         if (Array.isArray(d.goals)) {
           setGoals((d.goals as PublicGoal[]).sort((a, b) => a.sortOrder - b.sortOrder));
+        }
+        if (Array.isArray(d.healthQuestions)) {
+          setHealthQuestions(
+            (d.healthQuestions as PublicHealthQuestion[]).sort((a, b) => a.sortOrder - b.sortOrder),
+          );
         }
         if (Array.isArray(d.memberships) && d.memberships.length > 0) {
           const subscriptions = (d.memberships as PublicMembership[]).filter((mb) => mb.kind === "subscription");
@@ -1709,6 +1747,43 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
     if (tab === "all") return byGoal;
     return byGoal.filter((plan) => (plan.cycle ?? "custom") === tab);
   }, [plans, selectedGoals, tab]);
+
+  const surveyBlockedTypes = useMemo(() => {
+    const blocked = new Set<string>();
+    healthQuestions.forEach((question) => {
+      if (surveyAnswers[question.id]) {
+        question.restrictedClassTypes.forEach((type) => blocked.add(type));
+      }
+    });
+    return Array.from(blocked);
+  }, [healthQuestions, surveyAnswers]);
+
+  const openSurvey = (plan: PlanItem) => {
+    if (healthQuestions.length === 0) {
+      void handleSubscribe(plan);
+      return;
+    }
+    const initialAnswers: Record<string, boolean | null> = {};
+    healthQuestions.forEach((question) => {
+      initialAnswers[question.id] = surveyAnswers[question.id] ?? null;
+    });
+    setSurveyAnswers(initialAnswers);
+    setSurveyError(null);
+    setSurveyPlan(plan);
+  };
+
+  const handleSurveyContinue = async () => {
+    if (!surveyPlan) return;
+    const unanswered = healthQuestions.some((question) => surveyAnswers[question.id] == null);
+    if (unanswered) {
+      setSurveyError("يرجى الإجابة على جميع الأسئلة قبل المتابعة.");
+      return;
+    }
+    setSurveyError(null);
+    const plan = surveyPlan;
+    setSurveyPlan(null);
+    await handleSubscribe(plan);
+  };
 
   const handleSubscribe = async (plan: PlanItem) => {
     if (!plan.id) { navigate("register"); return; }
@@ -1807,6 +1882,91 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
 
   return (
     <div>
+      {surveyPlan && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 210, display: "flex", alignItems: "center", justifyContent: "center", padding: 16, background: "rgba(233,30,99,.12)", backdropFilter: "blur(6px)" }}>
+          <div style={{ background: "#fff", borderRadius: 20, padding: 28, maxWidth: 680, width: "100%", boxShadow: "0 24px 60px rgba(233,30,99,.2)", border: `1px solid ${C.border}`, maxHeight: "88vh", overflowY: "auto" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+              <h2 style={{ fontWeight: 900, fontSize: 20, color: C.white }}>استبيان الإصابات</h2>
+              <button onClick={() => setSurveyPlan(null)} style={{ border: "none", background: "none", fontSize: 22, cursor: "pointer", color: C.gray }}>×</button>
+            </div>
+            <p style={{ color: C.gray, fontSize: 13, lineHeight: 1.8, marginBottom: 18 }}>
+              أجيبي على الأسئلة التالية لنحدد الكلاسات المناسبة لك قبل الاشتراك.
+            </p>
+
+            <div style={{ display: "grid", gap: 12 }}>
+              {healthQuestions.map((question) => {
+                const answer = surveyAnswers[question.id];
+                return (
+                  <div key={question.id} className="card" style={{ padding: 16 }}>
+                    <div style={{ fontWeight: 800, color: C.white, marginBottom: 6 }}>{question.title}</div>
+                    <div style={{ color: C.gray, fontSize: 13, lineHeight: 1.7 }}>{question.prompt}</div>
+                    <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                      <button
+                        onClick={() => setSurveyAnswers((prev) => ({ ...prev, [question.id]: true }))}
+                        className="btn-outline"
+                        style={{
+                          padding: "6px 14px",
+                          borderRadius: 999,
+                          borderColor: answer === true ? C.red : C.border,
+                          color: answer === true ? C.red : C.gray,
+                          background: answer === true ? "rgba(233,30,99,.08)" : "transparent",
+                          fontSize: 12,
+                        }}
+                      >
+                        نعم
+                      </button>
+                      <button
+                        onClick={() => setSurveyAnswers((prev) => ({ ...prev, [question.id]: false }))}
+                        className="btn-outline"
+                        style={{
+                          padding: "6px 14px",
+                          borderRadius: 999,
+                          borderColor: answer === false ? C.red : C.border,
+                          color: answer === false ? C.red : C.gray,
+                          background: answer === false ? "rgba(233,30,99,.08)" : "transparent",
+                          fontSize: 12,
+                        }}
+                      >
+                        لا
+                      </button>
+                    </div>
+                    {answer === true && question.restrictedClassTypes.length > 0 ? (
+                      <div style={{ marginTop: 10, fontSize: 12, color: C.red }}>
+                        الكلاسات الممنوعة: {question.restrictedClassTypes.map(formatClassType).join("، ")}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+
+            {surveyBlockedTypes.length > 0 ? (
+              <div className="card" style={{ marginTop: 18, padding: 14, background: "rgba(233,30,99,.06)" }}>
+                <div style={{ fontWeight: 800, color: C.white, marginBottom: 6 }}>ملخص الكلاسات الممنوعة</div>
+                <div style={{ color: C.gray, fontSize: 13 }}>
+                  {surveyBlockedTypes.map(formatClassType).join("، ")}
+                </div>
+              </div>
+            ) : null}
+
+            {surveyError ? (
+              <div style={{ marginTop: 12, padding: "10px 14px", borderRadius: 10, background: "#fee2e2", color: "#991b1b", fontWeight: 700, fontSize: 13 }}>
+                {surveyError}
+              </div>
+            ) : null}
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 18 }}>
+              <button onClick={() => setSurveyPlan(null)} className="btn-outline" style={{ padding: "8px 18px" }}>
+                رجوع
+              </button>
+              <button onClick={() => void handleSurveyContinue()} className="btn-primary" style={{ padding: "8px 18px" }}>
+                متابعة للاشتراك
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ─ VERIFY EMAIL MODAL ─ */}
       {verifyModal && (
         <div style={{ position: "fixed", inset: 0, zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 16, background: "rgba(233,30,99,.1)", backdropFilter: "blur(6px)" }}>
@@ -1985,7 +2145,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                     </div>
                   ))}
                   <button
-                    onClick={() => handleSubscribe(p)}
+                    onClick={() => openSurvey(p)}
                     disabled={p.id !== null && subscribing === p.id}
                     className="btn-primary"
                     style={{ width: "100%", justifyContent: "center", marginTop: 20, background: p.popular ? C.red : "transparent", border: `2px solid ${p.color}`, color: p.popular ? "#fff" : p.color, fontFamily: "'Cairo', sans-serif", padding: "10px", borderRadius: 6, fontSize: 13, fontWeight: 700, cursor: (p.id !== null && subscribing === p.id) ? "not-allowed" : "pointer", transition: "all .2s", opacity: (p.id !== null && subscribing === p.id) ? 0.7 : 1 }}
@@ -2019,7 +2179,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
           <button
             className="btn-primary"
             style={{ padding: "10px 32px", opacity: selectedGoals.length === 0 || !primaryPlan ? 0.6 : 1 }}
-            onClick={() => primaryPlan && handleSubscribe(primaryPlan)}
+            onClick={() => primaryPlan && openSurvey(primaryPlan)}
             disabled={selectedGoals.length === 0 || !primaryPlan}
           >
             ابدئي الآن

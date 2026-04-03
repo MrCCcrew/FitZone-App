@@ -124,6 +124,13 @@ type PublicPayload = {
     createdAt: string;
     user: { name: string };
   }>;
+  healthQuestions: Array<{
+    id: string;
+    title: string;
+    prompt: string;
+    sortOrder: number;
+    restrictedClassTypes: string[];
+  }>;
 };
 
 const EMPTY_PAYLOAD: PublicPayload = {
@@ -146,6 +153,7 @@ const EMPTY_PAYLOAD: PublicPayload = {
   products: [],
   categories: [],
   testimonials: [],
+  healthQuestions: [],
 };
 
 const RESPONSE_HEADERS = {
@@ -197,7 +205,7 @@ export async function GET() {
 
     await ensureDefaultProductCategories();
 
-    const [categories, goals, memberships, offers, classes, trainers, siteContent, products, testimonials] =
+    const [categories, goals, memberships, offers, classes, trainers, siteContent, products, testimonials, healthQuestions] =
       await Promise.all([
         db.productCategory.findMany({
           where: { isActive: true },
@@ -258,6 +266,11 @@ export async function GET() {
           include: { user: { select: { name: true } } },
           orderBy: [{ createdAt: "desc" }],
           take: 12,
+        }),
+        db.healthQuestion.findMany({
+          where: { isActive: true },
+          include: { restrictions: true },
+          orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
         }),
       ]);
 
@@ -384,6 +397,13 @@ export async function GET() {
           user: { name },
         };
       }),
+      healthQuestions: healthQuestions.map((question) => ({
+        id: question.id,
+        title: question.title,
+        prompt: question.prompt,
+        sortOrder: question.sortOrder,
+        restrictedClassTypes: question.restrictions.map((item) => item.classType),
+      })),
     };
 
     setPublicApiCache({
