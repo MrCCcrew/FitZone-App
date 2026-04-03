@@ -71,6 +71,7 @@ export interface GymClass {
   duration: number;
   capacity: number;
   enrolled: number;
+  category?: string | null;
   type: string;
   active: boolean;
 }

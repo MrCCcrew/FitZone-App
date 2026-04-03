@@ -137,6 +137,7 @@ model Class {
   name        String
   description String?
   trainerId   String
+  category    String? // القسم الرئيسي
   type        String  // cardio | strength | yoga | boxing | swimming | dance
   duration    Int     // minutes
   intensity   String  // low | medium | high | extreme

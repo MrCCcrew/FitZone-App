@@ -30,6 +30,22 @@ const PRESET_TYPES = [
   { value: "zumba", label: "زومبا" },
 ];
 
+const CATEGORY_OPTIONS = [
+  "التخسيس",
+  "التهدئة والإطالة",
+  "القوة البدنية والرشاقة",
+  "زيادة الوزن وريشيب",
+  "الترفيه والرقص",
+  "إطالة ومرونة وريلاكس",
+  "تأهيل إصابات",
+  "شد وتنسيق الجسم",
+  "ألعاب الدفاع عن النفس",
+  "تأهيل عسكري",
+  "قسم الأطفال",
+  "قسم الفيتنس",
+  "أنواع الزومبا",
+];
+
 const TYPE_COLOR_MAP: Record<string, string> = {
   cardio: "bg-orange-500/15 text-orange-300 border-orange-500/30",
   strength: "bg-red-500/15 text-red-300 border-red-500/30",
@@ -54,8 +70,11 @@ type ClassModalState = {
   duration: number;
   capacity: number;
   enrolled: number;
+  category: string;
   type: string;
   active: boolean;
+  categoryPreset: string;
+  customCategory: string;
   typePreset: string;
   customType: string;
 };
@@ -69,8 +88,11 @@ const EMPTY_MODAL: ClassModalState = {
   duration: 60,
   capacity: 15,
   enrolled: 0,
+  category: "التخسيس",
   type: "strength",
   active: true,
+  categoryPreset: "التخسيس",
+  customCategory: "",
   typePreset: "strength",
   customType: "",
 };
@@ -101,6 +123,9 @@ function createModalState(item?: GymClass) {
   return {
     ...item,
     trainerId: "",
+    category: item.category ?? "",
+    categoryPreset: item.category && CATEGORY_OPTIONS.includes(item.category) ? item.category : "custom",
+    customCategory: item.category && CATEGORY_OPTIONS.includes(item.category) ? "" : item.category ?? "",
     typePreset: preset?.value ?? "custom",
     customType: preset ? "" : item.type,
   };
@@ -227,6 +252,10 @@ export default function Classes() {
   async function saveClass() {
     if (!modal) return;
 
+    const resolvedCategory =
+      modal.categoryPreset === "custom"
+        ? modal.customCategory.trim()
+        : modal.categoryPreset.trim();
     const resolvedType =
       modal.typePreset === "custom"
         ? modal.customType.trim()
@@ -256,6 +285,7 @@ export default function Classes() {
           ...(modal.id ? { id: modal.id } : {}),
           name: modal.name.trim(),
           trainerId: modal.trainerId,
+          category: resolvedCategory,
           type: resolvedType,
           duration: Number(modal.duration) || 60,
           intensity: "medium",
@@ -412,6 +442,9 @@ export default function Classes() {
                         }`}
                       >
                         <div className="text-sm font-black text-white">{item.name}</div>
+                        {item.category ? (
+                          <div className="mt-1 text-[11px] text-white/55">{item.category}</div>
+                        ) : null}
                         <div className="mt-1 text-xs text-white/45">{item.time}</div>
                         <div className={`mt-2 inline-flex rounded-full border px-2 py-1 text-[11px] font-bold ${resolveTypeColor(item.type)}`}>
                           {normalizeTypeLabel(item.type)}
@@ -456,6 +489,9 @@ export default function Classes() {
                       {item.enrolled}/{item.capacity}
                     </td>
                     <td className="px-4 py-4">
+                      {item.category ? (
+                        <div className="mb-1 text-[11px] font-semibold text-white/60">{item.category}</div>
+                      ) : null}
                       <span className={`inline-flex rounded-full border px-2 py-1 text-xs font-bold ${resolveTypeColor(item.type)}`}>
                         {normalizeTypeLabel(item.type)}
                       </span>
@@ -636,6 +672,48 @@ export default function Classes() {
                 }`}
               />
             </button>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <Field label="القسم" hint="اختر القسم الرئيسي للكلاس">
+              <select
+                value={modal.categoryPreset}
+                onChange={(event) => {
+                  const preset = event.target.value;
+                  setModal({
+                    ...modal,
+                    categoryPreset: preset,
+                    category: preset === "custom" ? modal.customCategory : preset,
+                  });
+                }}
+                className={INPUT}
+              >
+                {CATEGORY_OPTIONS.map((cat) => (
+                  <option key={cat} value={cat} className="bg-[#2a0f1f]">
+                    {cat}
+                  </option>
+                ))}
+                <option value="custom" className="bg-[#2a0f1f]">
+                  قسم جديد
+                </option>
+              </select>
+            </Field>
+
+            <Field label="اسم القسم الجديد" hint="مثال: قسم السيدات أو قسم الدفاع عن النفس">
+              <input
+                value={modal.customCategory}
+                onChange={(event) =>
+                  setModal({
+                    ...modal,
+                    customCategory: event.target.value,
+                    category: modal.categoryPreset === "custom" ? event.target.value : modal.category,
+                  })
+                }
+                className={INPUT}
+                placeholder="اكتب اسم القسم إذا اخترت قسم جديد"
+                disabled={modal.categoryPreset !== "custom"}
+              />
+            </Field>
           </div>
 
           <div className="mt-6 flex flex-wrap justify-end gap-3">

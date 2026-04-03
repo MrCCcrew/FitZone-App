@@ -79,6 +79,7 @@ export async function GET() {
       duration: item.duration,
       capacity: item.maxSpots,
       enrolled: Math.max(0, enrolled),
+      category: item.category ?? "",
       type: item.type,
       intensity: item.intensity,
       price: item.price,
@@ -104,6 +105,7 @@ export async function POST(request: Request) {
     const body = (await request.json()) as {
       name?: string;
       trainerId?: string;
+      category?: string;
       type?: string;
       duration?: number;
       intensity?: string;
@@ -117,6 +119,7 @@ export async function POST(request: Request) {
     const name = body.name?.trim();
     const trainerId = body.trainerId?.trim();
     const type = body.type?.trim();
+    const category = body.category?.trim();
 
     if (!name || !trainerId) {
       return NextResponse.json({ error: "اسم الكلاس والمدربة مطلوبان." }, { status: 400 });
@@ -127,6 +130,7 @@ export async function POST(request: Request) {
       data: {
         name,
         trainerId,
+        category: category || null,
         type: type || "strength",
         duration: Number(body.duration ?? 60),
         intensity: body.intensity ?? "medium",
@@ -162,6 +166,7 @@ export async function POST(request: Request) {
       duration: created.duration,
       capacity: created.maxSpots,
       enrolled: 0,
+      category: created.category ?? "",
       type: created.type,
       intensity: created.intensity,
       price: created.price,
@@ -182,6 +187,7 @@ export async function PATCH(request: Request) {
       active?: boolean;
       name?: string;
       trainerId?: string;
+      category?: string;
       type?: string;
       intensity?: string;
       maxSpots?: number;
@@ -199,6 +205,7 @@ export async function PATCH(request: Request) {
     if (body.active !== undefined) data.isActive = Boolean(body.active);
     if (body.name !== undefined) data.name = body.name.trim();
     if (body.trainerId !== undefined) data.trainerId = body.trainerId;
+    if (body.category !== undefined) data.category = body.category?.trim() || null;
     if (body.type !== undefined) data.type = body.type.trim() || "strength";
     if (body.intensity !== undefined) data.intensity = body.intensity;
     if (body.maxSpots !== undefined) data.maxSpots = Number(body.maxSpots);
