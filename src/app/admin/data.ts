@@ -15,10 +15,10 @@ export const MOCK_CUSTOMERS: Customer[] = [
 ];
 
 export const MOCK_PLANS: Plan[] = [
-  { id: "p1", name: "أساسي", price: 299, duration: "monthly", features: ["دخول الصالة 6 أيام", "تمارين القلب", "خزائن آمنة"], active: true, membersCount: 312 },
-  { id: "p2", name: "بلاتيني", price: 499, duration: "monthly", features: ["دخول الصالة 7 أيام", "الحمام السباحة", "كلاسين/أسبوع", "تقييم لياقة"], active: true, membersCount: 198 },
-  { id: "p3", name: "VIP", price: 799, duration: "monthly", features: ["دخول 24/7", "جميع الكلاسات", "مدرب شخصي 4 جلسات", "تغذية شهرية", "مساج"], active: true, membersCount: 87 },
-  { id: "p4", name: "سنوي VIP", price: 7199, duration: "annual", features: ["كل مميزات VIP", "شهران مجاناً", "تيشيرت هدية"], active: true, membersCount: 34 },
+  { id: "p1", name: "أساسي", price: 299, duration: 30, cycle: "monthly", sessionsCount: 8, features: ["دخول الصالة 6 أيام", "تمارين القلب", "خزائن آمنة"], active: true, membersCount: 312 },
+  { id: "p2", name: "بلاتيني", price: 499, duration: 30, cycle: "monthly", sessionsCount: 12, features: ["دخول الصالة 7 أيام", "الحمام السباحة", "كلاسين/أسبوع", "تقييم لياقة"], active: true, membersCount: 198 },
+  { id: "p3", name: "VIP", price: 799, duration: 30, cycle: "monthly", sessionsCount: 12, features: ["دخول 24/7", "جميع الكلاسات", "مدرب شخصي 4 جلسات", "تغذية شهرية", "مساج"], active: true, membersCount: 87 },
+  { id: "p4", name: "سنوي VIP", price: 7199, duration: 365, cycle: "annual", sessionsCount: 144, features: ["كل مميزات VIP", "شهران مجاناً", "تيشيرت هدية"], active: true, membersCount: 34 },
 ];
 
 export const MOCK_OFFERS: Offer[] = [

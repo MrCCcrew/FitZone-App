@@ -10,16 +10,11 @@ const INPUT =
 const EMPTY_PLAN: Omit<Plan, "id" | "membersCount"> = {
   name: "",
   price: 0,
-  duration: "monthly",
+  duration: 30,
+  cycle: "custom",
   features: [],
   active: true,
   kind: "package",
-};
-
-const DURATION_LABELS: Record<Plan["duration"], string> = {
-  monthly: "شهري",
-  quarterly: "ربع سنوي",
-  annual: "سنوي",
 };
 
 function Modal({
@@ -204,7 +199,7 @@ export default function Packages() {
                 <div className="mb-4 flex items-start justify-between gap-3">
                   <div>
                     <div className="font-black text-[#fff4f8]">{plan.name}</div>
-                    <div className="mt-1 text-xs text-[#d7aabd]">{DURATION_LABELS[plan.duration]}</div>
+                    <div className="mt-1 text-xs text-[#d7aabd]">مدة التدريب: {plan.duration} يوم</div>
                   </div>
                   <button
                     onClick={() => void togglePlan(plan.id, plan.active)}
@@ -275,16 +270,14 @@ export default function Packages() {
                 />
               </Field>
 
-              <Field label="المدة">
-                <select
+              <Field label="مدة التدريب (بالأيام)">
+                <input
+                  type="number"
                   value={planModal.duration}
-                  onChange={(event) => setPlanModal({ ...planModal, duration: event.target.value as Plan["duration"] })}
+                  onChange={(event) => setPlanModal({ ...planModal, duration: Number(event.target.value) })}
                   className={INPUT}
-                >
-                  <option value="monthly">شهري</option>
-                  <option value="quarterly">ربع سنوي</option>
-                  <option value="annual">سنوي</option>
-                </select>
+                  dir="ltr"
+                />
               </Field>
             </div>
 

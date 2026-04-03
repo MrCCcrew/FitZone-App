@@ -35,7 +35,9 @@ export interface Plan {
   name: string;
   kind?: "subscription" | "package";
   price: number;
-  duration: "monthly" | "quarterly" | "annual";
+  duration: number;
+  cycle?: "monthly" | "quarterly" | "semi_annual" | "annual" | "custom";
+  sessionsCount?: number | null;
   features: string[];
   active: boolean;
   membersCount: number;

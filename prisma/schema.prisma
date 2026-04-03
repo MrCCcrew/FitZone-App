@@ -86,6 +86,8 @@ model Membership {
   kind        String  @default("subscription") // subscription | package
   price       Float
   duration    Int     // days
+  cycle       String? // monthly | quarterly | semi_annual | annual | custom
+  sessionsCount Int?  // عدد الحصص للاشتراك
   features    String  // JSON array stored as string
   maxClasses  Int     @default(-1) // -1 = unlimited
   walletBonus Float   @default(0)

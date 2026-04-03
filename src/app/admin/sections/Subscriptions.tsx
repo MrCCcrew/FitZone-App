@@ -10,7 +10,9 @@ const INPUT =
 const EMPTY_PLAN: Omit<Plan, "id" | "membersCount"> = {
   name: "",
   price: 0,
-  duration: "monthly",
+  duration: 30,
+  cycle: "monthly",
+  sessionsCount: 8,
   features: [],
   active: true,
   kind: "subscription",
@@ -31,10 +33,12 @@ const EMPTY_OFFER: Omit<Offer, "id" | "usedCount" | "currentSubscribers"> = {
   showOnHome: true,
 };
 
-const DURATION_LABELS: Record<Plan["duration"], string> = {
+const CYCLE_LABELS: Record<NonNullable<Plan["cycle"]>, string> = {
   monthly: "شهري",
   quarterly: "ربع سنوي",
+  semi_annual: "نصف سنوي",
   annual: "سنوي",
+  custom: "مخصص",
 };
 
 function Modal({
@@ -87,6 +91,7 @@ function Field({
 
 export default function Subscriptions() {
   const [plans, setPlans] = useState<Plan[]>([]);
+  const [allPlans, setAllPlans] = useState<Plan[]>([]);
   const [offers, setOffers] = useState<Offer[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -98,14 +103,17 @@ export default function Subscriptions() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [plansResponse, offersResponse] = await Promise.all([
+      const [plansResponse, allPlansResponse, offersResponse] = await Promise.all([
         fetch("/api/admin/memberships?kind=subscription", { cache: "no-store" }),
+        fetch("/api/admin/memberships", { cache: "no-store" }),
         fetch("/api/admin/offers", { cache: "no-store" }),
       ]);
 
       const plansPayload = await plansResponse.json();
+      const allPlansPayload = await allPlansResponse.json();
       const offersPayload = await offersResponse.json();
       setPlans(Array.isArray(plansPayload) ? plansPayload : []);
+      setAllPlans(Array.isArray(allPlansPayload) ? allPlansPayload : []);
       setOffers(Array.isArray(offersPayload) ? offersPayload : []);
     } finally {
       setLoading(false);
@@ -117,8 +125,12 @@ export default function Subscriptions() {
   }, [loadData]);
 
   const planOptions = useMemo(
-    () => plans.map((plan) => ({ id: plan.id, label: `${plan.name} - ${plan.price.toLocaleString("ar-EG")} ج.م` })),
-    [plans],
+    () =>
+      allPlans.map((plan) => ({
+        id: plan.id,
+        label: `${plan.name} - ${plan.price.toLocaleString("ar-EG")} ج.م`,
+      })),
+    [allPlans],
   );
 
   const addFeature = () => {
@@ -317,7 +329,7 @@ export default function Subscriptions() {
                 <div className="mb-4 flex items-start justify-between gap-3">
                   <div>
                     <div className="font-black text-[#fff4f8]">{plan.name}</div>
-                    <div className="mt-1 text-xs text-[#d7aabd]">{DURATION_LABELS[plan.duration]}</div>
+                    <div className="mt-1 text-xs text-[#d7aabd]">{CYCLE_LABELS[plan.cycle ?? "monthly"]}</div>
                   </div>
                   <button
                     onClick={() => void togglePlan(plan.id, plan.active)}
@@ -333,7 +345,13 @@ export default function Subscriptions() {
 
                 <div className="text-2xl font-black text-[#ffd166]">{plan.price.toLocaleString("ar-EG")}</div>
                 <div className="text-xs text-[#d7aabd]">ج.م</div>
-                <div className="mt-3 text-xs text-[#d7aabd]">{plan.membersCount.toLocaleString("ar-EG")} مشتركة نشطة</div>
+                <div className="mt-2 text-xs text-[#d7aabd]">
+                  {plan.sessionsCount ? `عدد الحصص: ${plan.sessionsCount}` : "عدد الحصص غير محدد"}
+                </div>
+                <div className="mt-1 text-xs text-[#d7aabd]">
+                  مدة التدريب: {plan.duration} يوم
+                </div>
+                <div className="mt-1 text-xs text-[#d7aabd]">{plan.membersCount.toLocaleString("ar-EG")} مشتركة نشطة</div>
 
                 <ul className="mt-4 space-y-2">
                   {plan.features.map((feature, index) => (
@@ -454,7 +472,10 @@ export default function Subscriptions() {
                               <span>المشتركات الحالية: {currentSubscribers.toLocaleString("ar-EG")}</span>
                               {offer.maxSubscribers != null ? <span>المتبقي: {remaining?.toLocaleString("ar-EG")}</span> : null}
                               <span>
-                                الاشتراك: {offer.membershipId ? planOptions.find((plan) => plan.id === offer.membershipId)?.label ?? "مرتبط باشتراك" : "غير مرتبط باشتراك"}
+                                الباقة أو الاشتراك:{" "}
+                                {offer.membershipId
+                                  ? planOptions.find((plan) => plan.id === offer.membershipId)?.label ?? "مرتبط بباقة أو اشتراك"
+                                  : "غير مرتبط"}
                               </span>
                             </>
                           ) : (
@@ -522,16 +543,41 @@ export default function Subscriptions() {
                 />
               </Field>
 
-              <Field label="المدة">
+              <Field label="الدورة">
                 <select
-                  value={planModal.duration}
-                  onChange={(event) => setPlanModal({ ...planModal, duration: event.target.value as Plan["duration"] })}
+                  value={planModal.cycle ?? "monthly"}
+                  onChange={(event) => setPlanModal({ ...planModal, cycle: event.target.value as Plan["cycle"] })}
                   className={INPUT}
                 >
                   <option value="monthly">شهري</option>
                   <option value="quarterly">ربع سنوي</option>
+                  <option value="semi_annual">نصف سنوي</option>
                   <option value="annual">سنوي</option>
+                  <option value="custom">مخصص</option>
                 </select>
+              </Field>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="عدد الحصص">
+                <input
+                  type="number"
+                  value={planModal.sessionsCount ?? ""}
+                  onChange={(event) =>
+                    setPlanModal({ ...planModal, sessionsCount: event.target.value ? Number(event.target.value) : null })
+                  }
+                  className={INPUT}
+                  dir="ltr"
+                />
+              </Field>
+              <Field label="مدة التدريب (بالأيام)">
+                <input
+                  type="number"
+                  value={planModal.duration}
+                  onChange={(event) => setPlanModal({ ...planModal, duration: Number(event.target.value) })}
+                  className={INPUT}
+                  dir="ltr"
+                />
               </Field>
             </div>
 

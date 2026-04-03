@@ -7,8 +7,8 @@ async function checkAdmin() {
   return "error" in guard ? guard.error : null;
 }
 
-const daysToLabel = (d: number) => (d <= 31 ? "monthly" : d <= 100 ? "quarterly" : "annual");
-const labelToDays = (l: string) => (l === "monthly" ? 30 : l === "quarterly" ? 90 : 365);
+const cycleFromDays = (d: number) => (d <= 31 ? "monthly" : d <= 100 ? "quarterly" : d <= 200 ? "semi_annual" : "annual");
+const labelToDays = (l: string) => (l === "monthly" ? 30 : l === "quarterly" ? 90 : l === "semi_annual" ? 180 : 365);
 
 export async function GET(req: Request) {
   const err = await checkAdmin();
@@ -32,7 +32,9 @@ export async function GET(req: Request) {
         name: m.name,
         kind: m.kind,
         price: m.price,
-        duration: daysToLabel(m.duration),
+        duration: m.duration,
+        cycle: m.cycle ?? cycleFromDays(m.duration),
+        sessionsCount: m.sessionsCount ?? null,
         features: (() => {
           try {
             return JSON.parse(m.features);
@@ -53,15 +55,25 @@ export async function POST(req: Request) {
   const err = await checkAdmin();
   if (err) return err;
   const body = await req.json();
-  const { name, price, duration, features, kind } = body;
+  const { name, price, duration, durationDays, features, kind, cycle, sessionsCount } = body;
   if (!name || price == null) return NextResponse.json({ error: "بيانات ناقصة" }, { status: 400 });
+
+  const days = typeof durationDays === "number"
+    ? durationDays
+    : typeof duration === "number"
+      ? duration
+      : typeof duration === "string"
+        ? labelToDays(duration)
+        : 30;
 
   const m = await db.membership.create({
     data: {
       name,
       kind: typeof kind === "string" ? kind : "subscription",
       price: Number(price),
-      duration: labelToDays(duration ?? "monthly"),
+      duration: Math.max(1, Number(days)),
+      cycle: typeof cycle === "string" ? cycle : typeof duration === "string" ? duration : null,
+      sessionsCount: sessionsCount == null ? null : Number(sessionsCount),
       features: JSON.stringify(features ?? []),
       isActive: true,
     },
@@ -72,7 +84,9 @@ export async function POST(req: Request) {
     name: m.name,
     kind: m.kind,
     price: m.price,
-    duration: daysToLabel(m.duration),
+    duration: m.duration,
+    cycle: m.cycle ?? cycleFromDays(m.duration),
+    sessionsCount: m.sessionsCount ?? null,
     features: features ?? [],
     active: true,
     membersCount: 0,
@@ -83,14 +97,19 @@ export async function PATCH(req: Request) {
   const err = await checkAdmin();
   if (err) return err;
   const body = await req.json();
-  const { id, name, price, duration, features, active, kind } = body;
+  const { id, name, price, duration, durationDays, features, active, kind, cycle, sessionsCount } = body;
   if (!id) return NextResponse.json({ error: "id مطلوب" }, { status: 400 });
 
   const data: Record<string, unknown> = {};
   if (name !== undefined) data.name = name;
   if (kind !== undefined && typeof kind === "string") data.kind = kind;
   if (price !== undefined) data.price = Number(price);
-  if (duration !== undefined) data.duration = labelToDays(duration);
+  if (durationDays !== undefined) data.duration = Math.max(1, Number(durationDays));
+  if (duration !== undefined && durationDays === undefined) {
+    data.duration = typeof duration === "number" ? Math.max(1, Number(duration)) : labelToDays(String(duration));
+  }
+  if (cycle !== undefined) data.cycle = cycle ? String(cycle) : null;
+  if (sessionsCount !== undefined) data.sessionsCount = sessionsCount == null ? null : Number(sessionsCount);
   if (features !== undefined) data.features = JSON.stringify(features);
   if (active !== undefined) data.isActive = active;
 
@@ -101,7 +120,9 @@ export async function PATCH(req: Request) {
     name: m.name,
     kind: m.kind,
     price: m.price,
-    duration: daysToLabel(m.duration),
+    duration: m.duration,
+    cycle: m.cycle ?? cycleFromDays(m.duration),
+    sessionsCount: m.sessionsCount ?? null,
     features: (() => {
       try {
         return JSON.parse(m.features);
