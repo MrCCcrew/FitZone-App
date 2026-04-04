@@ -104,12 +104,20 @@ const css = `
   .schedule-cell.time span{font-size:12px;color:#c9c9c9;font-weight:700;}
   .schedule-cell.day{background:#151515;color:#fff;font-weight:900;font-size:16px;}
   .schedule-cell.clock{background:#111;color:#fff;font-weight:800;gap:4px;}
+  .schedule-cell.sticky{position:sticky;top:0;z-index:4;background:#111;}
+  .schedule-cell.day-head{background:#141414;color:#fff;font-weight:900;}
+  .schedule-block{margin-top:16px;}
+  .schedule-block-title{color:#fff;font-weight:900;font-size:18px;margin-bottom:10px;}
+  .schedule-slot-box{width:100%;border-radius:12px;padding:6px;border:1px solid rgba(255,255,255,.12);display:flex;flex-direction:column;gap:6px;background:rgba(255,255,255,.02);}
+  .schedule-slot-item{width:100%;border-radius:10px;padding:6px 8px;border:1px solid rgba(255,255,255,.12);background:transparent;color:#f5c542;font-weight:800;font-size:12px;cursor:pointer;}
+  .schedule-slot-item.selected{border-color:rgba(233,30,99,.7);background:rgba(233,30,99,.18);}
+  .schedule-slot-item.disabled{cursor:not-allowed;opacity:.5;color:#ef4444;}
   .schedule-item-title{color:#f5c542;font-weight:900;font-size:13px;line-height:1.2;}
   .schedule-item-sub{color:#f2e7ec;font-size:11px;font-weight:700;}
   .schedule-item-tag{color:#f5c542;font-size:10px;font-weight:800;}
   .schedule-empty{color:#f5c542;font-size:22px;font-weight:900;opacity:.8;}
   .schedule-scroll{overflow-x:auto;padding-bottom:8px;}
-  .schedule-grid .schedule-cell:nth-child(-n+6){border-top:none;}
+  .schedule-grid .schedule-cell.sticky{border-top:none;}
   @media(max-width:900px){
     .schedule-title h2{font-size:28px;}
     .schedule-shell{padding:20px;}
@@ -1872,6 +1880,13 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
     return times.sort((a, b) => parseScheduleTime(a) - parseScheduleTime(b));
   }, [scheduleChoices]);
 
+  const scheduleSplit = useMemo(() => {
+    const cutoff = 15 * 60;
+    const morning = scheduleSlots.filter((slot) => parseScheduleTime(slot) < cutoff);
+    const evening = scheduleSlots.filter((slot) => parseScheduleTime(slot) >= cutoff);
+    return { morning, evening };
+  }, [scheduleSlots]);
+
   const scheduleDays = useMemo(() => {
     const daySet = new Set(scheduleChoices.map((item) => item.day));
     const order = ["السبت", "الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة"];
@@ -2153,73 +2168,143 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
               </div>
             </div>
 
-            {scheduleChoices.length === 0 ? (
-              <div style={{ textAlign: "center", padding: "40px 0", color: "#c9b9c1" }}>
-                لا توجد مواعيد متاحة حاليًا، يمكنك المتابعة وسيتم التنسيق لاحقًا من الإدارة.
-              </div>
-            ) : (
-              <div className="schedule-scroll">
-                <div
-                  className="schedule-grid"
-                  style={{
-                    gridTemplateColumns: `${scheduleSlots.map(() => "minmax(120px, 1fr)").join(" ")} 120px`,
-                  }}
-                >
-                  {scheduleSlots.map((slot) => (
-                    <div key={`head-${slot}`} className="schedule-cell time">
-                      {formatScheduleTimeLabel(slot)}
-                    </div>
-                  ))}
-                  <div className="schedule-cell clock">
-                    <I n="clock" s={20} c="#f5c542" />
-                  </div>
-                  {scheduleDays.map((day) => (
-                    <div key={`row-${day}`} style={{ display: "contents" }}>
-                      {scheduleSlots.map((slot) => {
-                        const cellEntries = scheduleChoices.filter((entry) => entry.day === day && entry.time === slot);
-                        return (
-                          <div key={`${day}-${slot}`} className="schedule-cell">
-                            {cellEntries.length === 0 ? (
-                              <div className="schedule-empty">—</div>
-                            ) : (
-                              cellEntries.map((entry) => {
-                                const selected = scheduleSelections.includes(entry.id);
-                                const disabled = entry.availableSpots <= 0;
-                                return (
-                                  <button
-                                    key={entry.id}
-                                    onClick={() => toggleScheduleSelection(entry.id, disabled)}
-                                    style={{
-                                      width: "100%",
-                                      borderRadius: 10,
-                                      padding: "6px 8px",
-                                      border: selected ? "1px solid rgba(233,30,99,.7)" : "1px solid rgba(255,255,255,.12)",
-                                      background: selected ? "rgba(233,30,99,.18)" : "transparent",
-                                      color: disabled ? "#ef4444" : "#f5c542",
-                                      fontWeight: 800,
-                                      fontSize: 12,
-                                      cursor: disabled ? "not-allowed" : "pointer",
-                                      opacity: disabled ? 0.5 : 1,
-                                    }}
-                                  >
-                                    <div className="schedule-item-title" style={{ color: "#f5c542" }}>{entry.className}</div>
-                                    <div className="schedule-item-sub" style={{ color: "#fff" }}>{entry.trainer}</div>
-                                    <div className="schedule-item-tag" style={{ color: "#f5c542" }}>
-                                      {formatClassType(entry.type)}{entry.subType ? ` - ${entry.subType}` : ""}
-                                    </div>
-                                  </button>
-                                );
-                              })
-                            )}
-                          </div>
-                        );
-                      })}
-                      <div className="schedule-cell day">{day}</div>
-                    </div>
-                  ))}
+              {scheduleChoices.length === 0 ? (
+                <div style={{ textAlign: "center", padding: "40px 0", color: "#c9b9c1" }}>
+                  لا توجد مواعيد متاحة حاليًا، يمكنك المتابعة وسيتم التنسيق لاحقًا من الإدارة.
                 </div>
-              </div>
-            )}
+              ) : (
+                <>
+                  {scheduleSplit.morning.length > 0 && (
+                    <div className="schedule-block">
+                      <div className="schedule-block-title">الجدول الصباحي</div>
+                      <div className="schedule-scroll">
+                        <div
+                          className="schedule-grid"
+                          style={{
+                            gridTemplateColumns: `120px ${scheduleSplit.morning
+                              .map(() => "minmax(130px, 1fr)")
+                              .join(" ")}`,
+                          }}
+                        >
+                          <div className="schedule-cell sticky day-head">اليوم</div>
+                          {scheduleSplit.morning.map((slot) => (
+                            <div key={`morning-head-${slot}`} className="schedule-cell time sticky">
+                              {formatScheduleTimeLabel(slot)}
+                            </div>
+                          ))}
+                          {scheduleDays.map((day) => (
+                            <div key={`morning-row-${day}`} style={{ display: "contents" }}>
+                              <div className="schedule-cell day">{day}</div>
+                              {scheduleSplit.morning.map((slot) => {
+                                const cellEntries = scheduleChoices.filter(
+                                  (entry) => entry.day === day && entry.time === slot
+                                );
+                                return (
+                                  <div key={`${day}-morning-${slot}`} className="schedule-cell">
+                                    {cellEntries.length === 0 ? (
+                                      <div className="schedule-empty">—</div>
+                                    ) : (
+                                      <div className="schedule-slot-box">
+                                        {cellEntries.map((entry) => {
+                                          const selected = scheduleSelections.includes(entry.id);
+                                          const disabled = entry.availableSpots <= 0;
+                                          return (
+                                            <button
+                                              key={entry.id}
+                                              onClick={() => toggleScheduleSelection(entry.id, disabled)}
+                                              className={`schedule-slot-item${selected ? " selected" : ""}${
+                                                disabled ? " disabled" : ""
+                                              }`}
+                                            >
+                                              <div className="schedule-item-title">{entry.className}</div>
+                                              <div className="schedule-item-sub" style={{ color: "#fff" }}>
+                                                {entry.trainer}
+                                              </div>
+                                              <div className="schedule-item-tag">
+                                                {formatClassType(entry.type)}
+                                                {entry.subType ? ` - ${entry.subType}` : ""}
+                                              </div>
+                                            </button>
+                                          );
+                                        })}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {scheduleSplit.evening.length > 0 && (
+                    <div className="schedule-block">
+                      <div className="schedule-block-title">الجدول المسائي</div>
+                      <div className="schedule-scroll">
+                        <div
+                          className="schedule-grid"
+                          style={{
+                            gridTemplateColumns: `120px ${scheduleSplit.evening
+                              .map(() => "minmax(130px, 1fr)")
+                              .join(" ")}`,
+                          }}
+                        >
+                          <div className="schedule-cell sticky day-head">اليوم</div>
+                          {scheduleSplit.evening.map((slot) => (
+                            <div key={`evening-head-${slot}`} className="schedule-cell time sticky">
+                              {formatScheduleTimeLabel(slot)}
+                            </div>
+                          ))}
+                          {scheduleDays.map((day) => (
+                            <div key={`evening-row-${day}`} style={{ display: "contents" }}>
+                              <div className="schedule-cell day">{day}</div>
+                              {scheduleSplit.evening.map((slot) => {
+                                const cellEntries = scheduleChoices.filter(
+                                  (entry) => entry.day === day && entry.time === slot
+                                );
+                                return (
+                                  <div key={`${day}-evening-${slot}`} className="schedule-cell">
+                                    {cellEntries.length === 0 ? (
+                                      <div className="schedule-empty">—</div>
+                                    ) : (
+                                      <div className="schedule-slot-box">
+                                        {cellEntries.map((entry) => {
+                                          const selected = scheduleSelections.includes(entry.id);
+                                          const disabled = entry.availableSpots <= 0;
+                                          return (
+                                            <button
+                                              key={entry.id}
+                                              onClick={() => toggleScheduleSelection(entry.id, disabled)}
+                                              className={`schedule-slot-item${selected ? " selected" : ""}${
+                                                disabled ? " disabled" : ""
+                                              }`}
+                                            >
+                                              <div className="schedule-item-title">{entry.className}</div>
+                                              <div className="schedule-item-sub" style={{ color: "#fff" }}>
+                                                {entry.trainer}
+                                              </div>
+                                              <div className="schedule-item-tag">
+                                                {formatClassType(entry.type)}
+                                                {entry.subType ? ` - ${entry.subType}` : ""}
+                                              </div>
+                                            </button>
+                                          );
+                                        })}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
 
             {scheduleError && (
               <div style={{ marginTop: 12, color: "#ff9aa5", fontSize: 12, fontWeight: 700 }}>
