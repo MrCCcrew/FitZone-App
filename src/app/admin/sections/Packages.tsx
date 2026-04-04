@@ -73,13 +73,13 @@ function Field({
 export default function Packages() {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
-  const [classes, setClasses] = useState<Array<{ id: string; name: string }>>([]);
+  const [classes, setClasses] = useState<Array<{ type: string; label: string }>>([]);
   const [products, setProducts] = useState<Array<{ id: string; name: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [featureInput, setFeatureInput] = useState("");
-  const [classSessionDraft, setClassSessionDraft] = useState<{ classId: string; sessions: number }>({
-    classId: "",
+  const [classSessionDraft, setClassSessionDraft] = useState<{ classType: string; sessions: number }>({
+    classType: "",
     sessions: 1,
   });
   const [productRewardDraft, setProductRewardDraft] = useState<{ productId: string; quantity: number }>({
@@ -108,11 +108,14 @@ export default function Packages() {
           : Array.isArray((classesPayload as { classes?: unknown[] })?.classes)
             ? (classesPayload as { classes: unknown[] }).classes
             : [];
-        setClasses(
-          classesList
-            .filter((item: { id?: string; name?: string; active?: boolean }) => item?.id && item?.name && item?.active !== false)
-            .map((item: { id: string; name: string }) => ({ id: item.id, name: item.name })),
-        );
+        const unique = new Map<string, string>();
+        classesList.forEach((item: { type?: string; subType?: string; active?: boolean }) => {
+          if (item?.active === false) return;
+          const type = (item.type ?? "").trim();
+          if (!type) return;
+          if (!unique.has(type)) unique.set(type, type);
+        });
+        setClasses(Array.from(unique, ([type, label]) => ({ type, label })));
       setProducts(
         Array.isArray(productsPayload)
           ? productsPayload
@@ -141,12 +144,12 @@ export default function Packages() {
   };
 
   const addClassSession = () => {
-    if (!planModal || !classSessionDraft.classId || classSessionDraft.sessions <= 0) return;
+    if (!planModal || !classSessionDraft.classType || classSessionDraft.sessions <= 0) return;
     const existing = planModal.classSessions ?? [];
-    const next = existing.filter((item) => item.classId !== classSessionDraft.classId);
-    next.push({ classId: classSessionDraft.classId, sessions: classSessionDraft.sessions });
+    const next = existing.filter((item) => item.classId !== classSessionDraft.classType);
+    next.push({ classId: classSessionDraft.classType, sessions: classSessionDraft.sessions });
     setPlanModal({ ...planModal, classSessions: next });
-    setClassSessionDraft({ classId: "", sessions: 1 });
+    setClassSessionDraft({ classType: "", sessions: 1 });
   };
 
   const removeClassSession = (classId: string) => {
@@ -435,16 +438,16 @@ export default function Packages() {
               >
                 <div className="flex flex-wrap gap-2">
                   <select
-                    value={classSessionDraft.classId}
+                    value={classSessionDraft.classType}
                     onChange={(event) =>
-                      setClassSessionDraft({ ...classSessionDraft, classId: event.target.value })
+                      setClassSessionDraft({ ...classSessionDraft, classType: event.target.value })
                     }
                     className={INPUT}
                   >
-                    <option value="">اختاري الكلاس</option>
+                    <option value="">اختاري نوع الكلاس</option>
                     {classes.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.name}
+                      <option key={item.type} value={item.type}>
+                        {item.label}
                       </option>
                     ))}
                   </select>
@@ -473,7 +476,7 @@ export default function Packages() {
                       className="flex items-center justify-between rounded-xl border border-[rgba(255,188,219,0.12)] bg-black/15 px-4 py-3 text-sm text-[#fff4f8]"
                     >
                       <div>
-                        {classes.find((item) => item.id === entry.classId)?.name ?? "كلاس"}
+                        {classes.find((item) => item.type === entry.classId)?.label ?? entry.classId ?? "كلاس"}
                         <span className="mr-2 text-xs text-[#d7aabd]">
                           ({entry.sessions} حصة)
                         </span>
