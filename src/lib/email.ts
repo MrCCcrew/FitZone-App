@@ -59,6 +59,7 @@ export async function sendSubscriptionEmail(
   planName: string,
   endDate: Date,
   walletBonus?: number,
+  scheduleRows: { date: Date; time: string; className: string; trainerName: string }[] = [],
 ) {
   try {
     const endStr = endDate.toLocaleDateString("ar-EG", {
@@ -66,6 +67,31 @@ export async function sendSubscriptionEmail(
       month: "long",
       day: "numeric",
     });
+
+    const scheduleHtml = scheduleRows.length
+      ? `
+            <div style="margin-top: 18px;">
+              <div style="font-size: 14px; color: #f8b4d9; font-weight: 800; margin-bottom: 8px;">مواعيدك الأسبوعية</div>
+              <div style="background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 10px; padding: 12px;">
+                ${scheduleRows
+                  .map((row) => {
+                    const dateStr = row.date.toLocaleDateString("ar-EG", {
+                      weekday: "long",
+                      day: "numeric",
+                      month: "long",
+                    });
+                    return `
+                      <div style="display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid #2a2a2a;">
+                        <div style="color: #fff; font-weight: 700; font-size: 13px;">${row.className}</div>
+                        <div style="color: #9ca3af; font-size: 12px;">${dateStr} - ${row.time}</div>
+                      </div>
+                    `;
+                  })
+                  .join("")}
+              </div>
+            </div>
+          `
+      : "";
 
     await getTransporter().sendMail({
       from: FROM,
@@ -97,6 +123,7 @@ export async function sendSubscriptionEmail(
                 <span style="color: #4ade80; font-weight: 700; font-size: 13px;">+${walletBonus} ج.م</span>
               </div>` : ""}
             </div>
+            ${scheduleHtml}
             <p style="font-size: 13px; color: #94a3b8; margin: 0;">
               لأي استفسار: <a href="mailto:info@fitzoneland.com" style="color: #f8b4d9;">info@fitzoneland.com</a>
             </p>

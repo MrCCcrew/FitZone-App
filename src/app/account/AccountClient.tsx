@@ -457,6 +457,9 @@ function BookingsTab({ bookings }: { bookings: AccountData["bookings"] }) {
   };
   return (
     <div className="space-y-4">
+      <div className="bg-pink-500/10 border border-pink-400/20 rounded-2xl p-4 text-xs text-pink-100">
+        لتعديل الموعد: ألغِ الحجز الحالي ثم احجزي موعدًا آخر من صفحة الجدول الأسبوعي عبر القائمة الرئيسية.
+      </div>
       {/* Tabs */}
       <div className="flex gap-2">
         {[["upcoming", `القادمة (${upcoming.length})`], ["past", `السابقة (${past.length})`]].map(([v, l]) => (

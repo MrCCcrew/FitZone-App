@@ -1694,6 +1694,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   const [plans, setPlans] = useState<PlanItem[]>(DEFAULT_PLANS);
   const [goals, setGoals] = useState<PublicGoal[]>([]);
+  const [publicClasses, setPublicClasses] = useState<PublicClass[]>([]);
   const [healthQuestions, setHealthQuestions] = useState<PublicHealthQuestion[]>([]);
   const [selectedGoals, setSelectedGoals] = useState<string[]>([]);
   const [subscribing, setSubscribing] = useState<string | null>(null);
@@ -1707,11 +1708,17 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
   const [surveyPlan, setSurveyPlan] = useState<PlanItem | null>(null);
   const [surveyAnswers, setSurveyAnswers] = useState<Record<string, boolean | null>>({});
   const [surveyError, setSurveyError] = useState<string | null>(null);
+  const [schedulePlan, setSchedulePlan] = useState<PlanItem | null>(null);
+  const [scheduleSelections, setScheduleSelections] = useState<string[]>([]);
+  const [scheduleError, setScheduleError] = useState<string | null>(null);
   useEffect(() => {
     loadPublicApi()
       .then((d) => {
         if (Array.isArray(d.goals)) {
           setGoals((d.goals as PublicGoal[]).sort((a, b) => a.sortOrder - b.sortOrder));
+        }
+        if (Array.isArray(d.classes)) {
+          setPublicClasses(d.classes as PublicClass[]);
         }
         if (Array.isArray(d.healthQuestions)) {
           setHealthQuestions(
@@ -1783,9 +1790,53 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
     return Array.from(blocked);
   }, [healthQuestions, surveyAnswers]);
 
+  const scheduleChoices = useMemo(() => {
+    const blocked = new Set(surveyBlockedTypes.map((t) => t.trim().toLowerCase()));
+    const dayNames = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
+    const rows: {
+      id: string;
+      className: string;
+      trainer: string;
+      day: string;
+      time: string;
+      date: string;
+      type: string;
+      subType: string | null;
+      availableSpots: number;
+    }[] = [];
+    publicClasses.forEach((c) => {
+      const typeKey = c.type?.trim().toLowerCase();
+      if (typeKey && blocked.has(typeKey)) return;
+      (c.schedules || []).forEach((s) => {
+        const date = new Date(s.date);
+        if (Number.isNaN(date.getTime())) return;
+        rows.push({
+          id: s.id,
+          className: c.name,
+          trainer: c.trainer,
+          day: dayNames[date.getDay()] ?? "الأحد",
+          time: s.time,
+          date: s.date,
+          type: c.type,
+          subType: c.subType ?? null,
+          availableSpots: s.availableSpots ?? c.maxSpots,
+        });
+      });
+    });
+    rows.sort((a, b) => {
+      const dateA = new Date(a.date).getTime();
+      const dateB = new Date(b.date).getTime();
+      if (dateA !== dateB) return dateA - dateB;
+      return a.time.localeCompare(b.time);
+    });
+    return rows;
+  }, [publicClasses, surveyBlockedTypes]);
+
   const openSurvey = (plan: PlanItem) => {
     if (healthQuestions.length === 0) {
-      void handleSubscribe(plan);
+      setSchedulePlan(plan);
+      setScheduleSelections([]);
+      setScheduleError(null);
       return;
     }
     const initialAnswers: Record<string, boolean | null> = {};
@@ -1807,10 +1858,12 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
     setSurveyError(null);
     const plan = surveyPlan;
     setSurveyPlan(null);
-    await handleSubscribe(plan);
+    setSchedulePlan(plan);
+    setScheduleSelections([]);
+    setScheduleError(null);
   };
 
-  const handleSubscribe = async (plan: PlanItem) => {
+  const handleSubscribe = async (plan: PlanItem, scheduleIds: string[] = []) => {
     if (!plan.id) { navigate("register"); return; }
     setSubscribing(plan.id);
     setSubMsg(null);
@@ -1820,7 +1873,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
       const res = await fetch("/api/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ membershipId: plan.id }),
+        body: JSON.stringify({ membershipId: plan.id, scheduleIds }),
         signal: controller.signal,
       });
       clearTimeout(timer);
@@ -1986,6 +2039,115 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
               </button>
               <button onClick={() => void handleSurveyContinue()} className="btn-primary" style={{ padding: "8px 18px" }}>
                 متابعة للاشتراك
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {schedulePlan && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 210, display: "flex", alignItems: "center", justifyContent: "center", padding: 16, background: "rgba(15,10,12,.72)", backdropFilter: "blur(6px)" }}>
+          <div style={{ background: "#111", borderRadius: 22, padding: 28, maxWidth: 860, width: "100%", boxShadow: "0 24px 60px rgba(0,0,0,.45)", border: "1px solid rgba(255,255,255,.12)", maxHeight: "90vh", overflowY: "auto" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+              <div>
+                <h2 style={{ fontWeight: 900, fontSize: 20, color: "#fff" }}>اختاري مواعيدك المناسبة</h2>
+                <p style={{ color: "#c9b9c1", fontSize: 13, marginTop: 4 }}>
+                  المواعيد المعروضة تستبعد الكلاسات الممنوعة حسب الاستبيان.
+                </p>
+              </div>
+              <button onClick={() => setSchedulePlan(null)} style={{ border: "none", background: "none", fontSize: 22, cursor: "pointer", color: "#c9b9c1" }}>×</button>
+            </div>
+
+            {surveyBlockedTypes.length > 0 && (
+              <div style={{ background: "rgba(233,30,99,.08)", border: "1px solid rgba(233,30,99,.25)", borderRadius: 10, padding: 12, color: "#ffb7d0", fontSize: 12, marginBottom: 16 }}>
+                الكلاسات المستبعدة: {surveyBlockedTypes.map(formatClassType).join("، ")}
+              </div>
+            )}
+
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 14, flexWrap: "wrap" }}>
+              <div style={{ color: "#f5c542", fontWeight: 800, fontSize: 13 }}>
+                {schedulePlan.sessionsCount ? `يمكنك اختيار ${schedulePlan.sessionsCount} موعد` : "اختاري المواعيد المناسبة لك"}
+              </div>
+              <div style={{ color: "#fff", fontSize: 12 }}>
+                تم اختيار {scheduleSelections.length}
+              </div>
+            </div>
+
+            {scheduleChoices.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "40px 0", color: "#c9b9c1" }}>
+                لا توجد مواعيد متاحة حاليًا، يمكنك المتابعة وسيتم التنسيق لاحقًا من الإدارة.
+              </div>
+            ) : (
+              <div style={{ display: "grid", gap: 10 }}>
+                {scheduleChoices.map((slot) => {
+                  const selected = scheduleSelections.includes(slot.id);
+                  const disabled = slot.availableSpots <= 0;
+                  return (
+                    <button
+                      key={slot.id}
+                      onClick={() => {
+                        if (disabled) return;
+                        setScheduleError(null);
+                        setScheduleSelections((prev) => {
+                          const exists = prev.includes(slot.id);
+                          if (exists) return prev.filter((id) => id !== slot.id);
+                          const limit = schedulePlan.sessionsCount ?? null;
+                          if (limit && prev.length >= limit) {
+                            setScheduleError(`يمكنك اختيار ${limit} موعد كحد أقصى لهذه الباقة.`);
+                            return prev;
+                          }
+                          return [...prev, slot.id];
+                        });
+                      }}
+                      className="card"
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        padding: "14px 16px",
+                        background: selected ? "rgba(233,30,99,.18)" : "rgba(255,255,255,.04)",
+                        border: selected ? "1px solid rgba(233,30,99,.5)" : "1px solid rgba(255,255,255,.12)",
+                        cursor: disabled ? "not-allowed" : "pointer",
+                        opacity: disabled ? 0.5 : 1,
+                      }}
+                    >
+                      <div style={{ textAlign: "right" }}>
+                        <div style={{ color: "#fff", fontWeight: 800, fontSize: 14 }}>
+                          {slot.className}
+                        </div>
+                        <div style={{ color: "#c9b9c1", fontSize: 12, marginTop: 4 }}>
+                          {slot.day} · {slot.time} · {slot.trainer}
+                        </div>
+                        <div style={{ color: "#f5c542", fontSize: 11, marginTop: 4 }}>
+                          {formatClassType(slot.type)}{slot.subType ? ` - ${slot.subType}` : ""}
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
+                        <span style={{ fontSize: 11, color: disabled ? "#ef4444" : "#22c55e", fontWeight: 800 }}>
+                          {disabled ? "ممتلئ" : `${slot.availableSpots} متبقية`}
+                        </span>
+                        <span style={{ fontSize: 12, fontWeight: 800, color: selected ? "#ffb7d0" : "#9ca3af" }}>
+                          {selected ? "تم الاختيار" : "اختيار"}
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {scheduleError && (
+              <div style={{ marginTop: 12, color: "#ff9aa5", fontSize: 12, fontWeight: 700 }}>
+                {scheduleError}
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: 12, alignItems: "center", justifyContent: "flex-end", marginTop: 20 }}>
+              <button onClick={() => setSchedulePlan(null)} className="btn-outline" style={{ padding: "8px 18px" }}>
+                رجوع
+              </button>
+              <button className="btn-primary" onClick={handleScheduleConfirm}>
+                تأكيد الاشتراك
               </button>
             </div>
           </div>
@@ -2606,6 +2768,24 @@ const SchedulePage = () => {
   const parseTime = (value: string) => {
     const [h, m] = value.split(":").map((n) => Number(n));
     return (h || 0) * 60 + (m || 0);
+  };
+
+  const handleScheduleConfirm = async () => {
+    if (!schedulePlan) return;
+    const limit = schedulePlan.sessionsCount ?? null;
+    if (limit && scheduleSelections.length > limit) {
+      setScheduleError(`يمكنك اختيار ${limit} موعد كحد أقصى لهذه الباقة.`);
+      return;
+    }
+    if (scheduleChoices.length > 0 && scheduleSelections.length === 0) {
+      setScheduleError("اختاري مواعيد مناسبة قبل تأكيد الاشتراك.");
+      return;
+    }
+    const plan = schedulePlan;
+    setSchedulePlan(null);
+    setScheduleError(null);
+    setScheduleSelections([]);
+    await handleSubscribe(plan, scheduleSelections);
   };
 
   const formatTimeLabel = (value: string) => {

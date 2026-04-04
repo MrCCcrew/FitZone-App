@@ -11,7 +11,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "يجب تسجيل الدخول أولًا قبل الاشتراك." }, { status: 401 });
   }
 
-  const { membershipId, offerId } = await req.json();
+  const { membershipId, offerId, scheduleIds } = await req.json();
   if (!membershipId && !offerId) {
     return NextResponse.json({ error: "يرجى اختيار الباقة أو العرض أولًا." }, { status: 400 });
   }
@@ -79,6 +79,77 @@ export async function POST(req: Request) {
       },
     });
 
+    const selectedScheduleIds = Array.isArray(scheduleIds)
+      ? scheduleIds.filter((id: unknown) => typeof id === "string" && id.trim() !== "")
+      : [];
+
+    let bookedSchedules: {
+      date: Date;
+      time: string;
+      className: string;
+      trainerName: string;
+    }[] = [];
+
+    if (selectedScheduleIds.length > 0) {
+      if (plan.sessionsCount && selectedScheduleIds.length > plan.sessionsCount) {
+        throw new Error("عدد المواعيد المختارة أكبر من عدد الحصص المتاحة في الباقة.");
+      }
+
+      const schedules = await tx.schedule.findMany({
+        where: { id: { in: selectedScheduleIds } },
+        include: { class: { include: { trainer: true } } },
+      });
+
+      if (schedules.length !== selectedScheduleIds.length) {
+        throw new Error("تعذر العثور على بعض المواعيد المختارة.");
+      }
+
+      schedules.forEach((schedule) => {
+        if (!schedule.isActive || schedule.availableSpots <= 0) {
+          throw new Error("أحد المواعيد المختارة غير متاح حالياً.");
+        }
+      });
+
+      const existing = await tx.booking.findMany({
+        where: { userId, scheduleId: { in: selectedScheduleIds } },
+        select: { scheduleId: true },
+      });
+      const existingIds = new Set(existing.map((item) => item.scheduleId));
+
+      const toCreate = schedules.filter((schedule) => !existingIds.has(schedule.id));
+      if (toCreate.length > 0) {
+        await Promise.all(
+          toCreate.map((schedule) =>
+            tx.booking.create({
+              data: {
+                userId,
+                scheduleId: schedule.id,
+                status: "confirmed",
+                paidAmount: schedule.class.price,
+                paymentMethod: "cash",
+              },
+            }),
+          ),
+        );
+
+        await Promise.all(
+          toCreate.map((schedule) =>
+            tx.schedule.update({
+              where: { id: schedule.id },
+              data: { availableSpots: { decrement: 1 } },
+            }),
+          ),
+        );
+      }
+
+      bookedSchedules = schedules.map((schedule) => ({
+        date: schedule.date,
+        time: schedule.time,
+        className: schedule.class.name,
+        trainerName: schedule.class.trainer.name,
+      }));
+    }
+
     if (offerId) {
       await tx.offer.update({
         where: { id: offerId },
@@ -126,6 +197,7 @@ export async function POST(req: Request) {
       endDate,
       walletBonus,
       offerTitle,
+      bookedSchedules,
     };
   }).catch((error: unknown) => {
     const message = error instanceof Error ? error.message : "تعذر إتمام الاشتراك حاليًا.";
@@ -143,6 +215,7 @@ export async function POST(req: Request) {
       result.offerTitle ?? result.planName,
       result.endDate,
       result.walletBonus,
+      result.bookedSchedules ?? [],
     ).catch((error) => console.error("[SUBSCRIBE_EMAIL]", error));
   }
 
