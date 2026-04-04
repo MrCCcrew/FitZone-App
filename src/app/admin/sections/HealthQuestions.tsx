@@ -35,7 +35,25 @@ const CLASS_TYPE_LABELS: Record<string, string> = {
   kids: "أطفال",
 };
 
-const CLASS_TYPE_ALIASES: Record<string, string> = Object.entries(CLASS_TYPE_LABELS).reduce(
+const CLASS_TYPE_LABELS_AR: Record<string, string> = {
+  cardio: "كارديو",
+  strength: "قوة",
+  yoga: "يوجا",
+  pilates: "بيلاتس",
+  crossfit: "كروس فيت",
+  zumba: "زومبا",
+  fitness: "فيتنس",
+  bodybuilding: "بيلدينج",
+  building: "بيلدينج",
+  boxing: "كيك بوكس",
+  kickboxing: "كيك بوكس",
+  selfdefense: "سلف ديفنس",
+  karate: "كاراتيه",
+  dance: "رقص شرقي",
+  kids: "أطفال",
+};
+
+const CLASS_TYPE_ALIASES: Record<string, string> = Object.entries(CLASS_TYPE_LABELS_AR).reduce(
   (acc, [key, label]) => {
     acc[key] = key;
     acc[label] = key;
@@ -121,10 +139,14 @@ export default function HealthQuestions() {
     try {
       const response = await fetch("/api/admin/classes", { cache: "no-store" });
       const payload = await response.json();
-      if (!Array.isArray(payload)) {
-        setClassTypeOptions([]);
-        return;
-      }
+        if (!Array.isArray(payload)) {
+          const fallback = Object.keys(CLASS_TYPE_LABELS_AR).map((value) => ({
+            value,
+            label: CLASS_TYPE_LABELS_AR[value] ?? value,
+          }));
+          setClassTypeOptions(fallback);
+          return;
+        }
       const unique = new Set<string>();
       payload.forEach((item: { type?: string }) => {
         if (item.type) {
@@ -132,17 +154,26 @@ export default function HealthQuestions() {
           if (key) unique.add(key);
         }
       });
-      setClassTypeOptions(
-        Array.from(unique)
-          .map((value) => ({
+        const options = Array.from(unique).map((value) => ({
+          value,
+          label: CLASS_TYPE_LABELS_AR[value] ?? value,
+        }));
+        if (options.length === 0) {
+          const fallback = Object.keys(CLASS_TYPE_LABELS_AR).map((value) => ({
             value,
-            label: CLASS_TYPE_LABELS[value] ?? value,
-          }))
-          .sort((a, b) => a.label.localeCompare(b.label, "ar")),
-      );
-    } catch {
-      setClassTypeOptions([]);
-    }
+            label: CLASS_TYPE_LABELS_AR[value] ?? value,
+          }));
+          setClassTypeOptions(fallback);
+          return;
+        }
+        setClassTypeOptions(options.sort((a, b) => a.label.localeCompare(b.label, "ar")));
+      } catch {
+        const fallback = Object.keys(CLASS_TYPE_LABELS_AR).map((value) => ({
+          value,
+          label: CLASS_TYPE_LABELS_AR[value] ?? value,
+        }));
+        setClassTypeOptions(fallback);
+      }
   }, []);
 
   useEffect(() => {
@@ -277,7 +308,7 @@ export default function HealthQuestions() {
                     <span>كلاسات ممنوعة:</span>
                     {(question.restrictedClassTypes ?? []).map((item) => (
                       <span key={item} className="rounded-full bg-white/10 px-2 py-1">
-                        {CLASS_TYPE_LABELS[item] ?? item}
+                        {CLASS_TYPE_LABELS_AR[item] ?? item}
                       </span>
                     ))}
                   </>
