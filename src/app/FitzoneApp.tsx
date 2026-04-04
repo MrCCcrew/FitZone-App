@@ -92,6 +92,29 @@ const css = `
   .glow-gold{box-shadow:0 0 30px rgba(200,162,0,.2);}
 
   .noise-overlay::after{content:'';position:absolute;inset:0;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.03'/%3E%3C/svg%3E");pointer-events:none;}
+
+  .schedule-shell{background:linear-gradient(180deg,#1b1417 0%,#0f0b0d 100%);border-radius:26px;padding:28px;border:1px solid rgba(255,255,255,.12);position:relative;overflow:hidden;box-shadow:0 20px 45px rgba(0,0,0,.18);font-family:'Cairo','Tajawal',sans-serif;}
+  .schedule-shell::before{content:'';position:absolute;inset:0;background:radial-gradient(circle at top left,rgba(255,196,65,.12),transparent 45%),radial-gradient(circle at bottom right,rgba(255,196,65,.08),transparent 45%);pointer-events:none;}
+  .schedule-title{display:flex;flex-direction:column;align-items:center;gap:6px;margin-bottom:22px;text-align:center;}
+  .schedule-title h2{font-size:36px;font-weight:900;color:#fff;letter-spacing:.5px;}
+  .schedule-title span{background:#0f0a0c;color:#f5c542;border-radius:999px;padding:6px 18px;font-size:16px;font-weight:800;border:1px solid rgba(255,255,255,.18);}
+  .schedule-grid{display:grid;border:2px solid rgba(255,255,255,.85);border-radius:18px;overflow:hidden;direction:rtl;background:#101010;}
+  .schedule-cell{min-height:86px;border-left:1px solid rgba(255,255,255,.22);border-top:1px solid rgba(255,255,255,.22);padding:8px 10px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:2px;}
+  .schedule-cell.time{background:#111;font-weight:900;font-size:18px;color:#fff;letter-spacing:.5px;}
+  .schedule-cell.time span{font-size:12px;color:#c9c9c9;font-weight:700;}
+  .schedule-cell.day{background:#151515;color:#fff;font-weight:900;font-size:16px;}
+  .schedule-cell.clock{background:#111;color:#fff;font-weight:800;gap:4px;}
+  .schedule-item-title{color:#f5c542;font-weight:900;font-size:13px;line-height:1.2;}
+  .schedule-item-sub{color:#f2e7ec;font-size:11px;font-weight:700;}
+  .schedule-item-tag{color:#f5c542;font-size:10px;font-weight:800;}
+  .schedule-empty{color:#f5c542;font-size:22px;font-weight:900;opacity:.8;}
+  .schedule-scroll{overflow-x:auto;padding-bottom:8px;}
+  .schedule-grid .schedule-cell:nth-child(-n+6){border-top:none;}
+  @media(max-width:900px){
+    .schedule-title h2{font-size:28px;}
+    .schedule-shell{padding:20px;}
+    .schedule-cell{min-height:74px;}
+  }
 `;
 
 let publicApiPromise: Promise<Record<string, unknown>> | null = null;
@@ -2548,68 +2571,145 @@ const ClassDetailPage = ({ navigate }: { navigate: (p: string) => void }) => {
 };
 
 // ─── SCHEDULE PAGE ────────────────────────────────────────────────────────────
-const SchedulePage = ({ navigate }: { navigate: (p: string) => void }) => {
-  const [activeDay, setActiveDay] = useState("الأحد");
-  const days = ["الأحد","الاثنين","الثلاثاء","الأربعاء","الخميس","الجمعة","السبت"];
-  const schedule = {
-    "الأحد": [
-      { time: "07:00", name: "يوجا الصباح", trainer: "هبة", dur: "60د", spots: 5, intensity: "متوسط", color: "#9B59B6" },
-      { time: "09:30", name: "زومبا حارة", trainer: "منال", dur: "45د", spots: 2, intensity: "عالي", color: C.red },
-      { time: "11:00", name: "بيلاتس", trainer: "سحر", dur: "50د", spots: 10, intensity: "خفيف", color: "#0EA5E9" },
-      { time: "17:00", name: "قوة وتحمل", trainer: "هبة", dur: "55د", spots: 0, intensity: "عالي", color: C.gold },
-      { time: "19:00", name: "كارديو", trainer: "منال", dur: "40د", spots: 7, intensity: "عالي جدًا", color: "#F97316" },
-    ],
-    "الاثنين": [
-      { time: "08:00", name: "تأمل وتنفس", trainer: "سحر", dur: "45د", spots: 15, intensity: "خفيف", color: C.success },
-      { time: "10:00", name: "يوجا متقدم", trainer: "هبة", dur: "60د", spots: 4, intensity: "عالي", color: "#9B59B6" },
-      { time: "18:00", name: "زومبا", trainer: "منال", dur: "45د", spots: 0, intensity: "عالي", color: C.red },
-    ],
+const SchedulePage = () => {
+  const [entries, setEntries] = useState<
+    { day: string; time: string; title: string; sub: string; tag: string }[]
+  >([]);
+
+  useEffect(() => {
+    loadPublicApi()
+      .then((data) => {
+        if (!Array.isArray(data.classes)) return;
+        const rows: { day: string; time: string; title: string; sub: string; tag: string }[] = [];
+        const dayNames = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
+        (data.classes as PublicClass[]).forEach((c) => {
+          (c.schedules || []).forEach((s) => {
+            const date = new Date(s.date);
+            if (Number.isNaN(date.getTime())) return;
+            const day = dayNames[date.getDay()] ?? "الأحد";
+            const typeLabel = getClassTypeLabel(c.type);
+            const tag = [typeLabel, c.subType].filter(Boolean).join(" - ");
+            rows.push({
+              day,
+              time: s.time,
+              title: c.name,
+              sub: c.trainer ? c.trainer : "",
+              tag,
+            });
+          });
+        });
+        setEntries(rows);
+      })
+      .catch(() => {});
+  }, []);
+
+  const parseTime = (value: string) => {
+    const [h, m] = value.split(":").map((n) => Number(n));
+    return (h || 0) * 60 + (m || 0);
   };
-  const iColors: Record<string, string> = { "خفيف": C.success, "متوسط": "#EAB308", "عالي": C.red, "عالي جدًا": "#A855F7" };
-  const todaySchedule = schedule[activeDay as keyof typeof schedule] || schedule["الأحد"];
+
+  const formatTimeLabel = (value: string) => {
+    const [h, m] = value.split(":").map((n) => Number(n));
+    const hour = Number.isNaN(h) ? 0 : h;
+    const minute = Number.isNaN(m) ? 0 : m;
+    const period = hour < 12 ? "صباحًا" : hour < 16 ? "ظهرًا" : "مساءً";
+    const displayHour = hour % 12 === 0 ? 12 : hour % 12;
+    return `${String(displayHour).padStart(2, "0")}.${String(minute).padStart(2, "0")} ${period}`;
+  };
+
+  const DAY_ORDER = ["السبت", "الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة"];
+  const MORNING_FALLBACK = ["09:00", "10:00", "11:00", "12:00", "13:00"];
+  const EVENING_FALLBACK = ["16:00", "17:00", "18:00", "19:00", "20:00", "21:00"];
+
+  const splitEntries = useMemo(() => {
+    const morning: typeof entries = [];
+    const evening: typeof entries = [];
+    entries.forEach((entry) => {
+      if (parseTime(entry.time) < 15 * 60) {
+        morning.push(entry);
+      } else {
+        evening.push(entry);
+      }
+    });
+    return { morning, evening };
+  }, [entries]);
+
+  const buildSlots = (list: typeof entries, fallback: string[]) => {
+    const times = Array.from(new Set(list.map((item) => item.time)));
+    const merged = Array.from(new Set([...times, ...fallback]));
+    return merged.sort((a, b) => parseTime(a) - parseTime(b));
+  };
+
+  const morningSlots = useMemo(() => buildSlots(splitEntries.morning, MORNING_FALLBACK), [splitEntries.morning]);
+  const eveningSlots = useMemo(() => buildSlots(splitEntries.evening, EVENING_FALLBACK), [splitEntries.evening]);
+
+  const days = useMemo(() => {
+    const used = new Set(entries.map((entry) => entry.day));
+    return DAY_ORDER.filter((day) => used.has(day) || day !== "الجمعة");
+  }, [entries]);
+
+  const renderBoard = (title: string, subtitle: string, list: typeof entries, slots: string[]) => (
+    <div className="schedule-shell" style={{ marginBottom: 36 }}>
+      <div className="schedule-title">
+        <h2>جدول</h2>
+        <span>{title}</span>
+        <div style={{ color: "#f1f1f1", fontSize: 14 }}>{subtitle}</div>
+      </div>
+      <div className="schedule-scroll">
+        <div
+          className="schedule-grid"
+          style={{
+            gridTemplateColumns: `${slots.map(() => "minmax(120px, 1fr)").join(" ")} 120px`,
+          }}
+        >
+          {slots.map((slot) => (
+            <div key={`head-${slot}`} className="schedule-cell time">
+              {formatTimeLabel(slot)}
+            </div>
+          ))}
+          <div className="schedule-cell clock">
+            <I n="clock" s={20} c="#f5c542" />
+          </div>
+          {days.map((day) => (
+            <div key={`row-${day}`} style={{ display: "contents" }}>
+              {slots.map((slot) => {
+                const cellEntries = list.filter((entry) => entry.day === day && entry.time === slot);
+                return (
+                  <div key={`${day}-${slot}`} className="schedule-cell">
+                    {cellEntries.length === 0 ? (
+                      <div className="schedule-empty">—</div>
+                    ) : (
+                      cellEntries.map((entry, idx) => (
+                        <div key={`${day}-${slot}-${idx}`} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+                          <div className="schedule-item-title">{entry.title}</div>
+                          {entry.sub ? <div className="schedule-item-sub">{entry.sub}</div> : null}
+                          {entry.tag ? <div className="schedule-item-tag">{entry.tag}</div> : null}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                );
+              })}
+              <div className="schedule-cell day">{day}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <div>
       <section style={{ background: `linear-gradient(135deg, #FFE0EC, ${C.bg})`, padding: "48px 0 32px" }}>
         <div className="container">
           <h1 style={{ fontSize: viewportWidth() < 768 ? 30 : 40, fontWeight: 900, color: C.white, marginBottom: 8 }}>الجدول الأسبوعي</h1>
-          <p style={{ color: C.gray, fontSize: 15 }}>اكتشفي مواعيد الكلاسات لأسبوعكِ</p>
+          <p style={{ color: C.gray, fontSize: 15 }}>كل المواعيد تُسجَّل من لوحة الإدارة ويمكن تعديلها في أي وقت.</p>
         </div>
       </section>
       <section className="section">
         <div className="container">
-          <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 8, marginBottom: 28 }}>
-            {days.map(d => <button key={d} className={`tab ${activeDay === d ? "active" : ""}`} onClick={() => setActiveDay(d)} style={{ whiteSpace: "nowrap" }}>{d}</button>)}
-          </div>
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 28 }}>
-            <select className="select" style={{ width: "auto" }}><option>كل الأنواع</option><option>يوجا</option><option>زومبا</option><option>قوة</option></select>
-            <select className="select" style={{ width: "auto" }}><option>كل المدربات</option><option>هبة</option><option>منال</option><option>سحر</option></select>
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {todaySchedule.map(s => (
-              <div key={s.time} className="card" style={{ overflow: "hidden", display: "grid", gridTemplateColumns: "100px 4px 1fr" }}>
-                <div style={{ background: `${s.color}12`, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px 10px" }}>
-                  <span style={{ fontWeight: 900, color: s.color, fontSize: 16 }}>{s.time}</span>
-                </div>
-                <div style={{ background: s.color }} />
-                <div style={{ padding: "18px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
-                  <div>
-                    <div style={{ fontWeight: 800, fontSize: 17, color: C.white, marginBottom: 3 }}>{s.name}</div>
-                    <div style={{ color: C.gray, fontSize: 12 }}>مع {s.trainer} آ· {s.dur}</div>
-                    <div style={{ marginTop: 8, display: "flex", gap: 6 }}>
-                      <span style={{ background: `${iColors[s.intensity]}22`, color: iColors[s.intensity], padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 600 }}>{s.intensity}</span>
-                      <span style={{ background: s.spots === 0 ? "rgba(239,68,68,.12)" : s.spots < 4 ? "rgba(234,179,8,.12)" : "rgba(34,197,94,.12)", color: s.spots === 0 ? "#EF4444" : s.spots < 4 ? "#EAB308" : C.success, padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 600 }}>
-                        {s.spots === 0 ? "ممتلئ" : s.spots < 4 ? `${s.spots} متبقية` : "متاح الآن"}
-                      </span>
-                    </div>
-                  </div>
-                  <button className="btn-primary" style={{ opacity: s.spots === 0 ? .4 : 1, padding: "8px 20px", fontSize: 13 }} disabled={s.spots === 0} onClick={() => navigate("classDetail")}>
-                    {s.spots === 0 ? "ممتلئ" : "عرض التفاصيل"}
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
+          {renderBoard("مواعيد الكلاسات الصباحية", "ابدئي يومك بنشاط وحماس", splitEntries.morning, morningSlots)}
+          {renderBoard("مواعيد الكلاسات المسائية", "اختاري أفضل توقيت بعد اليوم الطويل", splitEntries.evening, eveningSlots)}
         </div>
       </section>
     </div>
@@ -4306,7 +4406,7 @@ export default function App() {
     memberships: <MembershipsPage navigate={navigate} />,
     classes: <ClassesPage navigate={navigate} />,
     classDetail: <ClassDetailPage navigate={navigate} />,
-    schedule: <SchedulePage navigate={navigate} />,
+    schedule: <SchedulePage />,
     offers: <OffersPage navigate={navigate} />,
     shop: <ShopPage navigate={navigate} />,
     productDetail: <ProductDetailPage navigate={navigate} walletBalance={summary?.walletBalance ?? 0} />,

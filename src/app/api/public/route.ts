@@ -207,6 +207,12 @@ export async function GET() {
 
     await ensureDefaultProductCategories();
 
+    const scheduleFrom = new Date();
+    scheduleFrom.setHours(0, 0, 0, 0);
+    const scheduleTo = new Date(scheduleFrom);
+    scheduleTo.setDate(scheduleTo.getDate() + 6);
+    scheduleTo.setHours(23, 59, 59, 999);
+
     const [categories, goals, memberships, offers, classes, trainers, siteContent, products, testimonials, healthQuestions] =
       await Promise.all([
         db.productCategory.findMany({
@@ -231,9 +237,8 @@ export async function GET() {
           include: {
             trainer: true,
             schedules: {
-              where: { isActive: true, date: { gte: new Date() } },
+              where: { isActive: true, date: { gte: scheduleFrom, lte: scheduleTo } },
               orderBy: [{ date: "asc" }, { time: "asc" }],
-              take: 6,
             },
           },
           orderBy: { name: "asc" },
