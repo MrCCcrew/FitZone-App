@@ -1910,6 +1910,25 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
     }
   };
 
+  const handleScheduleConfirm = async () => {
+    if (!schedulePlan) return;
+    const limit = schedulePlan.sessionsCount ?? null;
+    if (limit && scheduleSelections.length > limit) {
+      setScheduleError(`يمكنك اختيار ${limit} موعد كحد أقصى لهذه الباقة.`);
+      return;
+    }
+    if (scheduleChoices.length > 0 && scheduleSelections.length === 0) {
+      setScheduleError("اختاري مواعيد مناسبة قبل تأكيد الاشتراك.");
+      return;
+    }
+    const plan = schedulePlan;
+    const selected = [...scheduleSelections];
+    setSchedulePlan(null);
+    setScheduleError(null);
+    setScheduleSelections([]);
+    await handleSubscribe(plan, selected);
+  };
+
   const handleVerify = async () => {
     if (!verifyCode.trim() || verifyLoading) return;
     setVerifyLoading(true);
@@ -2768,24 +2787,6 @@ const SchedulePage = () => {
   const parseTime = (value: string) => {
     const [h, m] = value.split(":").map((n) => Number(n));
     return (h || 0) * 60 + (m || 0);
-  };
-
-  const handleScheduleConfirm = async () => {
-    if (!schedulePlan) return;
-    const limit = schedulePlan.sessionsCount ?? null;
-    if (limit && scheduleSelections.length > limit) {
-      setScheduleError(`يمكنك اختيار ${limit} موعد كحد أقصى لهذه الباقة.`);
-      return;
-    }
-    if (scheduleChoices.length > 0 && scheduleSelections.length === 0) {
-      setScheduleError("اختاري مواعيد مناسبة قبل تأكيد الاشتراك.");
-      return;
-    }
-    const plan = schedulePlan;
-    setSchedulePlan(null);
-    setScheduleError(null);
-    setScheduleSelections([]);
-    await handleSubscribe(plan, scheduleSelections);
   };
 
   const formatTimeLabel = (value: string) => {
