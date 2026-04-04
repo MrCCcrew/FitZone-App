@@ -117,6 +117,7 @@ type PublicPayload = {
     colors: string[];
     rating: number;
     reviewCount: number;
+    stock: number;
   }>;
   testimonials: Array<{
     id: string;
@@ -392,6 +393,7 @@ export async function GET() {
           colors: parseJsonArray(product.colors),
           rating,
           reviewCount,
+          stock: product.stock,
         };
       }),
       testimonials: testimonials.map((testimonial) => {

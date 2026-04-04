@@ -1598,9 +1598,21 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
           <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 24 }}>
             {products.map(p => (
               <div key={p.id ?? p.name} className="card card-hover" style={{ cursor: "pointer" }} onClick={() => { if (typeof window !== "undefined") { window.sessionStorage.setItem(PRODUCT_STORAGE_KEY, JSON.stringify(p)); } navigate("productDetail"); }}>
+                {(() => {
+                  const outOfStock = typeof p.stock === "number" && p.stock <= 0;
+                  return (
+                    <>
                 <div style={{ height: 200, position: "relative" }}>
                   <ProductVisual product={p} h={200} />
                   {p.badge && <span className="badge" style={{ position: "absolute", top: 12, right: 12 }}>{p.badge}</span>}
+                  {outOfStock && (
+                    <span
+                      className="badge"
+                      style={{ position: "absolute", top: 12, left: 12, background: "#2b0f1b", color: "#ffd166" }}
+                    >
+                      نفذت الكمية
+                    </span>
+                  )}
                 </div>
                 <div style={{ padding: 20 }}>
                   <h3 style={{ fontWeight: 700, marginBottom: 10, fontSize: 15, color: C.white }}>{p.name}</h3>
@@ -1608,14 +1620,23 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                     <span style={{ fontWeight: 900, color: C.red, fontSize: 20 }}>{p.price} ج.م</span>
                     {p.oldPrice && <span style={{ textDecoration: "line-through", color: C.gray, fontSize: 13 }}>{p.oldPrice} ج.م</span>}
                   </div>
-                  <button className="btn-primary" style={{ width: "100%", justifyContent: "center", padding: "10px", fontSize: 13 }} onClick={(e) => {
-                    e.stopPropagation();
-                    addToCart({ productId: p.id ?? p.name, name: p.name, price: p.price, qty: 1, size: p.sizeType === "none" ? null : p.sizes?.[0] ?? null, type: p.type });
-                    navigate("cart");
-                  }}>
-                    <I n="cart" s={14} c="#fff" /> أضيفي للسلة
+                  <button
+                    className="btn-primary"
+                    style={{ width: "100%", justifyContent: "center", padding: "10px", fontSize: 13, opacity: outOfStock ? 0.5 : 1 }}
+                    disabled={outOfStock}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (outOfStock) return;
+                      addToCart({ productId: p.id ?? p.name, name: p.name, price: p.price, qty: 1, size: p.sizeType === "none" ? null : p.sizes?.[0] ?? null, type: p.type });
+                      navigate("cart");
+                    }}
+                  >
+                    <I n="cart" s={14} c="#fff" /> {outOfStock ? "نفذت الكمية" : "أضيفي للسلة"}
                   </button>
                 </div>
+                    </>
+                  );
+                })()}
               </div>
             ))}
           </div>
@@ -3038,6 +3059,7 @@ type StoreProduct = {
   sizes?: string[];
   colors?: string[];
   reviewCount?: number;
+  stock?: number | null;
 };
 
 type StoreCategory = {
@@ -3056,10 +3078,10 @@ type PublicTestimonial = {
 
 const PRODUCT_STORAGE_KEY = "fitzone:selected-product";
 const DEFAULT_PRODUCTS: StoreProduct[] = [
-  { name: "حذاء Luna Sport", price: 850, oldPrice: 1200, type: "product1", cat: "أحذية", categoryKey: "shoes", sizeType: "shoes", badge: "الأكثر مبيعًا", rating: 4.9, sizes: ["37", "38", "39", "40"] },
-  { name: "بروتين وايت لايت 1kg", price: 450, oldPrice: null as number | null, type: "product2", cat: "مكملات", categoryKey: "supplement", sizeType: "none", badge: null as string | null, rating: 4.7 },
-  { name: "طقم معدات يوغا", price: 680, oldPrice: 900, type: "product3", cat: "معدات", categoryKey: "gear", sizeType: "none", badge: "خصم 25%", rating: 4.8 },
-  { name: "تيشيرت رياضي", price: 320, oldPrice: null as number | null, type: "product1", cat: "ملابس", categoryKey: "clothing", sizeType: "clothing", badge: null as string | null, rating: 4.6, sizes: ["S", "M", "L", "XL"] },
+  { name: "حذاء Luna Sport", price: 850, oldPrice: 1200, type: "product1", cat: "أحذية", categoryKey: "shoes", sizeType: "shoes", badge: "الأكثر مبيعًا", rating: 4.9, sizes: ["37", "38", "39", "40"], stock: 12 },
+  { name: "بروتين وايت لايت 1kg", price: 450, oldPrice: null as number | null, type: "product2", cat: "مكملات", categoryKey: "supplement", sizeType: "none", badge: null as string | null, rating: 4.7, stock: 6 },
+  { name: "طقم معدات يوغا", price: 680, oldPrice: 900, type: "product3", cat: "معدات", categoryKey: "gear", sizeType: "none", badge: "خصم 25%", rating: 4.8, stock: 4 },
+  { name: "تيشيرت رياضي", price: 320, oldPrice: null as number | null, type: "product1", cat: "ملابس", categoryKey: "clothing", sizeType: "clothing", badge: null as string | null, rating: 4.6, sizes: ["S", "M", "L", "XL"], stock: 10 },
 ];
 const DEFAULT_STORE_CATEGORIES: StoreCategory[] = [
   { key: "shoes", label: "أحذية", sizeType: "shoes" },
@@ -3083,6 +3105,7 @@ const mapApiProductToStoreProduct = (
     colors?: string[];
     rating?: number;
     reviewCount?: number;
+    stock?: number;
   },
   i: number,
 ): StoreProduct => ({
@@ -3101,6 +3124,7 @@ const mapApiProductToStoreProduct = (
   badge: p.oldPrice ? `خصم ${Math.round((1 - p.price / p.oldPrice) * 100)}%` : null,
   rating: typeof p.rating === "number" && p.rating > 0 ? p.rating : 4.7,
   reviewCount: typeof p.reviewCount === "number" ? p.reviewCount : 0,
+  stock: typeof p.stock === "number" ? p.stock : null,
 });
 const ProductVisual = ({ product, h = 200 }: { product: StoreProduct; h?: number }) => {
   const firstImage = product.images?.[0];
@@ -3213,9 +3237,21 @@ const ShopPage = ({ navigate }: { navigate: (p: string) => void }) => {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 24 }}>
             {filtered.map(p => (
               <div key={p.id ?? p.name} className="card card-hover" style={{ cursor: "pointer" }} onClick={() => { if (typeof window !== "undefined") { window.sessionStorage.setItem(PRODUCT_STORAGE_KEY, JSON.stringify(p)); } navigate("productDetail"); }}>
+                {(() => {
+                  const outOfStock = typeof p.stock === "number" && p.stock <= 0;
+                  return (
+                    <>
                 <div style={{ height: 200, position: "relative" }}>
                   <ProductVisual product={p} h={200} />
                   {p.badge && <span className="badge" style={{ position: "absolute", top: 12, right: 12 }}>{p.badge}</span>}
+                  {outOfStock && (
+                    <span
+                      className="badge"
+                      style={{ position: "absolute", top: 12, left: 12, background: "#2b0f1b", color: "#ffd166" }}
+                    >
+                      نفذت الكمية
+                    </span>
+                  )}
                 </div>
                 <div style={{ padding: 18 }}>
                   <h3 style={{ fontWeight: 700, fontSize: 14, marginBottom: 10, color: C.white }}>{p.name}</h3>
@@ -3225,14 +3261,23 @@ const ShopPage = ({ navigate }: { navigate: (p: string) => void }) => {
                     {p.oldPrice && <span style={{ textDecoration: "line-through", color: C.grayDark, fontSize: 12 }}>{p.oldPrice} ج.م</span>}
                   </div>
                   {p.sizeType !== "none" && p.sizes && p.sizes.length > 0 && <div style={{ color: C.gray, fontSize: 11, marginBottom: 12 }}>المقاسات: {p.sizes.slice(0, 4).join(" - ")}</div>}
-                  <button className="btn-primary" style={{ width: "100%", justifyContent: "center", padding: "8px", fontSize: 12 }} onClick={e => {
-                    e.stopPropagation();
-                    addToCart({ productId: p.id ?? p.name, name: p.name, price: p.price, qty: 1, size: p.sizeType === "none" ? null : p.sizes?.[0] ?? null, type: p.type });
-                    navigate("cart");
-                  }}>
-                    <I n="cart" s={13} c="#fff" /> أضيفي للسلة
+                  <button
+                    className="btn-primary"
+                    style={{ width: "100%", justifyContent: "center", padding: "8px", fontSize: 12, opacity: outOfStock ? 0.5 : 1 }}
+                    disabled={outOfStock}
+                    onClick={e => {
+                      e.stopPropagation();
+                      if (outOfStock) return;
+                      addToCart({ productId: p.id ?? p.name, name: p.name, price: p.price, qty: 1, size: p.sizeType === "none" ? null : p.sizes?.[0] ?? null, type: p.type });
+                      navigate("cart");
+                    }}
+                  >
+                    <I n="cart" s={13} c="#fff" /> {outOfStock ? "نفذت الكمية" : "أضيفي للسلة"}
                   </button>
                 </div>
+                    </>
+                  );
+                })()}
               </div>
             ))}
           </div>
@@ -3242,14 +3287,22 @@ const ShopPage = ({ navigate }: { navigate: (p: string) => void }) => {
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 20 }}>
                 {recommended.map((p) => (
                   <div key={`recommended-${p.id ?? p.name}`} className="card card-hover" style={{ cursor: "pointer" }} onClick={() => { if (typeof window !== "undefined") { window.sessionStorage.setItem(PRODUCT_STORAGE_KEY, JSON.stringify(p)); } navigate("productDetail"); }}>
+                    {(() => {
+                      const outOfStock = typeof p.stock === "number" && p.stock <= 0;
+                      return (
+                        <>
                     <div style={{ height: 170 }}><ProductVisual product={p} h={170} /></div>
                     <div style={{ padding: 16 }}>
                       <h3 style={{ fontWeight: 700, fontSize: 14, marginBottom: 10, color: C.white }}>{p.name}</h3>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         <span style={{ fontWeight: 900, color: C.red, fontSize: 18 }}>{p.price} ج.م</span>
                         {p.oldPrice && <span style={{ textDecoration: "line-through", color: C.grayDark, fontSize: 12 }}>{p.oldPrice} ج.م</span>}
+                        {outOfStock && <span style={{ color: "#ffd166", fontSize: 11, fontWeight: 800 }}>نفذت الكمية</span>}
                       </div>
                     </div>
+                        </>
+                      );
+                    })()}
                   </div>
                 ))}
               </div>
@@ -3278,6 +3331,7 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
   const [zoomOrigin, setZoomOrigin] = useState("50% 50%");
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
   const [selectedColor, setSelectedColor] = useState(C.red);
+  const outOfStock = typeof product.stock === "number" && product.stock <= 0;
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewContent, setReviewContent] = useState("");
   const [reviewMessage, setReviewMessage] = useState<{ text: string; ok: boolean } | null>(null);
@@ -3487,6 +3541,7 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
               <span style={{ color: C.gray }}>ج.م</span>
               {product.oldPrice && <span style={{ textDecoration: "line-through", color: C.grayDark, fontSize: 16 }}>{product.oldPrice} ج.م</span>}
               {product.badge && <span className="badge">{product.badge}</span>}
+              {outOfStock && <span className="badge" style={{ background: "#2b0f1b", color: "#ffd166" }}>نفذت الكمية</span>}
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 24, flexWrap: "wrap" }}>
               <div style={{ color: C.gold, fontWeight: 800 }}>
@@ -3527,15 +3582,21 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
 
             <div style={{ display: "flex", gap: 12, marginBottom: 24, alignItems: "center" }}>
               <div style={{ display: "flex", alignItems: "center", border: `1px solid ${C.border}`, borderRadius: 8, overflow: "hidden" }}>
-                <button onClick={() => setQty((value) => Math.max(1, value - 1))} style={{ padding: "10px 14px", border: "none", background: C.bgCard, cursor: "pointer" }}>-</button>
+                <button disabled={outOfStock} onClick={() => setQty((value) => Math.max(1, value - 1))} style={{ padding: "10px 14px", border: "none", background: C.bgCard, cursor: outOfStock ? "not-allowed" : "pointer", opacity: outOfStock ? 0.5 : 1 }}>-</button>
                 <div style={{ padding: "10px 16px", minWidth: 46, textAlign: "center" }}>{qty}</div>
-                <button onClick={() => setQty((value) => value + 1)} style={{ padding: "10px 14px", border: "none", background: C.bgCard, cursor: "pointer" }}>+</button>
+                <button disabled={outOfStock} onClick={() => setQty((value) => value + 1)} style={{ padding: "10px 14px", border: "none", background: C.bgCard, cursor: outOfStock ? "not-allowed" : "pointer", opacity: outOfStock ? 0.5 : 1 }}>+</button>
               </div>
-              <button className="btn-primary" style={{ flex: 1, justifyContent: "center" }} onClick={() => {
-                addToCart({ productId: product.id ?? product.name, name: product.name, price: product.price, qty, size: product.sizeType === "none" ? null : selectedSize, type: product.type });
-                navigate("cart");
-              }}>
-                <I n="cart" s={16} c="#fff" /> أضيفي للسلة
+              <button
+                className="btn-primary"
+                style={{ flex: 1, justifyContent: "center", opacity: outOfStock ? 0.5 : 1 }}
+                disabled={outOfStock}
+                onClick={() => {
+                  if (outOfStock) return;
+                  addToCart({ productId: product.id ?? product.name, name: product.name, price: product.price, qty, size: product.sizeType === "none" ? null : selectedSize, type: product.type });
+                  navigate("cart");
+                }}
+              >
+                <I n="cart" s={16} c="#fff" /> {outOfStock ? "نفذت الكمية" : "أضيفي للسلة"}
               </button>
             </div>
 
