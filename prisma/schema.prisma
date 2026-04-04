@@ -85,10 +85,14 @@ model Membership {
   name        String
   kind        String  @default("subscription") // subscription | package
   price       Float
+  priceBefore Float?
+  priceAfter  Float?
   duration    Int     // days
   cycle       String? // monthly | quarterly | semi_annual | annual | custom
   sessionsCount Int?  // عدد الحصص للاشتراك
   features    String  // JSON array stored as string
+  classSessions String? @db.LongText // JSON: class-specific sessions
+  productRewards String? @db.LongText // JSON: product benefits for packages
   maxClasses  Int     @default(-1) // -1 = unlimited
   walletBonus Float   @default(0)
   gift        String?

@@ -35,9 +35,13 @@ export interface Plan {
   name: string;
   kind?: "subscription" | "package";
   price: number;
+  priceBefore?: number | null;
+  priceAfter?: number | null;
   duration: number;
   cycle?: "monthly" | "quarterly" | "semi_annual" | "annual" | "custom";
   sessionsCount?: number | null;
+  classSessions?: Array<{ classId: string; className?: string; sessions: number }>;
+  productRewards?: Array<{ productId: string; productName?: string; quantity: number }>;
   features: string[];
   active: boolean;
   membersCount: number;

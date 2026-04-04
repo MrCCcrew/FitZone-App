@@ -10,12 +10,16 @@ const INPUT =
 const EMPTY_PLAN: Omit<Plan, "id" | "membersCount"> = {
   name: "",
   price: 0,
+  priceBefore: null,
+  priceAfter: null,
   duration: 30,
   cycle: "custom",
   features: [],
   active: true,
   kind: "package",
   goalIds: [],
+  classSessions: [],
+  productRewards: [],
 };
 
 function Modal({
@@ -69,22 +73,50 @@ function Field({
 export default function Packages() {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
+  const [classes, setClasses] = useState<Array<{ id: string; name: string }>>([]);
+  const [products, setProducts] = useState<Array<{ id: string; name: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [featureInput, setFeatureInput] = useState("");
+  const [classSessionDraft, setClassSessionDraft] = useState<{ classId: string; sessions: number }>({
+    classId: "",
+    sessions: 1,
+  });
+  const [productRewardDraft, setProductRewardDraft] = useState<{ productId: string; quantity: number }>({
+    productId: "",
+    quantity: 1,
+  });
   const [planModal, setPlanModal] = useState<Plan | typeof EMPTY_PLAN | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [plansResponse, goalsResponse] = await Promise.all([
+      const [plansResponse, goalsResponse, classesResponse, productsResponse] = await Promise.all([
         fetch("/api/admin/memberships?kind=package", { cache: "no-store" }),
         fetch("/api/admin/goals", { cache: "no-store" }),
+        fetch("/api/admin/classes", { cache: "no-store" }),
+        fetch("/api/admin/products", { cache: "no-store" }),
       ]);
       const payload = await plansResponse.json();
       const goalsPayload = await goalsResponse.json();
+      const classesPayload = await classesResponse.json().catch(() => []);
+      const productsPayload = await productsResponse.json().catch(() => []);
       setPlans(Array.isArray(payload) ? payload : []);
       setGoals(Array.isArray(goalsPayload) ? goalsPayload.filter((goal) => goal.active) : []);
+      setClasses(
+        Array.isArray(classesPayload)
+          ? classesPayload
+              .filter((item: { id?: string; name?: string; active?: boolean }) => item?.id && item?.name && item?.active !== false)
+              .map((item: { id: string; name: string }) => ({ id: item.id, name: item.name }))
+          : [],
+      );
+      setProducts(
+        Array.isArray(productsPayload)
+          ? productsPayload
+              .filter((item: { id?: string; name?: string; active?: boolean }) => item?.id && item?.name && item?.active !== false)
+              .map((item: { id: string; name: string }) => ({ id: item.id, name: item.name }))
+          : [],
+      );
     } finally {
       setLoading(false);
     }
@@ -103,6 +135,40 @@ export default function Packages() {
       features: [...(planModal.features ?? []), featureInput.trim()],
     });
     setFeatureInput("");
+  };
+
+  const addClassSession = () => {
+    if (!planModal || !classSessionDraft.classId || classSessionDraft.sessions <= 0) return;
+    const existing = planModal.classSessions ?? [];
+    const next = existing.filter((item) => item.classId !== classSessionDraft.classId);
+    next.push({ classId: classSessionDraft.classId, sessions: classSessionDraft.sessions });
+    setPlanModal({ ...planModal, classSessions: next });
+    setClassSessionDraft({ classId: "", sessions: 1 });
+  };
+
+  const removeClassSession = (classId: string) => {
+    if (!planModal) return;
+    setPlanModal({
+      ...planModal,
+      classSessions: (planModal.classSessions ?? []).filter((item) => item.classId !== classId),
+    });
+  };
+
+  const addProductReward = () => {
+    if (!planModal || !productRewardDraft.productId || productRewardDraft.quantity <= 0) return;
+    const existing = planModal.productRewards ?? [];
+    const next = existing.filter((item) => item.productId !== productRewardDraft.productId);
+    next.push({ productId: productRewardDraft.productId, quantity: productRewardDraft.quantity });
+    setPlanModal({ ...planModal, productRewards: next });
+    setProductRewardDraft({ productId: "", quantity: 1 });
+  };
+
+  const removeProductReward = (productId: string) => {
+    if (!planModal) return;
+    setPlanModal({
+      ...planModal,
+      productRewards: (planModal.productRewards ?? []).filter((item) => item.productId !== productId),
+    });
   };
 
   const toggleGoalForPlan = (goalId: string) => {
@@ -231,8 +297,15 @@ export default function Packages() {
                   </button>
                 </div>
 
-                <div className="text-2xl font-black text-[#ffd166]">{plan.price.toLocaleString("ar-EG")}</div>
-                <div className="text-xs text-[#d7aabd]">ج.م</div>
+                  {plan.priceBefore ? (
+                    <div className="text-xs text-[#d7aabd] line-through">
+                      {plan.priceBefore.toLocaleString("ar-EG")} ج.م
+                    </div>
+                  ) : null}
+                  <div className="text-2xl font-black text-[#ffd166]">
+                    {(plan.priceAfter ?? plan.price).toLocaleString("ar-EG")}
+                  </div>
+                  <div className="text-xs text-[#d7aabd]">ج.م</div>
                 <div className="mt-3 text-xs text-[#d7aabd]">{plan.membersCount.toLocaleString("ar-EG")} مشتركة نشطة</div>
                 {plan.goalIds?.length ? (
                   <div className="mt-2 text-xs text-[#d7aabd]">
@@ -276,18 +349,62 @@ export default function Packages() {
               <input value={planModal.name} onChange={(event) => setPlanModal({ ...planModal, name: event.target.value })} className={INPUT} />
             </Field>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="السعر">
-                <input type="number" value={planModal.price} onChange={(event) => setPlanModal({ ...planModal, price: Number(event.target.value) })} className={INPUT} dir="ltr" />
-              </Field>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="السعر بعد الخصم">
+                  <input
+                    type="number"
+                    value={planModal.price}
+                    onChange={(event) => setPlanModal({ ...planModal, price: Number(event.target.value) })}
+                    className={INPUT}
+                    dir="ltr"
+                  />
+                </Field>
 
-              <Field label="مدة التدريب (بالأيام)">
-                <input type="number" value={planModal.duration} onChange={(event) => setPlanModal({ ...planModal, duration: Number(event.target.value) })} className={INPUT} dir="ltr" />
-              </Field>
-            </div>
+                <Field label="مدة التدريب (بالأيام)">
+                  <input
+                    type="number"
+                    value={planModal.duration}
+                    onChange={(event) => setPlanModal({ ...planModal, duration: Number(event.target.value) })}
+                    className={INPUT}
+                    dir="ltr"
+                  />
+                </Field>
+              </div>
 
-            <Field label="الأهداف المرتبطة" hint="اختاري الأهداف التي يظهر معها هذه الباقة في رحلة الاختيار.">
-              <div className="grid gap-2 sm:grid-cols-2">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="السعر قبل الخصم">
+                  <input
+                    type="number"
+                    value={planModal.priceBefore ?? ""}
+                    onChange={(event) =>
+                      setPlanModal({
+                        ...planModal,
+                        priceBefore: event.target.value === "" ? null : Number(event.target.value),
+                      })
+                    }
+                    className={INPUT}
+                    dir="ltr"
+                  />
+                </Field>
+
+                <Field label="السعر النهائي (اختياري)">
+                  <input
+                    type="number"
+                    value={planModal.priceAfter ?? ""}
+                    onChange={(event) =>
+                      setPlanModal({
+                        ...planModal,
+                        priceAfter: event.target.value === "" ? null : Number(event.target.value),
+                      })
+                    }
+                    className={INPUT}
+                    dir="ltr"
+                  />
+                </Field>
+              </div>
+
+              <Field label="الأهداف المرتبطة" hint="اختاري الأهداف التي يظهر معها هذه الباقة في رحلة الاختيار.">
+                <div className="grid gap-2 sm:grid-cols-2">
                 {goals.map((goal) => {
                   const active = planModal.goalIds?.includes(goal.id);
                   return (
@@ -306,8 +423,128 @@ export default function Packages() {
                     </button>
                   );
                 })}
-              </div>
-            </Field>
+                </div>
+              </Field>
+
+              <Field
+                label="تخصيص حصص لكلاسات محددة"
+                hint="اختاري الكلاس وحددي عدد الحصص المسموح بها ضمن هذه الباقة."
+              >
+                <div className="flex flex-wrap gap-2">
+                  <select
+                    value={classSessionDraft.classId}
+                    onChange={(event) =>
+                      setClassSessionDraft({ ...classSessionDraft, classId: event.target.value })
+                    }
+                    className={INPUT}
+                  >
+                    <option value="">اختاري الكلاس</option>
+                    {classes.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.name}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="number"
+                    min={1}
+                    value={classSessionDraft.sessions}
+                    onChange={(event) =>
+                      setClassSessionDraft({ ...classSessionDraft, sessions: Number(event.target.value) })
+                    }
+                    className={`${INPUT} w-32`}
+                    dir="ltr"
+                  />
+                  <button
+                    type="button"
+                    onClick={addClassSession}
+                    className="rounded-lg bg-[#ff4f93] px-4 text-sm font-black text-white transition-colors hover:bg-[#ff2f7d]"
+                  >
+                    إضافة
+                  </button>
+                </div>
+                <div className="mt-3 space-y-2">
+                  {(planModal.classSessions ?? []).map((entry) => (
+                    <div
+                      key={entry.classId}
+                      className="flex items-center justify-between rounded-xl border border-[rgba(255,188,219,0.12)] bg-black/15 px-4 py-3 text-sm text-[#fff4f8]"
+                    >
+                      <div>
+                        {classes.find((item) => item.id === entry.classId)?.name ?? "كلاس"}
+                        <span className="mr-2 text-xs text-[#d7aabd]">
+                          ({entry.sessions} حصة)
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeClassSession(entry.classId)}
+                        className="text-[#d7aabd] transition-colors hover:text-rose-300"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </Field>
+
+              <Field
+                label="منتجات مميزة داخل الباقة"
+                hint="اختاري منتج من المتجر وحددي الكمية التي تُخصم من المخزون بعد شراء الباقة."
+              >
+                <div className="flex flex-wrap gap-2">
+                  <select
+                    value={productRewardDraft.productId}
+                    onChange={(event) =>
+                      setProductRewardDraft({ ...productRewardDraft, productId: event.target.value })
+                    }
+                    className={INPUT}
+                  >
+                    <option value="">اختاري المنتج</option>
+                    {products.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.name}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="number"
+                    min={1}
+                    value={productRewardDraft.quantity}
+                    onChange={(event) =>
+                      setProductRewardDraft({ ...productRewardDraft, quantity: Number(event.target.value) })
+                    }
+                    className={`${INPUT} w-32`}
+                    dir="ltr"
+                  />
+                  <button
+                    type="button"
+                    onClick={addProductReward}
+                    className="rounded-lg bg-[#ff4f93] px-4 text-sm font-black text-white transition-colors hover:bg-[#ff2f7d]"
+                  >
+                    إضافة
+                  </button>
+                </div>
+                <div className="mt-3 space-y-2">
+                  {(planModal.productRewards ?? []).map((entry) => (
+                    <div
+                      key={entry.productId}
+                      className="flex items-center justify-between rounded-xl border border-[rgba(255,188,219,0.12)] bg-black/15 px-4 py-3 text-sm text-[#fff4f8]"
+                    >
+                      <div>
+                        {products.find((item) => item.id === entry.productId)?.name ?? "منتج"}
+                        <span className="mr-2 text-xs text-[#d7aabd]">({entry.quantity} قطعة)</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeProductReward(entry.productId)}
+                        className="text-[#d7aabd] transition-colors hover:text-rose-300"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </Field>
 
             <Field label="مميزات الباقة" hint="أضف كل ميزة ثم اضغط زر الإضافة لتظهر ضمن قائمة الباقة.">
               <div className="mb-3 flex gap-2">

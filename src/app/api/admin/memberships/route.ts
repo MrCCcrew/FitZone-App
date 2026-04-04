@@ -35,9 +35,25 @@ export async function GET(req: Request) {
         name: m.name,
         kind: m.kind,
         price: m.price,
+        priceBefore: m.priceBefore ?? null,
+        priceAfter: m.priceAfter ?? null,
         duration: m.duration,
         cycle: m.cycle ?? cycleFromDays(m.duration),
         sessionsCount: m.sessionsCount ?? null,
+        classSessions: (() => {
+          try {
+            return m.classSessions ? JSON.parse(m.classSessions) : [];
+          } catch {
+            return [];
+          }
+        })(),
+        productRewards: (() => {
+          try {
+            return m.productRewards ? JSON.parse(m.productRewards) : [];
+          } catch {
+            return [];
+          }
+        })(),
         features: (() => {
           try {
             return JSON.parse(m.features);
@@ -59,7 +75,21 @@ export async function POST(req: Request) {
   const err = await checkAdmin();
   if (err) return err;
   const body = await req.json();
-  const { name, price, duration, durationDays, features, kind, cycle, sessionsCount, goalIds } = body;
+  const {
+    name,
+    price,
+    priceBefore,
+    priceAfter,
+    duration,
+    durationDays,
+    features,
+    kind,
+    cycle,
+    sessionsCount,
+    classSessions,
+    productRewards,
+    goalIds,
+  } = body;
   if (!name || price == null) return NextResponse.json({ error: "بيانات ناقصة" }, { status: 400 });
 
   const days =
@@ -78,9 +108,13 @@ export async function POST(req: Request) {
       name,
       kind: typeof kind === "string" ? kind : "subscription",
       price: Number(price),
+      priceBefore: priceBefore == null || priceBefore === "" ? null : Number(priceBefore),
+      priceAfter: priceAfter == null || priceAfter === "" ? null : Number(priceAfter),
       duration: Math.max(1, Number(days)),
       cycle: typeof cycle === "string" ? cycle : typeof duration === "string" ? duration : null,
       sessionsCount: sessionsCount == null ? null : Number(sessionsCount),
+      classSessions: JSON.stringify(classSessions ?? []),
+      productRewards: JSON.stringify(productRewards ?? []),
       features: JSON.stringify(features ?? []),
       isActive: true,
       goals: goals.length
@@ -98,9 +132,13 @@ export async function POST(req: Request) {
     name: m.name,
     kind: m.kind,
     price: m.price,
+    priceBefore: m.priceBefore ?? null,
+    priceAfter: m.priceAfter ?? null,
     duration: m.duration,
     cycle: m.cycle ?? cycleFromDays(m.duration),
     sessionsCount: m.sessionsCount ?? null,
+    classSessions: classSessions ?? [],
+    productRewards: productRewards ?? [],
     features: features ?? [],
     active: true,
     membersCount: 0,
@@ -112,19 +150,39 @@ export async function PATCH(req: Request) {
   const err = await checkAdmin();
   if (err) return err;
   const body = await req.json();
-  const { id, name, price, duration, durationDays, features, active, kind, cycle, sessionsCount, goalIds } = body;
+  const {
+    id,
+    name,
+    price,
+    priceBefore,
+    priceAfter,
+    duration,
+    durationDays,
+    features,
+    active,
+    kind,
+    cycle,
+    sessionsCount,
+    classSessions,
+    productRewards,
+    goalIds,
+  } = body;
   if (!id) return NextResponse.json({ error: "id مطلوب" }, { status: 400 });
 
   const data: Record<string, unknown> = {};
   if (name !== undefined) data.name = name;
   if (kind !== undefined && typeof kind === "string") data.kind = kind;
   if (price !== undefined) data.price = Number(price);
+  if (priceBefore !== undefined) data.priceBefore = priceBefore == null || priceBefore === "" ? null : Number(priceBefore);
+  if (priceAfter !== undefined) data.priceAfter = priceAfter == null || priceAfter === "" ? null : Number(priceAfter);
   if (durationDays !== undefined) data.duration = Math.max(1, Number(durationDays));
   if (duration !== undefined && durationDays === undefined) {
     data.duration = typeof duration === "number" ? Math.max(1, Number(duration)) : labelToDays(String(duration));
   }
   if (cycle !== undefined) data.cycle = cycle ? String(cycle) : null;
   if (sessionsCount !== undefined) data.sessionsCount = sessionsCount == null ? null : Number(sessionsCount);
+  if (classSessions !== undefined) data.classSessions = JSON.stringify(classSessions ?? []);
+  if (productRewards !== undefined) data.productRewards = JSON.stringify(productRewards ?? []);
   if (features !== undefined) data.features = JSON.stringify(features);
   if (active !== undefined) data.isActive = active;
   if (Array.isArray(goalIds)) {
@@ -149,9 +207,25 @@ export async function PATCH(req: Request) {
     name: m.name,
     kind: m.kind,
     price: m.price,
+    priceBefore: m.priceBefore ?? null,
+    priceAfter: m.priceAfter ?? null,
     duration: m.duration,
     cycle: m.cycle ?? cycleFromDays(m.duration),
     sessionsCount: m.sessionsCount ?? null,
+    classSessions: (() => {
+      try {
+        return m.classSessions ? JSON.parse(m.classSessions) : [];
+      } catch {
+        return [];
+      }
+    })(),
+    productRewards: (() => {
+      try {
+        return m.productRewards ? JSON.parse(m.productRewards) : [];
+      } catch {
+        return [];
+      }
+    })(),
     features: (() => {
       try {
         return JSON.parse(m.features);

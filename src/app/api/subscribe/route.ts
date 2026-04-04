@@ -60,6 +60,14 @@ export async function POST(req: Request) {
 
     walletBonus = plan.walletBonus ?? 0;
 
+    const productRewards: Array<{ productId: string; quantity: number }> = (() => {
+      try {
+        return plan.productRewards ? JSON.parse(plan.productRewards) : [];
+      } catch {
+        return [];
+      }
+    })();
+
     await tx.userMembership.updateMany({
       where: { userId, status: "active" },
       data: { status: "expired" },
@@ -78,6 +86,38 @@ export async function POST(req: Request) {
         status: "active",
       },
     });
+
+    if (plan.kind === "package" && productRewards.length > 0) {
+      for (const reward of productRewards) {
+        if (!reward?.productId || !reward?.quantity) continue;
+        const product = await tx.product.findUnique({ where: { id: reward.productId } });
+        if (!product) {
+          throw new Error("أحد المنتجات المضافة في الباقة غير موجود.");
+        }
+        if (product.trackInventory && product.stock < reward.quantity) {
+          throw new Error(`المخزون غير كافٍ للمنتج: ${product.name}.`);
+        }
+        const updated = await tx.product.update({
+          where: { id: reward.productId },
+          data: product.trackInventory ? { stock: { decrement: reward.quantity } } : {},
+        });
+        await tx.inventoryMovement.create({
+          data: {
+            productId: updated.id,
+            type: "package_consumption",
+            quantityChange: -Math.abs(reward.quantity),
+            quantityBefore: product.stock,
+            quantityAfter: product.trackInventory ? product.stock - reward.quantity : product.stock,
+            unitCost: product.averageCost,
+            averageCostBefore: product.averageCost,
+            averageCostAfter: product.averageCost,
+            referenceType: "membership",
+            referenceId: subscription.id,
+            notes: `Package: ${plan.name}`,
+          },
+        });
+      }
+    }
 
     const selectedScheduleIds = Array.isArray(scheduleIds)
       ? scheduleIds.filter((id: unknown) => typeof id === "string" && id.trim() !== "")
