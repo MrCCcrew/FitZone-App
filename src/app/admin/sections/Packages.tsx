@@ -99,17 +99,20 @@ export default function Packages() {
       ]);
       const payload = await plansResponse.json();
       const goalsPayload = await goalsResponse.json();
-      const classesPayload = await classesResponse.json().catch(() => []);
+        const classesPayload = await classesResponse.json().catch(() => []);
       const productsPayload = await productsResponse.json().catch(() => []);
       setPlans(Array.isArray(payload) ? payload : []);
       setGoals(Array.isArray(goalsPayload) ? goalsPayload.filter((goal) => goal.active) : []);
-      setClasses(
-        Array.isArray(classesPayload)
+        const classesList = Array.isArray(classesPayload)
           ? classesPayload
-              .filter((item: { id?: string; name?: string; active?: boolean }) => item?.id && item?.name && item?.active !== false)
-              .map((item: { id: string; name: string }) => ({ id: item.id, name: item.name }))
-          : [],
-      );
+          : Array.isArray((classesPayload as { classes?: unknown[] })?.classes)
+            ? (classesPayload as { classes: unknown[] }).classes
+            : [];
+        setClasses(
+          classesList
+            .filter((item: { id?: string; name?: string; active?: boolean }) => item?.id && item?.name && item?.active !== false)
+            .map((item: { id: string; name: string }) => ({ id: item.id, name: item.name })),
+        );
       setProducts(
         Array.isArray(productsPayload)
           ? productsPayload
