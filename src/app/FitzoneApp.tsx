@@ -821,6 +821,8 @@ const CLASS_TYPE_LABELS: Record<string, string> = {
   pilates: "بيلاتس",
   strength: "قوة",
   crossfit: "كروس فيت",
+  bodybuilding: "بيلدينج",
+  building: "بيلدينج",
   boxing: "كيك بوكس",
   kickboxing: "كيك بوكس",
   selfdefense: "سلف ديفنس",
@@ -829,8 +831,24 @@ const CLASS_TYPE_LABELS: Record<string, string> = {
   dance: "رقص شرقي",
 };
 
+const CLASS_TYPE_ALIASES: Record<string, string> = Object.entries(CLASS_TYPE_LABELS).reduce(
+  (acc, [key, label]) => {
+    acc[key] = key;
+    acc[label] = key;
+    return acc;
+  },
+  {} as Record<string, string>,
+);
+
+function normalizeClassTypeKey(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  const lower = trimmed.toLowerCase();
+  return CLASS_TYPE_ALIASES[lower] ?? CLASS_TYPE_ALIASES[trimmed] ?? lower;
+}
+
 function formatClassType(value: string) {
-  const key = value.trim().toLowerCase();
+  const key = normalizeClassTypeKey(value);
   return CLASS_TYPE_LABELS[key] ?? value;
 }
 
@@ -1784,14 +1802,17 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
     const blocked = new Set<string>();
     healthQuestions.forEach((question) => {
       if (surveyAnswers[question.id]) {
-        question.restrictedClassTypes.forEach((type) => blocked.add(type));
+        question.restrictedClassTypes.forEach((type) => {
+          const key = normalizeClassTypeKey(type);
+          if (key) blocked.add(key);
+        });
       }
     });
     return Array.from(blocked);
   }, [healthQuestions, surveyAnswers]);
 
   const scheduleChoices = useMemo(() => {
-    const blocked = new Set(surveyBlockedTypes.map((t) => t.trim().toLowerCase()));
+    const blocked = new Set(surveyBlockedTypes.map((t) => normalizeClassTypeKey(t)));
     const dayNames = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
     const rows: {
       id: string;
@@ -1805,7 +1826,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
       availableSpots: number;
     }[] = [];
     publicClasses.forEach((c) => {
-      const typeKey = c.type?.trim().toLowerCase();
+      const typeKey = normalizeClassTypeKey(c.type ?? "");
       if (typeKey && blocked.has(typeKey)) return;
       (c.schedules || []).forEach((s) => {
         const date = new Date(s.date);
@@ -1831,6 +1852,46 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
     });
     return rows;
   }, [publicClasses, surveyBlockedTypes]);
+
+  const parseScheduleTime = (value: string) => {
+    const [h, m] = value.split(":").map((n) => Number(n));
+    return (h || 0) * 60 + (m || 0);
+  };
+
+  const formatScheduleTimeLabel = (value: string) => {
+    const [h, m] = value.split(":").map((n) => Number(n));
+    const hour = Number.isNaN(h) ? 0 : h;
+    const minute = Number.isNaN(m) ? 0 : m;
+    const period = hour < 12 ? "صباحًا" : hour < 16 ? "ظهرًا" : "مساءً";
+    const displayHour = hour % 12 === 0 ? 12 : hour % 12;
+    return `${String(displayHour).padStart(2, "0")}.${String(minute).padStart(2, "0")} ${period}`;
+  };
+
+  const scheduleSlots = useMemo(() => {
+    const times = Array.from(new Set(scheduleChoices.map((item) => item.time)));
+    return times.sort((a, b) => parseScheduleTime(a) - parseScheduleTime(b));
+  }, [scheduleChoices]);
+
+  const scheduleDays = useMemo(() => {
+    const daySet = new Set(scheduleChoices.map((item) => item.day));
+    const order = ["السبت", "الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة"];
+    return order.filter((day) => daySet.has(day));
+  }, [scheduleChoices]);
+
+  const toggleScheduleSelection = (slotId: string, disabled: boolean) => {
+    if (disabled) return;
+    setScheduleError(null);
+    setScheduleSelections((prev) => {
+      const exists = prev.includes(slotId);
+      if (exists) return prev.filter((id) => id !== slotId);
+      const limit = schedulePlan?.sessionsCount ?? null;
+      if (limit && prev.length >= limit) {
+        setScheduleError(`يمكنك اختيار ${limit} موعد كحد أقصى لهذه الباقة.`);
+        return prev;
+      }
+      return [...prev, slotId];
+    });
+  };
 
   const openSurvey = (plan: PlanItem) => {
     if (healthQuestions.length === 0) {
@@ -2097,61 +2158,66 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                 لا توجد مواعيد متاحة حاليًا، يمكنك المتابعة وسيتم التنسيق لاحقًا من الإدارة.
               </div>
             ) : (
-              <div style={{ display: "grid", gap: 10 }}>
-                {scheduleChoices.map((slot) => {
-                  const selected = scheduleSelections.includes(slot.id);
-                  const disabled = slot.availableSpots <= 0;
-                  return (
-                    <button
-                      key={slot.id}
-                      onClick={() => {
-                        if (disabled) return;
-                        setScheduleError(null);
-                        setScheduleSelections((prev) => {
-                          const exists = prev.includes(slot.id);
-                          if (exists) return prev.filter((id) => id !== slot.id);
-                          const limit = schedulePlan.sessionsCount ?? null;
-                          if (limit && prev.length >= limit) {
-                            setScheduleError(`يمكنك اختيار ${limit} موعد كحد أقصى لهذه الباقة.`);
-                            return prev;
-                          }
-                          return [...prev, slot.id];
-                        });
-                      }}
-                      className="card"
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        padding: "14px 16px",
-                        background: selected ? "rgba(233,30,99,.18)" : "rgba(255,255,255,.04)",
-                        border: selected ? "1px solid rgba(233,30,99,.5)" : "1px solid rgba(255,255,255,.12)",
-                        cursor: disabled ? "not-allowed" : "pointer",
-                        opacity: disabled ? 0.5 : 1,
-                      }}
-                    >
-                      <div style={{ textAlign: "right" }}>
-                        <div style={{ color: "#fff", fontWeight: 800, fontSize: 14 }}>
-                          {slot.className}
-                        </div>
-                        <div style={{ color: "#c9b9c1", fontSize: 12, marginTop: 4 }}>
-                          {slot.day} · {slot.time} · {slot.trainer}
-                        </div>
-                        <div style={{ color: "#f5c542", fontSize: 11, marginTop: 4 }}>
-                          {formatClassType(slot.type)}{slot.subType ? ` - ${slot.subType}` : ""}
-                        </div>
-                      </div>
-                      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
-                        <span style={{ fontSize: 11, color: disabled ? "#ef4444" : "#22c55e", fontWeight: 800 }}>
-                          {disabled ? "ممتلئ" : `${slot.availableSpots} متبقية`}
-                        </span>
-                        <span style={{ fontSize: 12, fontWeight: 800, color: selected ? "#ffb7d0" : "#9ca3af" }}>
-                          {selected ? "تم الاختيار" : "اختيار"}
-                        </span>
-                      </div>
-                    </button>
-                  );
-                })}
+              <div className="schedule-scroll">
+                <div
+                  className="schedule-grid"
+                  style={{
+                    gridTemplateColumns: `${scheduleSlots.map(() => "minmax(120px, 1fr)").join(" ")} 120px`,
+                  }}
+                >
+                  {scheduleSlots.map((slot) => (
+                    <div key={`head-${slot}`} className="schedule-cell time">
+                      {formatScheduleTimeLabel(slot)}
+                    </div>
+                  ))}
+                  <div className="schedule-cell clock">
+                    <I n="clock" s={20} c="#f5c542" />
+                  </div>
+                  {scheduleDays.map((day) => (
+                    <div key={`row-${day}`} style={{ display: "contents" }}>
+                      {scheduleSlots.map((slot) => {
+                        const cellEntries = scheduleChoices.filter((entry) => entry.day === day && entry.time === slot);
+                        return (
+                          <div key={`${day}-${slot}`} className="schedule-cell">
+                            {cellEntries.length === 0 ? (
+                              <div className="schedule-empty">—</div>
+                            ) : (
+                              cellEntries.map((entry) => {
+                                const selected = scheduleSelections.includes(entry.id);
+                                const disabled = entry.availableSpots <= 0;
+                                return (
+                                  <button
+                                    key={entry.id}
+                                    onClick={() => toggleScheduleSelection(entry.id, disabled)}
+                                    style={{
+                                      width: "100%",
+                                      borderRadius: 10,
+                                      padding: "6px 8px",
+                                      border: selected ? "1px solid rgba(233,30,99,.7)" : "1px solid rgba(255,255,255,.12)",
+                                      background: selected ? "rgba(233,30,99,.18)" : "transparent",
+                                      color: disabled ? "#ef4444" : "#f5c542",
+                                      fontWeight: 800,
+                                      fontSize: 12,
+                                      cursor: disabled ? "not-allowed" : "pointer",
+                                      opacity: disabled ? 0.5 : 1,
+                                    }}
+                                  >
+                                    <div className="schedule-item-title" style={{ color: "#f5c542" }}>{entry.className}</div>
+                                    <div className="schedule-item-sub" style={{ color: "#fff" }}>{entry.trainer}</div>
+                                    <div className="schedule-item-tag" style={{ color: "#f5c542" }}>
+                                      {formatClassType(entry.type)}{entry.subType ? ` - ${entry.subType}` : ""}
+                                    </div>
+                                  </button>
+                                );
+                              })
+                            )}
+                          </div>
+                        );
+                      })}
+                      <div className="schedule-cell day">{day}</div>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 

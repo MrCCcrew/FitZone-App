@@ -17,6 +17,40 @@ const EMPTY_QUESTION: Omit<HealthQuestion, "id"> = {
   restrictions: [],
 };
 
+const CLASS_TYPE_LABELS: Record<string, string> = {
+  cardio: "كارديو",
+  strength: "قوة",
+  yoga: "يوجا",
+  pilates: "بيلاتس",
+  crossfit: "كروس فيت",
+  zumba: "زومبا",
+  fitness: "فيتنس",
+  bodybuilding: "بيلدينج",
+  building: "بيلدينج",
+  boxing: "كيك بوكس",
+  kickboxing: "كيك بوكس",
+  selfdefense: "سلف ديفنس",
+  karate: "كاراتيه",
+  dance: "رقص شرقي",
+  kids: "أطفال",
+};
+
+const CLASS_TYPE_ALIASES: Record<string, string> = Object.entries(CLASS_TYPE_LABELS).reduce(
+  (acc, [key, label]) => {
+    acc[key] = key;
+    acc[label] = key;
+    return acc;
+  },
+  {} as Record<string, string>,
+);
+
+function normalizeClassTypeKey(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  const lower = trimmed.toLowerCase();
+  return CLASS_TYPE_ALIASES[lower] ?? CLASS_TYPE_ALIASES[trimmed] ?? lower;
+}
+
 function Modal({
   title,
   onClose,
@@ -70,6 +104,7 @@ export default function HealthQuestions() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [modal, setModal] = useState<HealthQuestion | Omit<HealthQuestion, "id"> | null>(null);
+  const [classTypeOptions, setClassTypeOptions] = useState<{ value: string; label: string }[]>([]);
 
   const loadQuestions = useCallback(async () => {
     setLoading(true);
@@ -82,9 +117,38 @@ export default function HealthQuestions() {
     }
   }, []);
 
+  const loadClassTypes = useCallback(async () => {
+    try {
+      const response = await fetch("/api/admin/classes", { cache: "no-store" });
+      const payload = await response.json();
+      if (!Array.isArray(payload)) {
+        setClassTypeOptions([]);
+        return;
+      }
+      const unique = new Set<string>();
+      payload.forEach((item: { type?: string }) => {
+        if (item.type) {
+          const key = normalizeClassTypeKey(item.type);
+          if (key) unique.add(key);
+        }
+      });
+      setClassTypeOptions(
+        Array.from(unique)
+          .map((value) => ({
+            value,
+            label: CLASS_TYPE_LABELS[value] ?? value,
+          }))
+          .sort((a, b) => a.label.localeCompare(b.label, "ar")),
+      );
+    } catch {
+      setClassTypeOptions([]);
+    }
+  }, []);
+
   useEffect(() => {
     void loadQuestions();
-  }, [loadQuestions]);
+    void loadClassTypes();
+  }, [loadQuestions, loadClassTypes]);
 
   const saveQuestion = async () => {
     if (!modal) return;
@@ -92,7 +156,7 @@ export default function HealthQuestions() {
     try {
       const isEdit = "id" in modal;
       const restrictions = (modal.restrictedClassTypes ?? [])
-        .map((entry) => entry.trim())
+        .map((entry) => normalizeClassTypeKey(entry))
         .filter(Boolean)
         .map((classType) => ({ classType }));
 
@@ -213,7 +277,7 @@ export default function HealthQuestions() {
                     <span>كلاسات ممنوعة:</span>
                     {(question.restrictedClassTypes ?? []).map((item) => (
                       <span key={item} className="rounded-full bg-white/10 px-2 py-1">
-                        {item}
+                        {CLASS_TYPE_LABELS[item] ?? item}
                       </span>
                     ))}
                   </>
@@ -273,19 +337,42 @@ export default function HealthQuestions() {
               label="الكلاسات الممنوعة"
               hint="اكتب أسماء الكلاسات الممنوعة مفصولة بفاصلة، مثال: فيتنس, كارديو, زومبا"
             >
-              <input
-                value={(modal.restrictedClassTypes ?? []).join(", ")}
-                onChange={(event) =>
-                  setModal({
-                    ...modal,
-                    restrictedClassTypes: event.target.value
-                      .split(",")
-                      .map((entry) => entry.trim())
-                      .filter(Boolean),
-                  })
-                }
-                className={INPUT}
-              />
+              {classTypeOptions.length === 0 ? (
+                <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-xs text-[#d7aabd]">
+                  لا توجد أنواع كلاسات متاحة حالياً.
+                </div>
+              ) : (
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {classTypeOptions.map((option) => {
+                    const selected = (modal.restrictedClassTypes ?? []).includes(option.value);
+                    return (
+                      <label
+                        key={option.value}
+                        className={`flex items-center justify-between gap-3 rounded-xl border px-3 py-2 text-xs font-bold transition ${
+                          selected
+                            ? "border-[#ff4f93] bg-[#ff4f93]/15 text-white"
+                            : "border-white/10 bg-black/20 text-[#d7aabd]"
+                        }`}
+                      >
+                        <span>{option.label}</span>
+                        <input
+                          type="checkbox"
+                          checked={selected}
+                          onChange={(event) => {
+                            const checked = event.target.checked;
+                            setModal({
+                              ...modal,
+                              restrictedClassTypes: checked
+                                ? [...(modal.restrictedClassTypes ?? []), option.value]
+                                : (modal.restrictedClassTypes ?? []).filter((item) => item !== option.value),
+                            });
+                          }}
+                        />
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
             </Field>
 
             <div className="grid gap-4 sm:grid-cols-2">
