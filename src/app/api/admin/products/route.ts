@@ -44,17 +44,19 @@ export async function GET() {
 
       const category = categories.find((entry) => entry.key === product.category);
 
-      return {
-        id: product.id,
-        name: product.name,
-        category: product.category,
-        categoryLabel: category?.label ?? product.category,
-        sizeType: (category?.sizeType ?? "none") as "none" | "clothing" | "shoes",
-        price: product.price,
-        oldPrice: product.oldPrice,
-        stock: product.stock,
-        sold: sold._sum.quantity ?? 0,
-        active: product.isActive,
+        return {
+          id: product.id,
+          name: product.name,
+          category: product.category,
+          categoryLabel: category?.label ?? product.category,
+          sizeType: (category?.sizeType ?? "none") as "none" | "clothing" | "shoes",
+          price: product.price,
+          oldPrice: product.oldPrice,
+          stock: product.stock,
+          averageCost: product.averageCost,
+          lastPurchaseCost: product.lastPurchaseCost,
+          sold: sold._sum.quantity ?? 0,
+          active: product.isActive,
         emoji: EMOJI[product.category] ?? "📦",
         description: product.description ?? "",
         images: parseJsonList(product.images),

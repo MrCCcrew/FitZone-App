@@ -1779,9 +1779,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
     [goals, gamesRoot?.id],
   );
   const gamesChildIds = useMemo(() => gamesChildren.map((goal) => goal.id), [gamesChildren]);
-  const gamesActive =
-    (gamesRoot ? selectedGoals.includes(gamesRoot.id) : false) ||
-    gamesChildren.some((goal) => selectedGoals.includes(goal.id));
+  const displayGoals = useMemo(() => goals, [goals]);
 
   const toggleGoal = (goalId: string) => {
     setSelectedGoals((prev) => {
@@ -2404,7 +2402,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
           ) : (
             <>
               <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 16 }}>
-                {rootGoals.map((goal) => {
+                {displayGoals.map((goal) => {
                   const active = selectedGoals.includes(goal.id);
                   return (
                     <button
@@ -2435,34 +2433,9 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                 })}
               </div>
 
-              {gamesActive && gamesChildren.length > 0 ? (
-                <div className="card" style={{ marginTop: 24, padding: 20 }}>
-                  <div style={{ fontWeight: 800, marginBottom: 12, color: C.white }}>اختاري نوع الألعاب</div>
-                  <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 12 }}>
-                    {gamesChildren.map((goal) => {
-                      const active = selectedGoals.includes(goal.id);
-                      return (
-                        <button
-                          key={goal.id}
-                          onClick={() => toggleGoal(goal.id)}
-                          className="card"
-                          style={{
-                            border: active ? `2px solid ${C.red}` : `1px solid ${C.border}`,
-                            padding: 14,
-                            textAlign: "center",
-                            background: active ? "rgba(233,30,99,.08)" : C.bgCard,
-                            cursor: "pointer",
-                          }}
-                        >
-                          <div style={{ fontWeight: 800, fontSize: 13, color: C.white }}>{goal.name}</div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ) : null}
-            </>
-          )}
+                {null}
+              </>
+            )}
         </div>
       </section>
 

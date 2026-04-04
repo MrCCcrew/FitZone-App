@@ -16,6 +16,7 @@ import Payments from "./sections/Payments";
 import Classes from "./sections/Classes";
 import Trainers from "./sections/Trainers";
 import Products from "./sections/Products";
+import Inventory from "./sections/Inventory";
 import Testimonials from "./sections/Testimonials";
 import Balance from "./sections/Balance";
 import Customers from "./sections/Customers";
@@ -35,6 +36,7 @@ const NAV: { id: Section; label: string; icon: string }[] = [
   { id: "classes", label: "الكلاسات والجدول", icon: "📅" },
   { id: "trainers", label: "المدربات", icon: "👩‍🏫" },
   { id: "products", label: "المنتجات والطلبات", icon: "🛒" },
+  { id: "inventory", label: "المخزون والمشتريات", icon: "📦" },
   { id: "reviews", label: "آراء العملاء", icon: "⭐" },
   { id: "balance", label: "الرصيد والنقاط", icon: "💰" },
   { id: "chat", label: "الدردشة المباشرة", icon: "💬" },
@@ -55,6 +57,7 @@ const TITLES: Record<Section, string> = {
   classes: "إدارة الكلاسات والجدول",
   trainers: "إدارة المدربات",
   products: "إدارة المنتجات والطلبات",
+  inventory: "إدارة المخزون والمشتريات",
   reviews: "إدارة آراء العملاء",
   balance: "إدارة الرصيد والنقاط",
   chat: "الدردشة المباشرة",
@@ -75,6 +78,7 @@ const SECTIONS: Record<Section, ComponentType> = {
   classes: Classes,
   trainers: Trainers,
   products: Products,
+  inventory: Inventory,
   reviews: Testimonials,
   balance: Balance,
   chat: LiveChat,

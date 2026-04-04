@@ -7,6 +7,26 @@ import { AdminCard, AdminEmptyState, AdminSectionShell } from "./shared";
 const INPUT =
   "w-full rounded-xl border border-gray-700 bg-gray-800 px-4 py-2.5 text-sm text-white outline-none transition-colors focus:border-[#ff4f93]";
 
+const CLASS_TYPE_LABELS: Record<string, string> = {
+  fitness: "فيتنس",
+  zumba: "زومبا",
+  crossfit: "كروس فيت",
+  yoga: "يوجا",
+  pilates: "بيلاتس",
+  cardio: "كارديو",
+  strength: "قوة",
+  bodybuilding: "بيلدينج",
+  building: "بيلدينج",
+  boxing: "كيك بوكس",
+  kickboxing: "كيك بوكس",
+  karate: "كاراتيه",
+  selfdefense: "سلف ديفنس",
+  dance: "رقص شرقي",
+  kids: "أطفال",
+};
+
+const normalizeClassType = (value: string) => value.trim().toLowerCase();
+
 const EMPTY_PLAN: Omit<Plan, "id" | "membersCount"> = {
   name: "",
   price: 0,
@@ -111,9 +131,12 @@ export default function Packages() {
         const unique = new Map<string, string>();
         classesList.forEach((item: { type?: string; subType?: string; active?: boolean }) => {
           if (item?.active === false) return;
-          const type = (item.type ?? "").trim();
-          if (!type) return;
-          if (!unique.has(type)) unique.set(type, type);
+          const rawType = (item.type ?? "").trim();
+          if (!rawType) return;
+          const typeKey = normalizeClassType(rawType);
+          if (!unique.has(typeKey)) {
+            unique.set(typeKey, CLASS_TYPE_LABELS[typeKey] ?? rawType);
+          }
         });
         setClasses(Array.from(unique, ([type, label]) => ({ type, label })));
       setProducts(
@@ -476,7 +499,10 @@ export default function Packages() {
                       className="flex items-center justify-between rounded-xl border border-[rgba(255,188,219,0.12)] bg-black/15 px-4 py-3 text-sm text-[#fff4f8]"
                     >
                       <div>
-                        {classes.find((item) => item.type === entry.classId)?.label ?? entry.classId ?? "كلاس"}
+                        {classes.find((item) => item.type === entry.classId)?.label ??
+                          CLASS_TYPE_LABELS[entry.classId] ??
+                          entry.classId ??
+                          "كلاس"}
                         <span className="mr-2 text-xs text-[#d7aabd]">
                           ({entry.sessions} حصة)
                         </span>

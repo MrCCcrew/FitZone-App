@@ -11,6 +11,7 @@ export type Section =
   | "classes"
   | "trainers"
   | "products"
+  | "inventory"
   | "reviews"
   | "balance"
   | "customers"
@@ -106,12 +107,49 @@ export interface Product {
   oldPrice?: number | null;
   stock: number;
   sold: number;
+  averageCost?: number;
+  lastPurchaseCost?: number;
   active: boolean;
   emoji: string;
   description?: string;
   images?: string[];
   sizes?: string[];
   colors?: string[];
+}
+
+export interface InventoryReceiptItem {
+  id: string;
+  productId: string;
+  productName: string;
+  quantity: number;
+  unitCost: number;
+  totalCost: number;
+}
+
+export interface InventoryReceipt {
+  id: string;
+  referenceNumber?: string | null;
+  supplierName?: string | null;
+  notes?: string | null;
+  receivedAt: string;
+  totalCost: number;
+  status: string;
+  items: InventoryReceiptItem[];
+}
+
+export interface InventoryMovement {
+  id: string;
+  productId: string;
+  productName: string;
+  type: string;
+  quantityChange: number;
+  quantityBefore: number;
+  quantityAfter: number;
+  unitCost?: number | null;
+  createdAt: string;
+  referenceType?: string | null;
+  referenceId?: string | null;
+  notes?: string | null;
 }
 
 export interface ProductCategory {

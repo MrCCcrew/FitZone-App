@@ -17,6 +17,7 @@ const EMPTY_PLAN: Omit<Plan, "id" | "membersCount"> = {
   active: true,
   kind: "subscription",
   goalIds: [],
+  productRewards: [],
 };
 
 const EMPTY_OFFER: Omit<Offer, "id" | "usedCount" | "currentSubscribers"> = {
@@ -95,9 +96,14 @@ export default function Subscriptions() {
   const [allPlans, setAllPlans] = useState<Plan[]>([]);
   const [offers, setOffers] = useState<Offer[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
+  const [products, setProducts] = useState<Array<{ id: string; name: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [featureInput, setFeatureInput] = useState("");
+  const [productRewardDraft, setProductRewardDraft] = useState<{ productId: string; quantity: number }>({
+    productId: "",
+    quantity: 1,
+  });
   const [uploadingImage, setUploadingImage] = useState(false);
   const [planModal, setPlanModal] = useState<Plan | typeof EMPTY_PLAN | null>(null);
   const [offerModal, setOfferModal] = useState<Offer | typeof EMPTY_OFFER | null>(null);
@@ -105,21 +111,30 @@ export default function Subscriptions() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [plansResponse, allPlansResponse, offersResponse, goalsResponse] = await Promise.all([
+      const [plansResponse, allPlansResponse, offersResponse, goalsResponse, productsResponse] = await Promise.all([
         fetch("/api/admin/memberships?kind=subscription", { cache: "no-store" }),
         fetch("/api/admin/memberships", { cache: "no-store" }),
         fetch("/api/admin/offers", { cache: "no-store" }),
         fetch("/api/admin/goals", { cache: "no-store" }),
+        fetch("/api/admin/products", { cache: "no-store" }),
       ]);
 
       const plansPayload = await plansResponse.json();
       const allPlansPayload = await allPlansResponse.json();
       const offersPayload = await offersResponse.json();
       const goalsPayload = await goalsResponse.json();
+      const productsPayload = await productsResponse.json().catch(() => []);
       setPlans(Array.isArray(plansPayload) ? plansPayload : []);
       setAllPlans(Array.isArray(allPlansPayload) ? allPlansPayload : []);
       setOffers(Array.isArray(offersPayload) ? offersPayload : []);
       setGoals(Array.isArray(goalsPayload) ? goalsPayload.filter((goal) => goal.active) : []);
+      setProducts(
+        Array.isArray(productsPayload)
+          ? productsPayload
+              .filter((item: { id?: string; name?: string; active?: boolean }) => item?.id && item?.name && item?.active !== false)
+              .map((item: { id: string; name: string }) => ({ id: item.id, name: item.name }))
+          : [],
+      );
     } finally {
       setLoading(false);
     }
@@ -147,6 +162,23 @@ export default function Subscriptions() {
       features: [...(planModal.features ?? []), featureInput.trim()],
     });
     setFeatureInput("");
+  };
+
+  const addProductReward = () => {
+    if (!planModal || !productRewardDraft.productId || productRewardDraft.quantity <= 0) return;
+    const existing = planModal.productRewards ?? [];
+    const next = existing.filter((item) => item.productId !== productRewardDraft.productId);
+    next.push({ productId: productRewardDraft.productId, quantity: productRewardDraft.quantity });
+    setPlanModal({ ...planModal, productRewards: next });
+    setProductRewardDraft({ productId: "", quantity: 1 });
+  };
+
+  const removeProductReward = (productId: string) => {
+    if (!planModal) return;
+    setPlanModal({
+      ...planModal,
+      productRewards: (planModal.productRewards ?? []).filter((item) => item.productId !== productId),
+    });
   };
 
   const toggleGoalForPlan = (goalId: string) => {
@@ -601,6 +633,65 @@ export default function Subscriptions() {
                           features: planModal.features.filter((_, currentIndex) => currentIndex !== index),
                         })
                       }
+                      className="text-[#d7aabd] transition-colors hover:text-rose-300"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </Field>
+
+            <Field
+              label="منتجات مميزة داخل الاشتراك"
+              hint="اختاري منتج من المتجر وحددي الكمية التي تخصم من المخزون بعد شراء الاشتراك."
+            >
+              <div className="flex flex-wrap gap-2">
+                <select
+                  value={productRewardDraft.productId}
+                  onChange={(event) =>
+                    setProductRewardDraft({ ...productRewardDraft, productId: event.target.value })
+                  }
+                  className={INPUT}
+                >
+                  <option value="">اختاري المنتج</option>
+                  {products.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type="number"
+                  min={1}
+                  value={productRewardDraft.quantity}
+                  onChange={(event) =>
+                    setProductRewardDraft({ ...productRewardDraft, quantity: Number(event.target.value) })
+                  }
+                  className={`${INPUT} w-32`}
+                  dir="ltr"
+                />
+                <button
+                  type="button"
+                  onClick={addProductReward}
+                  className="rounded-lg bg-[#ff4f93] px-4 text-sm font-black text-white transition-colors hover:bg-[#ff2f7d]"
+                >
+                  إضافة
+                </button>
+              </div>
+              <div className="mt-3 space-y-2">
+                {(planModal.productRewards ?? []).map((entry) => (
+                  <div
+                    key={entry.productId}
+                    className="flex items-center justify-between rounded-xl border border-[rgba(255,188,219,0.12)] bg-black/15 px-4 py-3 text-sm text-[#fff4f8]"
+                  >
+                    <div>
+                      {products.find((item) => item.id === entry.productId)?.name ?? "منتج"}
+                      <span className="mr-2 text-xs text-[#d7aabd]">({entry.quantity} قطعة)</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeProductReward(entry.productId)}
                       className="text-[#d7aabd] transition-colors hover:text-rose-300"
                     >
                       ×

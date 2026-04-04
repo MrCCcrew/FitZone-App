@@ -87,7 +87,7 @@ export async function POST(req: Request) {
       },
     });
 
-    if (plan.kind === "package" && productRewards.length > 0) {
+    if (productRewards.length > 0) {
       for (const reward of productRewards) {
         if (!reward?.productId || !reward?.quantity) continue;
         const product = await tx.product.findUnique({ where: { id: reward.productId } });

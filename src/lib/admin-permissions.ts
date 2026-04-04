@@ -12,6 +12,7 @@ export type AdminFeature =
   | "trainers"
   | "customers"
   | "products"
+  | "inventory"
   | "reviews"
   | "orders"
   | "balance"
@@ -32,6 +33,7 @@ const ADMIN_SECTIONS: Section[] = [
   "classes",
   "trainers",
   "products",
+  "inventory",
   "reviews",
   "balance",
   "customers",
@@ -50,6 +52,7 @@ const ADMIN_FEATURES: AdminFeature[] = [
   "trainers",
   "customers",
   "products",
+  "inventory",
   "reviews",
   "orders",
   "balance",

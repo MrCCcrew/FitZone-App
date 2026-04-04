@@ -38,7 +38,7 @@ export async function POST(req: Request) {
 
     for (const item of items) {
       const product = products.find((entry) => entry.id === item.productId);
-      if (!product || product.stock < item.quantity) {
+      if (!product || (product.trackInventory && product.stock < item.quantity)) {
         return NextResponse.json(
           { error: `الكمية غير متاحة للمنتج ${product?.name ?? ""}`.trim() },
           { status: 400 },
@@ -74,12 +74,31 @@ export async function POST(req: Request) {
     });
 
     await Promise.all([
-      ...items.map((item) =>
-        db.product.update({
-          where: { id: item.productId },
-          data: { stock: { decrement: item.quantity } },
-        }),
-      ),
+      ...items.map(async (item) => {
+        const product = products.find((entry) => entry.id === item.productId)!;
+        const beforeStock = product.stock;
+        const afterStock = product.trackInventory ? beforeStock - item.quantity : beforeStock;
+        if (product.trackInventory) {
+          await db.product.update({
+            where: { id: item.productId },
+            data: { stock: { decrement: item.quantity } },
+          });
+        }
+        await db.inventoryMovement.create({
+          data: {
+            productId: product.id,
+            type: "sale",
+            quantityChange: -Math.abs(item.quantity),
+            quantityBefore: beforeStock,
+            quantityAfter: afterStock,
+            unitCost: product.averageCost,
+            averageCostBefore: product.averageCost,
+            averageCostAfter: product.averageCost,
+            referenceType: "order",
+            referenceId: order.id,
+          },
+        });
+      }),
       db.notification.create({
         data: {
           userId,
@@ -134,12 +153,32 @@ export async function PATCH(req: Request) {
         where: { id: orderId },
         data: { status: "cancelled" },
       }),
-      ...order.items.map((item) =>
-        db.product.update({
-          where: { id: item.productId },
-          data: { stock: { increment: item.quantity } },
-        }),
-      ),
+      ...order.items.map(async (item) => {
+        const product = await db.product.findUnique({ where: { id: item.productId } });
+        if (!product) return;
+        const beforeStock = product.stock;
+        const afterStock = product.trackInventory ? beforeStock + item.quantity : beforeStock;
+        if (product.trackInventory) {
+          await db.product.update({
+            where: { id: item.productId },
+            data: { stock: { increment: item.quantity } },
+          });
+        }
+        await db.inventoryMovement.create({
+          data: {
+            productId: product.id,
+            type: "return",
+            quantityChange: Math.abs(item.quantity),
+            quantityBefore: beforeStock,
+            quantityAfter: afterStock,
+            unitCost: product.averageCost,
+            averageCostBefore: product.averageCost,
+            averageCostAfter: product.averageCost,
+            referenceType: "order",
+            referenceId: order.id,
+          },
+        });
+      }),
       db.notification.create({
         data: {
           userId,
