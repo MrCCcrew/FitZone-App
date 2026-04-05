@@ -1,5 +1,5 @@
 ﻿'use client';
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 
 // ─── FIT ZONE BRAND COLORS ─────────────────────────────────────────────────
 const C = {
@@ -1744,6 +1744,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
   const [publicClasses, setPublicClasses] = useState<PublicClass[]>([]);
   const [healthQuestions, setHealthQuestions] = useState<PublicHealthQuestion[]>([]);
   const [selectedGoals, setSelectedGoals] = useState<string[]>([]);
+  const plansRef = useRef<HTMLDivElement | null>(null);
   const [subscribing, setSubscribing] = useState<string | null>(null);
   const [subMsg, setSubMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [verifyModal, setVerifyModal] = useState<{ plan: PlanItem } | null>(null);
@@ -1831,6 +1832,9 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
       }
       return cleaned;
     });
+    setTimeout(() => {
+      plansRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 50);
   };
 
   const filteredPlans = useMemo(() => {
@@ -2479,7 +2483,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
         </div>
       </section>
 
-      <section className="section">
+      <section className="section" ref={plansRef}>
         <div className="container">
           {subMsg && (
             <div style={{ marginBottom: 20, padding: "14px 20px", borderRadius: 8, background: subMsg.ok ? "#dcfce7" : "#fee2e2", color: subMsg.ok ? "#166534" : "#991b1b", fontWeight: 700, textAlign: "center", fontSize: 14 }}>
@@ -2549,7 +2553,16 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
           <button
             className="btn-primary"
             style={{ padding: "10px 32px", opacity: selectedGoals.length === 0 || !primaryPlan ? 0.6 : 1 }}
-            onClick={() => primaryPlan && openSurvey(primaryPlan)}
+            onClick={() => {
+              if (!primaryPlan || selectedGoals.length === 0) {
+                setSubMsg({ text: "برجاء الضغط على الاشتراك المناسب للاستكمال.", ok: false });
+                setTimeout(() => {
+                  plansRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                }, 50);
+                return;
+              }
+              openSurvey(primaryPlan);
+            }}
             disabled={selectedGoals.length === 0 || !primaryPlan}
           >
             ابدئي الآن
