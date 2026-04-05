@@ -75,7 +75,7 @@ export default function RegisterPage() {
         return;
       }
 
-      setInfo("تم إنشاء الحساب. جارٍ تحويلك إلى صفحة التفعيل...");
+      setInfo("تم إنشاء الحساب. جاري تحويلك إلى صفحة التفعيل...");
     } catch {
       setError("تعذر إنشاء الحساب حاليًا. حاول مرة أخرى بعد قليل.");
     } finally {
@@ -203,7 +203,7 @@ export default function RegisterPage() {
               disabled={loading}
               className="mt-2 w-full rounded-xl bg-red-600 py-3 font-bold text-white transition-colors hover:bg-red-700 disabled:opacity-50"
             >
-              {loading ? "جارٍ إنشاء الحساب..." : "إنشاء الحساب"}
+              {loading ? "جاري إنشاء الحساب..." : "إنشاء الحساب"}
             </button>
           </form>
 

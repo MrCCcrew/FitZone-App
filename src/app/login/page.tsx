@@ -150,7 +150,7 @@ function LoginForm() {
               disabled={loading}
               className="mt-2 w-full rounded-xl bg-red-600 py-3 font-bold text-white transition-colors hover:bg-red-700 disabled:opacity-50"
             >
-              {loading ? "جارٍ تسجيل الدخول..." : "تسجيل الدخول"}
+              {loading ? "جاري تسجيل الدخول..." : "تسجيل الدخول"}
             </button>
           </form>
 
