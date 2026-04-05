@@ -2554,14 +2554,10 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
             className="btn-primary"
             style={{ padding: "10px 32px", opacity: selectedGoals.length === 0 || !primaryPlan ? 0.6 : 1 }}
             onClick={() => {
-              if (!primaryPlan || selectedGoals.length === 0) {
-                setSubMsg({ text: "برجاء الضغط على الاشتراك المناسب للاستكمال.", ok: false });
-                setTimeout(() => {
-                  plansRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-                }, 50);
-                return;
-              }
-              openSurvey(primaryPlan);
+              setSubMsg({ text: "برجاء الضغط على الاشتراك المفضل لديكِ للاستكمال.", ok: false });
+              setTimeout(() => {
+                plansRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+              }, 50);
             }}
             disabled={selectedGoals.length === 0 || !primaryPlan}
           >
