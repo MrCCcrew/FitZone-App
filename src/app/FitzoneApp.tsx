@@ -1800,17 +1800,36 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
     [goals, gamesRoot?.id],
   );
   const gamesChildIds = useMemo(() => gamesChildren.map((goal) => goal.id), [gamesChildren]);
-  const displayGoals = useMemo(() => goals, [goals]);
+  const goalsByParent = useMemo(() => {
+    const map = new Map<string, PublicGoal[]>();
+    goals.forEach((goal) => {
+      if (!goal.parentId) return;
+      const list = map.get(goal.parentId) ?? [];
+      list.push(goal);
+      map.set(goal.parentId, list);
+    });
+    return map;
+  }, [goals]);
+  const displayGoals = useMemo(() => {
+    if (rootGoals.length === 0) return [];
+    const expanded = new Set(selectedGoals);
+    const children = Array.from(expanded)
+      .flatMap((id) => goalsByParent.get(id) ?? [])
+      .sort((a, b) => a.sortOrder - b.sortOrder);
+    return [...rootGoals, ...children];
+  }, [rootGoals, goalsByParent, selectedGoals]);
 
   const toggleGoal = (goalId: string) => {
     setSelectedGoals((prev) => {
       const exists = prev.includes(goalId);
       if (!exists) return [...prev, goalId];
       const next = prev.filter((id) => id !== goalId);
+      const childIds = goalsByParent.get(goalId)?.map((item) => item.id) ?? [];
+      const cleaned = childIds.length > 0 ? next.filter((id) => !childIds.includes(id)) : next;
       if (gamesRoot && goalId === gamesRoot.id) {
-        return next.filter((id) => !gamesChildIds.includes(id));
+        return cleaned.filter((id) => !gamesChildIds.includes(id));
       }
-      return next;
+      return cleaned;
     });
   };
 
