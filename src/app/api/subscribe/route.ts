@@ -285,6 +285,7 @@ export async function POST(req: Request) {
   }
 
   let checkoutUrl: string | null = null;
+  let transactionId: string | null = null;
   if (result.paymentAmount > 0 && ["instapay", "vodafone_cash"].includes(result.membershipPaymentMethod)) {
     const transaction = await createPaymentTransaction({
       userId,
@@ -296,6 +297,7 @@ export async function POST(req: Request) {
       description: `Membership ${result.planName}`,
     });
     checkoutUrl = transaction.checkoutUrl ?? null;
+    transactionId = transaction.id;
   }
 
   if (userRecord.email) {
@@ -314,5 +316,6 @@ export async function POST(req: Request) {
     subscriptionId: result.subscriptionId,
     endDate: result.endDate.toISOString(),
     checkoutUrl,
+    transactionId,
   });
 }

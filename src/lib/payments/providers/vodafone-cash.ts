@@ -9,14 +9,16 @@ import { getPaymentSettings } from "@/lib/payments/settings";
 
 async function createCheckout(input: PaymentCheckoutInput): Promise<PaymentCheckoutResult> {
   const settings = await getPaymentSettings();
+  const defaultAccount =
+    settings.vodafoneCashAccounts.find((account) => account.isDefault) ?? settings.vodafoneCashAccounts[0] ?? null;
   const expiresAt = new Date(Date.now() + 1000 * 60 * 30);
 
   return {
     provider: "vodafone_cash",
     status: "requires_action",
     message: "يرجى إتمام التحويل عبر فودافون كاش من هاتفك ثم العودة لتأكيد العملية.",
-    checkoutUrl: settings.vodafoneCashUrl || null,
-    providerReference: `vodafone_cash_${input.transactionId}`,
+    checkoutUrl: defaultAccount?.url || settings.vodafoneCashUrl || null,
+    providerReference: `vodafone_${input.transactionId}`,
     externalReference: input.transactionId,
     expiresAt,
     payload: {
@@ -24,7 +26,9 @@ async function createCheckout(input: PaymentCheckoutInput): Promise<PaymentCheck
       amount: input.amount,
       currency: input.currency,
       purpose: input.purpose,
-      label: settings.vodafoneCashLabel,
+      label: defaultAccount?.label ?? settings.vodafoneCashLabel,
+      accountId: defaultAccount?.id ?? null,
+      accountUrl: defaultAccount?.url ?? settings.vodafoneCashUrl ?? null,
     },
   };
 }
@@ -40,7 +44,7 @@ async function verifyTransaction(transaction: {
   return {
     status: "requires_action",
     message: "المعاملة تحتاج تأكيد يدوي من الإدارة بعد التحويل.",
-    providerReference: transaction.providerReference ?? `vodafone_cash_${transaction.id}`,
+    providerReference: transaction.providerReference ?? `vodafone_${transaction.id}`,
     externalReference: transaction.externalReference ?? transaction.id,
     payload: {
       mode: "vodafone_cash",
