@@ -148,6 +148,15 @@ function loadPublicApi(force = false) {
   return publicApiPromise;
 }
 
+function getDefaultAccount(
+  accounts: PaymentAccount[] | undefined,
+  fallbackLabel: string,
+  fallbackUrl: string,
+) {
+  const list = Array.isArray(accounts) ? accounts : [];
+  return list.find((item) => item.isDefault) ?? list[0] ?? { id: "fallback", label: fallbackLabel, url: fallbackUrl };
+}
+
 // ─── ICONS ─────────────────────────────────────────────────────────────────
 const I = ({ n, s = 20, c = "currentColor" }: { n: string; s?: number; c?: string }) => {
   const d = {
@@ -997,11 +1006,20 @@ type PublicDeliveryOption = {
   sortOrder: number;
 };
 
+type PaymentAccount = {
+  id: string;
+  label: string;
+  url: string;
+  isDefault?: boolean;
+};
+
 type PublicPaymentSettings = {
   instapayUrl: string;
   instapayLabel: string;
   vodafoneCashUrl: string;
   vodafoneCashLabel: string;
+  instapayAccounts: PaymentAccount[];
+  vodafoneCashAccounts: PaymentAccount[];
 };
 
 const CART_STORAGE_KEY = "fitzone:cart";
@@ -2051,6 +2069,8 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
     instapayLabel: "InstaPay",
     vodafoneCashUrl: "",
     vodafoneCashLabel: "Vodafone Cash",
+    instapayAccounts: [],
+    vodafoneCashAccounts: [],
   });
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -2323,7 +2343,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
         }, 1500);
         return;
       }
-      const data = await res.json() as { error?: string; needsVerification?: boolean; checkoutUrl?: string };
+      const data = await res.json() as { error?: string; needsVerification?: boolean; checkoutUrl?: string; transactionId?: string | null };
       if (!res.ok) {
         if (data.needsVerification) {
           setVerifyModal({ plan });
@@ -2338,6 +2358,9 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
       setSubMsg({ text: `✅ تم الاشتراك في باقة ${plan.name} بنجاح!`, ok: true });
       if (data.checkoutUrl) {
         window.open(data.checkoutUrl, "_blank", "noopener,noreferrer");
+        if (data.transactionId) {
+          window.open(`/payment/verify?transactionId=${data.transactionId}`, "_blank", "noopener,noreferrer");
+        }
       }
       setTimeout(() => { window.location.href = "/account"; }, 1500);
     } catch (err: unknown) {
@@ -2676,8 +2699,22 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
               <div style={{ fontWeight: 800, color: "#fff", marginBottom: 8 }}>طريقة الدفع</div>
               <div style={{ display: "grid", gap: 10 }}>
                 {[
-                  { id: "instapay", label: membershipPaymentSettings.instapayLabel || "InstaPay" },
-                  { id: "vodafone_cash", label: membershipPaymentSettings.vodafoneCashLabel || "Vodafone Cash" },
+                  {
+                    id: "instapay",
+                    label: getDefaultAccount(
+                      membershipPaymentSettings.instapayAccounts,
+                      membershipPaymentSettings.instapayLabel || "InstaPay",
+                      membershipPaymentSettings.instapayUrl,
+                    ).label,
+                  },
+                  {
+                    id: "vodafone_cash",
+                    label: getDefaultAccount(
+                      membershipPaymentSettings.vodafoneCashAccounts,
+                      membershipPaymentSettings.vodafoneCashLabel || "Vodafone Cash",
+                      membershipPaymentSettings.vodafoneCashUrl,
+                    ).label,
+                  },
                 ].map((method) => (
                   <button
                     key={method.id}
@@ -4163,7 +4200,7 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
   const [locating, setLocating] = useState(false);
   const [orderMsg, setOrderMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [createdOrderId, setCreatedOrderId] = useState<string | null>(null);
-  const [paymentAction, setPaymentAction] = useState<{ url: string; label: string } | null>(null);
+  const [paymentAction, setPaymentAction] = useState<{ url: string; label: string; transactionId?: string | null } | null>(null);
   const [deliveryOptions, setDeliveryOptions] = useState<PublicDeliveryOption[]>([]);
   const [selectedDeliveryId, setSelectedDeliveryId] = useState<string | null>(null);
   const [paymentSettings, setPaymentSettings] = useState<PublicPaymentSettings>({
@@ -4171,6 +4208,8 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
     instapayLabel: "InstaPay",
     vodafoneCashUrl: "",
     vodafoneCashLabel: "Vodafone Cash",
+    instapayAccounts: [],
+    vodafoneCashAccounts: [],
   });
   const [address, setAddress] = useState({
     firstName: summary?.user?.name?.split(" ")[0] ?? "",
@@ -4229,8 +4268,22 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
 
   const availablePayMethods = useMemo(() => {
     const methods = [
-      { id: "instapay", label: paymentSettings.instapayLabel || "InstaPay" },
-      { id: "vodafone_cash", label: paymentSettings.vodafoneCashLabel || "Vodafone Cash" },
+      {
+        id: "instapay",
+        label: getDefaultAccount(
+          paymentSettings.instapayAccounts,
+          paymentSettings.instapayLabel || "InstaPay",
+          paymentSettings.instapayUrl,
+        ).label,
+      },
+      {
+        id: "vodafone_cash",
+        label: getDefaultAccount(
+          paymentSettings.vodafoneCashAccounts,
+          paymentSettings.vodafoneCashLabel || "Vodafone Cash",
+          paymentSettings.vodafoneCashUrl,
+        ).label,
+      },
     ];
     if (selectedDelivery?.type === "pickup") {
       methods.unshift({ id: "cod", label: "الدفع عند الاستلام (داخل الجيم)" });
@@ -4308,7 +4361,7 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
         }),
       });
 
-      const data = await res.json() as { error?: string; orderId?: string; message?: string; checkoutUrl?: string };
+      const data = await res.json() as { error?: string; orderId?: string; message?: string; checkoutUrl?: string; transactionId?: string | null };
       if (!res.ok) {
         setOrderMsg({ text: data.error ?? "تعذر إنشاء الطلب حاليًا.", ok: false });
         return;
@@ -4316,8 +4369,19 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
 
       setCreatedOrderId(data.orderId ?? null);
       if (data.checkoutUrl) {
-        const label = payMethod === "vodafone_cash" ? paymentSettings.vodafoneCashLabel : paymentSettings.instapayLabel;
-        setPaymentAction({ url: data.checkoutUrl, label });
+        const label =
+          payMethod === "vodafone_cash"
+            ? getDefaultAccount(
+                paymentSettings.vodafoneCashAccounts,
+                paymentSettings.vodafoneCashLabel,
+                paymentSettings.vodafoneCashUrl,
+              ).label
+            : getDefaultAccount(
+                paymentSettings.instapayAccounts,
+                paymentSettings.instapayLabel,
+                paymentSettings.instapayUrl,
+              ).label;
+        setPaymentAction({ url: data.checkoutUrl, label, transactionId: data.transactionId ?? null });
       } else {
         setPaymentAction(null);
       }
@@ -4349,6 +4413,15 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
           >
             فتح رابط الدفع
           </button>
+          {paymentAction.transactionId && (
+            <button
+              className="btn-outline"
+              style={{ justifyContent: "center", width: "100%", marginTop: 10 }}
+              onClick={() => window.open(`/payment/verify?transactionId=${paymentAction.transactionId}`, "_blank", "noopener,noreferrer")}
+            >
+              التحقق من الدفع
+            </button>
+          )}
         </div>
       )}
       <div style={{ display: "flex", gap: 14, flexWrap: "wrap", justifyContent: "center" }}>

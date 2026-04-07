@@ -170,6 +170,8 @@ type PublicPayload = {
     instapayLabel: string;
     vodafoneCashUrl: string;
     vodafoneCashLabel: string;
+    instapayAccounts: { id: string; label: string; url: string; isDefault?: boolean }[];
+    vodafoneCashAccounts: { id: string; label: string; url: string; isDefault?: boolean }[];
   };
 };
 
@@ -201,6 +203,8 @@ const EMPTY_PAYLOAD: PublicPayload = {
     instapayLabel: "InstaPay",
     vodafoneCashUrl: "",
     vodafoneCashLabel: "Vodafone Cash",
+    instapayAccounts: [],
+    vodafoneCashAccounts: [],
   },
 };
 
@@ -343,6 +347,8 @@ export async function GET() {
       instapayLabel: "InstaPay",
       vodafoneCashUrl: "",
       vodafoneCashLabel: "Vodafone Cash",
+      instapayAccounts: [],
+      vodafoneCashAccounts: [],
     });
 
     const payload: PublicPayload = {
@@ -491,6 +497,12 @@ export async function GET() {
         instapayLabel: String((paymentSettingsRecord as Record<string, unknown>).instapayLabel ?? "InstaPay"),
         vodafoneCashUrl: String((paymentSettingsRecord as Record<string, unknown>).vodafoneCashUrl ?? ""),
         vodafoneCashLabel: String((paymentSettingsRecord as Record<string, unknown>).vodafoneCashLabel ?? "Vodafone Cash"),
+        instapayAccounts: Array.isArray((paymentSettingsRecord as Record<string, unknown>).instapayAccounts)
+          ? ((paymentSettingsRecord as Record<string, unknown>).instapayAccounts as { id: string; label: string; url: string; isDefault?: boolean }[])
+          : [],
+        vodafoneCashAccounts: Array.isArray((paymentSettingsRecord as Record<string, unknown>).vodafoneCashAccounts)
+          ? ((paymentSettingsRecord as Record<string, unknown>).vodafoneCashAccounts as { id: string; label: string; url: string; isDefault?: boolean }[])
+          : [],
       },
     };
 

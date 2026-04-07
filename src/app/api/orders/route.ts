@@ -155,6 +155,7 @@ export async function POST(req: Request) {
     });
 
     let checkoutUrl: string | null = null;
+    let transactionId: string | null = null;
     if (paymentMethod === "instapay" || paymentMethod === "vodafone_cash") {
       const transaction = await createPaymentTransaction({
         userId,
@@ -171,6 +172,7 @@ export async function POST(req: Request) {
         },
       });
       checkoutUrl = transaction.checkoutUrl ?? null;
+      transactionId = transaction.id;
     }
 
     await Promise.all([
@@ -190,6 +192,7 @@ export async function POST(req: Request) {
       orderId: order.id,
       total: order.total,
       checkoutUrl,
+      transactionId,
       message: "تم حفظ طلبك بنجاح.",
     });
   } catch (error) {
