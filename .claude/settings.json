@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e \"const AdmZip = require\\(''''./node_modules/adm-zip''''\\); const z = new AdmZip\\(''''Fitzone11.zip''''\\); const entries = z.getEntries\\(\\); console.log\\(entries.length, ''''files''''\\); entries.slice\\(0,20\\).forEach\\(e => console.log\\(e.entryName\\)\\);\")",
+      "Bash(unzip -l Fitzone11.zip)"
+    ]
+  }
+}
