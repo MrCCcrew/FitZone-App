@@ -643,11 +643,22 @@ const Footer = ({ navigate }: { navigate: (p: string) => void }) => {
           { title: "الخدمات", links: [["memberships","الاشتراكات"], ...(SHOW_CLASSES_PAGE ? [["classes","الكلاسات"]] : []), ["schedule","الجدول الأسبوعي"],["shop","المتجر"],["offers","العروض"]] },
           { title: "حسابي", links: [["account","ملفي الشخصي"],["wallet","المحفظة"],["rewards","نقاط المكافآت"],["referral","الإحالات"]] },
           { title: "تواصل معنا", links: [["about","عن النادي"],["contact","اتصلي بنا"],["blog","المدونة"],["contact","الأسئلة الشائعة"],["trainers","المدربات"]] },
+          { title: "السياسات", links: [["/policy","سياسة الاستخدام"],["/privacy","سياسة الخصوصية"],["/refund","سياسة الاسترجاع"]] },
         ].map(col => (
           <div key={col.title}>
             <h4 style={{ fontWeight: 700, marginBottom: 16, color: C.white, fontSize: 14 }}>{col.title}</h4>
             {col.links.map(([page, label]) => (
-              <button key={label} onClick={() => navigate(page)} style={{ display: "block", background: "none", border: "none", color: C.gray, fontSize: 13, padding: "5px 0", cursor: "pointer", fontFamily: "'Cairo', sans-serif", textAlign: "right", transition: "color .2s" }}>
+              <button
+                key={label}
+                onClick={() => {
+                  if (page.startsWith("/")) {
+                    window.location.href = page;
+                  } else {
+                    navigate(page);
+                  }
+                }}
+                style={{ display: "block", background: "none", border: "none", color: C.gray, fontSize: 13, padding: "5px 0", cursor: "pointer", fontFamily: "'Cairo', sans-serif", textAlign: "right", transition: "color .2s" }}
+              >
                 {label}
               </button>
             ))}
