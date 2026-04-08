@@ -922,6 +922,8 @@ type PublicMembership = {
   price: number;
   priceBefore?: number | null;
   priceAfter?: number | null;
+  image?: string | null;
+  sortOrder?: number;
   durationDays: number;
   cycle: string | null;
   sessionsCount: number | null;
@@ -2025,6 +2027,8 @@ type PlanItem = {
   price: number;
   priceBefore?: number | null;
   priceAfter?: number | null;
+  image?: string | null;
+  sortOrder?: number;
   durationDays: number;
   cycle: string | null;
   sessionsCount: number | null;
@@ -2048,6 +2052,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
   const [publicClasses, setPublicClasses] = useState<PublicClass[]>([]);
   const [healthQuestions, setHealthQuestions] = useState<PublicHealthQuestion[]>([]);
   const [selectedGoals, setSelectedGoals] = useState<string[]>([]);
+  const [goalViewParentId, setGoalViewParentId] = useState<string | null>(null);
   const plansRef = useRef<HTMLDivElement | null>(null);
   const [subscribing, setSubscribing] = useState<string | null>(null);
   const [subMsg, setSubMsg] = useState<{ text: string; ok: boolean } | null>(null);
@@ -2110,7 +2115,9 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
           );
         }
         if (Array.isArray(d.memberships) && d.memberships.length > 0) {
-          const subscriptions = (d.memberships as PublicMembership[]).filter((mb) => mb.kind === "subscription");
+          const subscriptions = (d.memberships as PublicMembership[])
+            .filter((mb) => mb.kind === "subscription")
+            .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
           setPlans(
             subscriptions.map((mb, i) => ({
               id: mb.id,
@@ -2118,6 +2125,8 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
               price: mb.price,
               priceBefore: mb.priceBefore ?? null,
               priceAfter: mb.priceAfter ?? null,
+              image: mb.image ?? null,
+              sortOrder: mb.sortOrder ?? 0,
               durationDays: mb.durationDays,
               cycle: mb.cycle,
               sessionsCount: mb.sessionsCount,
@@ -2152,16 +2161,31 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
     });
     return map;
   }, [goals]);
+  const goalViewParent = useMemo(
+    () => (goalViewParentId ? goals.find((goal) => goal.id === goalViewParentId) ?? null : null),
+    [goals, goalViewParentId],
+  );
+  const goalViewChildren = useMemo(() => {
+    if (!goalViewParentId) return [];
+    return (goalsByParent.get(goalViewParentId) ?? []).sort((a, b) => a.sortOrder - b.sortOrder);
+  }, [goalsByParent, goalViewParentId]);
   const displayGoals = useMemo(() => {
     if (rootGoals.length === 0) return [];
+    if (goalViewParentId) return goalViewChildren;
     const expanded = new Set(selectedGoals);
     const children = Array.from(expanded)
       .flatMap((id) => goalsByParent.get(id) ?? [])
       .sort((a, b) => a.sortOrder - b.sortOrder);
     return [...rootGoals, ...children];
-  }, [rootGoals, goalsByParent, selectedGoals]);
+  }, [rootGoals, goalsByParent, selectedGoals, goalViewParentId, goalViewChildren]);
 
   const toggleGoal = (goalId: string) => {
+    const hasChildren = (goalsByParent.get(goalId) ?? []).length > 0;
+    if (!goalViewParentId && hasChildren) {
+      setGoalViewParentId(goalId);
+      setSelectedGoals([]);
+      return;
+    }
     setSelectedGoals((prev) => {
       const exists = prev.includes(goalId);
       if (!exists) return [...prev, goalId];
@@ -2817,8 +2841,26 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
       <section className="section" style={{ paddingTop: 36 }}>
         <div className="container">
           <div style={{ textAlign: "center", marginBottom: 28 }}>
-            <h2 className="section-title">اختاري هدفك <span>الرياضي</span></h2>
-            <p className="section-sub">يمكنك اختيار أكثر من هدف لعرض الاشتراكات المناسبة لكل هدف.</p>
+            <h2 className="section-title">
+              {goalViewParentId ? <>اختاري هدفك <span>الفرعي</span></> : <>اختاري هدفك <span>الرياضي</span></>}
+            </h2>
+            <p className="section-sub">
+              {goalViewParentId
+                ? `أهداف ${goalViewParent?.name ?? "مختارة"} — اختاري هدفًا فرعيًا لعرض الاشتراكات المناسبة.`
+                : "يمكنك اختيار أكثر من هدف لعرض الاشتراكات المناسبة لكل هدف."}
+            </p>
+            {goalViewParentId && (
+              <button
+                className="btn-outline"
+                style={{ marginTop: 10 }}
+                onClick={() => {
+                  setGoalViewParentId(null);
+                  setSelectedGoals([]);
+                }}
+              >
+                رجوع لكل الأهداف
+              </button>
+            )}
           </div>
 
           {goals.length === 0 ? (
@@ -2830,10 +2872,18 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
               <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 16 }}>
                 {displayGoals.map((goal) => {
                   const active = selectedGoals.includes(goal.id);
+                  const hasChildren = !goal.parentId && (goalsByParent.get(goal.id)?.length ?? 0) > 0;
                   return (
                     <button
                       key={goal.id}
-                      onClick={() => toggleGoal(goal.id)}
+                      onClick={() => {
+                        if (hasChildren) {
+                          setGoalViewParentId(goal.id);
+                          setSelectedGoals([]);
+                          return;
+                        }
+                        toggleGoal(goal.id);
+                      }}
                       className="card card-hover"
                       style={{
                         border: active ? `2px solid ${C.red}` : `1px solid ${C.border}`,
@@ -2874,7 +2924,9 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
           )}
           {selectedGoals.length === 0 ? (
             <div className="card" style={{ padding: 20, textAlign: "center", color: C.gray }}>
-              اختاري هدفًا أو أكثر لعرض الاشتراكات المناسبة.
+              {goalViewParentId
+                ? "اختاري هدفًا فرعيًا لعرض الاشتراكات المناسبة."
+                : "اختاري هدفًا أو أكثر لعرض الاشتراكات المناسبة."}
             </div>
           ) : filteredPlans.length === 0 ? (
             <div className="card" style={{ padding: 20, textAlign: "center", color: C.gray }}>
@@ -2915,6 +2967,11 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                       {hasDiscount && discountPercent != null ? (
                         <div style={{ position: "absolute", top: 10, right: 16, background: C.gold, color: "#000", padding: "3px 10px", borderRadius: 999, fontSize: 10, fontWeight: 800 }}>
                           خصم {discountPercent}%
+                        </div>
+                      ) : null}
+                      {p.image ? (
+                        <div style={{ height: 140, borderRadius: 14, overflow: "hidden", marginBottom: 14, border: `1px solid ${C.border}` }}>
+                          <img src={p.image} alt={p.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                         </div>
                       ) : null}
                       <h3 style={{ fontWeight: 900, fontSize: 20, color: C.white, marginBottom: 10 }}>{p.name}</h3>

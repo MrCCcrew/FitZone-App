@@ -87,6 +87,8 @@ model Membership {
   price       Float
   priceBefore Float?
   priceAfter  Float?
+  image       String?
+  sortOrder   Int     @default(0)
   duration    Int     // days
   cycle       String? // monthly | quarterly | semi_annual | annual | custom
   sessionsCount Int?  // عدد الحصص للاشتراك

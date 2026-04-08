@@ -56,6 +56,8 @@ export interface Plan {
   price: number;
   priceBefore?: number | null;
   priceAfter?: number | null;
+  image?: string | null;
+  sortOrder?: number;
   duration: number;
   cycle?: "monthly" | "quarterly" | "semi_annual" | "annual" | "custom";
   sessionsCount?: number | null;

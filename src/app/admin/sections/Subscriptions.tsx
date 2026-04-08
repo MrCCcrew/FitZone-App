@@ -25,6 +25,8 @@ const EMPTY_PLAN: Omit<PlanDraft, "id" | "membersCount"> = {
   productRewards: [],
   priceBefore: null,
   priceAfter: null,
+  image: "",
+  sortOrder: 0,
   discountType: "percentage",
   discountValue: null,
 };
@@ -115,6 +117,7 @@ export default function Subscriptions() {
     quantity: 1,
   });
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [uploadingPlanImage, setUploadingPlanImage] = useState(false);
   const [planModal, setPlanModal] = useState<PlanDraft | typeof EMPTY_PLAN | null>(null);
   const [offerModal, setOfferModal] = useState<Offer | typeof EMPTY_OFFER | null>(null);
 
@@ -350,6 +353,30 @@ export default function Subscriptions() {
     await loadData();
   };
 
+  const uploadPlanImage = async (file: File) => {
+    setUploadingPlanImage(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("folder", "memberships");
+
+      const response = await fetch("/api/admin/uploads", {
+        method: "POST",
+        body: formData,
+      });
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.url) {
+        window.alert(payload?.error ?? "تعذر رفع صورة الاشتراك.");
+        return;
+      }
+
+      setPlanModal((current) => (current ? { ...current, image: payload.url } : current));
+    } finally {
+      setUploadingPlanImage(false);
+    }
+  };
+
   const uploadOfferImage = async (file: File) => {
     setUploadingImage(true);
     try {
@@ -414,10 +441,22 @@ export default function Subscriptions() {
                     : "border-[rgba(255,188,219,0.08)] bg-black/10 opacity-65"
                 }`}
               >
+                {plan.image ? (
+                  <img
+                    src={plan.image}
+                    alt={plan.name}
+                    className="mb-4 h-32 w-full rounded-2xl border border-[rgba(255,188,219,0.14)] object-cover"
+                  />
+                ) : (
+                  <div className="mb-4 flex h-32 items-center justify-center rounded-2xl border border-dashed border-[rgba(255,188,219,0.18)] text-xs text-[#d7aabd]">
+                    بدون صورة
+                  </div>
+                )}
                 <div className="mb-4 flex items-start justify-between gap-3">
                   <div>
                     <div className="font-black text-[#fff4f8]">{plan.name}</div>
                     <div className="mt-1 text-xs text-[#d7aabd]">{CYCLE_LABELS[plan.cycle ?? "monthly"]}</div>
+                    <div className="mt-1 text-xs text-[#d7aabd]">ترتيب: {plan.sortOrder ?? 0}</div>
                   </div>
                   <button
                     onClick={() => void togglePlan(plan.id, plan.active)}
@@ -614,7 +653,7 @@ export default function Subscriptions() {
               <input value={planModal.name} onChange={(event) => setPlanModal({ ...planModal, name: event.target.value })} className={INPUT} />
             </Field>
 
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-4 sm:grid-cols-3">
               <Field label="السعر">
                 <input type="number" value={planModal.price} onChange={(event) => setPlanModal({ ...planModal, price: Number(event.target.value) })} className={INPUT} dir="ltr" />
               </Field>
@@ -627,6 +666,18 @@ export default function Subscriptions() {
                   <option value="annual">سنوي</option>
                   <option value="custom">مخصص</option>
                 </select>
+              </Field>
+
+              <Field label="ترتيب الظهور" hint="أرقام أصغر تظهر أولًا.">
+                <input
+                  type="number"
+                  value={planModal.sortOrder ?? 0}
+                  onChange={(event) =>
+                    setPlanModal({ ...planModal, sortOrder: Number(event.target.value) })
+                  }
+                  className={INPUT}
+                  dir="ltr"
+                />
               </Field>
             </div>
 
@@ -658,6 +709,34 @@ export default function Subscriptions() {
                 />
               </Field>
             </div>
+
+            <Field label="صورة الاشتراك" hint="المقاس الموصى به 1200×900 أو 4:3 ليظهر بشكل واضح داخل البطاقة.">
+              <div className="flex flex-wrap gap-2">
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) void uploadPlanImage(file);
+                  }}
+                  className="block w-full text-sm text-[#d7aabd] file:mr-3 file:rounded-lg file:border-0 file:bg-[#ff4f93] file:px-4 file:py-2 file:text-xs file:font-bold file:text-white hover:file:bg-[#ff2f7d]"
+                />
+                <input
+                  value={planModal.image ?? ""}
+                  onChange={(event) => setPlanModal({ ...planModal, image: event.target.value })}
+                  className={INPUT}
+                  placeholder="أو ضع رابط الصورة المباشر"
+                />
+              </div>
+              {uploadingPlanImage ? <div className="text-xs text-[#d7aabd]">جاري رفع صورة الاشتراك...</div> : null}
+              {planModal.image ? (
+                <img
+                  src={planModal.image}
+                  alt="صورة الاشتراك"
+                  className="mt-2 h-44 w-full rounded-2xl border border-[rgba(255,188,219,0.14)] object-cover"
+                />
+              ) : null}
+            </Field>
 
             {planModal.discountValue && planModal.discountValue > 0 ? (
               <div className="rounded-xl border border-[rgba(255,188,219,0.18)] bg-black/20 p-4 text-sm text-[#fff4f8]">

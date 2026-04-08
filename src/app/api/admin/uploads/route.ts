@@ -15,7 +15,16 @@ const ALLOWED_TYPES = new Set([
   "video/webm",
   "video/quicktime",
 ]);
-const ALLOWED_FOLDERS = new Set(["products", "hero", "trainers", "offers", "pages", "blog", "general"]);
+const ALLOWED_FOLDERS = new Set([
+  "products",
+  "hero",
+  "trainers",
+  "offers",
+  "memberships",
+  "pages",
+  "blog",
+  "general",
+]);
 
 function getExtension(fileName: string, mimeType: string) {
   const ext = path.extname(fileName).toLowerCase();
@@ -46,7 +55,7 @@ export async function POST(req: Request) {
     if (missingEnv.length > 0) {
       return NextResponse.json(
         {
-          error: `رفع الصور غير متاح حاليًا. المتغيرات الناقصة: ${missingEnv.join(", ")}`,
+          error: `رفع الملفات غير متاح حاليًا. المتغيرات الناقصة: ${missingEnv.join(", ")}`,
         },
         { status: 503 },
       );
@@ -62,14 +71,14 @@ export async function POST(req: Request) {
 
     if (!ALLOWED_TYPES.has(file.type)) {
       return NextResponse.json(
-        { error: "نوع الملف غير مدعوم. ارفعي JPG أو PNG أو WEBP أو GIF فقط." },
+        { error: "نوع الملف غير مدعوم. ارفعي JPG أو PNG أو WEBP أو GIF أو MP4 أو WEBM أو MOV." },
         { status: 400 },
       );
     }
 
     if (file.size > MAX_FILE_SIZE) {
       return NextResponse.json(
-        { error: "حجم الصورة كبير جدًا. الحد الأقصى المسموح هو 5 ميجابايت." },
+        { error: "حجم الملف كبير جدًا. الحد الأقصى المسموح هو 100 ميجابايت." },
         { status: 400 },
       );
     }
@@ -101,7 +110,7 @@ export async function POST(req: Request) {
     console.error("[ADMIN_UPLOAD]", error);
     return NextResponse.json(
       {
-        error: "تعذر رفع الصورة الآن. تأكدي من إعدادات التخزين أو حجم الصورة ثم حاولي مرة أخرى.",
+        error: "تعذر رفع الملف الآن. تأكدي من إعدادات التخزين أو حجم الملف ثم حاولي مرة أخرى.",
       },
       { status: 500 },
     );
