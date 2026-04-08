@@ -98,7 +98,7 @@ const css = `
   .schedule-title{display:flex;flex-direction:column;align-items:center;gap:6px;margin-bottom:22px;text-align:center;}
   .schedule-title h2{font-size:36px;font-weight:900;color:#fff;letter-spacing:.5px;}
   .schedule-title span{background:#0f0a0c;color:#f5c542;border-radius:999px;padding:6px 18px;font-size:16px;font-weight:800;border:1px solid rgba(255,255,255,.18);}
-  .schedule-grid{display:grid;border:2px solid rgba(255,255,255,.85);border-radius:18px;overflow:hidden;direction:ltr;background:#101010;min-width:860px;width:max-content;}
+  .schedule-grid{display:grid;border:2px solid rgba(255,255,255,.85);border-radius:18px;overflow:hidden;direction:ltr;background:#101010;min-width:0;width:100%;}
   .schedule-cell{min-height:86px;border-left:1px solid rgba(255,255,255,.22);border-top:1px solid rgba(255,255,255,.22);padding:8px 10px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:2px;}
   .schedule-cell.time{background:#111;font-weight:900;font-size:18px;color:#fff;letter-spacing:.5px;}
   .schedule-cell.time span{font-size:12px;color:#c9c9c9;font-weight:700;}
@@ -116,7 +116,7 @@ const css = `
   .schedule-item-sub{color:#f2e7ec;font-size:11px;font-weight:700;}
   .schedule-item-tag{color:#f5c542;font-size:10px;font-weight:800;}
   .schedule-empty{color:#f5c542;font-size:22px;font-weight:900;opacity:.8;}
-  .schedule-scroll{overflow-x:auto;padding-bottom:8px;max-width:100%;}
+  .schedule-scroll{overflow-x:visible;padding-bottom:8px;max-width:100%;}
   .schedule-grid .schedule-cell.sticky{border-top:none;}
   @media(max-width:900px){
     .schedule-title h2{font-size:28px;}
@@ -885,6 +885,7 @@ type PublicClass = {
   subType?: string | null;
   price: number;
   maxSpots: number;
+  showTrainerName?: boolean;
   schedules: { id: string; date: string; time: string; availableSpots: number }[];
 };
 
@@ -2233,6 +2234,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
       id: string;
       className: string;
       trainer: string;
+      showTrainerName: boolean;
       day: string;
       time: string;
       date: string;
@@ -2250,6 +2252,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
           id: s.id,
           className: c.name,
           trainer: c.trainer,
+          showTrainerName: c.showTrainerName !== false,
           day: dayNames[date.getDay()] ?? "الأحد",
           time: s.time,
           date: s.date,
@@ -2300,18 +2303,24 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
     return order.filter((day) => daySet.has(day));
   }, [scheduleChoices]);
 
-  const toggleScheduleSelection = (slotId: string, disabled: boolean) => {
+  const toggleScheduleSelection = (entry: { id: string; day: string; time: string }, disabled: boolean) => {
     if (disabled) return;
     setScheduleError(null);
     setScheduleSelections((prev) => {
-      const exists = prev.includes(slotId);
-      if (exists) return prev.filter((id) => id !== slotId);
+      const sameSlotIds = scheduleChoices
+        .filter((item) => item.day === entry.day && item.time === entry.time)
+        .map((item) => item.id);
+      const exists = prev.includes(entry.id);
+      if (exists) {
+        return prev.filter((id) => id !== entry.id);
+      }
+      const cleaned = prev.filter((id) => !sameSlotIds.includes(id));
       const limit = schedulePlan?.sessionsCount ?? null;
-      if (limit && prev.length >= limit) {
+      if (limit && cleaned.length >= limit) {
         setScheduleError(`يمكنك اختيار ${limit} موعد كحد أقصى لهذه الباقة.`);
         return prev;
       }
-      return [...prev, slotId];
+      return [...cleaned, entry.id];
     });
   };
 
@@ -2617,21 +2626,28 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                                       <div className="schedule-empty">—</div>
                                     ) : (
                                       <div className="schedule-slot-box">
+                                        {cellEntries.length > 1 ? (
+                                          <div className="schedule-item-tag" style={{ color: "#ffb7d0" }}>
+                                            اختاري كلاس واحد فقط لهذا الموعد
+                                          </div>
+                                        ) : null}
                                         {cellEntries.map((entry) => {
                                           const selected = scheduleSelections.includes(entry.id);
                                           const disabled = entry.availableSpots <= 0;
                                           return (
                                             <button
                                               key={entry.id}
-                                              onClick={() => toggleScheduleSelection(entry.id, disabled)}
+                                              onClick={() => toggleScheduleSelection(entry, disabled)}
                                               className={`schedule-slot-item${selected ? " selected" : ""}${
                                                 disabled ? " disabled" : ""
                                               }`}
                                             >
                                               <div className="schedule-item-title">{entry.className}</div>
-                                              <div className="schedule-item-sub" style={{ color: "#fff" }}>
-                                                {entry.trainer}
-                                              </div>
+                                              {entry.showTrainerName ? (
+                                                <div className="schedule-item-sub" style={{ color: "#fff" }}>
+                                                  {entry.trainer}
+                                                </div>
+                                              ) : null}
                                               <div className="schedule-item-tag">
                                                 {formatClassType(entry.type)}
                                                 {entry.subType ? ` - ${entry.subType}` : ""}
@@ -2682,21 +2698,28 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                                       <div className="schedule-empty">—</div>
                                     ) : (
                                       <div className="schedule-slot-box">
+                                        {cellEntries.length > 1 ? (
+                                          <div className="schedule-item-tag" style={{ color: "#ffb7d0" }}>
+                                            اختاري كلاس واحد فقط لهذا الموعد
+                                          </div>
+                                        ) : null}
                                         {cellEntries.map((entry) => {
                                           const selected = scheduleSelections.includes(entry.id);
                                           const disabled = entry.availableSpots <= 0;
                                           return (
                                             <button
                                               key={entry.id}
-                                              onClick={() => toggleScheduleSelection(entry.id, disabled)}
+                                              onClick={() => toggleScheduleSelection(entry, disabled)}
                                               className={`schedule-slot-item${selected ? " selected" : ""}${
                                                 disabled ? " disabled" : ""
                                               }`}
                                             >
                                               <div className="schedule-item-title">{entry.className}</div>
-                                              <div className="schedule-item-sub" style={{ color: "#fff" }}>
-                                                {entry.trainer}
-                                              </div>
+                                              {entry.showTrainerName ? (
+                                                <div className="schedule-item-sub" style={{ color: "#fff" }}>
+                                                  {entry.trainer}
+                                                </div>
+                                              ) : null}
                                               <div className="schedule-item-tag">
                                                 {formatClassType(entry.type)}
                                                 {entry.subType ? ` - ${entry.subType}` : ""}

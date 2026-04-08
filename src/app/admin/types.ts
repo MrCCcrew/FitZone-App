@@ -101,6 +101,7 @@ export interface GymClass {
   type: string;
   subType?: string | null;
   active: boolean;
+  showTrainerName?: boolean;
 }
 
 export interface Trainer {

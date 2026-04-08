@@ -159,6 +159,7 @@ model Class {
   maxSpots    Int     @default(15)
   price       Float   @default(0)
   image       String?
+  showTrainerName Boolean @default(true)
   isActive    Boolean @default(true)
 
   trainer   Trainer    @relation(fields: [trainerId], references: [id])
