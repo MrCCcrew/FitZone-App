@@ -1067,6 +1067,11 @@ function WalletTab({
 }: { wallet: AccountData["wallet"]; rewards: AccountData["rewards"]; referral: AccountData["referral"] | null }) {
   const [activeSection, setActiveSection] = useState<"wallet" | "points">("wallet");
   const [copied, setCopied]   = useState(false);
+  const [selectedAmount, setSelectedAmount] = useState<number | null>(null);
+  const [customAmount, setCustomAmount] = useState("");
+  const [paying, setPaying] = useState(false);
+  const [payError, setPayError] = useState<string | null>(null);
+  const [lastTx, setLastTx] = useState<{ id: string; url?: string | null } | null>(null);
 
   const tier = TIER_CONFIG[rewards.tier as keyof typeof TIER_CONFIG] ?? TIER_CONFIG.bronze;
 
@@ -1074,7 +1079,43 @@ function WalletTab({
     if (referral) { navigator.clipboard.writeText(referral.code); setCopied(true); setTimeout(() => setCopied(false), 2000); }
   };
 
-  const TOPUP_AMOUNTS = [50, 100, 200, 500];
+  const TOPUP_AMOUNTS = [50, 100, 200, 500, 1000];
+  const effectiveAmount = selectedAmount ?? (customAmount ? Number(customAmount) : 0);
+
+  const startTopup = async (provider: "instapay" | "vodafone_cash") => {
+    if (!Number.isFinite(effectiveAmount) || effectiveAmount <= 0) {
+      setPayError("يرجى اختيار مبلغ صالح للشحن.");
+      return;
+    }
+    setPayError(null);
+    setPaying(true);
+    try {
+      const res = await fetch("/api/payments/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          purpose: "wallet_topup",
+          provider,
+          amount: effectiveAmount,
+          currency: "EGP",
+          paymentMethod: provider,
+        }),
+      });
+      const payload = await res.json();
+      if (!res.ok) {
+        throw new Error(payload.error ?? "تعذر بدء عملية الشحن.");
+      }
+      const tx = payload.transaction;
+      setLastTx({ id: tx?.id, url: tx?.checkoutUrl });
+      if (tx?.checkoutUrl) {
+        window.open(tx.checkoutUrl, "_blank", "noopener,noreferrer");
+      }
+    } catch (err: unknown) {
+      setPayError(err instanceof Error ? err.message : "تعذر بدء عملية الشحن.");
+    } finally {
+      setPaying(false);
+    }
+  };
 
   return (
     <div className="space-y-5">
@@ -1101,7 +1142,16 @@ function WalletTab({
             <h4 className="text-white font-black mb-3">شحن سريع</h4>
             <div className="grid grid-cols-4 gap-2 mb-3">
               {TOPUP_AMOUNTS.map((v) => (
-                <button key={v} className="bg-gray-800 hover:bg-blue-600 text-white font-bold py-2 rounded-xl text-sm transition-colors">
+                <button
+                  key={v}
+                  onClick={() => {
+                    setSelectedAmount(v);
+                    setCustomAmount("");
+                    setLastTx(null);
+                    setPayError(null);
+                  }}
+                  className={`text-white font-bold py-2 rounded-xl text-sm transition-colors ${selectedAmount === v ? "bg-blue-600" : "bg-gray-800 hover:bg-blue-600"}`}
+                >
                   {v} ج.م
                 </button>
               ))}
@@ -1110,6 +1160,59 @@ function WalletTab({
               <input type="number" placeholder="مبلغ مخصص..." className={INPUT} dir="ltr" />
               <button className="bg-blue-600 hover:bg-blue-700 text-white font-black px-5 rounded-xl transition-colors text-sm whitespace-nowrap">شحن</button>
             </div>
+          </div>
+
+          <div className={CARD}>
+            <h4 className="text-white font-black mb-3">الدفع لشحن المحفظة</h4>
+            <div className="flex flex-wrap gap-2">
+              <input
+                type="number"
+                placeholder="مبلغ مخصص..."
+                className={INPUT}
+                dir="ltr"
+                value={customAmount}
+                onChange={(e) => {
+                  setCustomAmount(e.target.value);
+                  setSelectedAmount(null);
+                  setLastTx(null);
+                  setPayError(null);
+                }}
+              />
+              <button
+                onClick={() => {
+                  if (!customAmount) return;
+                  setSelectedAmount(Number(customAmount));
+                }}
+                className="bg-blue-600 hover:bg-blue-700 text-white font-black px-5 rounded-xl transition-colors text-sm whitespace-nowrap"
+              >
+                تثبيت
+              </button>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                onClick={() => startTopup("instapay")}
+                disabled={paying}
+                className="bg-pink-600 hover:bg-pink-700 disabled:opacity-60 text-white font-black px-4 py-2 rounded-xl text-sm"
+              >
+                الدفع عبر إنستاباي
+              </button>
+              <button
+                onClick={() => startTopup("vodafone_cash")}
+                disabled={paying}
+                className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-black px-4 py-2 rounded-xl text-sm"
+              >
+                الدفع عبر فودافون كاش
+              </button>
+            </div>
+            {payError && <div className="mt-2 text-xs text-red-400">{payError}</div>}
+            {lastTx?.id && (
+              <div className="mt-2 text-xs text-gray-400">
+                تم إنشاء معاملة الشحن. يمكنك متابعة التأكيد من هنا:{" "}
+                <a className="text-pink-300 underline" href={`/payment/verify?transactionId=${lastTx.id}`}>
+                  صفحة التحقق من الدفع
+                </a>
+              </div>
+            )}
           </div>
 
           {/* Transactions */}
