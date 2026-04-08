@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 type PaymentTransaction = {
@@ -23,7 +23,7 @@ const STATUS_LABELS: Record<PaymentTransaction["status"], string> = {
   expired: "منتهية",
 };
 
-export default function PaymentVerifyPage() {
+function PaymentVerifyContent() {
   const searchParams = useSearchParams();
   const transactionId = searchParams.get("transactionId");
   const [loading, setLoading] = useState(true);
@@ -105,7 +105,7 @@ export default function PaymentVerifyPage() {
         </p>
 
         <div className="mt-6 rounded-3xl border border-[#ffbcdb]/20 bg-[#2a0f1b] p-6">
-          {loading && <div className="text-sm text-[#d7aabd]">جارٍ التحقق من المعاملة...</div>}
+          {loading && <div className="text-sm text-[#d7aabd]">جاري التحقق من المعاملة...</div>}
           {!loading && error && (
             <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
               {error}
@@ -159,7 +159,7 @@ export default function PaymentVerifyPage() {
                   disabled={confirming}
                   className="mt-3 w-full rounded-xl border border-pink-300/20 bg-pink-500/15 px-4 py-2.5 text-sm font-bold text-pink-100 disabled:opacity-60"
                 >
-                  {confirming ? "جارٍ إرسال التأكيد..." : "إرسال التأكيد"}
+                  {confirming ? "جاري إرسال التأكيد..." : "إرسال التأكيد"}
                 </button>
                 {result && <div className="mt-3 text-xs text-[#d7aabd]">{result}</div>}
               </div>
@@ -168,5 +168,13 @@ export default function PaymentVerifyPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function PaymentVerifyPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#12060c] text-white" />}>
+      <PaymentVerifyContent />
+    </Suspense>
   );
 }
