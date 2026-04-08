@@ -4,7 +4,7 @@ const nextConfig: NextConfig = {
   experimental: {
     cpus: 2,
     workerThreads: false,
-    middlewareClientMaxBodySize: "200mb",
+    proxyClientMaxBodySize: "200mb",
   },
 };
 
