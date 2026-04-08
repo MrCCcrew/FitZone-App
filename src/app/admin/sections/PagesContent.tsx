@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-type Tab = "hero" | "contact" | "trainersPage" | "announcements" | "about" | "blog";
+type Tab = "hero" | "contact" | "trainersPage" | "announcements" | "about" | "blog" | "policy" | "privacy" | "refund";
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: "hero", label: "الصفحة الرئيسية", icon: "🏠" },
@@ -11,6 +11,9 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: "announcements", label: "الإعلانات", icon: "📣" },
   { id: "about", label: "عن النادي", icon: "ℹ️" },
   { id: "blog", label: "المدونة", icon: "📝" },
+  { id: "policy", label: "سياسة الاستخدام", icon: "📄" },
+  { id: "privacy", label: "سياسة الخصوصية", icon: "🔒" },
+  { id: "refund", label: "سياسة الاسترجاع", icon: "↩️" },
 ];
 
 type HeroStat = { value: string; label: string };
@@ -72,6 +75,11 @@ type BlogData = {
   categories: string[];
   posts: BlogPost[];
 };
+type LegalData = {
+  title: string;
+  updatedAt: string;
+  content: string;
+};
 
 const DEFAULTS: Record<Tab, unknown> = {
   hero: {
@@ -124,6 +132,24 @@ const DEFAULTS: Record<Tab, unknown> = {
     categories: ["لياقة", "تغذية", "صحة", "تحفيز"],
     posts: [],
   } satisfies BlogData,
+  policy: {
+    title: "سياسة الاستخدام والشروط",
+    updatedAt: "آخر تحديث: 2026-04-08",
+    content:
+      "باستخدامك لهذا الموقع أو خدمات Fit Zone فإنك تقر بأنك قرأت هذه السياسة ووافقت عليها.\n\n1) الاستخدام المقبول: يُمنع إساءة الاستخدام أو نشر محتوى مخالف.\n2) الاشتراكات والحجوزات: أي حجز أو اشتراك يتم وفق المواعيد والسياسات المعروضة داخل الموقع.\n3) المدفوعات: يتم الدفع عبر الوسائل المعتمدة داخل الموقع، وأي رسوم موضّحة يتم إظهارها قبل التأكيد النهائي.\n4) المحتوى والملكية الفكرية: جميع المحتويات والصور والشعارات مملوكة لـ Fit Zone أو مرخّصة لها.\n5) التعديلات: نحتفظ بحق تعديل هذه السياسة، وسيتم تحديث تاريخ آخر تعديل أعلاه.",
+  } satisfies LegalData,
+  privacy: {
+    title: "سياسة الخصوصية",
+    updatedAt: "آخر تحديث: 2026-04-08",
+    content:
+      "نحترم خصوصيتك ونلتزم بحماية بياناتك الشخصية.\n\n1) البيانات التي نجمعها: الاسم، البريد الإلكتروني، الهاتف، وبيانات الحجز/الاشتراك عند الحاجة.\n2) استخدام البيانات: لإدارة الحساب، الحجز، إرسال إشعارات مهمة، وتحسين الخدمة.\n3) مشاركة البيانات: لا نشارك بياناتك مع أطراف خارجية إلا عند الضرورة لتنفيذ الخدمة (مثل شركات الدفع/الشحن) أو وفق القانون.\n4) الأمان: نستخدم إجراءات مناسبة لحماية البيانات من الوصول غير المصرح به.\n5) حقوقك: يمكنك طلب تعديل أو حذف بياناتك عبر الدعم.",
+  } satisfies LegalData,
+  refund: {
+    title: "سياسة الاسترجاع والإلغاء",
+    updatedAt: "آخر تحديث: 2026-04-08",
+    content:
+      "نسعى لتقديم أفضل تجربة. توضح هذه السياسة آلية الاسترجاع والإلغاء.\n\n1) الاشتراكات: قد تكون غير قابلة للاسترداد بعد التفعيل، إلا إذا نصّت العروض على غير ذلك.\n2) الباقات/العروض: تُطبق شروط الاسترجاع الخاصة بكل عرض كما تظهر عند الشراء.\n3) الحجوزات: يمكن تعديل المواعيد وفق الشروط الموضحة داخل الحساب.\n4) المنتجات: يمكن استرجاع المنتجات وفق حالة المنتج وسياسة المتجر (إن وجدت).\n5) التواصل: للاستفسارات أو طلب استرجاع، يرجى التواصل مع فريق الدعم.",
+  } satisfies LegalData,
 };
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
@@ -521,6 +547,26 @@ function AboutTab({ data, onChange }: { data: AboutData; onChange: (d: AboutData
       </Field>
       <Field label="الرؤية">
         <TTextarea value={data.vision} onChange={(v) => update("vision", v)} rows={3} />
+      </Field>
+    </div>
+  );
+}
+
+function LegalTab({ data, onChange }: { data: LegalData; onChange: (d: LegalData) => void }) {
+  const update = <K extends keyof LegalData>(key: K, value: LegalData[K]) => onChange({ ...data, [key]: value });
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <Field label="عنوان الصفحة">
+          <TInput value={data.title} onChange={(v) => update("title", v)} />
+        </Field>
+        <Field label="تاريخ التحديث">
+          <TInput value={data.updatedAt} onChange={(v) => update("updatedAt", v)} />
+        </Field>
+      </div>
+      <Field label="المحتوى" hint="اكتبي النص الكامل، ويمكن استخدام سطور جديدة للتقسيم.">
+        <TTextarea value={data.content} onChange={(v) => update("content", v)} rows={10} />
       </Field>
     </div>
   );
@@ -997,6 +1043,9 @@ export default function PagesContent() {
   const [announcements, setAnnouncements] = useState<Announcement[]>(DEFAULTS.announcements as Announcement[]);
   const [about, setAbout] = useState<AboutData>(DEFAULTS.about as AboutData);
   const [blog, setBlog] = useState<BlogData>(DEFAULTS.blog as BlogData);
+  const [policy, setPolicy] = useState<LegalData>(DEFAULTS.policy as LegalData);
+  const [privacy, setPrivacy] = useState<LegalData>(DEFAULTS.privacy as LegalData);
+  const [refund, setRefund] = useState<LegalData>(DEFAULTS.refund as LegalData);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ text: string; ok: boolean } | null>(null);
@@ -1007,7 +1056,7 @@ export default function PagesContent() {
     async function loadContent() {
       try {
         const response = await fetch(
-          "/api/site-content?sections=hero,contact,trainersPage,announcements,about,blog",
+          "/api/site-content?sections=hero,contact,trainersPage,announcements,about,blog,policy,privacy,refund",
           { cache: "no-store" },
         );
         const payload = await response.json();
@@ -1033,6 +1082,15 @@ export default function PagesContent() {
         }
         if (payload.blog && typeof payload.blog === "object") {
           setBlog({ ...(DEFAULTS.blog as BlogData), ...(payload.blog as Partial<BlogData>) });
+        }
+        if (payload.policy && typeof payload.policy === "object") {
+          setPolicy({ ...(DEFAULTS.policy as LegalData), ...(payload.policy as Partial<LegalData>) });
+        }
+        if (payload.privacy && typeof payload.privacy === "object") {
+          setPrivacy({ ...(DEFAULTS.privacy as LegalData), ...(payload.privacy as Partial<LegalData>) });
+        }
+        if (payload.refund && typeof payload.refund === "object") {
+          setRefund({ ...(DEFAULTS.refund as LegalData), ...(payload.refund as Partial<LegalData>) });
         }
       } catch {
         setMessage({ text: "تعذر تحميل محتوى الصفحات الآن.", ok: false });
@@ -1061,8 +1119,14 @@ export default function PagesContent() {
         return { section: "about", content: about };
       case "blog":
         return { section: "blog", content: blog };
+      case "policy":
+        return { section: "policy", content: policy };
+      case "privacy":
+        return { section: "privacy", content: privacy };
+      case "refund":
+        return { section: "refund", content: refund };
     }
-  }, [about, activeTab, announcements, blog, contact, hero, trainersPage]);
+  }, [about, activeTab, announcements, blog, contact, hero, trainersPage, policy, privacy, refund]);
 
   const saveCurrentTab = useCallback(async () => {
     setSaving(true);
@@ -1107,6 +1171,15 @@ export default function PagesContent() {
         break;
       case "blog":
         setBlog(DEFAULTS.blog as BlogData);
+        break;
+      case "policy":
+        setPolicy(DEFAULTS.policy as LegalData);
+        break;
+      case "privacy":
+        setPrivacy(DEFAULTS.privacy as LegalData);
+        break;
+      case "refund":
+        setRefund(DEFAULTS.refund as LegalData);
         break;
     }
   };
@@ -1187,6 +1260,9 @@ export default function PagesContent() {
         ) : null}
         {!loading && activeTab === "about" ? <AboutTab data={about} onChange={setAbout} /> : null}
         {!loading && activeTab === "blog" ? <BlogTabFixed data={blog} onChange={setBlog} /> : null}
+        {!loading && activeTab === "policy" ? <LegalTab data={policy} onChange={setPolicy} /> : null}
+        {!loading && activeTab === "privacy" ? <LegalTab data={privacy} onChange={setPrivacy} /> : null}
+        {!loading && activeTab === "refund" ? <LegalTab data={refund} onChange={setRefund} /> : null}
       </div>
     </div>
   );
