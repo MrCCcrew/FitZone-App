@@ -78,6 +78,7 @@ type PublicPayload = {
     subType: string | null;
     price: number;
     maxSpots: number;
+    showTrainerName: boolean;
     schedules: Array<{
       id: string;
       date: string;
@@ -414,6 +415,7 @@ export async function GET() {
         subType: gymClass.subType ?? null,
         price: gymClass.price,
         maxSpots: gymClass.maxSpots,
+        showTrainerName: gymClass.showTrainerName ?? true,
         schedules: gymClass.schedules.map((schedule) => ({
           id: schedule.id,
           date: schedule.date.toISOString(),

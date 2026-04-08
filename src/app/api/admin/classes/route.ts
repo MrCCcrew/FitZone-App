@@ -84,6 +84,7 @@ export async function GET() {
       subType: item.subType ?? "",
       intensity: item.intensity,
       price: item.price,
+      showTrainerName: item.showTrainerName ?? true,
       active: item.isActive,
     };
   });
@@ -116,6 +117,7 @@ export async function POST(request: Request) {
       active?: boolean;
       day?: string;
       time?: string;
+      showTrainerName?: boolean;
     };
 
     const name = body.name?.trim();
@@ -140,6 +142,7 @@ export async function POST(request: Request) {
         intensity: body.intensity ?? "medium",
         maxSpots,
         price: Number(body.price ?? 0),
+        showTrainerName: body.showTrainerName ?? true,
         isActive: body.active ?? true,
       },
       include: { trainer: true },
@@ -175,6 +178,7 @@ export async function POST(request: Request) {
       subType: created.subType ?? "",
       intensity: created.intensity,
       price: created.price,
+      showTrainerName: created.showTrainerName ?? true,
       active: created.isActive,
     });
   } catch {
@@ -201,6 +205,7 @@ export async function PATCH(request: Request) {
       price?: number;
       day?: string;
       time?: string;
+      showTrainerName?: boolean;
     };
 
     if (!body.id) {
@@ -218,6 +223,7 @@ export async function PATCH(request: Request) {
     if (body.maxSpots !== undefined) data.maxSpots = Number(body.maxSpots);
     if (body.duration !== undefined) data.duration = Number(body.duration);
     if (body.price !== undefined) data.price = Number(body.price);
+    if (body.showTrainerName !== undefined) data.showTrainerName = Boolean(body.showTrainerName);
 
     if (Object.keys(data).length > 0) {
       await db.class.update({ where: { id: body.id }, data });

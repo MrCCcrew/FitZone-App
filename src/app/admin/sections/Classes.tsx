@@ -97,6 +97,7 @@ type ClassModalState = {
   type: string;
   subType: string;
   active: boolean;
+  showTrainerName: boolean;
   categoryPreset: string;
   customCategory: string;
   typePreset: string;
@@ -118,6 +119,7 @@ const EMPTY_MODAL: ClassModalState = {
   type: "strength",
   subType: "",
   active: true,
+  showTrainerName: true,
   categoryPreset: "التخسيس",
   customCategory: "",
   typePreset: "strength",
@@ -150,6 +152,7 @@ function createModalState(item?: GymClass) {
   return {
     ...item,
     trainerId: "",
+    showTrainerName: item.showTrainerName ?? true,
     category: item.category ?? "",
     categoryPreset: item.category && CATEGORY_OPTIONS.includes(item.category) ? item.category : "custom",
     customCategory: item.category && CATEGORY_OPTIONS.includes(item.category) ? "" : item.category ?? "",
@@ -347,6 +350,7 @@ export default function Classes() {
           maxSpots: Number(modal.capacity) || 15,
           price: 0,
           active: modal.active,
+          showTrainerName: modal.showTrainerName,
           day: modal.day,
           time: modal.time,
           trainer: selectedTrainer?.name ?? modal.trainer,
@@ -775,6 +779,25 @@ export default function Classes() {
               <span
                 className={`absolute top-1.5 h-4 w-4 rounded-full bg-white transition ${
                   modal.active ? "right-1.5" : "left-1.5"
+                }`}
+              />
+            </button>
+          </div>
+
+          <div className="mt-3 flex items-center justify-between rounded-2xl border border-white/10 bg-black/10 px-4 py-3">
+            <div>
+              <div className="text-sm font-bold text-white">إظهار اسم المدربة في الجدول</div>
+              <div className="text-xs text-white/45">يمكنك إخفاء اسم المدربة من الجدول لهذا الكلاس فقط.</div>
+            </div>
+            <button
+              onClick={() => setModal({ ...modal, showTrainerName: !modal.showTrainerName })}
+              className={`relative h-7 w-14 rounded-full transition ${
+                modal.showTrainerName ? "bg-fuchsia-500/70" : "bg-white/15"
+              }`}
+            >
+              <span
+                className={`absolute top-1.5 h-4 w-4 rounded-full bg-white transition ${
+                  modal.showTrainerName ? "right-1.5" : "left-1.5"
                 }`}
               />
             </button>
