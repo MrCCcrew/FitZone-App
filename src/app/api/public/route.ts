@@ -276,7 +276,7 @@ export async function GET() {
         db.membership.findMany({
           where: { isActive: true },
           include: { goals: { select: { goalId: true } } },
-          orderBy: { price: "asc" },
+          orderBy: [{ sortOrder: "asc" }, { price: "asc" }],
         }),
         db.offer.findMany({
           where: { isActive: true },
@@ -374,6 +374,8 @@ export async function GET() {
         price: membership.price,
         priceBefore: membership.priceBefore ?? null,
         priceAfter: membership.priceAfter ?? null,
+        image: membership.image ?? null,
+        sortOrder: membership.sortOrder ?? 0,
         durationDays: membership.duration,
         cycle: cycleFromMembership(membership.cycle, membership.duration),
         sessionsCount: membership.sessionsCount ?? null,

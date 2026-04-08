@@ -21,7 +21,7 @@ export async function GET(req: Request) {
 
   const rows = await db.membership.findMany({
     where: kind ? { kind } : undefined,
-    orderBy: { name: "asc" },
+    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
     include: { goals: { select: { goalId: true } } },
   });
 
@@ -37,6 +37,8 @@ export async function GET(req: Request) {
         price: m.price,
         priceBefore: m.priceBefore ?? null,
         priceAfter: m.priceAfter ?? null,
+        image: m.image ?? null,
+        sortOrder: m.sortOrder ?? 0,
         duration: m.duration,
         cycle: m.cycle ?? cycleFromDays(m.duration),
         sessionsCount: m.sessionsCount ?? null,
@@ -89,6 +91,8 @@ export async function POST(req: Request) {
     classSessions,
     productRewards,
     goalIds,
+    image,
+    sortOrder,
   } = body;
   if (!name || price == null) return NextResponse.json({ error: "بيانات ناقصة" }, { status: 400 });
 
@@ -110,6 +114,8 @@ export async function POST(req: Request) {
       price: Number(price),
       priceBefore: priceBefore == null || priceBefore === "" ? null : Number(priceBefore),
       priceAfter: priceAfter == null || priceAfter === "" ? null : Number(priceAfter),
+      image: image == null || image === "" ? null : String(image),
+      sortOrder: typeof sortOrder === "number" ? sortOrder : Number(sortOrder ?? 0) || 0,
       duration: Math.max(1, Number(days)),
       cycle: typeof cycle === "string" ? cycle : typeof duration === "string" ? duration : null,
       sessionsCount: sessionsCount == null ? null : Number(sessionsCount),
@@ -134,6 +140,8 @@ export async function POST(req: Request) {
     price: m.price,
     priceBefore: m.priceBefore ?? null,
     priceAfter: m.priceAfter ?? null,
+    image: m.image ?? null,
+    sortOrder: m.sortOrder ?? 0,
     duration: m.duration,
     cycle: m.cycle ?? cycleFromDays(m.duration),
     sessionsCount: m.sessionsCount ?? null,
@@ -166,6 +174,8 @@ export async function PATCH(req: Request) {
     classSessions,
     productRewards,
     goalIds,
+    image,
+    sortOrder,
   } = body;
   if (!id) return NextResponse.json({ error: "id مطلوب" }, { status: 400 });
 
@@ -175,6 +185,8 @@ export async function PATCH(req: Request) {
   if (price !== undefined) data.price = Number(price);
   if (priceBefore !== undefined) data.priceBefore = priceBefore == null || priceBefore === "" ? null : Number(priceBefore);
   if (priceAfter !== undefined) data.priceAfter = priceAfter == null || priceAfter === "" ? null : Number(priceAfter);
+  if (image !== undefined) data.image = image == null || image === "" ? null : String(image);
+  if (sortOrder !== undefined) data.sortOrder = Number(sortOrder) || 0;
   if (durationDays !== undefined) data.duration = Math.max(1, Number(durationDays));
   if (duration !== undefined && durationDays === undefined) {
     data.duration = typeof duration === "number" ? Math.max(1, Number(duration)) : labelToDays(String(duration));
@@ -209,6 +221,8 @@ export async function PATCH(req: Request) {
     price: m.price,
     priceBefore: m.priceBefore ?? null,
     priceAfter: m.priceAfter ?? null,
+    image: m.image ?? null,
+    sortOrder: m.sortOrder ?? 0,
     duration: m.duration,
     cycle: m.cycle ?? cycleFromDays(m.duration),
     sessionsCount: m.sessionsCount ?? null,
