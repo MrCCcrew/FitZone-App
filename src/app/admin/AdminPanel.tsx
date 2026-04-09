@@ -81,7 +81,7 @@ const TITLES: Record<string, string> = {
 TITLES.bookings = "إدارة الحجوزات";
 TITLES.database = "إدارة قاعدة البيانات";
 
-const SECTIONS: Record<Section, ComponentType> = {
+const SECTIONS: Record<string, ComponentType> = {
   overview: Overview,
   pages: PagesContent,
   knowledge: ChatKnowledge,
