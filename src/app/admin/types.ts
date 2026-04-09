@@ -17,7 +17,8 @@ export type Section =
   | "bookings"
   | "customers"
   | "chat"
-  | "complaints";
+  | "complaints"
+  | "database";
 
 export interface Customer {
   id: string;

@@ -18,7 +18,8 @@ export type AdminFeature =
   | "orders"
   | "balance"
   | "chat"
-  | "complaints";
+  | "complaints"
+  | "db-maintenance";
 
 const STAFF_SECTIONS: Section[] = ["pages", "knowledge", "subscriptions", "packages", "classes", "trainers", "bookings", "customers", "chat", "reviews"];
 const ADMIN_SECTIONS: Section[] = [
@@ -41,6 +42,7 @@ const ADMIN_SECTIONS: Section[] = [
   "customers",
   "chat",
   "complaints",
+  "database",
 ];
 
 const STAFF_FEATURES: AdminFeature[] = ["site-content", "knowledge", "memberships", "offers", "classes", "trainers", "bookings", "customers", "chat", "reviews"];
@@ -61,6 +63,7 @@ const ADMIN_FEATURES: AdminFeature[] = [
   "balance",
   "chat",
   "complaints",
+  "db-maintenance",
 ];
 
 export function isAdminRole(role?: string): role is AdminRole {
