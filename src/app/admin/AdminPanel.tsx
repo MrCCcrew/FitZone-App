@@ -23,6 +23,7 @@ import Balance from "./sections/Balance";
 import Customers from "./sections/Customers";
 import LiveChat from "./sections/LiveChat";
 import Complaints from "./sections/Complaints";
+import DatabaseMaintenance from "./sections/DatabaseMaintenance";
 
 const NAV: { id: Section; label: string; icon: string }[] = [
   { id: "overview", label: "لوحة التحكم", icon: "📊" },
@@ -45,6 +46,9 @@ const NAV: { id: Section; label: string; icon: string }[] = [
   { id: "complaints", label: "الشكاوى", icon: "📣" },
 ];
 const BOOKINGS_NAV_ITEM = { id: "bookings", label: "الحجوزات", icon: "📆" } as const;
+if (!NAV.find((item) => item.id === "database")) {
+  NAV.push({ id: "database", label: "إدارة قاعدة البيانات", icon: "🧰" });
+}
 const bookingsInsertAt = NAV.findIndex((item) => item.id === "trainers");
 if (bookingsInsertAt >= 0) {
   NAV.splice(bookingsInsertAt + 1, 0, BOOKINGS_NAV_ITEM);
@@ -75,6 +79,7 @@ const TITLES: Record<Section, string> = {
 };
 
 TITLES.bookings = "إدارة الحجوزات";
+TITLES.database = "إدارة قاعدة البيانات";
 
 const SECTIONS: Record<Section, ComponentType> = {
   overview: Overview,
@@ -97,6 +102,8 @@ const SECTIONS: Record<Section, ComponentType> = {
   customers: Customers,
   complaints: Complaints,
 };
+
+SECTIONS.database = DatabaseMaintenance;
 
 type AdminSessionUser = {
   id?: string;
