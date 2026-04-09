@@ -41,6 +41,25 @@ export default function LegalPage({ content }: { content: LegalContent }) {
           border: "1px solid rgba(233, 30, 99, 0.12)",
         }}
       >
+        <button
+          type="button"
+          onClick={() => {
+            window.location.href = "/";
+          }}
+          style={{
+            border: "1px solid rgba(233, 30, 99, 0.3)",
+            background: "rgba(233, 30, 99, 0.08)",
+            color: "#b0005a",
+            fontWeight: 700,
+            fontSize: 13,
+            borderRadius: 999,
+            padding: "8px 16px",
+            cursor: "pointer",
+            marginBottom: 18,
+          }}
+        >
+          العودة للصفحة الرئيسية
+        </button>
         <div style={{ marginBottom: 18 }}>
           <h1 style={{ fontSize: 28, fontWeight: 800, marginBottom: 6 }}>{content.title}</h1>
           <div style={{ fontSize: 13, color: "#8d6c7a" }}>{content.updatedAt}</div>
