@@ -53,6 +53,7 @@ export interface CustomerMembershipReport {
 export interface Plan {
   id: string;
   name: string;
+  nameEn?: string | null;
   kind?: "subscription" | "package";
   price: number;
   priceBefore?: number | null;
@@ -65,22 +66,27 @@ export interface Plan {
   classSessions?: Array<{ classId: string; className?: string; sessions: number }>;
   productRewards?: Array<{ productId: string; productName?: string; quantity: number }>;
   features: string[];
+  featuresEn?: string[];
   active: boolean;
   membersCount: number;
   goalIds?: string[];
+  giftEn?: string | null;
 }
 
 export interface Offer {
   id: string;
   title: string;
+  titleEn?: string | null;
   discount: number;
   type: "percentage" | "fixed" | "special";
   appliesTo: string;
+  appliesToEn?: string | null;
   membershipId?: string | null;
   validUntil: string;
   active: boolean;
   usedCount: number;
   description?: string;
+  descriptionEn?: string | null;
   specialPrice?: number | null;
   maxSubscribers?: number | null;
   currentSubscribers?: number;
@@ -217,8 +223,10 @@ export interface PageSection {
 export interface Goal {
   id: string;
   name: string;
+  nameEn?: string | null;
   slug: string;
   description?: string | null;
+  descriptionEn?: string | null;
   image?: string | null;
   kind: string;
   parentId?: string | null;

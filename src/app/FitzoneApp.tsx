@@ -1,5 +1,6 @@
 ﻿'use client';
 import { useState, useEffect, useMemo, useRef } from "react";
+import { useLang } from "@/lib/language";
 
 // ─── FIT ZONE BRAND COLORS ─────────────────────────────────────────────────
 const C = {
@@ -125,27 +126,36 @@ const css = `
   }
 `;
 
-let publicApiPromise: Promise<Record<string, unknown>> | null = null;
+const publicApiCache: Record<string, Promise<Record<string, unknown>> | null> = {};
 
 function resetPublicApiCache() {
-  publicApiPromise = null;
+  Object.keys(publicApiCache).forEach((key) => {
+    publicApiCache[key] = null;
+  });
+}
+
+function getUiLang() {
+  if (typeof document === "undefined") return "ar";
+  const value = document.documentElement.lang;
+  return value === "en" ? "en" : "ar";
 }
 
 function loadPublicApi(force = false) {
+  const lang = getUiLang();
   if (force) {
-    resetPublicApiCache();
+    publicApiCache[lang] = null;
   }
 
-  if (!publicApiPromise) {
-    publicApiPromise = fetch("/api/public", { cache: "no-store" })
+  if (!publicApiCache[lang]) {
+    publicApiCache[lang] = fetch(`/api/public?lang=${lang}`, { cache: "no-store" })
       .then((r) => r.json())
       .catch((error) => {
-        publicApiPromise = null;
+        publicApiCache[lang] = null;
         throw error;
       });
   }
 
-  return publicApiPromise;
+  return publicApiCache[lang] as Promise<Record<string, unknown>>;
 }
 
 function getDefaultAccount(
@@ -476,9 +486,11 @@ const Header = ({
   walletBalance?: string;
   summary?: UserSummary | null;
 }) => {
+  const { lang, toggleLang } = useLang();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [announcements, setAnnouncements] = useState<string[]>([]);
   const [annIndex, setAnnIndex] = useState(0);
+  const t = (ar: string, en: string) => (lang === "ar" ? ar : en);
   useEffect(() => {
     fetch("/api/site-content?sections=announcements")
       .then(r => r.json())
@@ -496,15 +508,15 @@ const Header = ({
     return () => clearInterval(t);
   }, [announcements]);
   const navItems = [
-    { id: "home", label: "الرئيسية" },
-    { id: "about", label: "عن النادي" },
-    { id: "memberships", label: "الاشتراكات" },
-    ...(SHOW_CLASSES_PAGE ? [{ id: "classes", label: "الكلاسات" }] : []),
-    { id: "schedule", label: "الجدول" },
-    { id: "shop", label: "المتجر" },
-    { id: "offers", label: "العروض" },
-    { id: "trainers", label: "المدربات" },
-    { id: "blog", label: "المدونة" },
+    { id: "home", label: t("الرئيسية", "Home") },
+    { id: "about", label: t("عن النادي", "About") },
+    { id: "memberships", label: t("الاشتراكات", "Memberships") },
+    ...(SHOW_CLASSES_PAGE ? [{ id: "classes", label: t("الكلاسات", "Classes") }] : []),
+    { id: "schedule", label: t("الجدول", "Schedule") },
+    { id: "shop", label: t("المتجر", "Shop") },
+    { id: "offers", label: t("العروض", "Offers") },
+    { id: "trainers", label: t("المدربات", "Trainers") },
+    { id: "blog", label: t("المدونة", "Blog") },
   ];
   return (
     <header style={{ background: "rgba(255,245,248,.97)", backdropFilter: "blur(12px)", borderBottom: `1px solid ${C.border}`, position: "sticky", top: 0, zIndex: 100 }}>
@@ -544,10 +556,31 @@ const Header = ({
           ))}
         </nav>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <button
+            onClick={toggleLang}
+            title={lang === "ar" ? "English" : "العربية"}
+            style={{
+              background: "rgba(233,30,99,.12)",
+              border: `1px solid ${C.red}33`,
+              borderRadius: 6,
+              padding: "6px 10px",
+              cursor: "pointer",
+              color: C.red,
+              fontSize: 12,
+              fontWeight: 700,
+              fontFamily: "'Cairo', sans-serif",
+              minWidth: 40,
+              textAlign: "center",
+            }}
+          >
+            {lang === "ar" ? "EN" : "ع"}
+          </button>
           <button onClick={() => navigate("wallet")} style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(233,30,99,.12)", border: `1px solid ${C.red}33`, borderRadius: 6, padding: "6px 12px", cursor: "pointer", color: C.red, fontSize: 12, fontWeight: 700, fontFamily: "'Cairo', sans-serif" }}>
             <I n="wallet" s={14} c={C.red} />
             <span className="hide-mobile">
-              {(summary?.walletBalance ?? 0) > 0 ? `رصيد المحفظة ${walletBalance} ج.م` : "شحن المحفظة"}
+              {(summary?.walletBalance ?? 0) > 0
+                ? t(`رصيد المحفظة ${walletBalance} ج.م`, `Wallet ${walletBalance} EGP`)
+                : t("شحن المحفظة", "Top up wallet")}
             </span>
           </button>
           <button onClick={() => navigate("cart")} style={{ position: "relative", background: "none", border: "none", cursor: "pointer", padding: 8 }}>
@@ -5496,6 +5529,7 @@ function RedirectToAccountTab({ tab }: { tab: string }) {
 }
 
 export default function App() {
+  const { lang } = useLang();
   const [page, setPage] = useState("home");
   const [summary, setSummary] = useState<UserSummary | null>(null);
   const [cartCount, setCartCount] = useState(0);
@@ -5508,6 +5542,11 @@ export default function App() {
       setPage(pageFromUrl);
     }
   }, []);
+
+  useEffect(() => {
+    resetPublicApiCache();
+    void loadPublicApi(true);
+  }, [lang]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -5618,13 +5657,13 @@ export default function App() {
   };
 
   return (
-    <div className="app">
+    <div className="app" dir={lang === "ar" ? "rtl" : "ltr"}>
       <style>{css}</style>
       <Header
         currentPage={page}
         navigate={navigate}
         cartCount={cartCount}
-        walletBalance={(summary?.walletBalance ?? 0).toLocaleString("ar-EG")}
+        walletBalance={(summary?.walletBalance ?? 0).toLocaleString(lang === "ar" ? "ar-EG" : "en-US")}
         summary={summary}
       />
       <main>{pages[page as keyof typeof pages] || pages.home}</main>

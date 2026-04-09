@@ -83,6 +83,7 @@ model User {
 model Membership {
   id          String  @id @default(cuid())
   name        String
+  nameEn      String?
   kind        String  @default("subscription") // subscription | package
   price       Float
   priceBefore Float?
@@ -93,11 +94,13 @@ model Membership {
   cycle       String? // monthly | quarterly | semi_annual | annual | custom
   sessionsCount Int?  // عدد الحصص للاشتراك
   features    String  // JSON array stored as string
+  featuresEn  String?
   classSessions String? @db.LongText // JSON: class-specific sessions
   productRewards String? @db.LongText // JSON: product benefits for packages
   maxClasses  Int     @default(-1) // -1 = unlimited
   walletBonus Float   @default(0)
   gift        String?
+  giftEn      String?
   isActive    Boolean @default(true)
 
   userMemberships UserMembership[]
@@ -386,10 +389,13 @@ model Notification {
 model Offer {
   id                 String      @id @default(cuid())
   title              String
+  titleEn            String?
   type               String      @default("percentage") // percentage | fixed | special
   discount           Float
   description        String?     @db.Text
+  descriptionEn      String?     @db.Text
   appliesTo          String?
+  appliesToEn        String?
   expiresAt          DateTime
   isActive           Boolean     @default(true)
   membershipId       String?
@@ -418,8 +424,10 @@ model ProductCategory {
 model ClubGoal {
   id          String   @id @default(cuid())
   name        String
+  nameEn      String?
   slug        String   @unique
   description String?  @db.Text
+  descriptionEn String? @db.Text
   image       String?
   kind        String   @default("standard") // standard | games_root | games_adults | games_children
   parentId    String?
