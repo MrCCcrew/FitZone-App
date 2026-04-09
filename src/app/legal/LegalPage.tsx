@@ -47,9 +47,9 @@ export default function LegalPage({ content }: { content: LegalContent }) {
             window.location.href = "/";
           }}
           style={{
-            border: "1px solid rgba(233, 30, 99, 0.3)",
-            background: "rgba(233, 30, 99, 0.08)",
-            color: "#b0005a",
+            border: "1px solid rgba(236, 72, 153, 0.35)",
+            background: "rgba(236, 72, 153, 0.12)",
+            color: "#e91e63",
             fontWeight: 700,
             fontSize: 13,
             borderRadius: 999,

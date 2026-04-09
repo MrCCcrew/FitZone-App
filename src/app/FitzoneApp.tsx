@@ -522,7 +522,23 @@ const Header = ({
         </div>
         <nav className="hide-mobile" style={{ display: "flex", gap: 2 }}>
           {navItems.map(item => (
-            <button key={item.id} onClick={() => navigate(item.id)} style={{ background: "none", border: "none", padding: "8px 12px", borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: "pointer", color: currentPage === item.id ? C.red : C.gray, fontFamily: "'Cairo', sans-serif", transition: "color .2s", borderBottom: currentPage === item.id ? `2px solid ${C.red}` : "2px solid transparent" }}>
+            <button
+              key={item.id}
+              onClick={() => navigate(item.id)}
+              style={{
+                background: item.id === "shop" ? "rgba(236,72,153,0.12)" : "none",
+                border: item.id === "shop" ? "1px solid rgba(236,72,153,0.4)" : "none",
+                padding: "8px 12px",
+                borderRadius: 8,
+                fontSize: 13,
+                fontWeight: item.id === "shop" ? 800 : 600,
+                cursor: "pointer",
+                color: item.id === "shop" ? "#e91e63" : (currentPage === item.id ? C.red : C.gray),
+                fontFamily: "'Cairo', sans-serif",
+                transition: "color .2s, background .2s, border .2s",
+                borderBottom: currentPage === item.id ? `2px solid ${C.red}` : "2px solid transparent",
+              }}
+            >
               {item.label}
             </button>
           ))}
