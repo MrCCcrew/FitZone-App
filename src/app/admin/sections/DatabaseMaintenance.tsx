@@ -47,7 +47,6 @@ type PlanRecord = {
   duration: number;
   sessionsCount: number | null;
   isActive: boolean;
-  createdAt: string;
 };
 
 type OfferRecord = {
@@ -506,7 +505,7 @@ export default function DatabaseMaintenance() {
                       <div className="font-bold">{plan.name}</div>
                       <div className="text-xs text-gray-400">{plan.kind}</div>
                     </div>
-                    <div className="text-xs text-gray-400">{plan.createdAt}</div>
+                    <div className="text-xs text-gray-400">نشط: {plan.isActive ? "نعم" : "لا"}</div>
                   </div>
                   <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-gray-300">
                     <span>السعر: {plan.price} ج.م</span>
