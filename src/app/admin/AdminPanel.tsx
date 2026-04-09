@@ -56,7 +56,7 @@ if (bookingsInsertAt >= 0) {
   NAV.push(BOOKINGS_NAV_ITEM);
 }
 
-const TITLES: Record<Section, string> = {
+const TITLES: Record<string, string> = {
   overview: "لوحة التحكم",
   pages: "إدارة الصفحات والمحتوى",
   knowledge: "قاعدة معرفة البوت",
