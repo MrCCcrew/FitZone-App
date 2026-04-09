@@ -1909,7 +1909,17 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
               <h2 className="section-title">المتجر <span>الرياضي</span></h2>
               <p className="section-sub">منتجات مختارة لتعزيز أدائك</p>
             </div>
-            <button className="btn-outline" onClick={() => navigate("shop")}>تسوقي الآن</button>
+            <button
+              className="btn-primary"
+              onClick={() => navigate("shop")}
+              style={{
+                boxShadow: "0 12px 30px rgba(233,30,99,0.3)",
+                borderColor: "transparent",
+                padding: "12px 26px",
+              }}
+            >
+              تسوقي الآن
+            </button>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 24 }}>
             {products.map(p => (
