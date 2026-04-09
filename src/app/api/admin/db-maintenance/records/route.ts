@@ -142,7 +142,7 @@ export async function GET(req: Request) {
               OR: [{ id: search }, { title: search }],
             }
           : undefined,
-        orderBy: { createdAt: "desc" },
+        orderBy: { expiresAt: "desc" },
         take: 300,
       });
       return NextResponse.json({
