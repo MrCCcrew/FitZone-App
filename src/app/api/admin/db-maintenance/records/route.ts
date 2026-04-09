@@ -131,7 +131,6 @@ export async function GET(req: Request) {
           duration: plan.duration,
           sessionsCount: plan.sessionsCount,
           isActive: plan.isActive,
-          createdAt: plan.createdAt.toLocaleDateString("ar-EG"),
         })),
       });
     }
