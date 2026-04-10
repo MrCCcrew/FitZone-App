@@ -2244,6 +2244,7 @@ const DEFAULT_PLANS: PlanItem[] = [
 ];
 const PLAN_COLORS = [C.gray, C.red, C.gold, "#A855F7", "#3498DB", "#27AE60"];
 const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
+  const t = useT();
   const [tab, setTab] = useState<"all" | "monthly" | "quarterly" | "semi_annual" | "annual" | "custom">("all");
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   const [plans, setPlans] = useState<PlanItem[]>(DEFAULT_PLANS);
@@ -2636,14 +2637,14 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
         body: JSON.stringify({ code: verifyCode.trim() }),
       });
       const data = await res.json() as { error?: string };
-      if (!res.ok) { setVerifyMsg({ text: data.error || "كود غير صحيح", ok: false }); return; }
-      setVerifyMsg({ text: "✅ تم تفعيل حسابك بنجاح! جارٍ الاشتراك...", ok: true });
-      // أعد الاشتراك تلقائياً بعد التفعيل
+      if (!res.ok) { setVerifyMsg({ text: data.error || t("كود غير صحيح", "Invalid code"), ok: false }); return; }
+      setVerifyMsg({ text: t("✅ تم تفعيل حسابك بنجاح! جارٍ الاشتراك...", "✅ Your account has been verified successfully. Completing subscription..."), ok: true });
+      // Retry the subscription automatically after verification.
       const pendingPlan = verifyModal?.plan;
       setVerifyModal(null);
       if (pendingPlan) setTimeout(() => handleSubscribe(pendingPlan), 800);
     } catch {
-      setVerifyMsg({ text: "تعذر الاتصال بالخادم", ok: false });
+      setVerifyMsg({ text: t("تعذر الاتصال بالخادم", "Could not reach the server"), ok: false });
     } finally {
       setVerifyLoading(false);
     }
@@ -2654,11 +2655,11 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
     setResendLoading(true);
     try {
       await fetch("/api/auth/resend-verification", { method: "POST" });
-      setVerifyMsg({ text: "تم إرسال كود جديد إلى بريدك الإلكتروني", ok: true });
+      setVerifyMsg({ text: t("تم إرسال كود جديد إلى بريدك الإلكتروني", "A new code has been sent to your email"), ok: true });
       setResendCooldown(60);
       const interval = setInterval(() => setResendCooldown(p => { if (p <= 1) { clearInterval(interval); return 0; } return p - 1; }), 1000);
     } catch {
-      setVerifyMsg({ text: "تعذر إرسال الكود", ok: false });
+      setVerifyMsg({ text: t("تعذر إرسال الكود", "Could not send the code"), ok: false });
     } finally {
       setResendLoading(false);
     }
@@ -5111,7 +5112,13 @@ const RewardsPage = () => {
             <div>
               <h2 className="section-title" style={{ marginBottom: 20 }}>{t("كيف", "How to")} <span>{t("تستبدلين", "redeem")}</span></h2>
               <div className="card" style={{ padding: 20 }}>
-                {[["100 نقطة","= 1 ج.م رصيد محفظة"],["500 نقطة","= خصم 5%"],["1000 نقطة","= كلاس مجاني"],["3000 نقطة","= شهر اشتراك مجاني"],["5000 نقطة","= منتج هدية"]].map(([pts, val]) => (
+                {[
+                  [t("100 نقطة", "100 points"), t("= 1 ج.م رصيد محفظة", "= 1 EGP wallet credit")],
+                  [t("500 نقطة", "500 points"), t("= خصم 5%", "= 5% discount")],
+                  [t("1000 نقطة", "1000 points"), t("= كلاس مجاني", "= Free class")],
+                  [t("3000 نقطة", "3000 points"), t("= شهر اشتراك مجاني", "= Free membership month")],
+                  [t("5000 نقطة", "5000 points"), t("= منتج هدية", "= Gift product")],
+                ].map(([pts, val]) => (
                   <div key={pts} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${C.border}` }}>
                     <span style={{ fontWeight: 700, color: C.gold, fontSize: 14 }}>{pts}</span>
                     <span style={{ fontSize: 12, color: C.gray }}>{val}</span>
@@ -5129,6 +5136,7 @@ const RewardsPage = () => {
 
 // ─── REFERRAL PAGE ────────────────────────────────────────────────────────────
 const ReferralPage = () => {
+  const { lang } = useLang();
   const t = useT();
   const [copied, setCopied] = useState(false);
   const code = "FZONE-2025-123";
@@ -5164,7 +5172,11 @@ const ReferralPage = () => {
             </div>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 14, marginBottom: 28 }}>
-            {[["👥","12","إحالة ناجحة"],["💰","240 ج.م","مكتسبة"],["🔄","3","في الانتظار"]].map(([icon,val,lbl]) => (
+            {[
+              ["👥", "12", t("إحالة ناجحة", "Successful referrals")],
+              ["💰", lang === "en" ? "240 EGP" : "240 ج.م", t("مكتسبة", "Earned")],
+              ["🔄", "3", t("في الانتظار", "Pending")],
+            ].map(([icon,val,lbl]) => (
               <div key={lbl} className="card" style={{ padding: 18, textAlign: "center" }}>
                 <div style={{ fontSize: 28, marginBottom: 6 }}>{icon}</div>
                 <div style={{ fontSize: 26, fontWeight: 900, color: C.red }}>{val}</div>
@@ -5596,11 +5608,11 @@ const ContactPage = () => {
   const [contactResult, setContactResult] = useState<"success" | "error" | "auth" | null>(null);
   const [contactInfo, setContactInfo] = useState<PublicContact>(DEFAULT_CONTACT);
   const faqs = [
-    { q: "إيه ساعات العمل؟", a: "بنشتغل من الأحد للخميس من الساعة ٧ الصبح لـ ١٠ بالليل، والجمعة والسبت من ٨ الصبح لـ ٨ بالليل." },
-    { q: "هل في كلاسات للأطفال؟", a: "أيوه! عندنا برامج مخصصة للأطفال من سن ٤ سنوات. تواصلي معنا لمعرفة التفاصيل." },
-    { q: "ممكن أجمد العضوية؟", a: "أيوه، تقدري تجمدي العضوية مرة في الشهر لمدة مش أكتر من أسبوعين." },
-    { q: "إيه طرق الدفع المتاحة؟", a: "نقبل كاش، بطاقات دفع، انستاباي، والمحفظة الرقمية." },
-    { q: "هل في عروض للمجموعات؟", a: "أيوه! في عروض خاصة للمجموعات من ٤ أشخاص فأكثر بخصومات لحد ٣٠٪." },
+    { q: t("إيه ساعات العمل؟", "What are your working hours?"), a: t("بنشتغل من الأحد للخميس من الساعة ٧ الصبح لـ ١٠ بالليل، والجمعة والسبت من ٨ الصبح لـ ٨ بالليل.", "We operate Sunday to Thursday from 7 AM to 10 PM, and Friday and Saturday from 8 AM to 8 PM.") },
+    { q: t("هل في كلاسات للأطفال؟", "Do you offer classes for kids?"), a: t("أيوه! عندنا برامج مخصصة للأطفال من سن ٤ سنوات. تواصلي معنا لمعرفة التفاصيل.", "Yes. We offer dedicated programs for children starting from age 4. Contact us for the details.") },
+    { q: t("ممكن أجمد العضوية؟", "Can I freeze my membership?"), a: t("أيوه، تقدري تجمدي العضوية مرة في الشهر لمدة مش أكتر من أسبوعين.", "Yes, you can freeze your membership once per month for up to two weeks.") },
+    { q: t("إيه طرق الدفع المتاحة؟", "What payment methods are available?"), a: t("نقبل كاش، بطاقات دفع، انستاباي، والمحفظة الرقمية.", "We accept cash, bank cards, InstaPay, and digital wallets.") },
+    { q: t("هل في عروض للمجموعات؟", "Do you have group offers?"), a: t("أيوه! في عروض خاصة للمجموعات من ٤ أشخاص فأكثر بخصومات لحد ٣٠٪.", "Yes. We offer special deals for groups of 4 or more with discounts up to 30%.") },
   ];
 
   useEffect(() => {

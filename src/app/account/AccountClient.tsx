@@ -189,12 +189,12 @@ function ProfileTab({ user }: { user: AccountData["user"] }) {
       const data = await res.json();
       if (res.ok) {
         setIsVerified(true);
-        setVerifyResult({ ok: true, msg: "✅ تم تفعيل بريدك الإلكتروني بنجاح!" });
+        setVerifyResult({ ok: true, msg: t("✅ تم تفعيل بريدك الإلكتروني بنجاح!", "✅ Your email has been verified successfully!") });
       } else {
-        setVerifyResult({ ok: false, msg: data.error ?? "كود غير صحيح" });
+        setVerifyResult({ ok: false, msg: data.error ?? t("كود غير صحيح", "Invalid code") });
       }
     } catch {
-      setVerifyResult({ ok: false, msg: "حدث خطأ، حاولي مرة أخرى" });
+      setVerifyResult({ ok: false, msg: t("حدث خطأ، حاولي مرة أخرى", "Something went wrong. Please try again.") });
     } finally {
       setVerifyLoading(false);
     }
@@ -204,9 +204,9 @@ function ProfileTab({ user }: { user: AccountData["user"] }) {
     setResendLoading(true);
     try {
       await fetch("/api/auth/resend-verification", { method: "POST" });
-      setVerifyResult({ ok: true, msg: "📧 تم إرسال كود جديد على بريدك الإلكتروني" });
+      setVerifyResult({ ok: true, msg: t("📧 تم إرسال كود جديد على بريدك الإلكتروني", "📧 A new code has been sent to your email") });
     } catch {
-      setVerifyResult({ ok: false, msg: "تعذر إرسال الكود" });
+      setVerifyResult({ ok: false, msg: t("تعذر إرسال الكود", "Could not send the code") });
     } finally {
       setResendLoading(false);
     }
@@ -465,6 +465,8 @@ function MembershipTab({ membership }: { membership: AccountData["membership"] }
 
 // ─── Tab: Bookings ────────────────────────────────────────────────────────────
 function BookingsTabLegacy({ bookings }: { bookings: AccountData["bookings"] }) {
+  const { lang } = useLang();
+  const t = (arText: string, enText: string) => (lang === "en" ? enText : arText);
   const [items, setItems] = useState(bookings);
   const [filter, setFilter] = useState<"upcoming" | "past">("upcoming");
   const [cancellingId, setCancellingId] = useState<string | null>(null);
@@ -484,7 +486,7 @@ function BookingsTabLegacy({ bookings }: { bookings: AccountData["bookings"] }) 
       });
       const data = await res.json() as { error?: string };
       if (!res.ok) {
-        alert(data.error ?? "تعذر إلغاء الحجز حاليًا.");
+        alert(data.error ?? t("تعذر إلغاء الحجز حاليًا.", "Could not cancel the booking right now."));
         return;
       }
       setItems((current) =>
@@ -493,7 +495,7 @@ function BookingsTabLegacy({ bookings }: { bookings: AccountData["bookings"] }) 
         ),
       );
     } catch {
-      alert("حدث خطأ أثناء إلغاء الحجز.");
+      alert(t("حدث خطأ أثناء إلغاء الحجز.", "An error occurred while cancelling the booking."));
     } finally {
       setCancellingId(null);
     }
@@ -501,11 +503,11 @@ function BookingsTabLegacy({ bookings }: { bookings: AccountData["bookings"] }) 
   return (
     <div className="space-y-4">
       <div className="bg-pink-500/10 border border-pink-400/20 rounded-2xl p-4 text-xs text-pink-100">
-        لتعديل الموعد: ألغِ الحجز الحالي ثم احجزي موعدًا آخر من صفحة الجدول الأسبوعي عبر القائمة الرئيسية.
+        {t("لتعديل الموعد: ألغِ الحجز الحالي ثم احجزي موعدًا آخر من صفحة الجدول الأسبوعي عبر القائمة الرئيسية.", "To change your booking, cancel the current one and book another slot from the weekly schedule page through the main menu.")}
       </div>
       {/* Tabs */}
       <div className="flex gap-2">
-        {[["upcoming", `القادمة (${upcoming.length})`], ["past", `السابقة (${past.length})`]].map(([v, l]) => (
+        {[["upcoming", t(`القادمة (${upcoming.length})`, `Upcoming (${upcoming.length})`)], ["past", t(`السابقة (${past.length})`, `Past (${past.length})`)]].map(([v, l]) => (
           <button key={v} onClick={() => setFilter(v as typeof filter)} className={`px-5 py-2 rounded-xl text-sm font-bold transition-colors ${filter === v ? "bg-red-600 text-white" : "bg-gray-800 text-gray-400 hover:bg-gray-700"}`}>
             {l}
           </button>
@@ -514,9 +516,9 @@ function BookingsTabLegacy({ bookings }: { bookings: AccountData["bookings"] }) 
       {shown.length === 0 ? (
         <div className={CARD + " text-center py-10"}>
           <div className="text-4xl mb-3">📅</div>
-          <p className="text-gray-400">{filter === "upcoming" ? "لا توجد حجوزات قادمة حاليًا." : "لا توجد حجوزات سابقة حتى الآن."}</p>
+          <p className="text-gray-400">{filter === "upcoming" ? t("لا توجد حجوزات قادمة حاليًا.", "There are no upcoming bookings right now.") : t("لا توجد حجوزات سابقة حتى الآن.", "There are no past bookings yet.")}</p>
           {filter === "upcoming" && (
-            <a href="/#classes" className="mt-4 inline-block bg-red-600 text-white font-bold px-5 py-2 rounded-xl text-sm">استعرضي الكلاسات</a>
+            <a href="/#classes" className="mt-4 inline-block bg-red-600 text-white font-bold px-5 py-2 rounded-xl text-sm">{t("استعرضي الكلاسات", "Browse classes")}</a>
           )}
         </div>
       ) : (
@@ -526,9 +528,9 @@ function BookingsTabLegacy({ bookings }: { bookings: AccountData["bookings"] }) 
               <div className="text-3xl shrink-0">{TYPE_EMOJI[b.type] ?? ""}</div>
               <div className="flex-1 min-w-0">
                 <div className="text-white font-black">{b.className}</div>
-                <div className="text-gray-400 text-xs">مع {b.trainerName}</div>
+                <div className="text-gray-400 text-xs">{t("مع", "With")} {b.trainerName}</div>
                 <div className="text-gray-500 text-xs mt-1">
-                  {format(new Date(b.date), "EEEE d MMMM", { locale: ar })}  {b.time}
+                  {format(new Date(b.date), "EEEE d MMMM", { locale: lang === "en" ? enUS : ar })}  {b.time}
                 </div>
               </div>
               <div className="flex flex-col items-end gap-2">
@@ -541,7 +543,7 @@ function BookingsTabLegacy({ bookings }: { bookings: AccountData["bookings"] }) 
                     disabled={cancellingId === b.id}
                     className="text-red-500 hover:text-red-400 text-xs font-medium transition-colors disabled:opacity-50"
                   >
-                    {cancellingId === b.id ? "جارٍ الإلغاء..." : "إلغاء الحجز"}
+                    {cancellingId === b.id ? t("جارٍ الإلغاء...", "Cancelling...") : t("إلغاء الحجز", "Cancel booking")}
                   </button>
                 )}
               </div>
