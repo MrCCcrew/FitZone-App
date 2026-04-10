@@ -353,14 +353,16 @@ function ProfileTab({ user }: { user: AccountData["user"] }) {
 
 // ─── Tab: Membership ──────────────────────────────────────────────────────────
 function MembershipTab({ membership }: { membership: AccountData["membership"] }) {
+  const { lang } = useLang();
+  const t = (arText: string, enText: string) => (lang === "ar" ? arText : enText);
   if (!membership) {
     return (
       <div className={CARD + " text-center py-12"}>
         <div className="text-5xl mb-4">💳</div>
-        <h3 className="text-white font-black text-xl mb-2">لا يوجد اشتراك نشط</h3>
-        <p className="text-gray-400 mb-6">اشترك الآن وابدأ رحلتك الرياضية</p>
+        <h3 className="text-white font-black text-xl mb-2">{t("لا يوجد اشتراك نشط", "No active membership")}</h3>
+        <p className="text-gray-400 mb-6">{t("اشترك الآن وابدأ رحلتك الرياضية", "Subscribe now and start your fitness journey")}</p>
         <a href="/#plans" className="inline-block bg-red-600 hover:bg-red-700 text-white font-black px-8 py-3 rounded-xl transition-colors">
-          🔥 اشترك الآن
+          {t("🔥 اشترك الآن", "🔥 Subscribe now")}
         </a>
       </div>
     );
@@ -381,19 +383,27 @@ function MembershipTab({ membership }: { membership: AccountData["membership"] }
       <div className="bg-gradient-to-br from-red-950/40 to-black border border-red-600/40 rounded-2xl p-6">
         <div className="flex items-start justify-between mb-4">
           <div>
-            <div className="text-gray-400 text-xs mb-1">باقتك الحالية</div>
+            <div className="text-gray-400 text-xs mb-1">{t("باقتك الحالية", "Your current plan")}</div>
             <div className="text-3xl font-black text-white">{membership.plan}</div>
           </div>
           <span className={`text-xs px-3 py-1.5 rounded-full font-black ${STATUS_MAP[membership.status]?.color ?? "text-white bg-gray-700"}`}>
-            {STATUS_MAP[membership.status]?.label ?? membership.status}
+            {lang === "en"
+              ? ({
+                  active: "Active",
+                  expired: "Expired",
+                  cancelled: "Cancelled",
+                  pending: "Pending",
+                  confirmed: "Confirmed",
+                } as Record<string, string>)[membership.status] ?? membership.status
+              : STATUS_MAP[membership.status]?.label ?? membership.status}
           </span>
         </div>
 
         {/* Progress */}
         <div className="mb-4">
           <div className="flex justify-between text-xs text-gray-400 mb-2">
-            <span>بدأت {format(start, "d MMM yyyy", { locale: ar })}</span>
-            <span>تنتهي {format(end, "d MMM yyyy", { locale: ar })}</span>
+            <span>{t("بدأت", "Started")} {format(start, "d MMM yyyy", { locale: lang === "en" ? enUS : ar })}</span>
+            <span>{t("تنتهي", "Ends")} {format(end, "d MMM yyyy", { locale: lang === "en" ? enUS : ar })}</span>
           </div>
           <div className="h-2.5 bg-gray-800 rounded-full overflow-hidden">
             <div
@@ -402,8 +412,8 @@ function MembershipTab({ membership }: { membership: AccountData["membership"] }
             />
           </div>
           <div className="flex justify-between text-xs mt-1">
-            <span className="text-gray-500">{elapsed} يوم مضى</span>
-            <span className={remaining <= 7 ? "text-red-400 font-bold" : "text-green-400 font-bold"}>{remaining} يوم متبقٍ</span>
+            <span className="text-gray-500">{formatMoney(elapsed, lang)} {t("يوم مضى", "days passed")}</span>
+            <span className={remaining <= 7 ? "text-red-400 font-bold" : "text-green-400 font-bold"}>{formatMoney(remaining, lang)} {t("يوم متبقٍ", "days left")}</span>
           </div>
         </div>
 
@@ -411,22 +421,22 @@ function MembershipTab({ membership }: { membership: AccountData["membership"] }
         <div className="grid grid-cols-3 gap-3">
           <div className="bg-black/40 rounded-xl p-3 text-center">
             <div className="text-yellow-400 font-black text-lg">{remaining}</div>
-            <div className="text-gray-500 text-xs">يوم متبقي</div>
+            <div className="text-gray-500 text-xs">{t("يوم متبقي", "Days left")}</div>
           </div>
           <div className="bg-black/40 rounded-xl p-3 text-center">
             <div className="text-white font-black text-lg">{membership.classesUsed}</div>
-            <div className="text-gray-500 text-xs">كلاسات حضرتها</div>
+            <div className="text-gray-500 text-xs">{t("كلاسات حضرتها", "Classes attended")}</div>
           </div>
           <div className="bg-black/40 rounded-xl p-3 text-center">
             <div className="text-green-400 font-black text-lg">{classesLeft === null ? "∞" : classesLeft}</div>
-            <div className="text-gray-500 text-xs">كلاسات متبقية</div>
+            <div className="text-gray-500 text-xs">{t("كلاسات متبقية", "Classes left")}</div>
           </div>
         </div>
       </div>
 
       {/* Features */}
       <div className={CARD}>
-        <h3 className="text-white font-black mb-4">مميزات باقتك</h3>
+        <h3 className="text-white font-black mb-4">{t("مميزات باقتك", "Plan features")}</h3>
         <div className="space-y-2.5">
           {membership.features.map((f, i) => (
             <div key={i} className="flex items-center gap-3 text-gray-300 text-sm">
@@ -441,11 +451,11 @@ function MembershipTab({ membership }: { membership: AccountData["membership"] }
       {remaining <= 10 && (
         <div className="bg-red-950/30 border border-red-600/40 rounded-2xl p-5 flex items-center justify-between gap-4">
           <div>
-            <div className="text-red-400 font-black">⚠️ اشتراكك ينتهي قريباً</div>
-            <div className="text-gray-400 text-sm mt-1">جدد الآن واحصل على 100 جنيه في محفظتك</div>
+            <div className="text-red-400 font-black">{t("⚠️ اشتراكك ينتهي قريباً", "⚠️ Your membership is ending soon")}</div>
+            <div className="text-gray-400 text-sm mt-1">{t("جدد الآن واحصل على 100 جنيه في محفظتك", "Renew now and get 100 EGP in your wallet")}</div>
           </div>
           <a href="/#plans" className="shrink-0 bg-red-600 hover:bg-red-700 text-white font-black px-5 py-2.5 rounded-xl transition-colors text-sm">
-            جدد الآن
+            {t("جدد الآن", "Renew now")}
           </a>
         </div>
       )}
@@ -545,6 +555,8 @@ function BookingsTabLegacy({ bookings }: { bookings: AccountData["bookings"] }) 
 
 // ─── Tab: Orders ──────────────────────────────────────────────────────────────
 function BookingsTab({ bookings }: { bookings: AccountData["bookings"] }) {
+  const { lang } = useLang();
+  const t = (arText: string, enText: string) => (lang === "ar" ? arText : enText);
   const [items, setItems] = useState(bookings);
   const [filter, setFilter] = useState<"upcoming" | "past">("upcoming");
   const [cancellingId, setCancellingId] = useState<string | null>(null);
@@ -598,7 +610,7 @@ function BookingsTab({ bookings }: { bookings: AccountData["bookings"] }) {
             subType: cls.subType ?? null,
             date: s.date,
             time: s.time,
-            day: format(new Date(s.date), "EEEE", { locale: ar }),
+            day: format(new Date(s.date), "EEEE", { locale: lang === "en" ? enUS : ar }),
             availableSpots: s.availableSpots,
           })),
         );
@@ -613,7 +625,7 @@ function BookingsTab({ bookings }: { bookings: AccountData["bookings"] }) {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [lang]);
 
   const parseScheduleTime = (value: string) => {
     const [h, m] = value.split(":").map((n) => Number(n));
@@ -624,7 +636,7 @@ function BookingsTab({ bookings }: { bookings: AccountData["bookings"] }) {
     const [h, m] = value.split(":").map((n) => Number(n));
     const hour = Number.isNaN(h) ? 0 : h;
     const minute = Number.isNaN(m) ? 0 : m;
-    const period = hour < 12 ? "صباحًا" : hour < 16 ? "ظهرًا" : "مساءً";
+    const period = lang === "en" ? (hour < 12 ? "AM" : hour < 16 ? "PM" : "PM") : hour < 12 ? "صباحًا" : hour < 16 ? "ظهرًا" : "مساءً";
     const displayHour = hour % 12 === 0 ? 12 : hour % 12;
     return `${String(displayHour).padStart(2, "0")}.${String(minute).padStart(2, "0")} ${period}`;
   };
@@ -643,9 +655,9 @@ function BookingsTab({ bookings }: { bookings: AccountData["bookings"] }) {
 
   const scheduleDays = useMemo(() => {
     const daySet = new Set(scheduleEntries.map((item) => item.day));
-    const order = ["السبت", "الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة"];
+    const order = lang === "en" ? ["Saturday", "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday"] : ["السبت", "الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة"];
     return order.filter((day) => daySet.has(day));
-  }, [scheduleEntries]);
+  }, [scheduleEntries, lang]);
 
   const toScheduleDateTime = (dateIso: string, time: string) => {
     const date = new Date(dateIso);
@@ -674,7 +686,7 @@ function BookingsTab({ bookings }: { bookings: AccountData["bookings"] }) {
       });
       const data = (await res.json()) as { error?: string };
       if (!res.ok) {
-        alert(data.error ?? "تعذر إلغاء الحجز حاليًا.");
+        alert(data.error ?? t("تعذر إلغاء الحجز حاليًا.", "Unable to cancel the booking right now."));
         return;
       }
       setItems((current) =>
@@ -683,7 +695,7 @@ function BookingsTab({ bookings }: { bookings: AccountData["bookings"] }) {
         ),
       );
     } catch {
-      alert("حدث خطأ أثناء إلغاء الحجز.");
+      alert(t("حدث خطأ أثناء إلغاء الحجز.", "An error occurred while cancelling the booking."));
     } finally {
       setCancellingId(null);
     }
@@ -708,7 +720,7 @@ function BookingsTab({ bookings }: { bookings: AccountData["bookings"] }) {
       });
       const data = (await res.json()) as { error?: string };
       if (!res.ok) {
-        setUpdateError(data.error ?? "تعذر تعديل الموعد حاليًا.");
+        setUpdateError(data.error ?? t("تعذر تعديل الموعد حاليًا.", "Unable to update the booking right now."));
         return;
       }
 
@@ -731,13 +743,13 @@ function BookingsTab({ bookings }: { bookings: AccountData["bookings"] }) {
           ),
         );
       }
-      setUpdateSuccess("تم تحديث الموعد بنجاح.");
+      setUpdateSuccess(t("تم تحديث الموعد بنجاح.", "Booking updated successfully."));
       setTimeout(() => {
         setEditingBooking(null);
         setUpdateSuccess(null);
       }, 1200);
     } catch {
-      setUpdateError("حدث خطأ أثناء تعديل الموعد.");
+      setUpdateError(t("حدث خطأ أثناء تعديل الموعد.", "An error occurred while updating the booking."));
     } finally {
       setUpdating(false);
     }
@@ -746,11 +758,11 @@ function BookingsTab({ bookings }: { bookings: AccountData["bookings"] }) {
   return (
     <div className="space-y-6">
       <div className="bg-pink-500/10 border border-pink-400/20 rounded-2xl p-4 text-xs text-pink-100">
-        يمكنك تعديل موعد الحجز من هنا. لا يمكنك التعديل على نفس اليوم قبل الموعد بأقل من ساعة.
+        {t("يمكنك تعديل موعد الحجز من هنا. لا يمكنك التعديل على نفس اليوم قبل الموعد بأقل من ساعة.", "You can update your booking time from here. Same-day bookings cannot be edited less than one hour before the class.")}
       </div>
 
       <div className="flex gap-2">
-        {[["upcoming", `القادمة (${upcoming.length})`], ["past", `السابقة (${past.length})`]].map(([v, l]) => (
+        {[["upcoming", `${t("القادمة", "Upcoming")} (${upcoming.length})`], ["past", `${t("السابقة", "Past")} (${past.length})`]].map(([v, l]) => (
           <button key={v} onClick={() => setFilter(v as typeof filter)} className={`px-5 py-2 rounded-xl text-sm font-bold transition-colors ${filter === v ? "bg-red-600 text-white" : "bg-gray-800 text-gray-400 hover:bg-gray-700"}`}>
             {l}
           </button>
@@ -759,16 +771,16 @@ function BookingsTab({ bookings }: { bookings: AccountData["bookings"] }) {
 
       {upcoming.length === 0 && (
         <div className="rounded-2xl border border-pink-400/20 bg-pink-500/10 p-4 text-xs text-pink-100">
-          لا توجد حجوزات قادمة حالياً لتعديلها. احجزي موعداً جديداً أولاً ثم يمكنك تعديل الموعد من هنا.
+          {t("لا توجد حجوزات قادمة حالياً لتعديلها. احجزي موعداً جديداً أولاً ثم يمكنك تعديل الموعد من هنا.", "There are no upcoming bookings to edit right now. Book a class first, then you can update it from here.")}
         </div>
       )}
 
       {shown.length === 0 ? (
         <div className={CARD + " text-center py-10"}>
           <div className="text-4xl mb-3">📅</div>
-          <p className="text-gray-400">{filter === "upcoming" ? "لا توجد حجوزات قادمة حاليًا." : "لا توجد حجوزات سابقة حتى الآن."}</p>
+          <p className="text-gray-400">{filter === "upcoming" ? t("لا توجد حجوزات قادمة حاليًا.", "No upcoming bookings right now.") : t("لا توجد حجوزات سابقة حتى الآن.", "No past bookings yet.")}</p>
           {filter === "upcoming" && (
-            <a href="/#schedule" className="mt-4 inline-block bg-red-600 text-white font-bold px-5 py-2 rounded-xl text-sm">اعرضي الجدول الأسبوعي</a>
+            <a href="/#schedule" className="mt-4 inline-block bg-red-600 text-white font-bold px-5 py-2 rounded-xl text-sm">{t("اعرضي الجدول الأسبوعي", "View weekly schedule")}</a>
           )}
         </div>
       ) : (
@@ -780,14 +792,22 @@ function BookingsTab({ bookings }: { bookings: AccountData["bookings"] }) {
                 <div className="text-3xl shrink-0">{TYPE_EMOJI[b.type] ?? ""}</div>
                 <div className="flex-1 min-w-0">
                   <div className="text-white font-black">{b.className}</div>
-                  <div className="text-gray-400 text-xs">مع {b.trainerName}</div>
+                  <div className="text-gray-400 text-xs">{t("مع", "With")} {b.trainerName}</div>
                   <div className="text-gray-500 text-xs mt-1">
-                    {format(new Date(b.date), "EEEE d MMMM", { locale: ar })} {b.time}
+                    {format(new Date(b.date), "EEEE d MMMM", { locale: lang === "en" ? enUS : ar })} {b.time}
                   </div>
                 </div>
                 <div className="flex flex-col items-end gap-2">
                   <span className={`text-xs px-2.5 py-1 rounded-full font-bold ${STATUS_MAP[b.status]?.color ?? "bg-gray-700 text-gray-300"}`}>
-                    {STATUS_MAP[b.status]?.label ?? b.status}
+                    {lang === "en"
+                      ? ({
+                          confirmed: "Confirmed",
+                          attended: "Attended",
+                          cancelled: "Cancelled",
+                          noshow: "No show",
+                          pending: "Pending",
+                        } as Record<string, string>)[b.status] ?? b.status
+                      : STATUS_MAP[b.status]?.label ?? b.status}
                   </span>
                   {b.status === "confirmed" && (
                     <>
@@ -796,14 +816,14 @@ function BookingsTab({ bookings }: { bookings: AccountData["bookings"] }) {
                         disabled={cancellingId === b.id}
                         className="text-red-500 hover:text-red-400 text-xs font-medium transition-colors disabled:opacity-50"
                       >
-                        {cancellingId === b.id ? "جاري الإلغاء..." : "إلغاء الحجز"}
+                        {cancellingId === b.id ? t("جاري الإلغاء...", "Cancelling...") : t("إلغاء الحجز", "Cancel booking")}
                       </button>
                       <button
                         onClick={() => openEditModal(b)}
                         disabled={!editable}
                         className="text-xs font-medium text-pink-200 hover:text-white transition-colors disabled:opacity-40"
                       >
-                        تعديل الموعد
+                        {t("تعديل الموعد", "Edit booking")}
                       </button>
                     </>
                   )}
@@ -817,25 +837,25 @@ function BookingsTab({ bookings }: { bookings: AccountData["bookings"] }) {
       <div className={CARD + " schedule-shell"}>
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h3 className="text-white font-black">الجدول الأسبوعي</h3>
-            <p className="text-gray-400 text-xs mt-1">يمكنك اختيار موعد جديد بعد تحديد الحجز من الأعلى.</p>
+            <h3 className="text-white font-black">{t("الجدول الأسبوعي", "Weekly schedule")}</h3>
+            <p className="text-gray-400 text-xs mt-1">{t("يمكنك اختيار موعد جديد بعد تحديد الحجز من الأعلى.", "You can choose a new slot after selecting a booking above.")}</p>
           </div>
           {editingBooking ? (
-            <span className="text-xs text-pink-200">تعديل: {editingBooking.className}</span>
+            <span className="text-xs text-pink-200">{t("تعديل", "Editing")}: {editingBooking.className}</span>
           ) : (
-            <span className="text-xs text-gray-500">اختر حجزًا أولًا</span>
+            <span className="text-xs text-gray-500">{t("اختر حجزًا أولًا", "Select a booking first")}</span>
           )}
         </div>
 
         {scheduleLoading ? (
-          <div className="text-center text-gray-400 py-10">جاري تحميل الجدول...</div>
+          <div className="text-center text-gray-400 py-10">{t("جاري تحميل الجدول...", "Loading schedule...")}</div>
         ) : scheduleEntries.length === 0 ? (
-          <div className="text-center text-gray-400 py-10">لا توجد مواعيد متاحة حاليًا.</div>
+          <div className="text-center text-gray-400 py-10">{t("لا توجد مواعيد متاحة حاليًا.", "No schedule slots available right now.")}</div>
         ) : (
           <>
             {scheduleSplit.morning.length > 0 && (
               <div className="schedule-block">
-                <div className="schedule-block-title">الجدول الصباحي</div>
+                <div className="schedule-block-title">{t("الجدول الصباحي", "Morning schedule")}</div>
                 <div className="schedule-scroll" style={{ direction: "ltr" }}>
                   <div
                     className="schedule-grid"
@@ -850,7 +870,7 @@ function BookingsTab({ bookings }: { bookings: AccountData["bookings"] }) {
                         {formatScheduleTimeLabel(slot)}
                       </div>
                     ))}
-                    <div className="schedule-cell sticky day-head">اليوم</div>
+                    <div className="schedule-cell sticky day-head">{t("اليوم", "Day")}</div>
                     {scheduleDays.map((day) => (
                       <div key={`morning-row-${day}`} style={{ display: "contents" }}>
                         {scheduleSplit.morning.map((slot) => {
@@ -886,7 +906,7 @@ function BookingsTab({ bookings }: { bookings: AccountData["bookings"] }) {
                                           {entry.type}
                                           {entry.subType ? ` - ${entry.subType}` : ""}
                                         </div>
-                                        {current && <div className="schedule-item-tag">موعدك الحالي</div>}
+                                        {current && <div className="schedule-item-tag">{t("موعدك الحالي", "Current slot")}</div>}
                                       </button>
                                     );
                                   })}
@@ -905,7 +925,7 @@ function BookingsTab({ bookings }: { bookings: AccountData["bookings"] }) {
 
             {scheduleSplit.evening.length > 0 && (
               <div className="schedule-block">
-                <div className="schedule-block-title">الجدول المسائي</div>
+                <div className="schedule-block-title">{t("الجدول المسائي", "Evening schedule")}</div>
                 <div className="schedule-scroll" style={{ direction: "ltr" }}>
                   <div
                     className="schedule-grid"
@@ -920,7 +940,7 @@ function BookingsTab({ bookings }: { bookings: AccountData["bookings"] }) {
                         {formatScheduleTimeLabel(slot)}
                       </div>
                     ))}
-                    <div className="schedule-cell sticky day-head">اليوم</div>
+                    <div className="schedule-cell sticky day-head">{t("اليوم", "Day")}</div>
                     {scheduleDays.map((day) => (
                       <div key={`evening-row-${day}`} style={{ display: "contents" }}>
                         {scheduleSplit.evening.map((slot) => {
@@ -956,7 +976,7 @@ function BookingsTab({ bookings }: { bookings: AccountData["bookings"] }) {
                                           {entry.type}
                                           {entry.subType ? ` - ${entry.subType}` : ""}
                                         </div>
-                                        {current && <div className="schedule-item-tag">موعدك الحالي</div>}
+                                        {current && <div className="schedule-item-tag">{t("موعدك الحالي", "Current slot")}</div>}
                                       </button>
                                     );
                                   })}
@@ -985,7 +1005,7 @@ function BookingsTab({ bookings }: { bookings: AccountData["bookings"] }) {
             disabled={!editingBooking || !selectedScheduleId || updating || selectedScheduleId === editingBooking?.scheduleId}
             style={{ opacity: !editingBooking ? 0.6 : 1 }}
           >
-            {updating ? "جارٍ الحفظ..." : "تحديث الموعد"}
+            {updating ? t("جارٍ الحفظ...", "Saving...") : t("تحديث الموعد", "Update booking")}
           </button>
           <button
             className="rounded-xl border border-pink-300/40 text-pink-200 px-5 py-2 text-sm font-bold transition-colors hover:bg-pink-500/10"
@@ -996,7 +1016,7 @@ function BookingsTab({ bookings }: { bookings: AccountData["bookings"] }) {
               setUpdateSuccess(null);
             }}
           >
-            إلغاء
+            {t("إلغاء", "Cancel")}
           </button>
         </div>
       </div>
@@ -1005,6 +1025,8 @@ function BookingsTab({ bookings }: { bookings: AccountData["bookings"] }) {
 }
 
 function OrdersTab({ orders }: { orders: AccountData["orders"] }) {
+  const { lang } = useLang();
+  const t = (arText: string, enText: string) => (lang === "ar" ? arText : enText);
   const [items, setItems] = useState(orders);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
@@ -1019,7 +1041,7 @@ function OrdersTab({ orders }: { orders: AccountData["orders"] }) {
       });
       const data = await res.json() as { error?: string };
       if (!res.ok) {
-        alert(data.error ?? "تعذر إلغاء الطلب حاليًا.");
+        alert(data.error ?? t("تعذر إلغاء الطلب حاليًا.", "Unable to cancel the order right now."));
         return;
       }
       setItems((current) =>
@@ -1028,17 +1050,17 @@ function OrdersTab({ orders }: { orders: AccountData["orders"] }) {
         ),
       );
     } catch {
-      alert("حدث خطأ أثناء إلغاء الطلب.");
+      alert(t("حدث خطأ أثناء إلغاء الطلب.", "An error occurred while cancelling the order."));
     } finally {
       setCancellingId(null);
     }
   };
   if (items.length === 0) {
     return (
-      <div className={CARD + " text-center py-10"}>
-        <div className="text-4xl mb-3">🛍️</div>
-        <p className="text-gray-400 mb-4">لا توجد طلبات حتى الآن.</p>
-        <a href="/#shop" className="inline-block bg-red-600 text-white font-bold px-5 py-2 rounded-xl text-sm">اذهبي إلى المتجر</a>
+        <div className={CARD + " text-center py-10"}>
+          <div className="text-4xl mb-3">🛍️</div>
+        <p className="text-gray-400 mb-4">{t("لا توجد طلبات حتى الآن.", "No orders yet.")}</p>
+        <a href="/#shop" className="inline-block bg-red-600 text-white font-bold px-5 py-2 rounded-xl text-sm">{t("اذهبي إلى المتجر", "Go to shop")}</a>
       </div>
     );
   }
@@ -1051,14 +1073,22 @@ function OrdersTab({ orders }: { orders: AccountData["orders"] }) {
               <div className="flex items-center gap-2 mb-1">
                 <span className="text-gray-500 text-xs font-mono">#{o.id.slice(-6).toUpperCase()}</span>
                 <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${STATUS_MAP[o.status]?.color ?? "bg-gray-700 text-gray-300"}`}>
-                  {STATUS_MAP[o.status]?.label ?? o.status}
+                  {lang === "en"
+                    ? ({
+                        pending: "Pending",
+                        confirmed: "Confirmed",
+                        delivered: "Delivered",
+                        cancelled: "Cancelled",
+                        active: "Active",
+                      } as Record<string, string>)[o.status] ?? o.status
+                    : STATUS_MAP[o.status]?.label ?? o.status}
                 </span>
               </div>
               <div className="text-gray-500 text-xs">
-                {format(new Date(o.createdAt), "d MMMM yyyy", { locale: ar })} · {o.items.length} منتج
+                {format(new Date(o.createdAt), "d MMMM yyyy", { locale: lang === "en" ? enUS : ar })} · {formatMoney(o.items.length, lang)} {t("منتج", "items")}
               </div>
             </div>
-            <div className="text-yellow-400 font-black">{o.total.toLocaleString("ar-EG")} ج.م</div>
+            <div className="text-yellow-400 font-black">{formatMoney(o.total, lang)} {lang === "en" ? "EGP" : "ج.م"}</div>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={`w-4 h-4 text-gray-500 transition-transform ${expanded === o.id ? "rotate-180" : ""}`}>
               <polyline points="6 9 12 15 18 9" />
             </svg>
@@ -1068,12 +1098,12 @@ function OrdersTab({ orders }: { orders: AccountData["orders"] }) {
               {o.items.map((item, i) => (
                 <div key={i} className="flex items-center justify-between text-sm">
                   <span className="text-gray-300">{item.name} × {item.quantity}</span>
-                  <span className="text-gray-400">{(item.price * item.quantity).toLocaleString("ar-EG")} ج.م</span>
+                  <span className="text-gray-400">{formatMoney(item.price * item.quantity, lang)} {lang === "en" ? "EGP" : "ج.م"}</span>
                 </div>
               ))}
               <div className="flex justify-between font-black text-sm pt-2 border-t border-gray-800">
-                <span className="text-white">الإجمالي</span>
-                <span className="text-yellow-400">{o.total.toLocaleString("ar-EG")} ج.م</span>
+                <span className="text-white">{t("الإجمالي", "Total")}</span>
+                <span className="text-yellow-400">{formatMoney(o.total, lang)} {lang === "en" ? "EGP" : "ج.م"}</span>
               </div>
               {['pending', 'confirmed'].includes(o.status) && (
                 <button
@@ -1081,7 +1111,7 @@ function OrdersTab({ orders }: { orders: AccountData["orders"] }) {
                   disabled={cancellingId === o.id}
                   className="mt-3 text-red-500 hover:text-red-400 text-xs font-bold transition-colors disabled:opacity-50"
                 >
-                  {cancellingId === o.id ? "جارٍ الإلغاء..." : "إلغاء الطلب"}
+                  {cancellingId === o.id ? t("جارٍ الإلغاء...", "Cancelling...") : t("إلغاء الطلب", "Cancel order")}
                 </button>
               )}
             </div>
@@ -1096,6 +1126,8 @@ function OrdersTab({ orders }: { orders: AccountData["orders"] }) {
 function WalletTab({
   wallet, rewards, referral,
 }: { wallet: AccountData["wallet"]; rewards: AccountData["rewards"]; referral: AccountData["referral"] | null }) {
+  const { lang } = useLang();
+  const t = (arText: string, enText: string) => (lang === "ar" ? arText : enText);
   const [activeSection, setActiveSection] = useState<"wallet" | "points">("wallet");
   const [copied, setCopied]   = useState(false);
   const [selectedAmount, setSelectedAmount] = useState<number | null>(null);
@@ -1115,7 +1147,7 @@ function WalletTab({
 
   const startTopup = async (provider: "instapay" | "vodafone_cash") => {
     if (!Number.isFinite(effectiveAmount) || effectiveAmount <= 0) {
-      setPayError("يرجى اختيار مبلغ صالح للشحن.");
+      setPayError(t("يرجى اختيار مبلغ صالح للشحن.", "Please choose a valid top-up amount."));
       return;
     }
     setPayError(null);
@@ -1134,7 +1166,7 @@ function WalletTab({
       });
       const payload = await res.json();
       if (!res.ok) {
-        throw new Error(payload.error ?? "تعذر بدء عملية الشحن.");
+        throw new Error(payload.error ?? t("تعذر بدء عملية الشحن.", "Unable to start the top-up process."));
       }
       const tx = payload.transaction;
       setLastTx({ id: tx?.id, url: tx?.checkoutUrl });
@@ -1142,7 +1174,7 @@ function WalletTab({
         window.open(tx.checkoutUrl, "_blank", "noopener,noreferrer");
       }
     } catch (err: unknown) {
-      setPayError(err instanceof Error ? err.message : "تعذر بدء عملية الشحن.");
+      setPayError(err instanceof Error ? err.message : t("تعذر بدء عملية الشحن.", "Unable to start the top-up process."));
     } finally {
       setPaying(false);
     }
@@ -1152,7 +1184,7 @@ function WalletTab({
     <div className="space-y-5">
       {/* Toggle */}
       <div className="flex gap-2">
-        {[["wallet", "💳 المحفظة"], ["points", "🏅 النقاط"]].map(([v, l]) => (
+        {[["wallet", t("💳 المحفظة", "💳 Wallet")], ["points", t("🏅 النقاط", "🏅 Points")]].map(([v, l]) => (
           <button key={v} onClick={() => setActiveSection(v as typeof activeSection)} className={`px-5 py-2 rounded-xl text-sm font-bold transition-colors ${activeSection === v ? "bg-red-600 text-white" : "bg-gray-800 text-gray-400 hover:bg-gray-700"}`}>
             {l}
           </button>
@@ -1163,14 +1195,14 @@ function WalletTab({
         <>
           {/* Balance card */}
           <div className="bg-gradient-to-br from-blue-950/40 to-black border border-blue-500/30 rounded-2xl p-6 text-center">
-            <div className="text-gray-400 text-sm mb-1">رصيد المحفظة</div>
-            <div className="text-4xl font-black text-white mb-1">{wallet.balance.toLocaleString("ar-EG")}</div>
-            <div className="text-gray-400">جنيه مصري</div>
+            <div className="text-gray-400 text-sm mb-1">{t("رصيد المحفظة", "Wallet balance")}</div>
+            <div className="text-4xl font-black text-white mb-1">{formatMoney(wallet.balance, lang)}</div>
+            <div className="text-gray-400">{lang === "en" ? "EGP" : "جنيه مصري"}</div>
           </div>
 
           {/* Quick top-up */}
           <div className={CARD}>
-            <h4 className="text-white font-black mb-3">شحن سريع</h4>
+            <h4 className="text-white font-black mb-3">{t("شحن سريع", "Quick top-up")}</h4>
             <div className="grid grid-cols-4 gap-2 mb-3">
               {TOPUP_AMOUNTS.map((v) => (
                 <button
@@ -1183,22 +1215,22 @@ function WalletTab({
                   }}
                   className={`text-white font-bold py-2 rounded-xl text-sm transition-colors ${selectedAmount === v ? "bg-blue-600" : "bg-gray-800 hover:bg-blue-600"}`}
                 >
-                  {v} ج.م
+                  {formatMoney(v, lang)} {lang === "en" ? "EGP" : "ج.م"}
                 </button>
               ))}
             </div>
             <div className="flex gap-2">
-              <input type="number" placeholder="مبلغ مخصص..." className={INPUT} dir="ltr" />
-              <button className="bg-blue-600 hover:bg-blue-700 text-white font-black px-5 rounded-xl transition-colors text-sm whitespace-nowrap">شحن</button>
+              <input type="number" placeholder={t("مبلغ مخصص...", "Custom amount...")} className={INPUT} dir="ltr" />
+              <button className="bg-blue-600 hover:bg-blue-700 text-white font-black px-5 rounded-xl transition-colors text-sm whitespace-nowrap">{t("شحن", "Top up")}</button>
             </div>
           </div>
 
           <div className={CARD}>
-            <h4 className="text-white font-black mb-3">الدفع لشحن المحفظة</h4>
+            <h4 className="text-white font-black mb-3">{t("الدفع لشحن المحفظة", "Pay to top up wallet")}</h4>
             <div className="flex flex-wrap gap-2">
               <input
                 type="number"
-                placeholder="مبلغ مخصص..."
+                placeholder={t("مبلغ مخصص...", "Custom amount...")}
                 className={INPUT}
                 dir="ltr"
                 value={customAmount}
@@ -1216,7 +1248,7 @@ function WalletTab({
                 }}
                 className="bg-blue-600 hover:bg-blue-700 text-white font-black px-5 rounded-xl transition-colors text-sm whitespace-nowrap"
               >
-                تثبيت
+                {t("تثبيت", "Set")}
               </button>
             </div>
             <div className="mt-3 flex flex-wrap gap-2">
@@ -1225,22 +1257,22 @@ function WalletTab({
                 disabled={paying}
                 className="bg-pink-600 hover:bg-pink-700 disabled:opacity-60 text-white font-black px-4 py-2 rounded-xl text-sm"
               >
-                الدفع عبر إنستاباي
+                {t("الدفع عبر إنستاباي", "Pay with InstaPay")}
               </button>
               <button
                 onClick={() => startTopup("vodafone_cash")}
                 disabled={paying}
                 className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-black px-4 py-2 rounded-xl text-sm"
               >
-                الدفع عبر فودافون كاش
+                {t("الدفع عبر فودافون كاش", "Pay with Vodafone Cash")}
               </button>
             </div>
             {payError && <div className="mt-2 text-xs text-red-400">{payError}</div>}
             {lastTx?.id && (
               <div className="mt-2 text-xs text-gray-400">
-                تم إنشاء معاملة الشحن. يمكنك متابعة التأكيد من هنا:{" "}
+                {t("تم إنشاء معاملة الشحن. يمكنك متابعة التأكيد من هنا:", "Top-up transaction created. You can continue verification here:")}{" "}
                 <a className="text-pink-300 underline" href={`/payment/verify?transactionId=${lastTx.id}`}>
-                  صفحة التحقق من الدفع
+                  {t("صفحة التحقق من الدفع", "Payment verification page")}
                 </a>
               </div>
             )}
@@ -1248,7 +1280,7 @@ function WalletTab({
 
           {/* Transactions */}
           <div className={CARD}>
-            <h4 className="text-white font-black mb-4">سجل المعاملات</h4>
+            <h4 className="text-white font-black mb-4">{t("سجل المعاملات", "Transaction history")}</h4>
             <div className="space-y-3">
               {wallet.transactions.map((tx) => (
                 <div key={tx.id} className="flex items-center gap-3 py-2 border-b border-gray-800/60 last:border-0">
@@ -1257,14 +1289,14 @@ function WalletTab({
                   </div>
                   <div className="flex-1">
                     <div className="text-gray-300 text-sm">{tx.description}</div>
-                    <div className="text-gray-600 text-xs">{format(new Date(tx.createdAt), "d MMM yyyy", { locale: ar })}</div>
+                    <div className="text-gray-600 text-xs">{format(new Date(tx.createdAt), "d MMM yyyy", { locale: lang === "en" ? enUS : ar })}</div>
                   </div>
                   <span className={`font-black text-sm ${tx.type === "credit" ? "text-green-400" : "text-red-400"}`}>
-                    {tx.type === "credit" ? "+" : "-"}{Math.abs(tx.amount)} ج.م
+                    {tx.type === "credit" ? "+" : "-"}{formatMoney(Math.abs(tx.amount), lang)} {lang === "en" ? "EGP" : "ج.م"}
                   </span>
                 </div>
               ))}
-              {wallet.transactions.length === 0 && <p className="text-gray-600 text-sm text-center py-4">لا يوجد معاملات</p>}
+              {wallet.transactions.length === 0 && <p className="text-gray-600 text-sm text-center py-4">{t("لا يوجد معاملات", "No transactions")}</p>}
             </div>
           </div>
         </>
@@ -1276,9 +1308,9 @@ function WalletTab({
           <div className={`${tier.bg} border ${tier.border} rounded-2xl p-6`}>
             <div className="flex items-center justify-between mb-4">
               <div>
-                <div className="text-gray-400 text-xs mb-1">مستواك</div>
+                <div className="text-gray-400 text-xs mb-1">{t("مستواك", "Your tier")}</div>
                 <div className={`text-2xl font-black ${tier.color}`}>
-                  {tier.label}
+                  {getTierLabel(rewards.tier, lang)}
                   {rewards.tier === "platinum" && " 👑"}
                   {rewards.tier === "gold"     && " 🥇"}
                   {rewards.tier === "silver"   && " 🥈"}
@@ -1287,15 +1319,15 @@ function WalletTab({
               </div>
               <div className="text-center">
                 <div className="text-3xl font-black text-white">{rewards.points.toLocaleString("ar-EG")}</div>
-                <div className="text-gray-400 text-xs">نقطة</div>
+                <div className="text-gray-400 text-xs">{t("نقطة", "points")}</div>
               </div>
             </div>
 
             {tier.next && (
               <>
                 <div className="flex justify-between text-xs text-gray-400 mb-1">
-                  <span>تقدمك للمستوى التالي</span>
-                  <span>{tier.next - rewards.points} نقطة متبقية</span>
+                  <span>{t("تقدمك للمستوى التالي", "Progress to next tier")}</span>
+                  <span>{formatMoney(tier.next - rewards.points, lang)} {t("نقطة متبقية", "points left")}</span>
                 </div>
                 <div className="h-2 bg-black/40 rounded-full overflow-hidden">
                   <div className={`h-full rounded-full ${tier.color.replace("text-", "bg-")}`} style={{ width: `${Math.min(100, (rewards.points / tier.next) * 100)}%` }} />
@@ -1304,14 +1336,14 @@ function WalletTab({
             )}
 
             <div className="mt-4 pt-4 border-t border-white/10 text-center">
-              <div className="text-gray-400 text-xs">قيمة نقاطك</div>
-              <div className="text-yellow-400 font-black text-xl">{Math.floor(rewards.points / 10)} ج.م</div>
+              <div className="text-gray-400 text-xs">{t("قيمة نقاطك", "Points value")}</div>
+              <div className="text-yellow-400 font-black text-xl">{formatMoney(Math.floor(rewards.points / 10), lang)} {lang === "en" ? "EGP" : "ج.م"}</div>
             </div>
           </div>
 
           {/* Points history */}
           <div className={CARD}>
-            <h4 className="text-white font-black mb-4">تاريخ النقاط</h4>
+            <h4 className="text-white font-black mb-4">{t("تاريخ النقاط", "Points history")}</h4>
             <div className="space-y-3">
               {rewards.history.map((h) => (
                 <div key={h.id} className="flex items-center gap-3 py-2 border-b border-gray-800/60 last:border-0">
@@ -1320,7 +1352,7 @@ function WalletTab({
                   </div>
                   <div className="flex-1">
                     <div className="text-gray-300 text-sm">{h.reason}</div>
-                    <div className="text-gray-600 text-xs">{format(new Date(h.createdAt), "d MMM yyyy", { locale: ar })}</div>
+                    <div className="text-gray-600 text-xs">{format(new Date(h.createdAt), "d MMM yyyy", { locale: lang === "en" ? enUS : ar })}</div>
                   </div>
                   <span className={`font-black text-sm ${h.points >= 0 ? "text-yellow-400" : "text-gray-500"}`}>
                     {h.points >= 0 ? "+" : ""}{h.points}
@@ -1333,18 +1365,18 @@ function WalletTab({
           {/* Referral */}
           {referral && (
             <div className="bg-yellow-950/20 border border-yellow-500/30 rounded-2xl p-5">
-              <h4 className="text-white font-black mb-2">🎁 كود الإحالة الخاص بك</h4>
-              <p className="text-gray-400 text-sm mb-4">شارك كودك مع أصدقائك واحصل على 50 جنيه لكل عضو جديد</p>
+              <h4 className="text-white font-black mb-2">{t("🎁 كود الإحالة الخاص بك", "🎁 Your referral code")}</h4>
+              <p className="text-gray-400 text-sm mb-4">{t("شارك كودك مع أصدقائك واحصل على 50 جنيه لكل عضو جديد", "Share your code with friends and get 50 EGP for each new member")}</p>
               <div className="flex gap-2">
                 <div className="flex-1 bg-black border border-yellow-500/30 rounded-xl px-4 py-2.5 text-yellow-400 font-black text-center tracking-widest" dir="ltr">
                   {referral.code}
                 </div>
                 <button onClick={copyCode} className={`px-4 rounded-xl font-bold text-sm transition-colors ${copied ? "bg-green-600 text-white" : "bg-yellow-500 hover:bg-yellow-400 text-black"}`}>
-                  {copied ? "تم النسخ" : "نسخ"}
+                  {copied ? t("تم النسخ", "Copied") : t("نسخ", "Copy")}
                 </button>
               </div>
               <div className="mt-3 text-center text-gray-400 text-xs">
-                إجمالي ما كسبته: <span className="text-yellow-400 font-black">{referral.totalEarned} ج.م</span>
+                {t("إجمالي ما كسبته", "Total earned")}: <span className="text-yellow-400 font-black">{formatMoney(referral.totalEarned, lang)} {lang === "en" ? "EGP" : "ج.م"}</span>
               </div>
             </div>
           )}
@@ -1366,6 +1398,8 @@ type ReviewItem = {
 };
 
 function ReviewsTab({ user }: { user: AccountData["user"] }) {
+  const { lang } = useLang();
+  const t = (arText: string, enText: string) => (lang === "ar" ? arText : enText);
   const [items, setItems] = useState<ReviewItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -1403,25 +1437,25 @@ function ReviewsTab({ user }: { user: AccountData["user"] }) {
   return (
     <div className="space-y-5">
       <div className={CARD}>
-        <h3 className="text-white font-black mb-4">{"\u0623\u0636\u064a\u0641\u064a \u0631\u0623\u064a\u0643 \u0644\u064a\u0638\u0647\u0631 \u0628\u0639\u062f \u0645\u0631\u0627\u062c\u0639\u0629 \u0627\u0644\u0625\u062f\u0627\u0631\u0629 \u0639\u0644\u0649 \u0627\u0644\u0635\u0641\u062d\u0629 \u0627\u0644\u0631\u0626\u064a\u0633\u064a\u0629"}</h3>
+        <h3 className="text-white font-black mb-4">{t("أضيفي رأيك ليظهر بعد مراجعة الإدارة على الصفحة الرئيسية", "Add your review to appear on the homepage after admin approval")}</h3>
         <form onSubmit={submit} className="space-y-4">
-          <input value={form.displayName} onChange={(e) => setForm({ ...form, displayName: e.target.value })} className={INPUT} placeholder={"\u0627\u0644\u0627\u0633\u0645 \u0627\u0644\u0645\u0639\u0631\u0648\u0636"} />
+          <input value={form.displayName} onChange={(e) => setForm({ ...form, displayName: e.target.value })} className={INPUT} placeholder={t("الاسم المعروض", "Display name")} />
           <select value={form.rating} onChange={(e) => setForm({ ...form, rating: Number(e.target.value) })} className={INPUT}>
-            {[5,4,3,2,1].map((rating) => <option key={rating} value={rating}>{rating} {"\u0646\u062c\u0648\u0645"}</option>)}
+            {[5,4,3,2,1].map((rating) => <option key={rating} value={rating}>{rating} {t("نجوم", "stars")}</option>)}
           </select>
-          <textarea value={form.content} onChange={(e) => setForm({ ...form, content: e.target.value })} rows={4} className={`${INPUT} resize-none`} placeholder={"\u0627\u0643\u062a\u0628\u064a \u062a\u062c\u0631\u0628\u062a\u0643..."} />
+          <textarea value={form.content} onChange={(e) => setForm({ ...form, content: e.target.value })} rows={4} className={`${INPUT} resize-none`} placeholder={t("اكتبي تجربتك...", "Write your review...")} />
           <button type="submit" disabled={saving} className="bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-black px-6 py-2.5 rounded-xl transition-colors text-sm">
-            {saving ? "\u062c\u0627\u0631\u064d \u0627\u0644\u062d\u0641\u0638..." : form.id ? "\u062a\u062d\u062f\u064a\u062b \u0627\u0644\u0631\u0623\u064a" : "\u0625\u0636\u0627\u0641\u0629 \u0627\u0644\u0631\u0623\u064a"}
+            {saving ? t("جارٍ الحفظ...", "Saving...") : form.id ? t("تحديث الرأي", "Update review") : t("إضافة الرأي", "Add review")}
           </button>
         </form>
       </div>
 
       <div className={CARD}>
-        <h3 className="text-white font-black mb-4">{"\u0622\u0631\u0627\u0626\u064a \u0627\u0644\u0633\u0627\u0628\u0642\u0629"}</h3>
+        <h3 className="text-white font-black mb-4">{t("آرائي السابقة", "My previous reviews")}</h3>
         {loading ? (
-          <p className="text-gray-500 text-sm text-center py-6">{"\u062c\u0627\u0631\u064d \u062a\u062d\u0645\u064a\u0644 \u0627\u0644\u0622\u0631\u0627\u0621..."}</p>
+          <p className="text-gray-500 text-sm text-center py-6">{t("جارٍ تحميل الآراء...", "Loading reviews...")}</p>
         ) : items.length === 0 ? (
-          <p className="text-gray-500 text-sm text-center py-6">{"\u0644\u0627 \u062a\u0648\u062c\u062f \u0622\u0631\u0627\u0621 \u0628\u0639\u062f"}</p>
+          <p className="text-gray-500 text-sm text-center py-6">{t("لا توجد آراء بعد", "No reviews yet")}</p>
         ) : (
           <div className="space-y-3">
             {items.map((item) => (
@@ -1429,15 +1463,15 @@ function ReviewsTab({ user }: { user: AccountData["user"] }) {
                 <div className="mb-2 flex items-center justify-between gap-3">
                   <div className="text-white font-bold">{item.displayName || user.name}</div>
                   <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${item.status === "approved" ? "bg-green-500/20 text-green-400" : item.status === "rejected" ? "bg-red-500/20 text-red-400" : "bg-yellow-500/20 text-yellow-400"}`}>
-                    {item.status === "approved" ? "\u0645\u0646\u0634\u0648\u0631" : item.status === "rejected" ? "\u0645\u0631\u0641\u0648\u0636" : "\u0645\u0631\u0627\u062c\u0639\u0629"}
+                    {item.status === "approved" ? t("منشور", "Published") : item.status === "rejected" ? t("مرفوض", "Rejected") : t("مراجعة", "Pending")}
                   </span>
                 </div>
-                <div className="mb-2 text-yellow-400">{"?".repeat(item.rating)}</div>
+                <div className="mb-2 text-yellow-400">{"★".repeat(item.rating)}</div>
                 <p className="text-sm leading-relaxed text-gray-300">{item.content}</p>
-                {item.adminNote && <div className="mt-3 text-xs text-red-300">{"\u0645\u0644\u0627\u062d\u0638\u0629 \u0627\u0644\u0625\u062f\u0627\u0631\u0629:"} {item.adminNote}</div>}
+                {item.adminNote && <div className="mt-3 text-xs text-red-300">{t("ملاحظة الإدارة:", "Admin note:")} {item.adminNote}</div>}
                 <div className="mt-3 flex gap-3">
-                  <button type="button" onClick={() => setForm({ id: item.id, displayName: item.displayName || user.name, content: item.content, rating: item.rating })} className="text-sm font-bold text-yellow-400">{"\u062a\u0639\u062f\u064a\u0644"}</button>
-                  <button type="button" onClick={async () => { await fetch("/api/testimonials", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: item.id }) }); await load(); }} className="text-sm font-bold text-red-400">{"\u062d\u0630\u0641"}</button>
+                  <button type="button" onClick={() => setForm({ id: item.id, displayName: item.displayName || user.name, content: item.content, rating: item.rating })} className="text-sm font-bold text-yellow-400">{t("تعديل", "Edit")}</button>
+                  <button type="button" onClick={async () => { await fetch("/api/testimonials", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: item.id }) }); await load(); }} className="text-sm font-bold text-red-400">{t("حذف", "Delete")}</button>
                 </div>
               </div>
             ))}
@@ -1462,6 +1496,8 @@ interface ComplaintItem {
 }
 
 function ComplaintsTab() {
+  const { lang } = useLang();
+  const t = (arText: string, enText: string) => (lang === "ar" ? arText : enText);
   const [complaints, setComplaints] = useState<ComplaintItem[]>([]);
   const [loading, setLoading]       = useState(true);
   const [form, setForm]             = useState({ subject: "", message: "" });
@@ -1490,11 +1526,11 @@ function ComplaintsTab() {
       });
       if (res.ok) {
         setForm({ subject: "", message: "" });
-        setToast("✅ تم إرسال شكواك بنجاح، سيتم الرد قريباً");
+        setToast(t("✅ تم إرسال شكواك بنجاح، سيتم الرد قريباً", "✅ Your complaint was sent successfully. We will respond soon."));
         setTimeout(() => setToast(""), 4000);
         await load();
       } else {
-        setToast("❌ حدث خطأ، حاول مرة أخرى");
+        setToast(t("❌ حدث خطأ، حاول مرة أخرى", "❌ Something went wrong. Please try again."));
         setTimeout(() => setToast(""), 3000);
       }
     } finally { setSending(false); }
@@ -1509,42 +1545,42 @@ function ComplaintsTab() {
       )}
 
       {/* Submit form */}
-      <div className={CARD}>
-        <h3 className="text-white font-black mb-4">📩 إرسال شكوى أو اقتراح</h3>
+        <div className={CARD}>
+        <h3 className="text-white font-black mb-4">{t("📩 إرسال شكوى أو اقتراح", "📩 Send a complaint or suggestion")}</h3>
         <form onSubmit={submit} className="space-y-4">
           <div>
-            <label className="block text-gray-500 text-xs mb-1.5">الموضوع</label>
+            <label className="block text-gray-500 text-xs mb-1.5">{t("الموضوع", "Subject")}</label>
             <input
               value={form.subject} onChange={e => setForm(f => ({ ...f, subject: e.target.value }))}
-              placeholder="اكتب موضوع شكواك..."
+              placeholder={t("اكتب موضوع شكواك...", "Write the complaint subject...")}
               className={INPUT} required
             />
           </div>
           <div>
-            <label className="block text-gray-500 text-xs mb-1.5">تفاصيل الشكوى</label>
+            <label className="block text-gray-500 text-xs mb-1.5">{t("تفاصيل الشكوى", "Complaint details")}</label>
             <textarea
               value={form.message} onChange={e => setForm(f => ({ ...f, message: e.target.value }))}
-              placeholder="اشرح شكواك بالتفصيل..."
+              placeholder={t("اشرح شكواك بالتفصيل...", "Describe your complaint in detail...")}
               rows={4} required
               className="w-full bg-gray-800 border border-gray-700 focus:border-red-500 rounded-xl px-4 py-2.5 text-white text-sm outline-none transition-colors placeholder-gray-600 resize-none"
             />
           </div>
           <button type="submit" disabled={sending}
             className="bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-black px-6 py-2.5 rounded-xl transition-colors text-sm">
-            {sending ? "جارٍ الإرسال..." : "إرسال الشكوى"}
+            {sending ? t("جارٍ الإرسال...", "Sending...") : t("إرسال الشكوى", "Send complaint")}
           </button>
         </form>
       </div>
 
       {/* Past complaints */}
       <div className={CARD}>
-        <h3 className="text-white font-black mb-4">شكاواي السابقة</h3>
+        <h3 className="text-white font-black mb-4">{t("شكاواي السابقة", "My previous complaints")}</h3>
         {loading ? (
-          <p className="text-gray-500 text-sm text-center py-6">جارٍ التحميل...</p>
+          <p className="text-gray-500 text-sm text-center py-6">{t("جارٍ التحميل...", "Loading...")}</p>
         ) : complaints.length === 0 ? (
           <div className="text-center py-8">
             <div className="text-4xl mb-2">📭</div>
-            <p className="text-gray-500 text-sm">لا يوجد شكاوى بعد</p>
+            <p className="text-gray-500 text-sm">{t("لا يوجد شكاوى بعد", "No complaints yet")}</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -1557,11 +1593,13 @@ function ComplaintsTab() {
                   <div className="flex-1 min-w-0">
                     <div className="text-white font-bold text-sm truncate">{c.subject}</div>
                     <div className="text-gray-500 text-xs mt-0.5">
-                      {format(new Date(c.createdAt), "d MMMM yyyy", { locale: ar })}
+                      {format(new Date(c.createdAt), "d MMMM yyyy", { locale: lang === "en" ? enUS : ar })}
                     </div>
                   </div>
                   <span className={`text-xs px-2.5 py-1 rounded-full font-bold shrink-0 ${COMPLAINT_STATUS_COLORS[c.status] ?? "bg-gray-800 text-gray-500"}`}>
-                    {COMPLAINT_STATUS_LABELS[c.status] ?? c.status}
+                    {lang === "en"
+                      ? ({ open: "Open", "in-progress": "In progress", resolved: "Resolved", closed: "Closed" } as Record<string, string>)[c.status] ?? c.status
+                      : COMPLAINT_STATUS_LABELS[c.status] ?? c.status}
                   </span>
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
                     className={`w-4 h-4 text-gray-500 transition-transform shrink-0 ${expanded === c.id ? "rotate-180" : ""}`}>
@@ -1573,7 +1611,7 @@ function ComplaintsTab() {
                     <p className="text-gray-300 text-sm leading-relaxed">{c.message}</p>
                     {c.adminNote && (
                       <div className="bg-blue-950/30 border border-blue-800/50 rounded-xl p-3">
-                        <div className="text-blue-400 text-xs font-bold mb-1">💬 رد الإدارة:</div>
+                        <div className="text-blue-400 text-xs font-bold mb-1">{t("💬 رد الإدارة:", "💬 Admin reply:")}</div>
                         <p className="text-gray-300 text-sm">{c.adminNote}</p>
                       </div>
                     )}
@@ -1590,6 +1628,8 @@ function ComplaintsTab() {
 
 // ─── Tab: Notifications ───────────────────────────────────────────────────────
 function NotificationsTab({ notifications: init }: { notifications: AccountData["notifications"] }) {
+  const { lang } = useLang();
+  const t = (arText: string, enText: string) => (lang === "ar" ? arText : enText);
   const [notifs, setNotifs] = useState(init);
   const unread = notifs.filter((n) => !n.isRead).length;
 
@@ -1611,10 +1651,10 @@ function NotificationsTab({ notifications: init }: { notifications: AccountData[
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <span className="text-gray-400 text-sm">{unread} غير مقروءة</span>
+        <span className="text-gray-400 text-sm">{formatMoney(unread, lang)} {t("غير مقروءة", "unread")}</span>
         {unread > 0 && (
           <button onClick={markAll} className="text-red-500 hover:text-red-400 text-sm font-medium transition-colors">
-            تحديد الكل كمقروء
+            {t("تحديد الكل كمقروء", "Mark all as read")}
           </button>
         )}
       </div>
@@ -1634,7 +1674,7 @@ function NotificationsTab({ notifications: init }: { notifications: AccountData[
               </div>
               <p className="text-gray-400 text-xs leading-relaxed">{n.body}</p>
               <span className="text-gray-600 text-xs mt-1 block">
-                {format(new Date(n.createdAt), "d MMM yyyy", { locale: ar })}
+                {format(new Date(n.createdAt), "d MMM yyyy", { locale: lang === "en" ? enUS : ar })}
               </span>
             </div>
           </div>
@@ -1642,7 +1682,7 @@ function NotificationsTab({ notifications: init }: { notifications: AccountData[
         {notifs.length === 0 && (
           <div className={CARD + " text-center py-10"}>
             <div className="text-4xl mb-2">🔔</div>
-            <p className="text-gray-400">لا يوجد إشعارات</p>
+            <p className="text-gray-400">{t("لا يوجد إشعارات", "No notifications")}</p>
           </div>
         )}
       </div>
@@ -1708,7 +1748,7 @@ export default function AccountClient({ data }: { data: AccountData }) {
             <div className="hidden sm:flex items-center gap-2">
               <a href="/" className="flex items-center gap-1.5 text-[#d7aabd] transition-colors text-sm hover:text-white">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-                الرئيسية
+                {t("الرئيسية", "Home")}
               </a>
               <button
                 onClick={handleLogout}
@@ -1718,7 +1758,7 @@ export default function AccountClient({ data }: { data: AccountData }) {
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
                   <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
-                {loggingOut ? "جارٍ الخروج..." : "تسجيل الخروج"}
+                {loggingOut ? t("جارٍ الخروج...", "Logging out...") : t("تسجيل الخروج", "Log out")}
               </button>
             </div>
           </div>
@@ -1729,7 +1769,7 @@ export default function AccountClient({ data }: { data: AccountData }) {
               className="flex items-center gap-1.5 rounded-xl border border-[#ffbcdb]/20 bg-white/5 px-3 py-2 text-sm text-[#d7aabd] transition-colors hover:text-white"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-4 w-4"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-                الرئيسية
+                {t("الرئيسية", "Home")}
             </a>
             <button
               onClick={handleLogout}
@@ -1739,7 +1779,7 @@ export default function AccountClient({ data }: { data: AccountData }) {
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-4 w-4">
                 <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
-              {loggingOut ? "جاري الخروج..." : "تسجيل الخروج"}
+              {loggingOut ? t("جاري الخروج...", "Logging out...") : t("تسجيل الخروج", "Log out")}
             </button>
           </div>
 
