@@ -1107,11 +1107,17 @@ type PublicContact = {
 
 type TrainersPageContent = {
   badge: string;
+  badgeEn?: string;
   title: string;
+  titleEn?: string;
   subtitle: string;
+  subtitleEn?: string;
   description: string;
+  descriptionEn?: string;
   highlight: string;
+  highlightEn?: string;
   ctaLabel: string;
+  ctaLabelEn?: string;
 };
 
 type PublicBlogPost = {
@@ -3851,6 +3857,26 @@ const DEFAULT_STORE_CATEGORIES: StoreCategory[] = [
   { key: "gear", label: "معدات", sizeType: "none" },
 ];
 const catMap: Record<string, string> = { gear: "معدات", supplement: "مكملات", clothing: "ملابس", accessory: "إكسسوار", shoes: "أحذية" };
+const catMapEn: Record<string, string> = { gear: "Gear", supplement: "Supplements", clothing: "Clothing", accessory: "Accessories", shoes: "Shoes" };
+const categoryEnByArabic: Record<string, string> = Object.entries(catMap).reduce((acc, [key, value]) => {
+  acc[value] = catMapEn[key] ?? value;
+  return acc;
+}, {} as Record<string, string>);
+
+function localizeStoreCategory(label: string, key: string | undefined, lang: "ar" | "en") {
+  if (lang !== "en") return label;
+  return (key && catMapEn[key]) || categoryEnByArabic[label] || label;
+}
+
+function localizeDiscountBadge(badge: string | null | undefined, lang: "ar" | "en") {
+  if (!badge) return badge;
+  if (lang !== "en") return badge;
+  const match = badge.match(/خصم\s+(\d+)%/);
+  if (match) return `${match[1]}% off`;
+  if (badge === "الأكثر مبيعًا") return "Best seller";
+  return badge;
+}
+
 const mapApiProductToStoreProduct = (
   p: {
     id?: string;
@@ -3915,6 +3941,9 @@ const getProductRecommendationScore = (product: StoreProduct, searchTerm: string
 };
 
 const ShopPage = ({ navigate }: { navigate: (p: string) => void }) => {
+  const t = useT();
+  const { lang } = useLang();
+  const allLabel = t("الكل", "All");
   const [cat, setCat] = useState("الكل");
   const [search, setSearch] = useState("");
   const [categories, setCategories] = useState<StoreCategory[]>(DEFAULT_STORE_CATEGORIES);
@@ -3954,9 +3983,13 @@ const ShopPage = ({ navigate }: { navigate: (p: string) => void }) => {
       .catch(() => {});
   }, []);
 
-  const categoryButtons = ["الكل", ...categories.map((item) => item.label)];
+  useEffect(() => {
+    setCat(allLabel);
+  }, [allLabel]);
+
+  const categoryButtons = [allLabel, ...categories.map((item) => item.label)];
   const filtered = products.filter((p) => {
-    const matchesCategory = cat === "الكل" || p.cat === cat;
+    const matchesCategory = cat === allLabel || p.cat === cat;
     const term = search.trim().toLowerCase();
     if (!term) return matchesCategory;
     return matchesCategory && (
@@ -3980,18 +4013,22 @@ const ShopPage = ({ navigate }: { navigate: (p: string) => void }) => {
     <div>
       <section style={{ background: `linear-gradient(135deg, #FFE0EC, ${C.bg})`, padding: "48px 0" }}>
         <div className="container">
-          <h1 style={{ fontSize: viewportWidth() < 768 ? 30 : 40, fontWeight: 900, color: C.white, marginBottom: 8 }}>المتجر الرياضي</h1>
-          <p style={{ color: C.gray, fontSize: 15 }}>منتجات مختارة لتعزيز أهدافك</p>
+          <h1 style={{ fontSize: viewportWidth() < 768 ? 30 : 40, fontWeight: 900, color: C.white, marginBottom: 8 }}>{t("المتجر الرياضي", "Sports shop")}</h1>
+          <p style={{ color: C.gray, fontSize: 15 }}>{t("منتجات مختارة لتعزيز أهدافك", "Selected products to support your goals")}</p>
         </div>
       </section>
       <section className="section">
         <div className="container">
           <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginBottom: 32 }}>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {categoryButtons.map((label) => <button key={label} className={`tab ${cat === label ? "active" : ""}`} onClick={() => setCat(label)}>{label}</button>)}
+              {categoryButtons.map((label) => {
+                const categoryRecord = categories.find((item) => item.label === label);
+                const displayLabel = label === allLabel ? allLabel : localizeStoreCategory(label, categoryRecord?.key, lang);
+                return <button key={label} className={`tab ${cat === label ? "active" : ""}`} onClick={() => setCat(label)}>{displayLabel}</button>;
+              })}
             </div>
             <div style={{ position: "relative", minWidth: 260, flex: "1 1 260px", maxWidth: 360 }}>
-              <input className="input" placeholder="ابحثي عن منتج أو مقاس أو وصف..." value={search} onChange={e => setSearch(e.target.value)} style={{ paddingRight: 44 }} />
+              <input className="input" placeholder={t("ابحثي عن منتج أو مقاس أو وصف...", "Search for a product, size, or description...")} value={search} onChange={e => setSearch(e.target.value)} style={{ paddingRight: 44 }} />
               <span style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)" }}><I n="search" s={18} c={C.gray} /></span>
             </div>
           </div>
@@ -4004,13 +4041,13 @@ const ShopPage = ({ navigate }: { navigate: (p: string) => void }) => {
                     <>
                 <div style={{ height: 200, position: "relative" }}>
                   <ProductVisual product={p} h={200} />
-                  {p.badge && <span className="badge" style={{ position: "absolute", top: 12, right: 12 }}>{p.badge}</span>}
+                  {p.badge && <span className="badge" style={{ position: "absolute", top: 12, right: 12 }}>{localizeDiscountBadge(p.badge, lang)}</span>}
                   {outOfStock && (
                     <span
                       className="badge"
                       style={{ position: "absolute", top: 12, left: 12, background: "#2b0f1b", color: "#ffd166" }}
                     >
-                      نفذت الكمية
+                      {t("نفذت الكمية", "Out of stock")}
                     </span>
                   )}
                 </div>
@@ -4018,10 +4055,10 @@ const ShopPage = ({ navigate }: { navigate: (p: string) => void }) => {
                   <h3 style={{ fontWeight: 700, fontSize: 14, marginBottom: 10, color: C.white }}>{p.name}</h3>
                   {p.description && <p style={{ color: C.gray, fontSize: 12, lineHeight: 1.7, marginBottom: 10, minHeight: 40 }}>{p.description.slice(0, 70)}{p.description.length > 70 ? "..." : ""}</p>}
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-                    <span style={{ fontWeight: 900, color: C.red, fontSize: 20 }}>{p.price} ج.م</span>
-                    {p.oldPrice && <span style={{ textDecoration: "line-through", color: C.grayDark, fontSize: 12 }}>{p.oldPrice} ج.م</span>}
+                    <span style={{ fontWeight: 900, color: C.red, fontSize: 20 }}>{formatCurrency(p.price)}</span>
+                    {p.oldPrice && <span style={{ textDecoration: "line-through", color: C.grayDark, fontSize: 12 }}>{formatCurrency(p.oldPrice)}</span>}
                   </div>
-                  {p.sizeType !== "none" && p.sizes && p.sizes.length > 0 && <div style={{ color: C.gray, fontSize: 11, marginBottom: 12 }}>المقاسات: {p.sizes.slice(0, 4).join(" - ")}</div>}
+                  {p.sizeType !== "none" && p.sizes && p.sizes.length > 0 && <div style={{ color: C.gray, fontSize: 11, marginBottom: 12 }}>{t("المقاسات", "Sizes")}: {p.sizes.slice(0, 4).join(" - ")}</div>}
                   <button
                     className="btn-primary"
                     style={{ width: "100%", justifyContent: "center", padding: "8px", fontSize: 12, opacity: outOfStock ? 0.5 : 1 }}
@@ -4033,7 +4070,7 @@ const ShopPage = ({ navigate }: { navigate: (p: string) => void }) => {
                       navigate("cart");
                     }}
                   >
-                    <I n="cart" s={13} c="#fff" /> {outOfStock ? "نفذت الكمية" : "أضيفي للسلة"}
+                    <I n="cart" s={13} c="#fff" /> {outOfStock ? t("نفذت الكمية", "Out of stock") : t("أضيفي للسلة", "Add to cart")}
                   </button>
                 </div>
                     </>
@@ -4044,7 +4081,7 @@ const ShopPage = ({ navigate }: { navigate: (p: string) => void }) => {
           </div>
           {search.trim() && recommended.length > 0 && (
             <div style={{ marginTop: 48 }}>
-              <h2 style={{ fontSize: 24, fontWeight: 900, color: C.white, marginBottom: 16 }}>منتجات مقترحة</h2>
+              <h2 style={{ fontSize: 24, fontWeight: 900, color: C.white, marginBottom: 16 }}>{t("منتجات مقترحة", "Recommended products")}</h2>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 20 }}>
                 {recommended.map((p) => (
                   <div key={`recommended-${p.id ?? p.name}`} className="card card-hover" style={{ cursor: "pointer" }} onClick={() => { if (typeof window !== "undefined") { window.sessionStorage.setItem(PRODUCT_STORAGE_KEY, JSON.stringify(p)); } navigate("productDetail"); }}>
@@ -4056,9 +4093,9 @@ const ShopPage = ({ navigate }: { navigate: (p: string) => void }) => {
                     <div style={{ padding: 16 }}>
                       <h3 style={{ fontWeight: 700, fontSize: 14, marginBottom: 10, color: C.white }}>{p.name}</h3>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <span style={{ fontWeight: 900, color: C.red, fontSize: 18 }}>{p.price} ج.م</span>
-                        {p.oldPrice && <span style={{ textDecoration: "line-through", color: C.grayDark, fontSize: 12 }}>{p.oldPrice} ج.م</span>}
-                        {outOfStock && <span style={{ color: "#ffd166", fontSize: 11, fontWeight: 800 }}>نفذت الكمية</span>}
+                        <span style={{ fontWeight: 900, color: C.red, fontSize: 18 }}>{formatCurrency(p.price)}</span>
+                        {p.oldPrice && <span style={{ textDecoration: "line-through", color: C.grayDark, fontSize: 12 }}>{formatCurrency(p.oldPrice)}</span>}
+                        {outOfStock && <span style={{ color: "#ffd166", fontSize: 11, fontWeight: 800 }}>{t("نفذت الكمية", "Out of stock")}</span>}
                       </div>
                     </div>
                         </>
@@ -4084,6 +4121,8 @@ type ProductReviewItem = {
 };
 
 const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: string) => void; walletBalance?: number }) => {
+  const t = useT();
+  const { lang } = useLang();
   const [qty, setQty] = useState(1);
   const [product, setProduct] = useState<StoreProduct>(DEFAULT_PRODUCTS[0]);
   const [catalog, setCatalog] = useState<StoreProduct[]>(DEFAULT_PRODUCTS);
@@ -4159,7 +4198,7 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
       .then(async (response) => {
         const data = await response.json().catch(() => ({}));
         if (!response.ok) {
-          throw new Error(data.error ?? "تعذر تحميل مراجعات المنتج.");
+          throw new Error(data.error ?? t("تعذر تحميل مراجعات المنتج.", "Unable to load product reviews."));
         }
         setReviews(Array.isArray(data.reviews) ? data.reviews : []);
         setAverageRating(typeof data.averageRating === "number" ? data.averageRating : 0);
@@ -4180,7 +4219,7 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
 
   const submitReview = async () => {
     if (!product.id) {
-      setReviewMessage({ text: "هذا المنتج غير مربوط بقاعدة البيانات بعد.", ok: false });
+      setReviewMessage({ text: t("هذا المنتج غير مربوط بقاعدة البيانات بعد.", "This product is not linked to the database yet."), ok: false });
       return;
     }
 
@@ -4203,11 +4242,11 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
 
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        setReviewMessage({ text: data.error ?? "تعذر إرسال تقييمك حاليًا.", ok: false });
+        setReviewMessage({ text: data.error ?? t("تعذر إرسال تقييمك حاليًا.", "Unable to submit your review right now."), ok: false });
         return;
       }
 
-      setReviewMessage({ text: "تم حفظ تقييمك بنجاح.", ok: true });
+      setReviewMessage({ text: t("تم حفظ تقييمك بنجاح.", "Your review has been saved successfully."), ok: true });
       setReviewContent("");
       const reload = await fetch(`/api/products/${product.id}/reviews`, { cache: "no-store" });
       const reloadData = await reload.json().catch(() => ({}));
@@ -4217,7 +4256,7 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
         setReviewCount(typeof reloadData.count === "number" ? reloadData.count : 0);
       }
     } catch {
-      setReviewMessage({ text: "حدث خطأ غير متوقع أثناء إرسال التقييم.", ok: false });
+      setReviewMessage({ text: t("حدث خطأ غير متوقع أثناء إرسال التقييم.", "An unexpected error occurred while submitting the review."), ok: false });
     } finally {
       setReviewSubmitting(false);
     }
@@ -4299,27 +4338,27 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
             <h1 style={{ fontSize: 30, fontWeight: 900, color: C.white, marginBottom: 12 }}>{product.name}</h1>
             <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginBottom: 18 }}>
               <span style={{ fontSize: viewportWidth() < 768 ? 34 : 42, fontWeight: 900, color: C.red }}>{product.price}</span>
-              <span style={{ color: C.gray }}>ج.م</span>
-              {product.oldPrice && <span style={{ textDecoration: "line-through", color: C.grayDark, fontSize: 16 }}>{product.oldPrice} ج.م</span>}
-              {product.badge && <span className="badge">{product.badge}</span>}
-              {outOfStock && <span className="badge" style={{ background: "#2b0f1b", color: "#ffd166" }}>نفذت الكمية</span>}
+              <span style={{ color: C.gray }}>{lang === "en" ? "EGP" : "ج.م"}</span>
+              {product.oldPrice && <span style={{ textDecoration: "line-through", color: C.grayDark, fontSize: 16 }}>{formatCurrency(product.oldPrice)}</span>}
+              {product.badge && <span className="badge">{localizeDiscountBadge(product.badge, lang)}</span>}
+              {outOfStock && <span className="badge" style={{ background: "#2b0f1b", color: "#ffd166" }}>{t("نفذت الكمية", "Out of stock")}</span>}
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 24, flexWrap: "wrap" }}>
               <div style={{ color: C.gold, fontWeight: 800 }}>
                 {"★".repeat(Math.max(1, Math.round(averageRating || product.rating || 0)))}
               </div>
               <div style={{ color: C.gray, fontSize: 13 }}>
-                {averageRating > 0 ? averageRating.toFixed(1) : product.rating.toFixed(1)} من 5
+                {averageRating > 0 ? averageRating.toFixed(1) : product.rating.toFixed(1)} {t("من 5", "out of 5")}
               </div>
               <div style={{ color: C.grayDark, fontSize: 13 }}>
-                {reviewCount} تقييم
+                {reviewCount} {t("تقييم", "reviews")}
               </div>
             </div>
             {product.description && <p style={{ color: C.gray, lineHeight: 1.9, marginBottom: 24 }}>{product.description}</p>}
 
             {product.sizeType !== "none" && sizes.length > 0 && (
               <div style={{ marginBottom: 24 }}>
-                <div style={{ color: C.white, fontWeight: 700, marginBottom: 10 }}>المقاس</div>
+                <div style={{ color: C.white, fontWeight: 700, marginBottom: 10 }}>{t("المقاس", "Size")}</div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   {sizes.map((size) => (
                     <button key={size} onClick={() => setSelectedSize(size)} style={{ minWidth: 44, padding: "10px 14px", borderRadius: 8, border: `1px solid ${selectedSize === size ? C.red : C.border}`, background: selectedSize === size ? C.red : C.bgCard, color: selectedSize === size ? "#fff" : C.white, cursor: "pointer", fontFamily: "'Cairo', sans-serif", fontWeight: 700 }}>
@@ -4332,7 +4371,7 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
 
             {!!product.colors?.length && (
               <div style={{ marginBottom: 24 }}>
-                <div style={{ color: C.white, fontWeight: 700, marginBottom: 10 }}>اللون</div>
+                <div style={{ color: C.white, fontWeight: 700, marginBottom: 10 }}>{t("اللون", "Color")}</div>
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                   {product.colors.map((color) => (
                     <button key={color} onClick={() => setSelectedColor(color)} style={{ width: 30, height: 30, borderRadius: "50%", border: `2px solid ${selectedColor === color ? C.red : C.border}`, background: color, cursor: "pointer" }} />
@@ -4357,23 +4396,23 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
                   navigate("cart");
                 }}
               >
-                <I n="cart" s={16} c="#fff" /> {outOfStock ? "نفذت الكمية" : "أضيفي للسلة"}
+                <I n="cart" s={16} c="#fff" /> {outOfStock ? t("نفذت الكمية", "Out of stock") : t("أضيفي للسلة", "Add to cart")}
               </button>
             </div>
 
             <div className="card" style={{ padding: 18 }}>
-              <div style={{ color: C.gray, fontSize: 13, marginBottom: 8 }}>الرصيد الحالي بالمحفظة</div>
-              <div style={{ color: C.gold, fontWeight: 900, fontSize: 24 }}>{walletBalance.toLocaleString("ar-EG")} ج.م</div>
+              <div style={{ color: C.gray, fontSize: 13, marginBottom: 8 }}>{t("الرصيد الحالي بالمحفظة", "Current wallet balance")}</div>
+              <div style={{ color: C.gold, fontWeight: 900, fontSize: 24 }}>{formatCurrency(walletBalance)}</div>
             </div>
           </div>
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr", "1.1fr 1fr"), gap: 32, marginTop: 56 }}>
           <div className="card" style={{ padding: 24 }}>
-            <h2 style={{ fontWeight: 900, fontSize: 24, color: C.white, marginBottom: 18 }}>أضيفي تقييمك</h2>
-            <p style={{ color: C.gray, fontSize: 13, lineHeight: 1.8, marginBottom: 18 }}>اكتبي رأيك في المنتج، وسيظهر التقييم باسم حسابك بعد الحفظ.</p>
+            <h2 style={{ fontWeight: 900, fontSize: 24, color: C.white, marginBottom: 18 }}>{t("أضيفي تقييمك", "Add your review")}</h2>
+            <p style={{ color: C.gray, fontSize: 13, lineHeight: 1.8, marginBottom: 18 }}>{t("اكتبي رأيك في المنتج، وسيظهر التقييم باسم حسابك بعد الحفظ.", "Write your opinion about the product and your review will appear under your account name after saving.")}</p>
             <div style={{ marginBottom: 14 }}>
-              <div style={{ color: C.white, fontWeight: 700, marginBottom: 8 }}>تقييمك</div>
+              <div style={{ color: C.white, fontWeight: 700, marginBottom: 8 }}>{t("تقييمك", "Your rating")}</div>
               <div style={{ display: "flex", gap: 6 }}>
                 {[1, 2, 3, 4, 5].map((star) => (
                   <button key={star} type="button" onClick={() => setReviewRating(star)} style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: 28, color: star <= reviewRating ? C.gold : C.border }}>
@@ -4383,8 +4422,8 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
               </div>
             </div>
             <div style={{ marginBottom: 14 }}>
-              <div style={{ color: C.white, fontWeight: 700, marginBottom: 8 }}>مراجعتك</div>
-              <textarea value={reviewContent} onChange={(e) => setReviewContent(e.target.value)} rows={6} placeholder="اكتبي رأيك في المنتج، الجودة، المقاس أو التجربة العامة." className="input" style={{ resize: "vertical", minHeight: 160 }} />
+              <div style={{ color: C.white, fontWeight: 700, marginBottom: 8 }}>{t("مراجعتك", "Your review")}</div>
+              <textarea value={reviewContent} onChange={(e) => setReviewContent(e.target.value)} rows={6} placeholder={t("اكتبي رأيك في المنتج، الجودة، المقاس أو التجربة العامة.", "Write your opinion about the product, quality, size, or overall experience.")} className="input" style={{ resize: "vertical", minHeight: 160 }} />
             </div>
             {reviewMessage && (
               <div style={{ marginBottom: 16, padding: "12px 14px", borderRadius: 12, background: reviewMessage.ok ? "rgba(34,197,94,.12)" : "rgba(239,68,68,.12)", color: reviewMessage.ok ? C.success : "#fca5a5", fontSize: 13, fontWeight: 700 }}>
@@ -4392,21 +4431,21 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
               </div>
             )}
             <button className="btn-primary" style={{ justifyContent: "center", minWidth: 170 }} disabled={reviewSubmitting} onClick={() => { void submitReview(); }}>
-              {reviewSubmitting ? "جارٍ الإرسال..." : "إرسال التقييم"}
+              {reviewSubmitting ? t("جارٍ الإرسال...", "Sending...") : t("إرسال التقييم", "Submit review")}
             </button>
           </div>
 
           <div className="card" style={{ padding: 24 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18, gap: 12, flexWrap: "wrap" }}>
-              <h2 style={{ fontWeight: 900, fontSize: 24, color: C.white }}>تقييمات العملاء</h2>
+              <h2 style={{ fontWeight: 900, fontSize: 24, color: C.white }}>{t("تقييمات العملاء", "Customer reviews")}</h2>
               <div style={{ color: C.gray, fontSize: 13 }}>
-                متوسط التقييم: <span style={{ color: C.gold, fontWeight: 800 }}>{averageRating > 0 ? averageRating.toFixed(1) : product.rating.toFixed(1)}</span>
+                {t("متوسط التقييم", "Average rating")}: <span style={{ color: C.gold, fontWeight: 800 }}>{averageRating > 0 ? averageRating.toFixed(1) : product.rating.toFixed(1)}</span>
               </div>
             </div>
             {reviewsLoading ? (
-              <div style={{ color: C.gray }}>جارٍ تحميل التقييمات...</div>
+              <div style={{ color: C.gray }}>{t("جارٍ تحميل التقييمات...", "Loading reviews...")}</div>
             ) : reviews.length === 0 ? (
-              <div style={{ color: C.gray, lineHeight: 1.8 }}>لا توجد تقييمات لهذا المنتج بعد. كوني أول من يضيف مراجعة.</div>
+              <div style={{ color: C.gray, lineHeight: 1.8 }}>{t("لا توجد تقييمات لهذا المنتج بعد. كوني أول من يضيف مراجعة.", "There are no reviews for this product yet. Be the first to add one.")}</div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                 {reviews.map((review) => (
@@ -4417,7 +4456,7 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
                     <div>
                       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 8 }}>
                         <div style={{ fontWeight: 800, color: C.white }}>{review.user.name}</div>
-                        <div style={{ color: C.grayDark, fontSize: 12 }}>{new Date(review.createdAt).toLocaleDateString("ar-EG", { day: "numeric", month: "long", year: "numeric" })}</div>
+                        <div style={{ color: C.grayDark, fontSize: 12 }}>{new Date(review.createdAt).toLocaleDateString(lang === "en" ? "en-US" : "ar-EG", { day: "numeric", month: "long", year: "numeric" })}</div>
                       </div>
                       <div style={{ color: C.gold, marginBottom: 8 }}>{"★".repeat(review.rating)}{"☆".repeat(5 - review.rating)}</div>
                       <div style={{ color: C.gray, lineHeight: 1.9, fontSize: 14 }}>{review.content}</div>
@@ -4431,7 +4470,7 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
 
         {relatedProducts.length > 0 && (
           <div style={{ marginTop: 56 }}>
-            <h2 style={{ fontSize: 28, fontWeight: 900, color: C.white, marginBottom: 18 }}>منتجات ذات صلة</h2>
+            <h2 style={{ fontSize: 28, fontWeight: 900, color: C.white, marginBottom: 18 }}>{t("منتجات ذات صلة", "Related products")}</h2>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 20 }}>
               {relatedProducts.map((item) => (
                 <div key={`related-${item.id ?? item.name}`} className="card card-hover" style={{ cursor: "pointer" }} onClick={() => {
@@ -4448,8 +4487,8 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
                   <div style={{ padding: 16 }}>
                     <h3 style={{ fontWeight: 700, fontSize: 14, marginBottom: 10, color: C.white }}>{item.name}</h3>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-                      <span style={{ fontWeight: 900, color: C.red, fontSize: 18 }}>{item.price} ج.م</span>
-                      {item.oldPrice && <span style={{ textDecoration: "line-through", color: C.grayDark, fontSize: 12 }}>{item.oldPrice} ج.م</span>}
+                      <span style={{ fontWeight: 900, color: C.red, fontSize: 18 }}>{formatCurrency(item.price)}</span>
+                      {item.oldPrice && <span style={{ textDecoration: "line-through", color: C.grayDark, fontSize: 12 }}>{formatCurrency(item.oldPrice)}</span>}
                     </div>
                     <div style={{ color: C.gold, fontSize: 13 }}>⭐ {item.rating.toFixed(1)} {item.reviewCount ? `(${item.reviewCount})` : ""}</div>
                   </div>
@@ -4919,15 +4958,25 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
 
 // ─── WALLET PAGE ──────────────────────────────────────────────────────────────
 const WalletPage = () => {
+  const t = useT();
+  const { lang } = useLang();
   const [amount, setAmount] = useState(200);
   const options = [100, 200, 500, 1000];
-  const transactions = [
-    { type: "credit", label: "شحن المحفظة", amount: +500, date: "١٤ يناير", bonus: 50 },
-    { type: "debit", label: "حجز يوجا الصباح", amount: -120, date: "١٢ يناير" },
-    { type: "debit", label: "شراء حذاء Luna", amount: -850, date: "١٠ يناير" },
-    { type: "credit", label: "مكافأة إحالة", amount: +100, date: "٨ يناير" },
-    { type: "debit", label: "اشتراك برو", amount: -599, date: "١ يناير" },
-  ];
+  const transactions = lang === "en"
+    ? [
+        { type: "credit", label: "Wallet top-up", amount: +500, date: "Jan 14", bonus: 50 },
+        { type: "debit", label: "Morning Yoga booking", amount: -120, date: "Jan 12" },
+        { type: "debit", label: "Luna shoes purchase", amount: -850, date: "Jan 10" },
+        { type: "credit", label: "Referral reward", amount: +100, date: "Jan 8" },
+        { type: "debit", label: "Pro plan", amount: -599, date: "Jan 1" },
+      ]
+    : [
+        { type: "credit", label: "شحن المحفظة", amount: +500, date: "١٤ يناير", bonus: 50 },
+        { type: "debit", label: "حجز يوجا الصباح", amount: -120, date: "١٢ يناير" },
+        { type: "debit", label: "شراء حذاء Luna", amount: -850, date: "١٠ يناير" },
+        { type: "credit", label: "مكافأة إحالة", amount: +100, date: "٨ يناير" },
+        { type: "debit", label: "اشتراك برو", amount: -599, date: "١ يناير" },
+      ];
 
   return (
     <div>
@@ -4935,29 +4984,29 @@ const WalletPage = () => {
         <div style={{ position: "absolute", inset: 0, background: "radial-gradient(circle at 50% 60%, rgba(200,162,0,.1), transparent 60%)" }} />
         <div className="container" style={{ position: "relative" }}>
           <div style={{ fontSize: 52, marginBottom: 16 }}>💳</div>
-          <p style={{ color: C.gray, fontSize: 15 }}>رصيد المحفظة الحالي</p>
+          <p style={{ color: C.gray, fontSize: 15 }}>{t("رصيد المحفظة الحالي", "Current wallet balance")}</p>
           <div style={{ fontSize: 72, fontWeight: 900, color: C.gold, margin: "12px 0" }}>
-            150 <span style={{ fontSize: 30, color: C.gray }}>ج.م</span>
+            150 <span style={{ fontSize: 30, color: C.gray }}>{lang === "en" ? "EGP" : "ج.م"}</span>
           </div>
-          <p style={{ color: C.grayDark, fontSize: 13 }}>صالح حتى ٣١ ديسمبر ٢٠٢٥</p>
+          <p style={{ color: C.grayDark, fontSize: 13 }}>{t("صالح حتى ٣١ ديسمبر ٢٠٢٥", "Valid until Dec 31, 2025")}</p>
         </div>
       </section>
 
       <section className="section">
         <div className="container" style={{ maxWidth: 740, margin: "0 auto" }}>
           <div className="card" style={{ padding: 32, marginBottom: 28 }}>
-            <h2 style={{ fontWeight: 800, fontSize: 20, color: C.white, marginBottom: 6 }}>شحن المحفظة</h2>
-            <p style={{ color: C.gray, fontSize: 13, marginBottom: 24 }}>اشحني واحصلي على بونص إضافي!</p>
+            <h2 style={{ fontWeight: 800, fontSize: 20, color: C.white, marginBottom: 6 }}>{t("شحن المحفظة", "Top up wallet")}</h2>
+            <p style={{ color: C.gray, fontSize: 13, marginBottom: 24 }}>{t("اشحني واحصلي على بونص إضافي!", "Top up and get extra bonus!")}</p>
             <div style={{ display: "flex", gap: 10, marginBottom: 24, flexWrap: "wrap" }}>
               {options.map(opt => (
                 <button key={opt} onClick={() => setAmount(opt)} style={{ position: "relative", padding: "12px 22px", border: amount === opt ? `2px solid ${C.red}` : `1px solid ${C.border}`, borderRadius: 8, background: amount === opt ? "rgba(233,30,99,.12)" : C.bgCard2, color: amount === opt ? C.red : C.gray, fontWeight: 700, cursor: "pointer", fontFamily: "'Cairo', sans-serif" }}>
-                  {opt} ج.م
-                  {opt >= 200 && <span className="badge badge-gold" style={{ position: "absolute", top: -10, left: -8, fontSize: 10, padding: "2px 6px", borderRadius: 4 }}>+{Math.round(opt * 0.1)} بونص</span>}
+                  {formatCurrency(opt)}
+                  {opt >= 200 && <span className="badge badge-gold" style={{ position: "absolute", top: -10, left: -8, fontSize: 10, padding: "2px 6px", borderRadius: 4 }}>+{Math.round(opt * 0.1)} {t("بونص", "bonus")}</span>}
                 </button>
               ))}
             </div>
             <div style={{ background: C.bgCard2, borderRadius: 10, padding: 16, marginBottom: 20 }}>
-              <h4 style={{ fontWeight: 700, color: C.gold, marginBottom: 10, fontSize: 13 }}>🎁 قواعد البونص</h4>
+              <h4 style={{ fontWeight: 700, color: C.gold, marginBottom: 10, fontSize: 13 }}>🎁 {t("قواعد البونص", "Bonus rules")}</h4>
               {[["أقل من 200 ج.م","لا بونص"],["200 - 499 ج.م","10% بونص إضافي"],["500 ج.م فأكثر","15% بونص + هدية"]].map(([r,v]) => (
                 <div key={r} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 12, borderBottom: `1px solid ${C.border}` }}>
                   <span style={{ color: C.gray }}>{r}</span><span style={{ fontWeight: 600, color: C.white }}>{v}</span>
@@ -4967,33 +5016,33 @@ const WalletPage = () => {
             <div style={{ display: "flex", alignItems: "center", gap: 12, background: "rgba(200,162,0,.08)", border: `1px solid ${C.gold}33`, borderRadius: 8, padding: 14, marginBottom: 18 }}>
               <I n="info" s={18} c={C.gold} />
               <div>
-                <div style={{ fontWeight: 700, fontSize: 13, color: C.gold }}>ستحصلين على {amount + (amount >= 200 ? Math.round(amount * 0.1) : 0)} ج.م</div>
-                <div style={{ fontSize: 11, color: C.gray }}>مقابل دفع {amount} ج.م فقط</div>
+                <div style={{ fontWeight: 700, fontSize: 13, color: C.gold }}>{t("ستحصلين على", "You will receive")} {formatCurrency(amount + (amount >= 200 ? Math.round(amount * 0.1) : 0))}</div>
+                <div style={{ fontSize: 11, color: C.gray }}>{t("مقابل دفع", "For only")} {formatCurrency(amount)}</div>
               </div>
             </div>
             <button className="btn-gold" style={{ width: "100%", justifyContent: "center", padding: "13px", fontSize: 15 }}>
-              <I n="wallet" s={18} c="#000" /> شحن {amount} ج.م الآن
+              <I n="wallet" s={18} c="#000" /> {t("شحن", "Top up")} {formatCurrency(amount)} {t("الآن", "now")}
             </button>
           </div>
 
           <div className="card" style={{ padding: 24 }}>
-            <h2 style={{ fontWeight: 800, fontSize: 18, color: C.white, marginBottom: 20 }}>سجل المعاملات</h2>
-            {transactions.map((t, i) => (
+            <h2 style={{ fontWeight: 800, fontSize: 18, color: C.white, marginBottom: 20 }}>{t("سجل المعاملات", "Transaction history")}</h2>
+            {transactions.map((item, i) => (
               <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "13px 0", borderBottom: i < transactions.length - 1 ? `1px solid ${C.border}` : "none" }}>
                 <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-                  <div style={{ width: 38, height: 38, borderRadius: 8, background: t.type === "credit" ? "rgba(34,197,94,.12)" : "rgba(239,68,68,.1)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, color: t.type === "credit" ? C.success : "#EF4444" }}>
-                    {t.type === "credit" ? "↑" : "↓"}
+                  <div style={{ width: 38, height: 38, borderRadius: 8, background: item.type === "credit" ? "rgba(34,197,94,.12)" : "rgba(239,68,68,.1)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, color: item.type === "credit" ? C.success : "#EF4444" }}>
+                    {item.type === "credit" ? "↑" : "↓"}
                   </div>
                   <div>
-                    <div style={{ fontWeight: 600, fontSize: 13, color: C.white }}>{t.label}</div>
-                    <div style={{ fontSize: 11, color: C.gray }}>{t.date}</div>
+                    <div style={{ fontWeight: 600, fontSize: 13, color: C.white }}>{item.label}</div>
+                    <div style={{ fontSize: 11, color: C.gray }}>{item.date}</div>
                   </div>
                 </div>
                 <div style={{ textAlign: "left" }}>
-                  <div style={{ fontWeight: 800, color: t.type === "credit" ? C.success : "#EF4444", fontSize: 14 }}>
-                    {t.type === "credit" ? "+" : "-"}{Math.abs(t.amount)} ج.م
+                  <div style={{ fontWeight: 800, color: item.type === "credit" ? C.success : "#EF4444", fontSize: 14 }}>
+                    {item.type === "credit" ? "+" : "-"}{formatCurrency(Math.abs(item.amount))}
                   </div>
-                  {t.bonus && <div style={{ fontSize: 10, color: C.gold }}>+{t.bonus} بونص</div>}
+                  {item.bonus && <div style={{ fontSize: 10, color: C.gold }}>+{item.bonus} {t("بونص", "bonus")}</div>}
                 </div>
               </div>
             ))}
@@ -5006,19 +5055,21 @@ const WalletPage = () => {
 
 // ─── REWARDS PAGE ─────────────────────────────────────────────────────────────
 const RewardsPage = () => {
+  const t = useT();
+  const { lang } = useLang();
   const tiers = [
-    { name: "برونزي", min: 0, max: 999, icon: "🥉", color: "#CD7F32" },
-    { name: "فضي", min: 1000, max: 2999, icon: "🥈", color: "#9CA3AF", current: true },
-    { name: "ذهبي", min: 3000, max: 4999, icon: "🥇", color: C.gold },
-    { name: "بلاتيني", min: 5000, max: null, icon: "💎", color: "#A855F7" },
+    { name: t("برونزي", "Bronze"), min: 0, max: 999, icon: "🥉", color: "#CD7F32" },
+    { name: t("فضي", "Silver"), min: 1000, max: 2999, icon: "🥈", color: "#9CA3AF", current: true },
+    { name: t("ذهبي", "Gold"), min: 3000, max: 4999, icon: "🥇", color: C.gold },
+    { name: t("بلاتيني", "Platinum"), min: 5000, max: null, icon: "💎", color: "#A855F7" },
   ];
   const earnMethods = [
-    { icon: "🏋️", label: "حجز كلاس", pts: "+10 نقاط" },
-    { icon: "🛍️", label: "كل 10 ج.م شراء", pts: "+1 نقطة" },
-    { icon: "👥", label: "دعوة صديقة", pts: "+200 نقطة" },
-    { icon: "⭐", label: "تقييم كلاس", pts: "+20 نقطة" },
-    { icon: "🎂", label: "عيد ميلادك", pts: "+100 نقطة" },
-    { icon: "📱", label: "تسجيل يومي", pts: "+5 نقاط" },
+    { icon: "🏋️", label: t("حجز كلاس", "Book a class"), pts: t("+10 نقاط", "+10 points") },
+    { icon: "🛍️", label: t("كل 10 ج.م شراء", "Every 10 EGP purchase"), pts: t("+1 نقطة", "+1 point") },
+    { icon: "👥", label: t("دعوة صديقة", "Invite a friend"), pts: t("+200 نقطة", "+200 points") },
+    { icon: "⭐", label: t("تقييم كلاس", "Review a class"), pts: t("+20 نقطة", "+20 points") },
+    { icon: "🎂", label: t("عيد ميلادك", "Your birthday"), pts: t("+100 نقطة", "+100 points") },
+    { icon: "📱", label: t("تسجيل يومي", "Daily check-in"), pts: t("+5 نقاط", "+5 points") },
   ];
 
   return (
@@ -5026,27 +5077,27 @@ const RewardsPage = () => {
       <section style={{ background: `linear-gradient(135deg, #FFECF0, ${C.bg})`, padding: "60px 0", textAlign: "center" }}>
         <div className="container">
           <div style={{ fontSize: viewportWidth() < 768 ? 40 : 52, marginBottom: 12 }}>⭐</div>
-          <h1 style={{ fontSize: viewportWidth() < 768 ? 32 : 42, fontWeight: 900, color: C.white, marginBottom: 8 }}>نقاط <span style={{ color: C.gold }}>المكافآت</span></h1>
+          <h1 style={{ fontSize: viewportWidth() < 768 ? 32 : 42, fontWeight: 900, color: C.white, marginBottom: 8 }}>{t("نقاط", "Reward")} <span style={{ color: C.gold }}>{t("المكافآت", "points")}</span></h1>
           <div style={{ fontSize: viewportWidth() < 768 ? 48 : 68, fontWeight: 900, color: C.gold, margin: "12px 0" }}>2,400</div>
-          <p style={{ color: C.gray }}>نقطة = <strong style={{ color: C.red }}>24 ج.م</strong> رصيد قابل للاستبدال</p>
+          <p style={{ color: C.gray }}>{t("نقطة", "1 point")} = <strong style={{ color: C.red }}>{formatCurrency(24)}</strong> {t("رصيد قابل للاستبدال", "redeemable balance")}</p>
         </div>
       </section>
       <section className="section">
         <div className="container">
-          <h2 className="section-title" style={{ textAlign: "center", marginBottom: 32 }}>مستويات <span>العضوية</span></h2>
+          <h2 className="section-title" style={{ textAlign: "center", marginBottom: 32 }}>{t("مستويات", "Membership")} <span>{t("العضوية", "tiers")}</span></h2>
           <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr 1fr", "repeat(4, 1fr)", "repeat(4, 1fr)"), gap: 16, marginBottom: 56 }}>
             {tiers.map(t => (
               <div key={t.name} className="card" style={{ padding: 22, textAlign: "center", border: t.current ? `2px solid ${C.gold}` : `1px solid ${C.border}`, position: "relative" }}>
-                {t.current && <div style={{ position: "absolute", top: -12, left: "50%", transform: "translateX(-50%)", background: C.gold, color: "#000", padding: "2px 12px", borderRadius: 4, fontSize: 10, fontWeight: 700, whiteSpace: "nowrap" }}>مستواك الحالي</div>}
+                {t.current && <div style={{ position: "absolute", top: -12, left: "50%", transform: "translateX(-50%)", background: C.gold, color: "#000", padding: "2px 12px", borderRadius: 4, fontSize: 10, fontWeight: 700, whiteSpace: "nowrap" }}>{lang === "en" ? "Your current tier" : "مستواك الحالي"}</div>}
                 <div style={{ fontSize: viewportWidth() < 768 ? 34 : 44, marginBottom: 10 }}>{t.icon}</div>
                 <h3 style={{ fontWeight: 800, color: t.color }}>{t.name}</h3>
-                <p style={{ fontSize: 11, color: C.gray, marginTop: 6 }}>{t.min.toLocaleString()}+ نقطة</p>
+                <p style={{ fontSize: 11, color: C.gray, marginTop: 6 }}>{t.min.toLocaleString(lang === "en" ? "en-US" : "ar-EG")}+ {lang === "en" ? "points" : "نقطة"}</p>
               </div>
             ))}
           </div>
           <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr", "1fr 1fr"), gap: 40 }}>
             <div>
-              <h2 className="section-title" style={{ marginBottom: 20 }}>كيف <span>تكسبين</span> النقاط</h2>
+              <h2 className="section-title" style={{ marginBottom: 20 }}>{t("كيف", "How to")} <span>{t("تكسبين", "earn")}</span> {t("النقاط", "points")}</h2>
               <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr", "1fr 1fr"), gap: 10 }}>
                 {earnMethods.map(m => (
                   <div key={m.label} className="card" style={{ padding: 14 }}>
@@ -5058,13 +5109,13 @@ const RewardsPage = () => {
               </div>
             </div>
             <div>
-              <h2 className="section-title" style={{ marginBottom: 20 }}>كيف <span>تستبدلين</span></h2>
+              <h2 className="section-title" style={{ marginBottom: 20 }}>{t("كيف", "How to")} <span>{t("تستبدلين", "redeem")}</span></h2>
               <div className="card" style={{ padding: 20 }}>
                 {[["100 نقطة","= 1 ج.م رصيد محفظة"],["500 نقطة","= خصم 5%"],["1000 نقطة","= كلاس مجاني"],["3000 نقطة","= شهر اشتراك مجاني"],["5000 نقطة","= منتج هدية"]].map(([pts, val]) => (
                   <div key={pts} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${C.border}` }}>
                     <span style={{ fontWeight: 700, color: C.gold, fontSize: 14 }}>{pts}</span>
                     <span style={{ fontSize: 12, color: C.gray }}>{val}</span>
-                    <button className="btn-primary" style={{ padding: "4px 10px", fontSize: 11 }}>استبدلي</button>
+                    <button className="btn-primary" style={{ padding: "4px 10px", fontSize: 11 }}>{t("استبدلي", "Redeem")}</button>
                   </div>
                 ))}
               </div>
@@ -5078,6 +5129,7 @@ const RewardsPage = () => {
 
 // ─── REFERRAL PAGE ────────────────────────────────────────────────────────────
 const ReferralPage = () => {
+  const t = useT();
   const [copied, setCopied] = useState(false);
   const code = "FZONE-2025-123";
   const copy = () => { setCopied(true); setTimeout(() => setCopied(false), 2000); };
@@ -5087,27 +5139,27 @@ const ReferralPage = () => {
       <section style={{ background: `linear-gradient(135deg, #FFE0EC, ${C.bg})`, padding: "64px 0", textAlign: "center" }}>
         <div className="container">
           <div style={{ fontSize: viewportWidth() < 768 ? 44 : 60, marginBottom: 14 }}>🎁</div>
-          <h1 style={{ fontSize: viewportWidth() < 768 ? 32 : 44, fontWeight: 900, color: C.white, marginBottom: 12 }}>ادعي صاحبتك <span style={{ color: C.red }}>واربحا معًا!</span></h1>
-          <p style={{ color: C.gray, fontSize: 17, maxWidth: 460, margin: "0 auto" }}>كل صديقة تشترك بدعوتك تحصلان معًا على خصم 20% على الاشتراك القادم.</p>
+          <h1 style={{ fontSize: viewportWidth() < 768 ? 32 : 44, fontWeight: 900, color: C.white, marginBottom: 12 }}>{t("ادعي صاحبتك", "Invite your friend")} <span style={{ color: C.red }}>{t("واربحا معًا!", "and both win!")}</span></h1>
+          <p style={{ color: C.gray, fontSize: 17, maxWidth: 460, margin: "0 auto" }}>{t("كل صديقة تشترك بدعوتك تحصلان معًا على خصم 20% على الاشتراك القادم.", "Every friend who joins through your invitation gives both of you 20% off your next membership.")}</p>
         </div>
       </section>
       <section className="section">
         <div className="container" style={{ maxWidth: 680, margin: "0 auto" }}>
           <div className="card" style={{ padding: 36, textAlign: "center", marginBottom: 28, border: `1px solid ${C.red}33` }}>
-            <h2 style={{ fontWeight: 800, fontSize: 20, color: C.white, marginBottom: 6 }}>كودك الخاص</h2>
-            <p style={{ color: C.gray, fontSize: 13, marginBottom: 22 }}>شاركيه مع صديقاتك واكسبي المكافآت</p>
+            <h2 style={{ fontWeight: 800, fontSize: 20, color: C.white, marginBottom: 6 }}>{t("كودك الخاص", "Your referral code")}</h2>
+            <p style={{ color: C.gray, fontSize: 13, marginBottom: 22 }}>{t("شاركيه مع صديقاتك واكسبي المكافآت", "Share it with your friends and earn rewards")}</p>
             <div style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "center", flexWrap: "wrap", background: "rgba(233,30,99,.08)", border: `1px solid ${C.red}33`, borderRadius: 10, padding: "14px 20px", marginBottom: 18 }}>
               <span style={{ fontSize: 22, fontWeight: 900, color: C.red, letterSpacing: 2, fontFamily: "monospace" }}>{code}</span>
               <button onClick={copy} style={{ background: copied ? C.success : C.red, border: "none", borderRadius: 6, padding: "7px 14px", color: "#fff", fontFamily: "'Cairo', sans-serif", fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
-                {copied ? <><I n="check" s={13} c="#fff" /> تم النسخ</> : <><I n="copy" s={13} c="#fff" /> نسخ الكود</>}
+                {copied ? <><I n="check" s={13} c="#fff" /> {t("تم النسخ", "Copied")}</> : <><I n="copy" s={13} c="#fff" /> {t("نسخ الكود", "Copy code")}</>}
               </button>
             </div>
             <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
               <button style={{ background: "#25D366", border: "none", borderRadius: 6, padding: "10px 18px", color: "#fff", fontFamily: "'Cairo', sans-serif", fontSize: 13, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
-                <I n="whatsapp" s={15} c="#fff" /> واتساب
+                <I n="whatsapp" s={15} c="#fff" /> {t("واتساب", "WhatsApp")}
               </button>
               <button style={{ background: "rgba(255,255,255,.08)", border: `1px solid ${C.border}`, borderRadius: 6, padding: "10px 18px", color: C.white, fontFamily: "'Cairo', sans-serif", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
-                نسخ الرابط
+                {t("نسخ الرابط", "Copy link")}
               </button>
             </div>
           </div>
@@ -5383,7 +5435,7 @@ const TrainersPage = () => {
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <span style={{ fontSize: 12, color: C.gray }}>
-                      {t.sessionsCount} جلسة · {t.classesCount} كلاسات
+                      {t.sessionsCount.toLocaleString(lang === "en" ? "en-US" : "ar-EG")} {lang === "en" ? "sessions" : "جلسة"} · {t.classesCount.toLocaleString(lang === "en" ? "en-US" : "ar-EG")} {lang === "en" ? "classes" : "كلاسات"}
                     </span>
                     <button className="btn-outline-gold" style={{ padding: "5px 14px", fontSize: 11 }}>
                       {ctaLabel}
