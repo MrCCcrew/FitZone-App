@@ -3,7 +3,8 @@
 import { useState, useEffect, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import { format, differenceInDays } from "date-fns";
-import { ar } from "date-fns/locale";
+import { ar, enUS } from "date-fns/locale";
+import { useLang } from "@/lib/language";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 interface AccountData {
@@ -101,6 +102,34 @@ const TABS = [
 ] as const;
 type TabId = typeof TABS[number]["id"];
 
+function formatMoney(value: number, lang: "ar" | "en") {
+  return new Intl.NumberFormat(lang === "en" ? "en-US" : "ar-EG").format(value);
+}
+
+function getTierLabel(tier: string, lang: "ar" | "en") {
+  const labels: Record<string, { ar: string; en: string }> = {
+    bronze: { ar: "برونزي", en: "Bronze" },
+    silver: { ar: "فضي", en: "Silver" },
+    gold: { ar: "ذهبي", en: "Gold" },
+    platinum: { ar: "بلاتيني", en: "Platinum" },
+  };
+  return labels[tier]?.[lang] ?? tier;
+}
+
+function getTabLabel(tabId: TabId, lang: "ar" | "en") {
+  const labels: Record<TabId, { ar: string; en: string }> = {
+    profile: { ar: "الملف الشخصي", en: "Profile" },
+    membership: { ar: "الاشتراك", en: "Membership" },
+    bookings: { ar: "الحجوزات", en: "Bookings" },
+    orders: { ar: "الطلبات", en: "Orders" },
+    wallet: { ar: "المحفظة", en: "Wallet" },
+    reviews: { ar: "آرائي", en: "My reviews" },
+    notifications: { ar: "الإشعارات", en: "Notifications" },
+    complaints: { ar: "الشكاوى", en: "Complaints" },
+  };
+  return labels[tabId][lang];
+}
+
 function isTabId(value: string | null): value is TabId {
   return TABS.some((tab) => tab.id === value);
 }
@@ -122,6 +151,8 @@ function StatCard({ icon, label, value, sub, color = "text-white" }: { icon: str
 
 // ─── Tab: Profile ─────────────────────────────────────────────────────────────
 function ProfileTab({ user }: { user: AccountData["user"] }) {
+  const { lang } = useLang();
+  const t = (arText: string, enText: string) => (lang === "ar" ? arText : enText);
   const [form, setForm] = useState({ name: user.name, phone: user.phone || "" });
   const [passForm, setPassForm] = useState({ current: "", next: "", confirm: "" });
   const [saved, setSaved] = useState(false);
@@ -143,7 +174,7 @@ function ProfileTab({ user }: { user: AccountData["user"] }) {
     setTimeout(() => setSaved(false), 2000);
   };
 
-  const joined = format(new Date(user.createdAt), "d MMMM yyyy", { locale: ar });
+  const joined = format(new Date(user.createdAt), "d MMMM yyyy", { locale: lang === "en" ? enUS : ar });
 
   const submitVerify = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -185,7 +216,7 @@ function ProfileTab({ user }: { user: AccountData["user"] }) {
     <div className="space-y-5">
       {saved && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-green-600 text-white px-6 py-3 rounded-xl font-bold shadow-xl">
-          ✅ تم حفظ البيانات بنجاح
+          {t("✅ تم حفظ البيانات بنجاح", "✅ Profile updated successfully")}
         </div>
       )}
 
@@ -195,8 +226,8 @@ function ProfileTab({ user }: { user: AccountData["user"] }) {
           <div className="flex items-center gap-3 mb-3">
             <span className="text-2xl">📧</span>
             <div>
-              <div className="text-yellow-400 font-black text-sm">بريدك الإلكتروني غير مفعّل</div>
-              <div className="text-gray-400 text-xs mt-0.5">أدخلي كود التفعيل الذي أُرسل إلى {user.email}</div>
+              <div className="text-yellow-400 font-black text-sm">{t("بريدك الإلكتروني غير مفعّل", "Your email is not verified")}</div>
+              <div className="text-gray-400 text-xs mt-0.5">{t("أدخلي كود التفعيل الذي أُرسل إلى", "Enter the verification code sent to")} {user.email}</div>
             </div>
             <div className="mt-4 flex flex-wrap gap-2 sm:hidden">
               <a
@@ -204,7 +235,7 @@ function ProfileTab({ user }: { user: AccountData["user"] }) {
                 className="flex items-center gap-1.5 rounded-xl border border-[#ffbcdb]/20 bg-white/5 px-3 py-2 text-sm text-[#d7aabd] transition-colors hover:text-white"
               >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-4 w-4"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-                الرئيسية
+                {t("الرئيسية", "Home")}
               </a>
               <button
                 onClick={handleLogout}
@@ -214,7 +245,7 @@ function ProfileTab({ user }: { user: AccountData["user"] }) {
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-4 w-4">
                   <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
-                {loggingOut ? "جاري الخروج..." : "تسجيل الخروج"}
+                {loggingOut ? t("جاري الخروج...", "Logging out...") : t("تسجيل الخروج", "Log out")}
               </button>
             </div>
           </div>
@@ -232,7 +263,7 @@ function ProfileTab({ user }: { user: AccountData["user"] }) {
               disabled={verifyLoading || verifyCode.length !== 6}
               className="bg-yellow-600 hover:bg-yellow-700 disabled:opacity-50 text-white font-black px-5 py-2.5 rounded-xl transition-colors text-sm whitespace-nowrap"
             >
-              {verifyLoading ? "..." : "تفعيل"}
+              {verifyLoading ? "..." : t("تفعيل", "Verify")}
             </button>
           </form>
           {verifyResult && (
@@ -241,7 +272,7 @@ function ProfileTab({ user }: { user: AccountData["user"] }) {
             </div>
           )}
           <button onClick={resendCode} disabled={resendLoading} className="mt-2 text-xs text-gray-500 hover:text-yellow-400 transition-colors">
-            {resendLoading ? "جاري الإرسال..." : "لم يصلك الكود؟ أعيدي الإرسال"}
+            {resendLoading ? t("جاري الإرسال...", "Sending...") : t("لم يصلك الكود؟ أعيدي الإرسال", "Didn't get the code? Resend")}
           </button>
         </div>
       )}
@@ -256,63 +287,63 @@ function ProfileTab({ user }: { user: AccountData["user"] }) {
           <div className="flex items-center gap-2 text-gray-400 text-sm" dir="ltr">
             {user.email}
             {isVerified
-              ? <span className="text-green-400 text-xs">✅ مفعّل</span>
-              : <span className="text-yellow-500 text-xs">⚠️ غير مفعّل</span>
+              ? <span className="text-green-400 text-xs">{t("✅ مفعّل", "✅ Verified")}</span>
+              : <span className="text-yellow-500 text-xs">{t("⚠️ غير مفعّل", "⚠️ Unverified")}</span>
             }
           </div>
           <div className="flex items-center gap-3 mt-2">
             <span className="text-xs bg-red-600/20 text-red-400 border border-red-600/30 px-2 py-0.5 rounded-full font-bold">
-              {user.role === "admin" ? "مدير" : user.role === "staff" ? "إدارة" : user.role === "trainer" ? "مدرب" : "عضو"}
+              {user.role === "admin" ? t("مدير", "Admin") : user.role === "staff" ? t("إدارة", "Staff") : user.role === "trainer" ? t("مدرب", "Trainer") : t("عضو", "Member")}
             </span>
-            <span className="text-gray-600 text-xs">عضو منذ {joined}</span>
+            <span className="text-gray-600 text-xs">{t("عضو منذ", "Member since")} {joined}</span>
           </div>
         </div>
       </div>
 
       {/* Edit form */}
       <div className={CARD}>
-        <h3 className="text-white font-black mb-4">تعديل البيانات الشخصية</h3>
+        <h3 className="text-white font-black mb-4">{t("تعديل البيانات الشخصية", "Edit personal information")}</h3>
         <form onSubmit={save} className="space-y-4">
           <div className="grid sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-gray-500 text-xs mb-1.5">الاسم الكامل</label>
+              <label className="block text-gray-500 text-xs mb-1.5">{t("الاسم الكامل", "Full name")}</label>
               <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={INPUT} />
             </div>
             <div>
-              <label className="block text-gray-500 text-xs mb-1.5">رقم الهاتف</label>
+              <label className="block text-gray-500 text-xs mb-1.5">{t("رقم الهاتف", "Phone number")}</label>
               <input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className={INPUT} dir="ltr" placeholder="01XXXXXXXXX" />
             </div>
           </div>
           <div>
-            <label className="block text-gray-500 text-xs mb-1.5">البريد الإلكتروني</label>
+            <label className="block text-gray-500 text-xs mb-1.5">{t("البريد الإلكتروني", "Email")}</label>
             <input value={user.email} disabled className={INPUT + " opacity-50 cursor-not-allowed"} dir="ltr" />
           </div>
           <button type="submit" className="bg-red-600 hover:bg-red-700 text-white font-black px-6 py-2.5 rounded-xl transition-colors text-sm">
-            💾 حفظ التغييرات
+            {t("💾 حفظ التغييرات", "💾 Save changes")}
           </button>
         </form>
       </div>
 
       {/* Change password */}
       <div className={CARD}>
-        <h3 className="text-white font-black mb-4">تغيير كلمة المرور</h3>
+        <h3 className="text-white font-black mb-4">{t("تغيير كلمة المرور", "Change password")}</h3>
         <form onSubmit={(e) => { e.preventDefault(); setSaved(true); setTimeout(() => setSaved(false), 2000); }} className="space-y-4">
           <div>
-            <label className="block text-gray-500 text-xs mb-1.5">كلمة المرور الحالية</label>
+            <label className="block text-gray-500 text-xs mb-1.5">{t("كلمة المرور الحالية", "Current password")}</label>
             <input type="password" value={passForm.current} onChange={(e) => setPassForm({ ...passForm, current: e.target.value })} className={INPUT} placeholder="••••••••" dir="ltr" />
           </div>
           <div className="grid sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-gray-500 text-xs mb-1.5">كلمة المرور الجديدة</label>
+              <label className="block text-gray-500 text-xs mb-1.5">{t("كلمة المرور الجديدة", "New password")}</label>
               <input type="password" value={passForm.next} onChange={(e) => setPassForm({ ...passForm, next: e.target.value })} className={INPUT} placeholder="••••••••" dir="ltr" />
             </div>
             <div>
-              <label className="block text-gray-500 text-xs mb-1.5">تأكيد كلمة المرور</label>
+              <label className="block text-gray-500 text-xs mb-1.5">{t("تأكيد كلمة المرور", "Confirm password")}</label>
               <input type="password" value={passForm.confirm} onChange={(e) => setPassForm({ ...passForm, confirm: e.target.value })} className={INPUT} placeholder="••••••••" dir="ltr" />
             </div>
           </div>
           <button type="submit" className="bg-gray-700 hover:bg-gray-600 text-white font-bold px-6 py-2.5 rounded-xl transition-colors text-sm">
-            🔒 تحديث كلمة المرور
+            {t("🔒 تحديث كلمة المرور", "🔒 Update password")}
           </button>
         </form>
       </div>
@@ -1621,6 +1652,8 @@ function NotificationsTab({ notifications: init }: { notifications: AccountData[
 
 // ─── Main Component ────────────────────────────────────────────────────────────
 export default function AccountClient({ data }: { data: AccountData }) {
+  const { lang } = useLang();
+  const t = (arText: string, enText: string) => (lang === "ar" ? arText : enText);
   const searchParams = useSearchParams();
   const requestedTab = searchParams.get("tab");
   const [activeTab, setActiveTab]     = useState<TabId>(isTabId(requestedTab) ? requestedTab : "profile");
@@ -1649,7 +1682,7 @@ export default function AccountClient({ data }: { data: AccountData }) {
     : 0;
 
   return (
-    <div dir="rtl" className="account-theme min-h-screen bg-[radial-gradient(circle_at_top,rgba(255,140,190,0.22),transparent_34%),radial-gradient(circle_at_bottom_left,rgba(255,186,216,0.16),transparent_30%),linear-gradient(180deg,#2a0f1b_0%,#391320_48%,#4a1b2d_100%)] text-[#fff4f8]">
+    <div dir={lang === "ar" ? "rtl" : "ltr"} className="account-theme min-h-screen bg-[radial-gradient(circle_at_top,rgba(255,140,190,0.22),transparent_34%),radial-gradient(circle_at_bottom_left,rgba(255,186,216,0.16),transparent_30%),linear-gradient(180deg,#2a0f1b_0%,#391320_48%,#4a1b2d_100%)] text-[#fff4f8]">
       {/* ── Header ── */}
       <div className="border-b border-[#ffbcdb]/20 bg-[#14060d]/92 backdrop-blur-xl">
         <div className="max-w-5xl mx-auto px-4 py-6">
@@ -1667,7 +1700,7 @@ export default function AccountClient({ data }: { data: AccountData }) {
                 )}
                 {data.rewards && (
                   <span className={`text-xs px-2.5 py-0.5 rounded-full font-bold ${TIER_CONFIG[data.rewards.tier as keyof typeof TIER_CONFIG]?.bg ?? ""} ${TIER_CONFIG[data.rewards.tier as keyof typeof TIER_CONFIG]?.color ?? "text-gray-400"}`}>
-                    {TIER_CONFIG[data.rewards.tier as keyof typeof TIER_CONFIG]?.label ?? data.rewards.tier}
+                    {getTierLabel(data.rewards.tier, lang)}
                   </span>
                 )}
               </div>
@@ -1712,17 +1745,17 @@ export default function AccountClient({ data }: { data: AccountData }) {
 
           {/* Quick stats */}
           <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <StatCard icon="💳" label="رصيد المحفظة"   value={`${data.wallet.balance.toLocaleString("ar-EG")} ج.م`} color="text-blue-400" />
-            <StatCard icon="🏅" label="نقاط الولاء"    value={data.rewards.points.toLocaleString("ar-EG")} color="text-yellow-400" />
-            <StatCard icon="📅" label="أيام الاشتراك"  value={membershipDaysLeft > 0 ? `${membershipDaysLeft} يوم` : "منتهي"} color={membershipDaysLeft > 7 ? "text-green-400" : "text-red-400"} />
-            <StatCard icon="🔔" label="إشعارات جديدة"  value={unreadCount.toString()} color={unreadCount > 0 ? "text-red-400" : "text-gray-400"} />
+            <StatCard icon="💳" label={t("رصيد المحفظة", "Wallet balance")} value={`${formatMoney(data.wallet.balance, lang)} ${lang === "en" ? "EGP" : "ج.م"}`} color="text-blue-400" />
+            <StatCard icon="🏅" label={t("نقاط الولاء", "Reward points")} value={formatMoney(data.rewards.points, lang)} color="text-yellow-400" />
+            <StatCard icon="📅" label={t("أيام الاشتراك", "Membership days")} value={membershipDaysLeft > 0 ? `${formatMoney(membershipDaysLeft, lang)} ${t("يوم", "days")}` : t("منتهي", "Expired")} color={membershipDaysLeft > 7 ? "text-green-400" : "text-red-400"} />
+            <StatCard icon="🔔" label={t("إشعارات جديدة", "New notifications")} value={unreadCount.toString()} color={unreadCount > 0 ? "text-red-400" : "text-gray-400"} />
           </div>
         </div>
       </div>
 
       {/* ── Body ── */}
       <div className="max-w-7xl mx-auto px-4 py-6 w-full">
-        <div className="flex gap-6 flex-col lg:flex-row-reverse">
+        <div className="flex flex-col gap-6 lg:flex-row">
           {/* Sidebar tabs */}
           <aside className="shrink-0 lg:w-56">
             <nav className="flex gap-1 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible">
@@ -1730,16 +1763,16 @@ export default function AccountClient({ data }: { data: AccountData }) {
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`flex min-w-max items-center gap-2.5 rounded-xl px-4 py-2.5 text-right text-sm font-medium transition-all lg:w-full ${
+                  className={`flex min-w-max items-center gap-2.5 rounded-xl px-4 py-2.5 text-sm font-medium transition-all lg:w-full ${lang === "ar" ? "text-right" : "text-left"} ${
                     activeTab === tab.id
                       ? "bg-gradient-to-r from-pink-600 to-pink-500 text-white shadow-[0_18px_40px_rgba(190,24,93,0.34)]"
                       : "text-[#d7aabd] hover:bg-[rgba(255,130,186,0.14)] hover:text-white"
                   }`}
                 >
                   <span>{tab.icon}</span>
-                  <span>{tab.label}</span>
+                  <span>{getTabLabel(tab.id, lang)}</span>
                   {tab.id === "notifications" && unreadCount > 0 && (
-                    <span className="mr-auto bg-red-500 text-white text-xs font-black w-5 h-5 rounded-full flex items-center justify-center">
+                    <span className={`${lang === "ar" ? "mr-auto" : "ml-auto"} flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs font-black text-white`}>
                       {unreadCount}
                     </span>
                   )}
