@@ -247,8 +247,9 @@ function parseSiteContentRecord<T>(records: Array<{ section: string; content: st
   }
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const lang = new URL(request.url).searchParams.get("lang") === "en" ? "en" : "ar";
     const now = Date.now();
     const cached = getPublicApiCache();
 
@@ -352,8 +353,20 @@ export async function GET() {
       vodafoneCashAccounts: [],
     });
 
+    const contactRecord = parseSiteContentRecord(siteContent, "contact", EMPTY_PAYLOAD.contact) as PublicPayload["contact"] & {
+      addressEn?: string;
+      hoursEn?: string;
+    };
+
     const payload: PublicPayload = {
-      contact: parseSiteContentRecord(siteContent, "contact", EMPTY_PAYLOAD.contact),
+      contact:
+        lang === "en"
+          ? {
+              ...contactRecord,
+              address: contactRecord.addressEn ?? contactRecord.address,
+              hours: contactRecord.hoursEn ?? contactRecord.hours,
+            }
+          : contactRecord,
       categories: categories.map((category) => ({
         key: category.key,
         label: category.label,
@@ -361,9 +374,9 @@ export async function GET() {
       })),
       goals: goals.map((goal) => ({
         id: goal.id,
-        name: goal.name,
+        name: lang === "en" ? goal.nameEn ?? goal.name : goal.name,
         slug: goal.slug,
-        description: goal.description,
+        description: lang === "en" ? goal.descriptionEn ?? goal.description : goal.description,
         image: goal.image,
         kind: goal.kind,
         parentId: goal.parentId,
@@ -371,7 +384,7 @@ export async function GET() {
       })),
       memberships: memberships.map((membership) => ({
         id: membership.id,
-        name: membership.name,
+        name: lang === "en" ? membership.nameEn ?? membership.name : membership.name,
         price: membership.price,
         priceBefore: membership.priceBefore ?? null,
         priceAfter: membership.priceAfter ?? null,
@@ -380,20 +393,20 @@ export async function GET() {
         durationDays: membership.duration,
         cycle: cycleFromMembership(membership.cycle, membership.duration),
         sessionsCount: membership.sessionsCount ?? null,
-        features: parseJsonArray(membership.features),
+        features: lang === "en" ? parseJsonArray(membership.featuresEn) : parseJsonArray(membership.features),
         walletBonus: membership.walletBonus,
-        gift: membership.gift,
+        gift: lang === "en" ? membership.giftEn ?? membership.gift : membership.gift,
         kind: membership.kind,
         goalIds: membership.goals.map((goal) => goal.goalId),
       })),
       offers: offers.map((offer) => ({
         id: offer.id,
-        title: offer.title,
+        title: lang === "en" ? offer.titleEn ?? offer.title : offer.title,
         type: normalizeOfferType(offer.type),
         discount: offer.discount,
         specialPrice: offer.specialPrice,
-        description: offer.description ?? "",
-        appliesTo: offer.appliesTo ?? "",
+        description: lang === "en" ? offer.descriptionEn ?? offer.description ?? "" : offer.description ?? "",
+        appliesTo: lang === "en" ? offer.appliesToEn ?? offer.appliesTo ?? "" : offer.appliesTo ?? "",
         membershipId: offer.membershipId,
         image: offer.image,
         showOnHome: offer.showOnHome,
@@ -408,7 +421,7 @@ export async function GET() {
         description: gymClass.description ?? "",
         trainer: gymClass.showTrainerName === false ? "" : gymClass.trainer.name,
         trainerSpecialty: gymClass.showTrainerName === false ? "" : gymClass.trainer.specialty ?? "",
-        duration: `${gymClass.duration} دقيقة`,
+        duration: lang === "en" ? `${gymClass.duration} min` : `${gymClass.duration} دقيقة`,
         intensity: gymClass.intensity,
         category: gymClass.category ?? null,
         type: gymClass.type,
@@ -438,9 +451,40 @@ export async function GET() {
       })),
       trainersPage: (() => {
         const content = parseSiteContentRecord<PublicPayload["trainersPage"]>(siteContent, "trainersPage", null);
+        if (!content) return content;
+        if (lang === "en") {
+          const typed = content as PublicPayload["trainersPage"] & {
+            badgeEn?: string;
+            titleEn?: string;
+            subtitleEn?: string;
+            descriptionEn?: string;
+            highlightEn?: string;
+            ctaLabelEn?: string;
+          };
+          return {
+            ...content,
+            badge: typed.badgeEn ?? content.badge,
+            title: typed.titleEn ?? content.title,
+            subtitle: typed.subtitleEn ?? content.subtitle,
+            description: typed.descriptionEn ?? content.description,
+            highlight: typed.highlightEn ?? content.highlight,
+            ctaLabel: typed.ctaLabelEn ?? content.ctaLabel,
+          };
+        }
         return content;
       })(),
-      blog: parseSiteContentRecord(siteContent, "blog", EMPTY_PAYLOAD.blog),
+      blog: (() => {
+        const content = parseSiteContentRecord(siteContent, "blog", EMPTY_PAYLOAD.blog);
+        if (lang !== "en") return content;
+        const typed = content as PublicPayload["blog"] & {
+          categoriesEn?: string[];
+          postsEn?: PublicPayload["blog"]["posts"];
+        };
+        return {
+          categories: Array.isArray(typed.categoriesEn) ? typed.categoriesEn : content.categories,
+          posts: Array.isArray(typed.postsEn) ? typed.postsEn : content.posts,
+        };
+      })(),
       products: products.map((product) => {
         const category = categoryMeta.get(product.category);
         const reviewCount = product.reviews.length;
@@ -467,7 +511,7 @@ export async function GET() {
         };
       }),
       testimonials: testimonials.map((testimonial) => {
-        const name = testimonial.displayName || testimonial.user.name || "عميلة فيت زون";
+        const name = testimonial.displayName || testimonial.user.name || (lang === "en" ? "Fit Zone client" : "عميلة فيت زون");
 
         return {
           id: testimonial.id,

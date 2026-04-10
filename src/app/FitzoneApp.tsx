@@ -1,5 +1,5 @@
 ﻿'use client';
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLang } from "@/lib/language";
 
 // ─── FIT ZONE BRAND COLORS ─────────────────────────────────────────────────
@@ -26,7 +26,7 @@ const css = `
   @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700;900&family=Tajawal:wght@300;400;500;700;900&display=swap');
   *{box-sizing:border-box;margin:0;padding:0;}
   html{scroll-behavior:smooth;}
-  body{font-family:'Cairo','Tajawal',sans-serif;direction:rtl;background:${C.bg};color:${C.white};overflow-x:hidden;}
+  body{font-family:'Cairo','Tajawal',sans-serif;direction:inherit;background:${C.bg};color:${C.white};overflow-x:hidden;}
   .app{min-height:100vh;}
 
   .btn-primary{background:${C.red};color:#fff;border:none;padding:12px 28px;border-radius:6px;font-family:'Cairo',sans-serif;font-size:15px;font-weight:700;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;gap:8px;letter-spacing:.3px;}
@@ -156,6 +156,11 @@ function loadPublicApi(force = false) {
   }
 
   return publicApiCache[lang] as Promise<Record<string, unknown>>;
+}
+
+function useT() {
+  const { lang } = useLang();
+  return useCallback((ar: string, en: string) => (lang === "ar" ? ar : en), [lang]);
 }
 
 function getDefaultAccount(
@@ -471,7 +476,10 @@ const GymImg = ({ type = "hero", w = "100%", h = 300 }: { type?: string; w?: str
 };
 
 // ─── HEADER ─────────────────────────────────────────────────────────────────
-const DEFAULT_TOP_BAR = "💪 01001514535 · بني سويف · أول نادي للسيدات والأطفال";
+const DEFAULT_TOP_BAR = {
+  ar: "💪 01001514535 · بني سويف · أول نادي للسيدات والأطفال",
+  en: "💪 01001514535 · Beni Suef · First ladies & kids gym",
+};
 const SHOW_CLASSES_PAGE = false;
 const Header = ({
   currentPage,
@@ -522,7 +530,9 @@ const Header = ({
     <header style={{ background: "rgba(255,245,248,.97)", backdropFilter: "blur(12px)", borderBottom: `1px solid ${C.border}`, position: "sticky", top: 0, zIndex: 100 }}>
       {/* Top bar */}
       <div style={{ background: C.red, padding: "6px 0", textAlign: "center" }}>
-        <span style={{ fontSize: 12, fontWeight: 600, color: "#fff" }}>{announcements.length > 0 ? announcements[annIndex] : DEFAULT_TOP_BAR}</span>
+        <span style={{ fontSize: 12, fontWeight: 600, color: "#fff" }}>
+          {announcements.length > 0 ? announcements[annIndex] : t(DEFAULT_TOP_BAR.ar, DEFAULT_TOP_BAR.en)}
+        </span>
       </div>
       <div className="container" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", height: 78 }}>
         <div onClick={() => navigate("home")} style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: 10 }}>
@@ -604,11 +614,11 @@ const Header = ({
           >
             <I n="user" s={20} c={summary?.authenticated ? C.red : C.gray} />
             <span className="hide-mobile" style={{ fontSize: 12, fontWeight: 700 }}>
-              {summary?.authenticated ? (summary.user?.name || "حسابي") : "تسجيل الدخول"}
+              {summary?.authenticated ? (summary.user?.name || t("حسابي", "My account")) : t("تسجيل الدخول", "Login")}
             </span>
           </button>
           <button className="btn-primary hide-mobile" onClick={() => navigate("memberships")} style={{ padding: "8px 18px", fontSize: 13 }}>
-            اشتركي الآن
+            {t("اشتركي الآن", "Subscribe now")}
           </button>
           <button onClick={() => setMobileOpen(!mobileOpen)} style={{ background: "none", border: "none", cursor: "pointer", padding: 8 }} className="hide-desktop">
             <I n={mobileOpen ? "x" : "menu"} s={22} c={C.white} />
@@ -622,7 +632,9 @@ const Header = ({
               {item.label}
             </button>
           ))}
-          <button className="btn-primary" style={{ marginTop: 16, width: "100%", justifyContent: "center" }} onClick={() => navigate("memberships")}>اشتركي الآن</button>
+          <button className="btn-primary" style={{ marginTop: 16, width: "100%", justifyContent: "center" }} onClick={() => navigate("memberships")}>
+            {t("اشتركي الآن", "Subscribe now")}
+          </button>
         </div>
       )}
     </header>
@@ -632,6 +644,7 @@ const Header = ({
 // ─── FOOTER ─────────────────────────────────────────────────────────────────
 const Footer = ({ navigate }: { navigate: (p: string) => void }) => {
   const [contact, setContact] = useState<PublicContact>(DEFAULT_CONTACT);
+  const t = useT();
 
   useEffect(() => {
     loadPublicApi()
@@ -661,7 +674,12 @@ const Footer = ({ navigate }: { navigate: (p: string) => void }) => {
               <div style={{ fontSize: 10, color: C.gold, letterSpacing: 2 }}>FITNESS CLUB</div>
             </div>
           </div>
-          <p style={{ color: C.gray, fontSize: 13, lineHeight: 1.8, marginBottom: 16 }}>أول نادي لياقة بدنية للسيدات والأطفال في بني سويف. جودة عالية، مدربات محترفات، ونتائج حقيقية.</p>
+          <p style={{ color: C.gray, fontSize: 13, lineHeight: 1.8, marginBottom: 16 }}>
+            {t(
+              "أول نادي لياقة بدنية للسيدات والأطفال في بني سويف. جودة عالية، مدربات محترفات، ونتائج حقيقية.",
+              "First fitness club for women and kids in Beni Suef. High quality, pro coaches, real results.",
+            )}
+          </p>
           <div style={{ display: "flex", gap: 10 }}>
             {socialLinks.map(({ key, href, color }) => (
               href ? (
@@ -689,11 +707,44 @@ const Footer = ({ navigate }: { navigate: (p: string) => void }) => {
           </div>
         </div>
         {[
-          { title: "الخدمات", links: [["memberships","الاشتراكات"], ...(SHOW_CLASSES_PAGE ? [["classes","الكلاسات"]] : []), ["schedule","الجدول الأسبوعي"],["shop","المتجر"],["offers","العروض"]] },
-          { title: "حسابي", links: [["account","ملفي الشخصي"],["wallet","المحفظة"],["rewards","نقاط المكافآت"],["referral","الإحالات"]] },
-          { title: "تواصل معنا", links: [["about","عن النادي"],["contact","اتصلي بنا"],["blog","المدونة"],["contact","الأسئلة الشائعة"],["trainers","المدربات"]] },
-          { title: "السياسات", links: [["/policy","سياسة الاستخدام"],["/privacy","سياسة الخصوصية"],["/refund","سياسة الاسترجاع"]] },
-        ].map(col => (
+          {
+            title: t("الخدمات", "Services"),
+            links: [
+              ["memberships", t("الاشتراكات", "Memberships")],
+              ...(SHOW_CLASSES_PAGE ? [["classes", t("الكلاسات", "Classes")]] : []),
+              ["schedule", t("الجدول الأسبوعي", "Weekly schedule")],
+              ["shop", t("المتجر", "Shop")],
+              ["offers", t("العروض", "Offers")],
+            ],
+          },
+          {
+            title: t("حسابي", "Account"),
+            links: [
+              ["account", t("ملفي الشخصي", "My profile")],
+              ["wallet", t("المحفظة", "Wallet")],
+              ["rewards", t("نقاط المكافآت", "Rewards")],
+              ["referral", t("الإحالات", "Referrals")],
+            ],
+          },
+          {
+            title: t("تواصل معنا", "Contact"),
+            links: [
+              ["about", t("عن النادي", "About")],
+              ["contact", t("اتصلي بنا", "Contact us")],
+              ["blog", t("المدونة", "Blog")],
+              ["contact", t("الأسئلة الشائعة", "FAQ")],
+              ["trainers", t("المدربات", "Trainers")],
+            ],
+          },
+          {
+            title: t("السياسات", "Policies"),
+            links: [
+              ["/policy", t("سياسة الاستخدام", "Terms of use")],
+              ["/privacy", t("سياسة الخصوصية", "Privacy policy")],
+              ["/refund", t("سياسة الاسترجاع", "Refund policy")],
+            ],
+          },
+        ].map((col) => (
           <div key={col.title}>
             <h4 style={{ fontWeight: 700, marginBottom: 16, color: C.white, fontSize: 14 }}>{col.title}</h4>
             {col.links.map(([page, label]) => (
@@ -714,7 +765,7 @@ const Footer = ({ navigate }: { navigate: (p: string) => void }) => {
           </div>
         ))}
         <div>
-          <h4 style={{ fontWeight: 700, marginBottom: 16, color: C.white, fontSize: 14 }}>معلومات التواصل</h4>
+          <h4 style={{ fontWeight: 700, marginBottom: 16, color: C.white, fontSize: 14 }}>{t("معلومات التواصل", "Contact info")}</h4>
           {[["phone", contact.phone], ["mail", contact.email], ["map", contact.address]].map(([icon, text]) => (
             <div key={text} style={{ display: "flex", gap: 8, alignItems: "flex-start", marginBottom: 10, color: C.gray, fontSize: 12 }}>
               <I n={icon} s={14} c={C.red} /><span>{text}</span>
@@ -723,9 +774,13 @@ const Footer = ({ navigate }: { navigate: (p: string) => void }) => {
         </div>
       </div>
       <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 24, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
-        <p style={{ color: C.goldDark, fontSize: 12 }}>© 2026 FIT ZONE Fitness Club. جميع الحقوق محفوظة.</p>
+        <p style={{ color: C.goldDark, fontSize: 12 }}>
+          {t("© 2026 FIT ZONE Fitness Club. جميع الحقوق محفوظة.", "© 2026 FIT ZONE Fitness Club. All rights reserved.")}
+        </p>
         <div style={{ display: "flex", gap: 4 }}>
-          <span style={{ color: C.goldDark, fontSize: 11 }}>صُمم بـ ♥ لفريق فيت زون</span>
+          <span style={{ color: C.goldDark, fontSize: 11 }}>
+            {t("صُمم بـ ♥ لفريق فيت زون", "Made with ♥ by Fit Zone team")}
+          </span>
         </div>
       </div>
     </div>
@@ -774,25 +829,37 @@ function useWindowWidth() {
 // ─── ABOUT PAGE ───────────────────────────────────────────────────────────────
 type AboutContent = {
   name: string;
+  nameEn?: string;
   city: string;
+  cityEn?: string;
   founded: string;
   description: string;
+  descriptionEn?: string;
   vision: string;
+  visionEn?: string;
 };
 
 const DEFAULT_ABOUT: AboutContent = {
   name: "فت زون جيم",
+  nameEn: "Fit Zone Gym",
   city: "بني سويف - مصر",
+  cityEn: "Beni Suef, Egypt",
   founded: "2020",
   description:
     "احنا أول نادي جيم منفرد في بني سويف. بنقدّم تجربة تدريب مختلفة للسيدات والأطفال في بيئة آمنة ومريحة، وبرامج تدريب علمية بإشراف أفضل المدربات المتخصصات في مجال التدريب البدني.",
+  descriptionEn:
+    "We are the first women & kids gym in Beni Suef, offering a safe, comfortable space and structured training programs led by certified coaches.",
   vision:
     "هدفنا إنك توصلي لأفضل نسخة من نفسك من خلال التزام تدريبي مناسب لحالتك، مع متابعة مستمرة وتخطيط ذكي للتمارين.",
+  visionEn:
+    "Our goal is to help you reach your best self through a program that fits your needs, with continuous follow‑up and smart training plans.",
 };
 
 const AboutPage = () => {
   const [about, setAbout] = useState<AboutContent>(DEFAULT_ABOUT);
   const [contactInfo, setContactInfo] = useState<PublicContact>(DEFAULT_CONTACT);
+  const t = useT();
+  const { lang } = useLang();
 
   useEffect(() => {
     fetch("/api/site-content?sections=about,contact", { cache: "no-store" })
@@ -808,14 +875,24 @@ const AboutPage = () => {
       .catch(() => {});
   }, []);
 
-  const highlights = [
-    "هتتمتعي بطاقة وحيوية أكبر.",
-    "الرياضة تساعد في تحسين المزاج والتخلص من الإجهاد.",
-    "جسم صحي ومشدود ومرن يقوي العضلات ويحسن القوام العام.",
-    "نشاط مستمر للتمارين يحسّن الدورة الدموية بما يفيد بشرتك.",
-    "قوام مثالي ووزن مناسب يساعدك على حرق الدهون والحفاظ على وزن صحي.",
-    "صحة قلب أفضل تقلل من مخاطر الأمراض المزمنة.",
-  ];
+  const highlights =
+    lang === "en"
+      ? [
+          "Feel more energy and vitality.",
+          "Exercise improves mood and reduces stress.",
+          "A healthy, toned, flexible body strengthens muscles and posture.",
+          "Regular training improves circulation and skin health.",
+          "A balanced body helps burn fat and maintain healthy weight.",
+          "Better heart health lowers chronic disease risks.",
+        ]
+      : [
+          "هتتمتعي بطاقة وحيوية أكبر.",
+          "الرياضة تساعد في تحسين المزاج والتخلص من الإجهاد.",
+          "جسم صحي ومشدود ومرن يقوي العضلات ويحسن القوام العام.",
+          "نشاط مستمر للتمارين يحسّن الدورة الدموية بما يفيد بشرتك.",
+          "قوام مثالي ووزن مناسب يساعدك على حرق الدهون والحفاظ على وزن صحي.",
+          "صحة قلب أفضل تقلل من مخاطر الأمراض المزمنة.",
+        ];
 
   return (
     <div>
@@ -838,33 +915,33 @@ const AboutPage = () => {
                 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                   <FZLogo size={56} />
                   <div>
-                    <div style={{ fontSize: 22, fontWeight: 900, color: "#fff" }}>{about.name}</div>
+                    <div style={{ fontSize: 22, fontWeight: 900, color: "#fff" }}>{lang === "en" ? about.nameEn ?? about.name : about.name}</div>
                     <div style={{ fontSize: 12, color: C.gold, letterSpacing: 2 }}>FITNESS CLUB</div>
                   </div>
                 </div>
                 <span style={{ background: "rgba(233,30,99,.15)", color: "#fff", borderRadius: 999, padding: "6px 16px", fontSize: 12, fontWeight: 700 }}>
-                  اكتشفي النسخة الأفضل من نفسك
+                  {t("اكتشفي النسخة الأفضل من نفسك", "Discover your best self")}
                 </span>
               </div>
 
               <div style={{ marginTop: 28 }}>
                 <h1 style={{ fontSize: viewportWidth() < 768 ? 30 : 40, color: "#fff", fontWeight: 900, marginBottom: 12 }}>
-                  احنا مين؟
+                  {t("احنا مين؟", "Who are we?")}
                 </h1>
                 <p style={{ color: "#f4dbe5", fontSize: 15, lineHeight: 2 }}>
-                  {about.description}
+                  {lang === "en" ? about.descriptionEn ?? about.description : about.description}
                 </p>
                 <p style={{ color: "#f4dbe5", fontSize: 15, lineHeight: 2, marginTop: 12 }}>
-                  {about.vision}
+                  {lang === "en" ? about.visionEn ?? about.vision : about.vision}
                 </p>
               </div>
 
               <div style={{ marginTop: 28, background: "rgba(0,0,0,.4)", borderRadius: 18, padding: 20, border: "1px solid rgba(255,255,255,.08)" }}>
                 <div style={{ fontSize: 18, fontWeight: 900, color: C.gold, marginBottom: 12, textAlign: "center" }}>
-                  الرياضة ليست مجرد وسيلة
+                  {t("الرياضة ليست مجرد وسيلة", "Fitness is more than a way")}
                 </div>
                 <div style={{ fontSize: 15, fontWeight: 700, color: "#fff", marginBottom: 16, textAlign: "center" }}>
-                  للحصول على جسم مثالي بل هي أسلوب حياة
+                  {t("للحصول على جسم مثالي بل هي أسلوب حياة", "to get a perfect body — it is a lifestyle")}
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 14 }}>
                   {highlights.map((item) => (
@@ -891,9 +968,9 @@ const AboutPage = () => {
               </div>
 
               <div style={{ marginTop: 26, textAlign: "center" }}>
-                <div style={{ fontSize: 24, fontWeight: 900, color: "#fff" }}>ابدئي الآن!</div>
+                <div style={{ fontSize: 24, fontWeight: 900, color: "#fff" }}>{t("ابدئي الآن!", "Start now!")}</div>
                 <div style={{ color: "#f4dbe5", marginTop: 6, fontSize: 14 }}>
-                  وامنحي نفسك فرصة لتكوني في أفضل حالتك
+                  {t("وامنحي نفسك فرصة لتكوني في أفضل حالتك", "Give yourself the chance to be at your best")}
                 </div>
                 <div style={{ marginTop: 14, display: "flex", justifyContent: "center", flexWrap: "wrap", gap: 12, color: C.gold, fontWeight: 800 }}>
                   <span>📞 {contactInfo.phone || "01001514535"}</span>
@@ -1159,14 +1236,17 @@ function addToCart(item: CartItem) {
 }
 
 function formatCurrency(value?: number) {
-  return `${Number(value ?? 0).toLocaleString("ar-EG")} ج.م`;
+  const lang = getUiLang();
+  const formatted = Number(value ?? 0).toLocaleString(lang === "en" ? "en-US" : "ar-EG");
+  return lang === "en" ? `${formatted} EGP` : `${formatted} ج.م`;
 }
 
 function getTierLabel(tier?: string) {
-  if (tier === "platinum") return "بلاتيني";
-  if (tier === "gold") return "ذهبي";
-  if (tier === "silver") return "فضي";
-  return "برونزي";
+  const lang = getUiLang();
+  if (tier === "platinum") return lang === "en" ? "Platinum" : "بلاتيني";
+  if (tier === "gold") return lang === "en" ? "Gold" : "ذهبي";
+  if (tier === "silver") return lang === "en" ? "Silver" : "فضي";
+  return lang === "en" ? "Bronze" : "برونزي";
 }
 
 function getCountdownParts(expiresAt: string) {
@@ -1235,15 +1315,19 @@ const DEFAULT_HOME_MEMBERSHIPS: Array<{
 ];
 const HOME_PLAN_COLORS = [C.gray, C.red, C.gold, "#A855F7", "#3498DB"];
 const cycleLabel = (cycle?: string | null, days?: number) => {
-  if (cycle === "monthly") return "شهري";
-  if (cycle === "quarterly") return "ربع سنوي";
-  if (cycle === "semi_annual") return "نصف سنوي";
-  if (cycle === "annual") return "سنوي";
-  if (cycle === "custom") return "مخصص";
-  if (days && days <= 31) return "شهري";
-  if (days && days <= 100) return "ربع سنوي";
-  if (days && days <= 200) return "نصف سنوي";
-  return "سنوي";
+  const lang = getUiLang();
+  const labels = {
+    monthly: lang === "en" ? "Monthly" : "شهري",
+    quarterly: lang === "en" ? "Quarterly" : "ربع سنوي",
+    semi_annual: lang === "en" ? "Semi annual" : "نصف سنوي",
+    annual: lang === "en" ? "Annual" : "سنوي",
+    custom: lang === "en" ? "Custom" : "مخصص",
+  };
+  if (cycle && cycle in labels) return labels[cycle as keyof typeof labels];
+  if (days && days <= 31) return labels.monthly;
+  if (days && days <= 100) return labels.quarterly;
+  if (days && days <= 200) return labels.semi_annual;
+  return labels.annual;
 };
 const DEFAULT_HERO_SLIDES = [
   "https://images.unsplash.com/photo-1518611012118-696072aa579a?auto=format&fit=crop&w=1200&q=80",
@@ -1254,27 +1338,46 @@ const DEFAULT_HERO_SLIDES = [
 ];
 type HomeHeroContent = {
   badge: string;
+  badgeEn?: string;
   headline1: string;
+  headline1En?: string;
   headline2: string;
+  headline2En?: string;
   headline3: string;
+  headline3En?: string;
   subtext: string;
+  subtextEn?: string;
   ctaPrimary: string;
+  ctaPrimaryEn?: string;
   ctaSecondary: string;
+  ctaSecondaryEn?: string;
   slides: string[];
   stats: { value: string; label: string }[];
+  statsEn?: { value: string; label: string }[];
 };
 const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summary: UserSummary | null }) => {
   const _w = useWindowWidth();
+  const { lang } = useLang();
+  const t = useT();
   // Shadow module-level functions with reactive versions (fixes SSR hydration mismatch)
   const viewportWidth = () => _w;
   const responsiveColumns = (mobile: string, tablet: string, desktop: string) => _w < 768 ? mobile : _w < 1024 ? tablet : desktop;
-  const classes = [
-    { icon: "🧘", name: "يوجا", count: "12 كلاس", color: "#9B59B6", bg: "rgba(155,89,182,.1)", border: "rgba(155,89,182,.3)" },
-    { icon: "💃", name: "زومبا", count: "8 كلاسات", color: C.red, bg: "rgba(233,30,99,.08)", border: "rgba(233,30,99,.2)" },
-    { icon: "🏋️", name: "قوة", count: "15 كلاس", color: C.gold, bg: "rgba(200,162,0,.08)", border: "rgba(200,162,0,.2)" },
-    { icon: "🤸", name: "بيلاتس", count: "10 كلاسات", color: "#0EA5E9", bg: "rgba(14,165,233,.08)", border: "rgba(14,165,233,.2)" },
-    { icon: "🏃", name: "كارديو", count: "6 كلاسات", color: "#F97316", bg: "rgba(249,115,22,.08)", border: "rgba(249,115,22,.2)" },
-  ];
+    const classes =
+      lang === "en"
+        ? [
+            { icon: "🧘", name: "Yoga", count: "12 classes", color: "#9B59B6", bg: "rgba(155,89,182,.1)", border: "rgba(155,89,182,.3)" },
+            { icon: "💃", name: "Zumba", count: "8 classes", color: C.red, bg: "rgba(233,30,99,.08)", border: "rgba(233,30,99,.2)" },
+            { icon: "🏋️", name: "Strength", count: "15 classes", color: C.gold, bg: "rgba(200,162,0,.08)", border: "rgba(200,162,0,.2)" },
+            { icon: "🤸", name: "Pilates", count: "10 classes", color: "#0EA5E9", bg: "rgba(14,165,233,.08)", border: "rgba(14,165,233,.2)" },
+            { icon: "🏃", name: "Cardio", count: "6 classes", color: "#F97316", bg: "rgba(249,115,22,.08)", border: "rgba(249,115,22,.2)" },
+          ]
+        : [
+            { icon: "🧘", name: "يوجا", count: "12 كلاس", color: "#9B59B6", bg: "rgba(155,89,182,.1)", border: "rgba(155,89,182,.3)" },
+            { icon: "💃", name: "زومبا", count: "8 كلاسات", color: C.red, bg: "rgba(233,30,99,.08)", border: "rgba(233,30,99,.2)" },
+            { icon: "🏋️", name: "قوة", count: "15 كلاس", color: C.gold, bg: "rgba(200,162,0,.08)", border: "rgba(200,162,0,.2)" },
+            { icon: "🤸", name: "بيلاتس", count: "10 كلاسات", color: "#0EA5E9", bg: "rgba(14,165,233,.08)", border: "rgba(14,165,233,.2)" },
+            { icon: "🏃", name: "كارديو", count: "6 كلاسات", color: "#F97316", bg: "rgba(249,115,22,.08)", border: "rgba(249,115,22,.2)" },
+          ];
   const [memberships, setMemberships] = useState(DEFAULT_HOME_MEMBERSHIPS);
   const [trainers, setTrainers] = useState<PublicTrainer[]>([
     {
@@ -1328,21 +1431,33 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
   const [specialOfferMessage, setSpecialOfferMessage] = useState<{ text: string; ok: boolean } | null>(null);
   const [todayClasses, setTodayClasses] = useState<Array<{ id: string; time: string; name: string; trainer: string; spots: number; color: string }>>([]);
   const [todayIndex, setTodayIndex] = useState(0);
-  const [heroContent, setHeroContent] = useState<HomeHeroContent>({
-    badge: "أول نادي للسيدات في بني سويف",
-    headline1: "ابدئي رحلتك",
-    headline2: "FIT ZONE",
-    headline3: "مع",
-    subtext: "النادي الوحيد المخصص للسيدات والأطفال. كلاسات متنوعة، مدربات محترفات، ونتائج حقيقية في بيئة آمنة ومريحة.",
-    ctaPrimary: "اشتركي الآن",
-    ctaSecondary: "احجزي كلاس تجريبي",
-    slides: DEFAULT_HERO_SLIDES,
-    stats: [
-      { value: "500+", label: "عضوة نشطة" },
-      { value: "50+", label: "كلاس أسبوعيًا" },
-      { value: "3", label: "مدربات محترفات" },
-    ],
-  });
+    const [heroContent, setHeroContent] = useState<HomeHeroContent>({
+      badge: "أول نادي للسيدات في بني سويف",
+      badgeEn: "First women & kids gym in Beni Suef",
+      headline1: "ابدئي رحلتك",
+      headline1En: "Start your journey",
+      headline2: "FIT ZONE",
+      headline2En: "FIT ZONE",
+      headline3: "مع",
+      headline3En: "with",
+      subtext: "النادي الوحيد المخصص للسيدات والأطفال. كلاسات متنوعة، مدربات محترفات، ونتائج حقيقية في بيئة آمنة ومريحة.",
+      subtextEn: "The only club dedicated to women and kids. Diverse classes, expert coaches, real results in a safe and friendly environment.",
+      ctaPrimary: "اشتركي الآن",
+      ctaPrimaryEn: "Subscribe now",
+      ctaSecondary: "احجزي كلاس تجريبي",
+      ctaSecondaryEn: "Book a trial class",
+      slides: DEFAULT_HERO_SLIDES,
+      stats: [
+        { value: "500+", label: "عضوة نشطة" },
+        { value: "50+", label: "كلاس أسبوعيًا" },
+        { value: "3", label: "مدربات محترفات" },
+      ],
+      statsEn: [
+        { value: "500+", label: "Active members" },
+        { value: "50+", label: "Weekly classes" },
+        { value: "3", label: "Pro trainers" },
+      ],
+    });
   const [heroSlideIndex, setHeroSlideIndex] = useState(0);
   const [offerNow, setOfferNow] = useState(Date.now());
   useEffect(() => {
@@ -1460,20 +1575,27 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
   const visibleTodayClasses = todayClasses.length > 0
     ? todayClasses.slice(todayIndex, todayIndex + 4)
     : [];
-  const heroStats = summary?.authenticated
-    ? [
-        [formatCurrency(summary.walletBalance), "رصيدك الحالي"],
-        [(summary.rewardPoints ?? 0).toLocaleString("ar-EG"), "نقاطك الحالية"],
-        [summary.membership?.name ?? "بدون اشتراك", "الباقة النشطة"],
-      ]
-    : [["500+", "عضوة نشطة"], ["50+", "كلاس أسبوعيًا"], ["3", "مدربات محترفات"]];
+    const heroStats = summary?.authenticated
+      ? [
+          [formatCurrency(summary.walletBalance), t("رصيدك الحالي", "Current balance")],
+          [(summary.rewardPoints ?? 0).toLocaleString(lang === "en" ? "en-US" : "ar-EG"), t("نقاطك الحالية", "Your points")],
+          [summary.membership?.name ?? t("بدون اشتراك", "No membership"), t("الباقة النشطة", "Active plan")],
+        ]
+      : (lang === "en" ? heroContent.statsEn ?? heroContent.stats : heroContent.stats).map((s) => [s.value, s.label]);
   const walletHighlights = [
-    ["💳", formatCurrency(summary?.walletBalance), "رصيد المحفظة"],
-    ["🏅", (summary?.rewardPoints ?? 0).toLocaleString("ar-EG"), "نقاط المكافآت"],
-    ["🎁", summary?.authenticated ? `${summary?.referralEarned ?? 0} ج.م` : "20%", summary?.authenticated ? "مكافآت الإحالة" : "خصم الإحالة"],
-    ["📦", summary?.membership?.name ?? getTierLabel(summary?.rewardTier), summary?.membership ? "الاشتراك النشط" : "مستوى العضوية"],
+    ["💳", formatCurrency(summary?.walletBalance), t("رصيد المحفظة", "Wallet balance")],
+    ["🏅", (summary?.rewardPoints ?? 0).toLocaleString(lang === "en" ? "en-US" : "ar-EG"), t("نقاط المكافآت", "Reward points")],
+    ["🎁", summary?.authenticated ? `${summary?.referralEarned ?? 0} ${lang === "en" ? "EGP" : "ج.م"}` : "20%", summary?.authenticated ? t("مكافآت الإحالة", "Referral rewards") : t("خصم الإحالة", "Referral discount")],
+    ["📦", summary?.membership?.name ?? getTierLabel(summary?.rewardTier), summary?.membership ? t("الاشتراك النشط", "Active plan") : t("مستوى العضوية", "Membership tier")],
   ];
-  const heroSlides = heroContent.slides?.length ? heroContent.slides : DEFAULT_HERO_SLIDES;
+    const heroSlides = heroContent.slides?.length ? heroContent.slides : DEFAULT_HERO_SLIDES;
+    const heroBadge = lang === "en" ? heroContent.badgeEn ?? heroContent.badge : heroContent.badge;
+    const heroHeadline1 = lang === "en" ? heroContent.headline1En ?? heroContent.headline1 : heroContent.headline1;
+    const heroHeadline2 = lang === "en" ? heroContent.headline2En ?? heroContent.headline2 : heroContent.headline2;
+    const heroHeadline3 = lang === "en" ? heroContent.headline3En ?? heroContent.headline3 : heroContent.headline3;
+    const heroSubtext = lang === "en" ? heroContent.subtextEn ?? heroContent.subtext : heroContent.subtext;
+    const heroCtaPrimary = lang === "en" ? heroContent.ctaPrimaryEn ?? heroContent.ctaPrimary : heroContent.ctaPrimary;
+    const heroCtaSecondary = lang === "en" ? heroContent.ctaSecondaryEn ?? heroContent.ctaSecondary : heroContent.ctaSecondary;
   const offerCountdown = specialOffer ? getCountdownParts(specialOffer.expiresAt) : null;
   const remainingSubscribers =
     specialOffer?.maxSubscribers != null && specialOffer?.showMaxSubscribers
@@ -1505,11 +1627,11 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
       const payload = await response.json();
 
       if (!response.ok) {
-        setSpecialOfferMessage({ text: payload.error || "تعذر الاشتراك في العرض الآن.", ok: false });
+        setSpecialOfferMessage({ text: payload.error || t("تعذر الاشتراك في العرض الآن.", "Unable to subscribe to the offer right now."), ok: false });
         return;
       }
 
-      setSpecialOfferMessage({ text: "تم الاشتراك في العرض الخاص بنجاح.", ok: true });
+      setSpecialOfferMessage({ text: t("تم الاشتراك في العرض الخاص بنجاح.", "Special offer subscribed successfully."), ok: true });
       await loadPublicApi(true).then((d) => {
         if (Array.isArray(d.offers)) {
           const highlighted = (d.offers as PublicOffer[]).find((offer) => offer.type === "special" && offer.showOnHome);
@@ -1517,7 +1639,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
         }
       }).catch(() => {});
     } catch {
-      setSpecialOfferMessage({ text: "تعذر الاتصال بالخادم أثناء الاشتراك.", ok: false });
+      setSpecialOfferMessage({ text: t("تعذر الاتصال بالخادم أثناء الاشتراك.", "Failed to reach the server while subscribing."), ok: false });
     } finally {
       setSpecialOfferLoading(false);
     }
@@ -1541,20 +1663,20 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                 paddingRight: 0,
               }}
             >
-            <div className="tag" style={{ marginBottom: 20, display: "inline-flex" }}>💪 {heroContent.badge}</div>
+            <div className="tag" style={{ marginBottom: 20, display: "inline-flex" }}>💪 {heroBadge}</div>
             <h1 style={{ fontSize: viewportWidth() < 768 ? 34 : 56, fontWeight: 900, lineHeight: 1.1, color: C.white, marginBottom: 20 }}>
-              {heroContent.headline1}<br />
-              {heroContent.headline3} <span style={{ color: C.red, textShadow: `0 0 30px ${C.red}66` }}>{heroContent.headline2}</span>
+              {heroHeadline1}<br />
+              {heroHeadline3} <span style={{ color: C.red, textShadow: `0 0 30px ${C.red}66` }}>{heroHeadline2}</span>
             </h1>
             <p style={{ fontSize: viewportWidth() < 768 ? 15 : 17, color: C.gray, lineHeight: 1.8, marginBottom: 36, maxWidth: 460 }}>
-              {heroContent.subtext}
+              {heroSubtext}
             </p>
             <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
               <button className="btn-primary" onClick={() => navigate("memberships")} style={{ fontSize: 16, padding: "14px 36px" }}>
-                <I n="star" s={16} c="#fff" /> {heroContent.ctaPrimary}
+                  <I n="star" s={16} c="#fff" /> {heroCtaPrimary}
               </button>
               <button className="btn-outline" onClick={handleTrialBooking} style={{ fontSize: 16, padding: "14px 36px" }}>
-                {heroContent.ctaSecondary}
+                  {heroCtaSecondary}
               </button>
             </div>
             <div style={{ display: "flex", gap: viewportWidth() < 768 ? 20 : 40, marginTop: 48, flexWrap: "wrap" }}>
@@ -1680,33 +1802,33 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
               >
                 <div style={{ padding: viewportWidth() < 768 ? 22 : 32, display: "flex", flexDirection: "column", justifyContent: "center" }}>
                   <span className="badge" style={{ width: "fit-content", marginBottom: 14, background: C.red }}>
-                    عرض خاص محدود
+                    {t("عرض خاص محدود", "Limited special offer")}
                   </span>
                   <h2 style={{ fontSize: viewportWidth() < 768 ? 24 : 34, fontWeight: 900, color: C.white, marginBottom: 10, lineHeight: 1.3 }}>
                     {specialOffer.title}
                   </h2>
                   <p style={{ color: C.gray, fontSize: 14, lineHeight: 1.9, marginBottom: 18 }}>
-                    {specialOffer.description || "عرض خاص لفترة محدودة على إحدى باقات النادي."}
+                    {specialOffer.description || t("عرض خاص لفترة محدودة على إحدى باقات النادي.", "Limited-time offer on a club package.")}
                   </p>
                   <div style={{ display: "flex", gap: 18, flexWrap: "wrap", marginBottom: 18 }}>
                     <div>
                       <div style={{ fontSize: 30, fontWeight: 900, color: C.red }}>
                         {formatCurrency(specialOffer.specialPrice ?? 0)}
                       </div>
-                      <div style={{ fontSize: 12, color: C.gray }}>قيمة الاشتراك أثناء العرض</div>
+                      <div style={{ fontSize: 12, color: C.gray }}>{t("قيمة الاشتراك أثناء العرض", "Offer price")}</div>
                     </div>
                     <div>
                       <div style={{ fontSize: 24, fontWeight: 900, color: C.white }}>
-                        {specialOffer.currentSubscribers.toLocaleString("ar-EG")}
+                        {specialOffer.currentSubscribers.toLocaleString(lang === "en" ? "en-US" : "ar-EG")}
                       </div>
-                      <div style={{ fontSize: 12, color: C.gray }}>اشتركن بالفعل</div>
+                      <div style={{ fontSize: 12, color: C.gray }}>{t("اشتركن بالفعل", "Already joined")}</div>
                     </div>
                     {remainingSubscribers != null && (
                       <div>
                         <div style={{ fontSize: 24, fontWeight: 900, color: C.gold }}>
-                          {remainingSubscribers.toLocaleString("ar-EG")}
+                          {remainingSubscribers.toLocaleString(lang === "en" ? "en-US" : "ar-EG")}
                         </div>
-                        <div style={{ fontSize: 12, color: C.gray }}>المقاعد المتبقية</div>
+                        <div style={{ fontSize: 12, color: C.gray }}>{t("المقاعد المتبقية", "Seats remaining")}</div>
                       </div>
                     )}
                   </div>
@@ -1714,10 +1836,10 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                   {offerCountdown && (
                     <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 20 }}>
                       {[
-                        { label: "يوم", value: offerCountdown.days },
-                        { label: "ساعة", value: offerCountdown.hours },
-                        { label: "دقيقة", value: offerCountdown.minutes },
-                        { label: "ثانية", value: offerCountdown.seconds },
+                        { label: t("يوم", "Days"), value: offerCountdown.days },
+                        { label: t("ساعة", "Hours"), value: offerCountdown.hours },
+                        { label: t("دقيقة", "Minutes"), value: offerCountdown.minutes },
+                        { label: t("ثانية", "Seconds"), value: offerCountdown.seconds },
                       ].map((item) => (
                         <div key={item.label} style={{ minWidth: 74, borderRadius: 14, background: "rgba(255,255,255,.88)", border: `1px solid ${C.border}`, padding: "10px 12px", textAlign: "center" }}>
                           <div style={{ fontSize: 22, fontWeight: 900, color: offerCountdown.expired ? C.gray : C.red }}>
@@ -1731,9 +1853,9 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
 
                   <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
                     <button className="btn-primary" onClick={handleSpecialOfferSubscribe} disabled={specialOfferLoading || offerCountdown?.expired}>
-                      {specialOfferLoading ? "جارٍ التنفيذ..." : offerCountdown?.expired ? "انتهى العرض" : "اشتركي في العرض"}
+                      {specialOfferLoading ? t("جارٍ التنفيذ...", "Processing...") : offerCountdown?.expired ? t("انتهى العرض", "Offer ended") : t("اشتركي في العرض", "Join the offer")}
                     </button>
-                    <button className="btn-outline" onClick={() => navigate("offers")}>تفاصيل العرض</button>
+                    <button className="btn-outline" onClick={() => navigate("offers")}>{t("تفاصيل العرض", "Offer details")}</button>
                   </div>
 
                   {specialOfferMessage && (
@@ -1771,10 +1893,10 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
         <div className="container">
           <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr 1fr", "repeat(4, 1fr)", "repeat(4, 1fr)") }}>
             {[
-              { icon: "repeat", label: "الاشتراكات", page: "memberships", sub: "باقات متنوعة" },
-              { icon: "calendar", label: "الجدول الأسبوعي", page: "schedule", sub: "احجزي مقعدك" },
-              { icon: "box", label: "المتجر", page: "shop", sub: "منتجات رياضية" },
-              { icon: "wallet", label: "شحن المحفظة", page: "wallet", sub: "بونص حتى 15%" },
+              { icon: "repeat", label: t("الاشتراكات", "Memberships"), page: "memberships", sub: t("باقات متنوعة", "Flexible plans") },
+              { icon: "calendar", label: t("الجدول الأسبوعي", "Weekly schedule"), page: "schedule", sub: t("احجزي مقعدك", "Book your spot") },
+              { icon: "box", label: t("المتجر", "Shop"), page: "shop", sub: t("منتجات رياضية", "Sports products") },
+              { icon: "wallet", label: t("شحن المحفظة", "Top up wallet"), page: "wallet", sub: t("بونص حتى 15%", "Bonus up to 15%") },
             ].map(({ icon, label, page, sub }) => (
               <button key={page} onClick={() => navigate(page)} style={{ background: "none", border: "none", borderLeft: `1px solid ${C.border}`, padding: "20px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: 14, fontFamily: "'Cairo', sans-serif", transition: "background .2s" }}>
                 <div style={{ width: 44, height: 44, background: "rgba(233,30,99,.12)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
@@ -1795,9 +1917,9 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
         <section className="section">
           <div className="container">
             <div style={{ textAlign: "center", marginBottom: 48 }}>
-              <span className="tag" style={{ marginBottom: 12, display: "inline-block" }}>كلاساتنا</span>
-              <h2 className="section-title">كلاسات تناسب <span>كل أهدافك</span></h2>
-              <p className="section-sub">تشكيلة متنوعة من الكلاسات مع أفضل المدربات</p>
+              <span className="tag" style={{ marginBottom: 12, display: "inline-block" }}>{t("كلاساتنا", "Our classes")}</span>
+              <h2 className="section-title">{t("كلاسات تناسب", "Classes for")} <span>{t("كل أهدافك", "every goal")}</span></h2>
+              <p className="section-sub">{t("تشكيلة متنوعة من الكلاسات مع أفضل المدربات", "A diverse set of classes with top coaches")}</p>
             </div>
             <div style={{ display: "flex", gap: 16, justifyContent: "center", flexWrap: "wrap" }}>
               {classes.map(c => (
@@ -1816,25 +1938,25 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
       <section className="section" style={{ background: C.bgCard }}>
         <div className="container">
           <div style={{ textAlign: "center", marginBottom: 48 }}>
-            <span className="tag" style={{ marginBottom: 12, display: "inline-block" }}>الأسعار</span>
-            <h2 className="section-title">اختاري <span>الباقة</span> المناسبة</h2>
-            <p className="section-sub">باقات بأسعار تنافسية تبدأ من 299 ج.م / شهر</p>
+            <span className="tag" style={{ marginBottom: 12, display: "inline-block" }}>{t("الأسعار", "Pricing")}</span>
+            <h2 className="section-title">{t("اختاري", "Choose")} <span>{t("الباقة", "the plan")}</span> {t("المناسبة", "that fits")}</h2>
+            <p className="section-sub">{t("باقات بأسعار تنافسية تبدأ من 299 ج.م / شهر", "Affordable plans starting from 299 EGP / month")}</p>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 24 }}>
             {memberships.map(m => (
               <div key={m.name} className={`card card-hover`} style={{ padding: 32, position: "relative", border: m.popular ? `2px solid ${C.red}` : `1px solid ${C.border}`, transform: m.popular ? "scale(1.03)" : "none" }}>
                 {m.popular && (
-                  <div style={{ position: "absolute", top: -5, left: "50%", transform: "translateX(-50%)", background: C.red, color: "#fff", padding: "4px 20px", borderRadius: 4, fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>⭐ الأكثر شعبية</div>
+                  <div style={{ position: "absolute", top: -5, left: "50%", transform: "translateX(-50%)", background: C.red, color: "#fff", padding: "4px 20px", borderRadius: 4, fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>⭐ {t("الأكثر شعبية", "Most popular")}</div>
                 )}
-                <h3 style={{ fontSize: 20, fontWeight: 900, color: C.white }}>باقة {m.name}</h3>
+                <h3 style={{ fontSize: 20, fontWeight: 900, color: C.white }}>{t("باقة", "Plan")} {m.name}</h3>
                 <div style={{ margin: "16px 0 24px" }}>
-                  <span className="price-currency" style={{ color: m.color }}>ج.م </span>
+                  <span className="price-currency" style={{ color: m.color }}>{lang === "en" ? "EGP " : "ج.م "}</span>
                   <span className="price-big" style={{ color: m.color }}>{m.priceAfter ?? m.price}</span>
                   <span style={{ color: C.gray, fontSize: 13 }}> / {m.period}</span>
                 </div>
                 {m.priceBefore && m.priceBefore > (m.priceAfter ?? m.price) ? (
                   <div style={{ color: C.grayDark, fontSize: 13, textDecoration: "line-through", marginTop: -12, marginBottom: 12 }}>
-                    {m.priceBefore} ج.م
+                    {m.priceBefore} {lang === "en" ? "EGP" : "ج.م"}
                   </div>
                 ) : null}
             <div className="divider" />
@@ -1846,7 +1968,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                   ))}
                 </ul>
                 <button className={m.popular ? "btn-primary" : "btn-outline"} style={{ width: "100%", justifyContent: "center", background: m.popular ? C.red : "transparent", borderColor: m.color, color: m.popular ? "#fff" : m.color }} onClick={() => navigate("memberships")}>
-                  اشتركي الآن
+                  {t("اشتركي الآن", "Subscribe now")}
                 </button>
               </div>
             ))}
@@ -1859,14 +1981,14 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
         <div className="container">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 32, gap: 12, flexWrap: "wrap" }}>
             <div>
-              <h2 className="section-title">كلاسات <span>اليوم</span></h2>
-              <p suppressHydrationWarning style={{ color: C.gray, fontSize: 14 }}>{new Date().toLocaleDateString("ar-EG", { weekday: "long", day: "numeric", month: "long", year: "numeric" })} · بني سويف</p>
+              <h2 className="section-title">{t("كلاسات", "Today's")} <span>{t("اليوم", "classes")}</span></h2>
+              <p suppressHydrationWarning style={{ color: C.gray, fontSize: 14 }}>{new Date().toLocaleDateString(lang === "en" ? "en-US" : "ar-EG", { weekday: "long", day: "numeric", month: "long", year: "numeric" })} · {t("بني سويف", "Beni Suef")}</p>
             </div>
-            <button className="btn-outline" onClick={() => navigate("schedule")}>الجدول الكامل</button>
+            <button className="btn-outline" onClick={() => navigate("schedule")}>{t("الجدول الكامل", "Full schedule")}</button>
           </div>
           {visibleTodayClasses.length === 0 ? (
             <div className="card" style={{ padding: 24, textAlign: "center", color: C.gray }}>
-              لا توجد كلاسات لليوم حالياً. يمكنك الاطلاع على الجدول الكامل لاختيار موعد مناسب.
+              {t("لا توجد كلاسات لليوم حالياً. يمكنك الاطلاع على الجدول الكامل لاختيار موعد مناسب.", "No classes today. Check the full schedule to pick a suitable time.")}
             </div>
           ) : (
             <div style={{ position: "relative" }}>
@@ -1908,13 +2030,13 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
                     <span style={{ background: `${s.color}22`, color: s.color, padding: "4px 12px", borderRadius: 4, fontSize: 13, fontWeight: 700 }}>{s.time}</span>
                     <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 4, background: s.spots === 0 ? "rgba(239,68,68,.15)" : s.spots < 4 ? "rgba(234,179,8,.12)" : "rgba(34,197,94,.12)", color: s.spots === 0 ? "#EF4444" : s.spots < 4 ? "#EAB308" : C.success, fontWeight: 600 }}>
-                      {s.spots === 0 ? "ممتلئ" : s.spots < 4 ? `${s.spots} متبقية` : "متاح الآن"}
+                      {s.spots === 0 ? t("ممتلئ", "Full") : s.spots < 4 ? `${s.spots} ${t("متبقية", "left")}` : t("متاح الآن", "Available")}
                     </span>
                   </div>
                   <div style={{ fontWeight: 700, fontSize: 16, color: C.white, marginBottom: 4 }}>{s.name}</div>
-                  <div style={{ color: C.gray, fontSize: 13, marginBottom: 16 }}>مع {s.trainer}</div>
+                  <div style={{ color: C.gray, fontSize: 13, marginBottom: 16 }}>{t("مع", "With")} {s.trainer}</div>
                   <button className="btn-primary" style={{ width: "100%", justifyContent: "center", padding: "8px", fontSize: 13, opacity: s.spots === 0 ? .5 : 1 }} disabled={s.spots === 0} onClick={() => navigate("schedule")}>
-                    {s.spots === 0 ? "ممتلئ" : "احجزي الآن"}
+                    {s.spots === 0 ? t("ممتلئ", "Full") : t("احجزي الآن", "Book now")}
                   </button>
                 </div>
               ))}
@@ -1928,14 +2050,14 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
       <section style={{ background: `linear-gradient(135deg, #FFE8F0 0%, ${C.bgCard} 100%)`, borderTop: `1px solid ${C.border}`, borderBottom: `1px solid ${C.border}`, padding: "64px 0" }}>
         <div className="container" style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr", "1fr 1fr"), gap: 48, alignItems: "center" }}>
           <div>
-            <span className="tag" style={{ marginBottom: 16, display: "inline-flex" }}>💳 نظام المحفظة والمكافآت</span>
-            <h2 style={{ fontSize: 36, fontWeight: 900, color: C.white, marginBottom: 16, lineHeight: 1.2 }}>اشحني محفظتك<br /><span style={{ color: C.red }}>واكسبي أكثر</span></h2>
-            <p style={{ color: C.gray, fontSize: 15, lineHeight: 1.8, marginBottom: 28 }}>بونص إضافي مع كل شحن! اشحني بـ 200 ج.م واحصلي على 20 ج.م إضافية. اكسبي نقاط مع كل عملية واستبديليها بخصومات حصرية.</p>
+            <span className="tag" style={{ marginBottom: 16, display: "inline-flex" }}>💳 {t("نظام المحفظة والمكافآت", "Wallet & rewards system")}</span>
+            <h2 style={{ fontSize: 36, fontWeight: 900, color: C.white, marginBottom: 16, lineHeight: 1.2 }}>{t("اشحني محفظتك", "Top up your wallet")}<br /><span style={{ color: C.red }}>{t("واكسبي أكثر", "and earn more")}</span></h2>
+            <p style={{ color: C.gray, fontSize: 15, lineHeight: 1.8, marginBottom: 28 }}>{t("بونص إضافي مع كل شحن! اشحني بـ 200 ج.م واحصلي على 20 ج.م إضافية. اكسبي نقاط مع كل عملية واستبديليها بخصومات حصرية.", "Extra bonus with every top-up! Add 200 EGP and get +20 EGP. Earn points with every purchase and redeem exclusive discounts.")}</p>
             <div style={{ display: "flex", gap: 12 }}>
               <button className="btn-primary" onClick={() => navigate("wallet")} style={{ fontSize: 14, padding: "11px 24px" }}>
-                <I n="wallet" s={16} c="#fff" /> اشحني الآن
+                <I n="wallet" s={16} c="#fff" /> {t("اشحني الآن", "Top up now")}
               </button>
-              <button className="btn-ghost" onClick={() => navigate("rewards")} style={{ fontSize: 14 }}>نقاطي</button>
+              <button className="btn-ghost" onClick={() => navigate("rewards")} style={{ fontSize: 14 }}>{t("نقاطي", "My points")}</button>
             </div>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr", "1fr 1fr"), gap: 16 }}>
@@ -1955,8 +2077,8 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
         <div className="container">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 32 }}>
             <div>
-              <h2 className="section-title">المتجر <span>الرياضي</span></h2>
-              <p className="section-sub">منتجات مختارة لتعزيز أدائك</p>
+              <h2 className="section-title">{t("المتجر", "Shop")} <span>{t("الرياضي", "gear")}</span></h2>
+              <p className="section-sub">{t("منتجات مختارة لتعزيز أدائك", "Curated products to boost performance")}</p>
             </div>
             <button
               className="btn-primary"
@@ -1967,7 +2089,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                 padding: "12px 26px",
               }}
             >
-              تسوقي الآن
+              {t("تسوقي الآن", "Shop now")}
             </button>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 24 }}>
@@ -1985,15 +2107,15 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                       className="badge"
                       style={{ position: "absolute", top: 12, left: 12, background: "#2b0f1b", color: "#ffd166" }}
                     >
-                      نفذت الكمية
+                      {t("نفذت الكمية", "Out of stock")}
                     </span>
                   )}
                 </div>
                 <div style={{ padding: 20 }}>
                   <h3 style={{ fontWeight: 700, marginBottom: 10, fontSize: 15, color: C.white }}>{p.name}</h3>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
-                    <span style={{ fontWeight: 900, color: C.red, fontSize: 20 }}>{p.price} ج.م</span>
-                    {p.oldPrice && <span style={{ textDecoration: "line-through", color: C.gray, fontSize: 13 }}>{p.oldPrice} ج.م</span>}
+                    <span style={{ fontWeight: 900, color: C.red, fontSize: 20 }}>{p.price} {lang === "en" ? "EGP" : "ج.م"}</span>
+                    {p.oldPrice && <span style={{ textDecoration: "line-through", color: C.gray, fontSize: 13 }}>{p.oldPrice} {lang === "en" ? "EGP" : "ج.م"}</span>}
                   </div>
                   <button
                     className="btn-primary"
@@ -2006,7 +2128,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                       navigate("cart");
                     }}
                   >
-                    <I n="cart" s={14} c="#fff" /> {outOfStock ? "نفذت الكمية" : "أضيفي للسلة"}
+                    <I n="cart" s={14} c="#fff" /> {outOfStock ? t("نفذت الكمية", "Out of stock") : t("أضيفي للسلة", "Add to cart")}
                   </button>
                 </div>
                     </>
@@ -2022,10 +2144,10 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
       <section style={{ background: C.bgCard, borderTop: `1px solid ${C.border}`, padding: "56px 0" }}>
         <div className="container" style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center" }}>
           <div style={{ fontSize: 52, marginBottom: 16 }}>🎁</div>
-          <h2 style={{ fontSize: 32, fontWeight: 900, color: C.white, marginBottom: 12 }}>دعوي صاحبتك <span style={{ color: C.red }}>واربحا معًا!</span></h2>
-          <p style={{ color: C.gray, fontSize: 16, marginBottom: 28, maxWidth: 480 }}>ادعي صديقتك للاشتراك معكِ في فيت زون وكلتيكما هتاخدوا خصم 20% على الاشتراك القادم.</p>
+          <h2 style={{ fontSize: 32, fontWeight: 900, color: C.white, marginBottom: 12 }}>{t("دعوي صاحبتك", "Invite your friend")} <span style={{ color: C.red }}>{t("واربحا معًا!", "and earn together!")}</span></h2>
+          <p style={{ color: C.gray, fontSize: 16, marginBottom: 28, maxWidth: 480 }}>{t("ادعي صديقتك للاشتراك معكِ في فيت زون وكلتيكما هتاخدوا خصم 20% على الاشتراك القادم.", "Invite a friend to join Fit Zone and you both get 20% off the next membership.")}</p>
           <button className="btn-primary" onClick={() => navigate("referral")} style={{ fontSize: 15, padding: "14px 40px" }}>
-            <I n="share" s={16} c="#fff" /> اشتركي في برنامج الإحالة
+            <I n="share" s={16} c="#fff" /> {t("اشتركي في برنامج الإحالة", "Join referral program")}
           </button>
         </div>
       </section>
@@ -2034,8 +2156,8 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
       <section className="section">
         <div className="container">
           <div style={{ textAlign: "center", marginBottom: 40 }}>
-            <h2 className="section-title">مدرباتنا <span>المحترفات</span></h2>
-            <p className="section-sub">فريق من أفضل المدربات لمساعدتك في تحقيق أهدافك</p>
+            <h2 className="section-title">{t("مدرباتنا", "Our trainers")} <span>{t("المحترفات", "experts")}</span></h2>
+            <p className="section-sub">{t("فريق من أفضل المدربات لمساعدتك في تحقيق أهدافك", "A team of top coaches to help you reach your goals")}</p>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 24 }}>
             {trainers.map((t, index) => (
@@ -4999,9 +5121,13 @@ const ReferralPage = () => {
             ))}
           </div>
           <div className="card" style={{ padding: 28 }}>
-            <h3 style={{ fontWeight: 800, fontSize: 18, color: C.white, marginBottom: 20 }}>إزاي بيشتغل؟</h3>
+            <h3 style={{ fontWeight: 800, fontSize: 18, color: C.white, marginBottom: 20 }}>{t("إزاي بيشتغل؟", "How it works")}</h3>
             <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-              {[["شاركي كودك","أرسلي الكود لصديقاتك على واتساب أو الإنستجرام", C.red],["صديقتك تشتركي","لما تشتركي بالكود بتاعك كلتيكما هتاخدوا خصم 20%", C.gold],["اكسبي المكافأة","يضافلك 200 نقطة فور إتمام صديقتك الاشتراك", C.success]].map(([title, desc, col], i) => (
+              {[
+                [t("شاركي كودك", "Share your code"), t("أرسلي الكود لصديقاتك على واتساب أو الإنستجرام", "Send your code to friends on WhatsApp or Instagram"), C.red],
+                [t("صديقتك تشتركي", "Your friend joins"), t("لما تشتركي بالكود بتاعك كلتيكما هتاخدوا خصم 20%", "When she joins using your code, you both get 20% off"), C.gold],
+                [t("اكسبي المكافأة", "Earn the reward"), t("يضافلك 200 نقطة فور إتمام صديقتك الاشتراك", "You get 200 points once she completes the membership"), C.success],
+              ].map(([title, desc, col], i) => (
                 <div key={title} style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
                   <div style={{ width: 36, height: 36, borderRadius: "50%", background: col, color: "#000", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 16, flexShrink: 0 }}>{i+1}</div>
                   <div>
@@ -5020,36 +5146,49 @@ const ReferralPage = () => {
 
 // ─── ACCOUNT PAGE ─────────────────────────────────────────────────────────────
 const AccountPage = ({ navigate }: { navigate: (p: string) => void }) => {
+  const t = useT();
+  const { lang } = useLang();
   const [activeTab, setActiveTab] = useState("overview");
   const tabs = [
-    { id: "overview", label: "نظرة عامة", icon: "home" },
-    { id: "profile", label: "بياناتي", icon: "user" },
-    { id: "memberships", label: "اشتراكاتي", icon: "repeat" },
-    { id: "bookings", label: "حجوزاتي", icon: "calendar" },
-    { id: "orders", label: "طلباتي", icon: "box" },
-    { id: "wallet", label: "المحفظة", icon: "wallet" },
-    { id: "rewards", label: "النقاط", icon: "star" },
-    { id: "referrals", label: "الإحالات", icon: "share" },
+    { id: "overview", label: t("نظرة عامة", "Overview"), icon: "home" },
+    { id: "profile", label: t("بياناتي", "My profile"), icon: "user" },
+    { id: "memberships", label: t("اشتراكاتي", "My memberships"), icon: "repeat" },
+    { id: "bookings", label: t("حجوزاتي", "My bookings"), icon: "calendar" },
+    { id: "orders", label: t("طلباتي", "My orders"), icon: "box" },
+    { id: "wallet", label: t("المحفظة", "Wallet"), icon: "wallet" },
+    { id: "rewards", label: t("النقاط", "Rewards"), icon: "star" },
+    { id: "referrals", label: t("الإحالات", "Referrals"), icon: "share" },
   ];
-  const bookings = [
-    { name: "يوجا الصباح", date: "١٥ يناير", time: "٧:٠٠ ص", status: "قادم", trainer: "هبة" },
-    { name: "زومبا", date: "١٢ يناير", time: "٩:٣٠ ص", status: "مكتمل", trainer: "منال" },
-    { name: "بيلاتس", date: "١٠ يناير", time: "١١:٠٠ ص", status: "ملغي", trainer: "سحر" },
-  ];
-  const orders = [
-    { id: "#FZ001", item: "حذاء Luna Sport", date: "١٢ يناير", price: 850, status: "تم التسليم" },
-    { id: "#FZ002", item: "باقة برو شهرية", date: "٠١ يناير", price: 599, status: "نشط" },
-  ];
+  const bookings = lang === "en"
+    ? [
+        { name: "Morning Yoga", date: "Jan 15", time: "7:00 AM", status: "Upcoming", trainer: "Heba" },
+        { name: "Zumba", date: "Jan 12", time: "9:30 AM", status: "Completed", trainer: "Manal" },
+        { name: "Pilates", date: "Jan 10", time: "11:00 AM", status: "Cancelled", trainer: "Sahar" },
+      ]
+    : [
+        { name: "يوجا الصباح", date: "١٥ يناير", time: "٧:٠٠ ص", status: "قادم", trainer: "هبة" },
+        { name: "زومبا", date: "١٢ يناير", time: "٩:٣٠ ص", status: "مكتمل", trainer: "منال" },
+        { name: "بيلاتس", date: "١٠ يناير", time: "١١:٠٠ ص", status: "ملغي", trainer: "سحر" },
+      ];
+  const orders = lang === "en"
+    ? [
+        { id: "#FZ001", item: "Luna Sport Shoes", date: "Jan 12", price: 850, status: "Delivered" },
+        { id: "#FZ002", item: "Pro monthly plan", date: "Jan 01", price: 599, status: "Active" },
+      ]
+    : [
+        { id: "#FZ001", item: "حذاء Luna Sport", date: "١٢ يناير", price: 850, status: "تم التسليم" },
+        { id: "#FZ002", item: "باقة برو شهرية", date: "٠١ يناير", price: 599, status: "نشط" },
+      ];
 
   return (
     <div>
       <div style={{ background: `linear-gradient(135deg, #FFE0EC, ${C.bgCard})`, borderBottom: `1px solid ${C.border}`, padding: "28px 0" }}>
         <div className="container" style={{ display: "flex", alignItems: "center", gap: 18 }}>
-          <div style={{ width: 64, height: 64, background: "rgba(233,30,99,.2)", border: `2px solid ${C.red}`, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", color: C.red, fontWeight: 900, fontSize: 26 }}>ف</div>
+          <div style={{ width: 64, height: 64, background: "rgba(233,30,99,.2)", border: `2px solid ${C.red}`, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", color: C.red, fontWeight: 900, fontSize: 26 }}>{lang === "en" ? "F" : "ف"}</div>
           <div>
-            <h1 style={{ fontSize: 24, fontWeight: 900, color: C.white }}>فاطمة محمد</h1>
-            <p style={{ color: C.gray, fontSize: 13 }}>fatma@example.com آ· عضوة منذ يناير ٢٠٢٤</p>
-            <span className="badge" style={{ marginTop: 6, display: "inline-flex" }}>👑 عضوة Pro</span>
+            <h1 style={{ fontSize: 24, fontWeight: 900, color: C.white }}>{lang === "en" ? "Fatma Mohamed" : "فاطمة محمد"}</h1>
+            <p style={{ color: C.gray, fontSize: 13 }}>{lang === "en" ? "fatma@example.com · Member since Jan 2024" : "fatma@example.com آ· عضوة منذ يناير ٢٠٢٤"}</p>
+            <span className="badge" style={{ marginTop: 6, display: "inline-flex" }}>👑 {t("عضوة Pro", "Pro member")}</span>
           </div>
         </div>
       </div>
@@ -5063,7 +5202,7 @@ const AccountPage = ({ navigate }: { navigate: (p: string) => void }) => {
             ))}
             <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 6, paddingTop: 6 }}>
               <button style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "11px 14px", borderRadius: 8, border: "none", background: "none", color: "#EF4444", fontFamily: "'Cairo', sans-serif", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
-                <I n="logout" s={15} c="#EF4444" /> تسجيل الخروج
+                <I n="logout" s={15} c="#EF4444" /> {t("تسجيل الخروج", "Log out")}
               </button>
             </div>
           </div>
@@ -5072,7 +5211,12 @@ const AccountPage = ({ navigate }: { navigate: (p: string) => void }) => {
           {activeTab === "overview" && (
             <div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 14, marginBottom: 28 }}>
-                {[["💳","150 ج.م","رصيد المحفظة"],["⭐","2,400","نقاط المكافآت"],["👑","Pro","الاشتراك النشط"],["📅","١٥ يناير","الحجز القادم"]].map(([icon,val,lbl]) => (
+                {[
+                  ["💳", lang === "en" ? "150 EGP" : "150 ج.م", t("رصيد المحفظة", "Wallet balance")],
+                  ["⭐", "2,400", t("نقاط المكافآت", "Reward points")],
+                  ["👑", "Pro", t("الاشتراك النشط", "Active plan")],
+                  ["📅", lang === "en" ? "Jan 15" : "١٥ يناير", t("الحجز القادم", "Next booking")],
+                ].map(([icon,val,lbl]) => (
                   <div key={lbl} className="card" style={{ padding: 18 }}>
                     <div style={{ fontSize: 28, marginBottom: 6 }}>{icon}</div>
                     <div style={{ fontSize: 24, fontWeight: 900, color: C.red }}>{val}</div>
@@ -5081,25 +5225,25 @@ const AccountPage = ({ navigate }: { navigate: (p: string) => void }) => {
                 ))}
               </div>
               <div className="card" style={{ padding: 20 }}>
-                <h3 style={{ fontWeight: 800, color: C.white, marginBottom: 14 }}>الحجز القادم</h3>
+                <h3 style={{ fontWeight: 800, color: C.white, marginBottom: 14 }}>{t("الحجز القادم", "Next booking")}</h3>
                 <div style={{ background: "rgba(233,30,99,.08)", border: `1px solid ${C.red}22`, borderRadius: 8, padding: 14, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div>
-                    <div style={{ fontWeight: 700, fontSize: 15, color: C.white }}>يوجا الصباح</div>
-                    <div style={{ color: C.gray, fontSize: 12, marginTop: 3 }}>الأحد ١٥ يناير آ· ٧:٠٠ ص آ· مع هبة زارع</div>
+                    <div style={{ fontWeight: 700, fontSize: 15, color: C.white }}>{lang === "en" ? "Morning Yoga" : "يوجا الصباح"}</div>
+                    <div style={{ color: C.gray, fontSize: 12, marginTop: 3 }}>{lang === "en" ? "Sunday Jan 15 · 7:00 AM · with Heba Zarei" : "الأحد ١٥ يناير آ· ٧:٠٠ ص آ· مع هبة زارع"}</div>
                   </div>
-                  <span className="badge badge-green">قادم</span>
+                  <span className="badge badge-green">{t("قادم", "Upcoming")}</span>
                 </div>
               </div>
             </div>
           )}
           {activeTab === "bookings" && (
             <div>
-              <h2 style={{ fontWeight: 800, fontSize: 20, color: C.white, marginBottom: 20 }}>حجوزاتي</h2>
+              <h2 style={{ fontWeight: 800, fontSize: 20, color: C.white, marginBottom: 20 }}>{t("حجوزاتي", "My bookings")}</h2>
               {bookings.map((b, i) => (
                 <div key={i} className="card" style={{ padding: 18, marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div>
                     <div style={{ fontWeight: 700, fontSize: 14, color: C.white }}>{b.name}</div>
-                    <div style={{ color: C.gray, fontSize: 12, marginTop: 3 }}>{b.date} آ· {b.time} آ· مع {b.trainer}</div>
+                    <div style={{ color: C.gray, fontSize: 12, marginTop: 3 }}>{b.date} · {b.time} · {t("مع", "with")} {b.trainer}</div>
                   </div>
                   <span style={{ padding: "3px 12px", borderRadius: 4, fontSize: 11, fontWeight: 600, background: b.status === "confirmed" ? "rgba(34,197,94,.12)" : b.status === "pending" ? "rgba(233,30,99,.12)" : "rgba(239,68,68,.1)", color: b.status === "confirmed" ? C.success : b.status === "pending" ? C.red : "#EF4444" }}>
                     {b.status}
@@ -5110,15 +5254,15 @@ const AccountPage = ({ navigate }: { navigate: (p: string) => void }) => {
           )}
           {activeTab === "orders" && (
             <div>
-              <h2 style={{ fontWeight: 800, fontSize: 20, color: C.white, marginBottom: 20 }}>طلباتي</h2>
+              <h2 style={{ fontWeight: 800, fontSize: 20, color: C.white, marginBottom: 20 }}>{t("طلباتي", "My orders")}</h2>
               {orders.map((o, i) => (
                 <div key={i} className="card" style={{ padding: 18, marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div>
                     <div style={{ fontWeight: 700, fontSize: 14, color: C.white }}>{o.item}</div>
-                    <div style={{ color: C.gray, fontSize: 12, marginTop: 3 }}>{o.id} آ· {o.date}</div>
+                    <div style={{ color: C.gray, fontSize: 12, marginTop: 3 }}>{o.id} · {o.date}</div>
                   </div>
                   <div style={{ textAlign: "left" }}>
-                    <div style={{ fontWeight: 900, color: C.red, fontSize: 15 }}>{o.price} ج.م</div>
+                    <div style={{ fontWeight: 900, color: C.red, fontSize: 15 }}>{o.price} {lang === "en" ? "EGP" : "ج.م"}</div>
                       <span style={{ padding: "2px 10px", borderRadius: 4, fontSize: 10, fontWeight: 600, background: o.status === "confirmed" ? "rgba(34,197,94,.12)" : C.bgCard2, color: o.status === "confirmed" ? C.success : C.gray }}>{o.status}</span>
                   </div>
                 </div>
@@ -5127,17 +5271,24 @@ const AccountPage = ({ navigate }: { navigate: (p: string) => void }) => {
           )}
           {activeTab === "profile" && (
             <div>
-              <h2 style={{ fontWeight: 800, fontSize: 20, color: C.white, marginBottom: 20 }}>بياناتي الشخصية</h2>
+              <h2 style={{ fontWeight: 800, fontSize: 20, color: C.white, marginBottom: 20 }}>{t("بياناتي الشخصية", "Personal information")}</h2>
               <div className="card" style={{ padding: 28 }}>
                 <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr", "1fr 1fr"), gap: 14 }}>
-                  {[["الاسم الأول","فاطمة"],["اسم العائلة","محمد"],["البريد الإلكتروني","fatma@example.com"],["رقم الجوال","010XXXXXXXX"],["تاريخ الميلاد","١٥ مارس ١٩٩٢"],["المحافظة","بني سويف"]].map(([lbl, val]) => (
+                  {[
+                    [t("الاسم الأول", "First name"), lang === "en" ? "Fatma" : "فاطمة"],
+                    [t("اسم العائلة", "Last name"), lang === "en" ? "Mohamed" : "محمد"],
+                    [t("البريد الإلكتروني", "Email"), "fatma@example.com"],
+                    [t("رقم الجوال", "Phone"), "010XXXXXXXX"],
+                    [t("تاريخ الميلاد", "Birth date"), lang === "en" ? "Mar 15, 1992" : "١٥ مارس ١٩٩٢"],
+                    [t("المحافظة", "City"), lang === "en" ? "Beni Suef" : "بني سويف"],
+                  ].map(([lbl, val]) => (
                     <div key={lbl}>
                       <label style={{ fontSize: 12, fontWeight: 600, color: C.gray, display: "block", marginBottom: 6 }}>{lbl}</label>
-                      <input className="input" defaultValue={val} dir={lbl.includes("البريد") || lbl.includes("رقم") ? "ltr" : "rtl"} />
+                      <input className="input" defaultValue={val} dir={typeof lbl === "string" && (lbl.includes("Email") || lbl.includes("Phone") || lbl.includes("البريد") || lbl.includes("رقم")) ? "ltr" : "rtl"} />
                     </div>
                   ))}
                 </div>
-                <button className="btn-primary" style={{ marginTop: 20 }}>حفظ التغييرات</button>
+                <button className="btn-primary" style={{ marginTop: 20 }}>{t("حفظ التغييرات", "Save changes")}</button>
               </div>
             </div>
           )}
@@ -5145,10 +5296,10 @@ const AccountPage = ({ navigate }: { navigate: (p: string) => void }) => {
             <div style={{ textAlign: "center", padding: 60 }}>
               <div style={{ fontSize: 52, marginBottom: 18 }}>{activeTab === "wallet" ? "💳" : activeTab === "rewards" ? "🎁" : activeTab === "referrals" ? "🤝" : "⭐"}</div>
               <h3 style={{ fontWeight: 800, fontSize: 22, color: C.white, marginBottom: 10 }}>
-                {activeTab === "wallet" ? "المحفظة" : activeTab === "rewards" ? "نقاط المكافآت" : activeTab === "referrals" ? "برنامج الإحالة" : "الاشتراكات"}
+                {activeTab === "wallet" ? t("المحفظة", "Wallet") : activeTab === "rewards" ? t("نقاط المكافآت", "Rewards") : activeTab === "referrals" ? t("برنامج الإحالة", "Referral program") : t("الاشتراكات", "Memberships")}
               </h3>
-              <p style={{ color: C.gray, marginBottom: 20, fontSize: 14 }}>روحي للصفحة المخصصة لكل التفاصيل</p>
-              <button className="btn-primary">عرض الصفحة الكاملة</button>
+              <p style={{ color: C.gray, marginBottom: 20, fontSize: 14 }}>{t("روحي للصفحة المخصصة لكل التفاصيل", "Go to the dedicated page for full details")}</p>
+              <button className="btn-primary">{t("عرض الصفحة الكاملة", "View full page")}</button>
             </div>
           )}
         </main>
@@ -5159,6 +5310,7 @@ const AccountPage = ({ navigate }: { navigate: (p: string) => void }) => {
 
 // ─── TRAINERS PAGE ────────────────────────────────────────────────────────────
 const TrainersPage = () => {
+  const { lang } = useLang();
   const [trainers, setTrainers] = useState<PublicTrainer[]>([]);
   const [pageContent, setPageContent] = useState<TrainersPageContent>({
     badge: "فريقنا",
@@ -5183,17 +5335,24 @@ const TrainersPage = () => {
     }).catch(() => {});
   }, []);
 
+  const badge = lang === "en" ? pageContent.badgeEn ?? pageContent.badge : pageContent.badge;
+  const title = lang === "en" ? pageContent.titleEn ?? pageContent.title : pageContent.title;
+  const subtitle = lang === "en" ? pageContent.subtitleEn ?? pageContent.subtitle : pageContent.subtitle;
+  const description = lang === "en" ? pageContent.descriptionEn ?? pageContent.description : pageContent.description;
+  const highlight = lang === "en" ? pageContent.highlightEn ?? pageContent.highlight : pageContent.highlight;
+  const ctaLabel = lang === "en" ? pageContent.ctaLabelEn ?? pageContent.ctaLabel : pageContent.ctaLabel;
+
   return (
     <div>
       <section style={{ background: `linear-gradient(135deg, #FFE0EC, ${C.bg})`, padding: "60px 0", textAlign: "center" }}>
         <div className="container">
-          <span className="tag" style={{ marginBottom: 14, display: "inline-block" }}>{pageContent.badge}</span>
+          <span className="tag" style={{ marginBottom: 14, display: "inline-block" }}>{badge}</span>
           <h1 style={{ fontSize: viewportWidth() < 768 ? 32 : 44, fontWeight: 900, color: C.white, marginBottom: 12 }}>
-            {pageContent.title}
+            {title}
           </h1>
-          <p style={{ color: C.gray, fontSize: 17, marginBottom: 8 }}>{pageContent.subtitle}</p>
-          <p style={{ color: C.gray, fontSize: 15, maxWidth: 760, margin: "0 auto", lineHeight: 1.9 }}>{pageContent.description}</p>
-          <div style={{ marginTop: 18, color: C.red, fontWeight: 700, fontSize: 14 }}>{pageContent.highlight}</div>
+          <p style={{ color: C.gray, fontSize: 17, marginBottom: 8 }}>{subtitle}</p>
+          <p style={{ color: C.gray, fontSize: 15, maxWidth: 760, margin: "0 auto", lineHeight: 1.9 }}>{description}</p>
+          <div style={{ marginTop: 18, color: C.red, fontWeight: 700, fontSize: 14 }}>{highlight}</div>
         </div>
       </section>
       <section className="section">
@@ -5227,7 +5386,7 @@ const TrainersPage = () => {
                       {t.sessionsCount} جلسة · {t.classesCount} كلاسات
                     </span>
                     <button className="btn-outline-gold" style={{ padding: "5px 14px", fontSize: 11 }}>
-                      {pageContent.ctaLabel}
+                      {ctaLabel}
                     </button>
                   </div>
                 </div>
@@ -5242,8 +5401,10 @@ const TrainersPage = () => {
 
 // ─── BLOG PAGE ────────────────────────────────────────────────────────────────
 const BlogPage = () => {
+  const t = useT();
   const [activeArticle, setActiveArticle] = useState<PublicBlogPost | null>(null);
-  const [cat, setCat] = useState("الكل");
+  const allLabel = t("الكل", "All");
+  const [cat, setCat] = useState(allLabel);
   const [blog, setBlog] = useState<PublicBlog>({ categories: [], posts: [] });
 
   useEffect(() => {
@@ -5260,12 +5421,15 @@ const BlogPage = () => {
     blog.categories.length > 0
       ? blog.categories
       : Array.from(new Set(blog.posts.map((post) => post.category).filter(Boolean)));
-  const cats = ["الكل", ...categories];
+  const cats = [allLabel, ...categories];
   const activePosts = blog.posts.filter((post) => post.active !== false);
   const featured = activePosts.find((post) => post.featured) ?? activePosts[0];
   const rest = activePosts.filter(
-    (post) => post.id !== featured?.id && (cat === "الكل" || post.category === cat),
+    (post) => post.id !== featured?.id && (cat === allLabel || post.category === cat),
   );
+  useEffect(() => {
+    setCat(allLabel);
+  }, [allLabel]);
 
   const renderMedia = (post: PublicBlogPost, height: number) => {
     if (post.videoUrl) {
@@ -5297,14 +5461,14 @@ const BlogPage = () => {
           {renderMedia(a, 300)}
           <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom, transparent, rgba(10,10,10,.9))" }} />
           <div style={{ position: "absolute", bottom: 28, left: 0, right: 0 }}><div className="container">
-            <button onClick={() => setActiveArticle(null)} style={{ background: "rgba(255,255,255,.1)", border: `1px solid ${C.border}`, borderRadius: 6, padding: "5px 14px", color: C.white, cursor: "pointer", fontFamily: "'Cairo', sans-serif", marginBottom: 10, fontSize: 13 }}>← رجوع</button>
+            <button onClick={() => setActiveArticle(null)} style={{ background: "rgba(255,255,255,.1)", border: `1px solid ${C.border}`, borderRadius: 6, padding: "5px 14px", color: C.white, cursor: "pointer", fontFamily: "'Cairo', sans-serif", marginBottom: 10, fontSize: 13 }}>← {t("رجوع", "Back")}</button>
             <span className="tag" style={{ marginBottom: 10, display: "inline-flex" }}>{a.category}</span>
             <h1 style={{ color: C.white, fontSize: 30, fontWeight: 900 }}>{a.title}</h1>
           </div></div>
         </div>
         <div className="container" style={{ maxWidth: 740, padding: "40px 24px" }}>
           <div style={{ display: "flex", gap: 16, marginBottom: 28, color: C.gray, fontSize: 13, flexWrap: "wrap" }}>
-            <span>✍️ {a.author}</span><span>📅 {a.date}</span><span>⏱ {a.readTime} قراءة</span>
+            <span>✍️ {a.author}</span><span>📅 {a.date}</span><span>⏱ {a.readTime} {t("قراءة", "read")}</span>
           </div>
           <div className="card" style={{ padding: 36 }}>
             {a.videoUrl ? (
@@ -5323,8 +5487,8 @@ const BlogPage = () => {
     <div>
       <section style={{ background: `linear-gradient(135deg, #FFE0EC, ${C.bg})`, padding: "48px 0" }}>
         <div className="container">
-          <h1 style={{ fontSize: viewportWidth() < 768 ? 30 : 40, fontWeight: 900, color: C.white, marginBottom: 8 }}>مدونة <span style={{ color: C.red }}>فيت زون</span></h1>
-          <p style={{ color: C.gray, fontSize: 15 }}>نصائح ومقالات في اللياقة والصحة النسائية</p>
+          <h1 style={{ fontSize: viewportWidth() < 768 ? 30 : 40, fontWeight: 900, color: C.white, marginBottom: 8 }}>{t("مدونة", "Blog")} <span style={{ color: C.red }}>{t("فيت زون", "Fit Zone")}</span></h1>
+          <p style={{ color: C.gray, fontSize: 15 }}>{t("نصائح ومقالات في اللياقة والصحة النسائية", "Tips and articles on fitness and women’s health")}</p>
         </div>
       </section>
       <section className="section">
@@ -5333,7 +5497,7 @@ const BlogPage = () => {
             <div className="card card-hover" style={{ overflow: "hidden", marginBottom: 48, display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr", "1fr 1fr"), cursor: "pointer", border: `1px solid ${C.red}22` }} onClick={() => setActiveArticle(featured)}>
               <div style={{ height: 300 }}>{renderMedia(featured, 300)}</div>
               <div style={{ padding: 36, display: "flex", flexDirection: "column", justifyContent: "center" }}>
-                <span className="badge" style={{ marginBottom: 14, display: "inline-flex", width: "fit-content" }}>مقال مميز</span>
+                <span className="badge" style={{ marginBottom: 14, display: "inline-flex", width: "fit-content" }}>{t("مقال مميز", "Featured")}</span>
                 <h2 style={{ fontSize: 26, fontWeight: 900, color: C.white, marginBottom: 14, lineHeight: 1.4 }}>{featured.title}</h2>
                 <p style={{ color: C.gray, lineHeight: 1.7, marginBottom: 18, fontSize: 13 }}>
                   {(featured.summary || featured.content).substring(0, 80)}...
@@ -5341,7 +5505,7 @@ const BlogPage = () => {
                 <div style={{ display: "flex", gap: 16, color: C.gray, fontSize: 12, marginBottom: 22 }}>
                   <span>✍️ {featured.author}</span><span>⏱ {featured.readTime}</span>
                 </div>
-                <button className="btn-primary" style={{ width: "fit-content" }}>اقرئي المقال →</button>
+                <button className="btn-primary" style={{ width: "fit-content" }}>{t("اقرئي المقال", "Read article")} →</button>
               </div>
             </div>
           )}
@@ -5371,8 +5535,10 @@ const BlogPage = () => {
 
 // ─── CONTACT PAGE ─────────────────────────────────────────────────────────────
 const ContactPage = () => {
+  const t = useT();
+  const defaultSubject = t("استفسار عام", "General inquiry");
   const [openFaq, setOpenFaq] = useState<number | null>(null);
-  const [contactSubject, setContactSubject] = useState("استفسار عام");
+  const [contactSubject, setContactSubject] = useState(defaultSubject);
   const [contactMessage, setContactMessage] = useState("");
   const [contactLoading, setContactLoading] = useState(false);
   const [contactResult, setContactResult] = useState<"success" | "error" | "auth" | null>(null);
@@ -5395,53 +5561,57 @@ const ContactPage = () => {
       .catch(() => {});
   }, []);
 
+  useEffect(() => {
+    setContactSubject(defaultSubject);
+  }, [defaultSubject]);
+
   const whatsappLink = normalizeWhatsappLink(contactInfo.whatsapp);
 
   return (
     <div>
       <section style={{ background: `linear-gradient(135deg, #FFE0EC, ${C.bg})`, padding: "60px 0", textAlign: "center" }}>
         <div className="container">
-          <h1 style={{ fontSize: viewportWidth() < 768 ? 32 : 44, fontWeight: 900, color: C.white, marginBottom: 10 }}>تواصلي <span style={{ color: C.red }}>معنا</span></h1>
-          <p style={{ color: C.gray, fontSize: 17 }}>إحنا موجودين عشانك في أي وقت 💪</p>
+          <h1 style={{ fontSize: viewportWidth() < 768 ? 32 : 44, fontWeight: 900, color: C.white, marginBottom: 10 }}>{t("تواصلي", "Contact")} <span style={{ color: C.red }}>{t("معنا", "us")}</span></h1>
+          <p style={{ color: C.gray, fontSize: 17 }}>{t("إحنا موجودين عشانك في أي وقت 💪", "We are here for you anytime 💪")}</p>
         </div>
       </section>
       <section className="section">
         <div className="container">
           <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr", "1fr 1fr"), gap: 48 }}>
             <div>
-              <h2 className="section-title" style={{ marginBottom: 24 }}>ابعتيلنا <span>رسالة</span></h2>
+              <h2 className="section-title" style={{ marginBottom: 24 }}>{t("ابعتيلنا", "Send us")} <span>{t("رسالة", "a message")}</span></h2>
               <div className="card" style={{ padding: 28 }}>
                 {contactResult === "success" ? (
                   <div style={{ textAlign: "center", padding: "32px 0" }}>
                     <div style={{ fontSize: 40, marginBottom: 12 }}>✅</div>
-                    <div style={{ fontWeight: 700, color: C.white, fontSize: 16, marginBottom: 8 }}>تم إرسال رسالتك بنجاح!</div>
-                    <div style={{ color: C.gray, fontSize: 13, marginBottom: 20 }}>سيتم الرد عليك في أقرب وقت.</div>
-                    <button className="btn-primary" style={{ padding: "8px 24px", fontSize: 13 }} onClick={() => { setContactResult(null); setContactMessage(""); setContactSubject("استفسار عام"); }}>إرسال رسالة أخرى</button>
+                    <div style={{ fontWeight: 700, color: C.white, fontSize: 16, marginBottom: 8 }}>{t("تم إرسال رسالتك بنجاح!", "Your message was sent successfully!")}</div>
+                    <div style={{ color: C.gray, fontSize: 13, marginBottom: 20 }}>{t("سيتم الرد عليك في أقرب وقت.", "We will reply as soon as possible.")}</div>
+                    <button className="btn-primary" style={{ padding: "8px 24px", fontSize: 13 }} onClick={() => { setContactResult(null); setContactMessage(""); setContactSubject(defaultSubject); }}>{t("إرسال رسالة أخرى", "Send another message")}</button>
                   </div>
                 ) : (
                   <>
                     {contactResult === "auth" && (
                       <div style={{ marginBottom: 14, padding: "10px 14px", borderRadius: 8, background: "rgba(234,179,8,.08)", border: "1px solid rgba(234,179,8,.25)", color: "#EAB308", fontSize: 13 }}>
-                        يجب <a href="/login" style={{ color: C.gold, fontWeight: 700 }}>تسجيل الدخول</a> أولاً لإرسال رسالة.
+                        {t("يجب", "You must")} <a href="/login" style={{ color: C.gold, fontWeight: 700 }}>{t("تسجيل الدخول", "log in")}</a> {t("أولاً لإرسال رسالة.", "first to send a message.")}
                       </div>
                     )}
                     {contactResult === "error" && (
                       <div style={{ marginBottom: 14, padding: "10px 14px", borderRadius: 8, background: "rgba(233,30,99,.08)", border: "1px solid rgba(233,30,99,.25)", color: C.red, fontSize: 13 }}>
-                        حدث خطأ أثناء الإرسال. حاولي مرة أخرى أو تواصلي عبر واتساب.
+                        {t("حدث خطأ أثناء الإرسال. حاولي مرة أخرى أو تواصلي عبر واتساب.", "An error occurred while sending. Try again or contact us on WhatsApp.")}
                       </div>
                     )}
                     <div style={{ marginBottom: 14 }}>
-                      <label style={{ fontSize: 12, fontWeight: 600, color: C.gray, display: "block", marginBottom: 6 }}>الموضوع</label>
+                      <label style={{ fontSize: 12, fontWeight: 600, color: C.gray, display: "block", marginBottom: 6 }}>{t("الموضوع", "Subject")}</label>
                       <select className="select" value={contactSubject} onChange={e => setContactSubject(e.target.value)}>
-                        <option>استفسار عام</option>
-                        <option>مشكلة في الحجز</option>
-                        <option>اشتراكات</option>
-                        <option>شكوى</option>
+                        <option>{t("استفسار عام", "General inquiry")}</option>
+                        <option>{t("مشكلة في الحجز", "Booking issue")}</option>
+                        <option>{t("اشتراكات", "Memberships")}</option>
+                        <option>{t("شكوى", "Complaint")}</option>
                       </select>
                     </div>
                     <div style={{ marginBottom: 20 }}>
-                      <label style={{ fontSize: 12, fontWeight: 600, color: C.gray, display: "block", marginBottom: 6 }}>الرسالة</label>
-                      <textarea className="input" rows={4} placeholder="اكتبي رسالتك هنا..." style={{ resize: "vertical" }} value={contactMessage} onChange={e => setContactMessage(e.target.value)} />
+                      <label style={{ fontSize: 12, fontWeight: 600, color: C.gray, display: "block", marginBottom: 6 }}>{t("الرسالة", "Message")}</label>
+                      <textarea className="input" rows={4} placeholder={t("اكتبي رسالتك هنا...", "Write your message here...")} style={{ resize: "vertical" }} value={contactMessage} onChange={e => setContactMessage(e.target.value)} />
                     </div>
                     <button
                       className="btn-primary"
@@ -5464,14 +5634,14 @@ const ContactPage = () => {
                         finally { setContactLoading(false); }
                       }}
                     >
-                      <I n="mail" s={16} c="#fff" /> {contactLoading ? "جارٍ الإرسال..." : "إرسال الرسالة"}
+                      <I n="mail" s={16} c="#fff" /> {contactLoading ? t("جارٍ الإرسال...", "Sending...") : t("إرسال الرسالة", "Send message")}
                     </button>
                   </>
                 )}
               </div>
             </div>
             <div>
-              <h2 className="section-title" style={{ marginBottom: 24 }}>معلومات <span>التواصل</span></h2>
+              <h2 className="section-title" style={{ marginBottom: 24 }}>{t("معلومات", "Contact")} <span>{t("التواصل", "info")}</span></h2>
               <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 28 }}>
                 {[
                   ["phone", contactInfo.phone],
@@ -5490,17 +5660,17 @@ const ContactPage = () => {
               <div style={{ background: "rgba(233,30,99,.08)", border: `1px solid ${C.red}33`, borderRadius: 10, padding: 20 }}>
                 <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 12 }}>
                   <span style={{ fontSize: 20 }}>📱</span>
-                  <span style={{ fontWeight: 700, color: C.white }}>تواصل سريع</span>
+                  <span style={{ fontWeight: 700, color: C.white }}>{t("تواصل سريع", "Quick contact")}</span>
                 </div>
                 <div style={{ display: "flex", gap: 10 }}>
-                  <a href={`tel:${contactInfo.phone || "01001514535"}`} style={{ flex: 1, background: C.red, color: "#fff", padding: "10px", borderRadius: 6, textAlign: "center", textDecoration: "none", fontFamily: "'Cairo', sans-serif", fontWeight: 700, fontSize: 13 }}>📞 اتصال</a>
-                  <a href={whatsappLink || "#"} target="_blank" rel="noreferrer" style={{ flex: 1, background: "#25D366", color: "#fff", padding: "10px", borderRadius: 6, textAlign: "center", textDecoration: "none", fontFamily: "'Cairo', sans-serif", fontWeight: 700, fontSize: 13, pointerEvents: whatsappLink ? "auto" : "none", opacity: whatsappLink ? 1 : 0.6 }}>💬 واتساب</a>
+                  <a href={`tel:${contactInfo.phone || "01001514535"}`} style={{ flex: 1, background: C.red, color: "#fff", padding: "10px", borderRadius: 6, textAlign: "center", textDecoration: "none", fontFamily: "'Cairo', sans-serif", fontWeight: 700, fontSize: 13 }}>📞 {t("اتصال", "Call")}</a>
+                  <a href={whatsappLink || "#"} target="_blank" rel="noreferrer" style={{ flex: 1, background: "#25D366", color: "#fff", padding: "10px", borderRadius: 6, textAlign: "center", textDecoration: "none", fontFamily: "'Cairo', sans-serif", fontWeight: 700, fontSize: 13, pointerEvents: whatsappLink ? "auto" : "none", opacity: whatsappLink ? 1 : 0.6 }}>💬 {t("واتساب", "WhatsApp")}</a>
                 </div>
               </div>
             </div>
           </div>
           <div style={{ marginTop: 72 }}>
-            <h2 className="section-title" style={{ textAlign: "center", marginBottom: 36 }}>الأسئلة <span>الشائعة</span></h2>
+            <h2 className="section-title" style={{ textAlign: "center", marginBottom: 36 }}>{t("الأسئلة", "Frequently asked")} <span>{t("الشائعة", "questions")}</span></h2>
             <div style={{ maxWidth: 680, margin: "0 auto" }}>
               {faqs.map((f, i) => (
                 <div key={i} className="card" style={{ marginBottom: 10, padding: 0 }}>

@@ -20,13 +20,16 @@ function mapOffer(
   offer: {
     id: string;
     title: string;
+    titleEn: string | null;
     discount: number;
     type: string;
     appliesTo: string | null;
+    appliesToEn: string | null;
     membershipId: string | null;
     expiresAt: Date;
     isActive: boolean;
     description: string | null;
+    descriptionEn: string | null;
     specialPrice: number | null;
     maxSubscribers: number | null;
     currentSubscribers: number;
@@ -39,14 +42,17 @@ function mapOffer(
   return {
     id: offer.id,
     title: offer.title,
+    titleEn: offer.titleEn ?? "",
     discount: offer.discount,
     type: normalizeOfferType(offer.type),
     appliesTo: offer.appliesTo ?? offer.membership?.name ?? "جميع الاشتراكات",
+    appliesToEn: offer.appliesToEn ?? "",
     membershipId: offer.membershipId,
     validUntil: toDateString(offer.expiresAt),
     active: offer.isActive,
     usedCount: offer.currentSubscribers,
     description: offer.description ?? "",
+    descriptionEn: offer.descriptionEn ?? "",
     specialPrice: offer.specialPrice,
     maxSubscribers: offer.maxSubscribers,
     currentSubscribers: offer.currentSubscribers,
@@ -89,16 +95,18 @@ export async function POST(req: Request) {
     const created = await db.offer.create({
       data: {
         title,
+        titleEn: typeof body.titleEn === "string" ? body.titleEn.trim() : "",
         type,
         discount: Number(body.discount ?? 0),
         description: typeof body.description === "string" ? body.description.trim() || null : null,
+        descriptionEn: typeof body.descriptionEn === "string" ? body.descriptionEn.trim() || null : null,
         appliesTo: typeof body.appliesTo === "string" ? body.appliesTo.trim() || null : null,
+        appliesToEn: typeof body.appliesToEn === "string" ? body.appliesToEn.trim() || null : null,
         expiresAt: new Date(validUntil),
         isActive: body.active !== false,
         membershipId: body.membershipId || null,
         specialPrice: body.specialPrice != null && body.specialPrice !== "" ? Number(body.specialPrice) : null,
-        maxSubscribers:
-          body.maxSubscribers != null && body.maxSubscribers !== "" ? Number(body.maxSubscribers) : null,
+        maxSubscribers: body.maxSubscribers != null && body.maxSubscribers !== "" ? Number(body.maxSubscribers) : null,
         currentSubscribers: Number(body.currentSubscribers ?? 0),
         image: typeof body.image === "string" && body.image.trim() ? body.image.trim() : null,
         showOnHome: Boolean(body.showOnHome),
@@ -111,7 +119,7 @@ export async function POST(req: Request) {
     return NextResponse.json(mapOffer(created));
   } catch (error) {
     console.error("[ADMIN_OFFERS_POST]", error);
-    return NextResponse.json({ error: "تعذر حفظ العرض حاليًا." }, { status: 500 });
+    return NextResponse.json({ error: "تعذر حفظ العرض حالياً." }, { status: 500 });
   }
 }
 
@@ -129,10 +137,13 @@ export async function PATCH(req: Request) {
     const data: Record<string, unknown> = {};
 
     if (body.title !== undefined) data.title = String(body.title).trim();
+    if (body.titleEn !== undefined) data.titleEn = String(body.titleEn).trim();
     if (body.type !== undefined) data.type = normalizeOfferType(String(body.type));
     if (body.discount !== undefined) data.discount = Number(body.discount ?? 0);
     if (body.description !== undefined) data.description = body.description ? String(body.description).trim() : null;
+    if (body.descriptionEn !== undefined) data.descriptionEn = body.descriptionEn ? String(body.descriptionEn).trim() : null;
     if (body.appliesTo !== undefined) data.appliesTo = body.appliesTo ? String(body.appliesTo).trim() : null;
+    if (body.appliesToEn !== undefined) data.appliesToEn = body.appliesToEn ? String(body.appliesToEn).trim() : null;
     if (body.validUntil !== undefined) data.expiresAt = new Date(String(body.validUntil));
     if (body.active !== undefined) data.isActive = Boolean(body.active);
     if (body.membershipId !== undefined) data.membershipId = body.membershipId || null;
@@ -140,8 +151,7 @@ export async function PATCH(req: Request) {
       data.specialPrice = body.specialPrice != null && body.specialPrice !== "" ? Number(body.specialPrice) : null;
     }
     if (body.maxSubscribers !== undefined) {
-      data.maxSubscribers =
-        body.maxSubscribers != null && body.maxSubscribers !== "" ? Number(body.maxSubscribers) : null;
+      data.maxSubscribers = body.maxSubscribers != null && body.maxSubscribers !== "" ? Number(body.maxSubscribers) : null;
     }
     if (body.currentSubscribers !== undefined) data.currentSubscribers = Number(body.currentSubscribers ?? 0);
     if (body.image !== undefined) data.image = body.image ? String(body.image).trim() : null;
@@ -158,7 +168,7 @@ export async function PATCH(req: Request) {
     return NextResponse.json(mapOffer(updated));
   } catch (error) {
     console.error("[ADMIN_OFFERS_PATCH]", error);
-    return NextResponse.json({ error: "تعذر تحديث العرض حاليًا." }, { status: 500 });
+    return NextResponse.json({ error: "تعذر تحديث العرض حالياً." }, { status: 500 });
   }
 }
 
@@ -177,6 +187,6 @@ export async function DELETE(req: Request) {
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("[ADMIN_OFFERS_DELETE]", error);
-    return NextResponse.json({ error: "تعذر حذف العرض حاليًا." }, { status: 500 });
+    return NextResponse.json({ error: "تعذر حذف العرض حالياً." }, { status: 500 });
   }
 }

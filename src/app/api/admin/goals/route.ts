@@ -15,8 +15,10 @@ function slugifyGoal(value: string) {
 function mapGoal(goal: {
   id: string;
   name: string;
+  nameEn: string | null;
   slug: string;
   description: string | null;
+  descriptionEn: string | null;
   image: string | null;
   kind: string;
   parentId: string | null;
@@ -26,8 +28,10 @@ function mapGoal(goal: {
   return {
     id: goal.id,
     name: goal.name,
+    nameEn: goal.nameEn ?? "",
     slug: goal.slug,
     description: goal.description,
+    descriptionEn: goal.descriptionEn ?? "",
     image: goal.image,
     kind: goal.kind,
     parentId: goal.parentId,
@@ -63,8 +67,10 @@ export async function POST(req: Request) {
 
   const body = (await req.json()) as {
     name?: string;
+    nameEn?: string;
     slug?: string;
     description?: string | null;
+    descriptionEn?: string | null;
     image?: string | null;
     kind?: string;
     parentId?: string | null;
@@ -93,8 +99,10 @@ export async function POST(req: Request) {
   const created = await db.clubGoal.create({
     data: {
       name,
+      nameEn: body.nameEn?.trim() || "",
       slug,
       description: body.description?.trim() || null,
+      descriptionEn: body.descriptionEn?.trim() || null,
       image: body.image?.trim() || null,
       kind: body.kind?.trim() || "standard",
       parentId: body.parentId?.trim() || null,
@@ -113,8 +121,10 @@ export async function PATCH(req: Request) {
   const body = (await req.json()) as {
     id?: string;
     name?: string;
+    nameEn?: string;
     slug?: string;
     description?: string | null;
+    descriptionEn?: string | null;
     image?: string | null;
     kind?: string;
     parentId?: string | null;
@@ -147,7 +157,7 @@ export async function PATCH(req: Request) {
 
   if (body.parentId) {
     if (body.parentId === body.id) {
-      return NextResponse.json({ error: "لا يمكن جعل الهدف تابعًا لنفسه." }, { status: 400 });
+      return NextResponse.json({ error: "لا يمكن جعل الهدف تابعاً لنفسه." }, { status: 400 });
     }
     const parent = await db.clubGoal.findUnique({ where: { id: body.parentId } });
     if (!parent) {
@@ -159,8 +169,10 @@ export async function PATCH(req: Request) {
     where: { id: body.id },
     data: {
       name: body.name?.trim() ?? undefined,
+      nameEn: body.nameEn === undefined ? undefined : body.nameEn?.trim() || "",
       slug: nextSlug,
       description: body.description === undefined ? undefined : body.description?.trim() || null,
+      descriptionEn: body.descriptionEn === undefined ? undefined : body.descriptionEn?.trim() || null,
       image: body.image === undefined ? undefined : body.image?.trim() || null,
       kind: body.kind?.trim() ?? undefined,
       parentId: body.parentId === undefined ? undefined : body.parentId?.trim() || null,
