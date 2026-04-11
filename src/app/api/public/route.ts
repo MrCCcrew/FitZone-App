@@ -493,10 +493,44 @@ export async function GET(request: Request) {
         const typed = content as PublicPayload["blog"] & {
           categoriesEn?: string[];
           postsEn?: PublicPayload["blog"]["posts"];
+          posts?: Array<
+            PublicPayload["blog"]["posts"][number] & {
+              titleEn?: string;
+              categoryEn?: string;
+              authorEn?: string;
+              dateEn?: string;
+              readTimeEn?: string;
+              summaryEn?: string;
+              contentEn?: string;
+            }
+          >;
         };
+        const localizedPosts = Array.isArray(typed.posts)
+          ? typed.posts.map((post) => {
+              const localizedPost = post as typeof post & {
+                titleEn?: string;
+                categoryEn?: string;
+                authorEn?: string;
+                dateEn?: string;
+                readTimeEn?: string;
+                summaryEn?: string;
+                contentEn?: string;
+              };
+              return ({
+              ...post,
+              title: localizedPost.titleEn ?? post.title,
+              category: localizedPost.categoryEn ?? post.category,
+              author: localizedPost.authorEn ?? post.author,
+              date: localizedPost.dateEn ?? post.date,
+              readTime: localizedPost.readTimeEn ?? post.readTime,
+              summary: localizedPost.summaryEn ?? post.summary,
+              content: localizedPost.contentEn ?? post.content,
+            });
+          })
+          : content.posts;
         return {
           categories: Array.isArray(typed.categoriesEn) ? typed.categoriesEn : content.categories,
-          posts: Array.isArray(typed.postsEn) ? typed.postsEn : content.posts,
+          posts: Array.isArray(typed.postsEn) ? typed.postsEn : localizedPosts,
         };
       })(),
       products: products.map((product) => {
