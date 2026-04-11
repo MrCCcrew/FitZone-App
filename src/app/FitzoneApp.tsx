@@ -119,10 +119,22 @@ const css = `
   .schedule-empty{color:#f5c542;font-size:22px;font-weight:900;opacity:.8;}
   .schedule-scroll{overflow-x:visible;padding-bottom:8px;max-width:100%;}
   .schedule-grid .schedule-cell.sticky{border-top:none;}
+  .today-classes-marquee{position:relative;overflow:hidden;padding:6px 0;mask-image:linear-gradient(to right,transparent 0,#000 6%,#000 94%,transparent 100%);-webkit-mask-image:linear-gradient(to right,transparent 0,#000 6%,#000 94%,transparent 100%);}
+  .today-classes-marquee::before,.today-classes-marquee::after{content:'';position:absolute;top:0;bottom:0;width:72px;z-index:2;pointer-events:none;}
+  .today-classes-marquee::before{left:0;background:linear-gradient(to right,${C.bg},rgba(255,245,248,0));}
+  .today-classes-marquee::after{right:0;background:linear-gradient(to left,${C.bg},rgba(255,245,248,0));}
+  .today-classes-track{display:flex;gap:16px;width:max-content;will-change:transform;animation:today-marquee-rtl 34s linear infinite;}
+  .today-classes-track.ltr{animation-name:today-marquee-ltr;}
+  .today-classes-marquee:hover .today-classes-track{animation-play-state:paused;}
+  .today-class-card{flex:0 0 280px;}
+  @keyframes today-marquee-rtl{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+  @keyframes today-marquee-ltr{from{transform:translateX(-50%)}to{transform:translateX(0)}}
   @media(max-width:900px){
     .schedule-title h2{font-size:28px;}
     .schedule-shell{padding:20px;}
     .schedule-cell{min-height:74px;}
+    .today-classes-marquee::before,.today-classes-marquee::after{width:32px;}
+    .today-class-card{flex-basis:240px;}
   }
 `;
 
@@ -1436,7 +1448,6 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
   const [specialOfferLoading, setSpecialOfferLoading] = useState(false);
   const [specialOfferMessage, setSpecialOfferMessage] = useState<{ text: string; ok: boolean } | null>(null);
   const [todayClasses, setTodayClasses] = useState<Array<{ id: string; time: string; name: string; trainer: string; spots: number; color: string }>>([]);
-  const [todayIndex, setTodayIndex] = useState(0);
     const [heroContent, setHeroContent] = useState<HomeHeroContent>({
       badge: "أول نادي للسيدات في بني سويف",
       badgeEn: "First women & kids gym in Beni Suef",
@@ -1545,7 +1556,6 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
           .filter((entry) => entry.day === todayLabel)
           .sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
         setTodayClasses(todayEntries);
-        setTodayIndex(0);
       }
     }).catch(() => {});
   }, []);
@@ -1578,9 +1588,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
     const timer = setInterval(() => setOfferNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [specialOffer]);
-  const visibleTodayClasses = todayClasses.length > 0
-    ? todayClasses.slice(todayIndex, todayIndex + 4)
-    : [];
+  const todayClassesLoop = todayClasses.length > 0 ? [...todayClasses, ...todayClasses] : [];
     const heroStats = summary?.authenticated
       ? [
           [formatCurrency(summary.walletBalance), t("رصيدك الحالي", "Current balance")],
@@ -1990,60 +1998,30 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
             </div>
             <button className="btn-outline" onClick={() => navigate("schedule")}>{t("الجدول الكامل", "Full schedule")}</button>
           </div>
-          {visibleTodayClasses.length === 0 ? (
+          {todayClasses.length === 0 ? (
             <div className="card" style={{ padding: 24, textAlign: "center", color: C.gray }}>
               {t("لا توجد كلاسات لليوم حالياً. يمكنك الاطلاع على الجدول الكامل لاختيار موعد مناسب.", "No classes today. Check the full schedule to pick a suitable time.")}
             </div>
           ) : (
             <div style={{ position: "relative" }}>
-              <button
-                className="btn-outline"
-                onClick={() => setTodayIndex((prev) => Math.max(prev - 1, 0))}
-                disabled={todayIndex === 0}
-                style={{
-                  position: "absolute",
-                  left: -12,
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  padding: "10px 12px",
-                  borderRadius: 999,
-                  opacity: todayIndex === 0 ? 0.4 : 1,
-                }}
-              >
-                <I n="chevronLeft" s={16} c={C.red} />
-              </button>
-              <button
-                className="btn-outline"
-                onClick={() => setTodayIndex((prev) => Math.min(prev + 1, Math.max(todayClasses.length - 4, 0)))}
-                disabled={todayClasses.length <= 4 || todayIndex >= todayClasses.length - 4}
-                style={{
-                  position: "absolute",
-                  right: -12,
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  padding: "10px 12px",
-                  borderRadius: 999,
-                  opacity: todayClasses.length <= 4 || todayIndex >= todayClasses.length - 4 ? 0.4 : 1,
-                }}
-              >
-                <I n="chevronRight" s={16} c={C.red} />
-              </button>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 16 }}>
-              {visibleTodayClasses.map((s) => (
-                <div key={s.id} className="card" style={{ padding: 20, borderRight: `3px solid ${s.color}` }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
-                    <span style={{ background: `${s.color}22`, color: s.color, padding: "4px 12px", borderRadius: 4, fontSize: 13, fontWeight: 700 }}>{s.time}</span>
-                    <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 4, background: s.spots === 0 ? "rgba(239,68,68,.15)" : s.spots < 4 ? "rgba(234,179,8,.12)" : "rgba(34,197,94,.12)", color: s.spots === 0 ? "#EF4444" : s.spots < 4 ? "#EAB308" : C.success, fontWeight: 600 }}>
-                      {s.spots === 0 ? t("ممتلئ", "Full") : s.spots < 4 ? `${s.spots} ${t("متبقية", "left")}` : t("متاح الآن", "Available")}
-                    </span>
-                  </div>
-                  <div style={{ fontWeight: 700, fontSize: 16, color: C.white, marginBottom: 4 }}>{s.name}</div>
-                  <div style={{ color: C.gray, fontSize: 13, marginBottom: 16 }}>{t("مع", "With")} {s.trainer}</div>
-                  <button className="btn-primary" style={{ width: "100%", justifyContent: "center", padding: "8px", fontSize: 13, opacity: s.spots === 0 ? .5 : 1 }} disabled={s.spots === 0} onClick={() => navigate("schedule")}>
-                    {s.spots === 0 ? t("ممتلئ", "Full") : t("احجزي الآن", "Book now")}
-                  </button>
+              <div className="today-classes-marquee">
+                <div className={`today-classes-track ${lang === "en" ? "ltr" : ""}`}>
+                  {todayClassesLoop.map((s, index) => (
+                    <div key={`${s.id}-${index}`} className="card today-class-card" style={{ padding: 20, borderRight: `3px solid ${s.color}` }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
+                        <span style={{ background: `${s.color}22`, color: s.color, padding: "4px 12px", borderRadius: 4, fontSize: 13, fontWeight: 700 }}>{s.time}</span>
+                        <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 4, background: s.spots === 0 ? "rgba(239,68,68,.15)" : s.spots < 4 ? "rgba(234,179,8,.12)" : "rgba(34,197,94,.12)", color: s.spots === 0 ? "#EF4444" : s.spots < 4 ? "#EAB308" : C.success, fontWeight: 600 }}>
+                          {s.spots === 0 ? t("ممتلئ", "Full") : s.spots < 4 ? `${s.spots} ${t("متبقية", "left")}` : t("متاح الآن", "Available")}
+                        </span>
+                      </div>
+                      <div style={{ fontWeight: 700, fontSize: 16, color: C.white, marginBottom: 4 }}>{s.name}</div>
+                      <div style={{ color: C.gray, fontSize: 13, marginBottom: 16 }}>{t("مع", "With")} {s.trainer}</div>
+                      <button className="btn-primary" style={{ width: "100%", justifyContent: "center", padding: "8px", fontSize: 13, opacity: s.spots === 0 ? .5 : 1 }} disabled={s.spots === 0} onClick={() => navigate("schedule")}>
+                        {s.spots === 0 ? t("ممتلئ", "Full") : t("احجزي الآن", "Book now")}
+                      </button>
+                    </div>
+                  ))}
                 </div>
-              ))}
               </div>
             </div>
           )}
