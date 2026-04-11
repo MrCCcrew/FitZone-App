@@ -1708,10 +1708,10 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                     boxShadow: "0 24px 80px rgba(233,30,99,.2)",
                   }}
                 >
-                  {/* Slide stack — image shows fully with no cropping */}
+                  {/* Slide stack — landscape shape, image fills fully with no empty borders */}
                   <div style={{ position: "relative", width: "100%", padding: 10 }}>
-                    {/* Invisible spacer keeps container height consistent */}
-                    <div style={{ width: "100%", aspectRatio: "4/3", visibility: "hidden" }} />
+                    {/* Spacer: 16:9 landscape ratio — same shape as original */}
+                    <div style={{ width: "100%", aspectRatio: "16/9", visibility: "hidden" }} />
 
                     {heroSlides.map((slide, index) => (
                       <div
@@ -1720,23 +1720,19 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                           position: "absolute",
                           inset: 10,
                           opacity: index === heroSlideIndex ? 1 : 0,
-                          transform: index === heroSlideIndex ? "scale(1)" : "scale(1.03)",
+                          transform: index === heroSlideIndex ? "scale(1)" : "scale(1.035)",
                           transition: "opacity 700ms ease, transform 700ms ease",
                           pointerEvents: index === heroSlideIndex ? "auto" : "none",
                           borderRadius: 14,
                           overflow: "hidden",
-                          background: "rgba(255,240,245,.5)",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
                         }}
                       >
                         <img
                           src={slide}
                           alt={`hero-slide-${index + 1}`}
-                          style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }}
+                          style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
                         />
-                        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, transparent, rgba(26,8,18,.12))", pointerEvents: "none" }} />
+                        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, transparent, rgba(26,8,18,.18))", pointerEvents: "none" }} />
                         <div
                           style={{
                             position: "absolute",
