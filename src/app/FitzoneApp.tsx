@@ -2107,10 +2107,10 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                 <I n="chevronRight" s={16} c={C.red} />
               </button>
               <div ref={todayCarouselRef} className="today-classes-carousel">
-                <div ref={todayTrackRef} className="today-classes-track">
+                <div ref={todayTrackRef} className="today-classes-track" style={{ direction: "ltr" }}>
                   {[0, 1, 2].flatMap((copyIndex) =>
                     todayClasses.map((s, index) => (
-                    <div key={`${s.id}-${copyIndex}-${index}-${todayIndex}`} className="card today-class-card" style={{ padding: 20, borderRight: `3px solid ${s.color}` }}>
+                    <div key={`${s.id}-${copyIndex}-${index}-${todayIndex}`} dir={lang === "ar" ? "rtl" : "ltr"} className="card today-class-card" style={{ padding: 20, borderRight: `3px solid ${s.color}` }}>
                       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
                         <span style={{ background: `${s.color}22`, color: s.color, padding: "4px 12px", borderRadius: 4, fontSize: 13, fontWeight: 700 }}>{s.time}</span>
                         <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 4, background: s.spots === 0 ? "rgba(239,68,68,.15)" : s.spots < 4 ? "rgba(234,179,8,.12)" : "rgba(34,197,94,.12)", color: s.spots === 0 ? "#EF4444" : s.spots < 4 ? "#EAB308" : C.success, fontWeight: 600 }}>
