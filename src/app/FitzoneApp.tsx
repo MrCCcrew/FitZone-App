@@ -1708,37 +1708,45 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                     boxShadow: "0 24px 80px rgba(233,30,99,.2)",
                   }}
                 >
-                  {/* 16:9 aspect-ratio wrapper — matches exact upload spec */}
-                  <div style={{ position: "relative", width: "100%", aspectRatio: "16/9", padding: 12 }}>
-                  {heroSlides.map((slide, index) => (
-                    <div
-                      key={`${slide}-${index}`}
-                      style={{
-                        position: "absolute",
-                        inset: 12,
-                        opacity: index === heroSlideIndex ? 1 : 0,
-                        transform: index === heroSlideIndex ? "scale(1)" : "scale(1.035)",
-                        transition: "opacity 700ms ease, transform 700ms ease",
-                        pointerEvents: index === heroSlideIndex ? "auto" : "none",
-                      }}
-                    >
-                      <div style={{ width: "100%", height: "100%", overflow: "hidden", borderRadius: 14, position: "relative" }}>
+                  {/* Slide stack — image shows fully with no cropping */}
+                  <div style={{ position: "relative", width: "100%", padding: 10 }}>
+                    {/* Invisible spacer keeps container height consistent */}
+                    <div style={{ width: "100%", aspectRatio: "4/3", visibility: "hidden" }} />
+
+                    {heroSlides.map((slide, index) => (
+                      <div
+                        key={`${slide}-${index}`}
+                        style={{
+                          position: "absolute",
+                          inset: 10,
+                          opacity: index === heroSlideIndex ? 1 : 0,
+                          transform: index === heroSlideIndex ? "scale(1)" : "scale(1.03)",
+                          transition: "opacity 700ms ease, transform 700ms ease",
+                          pointerEvents: index === heroSlideIndex ? "auto" : "none",
+                          borderRadius: 14,
+                          overflow: "hidden",
+                          background: "rgba(255,240,245,.5)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
                         <img
                           src={slide}
                           alt={`hero-slide-${index + 1}`}
-                          style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                          style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }}
                         />
-                        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(26,8,18,.05), rgba(26,8,18,.28))" }} />
+                        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, transparent, rgba(26,8,18,.12))", pointerEvents: "none" }} />
                         <div
                           style={{
                             position: "absolute",
-                            top: 16,
-                            left: 16,
+                            top: 12,
+                            left: 12,
                             background: "rgba(26,8,18,.55)",
                             color: "#fff",
                             border: `1px solid ${C.border}`,
                             borderRadius: 999,
-                            padding: "6px 12px",
+                            padding: "5px 11px",
                             fontSize: 12,
                             fontWeight: 700,
                           }}
@@ -1746,8 +1754,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                           {index + 1} من {heroSlides.length}
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
                   </div>
                   <div style={{ position: "absolute", right: 18, bottom: 18, display: "flex", gap: 8 }}>
                     {heroSlides.map((_, index) => (
