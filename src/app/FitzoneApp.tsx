@@ -1600,10 +1600,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
     const timer = setInterval(() => setOfferNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [specialOffer]);
-  const animatedTodayClasses = useMemo(
-    () => (lang === "ar" ? [...todayClasses].reverse() : todayClasses),
-    [lang, todayClasses],
-  );
+  const animatedTodayClasses = useMemo(() => todayClasses, [todayClasses]);
   useEffect(() => {
     const applyTransform = () => {
       if (todayTrackRef.current) {
@@ -1623,7 +1620,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
     measure();
     window.addEventListener("resize", measure);
     return () => window.removeEventListener("resize", measure);
-  }, [animatedTodayClasses.length, lang]);
+  }, [animatedTodayClasses.length]);
 
   useEffect(() => {
     if (animatedTodayClasses.length <= 1) return;
@@ -1633,7 +1630,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
     const tick = (now: number) => {
       const elapsed = (now - lastTime) / 1000;
       lastTime = now;
-      const direction = lang === "ar" ? -1 : 1;
+      const direction = 1;
       todayOffsetRef.current = wrapCarouselOffset(
         todayOffsetRef.current + direction * 24 * elapsed,
         todaySegmentWidthRef.current,
@@ -1646,15 +1643,15 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
 
     frameId = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frameId);
-  }, [animatedTodayClasses.length, lang]);
+  }, [animatedTodayClasses.length]);
 
   const moveTodayCarousel = useCallback((direction: "prev" | "next") => {
     if (animatedTodayClasses.length === 0 || todaySegmentWidthRef.current <= 0) return;
     const step = todaySegmentWidthRef.current / animatedTodayClasses.length;
     const delta =
       direction === "next"
-        ? (lang === "ar" ? -step : step)
-        : (lang === "ar" ? step : -step);
+        ? step
+        : -step;
     todayOffsetRef.current = wrapCarouselOffset(todayOffsetRef.current + delta, todaySegmentWidthRef.current);
     if (todayTrackRef.current) {
       todayTrackRef.current.style.transform = `translate3d(${todayOffsetRef.current}px, 0, 0)`;
@@ -1664,7 +1661,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
         ? (current + 1) % animatedTodayClasses.length
         : (current - 1 + animatedTodayClasses.length) % animatedTodayClasses.length,
     );
-  }, [animatedTodayClasses.length, lang]);
+  }, [animatedTodayClasses.length]);
     const heroStats = summary?.authenticated
       ? [
           [formatCurrency(summary.walletBalance), t("رصيدك الحالي", "Current balance")],
@@ -2110,11 +2107,20 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
               >
                 <I n="chevronRight" s={16} c={C.red} />
               </button>
-              <div ref={todayCarouselRef} className="today-classes-carousel">
+              <div
+                ref={todayCarouselRef}
+                className="today-classes-carousel"
+                style={{ transform: lang === "ar" ? "scaleX(-1)" : "none" }}
+              >
                 <div ref={todayTrackRef} className="today-classes-track" style={{ direction: "ltr" }}>
                   {[0, 1, 2].flatMap((copyIndex) =>
                     animatedTodayClasses.map((s, index) => (
-                    <div key={`${s.id}-${copyIndex}-${index}-${todayIndex}`} dir={lang === "ar" ? "rtl" : "ltr"} className="card today-class-card" style={{ padding: 20, borderRight: `3px solid ${s.color}` }}>
+                    <div
+                      key={`${s.id}-${copyIndex}-${index}-${todayIndex}`}
+                      dir={lang === "ar" ? "rtl" : "ltr"}
+                      className="card today-class-card"
+                      style={{ padding: 20, borderRight: `3px solid ${s.color}`, transform: lang === "ar" ? "scaleX(-1)" : "none" }}
+                    >
                       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
                         <span style={{ background: `${s.color}22`, color: s.color, padding: "4px 12px", borderRadius: 4, fontSize: 13, fontWeight: 700 }}>{s.time}</span>
                         <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 4, background: s.spots === 0 ? "rgba(239,68,68,.15)" : s.spots < 4 ? "rgba(234,179,8,.12)" : "rgba(34,197,94,.12)", color: s.spots === 0 ? "#EF4444" : s.spots < 4 ? "#EAB308" : C.success, fontWeight: 600 }}>
