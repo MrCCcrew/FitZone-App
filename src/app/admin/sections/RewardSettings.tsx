@@ -22,7 +22,7 @@ interface ReferralRow {
   totalEarned: number;
 }
 
-const INPUT = "w-full bg-[rgba(255,255,255,.06)] border border-[rgba(255,188,219,0.2)] focus:border-pink-400 rounded-xl px-4 py-2.5 text-[#fff4f8] text-sm outline-none transition-colors";
+const INPUT = "w-full bg-[rgba(255,255,255,.06)] border border-[rgba(255,188,219,0.2)] focus:border-pink-400 rounded-xl px-4 py-2.5 text-[#fff4f8] text-sm outline-none transition-colors [&_option]:bg-[#2a0f1b] [&_option]:text-[#fff2f8]";
 const LABEL = "block text-xs font-bold text-[#d7aabd] mb-1";
 const BTN_PRIMARY = "rounded-xl bg-[#E91E63] px-5 py-2.5 text-sm font-bold text-white transition-colors hover:bg-[#C2185B] disabled:opacity-50";
 
@@ -136,7 +136,7 @@ export default function RewardSettings() {
               <div className="grid grid-cols-3 gap-4">
                 <div>
                   <label className={LABEL}>نوع المكافأة</label>
-                  <select className={INPUT} value={settings.referralRewardType}
+                  <select className={INPUT} style={{ backgroundColor: "#2a0f1b" }} value={settings.referralRewardType}
                     onChange={(e) => setSettings((p) => ({ ...p, referralRewardType: e.target.value as "points" | "wallet" }))}>
                     <option value="points">نقاط مكافآت</option>
                     <option value="wallet">رصيد محفظة (جنيه)</option>
