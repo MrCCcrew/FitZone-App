@@ -328,7 +328,9 @@ export interface ChatKnowledgeEntry {
 export interface Testimonial {
   id: string;
   displayName: string;
+  displayNameEn?: string | null;
   content: string;
+  contentEn?: string | null;
   rating: number;
   status: "pending" | "approved" | "rejected";
   adminNote?: string | null;

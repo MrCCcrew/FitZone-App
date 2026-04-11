@@ -110,9 +110,13 @@ export default function Testimonials() {
                 <tr key={item.id} className="border-b border-gray-800/50 align-top">
                   <td className="px-4 py-3">
                     <div className="font-bold text-white">{item.displayName || item.user.name || "عميل"}</div>
+                    {item.displayNameEn ? <div className="text-xs text-gray-500">{item.displayNameEn}</div> : null}
                     <div className="text-xs text-gray-500">{item.user.email}</div>
                   </td>
-                  <td className="px-4 py-3 text-gray-300">{item.content}</td>
+                  <td className="px-4 py-3 text-gray-300">
+                    <div>{item.content}</div>
+                    {item.contentEn ? <div className="mt-2 text-xs text-gray-500">{item.contentEn}</div> : null}
+                  </td>
                   <td className="px-4 py-3 text-yellow-400">{item.rating}/5</td>
                   <td className="px-4 py-3">
                     <span className={`rounded-full px-2 py-1 text-xs font-bold ${
@@ -142,8 +146,10 @@ export default function Testimonials() {
       {modal && (
         <Modal title="تعديل الرأي" onClose={() => setModal(null)}>
           <div className="space-y-4">
-            <input value={modal.displayName} onChange={(e) => setModal({ ...modal, displayName: e.target.value })} className={INPUT} placeholder="الاسم الظاهر" />
+            <input value={modal.displayName ?? ""} onChange={(e) => setModal({ ...modal, displayName: e.target.value })} className={INPUT} placeholder="الاسم الظاهر" />
+            <input value={modal.displayNameEn ?? ""} onChange={(e) => setModal({ ...modal, displayNameEn: e.target.value })} className={INPUT} placeholder="Display name in English" dir="ltr" />
             <textarea value={modal.content} onChange={(e) => setModal({ ...modal, content: e.target.value })} rows={4} className={`${INPUT} resize-none`} placeholder="محتوى الرأي" />
+            <textarea value={modal.contentEn ?? ""} onChange={(e) => setModal({ ...modal, contentEn: e.target.value })} rows={4} className={`${INPUT} resize-none`} placeholder="Testimonial content in English" dir="ltr" />
             <div className="grid gap-4 md:grid-cols-2">
               <select value={modal.rating} onChange={(e) => setModal({ ...modal, rating: Number(e.target.value) })} className={INPUT}>
                 {[1, 2, 3, 4, 5].map((rate) => <option key={rate} value={rate}>{rate}</option>)}
