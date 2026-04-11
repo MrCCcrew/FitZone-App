@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/app-session";
 import { getAdminSession } from "@/lib/admin-session";
 import { db } from "@/lib/db";
+import { sendContactEmail } from "@/lib/email";
 
 export async function GET() {
   const user = await getCurrentAppUser();
@@ -38,6 +39,14 @@ export async function POST(req: Request) {
   const complaint = await db.complaint.create({
     data: { userId: user.id, subject, message },
   });
+
+  // Fire-and-forget — don't block the response
+  sendContactEmail({
+    senderName: user.name ?? "عميل",
+    senderEmail: user.email ?? "",
+    subject,
+    message,
+  }).catch((err) => console.error("[CONTACT_EMAIL]", err));
 
   const admins = await db.user.findMany({ where: { role: "admin" } });
   await Promise.all(

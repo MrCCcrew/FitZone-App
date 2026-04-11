@@ -13,6 +13,7 @@ function getTransporter() {
 }
 
 const FROM = `"FitZone" <${process.env.SMTP_USER ?? "info@fitzoneland.com"}>`;
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? process.env.SMTP_USER ?? "info@fitzoneland.com";
 
 export async function sendVerificationEmail(email: string, name: string, code: string) {
   try {
@@ -137,6 +138,62 @@ export async function sendSubscriptionEmail(
     return true;
   } catch (err) {
     console.error("[EMAIL_SUBSCRIPTION]", err);
+    return false;
+  }
+}
+
+export async function sendContactEmail(opts: {
+  senderName: string;
+  senderEmail: string;
+  subject: string;
+  message: string;
+}) {
+  try {
+    await getTransporter().sendMail({
+      from: FROM,
+      to: ADMIN_EMAIL,
+      replyTo: opts.senderEmail,
+      subject: `[اتصل بنا] ${opts.subject}`,
+      html: `
+        <div dir="rtl" style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; background: #111; color: #fff; border-radius: 12px; overflow: hidden;">
+          <div style="background: #e91e63; padding: 24px 32px; text-align: center;">
+            <h1 style="margin: 0; font-size: 26px; font-weight: 900; letter-spacing: 1px;">FIT<span style="color: #f8b4d9;">ZONE</span></h1>
+            <p style="margin: 6px 0 0; font-size: 13px; color: rgba(255,255,255,0.8);">رسالة جديدة من العميل</p>
+          </div>
+          <div style="padding: 28px 32px;">
+            <table style="width:100%; border-collapse: collapse; margin-bottom: 20px;">
+              <tr>
+                <td style="padding: 10px 0; color: #9ca3af; font-size: 13px; width: 110px; border-bottom: 1px solid #222;">الاسم</td>
+                <td style="padding: 10px 0; color: #fff; font-weight: 700; font-size: 14px; border-bottom: 1px solid #222;">${opts.senderName}</td>
+              </tr>
+              <tr>
+                <td style="padding: 10px 0; color: #9ca3af; font-size: 13px; border-bottom: 1px solid #222;">البريد</td>
+                <td style="padding: 10px 0; border-bottom: 1px solid #222;">
+                  <a href="mailto:${opts.senderEmail}" style="color: #f8b4d9; font-weight: 700; font-size: 14px;">${opts.senderEmail}</a>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding: 10px 0; color: #9ca3af; font-size: 13px; border-bottom: 1px solid #222;">الموضوع</td>
+                <td style="padding: 10px 0; color: #fff; font-weight: 700; font-size: 14px; border-bottom: 1px solid #222;">${opts.subject}</td>
+              </tr>
+            </table>
+            <div style="background: #1f1f1f; border: 1px solid #2a2a2a; border-radius: 10px; padding: 18px;">
+              <p style="margin: 0 0 8px; font-size: 12px; color: #9ca3af;">الرسالة</p>
+              <p style="margin: 0; font-size: 14px; color: #e5e7eb; line-height: 1.8; white-space: pre-wrap;">${opts.message.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</p>
+            </div>
+            <p style="margin: 18px 0 0; font-size: 12px; color: #6b7280;">
+              للرد على العميل مباشرة اضغط Reply — الرد سيذهب إلى <span style="color:#f8b4d9;">${opts.senderEmail}</span>
+            </p>
+          </div>
+          <div style="background: #18181b; padding: 14px 32px; text-align: center;">
+            <p style="margin: 0; font-size: 12px; color: #6b7280;">© 2026 FitZone Fitness Club</p>
+          </div>
+        </div>
+      `,
+    });
+    return true;
+  } catch (err) {
+    console.error("[EMAIL_CONTACT]", err);
     return false;
   }
 }
