@@ -4569,6 +4569,8 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
 };
 
 const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summary: UserSummary | null }) => {
+  const { lang } = useLang();
+  const t = useT();
   const [step, setStep] = useState("cart");
   const [payMethod, setPayMethod] = useState("instapay");
   const [useRewards, setUseRewards] = useState(false);
@@ -4674,6 +4676,39 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
     }
   }, [availablePayMethods, payMethod]);
 
+  const reverseGeocode = async (latitude: number, longitude: number) => {
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(String(latitude))}&lon=${encodeURIComponent(String(longitude))}&accept-language=${lang === "en" ? "en" : "ar"}`,
+      );
+      if (!response.ok) return null;
+      const payload = (await response.json()) as {
+        display_name?: string;
+        address?: {
+          city?: string;
+          town?: string;
+          village?: string;
+          state?: string;
+          county?: string;
+        };
+      };
+      const displayName = payload.display_name?.trim() || "";
+      const city =
+        payload.address?.city?.trim() ||
+        payload.address?.town?.trim() ||
+        payload.address?.village?.trim() ||
+        payload.address?.state?.trim() ||
+        payload.address?.county?.trim() ||
+        "";
+      return {
+        displayName,
+        city,
+      };
+    } catch {
+      return null;
+    }
+  };
+
   const fillCurrentLocation = () => {
     if (!navigator.geolocation) {
       setOrderMsg({ text: "المتصفح لا يدعم تحديد الموقع تلقائيًا.", ok: false });
@@ -4683,17 +4718,29 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
     setLocating(true);
     setOrderMsg(null);
     navigator.geolocation.getCurrentPosition(
-      ({ coords }) => {
-        const locationText = `الموقع التلقائي - Latitude: ${coords.latitude.toFixed(6)}, Longitude: ${coords.longitude.toFixed(6)}`;
+      async ({ coords }) => {
+        const locationText =
+          lang === "en"
+            ? `Auto-detected location - Latitude: ${coords.latitude.toFixed(6)}, Longitude: ${coords.longitude.toFixed(6)}`
+            : `الموقع التلقائي - Latitude: ${coords.latitude.toFixed(6)}, Longitude: ${coords.longitude.toFixed(6)}`;
+        const resolved = await reverseGeocode(coords.latitude, coords.longitude);
+
         setAddress((current) => ({
           ...current,
-          details: current.details.trim() ? `${current.details} | ${locationText}` : locationText,
+          city: resolved?.city || current.city,
+          details: resolved?.displayName || locationText,
         }));
-          setOrderMsg({ text: "تم تحديد موقعك الحالي وإضافته إلى العنوان.", ok: true });
+
+        setOrderMsg({
+          text: resolved?.displayName
+            ? t("تم تحديد عنوانك تلقائيًا من نفس موقعك الحالي.", "Your address was detected automatically from your current location.")
+            : t("تم تحديد موقعك الحالي، لكن تعذر تحويله إلى عنوان دقيق فتم استخدام الإحداثيات.", "Your current location was detected, but it could not be converted to an exact address, so coordinates were used instead."),
+          ok: true,
+        });
         setLocating(false);
       },
       () => {
-          setOrderMsg({ text: "تعذر تحديد موقعك. تأكدي من السماح بالوصول إلى الموقع الجغرافي.", ok: false });
+          setOrderMsg({ text: t("تعذر تحديد موقعك. تأكدي من السماح بالوصول إلى الموقع الجغرافي.", "Could not detect your location. Please allow location access and try again."), ok: false });
         setLocating(false);
       },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
