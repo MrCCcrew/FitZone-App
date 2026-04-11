@@ -144,7 +144,9 @@ type PublicPayload = {
   testimonials: Array<{
     id: string;
     displayName: string;
+    displayNameEn?: string | null;
     content: string;
+    contentEn?: string | null;
     rating: number;
     createdAt: string;
     user: { name: string };
@@ -527,11 +529,13 @@ export async function GET(request: Request) {
 
         return {
           id: testimonial.id,
-          displayName: name,
-          content: testimonial.content,
+          displayName: lang === "en" ? testimonial.displayNameEn ?? name : name,
+          displayNameEn: testimonial.displayNameEn,
+          content: lang === "en" ? testimonial.contentEn ?? testimonial.content : testimonial.content,
+          contentEn: testimonial.contentEn,
           rating: testimonial.rating,
           createdAt: testimonial.createdAt.toISOString(),
-          user: { name },
+          user: { name: lang === "en" ? testimonial.displayNameEn ?? name : name },
         };
       }),
       healthQuestions: healthQuestions.map((question) => ({

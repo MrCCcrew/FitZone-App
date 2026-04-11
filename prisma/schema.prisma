@@ -698,7 +698,9 @@ model Testimonial {
   id          String   @id @default(cuid())
   userId      String
   displayName String?
+  displayNameEn String?
   content     String
+  contentEn   String?  @db.Text
   rating      Int      @default(5)
   status      String   @default("pending") // pending | approved | rejected
   adminNote   String?
