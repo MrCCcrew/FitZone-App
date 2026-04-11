@@ -4860,11 +4860,16 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
       <section style={{ background: C.bgCard, borderBottom: `1px solid ${C.border}`, padding: "28px 0" }}>
         <div className="container">
           <div style={{ display: "flex", gap: 24, justifyContent: "center" }}>
-            {[["cart","السلة"],["address","العنوان"],["delivery","الشحن"],["payment","الدفع"]].map(([s, label], i) => (
+            {[
+              ["cart", t("السلة", "Cart")],
+              ["address", t("العنوان", "Address")],
+              ["delivery", t("الشحن", "Shipping")],
+              ["payment", t("الدفع", "Payment")],
+            ].map(([s, label], i) => (
               <div key={s} style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <div style={{ width: 30, height: 30, borderRadius: "50%", background: step === s ? C.red : C.grayDark, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 13 }}>{i + 1}</div>
                 <span style={{ fontWeight: 700, fontSize: 14, color: step === s ? C.white : C.gray }}>{label}</span>
-                {i < 3 && <span style={{ color: C.grayDark }}>←</span>}
+                {i < 3 && <span style={{ color: C.grayDark }}>{lang === "ar" ? "←" : "→"}</span>}
               </div>
             ))}
           </div>
@@ -4881,10 +4886,10 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
           <div>
             {step === "cart" && (
               <div>
-                <h2 style={{ fontWeight: 800, fontSize: 22, color: C.white, marginBottom: 20 }}>السلة</h2>
+                <h2 style={{ fontWeight: 800, fontSize: 22, color: C.white, marginBottom: 20 }}>{t("السلة", "Cart")}</h2>
                 {cartItems.length === 0 && (
                   <div className="card" style={{ padding: 24, textAlign: "center", color: C.gray }}>
-                      لا توجد منتجات في السلة حاليًا.
+                      {t("لا توجد منتجات في السلة حاليًا.", "No products in the cart right now.")}
                   </div>
                 )}
                 {cartItems.map((item) => (
@@ -4892,7 +4897,7 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                     <div style={{ width: 70, height: 70, borderRadius: 10, overflow: "hidden", flexShrink: 0 }}><GymImg type={item.type} w={70} h={70} /></div>
                     <div style={{ flex: 1 }}>
                       <h3 style={{ fontWeight: 700, fontSize: 14, color: C.white }}>{item.name}</h3>
-                      {item.size && <p style={{ color: C.gray, fontSize: 12, marginTop: 3 }}>المقاس: {item.size}</p>}
+                      {item.size && <p style={{ color: C.gray, fontSize: 12, marginTop: 3 }}>{t("المقاس", "Size")}: {item.size}</p>}
                     </div>
                     <div style={{ display: "flex", alignItems: "center", border: `1px solid ${C.border}`, borderRadius: 6, overflow: "hidden" }}>
                       <button onClick={() => updateQty(item.productId, item.size, -1)} style={{ width: 30, height: 30, background: C.bgCard2, border: "none", cursor: "pointer", color: C.white }}>-</button>
@@ -4903,24 +4908,24 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                   </div>
                 ))}
                 <button className="btn-primary" disabled={cartItems.length === 0} style={{ width: "100%", justifyContent: "center", padding: "13px", fontSize: 15, marginTop: 14, opacity: cartItems.length === 0 ? 0.5 : 1 }} onClick={() => setStep("address")}>
-                  التالي: العنوان ←
+                  {lang === "ar" ? "التالي: العنوان ←" : "Next: Address →"}
                 </button>
               </div>
             )}
 
             {step === "address" && (
               <div>
-                <h2 style={{ fontWeight: 800, fontSize: 22, color: C.white, marginBottom: 20 }}>بيانات العنوان</h2>
+                <h2 style={{ fontWeight: 800, fontSize: 22, color: C.white, marginBottom: 20 }}>{t("بيانات العنوان", "Address details")}</h2>
                 <div className="card" style={{ padding: 24 }}>
                   <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr", "1fr 1fr"), gap: 14, marginBottom: 14 }}>
-                    <div><label style={{ fontSize: 12, fontWeight: 600, color: C.gray, display: "block", marginBottom: 6 }}>الاسم الأول</label><input className="input" value={address.firstName} onChange={(e) => setAddress({ ...address, firstName: e.target.value })} /></div>
-                    <div><label style={{ fontSize: 12, fontWeight: 600, color: C.gray, display: "block", marginBottom: 6 }}>اسم العائلة</label><input className="input" value={address.lastName} onChange={(e) => setAddress({ ...address, lastName: e.target.value })} /></div>
+                    <div><label style={{ fontSize: 12, fontWeight: 600, color: C.gray, display: "block", marginBottom: 6 }}>{t("الاسم الأول", "First name")}</label><input className="input" value={address.firstName} onChange={(e) => setAddress({ ...address, firstName: e.target.value })} /></div>
+                    <div><label style={{ fontSize: 12, fontWeight: 600, color: C.gray, display: "block", marginBottom: 6 }}>{t("اسم العائلة", "Last name")}</label><input className="input" value={address.lastName} onChange={(e) => setAddress({ ...address, lastName: e.target.value })} /></div>
                   </div>
-                  <div style={{ marginBottom: 14 }}><label style={{ fontSize: 12, fontWeight: 600, color: C.gray, display: "block", marginBottom: 6 }}>رقم الهاتف</label><input className="input" value={address.phone} onChange={(e) => setAddress({ ...address, phone: e.target.value })} dir="ltr" /></div>
-                  <div style={{ marginBottom: 14 }}><label style={{ fontSize: 12, fontWeight: 600, color: C.gray, display: "block", marginBottom: 6 }}>المحافظة</label><select className="select" value={address.city} onChange={(e) => setAddress({ ...address, city: e.target.value })}><option>بني سويف</option><option>الفيوم</option><option>القاهرة</option></select></div>
+                  <div style={{ marginBottom: 14 }}><label style={{ fontSize: 12, fontWeight: 600, color: C.gray, display: "block", marginBottom: 6 }}>{t("رقم الهاتف", "Phone number")}</label><input className="input" value={address.phone} onChange={(e) => setAddress({ ...address, phone: e.target.value })} dir="ltr" /></div>
+                  <div style={{ marginBottom: 14 }}><label style={{ fontSize: 12, fontWeight: 600, color: C.gray, display: "block", marginBottom: 6 }}>{t("المحافظة", "Governorate")}</label><select className="select" value={address.city} onChange={(e) => setAddress({ ...address, city: e.target.value })}><option>{t("بني سويف", "Beni Suef")}</option><option>{t("الفيوم", "Faiyum")}</option><option>{t("القاهرة", "Cairo")}</option></select></div>
                   <div>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 6, flexWrap: "wrap" }}>
-                      <label style={{ fontSize: 12, fontWeight: 600, color: C.gray, display: "block" }}>العنوان التفصيلي</label>
+                      <label style={{ fontSize: 12, fontWeight: 600, color: C.gray, display: "block" }}>{t("العنوان التفصيلي", "Detailed address")}</label>
                       <button
                         type="button"
                         className="btn-outline-gold"
@@ -4928,38 +4933,40 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                         onClick={fillCurrentLocation}
                         disabled={locating}
                       >
-                        <I n="map" s={14} c={C.gold} /> {locating ? "جارٍ تحديد الموقع..." : "تحديد موقعي تلقائيًا"}
+                        <I n="map" s={14} c={C.gold} /> {locating ? t("جارٍ تحديد الموقع...", "Detecting location...") : t("تحديد موقعي تلقائيًا", "Use my current location")}
                       </button>
                     </div>
-                    <input className="input" value={address.details} onChange={(e) => setAddress({ ...address, details: e.target.value })} placeholder="الشارع، رقم المبنى، علامة مميزة..." />
+                    <input className="input" value={address.details} onChange={(e) => setAddress({ ...address, details: e.target.value })} placeholder={t("الشارع، رقم المبنى، علامة مميزة...", "Street, building number, landmark...")} />
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 12, marginTop: 16 }}>
-                  <button className="btn-ghost" onClick={() => setStep("cart")}>العودة للسلة</button>
-                  <button className="btn-primary" style={{ flex: 1, justifyContent: "center" }} onClick={() => setStep("delivery")}>متابعة إلى الشحن</button>
+                  <button className="btn-ghost" onClick={() => setStep("cart")}>{t("العودة للسلة", "Back to cart")}</button>
+                  <button className="btn-primary" style={{ flex: 1, justifyContent: "center" }} onClick={() => setStep("delivery")}>{t("متابعة إلى الشحن", "Continue to shipping")}</button>
                 </div>
               </div>
             )}
 
             {step === "delivery" && (
               <div>
-                <h2 style={{ fontWeight: 800, fontSize: 22, color: C.white, marginBottom: 20 }}>وسيلة الشحن أو الاستلام</h2>
+                <h2 style={{ fontWeight: 800, fontSize: 22, color: C.white, marginBottom: 20 }}>{t("وسيلة الشحن أو الاستلام", "Delivery or pickup")}</h2>
                 <div className="card" style={{ padding: 20 }}>
                   {deliveryOptions.length === 0 ? (
                     <div style={{ color: C.gray, fontSize: 13 }}>
-                      لا توجد خيارات شحن متاحة حالياً. يمكنك المتابعة وسيتم التواصل معك للتنسيق.
+                      {t("لا توجد خيارات شحن متاحة حالياً. يمكنك المتابعة وسيتم التواصل معك للتنسيق.", "No shipping options are available right now. You can continue and we will contact you to arrange delivery.")}
                     </div>
                   ) : (
                     <div style={{ display: "grid", gap: 12 }}>
                       {deliveryOptions.map((option) => {
                         const selected = option.id === selectedDeliveryId;
-                        const feeLabel = option.type === "pickup" ? "استلام من الجيم" : `رسوم الشحن ${formatCurrency(option.fee)}`;
+                        const feeLabel = option.type === "pickup" ? t("استلام من الجيم", "Gym pickup") : `${t("رسوم الشحن", "Shipping fee")} ${formatCurrency(option.fee)}`;
                         const etaLabel =
                           option.type === "pickup"
-                            ? "استلام مباشر"
+                            ? t("استلام مباشر", "Instant pickup")
                             : option.estimatedDaysMin || option.estimatedDaysMax
-                              ? `التوصيل خلال ${option.estimatedDaysMin ?? option.estimatedDaysMax} - ${option.estimatedDaysMax ?? option.estimatedDaysMin} يوم`
-                              : "مدة التوصيل حسب الشركة";
+                              ? lang === "ar"
+                                ? `التوصيل خلال ${option.estimatedDaysMin ?? option.estimatedDaysMax} - ${option.estimatedDaysMax ?? option.estimatedDaysMin} يوم`
+                                : `Delivery in ${option.estimatedDaysMin ?? option.estimatedDaysMax}-${option.estimatedDaysMax ?? option.estimatedDaysMin} days`
+                              : t("مدة التوصيل حسب الشركة", "Delivery time depends on the carrier");
                         return (
                           <button
                             key={option.id}
@@ -4990,23 +4997,23 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                 </div>
                 {selectedDelivery?.type === "pickup" ? (
                   <div className="card" style={{ marginTop: 12, padding: 14, background: "rgba(34,197,94,.08)", border: `1px solid ${C.success}33` }}>
-                    <div style={{ color: C.success, fontWeight: 700, fontSize: 12 }}>الدفع عند الاستلام متاح عند الاستلام من الجيم فقط.</div>
+                    <div style={{ color: C.success, fontWeight: 700, fontSize: 12 }}>{t("الدفع عند الاستلام متاح عند الاستلام من الجيم فقط.", "Cash on delivery is available only for gym pickup.")}</div>
                   </div>
                 ) : (
                   <div className="card" style={{ marginTop: 12, padding: 14, background: "rgba(233,30,99,.08)", border: `1px solid ${C.red}33` }}>
-                    <div style={{ color: C.red, fontWeight: 700, fontSize: 12 }}>عند اختيار شركة شحن، يتم الدفع مسبقاً عبر إنستا باي أو فودافون كاش.</div>
+                    <div style={{ color: C.red, fontWeight: 700, fontSize: 12 }}>{t("عند اختيار شركة شحن، يتم الدفع مسبقاً عبر إنستا باي أو فودافون كاش.", "When shipping is selected, payment is made in advance via InstaPay or Vodafone Cash.")}</div>
                   </div>
                 )}
                 <div style={{ display: "flex", gap: 12, marginTop: 16 }}>
-                  <button className="btn-ghost" onClick={() => setStep("address")}>العودة للعنوان</button>
-                  <button className="btn-primary" style={{ flex: 1, justifyContent: "center" }} onClick={() => setStep("payment")}>متابعة إلى الدفع</button>
+                  <button className="btn-ghost" onClick={() => setStep("address")}>{t("العودة للعنوان", "Back to address")}</button>
+                  <button className="btn-primary" style={{ flex: 1, justifyContent: "center" }} onClick={() => setStep("payment")}>{t("متابعة إلى الدفع", "Continue to payment")}</button>
                 </div>
               </div>
             )}
 
             {step === "payment" && (
               <div>
-                <h2 style={{ fontWeight: 800, fontSize: 22, color: C.white, marginBottom: 20 }}>طريقة الدفع</h2>
+                <h2 style={{ fontWeight: 800, fontSize: 22, color: C.white, marginBottom: 20 }}>{t("طريقة الدفع", "Payment method")}</h2>
                 <div className="card" style={{ padding: 20 }}>
                   {availablePayMethods.map((method) => {
                     const icon = method.id === "instapay" ? "⚡" : method.id === "vodafone_cash" ? "💳" : "💵";
@@ -5024,17 +5031,17 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                     <div style={{ width: 18, height: 18, borderRadius: 4, border: `2px solid ${useRewards ? C.red : C.border}`, background: useRewards ? C.red : "transparent", display: "flex", alignItems: "center", justifyContent: "center" }}>
                       {useRewards && <I n="check" s={11} c="#fff" />}
                     </div>
-                    <span style={{ fontSize: 13, color: C.grayLight }}>استخدام نقاط الولاء ({(summary?.rewardPoints ?? 0).toLocaleString("ar-EG")} نقطة = <strong style={{ color: C.gold }}>{formatCurrency(rewardsValue)}</strong>)</span>
+                    <span style={{ fontSize: 13, color: C.grayLight }}>{t("استخدام نقاط الولاء", "Use reward points")} ({(summary?.rewardPoints ?? 0).toLocaleString(lang === "ar" ? "ar-EG" : "en-US")} {t("نقطة", "points")} = <strong style={{ color: C.gold }}>{formatCurrency(rewardsValue)}</strong>)</span>
                   </div>
                 </div>
                 <div className="card" style={{ padding: 18, marginTop: 12, background: "rgba(200,162,0,.08)", border: `1px solid ${C.gold}33` }}>
-                  <p style={{ color: C.gold, fontWeight: 700, fontSize: 13 }}>الدفع يتم عبر الهاتف.</p>
-                  <p style={{ color: C.gray, fontSize: 12, marginTop: 6 }}>بعد تسجيل الطلب ستصلك صفحة التحويل الخاصة بوسيلة الدفع المختارة.</p>
+                  <p style={{ color: C.gold, fontWeight: 700, fontSize: 13 }}>{t("الدفع يتم عبر الهاتف.", "Payment is completed via phone.")}</p>
+                  <p style={{ color: C.gray, fontSize: 12, marginTop: 6 }}>{t("بعد تسجيل الطلب ستصلك صفحة التحويل الخاصة بوسيلة الدفع المختارة.", "After placing the order, you will receive the transfer page for the selected payment method.")}</p>
                 </div>
                 <div style={{ display: "flex", gap: 12, marginTop: 16 }}>
-                  <button className="btn-ghost" onClick={() => setStep("delivery")}>العودة للشحن</button>
+                  <button className="btn-ghost" onClick={() => setStep("delivery")}>{t("العودة للشحن", "Back to shipping")}</button>
                   <button className="btn-primary" disabled={submitting} style={{ flex: 1, justifyContent: "center", padding: "13px", fontSize: 15, opacity: submitting ? 0.7 : 1 }} onClick={submitOrder}>
-                    {submitting ? "جارٍ تسجيل الطلب..." : `تأكيد الطلب ${formatCurrency(total)}`}
+                    {submitting ? t("جارٍ تسجيل الطلب...", "Submitting order...") : `${t("تأكيد الطلب", "Confirm order")} ${formatCurrency(total)}`}
                   </button>
                 </div>
               </div>
@@ -5042,24 +5049,24 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
           </div>
 
           <div className="card" style={{ padding: 24, position: viewportWidth() < 1024 ? "static" : "sticky", top: 90 }}>
-            <h3 style={{ fontWeight: 800, fontSize: 17, color: C.white, marginBottom: 16 }}>ملخص الطلب</h3>
+            <h3 style={{ fontWeight: 800, fontSize: 17, color: C.white, marginBottom: 16 }}>{t("ملخص الطلب", "Order summary")}</h3>
             {cartItems.map((item) => (
               <div key={`${item.productId}-${item.size ?? ""}`} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", fontSize: 13, borderBottom: `1px solid ${C.border}` }}>
-                <span style={{ color: C.gray }}>{item.name} أ— {item.qty}</span>
+                <span style={{ color: C.gray }}>{item.name} × {item.qty}</span>
                 <span style={{ fontWeight: 600, color: C.white }}>{formatCurrency(item.price * item.qty)}</span>
               </div>
             ))}
             <div className="divider" />
-            <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 13 }}><span style={{ color: C.gray }}>الإجمالي الفرعي</span><span style={{ color: C.white }}>{formatCurrency(subtotal)}</span></div>
-            <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 13 }}><span style={{ color: C.gray }}>نقاط الولاء المتاحة</span><span style={{ color: C.gold }}>{formatCurrency(rewardsValue)}</span></div>
-            {discount > 0 && <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 13 }}><span style={{ color: C.gray }}>الخصم المطبق</span><span style={{ color: C.success }}>- {formatCurrency(discount)}</span></div>}
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 13 }}><span style={{ color: C.gray }}>{t("الإجمالي الفرعي", "Subtotal")}</span><span style={{ color: C.white }}>{formatCurrency(subtotal)}</span></div>
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 13 }}><span style={{ color: C.gray }}>{t("نقاط الولاء المتاحة", "Available reward points")}</span><span style={{ color: C.gold }}>{formatCurrency(rewardsValue)}</span></div>
+            {discount > 0 && <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 13 }}><span style={{ color: C.gray }}>{t("الخصم المطبق", "Applied discount")}</span><span style={{ color: C.success }}>- {formatCurrency(discount)}</span></div>}
             <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 13 }}>
-              <span style={{ color: C.gray }}>رسوم الشحن</span>
+              <span style={{ color: C.gray }}>{t("رسوم الشحن", "Shipping fee")}</span>
               <span style={{ color: C.white }}>{formatCurrency(shippingFee)}</span>
             </div>
             <div className="divider" />
             <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <span style={{ fontWeight: 800, fontSize: 17, color: C.white }}>الإجمالي النهائي</span>
+              <span style={{ fontWeight: 800, fontSize: 17, color: C.white }}>{t("الإجمالي النهائي", "Final total")}</span>
               <span style={{ fontWeight: 900, color: C.red, fontSize: 22 }}>{formatCurrency(total)}</span>
             </div>
           </div>

@@ -1,9 +1,14 @@
 "use client";
 
+import { useLang } from "@/lib/language";
+
 type LegalContent = {
   title: string;
+  titleEn?: string;
   updatedAt: string;
+  updatedAtEn?: string;
   content: string;
+  contentEn?: string;
 };
 
 function renderContent(content: string) {
@@ -19,9 +24,15 @@ function renderContent(content: string) {
 }
 
 export default function LegalPage({ content }: { content: LegalContent }) {
+  const { lang } = useLang();
+  const isArabic = lang === "ar";
+  const localizedTitle = isArabic ? content.title : content.titleEn ?? content.title;
+  const localizedUpdatedAt = isArabic ? content.updatedAt : content.updatedAtEn ?? content.updatedAt;
+  const localizedContent = isArabic ? content.content : content.contentEn ?? content.content;
+
   return (
     <main
-      dir="rtl"
+      dir={isArabic ? "rtl" : "ltr"}
       style={{
         minHeight: "100vh",
         background: "linear-gradient(180deg, #F8ECF0 0%, #FFF6F9 100%)",
@@ -58,13 +69,13 @@ export default function LegalPage({ content }: { content: LegalContent }) {
             marginBottom: 18,
           }}
         >
-          العودة للصفحة الرئيسية
+          {isArabic ? "العودة للصفحة الرئيسية" : "Back to home"}
         </button>
         <div style={{ marginBottom: 18 }}>
-          <h1 style={{ fontSize: 28, fontWeight: 800, marginBottom: 6 }}>{content.title}</h1>
-          <div style={{ fontSize: 13, color: "#8d6c7a" }}>{content.updatedAt}</div>
+          <h1 style={{ fontSize: 28, fontWeight: 800, marginBottom: 6 }}>{localizedTitle}</h1>
+          <div style={{ fontSize: 13, color: "#8d6c7a" }}>{localizedUpdatedAt}</div>
         </div>
-        <div style={{ fontSize: 15 }}>{renderContent(content.content)}</div>
+        <div style={{ fontSize: 15 }}>{renderContent(localizedContent)}</div>
       </div>
     </main>
   );

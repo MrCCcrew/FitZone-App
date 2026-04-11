@@ -42,11 +42,17 @@ type ContactData = {
 
 type TrainersPageData = {
   badge: string;
+  badgeEn?: string;
   title: string;
+  titleEn?: string;
   subtitle: string;
+  subtitleEn?: string;
   description: string;
+  descriptionEn?: string;
   highlight: string;
+  highlightEn?: string;
   ctaLabel: string;
+  ctaLabelEn?: string;
 };
 
 type Announcement = { id: string; text: string; active: boolean };
@@ -60,25 +66,36 @@ type AboutData = {
 type BlogPost = {
   id: string;
   title: string;
+  titleEn?: string;
   category: string;
+  categoryEn?: string;
   author: string;
+  authorEn?: string;
   date: string;
+  dateEn?: string;
   readTime: string;
+  readTimeEn?: string;
   featured: boolean;
   summary: string;
+  summaryEn?: string;
   content: string;
+  contentEn?: string;
   coverImage: string;
   videoUrl: string;
   active: boolean;
 };
 type BlogData = {
   categories: string[];
+  categoriesEn?: string[];
   posts: BlogPost[];
 };
 type LegalData = {
   title: string;
+  titleEn?: string;
   updatedAt: string;
+  updatedAtEn?: string;
   content: string;
+  contentEn?: string;
 };
 
 const DEFAULTS: Record<Tab, unknown> = {
@@ -454,22 +471,40 @@ function TrainersPageTab({
         <Field label="زر الدعوة">
           <TInput value={data.ctaLabel} onChange={(v) => update("ctaLabel", v)} />
         </Field>
+        <Field label="CTA Label (EN)">
+          <TInput value={data.ctaLabelEn ?? ""} onChange={(v) => update("ctaLabelEn", v)} />
+        </Field>
+        <Field label="Badge (EN)">
+          <TInput value={data.badgeEn ?? ""} onChange={(v) => update("badgeEn", v)} />
+        </Field>
       </div>
 
       <Field label="العنوان الرئيسي">
         <TInput value={data.title} onChange={(v) => update("title", v)} />
       </Field>
+      <Field label="Title (EN)">
+        <TInput value={data.titleEn ?? ""} onChange={(v) => update("titleEn", v)} />
+      </Field>
 
       <Field label="العنوان الفرعي">
         <TInput value={data.subtitle} onChange={(v) => update("subtitle", v)} />
+      </Field>
+      <Field label="Subtitle (EN)">
+        <TInput value={data.subtitleEn ?? ""} onChange={(v) => update("subtitleEn", v)} />
       </Field>
 
       <Field label="وصف الصفحة">
         <TTextarea value={data.description} onChange={(v) => update("description", v)} rows={4} />
       </Field>
+      <Field label="Description (EN)">
+        <TTextarea value={data.descriptionEn ?? ""} onChange={(v) => update("descriptionEn", v)} rows={4} />
+      </Field>
 
       <Field label="سطر إبراز أسفل المقدمة">
         <TInput value={data.highlight} onChange={(v) => update("highlight", v)} />
+      </Field>
+      <Field label="Highlight (EN)">
+        <TInput value={data.highlightEn ?? ""} onChange={(v) => update("highlightEn", v)} />
       </Field>
     </div>
   );
@@ -561,12 +596,21 @@ function LegalTab({ data, onChange }: { data: LegalData; onChange: (d: LegalData
         <Field label="عنوان الصفحة">
           <TInput value={data.title} onChange={(v) => update("title", v)} />
         </Field>
+        <Field label="Title (EN)">
+          <TInput value={data.titleEn ?? ""} onChange={(v) => update("titleEn", v)} />
+        </Field>
         <Field label="تاريخ التحديث">
           <TInput value={data.updatedAt} onChange={(v) => update("updatedAt", v)} />
+        </Field>
+        <Field label="Updated At (EN)">
+          <TInput value={data.updatedAtEn ?? ""} onChange={(v) => update("updatedAtEn", v)} />
         </Field>
       </div>
       <Field label="المحتوى" hint="اكتبي النص الكامل، ويمكن استخدام سطور جديدة للتقسيم.">
         <TTextarea value={data.content} onChange={(v) => update("content", v)} rows={10} />
+      </Field>
+      <Field label="Content (EN)" hint="Use the English version of the same legal page here.">
+        <TTextarea value={data.contentEn ?? ""} onChange={(v) => update("contentEn", v)} rows={10} />
       </Field>
     </div>
   );
@@ -575,13 +619,20 @@ function LegalTab({ data, onChange }: { data: LegalData; onChange: (d: LegalData
 const EMPTY_BLOG_POST: BlogPost = {
   id: "",
   title: "",
+  titleEn: "",
   category: "",
+  categoryEn: "",
   author: "",
+  authorEn: "",
   date: "",
+  dateEn: "",
   readTime: "",
+  readTimeEn: "",
   featured: false,
   summary: "",
+  summaryEn: "",
   content: "",
+  contentEn: "",
   coverImage: "",
   videoUrl: "",
   active: true,
@@ -614,7 +665,11 @@ function BlogTabFixed({ data, onChange }: { data: BlogData; onChange: (d: BlogDa
     const categories = nextPost.category && !data.categories.includes(nextPost.category)
       ? [...data.categories, nextPost.category]
       : data.categories;
-    onChange({ ...data, categories, posts });
+    const categoriesEn =
+      nextPost.categoryEn && !((data.categoriesEn ?? []).includes(nextPost.categoryEn))
+        ? [...(data.categoriesEn ?? []), nextPost.categoryEn]
+        : (data.categoriesEn ?? []);
+    onChange({ ...data, categories, categoriesEn, posts });
     resetDraft();
   };
 
@@ -666,6 +721,13 @@ function BlogTabFixed({ data, onChange }: { data: BlogData; onChange: (d: BlogDa
             rows={4}
           />
         </Field>
+        <Field label="Blog Categories EN (one per line)">
+          <TTextarea
+            value={listToText(data.categoriesEn)}
+            onChange={(v) => update("categoriesEn", textToList(v))}
+            rows={4}
+          />
+        </Field>
       </div>
 
       <div className="grid gap-4 rounded-2xl border border-gray-800 bg-black/30 p-4">
@@ -710,6 +772,27 @@ function BlogTabFixed({ data, onChange }: { data: BlogData; onChange: (d: BlogDa
           </Field>
           <Field label="رابط الفيديو">
             <TInput value={draft.videoUrl} onChange={(v) => setDraftField("videoUrl", v)} placeholder="https://..." />
+          </Field>
+          <Field label="Title EN">
+            <TInput value={draft.titleEn ?? ""} onChange={(v) => setDraftField("titleEn", v)} placeholder="English title" />
+          </Field>
+          <Field label="Category EN">
+            <TInput value={draft.categoryEn ?? ""} onChange={(v) => setDraftField("categoryEn", v)} placeholder="Fitness" />
+          </Field>
+          <Field label="Author EN">
+            <TInput value={draft.authorEn ?? ""} onChange={(v) => setDraftField("authorEn", v)} placeholder="Heba Zarif" />
+          </Field>
+          <Field label="Date EN">
+            <TInput value={draft.dateEn ?? ""} onChange={(v) => setDraftField("dateEn", v)} placeholder="April 11, 2026" />
+          </Field>
+          <Field label="Read Time EN">
+            <TInput value={draft.readTimeEn ?? ""} onChange={(v) => setDraftField("readTimeEn", v)} placeholder="5 min read" />
+          </Field>
+          <Field label="Summary EN">
+            <TTextarea value={draft.summaryEn ?? ""} onChange={(v) => setDraftField("summaryEn", v)} rows={2} />
+          </Field>
+          <Field label="Content EN">
+            <TTextarea value={draft.contentEn ?? ""} onChange={(v) => setDraftField("contentEn", v)} rows={5} />
           </Field>
           <div className="space-y-2">
             <label className="text-xs font-medium text-gray-400">رفع صورة الغلاف</label>
