@@ -18,7 +18,7 @@ interface DiscountCode {
   createdAt: string;
 }
 
-const INPUT = "w-full bg-[rgba(255,255,255,.06)] border border-[rgba(255,188,219,0.2)] focus:border-pink-400 rounded-xl px-4 py-2.5 text-[#fff4f8] text-sm outline-none transition-colors placeholder:text-[#a07080]";
+const INPUT = "w-full bg-[rgba(255,255,255,.06)] border border-[rgba(255,188,219,0.2)] focus:border-pink-400 rounded-xl px-4 py-2.5 text-[#fff4f8] text-sm outline-none transition-colors placeholder:text-[#a07080] [&_option]:bg-[#2a0f1b] [&_option]:text-[#fff2f8]";
 const LABEL = "block text-xs font-bold text-[#d7aabd] mb-1";
 const BTN_PRIMARY = "rounded-xl bg-[#E91E63] px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-[#C2185B] disabled:opacity-50";
 const BTN_GHOST = "rounded-xl border border-[rgba(255,188,219,0.2)] px-3 py-1.5 text-xs font-bold text-[#d7aabd] transition-colors hover:border-pink-400 hover:text-white";
@@ -221,7 +221,7 @@ export default function DiscountCodes() {
               </div>
               <div>
                 <label className={LABEL}>نوع الخصم (Type)</label>
-                <select className={INPUT} value={form.type} onChange={f("type")}>
+                <select className={INPUT} style={{ backgroundColor: "#2a0f1b" }} value={form.type} onChange={f("type")}>
                   <option value="percentage">نسبة مئوية %</option>
                   <option value="fixed">مبلغ ثابت (جنيه)</option>
                 </select>

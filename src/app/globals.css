@@ -346,6 +346,13 @@
     border-radius: 0.95rem;
   }
 
+  .admin-theme select,
+  .admin-theme select option,
+  .admin-theme select optgroup {
+    background-color: #2a0f1b;
+    color: #fff2f8;
+  }
+
   .admin-theme table {
     overflow: hidden;
     border-radius: 1rem;
