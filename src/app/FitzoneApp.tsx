@@ -1600,6 +1600,10 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
     const timer = setInterval(() => setOfferNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [specialOffer]);
+  const animatedTodayClasses = useMemo(
+    () => (lang === "ar" ? [...todayClasses].reverse() : todayClasses),
+    [lang, todayClasses],
+  );
   useEffect(() => {
     const applyTransform = () => {
       if (todayTrackRef.current) {
@@ -1609,7 +1613,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
 
     const measure = () => {
       const track = todayTrackRef.current;
-      if (!track || todayClasses.length === 0) return;
+      if (!track || animatedTodayClasses.length === 0) return;
       const segmentWidth = track.scrollWidth / 3;
       todaySegmentWidthRef.current = segmentWidth;
       todayOffsetRef.current = -segmentWidth;
@@ -1619,10 +1623,10 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
     measure();
     window.addEventListener("resize", measure);
     return () => window.removeEventListener("resize", measure);
-  }, [todayClasses.length]);
+  }, [animatedTodayClasses.length, lang]);
 
   useEffect(() => {
-    if (todayClasses.length <= 1) return;
+    if (animatedTodayClasses.length <= 1) return;
     let frameId = 0;
     let lastTime = performance.now();
 
@@ -1642,11 +1646,11 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
 
     frameId = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frameId);
-  }, [lang, todayClasses.length]);
+  }, [animatedTodayClasses.length, lang]);
 
   const moveTodayCarousel = useCallback((direction: "prev" | "next") => {
-    if (todayClasses.length === 0 || todaySegmentWidthRef.current <= 0) return;
-    const step = todaySegmentWidthRef.current / todayClasses.length;
+    if (animatedTodayClasses.length === 0 || todaySegmentWidthRef.current <= 0) return;
+    const step = todaySegmentWidthRef.current / animatedTodayClasses.length;
     const delta =
       direction === "next"
         ? (lang === "ar" ? -step : step)
@@ -1657,10 +1661,10 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
     }
     setTodayIndex((current) =>
       direction === "next"
-        ? (current + 1) % todayClasses.length
-        : (current - 1 + todayClasses.length) % todayClasses.length,
+        ? (current + 1) % animatedTodayClasses.length
+        : (current - 1 + animatedTodayClasses.length) % animatedTodayClasses.length,
     );
-  }, [lang, todayClasses.length]);
+  }, [animatedTodayClasses.length, lang]);
     const heroStats = summary?.authenticated
       ? [
           [formatCurrency(summary.walletBalance), t("رصيدك الحالي", "Current balance")],
@@ -2109,7 +2113,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
               <div ref={todayCarouselRef} className="today-classes-carousel">
                 <div ref={todayTrackRef} className="today-classes-track" style={{ direction: "ltr" }}>
                   {[0, 1, 2].flatMap((copyIndex) =>
-                    todayClasses.map((s, index) => (
+                    animatedTodayClasses.map((s, index) => (
                     <div key={`${s.id}-${copyIndex}-${index}-${todayIndex}`} dir={lang === "ar" ? "rtl" : "ltr"} className="card today-class-card" style={{ padding: 20, borderRight: `3px solid ${s.color}` }}>
                       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
                         <span style={{ background: `${s.color}22`, color: s.color, padding: "4px 12px", borderRadius: 4, fontSize: 13, fontWeight: 700 }}>{s.time}</span>
