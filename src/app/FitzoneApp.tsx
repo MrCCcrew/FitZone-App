@@ -123,16 +123,17 @@ const css = `
   .today-classes-carousel::before,.today-classes-carousel::after{content:'';position:absolute;top:0;bottom:0;width:72px;z-index:2;pointer-events:none;}
   .today-classes-carousel::before{left:0;background:linear-gradient(to right,${C.bg},rgba(255,245,248,0));}
   .today-classes-carousel::after{right:0;background:linear-gradient(to left,${C.bg},rgba(255,245,248,0));}
-  .today-classes-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;}
+  .today-classes-track{display:flex;gap:16px;width:max-content;will-change:transform;}
+  .today-class-card{flex:0 0 280px;}
   @media(max-width:900px){
     .schedule-title h2{font-size:28px;}
     .schedule-shell{padding:20px;}
     .schedule-cell{min-height:74px;}
     .today-classes-carousel::before,.today-classes-carousel::after{width:32px;}
-    .today-classes-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
+    .today-class-card{flex-basis:240px;}
   }
   @media(max-width:640px){
-    .today-classes-grid{grid-template-columns:1fr;}
+    .today-class-card{flex-basis:220px;}
   }
 `;
 
@@ -171,6 +172,13 @@ function loadPublicApi(force = false) {
 function useT() {
   const { lang } = useLang();
   return useCallback((ar: string, en: string) => (lang === "ar" ? ar : en), [lang]);
+}
+
+function wrapCarouselOffset(offset: number, segmentWidth: number) {
+  if (segmentWidth <= 0) return offset;
+  if (offset <= -2 * segmentWidth) return offset + segmentWidth;
+  if (offset >= 0) return offset - segmentWidth;
+  return offset;
 }
 
 function getDefaultAccount(
@@ -1447,6 +1455,10 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
   const [specialOfferMessage, setSpecialOfferMessage] = useState<{ text: string; ok: boolean } | null>(null);
   const [todayClasses, setTodayClasses] = useState<Array<{ id: string; time: string; name: string; trainer: string; spots: number; color: string }>>([]);
   const [todayIndex, setTodayIndex] = useState(0);
+  const todayCarouselRef = useRef<HTMLDivElement | null>(null);
+  const todayTrackRef = useRef<HTMLDivElement | null>(null);
+  const todayOffsetRef = useRef(0);
+  const todaySegmentWidthRef = useRef(0);
     const [heroContent, setHeroContent] = useState<HomeHeroContent>({
       badge: "أول نادي للسيدات في بني سويف",
       badgeEn: "First women & kids gym in Beni Suef",
@@ -1589,22 +1601,66 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
     return () => clearInterval(timer);
   }, [specialOffer]);
   useEffect(() => {
+    const applyTransform = () => {
+      if (todayTrackRef.current) {
+        todayTrackRef.current.style.transform = `translate3d(${todayOffsetRef.current}px, 0, 0)`;
+      }
+    };
+
+    const measure = () => {
+      const track = todayTrackRef.current;
+      if (!track || todayClasses.length === 0) return;
+      const segmentWidth = track.scrollWidth / 3;
+      todaySegmentWidthRef.current = segmentWidth;
+      todayOffsetRef.current = -segmentWidth;
+      applyTransform();
+    };
+
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [todayClasses.length]);
+
+  useEffect(() => {
     if (todayClasses.length <= 1) return;
-    const timer = setInterval(() => {
-      setTodayIndex((current) => {
-        const delta = lang === "ar" ? 1 : -1;
-        return (current + delta + todayClasses.length) % todayClasses.length;
-      });
-    }, 3200);
-    return () => clearInterval(timer);
+    let frameId = 0;
+    let lastTime = performance.now();
+
+    const tick = (now: number) => {
+      const elapsed = (now - lastTime) / 1000;
+      lastTime = now;
+      const direction = lang === "ar" ? -1 : 1;
+      todayOffsetRef.current = wrapCarouselOffset(
+        todayOffsetRef.current + direction * 24 * elapsed,
+        todaySegmentWidthRef.current,
+      );
+      if (todayTrackRef.current) {
+        todayTrackRef.current.style.transform = `translate3d(${todayOffsetRef.current}px, 0, 0)`;
+      }
+      frameId = requestAnimationFrame(tick);
+    };
+
+    frameId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frameId);
   }, [lang, todayClasses.length]);
-  const todayVisibleCount = viewportWidth() < 640 ? 1 : viewportWidth() < 900 ? 2 : 4;
-  const visibleTodayClasses = todayClasses.length > 0
-    ? Array.from({ length: Math.min(todayVisibleCount, todayClasses.length) }, (_, offset) => {
-        const index = (todayIndex + offset) % todayClasses.length;
-        return todayClasses[index];
-      })
-    : [];
+
+  const moveTodayCarousel = useCallback((direction: "prev" | "next") => {
+    if (todayClasses.length === 0 || todaySegmentWidthRef.current <= 0) return;
+    const step = todaySegmentWidthRef.current / todayClasses.length;
+    const delta =
+      direction === "next"
+        ? (lang === "ar" ? -step : step)
+        : (lang === "ar" ? step : -step);
+    todayOffsetRef.current = wrapCarouselOffset(todayOffsetRef.current + delta, todaySegmentWidthRef.current);
+    if (todayTrackRef.current) {
+      todayTrackRef.current.style.transform = `translate3d(${todayOffsetRef.current}px, 0, 0)`;
+    }
+    setTodayIndex((current) =>
+      direction === "next"
+        ? (current + 1) % todayClasses.length
+        : (current - 1 + todayClasses.length) % todayClasses.length,
+    );
+  }, [lang, todayClasses.length]);
     const heroStats = summary?.authenticated
       ? [
           [formatCurrency(summary.walletBalance), t("رصيدك الحالي", "Current balance")],
@@ -2022,7 +2078,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
             <div style={{ position: "relative" }}>
               <button
                 className="btn-outline"
-                onClick={() => setTodayIndex((prev) => (prev - 1 + todayClasses.length) % todayClasses.length)}
+                onClick={() => moveTodayCarousel("prev")}
                 style={{
                   position: "absolute",
                   left: -12,
@@ -2037,7 +2093,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
               </button>
               <button
                 className="btn-outline"
-                onClick={() => setTodayIndex((prev) => (prev + 1) % todayClasses.length)}
+                onClick={() => moveTodayCarousel("next")}
                 style={{
                   position: "absolute",
                   right: -12,
@@ -2050,10 +2106,11 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
               >
                 <I n="chevronRight" s={16} c={C.red} />
               </button>
-              <div className="today-classes-carousel">
-                <div className="today-classes-grid">
-                  {visibleTodayClasses.map((s, index) => (
-                    <div key={`${s.id}-${todayIndex}-${index}`} className="card" style={{ padding: 20, borderRight: `3px solid ${s.color}`, transition: "transform .45s ease, opacity .45s ease, box-shadow .25s ease" }}>
+              <div ref={todayCarouselRef} className="today-classes-carousel">
+                <div ref={todayTrackRef} className="today-classes-track">
+                  {[0, 1, 2].flatMap((copyIndex) =>
+                    todayClasses.map((s, index) => (
+                    <div key={`${s.id}-${copyIndex}-${index}-${todayIndex}`} className="card today-class-card" style={{ padding: 20, borderRight: `3px solid ${s.color}` }}>
                       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
                         <span style={{ background: `${s.color}22`, color: s.color, padding: "4px 12px", borderRadius: 4, fontSize: 13, fontWeight: 700 }}>{s.time}</span>
                         <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 4, background: s.spots === 0 ? "rgba(239,68,68,.15)" : s.spots < 4 ? "rgba(234,179,8,.12)" : "rgba(34,197,94,.12)", color: s.spots === 0 ? "#EF4444" : s.spots < 4 ? "#EAB308" : C.success, fontWeight: 600 }}>
@@ -2066,7 +2123,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                         {s.spots === 0 ? t("ممتلئ", "Full") : t("احجزي الآن", "Book now")}
                       </button>
                     </div>
-                  ))}
+                  )))}
                 </div>
               </div>
             </div>
