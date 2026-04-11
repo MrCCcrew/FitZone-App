@@ -1695,18 +1695,12 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
             </div>
           </div>
             <div style={{ order: viewportWidth() < 1024 ? 1 : 2 }}>
-              <div
-                style={{
-                  position: "relative",
-                  minHeight: viewportWidth() < 768 ? 280 : 430,
-                }}
-              >
+              <div style={{ position: "relative" }}>
                 <div
                   className="card glow-red"
                   style={{
                     position: "relative",
                     overflow: "hidden",
-                    minHeight: viewportWidth() < 768 ? 260 : 380,
                     borderRadius: 18,
                     background: "rgba(255,255,255,.55)",
                     backdropFilter: "blur(12px)",
@@ -1714,7 +1708,8 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                     boxShadow: "0 24px 80px rgba(233,30,99,.2)",
                   }}
                 >
-                  <div style={{ position: "relative", height: "100%", minHeight: viewportWidth() < 768 ? 260 : 380, padding: 12 }}>
+                  {/* 16:9 aspect-ratio wrapper — matches exact upload spec */}
+                  <div style={{ position: "relative", width: "100%", aspectRatio: "16/9", padding: 12 }}>
                   {heroSlides.map((slide, index) => (
                     <div
                       key={`${slide}-${index}`}
@@ -1727,11 +1722,11 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                         pointerEvents: index === heroSlideIndex ? "auto" : "none",
                       }}
                     >
-                      <div style={{ height: "100%", overflow: "hidden", borderRadius: 14, position: "relative" }}>
+                      <div style={{ width: "100%", height: "100%", overflow: "hidden", borderRadius: 14, position: "relative" }}>
                         <img
                           src={slide}
                           alt={`hero-slide-${index + 1}`}
-                          style={{ width: "100%", height: viewportWidth() < 768 ? 260 : 380, objectFit: "cover", display: "block" }}
+                          style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
                         />
                         <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(26,8,18,.05), rgba(26,8,18,.28))" }} />
                         <div
