@@ -9,8 +9,10 @@ const INPUT =
 
 const EMPTY_OPTION: Omit<DeliveryOption, "id"> = {
   name: "",
+  nameEn: "",
   type: "courier",
   description: "",
+  descriptionEn: "",
   fee: 0,
   estimatedDaysMin: 1,
   estimatedDaysMax: 2,
@@ -207,6 +209,7 @@ export default function DeliveryOptions() {
                   >
                     <td className="px-5 py-4">
                       <div className="font-bold text-[#fff4f8]">{option.name}</div>
+                      {option.nameEn ? <div className="text-xs text-[#d7aabd]">{option.nameEn}</div> : null}
                       <div className="text-xs text-[#d7aabd]">{option.description || "بدون وصف إضافي"}</div>
                     </td>
                     <td className="px-5 py-4 text-[#d7aabd]">
@@ -268,6 +271,15 @@ export default function DeliveryOptions() {
               />
             </Field>
 
+            <Field label="اسم وسيلة التوصيل بالإنجليزية">
+              <input
+                value={modal.nameEn ?? ""}
+                onChange={(event) => setModal({ ...modal, nameEn: event.target.value })}
+                className={INPUT}
+                dir="ltr"
+              />
+            </Field>
+
             <Field label="نوع التوصيل">
               <select
                 value={modal.type}
@@ -287,6 +299,15 @@ export default function DeliveryOptions() {
                 value={modal.description ?? ""}
                 onChange={(event) => setModal({ ...modal, description: event.target.value })}
                 className={`${INPUT} min-h-24 resize-y`}
+              />
+            </Field>
+
+            <Field label="وصف مختصر بالإنجليزية">
+              <textarea
+                value={modal.descriptionEn ?? ""}
+                onChange={(event) => setModal({ ...modal, descriptionEn: event.target.value })}
+                className={`${INPUT} min-h-24 resize-y`}
+                dir="ltr"
               />
             </Field>
 

@@ -1,20 +1,25 @@
 import { NextResponse } from "next/server";
 import { requireAdminFeature } from "@/lib/admin-guard";
 import { db } from "@/lib/db";
+import { clearPublicApiCache } from "@/lib/public-cache";
 
 function mapQuestion(question: {
   id: string;
   title: string;
+  titleEn: string | null;
   slug: string;
   prompt: string;
+  promptEn: string | null;
   isActive: boolean;
   sortOrder: number;
 }) {
   return {
     id: question.id,
     title: question.title,
+    titleEn: question.titleEn,
     slug: question.slug,
     prompt: question.prompt,
+    promptEn: question.promptEn,
     active: question.isActive,
     sortOrder: question.sortOrder,
   };
@@ -62,8 +67,10 @@ export async function POST(req: Request) {
 
   const body = (await req.json()) as {
     title?: string;
+    titleEn?: string;
     slug?: string;
     prompt?: string;
+    promptEn?: string;
     active?: boolean;
     sortOrder?: number;
     restrictions?: Array<{ classType: string; notes?: string | null }>;
@@ -88,8 +95,10 @@ export async function POST(req: Request) {
   const created = await db.healthQuestion.create({
     data: {
       title,
+      titleEn: body.titleEn?.trim() || null,
       slug,
       prompt,
+      promptEn: body.promptEn?.trim() || null,
       isActive: body.active ?? true,
       sortOrder: Number.isFinite(body.sortOrder) ? Number(body.sortOrder) : 0,
       restrictions: restrictions.length
@@ -104,6 +113,7 @@ export async function POST(req: Request) {
     include: { restrictions: true },
   });
 
+  clearPublicApiCache();
   return NextResponse.json({
     ...mapQuestion(created),
     restrictedClassTypes: created.restrictions.map((item) => item.classType),
@@ -122,15 +132,17 @@ export async function PATCH(req: Request) {
   const body = (await req.json()) as {
     id?: string;
     title?: string;
+    titleEn?: string;
     slug?: string;
     prompt?: string;
+    promptEn?: string;
     active?: boolean;
     sortOrder?: number;
     restrictions?: Array<{ classType: string; notes?: string | null }>;
   };
 
   if (!body.id) {
-    return NextResponse.json({ error: "معرف السؤال مطلوب." }, { status: 400 });
+    return NextResponse.json({ error: "معرّف السؤال مطلوب." }, { status: 400 });
   }
 
   const current = await db.healthQuestion.findUnique({ where: { id: body.id } });
@@ -161,8 +173,10 @@ export async function PATCH(req: Request) {
       where: { id: body.id! },
       data: {
         title: body.title?.trim() ?? undefined,
+        titleEn: body.titleEn === undefined ? undefined : body.titleEn?.trim() || null,
         slug: nextSlug,
         prompt: body.prompt?.trim() ?? undefined,
+        promptEn: body.promptEn === undefined ? undefined : body.promptEn?.trim() || null,
         isActive: body.active,
         sortOrder: body.sortOrder === undefined ? undefined : Number(body.sortOrder),
       },
@@ -184,6 +198,7 @@ export async function PATCH(req: Request) {
     return question;
   });
 
+  clearPublicApiCache();
   const refreshed = await db.healthQuestion.findUniqueOrThrow({
     where: { id: updated.id },
     include: { restrictions: true },
@@ -206,9 +221,10 @@ export async function DELETE(req: Request) {
 
   const body = (await req.json()) as { id?: string };
   if (!body.id) {
-    return NextResponse.json({ error: "معرف السؤال مطلوب." }, { status: 400 });
+    return NextResponse.json({ error: "معرّف السؤال مطلوب." }, { status: 400 });
   }
 
   await db.healthQuestion.delete({ where: { id: body.id } });
+  clearPublicApiCache();
   return NextResponse.json({ success: true });
 }

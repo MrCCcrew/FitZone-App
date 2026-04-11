@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAdminFeature } from "@/lib/admin-guard";
 import { db } from "@/lib/db";
 import { ensureDefaultProductCategories } from "@/lib/product-categories";
+import { clearPublicApiCache } from "@/lib/public-cache";
 
 async function checkAdmin() {
   const guard = await requireAdminFeature("products");
@@ -31,6 +32,7 @@ export async function GET() {
       id: category.id,
       key: category.key,
       label: category.label,
+      labelEn: category.labelEn,
       sizeType: category.sizeType,
       sortOrder: category.sortOrder,
       active: category.isActive,
@@ -44,6 +46,7 @@ export async function POST(req: Request) {
 
   const body = await req.json();
   const label = String(body.label ?? "").trim();
+  const labelEn = String(body.labelEn ?? "").trim();
   const key = normalizeKey(String(body.key ?? label));
   const sizeType = ["none", "clothing", "shoes"].includes(body.sizeType) ? body.sizeType : "none";
   const sortOrder = Number(body.sortOrder ?? 0);
@@ -61,16 +64,19 @@ export async function POST(req: Request) {
     data: {
       key,
       label,
+      labelEn: labelEn || null,
       sizeType,
       sortOrder,
       isActive: body.active !== false,
     },
   });
 
+  clearPublicApiCache();
   return NextResponse.json({
     id: category.id,
     key: category.key,
     label: category.label,
+    labelEn: category.labelEn,
     sizeType: category.sizeType,
     sortOrder: category.sortOrder,
     active: category.isActive,
@@ -89,6 +95,7 @@ export async function PATCH(req: Request) {
 
   const data: Record<string, unknown> = {};
   if (body.label !== undefined) data.label = String(body.label).trim();
+  if (body.labelEn !== undefined) data.labelEn = String(body.labelEn).trim() || null;
   if (body.key !== undefined) data.key = normalizeKey(String(body.key));
   if (body.sizeType !== undefined && ["none", "clothing", "shoes"].includes(body.sizeType)) data.sizeType = body.sizeType;
   if (body.sortOrder !== undefined) data.sortOrder = Number(body.sortOrder);
@@ -99,6 +106,7 @@ export async function PATCH(req: Request) {
     data,
   });
 
+  clearPublicApiCache();
   return NextResponse.json({ success: true });
 }
 
@@ -122,5 +130,6 @@ export async function DELETE(req: Request) {
   }
 
   await db.productCategory.delete({ where: { id } });
+  clearPublicApiCache();
   return NextResponse.json({ success: true });
 }

@@ -10,9 +10,13 @@ type EditableTrainer = Omit<Trainer, "id" | "classesCount"> & { id?: string };
 
 const EMPTY_TRAINER: EditableTrainer = {
   name: "",
+  nameEn: "",
   specialty: "",
+  specialtyEn: "",
   bio: "",
+  bioEn: "",
   certifications: [],
+  certificationsEn: [],
   rating: 5,
   sessionsCount: 0,
   image: "",
@@ -110,7 +114,9 @@ export default function Trainers() {
     return trainers.filter(
       (trainer) =>
         trainer.name.includes(query) ||
+        (trainer.nameEn ?? "").includes(query) ||
         trainer.specialty.includes(query) ||
+        (trainer.specialtyEn ?? "").includes(query) ||
         (trainer.bio ?? "").includes(query),
     );
   }, [search, trainers]);
@@ -285,7 +291,9 @@ export default function Trainers() {
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <div className="text-lg font-black text-white">{trainer.name}</div>
+                      <div className="text-xs text-gray-500">{trainer.nameEn || "—"}</div>
                       <div className="text-sm font-semibold text-pink-300">{trainer.specialty}</div>
+                      {trainer.specialtyEn ? <div className="text-xs text-gray-500">{trainer.specialtyEn}</div> : null}
                     </div>
                     <div className="rounded-full bg-gray-800 px-3 py-1 text-xs text-gray-300">
                       ترتيب {trainer.sortOrder}
@@ -382,11 +390,29 @@ export default function Trainers() {
                 />
               </FieldHint>
 
+              <FieldHint title="اسم المدربة بالإنجليزية" hint="اختياري، لكنه سيظهر عند اختيار اللغة الإنجليزية.">
+                <input
+                  value={modal.nameEn ?? ""}
+                  onChange={(event) => setModal({ ...modal, nameEn: event.target.value })}
+                  className={INPUT}
+                  dir="ltr"
+                />
+              </FieldHint>
+
               <FieldHint title="التخصص" hint="مثال: يوجا وتأهيل بدني أو زومبا وكارديو.">
                 <input
                   value={modal.specialty}
                   onChange={(event) => setModal({ ...modal, specialty: event.target.value })}
                   className={INPUT}
+                />
+              </FieldHint>
+
+              <FieldHint title="التخصص بالإنجليزية" hint="اختياري، لكنه سيظهر عند اختيار اللغة الإنجليزية.">
+                <input
+                  value={modal.specialtyEn ?? ""}
+                  onChange={(event) => setModal({ ...modal, specialtyEn: event.target.value })}
+                  className={INPUT}
+                  dir="ltr"
                 />
               </FieldHint>
 
@@ -458,6 +484,19 @@ export default function Trainers() {
             </FieldHint>
 
             <FieldHint
+              title="نبذة عن المدربة بالإنجليزية"
+              hint="اختياري، لكنه سيظهر عند اختيار اللغة الإنجليزية."
+            >
+              <textarea
+                value={modal.bioEn ?? ""}
+                onChange={(event) => setModal({ ...modal, bioEn: event.target.value })}
+                rows={4}
+                className={`${INPUT} resize-none`}
+                dir="ltr"
+              />
+            </FieldHint>
+
+            <FieldHint
               title="الشهادات والاعتمادات"
               hint="اكتبي كل شهادة في سطر منفصل، وستظهر على شكل شارات داخل صفحة المدربات."
             >
@@ -466,6 +505,19 @@ export default function Trainers() {
                 onChange={(event) => setModal({ ...modal, certifications: textToList(event.target.value) })}
                 rows={4}
                 className={`${INPUT} resize-none`}
+              />
+            </FieldHint>
+
+            <FieldHint
+              title="الشهادات والاعتمادات بالإنجليزية"
+              hint="اكتب كل شهادة في سطر منفصل لتظهر عند اختيار اللغة الإنجليزية."
+            >
+              <textarea
+                value={listToText(modal.certificationsEn ?? [])}
+                onChange={(event) => setModal({ ...modal, certificationsEn: textToList(event.target.value) })}
+                rows={4}
+                className={`${INPUT} resize-none`}
+                dir="ltr"
               />
             </FieldHint>
 

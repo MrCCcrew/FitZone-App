@@ -2262,6 +2262,10 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
   const [verifyMsg, setVerifyMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [resendLoading, setResendLoading] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
+  const [discountCode, setDiscountCode] = useState("");
+  const [discountValidating, setDiscountValidating] = useState(false);
+  const [discountResult, setDiscountResult] = useState<{ id: string; type: string; value: number; discountAmount: number | null; description?: string | null } | null>(null);
+  const [discountError, setDiscountError] = useState<string | null>(null);
   const [surveyPlan, setSurveyPlan] = useState<PlanItem | null>(null);
   const [surveyAnswers, setSurveyAnswers] = useState<Record<string, boolean | null>>({});
   const [surveyError, setSurveyError] = useState<string | null>(null);
@@ -2554,6 +2558,29 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
     setScheduleError(null);
   };
 
+  const validateDiscount = async (membershipId?: string) => {
+    const code = discountCode.trim().toUpperCase();
+    if (!code) return;
+    setDiscountValidating(true);
+    setDiscountError(null);
+    setDiscountResult(null);
+    try {
+      const params = new URLSearchParams({ code });
+      if (membershipId) params.set("membershipId", membershipId);
+      const res = await fetch(`/api/discount/validate?${params.toString()}`);
+      const data = await res.json() as { valid?: boolean; error?: string; id?: string; type?: string; value?: number; discountAmount?: number | null; description?: string | null };
+      if (!res.ok || !data.valid) {
+        setDiscountError(data.error || t("كود الخصم غير صالح.", "Invalid discount code."));
+      } else {
+        setDiscountResult({ id: data.id!, type: data.type!, value: data.value!, discountAmount: data.discountAmount ?? null, description: data.description });
+      }
+    } catch {
+      setDiscountError(t("تعذر التحقق من الكود.", "Could not validate the code."));
+    } finally {
+      setDiscountValidating(false);
+    }
+  };
+
   const handleSubscribe = async (plan: PlanItem, scheduleIds: string[] = [], paymentOverride?: "instapay" | "vodafone_cash") => {
     if (!plan.id) { navigate("register"); return; }
     setSubscribing(plan.id);
@@ -2564,7 +2591,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
       const res = await fetch("/api/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ membershipId: plan.id, scheduleIds, paymentMethod: paymentOverride ?? membershipPayMethod }),
+        body: JSON.stringify({ membershipId: plan.id, scheduleIds, paymentMethod: paymentOverride ?? membershipPayMethod, discountCode: discountResult ? discountCode.trim().toUpperCase() : null }),
         signal: controller.signal,
       });
       clearTimeout(timer);
@@ -3144,11 +3171,51 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
               {subMsg.text}
             </div>
           )}
+          {/* Discount Code Box */}
+          <div style={{ marginBottom: 24, display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ display: "flex", gap: 8, alignItems: "stretch" }}>
+              <input
+                className="input"
+                style={{ flex: 1, textTransform: "uppercase" }}
+                placeholder={t("كود الخصم (اختياري)", "Discount code (optional)")}
+                value={discountCode}
+                onChange={(e) => {
+                  setDiscountCode(e.target.value.toUpperCase());
+                  setDiscountResult(null);
+                  setDiscountError(null);
+                }}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); validateDiscount(); } }}
+              />
+              <button
+                className="btn-outline"
+                style={{ whiteSpace: "nowrap", padding: "10px 20px" }}
+                onClick={() => validateDiscount()}
+                disabled={discountValidating || !discountCode.trim()}
+              >
+                {discountValidating ? t("...", "...") : t("تطبيق", "Apply")}
+              </button>
+            </div>
+            {discountResult && (
+              <div style={{ padding: "10px 14px", borderRadius: 8, background: "#dcfce7", color: "#166534", fontSize: 13, fontWeight: 700, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span>
+                  ✅ {t("تم تطبيق الخصم:", "Discount applied:")} {discountResult.type === "percentage" ? `${discountResult.value}%` : `${discountResult.value} ${t("جنيه", "EGP")}`}
+                  {discountResult.discountAmount != null && ` — ${t("توفيري", "You save")} ${discountResult.discountAmount} ${t("جنيه", "EGP")}`}
+                </span>
+                <button onClick={() => { setDiscountResult(null); setDiscountCode(""); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#166534", fontSize: 16, lineHeight: 1 }}>×</button>
+              </div>
+            )}
+            {discountError && (
+              <div style={{ padding: "8px 14px", borderRadius: 8, background: "#fee2e2", color: "#991b1b", fontSize: 13, fontWeight: 600 }}>
+                ⚠️ {discountError}
+              </div>
+            )}
+          </div>
+
           {selectedGoals.length === 0 ? (
             <div className="card" style={{ padding: 20, textAlign: "center", color: C.gray }}>
               {goalViewParentId
-                ? "اختاري هدفًا فرعيًا لعرض الاشتراكات المناسبة."
-                : "اختاري هدفًا أو أكثر لعرض الاشتراكات المناسبة."}
+                ? t("اختاري هدفًا فرعيًا لعرض الاشتراكات المناسبة.", "Select a sub-goal to see suitable plans.")
+                : t("اختاري هدفًا أو أكثر لعرض الاشتراكات المناسبة.", "Select one or more goals to see suitable plans.")}
             </div>
           ) : filteredPlans.length === 0 ? (
             <div className="card" style={{ padding: 20, textAlign: "center", color: C.gray }}>
