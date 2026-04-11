@@ -32,9 +32,13 @@ function parseStoredCertifications(value: string | null) {
 function formatTrainer(trainer: {
   id: string;
   name: string;
+  nameEn: string | null;
   specialty: string;
+  specialtyEn: string | null;
   bio: string | null;
+  bioEn: string | null;
   certifications: string | null;
+  certificationsEn: string | null;
   rating: number;
   sessionsCount: number;
   image: string | null;
@@ -46,9 +50,13 @@ function formatTrainer(trainer: {
   return {
     id: trainer.id,
     name: trainer.name,
+    nameEn: trainer.nameEn,
     specialty: trainer.specialty,
+    specialtyEn: trainer.specialtyEn,
     bio: trainer.bio,
+    bioEn: trainer.bioEn,
     certifications: parseStoredCertifications(trainer.certifications),
+    certificationsEn: parseStoredCertifications(trainer.certificationsEn),
     rating: trainer.rating,
     sessionsCount: trainer.sessionsCount,
     image: trainer.image,
@@ -90,9 +98,13 @@ export async function POST(req: Request) {
     const trainer = await db.trainer.create({
       data: {
         name: body.name.trim(),
+        nameEn: body.nameEn?.trim() || null,
         specialty: body.specialty.trim(),
+        specialtyEn: body.specialtyEn?.trim() || null,
         bio: body.bio?.trim() || null,
+        bioEn: body.bioEn?.trim() || null,
         certifications: JSON.stringify(parseCertifications(body.certifications)),
+        certificationsEn: JSON.stringify(parseCertifications(body.certificationsEn)),
         rating: Number(body.rating ?? 5) || 5,
         sessionsCount: Number(body.sessionsCount ?? 0) || 0,
         image: body.image?.trim() || null,
@@ -119,17 +131,23 @@ export async function PATCH(req: Request) {
     const body = await req.json();
 
     if (!body.id) {
-      return NextResponse.json({ error: "معرف المدربة مطلوب." }, { status: 400 });
+      return NextResponse.json({ error: "معرّف المدربة مطلوب." }, { status: 400 });
     }
 
     const trainer = await db.trainer.update({
       where: { id: body.id },
       data: {
         ...(body.name !== undefined ? { name: String(body.name).trim() } : {}),
+        ...(body.nameEn !== undefined ? { nameEn: String(body.nameEn).trim() || null } : {}),
         ...(body.specialty !== undefined ? { specialty: String(body.specialty).trim() } : {}),
+        ...(body.specialtyEn !== undefined ? { specialtyEn: String(body.specialtyEn).trim() || null } : {}),
         ...(body.bio !== undefined ? { bio: String(body.bio).trim() || null } : {}),
+        ...(body.bioEn !== undefined ? { bioEn: String(body.bioEn).trim() || null } : {}),
         ...(body.certifications !== undefined
           ? { certifications: JSON.stringify(parseCertifications(body.certifications)) }
+          : {}),
+        ...(body.certificationsEn !== undefined
+          ? { certificationsEn: JSON.stringify(parseCertifications(body.certificationsEn)) }
           : {}),
         ...(body.rating !== undefined ? { rating: Number(body.rating) || 0 } : {}),
         ...(body.sessionsCount !== undefined ? { sessionsCount: Number(body.sessionsCount) || 0 } : {}),
@@ -157,7 +175,7 @@ export async function DELETE(req: Request) {
     const { id } = await req.json();
 
     if (!id) {
-      return NextResponse.json({ error: "معرف المدربة مطلوب." }, { status: 400 });
+      return NextResponse.json({ error: "معرّف المدربة مطلوب." }, { status: 400 });
     }
 
     await db.trainer.delete({ where: { id } });

@@ -5,11 +5,11 @@ const globalForProductCategories = globalThis as unknown as {
 };
 
 export const DEFAULT_PRODUCT_CATEGORIES = [
-  { key: "supplement", label: "مكملات", sizeType: "none", sortOrder: 1 },
-  { key: "gear", label: "معدات", sizeType: "none", sortOrder: 2 },
-  { key: "clothing", label: "ملابس", sizeType: "clothing", sortOrder: 3 },
-  { key: "accessory", label: "إكسسوار", sizeType: "none", sortOrder: 4 },
-  { key: "shoes", label: "أحذية", sizeType: "shoes", sortOrder: 5 },
+  { key: "supplement", label: "مكملات", labelEn: "Supplements", sizeType: "none", sortOrder: 1 },
+  { key: "gear", label: "معدات", labelEn: "Equipment", sizeType: "none", sortOrder: 2 },
+  { key: "clothing", label: "ملابس", labelEn: "Clothing", sizeType: "clothing", sortOrder: 3 },
+  { key: "accessory", label: "إكسسوار", labelEn: "Accessories", sizeType: "none", sortOrder: 4 },
+  { key: "shoes", label: "أحذية", labelEn: "Shoes", sizeType: "shoes", sortOrder: 5 },
 ] as const;
 
 export async function ensureDefaultProductCategories() {

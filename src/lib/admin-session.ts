@@ -4,7 +4,7 @@ import { cookies } from "next/headers";
 export const ADMIN_SESSION_COOKIE = "fitzone_admin_session";
 const ADMIN_SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
 
-type AdminSessionPayload = {
+export type AdminSessionPayload = {
   id: string;
   email: string;
   name: string;
@@ -79,6 +79,12 @@ export function getAdminSessionCookieOptions() {
     path: "/",
     maxAge: ADMIN_SESSION_TTL_SECONDS,
   };
+}
+
+export async function requireAdminSession(): Promise<{ ok: true; session: AdminSessionPayload } | { ok: false }> {
+  const session = await getAdminSession();
+  if (!session) return { ok: false };
+  return { ok: true, session };
 }
 
 export async function getCurrentAdminUser() {

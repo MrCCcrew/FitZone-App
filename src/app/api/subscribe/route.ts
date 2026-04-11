@@ -9,6 +9,7 @@ type SubscribePayload = {
   offerId?: string | null;
   scheduleIds?: string[] | null;
   paymentMethod?: string | null;
+  discountCode?: string | null;
 };
 
 function sanitizeMethod(value: unknown) {
@@ -34,7 +35,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "يجب تسجيل الدخول أولًا قبل الاشتراك." }, { status: 401 });
   }
 
-  const { membershipId, offerId, scheduleIds, paymentMethod } = (await req.json()) as SubscribePayload;
+  const { membershipId, offerId, scheduleIds, paymentMethod, discountCode } = (await req.json()) as SubscribePayload;
   if (!membershipId && !offerId) {
     return NextResponse.json({ error: "يرجى اختيار الباقة أو العرض أولًا." }, { status: 400 });
   }
@@ -52,6 +53,29 @@ export async function POST(req: Request) {
   }
 
   const resolvedPaymentMethod = sanitizeMethod(paymentMethod);
+
+  // Validate discount code before transaction
+  let discountRecord: { id: string; type: string; value: number } | null = null;
+  if (discountCode) {
+    const normalizedCode = String(discountCode).trim().toUpperCase();
+    const dc = await db.discountCode.findUnique({ where: { code: normalizedCode } });
+    if (!dc || !dc.isActive) {
+      return NextResponse.json({ error: "كود الخصم غير صالح." }, { status: 400 });
+    }
+    if (dc.expiresAt && dc.expiresAt < new Date()) {
+      return NextResponse.json({ error: "انتهت صلاحية كود الخصم." }, { status: 400 });
+    }
+    if (dc.maxUses != null && dc.usedCount >= dc.maxUses) {
+      return NextResponse.json({ error: "تم استنفاد الحد الأقصى لهذا الكود." }, { status: 400 });
+    }
+    const alreadyUsed = await db.discountCodeUsage.findFirst({
+      where: { discountCodeId: dc.id, userId },
+    });
+    if (alreadyUsed) {
+      return NextResponse.json({ error: "لقد استخدمت هذا الكود من قبل." }, { status: 400 });
+    }
+    discountRecord = { id: dc.id, type: dc.type, value: dc.value };
+  }
 
   const result = await db
     .$transaction(async (tx) => {
@@ -98,8 +122,18 @@ export async function POST(req: Request) {
       const endDate = new Date();
       endDate.setDate(endDate.getDate() + plan.duration);
 
-      const paymentAmount =
+      let paymentAmount =
         offerRecord?.specialPrice ?? (plan.priceAfter && plan.priceAfter > 0 ? plan.priceAfter : plan.price);
+
+      let discountApplied = 0;
+      if (discountRecord && paymentAmount) {
+        if (discountRecord.type === "percentage") {
+          discountApplied = Math.round((paymentAmount * discountRecord.value) / 100 * 100) / 100;
+        } else {
+          discountApplied = Math.min(discountRecord.value, paymentAmount);
+        }
+        paymentAmount = Math.max(0, paymentAmount - discountApplied);
+      }
 
       const membershipPaymentMethod = offerId ? "offer" : resolvedPaymentMethod;
 
@@ -226,11 +260,23 @@ export async function POST(req: Request) {
       if (offerId) {
         await tx.offer.update({
           where: { id: offerId },
+          data: { currentSubscribers: { increment: 1 } },
+        });
+      }
+
+      // Record discount code usage
+      if (discountRecord && discountApplied > 0) {
+        await tx.discountCodeUsage.create({
           data: {
-            currentSubscribers: {
-              increment: 1,
-            },
+            discountCodeId: discountRecord.id,
+            userId,
+            membershipId: subscription.id,
+            discountAmount: discountApplied,
           },
+        });
+        await tx.discountCode.update({
+          where: { id: discountRecord.id },
+          data: { usedCount: { increment: 1 } },
         });
       }
 
@@ -273,6 +319,7 @@ export async function POST(req: Request) {
         bookedSchedules,
         paymentAmount,
         membershipPaymentMethod,
+        discountApplied,
       };
     })
     .catch((error: unknown) => {

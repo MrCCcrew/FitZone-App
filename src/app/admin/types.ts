@@ -18,6 +18,8 @@ export type Section =
   | "customers"
   | "chat"
   | "complaints"
+  | "discounts"
+  | "rewards"
   | "database";
 
 export interface Customer {
@@ -98,6 +100,7 @@ export interface Offer {
 export interface GymClass {
   id: string;
   name: string;
+  nameEn?: string | null;
   trainer: string;
   day: string;
   time: string;
@@ -105,18 +108,28 @@ export interface GymClass {
   capacity: number;
   enrolled: number;
   category?: string | null;
+  categoryEn?: string | null;
   type: string;
+  typeEn?: string | null;
   subType?: string | null;
+  subTypeEn?: string | null;
+  description?: string | null;
+  descriptionEn?: string | null;
   active: boolean;
   showTrainerName?: boolean;
+  trainerId?: string;
 }
 
 export interface Trainer {
   id: string;
   name: string;
+  nameEn?: string | null;
   specialty: string;
+  specialtyEn?: string | null;
   bio?: string | null;
+  bioEn?: string | null;
   certifications: string[];
+  certificationsEn?: string[];
   rating: number;
   sessionsCount: number;
   image?: string | null;
@@ -129,8 +142,10 @@ export interface Trainer {
 export interface Product {
   id: string;
   name: string;
+  nameEn?: string | null;
   category: string;
   categoryLabel?: string;
+  categoryLabelEn?: string | null;
   sizeType?: "none" | "clothing" | "shoes";
   price: number;
   oldPrice?: number | null;
@@ -141,6 +156,7 @@ export interface Product {
   active: boolean;
   emoji: string;
   description?: string;
+  descriptionEn?: string | null;
   images?: string[];
   sizes?: string[];
   colors?: string[];
@@ -185,6 +201,7 @@ export interface ProductCategory {
   id: string;
   key: string;
   label: string;
+  labelEn?: string | null;
   sizeType: "none" | "clothing" | "shoes";
   sortOrder: number;
   active: boolean;
@@ -239,8 +256,10 @@ export interface Goal {
 export interface DeliveryOption {
   id: string;
   name: string;
+  nameEn?: string | null;
   type: "courier" | "pickup";
   description?: string | null;
+  descriptionEn?: string | null;
   fee: number;
   estimatedDaysMin?: number | null;
   estimatedDaysMax?: number | null;
@@ -253,8 +272,10 @@ export interface DeliveryOption {
 export interface HealthQuestion {
   id: string;
   title: string;
+  titleEn?: string | null;
   slug: string;
   prompt: string;
+  promptEn?: string | null;
   active: boolean;
   sortOrder: number;
   restrictedClassTypes?: string[];

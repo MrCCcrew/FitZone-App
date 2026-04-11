@@ -3,6 +3,7 @@
 import { Suspense, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useLang } from "@/lib/language";
 
 function EyeIcon({ open }: { open: boolean }) {
   return open ? (
@@ -35,6 +36,8 @@ function normalizeCallbackUrl(value: string | null) {
 }
 
 function LoginForm() {
+  const { lang } = useLang();
+  const t = (arText: string, enText: string) => (lang === "ar" ? arText : enText);
   const params = useSearchParams();
   const router = useRouter();
   const callbackUrl = useMemo(() => normalizeCallbackUrl(params.get("callbackUrl")), [params]);
@@ -68,20 +71,20 @@ function LoginForm() {
           return;
         }
 
-        setError(data?.error || "البريد الإلكتروني أو كلمة المرور غير صحيحة.");
+        setError(data?.error || t("البريد الإلكتروني أو كلمة المرور غير صحيحة.", "Incorrect email or password."));
         return;
       }
 
       window.location.href = callbackUrl;
     } catch {
-      setError("تعذر تسجيل الدخول حاليًا. حاول مرة أخرى بعد قليل.");
+      setError(t("تعذر تسجيل الدخول حاليًا. حاول مرة أخرى بعد قليل.", "Unable to log in right now. Please try again later."));
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div dir="rtl" className="fitzone-login-shell flex min-h-screen items-center justify-center p-4">
+    <div dir={lang === "ar" ? "rtl" : "ltr"} className="fitzone-login-shell flex min-h-screen items-center justify-center p-4">
       <div className="fitzone-login-orb fitzone-login-orb-1" />
       <div className="fitzone-login-orb fitzone-login-orb-2" />
 
@@ -91,16 +94,16 @@ function LoginForm() {
             <span className="text-4xl font-black text-red-600">FIT</span>
             <span className="text-4xl font-black text-pink-300">ZONE</span>
           </div>
-          <p className="text-sm text-gray-400">بني سويف - مصر</p>
+          <p className="text-sm text-gray-400">{t("بني سويف - مصر", "Beni Suef - Egypt")}</p>
         </div>
 
         <div className="rounded-3xl border border-white/10 bg-white/5 p-8 shadow-[0_30px_80px_rgba(0,0,0,0.45)] backdrop-blur-xl">
-          <h1 className="mb-2 text-2xl font-black text-white">تسجيل الدخول</h1>
-          <p className="mb-6 text-sm text-gray-400">أهلًا بك في فيت زون</p>
+          <h1 className="mb-2 text-2xl font-black text-white">{t("تسجيل الدخول", "Log in")}</h1>
+          <p className="mb-6 text-sm text-gray-400">{t("أهلًا بك في فيت زون", "Welcome to Fit Zone")}</p>
 
           {verified ? (
             <div className="mb-5 rounded-xl border border-emerald-500/30 bg-emerald-950/30 px-4 py-3 text-sm text-emerald-300">
-              تم تفعيل بريدك الإلكتروني بنجاح. يمكنك تسجيل الدخول الآن.
+              {t("تم تفعيل بريدك الإلكتروني بنجاح. يمكنك تسجيل الدخول الآن.", "Your email was verified successfully. You can log in now.")}
             </div>
           ) : null}
 
@@ -112,7 +115,7 @@ function LoginForm() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="mb-1.5 block text-sm text-gray-300">البريد الإلكتروني</label>
+              <label className="mb-1.5 block text-sm text-gray-300">{t("البريد الإلكتروني", "Email")}</label>
               <input
                 type="email"
                 required
@@ -124,7 +127,7 @@ function LoginForm() {
             </div>
 
             <div>
-              <label className="mb-1.5 block text-sm text-gray-300">كلمة المرور</label>
+              <label className="mb-1.5 block text-sm text-gray-300">{t("كلمة المرور", "Password")}</label>
               <div className="relative">
                 <input
                   type={showPassword ? "text" : "password"}
@@ -138,7 +141,7 @@ function LoginForm() {
                   type="button"
                   onClick={() => setShowPassword((value) => !value)}
                   className="absolute inset-y-0 left-0 flex w-12 items-center justify-center text-gray-400 transition-colors hover:text-pink-200"
-                  aria-label={showPassword ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"}
+                  aria-label={showPassword ? t("إخفاء كلمة المرور", "Hide password") : t("إظهار كلمة المرور", "Show password")}
                 >
                   <EyeIcon open={showPassword} />
                 </button>
@@ -150,28 +153,28 @@ function LoginForm() {
               disabled={loading}
               className="mt-2 w-full rounded-xl bg-red-600 py-3 font-bold text-white transition-colors hover:bg-red-700 disabled:opacity-50"
             >
-              {loading ? "جاري تسجيل الدخول..." : "تسجيل الدخول"}
+              {loading ? t("جاري تسجيل الدخول...", "Logging in...") : t("تسجيل الدخول", "Log in")}
             </button>
           </form>
 
           <div className="mt-6 text-center text-sm">
-            <span className="text-gray-400">ليس لديك حساب؟ </span>
+            <span className="text-gray-400">{t("ليس لديك حساب؟", "Don't have an account?")} </span>
             <Link href="/register" className="font-bold text-pink-300 transition-colors hover:text-pink-200">
-              إنشاء حساب جديد
+              {t("إنشاء حساب جديد", "Create a new account")}
             </Link>
           </div>
 
           <div className="mt-4 text-center">
             <Link href="/" className="text-xs text-gray-500 transition-colors hover:text-gray-300">
-              العودة إلى الموقع الرئيسي
+              {t("العودة إلى الموقع الرئيسي", "Back to main site")}
             </Link>
           </div>
         </div>
 
         <p className="mt-4 text-center text-xs text-gray-500">
-          هل أنت من فريق الإدارة؟{" "}
+          {t("هل أنت من فريق الإدارة؟", "Are you part of the admin team?")}{" "}
           <Link href="/admin/login" className="text-pink-200 transition-colors hover:text-pink-100">
-            تسجيل دخول الإدارة
+            {t("تسجيل دخول الإدارة", "Admin login")}
           </Link>
         </p>
       </div>

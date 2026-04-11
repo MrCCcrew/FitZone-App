@@ -6,7 +6,9 @@ import type { GymClass } from "../types";
 type ApiTrainer = {
   id: string;
   name: string;
+  nameEn?: string | null;
   specialty: string;
+  specialtyEn?: string | null;
 };
 
 const DAYS = [
@@ -86,6 +88,7 @@ const INPUT =
 type ClassModalState = {
   id?: string;
   name: string;
+  nameEn: string;
   trainer: string;
   trainerId: string;
   day: string;
@@ -94,8 +97,13 @@ type ClassModalState = {
   capacity: number;
   enrolled: number;
   category: string;
+  categoryEn: string;
   type: string;
+  typeEn: string;
   subType: string;
+  subTypeEn: string;
+  description: string;
+  descriptionEn: string;
   active: boolean;
   showTrainerName: boolean;
   categoryPreset: string;
@@ -108,6 +116,7 @@ type ClassModalState = {
 
 const EMPTY_MODAL: ClassModalState = {
   name: "التخسيس",
+  nameEn: "",
   trainer: "",
   trainerId: "",
   day: DAYS[0],
@@ -116,8 +125,13 @@ const EMPTY_MODAL: ClassModalState = {
   capacity: 15,
   enrolled: 0,
   category: "التخسيس",
+  categoryEn: "",
   type: "strength",
+  typeEn: "",
   subType: "",
+  subTypeEn: "",
+  description: "",
+  descriptionEn: "",
   active: true,
   showTrainerName: true,
   categoryPreset: "التخسيس",
@@ -151,14 +165,20 @@ function createModalState(item?: GymClass) {
 
   return {
     ...item,
+    nameEn: item.nameEn ?? "",
     trainerId: "",
     showTrainerName: item.showTrainerName ?? true,
     category: item.category ?? "",
+    categoryEn: item.categoryEn ?? "",
     categoryPreset: item.category && CATEGORY_OPTIONS.includes(item.category) ? item.category : "custom",
     customCategory: item.category && CATEGORY_OPTIONS.includes(item.category) ? "" : item.category ?? "",
     typePreset: hasPreset ? item.type : "custom",
     customType: hasPreset ? "" : item.type,
     subType: item.subType ?? "",
+    subTypeEn: item.subTypeEn ?? "",
+    typeEn: item.typeEn ?? "",
+    description: item.description ?? "",
+    descriptionEn: item.descriptionEn ?? "",
     subTypePreset: item.subType ?? "",
     customSubType: item.subType ?? "",
   };
@@ -341,10 +361,16 @@ export default function Classes() {
         body: JSON.stringify({
           ...(modal.id ? { id: modal.id } : {}),
           name: resolvedCategory,
+          nameEn: modal.nameEn.trim() || modal.categoryEn.trim() || null,
+          description: modal.description.trim() || null,
+          descriptionEn: modal.descriptionEn.trim() || null,
           trainerId: modal.trainerId,
           category: resolvedCategory,
+          categoryEn: modal.categoryEn.trim() || null,
           type: resolvedType,
+          typeEn: modal.typeEn.trim() || null,
           subType: resolvedSubType,
+          subTypeEn: modal.subTypeEn.trim() || null,
           duration: Number(modal.duration) || 60,
           intensity: "medium",
           maxSpots: Number(modal.capacity) || 15,
@@ -612,6 +638,16 @@ export default function Classes() {
               />
             </Field>
 
+            <Field label="اسم القسم بالإنجليزية" hint="اختياري، لكنه سيظهر للعميل عند اختيار اللغة الإنجليزية.">
+              <input
+                value={modal.nameEn}
+                onChange={(event) => setModal({ ...modal, nameEn: event.target.value })}
+                className={INPUT}
+                placeholder="Example: Weight Loss"
+                dir="ltr"
+              />
+            </Field>
+
             <Field label="المدربة">
               <select
                 value={modal.trainerId}
@@ -679,6 +715,16 @@ export default function Classes() {
               />
             </Field>
 
+            <Field label="اسم النوع بالإنجليزية" hint="اختياري، وسيستخدم عند اختيار اللغة الإنجليزية.">
+              <input
+                value={modal.typeEn}
+                onChange={(event) => setModal({ ...modal, typeEn: event.target.value })}
+                className={INPUT}
+                placeholder="Example: CrossFit"
+                dir="ltr"
+              />
+            </Field>
+
             <Field label="تصنيف النوع" hint="اختياري، مثل: زومبا لاتيني أو أفريقي">
               <select
                 value={modal.subTypePreset}
@@ -717,6 +763,16 @@ export default function Classes() {
                 className={INPUT}
                 placeholder="اكتب التصنيف إذا اخترت تصنيف جديد"
                 disabled={modal.subTypePreset !== "custom"}
+              />
+            </Field>
+
+            <Field label="اسم التصنيف بالإنجليزية" hint="اختياري، وسيستخدم عند اختيار اللغة الإنجليزية.">
+              <input
+                value={modal.subTypeEn}
+                onChange={(event) => setModal({ ...modal, subTypeEn: event.target.value })}
+                className={INPUT}
+                placeholder="Example: Latin Zumba"
+                dir="ltr"
               />
             </Field>
 
@@ -852,6 +908,36 @@ export default function Classes() {
                 className={INPUT}
                 placeholder="اكتب اسم القسم إذا اخترت قسم جديد"
                 disabled={modal.categoryPreset !== "custom"}
+              />
+            </Field>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <Field label="وصف مختصر" hint="اختياري، لاستخدامه عند عرض تفاصيل الكلاس بالعربية.">
+              <textarea
+                value={modal.description}
+                onChange={(event) => setModal({ ...modal, description: event.target.value })}
+                className={`${INPUT} min-h-24 resize-y`}
+              />
+            </Field>
+
+            <Field label="اسم القسم بالإنجليزية" hint="اختياري، لكنه سيظهر للعميل عند اختيار اللغة الإنجليزية.">
+              <input
+                value={modal.categoryEn}
+                onChange={(event) => setModal({ ...modal, categoryEn: event.target.value })}
+                className={INPUT}
+                placeholder="Example: Weight Loss"
+                dir="ltr"
+              />
+            </Field>
+
+            <Field label="وصف مختصر بالإنجليزية" hint="اختياري، لاستخدامه عند عرض تفاصيل الكلاس بالإنجليزية.">
+              <textarea
+                value={modal.descriptionEn}
+                onChange={(event) => setModal({ ...modal, descriptionEn: event.target.value })}
+                className={`${INPUT} min-h-24 resize-y`}
+                placeholder="Example: Functional class focused on fat burning and stamina."
+                dir="ltr"
               />
             </Field>
           </div>

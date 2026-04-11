@@ -14,6 +14,7 @@ type EditableCategory =
       id?: string;
       key: string;
       label: string;
+      labelEn?: string | null;
       sizeType: "none" | "clothing" | "shoes";
       sortOrder: number;
       active: boolean;
@@ -21,6 +22,7 @@ type EditableCategory =
 
 const EMPTY_PRODUCT: EditableProduct = {
   name: "",
+  nameEn: "",
   category: "supplement",
   price: 0,
   oldPrice: null,
@@ -28,6 +30,7 @@ const EMPTY_PRODUCT: EditableProduct = {
   active: true,
   emoji: "🛍️",
   description: "",
+  descriptionEn: "",
   images: [],
   sizes: [],
   colors: [],
@@ -111,7 +114,13 @@ export default function Products() {
   const sizeType = productModal ? categoryMap.get(productModal.category)?.sizeType ?? "none" : "none";
 
   const filteredProducts = products.filter((product) => {
-    const searchOk = !search.trim() || product.name.includes(search) || (product.description ?? "").includes(search);
+    const query = search.trim().toLowerCase();
+    const searchOk =
+      !query ||
+      product.name.toLowerCase().includes(query) ||
+      (product.nameEn ?? "").toLowerCase().includes(query) ||
+      (product.description ?? "").toLowerCase().includes(query) ||
+      (product.descriptionEn ?? "").toLowerCase().includes(query);
     const filterOk = filter === "all" || product.category === filter;
     return searchOk && filterOk;
   });
@@ -200,13 +209,13 @@ export default function Products() {
                   <h3 className="font-black text-white">أقسام المنتجات</h3>
                   <p className="text-xs text-gray-500">اربط كل قسم بنوع المقاسات المناسب حتى لا تظهر مقاسات غير صحيحة للعميل.</p>
                 </div>
-                <button onClick={() => setCategoryModal({ key: "", label: "", sizeType: "none", sortOrder: categories.length, active: true })} className="rounded-xl bg-pink-600 px-4 py-2 text-sm font-bold text-white">+ قسم</button>
+                <button onClick={() => setCategoryModal({ key: "", label: "", labelEn: "", sizeType: "none", sortOrder: categories.length, active: true })} className="rounded-xl bg-pink-600 px-4 py-2 text-sm font-bold text-white">+ قسم</button>
               </div>
               <div className="grid gap-3 md:grid-cols-2">
                 {categories.map((category) => (
                   <div key={category.id} className="rounded-xl border border-gray-800 bg-black/20 p-4">
                     <div className="font-bold text-white">{category.label}</div>
-                    <div className="text-xs text-gray-500">{category.key}</div>
+                    <div className="text-xs text-gray-500">{category.labelEn || "—"} · {category.key}</div>
                     <div className="mt-2 text-xs text-gray-400">{category.sizeType === "clothing" ? "مقاسات ملابس" : category.sizeType === "shoes" ? "مقاسات أحذية" : "بدون مقاسات"}</div>
                     <div className="mt-3 flex gap-2">
                       <button onClick={() => setCategoryModal(category)} className="flex-1 rounded-lg bg-gray-800 px-3 py-2 text-xs text-white">تعديل</button>
@@ -245,6 +254,7 @@ export default function Products() {
                   <span className="rounded-full bg-pink-500/20 px-2 py-1 text-xs text-pink-300">{product.categoryLabel ?? categoryMap.get(product.category)?.label ?? product.category}</span>
                 </div>
                 <h4 className="font-black text-white">{product.name}</h4>
+                {product.nameEn ? <div className="mt-1 text-xs text-gray-500">{product.nameEn}</div> : null}
                 <div className="mt-1 text-sm text-yellow-400">{product.price.toLocaleString("ar-EG")} ج.م</div>
                 <div className="mt-2 text-xs text-gray-500">صور: {product.images?.length ?? 0} | مقاسات: {product.sizes?.length ?? 0}</div>
                 <div className="mt-3 flex gap-2">
@@ -290,6 +300,7 @@ export default function Products() {
             <div className="rounded-2xl border border-gray-800 bg-black/20 p-4 text-xs leading-7 text-gray-400">أدخل بيانات المنتج كما ستظهر للعميل داخل المتجر وصفحة التفاصيل. الاسم والوصف والصور والسعر كلها ستنعكس مباشرة على عرض المنتج.</div>
             <div className="grid gap-4 md:grid-cols-2">
               <FieldHint title="اسم المنتج" hint="اكتب الاسم التسويقي الذي سيظهر للعميل داخل المتجر وصفحة المنتج."><input value={productModal.name} onChange={(e) => setProductModal({ ...productModal, name: e.target.value })} placeholder="مثال: حذاء Luna Sport" className={INPUT} /></FieldHint>
+              <FieldHint title="اسم المنتج بالإنجليزية" hint="اختياري، لكنه سيظهر للعميل عند اختيار اللغة الإنجليزية."><input value={productModal.nameEn ?? ""} onChange={(e) => setProductModal({ ...productModal, nameEn: e.target.value })} placeholder="Example: Luna Sport Shoes" className={INPUT} dir="ltr" /></FieldHint>
               <FieldHint title="القسم" hint="اختر القسم الصحيح حتى تظهر المقاسات المناسبة للعميل فقط."><select value={productModal.category} onChange={(e) => setProductModal({ ...productModal, category: e.target.value, sizes: [] })} className={INPUT}>{categories.map((category) => <option key={category.id} value={category.key}>{category.label}</option>)}</select></FieldHint>
               <FieldHint title="أيقونة داخلية" hint="اختياري. تستخدم في لوحة الإدارة فقط لتسهيل تمييز المنتج."><input value={productModal.emoji} onChange={(e) => setProductModal({ ...productModal, emoji: e.target.value })} placeholder="مثال: 👟" className={INPUT} /></FieldHint>
               <FieldHint title="المخزون" hint="عدد القطع المتاحة الآن للبيع من هذا المنتج."><input type="number" value={productModal.stock} onChange={(e) => setProductModal({ ...productModal, stock: Number(e.target.value) })} placeholder="مثال: 25" className={INPUT} /></FieldHint>
@@ -297,6 +308,7 @@ export default function Products() {
               <FieldHint title="السعر قبل الخصم" hint="اختياري. اتركه فارغًا إذا لم يوجد خصم على المنتج."><input type="number" value={productModal.oldPrice ?? ""} onChange={(e) => setProductModal({ ...productModal, oldPrice: e.target.value ? Number(e.target.value) : null })} placeholder="مثال: 1200" className={INPUT} /></FieldHint>
             </div>
             <FieldHint title="وصف المنتج" hint="اذكر الفائدة أو الخامة أو الاستخدام الأساسي حتى يفهم العميل المنتج بسرعة."><textarea value={productModal.description ?? ""} onChange={(e) => setProductModal({ ...productModal, description: e.target.value })} placeholder="مثال: حذاء رياضي خفيف مناسب للمشي والجري اليومي." rows={4} className={`${INPUT} resize-none`} /></FieldHint>
+            <FieldHint title="وصف المنتج بالإنجليزية" hint="اختياري، لكنه سيظهر للعميل عند اختيار اللغة الإنجليزية."><textarea value={productModal.descriptionEn ?? ""} onChange={(e) => setProductModal({ ...productModal, descriptionEn: e.target.value })} placeholder="Example: Lightweight sports shoes for daily walking and running." rows={4} className={`${INPUT} resize-none`} dir="ltr" /></FieldHint>
             <div className="space-y-3">
               <FieldHint title="رفع الصور" hint="يمكنك رفع أكثر من صورة لنفس المنتج دفعة واحدة. يفضل أن تكون كل صورة أقل من 5MB وبجودة واضحة."><input type="file" multiple accept="image/*" onChange={(e) => { void uploadImages(e.target.files); e.currentTarget.value = ""; }} className="block w-full text-sm text-gray-400 file:ml-3 file:rounded-lg file:border-0 file:bg-red-600 file:px-4 file:py-2 file:text-sm file:font-bold file:text-white" /></FieldHint>
               {uploading && <div className="text-xs text-yellow-400">جارٍ رفع الصور إلى التخزين السحابي...</div>}
@@ -316,6 +328,7 @@ export default function Products() {
         <Modal title={categoryModal.id ? "تعديل القسم" : "قسم جديد"} onClose={() => setCategoryModal(null)}>
           <div className="space-y-4">
             <FieldHint title="اسم القسم" hint="الاسم الظاهر للعميل داخل المتجر."><input value={categoryModal.label} onChange={(e) => setCategoryModal({ ...categoryModal, label: e.target.value })} placeholder="مثال: أحذية" className={INPUT} /></FieldHint>
+            <FieldHint title="اسم القسم بالإنجليزية" hint="اختياري، لكنه سيظهر للعميل عند اختيار اللغة الإنجليزية."><input value={categoryModal.labelEn ?? ""} onChange={(e) => setCategoryModal({ ...categoryModal, labelEn: e.target.value })} placeholder="Shoes" className={INPUT} dir="ltr" /></FieldHint>
             <FieldHint title="المفتاح الداخلي" hint="استخدم كلمة إنجليزية قصيرة بدون مسافات مثل shoes أو clothing."><input value={categoryModal.key} onChange={(e) => setCategoryModal({ ...categoryModal, key: e.target.value })} placeholder="shoes" className={INPUT} dir="ltr" /></FieldHint>
             <FieldHint title="نوع المقاسات" hint="حدد هل هذا القسم له مقاسات ملابس أو أحذية أو بدون مقاسات."><select value={categoryModal.sizeType} onChange={(e) => setCategoryModal({ ...categoryModal, sizeType: e.target.value as "none" | "clothing" | "shoes" })} className={INPUT}><option value="none">بدون مقاسات</option><option value="clothing">مقاسات ملابس</option><option value="shoes">مقاسات أحذية</option></select></FieldHint>
             <FieldHint title="الترتيب" hint="الأقسام ذات الرقم الأقل تظهر أولًا في المتجر."><input type="number" value={categoryModal.sortOrder} onChange={(e) => setCategoryModal({ ...categoryModal, sortOrder: Number(e.target.value) })} placeholder="0" className={INPUT} /></FieldHint>

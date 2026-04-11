@@ -42,6 +42,8 @@ const ADMIN_SECTIONS: Section[] = [
   "customers",
   "chat",
   "complaints",
+  "discounts",
+  "rewards",
   "database",
 ];
 

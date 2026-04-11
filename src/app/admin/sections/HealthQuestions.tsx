@@ -9,8 +9,10 @@ const INPUT =
 
 const EMPTY_QUESTION: Omit<HealthQuestion, "id"> = {
   title: "",
+  titleEn: "",
   slug: "",
   prompt: "",
+  promptEn: "",
   active: true,
   sortOrder: 0,
   restrictedClassTypes: [],
@@ -288,6 +290,7 @@ export default function HealthQuestions() {
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <div className="text-base font-black text-[#fff4f8]">{question.title}</div>
+                  {question.titleEn ? <div className="mt-1 text-xs text-[#d7aabd]">{question.titleEn}</div> : null}
                   <div className="mt-1 text-sm text-[#d7aabd]">{question.prompt}</div>
                 </div>
                 <button
@@ -347,6 +350,15 @@ export default function HealthQuestions() {
               />
             </Field>
 
+            <Field label="عنوان السؤال بالإنجليزية">
+              <input
+                value={modal.titleEn ?? ""}
+                onChange={(event) => setModal({ ...modal, titleEn: event.target.value })}
+                className={INPUT}
+                dir="ltr"
+              />
+            </Field>
+
             <Field label="الرابط المختصر" hint="يستخدم لتسهيل الربط لاحقًا، ويمكن تركه فارغًا.">
               <input
                 value={modal.slug ?? ""}
@@ -361,6 +373,15 @@ export default function HealthQuestions() {
                 value={modal.prompt}
                 onChange={(event) => setModal({ ...modal, prompt: event.target.value })}
                 className={`${INPUT} min-h-24 resize-y`}
+              />
+            </Field>
+
+            <Field label="نص السؤال بالإنجليزية">
+              <textarea
+                value={modal.promptEn ?? ""}
+                onChange={(event) => setModal({ ...modal, promptEn: event.target.value })}
+                className={`${INPUT} min-h-24 resize-y`}
+                dir="ltr"
               />
             </Field>
 

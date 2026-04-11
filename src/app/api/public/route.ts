@@ -22,6 +22,7 @@ type PublicPayload = {
   categories: Array<{
     key: string;
     label: string;
+    labelEn?: string | null;
     sizeType: ProductSizeType;
   }>;
   goals: Array<{
@@ -340,7 +341,7 @@ export async function GET(request: Request) {
     const categoryMeta = new Map(
       categories.map((category) => [
         category.key,
-        { label: category.label, sizeType: category.sizeType },
+        { label: category.label, labelEn: category.labelEn, sizeType: category.sizeType },
       ]),
     );
 
@@ -369,7 +370,8 @@ export async function GET(request: Request) {
           : contactRecord,
       categories: categories.map((category) => ({
         key: category.key,
-        label: category.label,
+        label: lang === "en" ? category.labelEn ?? category.label : category.label,
+        labelEn: category.labelEn,
         sizeType: normalizeSizeType(category.sizeType),
       })),
       goals: goals.map((goal) => ({
@@ -417,15 +419,25 @@ export async function GET(request: Request) {
       })),
       classes: classes.map((gymClass) => ({
         id: gymClass.id,
-        name: gymClass.name,
-        description: gymClass.description ?? "",
-        trainer: gymClass.showTrainerName === false ? "" : gymClass.trainer.name,
-        trainerSpecialty: gymClass.showTrainerName === false ? "" : gymClass.trainer.specialty ?? "",
+        name: lang === "en" ? gymClass.nameEn ?? gymClass.name : gymClass.name,
+        description: lang === "en" ? gymClass.descriptionEn ?? gymClass.description ?? "" : gymClass.description ?? "",
+        trainer:
+          gymClass.showTrainerName === false
+            ? ""
+            : lang === "en"
+              ? gymClass.trainer.nameEn ?? gymClass.trainer.name
+              : gymClass.trainer.name,
+        trainerSpecialty:
+          gymClass.showTrainerName === false
+            ? ""
+            : lang === "en"
+              ? gymClass.trainer.specialtyEn ?? gymClass.trainer.specialty ?? ""
+              : gymClass.trainer.specialty ?? "",
         duration: lang === "en" ? `${gymClass.duration} min` : `${gymClass.duration} دقيقة`,
         intensity: gymClass.intensity,
-        category: gymClass.category ?? null,
-        type: gymClass.type,
-        subType: gymClass.subType ?? null,
+        category: lang === "en" ? gymClass.categoryEn ?? gymClass.category ?? null : gymClass.category ?? null,
+        type: lang === "en" ? gymClass.typeEn ?? gymClass.type : gymClass.type,
+        subType: lang === "en" ? gymClass.subTypeEn ?? gymClass.subType ?? null : gymClass.subType ?? null,
         price: gymClass.price,
         maxSpots: gymClass.maxSpots,
         showTrainerName: gymClass.showTrainerName ?? true,
@@ -438,10 +450,10 @@ export async function GET(request: Request) {
       })),
       trainers: trainers.map((trainer) => ({
         id: trainer.id,
-        name: trainer.name,
-        specialty: trainer.specialty,
-        bio: trainer.bio ?? "",
-        certifications: parseJsonArray(trainer.certifications),
+        name: lang === "en" ? trainer.nameEn ?? trainer.name : trainer.name,
+        specialty: lang === "en" ? trainer.specialtyEn ?? trainer.specialty : trainer.specialty,
+        bio: lang === "en" ? trainer.bioEn ?? trainer.bio ?? "" : trainer.bio ?? "",
+        certifications: lang === "en" ? parseJsonArray(trainer.certificationsEn) : parseJsonArray(trainer.certifications),
         rating: trainer.rating,
         sessionsCount: trainer.sessionsCount,
         image: trainer.image,
@@ -495,13 +507,13 @@ export async function GET(request: Request) {
 
         return {
           id: product.id,
-          name: product.name,
+          name: lang === "en" ? product.nameEn ?? product.name : product.name,
           price: product.price,
           oldPrice: product.oldPrice,
           category: product.category,
-          categoryLabel: category?.label ?? product.category,
+          categoryLabel: lang === "en" ? category?.labelEn ?? category?.label ?? product.category : category?.label ?? product.category,
           sizeType: normalizeSizeType(category?.sizeType),
-          description: product.description ?? "",
+          description: lang === "en" ? product.descriptionEn ?? product.description ?? "" : product.description ?? "",
           images: parseJsonArray(product.images),
           sizes: parseJsonArray(product.sizes),
           colors: parseJsonArray(product.colors),
@@ -524,16 +536,16 @@ export async function GET(request: Request) {
       }),
       healthQuestions: healthQuestions.map((question) => ({
         id: question.id,
-        title: question.title,
-        prompt: question.prompt,
+        title: lang === "en" ? question.titleEn ?? question.title : question.title,
+        prompt: lang === "en" ? question.promptEn ?? question.prompt : question.prompt,
         sortOrder: question.sortOrder,
         restrictedClassTypes: question.restrictions.map((item) => item.classType),
       })),
       deliveryOptions: deliveryOptions.map((option) => ({
         id: option.id,
-        name: option.name,
+        name: lang === "en" ? option.nameEn ?? option.name : option.name,
         type: option.type,
-        description: option.description ?? "",
+        description: lang === "en" ? option.descriptionEn ?? option.description ?? "" : option.description ?? "",
         fee: option.fee,
         estimatedDaysMin: option.estimatedDaysMin,
         estimatedDaysMax: option.estimatedDaysMax,

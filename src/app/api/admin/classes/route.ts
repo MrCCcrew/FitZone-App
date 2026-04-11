@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAdminFeature } from "@/lib/admin-guard";
 import { db } from "@/lib/db";
+import { clearPublicApiCache } from "@/lib/public-cache";
 
 const DAYS_AR = [
   "الأحد",
@@ -17,12 +18,7 @@ async function checkAdmin() {
   return "error" in guard ? guard.error : null;
 }
 
-function getNextOccurrences(
-  dayName: string,
-  time: string,
-  maxSpots: number,
-  count = 8,
-) {
+function getNextOccurrences(dayName: string, time: string, maxSpots: number, count = 8) {
   const dayIndex = DAYS_AR.indexOf(dayName);
   if (dayIndex === -1) return [];
 
@@ -72,6 +68,9 @@ export async function GET() {
     return {
       id: item.id,
       name: item.name,
+      nameEn: item.nameEn,
+      description: item.description ?? "",
+      descriptionEn: item.descriptionEn ?? "",
       trainer: item.trainer.name,
       trainerId: item.trainerId,
       day,
@@ -80,8 +79,11 @@ export async function GET() {
       capacity: item.maxSpots,
       enrolled: Math.max(0, enrolled),
       category: item.category ?? "",
+      categoryEn: item.categoryEn ?? "",
       type: item.type,
+      typeEn: item.typeEn ?? "",
       subType: item.subType ?? "",
+      subTypeEn: item.subTypeEn ?? "",
       intensity: item.intensity,
       price: item.price,
       showTrainerName: item.showTrainerName ?? true,
@@ -94,7 +96,9 @@ export async function GET() {
     trainers: trainers.map((trainer) => ({
       id: trainer.id,
       name: trainer.name,
+      nameEn: trainer.nameEn,
       specialty: trainer.specialty,
+      specialtyEn: trainer.specialtyEn,
     })),
   });
 }
@@ -106,10 +110,16 @@ export async function POST(request: Request) {
   try {
     const body = (await request.json()) as {
       name?: string;
+      nameEn?: string;
+      description?: string;
+      descriptionEn?: string;
       trainerId?: string;
       category?: string;
+      categoryEn?: string;
       type?: string;
+      typeEn?: string;
       subType?: string;
+      subTypeEn?: string;
       duration?: number;
       intensity?: string;
       maxSpots?: number;
@@ -134,10 +144,16 @@ export async function POST(request: Request) {
     const created = await db.class.create({
       data: {
         name,
+        nameEn: body.nameEn?.trim() || null,
+        description: body.description?.trim() || null,
+        descriptionEn: body.descriptionEn?.trim() || null,
         trainerId,
         category: category || null,
+        categoryEn: body.categoryEn?.trim() || null,
         type: type || "strength",
+        typeEn: body.typeEn?.trim() || null,
         subType: subType || null,
+        subTypeEn: body.subTypeEn?.trim() || null,
         duration: Number(body.duration ?? 60),
         intensity: body.intensity ?? "medium",
         maxSpots,
@@ -163,9 +179,13 @@ export async function POST(request: Request) {
       }
     }
 
+    clearPublicApiCache();
     return NextResponse.json({
       id: created.id,
       name: created.name,
+      nameEn: created.nameEn,
+      description: created.description ?? "",
+      descriptionEn: created.descriptionEn ?? "",
       trainer: created.trainer.name,
       trainerId: created.trainerId,
       day: body.day ?? "الأحد",
@@ -174,8 +194,11 @@ export async function POST(request: Request) {
       capacity: created.maxSpots,
       enrolled: 0,
       category: created.category ?? "",
+      categoryEn: created.categoryEn ?? "",
       type: created.type,
+      typeEn: created.typeEn ?? "",
       subType: created.subType ?? "",
+      subTypeEn: created.subTypeEn ?? "",
       intensity: created.intensity,
       price: created.price,
       showTrainerName: created.showTrainerName ?? true,
@@ -195,10 +218,16 @@ export async function PATCH(request: Request) {
       id?: string;
       active?: boolean;
       name?: string;
+      nameEn?: string;
+      description?: string;
+      descriptionEn?: string;
       trainerId?: string;
       category?: string;
+      categoryEn?: string;
       type?: string;
+      typeEn?: string;
       subType?: string;
+      subTypeEn?: string;
       intensity?: string;
       maxSpots?: number;
       duration?: number;
@@ -209,16 +238,22 @@ export async function PATCH(request: Request) {
     };
 
     if (!body.id) {
-      return NextResponse.json({ error: "معرف الكلاس مطلوب." }, { status: 400 });
+      return NextResponse.json({ error: "معرّف الكلاس مطلوب." }, { status: 400 });
     }
 
     const data: Record<string, unknown> = {};
     if (body.active !== undefined) data.isActive = Boolean(body.active);
     if (body.name !== undefined) data.name = body.name.trim();
+    if (body.nameEn !== undefined) data.nameEn = body.nameEn.trim() || null;
+    if (body.description !== undefined) data.description = body.description?.trim() || null;
+    if (body.descriptionEn !== undefined) data.descriptionEn = body.descriptionEn?.trim() || null;
     if (body.trainerId !== undefined) data.trainerId = body.trainerId;
     if (body.category !== undefined) data.category = body.category?.trim() || null;
+    if (body.categoryEn !== undefined) data.categoryEn = body.categoryEn?.trim() || null;
     if (body.type !== undefined) data.type = body.type.trim() || "strength";
+    if (body.typeEn !== undefined) data.typeEn = body.typeEn?.trim() || null;
     if (body.subType !== undefined) data.subType = body.subType?.trim() || null;
+    if (body.subTypeEn !== undefined) data.subTypeEn = body.subTypeEn?.trim() || null;
     if (body.intensity !== undefined) data.intensity = body.intensity;
     if (body.maxSpots !== undefined) data.maxSpots = Number(body.maxSpots);
     if (body.duration !== undefined) data.duration = Number(body.duration);
@@ -255,6 +290,7 @@ export async function PATCH(request: Request) {
       }
     }
 
+    clearPublicApiCache();
     return NextResponse.json({ success: true });
   } catch {
     return NextResponse.json({ error: "تعذر تحديث الكلاس الآن." }, { status: 500 });
@@ -268,10 +304,11 @@ export async function DELETE(request: Request) {
   try {
     const body = (await request.json()) as { id?: string };
     if (!body.id) {
-      return NextResponse.json({ error: "معرف الكلاس مطلوب." }, { status: 400 });
+      return NextResponse.json({ error: "معرّف الكلاس مطلوب." }, { status: 400 });
     }
 
     await db.class.delete({ where: { id: body.id } });
+    clearPublicApiCache();
     return NextResponse.json({ success: true });
   } catch {
     return NextResponse.json({ error: "تعذر حذف الكلاس الآن." }, { status: 500 });

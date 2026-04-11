@@ -23,6 +23,8 @@ import Balance from "./sections/Balance";
 import Customers from "./sections/Customers";
 import LiveChat from "./sections/LiveChat";
 import Complaints from "./sections/Complaints";
+import DiscountCodes from "./sections/DiscountCodes";
+import RewardSettings from "./sections/RewardSettings";
 import DatabaseMaintenance from "./sections/DatabaseMaintenance";
 
 const NAV: { id: Section; label: string; icon: string }[] = [
@@ -44,6 +46,8 @@ const NAV: { id: Section; label: string; icon: string }[] = [
   { id: "chat", label: "الدردشة المباشرة", icon: "💬" },
   { id: "customers", label: "العملاء", icon: "👥" },
   { id: "complaints", label: "الشكاوى", icon: "📣" },
+  { id: "discounts", label: "أكواد الخصم", icon: "🏷" },
+  { id: "rewards", label: "المكافآت والإحالة", icon: "🎁" },
 ];
 const BOOKINGS_NAV_ITEM = { id: "bookings", label: "الحجوزات", icon: "📆" } as const;
 if (!NAV.find((item) => item.id === "database")) {
@@ -76,6 +80,8 @@ const TITLES: Record<string, string> = {
   chat: "الدردشة المباشرة",
   customers: "إدارة العملاء",
   complaints: "إدارة الشكاوى",
+  discounts: "أكواد الخصم",
+  rewards: "إعدادات المكافآت والإحالة",
 };
 
 TITLES.bookings = "إدارة الحجوزات";
@@ -101,6 +107,8 @@ const SECTIONS: Record<string, ComponentType> = {
   chat: LiveChat,
   customers: Customers,
   complaints: Complaints,
+  discounts: DiscountCodes,
+  rewards: RewardSettings,
 };
 
 SECTIONS.database = DatabaseMaintenance;

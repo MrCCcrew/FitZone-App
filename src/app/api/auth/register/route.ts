@@ -16,7 +16,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const { name, email, phone, password } = await req.json();
+    const { name, email, phone, password, referralCode } = await req.json();
 
     const normalizedName = String(name ?? "").trim();
     const normalizedEmail = String(email ?? "").trim().toLowerCase();
@@ -61,6 +61,18 @@ export async function POST(req: Request) {
     }
 
     const hashedPassword = await bcryptjs.hash(normalizedPassword, 12);
+    const normalizedReferralCode = referralCode ? String(referralCode).trim().toUpperCase() : null;
+
+    // Validate referral code before creating user
+    let referralRecord: { id: string; userId: string } | null = null;
+    if (normalizedReferralCode) {
+      referralRecord = await db.referral.findUnique({
+        where: { code: normalizedReferralCode },
+        select: { id: true, userId: true },
+      }) ?? null;
+      // Silently ignore invalid codes — don't block registration
+    }
+
     const user = await db.$transaction(async (tx) => {
       const createdUser = await tx.user.create({
         data: {
@@ -77,6 +89,21 @@ export async function POST(req: Request) {
       await tx.referral.create({
         data: { userId: createdUser.id, code: `FZ-${createdUser.id.slice(-6).toUpperCase()}` },
       });
+
+      // Record referral usage if valid
+      if (referralRecord) {
+        await tx.referralUsage.create({
+          data: {
+            referralId: referralRecord.id,
+            referredUserId: createdUser.id,
+            rewardGiven: false,
+          },
+        });
+        await tx.referral.update({
+          where: { id: referralRecord.id },
+          data: { referredCount: { increment: 1 } },
+        });
+      }
 
       return createdUser;
     });
