@@ -8,7 +8,9 @@ export type AdminSessionPayload = {
   id: string;
   email: string;
   name: string;
-  role: "admin" | "staff";
+  role: string;
+  jobTitle?: string | null;
+  permissions?: string[];
   exp: number;
 };
 
@@ -59,7 +61,7 @@ export function parseAdminSessionToken(token?: string | null): AdminSessionPaylo
     const payload = JSON.parse(decodeBase64Url(encodedPayload)) as AdminSessionPayload;
     if (!payload?.id || !payload?.email || !payload?.role || !payload?.exp) return null;
     if (payload.exp < Math.floor(Date.now() / 1000)) return null;
-    if (payload.role !== "admin" && payload.role !== "staff") return null;
+    if (typeof payload.role !== "string" || !payload.role) return null;
     return payload;
   } catch {
     return null;
@@ -96,6 +98,8 @@ export async function getCurrentAdminUser() {
       email: session.email,
       name: session.name ?? "",
       role: session.role,
+      jobTitle: session.jobTitle ?? null,
+      permissions: Array.isArray(session.permissions) ? session.permissions : [],
     };
   } catch (error) {
     console.error("[ADMIN_SESSION_USER]", error);

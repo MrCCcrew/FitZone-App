@@ -18,6 +18,8 @@ export async function GET() {
         email: adminSession.email,
         name: adminSession.name,
         role: adminSession.role,
+        jobTitle: adminSession.jobTitle ?? null,
+        permissions: adminSession.permissions ?? [],
       },
     });
   } catch (error) {

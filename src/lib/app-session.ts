@@ -4,7 +4,7 @@ import { cookies } from "next/headers";
 export const APP_SESSION_COOKIE = "fitzone_app_session";
 const APP_SESSION_TTL_SECONDS = 60 * 60 * 24 * 30;
 
-type AppRole = "member" | "admin" | "staff" | "trainer";
+type AppRole = "member" | "admin" | "staff" | "trainer" | "accountant";
 
 type AppSessionPayload = {
   id: string;

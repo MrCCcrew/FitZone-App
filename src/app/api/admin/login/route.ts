@@ -35,9 +35,21 @@ export async function POST(req: Request) {
         email: true,
         password: true,
         role: true,
+        jobTitle: true,
+        adminAccess: true,
+        adminPermissions: true,
+        isActive: true,
       },
     });
-    if (!user?.password || (user.role !== "admin" && user.role !== "staff")) {
+    const permissions =
+      typeof user?.adminPermissions === "string"
+        ? JSON.parse(user.adminPermissions || "[]")
+        : [];
+    if (
+      !user?.password ||
+      user.isActive === false ||
+      (!user.adminAccess && user.role !== "admin" && user.role !== "staff")
+    ) {
       return NextResponse.json({ error: "البريد الإلكتروني أو كلمة المرور غير صحيحة" }, { status: 401 });
     }
 
@@ -50,7 +62,9 @@ export async function POST(req: Request) {
       id: user.id,
       email: user.email ?? normalizedEmail,
       name: user.name ?? "FitZone Admin",
-      role: user.role as "admin" | "staff",
+      role: user.role,
+      jobTitle: user.jobTitle,
+      permissions: Array.isArray(permissions) ? permissions : [],
     });
 
     const response = NextResponse.json({
@@ -60,6 +74,8 @@ export async function POST(req: Request) {
         email: user.email,
         name: user.name,
         role: user.role,
+        jobTitle: user.jobTitle,
+        permissions: Array.isArray(permissions) ? permissions : [],
       },
     });
 

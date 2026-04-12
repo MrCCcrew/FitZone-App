@@ -1,5 +1,6 @@
 export type Section =
   | "overview"
+  | "settings"
   | "pages"
   | "knowledge"
   | "subscriptions"
@@ -21,6 +22,35 @@ export type Section =
   | "discounts"
   | "rewards"
   | "database";
+
+export interface AdminEmployee {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string | null;
+  role: string;
+  jobTitle?: string | null;
+  adminAccess: boolean;
+  isActive: boolean;
+  adminPermissions: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AuditLogEntry {
+  id: string;
+  actorUserId?: string | null;
+  actorName?: string | null;
+  actorEmail?: string | null;
+  actorRole?: string | null;
+  action: string;
+  targetType: string;
+  targetId?: string | null;
+  details?: string | null;
+  ipAddress?: string | null;
+  userAgent?: string | null;
+  createdAt: string;
+}
 
 export interface Customer {
   id: string;

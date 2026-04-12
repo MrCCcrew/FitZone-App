@@ -1,8 +1,9 @@
 import type { Section } from "@/app/admin/types";
 
-export type AdminRole = "admin" | "staff";
+export type AdminRole = "admin" | "staff" | "trainer" | "accountant";
 
 export type AdminFeature =
+  | "settings"
   | "overview"
   | "site-content"
   | "knowledge"
@@ -19,37 +20,34 @@ export type AdminFeature =
   | "balance"
   | "chat"
   | "complaints"
+  | "discounts"
+  | "rewards"
   | "db-maintenance";
 
-const STAFF_SECTIONS: Section[] = ["pages", "knowledge", "subscriptions", "packages", "classes", "trainers", "bookings", "customers", "chat", "reviews"];
-const ADMIN_SECTIONS: Section[] = [
+export const ADMIN_FEATURES: AdminFeature[] = [
+  "settings",
   "overview",
-  "pages",
+  "site-content",
   "knowledge",
-  "subscriptions",
-  "packages",
-  "goals",
-  "delivery",
-  "health",
-  "payments",
+  "memberships",
+  "offers",
   "classes",
   "trainers",
-  "bookings",
+  "customers",
   "products",
   "inventory",
   "reviews",
+  "bookings",
+  "orders",
   "balance",
-  "customers",
   "chat",
   "complaints",
   "discounts",
   "rewards",
-  "database",
+  "db-maintenance",
 ];
 
-const STAFF_FEATURES: AdminFeature[] = ["site-content", "knowledge", "memberships", "offers", "classes", "trainers", "bookings", "customers", "chat", "reviews"];
-const ADMIN_FEATURES: AdminFeature[] = [
-  "overview",
+const STAFF_FEATURES: AdminFeature[] = [
   "site-content",
   "knowledge",
   "memberships",
@@ -58,32 +56,78 @@ const ADMIN_FEATURES: AdminFeature[] = [
   "trainers",
   "bookings",
   "customers",
-  "products",
-  "inventory",
   "reviews",
-  "orders",
-  "balance",
   "chat",
   "complaints",
-  "db-maintenance",
 ];
 
+const TRAINER_FEATURES: AdminFeature[] = ["classes", "trainers", "bookings", "customers"];
+const ACCOUNTANT_FEATURES: AdminFeature[] = ["overview", "orders", "balance", "discounts", "customers"];
+
+export const ROLE_FEATURE_TEMPLATES: Record<AdminRole, AdminFeature[]> = {
+  admin: ADMIN_FEATURES,
+  staff: STAFF_FEATURES,
+  trainer: TRAINER_FEATURES,
+  accountant: ACCOUNTANT_FEATURES,
+};
+
+export const SECTION_FEATURE_MAP: Record<Section, AdminFeature> = {
+  overview: "overview",
+  settings: "settings",
+  pages: "site-content",
+  knowledge: "knowledge",
+  subscriptions: "memberships",
+  packages: "memberships",
+  goals: "memberships",
+  delivery: "orders",
+  health: "memberships",
+  payments: "orders",
+  classes: "classes",
+  trainers: "trainers",
+  products: "products",
+  inventory: "inventory",
+  reviews: "reviews",
+  balance: "balance",
+  bookings: "bookings",
+  customers: "customers",
+  chat: "chat",
+  complaints: "complaints",
+  discounts: "discounts",
+  rewards: "rewards",
+  database: "db-maintenance",
+};
+
 export function isAdminRole(role?: string): role is AdminRole {
-  return role === "admin" || role === "staff";
+  return role === "admin" || role === "staff" || role === "trainer" || role === "accountant";
 }
 
-export function canAccessAdminSection(role: string | undefined, section: Section) {
-  if (role === "admin") return ADMIN_SECTIONS.includes(section);
-  if (role === "staff") return STAFF_SECTIONS.includes(section);
-  return false;
+export function normalizeAdminPermissions(role: string | undefined, permissions?: string[] | null) {
+  if (role === "admin") return [...ADMIN_FEATURES];
+  if (Array.isArray(permissions) && permissions.length > 0) {
+    return permissions.filter((permission): permission is AdminFeature => ADMIN_FEATURES.includes(permission as AdminFeature));
+  }
+  if (role && isAdminRole(role)) {
+    return [...ROLE_FEATURE_TEMPLATES[role]];
+  }
+  return [];
 }
 
-export function canAccessAdminFeature(role: string | undefined, feature: AdminFeature) {
-  if (role === "admin") return ADMIN_FEATURES.includes(feature);
-  if (role === "staff") return STAFF_FEATURES.includes(feature);
-  return false;
+export function canAccessAdminFeature(
+  role: string | undefined,
+  permissions: string[] | undefined,
+  feature: AdminFeature,
+) {
+  return normalizeAdminPermissions(role, permissions).includes(feature);
 }
 
-export function getDefaultAdminSection(role: string | undefined): Section {
-  return role === "staff" ? "pages" : "overview";
+export function canAccessAdminSection(role: string | undefined, permissions: string[] | undefined, section: Section) {
+  return canAccessAdminFeature(role, permissions, SECTION_FEATURE_MAP[section]);
+}
+
+export function getDefaultAdminSection(role: string | undefined, permissions?: string[] | undefined): Section {
+  const allowed = Object.keys(SECTION_FEATURE_MAP).filter((section) =>
+    canAccessAdminSection(role, permissions, section as Section),
+  ) as Section[];
+  if (allowed.includes("overview")) return "overview";
+  return allowed[0] ?? "overview";
 }

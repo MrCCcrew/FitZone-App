@@ -1,5 +1,6 @@
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import { PrismaClient } from "@prisma/client";
+import { getAuditActor } from "@/lib/audit-context";
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
@@ -59,13 +60,61 @@ function getAdapter() {
   return adapter;
 }
 
-const prisma =
+const basePrisma =
   globalForPrisma.prisma ??
   new PrismaClient({
     adapter: getAdapter(),
     log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
   });
 
-globalForPrisma.prisma = prisma;
+globalForPrisma.prisma = basePrisma;
 
-export const db = prisma;
+const AUDITABLE_OPERATIONS = new Set(["create", "update", "delete", "upsert", "createMany", "updateMany", "deleteMany"]);
+
+export const db = basePrisma.$extends({
+  query: {
+    $allModels: {
+      async $allOperations({ model, operation, args, query }) {
+        const result = await query(args);
+
+        if (!model || model === "AuditLog" || !AUDITABLE_OPERATIONS.has(operation)) {
+          return result;
+        }
+
+        const actor = getAuditActor();
+        if (!actor) return result;
+
+        try {
+          const targetId =
+            typeof result === "object" && result !== null && "id" in result
+              ? String((result as { id?: string | number }).id ?? "")
+              : args && typeof args === "object" && "where" in args && (args as { where?: { id?: string | number } }).where?.id != null
+                ? String((args as { where?: { id?: string | number } }).where?.id)
+                : null;
+
+          await basePrisma.auditLog.create({
+            data: {
+              actorUserId: actor.userId ?? null,
+              actorName: actor.name ?? null,
+              actorEmail: actor.email ?? null,
+              actorRole: actor.role ?? null,
+              action: operation,
+              targetType: model,
+              targetId,
+              details: JSON.stringify({
+                args,
+                result,
+              }),
+              ipAddress: actor.ipAddress ?? null,
+              userAgent: actor.userAgent ?? null,
+            },
+          });
+        } catch (error) {
+          console.error("[AUDIT_LOG_WRITE_FAILED]", error);
+        }
+
+        return result;
+      },
+    },
+  },
+});

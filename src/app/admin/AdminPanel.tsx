@@ -26,8 +26,10 @@ import Complaints from "./sections/Complaints";
 import DiscountCodes from "./sections/DiscountCodes";
 import RewardSettings from "./sections/RewardSettings";
 import DatabaseMaintenance from "./sections/DatabaseMaintenance";
+import Settings from "./sections/Settings";
 
 const NAV: { id: Section; label: string; icon: string }[] = [
+  { id: "settings", label: "الإعدادات والصلاحيات", icon: "⚙️" },
   { id: "overview", label: "لوحة التحكم", icon: "📊" },
   { id: "pages", label: "الصفحات والمحتوى", icon: "📝" },
   { id: "knowledge", label: "قاعدة معرفة البوت", icon: "KB" },
@@ -61,6 +63,7 @@ if (bookingsInsertAt >= 0) {
 }
 
 const TITLES: Record<string, string> = {
+  settings: "إدارة الإعدادات والصلاحيات",
   overview: "لوحة التحكم",
   pages: "إدارة الصفحات والمحتوى",
   knowledge: "قاعدة معرفة البوت",
@@ -88,6 +91,7 @@ TITLES.bookings = "إدارة الحجوزات";
 TITLES.database = "إدارة قاعدة البيانات";
 
 const SECTIONS: Record<string, ComponentType> = {
+  settings: Settings,
   overview: Overview,
   pages: PagesContent,
   knowledge: ChatKnowledge,
@@ -118,6 +122,8 @@ type AdminSessionUser = {
   name?: string;
   email?: string;
   role?: string;
+  jobTitle?: string | null;
+  permissions?: string[];
 };
 
 export default function AdminPanel() {
@@ -129,9 +135,10 @@ export default function AdminPanel() {
   const [loggingOut, setLoggingOut] = useState(false);
 
   const role = session?.user?.role;
-  const defaultSection = getDefaultAdminSection(role);
-  const allowedNav = NAV.filter((item) => canAccessAdminSection(role, item.id));
-  const safeActive = canAccessAdminSection(role, active) ? active : defaultSection;
+  const permissions = session?.user?.permissions;
+  const defaultSection = getDefaultAdminSection(role, permissions);
+  const allowedNav = NAV.filter((item) => canAccessAdminSection(role, permissions, item.id));
+  const safeActive = canAccessAdminSection(role, permissions, active) ? active : defaultSection;
   const ActiveSection = SECTIONS[safeActive];
 
   useEffect(() => {
@@ -179,13 +186,13 @@ export default function AdminPanel() {
   }, [role, router, status]);
 
   useEffect(() => {
-    if (!canAccessAdminSection(role, active)) {
+    if (!canAccessAdminSection(role, permissions, active)) {
       setActive(defaultSection);
     }
-  }, [active, defaultSection, role]);
+  }, [active, defaultSection, permissions, role]);
 
   const navigate = (section: Section) => {
-    if (!canAccessAdminSection(role, section)) return;
+    if (!canAccessAdminSection(role, permissions, section)) return;
     setActive(section);
     setSidebarOpen(false);
   };

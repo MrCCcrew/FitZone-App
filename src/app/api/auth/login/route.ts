@@ -39,10 +39,11 @@ export async function POST(req: Request) {
         password: true,
         role: true,
         emailVerified: true,
+        isActive: true,
       },
     });
 
-    if (!user?.password) {
+    if (!user?.password || user.isActive === false) {
       return NextResponse.json(
         { error: "البريد الإلكتروني أو كلمة المرور غير صحيحة." },
         { status: 401 },
@@ -72,7 +73,7 @@ export async function POST(req: Request) {
       id: user.id,
       email: user.email ?? normalizedEmail,
       name: user.name ?? "عضو FitZone",
-      role: user.role as "member" | "admin" | "staff" | "trainer",
+      role: user.role as "member" | "admin" | "staff" | "trainer" | "accountant",
     });
 
     const response = NextResponse.json({
