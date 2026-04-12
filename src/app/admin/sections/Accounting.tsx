@@ -2,6 +2,10 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { AdminSectionShell, AdminCard, AdminEmptyState } from "./shared";
+import {
+  printStoreReport, printClubReport,
+  printSalesInvoice, printPurchaseInvoice,
+} from "@/lib/print-pdf";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -402,11 +406,20 @@ function AddFeeRuleModal({ onClose, onSave }: { onClose: () => void; onSave: () 
 
 // ─── Store Tab ────────────────────────────────────────────────────────────────
 
-function StoreTab({ data, onRefresh }: { data: AccountingData; onRefresh: () => void }) {
+function StoreTab({ data, onRefresh, dateRange }: { data: AccountingData; onRefresh: () => void; dateRange: string }) {
   const s = data.store.summary;
   const [showExpense, setShowExpense] = useState(false);
   const [showFeeRule, setShowFeeRule] = useState(false);
   const [expandedPurchase, setExpandedPurchase] = useState<string | null>(null);
+
+  const handlePrintReport = () => printStoreReport({
+    summary: s,
+    sales: data.store.sales,
+    returns: data.store.returns,
+    purchases: data.store.purchases,
+    expenses: data.store.expenses.map(e => ({ ...e, vendor: e.vendor ?? null })),
+    dateRange,
+  });
 
   return (
     <div className="space-y-6">
@@ -438,6 +451,11 @@ function StoreTab({ data, onRefresh }: { data: AccountingData; onRefresh: () => 
         </div>
       </div>
 
+      {/* Print report button */}
+      <div className="flex justify-end">
+        <button className={BTN_PRIMARY} onClick={handlePrintReport}>🖨️ طباعة / تصدير PDF</button>
+      </div>
+
       {/* Sales */}
       <SectionDivider title="فواتير المبيعات" />
       <AdminCard>
@@ -451,6 +469,7 @@ function StoreTab({ data, onRefresh }: { data: AccountingData; onRefresh: () => 
                   <th className="py-2 text-right font-bold">المنتجات</th>
                   <th className="py-2 text-right font-bold">الدفع</th>
                   <th className="py-2 text-right font-bold">الإجمالي</th>
+                  <th className="py-2 text-right font-bold">فاتورة</th>
                 </tr>
               </thead>
               <tbody>
@@ -461,6 +480,14 @@ function StoreTab({ data, onRefresh }: { data: AccountingData; onRefresh: () => 
                     <td className="py-2 text-[#d7aabd] max-w-[160px] truncate">{row.items}</td>
                     <td className="py-2 text-[#d7aabd]">{row.paymentMethod}</td>
                     <td className="py-2 font-bold text-emerald-400">{fmt(row.total)} ج</td>
+                    <td className="py-2">
+                      <button className={BTN_GHOST} onClick={() => printSalesInvoice({
+                        id: row.id, date: row.date, customerName: row.customerName,
+                        paymentMethod: row.paymentMethod, subtotal: row.subtotal,
+                        shippingFee: row.shippingFee, total: row.total,
+                        items: row.items.split("، ").map(name => ({ productName: name, total: 0 })),
+                      })}>🖨️</button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -532,9 +559,16 @@ function StoreTab({ data, onRefresh }: { data: AccountingData; onRefresh: () => 
                       <td className="py-2 text-[#d7aabd]">{row.referenceNumber ?? "—"}</td>
                       <td className="py-2 font-bold text-orange-300">{fmt(row.totalCost)} ج</td>
                       <td className="py-2">
-                        <button className={BTN_GHOST} onClick={() => setExpandedPurchase(expandedPurchase === row.id ? null : row.id)}>
-                          {expandedPurchase === row.id ? "إخفاء" : "عرض"}
-                        </button>
+                        <div className="flex gap-1">
+                          <button className={BTN_GHOST} onClick={() => setExpandedPurchase(expandedPurchase === row.id ? null : row.id)}>
+                            {expandedPurchase === row.id ? "إخفاء" : "عرض"}
+                          </button>
+                          <button className={BTN_GHOST} onClick={() => printPurchaseInvoice({
+                            id: row.id, date: row.date,
+                            supplierName: row.supplierName, referenceNumber: row.referenceNumber,
+                            totalCost: row.totalCost, items: row.items,
+                          })}>🖨️</button>
+                        </div>
                       </td>
                     </tr>
                     {expandedPurchase === row.id && (
@@ -635,10 +669,19 @@ function StoreTab({ data, onRefresh }: { data: AccountingData; onRefresh: () => 
 
 // ─── Club Tab ─────────────────────────────────────────────────────────────────
 
-function ClubTab({ data, onRefresh }: { data: AccountingData; onRefresh: () => void }) {
+function ClubTab({ data, onRefresh, dateRange }: { data: AccountingData; onRefresh: () => void; dateRange: string }) {
   const s = data.club.summary;
   const r = data.club.rewards;
   const [showExpense, setShowExpense] = useState(false);
+
+  const handlePrintReport = () => printClubReport({
+    summary: s,
+    memberships: data.club.memberships,
+    bookings: data.club.bookings,
+    expenses: data.club.expenses.map(e => ({ ...e, vendor: e.vendor ?? null })),
+    pointValueEGP: r.pointValueEGP,
+    dateRange,
+  });
 
   return (
     <div className="space-y-6">
@@ -683,6 +726,11 @@ function ClubTab({ data, onRefresh }: { data: AccountingData; onRefresh: () => v
           <p className={`text-2xl font-black ${s.netProfit >= 0 ? "text-emerald-400" : "text-red-400"}`}>{fmt(s.netProfit)} ج</p>
           <p className="mt-1 text-xs text-[#a07080]">= إجمالي ربح − {fmt(s.expenseTotal)} مصاريف − {fmt(s.feeTotal)} عمولات</p>
         </div>
+      </div>
+
+      {/* Print report button */}
+      <div className="flex justify-end">
+        <button className={BTN_PRIMARY} onClick={handlePrintReport}>🖨️ طباعة / تصدير PDF</button>
       </div>
 
       {/* Memberships */}
@@ -971,8 +1019,8 @@ export default function Accounting() {
         <AdminCard><div className="py-16 text-center text-sm text-[#d7aabd]">جاري تحميل البيانات المحاسبية...</div></AdminCard>
       )}
 
-      {!loading && data && tab === "store" && <StoreTab data={data} onRefresh={fetchData} />}
-      {!loading && data && tab === "club" && <ClubTab data={data} onRefresh={fetchData} />}
+      {!loading && data && tab === "store" && <StoreTab data={data} onRefresh={fetchData} dateRange={from && to ? `${from} — ${to}` : "كل الفترات"} />}
+      {!loading && data && tab === "club" && <ClubTab data={data} onRefresh={fetchData} dateRange={from && to ? `${from} — ${to}` : "كل الفترات"} />}
       {!loading && data && tab === "fees" && <FeeRulesTab data={data} onRefresh={fetchData} />}
     </AdminSectionShell>
   );
