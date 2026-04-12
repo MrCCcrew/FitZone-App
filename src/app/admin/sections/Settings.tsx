@@ -68,6 +68,10 @@ function tryFormatJson(value?: string | null) {
   }
 }
 
+function getRoleLabel(role: string) {
+  return ROLE_OPTIONS.find((item) => item.value === role)?.label ?? role;
+}
+
 export default function Settings() {
   const [activeTab, setActiveTab] = useState<"employees" | "audit">("employees");
   const [employees, setEmployees] = useState<AdminEmployee[]>([]);
@@ -76,6 +80,12 @@ export default function Settings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ text: string; ok: boolean } | null>(null);
+  const [auditFilters, setAuditFilters] = useState({
+    actorUserId: "",
+    targetType: "",
+    action: "",
+    search: "",
+  });
 
   const loadEmployees = async () => {
     const response = await fetch("/api/admin/settings/staff", { cache: "no-store" });
@@ -86,8 +96,16 @@ export default function Settings() {
     setEmployees(payload.employees ?? []);
   };
 
-  const loadLogs = async () => {
-    const response = await fetch("/api/admin/settings/audit-log?limit=120", { cache: "no-store" });
+  const loadLogs = async (
+    filters: { actorUserId: string; targetType: string; action: string; search: string } = auditFilters,
+  ) => {
+    const params = new URLSearchParams({ limit: "120" });
+    if (filters.actorUserId) params.set("actorUserId", filters.actorUserId);
+    if (filters.targetType) params.set("targetType", filters.targetType);
+    if (filters.action) params.set("action", filters.action);
+    if (filters.search) params.set("search", filters.search);
+
+    const response = await fetch(`/api/admin/settings/audit-log?${params.toString()}`, { cache: "no-store" });
     const payload = await response.json();
     if (!response.ok) {
       throw new Error(payload.error ?? "تعذر تحميل سجل التغييرات.");
@@ -115,6 +133,8 @@ export default function Settings() {
 
   const updateForm = <K extends keyof EmployeeForm>(key: K, value: EmployeeForm[K]) =>
     setForm((current) => ({ ...current, [key]: value }));
+  const updateAuditFilter = <K extends keyof typeof auditFilters>(key: K, value: (typeof auditFilters)[K]) =>
+    setAuditFilters((current) => ({ ...current, [key]: value }));
 
   const resetForm = () => {
     setForm(EMPTY_FORM);
@@ -184,6 +204,9 @@ export default function Settings() {
   if (loading) {
     return <div className="rounded-3xl border border-white/10 bg-black/20 p-6 text-sm text-[#d7aabd]">جارٍ تحميل الإعدادات...</div>;
   }
+
+  const targetTypes = Array.from(new Set(logs.map((log) => log.targetType))).sort();
+  const actionTypes = Array.from(new Set(logs.map((log) => log.action))).sort();
 
   return (
     <div className="space-y-6">
@@ -298,7 +321,7 @@ export default function Settings() {
                         <div className="text-xs text-[#d7aabd]">{employee.email}</div>
                       </td>
                       <td className="px-4 py-3">
-                        <div>{employee.role}</div>
+                        <div>{getRoleLabel(employee.role)}</div>
                         <div className="text-xs text-[#d7aabd]">{employee.jobTitle || "بدون مسمى"}</div>
                       </td>
                       <td className="px-4 py-3">{employee.adminAccess ? "مفعل" : "غير مفعل"}</td>
@@ -323,6 +346,70 @@ export default function Settings() {
           <div className="space-y-4">
             <div className="rounded-2xl border border-white/10 bg-[#1b0d14] p-4 text-sm text-[#d7aabd]">
               أي عملية `create / update / delete / upsert` تتم من خلال حسابات الإدارة تسجل هنا تلقائيًا مع اسم الحساب ونوع العملية والكيان المتأثر.
+            </div>
+            <div className="grid gap-3 rounded-2xl border border-white/10 bg-[#1b0d14] p-4 md:grid-cols-2 xl:grid-cols-5">
+              <select
+                className="rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white"
+                value={auditFilters.actorUserId}
+                onChange={(e) => updateAuditFilter("actorUserId", e.target.value)}
+              >
+                <option value="">كل الحسابات</option>
+                {employees.map((employee) => (
+                  <option key={employee.id} value={employee.id}>
+                    {employee.name || employee.email}
+                  </option>
+                ))}
+              </select>
+              <select
+                className="rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white"
+                value={auditFilters.targetType}
+                onChange={(e) => updateAuditFilter("targetType", e.target.value)}
+              >
+                <option value="">كل الكيانات</option>
+                {targetTypes.map((targetType) => (
+                  <option key={targetType} value={targetType}>
+                    {targetType}
+                  </option>
+                ))}
+              </select>
+              <select
+                className="rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white"
+                value={auditFilters.action}
+                onChange={(e) => updateAuditFilter("action", e.target.value)}
+              >
+                <option value="">كل العمليات</option>
+                {actionTypes.map((action) => (
+                  <option key={action} value={action}>
+                    {action}
+                  </option>
+                ))}
+              </select>
+              <input
+                className="rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white"
+                placeholder="بحث بالبريد أو النوع أو المعرف"
+                value={auditFilters.search}
+                onChange={(e) => updateAuditFilter("search", e.target.value)}
+              />
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => void loadLogs()}
+                  className="flex-1 rounded-xl bg-pink-600 px-4 py-3 text-sm font-bold text-white"
+                >
+                  تحديث
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = { actorUserId: "", targetType: "", action: "", search: "" };
+                    setAuditFilters(next);
+                    void loadLogs(next);
+                  }}
+                  className="rounded-xl border border-white/10 px-4 py-3 text-sm font-bold text-[#d7aabd]"
+                >
+                  مسح
+                </button>
+              </div>
             </div>
             <div className="space-y-3">
               {logs.map((log) => (

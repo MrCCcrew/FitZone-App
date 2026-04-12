@@ -13,11 +13,23 @@ export async function GET(request: Request) {
   const limit = Math.min(Math.max(Number(searchParams.get("limit") ?? "100"), 1), 300);
   const actorUserId = searchParams.get("actorUserId") || undefined;
   const targetType = searchParams.get("targetType") || undefined;
+  const action = searchParams.get("action") || undefined;
+  const search = searchParams.get("search") || undefined;
 
   const logs = await db.auditLog.findMany({
     where: {
       actorUserId,
       targetType,
+      action,
+      OR: search
+        ? [
+            { actorName: { contains: search } },
+            { actorEmail: { contains: search } },
+            { actorRole: { contains: search } },
+            { targetType: { contains: search } },
+            { targetId: { contains: search } },
+          ]
+        : undefined,
     },
     orderBy: { createdAt: "desc" },
     take: limit,
