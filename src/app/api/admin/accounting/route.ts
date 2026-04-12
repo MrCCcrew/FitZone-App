@@ -4,7 +4,6 @@ import { requireAdminFeature } from "@/lib/admin-guard";
 
 type BusinessUnit = "store" | "club";
 type FeeRuleCategory = "platform" | "external_service" | "other";
-type FeeRateType = "percentage" | "fixed";
 
 function parseDateStart(value: string | null) {
   if (!value) return null;
@@ -89,6 +88,7 @@ export async function GET(request: Request) {
     feeRules,
     expenses,
     orders,
+    cancelledOrders,
     receipts,
     orderMovements,
     memberships,
@@ -120,6 +120,20 @@ export async function GET(request: Request) {
           take: 1,
           select: { provider: true, paymentMethod: true, amount: true },
         },
+      },
+      orderBy: { createdAt: "desc" },
+    }),
+    // Cancelled orders that were actually paid = returns/refunds
+    db.order.findMany({
+      where: {
+        businessUnit: "store",
+        status: "cancelled",
+        ...inRangeFilter("createdAt", from, to),
+        paymentTransactions: { some: { status: "paid" } },
+      },
+      include: {
+        user: { select: { name: true } },
+        items: { include: { product: { select: { name: true } } } },
       },
       orderBy: { createdAt: "desc" },
     }),
@@ -212,11 +226,26 @@ export async function GET(request: Request) {
     };
   });
 
-  const storeSalesRevenue = round2(storeOrderRows.reduce((sum, order) => sum + order.total, 0));
+  const storeGrossSales = round2(storeOrderRows.reduce((sum, order) => sum + order.total, 0));
   const storeShippingRevenue = round2(storeOrderRows.reduce((sum, order) => sum + order.shippingFee, 0));
   const storeDiscounts = round2(orders.reduce((sum, order) => sum + order.discountTotal, 0));
   const storePurchaseInvoicesTotal = round2(receipts.reduce((sum, receipt) => sum + receipt.totalCost, 0));
   const storeExpensesTotal = round2(storeExpenses.reduce((sum, expense) => sum + expense.amount, 0));
+
+  // Returns: cancelled orders that were actually paid
+  const storeReturnRows = cancelledOrders.map((order) => ({
+    id: order.id,
+    date: order.createdAt.toISOString(),
+    customerName: order.user.name ?? "عميل",
+    items: order.items.map((item) => item.product.name).join("، "),
+    paymentMethod: order.paymentMethod,
+    total: order.total,
+  }));
+  const storeReturnsTotal = round2(storeReturnRows.reduce((sum, r) => sum + r.total, 0));
+
+  // Net sales = gross sales - returns
+  const storeSalesRevenue = round2(storeGrossSales - storeReturnsTotal);
+
   const storeCOGS = round2(
     orderMovements.reduce((sum, movement) => {
       const cost = Math.abs(movement.quantityChange) * (movement.unitCost ?? 0);
@@ -271,6 +300,10 @@ export async function GET(request: Request) {
   const bookingRevenue = round2(bookingRows.reduce((sum, row) => sum + row.paidAmount, 0));
   const clubRevenue = round2(membershipRevenue + bookingRevenue);
   const walletBonusCost = round2(membershipRows.reduce((sum, row) => sum + row.walletBonus, 0));
+
+  // Wallet topups: money collected but not yet earned (deferred liability)
+  const walletTopupRows = paymentTransactions.filter((tx) => tx.purpose === "wallet_topup");
+  const walletTopupCollected = round2(walletTopupRows.reduce((sum, tx) => sum + tx.amount, 0));
   const pointsLiability = round2(rewardPoints.reduce((sum, reward) => sum + reward.points * pointValueEGP, 0));
   const redeemedPointsCost = round2(
     rewardHistory.reduce((sum, row) => {
@@ -362,6 +395,8 @@ export async function GET(request: Request) {
     })),
     store: {
       summary: {
+        grossSales: storeGrossSales,
+        returnsTotal: storeReturnsTotal,
         salesRevenue: storeSalesRevenue,
         shippingRevenue: storeShippingRevenue,
         discountsGranted: storeDiscounts,
@@ -372,9 +407,11 @@ export async function GET(request: Request) {
         grossProfit: storeGrossProfit,
         netProfit: storeNetProfit,
         orderCount: storeOrderRows.length,
+        returnCount: storeReturnRows.length,
         purchaseInvoiceCount: receipts.length,
       },
       sales: storeOrderRows,
+      returns: storeReturnRows,
       purchases: receipts.map((receipt) => ({
         id: receipt.id,
         date: receipt.receivedAt.toISOString(),
@@ -403,6 +440,7 @@ export async function GET(request: Request) {
         membershipRevenue,
         bookingRevenue,
         totalRevenue: clubRevenue,
+        walletTopupCollected,
         walletBonusCost,
         redeemedPointsCost,
         currentPointsLiability: pointsLiability,
@@ -412,6 +450,7 @@ export async function GET(request: Request) {
         netProfit: clubNetProfit,
         membershipCount: membershipRows.length,
         bookingCount: bookingRows.length,
+        walletTopupCount: walletTopupRows.length,
       },
       memberships: membershipRows,
       bookings: bookingRows,
