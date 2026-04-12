@@ -30,6 +30,13 @@ export async function POST(req: Request) {
       );
     }
 
+    if (normalizedName.split(/\s+/).length < 3) {
+      return NextResponse.json(
+        { error: "يجب إدخال ثلاثة أسماء على الأقل (الاسم الأول والأوسط والأخير)." },
+        { status: 400 },
+      );
+    }
+
     const existing = await db.user.findUnique({ where: { email: normalizedEmail } });
     if (existing) {
       if (!existing.emailVerified) {
