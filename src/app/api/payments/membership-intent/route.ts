@@ -91,6 +91,7 @@ export async function POST(req: Request) {
       userId: currentUser.id,
       provider: body.provider ?? null,
       purpose: "membership",
+      businessUnit: "club",
       amount,
       paymentMethod: body.paymentMethod ?? "card",
       membershipId,

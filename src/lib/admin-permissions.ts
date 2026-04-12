@@ -5,6 +5,7 @@ export type AdminRole = "admin" | "staff" | "trainer" | "accountant";
 export type AdminFeature =
   | "settings"
   | "overview"
+  | "accounting"
   | "site-content"
   | "knowledge"
   | "memberships"
@@ -27,6 +28,7 @@ export type AdminFeature =
 export const ADMIN_FEATURES: AdminFeature[] = [
   "settings",
   "overview",
+  "accounting",
   "site-content",
   "knowledge",
   "memberships",
@@ -62,7 +64,7 @@ const STAFF_FEATURES: AdminFeature[] = [
 ];
 
 const TRAINER_FEATURES: AdminFeature[] = ["classes", "trainers", "bookings", "customers"];
-const ACCOUNTANT_FEATURES: AdminFeature[] = ["overview", "orders", "balance", "discounts", "customers"];
+const ACCOUNTANT_FEATURES: AdminFeature[] = ["overview", "accounting", "orders", "balance", "customers"];
 
 export const ROLE_FEATURE_TEMPLATES: Record<AdminRole, AdminFeature[]> = {
   admin: ADMIN_FEATURES,
@@ -73,6 +75,7 @@ export const ROLE_FEATURE_TEMPLATES: Record<AdminRole, AdminFeature[]> = {
 
 export const SECTION_FEATURE_MAP: Record<Section, AdminFeature> = {
   overview: "overview",
+  accounting: "accounting",
   settings: "settings",
   pages: "site-content",
   knowledge: "knowledge",

@@ -646,6 +646,41 @@ model InventoryMovement {
 
 // ─── Complaint ────────────────────────────────────────────────────────────────
 
+model AccountingExpense {
+  id              String   @id @default(cuid())
+  businessUnit    String   @default("store") // store | club
+  category        String   @default("general")
+  label           String
+  description     String?  @db.Text
+  amount          Float
+  vendor          String?
+  referenceNumber String?
+  expenseDate     DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([businessUnit, expenseDate])
+  @@index([category, expenseDate])
+}
+
+model AccountingFeeRule {
+  id               String   @id @default(cuid())
+  businessUnit     String   @default("both") // store | club | both
+  category         String   @default("platform") // platform | external_service | other
+  label            String
+  appliesToPurpose String   @default("all") // all | order | membership | wallet_topup | booking
+  provider         String?
+  paymentMethod    String?
+  rateType         String   @default("percentage") // percentage | fixed
+  rateValue        Float
+  notes            String?  @db.Text
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([businessUnit, isActive])
+}
+
 model Complaint {
   id        String   @id @default(cuid())
   userId    String
