@@ -1,5 +1,6 @@
 export type Section =
   | "overview"
+  | "accounting"
   | "settings"
   | "pages"
   | "knowledge"

@@ -338,6 +338,7 @@ export async function POST(req: Request) {
       userId,
       provider: result.membershipPaymentMethod,
       purpose: "membership",
+      businessUnit: "club",
       amount: result.paymentAmount,
       paymentMethod: result.membershipPaymentMethod,
       membershipId: result.subscriptionId,

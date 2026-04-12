@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { Section } from "./types";
 import { canAccessAdminSection, getDefaultAdminSection, isAdminRole } from "@/lib/admin-permissions";
 import Overview from "./sections/Overview";
+import Accounting from "./sections/Accounting";
 import PagesContent from "./sections/PagesContent";
 import ChatKnowledge from "./sections/ChatKnowledge";
 import Subscriptions from "./sections/Subscriptions";
@@ -31,26 +32,28 @@ import Settings from "./sections/Settings";
 const NAV: { id: Section; label: string; icon: string }[] = [
   { id: "settings", label: "الإعدادات والصلاحيات", icon: "⚙️" },
   { id: "overview", label: "لوحة التحكم", icon: "📊" },
-  { id: "pages", label: "الصفحات والمحتوى", icon: "📝" },
+  { id: "accounting", label: "الحسابات والتقارير", icon: "💼" },
+  { id: "pages", label: "الصفحات والمحتوى", icon: "📄" },
   { id: "knowledge", label: "قاعدة معرفة البوت", icon: "KB" },
-  { id: "subscriptions", label: "الاشتراكات والعروض", icon: "🏷️" },
+  { id: "subscriptions", label: "الاشتراكات والعروض", icon: "🎟️" },
   { id: "packages", label: "الباقات", icon: "🎁" },
   { id: "goals", label: "الأهداف", icon: "🎯" },
   { id: "delivery", label: "شركات التوصيل", icon: "🚚" },
   { id: "health", label: "استبيان الإصابات", icon: "🩺" },
   { id: "payments", label: "المدفوعات", icon: "💳" },
-  { id: "classes", label: "الكلاسات والجدول", icon: "📅" },
+  { id: "classes", label: "الكلاسات والجدول", icon: "🏋️" },
   { id: "trainers", label: "المدربات", icon: "👩‍🏫" },
-  { id: "products", label: "المنتجات والطلبات", icon: "🛒" },
+  { id: "products", label: "المنتجات والطلبات", icon: "🛍️" },
   { id: "inventory", label: "المخزون والمشتريات", icon: "📦" },
   { id: "reviews", label: "آراء العملاء", icon: "⭐" },
   { id: "balance", label: "الرصيد والنقاط", icon: "💰" },
   { id: "chat", label: "الدردشة المباشرة", icon: "💬" },
   { id: "customers", label: "العملاء", icon: "👥" },
-  { id: "complaints", label: "الشكاوى", icon: "📣" },
-  { id: "discounts", label: "أكواد الخصم", icon: "🏷" },
+  { id: "complaints", label: "الشكاوى", icon: "📝" },
+  { id: "discounts", label: "أكواد الخصم", icon: "🏷️" },
   { id: "rewards", label: "المكافآت والإحالة", icon: "🎁" },
 ];
+
 const BOOKINGS_NAV_ITEM = { id: "bookings", label: "الحجوزات", icon: "📆" } as const;
 if (!NAV.find((item) => item.id === "database")) {
   NAV.push({ id: "database", label: "إدارة قاعدة البيانات", icon: "🧰" });
@@ -65,6 +68,7 @@ if (bookingsInsertAt >= 0) {
 const TITLES: Record<string, string> = {
   settings: "إدارة الإعدادات والصلاحيات",
   overview: "لوحة التحكم",
+  accounting: "الحسابات وتقارير المتجر والجيم",
   pages: "إدارة الصفحات والمحتوى",
   knowledge: "قاعدة معرفة البوت",
   subscriptions: "إدارة الاشتراكات والعروض",
@@ -85,14 +89,13 @@ const TITLES: Record<string, string> = {
   complaints: "إدارة الشكاوى",
   discounts: "أكواد الخصم",
   rewards: "إعدادات المكافآت والإحالة",
+  database: "إدارة قاعدة البيانات",
 };
-
-TITLES.bookings = "إدارة الحجوزات";
-TITLES.database = "إدارة قاعدة البيانات";
 
 const SECTIONS: Record<string, ComponentType> = {
   settings: Settings,
   overview: Overview,
+  accounting: Accounting,
   pages: PagesContent,
   knowledge: ChatKnowledge,
   subscriptions: Subscriptions,
@@ -113,9 +116,8 @@ const SECTIONS: Record<string, ComponentType> = {
   complaints: Complaints,
   discounts: DiscountCodes,
   rewards: RewardSettings,
+  database: DatabaseMaintenance,
 };
-
-SECTIONS.database = DatabaseMaintenance;
 
 type AdminSessionUser = {
   id?: string;
@@ -218,7 +220,7 @@ export default function AdminPanel() {
       >
         <div className="text-center">
           <div className="mb-3 text-3xl">⌛</div>
-          <div className="text-sm text-[#d7aabd]">جاري تحميل لوحة الإدارة...</div>
+          <div className="text-sm text-[#d7aabd]">جارٍ تحميل لوحة الإدارة...</div>
         </div>
       </div>
     );
@@ -231,8 +233,8 @@ export default function AdminPanel() {
         className="admin-theme flex min-h-screen items-center justify-center bg-[linear-gradient(180deg,#2a0f1b_0%,#391320_48%,#4a1b2d_100%)] text-[#fff4f8]"
       >
         <div className="text-center">
-          <div className="mb-3 text-3xl">🚫</div>
-          <div className="text-sm text-[#d7aabd]">جاري التحقق من صلاحيات الدخول...</div>
+          <div className="mb-3 text-3xl">🔒</div>
+          <div className="text-sm text-[#d7aabd]">جارٍ التحقق من صلاحيات الدخول...</div>
         </div>
       </div>
     );
@@ -310,7 +312,7 @@ export default function AdminPanel() {
             className="flex w-full items-center gap-3 rounded-xl px-4 py-2.5 text-sm text-red-400 transition-all hover:bg-red-950/40 hover:text-red-300 disabled:opacity-50"
           >
             <span>⇥</span>
-            {loggingOut ? "جاري تسجيل الخروج..." : "تسجيل الخروج"}
+            {loggingOut ? "جارٍ تسجيل الخروج..." : "تسجيل الخروج"}
           </button>
         </div>
       </aside>

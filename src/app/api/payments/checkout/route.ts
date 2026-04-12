@@ -103,6 +103,7 @@ export async function POST(req: Request) {
       userId: user.id,
       provider: body.provider ?? null,
       purpose,
+      businessUnit: purpose === "order" ? "store" : "club",
       amount: resolvedAmount,
       currency: body.currency ?? "EGP",
       paymentMethod: body.paymentMethod ?? "card",

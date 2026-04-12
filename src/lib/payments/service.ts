@@ -11,6 +11,7 @@ type CreatePaymentTransactionInput = {
   userId: string;
   provider?: string | null;
   purpose: PaymentPurpose;
+  businessUnit?: "store" | "club";
   amount: number;
   currency?: string | null;
   paymentMethod?: string | null;
@@ -42,6 +43,11 @@ function parseJson(value: string | null | undefined) {
   }
 }
 
+function getDefaultBusinessUnit(purpose: PaymentPurpose) {
+  if (purpose === "order") return "store";
+  return "club";
+}
+
 export function getAvailablePaymentProviders() {
   return listPaymentProviders().map((provider) => ({
     key: provider.key,
@@ -69,6 +75,7 @@ export async function createPaymentTransaction(input: CreatePaymentTransactionIn
       membershipId: input.membershipId ?? null,
       offerId: input.offerId ?? null,
       purpose: input.purpose,
+      businessUnit: input.businessUnit ?? getDefaultBusinessUnit(input.purpose),
       provider: provider.key,
       amount,
       currency: (input.currency || "EGP").toUpperCase(),

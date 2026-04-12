@@ -161,6 +161,7 @@ export async function POST(req: Request) {
         userId,
         provider: paymentMethod,
         purpose: "order",
+        businessUnit: "store",
         amount: total,
         paymentMethod,
         orderId: order.id,
