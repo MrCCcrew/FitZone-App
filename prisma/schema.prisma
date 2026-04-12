@@ -54,6 +54,10 @@ model User {
   phone         String?
   password      String?
   role          String    @default("member") // member | trainer | staff | admin
+  jobTitle      String?
+  adminAccess   Boolean   @default(false)
+  adminPermissions String? @db.LongText // JSON array of AdminFeature keys
+  isActive      Boolean   @default(true)
   avatar        String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -76,6 +80,27 @@ model User {
   productReviews ProductReview[]
   handledChatSessions ChatSession[]  @relation("AssignedSupport")
   supportPresence     SupportPresence?
+  auditLogs           AuditLog[]     @relation("AuditActor")
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  actorUserId String?
+  actorName   String?
+  actorEmail  String?
+  actorRole   String?
+  action      String
+  targetType  String
+  targetId    String?
+  details     String?  @db.LongText
+  ipAddress   String?
+  userAgent   String?  @db.Text
+  createdAt   DateTime @default(now())
+
+  actor User? @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([actorUserId, createdAt])
+  @@index([targetType, createdAt])
 }
 
 // ─── Membership ───────────────────────────────────────────────────────────────
