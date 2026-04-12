@@ -1,0 +1,59 @@
+import { NextRequest, NextResponse } from "next/server";
+import { findOrCreateOAuthUser, getAppBaseUrl } from "@/lib/oauth";
+import { APP_SESSION_COOKIE, createAppSessionToken, getAppSessionCookieOptions } from "@/lib/app-session";
+import { ADMIN_SESSION_COOKIE, getAdminSessionCookieOptions } from "@/lib/admin-session";
+
+export async function GET(req: NextRequest) {
+  const base = getAppBaseUrl();
+  const { searchParams } = new URL(req.url);
+  const code = searchParams.get("code");
+  const state = searchParams.get("state");
+  const savedState = req.cookies.get("oauth_state")?.value;
+
+  if (!code || !state || !savedState || state !== savedState) {
+    return NextResponse.redirect(`${base}/login?error=oauth_failed`);
+  }
+
+  try {
+    const tokenRes = await fetch(
+      `https://graph.facebook.com/v19.0/oauth/access_token?${new URLSearchParams({
+        client_id: process.env.FACEBOOK_APP_ID!,
+        client_secret: process.env.FACEBOOK_APP_SECRET!,
+        redirect_uri: `${base}/api/auth/oauth/facebook/callback`,
+        code,
+      })}`,
+    );
+    const tokens = (await tokenRes.json()) as { access_token?: string };
+    if (!tokens.access_token) throw new Error("no_token");
+
+    const profileRes = await fetch(
+      `https://graph.facebook.com/me?fields=id,name,email&access_token=${tokens.access_token}`,
+    );
+    const profile = (await profileRes.json()) as { id?: string; name?: string; email?: string };
+    if (!profile.id) throw new Error("no_id");
+
+    const user = await findOrCreateOAuthUser({
+      provider: "facebook",
+      providerId: profile.id,
+      email: profile.email ?? null,
+      name: profile.name ?? null,
+    });
+    if (!user) throw new Error("no_user");
+
+    const token = createAppSessionToken({
+      id: user.id,
+      email: user.email ?? "",
+      name: user.name ?? "عضو FitZone",
+      role: user.role as "member" | "admin" | "staff" | "trainer" | "accountant",
+    });
+
+    const res = NextResponse.redirect(`${base}/`);
+    res.cookies.set(APP_SESSION_COOKIE, token, getAppSessionCookieOptions());
+    res.cookies.set(ADMIN_SESSION_COOKIE, "", { ...getAdminSessionCookieOptions(), maxAge: 0 });
+    res.cookies.set("oauth_state", "", { httpOnly: true, maxAge: 0, path: "/" });
+    return res;
+  } catch (err) {
+    console.error("[FACEBOOK_CALLBACK]", err);
+    return NextResponse.redirect(`${base}/login?error=oauth_failed`);
+  }
+}
