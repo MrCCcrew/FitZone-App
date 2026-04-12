@@ -252,9 +252,9 @@ model Product {
   averageCost      Float   @default(0)
   lastPurchaseCost Float   @default(0)
   reorderLevel     Int     @default(0)
-  images      String? // JSON array of URLs
-  sizes       String? // JSON array
-  colors      String? // JSON array
+  images      String? @db.Text // JSON array of URLs
+  sizes       String? @db.Text // JSON array
+  colors      String? @db.Text // JSON array
   isActive    Boolean @default(true)
 
   orderItems OrderItem[]
