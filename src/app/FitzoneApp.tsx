@@ -694,8 +694,8 @@ const Footer = ({ navigate }: { navigate: (p: string) => void }) => {
           </div>
           <p style={{ color: C.gray, fontSize: 13, lineHeight: 1.8, marginBottom: 16 }}>
             {t(
-              "أول نادي لياقة بدنية للسيدات والأطفال في بني سويف. جودة عالية، مدربات محترفات، ونتائج حقيقية.",
-              "First fitness club for women and kids in Beni Suef. High quality, pro coaches, real results.",
+              "نادي لياقة للسيدات والأطفال في بني سويف يقدم اشتراكات، كلاسات، مدربات محترفات، ومتجر رياضي في مكان واحد.",
+              "Fitness club in Beni Suef for women and kids with memberships, classes, expert coaches, and a sports shop in one place.",
             )}
           </p>
           <div style={{ display: "flex", gap: 10 }}>
@@ -864,9 +864,9 @@ const DEFAULT_ABOUT: AboutContent = {
   cityEn: "Beni Suef, Egypt",
   founded: "2020",
   description:
-    "احنا أول نادي جيم منفرد في بني سويف. بنقدّم تجربة تدريب مختلفة للسيدات والأطفال في بيئة آمنة ومريحة، وبرامج تدريب علمية بإشراف أفضل المدربات المتخصصات في مجال التدريب البدني.",
+    "فيت زون جيم في بني سويف يقدم تجربة تدريب متخصصة للسيدات والأطفال، مع كلاسات متنوعة وبرامج لياقة عملية داخل بيئة آمنة ومريحة بإشراف مدربات محترفات.",
   descriptionEn:
-    "We are the first women & kids gym in Beni Suef, offering a safe, comfortable space and structured training programs led by certified coaches.",
+    "Fit Zone Gym in Beni Suef offers specialized training for women and kids, with diverse classes and practical fitness programs in a safe, comfortable space led by certified coaches.",
   vision:
     "هدفنا إنك توصلي لأفضل نسخة من نفسك من خلال التزام تدريبي مناسب لحالتك، مع متابعة مستمرة وتخطيط ذكي للتمارين.",
   visionEn:
@@ -1460,7 +1460,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
   const todayOffsetRef = useRef(0);
   const todaySegmentWidthRef = useRef(0);
     const [heroContent, setHeroContent] = useState<HomeHeroContent>({
-      badge: "أول نادي للسيدات في بني سويف",
+      badge: "نادي لياقة للسيدات والأطفال في بني سويف",
       badgeEn: "First women & kids gym in Beni Suef",
       headline1: "ابدئي رحلتك",
       headline1En: "Start your journey",
@@ -1468,8 +1468,8 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
       headline2En: "FIT ZONE",
       headline3: "مع",
       headline3En: "with",
-      subtext: "النادي الوحيد المخصص للسيدات والأطفال. كلاسات متنوعة، مدربات محترفات، ونتائج حقيقية في بيئة آمنة ومريحة.",
-      subtextEn: "The only club dedicated to women and kids. Diverse classes, expert coaches, real results in a safe and friendly environment.",
+      subtext: "فيت زون يقدم اشتراكات جيم وكلاسات متنوعة للسيدات والأطفال في بني سويف، مع مدربات محترفات وبرامج تدريب عملية داخل بيئة آمنة ومريحة.",
+      subtextEn: "FitZone offers gym memberships and diverse classes for women and kids in Beni Suef, with expert coaches, practical programs, and a safe, comfortable environment.",
       ctaPrimary: "اشتركي الآن",
       ctaPrimaryEn: "Subscribe now",
       ctaSecondary: "احجزي كلاس تجريبي",
@@ -2004,7 +2004,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
             <div style={{ textAlign: "center", marginBottom: 48 }}>
               <span className="tag" style={{ marginBottom: 12, display: "inline-block" }}>{t("كلاساتنا", "Our classes")}</span>
               <h2 className="section-title">{t("كلاسات تناسب", "Classes for")} <span>{t("كل أهدافك", "every goal")}</span></h2>
-              <p className="section-sub">{t("تشكيلة متنوعة من الكلاسات مع أفضل المدربات", "A diverse set of classes with top coaches")}</p>
+              <p className="section-sub">{t("كلاسات جيم متنوعة في بني سويف تساعدك على اللياقة، النزول في الوزن، والمرونة بإشراف مدربات متخصصات.", "Diverse gym classes in Beni Suef for fitness, weight loss, flexibility, and better performance with specialized coaches.")}</p>
             </div>
             <div style={{ display: "flex", gap: 16, justifyContent: "center", flexWrap: "wrap" }}>
               {classes.map(c => (
@@ -2025,7 +2025,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
           <div style={{ textAlign: "center", marginBottom: 48 }}>
             <span className="tag" style={{ marginBottom: 12, display: "inline-block" }}>{t("الأسعار", "Pricing")}</span>
             <h2 className="section-title">{t("اختاري", "Choose")} <span>{t("الباقة", "the plan")}</span> {t("المناسبة", "that fits")}</h2>
-            <p className="section-sub">{t("باقات بأسعار تنافسية تبدأ من 299 ج.م / شهر", "Affordable plans starting from 299 EGP / month")}</p>
+            <p className="section-sub">{t("اشتراكات شهرية وباقات جيم مرنة تناسب أهداف السيدات والأطفال في بني سويف، بأسعار واضحة وخيارات متعددة.", "Flexible gym memberships and plans for women and kids in Beni Suef, with clear pricing and multiple options.")}</p>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 24 }}>
             {memberships.map(m => (
@@ -2173,7 +2173,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 32 }}>
             <div>
               <h2 className="section-title">{t("المتجر", "Shop")} <span>{t("الرياضي", "gear")}</span></h2>
-              <p className="section-sub">{t("منتجات مختارة لتعزيز أدائك", "Curated products to boost performance")}</p>
+              <p className="section-sub">{t("متجر رياضي يضم منتجات مختارة لدعم التمرين، التغذية، وأدوات اللياقة المناسبة لاحتياجك اليومي.", "A sports shop with selected products to support training, nutrition, and everyday fitness needs.")}</p>
             </div>
             <button
               className="btn-primary"
@@ -2252,7 +2252,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
         <div className="container">
           <div style={{ textAlign: "center", marginBottom: 40 }}>
             <h2 className="section-title">{t("مدرباتنا", "Our trainers")} <span>{t("المحترفات", "experts")}</span></h2>
-            <p className="section-sub">{t("فريق من أفضل المدربات لمساعدتك في تحقيق أهدافك", "A team of top coaches to help you reach your goals")}</p>
+            <p className="section-sub">{t("فريق مدربات محترفات في بني سويف لمساعدتك على بناء برنامج مناسب لهدفك، سواء لياقة أو تخسيس أو تأهيل.", "A team of professional coaches in Beni Suef to help you follow the right plan for fitness, weight loss, or recovery goals.")}</p>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 24 }}>
             {trainers.map((t, index) => (
@@ -2283,7 +2283,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
       <section className="section" style={{ background: C.bgCard }}>
         <div className="container">
           <div style={{ textAlign: "center", marginBottom: 40 }}>
-            <h2 className="section-title">قالت عنا <span>العضوات</span></h2>
+            <h2 className="section-title">{t("تجارب", "Member")} <span>{t("العضوات", "reviews")}</span></h2>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 24 }}>
             {testimonials.map((t, index) => {
