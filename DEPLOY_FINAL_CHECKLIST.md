@@ -97,6 +97,20 @@ Then remove or rotate `SETUP_TOKEN`.
 - Confirm image upload works from admin if `R2_*` is configured.
 - Confirm login/logout updates the homepage header correctly.
 - Confirm product pages, classes, memberships, orders, and testimonials load correctly.
+- Confirm `ENABLE_SETUP_ROUTE` is unset or `false` after first admin setup.
+- Confirm server firewall allows only `22/80/443`.
+- Confirm SSH key login works before disabling password login.
+- Confirm Nginx is placed in front of the app and not exposing Node directly.
+- Confirm fail2ban is active.
+
+## Server hardening
+
+Use:
+
+- [`SERVER_HARDENING.md`](/c:/Fitzone/SERVER_HARDENING.md)
+- [`ops/nginx/fitzone.conf`](/c:/Fitzone/ops/nginx/fitzone.conf)
+- [`ops/fail2ban/jail.local.example`](/c:/Fitzone/ops/fail2ban/jail.local.example)
+- [`ops/ssh/sshd_config.hardening.example`](/c:/Fitzone/ops/ssh/sshd_config.hardening.example)
 
 ## Recommended zip contents
 
