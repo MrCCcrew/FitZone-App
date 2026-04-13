@@ -3,6 +3,8 @@ import { db } from "@/lib/db";
 import { getCurrentAppUser } from "@/lib/app-session";
 import { applyRateLimit, getClientIp } from "@/lib/rate-limit";
 
+const EMAIL_VERIFY_POINTS = 20;
+
 export async function POST(req: Request) {
   try {
     const clientIp = getClientIp(req);
@@ -40,14 +42,48 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "الرمز غير صحيح أو منتهي الصلاحية." }, { status: 400 });
     }
 
-    await db.user.update({
+    const user = await db.user.update({
       where: { email: normalizedEmail },
       data: { emailVerified: new Date() },
+      select: {
+        id: true,
+        rewardPoints: {
+          include: {
+            history: { where: { reason: "onboarding_email_verified" }, take: 1 },
+          },
+        },
+      },
     });
 
     await db.verificationToken.deleteMany({
       where: { identifier: normalizedEmail },
     });
+
+    // Auto-grant 20 points for email verification (idempotent)
+    if (!user.rewardPoints?.history.length) {
+      try {
+        await db.$transaction(async (tx) => {
+          const rp = await tx.rewardPoints.upsert({
+            where: { userId: user.id },
+            update: { points: { increment: EMAIL_VERIFY_POINTS } },
+            create: { userId: user.id, points: EMAIL_VERIFY_POINTS, tier: "bronze" },
+          });
+          await tx.rewardHistory.create({
+            data: { rewardId: rp.id, points: EMAIL_VERIFY_POINTS, reason: "onboarding_email_verified" },
+          });
+          await tx.notification.create({
+            data: {
+              userId: user.id,
+              title: "🎉 مكافأة تفعيل البريد!",
+              body: `حصلتِ على ${EMAIL_VERIFY_POINTS} نقطة لتفعيل بريدك الإلكتروني.`,
+              type: "success",
+            },
+          });
+        });
+      } catch (rewardErr) {
+        console.error("[VERIFY_EMAIL_REWARD]", rewardErr);
+      }
+    }
 
     return NextResponse.json({ success: true });
   } catch (err) {

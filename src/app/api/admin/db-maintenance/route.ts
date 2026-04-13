@@ -163,17 +163,54 @@ export async function GET() {
 }
 
 async function clearInventoryData(target: "sales" | "purchases" | "both") {
+  // ── Step 1: Adjust Product.stock BEFORE deleting movements ──────────────────
+
+  if (target === "both") {
+    // Clear everything → stock goes back to 0 for all tracked products
+    await db.$executeRawUnsafe(
+      "UPDATE `Product` SET `stock` = 0 WHERE `trackInventory` = 1;",
+    );
+  } else if (target === "sales") {
+    // Restore stock by reversing sale & return movements:
+    // quantityChange is negative for sales (-qty), positive for returns (+qty)
+    // To undo: stock -= SUM(quantityChange) per product  →  stock += netSoldQty
+    await db.$executeRawUnsafe(`
+      UPDATE \`Product\` p
+      INNER JOIN (
+        SELECT productId, SUM(quantityChange) AS netQty
+        FROM \`InventoryMovement\`
+        WHERE referenceType = 'order' AND type IN ('sale', 'return')
+        GROUP BY productId
+      ) m ON p.id = m.productId
+      SET p.stock = p.stock - m.netQty
+      WHERE p.trackInventory = 1;
+    `);
+  } else if (target === "purchases") {
+    // Reverse purchase movements: stock -= SUM(quantityChange) per product
+    await db.$executeRawUnsafe(`
+      UPDATE \`Product\` p
+      INNER JOIN (
+        SELECT productId, SUM(quantityChange) AS totalPurchased
+        FROM \`InventoryMovement\`
+        WHERE type = 'purchase'
+        GROUP BY productId
+      ) m ON p.id = m.productId
+      SET p.stock = p.stock - m.totalPurchased
+      WHERE p.trackInventory = 1;
+    `);
+  }
+
+  // ── Step 2: Delete movement records ─────────────────────────────────────────
+
   await db.$executeRawUnsafe("SET FOREIGN_KEY_CHECKS=0;");
 
   if (target === "sales" || target === "both") {
-    // Delete sale & return movements (linked to orders)
     await db.$executeRawUnsafe(
       "DELETE FROM `InventoryMovement` WHERE `referenceType` = 'order' AND `type` IN ('sale','return');",
     );
   }
 
   if (target === "purchases" || target === "both") {
-    // Delete purchase movements + receipt items + receipts
     await db.$executeRawUnsafe(
       "DELETE FROM `InventoryMovement` WHERE `referenceType` = 'inventory_receipt';",
     );

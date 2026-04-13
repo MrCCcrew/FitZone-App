@@ -26,8 +26,8 @@ async function getAccountData(userId: string) {
           take: 1,
         },
         wallet: { include: { transactions: { orderBy: { createdAt: "desc" }, take: 10 } } },
-        rewardPoints: { include: { history: { orderBy: { createdAt: "desc" }, take: 10 } } },
-        referral: true,
+        rewardPoints: { include: { history: { orderBy: { createdAt: "desc" }, take: 20 } } },
+        referral: { include: { usages: { select: { id: true } } } },
         bookings: {
           include: { schedule: { include: { class: { include: { trainer: true } } } } },
           orderBy: { createdAt: "desc" },
@@ -58,6 +58,10 @@ async function getAccountData(userId: string) {
         name: user.name ?? "عضو",
         email: user.email ?? "",
         phone: user.phone ?? "",
+        gender: user.gender ?? "",
+        birthDate: user.birthDate ? user.birthDate.toISOString().slice(0, 10) : "",
+        governorate: user.governorate ?? "",
+        address: user.address ?? "",
         role: user.role,
         createdAt: user.createdAt.toISOString(),
         emailVerified: user.emailVerified ? user.emailVerified.toISOString() : null,
@@ -98,8 +102,20 @@ async function getAccountData(userId: string) {
         ? {
             code: user.referral.code,
             totalEarned: user.referral.totalEarned,
+            referredCount: user.referral.usages.length,
           }
         : null,
+      onboarding: {
+        profileComplete: !!(user.phone && user.gender && user.birthDate && user.governorate),
+        emailVerified: !!user.emailVerified,
+        hasReferral: (user.referral?.usages.length ?? 0) > 0,
+        profileRewardClaimed: user.rewardPoints?.history.some(
+          (h) => h.reason === "onboarding_profile_complete"
+        ) ?? false,
+        emailRewardClaimed: user.rewardPoints?.history.some(
+          (h) => h.reason === "onboarding_email_verified"
+        ) ?? false,
+      },
       bookings: user.bookings.map((booking) => ({
         id: booking.id,
         scheduleId: booking.scheduleId,
