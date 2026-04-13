@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { applyRateLimit, getClientIp } from "@/lib/rate-limit";
 
 const SETUP_TOKEN = process.env.SETUP_TOKEN;
+const ENABLE_SETUP_ROUTE = process.env.ENABLE_SETUP_ROUTE === "true";
 
 function isStrongPassword(password: string) {
   return (
@@ -19,6 +20,9 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  if (!ENABLE_SETUP_ROUTE) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
   return NextResponse.json(
     { error: "Use POST with token and password to initialize admin accounts." },
     { status: 405 },
@@ -27,6 +31,10 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
+    if (!ENABLE_SETUP_ROUTE) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+
     const clientIp = getClientIp(req);
     const limit = applyRateLimit(`setup:${clientIp}`, 5, 15 * 60 * 1000);
     if (!limit.ok) {
