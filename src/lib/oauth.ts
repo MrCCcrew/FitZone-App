@@ -76,11 +76,11 @@ export async function verifyAppleIdToken(
 
     // Fetch Apple's public keys
     const keysRes = await fetch("https://appleid.apple.com/auth/keys", { cache: "no-store" });
-    const { keys } = (await keysRes.json()) as { keys: Record<string, unknown>[] };
-    const jwk = keys.find((k) => k.kid === header.kid);
+    const { keys } = (await keysRes.json()) as { keys: JsonWebKey[] };
+    const jwk = keys.find((k) => (k as Record<string, unknown>).kid === header.kid);
     if (!jwk) return null;
 
-    const publicKey = createPublicKey({ key: jwk as Parameters<typeof createPublicKey>[0], format: "jwk" });
+    const publicKey = createPublicKey({ key: jwk, format: "jwk" });
     const verifier = createVerify("SHA256");
     verifier.update(`${headerB64}.${payloadB64}`);
     const valid = verifier.verify(publicKey, sigB64, "base64url");
