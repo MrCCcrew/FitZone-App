@@ -1857,7 +1857,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
           </div>
         </div>
         {/* Floating card */}
-        <div style={{ position: "absolute", left: viewportWidth() < 768 ? "auto" : "5%", right: viewportWidth() < 768 ? 16 : "auto", bottom: viewportWidth() < 768 ? 16 : 40, background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 12, padding: "14px 20px", display: viewportWidth() < 768 ? "none" : "flex", alignItems: "center", gap: 12, zIndex: 2 }}>
+        <div style={{ position: "absolute", left: viewportWidth() < 768 ? "auto" : (lang === "ar" ? "5%" : "auto"), right: viewportWidth() < 768 ? 16 : (lang === "ar" ? "auto" : "5%"), bottom: viewportWidth() < 768 ? 16 : 40, background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 12, padding: "14px 20px", display: viewportWidth() < 768 ? "none" : "flex", alignItems: "center", gap: 12, zIndex: 2 }}>
           <div style={{ width: 36, height: 36, background: "rgba(233,30,99,.15)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center" }}>🏆</div>
           <div>
             <div style={{ fontWeight: 700, fontSize: 13, color: C.white }}>{summary?.authenticated ? (summary.user?.name || "عضوة جديدة") : "مشتركات اليوم"}</div>
