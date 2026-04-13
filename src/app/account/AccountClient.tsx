@@ -92,14 +92,14 @@ const NOTIF_ICONS: Record<string, string> = {
 };
 
 const TABS = [
-  { id: "profile", label: "\u0627\u0644\u0645\u0644\u0641 \u0627\u0644\u0634\u062e\u0635\u064a", icon: "\u25CE" },
-  { id: "membership", label: "\u0627\u0644\u0627\u0634\u062a\u0631\u0627\u0643", icon: "\u25C8" },
-  { id: "bookings", label: "\u0627\u0644\u062d\u062c\u0648\u0632\u0627\u062a", icon: "\u25A3" },
-  { id: "orders", label: "\u0627\u0644\u0637\u0644\u0628\u0627\u062a", icon: "\u25A4" },
-  { id: "wallet", label: "\u0627\u0644\u0645\u062d\u0641\u0638\u0629", icon: "\u00A4" },
-  { id: "reviews", label: "\u0622\u0631\u0627\u0626\u064a", icon: "\u270E" },
-  { id: "notifications", label: "\u0627\u0644\u0625\u0634\u0639\u0627\u0631\u0627\u062a", icon: "\u2731" },
-  { id: "complaints", label: "\u0627\u0644\u0634\u0643\u0627\u0648\u0649", icon: "\u2612" },
+  { id: "profile",       label: "الملف الشخصي", icon: "◎" },
+  { id: "membership",    label: "الاشتراك",      icon: "◈" },
+  { id: "bookings",      label: "الحجوزات",      icon: "▣" },
+  { id: "orders",        label: "الطلبات",       icon: "▤" },
+  { id: "wallet",        label: "المحفظة",       icon: "¤" },
+  { id: "reviews",       label: "آرائي",         icon: "✎" },
+  { id: "notifications", label: "الإشعارات",     icon: "✱" },
+  { id: "complaints",    label: "الشكاوى",       icon: "☒" },
 ] as const;
 type TabId = typeof TABS[number]["id"];
 
@@ -230,7 +230,7 @@ function ProfileTab({ user }: { user: AccountData["user"] }) {
             <span className="text-2xl">📧</span>
             <div>
               <div className="text-yellow-400 font-black text-sm">{t("بريدك الإلكتروني غير مفعّل", "Your email is not verified")}</div>
-              <div className="text-gray-400 text-xs mt-0.5">{t("أدخلي كود التفعيل الذي أُرسل إلى", "Enter the verification code sent to")} {user.email}</div>
+              <div className="text-gray-400 text-xs mt-0.5">{t("أدخلي كود التفعيل الذي أُرسل إلى", "Enter the verification code sent to")} <bdi className="font-medium">{user.email}</bdi></div>
             </div>
             <div className="mt-4 flex flex-wrap gap-2 sm:hidden">
               <a
