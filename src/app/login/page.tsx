@@ -209,6 +209,12 @@ function LoginForm() {
               </div>
             </div>
 
+            <div className="text-end">
+              <Link href="/forgot-password" className="text-xs text-pink-300 transition-colors hover:text-pink-200">
+                {t("نسيت كلمة المرور؟", "Forgot password?")}
+              </Link>
+            </div>
+
             <button
               type="submit"
               disabled={loading}

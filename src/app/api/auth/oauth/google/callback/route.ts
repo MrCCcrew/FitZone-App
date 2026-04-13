@@ -35,19 +35,25 @@ export async function GET(req: NextRequest) {
     const profile = (await profileRes.json()) as { sub?: string; email?: string; name?: string };
     if (!profile.sub) throw new Error("no_sub");
 
-    const user = await findOrCreateOAuthUser({
+    const result = await findOrCreateOAuthUser({
       provider: "google",
       providerId: profile.sub,
       email: profile.email ?? null,
       name: profile.name ?? null,
     });
-    if (!user) throw new Error("no_user");
+    if (!result?.user) throw new Error("no_user");
+
+    if (result.requiresVerification && result.user.email) {
+      const verifyParams = new URLSearchParams({ email: result.user.email });
+      if (!result.emailSent) verifyParams.set("sent", "0");
+      return NextResponse.redirect(`${base}/verify-email?${verifyParams.toString()}`);
+    }
 
     const token = createAppSessionToken({
-      id: user.id,
-      email: user.email ?? "",
-      name: user.name ?? "عضو FitZone",
-      role: user.role as "member" | "admin" | "staff" | "trainer" | "accountant",
+      id: result.user.id,
+      email: result.user.email ?? "",
+      name: result.user.name ?? "عضو FitZone",
+      role: result.user.role as "member" | "admin" | "staff" | "trainer" | "accountant",
     });
 
     const res = NextResponse.redirect(`${base}/`);
