@@ -94,6 +94,8 @@ export default function DatabaseMaintenance() {
   const [loading, setLoading] = useState(false);
   const [backups, setBackups] = useState<BackupInfo[]>([]);
   const [message, setMessage] = useState<ActionResult | null>(null);
+  const [clearTarget, setClearTarget] = useState<"sales" | "purchases" | "both">("sales");
+  const [clearLoading, setClearLoading] = useState(false);
 
   const [recordsTab, setRecordsTab] = useState<RecordsTab>("transactions");
   const [recordsQuery, setRecordsQuery] = useState("");
@@ -321,6 +323,84 @@ export default function DatabaseMaintenance() {
             ))}
           </div>
         )}
+      </div>
+
+      {/* ── Clear inventory data ── */}
+      <div className="rounded-3xl border border-orange-500/30 bg-orange-950/20 p-6">
+        <div className="mb-1 text-lg font-bold text-white">مسح حركات البيع والشراء</div>
+        <p className="mb-5 text-sm text-orange-200/70">
+          تُستخدم هذه الأداة لمسح بيانات المبيعات أو الشراء التجريبية قبل بدء التشغيل الفعلي.
+          سيتم أخذ نسخة احتياطية تلقائياً قبل التنفيذ.
+        </p>
+
+        <div className="mb-4 grid gap-4 sm:grid-cols-2">
+          <div>
+            <label className="mb-2 block text-xs font-medium text-gray-400">كلمة المرور الرئيسية</label>
+            <input
+              type="password"
+              value={masterPassword}
+              onChange={(e) => setMasterPassword(e.target.value)}
+              placeholder="أدخل كلمة المرور الرئيسية"
+              className="w-full rounded-xl border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-white placeholder-gray-600 focus:border-orange-500 focus:outline-none"
+            />
+          </div>
+          <div>
+            <label className="mb-2 block text-xs font-medium text-gray-400">نوع البيانات المراد مسحها</label>
+            <select
+              value={clearTarget}
+              onChange={(e) => setClearTarget(e.target.value as "sales" | "purchases" | "both")}
+              className="w-full rounded-xl border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none"
+            >
+              <option value="sales">حركات البيع فقط (InventoryMovement نوع sale/return)</option>
+              <option value="purchases">فواتير الشراء فقط + إعادة ضبط متوسط التكلفة</option>
+              <option value="both">الكل — بيع + شراء + إعادة ضبط التكلفة</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="mb-4 rounded-xl border border-orange-500/20 bg-orange-950/30 px-4 py-3 text-xs text-orange-200/80 space-y-1">
+          <div>⚠️ <strong>حركات البيع:</strong> تُحذف سجلات البيع من جدول InventoryMovement المرتبطة بالطلبات — لا يُحذف الطلب نفسه.</div>
+          <div>⚠️ <strong>فواتير الشراء:</strong> تُحذف الفواتير وبنودها وحركات الشراء، ويُعاد ضبط متوسط التكلفة لكل المنتجات إلى صفر.</div>
+          <div>✅ بيانات العملاء والاشتراكات والمنتجات لا تتأثر.</div>
+        </div>
+
+        <button
+          type="button"
+          disabled={clearLoading}
+          onClick={async () => {
+            if (!masterPassword.trim()) {
+              setMessage({ ok: false, message: "أدخل كلمة المرور الرئيسية أولاً." });
+              return;
+            }
+            const label =
+              clearTarget === "sales" ? "حركات البيع" :
+              clearTarget === "purchases" ? "فواتير الشراء وحركاتها" :
+              "جميع حركات البيع والشراء";
+            const confirmed = window.confirm(`تأكيد: سيتم مسح ${label} نهائياً بعد أخذ نسخة احتياطية. هل تريد المتابعة؟`);
+            if (!confirmed) return;
+            const confirmed2 = window.confirm(`تأكيد أخير: لا يمكن التراجع. هل أنت متأكد؟`);
+            if (!confirmed2) return;
+            setClearLoading(true);
+            setMessage(null);
+            try {
+              const res = await fetch("/api/admin/db-maintenance", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ action: "clear-inventory", masterPassword, clearTarget }),
+              });
+              const data = await res.json();
+              setMessage({ ok: res.ok, message: data?.message ?? (res.ok ? "تم التنفيذ." : "حدث خطأ."), backup: data?.backup });
+              if (res.ok) { setMasterPassword(""); void loadBackups(); }
+            } catch {
+              setMessage({ ok: false, message: "تعذر الاتصال بالخادم." });
+            } finally {
+              setClearLoading(false);
+            }
+          }}
+          className="rounded-2xl bg-orange-600 px-6 py-2.5 text-sm font-bold text-white hover:bg-orange-500 disabled:opacity-50"
+        >
+          {clearLoading ? "جارٍ التنفيذ..." : "🗑️ مسح البيانات المحددة"}
+        </button>
       </div>
 
       <div className="rounded-3xl border border-gray-800 bg-gray-950/70 p-6">
