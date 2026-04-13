@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useLang } from "@/lib/language";
@@ -16,11 +16,13 @@ function VerifyEmailForm() {
   const [email, setEmail] = useState(defaultEmail);
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
-  const [info, setInfo] = useState(
+  const [info, setInfo] = useState<ReactNode>(
     sentFlag === "0"
       ? t("تعذر إرسال رسالة التفعيل تلقائيًا. يمكنك طلب إعادة الإرسال من الأسفل.", "Automatic verification email could not be sent. You can request a resend below.")
       : defaultEmail
-        ? (lang === "ar" ? `أدخل رمز التفعيل الذي أرسلناه إلى ${defaultEmail}` : `Enter the verification code we sent to ${defaultEmail}`)
+        ? (lang === "ar"
+            ? <>أدخل رمز التفعيل الذي أرسلناه إلى <bdi className="font-medium">{defaultEmail}</bdi></>
+            : <>Enter the verification code we sent to <bdi className="font-medium">{defaultEmail}</bdi></>)
         : "",
   );
   const [loading, setLoading] = useState(false);
@@ -77,7 +79,9 @@ function VerifyEmailForm() {
         return;
       }
 
-      setInfo(lang === "ar" ? `تم إرسال رمز تفعيل جديد إلى ${email}` : `A new verification code has been sent to ${email}`);
+      setInfo(lang === "ar"
+        ? <>تم إرسال رمز تفعيل جديد إلى <bdi className="font-medium">{email}</bdi></>
+        : <>A new verification code has been sent to <bdi className="font-medium">{email}</bdi></>);
     } catch {
       setError(t("تعذر إعادة إرسال رمز التفعيل الآن.", "Unable to resend the verification code right now."));
     } finally {
