@@ -4,7 +4,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "FitZone Fitness Club",
     short_name: "FitZone",
-    description: "نادي فيت زون للسيدات والأطفال في بني سويف.",
+    description: "Women and kids fitness club in Beni Suef with memberships, classes, trainers, and shop services.",
     start_url: "/",
     display: "standalone",
     background_color: "#fff5fa",
