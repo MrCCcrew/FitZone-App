@@ -162,6 +162,33 @@ export async function GET() {
   }
 }
 
+async function clearInventoryData(target: "sales" | "purchases" | "both") {
+  await db.$executeRawUnsafe("SET FOREIGN_KEY_CHECKS=0;");
+
+  if (target === "sales" || target === "both") {
+    // Delete sale & return movements (linked to orders)
+    await db.$executeRawUnsafe(
+      "DELETE FROM `InventoryMovement` WHERE `referenceType` = 'order' AND `type` IN ('sale','return');",
+    );
+  }
+
+  if (target === "purchases" || target === "both") {
+    // Delete purchase movements + receipt items + receipts
+    await db.$executeRawUnsafe(
+      "DELETE FROM `InventoryMovement` WHERE `referenceType` = 'inventory_receipt';",
+    );
+    await db.$executeRawUnsafe("TRUNCATE TABLE `InventoryReceiptItem`;");
+    await db.$executeRawUnsafe("TRUNCATE TABLE `InventoryReceipt`;");
+
+    // Reset average cost and last purchase cost on all products
+    await db.$executeRawUnsafe(
+      "UPDATE `Product` SET `averageCost` = 0, `lastPurchaseCost` = 0;",
+    );
+  }
+
+  await db.$executeRawUnsafe("SET FOREIGN_KEY_CHECKS=1;");
+}
+
 export async function POST(req: Request) {
   const guard = await requireAdminFeature("db-maintenance");
   if ("error" in guard) return guard.error;
@@ -169,15 +196,16 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     const masterPassword = String(body?.masterPassword ?? "");
-    const action = body?.action as "backup" | "reset";
+    const action = body?.action as "backup" | "reset" | "clear-inventory";
     const preserveSiteContent = body?.preserveSiteContent !== false;
     const resetUsers = Boolean(body?.resetUsers);
+    const clearTarget = body?.clearTarget as "sales" | "purchases" | "both" | undefined;
 
     if (!masterPassword || masterPassword !== MASTER_PASSWORD) {
       return NextResponse.json({ message: "كلمة المرور الرئيسية غير صحيحة." }, { status: 401 });
     }
 
-    if (action !== "backup" && action !== "reset") {
+    if (action !== "backup" && action !== "reset" && action !== "clear-inventory") {
       return NextResponse.json({ message: "طلب غير صالح." }, { status: 400 });
     }
 
@@ -187,10 +215,25 @@ export async function POST(req: Request) {
       await resetDatabase({ preserveSiteContent, resetUsers });
     }
 
-    return NextResponse.json({
-      message: action === "backup" ? "تم إنشاء النسخة الاحتياطية بنجاح." : "تم تصفير قاعدة البيانات بنجاح.",
-      backup,
-    });
+    if (action === "clear-inventory") {
+      if (!clearTarget || !["sales", "purchases", "both"].includes(clearTarget)) {
+        return NextResponse.json({ message: "حدد نوع البيانات المراد مسحها." }, { status: 400 });
+      }
+      await clearInventoryData(clearTarget);
+    }
+
+    const messages: Record<string, string> = {
+      backup: "تم إنشاء النسخة الاحتياطية بنجاح.",
+      reset: "تم تصفير قاعدة البيانات بنجاح.",
+      "clear-inventory":
+        clearTarget === "sales"
+          ? "تم مسح جميع حركات البيع بنجاح."
+          : clearTarget === "purchases"
+            ? "تم مسح جميع فواتير الشراء وحركاتها بنجاح وإعادة ضبط متوسط التكلفة."
+            : "تم مسح جميع حركات البيع والشراء بنجاح وإعادة ضبط متوسط التكلفة.",
+    };
+
+    return NextResponse.json({ message: messages[action], backup });
   } catch (error) {
     console.error("[DB_MAINTENANCE]", error);
     return NextResponse.json({ message: "تعذر إكمال العملية الآن." }, { status: 500 });
