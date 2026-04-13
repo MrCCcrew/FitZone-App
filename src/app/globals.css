@@ -397,6 +397,41 @@
   }
 }
 
+/* ── Mobile portrait: tables shrink to fit width without horizontal scroll ── */
+@media (max-width: 767px) and (orientation: portrait) {
+  .admin-theme .overflow-x-auto,
+  .account-theme .overflow-x-auto {
+    overflow-x: visible;
+  }
+
+  .admin-theme table,
+  .account-theme table {
+    width: 100% !important;
+    min-width: 0 !important;
+    font-size: clamp(9px, 2.4vw, 11px) !important;
+    table-layout: auto;
+  }
+
+  .admin-theme table th,
+  .admin-theme table td,
+  .account-theme table th,
+  .account-theme table td {
+    padding: 5px 3px !important;
+    white-space: normal !important;
+    word-break: break-word;
+    line-height: 1.4;
+  }
+}
+
+/* ── Mobile landscape: keep web-like scrollable behavior ── */
+@media (max-width: 900px) and (orientation: landscape) {
+  .admin-theme .overflow-x-auto,
+  .account-theme .overflow-x-auto {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
 @keyframes fitzone-float-a {
   0%, 100% {
     transform: translate3d(0, 0, 0) scale(1);
