@@ -61,6 +61,7 @@ async function getAccountData(userId: string) {
         role: user.role,
         createdAt: user.createdAt.toISOString(),
         emailVerified: user.emailVerified ? user.emailVerified.toISOString() : null,
+        hasPassword: !!user.password,
       },
       membership: activeMembership
         ? {

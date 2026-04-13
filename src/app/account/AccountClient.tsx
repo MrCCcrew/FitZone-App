@@ -16,6 +16,7 @@ interface AccountData {
     role: string;
     createdAt: string;
     emailVerified: string | null;
+    hasPassword: boolean;
   };
   membership: {
     plan: string;
@@ -155,6 +156,8 @@ function ProfileTab({ user }: { user: AccountData["user"] }) {
   const t = (arText: string, enText: string) => (lang === "ar" ? arText : enText);
   const [form, setForm] = useState({ name: user.name, phone: user.phone || "" });
   const [passForm, setPassForm] = useState({ current: "", next: "", confirm: "" });
+  const [passMsg, setPassMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [passLoading, setPassLoading] = useState(false);
   const [saved, setSaved] = useState(false);
   const [verifyCode, setVerifyCode] = useState("");
   const [verifyLoading, setVerifyLoading] = useState(false);
@@ -326,24 +329,75 @@ function ProfileTab({ user }: { user: AccountData["user"] }) {
 
       {/* Change password */}
       <div className={CARD}>
-        <h3 className="text-white font-black mb-4">{t("تغيير كلمة المرور", "Change password")}</h3>
-        <form onSubmit={(e) => { e.preventDefault(); setSaved(true); setTimeout(() => setSaved(false), 2000); }} className="space-y-4">
-          <div>
-            <label className="block text-gray-500 text-xs mb-1.5">{t("كلمة المرور الحالية", "Current password")}</label>
-            <input type="password" value={passForm.current} onChange={(e) => setPassForm({ ...passForm, current: e.target.value })} className={INPUT} placeholder="••••••••" dir="ltr" />
-          </div>
+        <h3 className="text-white font-black mb-1">
+          {user.hasPassword ? t("تغيير كلمة المرور", "Change password") : t("إنشاء كلمة مرور", "Create a password")}
+        </h3>
+        {!user.hasPassword && (
+          <p className="text-gray-400 text-xs mb-4">
+            {t("حسابك مرتبط بجوجل. يمكنك إنشاء كلمة مرور لتسجيل الدخول بالبريد الإلكتروني أيضاً.", "Your account is linked with Google. You can create a password to also log in with your email.")}
+          </p>
+        )}
+        {user.hasPassword && <div className="mb-4" />}
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            setPassMsg(null);
+            setPassLoading(true);
+            try {
+              const res = await fetch("/api/me/change-password", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  currentPassword: passForm.current || undefined,
+                  newPassword: passForm.next,
+                  confirmPassword: passForm.confirm,
+                }),
+              });
+              const data = await res.json().catch(() => null);
+              if (!res.ok) {
+                setPassMsg({ ok: false, text: data?.error || t("حدث خطأ. حاولي مرة أخرى.", "Something went wrong. Please try again.") });
+              } else {
+                setPassMsg({ ok: true, text: t("✅ تم تحديث كلمة المرور بنجاح.", "✅ Password updated successfully.") });
+                setPassForm({ current: "", next: "", confirm: "" });
+              }
+            } catch {
+              setPassMsg({ ok: false, text: t("تعذر الاتصال بالخادم.", "Could not connect to the server.") });
+            } finally {
+              setPassLoading(false);
+            }
+          }}
+          className="space-y-4"
+        >
+          {passMsg && (
+            <div className={`rounded-xl px-4 py-3 text-sm font-bold ${passMsg.ok ? "bg-green-900/30 border border-green-500/30 text-green-400" : "bg-red-950/40 border border-red-500/30 text-red-300"}`}>
+              {passMsg.text}
+            </div>
+          )}
+
+          {user.hasPassword && (
+            <div>
+              <label className="block text-gray-500 text-xs mb-1.5">{t("كلمة المرور الحالية", "Current password")}</label>
+              <input type="password" value={passForm.current} onChange={(e) => setPassForm({ ...passForm, current: e.target.value })} className={INPUT} placeholder="••••••••" dir="ltr" required />
+            </div>
+          )}
+
           <div className="grid sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-gray-500 text-xs mb-1.5">{t("كلمة المرور الجديدة", "New password")}</label>
-              <input type="password" value={passForm.next} onChange={(e) => setPassForm({ ...passForm, next: e.target.value })} className={INPUT} placeholder="••••••••" dir="ltr" />
+              <input type="password" value={passForm.next} onChange={(e) => setPassForm({ ...passForm, next: e.target.value })} className={INPUT} placeholder="••••••••" dir="ltr" required />
             </div>
             <div>
               <label className="block text-gray-500 text-xs mb-1.5">{t("تأكيد كلمة المرور", "Confirm password")}</label>
-              <input type="password" value={passForm.confirm} onChange={(e) => setPassForm({ ...passForm, confirm: e.target.value })} className={INPUT} placeholder="••••••••" dir="ltr" />
+              <input type="password" value={passForm.confirm} onChange={(e) => setPassForm({ ...passForm, confirm: e.target.value })} className={INPUT} placeholder="••••••••" dir="ltr" required />
             </div>
           </div>
-          <button type="submit" className="bg-gray-700 hover:bg-gray-600 text-white font-bold px-6 py-2.5 rounded-xl transition-colors text-sm">
-            {t("🔒 تحديث كلمة المرور", "🔒 Update password")}
+
+          <button type="submit" disabled={passLoading} className="bg-gray-700 hover:bg-gray-600 disabled:opacity-50 text-white font-bold px-6 py-2.5 rounded-xl transition-colors text-sm">
+            {passLoading
+              ? t("جارٍ الحفظ...", "Saving...")
+              : user.hasPassword
+                ? t("🔒 تحديث كلمة المرور", "🔒 Update password")
+                : t("🔒 إنشاء كلمة المرور", "🔒 Create password")}
           </button>
         </form>
       </div>
