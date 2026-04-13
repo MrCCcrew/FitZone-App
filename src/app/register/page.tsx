@@ -48,20 +48,16 @@ function SocialButtons({ lang }: { lang: string }) {
         <GoogleIcon />
         {t("المتابعة بحساب جوجل", "Continue with Google")}
       </a>
-      <a
-        href="/api/auth/oauth/facebook"
-        className="flex w-full items-center justify-center gap-3 rounded-xl border border-white/10 bg-white/5 py-3 text-sm font-medium text-white transition-colors hover:bg-white/10"
-      >
+      <div className="relative flex w-full items-center justify-center gap-3 rounded-xl border border-white/10 bg-white/5 py-3 text-sm font-medium text-white/40 cursor-not-allowed select-none">
         <FacebookIcon />
         {t("المتابعة بحساب فيسبوك", "Continue with Facebook")}
-      </a>
-      <a
-        href="/api/auth/oauth/apple"
-        className="flex w-full items-center justify-center gap-3 rounded-xl border border-white/10 bg-white/5 py-3 text-sm font-medium text-white transition-colors hover:bg-white/10"
-      >
+        <span className="absolute end-3 rounded-md bg-white/10 px-2 py-0.5 text-xs text-gray-400">{t("قريباً", "Soon")}</span>
+      </div>
+      <div className="relative flex w-full items-center justify-center gap-3 rounded-xl border border-white/10 bg-white/5 py-3 text-sm font-medium text-white/40 cursor-not-allowed select-none">
         <AppleIcon />
         {t("المتابعة بحساب أبل", "Continue with Apple")}
-      </a>
+        <span className="absolute end-3 rounded-md bg-white/10 px-2 py-0.5 text-xs text-gray-400">{t("قريباً", "Soon")}</span>
+      </div>
     </div>
   );
 }
