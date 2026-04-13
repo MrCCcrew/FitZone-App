@@ -291,18 +291,95 @@ function RegisterForm() {
 
             {/* Terms */}
             <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-              <p className="mb-3 text-sm font-bold text-white">{t("تعليمات مهمة قبل التسجيل", "Important instructions before registration")}</p>
-              <ul className="mb-4 space-y-2 text-sm leading-6 text-gray-300">
-                <li>{t("البطاقة غير قابلة للتحويل أو الاستبدال تحت أي ظرف من الظروف.", "The card is non-transferable and non-exchangeable under any circumstances.")}</li>
-                <li>{t("سيتم تطبيق رسوم بقيمة 10 د.ك لإصدار بدل فاقد عند الإبلاغ عن فقدان أي بطاقة.", "A fee of 10 KWD will be charged for issuing a replacement card after reporting any lost card.")}</li>
-                <li>{t("في حالة الاسترداد، سيتم استرداد 90% فقط من إجمالي المبلغ المدفوع للبطاقات غير المستخدمة في غضون 14 يوماً فقط من تاريخ الشراء.", "In case of refund, only 90% of the total amount paid will be refunded for unused cards within 14 days from the purchase date.")}</li>
-                <li>{t("للمرضى الذين لديهم تأمين صحي، سوف تطبق الامتيازات المذكورة أعلاه على الخدمات الغير مغطاة بالتأمين الصحي.", "For patients with health insurance, the above benefits will apply to services not covered by health insurance.")}</li>
-              </ul>
+              <p className="mb-3 text-sm font-bold text-white">
+                📌 {t("التعليمات وشروط إنشاء الحساب", "Account Creation Terms & Instructions")}
+              </p>
+
+              <div className="mb-4 max-h-72 overflow-y-auto space-y-4 pe-1 text-sm leading-6 text-gray-300 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/20">
+
+                {/* General */}
+                <div>
+                  <ul className="space-y-1 ps-1">
+                    <li>• {t("تأكد إن كل البيانات اللي بتدخلها صحيحة عشان تقدر تستخدم حسابك بسهولة.", "Make sure all the information you enter is accurate so you can use your account easily.")}</li>
+                    <li>• {t("رقم الموبايل والبريد الإلكتروني لازم يكونوا شغالين لاستلام كود التفعيل والإشعارات.", "Your mobile number and email must be active to receive the activation code and notifications.")}</li>
+                  </ul>
+                </div>
+
+                {/* Activation */}
+                <div>
+                  <p className="mb-1 font-bold text-white">🔐 {t("تفعيل الحساب", "Account Activation")}</p>
+                  <ul className="space-y-1 ps-1">
+                    <li>• {t("هيتم إرسال كود تفعيل على البريد الإلكتروني.", "An activation code will be sent to your email.")}</li>
+                    <li>• {t("لازم تفعيل الحساب بالكود قبل استخدام أي خدمة داخل الموقع.", "You must activate your account with the code before using any service on the site.")}</li>
+                  </ul>
+                </div>
+
+                {/* Loyalty */}
+                <div>
+                  <p className="mb-1 font-bold text-white">🎁 {t("نقاط الولاء (Loyalty Points)", "Loyalty Points")}</p>
+                  <ul className="space-y-1 ps-1">
+                    <li>• {t("كل 1 جنيه بتدفعه على الموقع (متجر أو اشتراك جيم) = بيتحول لنقاط في حسابك.", "Every 1 EGP you spend on the site (store or gym subscription) = converted to points in your account.")}</li>
+                    <li>• {t("تقدر تستخدم النقاط في أي وقت على أي خدمة أو منتج داخل الموقع.", "You can use your points at any time on any service or product on the site.")}</li>
+                    <li>• {t("صلاحية استخدام النقاط 6 شهور فقط من تاريخ إضافتها وبعدها بتنتهي تلقائيًا.", "Points are valid for 6 months from the date they were added, after which they expire automatically.")}</li>
+                  </ul>
+                </div>
+
+                {/* Welcome points */}
+                <div>
+                  <p className="mb-1 font-bold text-white">🎉 {t("نقاط الترحيب", "Welcome Points")}</p>
+                  <ul className="space-y-1 ps-1">
+                    <li>• {t("بمجرد إنشاء الحساب، هيتم إضافة 100 نقطة هدية في حسابك ترحيبًا بيكي 🎁", "As soon as you create your account, 100 gift points will be added as a welcome bonus 🎁")}</li>
+                  </ul>
+                </div>
+
+                {/* Referral */}
+                <div>
+                  <p className="mb-1 font-bold text-white">👥 {t("نظام الإحالة (Referral)", "Referral System")}</p>
+                  <ul className="space-y-1 ps-1">
+                    <li>• {t("هتلاقي كود الإحالة الخاص بيكي داخل حسابك الشخصي بعد التسجيل.", "You'll find your personal referral code inside your profile after registration.")}</li>
+                    <li>• {t("تقدري تشاركيه مع أصحابك.", "You can share it with your friends.")}</li>
+                    <li>• {t("أول ما حد يسجل باستخدام كودك، هينزل في حسابك 50 جنيه رصيد صافي 💰", "Once someone registers using your code, 50 EGP net balance will be credited to your account 💰")}</li>
+                  </ul>
+                </div>
+
+                {/* Profile */}
+                <div>
+                  <p className="mb-1 font-bold text-white">⚙️ {t("استكمال البيانات", "Completing Your Profile")}</p>
+                  <ul className="space-y-1 ps-1">
+                    <li>• {t("بعد التسجيل، لازم تكملي بياناتك داخل الحساب الشخصي.", "After registration, you must complete your profile info inside your personal account.")}</li>
+                    <li>• {t("عشان تقدر تظهرلك كل خدمات ومميزات الموقع بشكل كامل.", "So that all services and features of the site are fully shown to you.")}</li>
+                  </ul>
+                </div>
+
+                {/* Privacy */}
+                <div>
+                  <p className="mb-1 font-bold text-white">🔒 {t("الأمان والخصوصية", "Security & Privacy")}</p>
+                  <ul className="space-y-1 ps-1">
+                    <li>• {t("بياناتك سرية تمامًا ومش هتتم مشاركتها مع أي طرف تالت.", "Your data is completely confidential and will not be shared with any third party.")}</li>
+                    <li>• {t("يُفضل عدم مشاركة كلمة المرور مع أي شخص للحفاظ على أمان حسابك.", "It is recommended not to share your password with anyone to keep your account secure.")}</li>
+                  </ul>
+                </div>
+
+                {/* Support */}
+                <div>
+                  <p className="mb-1 font-bold text-white">📞 {t("الدعم", "Support")}</p>
+                  <ul className="space-y-1 ps-1">
+                    <li>• {t("في حالة وجود أي مشكلة، تقدري تتواصلي مع خدمة العملاء في أي وقت.", "In case of any problem, you can contact customer service at any time.")}</li>
+                  </ul>
+                </div>
+
+                {/* Footer highlights */}
+                <div className="border-t border-white/10 pt-3 space-y-1 text-pink-300 font-medium">
+                  <p>✔️ {t("التسجيل سهل وسريع (أقل من 30 ثانية)", "Registration is easy and fast (less than 30 seconds)")}</p>
+                  <p>✔️ {t("ابدأي دلوقتي واستفيدي من النقاط والهدايا 🎁", "Start now and benefit from points and gifts 🎁")}</p>
+                </div>
+              </div>
+
               <label className="flex cursor-pointer items-start gap-3 text-sm text-gray-200">
                 <input type="checkbox" checked={acceptedTerms} onChange={(e) => setAcceptedTerms(e.target.checked)}
                   className="mt-1 h-4 w-4 rounded border-white/20 bg-transparent accent-red-600"
                 />
-                <span>{t("أوافق على التعليمات المذكورة أعلاه.", "I agree to the instructions above.")}</span>
+                <span>{t("قرأت وأوافق على جميع التعليمات والشروط المذكورة أعلاه.", "I have read and agree to all the terms and instructions above.")}</span>
               </label>
             </div>
 
