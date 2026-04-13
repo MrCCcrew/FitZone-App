@@ -25,15 +25,25 @@ function isProtectedMutation(request: NextRequest) {
 }
 
 function isTrustedRequest(request: NextRequest) {
+  // Use x-forwarded-host so we work correctly behind nginx / reverse proxies
+  const host =
+    request.headers.get("x-forwarded-host") ??
+    request.headers.get("host") ??
+    request.nextUrl.host;
+
   const origin = request.headers.get("origin");
   if (origin) {
-    return origin === request.nextUrl.origin;
+    try {
+      return new URL(origin).host === host;
+    } catch {
+      return false;
+    }
   }
 
   const referer = request.headers.get("referer");
   if (referer) {
     try {
-      return new URL(referer).origin === request.nextUrl.origin;
+      return new URL(referer).host === host;
     } catch {
       return false;
     }
