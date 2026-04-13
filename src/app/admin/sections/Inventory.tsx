@@ -32,6 +32,10 @@ export default function Inventory() {
   const [draftItem, setDraftItem] = useState<ReceiptDraftItem>({ ...EMPTY_ITEM });
   const [items, setItems] = useState<ReceiptDraftItem[]>([]);
 
+  // Edit mode
+  const [editingReceipt, setEditingReceipt] = useState<InventoryReceipt | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
@@ -71,6 +75,31 @@ export default function Inventory() {
     setItems((prev) => prev.filter((item) => item.productId !== productId));
   };
 
+  const clearForm = () => {
+    setSupplierName("");
+    setReferenceNumber("");
+    setNotes("");
+    setItems([]);
+    setDraftItem({ ...EMPTY_ITEM });
+    setEditingReceipt(null);
+  };
+
+  const startEdit = (receipt: InventoryReceipt) => {
+    setEditingReceipt(receipt);
+    setSupplierName(receipt.supplierName ?? "");
+    setReferenceNumber(receipt.referenceNumber ?? "");
+    setNotes(receipt.notes ?? "");
+    setItems(
+      receipt.items.map((i) => ({
+        productId: i.productId,
+        quantity: i.quantity,
+        unitCost: i.unitCost,
+      })),
+    );
+    setTab("receipts"); // ensure form is visible
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   const saveReceipt = async () => {
     if (!items.length) {
       window.alert("يرجى إضافة منتجات للمشتريات.");
@@ -78,28 +107,46 @@ export default function Inventory() {
     }
     setSaving(true);
     try {
-      const response = await fetch("/api/admin/inventory/receipts", {
-        method: "POST",
+      const payload = { supplierName, referenceNumber, notes, items };
+
+      const url = editingReceipt
+        ? `/api/admin/inventory/receipts/${editingReceipt.id}`
+        : "/api/admin/inventory/receipts";
+      const method = editingReceipt ? "PATCH" : "POST";
+
+      const response = await fetch(url, {
+        method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          supplierName,
-          referenceNumber,
-          notes,
-          items,
-        }),
+        body: JSON.stringify(payload),
       });
-      const payload = await response.json().catch(() => ({}));
+      const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        window.alert(payload.error ?? "تعذر تسجيل المشتريات.");
+        window.alert(data.error ?? "تعذر حفظ الفاتورة.");
         return;
       }
-      setSupplierName("");
-      setReferenceNumber("");
-      setNotes("");
-      setItems([]);
+      clearForm();
       await loadData();
     } finally {
       setSaving(false);
+    }
+  };
+
+  const deleteReceipt = async (receiptId: string) => {
+    if (!window.confirm("هل أنت متأكد من حذف هذه الفاتورة؟ سيتم عكس تأثيرها على المخزون.")) return;
+    setDeletingId(receiptId);
+    try {
+      const response = await fetch(`/api/admin/inventory/receipts/${receiptId}`, {
+        method: "DELETE",
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        window.alert(data.error ?? "تعذر حذف الفاتورة.");
+        return;
+      }
+      if (editingReceipt?.id === receiptId) clearForm();
+      await loadData();
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -125,9 +172,24 @@ export default function Inventory() {
         <AdminCard>
           <div className="mb-4 flex items-center justify-between">
             <div>
-              <div className="text-lg font-black text-[#fff4f8]">إضافة فاتورة مشتريات</div>
-              <div className="text-xs text-[#d7aabd]">يتم تحديث المخزون ومتوسط التكلفة بمجرد الحفظ.</div>
+              <div className="text-lg font-black text-[#fff4f8]">
+                {editingReceipt ? "تعديل فاتورة مشتريات" : "إضافة فاتورة مشتريات"}
+              </div>
+              <div className="text-xs text-[#d7aabd]">
+                {editingReceipt
+                  ? "تعديل الفاتورة يُعيد احتساب المخزون والمتوسط المرجح بالكامل."
+                  : "يتم تحديث المخزون ومتوسط التكلفة بمجرد الحفظ."}
+              </div>
             </div>
+            {editingReceipt && (
+              <button
+                type="button"
+                onClick={clearForm}
+                className="rounded-lg bg-white/10 px-3 py-1.5 text-xs text-[#d7aabd] hover:bg-white/20"
+              >
+                إلغاء التعديل
+              </button>
+            )}
           </div>
 
           <div className="grid gap-3 md:grid-cols-2">
@@ -228,7 +290,11 @@ export default function Inventory() {
               disabled={saving}
               className="rounded-xl bg-[#ff4f93] px-6 py-2 text-sm font-black text-white transition-colors hover:bg-[#ff2f7d] disabled:opacity-50"
             >
-              {saving ? "جاري الحفظ..." : "حفظ الفاتورة"}
+              {saving
+                ? "جاري الحفظ..."
+                : editingReceipt
+                  ? "حفظ التعديلات"
+                  : "حفظ الفاتورة"}
             </button>
           </div>
         </AdminCard>
@@ -257,12 +323,35 @@ export default function Inventory() {
                 receipts.map((receipt) => (
                   <div
                     key={receipt.id}
-                    className="rounded-2xl border border-white/10 bg-black/25 p-4 text-sm text-[#fff4f8]"
+                    className={`rounded-2xl border p-4 text-sm text-[#fff4f8] transition-colors ${
+                      editingReceipt?.id === receipt.id
+                        ? "border-[#ff4f93]/60 bg-[#ff4f93]/10"
+                        : "border-white/10 bg-black/25"
+                    }`}
                   >
-                    <div className="flex items-center justify-between">
-                      <div className="font-bold">{receipt.referenceNumber || "فاتورة بدون رقم"}</div>
-                      <div className="text-xs text-[#d7aabd]">
-                        {new Date(receipt.receivedAt).toLocaleDateString("ar-EG")}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="font-bold">{receipt.referenceNumber || "فاتورة بدون رقم"}</div>
+                        <div className="mt-0.5 text-xs text-[#d7aabd]">
+                          {new Date(receipt.receivedAt).toLocaleDateString("ar-EG")}
+                        </div>
+                      </div>
+                      <div className="flex shrink-0 gap-1">
+                        <button
+                          type="button"
+                          onClick={() => startEdit(receipt)}
+                          className="rounded-lg bg-white/10 px-3 py-1 text-xs font-bold text-[#d7aabd] hover:bg-white/20"
+                        >
+                          تعديل
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => deleteReceipt(receipt.id)}
+                          disabled={deletingId === receipt.id}
+                          className="rounded-lg bg-rose-500/20 px-3 py-1 text-xs font-bold text-rose-300 hover:bg-rose-500/40 disabled:opacity-50"
+                        >
+                          {deletingId === receipt.id ? "..." : "حذف"}
+                        </button>
                       </div>
                     </div>
                     <div className="mt-1 text-xs text-[#d7aabd]">{receipt.supplierName || "بدون مورد"}</div>
@@ -272,7 +361,7 @@ export default function Inventory() {
                     <div className="mt-2 space-y-1 text-xs text-[#fff4f8]">
                       {receipt.items.map((item) => (
                         <div key={item.id}>
-                          {item.productName} - {item.quantity} × {item.unitCost}
+                          {item.productName} — {item.quantity} × {item.unitCost} ج.م
                         </div>
                       ))}
                     </div>

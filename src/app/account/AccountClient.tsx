@@ -13,6 +13,10 @@ interface AccountData {
     name: string;
     email: string;
     phone: string;
+    gender: string;
+    birthDate: string;
+    governorate: string;
+    address: string;
     role: string;
     createdAt: string;
     emailVerified: string | null;
@@ -36,7 +40,14 @@ interface AccountData {
     tier: string;
     history: { id: string; points: number; reason: string; createdAt: string }[];
   };
-  referral: { code: string; totalEarned: number } | null;
+  referral: { code: string; totalEarned: number; referredCount: number } | null;
+  onboarding: {
+    profileComplete: boolean;
+    emailVerified: boolean;
+    hasReferral: boolean;
+    profileRewardClaimed: boolean;
+    emailRewardClaimed: boolean;
+  };
   bookings: {
     id: string;
     scheduleId: string;
@@ -139,6 +150,234 @@ function isTabId(value: string | null): value is TabId {
 const INPUT = "w-full rounded-xl border border-[#ffbcdb]/20 bg-[#3f1426]/85 px-4 py-2.5 text-sm text-[#fff4f8] outline-none transition-colors placeholder:text-[#caa0b0] focus:border-pink-400";
 const CARD  = "rounded-2xl border border-[#ffbcdb]/20 bg-[#3f1426]/85 p-5 text-[#fff4f8] shadow-[0_24px_70px_rgba(17,5,10,0.28)] backdrop-blur-xl";
 
+// ─── Congrats Popup ────────────────────────────────────────────────────────────
+function CongratsPopup({ msg, onClose }: { msg: string; onClose: () => void }) {
+  useEffect(() => {
+    const t = setTimeout(onClose, 4000);
+    return () => clearTimeout(t);
+  }, [onClose]);
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={onClose}>
+      <div
+        className="relative max-w-sm w-full rounded-3xl border border-pink-400/40 bg-gradient-to-br from-[#3a0f22] to-[#5c1535] p-8 text-center shadow-[0_30px_80px_rgba(200,20,100,0.45)] animate-[fadeInScale_0.35s_ease]"
+        onClick={(e) => e.stopPropagation()}
+        style={{ animation: "fadeInScale 0.35s ease" }}
+      >
+        <div className="text-5xl mb-3">🎉</div>
+        <div className="text-xl font-black text-white mb-2">مبروك!</div>
+        <div className="text-[#ffd6e7] text-sm leading-relaxed">{msg}</div>
+        <button
+          onClick={onClose}
+          className="mt-5 rounded-xl bg-gradient-to-r from-pink-500 to-pink-700 px-8 py-2.5 text-sm font-black text-white shadow-lg hover:opacity-90"
+        >
+          رائع 🌟
+        </button>
+      </div>
+      <style>{`@keyframes fadeInScale{from{opacity:0;transform:scale(0.85)}to{opacity:1;transform:scale(1)}}`}</style>
+    </div>
+  );
+}
+
+// ─── Onboarding Card ───────────────────────────────────────────────────────────
+function OnboardingCard({
+  data,
+  onRewardClaimed,
+}: {
+  data: AccountData;
+  onRewardClaimed: (msg: string) => void;
+}) {
+  const { lang } = useLang();
+  const t = (ar: string, en: string) => (lang === "ar" ? ar : en);
+  const [copied, setCopied] = useState(false);
+  const [claiming, setClaiming] = useState<string | null>(null);
+
+  const firstName = data.user.name.split(" ")[0];
+
+  const ob = data.onboarding;
+  const completedCount =
+    (ob.profileComplete ? 1 : 0) +
+    (ob.emailVerified ? 1 : 0) +
+    (ob.hasReferral ? 1 : 0);
+  const progress = Math.round((completedCount / 3) * 100);
+
+  const claimReward = async (reward: "profile_complete" | "email_verified") => {
+    setClaiming(reward);
+    try {
+      const res = await fetch("/api/me/onboarding", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reward }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json.success) {
+        const pts = json.points as number;
+        onRewardClaimed(
+          reward === "profile_complete"
+            ? t(`حصلتِ على ${pts} نقطة لإكمال بياناتك! 🎊`, `You earned ${pts} points for completing your profile! 🎊`)
+            : t(`حصلتِ على ${pts} نقطة لتفعيل بريدك الإلكتروني! ✉️`, `You earned ${pts} points for verifying your email! ✉️`),
+        );
+        // Soft-refresh the page to update reward state
+        setTimeout(() => window.location.reload(), 1800);
+      }
+    } finally {
+      setClaiming(null);
+    }
+  };
+
+  const copyCode = () => {
+    if (data.referral?.code) {
+      navigator.clipboard.writeText(data.referral.code).then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      });
+    }
+  };
+
+  const tasks = [
+    {
+      key: "profile_complete" as const,
+      icon: "👤",
+      label: t("أكملي بياناتك", "Complete your profile"),
+      desc: t("أضيفي هاتفك، نوعك، تاريخ ميلادك، ومحافظتك", "Add phone, gender, birth date & governorate"),
+      done: ob.profileComplete,
+      claimed: ob.profileRewardClaimed,
+      reward: t("50 نقطة", "50 pts"),
+      canClaim: ob.profileComplete && !ob.profileRewardClaimed,
+    },
+    {
+      key: "email_verified" as const,
+      icon: "✉️",
+      label: t("فعّلي الإيميل", "Verify your email"),
+      desc: t("تحقق من بريدك الإلكتروني", "Check your inbox for the code"),
+      done: ob.emailVerified,
+      claimed: ob.emailRewardClaimed,
+      reward: t("20 نقطة", "20 pts"),
+      canClaim: ob.emailVerified && !ob.emailRewardClaimed,
+    },
+    {
+      key: "referral" as const,
+      icon: "🤝",
+      label: t("اعزمي صاحبة", "Invite a friend"),
+      desc: t("شاركي كودك وخدي مكافأة", "Share your code and earn"),
+      done: ob.hasReferral,
+      claimed: ob.hasReferral,
+      reward: t("50 ج.م", "50 EGP"),
+      canClaim: false,
+    },
+  ];
+
+  const allDone = completedCount === 3;
+
+  return (
+    <div className={`${CARD} border-pink-500/30 bg-gradient-to-br from-[#3a0f22]/90 to-[#4f1530]/90 mb-6`}>
+      {/* Greeting */}
+      <div className="flex items-center gap-3 mb-4">
+        <div className="text-3xl">👋</div>
+        <div>
+          <div className="text-lg font-black text-white">
+            {t(`أهلاً يا ${firstName}!`, `Welcome, ${firstName}!`)}
+          </div>
+          <div className="text-xs text-[#d7aabd]">
+            {allDone
+              ? t("رائع! أكملتِ كل الخطوات 🌟", "Amazing! You've completed all steps 🌟")
+              : t("أكملي خطواتك واحصلي على مكافآت حصرية", "Complete your steps and earn exclusive rewards")}
+          </div>
+        </div>
+      </div>
+
+      {/* Progress bar */}
+      <div className="mb-5">
+        <div className="flex items-center justify-between mb-1.5">
+          <span className="text-xs font-bold text-[#d7aabd]">
+            {t("اكتمال الملف الشخصي", "Profile completion")}
+          </span>
+          <span className="text-xs font-black text-pink-300">{progress}%</span>
+        </div>
+        <div className="h-2.5 rounded-full bg-white/10 overflow-hidden">
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-pink-500 to-fuchsia-500 transition-all duration-700"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+      </div>
+
+      {/* Tasks */}
+      <div className="space-y-2.5 mb-5">
+        {tasks.map((task) => (
+          <div
+            key={task.key}
+            className={`flex items-center gap-3 rounded-xl px-4 py-3 transition-colors ${
+              task.done
+                ? "border border-green-500/20 bg-green-500/10"
+                : "border border-white/10 bg-white/5"
+            }`}
+          >
+            <div className="text-xl shrink-0">{task.icon}</div>
+            <div className="flex-1 min-w-0">
+              <div className={`text-sm font-bold ${task.done ? "text-green-300" : "text-[#fff4f8]"}`}>
+                {task.done && "✔️ "}
+                {task.label}
+              </div>
+              <div className="text-xs text-[#c896aa]">{task.desc}</div>
+            </div>
+            <div className="shrink-0 text-right">
+              {task.done && task.claimed ? (
+                <span className="text-xs font-bold text-green-400">
+                  {t("تم ✓", "Done ✓")}
+                </span>
+              ) : task.canClaim ? (
+                <button
+                  onClick={() => claimReward(task.key as "profile_complete" | "email_verified")}
+                  disabled={claiming === task.key}
+                  className="rounded-lg bg-gradient-to-r from-pink-500 to-pink-700 px-3 py-1.5 text-xs font-black text-white shadow hover:opacity-90 disabled:opacity-50"
+                >
+                  {claiming === task.key
+                    ? "..."
+                    : t(`خدي ${task.reward}`, `Claim ${task.reward}`)}
+                </button>
+              ) : (
+                <span className={`text-xs font-bold ${task.done ? "text-green-400" : "text-[#c896aa]"}`}>
+                  {t(`+${task.reward}`, `+${task.reward}`)}
+                </span>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Referral code */}
+      {data.referral && (
+        <div className="rounded-xl border border-[#ffbcdb]/20 bg-black/25 px-4 py-3">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div>
+              <div className="text-xs font-bold text-[#d7aabd] mb-0.5">
+                {t("كود الإحالة — شاركيه وخدي 50 ج.م عن كل تسجيل", "Referral code — share & earn 50 EGP per signup")}
+              </div>
+              <div className="text-xl font-black tracking-widest text-pink-300" dir="ltr">
+                {data.referral.code}
+              </div>
+            </div>
+            <button
+              onClick={copyCode}
+              className="rounded-xl border border-pink-400/30 bg-pink-500/15 px-4 py-2 text-xs font-black text-pink-200 hover:bg-pink-500/25 transition-colors"
+            >
+              {copied ? t("✅ تم النسخ!", "✅ Copied!") : t("📋 انسخي الكود", "📋 Copy code")}
+            </button>
+          </div>
+          {data.referral.referredCount > 0 && (
+            <div className="mt-2 text-xs text-[#c896aa]">
+              {t(
+                `أحلتِ ${data.referral.referredCount} ${data.referral.referredCount === 1 ? "شخص" : "أشخاص"} • كسبتِ ${data.referral.totalEarned} ج.م`,
+                `${data.referral.referredCount} referral${data.referral.referredCount > 1 ? "s" : ""} • Earned ${data.referral.totalEarned} EGP`,
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function StatCard({ icon, label, value, sub, color = "text-white" }: { icon: string; label: string; value: string; sub?: string; color?: string }) {
   return (
     <div className={CARD + " text-center"}>
@@ -154,14 +393,22 @@ function StatCard({ icon, label, value, sub, color = "text-white" }: { icon: str
 function ProfileTab({ user }: { user: AccountData["user"] }) {
   const { lang } = useLang();
   const t = (arText: string, enText: string) => (lang === "ar" ? arText : enText);
-  const [form, setForm] = useState({ name: user.name, phone: user.phone || "" });
-  const [passForm, setPassForm] = useState({ current: "", next: "", confirm: "" });
-  const [passMsg, setPassMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [form, setForm] = useState({
+    name:       user.name,
+    phone:      user.phone || "",
+    gender:     user.gender || "",
+    birthDate:  user.birthDate || "",
+    governorate: user.governorate || "",
+    address:    user.address || "",
+  });
+  const [passForm, setPassForm]   = useState({ current: "", next: "", confirm: "" });
+  const [passMsg, setPassMsg]     = useState<{ ok: boolean; text: string } | null>(null);
   const [passLoading, setPassLoading] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [verifyCode, setVerifyCode] = useState("");
+  const [saving, setSaving]       = useState(false);
+  const [saveMsg, setSaveMsg]     = useState<{ ok: boolean; text: string } | null>(null);
+  const [verifyCode, setVerifyCode]   = useState("");
   const [verifyLoading, setVerifyLoading] = useState(false);
-  const [verifyResult, setVerifyResult] = useState<{ ok?: boolean; msg?: string } | null>(null);
+  const [verifyResult, setVerifyResult]   = useState<{ ok?: boolean; msg?: string } | null>(null);
   const [isVerified, setIsVerified] = useState(!!user.emailVerified);
   const [resendLoading, setResendLoading] = useState(false);
   const loggingOut = false;
@@ -171,10 +418,28 @@ function ProfileTab({ user }: { user: AccountData["user"] }) {
     }
   };
 
-  const save = (e: React.FormEvent) => {
+  const save = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    setSaving(true);
+    setSaveMsg(null);
+    try {
+      const res = await fetch("/api/me/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setSaveMsg({ ok: true, text: t("✅ تم حفظ البيانات بنجاح", "✅ Profile updated successfully") });
+        setTimeout(() => window.location.reload(), 1000);
+      } else {
+        setSaveMsg({ ok: false, text: json.error ?? t("تعذر الحفظ", "Could not save") });
+      }
+    } catch {
+      setSaveMsg({ ok: false, text: t("حدث خطأ، حاولي مرة أخرى", "Something went wrong") });
+    } finally {
+      setSaving(false);
+    }
   };
 
   const joined = format(new Date(user.createdAt), "d MMMM yyyy", { locale: lang === "en" ? enUS : ar });
@@ -217,9 +482,9 @@ function ProfileTab({ user }: { user: AccountData["user"] }) {
 
   return (
     <div className="space-y-5">
-      {saved && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-green-600 text-white px-6 py-3 rounded-xl font-bold shadow-xl">
-          {t("✅ تم حفظ البيانات بنجاح", "✅ Profile updated successfully")}
+      {saveMsg && (
+        <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 px-6 py-3 rounded-xl font-bold shadow-xl text-white ${saveMsg.ok ? "bg-green-600" : "bg-red-600"}`}>
+          {saveMsg.text}
         </div>
       )}
 
@@ -317,12 +582,74 @@ function ProfileTab({ user }: { user: AccountData["user"] }) {
               <input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className={INPUT} dir="ltr" placeholder="01XXXXXXXXX" />
             </div>
           </div>
-          <div>
-            <label className="block text-gray-500 text-xs mb-1.5">{t("البريد الإلكتروني", "Email")}</label>
-            <input value={user.email} disabled className={INPUT + " opacity-50 cursor-not-allowed"} dir="ltr" />
+
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-gray-500 text-xs mb-1.5">{t("النوع", "Gender")}</label>
+              <select
+                value={form.gender}
+                onChange={(e) => setForm({ ...form, gender: e.target.value })}
+                className={INPUT}
+              >
+                <option value="">{t("اختاري", "Select")}</option>
+                <option value="female">{t("أنثى", "Female")}</option>
+                <option value="male">{t("ذكر", "Male")}</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-gray-500 text-xs mb-1.5">{t("تاريخ الميلاد", "Date of birth")}</label>
+              <input
+                type="date"
+                value={form.birthDate}
+                onChange={(e) => setForm({ ...form, birthDate: e.target.value })}
+                className={INPUT}
+                dir="ltr"
+                max={new Date().toISOString().slice(0, 10)}
+              />
+            </div>
           </div>
-          <button type="submit" className="bg-red-600 hover:bg-red-700 text-white font-black px-6 py-2.5 rounded-xl transition-colors text-sm">
-            {t("💾 حفظ التغييرات", "💾 Save changes")}
+
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-gray-500 text-xs mb-1.5">{t("المحافظة", "Governorate")}</label>
+              <select
+                value={form.governorate}
+                onChange={(e) => setForm({ ...form, governorate: e.target.value })}
+                className={INPUT}
+              >
+                <option value="">{t("اختاري المحافظة", "Select governorate")}</option>
+                {[
+                  "القاهرة","الجيزة","الإسكندرية","الدقهلية","البحر الأحمر","البحيرة","الفيوم",
+                  "الغربية","الإسماعيلية","المنوفية","المنيا","القليوبية","الوادي الجديد","السويس",
+                  "أسوان","أسيوط","بني سويف","بور سعيد","دمياط","جنوب سيناء","كفر الشيخ",
+                  "مطروح","الأقصر","قنا","شمال سيناء","الشرقية","سوهاج",
+                ].map((gov) => (
+                  <option key={gov} value={gov}>{gov}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-gray-500 text-xs mb-1.5">{t("البريد الإلكتروني", "Email")}</label>
+              <input value={user.email} disabled className={INPUT + " opacity-50 cursor-not-allowed"} dir="ltr" />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-gray-500 text-xs mb-1.5">{t("العنوان التفصيلي", "Address")}</label>
+            <input
+              value={form.address}
+              onChange={(e) => setForm({ ...form, address: e.target.value })}
+              className={INPUT}
+              placeholder={t("الشارع والحي...","Street, district...")}
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={saving}
+            className="bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-black px-6 py-2.5 rounded-xl transition-colors text-sm"
+          >
+            {saving ? t("جاري الحفظ...", "Saving...") : t("💾 حفظ التغييرات", "💾 Save changes")}
           </button>
         </form>
       </div>
@@ -1754,6 +2081,7 @@ export default function AccountClient({ data }: { data: AccountData }) {
   const requestedTab = searchParams.get("tab");
   const [activeTab, setActiveTab]     = useState<TabId>(isTabId(requestedTab) ? requestedTab : "profile");
   const [loggingOut, setLoggingOut]   = useState(false);
+  const [congratsMsg, setCongratsMsg] = useState<string | null>(null);
 
   useEffect(() => {
     const nextTab = searchParams.get("tab");
@@ -1849,8 +2177,16 @@ export default function AccountClient({ data }: { data: AccountData }) {
         </div>
       </div>
 
+      {/* ── Congrats Popup ── */}
+      {congratsMsg && (
+        <CongratsPopup msg={congratsMsg} onClose={() => setCongratsMsg(null)} />
+      )}
+
       {/* ── Body ── */}
       <div className="max-w-7xl mx-auto px-4 py-6 w-full">
+        {/* Onboarding card — shown above tabs */}
+        <OnboardingCard data={data} onRewardClaimed={setCongratsMsg} />
+
         <div className="flex flex-col gap-6 lg:flex-row">
           {/* Sidebar tabs */}
           <aside className="shrink-0 lg:w-56">

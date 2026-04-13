@@ -60,6 +60,10 @@ model User {
   email         String?   @unique
   emailVerified DateTime?
   phone         String?
+  gender        String?   // male | female
+  birthDate     DateTime?
+  governorate   String?
+  address       String?
   password      String?
   role          String    @default("member") // member | trainer | staff | admin
   jobTitle      String?
