@@ -3162,9 +3162,9 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
 
       <section style={{ background: `linear-gradient(135deg, #FFE0EC, ${C.bg})`, padding: "64px 0" }}>
         <div className="container" style={{ textAlign: "center" }}>
-          <span className="tag" style={{ marginBottom: 16, display: "inline-block" }}>الأهداف والاشتراكات</span>
-          <h1 style={{ fontSize: viewportWidth() < 768 ? 32 : 44, fontWeight: 900, marginBottom: 12, color: C.white }}>اختاري <span style={{ color: C.red }}>هدفك واشتراكك</span></h1>
-          <p style={{ color: C.gray, fontSize: 16, marginBottom: 32 }}>اختاري هدفك أولًا ثم الاشتراك المناسب لك.</p>
+          <span className="tag" style={{ marginBottom: 16, display: "inline-block" }}>{t("الأهداف والاشتراكات", "Goals and memberships")}</span>
+          <h1 style={{ fontSize: viewportWidth() < 768 ? 32 : 44, fontWeight: 900, marginBottom: 12, color: C.white }}>{t("اختاري", "Choose")} <span style={{ color: C.red }}>{t("هدفك واشتراكك", "your goal and membership")}</span></h1>
+          <p style={{ color: C.gray, fontSize: 16, marginBottom: 32 }}>{t("اختاري من اشتراكات الجيم والباقات الرياضية في بني سويف حسب هدفك ومستوى تدريبك.", "Choose from gym memberships and fitness packages in Beni Suef based on your goal and training level.")}</p>
           <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
             <button className={`tab ${tab === "all" ? "active" : ""}`} onClick={() => setTab("all")}>الكل</button>
             <button className={`tab ${tab === "monthly" ? "active" : ""}`} onClick={() => setTab("monthly")}>شهري</button>
@@ -3184,8 +3184,8 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
             </h2>
             <p className="section-sub">
               {goalViewParentId
-                ? `أهداف ${goalViewParent?.name ?? "مختارة"} — اختاري هدفًا فرعيًا لعرض الاشتراكات المناسبة.`
-                : "يمكنك اختيار أكثر من هدف لعرض الاشتراكات المناسبة لكل هدف."}
+                ? t(`أهداف ${goalViewParent?.name ?? "مختارة"} — اختاري هدفًا فرعيًا لعرض الاشتراكات والبرامج المناسبة.`, `${goalViewParent?.name ?? "Selected"} goals - choose a sub-goal to view matching memberships and programs.`)
+                : t("يمكنك اختيار أكثر من هدف لعرض الاشتراكات والبرامج المناسبة لكل هدف.", "You can choose more than one goal to view the memberships and programs that fit each one.")}
             </p>
             {goalViewParentId && (
               <button
@@ -3482,6 +3482,7 @@ const DEFAULT_OFFERS: Array<PublicOffer & { color: string }> = [
   },
 ];
 const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
+  const t = useT();
   const [offers, setOffers] = useState(DEFAULT_OFFERS);
   const [packages, setPackages] = useState<PublicMembership[]>([]);
   useEffect(() => {
@@ -3506,14 +3507,14 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
         <div style={{ position: "absolute", inset: 0, background: "radial-gradient(circle at 30% 50%, rgba(200,162,0,.08), transparent 60%), radial-gradient(circle at 70% 50%, rgba(233,30,99,.08), transparent 60%)" }} />
         <div className="container" style={{ position: "relative" }}>
           <div style={{ fontSize: viewportWidth() < 768 ? 42 : 56, marginBottom: 16 }}>🔥</div>
-          <h1 style={{ fontSize: viewportWidth() < 768 ? 32 : 44, fontWeight: 900, color: C.white, marginBottom: 12 }}>العروض <span style={{ color: C.red }}>والباقات</span></h1>
-          <p style={{ color: C.gray, fontSize: 17 }}>هنا هتلاقي العروض الحالية مع الباقات الخاصة في مكان واحد.</p>
+          <h1 style={{ fontSize: viewportWidth() < 768 ? 32 : 44, fontWeight: 900, color: C.white, marginBottom: 12 }}>{t("العروض", "Offers")} <span style={{ color: C.red }}>{t("والباقات", "and packages")}</span></h1>
+          <p style={{ color: C.gray, fontSize: 17 }}>{t("عروض الاشتراكات والباقات الخاصة في فيت زون بني سويف لتبدأي أو تجددي اشتراكك بسعر أفضل.", "Membership offers and special packages at Fit Zone Beni Suef to help you start or renew at a better price.")}</p>
         </div>
       </section>
 
       <section className="section">
         <div className="container">
-          <h2 className="section-title" style={{ marginBottom: 32 }}>العروض <span>الحالية</span></h2>
+          <h2 className="section-title" style={{ marginBottom: 32 }}>{t("العروض", "Current")} <span>{t("الحالية", "offers")}</span></h2>
           <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 24 }}>
             {offers.map(o => {
               const countdown = getCountdownParts(o.expiresAt);
@@ -3550,7 +3551,7 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
             )})}
           </div>
 
-          <h2 className="section-title" style={{ marginTop: 64, marginBottom: 32 }}>الباقات <span>الخاصة</span></h2>
+          <h2 className="section-title" style={{ marginTop: 64, marginBottom: 32 }}>{t("الباقات", "Special")} <span>{t("الخاصة", "packages")}</span></h2>
           {packages.length === 0 ? (
             <div className="card" style={{ padding: 20, textAlign: "center", color: C.gray }}>
               لا توجد باقات متاحة حالياً.
@@ -4171,7 +4172,7 @@ const ShopPage = ({ navigate }: { navigate: (p: string) => void }) => {
       <section style={{ background: `linear-gradient(135deg, #FFE0EC, ${C.bg})`, padding: "48px 0" }}>
         <div className="container">
           <h1 style={{ fontSize: viewportWidth() < 768 ? 30 : 40, fontWeight: 900, color: C.white, marginBottom: 8 }}>{t("المتجر الرياضي", "Sports shop")}</h1>
-          <p style={{ color: C.gray, fontSize: 15 }}>{t("منتجات مختارة لتعزيز أهدافك", "Selected products to support your goals")}</p>
+          <p style={{ color: C.gray, fontSize: 15 }}>{t("ملابس وإكسسوارات ومنتجات رياضية مختارة لدعم التمرين والتعافي وأهداف اللياقة.", "Selected apparel, accessories, and fitness products to support training, recovery, and your fitness goals.")}</p>
         </div>
       </section>
       <section className="section">
@@ -5587,12 +5588,18 @@ const TrainersPage = () => {
   const { lang } = useLang();
   const [trainers, setTrainers] = useState<PublicTrainer[]>([]);
   const [pageContent, setPageContent] = useState<TrainersPageContent>({
-    badge: "فريقنا",
-    title: "مدرباتنا المحترفات",
-    subtitle: "أفضل فريق تدريبي في بني سويف",
-    description: "تعرفي على فريق المدربات في فيت زون واختاري المدربة الأقرب لهدفك التدريبي.",
-    highlight: "تخصصات واضحة وسجل جلسات لكل مدربة",
+    badge: "فريق التدريب",
+    title: "مدربات فيت زون",
+    subtitle: "مدربات لياقة وتخصصات رياضية للسيدات والأطفال في بني سويف",
+    description: "تعرفي على مدربات فيت زون وخبراتهن في اللياقة، التخسيس، التأهيل، والبرامج المتخصصة، ثم اختاري المدربة الأقرب لهدفك.",
+    highlight: "تخصصات واضحة وخبرة عملية وجدول جلسات لكل مدربة",
     ctaLabel: "احجزي مع المدربة المناسبة",
+    badgeEn: "Coaching team",
+    titleEn: "Fit Zone trainers",
+    subtitleEn: "Fitness coaches and sports specialists for women and kids in Beni Suef",
+    descriptionEn: "Meet the Fit Zone trainers, explore their experience in fitness, weight loss, rehab, and specialized programs, then choose the coach that matches your goal.",
+    highlightEn: "Clear specialties, real experience, and session availability for every trainer",
+    ctaLabelEn: "Book with the right trainer",
   });
 
   useEffect(() => {
@@ -5762,7 +5769,7 @@ const BlogPage = () => {
       <section style={{ background: `linear-gradient(135deg, #FFE0EC, ${C.bg})`, padding: "48px 0" }}>
         <div className="container">
           <h1 style={{ fontSize: viewportWidth() < 768 ? 30 : 40, fontWeight: 900, color: C.white, marginBottom: 8 }}>{t("مدونة", "Blog")} <span style={{ color: C.red }}>{t("فيت زون", "Fit Zone")}</span></h1>
-          <p style={{ color: C.gray, fontSize: 15 }}>{t("نصائح ومقالات في اللياقة والصحة النسائية", "Tips and articles on fitness and women’s health")}</p>
+          <p style={{ color: C.gray, fontSize: 15 }}>{t("مقالات ونصائح عن اللياقة والصحة والتغذية للسيدات في بني سويف.", "Articles and practical tips on fitness, health, and nutrition for women in Beni Suef.")}</p>
         </div>
       </section>
       <section className="section">
