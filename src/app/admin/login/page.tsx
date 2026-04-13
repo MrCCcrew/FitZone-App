@@ -101,7 +101,7 @@ function AdminLoginForm() {
                 required
                 value={form.email}
                 onChange={(e) => setForm((current) => ({ ...current, email: e.target.value }))}
-                placeholder="admin@fitzoneland.com"
+                placeholder="example.admin@company.com"
                 className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-gray-500 transition-colors focus:border-pink-400 focus:outline-none"
               />
             </div>
