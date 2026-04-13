@@ -20,7 +20,7 @@ export async function POST(req: Request) {
     }
 
     if (!normalizedEmail) {
-      return NextResponse.json({ error: "ط§ظ„ط¨ط±ظٹط¯ ط§ظ„ط¥ظ„ظƒطھط±ظˆظ†ظٹ ظ…ط·ظ„ظˆط¨." }, { status: 400 });
+      return NextResponse.json({ error: "البريد الإلكتروني مطلوب." }, { status: 400 });
     }
 
     const fullUser = await db.user.findUnique({
@@ -29,11 +29,11 @@ export async function POST(req: Request) {
     });
 
     if (!fullUser?.email) {
-      return NextResponse.json({ error: "ظ„ظ… ظٹطھظ… ط§ظ„ط¹ط«ظˆط± ط¹ظ„ظ‰ ط§ظ„ظ…ط³طھط®ط¯ظ…." }, { status: 404 });
+      return NextResponse.json({ error: "لم يتم العثور على المستخدم." }, { status: 404 });
     }
 
     if (fullUser.emailVerified) {
-      return NextResponse.json({ error: "ط§ظ„ط¨ط±ظٹط¯ ط§ظ„ط¥ظ„ظƒطھط±ظˆظ†ظٹ ظ…ظپط¹ظ„ ط¨ط§ظ„ظپط¹ظ„." }, { status: 400 });
+      return NextResponse.json({ error: "البريد الإلكتروني مفعل بالفعل." }, { status: 400 });
     }
 
     const code = String(Math.floor(100000 + Math.random() * 900000));
@@ -44,15 +44,15 @@ export async function POST(req: Request) {
       data: { identifier: fullUser.email, token: code, expires },
     });
 
-    const emailSent = await sendVerificationEmail(fullUser.email, fullUser.name ?? "ط¹ط¶ظˆ FitZone", code);
+    const emailSent = await sendVerificationEmail(fullUser.email, fullUser.name ?? "عضو FitZone", code);
 
     if (!emailSent) {
-      return NextResponse.json({ error: "طھط¹ط°ط± ط¥ط±ط³ط§ظ„ ط±ط³ط§ظ„ط© ط§ظ„طھظپط¹ظٹظ„ ط§ظ„ط¢ظ†." }, { status: 500 });
+      return NextResponse.json({ error: "تعذر إرسال رسالة التفعيل الآن." }, { status: 500 });
     }
 
     return NextResponse.json({ success: true });
   } catch (err) {
     console.error("[RESEND_VERIFICATION]", err);
-    return NextResponse.json({ error: "ط­ط¯ط« ط®ط·ط£ ظپظٹ ط§ظ„ط®ط§ط¯ظ…." }, { status: 500 });
+    return NextResponse.json({ error: "حدث خطأ في الخادم." }, { status: 500 });
   }
 }

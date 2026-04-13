@@ -21,11 +21,11 @@ export async function POST(req: Request) {
     }
 
     if (!normalizedEmail) {
-      return NextResponse.json({ error: "ط§ظ„ط¨ط±ظٹط¯ ط§ظ„ط¥ظ„ظƒطھط±ظˆظ†ظٹ ظ…ط·ظ„ظˆط¨." }, { status: 400 });
+      return NextResponse.json({ error: "البريد الإلكتروني مطلوب." }, { status: 400 });
     }
 
     if (!normalizedCode) {
-      return NextResponse.json({ error: "ط±ظ…ط² ط§ظ„طھظپط¹ظٹظ„ ظ…ط·ظ„ظˆط¨." }, { status: 400 });
+      return NextResponse.json({ error: "رمز التفعيل مطلوب." }, { status: 400 });
     }
 
     const record = await db.verificationToken.findFirst({
@@ -37,7 +37,7 @@ export async function POST(req: Request) {
     });
 
     if (!record) {
-      return NextResponse.json({ error: "ط§ظ„ط±ظ…ط² ط؛ظٹط± طµط­ظٹط­ ط£ظˆ ظ…ظ†طھظ‡ظٹ ط§ظ„طµظ„ط§ط­ظٹط©." }, { status: 400 });
+      return NextResponse.json({ error: "الرمز غير صحيح أو منتهي الصلاحية." }, { status: 400 });
     }
 
     await db.user.update({
@@ -52,6 +52,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true });
   } catch (err) {
     console.error("[VERIFY_EMAIL]", err);
-    return NextResponse.json({ error: "ط­ط¯ط« ط®ط·ط£ ظپظٹ ط§ظ„ط®ط§ط¯ظ…." }, { status: 500 });
+    return NextResponse.json({ error: "حدث خطأ في الخادم." }, { status: 500 });
   }
 }
