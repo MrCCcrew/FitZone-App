@@ -197,3 +197,48 @@ export async function sendContactEmail(opts: {
     return false;
   }
 }
+
+export async function sendPasswordResetEmail(email: string, name: string, resetUrl: string) {
+  try {
+    await getTransporter().sendMail({
+      from: FROM,
+      to: email,
+      subject: "إعادة ضبط كلمة المرور في FitZone",
+      html: `
+        <div dir="rtl" style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; background: #111; color: #fff; border-radius: 12px; overflow: hidden;">
+          <div style="background: #e91e63; padding: 28px 32px; text-align: center;">
+            <h1 style="margin: 0; font-size: 28px; font-weight: 900; letter-spacing: 1px;">FIT<span style="color: #f8b4d9;">ZONE</span></h1>
+            <p style="margin: 6px 0 0; font-size: 13px; color: rgba(255,255,255,0.8);">بني سويف - مصر</p>
+          </div>
+          <div style="padding: 32px;">
+            <p style="font-size: 17px; font-weight: 700; color: #fff; margin: 0 0 8px;">مرحبًا ${name}،</p>
+            <p style="font-size: 14px; color: #cbd5e1; line-height: 1.8; margin: 0 0 24px;">
+              تلقينا طلبًا لإعادة ضبط كلمة المرور الخاصة بحسابك. إذا كان هذا الطلب منك، استخدم الزر التالي لاختيار كلمة مرور جديدة.
+            </p>
+            <div style="text-align: center; margin: 0 0 24px;">
+              <a href="${resetUrl}" style="display: inline-block; background: #e91e63; color: #fff; text-decoration: none; padding: 14px 24px; border-radius: 12px; font-weight: 700;">
+                إعادة ضبط كلمة المرور
+              </a>
+            </div>
+            <p style="font-size: 13px; color: #94a3b8; line-height: 1.8; margin: 0 0 12px;">
+              إذا لم يعمل الزر، انسخ هذا الرابط وافتحه في المتصفح:
+            </p>
+            <p style="font-size: 12px; color: #f8b4d9; line-height: 1.8; word-break: break-all; margin: 0 0 20px;">
+              ${resetUrl}
+            </p>
+            <p style="font-size: 13px; color: #94a3b8; line-height: 1.8; margin: 0;">
+              إذا لم تطلب إعادة ضبط كلمة المرور، يمكنك تجاهل هذه الرسالة بأمان.
+            </p>
+          </div>
+          <div style="background: #18181b; padding: 16px 32px; text-align: center;">
+            <p style="margin: 0; font-size: 12px; color: #6b7280;">© 2026 FitZone Fitness Club</p>
+          </div>
+        </div>
+      `,
+    });
+    return true;
+  } catch (err) {
+    console.error("[EMAIL_PASSWORD_RESET]", err);
+    return false;
+  }
+}

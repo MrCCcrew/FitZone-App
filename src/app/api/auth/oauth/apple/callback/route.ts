@@ -3,7 +3,6 @@ import { findOrCreateOAuthUser, generateAppleClientSecret, getAppBaseUrl, verify
 import { APP_SESSION_COOKIE, createAppSessionToken, getAppSessionCookieOptions } from "@/lib/app-session";
 import { ADMIN_SESSION_COOKIE, getAdminSessionCookieOptions } from "@/lib/admin-session";
 
-// Apple sends a form POST to the callback URL
 export async function POST(req: NextRequest) {
   const base = getAppBaseUrl();
 
@@ -12,14 +11,13 @@ export async function POST(req: NextRequest) {
     const code = formData.get("code") as string | null;
     const state = formData.get("state") as string | null;
     const idToken = formData.get("id_token") as string | null;
-    const userJson = formData.get("user") as string | null; // only on first login
+    const userJson = formData.get("user") as string | null;
     const savedState = req.cookies.get("oauth_state")?.value;
 
     if (!code || !state || !savedState || state !== savedState) {
       return NextResponse.redirect(`${base}/login?error=oauth_failed`);
     }
 
-    // Extract name from first-login user JSON
     let appleDisplayName: string | null = null;
     if (userJson) {
       try {
@@ -32,7 +30,6 @@ export async function POST(req: NextRequest) {
       } catch {}
     }
 
-    // Verify id_token to get sub + email (no code exchange needed if id_token present)
     let appleUserId: string | null = null;
     let appleEmail: string | null = null;
 
@@ -44,7 +41,6 @@ export async function POST(req: NextRequest) {
       appleUserId = claims.sub;
       appleEmail = claims.email;
     } else {
-      // Exchange code for tokens
       const clientSecret = generateAppleClientSecret();
       const tokenRes = await fetch("https://appleid.apple.com/auth/token", {
         method: "POST",
@@ -68,19 +64,25 @@ export async function POST(req: NextRequest) {
 
     if (!appleUserId) throw new Error("no_apple_id");
 
-    const user = await findOrCreateOAuthUser({
+    const result = await findOrCreateOAuthUser({
       provider: "apple",
       providerId: appleUserId,
       email: appleEmail,
       name: appleDisplayName,
     });
-    if (!user) throw new Error("no_user");
+    if (!result?.user) throw new Error("no_user");
+
+    if (result.requiresVerification && result.user.email) {
+      const verifyParams = new URLSearchParams({ email: result.user.email });
+      if (!result.emailSent) verifyParams.set("sent", "0");
+      return NextResponse.redirect(`${base}/verify-email?${verifyParams.toString()}`);
+    }
 
     const token = createAppSessionToken({
-      id: user.id,
-      email: user.email ?? "",
-      name: user.name ?? "عضو FitZone",
-      role: user.role as "member" | "admin" | "staff" | "trainer" | "accountant",
+      id: result.user.id,
+      email: result.user.email ?? "",
+      name: result.user.name ?? "عضو FitZone",
+      role: result.user.role as "member" | "admin" | "staff" | "trainer" | "accountant",
     });
 
     const res = NextResponse.redirect(`${base}/`);

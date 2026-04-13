@@ -1,7 +1,21 @@
 import { db } from "./db";
+import { sendVerificationEmail } from "./email";
 
 export function getAppBaseUrl(): string {
   return (process.env.NEXTAUTH_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "https://fitzoneland.com").replace(/\/$/, "");
+}
+
+async function issueOAuthVerification(email: string, name: string) {
+  const code = String(Math.floor(100000 + Math.random() * 900000));
+  const expires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+  await db.verificationToken.deleteMany({ where: { identifier: email } });
+  await db.verificationToken.create({
+    data: { identifier: email, token: code, expires },
+  });
+
+  const emailSent = await sendVerificationEmail(email, name, code);
+  return { emailSent };
 }
 
 export async function findOrCreateOAuthUser(profile: {
@@ -17,7 +31,15 @@ export async function findOrCreateOAuthUser(profile: {
     where: { provider_providerAccountId: { provider, providerAccountId: providerId } },
     include: { user: true },
   });
-  if (existingAccount) return existingAccount.user;
+  if (existingAccount) {
+    const user = existingAccount.user;
+    if (!user.email || user.emailVerified) {
+      return { user, requiresVerification: false, emailSent: false };
+    }
+
+    const verification = await issueOAuthVerification(user.email, user.name ?? user.email.split("@")[0]);
+    return { user, requiresVerification: true, emailSent: verification.emailSent };
+  }
 
   // 2. Find user by email or create new one
   let user = email ? await db.user.findUnique({ where: { email } }) : null;
@@ -29,7 +51,6 @@ export async function findOrCreateOAuthUser(profile: {
         data: {
           name: name ?? email.split("@")[0],
           email,
-          emailVerified: new Date(),
           role: "member",
         },
       });
@@ -40,9 +61,6 @@ export async function findOrCreateOAuthUser(profile: {
       });
       return created;
     });
-  } else if (!user.emailVerified) {
-    // OAuth confirms the email is valid
-    await db.user.update({ where: { id: user.id }, data: { emailVerified: new Date() } });
   }
 
   // 3. Link provider account
@@ -50,7 +68,12 @@ export async function findOrCreateOAuthUser(profile: {
     .create({ data: { userId: user.id, type: "oauth", provider, providerAccountId: providerId } })
     .catch(() => {}); // ignore duplicate if already linked
 
-  return user;
+  if (!user.emailVerified && user.email) {
+    const verification = await issueOAuthVerification(user.email, user.name ?? user.email.split("@")[0]);
+    return { user, requiresVerification: true, emailSent: verification.emailSent };
+  }
+
+  return { user, requiresVerification: false, emailSent: false };
 }
 
 // Verify Apple id_token (RS256 JWT signed by Apple)
