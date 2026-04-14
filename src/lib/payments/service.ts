@@ -188,13 +188,90 @@ export async function updatePaymentTransactionStatus(
     if (existing?.membershipId) {
       const membership = await db.userMembership.findUnique({
         where: { id: existing.membershipId },
-        select: { status: true, membership: { select: { name: true } } },
+        select: {
+          status: true,
+          offerId: true,
+          membership: {
+            select: {
+              name: true,
+              duration: true,
+              walletBonus: true,
+              productRewards: true,
+            },
+          },
+        },
       });
       if (membership?.status === "pending_payment") {
+        // Set startDate/endDate from now (payment just confirmed)
+        const now = new Date();
+        const duration = membership.membership?.duration ?? 30;
+        const endDate = new Date(now.getTime() + duration * 24 * 60 * 60 * 1000);
+
         await db.userMembership.update({
           where: { id: existing.membershipId },
-          data: { status: "active" },
+          data: { status: "active", startDate: now, endDate },
         });
+
+        // Give wallet bonus
+        const walletBonus = membership.membership?.walletBonus ?? 0;
+        if (walletBonus > 0 && existing.userId) {
+          const wallet = await db.wallet.upsert({
+            where: { userId: existing.userId },
+            update: { balance: { increment: walletBonus } },
+            create: { userId: existing.userId, balance: walletBonus },
+          });
+          await db.walletTransaction.create({
+            data: {
+              walletId: wallet.id,
+              amount: walletBonus,
+              type: "credit",
+              description: `مكافأة الاشتراك في باقة ${membership.membership?.name ?? ""}`,
+            },
+          });
+        }
+
+        // Deduct product rewards from inventory
+        const productRewardsRaw = membership.membership?.productRewards ?? null;
+        if (productRewardsRaw) {
+          try {
+            const productRewards = JSON.parse(productRewardsRaw) as { productId: string; quantity: number }[];
+            for (const reward of productRewards) {
+              if (!reward?.productId || !reward?.quantity) continue;
+              const product = await db.product.findUnique({ where: { id: reward.productId } });
+              if (!product) continue;
+              if (product.trackInventory) {
+                await db.product.update({
+                  where: { id: reward.productId },
+                  data: { stock: { decrement: reward.quantity } },
+                });
+              }
+              await db.inventoryMovement.create({
+                data: {
+                  productId: product.id,
+                  type: "package_consumption",
+                  quantityChange: -Math.abs(reward.quantity),
+                  quantityBefore: product.stock,
+                  quantityAfter: product.trackInventory ? product.stock - reward.quantity : product.stock,
+                  unitCost: product.averageCost,
+                  averageCostBefore: product.averageCost,
+                  averageCostAfter: product.averageCost,
+                  referenceType: "membership",
+                  referenceId: existing.membershipId,
+                  notes: `Package activation: ${membership.membership?.name ?? ""}`,
+                },
+              });
+            }
+          } catch {}
+        }
+
+        // Increment offer subscribers
+        if (membership.offerId) {
+          await db.offer.update({
+            where: { id: membership.offerId },
+            data: { currentSubscribers: { increment: 1 } },
+          });
+        }
+
         if (existing.userId) {
           await db.notification.create({
             data: {

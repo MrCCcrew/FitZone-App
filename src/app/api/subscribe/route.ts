@@ -236,7 +236,8 @@ export async function POST(req: Request) {
         },
       });
 
-      if (productRewards.length > 0) {
+      // Only deduct product rewards immediately if payment is not pending confirmation
+      if (!needsPaymentConfirmation && productRewards.length > 0) {
         for (const reward of productRewards) {
           if (!reward?.productId || !reward?.quantity) continue;
           const product = await tx.product.findUnique({ where: { id: reward.productId } });
@@ -340,7 +341,8 @@ export async function POST(req: Request) {
         }));
       }
 
-      if (offerId) {
+      // Only increment offer subscribers if payment is not pending confirmation
+      if (!needsPaymentConfirmation && offerId) {
         await tx.offer.update({
           where: { id: offerId },
           data: { currentSubscribers: { increment: 1 } },
@@ -363,7 +365,8 @@ export async function POST(req: Request) {
         });
       }
 
-      if (walletBonus > 0) {
+      // Only give wallet bonus if payment is not pending confirmation
+      if (!needsPaymentConfirmation && walletBonus > 0) {
         const wallet = await tx.wallet.upsert({
           where: { userId },
           update: { balance: { increment: walletBonus } },
