@@ -74,7 +74,7 @@ async function createBotMessage(sessionId: string, content: string, metadata?: R
       senderType: "bot",
       senderName: "AI Coach",
       content,
-      metadata: metadata ? JSON.stringify(metadata) : null,
+      metadata: metadata ? JSON.stringify({ ...metadata, quickActions: undefined }) : null,
     },
   });
 }
@@ -302,8 +302,16 @@ async function buildDeterministicReply(args: {
   }
 
   // ── Questionnaire ──────────────────────────────────────────────────────────
-  if (intent === "membership_recommendation" || (context.questionnaire.stage !== "idle" && context.questionnaire.stage !== "done")) {
-    const questionnaireReply = await handleQuestionnaireFlow({ sessionId, context, userMessage, lang, userId: user?.id ?? null });
+  // If user explicitly requests membership recommendation but questionnaire is already done, restart it
+  const effectiveContext =
+    intent === "membership_recommendation" &&
+    context.questionnaire.stage === "done" &&
+    !context.questionnaire.awaitingContinuation
+      ? { ...context, questionnaire: { stage: "idle" as const, answers: {}, awaitingContinuation: false } }
+      : context;
+
+  if (intent === "membership_recommendation" || (effectiveContext.questionnaire.stage !== "idle" && effectiveContext.questionnaire.stage !== "done")) {
+    const questionnaireReply = await handleQuestionnaireFlow({ sessionId, context: effectiveContext, userMessage, lang, userId: user?.id ?? null });
     if (questionnaireReply) return questionnaireReply;
   }
 

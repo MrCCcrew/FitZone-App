@@ -453,7 +453,10 @@ export function buildIntentReply(args: {
   userMessage?: string;
 }) {
   const { lang, intent } = args;
-  if (intent === "greeting") return buildWelcomeMessage(lang);
+  if (intent === "greeting")
+    return lang === "en"
+      ? "Hi! How can I help you today? You can ask about memberships, classes, schedules, offers, or your account."
+      : "أهلًا! كيف أقدر أساعدك؟ تقدري تسأليني عن الباقات أو الكلاسات أو المواعيد أو العروض أو حسابك.";
   if ((intent === "faq" || intent === "unknown") && args.knowledgeEntry) return args.knowledgeEntry.answer;
   if (intent === "pricing") return buildPricingReply(lang, args.memberships ?? []);
   if (intent === "offer_lookup") return buildOffersReply(lang, args.offers ?? []);

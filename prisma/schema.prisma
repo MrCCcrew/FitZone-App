@@ -731,7 +731,7 @@ model ChatMessage {
   senderType String   // user | bot | admin | staff | system
   senderName String?
   content    String   @db.Text
-  metadata   String?
+  metadata   String?  @db.LongText
   createdAt  DateTime @default(now())
 
   session ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
