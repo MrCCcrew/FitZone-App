@@ -3,6 +3,22 @@ import { requireAdminFeature } from "@/lib/admin-guard";
 import { db } from "@/lib/db";
 import { serializeMessages } from "@/lib/chatbot";
 
+export async function DELETE(req: Request) {
+  try {
+    const guard = await requireAdminFeature("chat");
+    if ("error" in guard) return guard.error;
+
+    const { sessionId } = await req.json();
+    if (!sessionId) return NextResponse.json({ error: "sessionId is required" }, { status: 400 });
+
+    await db.chatSession.delete({ where: { id: sessionId } });
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    console.error("[CHAT_ADMIN_SESSION_DELETE]", error);
+    return NextResponse.json({ error: "Unavailable" }, { status: 500 });
+  }
+}
+
 export async function PATCH(req: Request) {
   try {
     const guard = await requireAdminFeature("chat");

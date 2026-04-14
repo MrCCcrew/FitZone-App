@@ -14,7 +14,7 @@ export async function POST(req: Request) {
     }
 
     const role = guard.role;
-    const user = guard.session.user as { id?: string; name?: string | null };
+    const user = guard.session.user as { id?: string; name?: string | null; email?: string | null };
 
     await db.chatSession.update({
       where: { id: sessionId },
@@ -30,7 +30,7 @@ export async function POST(req: Request) {
       data: {
         sessionId,
         senderType: role === "admin" ? "admin" : "staff",
-        senderName: user.name ?? (role === "admin" ? "الإدارة" : "الدعم"),
+        senderName: user.name ?? user.email ?? (role === "admin" ? "الإدارة" : "الدعم"),
         content: content.trim(),
       },
     });
