@@ -179,6 +179,39 @@ export async function GET(req: Request) {
       });
     }
 
+    if (type === "inventoryMovements") {
+      const items = await db.inventoryMovement.findMany({
+        where: q
+          ? {
+              OR: [
+                { id: search },
+                { product: { name: search } },
+                { referenceType: search },
+                { referenceId: search },
+              ],
+            }
+          : undefined,
+        include: { product: { select: { name: true } } },
+        orderBy: { createdAt: "desc" },
+        take: 300,
+      });
+      return NextResponse.json({
+        items: items.map((m) => ({
+          id: m.id,
+          productName: m.product?.name ?? m.productId,
+          type: m.type,
+          quantityChange: m.quantityChange,
+          quantityBefore: m.quantityBefore,
+          quantityAfter: m.quantityAfter,
+          unitCost: m.unitCost,
+          referenceType: m.referenceType,
+          referenceId: m.referenceId,
+          notes: m.notes,
+          createdAt: m.createdAt.toLocaleString("ar-EG"),
+        })),
+      });
+    }
+
     return NextResponse.json({ items: [] });
   } catch (error) {
     console.error("[DB_MAINTENANCE_RECORDS_GET]", error);
@@ -212,6 +245,7 @@ export async function POST(req: Request) {
       if (type === "plans") await db.membership.delete({ where: { id } });
       if (type === "offers") await db.offer.delete({ where: { id } });
       if (type === "users") await db.user.delete({ where: { id } });
+      if (type === "inventoryMovements") await db.inventoryMovement.delete({ where: { id } });
       return NextResponse.json({ message: "تم حذف السجل بنجاح." });
     }
 

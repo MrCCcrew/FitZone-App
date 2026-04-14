@@ -73,7 +73,21 @@ type ActionResult = {
   backup?: BackupInfo;
 };
 
-type RecordsTab = "transactions" | "orders" | "memberships" | "plans" | "offers" | "users";
+type RecordsTab = "transactions" | "orders" | "memberships" | "plans" | "offers" | "users" | "inventoryMovements";
+
+type InventoryMovementRecord = {
+  id: string;
+  productName: string;
+  type: string;
+  quantityChange: number;
+  quantityBefore: number;
+  quantityAfter: number;
+  unitCost: number | null;
+  referenceType: string | null;
+  referenceId: string | null;
+  notes: string | null;
+  createdAt: string;
+};
 
 function formatSize(bytes: number) {
   if (!bytes) return "0 KB";
@@ -106,6 +120,7 @@ export default function DatabaseMaintenance() {
   const [plans, setPlans] = useState<PlanRecord[]>([]);
   const [offers, setOffers] = useState<OfferRecord[]>([]);
   const [users, setUsers] = useState<UserRecord[]>([]);
+  const [inventoryMovements, setInventoryMovements] = useState<InventoryMovementRecord[]>([]);
 
   const loadBackups = async () => {
     try {
@@ -176,6 +191,7 @@ export default function DatabaseMaintenance() {
       if (tab === "plans" && Array.isArray(data.items)) setPlans(data.items as PlanRecord[]);
       if (tab === "offers" && Array.isArray(data.items)) setOffers(data.items as OfferRecord[]);
       if (tab === "users" && Array.isArray(data.items)) setUsers(data.items as UserRecord[]);
+      if (tab === "inventoryMovements" && Array.isArray(data.items)) setInventoryMovements(data.items as InventoryMovementRecord[]);
     } catch {}
     setRecordsLoading(false);
   };
@@ -232,6 +248,7 @@ export default function DatabaseMaintenance() {
       { id: "plans", label: "الاشتراكات والباقات" },
       { id: "offers", label: "العروض" },
       { id: "users", label: "الحسابات" },
+      { id: "inventoryMovements", label: "حركات المخزون" },
     ],
     [],
   );
@@ -686,6 +703,55 @@ export default function DatabaseMaintenance() {
                       className="rounded-lg border border-red-500/40 px-3 py-2 text-xs font-bold text-red-300"
                     >
                       حذف الحساب
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        ) : null}
+
+        {recordsTab === "inventoryMovements" ? (
+          <div className="space-y-3">
+            <div className="rounded-xl border border-yellow-500/20 bg-yellow-950/20 px-4 py-3 text-xs text-yellow-200/80">
+              حركات نوع <strong>sale</strong> هي المصدر الوحيد لحساب تكلفة البضاعة (COGS). حذف حركة خاطئة يُصحح الحسابات فوراً.
+            </div>
+            {inventoryMovements.length === 0 ? (
+              <div className="text-sm text-gray-400">لا توجد حركات مخزون. اضغط "تحديث القائمة" أولاً.</div>
+            ) : (
+              inventoryMovements.map((mv) => (
+                <div key={mv.id} className="rounded-2xl border border-gray-800 bg-gray-900/60 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-gray-200">
+                    <div className="font-bold">{mv.productName}</div>
+                    <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
+                      mv.type === "sale" ? "bg-red-500/20 text-red-300" :
+                      mv.type === "return" ? "bg-emerald-500/20 text-emerald-300" :
+                      mv.type === "purchase" ? "bg-blue-500/20 text-blue-300" :
+                      "bg-gray-700 text-gray-300"
+                    }`}>
+                      {mv.type === "sale" ? "بيع" : mv.type === "return" ? "مرتجع" : mv.type === "purchase" ? "شراء" : mv.type}
+                    </span>
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-3 text-xs text-gray-400">
+                    <span>التغيير: {mv.quantityChange > 0 ? "+" : ""}{mv.quantityChange}</span>
+                    <span>قبل: {mv.quantityBefore} → بعد: {mv.quantityAfter}</span>
+                    {mv.unitCost != null && <span>تكلفة الوحدة: {mv.unitCost} ج.م</span>}
+                    {mv.unitCost != null && <span className="text-orange-300 font-bold">أثر على COGS: {Math.abs(mv.quantityChange) * mv.unitCost} ج.م</span>}
+                  </div>
+                  {(mv.referenceType || mv.referenceId) && (
+                    <div className="mt-1 text-[11px] text-gray-600">
+                      مرجع: {mv.referenceType ?? ""} — {mv.referenceId ?? ""}
+                    </div>
+                  )}
+                  {mv.notes && <div className="mt-1 text-[11px] text-gray-500">{mv.notes}</div>}
+                  <div className="mt-1 text-[11px] text-gray-600">{mv.createdAt}</div>
+                  <div className="mt-3">
+                    <button
+                      type="button"
+                      onClick={() => deleteRecord("inventoryMovements", mv.id)}
+                      className="rounded-lg border border-red-500/40 px-3 py-2 text-xs font-bold text-red-300"
+                    >
+                      حذف الحركة
                     </button>
                   </div>
                 </div>

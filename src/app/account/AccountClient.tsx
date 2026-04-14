@@ -189,6 +189,7 @@ function OnboardingCard({
   const { lang } = useLang();
   const t = (ar: string, en: string) => (lang === "ar" ? ar : en);
   const [copied, setCopied] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
   const [claiming, setClaiming] = useState<string | null>(null);
 
   const firstName = data.user.name.split(" ")[0];
@@ -229,6 +230,16 @@ function OnboardingCard({
       navigator.clipboard.writeText(data.referral.code).then(() => {
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
+      });
+    }
+  };
+
+  const copyReferralLink = () => {
+    if (data.referral?.code) {
+      const link = `${window.location.origin}/register?ref=${data.referral.code}`;
+      navigator.clipboard.writeText(link).then(() => {
+        setCopiedLink(true);
+        setTimeout(() => setCopiedLink(false), 2000);
       });
     }
   };
@@ -357,12 +368,20 @@ function OnboardingCard({
                 {data.referral.code}
               </div>
             </div>
-            <button
-              onClick={copyCode}
-              className="rounded-xl border border-pink-400/30 bg-pink-500/15 px-4 py-2 text-xs font-black text-pink-200 hover:bg-pink-500/25 transition-colors"
-            >
-              {copied ? t("✅ تم النسخ!", "✅ Copied!") : t("📋 انسخي الكود", "📋 Copy code")}
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={copyCode}
+                className="rounded-xl border border-pink-400/30 bg-pink-500/15 px-4 py-2 text-xs font-black text-pink-200 hover:bg-pink-500/25 transition-colors"
+              >
+                {copied ? t("✅ تم النسخ!", "✅ Copied!") : t("📋 انسخي الكود", "📋 Copy code")}
+              </button>
+              <button
+                onClick={copyReferralLink}
+                className="rounded-xl border border-purple-400/30 bg-purple-500/15 px-4 py-2 text-xs font-black text-purple-200 hover:bg-purple-500/25 transition-colors"
+              >
+                {copiedLink ? t("✅ تم نسخ اللينك!", "✅ Link copied!") : t("🔗 انسخي اللينك", "🔗 Copy link")}
+              </button>
+            </div>
           </div>
           {data.referral.referredCount > 0 && (
             <div className="mt-2 text-xs text-[#c896aa]">
@@ -1505,6 +1524,91 @@ function OrdersTab({ orders }: { orders: AccountData["orders"] }) {
   );
 }
 
+// ─── Convert Points Card ──────────────────────────────────────────────────────
+function ConvertPointsCard({ points, lang }: { points: number; lang: "ar" | "en" }) {
+  const t = (ar: string, en: string) => (lang === "ar" ? ar : en);
+  const [pointValueEGP, setPointValueEGP] = useState<number | null>(null);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  useEffect(() => {
+    fetch("/api/me/checkout-options", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d: { pointValueEGP: number }) => setPointValueEGP(d.pointValueEGP))
+      .catch(() => {});
+  }, []);
+
+  const pointsToConvert = Math.min(Math.floor(Number(input) || 0), points);
+  const egpPreview = pointValueEGP != null ? Math.round(pointsToConvert * pointValueEGP * 100) / 100 : 0;
+
+  const handleConvert = async () => {
+    if (pointsToConvert <= 0) return;
+    setLoading(true);
+    setMsg(null);
+    try {
+      const res = await fetch("/api/me/convert-points", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ points: pointsToConvert }),
+      });
+      const data = await res.json() as { success?: boolean; egpAmount?: number; error?: string };
+      if (res.ok && data.success) {
+        setMsg({ ok: true, text: t(`تم تحويل ${pointsToConvert} نقطة إلى ${data.egpAmount} ج.م في محفظتك`, `Converted ${pointsToConvert} pts to ${data.egpAmount} EGP in your wallet`) });
+        setInput("");
+        setTimeout(() => window.location.reload(), 1500);
+      } else {
+        setMsg({ ok: false, text: data.error ?? t("حدث خطأ", "Something went wrong") });
+      }
+    } catch {
+      setMsg({ ok: false, text: t("تعذر الاتصال بالخادم", "Could not connect to server") });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (pointValueEGP === null) return null;
+
+  return (
+    <div className="bg-yellow-950/20 border border-yellow-500/30 rounded-2xl p-5 space-y-3">
+      <h4 className="text-white font-black">{t("💱 تحويل النقاط إلى رصيد محفظة", "💱 Convert Points to Wallet Balance")}</h4>
+      <p className="text-gray-400 text-sm">
+        {t(`كل نقطة = ${pointValueEGP} ج.م — لديك ${points.toLocaleString("ar-EG")} نقطة`,
+           `Each point = ${pointValueEGP} EGP — you have ${points.toLocaleString("en-US")} pts`)}
+      </p>
+      <div className="flex gap-2">
+        <input
+          type="number"
+          min={1}
+          max={points}
+          step={1}
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          placeholder={t("عدد النقاط المراد تحويلها", "Points to convert")}
+          className="flex-1 rounded-xl border border-yellow-500/30 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-yellow-400"
+        />
+        <button
+          onClick={handleConvert}
+          disabled={loading || pointsToConvert <= 0}
+          className="rounded-xl bg-yellow-500 px-4 py-2 text-sm font-black text-black hover:bg-yellow-400 disabled:opacity-50"
+        >
+          {loading ? "..." : t("تحويل", "Convert")}
+        </button>
+      </div>
+      {pointsToConvert > 0 && egpPreview > 0 && (
+        <p className="text-xs text-yellow-400">
+          {t(`${pointsToConvert.toLocaleString("ar-EG")} نقطة = ${egpPreview} ج.م`, `${pointsToConvert} pts = ${egpPreview} EGP`)}
+        </p>
+      )}
+      {msg && (
+        <div className={`rounded-xl px-3 py-2 text-xs ${msg.ok ? "bg-emerald-500/15 text-emerald-300" : "bg-red-500/15 text-red-300"}`}>
+          {msg.text}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Tab: Wallet & Points ─────────────────────────────────────────────────────
 function WalletTab({
   wallet, rewards, referral,
@@ -1513,6 +1617,7 @@ function WalletTab({
   const t = (arText: string, enText: string) => (lang === "ar" ? arText : enText);
   const [activeSection, setActiveSection] = useState<"wallet" | "points">("wallet");
   const [copied, setCopied]   = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
   const [selectedAmount, setSelectedAmount] = useState<number | null>(null);
   const [customAmount, setCustomAmount] = useState("");
   const [paying, setPaying] = useState(false);
@@ -1523,6 +1628,13 @@ function WalletTab({
 
   const copyCode = () => {
     if (referral) { navigator.clipboard.writeText(referral.code); setCopied(true); setTimeout(() => setCopied(false), 2000); }
+  };
+
+  const copyLink = () => {
+    if (referral) {
+      const link = `${window.location.origin}/register?ref=${referral.code}`;
+      navigator.clipboard.writeText(link).then(() => { setCopiedLink(true); setTimeout(() => setCopiedLink(false), 2000); });
+    }
   };
 
   const TOPUP_AMOUNTS = [50, 100, 200, 500, 1000];
@@ -1724,6 +1836,11 @@ function WalletTab({
             </div>
           </div>
 
+          {/* Convert points to wallet */}
+          {rewards.points > 0 && (
+            <ConvertPointsCard points={rewards.points} lang={lang} />
+          )}
+
           {/* Points history */}
           <div className={CARD}>
             <h4 className="text-white font-black mb-4">{t("تاريخ النقاط", "Points history")}</h4>
@@ -1750,12 +1867,15 @@ function WalletTab({
             <div className="bg-yellow-950/20 border border-yellow-500/30 rounded-2xl p-5">
               <h4 className="text-white font-black mb-2">{t("🎁 كود الإحالة الخاص بك", "🎁 Your referral code")}</h4>
               <p className="text-gray-400 text-sm mb-4">{t("شارك كودك مع أصدقائك واحصل على 50 جنيه لكل عضو جديد", "Share your code with friends and get 50 EGP for each new member")}</p>
-              <div className="flex gap-2">
-                <div className="flex-1 bg-black border border-yellow-500/30 rounded-xl px-4 py-2.5 text-yellow-400 font-black text-center tracking-widest" dir="ltr">
+              <div className="flex gap-2 flex-wrap">
+                <div className="flex-1 min-w-[120px] bg-black border border-yellow-500/30 rounded-xl px-4 py-2.5 text-yellow-400 font-black text-center tracking-widest" dir="ltr">
                   {referral.code}
                 </div>
                 <button onClick={copyCode} className={`px-4 rounded-xl font-bold text-sm transition-colors ${copied ? "bg-green-600 text-white" : "bg-yellow-500 hover:bg-yellow-400 text-black"}`}>
-                  {copied ? t("تم النسخ", "Copied") : t("نسخ", "Copy")}
+                  {copied ? t("✅ تم", "✅ Copied") : t("📋 الكود", "📋 Code")}
+                </button>
+                <button onClick={copyLink} className={`px-4 rounded-xl font-bold text-sm transition-colors ${copiedLink ? "bg-green-600 text-white" : "bg-yellow-700/60 hover:bg-yellow-700 text-yellow-200"}`}>
+                  {copiedLink ? t("✅ تم", "✅ Copied") : t("🔗 اللينك", "🔗 Link")}
                 </button>
               </div>
               <div className="mt-3 text-center text-gray-400 text-xs">
