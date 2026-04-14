@@ -41,6 +41,8 @@ export async function POST(req: Request) {
       isClubPickup?: boolean;
       recipientName?: string | null;
       recipientPhone?: string | null;
+      walletDeduct?: number;
+      pointsDeduct?: number;
     };
 
     const items = Array.isArray(body.items) ? body.items.filter((item) => item.productId && item.quantity > 0) : [];
@@ -94,14 +96,55 @@ export async function POST(req: Request) {
     }
 
     const shippingFee = deliveryOption?.type === "pickup" ? 0 : deliveryOption?.fee ?? 0;
-    const total = Math.max(0, subtotal + shippingFee);
+    const baseTotal = Math.max(0, subtotal + shippingFee);
+
+    // Validate and apply wallet/points deductions
+    const walletDeductReq = Math.max(0, Number(body.walletDeduct ?? 0));
+    const pointsDeductReq = Math.floor(Math.max(0, Number(body.pointsDeduct ?? 0)));
+    let validatedWalletDeduct = 0;
+    let validatedPointsDeduct = 0;
+    let pointsEGP = 0;
+    let pointValueEGP = 0.1;
+
+    if (walletDeductReq > 0 || pointsDeductReq > 0) {
+      const [walletRow, pointsRow, rewardSettings] = await Promise.all([
+        walletDeductReq > 0 ? db.wallet.findUnique({ where: { userId }, select: { balance: true } }) : null,
+        pointsDeductReq > 0 ? db.rewardPoints.findUnique({ where: { userId } }) : null,
+        db.siteContent.findUnique({ where: { section: "reward_settings" } }),
+      ]);
+
+      if (rewardSettings?.content) {
+        try {
+          const s = JSON.parse(rewardSettings.content) as { pointValueEGP?: number };
+          if (typeof s.pointValueEGP === "number") pointValueEGP = s.pointValueEGP;
+        } catch {}
+      }
+
+      if (walletDeductReq > 0) {
+        if (walletDeductReq > (walletRow?.balance ?? 0)) {
+          return NextResponse.json({ error: "رصيد المحفظة غير كافٍ." }, { status: 400 });
+        }
+        validatedWalletDeduct = Math.min(walletDeductReq, baseTotal);
+      }
+
+      if (pointsDeductReq > 0) {
+        if (pointsDeductReq > (pointsRow?.points ?? 0)) {
+          return NextResponse.json({ error: "رصيد النقاط غير كافٍ." }, { status: 400 });
+        }
+        pointsEGP = Math.round(pointsDeductReq * pointValueEGP * 100) / 100;
+        validatedPointsDeduct = pointsDeductReq;
+      }
+    }
+
+    const discountTotal = Math.round((validatedWalletDeduct + pointsEGP) * 100) / 100;
+    const total = Math.max(0, baseTotal - discountTotal);
 
     const order = await db.order.create({
       data: {
         userId,
         businessUnit: "store",
         subtotal,
-        discountTotal: 0,
+        discountTotal,
         shippingFee,
         total,
         status: "pending",
@@ -154,9 +197,30 @@ export async function POST(req: Request) {
       });
     });
 
+    // Deduct wallet and points
+    if (validatedWalletDeduct > 0) {
+      const wallet = await db.wallet.update({
+        where: { userId },
+        data: { balance: { decrement: validatedWalletDeduct } },
+      });
+      await db.walletTransaction.create({
+        data: { walletId: wallet.id, amount: validatedWalletDeduct, type: "debit", description: `سداد طلب رقم ${order.id}` },
+      });
+    }
+
+    if (validatedPointsDeduct > 0) {
+      const pointsRecord = await db.rewardPoints.update({
+        where: { userId },
+        data: { points: { decrement: validatedPointsDeduct } },
+      });
+      await db.rewardHistory.create({
+        data: { rewardId: pointsRecord.id, points: -validatedPointsDeduct, reason: `استخدام نقاط لسداد طلب رقم ${order.id}` },
+      });
+    }
+
     let checkoutUrl: string | null = null;
     let transactionId: string | null = null;
-    if (paymentMethod === "instapay" || paymentMethod === "vodafone_cash") {
+    if (total > 0 && (paymentMethod === "instapay" || paymentMethod === "vodafone_cash")) {
       const transaction = await createPaymentTransaction({
         userId,
         provider: paymentMethod,
@@ -170,10 +234,15 @@ export async function POST(req: Request) {
           deliveryOptionId: deliveryOption?.id ?? null,
           deliveryLabel: deliveryOption?.name ?? (isClubPickup ? "استلام من الجيم" : null),
           shippingFee,
+          walletDeducted: validatedWalletDeduct || null,
+          pointsDeducted: validatedPointsDeduct || null,
         },
       });
       checkoutUrl = transaction.checkoutUrl ?? null;
       transactionId = transaction.id;
+    } else if (total <= 0) {
+      // Fully paid by wallet/points
+      await db.order.update({ where: { id: order.id }, data: { status: "confirmed" } });
     }
 
     await Promise.all([

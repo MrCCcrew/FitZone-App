@@ -694,7 +694,7 @@ const Footer = ({ navigate }: { navigate: (p: string) => void }) => {
           </div>
           <p style={{ color: C.gray, fontSize: 13, lineHeight: 1.8, marginBottom: 16 }}>
             {t(
-              "نادي لياقة للسيدات والأطفال في بني سويف يقدم اشتراكات، كلاسات، مدربات محترفات، ومتجر رياضي في مكان واحد.",
+              "نادي جيم لياقة للسيدات والأطفال في بني سويف يقدم اشتراكات، كلاسات، مدربات محترفات، ومتجر رياضي في مكان واحد.",
               "Fitness club in Beni Suef for women and kids with memberships, classes, expert coaches, and a sports shop in one place.",
             )}
           </p>
@@ -4666,6 +4666,8 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
   const [step, setStep] = useState("cart");
   const [payMethod, setPayMethod] = useState("instapay");
   const [useRewards, setUseRewards] = useState(false);
+  const [useWallet, setUseWallet] = useState(false);
+  const [pointValueEGP, setPointValueEGP] = useState(0.1);
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [locating, setLocating] = useState(false);
@@ -4713,6 +4715,17 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
   }, []);
 
   useEffect(() => {
+    if (summary?.authenticated) {
+      fetch("/api/me/checkout-options", { cache: "no-store" })
+        .then((r) => r.json())
+        .then((d: { pointValueEGP?: number }) => {
+          if (typeof d.pointValueEGP === "number") setPointValueEGP(d.pointValueEGP);
+        })
+        .catch(() => {});
+    }
+  }, [summary?.authenticated]);
+
+  useEffect(() => {
     if (deliveryOptions.length > 0 && !selectedDeliveryId) {
       setSelectedDeliveryId(deliveryOptions[0]?.id ?? null);
     }
@@ -4731,11 +4744,16 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
   };
 
   const subtotal = cartItems.reduce((sum, item) => sum + item.price * item.qty, 0);
-  const rewardsValue = Math.floor((summary?.rewardPoints ?? 0) / 100);
-  const discount = useRewards ? rewardsValue : 0;
+  const rewardsValue = Math.round((summary?.rewardPoints ?? 0) * pointValueEGP * 100) / 100;
+  const walletBalance = summary?.walletBalance ?? 0;
   const selectedDelivery = deliveryOptions.find((option) => option.id === selectedDeliveryId) ?? null;
   const shippingFee = selectedDelivery?.type === "pickup" ? 0 : selectedDelivery?.fee ?? 0;
-  const total = Math.max(0, subtotal - discount + shippingFee);
+  const baseTotal = Math.max(0, subtotal + shippingFee);
+  const rewardsDiscount = useRewards ? Math.min(rewardsValue, baseTotal) : 0;
+  const walletDiscount = useWallet ? Math.min(walletBalance, Math.max(0, baseTotal - rewardsDiscount)) : 0;
+  const discount = rewardsDiscount + walletDiscount;
+  const total = Math.max(0, baseTotal - discount);
+  const pointsToDeduct = useRewards ? Math.ceil(rewardsDiscount / pointValueEGP) : 0;
 
   const availablePayMethods = useMemo(() => {
     const methods = [
@@ -4874,6 +4892,8 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
           paymentMethod: payMethod,
           deliveryOptionId: selectedDeliveryId,
           isClubPickup: selectedDelivery?.type === "pickup",
+          walletDeduct: walletDiscount > 0 ? walletDiscount : undefined,
+          pointsDeduct: pointsToDeduct > 0 ? pointsToDeduct : undefined,
         }),
       });
 
@@ -5118,14 +5138,26 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                   );
                   })}
                 </div>
-                <div className="card" style={{ padding: 16, marginTop: 12 }}>
-                  <div onClick={() => setUseRewards(!useRewards)} style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", padding: "10px 0" }}>
-                    <div style={{ width: 18, height: 18, borderRadius: 4, border: `2px solid ${useRewards ? C.red : C.border}`, background: useRewards ? C.red : "transparent", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                      {useRewards && <I n="check" s={11} c="#fff" />}
-                    </div>
-                    <span style={{ fontSize: 13, color: C.grayLight }}>{t("استخدام نقاط الولاء", "Use reward points")} ({(summary?.rewardPoints ?? 0).toLocaleString(lang === "ar" ? "ar-EG" : "en-US")} {t("نقطة", "points")} = <strong style={{ color: C.gold }}>{formatCurrency(rewardsValue)}</strong>)</span>
+                {(rewardsValue > 0 || walletBalance > 0) && (
+                  <div className="card" style={{ padding: 16, marginTop: 12 }}>
+                    {rewardsValue > 0 && (
+                      <div onClick={() => setUseRewards(!useRewards)} style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", padding: "10px 0", borderBottom: walletBalance > 0 ? `1px solid ${C.border}` : "none" }}>
+                        <div style={{ width: 18, height: 18, borderRadius: 4, border: `2px solid ${useRewards ? C.red : C.border}`, background: useRewards ? C.red : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                          {useRewards && <I n="check" s={11} c="#fff" />}
+                        </div>
+                        <span style={{ fontSize: 13, color: C.grayLight }}>{t("استخدام نقاط الولاء", "Use reward points")} <strong style={{ color: C.gold }}>({(summary?.rewardPoints ?? 0).toLocaleString(lang === "ar" ? "ar-EG" : "en-US")} {t("نقطة", "pts")} = {formatCurrency(rewardsValue)})</strong></span>
+                      </div>
+                    )}
+                    {walletBalance > 0 && (
+                      <div onClick={() => setUseWallet(!useWallet)} style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", padding: "10px 0" }}>
+                        <div style={{ width: 18, height: 18, borderRadius: 4, border: `2px solid ${useWallet ? C.red : C.border}`, background: useWallet ? C.red : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                          {useWallet && <I n="check" s={11} c="#fff" />}
+                        </div>
+                        <span style={{ fontSize: 13, color: C.grayLight }}>{t("استخدام رصيد المحفظة", "Use wallet balance")} <strong style={{ color: "#4ade80" }}>({formatCurrency(walletBalance)} {t("ج.م", "EGP")})</strong></span>
+                      </div>
+                    )}
                   </div>
-                </div>
+                )}
                 <div className="card" style={{ padding: 18, marginTop: 12, background: "rgba(200,162,0,.08)", border: `1px solid ${C.gold}33` }}>
                   <p style={{ color: C.gold, fontWeight: 700, fontSize: 13 }}>{t("الدفع يتم عبر الهاتف.", "Payment is completed via phone.")}</p>
                   <p style={{ color: C.gray, fontSize: 12, marginTop: 6 }}>{t("بعد تسجيل الطلب ستصلك صفحة التحويل الخاصة بوسيلة الدفع المختارة.", "After placing the order, you will receive the transfer page for the selected payment method.")}</p>
@@ -5133,7 +5165,11 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                 <div style={{ display: "flex", gap: 12, marginTop: 16 }}>
                   <button className="btn-ghost" onClick={() => setStep("delivery")}>{t("العودة للشحن", "Back to shipping")}</button>
                   <button className="btn-primary" disabled={submitting} style={{ flex: 1, justifyContent: "center", padding: "13px", fontSize: 15, opacity: submitting ? 0.7 : 1 }} onClick={submitOrder}>
-                    {submitting ? t("جارٍ تسجيل الطلب...", "Submitting order...") : `${t("تأكيد الطلب", "Confirm order")} ${formatCurrency(total)}`}
+                    {submitting
+                      ? t("جارٍ تسجيل الطلب...", "Submitting order...")
+                      : total <= 0
+                        ? t("تأكيد الطلب — مدفوع بالكامل ✓", "Confirm order — Fully paid ✓")
+                        : `${t("تأكيد الطلب", "Confirm order")} ${formatCurrency(total)}`}
                   </button>
                 </div>
               </div>
@@ -5150,8 +5186,8 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
             ))}
             <div className="divider" />
             <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 13 }}><span style={{ color: C.gray }}>{t("الإجمالي الفرعي", "Subtotal")}</span><span style={{ color: C.white }}>{formatCurrency(subtotal)}</span></div>
-            <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 13 }}><span style={{ color: C.gray }}>{t("نقاط الولاء المتاحة", "Available reward points")}</span><span style={{ color: C.gold }}>{formatCurrency(rewardsValue)}</span></div>
-            {discount > 0 && <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 13 }}><span style={{ color: C.gray }}>{t("الخصم المطبق", "Applied discount")}</span><span style={{ color: C.success }}>- {formatCurrency(discount)}</span></div>}
+            {rewardsDiscount > 0 && <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 13 }}><span style={{ color: C.gray }}>{t("خصم النقاط", "Points discount")}</span><span style={{ color: C.gold }}>- {formatCurrency(rewardsDiscount)}</span></div>}
+            {walletDiscount > 0 && <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 13 }}><span style={{ color: C.gray }}>{t("خصم المحفظة", "Wallet discount")}</span><span style={{ color: "#4ade80" }}>- {formatCurrency(walletDiscount)}</span></div>}
             <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 13 }}>
               <span style={{ color: C.gray }}>{t("رسوم الشحن", "Shipping fee")}</span>
               <span style={{ color: C.white }}>{formatCurrency(shippingFee)}</span>
