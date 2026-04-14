@@ -1,7 +1,6 @@
 import { db } from "@/lib/db";
 import { getDefaultPaymentProvider, getPaymentProvider, listPaymentProviders } from "@/lib/payments/registry";
 import type {
-  PaymentCheckoutResult,
   PaymentProviderKey,
   PaymentPurpose,
   PaymentStatus,
@@ -166,18 +165,62 @@ export async function updatePaymentTransactionStatus(
   status: PaymentStatus,
   note?: string | null,
 ) {
+  const existing = await db.paymentTransaction.findUnique({
+    where: { id: transactionId },
+    select: { metadata: true, membershipId: true, orderId: true, userId: true },
+  });
+
   const transaction = await db.paymentTransaction.update({
     where: { id: transactionId },
     data: {
       status,
       metadata: stringifyJson({
-        ...(parseJson((await db.paymentTransaction.findUnique({ where: { id: transactionId }, select: { metadata: true } }))?.metadata) ?? {}),
+        ...(parseJson(existing?.metadata) ?? {}),
         adminNote: note ?? null,
       }),
       paidAt: status === "paid" ? new Date() : undefined,
       failedAt: status === "failed" ? new Date() : undefined,
     },
   });
+
+  // Activate linked membership or order when payment confirmed
+  if (status === "paid") {
+    if (existing?.membershipId) {
+      const membership = await db.userMembership.findUnique({
+        where: { id: existing.membershipId },
+        select: { status: true, membership: { select: { name: true } } },
+      });
+      if (membership?.status === "pending_payment") {
+        await db.userMembership.update({
+          where: { id: existing.membershipId },
+          data: { status: "active" },
+        });
+        if (existing.userId) {
+          await db.notification.create({
+            data: {
+              userId: existing.userId,
+              title: `تم تفعيل اشتراكك في ${membership.membership?.name ?? "الباقة"}!`,
+              body: "تم استلام دفعتك وتفعيل اشتراكك بنجاح.",
+              type: "success",
+            },
+          });
+        }
+      }
+    }
+
+    if (existing?.orderId) {
+      const order = await db.order.findUnique({
+        where: { id: existing.orderId },
+        select: { status: true },
+      });
+      if (order?.status === "pending") {
+        await db.order.update({
+          where: { id: existing.orderId },
+          data: { status: "confirmed" },
+        });
+      }
+    }
+  }
 
   return mapPaymentTransaction(transaction);
 }

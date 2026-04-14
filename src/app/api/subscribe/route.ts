@@ -10,6 +10,8 @@ type SubscribePayload = {
   scheduleIds?: string[] | null;
   paymentMethod?: string | null;
   discountCode?: string | null;
+  walletDeduct?: number | null;
+  pointsDeduct?: number | null;
 };
 
 function sanitizeMethod(value: unknown) {
@@ -35,10 +37,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "يجب تسجيل الدخول أولًا قبل الاشتراك." }, { status: 401 });
   }
 
-  const { membershipId, offerId, scheduleIds, paymentMethod, discountCode } = (await req.json()) as SubscribePayload;
+  const { membershipId, offerId, scheduleIds, paymentMethod, discountCode, walletDeduct, pointsDeduct } = (await req.json()) as SubscribePayload;
   if (!membershipId && !offerId) {
     return NextResponse.json({ error: "يرجى اختيار الباقة أو العرض أولًا." }, { status: 400 });
   }
+
+  const walletDeductAmount = Math.max(0, Number(walletDeduct ?? 0));
+  const pointsDeductCount = Math.floor(Math.max(0, Number(pointsDeduct ?? 0)));
 
   const userRecord = await db.user.findUnique({
     where: { id: userId },
@@ -53,6 +58,42 @@ export async function POST(req: Request) {
   }
 
   const resolvedPaymentMethod = sanitizeMethod(paymentMethod);
+
+  // Validate wallet & points before transaction
+  let validatedWalletDeduct = 0;
+  let validatedPointsDeduct = 0;
+  let pointValueEGP = 0.1;
+
+  if (walletDeductAmount > 0 || pointsDeductCount > 0) {
+    const [walletRow, pointsRow, rewardSettings] = await Promise.all([
+      walletDeductAmount > 0 ? db.wallet.findUnique({ where: { userId }, select: { balance: true } }) : null,
+      pointsDeductCount > 0 ? db.rewardPoints.findUnique({ where: { userId } }) : null,
+      db.siteContent.findUnique({ where: { section: "reward_settings" } }),
+    ]);
+
+    if (rewardSettings?.content) {
+      try {
+        const s = JSON.parse(rewardSettings.content) as { pointValueEGP?: number };
+        if (typeof s.pointValueEGP === "number") pointValueEGP = s.pointValueEGP;
+      } catch {}
+    }
+
+    if (walletDeductAmount > 0) {
+      const balance = walletRow?.balance ?? 0;
+      if (walletDeductAmount > balance) {
+        return NextResponse.json({ error: "رصيد المحفظة غير كافٍ." }, { status: 400 });
+      }
+      validatedWalletDeduct = walletDeductAmount;
+    }
+
+    if (pointsDeductCount > 0) {
+      const currentPoints = pointsRow?.points ?? 0;
+      if (pointsDeductCount > currentPoints) {
+        return NextResponse.json({ error: "رصيد النقاط غير كافٍ." }, { status: 400 });
+      }
+      validatedPointsDeduct = pointsDeductCount;
+    }
+  }
 
   // Validate discount code before transaction
   let discountRecord: { id: string; type: string; value: number } | null = null;
@@ -135,7 +176,49 @@ export async function POST(req: Request) {
         paymentAmount = Math.max(0, paymentAmount - discountApplied);
       }
 
+      // Deduct wallet balance
+      const actualWalletDeduct = Math.min(validatedWalletDeduct, paymentAmount ?? 0);
+      if (actualWalletDeduct > 0) {
+        const wallet = await tx.wallet.update({
+          where: { userId },
+          data: { balance: { decrement: actualWalletDeduct } },
+        });
+        await tx.walletTransaction.create({
+          data: {
+            walletId: wallet.id,
+            amount: actualWalletDeduct,
+            type: "debit",
+            description: `سداد اشتراك باقة ${plan.name}`,
+          },
+        });
+        paymentAmount = Math.max(0, (paymentAmount ?? 0) - actualWalletDeduct);
+      }
+
+      // Deduct reward points
+      const pointsEGP = Math.round(validatedPointsDeduct * pointValueEGP * 100) / 100;
+      const actualPointsEGP = Math.min(pointsEGP, paymentAmount ?? 0);
+      const actualPointsDeduct = actualPointsEGP > 0 ? validatedPointsDeduct : 0;
+      if (actualPointsDeduct > 0 && actualPointsEGP > 0) {
+        const pointsRecord = await tx.rewardPoints.update({
+          where: { userId },
+          data: { points: { decrement: actualPointsDeduct } },
+        });
+        await tx.rewardHistory.create({
+          data: {
+            rewardId: pointsRecord.id,
+            points: -actualPointsDeduct,
+            reason: `استخدام نقاط لسداد اشتراك باقة ${plan.name}`,
+          },
+        });
+        paymentAmount = Math.max(0, (paymentAmount ?? 0) - actualPointsEGP);
+      }
+
       const membershipPaymentMethod = offerId ? "offer" : resolvedPaymentMethod;
+
+      // Pending payment for online transfer methods that need admin confirmation
+      const needsPaymentConfirmation =
+        (paymentAmount ?? 0) > 0 &&
+        ["instapay", "vodafone_cash"].includes(membershipPaymentMethod);
 
       const subscription = await tx.userMembership.create({
         data: {
@@ -143,7 +226,7 @@ export async function POST(req: Request) {
           membershipId: plan.id,
           startDate,
           endDate,
-          status: "active",
+          status: needsPaymentConfirmation ? "pending_payment" : "active",
           paymentAmount: paymentAmount ?? 0,
           paymentMethod: membershipPaymentMethod,
           offerTitle: offerTitle ?? null,
@@ -302,11 +385,15 @@ export async function POST(req: Request) {
       await tx.notification.create({
         data: {
           userId,
-          title: offerTitle ? `تم الاشتراك في ${offerTitle}!` : `تم الاشتراك في باقة ${plan.name}!`,
-          body: offerTitle
-            ? `اشتراكك في العرض الخاص أصبح نشطًا حتى ${endDate.toLocaleDateString("ar-EG")}.`
-            : `اشتراكك أصبح نشطًا حتى ${endDate.toLocaleDateString("ar-EG")}.`,
-          type: "success",
+          title: needsPaymentConfirmation
+            ? `طلب الاشتراك في ${offerTitle ?? plan.name} قيد المراجعة`
+            : offerTitle ? `تم الاشتراك في ${offerTitle}!` : `تم الاشتراك في باقة ${plan.name}!`,
+          body: needsPaymentConfirmation
+            ? `سيتم تفعيل اشتراكك بعد تأكيد الدفع من الإدارة.`
+            : offerTitle
+              ? `اشتراكك في العرض الخاص أصبح نشطًا حتى ${endDate.toLocaleDateString("ar-EG")}.`
+              : `اشتراكك أصبح نشطًا حتى ${endDate.toLocaleDateString("ar-EG")}.`,
+          type: needsPaymentConfirmation ? "info" : "success",
         },
       });
 
@@ -320,6 +407,7 @@ export async function POST(req: Request) {
         paymentAmount,
         membershipPaymentMethod,
         discountApplied,
+        needsPaymentConfirmation,
       };
     })
     .catch((error: unknown) => {
