@@ -345,6 +345,14 @@ export interface ChatSession {
   messages: ChatMessage[];
 }
 
+export interface QuickReply {
+  id: string;
+  label: string;
+  content: string;
+  sortOrder: number;
+  createdAt: string;
+}
+
 export interface ChatKnowledgeEntry {
   id: string;
   title: string;
