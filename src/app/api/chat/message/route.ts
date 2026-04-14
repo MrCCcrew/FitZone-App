@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { generateBotReply, serializeMessages } from "@/lib/chatbot";
+import { generateBotReply, serializeChatSession } from "@/lib/chatbot";
 import { applyRateLimit, getClientIp } from "@/lib/rate-limit";
 
 export async function POST(req: Request) {
@@ -15,7 +15,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const { sessionId, content, visitorName, visitorPhone } = await req.json();
+    const { sessionId, content, visitorName, visitorPhone, lang } = await req.json();
 
     if (!sessionId || !content?.trim()) {
       return NextResponse.json({ error: "بيانات الرسالة غير مكتملة." }, { status: 400 });
@@ -46,7 +46,7 @@ export async function POST(req: Request) {
 
     const updatedSession = await db.chatSession.findUnique({ where: { id: sessionId } });
     if (updatedSession?.mode !== "live") {
-      await generateBotReply(sessionId, content.trim());
+      await generateBotReply(sessionId, content.trim(), lang === "en" ? "en" : "ar");
     }
 
     const payload = await db.chatSession.findUnique({
@@ -58,10 +58,7 @@ export async function POST(req: Request) {
       },
     });
 
-    return NextResponse.json({
-      ...payload,
-      messages: serializeMessages(payload?.messages ?? []),
-    });
+    return NextResponse.json(await serializeChatSession(payload, lang === "en" ? "en" : "ar"));
   } catch (error) {
     console.error("[CHAT_MESSAGE_POST]", error);
     return NextResponse.json({ error: "الخدمة غير متاحة مؤقتًا.", messages: [] }, { status: 500 });

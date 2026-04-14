@@ -2,6 +2,7 @@
 
 import type { CSSProperties } from "react";
 import { useEffect, useMemo, useState } from "react";
+import { useLang } from "@/lib/language";
 
 type ChatMessage = {
   id: string;
@@ -12,6 +13,12 @@ type ChatMessage = {
   metadata?: { membershipId?: string; closeSession?: boolean } | null;
 };
 
+type QuickAction = {
+  id: string;
+  label: string;
+  prompt: string;
+};
+
 type ChatSessionPayload = {
   id: string;
   status?: "open" | "live" | "resolved";
@@ -19,6 +26,7 @@ type ChatSessionPayload = {
   visitorPhone?: string | null;
   messages: ChatMessage[];
   recommendedMembership?: { id: string; name: string; price: number } | null;
+  quickActions?: QuickAction[];
   error?: string;
 };
 
@@ -46,9 +54,12 @@ function parseStoredVisitor(raw: string | null) {
 }
 
 export default function LiveChatWidget() {
+  const { lang } = useLang();
+  const t = (ar: string, en: string) => (lang === "ar" ? ar : en);
   const [open, setOpen] = useState(false);
   const [sessionId, setSessionId] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [quickActions, setQuickActions] = useState<QuickAction[]>([]);
   const [input, setInput] = useState("");
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -81,6 +92,7 @@ export default function LiveChatWidget() {
   const applyPayload = (data: ChatSessionPayload) => {
     setSessionId(data.id);
     setMessages(Array.isArray(data.messages) ? data.messages : []);
+    setQuickActions(Array.isArray(data.quickActions) ? data.quickActions : []);
     setRecommendedMembership(data.recommendedMembership ?? null);
     setStatus(data.status ?? "open");
     setError(data.error ?? "");
@@ -96,16 +108,21 @@ export default function LiveChatWidget() {
   const createFreshSession = async () => {
     clearStoredSession();
     setMessages([]);
+    setQuickActions([]);
     setRecommendedMembership(null);
     setStatus("open");
     setInput("");
     setError("");
 
-    const res = await fetch("/api/chat/session", { method: "POST" });
+    const res = await fetch("/api/chat/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ lang }),
+    });
     const data = (await res.json().catch(() => ({}))) as ChatSessionPayload;
 
     if (!res.ok || !data?.id) {
-      setError(data.error ?? "تعذر بدء المحادثة الآن. حاول مرة أخرى بعد قليل.");
+      setError(data.error ?? t("تعذر بدء المحادثة الآن. حاول مرة أخرى بعد قليل.", "Unable to start the conversation right now. Please try again shortly."));
       return "";
     }
 
@@ -128,11 +145,11 @@ export default function LiveChatWidget() {
     const validId = normalizeSessionId(id);
     if (!validId) return;
 
-    const res = await fetch(`/api/chat/session?sessionId=${validId}`, { cache: "no-store" });
+    const res = await fetch(`/api/chat/session?sessionId=${validId}&lang=${lang}`, { cache: "no-store" });
     const data = (await res.json().catch(() => ({}))) as ChatSessionPayload;
     if (!res.ok || !data?.id) {
       clearStoredSession();
-      if (open) setError(data.error ?? "تعذر تحميل المحادثة الحالية.");
+      if (open) setError(data.error ?? t("تعذر تحميل المحادثة الحالية.", "Unable to load the current conversation."));
       return;
     }
 
@@ -157,14 +174,8 @@ export default function LiveChatWidget() {
         (currentIdentity.name && storedVisitor.name && currentIdentity.name !== storedVisitor.name) ||
         (currentIdentity.phone && storedVisitor.phone && currentIdentity.phone !== storedVisitor.phone);
 
-      if (visitorChanged) {
-        return createFreshSession();
-      }
-
-      if (!sessionId) {
-        await loadSession(storedId);
-      }
-
+      if (visitorChanged) return createFreshSession();
+      if (!sessionId) await loadSession(storedId);
       return storedId;
     }
 
@@ -184,23 +195,18 @@ export default function LiveChatWidget() {
 
     if (storedVisitor.name) setName(storedVisitor.name);
     if (storedVisitor.phone) setPhone(storedVisitor.phone);
-
-    if (storedId) {
-      loadSession(storedId).catch(() => {});
-    }
+    if (storedId) loadSession(storedId).catch(() => {});
 
     const interval = setInterval(() => {
       loadPresence().catch(() => {});
       const latest = normalizeSessionId(
         typeof window !== "undefined" ? window.sessionStorage.getItem(STORAGE_KEY) : null,
       );
-      if (latest) {
-        loadSession(latest).catch(() => {});
-      }
+      if (latest) loadSession(latest).catch(() => {});
     }, 30000);
 
     return () => clearInterval(interval);
-  }, [open]);
+  }, [open, lang]);
 
   useEffect(() => {
     const latest = messages[messages.length - 1];
@@ -222,9 +228,7 @@ export default function LiveChatWidget() {
       const id = await ensureSession();
       if (!id) return;
 
-      if (name.trim() || phone.trim()) {
-        saveVisitorIdentity(name, phone);
-      }
+      if (name.trim() || phone.trim()) saveVisitorIdentity(name, phone);
 
       const res = await fetch("/api/chat/message", {
         method: "POST",
@@ -234,13 +238,13 @@ export default function LiveChatWidget() {
           content,
           visitorName: name,
           visitorPhone: phone,
+          lang,
         }),
       });
 
       const data = (await res.json().catch(() => ({}))) as ChatSessionPayload;
-
       if (!res.ok) {
-        setError(data.error ?? "تعذر إرسال الرسالة الآن.");
+        setError(data.error ?? t("تعذر إرسال الرسالة الآن.", "Unable to send the message right now."));
         return;
       }
 
@@ -263,29 +267,30 @@ export default function LiveChatWidget() {
           bottom: 20,
           right: 20,
           zIndex: 80,
-          width: 64,
-          height: 64,
+          width: 68,
+          height: 68,
           borderRadius: "999px",
           border: "none",
           background: "linear-gradient(135deg, #E91E63, #F06292)",
           color: "#fff",
-          fontSize: 14,
+          fontSize: 12,
           fontWeight: 900,
           cursor: "pointer",
           boxShadow: "0 12px 30px rgba(233,30,99,.35)",
         }}
       >
-        Chat
+        AI Coach
       </button>
 
       {open && (
         <div
+          dir={lang === "ar" ? "rtl" : "ltr"}
           style={{
             position: "fixed",
             bottom: 96,
             right: 20,
             zIndex: 80,
-            width: "min(380px, calc(100vw - 24px))",
+            width: "min(390px, calc(100vw - 24px))",
             maxWidth: "calc(100vw - 24px)",
             maxHeight: "calc(100vh - 116px)",
             background: "#FFF5F8",
@@ -300,9 +305,9 @@ export default function LiveChatWidget() {
           <div style={{ padding: 16, borderBottom: "1px solid #F5D0DC", background: "linear-gradient(135deg, #E91E63, #F06292)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
               <div>
-                <div style={{ color: "#fff", fontWeight: 900, fontSize: 16 }}>مساعد فيت زون</div>
+                <div style={{ color: "#fff", fontWeight: 900, fontSize: 16 }}>AI Coach</div>
                 <div style={{ color: online ? "#d4fce4" : "#ffe0ef", fontSize: 12 }}>
-                  {online ? "الدعم المباشر متاح الآن" : "الرد الآلي متاح الآن"}
+                  {online ? t("الدعم المباشر متاح الآن", "Live support is available now") : t("الرد الآلي متاح الآن", "AI coach is available now")}
                 </div>
               </div>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -318,7 +323,7 @@ export default function LiveChatWidget() {
                     cursor: "pointer",
                   }}
                 >
-                  محادثة جديدة
+                  {t("محادثة جديدة", "New chat")}
                 </button>
                 <button
                   onClick={() => setOpen(false)}
@@ -339,16 +344,17 @@ export default function LiveChatWidget() {
               background: "#FFF0F5",
             }}
           >
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="اسمك" style={inputStyle} />
-            <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="رقم الجوال" style={inputStyle} />
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <button onClick={() => sendMessage("أريد ترشيح باقة مناسبة")} style={quickButtonStyle}>
-                ترشيح باقة
-              </button>
-              <button onClick={() => sendMessage("أريد التحدث مع موظف")} style={quickButtonStyle}>
-                موظف مباشر
-              </button>
-            </div>
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder={t("اسمك", "Your name")} style={inputStyle} />
+            <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={t("رقم الجوال", "Phone number")} style={inputStyle} />
+            {quickActions.length > 0 && (
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {quickActions.map((item) => (
+                  <button key={item.id} onClick={() => sendMessage(item.prompt)} style={quickButtonStyle}>
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            )}
             {error && (
               <div
                 style={{
@@ -394,11 +400,7 @@ export default function LiveChatWidget() {
                       maxWidth: "84%",
                       padding: "12px 14px",
                       borderRadius: 18,
-                      background: isUser
-                        ? "#FFFFFF"
-                        : isSupport
-                          ? "rgba(233,30,99,.12)"
-                          : "rgba(233,30,99,.07)",
+                      background: isUser ? "#FFFFFF" : isSupport ? "rgba(233,30,99,.12)" : "rgba(233,30,99,.07)",
                       color: "#1A0812",
                       border: isUser
                         ? "1px solid #F5D0DC"
@@ -410,7 +412,7 @@ export default function LiveChatWidget() {
                     }}
                   >
                     <div style={{ fontSize: 11, opacity: 0.65, marginBottom: 4 }}>
-                      {message.senderName || (isUser ? "أنت" : message.senderType === "bot" ? "مساعد فيت زون" : "الدعم")}
+                      {message.senderName || (isUser ? t("أنت", "You") : message.senderType === "bot" ? "AI Coach" : t("الدعم", "Support"))}
                     </div>
                     <div style={{ whiteSpace: "pre-wrap" }}>{message.content}</div>
                   </div>
@@ -428,9 +430,11 @@ export default function LiveChatWidget() {
                   border: "1px solid rgba(233,30,99,.25)",
                 }}
               >
-                <div style={{ color: "#E91E63", fontWeight: 800, marginBottom: 6 }}>الباقة المقترحة</div>
+                <div style={{ color: "#E91E63", fontWeight: 800, marginBottom: 6 }}>
+                  {t("الباقة المقترحة", "Recommended membership")}
+                </div>
                 <div style={{ color: "#7A5B68", fontSize: 13 }}>
-                  {recommendedMembership.name} - {recommendedMembership.price} ج.م
+                  {recommendedMembership.name} - {recommendedMembership.price} {lang === "ar" ? "ج.م" : "EGP"}
                 </div>
               </div>
             )}
@@ -448,7 +452,7 @@ export default function LiveChatWidget() {
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="اكتب سؤالك عن اللياقة أو التغذية أو الباقة..."
+              placeholder={t("اكتبي سؤالك عن اللياقة أو التغذية أو الباقة...", "Ask about fitness, nutrition, membership, schedule, or support...")}
               style={{ ...inputStyle, minHeight: 52, resize: "none", flex: 1 }}
             />
             <button
@@ -465,7 +469,7 @@ export default function LiveChatWidget() {
                 opacity: loading || !input.trim() ? 0.6 : 1,
               }}
             >
-              {loading ? "..." : "إرسال"}
+              {loading ? "..." : t("إرسال", "Send")}
             </button>
           </div>
         </div>
