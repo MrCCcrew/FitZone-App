@@ -288,11 +288,12 @@ export default function LiveChatWidget() {
           style={{
             position: "fixed",
             bottom: 96,
+            top: 72,
             right: 20,
             zIndex: 80,
             width: "min(390px, calc(100vw - 24px))",
             maxWidth: "calc(100vw - 24px)",
-            maxHeight: "calc(100vh - 116px)",
+            maxHeight: "calc(100vh - 172px)",
             background: "#FFF5F8",
             border: "1px solid #F5D0DC",
             borderRadius: 24,
