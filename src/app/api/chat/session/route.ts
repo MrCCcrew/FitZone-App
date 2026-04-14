@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { initializeChatSession, serializeMessages } from "@/lib/chatbot";
+import { initializeChatSession, serializeChatSession } from "@/lib/chatbot";
 import { applyRateLimit, getClientIp } from "@/lib/rate-limit";
 
 export async function GET(req: NextRequest) {
   try {
     const sessionId = req.nextUrl.searchParams.get("sessionId");
+    const lang = req.nextUrl.searchParams.get("lang") === "en" ? "en" : "ar";
 
     if (!sessionId) {
       return NextResponse.json({ error: "معرف الجلسة مطلوب." }, { status: 400 });
@@ -24,10 +25,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "جلسة المحادثة غير موجودة." }, { status: 404 });
     }
 
-    return NextResponse.json({
-      ...session,
-      messages: serializeMessages(session.messages),
-    });
+    return NextResponse.json(await serializeChatSession(session, lang));
   } catch (error) {
     console.error("[CHAT_SESSION_GET]", error);
     return NextResponse.json({ error: "الخدمة غير متاحة مؤقتًا.", messages: [] }, { status: 500 });
@@ -46,6 +44,8 @@ export async function POST(req: Request) {
       );
     }
 
+    const body = await req.json().catch(() => ({}));
+    const lang = body && body.lang === "en" ? "en" : "ar";
     const session = await db.chatSession.create({
       data: {
         status: "open",
@@ -53,12 +53,11 @@ export async function POST(req: Request) {
       },
     });
 
-    const initialized = await initializeChatSession(session.id);
+    const initialized = await initializeChatSession(session.id, lang);
 
-    return NextResponse.json({
-      ...(initialized ?? session),
-      messages: initialized ? serializeMessages(initialized.messages) : [],
-    });
+    return NextResponse.json(
+      await serializeChatSession((initialized ?? session) as typeof initialized, lang),
+    );
   } catch (error) {
     console.error("[CHAT_SESSION_POST]", error);
     return NextResponse.json({ error: "الخدمة غير متاحة مؤقتًا.", messages: [] }, { status: 500 });

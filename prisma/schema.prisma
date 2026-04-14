@@ -93,6 +93,7 @@ model User {
   handledChatSessions ChatSession[]  @relation("AssignedSupport")
   supportPresence     SupportPresence?
   auditLogs           AuditLog[]     @relation("AuditActor")
+  coachProfile        CoachProfile?
 }
 
 model AuditLog {
@@ -764,6 +765,55 @@ model ChatKnowledgeEntry {
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// ─── AI Coach ─────────────────────────────────────────────────────────────────
+
+model CoachProfile {
+  id                  String    @id @default(cuid())
+  userId              String?   @unique
+  guestSessionId      String?   @unique
+  primaryGoal         String?   // weight-loss | muscle-gain | toning | general-fitness
+  trainingLevel       String?   // beginner | intermediate | advanced
+  preferredDays       Int?      // weekly sessions preference
+  preferredClassTypes String?   // JSON array of class type strings
+  injuries            String?   @db.Text
+  nutritionStyle      String?   // poor | average | good
+  targetWeight        Float?
+  currentWeight       Float?
+  height              Float?
+  age                 Int?
+  notes               String?   @db.Text
+  lastAssessmentAt    DateTime?
+  lastCheckInAt       DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  user      User?           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  checkIns  CoachCheckIn[]
+}
+
+model CoachCheckIn {
+  id             String   @id @default(cuid())
+  coachProfileId String
+  weight         Float?
+  waist          Float?
+  energyLevel    Int?     // 1-5 scale
+  adherenceScore Int?     // 0-100 (% of planned sessions completed)
+  notes          String?  @db.Text
+  createdAt      DateTime @default(now())
+
+  coachProfile CoachProfile @relation(fields: [coachProfileId], references: [id], onDelete: Cascade)
+}
+
+model CoachEventLog {
+  id        String   @id @default(cuid())
+  sessionId String
+  intent    String
+  usedAI    Boolean  @default(false)
+  handoff   Boolean  @default(false)
+  outcome   String?  // food_check | class_suggested | membership_recommended | check_in | handoff | unknown
+  createdAt DateTime @default(now())
 }
 
 model Testimonial {
