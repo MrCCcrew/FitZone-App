@@ -490,3 +490,11 @@
   .schedule-shell{padding:20px;}
   .schedule-cell{min-height:74px;}
 }
+@media(max-width:480px){
+  .schedule-shell{padding:14px 10px;}
+  .schedule-title h2{font-size:22px;}
+  .schedule-cell{min-height:64px;padding:6px 6px;font-size:12px;}
+  .schedule-cell.time{font-size:14px;}
+  .schedule-item-title{font-size:11px;}
+  .schedule-item-sub,.schedule-item-tag{font-size:10px;}
+}
