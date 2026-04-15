@@ -1694,23 +1694,10 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
       : null;
 
   const handleTrialBooking = () => {
-    const trialPlan: PlanItem = {
-      id: trialMembership?.id ?? "trial-class",
-      name: trialMembership?.name ?? "كلاس تجريبي",
-      price: trialMembership?.price ?? 0,
-      priceBefore: null,
-      priceAfter: null,
-      durationDays: trialMembership?.durationDays ?? 1,
-      cycle: null,
-      sessionsCount: trialMembership?.sessionsCount ?? 1,
-      features: trialMembership?.features?.length ? trialMembership.features : ["حجز كلاس فردي من جميع الأنواع", "اختاري أي موعد متاح"],
-      color: C.red,
-      popular: false,
-      goalIds: [],
-    };
-    setScheduleSelections([]);
-    setScheduleError(null);
-    setSchedulePlan(trialPlan);
+    if (typeof window !== "undefined") {
+      window.sessionStorage.setItem("fitzone_trial_booking", "1");
+    }
+    navigate("memberships");
   };
 
   const handleSpecialOfferSubscribe = async () => {
@@ -2428,6 +2415,28 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
         }
         if (d.paymentSettings && typeof d.paymentSettings === "object") {
           setMembershipPaymentSettings((prev) => ({ ...prev, ...(d.paymentSettings as PublicPaymentSettings) }));
+        }
+        // Open trial booking modal if triggered from hero button
+        if (typeof window !== "undefined" && window.sessionStorage.getItem("fitzone_trial_booking")) {
+          window.sessionStorage.removeItem("fitzone_trial_booking");
+          const trialMb = d.trialMembership as { id: string; name: string; price: number; sessionsCount: number; features: string[]; durationDays: number } | null;
+          const trialPlan: PlanItem = {
+            id: trialMb?.id ?? "trial-class",
+            name: trialMb?.name ?? "كلاس تجريبي",
+            price: trialMb?.price ?? 0,
+            priceBefore: null,
+            priceAfter: null,
+            durationDays: trialMb?.durationDays ?? 1,
+            cycle: null,
+            sessionsCount: trialMb?.sessionsCount ?? 1,
+            features: trialMb?.features?.length ? trialMb.features : ["حجز كلاس فردي من جميع الأنواع", "اختاري أي موعد متاح"],
+            color: C.red,
+            popular: false,
+            goalIds: [],
+          };
+          setScheduleSelections([]);
+          setScheduleError(null);
+          setSchedulePlan(trialPlan);
         }
       })
       .catch(() => {});
