@@ -2319,21 +2319,22 @@ export default function AccountClient({ data }: { data: AccountData }) {
         <div className="flex flex-col gap-6 lg:flex-row">
           {/* Sidebar tabs */}
           <aside className="shrink-0 lg:w-56">
-            <nav className="flex gap-1 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible">
+            <nav className="grid grid-cols-2 gap-2 lg:flex lg:flex-col lg:gap-1">
               {TABS.map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`flex min-w-max items-center gap-2.5 rounded-xl px-4 py-2.5 text-sm font-medium transition-all lg:w-full ${lang === "ar" ? "text-right" : "text-left"} ${
+                  style={{ touchAction: "manipulation" }}
+                  className={`flex items-center gap-2 rounded-xl px-3 py-3 text-sm font-medium transition-all w-full lg:px-4 lg:py-2.5 lg:gap-2.5 ${lang === "ar" ? "text-right" : "text-left"} ${
                     activeTab === tab.id
                       ? "bg-gradient-to-r from-pink-600 to-pink-500 text-white shadow-[0_18px_40px_rgba(190,24,93,0.34)]"
-                      : "text-[#d7aabd] hover:bg-[rgba(255,130,186,0.14)] hover:text-white"
+                      : "text-[#d7aabd] bg-[rgba(255,255,255,0.04)] hover:bg-[rgba(255,130,186,0.14)] hover:text-white"
                   }`}
                 >
-                  <span>{tab.icon}</span>
-                  <span>{getTabLabel(tab.id, lang)}</span>
+                  <span className="shrink-0">{tab.icon}</span>
+                  <span className="truncate">{getTabLabel(tab.id, lang)}</span>
                   {tab.id === "notifications" && unreadCount > 0 && (
-                    <span className={`${lang === "ar" ? "mr-auto" : "ml-auto"} flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs font-black text-white`}>
+                    <span className="mr-auto flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-red-500 text-xs font-black text-white">
                       {unreadCount}
                     </span>
                   )}
