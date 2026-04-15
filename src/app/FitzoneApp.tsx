@@ -1766,11 +1766,9 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
               <button className="btn-primary" onClick={() => navigate("memberships")} style={{ fontSize: 16, padding: "14px 36px" }}>
                   <I n="star" s={16} c="#fff" /> {heroCtaPrimary}
               </button>
-              {trialMembership && (
-                <button className="btn-outline" onClick={handleTrialBooking} style={{ fontSize: 16, padding: "14px 36px" }}>
-                  {heroCtaSecondary}
-                </button>
-              )}
+              <button className="btn-outline" onClick={handleTrialBooking} style={{ fontSize: 16, padding: "14px 36px" }}>
+                {heroCtaSecondary}
+              </button>
             </div>
             <div style={{ display: "flex", gap: viewportWidth() < 768 ? 20 : 40, marginTop: 48, flexWrap: "wrap" }}>
               {heroStats.map(([n,l]) => (
