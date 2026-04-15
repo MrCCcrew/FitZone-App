@@ -94,6 +94,8 @@ model User {
   supportPresence     SupportPresence?
   auditLogs           AuditLog[]     @relation("AuditActor")
   coachProfile        CoachProfile?
+  pushSubscriptions   PushSubscription[]
+  pushCampaigns       PushCampaign[]     @relation("CampaignAdmin")
 }
 
 model AuditLog {
@@ -744,6 +746,39 @@ model SupportPresence {
   lastSeenAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ─── Web Push ─────────────────────────────────────────────────────────────────
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String?
+  endpoint  String   @unique @db.Text
+  p256dh    String   @db.Text
+  auth      String
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+}
+
+model PushCampaign {
+  id            String   @id @default(cuid())
+  title         String
+  body          String   @db.Text
+  url           String?
+  audience      String   @default("all")   // all | active | inactive | selected
+  selectedUsers String?  @db.LongText      // JSON array of user IDs
+  sentCount     Int      @default(0)
+  failedCount   Int      @default(0)
+  status        String   @default("done")  // done | partial | failed
+  createdAt     DateTime @default(now())
+  createdBy     String?
+
+  admin User? @relation("CampaignAdmin", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
 }
 
 // ─── SiteContent ──────────────────────────────────────────────────────────────

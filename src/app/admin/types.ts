@@ -22,7 +22,8 @@ export type Section =
   | "complaints"
   | "discounts"
   | "rewards"
-  | "database";
+  | "database"
+  | "push";
 
 export interface AdminEmployee {
   id: string;
