@@ -300,6 +300,22 @@ export async function POST(req: Request) {
           }
         });
 
+        // Validate max 3 sessions per week
+        const weekCounts = new Map<string, number>();
+        for (const schedule of schedules) {
+          const date = new Date(schedule.date);
+          const dow = date.getDay();
+          const monday = new Date(date);
+          monday.setDate(date.getDate() - ((dow + 6) % 7));
+          const weekKey = monday.toISOString().slice(0, 10);
+          weekCounts.set(weekKey, (weekCounts.get(weekKey) ?? 0) + 1);
+        }
+        for (const count of weekCounts.values()) {
+          if (count > 3) {
+            throw new Error("لا يمكن اختيار أكثر من 3 حصص في الأسبوع الواحد.");
+          }
+        }
+
         const existing = await tx.booking.findMany({
           where: { userId, scheduleId: { in: selectedScheduleIds } },
           select: { scheduleId: true },

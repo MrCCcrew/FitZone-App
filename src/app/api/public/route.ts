@@ -310,7 +310,7 @@ export async function GET(request: Request) {
           orderBy: [{ showOnHome: "desc" }, { sortOrder: "asc" }, { name: "asc" }],
         }),
         db.siteContent.findMany({
-          where: { section: { in: ["trainersPage", "contact", "blog", "paymentSettings"] } },
+          where: { section: { in: ["trainersPage", "contact", "blog", "paymentSettings", "trial_class_settings"] } },
         }),
         db.product.findMany({
           where: { isActive: true },
@@ -386,23 +386,39 @@ export async function GET(request: Request) {
         parentId: goal.parentId,
         sortOrder: goal.sortOrder,
       })),
-      memberships: memberships.map((membership) => ({
-        id: membership.id,
-        name: lang === "en" ? membership.nameEn ?? membership.name : membership.name,
-        price: membership.price,
-        priceBefore: membership.priceBefore ?? null,
-        priceAfter: membership.priceAfter ?? null,
-        image: membership.image ?? null,
-        sortOrder: membership.sortOrder ?? 0,
-        durationDays: membership.duration,
-        cycle: cycleFromMembership(membership.cycle, membership.duration),
-        sessionsCount: membership.sessionsCount ?? null,
-        features: lang === "en" ? parseJsonArray(membership.featuresEn) : parseJsonArray(membership.features),
-        walletBonus: membership.walletBonus,
-        gift: lang === "en" ? membership.giftEn ?? membership.gift : membership.gift,
-        kind: membership.kind,
-        goalIds: membership.goals.map((goal) => goal.goalId),
-      })),
+      memberships: memberships
+        .filter((membership) => membership.kind !== "trial")
+        .map((membership) => ({
+          id: membership.id,
+          name: lang === "en" ? membership.nameEn ?? membership.name : membership.name,
+          price: membership.price,
+          priceBefore: membership.priceBefore ?? null,
+          priceAfter: membership.priceAfter ?? null,
+          image: membership.image ?? null,
+          sortOrder: membership.sortOrder ?? 0,
+          durationDays: membership.duration,
+          cycle: cycleFromMembership(membership.cycle, membership.duration),
+          sessionsCount: membership.sessionsCount ?? null,
+          features: lang === "en" ? parseJsonArray(membership.featuresEn) : parseJsonArray(membership.features),
+          walletBonus: membership.walletBonus,
+          gift: lang === "en" ? membership.giftEn ?? membership.gift : membership.gift,
+          kind: membership.kind,
+          goalIds: membership.goals.map((goal) => goal.goalId),
+        })),
+      trialMembership: (() => {
+        const trial = memberships.find((m) => m.kind === "trial");
+        if (!trial) return null;
+        const trialSettings = parseSiteContentRecord(siteContent, "trial_class_settings", { enabled: true });
+        if ((trialSettings as { enabled?: boolean }).enabled === false) return null;
+        return {
+          id: trial.id,
+          name: lang === "en" ? trial.nameEn ?? trial.name : trial.name,
+          price: trial.price,
+          sessionsCount: trial.sessionsCount ?? 1,
+          features: lang === "en" ? parseJsonArray(trial.featuresEn) : parseJsonArray(trial.features),
+          durationDays: trial.duration,
+        };
+      })(),
       offers: offers.map((offer) => ({
         id: offer.id,
         title: lang === "en" ? offer.titleEn ?? offer.title : offer.title,

@@ -1690,10 +1690,23 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
       : null;
 
   const handleTrialBooking = () => {
-    if (typeof window !== "undefined") {
-      window.sessionStorage.setItem("fitzone_trial_booking", "1");
-    }
-    navigate("memberships");
+    const trialPlan: PlanItem = {
+      id: trialMembership?.id ?? "trial-class",
+      name: trialMembership?.name ?? "كلاس تجريبي",
+      price: trialMembership?.price ?? 0,
+      priceBefore: null,
+      priceAfter: null,
+      durationDays: trialMembership?.durationDays ?? 1,
+      cycle: null,
+      sessionsCount: trialMembership?.sessionsCount ?? 1,
+      features: trialMembership?.features?.length ? trialMembership.features : ["حجز كلاس فردي من جميع الأنواع", "اختاري أي موعد متاح"],
+      color: C.red,
+      popular: false,
+      goalIds: [],
+    };
+    setScheduleSelections([]);
+    setScheduleError(null);
+    setSchedulePlan(trialPlan);
   };
 
   const handleSpecialOfferSubscribe = async () => {
@@ -1762,9 +1775,11 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
               <button className="btn-primary" onClick={() => navigate("memberships")} style={{ fontSize: 16, padding: "14px 36px" }}>
                   <I n="star" s={16} c="#fff" /> {heroCtaPrimary}
               </button>
-              <button className="btn-outline" onClick={handleTrialBooking} style={{ fontSize: 16, padding: "14px 36px" }}>
+              {trialMembership && (
+                <button className="btn-outline" onClick={handleTrialBooking} style={{ fontSize: 16, padding: "14px 36px" }}>
                   {heroCtaSecondary}
-              </button>
+                </button>
+              )}
             </div>
             <div style={{ display: "flex", gap: viewportWidth() < 768 ? 20 : 40, marginTop: 48, flexWrap: "wrap" }}>
               {heroStats.map(([n,l]) => (
@@ -2361,6 +2376,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
   const [schedulePlan, setSchedulePlan] = useState<PlanItem | null>(null);
   const [scheduleSelections, setScheduleSelections] = useState<string[]>([]);
   const [scheduleError, setScheduleError] = useState<string | null>(null);
+  const [trialMembership, setTrialMembership] = useState<{ id: string; name: string; price: number; sessionsCount: number; features: string[]; durationDays: number } | null>(null);
   const [membershipPayMethod, setMembershipPayMethod] = useState<"instapay" | "vodafone_cash">("instapay");
   const [membershipPaymentSettings, setMembershipPaymentSettings] = useState<PublicPaymentSettings>({
     instapayUrl: "",
@@ -2370,29 +2386,6 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
     instapayAccounts: [],
     vodafoneCashAccounts: [],
   });
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const shouldOpen = window.sessionStorage.getItem("fitzone_trial_booking");
-    if (!shouldOpen) return;
-    window.sessionStorage.removeItem("fitzone_trial_booking");
-    const trialPlan: PlanItem = {
-      id: "trial-class",
-      name: "كلاس تجريبي",
-      price: 0,
-      priceBefore: null,
-      priceAfter: null,
-      durationDays: 1,
-      cycle: null,
-      sessionsCount: 1,
-      features: ["حجز كلاس فردي من جميع الأنواع", "اختاري أي موعد متاح"],
-      color: C.red,
-      popular: false,
-      goalIds: [],
-    };
-    setScheduleSelections([]);
-    setScheduleError(null);
-    setSchedulePlan(trialPlan);
-  }, []);
   useEffect(() => {
     loadPublicApi()
       .then((d) => {
@@ -2432,6 +2425,9 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
         }
         if (d.paymentSettings && typeof d.paymentSettings === "object") {
           setMembershipPaymentSettings((prev) => ({ ...prev, ...(d.paymentSettings as PublicPaymentSettings) }));
+        }
+        if (d.trialMembership && typeof d.trialMembership === "object") {
+          setTrialMembership(d.trialMembership as { id: string; name: string; price: number; sessionsCount: number; features: string[]; durationDays: number });
         }
       })
       .catch(() => {});
@@ -2595,7 +2591,15 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
     return order.filter((day) => daySet.has(day));
   }, [scheduleChoices]);
 
-  const toggleScheduleSelection = (entry: { id: string; day: string; time: string }, disabled: boolean) => {
+  const getWeekKey = (dateStr: string): string => {
+    const d = new Date(dateStr);
+    const dow = d.getDay();
+    const mon = new Date(d);
+    mon.setDate(d.getDate() - ((dow + 6) % 7));
+    return mon.toISOString().slice(0, 10);
+  };
+
+  const toggleScheduleSelection = (entry: { id: string; day: string; time: string; date: string }, disabled: boolean) => {
     if (disabled) return;
     setScheduleError(null);
     setScheduleSelections((prev) => {
@@ -2610,6 +2614,16 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
       const limit = schedulePlan?.sessionsCount ?? null;
       if (limit && cleaned.length >= limit) {
         setScheduleError(`يمكنك اختيار ${limit} موعد كحد أقصى لهذه الباقة.`);
+        return prev;
+      }
+      // Validate max 3 sessions per week
+      const entryWeekKey = getWeekKey(entry.date);
+      const weekCount = cleaned.filter((id) => {
+        const e = scheduleChoices.find((c) => c.id === id);
+        return e ? getWeekKey(e.date) === entryWeekKey : false;
+      }).length;
+      if (weekCount >= 3) {
+        setScheduleError("يمكنك اختيار 3 حصص كحد أقصى في الأسبوع الواحد.");
         return prev;
       }
       return [...cleaned, entry.id];
@@ -2899,6 +2913,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 14, flexWrap: "wrap" }}>
               <div style={{ color: "#f5c542", fontWeight: 800, fontSize: 13 }}>
                 {schedulePlan.sessionsCount ? `يمكنك اختيار ${schedulePlan.sessionsCount} موعد` : "اختاري المواعيد المناسبة لك"}
+                <span style={{ color: "#c9b9c1", fontWeight: 400, marginInlineStart: 8 }}>· الحد الأقصى 3 حصص في الأسبوع الواحد</span>
               </div>
               <div style={{ color: "#fff", fontSize: 12 }}>
                 تم اختيار {scheduleSelections.length}
@@ -2952,7 +2967,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                                           return (
                                             <button
                                               key={entry.id}
-                                              onClick={() => toggleScheduleSelection(entry, disabled)}
+                                              onClick={() => toggleScheduleSelection({ ...entry }, disabled)}
                                               className={`schedule-slot-item${selected ? " selected" : ""}${
                                                 disabled ? " disabled" : ""
                                               }`}
@@ -3024,7 +3039,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                                           return (
                                             <button
                                               key={entry.id}
-                                              onClick={() => toggleScheduleSelection(entry, disabled)}
+                                              onClick={() => toggleScheduleSelection({ ...entry }, disabled)}
                                               className={`schedule-slot-item${selected ? " selected" : ""}${
                                                 disabled ? " disabled" : ""
                                               }`}

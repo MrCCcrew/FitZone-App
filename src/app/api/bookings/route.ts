@@ -163,6 +163,26 @@ export async function PATCH(req: Request) {
         }),
       ]);
 
+      // Notify all admins about the schedule change
+      const [admins, member] = await Promise.all([
+        db.user.findMany({ where: { role: "admin" }, select: { id: true } }),
+        db.user.findUnique({ where: { id: userId }, select: { name: true } }),
+      ]);
+      if (admins.length > 0) {
+        await Promise.all(
+          admins.map((admin) =>
+            db.notification.create({
+              data: {
+                userId: admin.id,
+                title: "⚠️ تغيير موعد من عضو",
+                body: `${member?.name ?? "عضو"} غيّر موعد كلاس "${newSchedule.class.name}" إلى ${newSchedule.time} بتاريخ ${newSchedule.date.toLocaleDateString("ar-EG")}`,
+                type: "warning",
+              },
+            }),
+          ),
+        );
+      }
+
       return NextResponse.json({ success: true });
     }
 

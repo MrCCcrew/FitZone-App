@@ -1236,18 +1236,23 @@ function BookingsTab({ bookings }: { bookings: AccountData["bookings"] }) {
         </div>
       )}
 
-      <div className={CARD + " schedule-shell"}>
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h3 className="text-white font-black">{t("الجدول الأسبوعي", "Weekly schedule")}</h3>
-            <p className="text-gray-400 text-xs mt-1">{t("يمكنك اختيار موعد جديد بعد تحديد الحجز من الأعلى.", "You can choose a new slot after selecting a booking above.")}</p>
-          </div>
-          {editingBooking ? (
-            <span className="text-xs text-pink-200">{t("تعديل", "Editing")}: {editingBooking.className}</span>
-          ) : (
-            <span className="text-xs text-gray-500">{t("اختر حجزًا أولًا", "Select a booking first")}</span>
-          )}
-        </div>
+      {editingBooking && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center", padding: 16, background: "rgba(0,0,0,.78)", backdropFilter: "blur(8px)" }}>
+          <div style={{ background: "#111", borderRadius: 22, maxWidth: 920, width: "100%", boxShadow: "0 24px 60px rgba(0,0,0,.6)", border: "1px solid rgba(255,255,255,.12)", maxHeight: "92vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+            <div style={{ padding: "20px 24px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0, borderBottom: "1px solid rgba(255,255,255,.08)" }}>
+              <div>
+                <h3 style={{ color: "#fff", fontWeight: 900, fontSize: 18 }}>{t("تعديل موعد الحجز", "Reschedule Booking")}</h3>
+                <p style={{ color: "#c9b9c1", fontSize: 13, marginTop: 4 }}>
+                  {t("تعديل", "Editing")}: {editingBooking.className}
+                </p>
+              </div>
+              <button
+                onClick={() => { setEditingBooking(null); setSelectedScheduleId(null); setUpdateError(null); }}
+                style={{ background: "none", border: "none", color: "#c9b9c1", fontSize: 26, cursor: "pointer", lineHeight: 1, padding: "0 4px" }}
+              >×</button>
+            </div>
+
+        <div style={{ overflowY: "auto", flex: 1, padding: "16px 24px" }}>
 
         {scheduleLoading ? (
           <div className="text-center text-gray-400 py-10">{t("جاري تحميل الجدول...", "Loading schedule...")}</div>
@@ -1397,31 +1402,35 @@ function BookingsTab({ bookings }: { bookings: AccountData["bookings"] }) {
           </>
         )}
 
-        {updateError && <div className="mt-3 text-sm text-red-400 font-bold">{updateError}</div>}
-        {updateSuccess && <div className="mt-3 text-sm text-green-400 font-bold">{updateSuccess}</div>}
-
-        <div className="mt-4 flex gap-3">
-          <button
-            className="rounded-xl bg-red-600 text-white font-bold px-5 py-2 text-sm transition-colors hover:bg-red-700 disabled:opacity-50"
-            onClick={() => void saveScheduleChange()}
-            disabled={!editingBooking || !selectedScheduleId || updating || selectedScheduleId === editingBooking?.scheduleId}
-            style={{ opacity: !editingBooking ? 0.6 : 1 }}
-          >
-            {updating ? t("جارٍ الحفظ...", "Saving...") : t("تحديث الموعد", "Update booking")}
-          </button>
-          <button
-            className="rounded-xl border border-pink-300/40 text-pink-200 px-5 py-2 text-sm font-bold transition-colors hover:bg-pink-500/10"
-            onClick={() => {
-              setEditingBooking(null);
-              setSelectedScheduleId(null);
-              setUpdateError(null);
-              setUpdateSuccess(null);
-            }}
-          >
-            {t("إلغاء", "Cancel")}
-          </button>
         </div>
-      </div>
+
+        <div style={{ padding: "16px 24px", borderTop: "1px solid rgba(255,255,255,.08)", flexShrink: 0 }}>
+          {updateError && <div className="mb-3 text-sm text-red-400 font-bold">{updateError}</div>}
+          {updateSuccess && <div className="mb-3 text-sm text-green-400 font-bold">{updateSuccess}</div>}
+          <div className="flex gap-3">
+            <button
+              className="rounded-xl bg-red-600 text-white font-bold px-5 py-2 text-sm transition-colors hover:bg-red-700 disabled:opacity-50"
+              onClick={() => void saveScheduleChange()}
+              disabled={!selectedScheduleId || updating || selectedScheduleId === editingBooking?.scheduleId}
+            >
+              {updating ? t("جارٍ الحفظ...", "Saving...") : t("تحديث الموعد", "Update booking")}
+            </button>
+            <button
+              className="rounded-xl border border-pink-300/40 text-pink-200 px-5 py-2 text-sm font-bold transition-colors hover:bg-pink-500/10"
+              onClick={() => {
+                setEditingBooking(null);
+                setSelectedScheduleId(null);
+                setUpdateError(null);
+                setUpdateSuccess(null);
+              }}
+            >
+              {t("إلغاء", "Cancel")}
+            </button>
+          </div>
+        </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
