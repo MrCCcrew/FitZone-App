@@ -50,6 +50,14 @@ type PublicPayload = {
     kind: string;
     goalIds: string[];
   }>;
+  trialMembership: {
+    id: string;
+    name: string;
+    price: number;
+    sessionsCount: number;
+    features: string[];
+    durationDays: number;
+  } | null;
   offers: Array<{
     id: string;
     title: string;
@@ -192,6 +200,7 @@ const EMPTY_PAYLOAD: PublicPayload = {
   },
   goals: [],
   memberships: [],
+  trialMembership: null,
   offers: [],
   classes: [],
   trainers: [],
