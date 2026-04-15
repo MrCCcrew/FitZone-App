@@ -1453,6 +1453,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
   const [specialOffer, setSpecialOffer] = useState<PublicOffer | null>(null);
   const [specialOfferLoading, setSpecialOfferLoading] = useState(false);
   const [specialOfferMessage, setSpecialOfferMessage] = useState<{ text: string; ok: boolean } | null>(null);
+  const [trialMembership, setTrialMembership] = useState<{ id: string; name: string; price: number; sessionsCount: number; features: string[]; durationDays: number } | null>(null);
   const [todayClasses, setTodayClasses] = useState<Array<{ id: string; time: string; name: string; trainer: string; spots: number; color: string }>>([]);
   const [todayIndex, setTodayIndex] = useState(0);
   const todayCarouselRef = useRef<HTMLDivElement | null>(null);
@@ -1568,6 +1569,9 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
           .sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
         setTodayClasses(todayEntries);
         setTodayIndex(0);
+      }
+      if (d.trialMembership && typeof d.trialMembership === "object") {
+        setTrialMembership(d.trialMembership as { id: string; name: string; price: number; sessionsCount: number; features: string[]; durationDays: number });
       }
     }).catch(() => {});
   }, []);
@@ -2376,7 +2380,6 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
   const [schedulePlan, setSchedulePlan] = useState<PlanItem | null>(null);
   const [scheduleSelections, setScheduleSelections] = useState<string[]>([]);
   const [scheduleError, setScheduleError] = useState<string | null>(null);
-  const [trialMembership, setTrialMembership] = useState<{ id: string; name: string; price: number; sessionsCount: number; features: string[]; durationDays: number } | null>(null);
   const [membershipPayMethod, setMembershipPayMethod] = useState<"instapay" | "vodafone_cash">("instapay");
   const [membershipPaymentSettings, setMembershipPaymentSettings] = useState<PublicPaymentSettings>({
     instapayUrl: "",
@@ -2425,9 +2428,6 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
         }
         if (d.paymentSettings && typeof d.paymentSettings === "object") {
           setMembershipPaymentSettings((prev) => ({ ...prev, ...(d.paymentSettings as PublicPaymentSettings) }));
-        }
-        if (d.trialMembership && typeof d.trialMembership === "object") {
-          setTrialMembership(d.trialMembership as { id: string; name: string; price: number; sessionsCount: number; features: string[]; durationDays: number });
         }
       })
       .catch(() => {});
