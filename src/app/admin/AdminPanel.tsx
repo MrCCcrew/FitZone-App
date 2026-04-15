@@ -28,6 +28,7 @@ import DiscountCodes from "./sections/DiscountCodes";
 import RewardSettings from "./sections/RewardSettings";
 import DatabaseMaintenance from "./sections/DatabaseMaintenance";
 import Settings from "./sections/Settings";
+import PushNotifications from "./sections/PushNotifications";
 
 const NAV: { id: Section; label: string; icon: string }[] = [
   { id: "settings", label: "الإعدادات والصلاحيات", icon: "⚙️" },
@@ -52,6 +53,7 @@ const NAV: { id: Section; label: string; icon: string }[] = [
   { id: "complaints", label: "الشكاوى", icon: "📝" },
   { id: "discounts", label: "أكواد الخصم", icon: "🏷️" },
   { id: "rewards", label: "المكافآت والإحالة", icon: "🎁" },
+  { id: "push",    label: "الإشعارات الفورية",  icon: "🔔" },
 ];
 
 const BOOKINGS_NAV_ITEM = { id: "bookings", label: "الحجوزات", icon: "📆" } as const;
@@ -90,6 +92,7 @@ const TITLES: Record<string, string> = {
   discounts: "أكواد الخصم",
   rewards: "إعدادات المكافآت والإحالة",
   database: "إدارة قاعدة البيانات",
+  push:     "الإشعارات الفورية (Web Push)",
 };
 
 const SECTIONS: Record<string, ComponentType> = {
@@ -117,6 +120,7 @@ const SECTIONS: Record<string, ComponentType> = {
   discounts: DiscountCodes,
   rewards: RewardSettings,
   database: DatabaseMaintenance,
+  push:     PushNotifications,
 };
 
 type AdminSessionUser = {

@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { format, differenceInDays } from "date-fns";
 import { ar, enUS } from "date-fns/locale";
 import { useLang } from "@/lib/language";
+import PushNotificationToggle from "@/components/PushNotificationToggle";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 interface AccountData {
@@ -2294,6 +2295,7 @@ export default function AccountClient({ data }: { data: AccountData }) {
               </svg>
               {loggingOut ? t("جاري الخروج...", "Logging out...") : t("تسجيل الخروج", "Log out")}
             </button>
+            <PushNotificationToggle />
           </div>
 
           {/* Quick stats */}

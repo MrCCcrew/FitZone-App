@@ -23,7 +23,8 @@ export type AdminFeature =
   | "complaints"
   | "discounts"
   | "rewards"
-  | "db-maintenance";
+  | "db-maintenance"
+  | "push";
 
 export const ADMIN_FEATURES: AdminFeature[] = [
   "settings",
@@ -47,6 +48,7 @@ export const ADMIN_FEATURES: AdminFeature[] = [
   "discounts",
   "rewards",
   "db-maintenance",
+  "push",
 ];
 
 const STAFF_FEATURES: AdminFeature[] = [
@@ -98,6 +100,7 @@ export const SECTION_FEATURE_MAP: Record<Section, AdminFeature> = {
   discounts: "discounts",
   rewards: "rewards",
   database: "db-maintenance",
+  push:     "push",
 };
 
 export function isAdminRole(role?: string): role is AdminRole {
