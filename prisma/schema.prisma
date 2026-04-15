@@ -753,7 +753,7 @@ model SupportPresence {
 model PushSubscription {
   id        String   @id @default(cuid())
   userId    String?
-  endpoint  String   @unique @db.Text
+  endpoint  String   @unique @db.VarChar(512)
   p256dh    String   @db.Text
   auth      String
   createdAt DateTime @default(now())
