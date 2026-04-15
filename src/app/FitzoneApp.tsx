@@ -99,7 +99,7 @@ const css = `
   .schedule-title{display:flex;flex-direction:column;align-items:center;gap:6px;margin-bottom:22px;text-align:center;}
   .schedule-title h2{font-size:36px;font-weight:900;color:#fff;letter-spacing:.5px;}
   .schedule-title span{background:#0f0a0c;color:#f5c542;border-radius:999px;padding:6px 18px;font-size:16px;font-weight:800;border:1px solid rgba(255,255,255,.18);}
-  .schedule-grid{display:grid;border:2px solid rgba(255,255,255,.85);border-radius:18px;overflow:hidden;direction:ltr;background:#101010;min-width:0;width:100%;}
+  .schedule-grid{display:grid;border:2px solid rgba(255,255,255,.85);border-radius:18px;overflow:hidden;direction:ltr;background:#101010;min-width:860px;width:max-content;}
   .schedule-cell{min-height:86px;border-left:1px solid rgba(255,255,255,.22);border-top:1px solid rgba(255,255,255,.22);padding:8px 10px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:2px;}
   .schedule-cell.time{background:#111;font-weight:900;font-size:18px;color:#fff;letter-spacing:.5px;}
   .schedule-cell.time span{font-size:12px;color:#c9c9c9;font-weight:700;}
@@ -117,7 +117,7 @@ const css = `
   .schedule-item-sub{color:#f2e7ec;font-size:11px;font-weight:700;}
   .schedule-item-tag{color:#f5c542;font-size:10px;font-weight:800;}
   .schedule-empty{color:#f5c542;font-size:22px;font-weight:900;opacity:.8;}
-  .schedule-scroll{overflow-x:visible;padding-bottom:8px;max-width:100%;}
+  .schedule-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:8px;max-width:100%;}
   .schedule-grid .schedule-cell.sticky{border-top:none;}
   .today-classes-carousel{position:relative;overflow:hidden;padding:6px 0;}
   .today-classes-carousel::before,.today-classes-carousel::after{content:'';position:absolute;top:0;bottom:0;width:72px;z-index:2;pointer-events:none;}

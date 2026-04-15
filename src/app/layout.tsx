@@ -90,6 +90,7 @@ export const metadata: Metadata = {
     index: true,
     follow: true,
   },
+  manifest: "/manifest.json",
   icons: {
     icon: "/fitzone-logo.jpeg",
     shortcut: "/fitzone-logo.jpeg",
