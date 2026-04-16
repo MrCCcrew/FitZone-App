@@ -304,7 +304,7 @@ export default function Goals() {
               />
             </Field>
 
-            <Field label="صورة الهدف" hint="المقاس الموصى به 900×900 ليظهر بشكل مربع واضح.">
+            <Field label="صورة الهدف" hint="المقاس المثالي: 690 × 400 بكسل (نسبة 1.7:1) — تملأ عرض الكارت كاملاً بدون قص ولا مسافات جانبية.">
               <div className="space-y-3">
                 <input
                   type="file"

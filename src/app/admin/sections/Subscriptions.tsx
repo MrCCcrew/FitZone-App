@@ -710,7 +710,7 @@ export default function Subscriptions() {
               </Field>
             </div>
 
-            <Field label="صورة الاشتراك" hint="المقاس الموصى به 1200×900 أو 4:3 ليظهر بشكل واضح داخل البطاقة.">
+            <Field label="صورة الاشتراك" hint="المقاس المثالي: 1000 × 280 بكسل (شريط أفقي) — تملأ عرض البطاقة بالكامل بدون مسافات جانبية.">
               <div className="flex flex-wrap gap-2">
                 <input
                   type="file"
@@ -950,7 +950,7 @@ export default function Subscriptions() {
               <input type="datetime-local" value={offerModal.validUntil} onChange={(event) => setOfferModal({ ...offerModal, validUntil: event.target.value })} className={INPUT} dir="ltr" />
             </Field>
 
-            <Field label="صورة العرض" hint="المقاس الموصى به 1600×900 بنسبة 16:9 حتى يظهر بوضوح في الصفحة الرئيسية.">
+            <Field label="صورة العرض" hint="المقاس المثالي: 1280 × 360 بكسل (نسبة 3.5:1) — تملأ قسم العرض الخاص بالكامل بدون مسافات.">
               <div className="space-y-3">
                 <input
                   type="file"
