@@ -2035,8 +2035,12 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                   )}
                 </div>
 
-                <div style={{ minHeight: viewportWidth() < 768 ? 280 : 360 }}>
-                  <SmartImage src={specialOffer.image || heroSlides[0]} alt={specialOffer.title} height={viewportWidth() < 768 ? 280 : 360} radius={0} />
+                <div style={{ minHeight: viewportWidth() < 768 ? 280 : 360, overflow: "hidden" }}>
+                  <img
+                    src={specialOffer.image || heroSlides[0]}
+                    alt={specialOffer.title}
+                    style={{ width: "100%", height: viewportWidth() < 768 ? 280 : 360, objectFit: "cover", display: "block" }}
+                  />
                 </div>
               </div>
             </div>
