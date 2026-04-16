@@ -950,7 +950,7 @@ export default function Subscriptions() {
               <input type="datetime-local" value={offerModal.validUntil} onChange={(event) => setOfferModal({ ...offerModal, validUntil: event.target.value })} className={INPUT} dir="ltr" />
             </Field>
 
-            <Field label="صورة العرض" hint="المقاس المثالي: 1280 × 360 بكسل (نسبة 3.5:1) — تملأ قسم العرض الخاص بالكامل بدون مسافات.">
+            <Field label="صورة العرض" hint="المقاس المثالي: 1020 × 720 بكسل (نسبة 1.4:1) — تملأ مساحة العرض كاملاً بدون قص ولا مسافات.">
               <div className="space-y-3">
                 <input
                   type="file"
