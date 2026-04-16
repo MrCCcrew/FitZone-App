@@ -849,15 +849,77 @@ function MembershipTab({ membership }: { membership: AccountData["membership"] }
         </div>
       </div>
 
-      {/* Renewal CTA */}
-      {remaining <= 10 && (
-        <div className="bg-red-950/30 border border-red-600/40 rounded-2xl p-5 flex items-center justify-between gap-4">
-          <div>
-            <div className="text-red-400 font-black">{t("⚠️ اشتراكك ينتهي قريباً", "⚠️ Your membership is ending soon")}</div>
-            <div className="text-gray-400 text-sm mt-1">{t("جدد الآن واحصل على 100 جنيه في محفظتك", "Renew now and get 100 EGP in your wallet")}</div>
+      {/* ── Renewal CTA — always visible, urgency level changes ── */}
+      {membership.status === "expired" || membership.status === "cancelled" ? (
+        /* Expired / cancelled — full-width urgent block */
+        <div className="rounded-2xl overflow-hidden border border-red-500/50"
+          style={{ background: "linear-gradient(135deg,rgba(180,0,30,.25),rgba(80,0,20,.35))" }}>
+          <div className="p-5">
+            <div className="flex items-center gap-3 mb-3">
+              <span className="text-3xl">⛔</span>
+              <div>
+                <div className="text-red-300 font-black text-base">
+                  {t("اشتراكك منتهي", "Your membership has expired")}
+                </div>
+                <div className="text-gray-400 text-xs mt-0.5">
+                  {t("جددي اشتراكك الآن وعودي لتمارينك", "Renew your membership and get back to training")}
+                </div>
+              </div>
+            </div>
+            <a href="/#plans"
+              className="flex items-center justify-center gap-2 w-full bg-red-600 hover:bg-red-500 text-white font-black py-3 rounded-xl transition-colors text-sm">
+              🔄 {t("جدد الاشتراك الآن", "Renew membership now")}
+            </a>
           </div>
-          <a href="/#plans" className="shrink-0 bg-red-600 hover:bg-red-700 text-white font-black px-5 py-2.5 rounded-xl transition-colors text-sm">
-            {t("جدد الآن", "Renew now")}
+        </div>
+
+      ) : remaining <= 7 ? (
+        /* ≤ 7 days — urgent warning */
+        <div className="rounded-2xl border border-orange-500/50 bg-orange-950/25 p-5">
+          <div className="flex items-start justify-between gap-3 mb-4">
+            <div>
+              <div className="text-orange-300 font-black flex items-center gap-2">
+                <span>⚠️</span>
+                {t(`ينتهي خلال ${remaining} ${remaining === 1 ? "يوم" : "أيام"}`,
+                   `Expires in ${remaining} ${remaining === 1 ? "day" : "days"}`)}
+              </div>
+              <div className="text-gray-400 text-xs mt-1">
+                {t("جددي الآن قبل انقطاع الخدمة", "Renew now before your access ends")}
+              </div>
+            </div>
+          </div>
+          <a href="/#plans"
+            className="flex items-center justify-center gap-2 w-full bg-orange-600 hover:bg-orange-500 text-white font-black py-2.5 rounded-xl transition-colors text-sm">
+            ⚡ {t("جدد الآن", "Renew now")}
+          </a>
+        </div>
+
+      ) : remaining <= 30 ? (
+        /* ≤ 30 days — soft reminder */
+        <div className="rounded-2xl border border-yellow-600/30 bg-yellow-950/15 p-5 flex items-center justify-between gap-4">
+          <div>
+            <div className="text-yellow-400 font-bold text-sm">
+              🕐 {t(`${remaining} يوم متبقي على انتهاء اشتراكك`, `${remaining} days left on your membership`)}
+            </div>
+            <div className="text-gray-500 text-xs mt-0.5">
+              {t("يمكنك التجديد المبكر في أي وقت", "You can renew early at any time")}
+            </div>
+          </div>
+          <a href="/#plans"
+            className="shrink-0 border border-yellow-500/50 text-yellow-400 hover:bg-yellow-500/10 font-black px-4 py-2 rounded-xl transition-colors text-sm whitespace-nowrap">
+            {t("جدد مبكراً", "Renew early")}
+          </a>
+        </div>
+
+      ) : (
+        /* Active, > 30 days — minimal upgrade nudge */
+        <div className="rounded-2xl border border-white/8 bg-white/3 p-4 flex items-center justify-between gap-4">
+          <div className="text-gray-400 text-sm">
+            {t("هل تريدين ترقية باقتك أو تجديدها مبكراً؟", "Want to upgrade or renew your plan early?")}
+          </div>
+          <a href="/#plans"
+            className="shrink-0 border border-pink-500/40 text-pink-300 hover:bg-pink-500/10 font-bold px-4 py-2 rounded-xl transition-colors text-sm whitespace-nowrap">
+            {t("عرض الباقات", "View plans")}
           </a>
         </div>
       )}
