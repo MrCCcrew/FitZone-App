@@ -493,7 +493,7 @@ const GymImg = ({ type = "hero", w = "100%", h = 300 }: { type?: string; w?: str
           ))}
           {/* FITZONE sign */}
           <rect x="15%" y="20%" width="70%" height="28" fill="rgba(233,30,99,.15)" rx="3"/>
-          <text x="50%" y="38%" textAnchor="middle" fontSize="16" fontWeight="900" fill={C.red} fontFamily="'Cairo',sans-serif" letterSpacing="4">FITZONE</text>
+          <text x="45%" y="38%" textAnchor="middle" fontSize="16" fontWeight="900" fill={C.red} fontFamily="'Cairo',sans-serif" letterSpacing="4">FITZONE</text>
           {/* Glow */}
           <radialGradient id="atmG" cx="50%" cy="50%"><stop offset="0%" stopColor="#E91E63" stopOpacity=".1"/><stop offset="100%" stopColor="transparent"/></radialGradient>
           <rect x="0" y="0" width="100%" height="100%" fill="url(#atmG)"/>
