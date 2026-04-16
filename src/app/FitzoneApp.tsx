@@ -4173,6 +4173,110 @@ const ProductVisual = ({ product, h = 200 }: { product: StoreProduct; h?: number
   return <GymImg type={product.type} w="100%" h={h} />;
 };
 
+// ─── WISHLIST ─────────────────────────────────────────────────────────────────
+const WISHLIST_KEY = "fitzone:wishlist";
+const useWishlist = () => {
+  const [ids, setIds] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem(WISHLIST_KEY) ?? "[]") as string[]; } catch { return []; }
+  });
+  const toggle = (id: string) => setIds(prev => {
+    const next = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id];
+    localStorage.setItem(WISHLIST_KEY, JSON.stringify(next));
+    return next;
+  });
+  return { ids, toggle, has: (id: string) => ids.includes(id) };
+};
+
+// ─── PRODUCT MINI CARD ────────────────────────────────────────────────────────
+const ProductMiniCard = ({
+  product, navigate, wishlist, lang, t,
+}: {
+  product: StoreProduct;
+  navigate: (p: string) => void;
+  wishlist: ReturnType<typeof useWishlist>;
+  lang: string;
+  t: (ar: string, en: string) => string;
+}) => {
+  const outOfStock = typeof product.stock === "number" && product.stock <= 0;
+  const cardId = product.id ?? product.name;
+  const isWished = wishlist.has(cardId);
+  const goDetail = () => {
+    if (typeof window !== "undefined") window.sessionStorage.setItem(PRODUCT_STORAGE_KEY, JSON.stringify(product));
+    navigate("productDetail");
+  };
+  return (
+    <div
+      onClick={goDetail}
+      style={{
+        background: "#fff", borderRadius: 16, overflow: "hidden", cursor: "pointer",
+        boxShadow: "0 2px 12px rgba(0,0,0,.07)", border: "1px solid #f0e6ea",
+        display: "flex", flexDirection: "column",
+        transition: "box-shadow .2s, transform .2s",
+      }}
+      onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = "0 8px 32px rgba(233,30,99,.18)"; (e.currentTarget as HTMLDivElement).style.transform = "translateY(-3px)"; }}
+      onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = "0 2px 12px rgba(0,0,0,.07)"; (e.currentTarget as HTMLDivElement).style.transform = "translateY(0)"; }}
+    >
+      {/* Image */}
+      <div style={{ position: "relative", aspectRatio: "1/1", overflow: "hidden", background: "#f8f3f5" }}>
+        <ProductVisual product={product} h={300} />
+        {/* Wishlist heart */}
+        <button
+          onClick={e => { e.stopPropagation(); wishlist.toggle(cardId); }}
+          style={{
+            position: "absolute", top: 8, left: 8, zIndex: 3,
+            width: 32, height: 32, borderRadius: "50%",
+            background: "rgba(255,255,255,.92)", border: "none", cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            boxShadow: "0 2px 8px rgba(0,0,0,.12)",
+            transition: "transform .15s",
+          }}
+          onMouseEnter={e => (e.currentTarget.style.transform = "scale(1.15)")}
+          onMouseLeave={e => (e.currentTarget.style.transform = "scale(1)")}
+        >
+          <span style={{ fontSize: 16, color: isWished ? C.red : "#ccc", lineHeight: 1 }}>{isWished ? "♥" : "♡"}</span>
+        </button>
+        {/* Discount badge */}
+        {product.badge && (
+          <span style={{ position: "absolute", top: 10, right: 10, zIndex: 2, background: C.red, color: "#fff", fontSize: 11, fontWeight: 800, padding: "3px 10px", borderRadius: 99 }}>
+            {product.badge}
+          </span>
+        )}
+        {/* Out of stock overlay */}
+        {outOfStock && (
+          <div style={{ position: "absolute", inset: 0, zIndex: 3, background: "rgba(0,0,0,.45)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <span style={{ color: "#ffd166", fontWeight: 900, fontSize: 14 }}>{t("نفذت الكمية", "Out of stock")}</span>
+          </div>
+        )}
+      </div>
+      {/* Info */}
+      <div style={{ padding: "14px 16px 16px", display: "flex", flexDirection: "column", flex: 1 }}>
+        <h3 style={{ fontWeight: 700, fontSize: 14, color: "#1a0c14", marginBottom: 6, lineHeight: 1.5, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{product.name}</h3>
+        {product.rating > 0 && (
+          <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 6 }}>
+            {[1,2,3,4,5].map(s => <span key={s} style={{ fontSize: 12, color: s <= Math.round(product.rating) ? "#f59e0b" : "#e5e7eb" }}>★</span>)}
+            <span style={{ fontSize: 11, color: "#9ca3af" }}>({product.reviewCount ?? 0})</span>
+          </div>
+        )}
+        {product.sizeType !== "none" && product.sizes && product.sizes.length > 0 && (
+          <div style={{ color: "#9ca3af", fontSize: 11, marginBottom: 6 }}>{t("المقاسات", "Sizes")}: {product.sizes.slice(0, 4).join(" - ")}</div>
+        )}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, marginTop: "auto" }}>
+          <span style={{ fontWeight: 900, color: C.red, fontSize: 20 }}>{formatCurrency(product.price)} <span style={{ fontSize: 12, fontWeight: 600 }}>{lang === "en" ? "EGP" : "ج.م"}</span></span>
+          {product.oldPrice && <span style={{ textDecoration: "line-through", color: "#9ca3af", fontSize: 13 }}>{formatCurrency(product.oldPrice)}</span>}
+        </div>
+        <button
+          style={{ width: "100%", padding: "10px", borderRadius: 10, border: "none", background: outOfStock ? "#e5e7eb" : `linear-gradient(135deg,${C.red},#c2185b)`, color: outOfStock ? "#9ca3af" : "#fff", fontWeight: 800, fontSize: 13, cursor: outOfStock ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontFamily: "inherit", boxShadow: outOfStock ? "none" : "0 4px 14px rgba(233,30,99,.3)" }}
+          disabled={outOfStock}
+          onClick={e => { e.stopPropagation(); if (outOfStock) return; addToCart({ productId: product.id ?? product.name, name: product.name, price: product.price, qty: 1, size: product.sizeType === "none" ? null : product.sizes?.[0] ?? null, type: product.type }); navigate("cart"); }}
+        >
+          <I n="cart" s={14} c={outOfStock ? "#9ca3af" : "#fff"} />
+          {outOfStock ? t("نفذت الكمية", "Out of stock") : t("أضيفي للسلة", "Add to cart")}
+        </button>
+      </div>
+    </div>
+  );
+};
+
 const getProductRecommendationScore = (product: StoreProduct, searchTerm: string) => {
   const term = searchTerm.trim().toLowerCase();
   if (!term) return 0;
@@ -4193,6 +4297,7 @@ const getProductRecommendationScore = (product: StoreProduct, searchTerm: string
 const ShopPage = ({ navigate }: { navigate: (p: string) => void }) => {
   const t = useT();
   const { lang } = useLang();
+  const wishlist = useWishlist();
   const allLabel = t("الكل", "All");
   const [cat, setCat] = useState("الكل");
   const [search, setSearch] = useState("");
@@ -4259,6 +4364,11 @@ const ShopPage = ({ navigate }: { navigate: (p: string) => void }) => {
         .map(({ product }) => product)
     : [];
 
+  const bestSellers = [...products]
+    .filter(p => p.rating >= 4.5 || (p.badge ?? "").includes("الأكثر") || (p.badge ?? "").includes("مبيعًا"))
+    .sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0))
+    .slice(0, 4);
+
   return (
     <div>
       <section style={{ background: `linear-gradient(135deg, #FFE0EC, ${C.bg})`, padding: "48px 0" }}>
@@ -4282,128 +4392,30 @@ const ShopPage = ({ navigate }: { navigate: (p: string) => void }) => {
               <span style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)" }}><I n="search" s={18} c={C.gray} /></span>
             </div>
           </div>
+          {/* ── Best Sellers ── */}
+          {bestSellers.length > 0 && !search.trim() && (
+            <div style={{ marginBottom: 48 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+                <span style={{ fontSize: 24 }}>🏆</span>
+                <h2 style={{ fontSize: 22, fontWeight: 900, color: C.white, margin: 0 }}>{t("الأكثر طلباً", "Best Sellers")}</h2>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 20 }}>
+                {bestSellers.map(p => <ProductMiniCard key={`bs-${p.id ?? p.name}`} product={p} navigate={navigate} wishlist={wishlist} lang={lang} t={t} />)}
+              </div>
+            </div>
+          )}
+
+          {/* ── All Products ── */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 20 }}>
-            {filtered.map(p => {
-              const outOfStock = typeof p.stock === "number" && p.stock <= 0;
-              return (
-                <div
-                  key={p.id ?? p.name}
-                  onClick={() => { if (typeof window !== "undefined") { window.sessionStorage.setItem(PRODUCT_STORAGE_KEY, JSON.stringify(p)); } navigate("productDetail"); }}
-                  style={{
-                    background: "#fff",
-                    borderRadius: 16,
-                    overflow: "hidden",
-                    cursor: "pointer",
-                    boxShadow: "0 2px 12px rgba(0,0,0,.07)",
-                    border: "1px solid #f0e6ea",
-                    display: "flex",
-                    flexDirection: "column",
-                    transition: "box-shadow .2s, transform .2s",
-                  }}
-                  onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = "0 8px 32px rgba(233,30,99,.18)"; (e.currentTarget as HTMLDivElement).style.transform = "translateY(-3px)"; }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = "0 2px 12px rgba(0,0,0,.07)"; (e.currentTarget as HTMLDivElement).style.transform = "translateY(0)"; }}
-                >
-                  {/* Square image */}
-                  <div style={{ position: "relative", aspectRatio: "1/1", overflow: "hidden", background: "#f8f3f5" }}>
-                    <ProductVisual product={p} h={300} />
-                    {p.badge && (
-                      <span style={{
-                        position: "absolute", top: 10, right: 10, zIndex: 2,
-                        background: C.red, color: "#fff", fontSize: 11, fontWeight: 800,
-                        padding: "3px 10px", borderRadius: 99,
-                      }}>{localizeDiscountBadge(p.badge, lang)}</span>
-                    )}
-                    {outOfStock && (
-                      <div style={{
-                        position: "absolute", inset: 0, zIndex: 3,
-                        background: "rgba(0,0,0,.45)", display: "flex", alignItems: "center", justifyContent: "center",
-                      }}>
-                        <span style={{ color: "#ffd166", fontWeight: 900, fontSize: 14 }}>{t("نفذت الكمية", "Out of stock")}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Info */}
-                  <div style={{ padding: "14px 16px 16px", display: "flex", flexDirection: "column", flex: 1 }}>
-                    <h3 style={{
-                      fontWeight: 700, fontSize: 14, color: "#1a0c14", marginBottom: 6, lineHeight: 1.5,
-                      display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
-                    }}>{p.name}</h3>
-
-                    {/* Stars */}
-                    {p.rating > 0 && (
-                      <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 8 }}>
-                        <div style={{ display: "flex", gap: 1 }}>
-                          {[1,2,3,4,5].map(star => (
-                            <span key={star} style={{ fontSize: 12, color: star <= Math.round(p.rating) ? "#f59e0b" : "#e5e7eb" }}>★</span>
-                          ))}
-                        </div>
-                        <span style={{ fontSize: 11, color: "#9ca3af" }}>({p.reviewCount ?? 0})</span>
-                      </div>
-                    )}
-
-                    {p.sizeType !== "none" && p.sizes && p.sizes.length > 0 && (
-                      <div style={{ color: "#9ca3af", fontSize: 11, marginBottom: 8 }}>{t("المقاسات", "Sizes")}: {p.sizes.slice(0, 4).join(" - ")}</div>
-                    )}
-
-                    {/* Price */}
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, marginTop: "auto" }}>
-                      <span style={{ fontWeight: 900, color: C.red, fontSize: 20 }}>{formatCurrency(p.price)} <span style={{ fontSize: 12, fontWeight: 600 }}>ج.م</span></span>
-                      {p.oldPrice && <span style={{ textDecoration: "line-through", color: "#9ca3af", fontSize: 13 }}>{formatCurrency(p.oldPrice)}</span>}
-                    </div>
-
-                    {/* Add to cart */}
-                    <button
-                      style={{
-                        width: "100%", padding: "10px", borderRadius: 10, border: "none",
-                        background: outOfStock ? "#e5e7eb" : `linear-gradient(135deg, ${C.red}, #c2185b)`,
-                        color: outOfStock ? "#9ca3af" : "#fff",
-                        fontWeight: 800, fontSize: 13, cursor: outOfStock ? "default" : "pointer",
-                        display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                        fontFamily: "inherit",
-                        boxShadow: outOfStock ? "none" : "0 4px 14px rgba(233,30,99,.3)",
-                        transition: "opacity .2s",
-                      }}
-                      disabled={outOfStock}
-                      onClick={e => {
-                        e.stopPropagation();
-                        if (outOfStock) return;
-                        addToCart({ productId: p.id ?? p.name, name: p.name, price: p.price, qty: 1, size: p.sizeType === "none" ? null : p.sizes?.[0] ?? null, type: p.type });
-                        navigate("cart");
-                      }}
-                    >
-                      <I n="cart" s={14} c={outOfStock ? "#9ca3af" : "#fff"} />
-                      {outOfStock ? t("نفذت الكمية", "Out of stock") : t("أضيفي للسلة", "Add to cart")}
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
+            {filtered.map(p => <ProductMiniCard key={p.id ?? p.name} product={p} navigate={navigate} wishlist={wishlist} lang={lang} t={t} />)}
           </div>
+
+          {/* ── Recommended (search) ── */}
           {search.trim() && recommended.length > 0 && (
             <div style={{ marginTop: 48 }}>
-              <h2 style={{ fontSize: 24, fontWeight: 900, color: C.white, marginBottom: 16 }}>{t("منتجات مقترحة", "Recommended products")}</h2>
+              <h2 style={{ fontSize: 22, fontWeight: 900, color: C.white, marginBottom: 16 }}>{t("قد يعجبك أيضاً", "You may also like")}</h2>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 20 }}>
-                {recommended.map((p) => (
-                  <div key={`recommended-${p.id ?? p.name}`} className="card card-hover" style={{ cursor: "pointer" }} onClick={() => { if (typeof window !== "undefined") { window.sessionStorage.setItem(PRODUCT_STORAGE_KEY, JSON.stringify(p)); } navigate("productDetail"); }}>
-                    {(() => {
-                      const outOfStock = typeof p.stock === "number" && p.stock <= 0;
-                      return (
-                        <>
-                    <div style={{ height: 170 }}><ProductVisual product={p} h={170} /></div>
-                    <div style={{ padding: 16 }}>
-                      <h3 style={{ fontWeight: 700, fontSize: 14, marginBottom: 10, color: C.white }}>{p.name}</h3>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <span style={{ fontWeight: 900, color: C.red, fontSize: 18 }}>{formatCurrency(p.price)}</span>
-                        {p.oldPrice && <span style={{ textDecoration: "line-through", color: C.gray, fontSize: 12 }}>{formatCurrency(p.oldPrice)}</span>}
-                        {outOfStock && <span style={{ color: "#ffd166", fontSize: 11, fontWeight: 800 }}>{t("نفذت الكمية", "Out of stock")}</span>}
-                      </div>
-                    </div>
-                        </>
-                      );
-                    })()}
-                  </div>
-                ))}
+                {recommended.map(p => <ProductMiniCard key={`rec-${p.id ?? p.name}`} product={p} navigate={navigate} wishlist={wishlist} lang={lang} t={t} />)}
               </div>
             </div>
           )}
@@ -4771,30 +4783,38 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
 
         {relatedProducts.length > 0 && (
           <div style={{ marginTop: 56 }}>
-            <h2 style={{ fontSize: 28, fontWeight: 900, color: C.white, marginBottom: 18 }}>{t("منتجات ذات صلة", "Related products")}</h2>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 20 }}>
-              {relatedProducts.map((item) => (
-                <div key={`related-${item.id ?? item.name}`} className="card card-hover" style={{ cursor: "pointer" }} onClick={() => {
-                  if (typeof window !== "undefined") {
-                    window.sessionStorage.setItem(PRODUCT_STORAGE_KEY, JSON.stringify(item));
-                  }
-                  setProduct(item);
-                  setSelectedImage(0);
-                  setSelectedSize(item.sizeType === "none" ? null : item.sizes?.[0] ?? null);
-                  setReviewMessage(null);
-                  window.scrollTo({ top: 0, behavior: "smooth" });
-                }}>
-                  <div style={{ height: 170 }}><ProductVisual product={item} h={170} /></div>
-                  <div style={{ padding: 16 }}>
-                    <h3 style={{ fontWeight: 700, fontSize: 14, marginBottom: 10, color: C.white }}>{item.name}</h3>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-                      <span style={{ fontWeight: 900, color: C.red, fontSize: 18 }}>{formatCurrency(item.price)}</span>
-                      {item.oldPrice && <span style={{ textDecoration: "line-through", color: C.gray, fontSize: 12 }}>{formatCurrency(item.oldPrice)}</span>}
+            <h2 style={{ fontSize: 22, fontWeight: 900, color: C.white, marginBottom: 20 }}>🛍️ {t("منتجات مشابهة", "Similar products")}</h2>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 16 }}>
+              {relatedProducts.map((item) => {
+                const relWishlist = { ids: [] as string[], toggle: () => {}, has: () => false };
+                return (
+                  <div
+                    key={`related-${item.id ?? item.name}`}
+                    onClick={() => { if (typeof window !== "undefined") window.sessionStorage.setItem(PRODUCT_STORAGE_KEY, JSON.stringify(item)); setProduct(item); setSelectedImage(0); setSelectedSize(item.sizeType === "none" ? null : item.sizes?.[0] ?? null); setReviewMessage(null); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+                    style={{ background: "#fff", borderRadius: 16, overflow: "hidden", cursor: "pointer", boxShadow: "0 2px 12px rgba(0,0,0,.07)", border: "1px solid #f0e6ea", display: "flex", flexDirection: "column", transition: "box-shadow .2s, transform .2s" }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = "0 8px 32px rgba(233,30,99,.18)"; (e.currentTarget as HTMLDivElement).style.transform = "translateY(-3px)"; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = "0 2px 12px rgba(0,0,0,.07)"; (e.currentTarget as HTMLDivElement).style.transform = "translateY(0)"; }}
+                  >
+                    <div style={{ aspectRatio: "1/1", overflow: "hidden", background: "#f8f3f5" }}>
+                      <ProductVisual product={item} h={260} />
                     </div>
-                    <div style={{ color: C.gold, fontSize: 13 }}>⭐ {item.rating.toFixed(1)} {item.reviewCount ? `(${item.reviewCount})` : ""}</div>
+                    <div style={{ padding: "12px 14px 14px", display: "flex", flexDirection: "column", flex: 1 }}>
+                      <h3 style={{ fontWeight: 700, fontSize: 13, color: "#1a0c14", marginBottom: 6, lineHeight: 1.4, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{item.name}</h3>
+                      {item.rating > 0 && <div style={{ display: "flex", gap: 2, marginBottom: 6 }}>{[1,2,3,4,5].map(s => <span key={s} style={{ fontSize: 11, color: s <= Math.round(item.rating) ? "#f59e0b" : "#e5e7eb" }}>★</span>)}</div>}
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10, marginTop: "auto" }}>
+                        <span style={{ fontWeight: 900, color: C.red, fontSize: 17 }}>{formatCurrency(item.price)} <span style={{ fontSize: 11 }}>ج.م</span></span>
+                        {item.oldPrice && <span style={{ textDecoration: "line-through", color: "#9ca3af", fontSize: 12 }}>{formatCurrency(item.oldPrice)}</span>}
+                      </div>
+                      <button
+                        style={{ width: "100%", padding: "8px", borderRadius: 9, border: "none", background: `linear-gradient(135deg,${C.red},#c2185b)`, color: "#fff", fontWeight: 800, fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, fontFamily: "inherit", boxShadow: "0 3px 10px rgba(233,30,99,.25)" }}
+                        onClick={e => { e.stopPropagation(); addToCart({ productId: item.id ?? item.name, name: item.name, price: item.price, qty: 1, size: item.sizeType === "none" ? null : item.sizes?.[0] ?? null, type: item.type }); navigate("cart"); }}
+                      >
+                        <I n="cart" s={12} c="#fff" /> {t("أضيفي للسلة", "Add to cart")}
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
