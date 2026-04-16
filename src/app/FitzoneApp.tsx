@@ -3658,6 +3658,11 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
                 const discount = hasDiscount ? Math.round((1 - after / before) * 100) : null;
                 return (
                   <div key={pkg.id} className="card" style={{ padding: 28 }}>
+                    {pkg.image ? (
+                      <div style={{ marginBottom: 16, borderRadius: 12, overflow: "hidden" }}>
+                        <img src={pkg.image} alt={pkg.name} style={{ width: "100%", height: 180, objectFit: "cover", display: "block" }} />
+                      </div>
+                    ) : null}
                     {hasDiscount && discount != null ? (
                       <span className="badge" style={{ marginBottom: 16, display: "inline-flex" }}>وفري {discount}%</span>
                     ) : null}

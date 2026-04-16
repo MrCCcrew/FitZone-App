@@ -40,6 +40,7 @@ const EMPTY_PLAN: Omit<Plan, "id" | "membersCount"> = {
   goalIds: [],
   classSessions: [],
   productRewards: [],
+  image: null,
 };
 
 function Modal({
@@ -107,6 +108,7 @@ export default function Packages() {
     quantity: 1,
   });
   const [planModal, setPlanModal] = useState<Plan | typeof EMPTY_PLAN | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -252,6 +254,21 @@ export default function Packages() {
     await loadData();
   };
 
+  const uploadImage = async (file: File) => {
+    setUploadingImage(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("folder", "packages");
+      const response = await fetch("/api/admin/uploads", { method: "POST", body: formData });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.url) { window.alert(payload?.error ?? "تعذر رفع الصورة."); return; }
+      setPlanModal((current) => (current ? { ...current, image: payload.url } : current));
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
   const togglePlan = async (id: string, active: boolean) => {
     const response = await fetch("/api/admin/memberships", {
       method: "PATCH",
@@ -309,6 +326,11 @@ export default function Packages() {
                     : "border-[rgba(255,188,219,0.08)] bg-black/10 opacity-65"
                 }`}
               >
+                {plan.image ? (
+                  <div className="mb-4 overflow-hidden rounded-xl">
+                    <img src={plan.image} alt={plan.name} className="h-28 w-full object-cover" />
+                  </div>
+                ) : null}
                 <div className="mb-4 flex items-start justify-between gap-3">
                   <div>
                     <div className="font-black text-[#fff4f8]">{plan.name}</div>
@@ -577,6 +599,27 @@ export default function Packages() {
                   ))}
                 </div>
               </Field>
+
+            <Field label="صورة الباقة" hint="المقاس المثالي: 1000 × 360 بكسل (نسبة 2.8:1) — تملأ عرض الكارت بالكامل بدون قص ولا مسافات.">
+              <div className="space-y-3">
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadImage(f); }}
+                  className="block w-full text-sm text-[#d7aabd] file:mr-3 file:rounded-lg file:border-0 file:bg-[#ff4f93] file:px-4 file:py-2 file:text-xs file:font-bold file:text-white hover:file:bg-[#ff2f7d]"
+                />
+                <input
+                  value={planModal.image ?? ""}
+                  onChange={(e) => setPlanModal({ ...planModal, image: e.target.value })}
+                  className={INPUT}
+                  placeholder="أو ضع رابط الصورة المباشر"
+                />
+              </div>
+              {uploadingImage ? <div className="mt-2 text-xs text-[#d7aabd]">جاري رفع الصورة...</div> : null}
+              {planModal.image ? (
+                <img src={planModal.image} alt="معاينة" className="mt-3 h-32 w-full rounded-xl border border-[rgba(255,188,219,0.14)] object-cover" />
+              ) : null}
+            </Field>
 
             <Field label="مميزات الباقة" hint="أضف كل ميزة ثم اضغط زر الإضافة لتظهر ضمن قائمة الباقة.">
               <div className="mb-3 flex gap-2">
