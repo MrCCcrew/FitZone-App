@@ -258,45 +258,49 @@ const SmartImage = ({
   alt,
   height = 140,
   radius = 14,
+  natural = false,
 }: {
   src: string;
   alt: string;
   height?: number;
   radius?: number;
+  natural?: boolean;
 }) => (
   <div style={{
-    height,
+    ...(natural ? {} : { height }),
     borderRadius: radius,
     overflow: "hidden",
     position: "relative",
     background: "#0d0a0c",
   }}>
-    {/* Blurred backdrop */}
-    <img
-      src={src}
-      alt=""
-      aria-hidden
-      style={{
-        position: "absolute",
-        inset: 0,
-        width: "100%",
-        height: "100%",
-        objectFit: "cover",
-        filter: "blur(18px) brightness(0.45) saturate(1.4)",
-        transform: "scale(1.12)",
-        pointerEvents: "none",
-      }}
-    />
-    {/* Main image — always fully visible */}
+    {/* Blurred backdrop — only needed when fixed height */}
+    {!natural && (
+      <img
+        src={src}
+        alt=""
+        aria-hidden
+        style={{
+          position: "absolute",
+          inset: 0,
+          width: "100%",
+          height: "100%",
+          objectFit: "cover",
+          filter: "blur(18px) brightness(0.45) saturate(1.4)",
+          transform: "scale(1.12)",
+          pointerEvents: "none",
+        }}
+      />
+    )}
+    {/* Main image */}
     <img
       src={src}
       alt={alt}
       style={{
-        position: "relative",
+        position: natural ? "static" : "relative",
         zIndex: 1,
         width: "100%",
-        height: "100%",
-        objectFit: "contain",
+        height: natural ? "auto" : "100%",
+        objectFit: natural ? "fill" : "contain",
         display: "block",
       }}
     />
@@ -3318,7 +3322,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                     >
                       <div style={{ marginBottom: 12 }}>
                         {goal.image ? (
-                          <SmartImage src={goal.image} alt={goal.name} height={120} radius={12} />
+                          <SmartImage src={goal.image} alt={goal.name} radius={12} natural />
                         ) : (
                           <div style={{ height: 120, borderRadius: 12, background: "rgba(233,30,99,.08)", display: "flex", alignItems: "center", justifyContent: "center", color: C.gray, fontWeight: 700 }}>
                             {goal.name}
