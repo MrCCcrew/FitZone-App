@@ -6,6 +6,7 @@ import { format, differenceInDays } from "date-fns";
 import { ar, enUS } from "date-fns/locale";
 import { useLang } from "@/lib/language";
 import PushNotificationToggle from "@/components/PushNotificationToggle";
+import PushPromptModal from "@/components/PushPromptModal";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 interface AccountData {
@@ -2310,7 +2311,10 @@ export default function AccountClient({ data }: { data: AccountData }) {
 
       {/* ── Congrats Popup ── */}
       {congratsMsg && (
-        <CongratsPopup msg={congratsMsg} onClose={() => setCongratsMsg(null)} />
+        <>
+          <CongratsPopup msg={congratsMsg} onClose={() => setCongratsMsg(null)} />
+          <PushPromptModal />
+        </>
       )}
 
       {/* ── Body ── */}
