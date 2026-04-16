@@ -85,7 +85,7 @@ export default function PushNotifications() {
   useEffect(() => {
     if (audience !== "selected") return;
     setLoadingUsers(true);
-    fetch("/api/admin/customers?pushOnly=1")
+    fetch("/api/push/subscribers")
       .then((r) => r.json())
       .then((d: { users?: SubscriberUser[] }) => setSubscribers(d.users ?? []))
       .catch(() => {})
