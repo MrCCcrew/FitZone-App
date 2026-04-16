@@ -2262,50 +2262,44 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
               {t("تسوقي الآن", "Shop now")}
             </button>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 24 }}>
-            {products.map(p => (
-              <div key={p.id ?? p.name} className="card card-hover" style={{ cursor: "pointer" }} onClick={() => { if (typeof window !== "undefined") { window.sessionStorage.setItem(PRODUCT_STORAGE_KEY, JSON.stringify(p)); } navigate("productDetail"); }}>
-                {(() => {
-                  const outOfStock = typeof p.stock === "number" && p.stock <= 0;
-                  return (
-                    <>
-                <div style={{ height: 200, position: "relative" }}>
-                  <ProductVisual product={p} h={200} />
-                  {p.badge && <span className="badge" style={{ position: "absolute", top: 12, right: 12, zIndex: 2 }}>{p.badge}</span>}
-                  {outOfStock && (
-                    <span
-                      className="badge"
-                      style={{ position: "absolute", top: 12, left: 12, background: "#2b0f1b", color: "#ffd166", zIndex: 2 }}
-                    >
-                      {t("نفذت الكمية", "Out of stock")}
-                    </span>
-                  )}
-                </div>
-                <div style={{ padding: 20 }}>
-                  <h3 style={{ fontWeight: 700, marginBottom: 10, fontSize: 15, color: C.white }}>{p.name}</h3>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
-                    <span style={{ fontWeight: 900, color: C.red, fontSize: 20 }}>{p.price} {lang === "en" ? "EGP" : "ج.م"}</span>
-                    {p.oldPrice && <span style={{ textDecoration: "line-through", color: C.gray, fontSize: 13 }}>{p.oldPrice} {lang === "en" ? "EGP" : "ج.م"}</span>}
+          <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr 1fr", "repeat(3, 1fr)", "repeat(3, 1fr)"), gap: 20 }}>
+            {products.map(p => {
+              const outOfStock = typeof p.stock === "number" && p.stock <= 0;
+              return (
+                <div
+                  key={p.id ?? p.name}
+                  onClick={() => { if (typeof window !== "undefined") { window.sessionStorage.setItem(PRODUCT_STORAGE_KEY, JSON.stringify(p)); } navigate("productDetail"); }}
+                  style={{
+                    background: "#fff", borderRadius: 16, overflow: "hidden", cursor: "pointer",
+                    boxShadow: "0 2px 12px rgba(0,0,0,.07)", border: "1px solid #f0e6ea",
+                    display: "flex", flexDirection: "column",
+                    transition: "box-shadow .2s, transform .2s",
+                  }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = "0 8px 32px rgba(233,30,99,.18)"; (e.currentTarget as HTMLDivElement).style.transform = "translateY(-3px)"; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = "0 2px 12px rgba(0,0,0,.07)"; (e.currentTarget as HTMLDivElement).style.transform = "translateY(0)"; }}
+                >
+                  <div style={{ position: "relative", aspectRatio: "1/1", overflow: "hidden", background: "#f8f3f5" }}>
+                    <ProductVisual product={p} h={300} />
+                    {p.badge && <span style={{ position: "absolute", top: 10, right: 10, zIndex: 2, background: C.red, color: "#fff", fontSize: 11, fontWeight: 800, padding: "3px 10px", borderRadius: 99 }}>{p.badge}</span>}
+                    {outOfStock && <div style={{ position: "absolute", inset: 0, zIndex: 3, background: "rgba(0,0,0,.45)", display: "flex", alignItems: "center", justifyContent: "center" }}><span style={{ color: "#ffd166", fontWeight: 900, fontSize: 14 }}>{t("نفذت الكمية", "Out of stock")}</span></div>}
                   </div>
-                  <button
-                    className="btn-primary"
-                    style={{ width: "100%", justifyContent: "center", padding: "10px", fontSize: 13, opacity: outOfStock ? 0.5 : 1 }}
-                    disabled={outOfStock}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (outOfStock) return;
-                      addToCart({ productId: p.id ?? p.name, name: p.name, price: p.price, qty: 1, size: p.sizeType === "none" ? null : p.sizes?.[0] ?? null, type: p.type });
-                      navigate("cart");
-                    }}
-                  >
-                    <I n="cart" s={14} c="#fff" /> {outOfStock ? t("نفذت الكمية", "Out of stock") : t("أضيفي للسلة", "Add to cart")}
-                  </button>
+                  <div style={{ padding: "14px 16px 16px", display: "flex", flexDirection: "column", flex: 1 }}>
+                    <h3 style={{ fontWeight: 700, fontSize: 14, color: "#1a0c14", marginBottom: 8, lineHeight: 1.5, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{p.name}</h3>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, marginTop: "auto" }}>
+                      <span style={{ fontWeight: 900, color: C.red, fontSize: 20 }}>{p.price} <span style={{ fontSize: 12 }}>{lang === "en" ? "EGP" : "ج.م"}</span></span>
+                      {p.oldPrice && <span style={{ textDecoration: "line-through", color: "#9ca3af", fontSize: 13 }}>{p.oldPrice}</span>}
+                    </div>
+                    <button
+                      style={{ width: "100%", padding: "10px", borderRadius: 10, border: "none", background: outOfStock ? "#e5e7eb" : `linear-gradient(135deg,${C.red},#c2185b)`, color: outOfStock ? "#9ca3af" : "#fff", fontWeight: 800, fontSize: 13, cursor: outOfStock ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontFamily: "inherit", boxShadow: outOfStock ? "none" : "0 4px 14px rgba(233,30,99,.3)" }}
+                      disabled={outOfStock}
+                      onClick={e => { e.stopPropagation(); if (outOfStock) return; addToCart({ productId: p.id ?? p.name, name: p.name, price: p.price, qty: 1, size: p.sizeType === "none" ? null : p.sizes?.[0] ?? null, type: p.type }); navigate("cart"); }}
+                    >
+                      <I n="cart" s={14} c={outOfStock ? "#9ca3af" : "#fff"} /> {outOfStock ? t("نفذت الكمية", "Out of stock") : t("أضيفي للسلة", "Add to cart")}
+                    </button>
+                  </div>
                 </div>
-                    </>
-                  );
-                })()}
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </section>
@@ -4288,52 +4282,103 @@ const ShopPage = ({ navigate }: { navigate: (p: string) => void }) => {
               <span style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)" }}><I n="search" s={18} c={C.gray} /></span>
             </div>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 24 }}>
-            {filtered.map(p => (
-              <div key={p.id ?? p.name} className="card card-hover" style={{ cursor: "pointer" }} onClick={() => { if (typeof window !== "undefined") { window.sessionStorage.setItem(PRODUCT_STORAGE_KEY, JSON.stringify(p)); } navigate("productDetail"); }}>
-                {(() => {
-                  const outOfStock = typeof p.stock === "number" && p.stock <= 0;
-                  return (
-                    <>
-                <div style={{ height: 200, position: "relative" }}>
-                  <ProductVisual product={p} h={200} />
-                  {p.badge && <span className="badge" style={{ position: "absolute", top: 12, right: 12 }}>{localizeDiscountBadge(p.badge, lang)}</span>}
-                  {outOfStock && (
-                    <span
-                      className="badge"
-                      style={{ position: "absolute", top: 12, left: 12, background: "#2b0f1b", color: "#ffd166" }}
-                    >
-                      {t("نفذت الكمية", "Out of stock")}
-                    </span>
-                  )}
-                </div>
-                <div style={{ padding: 18 }}>
-                  <h3 style={{ fontWeight: 700, fontSize: 14, marginBottom: 10, color: C.white }}>{p.name}</h3>
-                  {p.description && <p style={{ color: C.gray, fontSize: 12, lineHeight: 1.7, marginBottom: 10, minHeight: 40 }}>{p.description.slice(0, 70)}{p.description.length > 70 ? "..." : ""}</p>}
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-                    <span style={{ fontWeight: 900, color: C.red, fontSize: 20 }}>{formatCurrency(p.price)}</span>
-                    {p.oldPrice && <span style={{ textDecoration: "line-through", color: C.grayDark, fontSize: 12 }}>{formatCurrency(p.oldPrice)}</span>}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 20 }}>
+            {filtered.map(p => {
+              const outOfStock = typeof p.stock === "number" && p.stock <= 0;
+              return (
+                <div
+                  key={p.id ?? p.name}
+                  onClick={() => { if (typeof window !== "undefined") { window.sessionStorage.setItem(PRODUCT_STORAGE_KEY, JSON.stringify(p)); } navigate("productDetail"); }}
+                  style={{
+                    background: "#fff",
+                    borderRadius: 16,
+                    overflow: "hidden",
+                    cursor: "pointer",
+                    boxShadow: "0 2px 12px rgba(0,0,0,.07)",
+                    border: "1px solid #f0e6ea",
+                    display: "flex",
+                    flexDirection: "column",
+                    transition: "box-shadow .2s, transform .2s",
+                  }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = "0 8px 32px rgba(233,30,99,.18)"; (e.currentTarget as HTMLDivElement).style.transform = "translateY(-3px)"; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = "0 2px 12px rgba(0,0,0,.07)"; (e.currentTarget as HTMLDivElement).style.transform = "translateY(0)"; }}
+                >
+                  {/* Square image */}
+                  <div style={{ position: "relative", aspectRatio: "1/1", overflow: "hidden", background: "#f8f3f5" }}>
+                    <ProductVisual product={p} h={300} />
+                    {p.badge && (
+                      <span style={{
+                        position: "absolute", top: 10, right: 10, zIndex: 2,
+                        background: C.red, color: "#fff", fontSize: 11, fontWeight: 800,
+                        padding: "3px 10px", borderRadius: 99,
+                      }}>{localizeDiscountBadge(p.badge, lang)}</span>
+                    )}
+                    {outOfStock && (
+                      <div style={{
+                        position: "absolute", inset: 0, zIndex: 3,
+                        background: "rgba(0,0,0,.45)", display: "flex", alignItems: "center", justifyContent: "center",
+                      }}>
+                        <span style={{ color: "#ffd166", fontWeight: 900, fontSize: 14 }}>{t("نفذت الكمية", "Out of stock")}</span>
+                      </div>
+                    )}
                   </div>
-                  {p.sizeType !== "none" && p.sizes && p.sizes.length > 0 && <div style={{ color: C.gray, fontSize: 11, marginBottom: 12 }}>{t("المقاسات", "Sizes")}: {p.sizes.slice(0, 4).join(" - ")}</div>}
-                  <button
-                    className="btn-primary"
-                    style={{ width: "100%", justifyContent: "center", padding: "8px", fontSize: 12, opacity: outOfStock ? 0.5 : 1 }}
-                    disabled={outOfStock}
-                    onClick={e => {
-                      e.stopPropagation();
-                      if (outOfStock) return;
-                      addToCart({ productId: p.id ?? p.name, name: p.name, price: p.price, qty: 1, size: p.sizeType === "none" ? null : p.sizes?.[0] ?? null, type: p.type });
-                      navigate("cart");
-                    }}
-                  >
-                    <I n="cart" s={13} c="#fff" /> {outOfStock ? t("نفذت الكمية", "Out of stock") : t("أضيفي للسلة", "Add to cart")}
-                  </button>
+
+                  {/* Info */}
+                  <div style={{ padding: "14px 16px 16px", display: "flex", flexDirection: "column", flex: 1 }}>
+                    <h3 style={{
+                      fontWeight: 700, fontSize: 14, color: "#1a0c14", marginBottom: 6, lineHeight: 1.5,
+                      display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
+                    }}>{p.name}</h3>
+
+                    {/* Stars */}
+                    {p.rating > 0 && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 8 }}>
+                        <div style={{ display: "flex", gap: 1 }}>
+                          {[1,2,3,4,5].map(star => (
+                            <span key={star} style={{ fontSize: 12, color: star <= Math.round(p.rating) ? "#f59e0b" : "#e5e7eb" }}>★</span>
+                          ))}
+                        </div>
+                        <span style={{ fontSize: 11, color: "#9ca3af" }}>({p.reviewCount ?? 0})</span>
+                      </div>
+                    )}
+
+                    {p.sizeType !== "none" && p.sizes && p.sizes.length > 0 && (
+                      <div style={{ color: "#9ca3af", fontSize: 11, marginBottom: 8 }}>{t("المقاسات", "Sizes")}: {p.sizes.slice(0, 4).join(" - ")}</div>
+                    )}
+
+                    {/* Price */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, marginTop: "auto" }}>
+                      <span style={{ fontWeight: 900, color: C.red, fontSize: 20 }}>{formatCurrency(p.price)} <span style={{ fontSize: 12, fontWeight: 600 }}>ج.م</span></span>
+                      {p.oldPrice && <span style={{ textDecoration: "line-through", color: "#9ca3af", fontSize: 13 }}>{formatCurrency(p.oldPrice)}</span>}
+                    </div>
+
+                    {/* Add to cart */}
+                    <button
+                      style={{
+                        width: "100%", padding: "10px", borderRadius: 10, border: "none",
+                        background: outOfStock ? "#e5e7eb" : `linear-gradient(135deg, ${C.red}, #c2185b)`,
+                        color: outOfStock ? "#9ca3af" : "#fff",
+                        fontWeight: 800, fontSize: 13, cursor: outOfStock ? "default" : "pointer",
+                        display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                        fontFamily: "inherit",
+                        boxShadow: outOfStock ? "none" : "0 4px 14px rgba(233,30,99,.3)",
+                        transition: "opacity .2s",
+                      }}
+                      disabled={outOfStock}
+                      onClick={e => {
+                        e.stopPropagation();
+                        if (outOfStock) return;
+                        addToCart({ productId: p.id ?? p.name, name: p.name, price: p.price, qty: 1, size: p.sizeType === "none" ? null : p.sizes?.[0] ?? null, type: p.type });
+                        navigate("cart");
+                      }}
+                    >
+                      <I n="cart" s={14} c={outOfStock ? "#9ca3af" : "#fff"} />
+                      {outOfStock ? t("نفذت الكمية", "Out of stock") : t("أضيفي للسلة", "Add to cart")}
+                    </button>
+                  </div>
                 </div>
-                    </>
-                  );
-                })()}
-              </div>
-            ))}
+              );
+            })}
           </div>
           {search.trim() && recommended.length > 0 && (
             <div style={{ marginTop: 48 }}>
@@ -4350,7 +4395,7 @@ const ShopPage = ({ navigate }: { navigate: (p: string) => void }) => {
                       <h3 style={{ fontWeight: 700, fontSize: 14, marginBottom: 10, color: C.white }}>{p.name}</h3>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         <span style={{ fontWeight: 900, color: C.red, fontSize: 18 }}>{formatCurrency(p.price)}</span>
-                        {p.oldPrice && <span style={{ textDecoration: "line-through", color: C.grayDark, fontSize: 12 }}>{formatCurrency(p.oldPrice)}</span>}
+                        {p.oldPrice && <span style={{ textDecoration: "line-through", color: C.gray, fontSize: 12 }}>{formatCurrency(p.oldPrice)}</span>}
                         {outOfStock && <span style={{ color: "#ffd166", fontSize: 11, fontWeight: 800 }}>{t("نفذت الكمية", "Out of stock")}</span>}
                       </div>
                     </div>
@@ -4595,7 +4640,7 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
             <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginBottom: 18 }}>
               <span style={{ fontSize: viewportWidth() < 768 ? 34 : 42, fontWeight: 900, color: C.red }}>{product.price}</span>
               <span style={{ color: C.gray }}>{lang === "en" ? "EGP" : "ج.م"}</span>
-              {product.oldPrice && <span style={{ textDecoration: "line-through", color: C.grayDark, fontSize: 16 }}>{formatCurrency(product.oldPrice)}</span>}
+              {product.oldPrice && <span style={{ textDecoration: "line-through", color: C.gray, fontSize: 16 }}>{formatCurrency(product.oldPrice)}</span>}
               {product.badge && <span className="badge">{localizeDiscountBadge(product.badge, lang)}</span>}
               {outOfStock && <span className="badge" style={{ background: "#2b0f1b", color: "#ffd166" }}>{t("نفذت الكمية", "Out of stock")}</span>}
             </div>
@@ -4744,7 +4789,7 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
                     <h3 style={{ fontWeight: 700, fontSize: 14, marginBottom: 10, color: C.white }}>{item.name}</h3>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
                       <span style={{ fontWeight: 900, color: C.red, fontSize: 18 }}>{formatCurrency(item.price)}</span>
-                      {item.oldPrice && <span style={{ textDecoration: "line-through", color: C.grayDark, fontSize: 12 }}>{formatCurrency(item.oldPrice)}</span>}
+                      {item.oldPrice && <span style={{ textDecoration: "line-through", color: C.gray, fontSize: 12 }}>{formatCurrency(item.oldPrice)}</span>}
                     </div>
                     <div style={{ color: C.gold, fontSize: 13 }}>⭐ {item.rating.toFixed(1)} {item.reviewCount ? `(${item.reviewCount})` : ""}</div>
                   </div>
