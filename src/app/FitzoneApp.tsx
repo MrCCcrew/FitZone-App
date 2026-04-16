@@ -3437,8 +3437,8 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                         </div>
                       ) : null}
                       {p.image ? (
-                        <div style={{ marginBottom: 14, border: `1px solid ${C.border}`, borderRadius: 14, overflow: "hidden" }}>
-                          <SmartImage src={p.image} alt={p.name} height={140} radius={0} />
+                        <div style={{ marginBottom: 14, borderRadius: 14, overflow: "hidden" }}>
+                          <img src={p.image} alt={p.name} style={{ width: "100%", height: 140, objectFit: "cover", display: "block" }} />
                         </div>
                       ) : null}
                       <h3 style={{ fontWeight: 900, fontSize: 20, color: C.white, marginBottom: 10 }}>{p.name}</h3>
