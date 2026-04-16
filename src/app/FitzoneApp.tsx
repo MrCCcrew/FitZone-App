@@ -252,6 +252,57 @@ const I = ({ n, s = 20, c = "currentColor" }: { n: string; s?: number; c?: strin
   );
 };
 
+// ─── SMART IMAGE — shows full image, blurred backdrop fills empty space ──────
+const SmartImage = ({
+  src,
+  alt,
+  height = 140,
+  radius = 14,
+}: {
+  src: string;
+  alt: string;
+  height?: number;
+  radius?: number;
+}) => (
+  <div style={{
+    height,
+    borderRadius: radius,
+    overflow: "hidden",
+    position: "relative",
+    background: "#0d0a0c",
+  }}>
+    {/* Blurred backdrop */}
+    <img
+      src={src}
+      alt=""
+      aria-hidden
+      style={{
+        position: "absolute",
+        inset: 0,
+        width: "100%",
+        height: "100%",
+        objectFit: "cover",
+        filter: "blur(18px) brightness(0.45) saturate(1.4)",
+        transform: "scale(1.12)",
+        pointerEvents: "none",
+      }}
+    />
+    {/* Main image — always fully visible */}
+    <img
+      src={src}
+      alt={alt}
+      style={{
+        position: "relative",
+        zIndex: 1,
+        width: "100%",
+        height: "100%",
+        objectFit: "contain",
+        display: "block",
+      }}
+    />
+  </div>
+);
+
 // ─── FIT ZONE LOGO ─────────────────────────────────────────────────────────
 const FZLogo = ({ size = 40 }) => (
   <img
@@ -1980,12 +2031,8 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                   )}
                 </div>
 
-                <div style={{ minHeight: viewportWidth() < 768 ? 280 : 360, background: "#fff0f5" }}>
-                  <img
-                    src={specialOffer.image || heroSlides[0]}
-                    alt={specialOffer.title}
-                    style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-                  />
+                <div style={{ minHeight: viewportWidth() < 768 ? 280 : 360 }}>
+                  <SmartImage src={specialOffer.image || heroSlides[0]} alt={specialOffer.title} height={viewportWidth() < 768 ? 280 : 360} radius={0} />
                 </div>
               </div>
             </div>
@@ -3269,11 +3316,11 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                         cursor: "pointer",
                       }}
                     >
-                      <div style={{ height: 120, borderRadius: 12, overflow: "hidden", marginBottom: 12, background: "rgba(233,30,99,.08)" }}>
+                      <div style={{ marginBottom: 12 }}>
                         {goal.image ? (
-                          <img src={goal.image} alt={goal.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                          <SmartImage src={goal.image} alt={goal.name} height={120} radius={12} />
                         ) : (
-                          <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: C.gray, fontWeight: 700 }}>
+                          <div style={{ height: 120, borderRadius: 12, background: "rgba(233,30,99,.08)", display: "flex", alignItems: "center", justifyContent: "center", color: C.gray, fontWeight: 700 }}>
                             {goal.name}
                           </div>
                         )}
@@ -3386,8 +3433,8 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                         </div>
                       ) : null}
                       {p.image ? (
-                        <div style={{ height: 140, borderRadius: 14, overflow: "hidden", marginBottom: 14, border: `1px solid ${C.border}` }}>
-                          <img src={p.image} alt={p.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                        <div style={{ marginBottom: 14, border: `1px solid ${C.border}`, borderRadius: 14, overflow: "hidden" }}>
+                          <SmartImage src={p.image} alt={p.name} height={140} radius={0} />
                         </div>
                       ) : null}
                       <h3 style={{ fontWeight: 900, fontSize: 20, color: C.white, marginBottom: 10 }}>{p.name}</h3>
@@ -4113,7 +4160,7 @@ const ProductVisual = ({ product, h = 200 }: { product: StoreProduct; h?: number
   const firstImage = product.images?.[0];
 
   if (firstImage) {
-    return <img src={firstImage} alt={product.name} style={{ width: "100%", height: h, objectFit: "cover", display: "block", background: C.bgCard2 }} />;
+    return <SmartImage src={firstImage} alt={product.name} height={h} radius={0} />;
   }
 
   return <GymImg type={product.type} w="100%" h={h} />;
