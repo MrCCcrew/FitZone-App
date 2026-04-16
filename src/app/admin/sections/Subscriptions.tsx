@@ -710,7 +710,7 @@ export default function Subscriptions() {
               </Field>
             </div>
 
-            <Field label="صورة الاشتراك" hint="المقاس المثالي: 1000 × 280 بكسل (شريط أفقي) — تملأ عرض البطاقة بالكامل بدون مسافات جانبية.">
+            <Field label="صورة الاشتراك" hint="المقاس المثالي: 436 × 280 بكسل (نسبة 1.56:1) — تملأ الكارت بالكامل بدون قص ولا مسافات.">
               <div className="flex flex-wrap gap-2">
                 <input
                   type="file"
