@@ -3320,7 +3320,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                         cursor: "pointer",
                       }}
                     >
-                      <div style={{ marginBottom: 12 }}>
+                      <div style={{ marginBottom: 12, maxHeight: 180, overflow: "hidden", borderRadius: 12 }}>
                         {goal.image ? (
                           <SmartImage src={goal.image} alt={goal.name} radius={12} natural />
                         ) : (
