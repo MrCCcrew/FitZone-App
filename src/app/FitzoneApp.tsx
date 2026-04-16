@@ -2271,11 +2271,11 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                     <>
                 <div style={{ height: 200, position: "relative" }}>
                   <ProductVisual product={p} h={200} />
-                  {p.badge && <span className="badge" style={{ position: "absolute", top: 12, right: 12 }}>{p.badge}</span>}
+                  {p.badge && <span className="badge" style={{ position: "absolute", top: 12, right: 12, zIndex: 2 }}>{p.badge}</span>}
                   {outOfStock && (
                     <span
                       className="badge"
-                      style={{ position: "absolute", top: 12, left: 12, background: "#2b0f1b", color: "#ffd166" }}
+                      style={{ position: "absolute", top: 12, left: 12, background: "#2b0f1b", color: "#ffd166", zIndex: 2 }}
                     >
                       {t("نفذت الكمية", "Out of stock")}
                     </span>
@@ -4173,7 +4173,7 @@ const ProductVisual = ({ product, h = 200 }: { product: StoreProduct; h?: number
   const firstImage = product.images?.[0];
 
   if (firstImage) {
-    return <SmartImage src={firstImage} alt={product.name} height={h} radius={0} />;
+    return <img src={firstImage} alt={product.name} style={{ width: "100%", height: h, objectFit: "cover", display: "block" }} />;
   }
 
   return <GymImg type={product.type} w="100%" h={h} />;
