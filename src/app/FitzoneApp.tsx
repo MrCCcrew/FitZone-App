@@ -100,12 +100,16 @@ const css = `
   .schedule-title{display:flex;flex-direction:column;align-items:center;gap:8px;margin-bottom:28px;text-align:center;}
   .schedule-title h2{font-size:34px;font-weight:900;color:#fff;letter-spacing:.3px;line-height:1.15;}
   .schedule-title span{background:rgba(245,197,66,.1);color:#f5c542;border-radius:999px;padding:5px 20px;font-size:15px;font-weight:800;border:1px solid rgba(245,197,66,.3);letter-spacing:.2px;}
-  .schedule-scroll{overflow-x:hidden;max-width:100%;}
-  .schedule-grid{display:grid;border:1.5px solid rgba(255,255,255,.14);border-radius:16px;overflow:hidden;direction:ltr;background:#0e0b0d;width:100%;}
-  .schedule-cell{min-height:80px;border-left:1px solid rgba(255,255,255,.08);border-top:1px solid rgba(255,255,255,.08);padding:8px 6px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:3px;overflow:hidden;}
-  .schedule-cell.time{background:linear-gradient(180deg,#1c161a,#151013);font-weight:900;font-size:13px;color:#fff;letter-spacing:.2px;}
+  .schedule-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%;scrollbar-width:thin;scrollbar-color:rgba(245,197,66,.35) rgba(255,255,255,.06);}
+  .schedule-scroll::-webkit-scrollbar{height:4px;}
+  .schedule-scroll::-webkit-scrollbar-track{background:rgba(255,255,255,.04);border-radius:99px;}
+  .schedule-scroll::-webkit-scrollbar-thumb{background:rgba(245,197,66,.35);border-radius:99px;}
+  .schedule-grid{display:grid;border:1.5px solid rgba(255,255,255,.14);border-radius:16px;overflow:hidden;direction:ltr;background:#0e0b0d;width:100%;min-width:480px;}
+  .schedule-cell{min-height:72px;border-left:1px solid rgba(255,255,255,.08);border-top:1px solid rgba(255,255,255,.08);padding:6px 4px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:3px;overflow:hidden;}
+  .schedule-cell.time{background:linear-gradient(180deg,#1c161a,#151013);font-weight:900;font-size:12px;color:#fff;letter-spacing:.2px;min-width:72px;}
   .schedule-cell.time span{font-size:10px;color:#a0909a;font-weight:700;margin-top:1px;}
-  .schedule-cell.day{background:linear-gradient(90deg,#1c161a,#151013);color:#fff;font-weight:900;font-size:13px;position:sticky;right:0;z-index:3;border-left:1.5px solid rgba(255,255,255,.14);}
+  .schedule-cell.day{background:linear-gradient(90deg,#1c161a,#151013);color:#fff;font-weight:900;font-size:12px;position:sticky;right:0;z-index:3;min-width:52px;border-left:1.5px solid rgba(255,255,255,.14);}
+  @media(min-width:768px){.schedule-grid{min-width:unset;}.schedule-cell.time{font-size:13px;min-width:unset;}.schedule-cell.day{font-size:13px;min-width:unset;}}
   .schedule-cell.clock{background:#111;color:#fff;font-weight:800;gap:4px;}
   .schedule-cell.sticky{position:sticky;top:0;z-index:4;background:#161214;}
   .schedule-cell.day-head{background:#161214;color:#a0909a;font-weight:800;font-size:13px;position:sticky;right:0;z-index:5;border-left:1.5px solid rgba(255,255,255,.14);}
@@ -3003,8 +3007,8 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                           className="schedule-grid"
                           style={{
                             gridTemplateColumns: `${scheduleSplit.morning
-                              .map(() => "minmax(0, 1fr)")
-                              .join(" ")} 72px`,
+                              .map(() => "minmax(80px, 1fr)")
+                              .join(" ")} 56px`,
                           }}
                         >
                           {scheduleSplit.morning.map((slot) => (
@@ -3075,8 +3079,8 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                           className="schedule-grid"
                           style={{
                             gridTemplateColumns: `${scheduleSplit.evening
-                              .map(() => "minmax(0, 1fr)")
-                              .join(" ")} 72px`,
+                              .map(() => "minmax(80px, 1fr)")
+                              .join(" ")} 56px`,
                           }}
                         >
                           {scheduleSplit.evening.map((slot) => (
