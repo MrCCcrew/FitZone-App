@@ -4060,6 +4060,8 @@ const SchedulePage = () => {
 };
 
 // ─── SHOP PAGE ────────────────────────────────────────────────────────────────
+type StoreFaq = { q: string; a: string };
+type StoreWhoItem = { title: string; desc: string; suitable: boolean };
 type StoreProduct = {
   id?: string;
   name: string;
@@ -4077,6 +4079,11 @@ type StoreProduct = {
   colors?: string[];
   reviewCount?: number;
   stock?: number | null;
+  faqs?: StoreFaq[];
+  whoShouldBuy?: StoreWhoItem[];
+  importantInfo?: string | null;
+  disclaimer?: string | null;
+  editorialReview?: string | null;
 };
 
 type StoreCategory = {
@@ -4144,6 +4151,11 @@ const mapApiProductToStoreProduct = (
     rating?: number;
     reviewCount?: number;
     stock?: number;
+    faqs?: StoreFaq[];
+    whoShouldBuy?: StoreWhoItem[];
+    importantInfo?: string | null;
+    disclaimer?: string | null;
+    editorialReview?: string | null;
   },
   i: number,
 ): StoreProduct => ({
@@ -4163,6 +4175,11 @@ const mapApiProductToStoreProduct = (
   rating: typeof p.rating === "number" && p.rating > 0 ? p.rating : 4.7,
   reviewCount: typeof p.reviewCount === "number" ? p.reviewCount : 0,
   stock: typeof p.stock === "number" ? p.stock : null,
+  faqs: Array.isArray(p.faqs) ? p.faqs : [],
+  whoShouldBuy: Array.isArray(p.whoShouldBuy) ? p.whoShouldBuy : [],
+  importantInfo: p.importantInfo ?? null,
+  disclaimer: p.disclaimer ?? null,
+  editorialReview: p.editorialReview ?? null,
 });
 const ProductVisual = ({ product, h = 200 }: { product: StoreProduct; h?: number }) => {
   const firstImage = product.images?.[0];
@@ -4724,8 +4741,91 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
               <div style={{ color: C.gray, fontSize: 13, marginBottom: 8 }}>{t("الرصيد الحالي بالمحفظة", "Current wallet balance")}</div>
               <div style={{ color: C.gold, fontWeight: 900, fontSize: 24 }}>{formatCurrency(walletBalance)}</div>
             </div>
+
+            {/* وسائل الدفع */}
+            <div style={{ marginTop: 18 }}>
+              <div style={{ color: C.gray, fontSize: 12, marginBottom: 10 }}>{t("وسائل الدفع المتاحة", "Available payment methods")}</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {[{ label: "VISA", bg: "#1a1f71", color: "#fff" }, { label: "Mastercard", bg: "#eb001b", color: "#fff" }, { label: "InstaPay", bg: "#6c3483", color: "#fff" }, { label: "Vodafone Cash", bg: "#e60000", color: "#fff" }, { label: "الدفع عند الاستلام", bg: "#1e7e34", color: "#fff" }].map((m) => (
+                  <span key={m.label} style={{ background: m.bg, color: m.color, fontSize: 11, fontWeight: 800, padding: "4px 10px", borderRadius: 6 }}>{m.label}</span>
+                ))}
+              </div>
+            </div>
+
+            {/* مشاركة */}
+            <div style={{ marginTop: 16, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <span style={{ color: C.gray, fontSize: 13 }}>{t("شارك:", "Share:")}</span>
+              {[
+                { label: "واتساب", bg: "#25d366", href: `https://wa.me/?text=${encodeURIComponent(product.name + " - " + (typeof window !== "undefined" ? window.location.href : ""))}` },
+                { label: "فيسبوك", bg: "#1877f2", href: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(typeof window !== "undefined" ? window.location.href : "")}` },
+                { label: "X", bg: "#000", href: `https://twitter.com/intent/tweet?text=${encodeURIComponent(product.name)}&url=${encodeURIComponent(typeof window !== "undefined" ? window.location.href : "")}` },
+              ].map((s) => (
+                <a key={s.label} href={s.href} target="_blank" rel="noopener noreferrer" style={{ background: s.bg, color: "#fff", fontSize: 12, fontWeight: 800, padding: "6px 14px", borderRadius: 20, textDecoration: "none" }}>{s.label}</a>
+              ))}
+            </div>
           </div>
         </div>
+
+        {/* مراجعة تحريرية */}
+        {product.editorialReview && (
+          <div className="card" style={{ padding: 24, marginTop: 40, borderRight: `4px solid ${C.red}` }}>
+            <div style={{ color: C.gray, fontSize: 12, fontWeight: 700, marginBottom: 8 }}>✍️ {t("المراجعة التحريرية", "Editorial Review")}</div>
+            <p style={{ color: C.white, lineHeight: 1.9, fontSize: 15 }}>{product.editorialReview}</p>
+          </div>
+        )}
+
+        {/* من يجب أن يشتري */}
+        {product.whoShouldBuy && product.whoShouldBuy.length > 0 && (
+          <div style={{ marginTop: 40 }}>
+            <h2 style={{ fontSize: 22, fontWeight: 900, color: C.white, marginBottom: 20 }}>{t("من يجب أن يشتري؟", "Who Should Buy?")}</h2>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 16 }}>
+              {product.whoShouldBuy.map((item, i) => (
+                <div key={i} className="card" style={{ padding: 20, borderRight: `4px solid ${item.suitable ? C.success : "#ef4444"}` }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                    <span style={{ fontSize: 22 }}>{item.suitable ? "✅" : "❌"}</span>
+                    <span style={{ fontWeight: 800, color: C.white, fontSize: 15 }}>{item.title}</span>
+                  </div>
+                  <p style={{ color: C.gray, fontSize: 13, lineHeight: 1.8, margin: 0 }}>{item.desc}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* معلومات مهمة */}
+        {product.importantInfo && (
+          <div className="card" style={{ padding: 24, marginTop: 40, background: "rgba(251,191,36,.07)", borderRight: `4px solid ${C.gold}` }}>
+            <div style={{ color: C.gold, fontWeight: 800, fontSize: 15, marginBottom: 10 }}>⚠️ {t("معلومات مهمة", "Important Information")}</div>
+            <p style={{ color: C.white, lineHeight: 1.9, fontSize: 14, margin: 0, whiteSpace: "pre-line" }}>{product.importantInfo}</p>
+          </div>
+        )}
+
+        {/* إخلاء المسؤولية */}
+        {product.disclaimer && (
+          <div className="card" style={{ padding: 20, marginTop: 24, background: "rgba(107,114,128,.06)" }}>
+            <div style={{ color: C.gray, fontSize: 12, fontWeight: 700, marginBottom: 8 }}>📋 {t("إخلاء المسؤولية", "Disclaimer")}</div>
+            <p style={{ color: C.gray, fontSize: 13, lineHeight: 1.8, margin: 0 }}>{product.disclaimer}</p>
+          </div>
+        )}
+
+        {/* أسئلة وأجوبة */}
+        {product.faqs && product.faqs.length > 0 && (
+          <div style={{ marginTop: 40 }}>
+            <h2 style={{ fontSize: 22, fontWeight: 900, color: C.white, marginBottom: 20 }}>{t("أسئلة وأجوبة العملاء", "Customer Q&A")}</h2>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {product.faqs.map((faq, i) => (
+                <div key={i} className="card" style={{ padding: 20 }}>
+                  <div style={{ fontWeight: 800, color: C.white, marginBottom: 8, display: "flex", gap: 10 }}>
+                    <span style={{ color: C.red }}>س:</span> {faq.q}
+                  </div>
+                  <div style={{ color: C.gray, lineHeight: 1.8, fontSize: 14, display: "flex", gap: 10 }}>
+                    <span style={{ color: C.success, fontWeight: 800 }}>ج:</span> {faq.a}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr", "1.1fr 1fr"), gap: 32, marginTop: 56 }}>
           <div className="card" style={{ padding: 24 }}>

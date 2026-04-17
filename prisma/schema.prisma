@@ -270,6 +270,11 @@ model Product {
   images      String? @db.Text // JSON array of URLs
   sizes       String? @db.Text // JSON array
   colors      String? @db.Text // JSON array
+  faqs            String? @db.Text // JSON: [{q,a}]
+  whoShouldBuy    String? @db.Text // JSON: [{title,desc,suitable}]
+  importantInfo   String? @db.Text
+  disclaimer      String? @db.Text
+  editorialReview String? @db.Text
   isActive    Boolean @default(true)
 
   orderItems OrderItem[]

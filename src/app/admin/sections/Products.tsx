@@ -7,7 +7,16 @@ const INPUT = "w-full rounded-xl border border-gray-700 bg-gray-800 px-4 py-2.5 
 const CLOTHING = ["XS", "S", "M", "L", "XL", "XXL"];
 const SHOES = Array.from({ length: 27 }, (_, i) => String(i + 20));
 
-type EditableProduct = Omit<Product, "id" | "sold"> & { id?: string };
+type Faq = { q: string; a: string };
+type WhoItem = { title: string; desc: string; suitable: boolean };
+type EditableProduct = Omit<Product, "id" | "sold"> & {
+  id?: string;
+  faqs?: Faq[];
+  whoShouldBuy?: WhoItem[];
+  importantInfo?: string;
+  disclaimer?: string;
+  editorialReview?: string;
+};
 type EditableCategory =
   | ProductCategory
   | {
@@ -36,6 +45,11 @@ const EMPTY_PRODUCT: EditableProduct = {
   sizes: [],
   colors: [],
   sizeType: "none",
+  faqs: [],
+  whoShouldBuy: [],
+  importantInfo: "",
+  disclaimer: "",
+  editorialReview: "",
 };
 
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
@@ -338,6 +352,61 @@ export default function Products() {
             </div>
             {sizeType !== "none" && <FieldHint title="المقاسات" hint={sizeType === "shoes" ? "اختر مقاسات الأحذية المتوفرة لهذا المنتج." : "اختر مقاسات الملابس المتوفرة لهذا المنتج."}><div className="flex flex-wrap gap-2">{(sizeType === "shoes" ? SHOES : CLOTHING).map((size) => <button key={size} type="button" onClick={() => setProductModal({ ...productModal, sizes: toggle(productModal.sizes, size) })} className={`rounded-lg border px-3 py-1.5 text-xs font-bold ${productModal.sizes?.includes(size) ? "border-red-600 bg-red-600 text-white" : "border-gray-700 bg-gray-800 text-gray-400"}`}>{size}</button>)}</div></FieldHint>}
             <FieldHint title="الألوان" hint="اختياري. اختر الألوان المتاحة حتى تظهر للعميل داخل صفحة المنتج."><div className="flex flex-wrap gap-2">{["#111111", "#FFFFFF", "#6B7280", "#EF4444", "#3B82F6", "#22C55E", "#EC4899", "#D4A574"].map((color) => <button key={color} type="button" onClick={() => setProductModal({ ...productModal, colors: toggle(productModal.colors, color) })} className={`h-8 w-8 rounded-full border-2 ${productModal.colors?.includes(color) ? "border-red-500" : "border-gray-600"}`} style={{ backgroundColor: color }} />)}</div></FieldHint>
+
+            {/* ── محتوى إضافي ── */}
+            <div className="rounded-xl border border-gray-700 bg-gray-800/50 p-4 space-y-4">
+              <div className="text-sm font-black text-white">محتوى إضافي لصفحة المنتج</div>
+
+              <FieldHint title="مراجعة تحريرية" hint="نص موجز يظهر في أعلى صفحة المنتج كمراجعة تحريرية متخصصة.">
+                <textarea value={productModal.editorialReview ?? ""} onChange={(e) => setProductModal({ ...productModal, editorialReview: e.target.value })} rows={3} className={`${INPUT} resize-none`} placeholder="مثال: يعد هذا المنتج من الأفضل في فئته نظرًا لجودة المواد المستخدمة..." />
+              </FieldHint>
+
+              <FieldHint title="معلومات مهمة" hint="تحذيرات أو تعليمات استخدام تظهر في صندوق بارز على صفحة المنتج.">
+                <textarea value={productModal.importantInfo ?? ""} onChange={(e) => setProductModal({ ...productModal, importantInfo: e.target.value })} rows={3} className={`${INPUT} resize-none`} placeholder="مثال: يحفظ في مكان بارد وجاف. استشر الطبيب قبل الاستخدام..." />
+              </FieldHint>
+
+              <FieldHint title="إخلاء المسؤولية" hint="نص قانوني اختياري يظهر في أسفل صفحة المنتج.">
+                <textarea value={productModal.disclaimer ?? ""} onChange={(e) => setProductModal({ ...productModal, disclaimer: e.target.value })} rows={3} className={`${INPUT} resize-none`} placeholder="مثال: هذا المنتج ليس دواءً ولا يغني عن استشارة الطبيب..." />
+              </FieldHint>
+
+              <div className="space-y-3">
+                <div>
+                  <div className="text-sm font-bold text-white mb-1">من يجب أن يشتري</div>
+                  <div className="text-xs text-gray-400 mb-3">أضف فئات العملاء المناسبين وغير المناسبين للمنتج.</div>
+                </div>
+                {(productModal.whoShouldBuy ?? []).map((item, idx) => (
+                  <div key={idx} className="rounded-lg border border-gray-700 bg-gray-900 p-3 space-y-2">
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => setProductModal({ ...productModal, whoShouldBuy: (productModal.whoShouldBuy ?? []).map((x, i) => i === idx ? { ...x, suitable: true } : x) })} className={`flex-1 rounded-lg py-1.5 text-xs font-bold border ${item.suitable ? "bg-green-600 border-green-600 text-white" : "bg-gray-800 border-gray-600 text-gray-400"}`}>✓ مناسب</button>
+                      <button type="button" onClick={() => setProductModal({ ...productModal, whoShouldBuy: (productModal.whoShouldBuy ?? []).map((x, i) => i === idx ? { ...x, suitable: false } : x) })} className={`flex-1 rounded-lg py-1.5 text-xs font-bold border ${!item.suitable ? "bg-red-600 border-red-600 text-white" : "bg-gray-800 border-gray-600 text-gray-400"}`}>✗ غير مناسب</button>
+                      <button type="button" onClick={() => setProductModal({ ...productModal, whoShouldBuy: (productModal.whoShouldBuy ?? []).filter((_, i) => i !== idx) })} className="rounded-lg px-3 py-1.5 text-xs text-red-400 border border-gray-700">حذف</button>
+                    </div>
+                    <input value={item.title} onChange={(e) => setProductModal({ ...productModal, whoShouldBuy: (productModal.whoShouldBuy ?? []).map((x, i) => i === idx ? { ...x, title: e.target.value } : x) })} placeholder="العنوان (مثال: المتحمسين لصحة القلب)" className={INPUT} />
+                    <textarea value={item.desc} onChange={(e) => setProductModal({ ...productModal, whoShouldBuy: (productModal.whoShouldBuy ?? []).map((x, i) => i === idx ? { ...x, desc: e.target.value } : x) })} placeholder="الوصف التفصيلي..." rows={2} className={`${INPUT} resize-none`} />
+                  </div>
+                ))}
+                <button type="button" onClick={() => setProductModal({ ...productModal, whoShouldBuy: [...(productModal.whoShouldBuy ?? []), { title: "", desc: "", suitable: true }] })} className="w-full rounded-lg border border-dashed border-gray-600 py-2 text-xs text-gray-400 hover:border-pink-500 hover:text-pink-400">+ إضافة فئة</button>
+              </div>
+
+              <div className="space-y-3">
+                <div>
+                  <div className="text-sm font-bold text-white mb-1">أسئلة وأجوبة</div>
+                  <div className="text-xs text-gray-400 mb-3">أسئلة شائعة مع إجاباتها تظهر في صفحة المنتج.</div>
+                </div>
+                {(productModal.faqs ?? []).map((faq, idx) => (
+                  <div key={idx} className="rounded-lg border border-gray-700 bg-gray-900 p-3 space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-gray-500">سؤال {idx + 1}</span>
+                      <button type="button" onClick={() => setProductModal({ ...productModal, faqs: (productModal.faqs ?? []).filter((_, i) => i !== idx) })} className="text-xs text-red-400">حذف</button>
+                    </div>
+                    <input value={faq.q} onChange={(e) => setProductModal({ ...productModal, faqs: (productModal.faqs ?? []).map((x, i) => i === idx ? { ...x, q: e.target.value } : x) })} placeholder="السؤال" className={INPUT} />
+                    <textarea value={faq.a} onChange={(e) => setProductModal({ ...productModal, faqs: (productModal.faqs ?? []).map((x, i) => i === idx ? { ...x, a: e.target.value } : x) })} placeholder="الإجابة" rows={2} className={`${INPUT} resize-none`} />
+                  </div>
+                ))}
+                <button type="button" onClick={() => setProductModal({ ...productModal, faqs: [...(productModal.faqs ?? []), { q: "", a: "" }] })} className="w-full rounded-lg border border-dashed border-gray-600 py-2 text-xs text-gray-400 hover:border-pink-500 hover:text-pink-400">+ إضافة سؤال</button>
+              </div>
+            </div>
+
             <button onClick={() => void saveProduct()} disabled={saving} className="w-full rounded-xl bg-red-600 py-3 font-black text-white disabled:opacity-50">{saving ? "جارٍ حفظ المنتج..." : "حفظ المنتج"}</button>
           </div>
         </Modal>
