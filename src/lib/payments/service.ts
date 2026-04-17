@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { sendSubscriptionEmail } from "@/lib/email";
 import { getDefaultPaymentProvider, getPaymentProvider, listPaymentProviders } from "@/lib/payments/registry";
 import type {
   PaymentProviderKey,
@@ -281,6 +282,32 @@ export async function updatePaymentTransactionStatus(
               type: "success",
             },
           });
+
+          // Send confirmation email with booked schedule after payment verified
+          const userRecord = await db.user.findUnique({
+            where: { id: existing.userId },
+            select: { email: true, name: true },
+          });
+          if (userRecord?.email) {
+            const bookedSchedules = await db.booking.findMany({
+              where: { userMembershipId: existing.membershipId, status: "confirmed" },
+              include: { schedule: { include: { class: { include: { trainer: true } } } } },
+            });
+            const scheduleRows = bookedSchedules.map((b) => ({
+              date: b.schedule.date,
+              time: b.schedule.time,
+              className: b.schedule.class.name,
+              trainerName: b.schedule.class.trainer.name,
+            }));
+            void sendSubscriptionEmail(
+              userRecord.email,
+              userRecord.name ?? "العضوة",
+              membership.membership?.name ?? "الباقة",
+              endDate,
+              walletBonus > 0 ? walletBonus : undefined,
+              scheduleRows,
+            ).catch((err) => console.error("[PAYMENT_EMAIL]", err));
+          }
         }
       }
     }

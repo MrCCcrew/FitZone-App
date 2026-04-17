@@ -1138,8 +1138,7 @@ function BookingsTab({ bookings }: { bookings: AccountData["bookings"] }) {
     const scheduleDate = toScheduleDateTime(booking.date, booking.time);
     const now = new Date();
     if (scheduleDate <= now) return false;
-    const sameDay = scheduleDate.toDateString() === now.toDateString();
-    if (sameDay && scheduleDate.getTime() - now.getTime() < 60 * 60 * 1000) return false;
+    if (scheduleDate.getTime() - now.getTime() < 4 * 60 * 60 * 1000) return false;
     return true;
   };
 
@@ -1226,7 +1225,7 @@ function BookingsTab({ bookings }: { bookings: AccountData["bookings"] }) {
   return (
     <div className="space-y-6">
       <div className="bg-pink-500/10 border border-pink-400/20 rounded-2xl p-4 text-xs text-pink-100">
-        {t("يمكنك تعديل موعد الحجز من هنا. لا يمكنك التعديل على نفس اليوم قبل الموعد بأقل من ساعة.", "You can update your booking time from here. Same-day bookings cannot be edited less than one hour before the class.")}
+        {t("يمكنك تعديل أو إلغاء موعد الحجز من هنا. لا يمكن التعديل قبل الموعد بأقل من 4 ساعات.", "You can update or cancel your booking from here. Bookings cannot be edited less than 4 hours before the class.")}
       </div>
 
       <div className="flex gap-2">

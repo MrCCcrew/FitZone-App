@@ -2431,6 +2431,8 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
   const [schedulePlan, setSchedulePlan] = useState<PlanItem | null>(null);
   const [scheduleSelections, setScheduleSelections] = useState<string[]>([]);
   const [scheduleError, setScheduleError] = useState<string | null>(null);
+  const [daysPerWeek, setDaysPerWeek] = useState<number | null>(null);
+  const [scheduleStep, setScheduleStep] = useState<"frequency" | "slots">("frequency");
   const [membershipPayMethod, setMembershipPayMethod] = useState<"instapay" | "vodafone_cash">("instapay");
   const [membershipPaymentSettings, setMembershipPaymentSettings] = useState<PublicPaymentSettings>({
     instapayUrl: "",
@@ -2684,21 +2686,36 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
         return prev.filter((id) => id !== entry.id);
       }
       const cleaned = prev.filter((id) => !sameSlotIds.includes(id));
-      const limit = schedulePlan?.sessionsCount ?? null;
-      if (limit && cleaned.length >= limit) {
-        setScheduleError(`يمكنك اختيار ${limit} موعد كحد أقصى لهذه الباقة.`);
+
+      // Max sessions = daysPerWeek * 2 (or sessionsCount if no daysPerWeek set)
+      const maxSessions = daysPerWeek ? daysPerWeek * 2 : (schedulePlan?.sessionsCount ?? null);
+      if (maxSessions && cleaned.length >= maxSessions) {
+        const msg = daysPerWeek
+          ? `الحد الأقصى ${maxSessions} حصة لـ ${daysPerWeek} أيام في الأسبوع.`
+          : `يمكنك اختيار ${maxSessions} موعد كحد أقصى لهذه الباقة.`;
+        setScheduleError(msg);
         return prev;
       }
-      // Validate max 3 sessions per week
-      const entryWeekKey = getWeekKey(entry.date);
-      const weekCount = cleaned.filter((id) => {
+
+      // Max 2 sessions per day
+      const dayCount = cleaned.filter((id) => {
         const e = scheduleChoices.find((c) => c.id === id);
-        return e ? getWeekKey(e.date) === entryWeekKey : false;
+        return e?.day === entry.day;
       }).length;
-      if (weekCount >= 3) {
-        setScheduleError("يمكنك اختيار 3 حصص كحد أقصى في الأسبوع الواحد.");
+      if (dayCount >= 2) {
+        setScheduleError("يمكنك اختيار حصتين كحد أقصى في اليوم الواحد.");
         return prev;
       }
+
+      // Max unique days = daysPerWeek
+      if (daysPerWeek) {
+        const selectedDays = new Set(cleaned.map((id) => scheduleChoices.find((c) => c.id === id)?.day).filter(Boolean));
+        if (!selectedDays.has(entry.day) && selectedDays.size >= daysPerWeek) {
+          setScheduleError(`يمكنك اختيار ${daysPerWeek} أيام مختلفة فقط في الأسبوع.`);
+          return prev;
+        }
+      }
+
       return [...cleaned, entry.id];
     });
   };
@@ -2708,6 +2725,8 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
       setSchedulePlan(plan);
       setScheduleSelections([]);
       setScheduleError(null);
+      setDaysPerWeek(null);
+      setScheduleStep("frequency");
       return;
     }
     const initialAnswers: Record<string, boolean | null> = {};
@@ -2732,6 +2751,8 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
     setSchedulePlan(plan);
     setScheduleSelections([]);
     setScheduleError(null);
+    setDaysPerWeek(null);
+    setScheduleStep("frequency");
   };
 
   const validateDiscount = async (membershipId?: string) => {
@@ -2812,20 +2833,33 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
 
   const handleScheduleConfirm = async () => {
     if (!schedulePlan) return;
-    const limit = schedulePlan.sessionsCount ?? null;
-    if (limit && scheduleSelections.length > limit) {
-      setScheduleError(`يمكنك اختيار ${limit} موعد كحد أقصى لهذه الباقة.`);
-      return;
+
+    if (scheduleChoices.length > 0) {
+      if (scheduleSelections.length === 0) {
+        setScheduleError("اختاري مواعيد مناسبة قبل تأكيد الاشتراك.");
+        return;
+      }
+      if (daysPerWeek) {
+        // Each selected day must have at least 1 session
+        const selectedDays = new Set(scheduleSelections.map((id) => scheduleChoices.find((c) => c.id === id)?.day).filter(Boolean));
+        if (selectedDays.size < daysPerWeek) {
+          setScheduleError(`يجب اختيار مواعيد من ${daysPerWeek} أيام مختلفة على الأقل.`);
+          return;
+        }
+        if (scheduleSelections.length < daysPerWeek) {
+          setScheduleError(`يجب اختيار ${daysPerWeek} حصص على الأقل (حصة واحدة من كل يوم).`);
+          return;
+        }
+      }
     }
-    if (scheduleChoices.length > 0 && scheduleSelections.length === 0) {
-      setScheduleError("اختاري مواعيد مناسبة قبل تأكيد الاشتراك.");
-      return;
-    }
+
     const plan = schedulePlan;
     const selected = [...scheduleSelections];
     setSchedulePlan(null);
     setScheduleError(null);
     setScheduleSelections([]);
+    setDaysPerWeek(null);
+    setScheduleStep("frequency");
     await handleSubscribe(plan, selected, membershipPayMethod);
   };
 
@@ -2969,27 +3003,105 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
           <div style={{ background: "#111", borderRadius: 22, padding: 28, maxWidth: 860, width: "100%", boxShadow: "0 24px 60px rgba(0,0,0,.45)", border: "1px solid rgba(255,255,255,.12)", maxHeight: "90vh", overflowY: "auto" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
               <div>
-                <h2 style={{ fontWeight: 900, fontSize: 20, color: "#fff" }}>اختاري مواعيدك المناسبة</h2>
+                <h2 style={{ fontWeight: 900, fontSize: 20, color: "#fff" }}>
+                  {scheduleStep === "frequency" ? "كثافة الحضور الأسبوعية" : "اختاري مواعيدك المناسبة"}
+                </h2>
                 <p style={{ color: "#c9b9c1", fontSize: 13, marginTop: 4 }}>
-                  المواعيد المعروضة تستبعد الكلاسات الممنوعة حسب الاستبيان.
+                  {scheduleStep === "frequency"
+                    ? "اختاري كم يوم في الأسبوع تريدين الحضور"
+                    : "المواعيد المعروضة تستبعد الكلاسات الممنوعة حسب الاستبيان."}
                 </p>
               </div>
-              <button onClick={() => setSchedulePlan(null)} style={{ border: "none", background: "none", fontSize: 22, cursor: "pointer", color: "#c9b9c1" }}>×</button>
+              <button onClick={() => { setSchedulePlan(null); setDaysPerWeek(null); setScheduleStep("frequency"); }} style={{ border: "none", background: "none", fontSize: 22, cursor: "pointer", color: "#c9b9c1" }}>×</button>
             </div>
 
-            {surveyBlockedTypes.length > 0 && (
+            {surveyBlockedTypes.length > 0 && scheduleStep === "slots" && (
               <div style={{ background: "rgba(233,30,99,.08)", border: "1px solid rgba(233,30,99,.25)", borderRadius: 10, padding: 12, color: "#ffb7d0", fontSize: 12, marginBottom: 16 }}>
                 الكلاسات المستبعدة: {surveyBlockedTypes.map(formatClassType).join("، ")}
               </div>
             )}
 
+            {scheduleStep === "frequency" ? (
+              (() => {
+                const maxDays = Math.min(6, schedulePlan.sessionsCount ?? 6);
+                const dayLabels: Record<number, string> = {
+                  1: "يوم واحد / أسبوع",
+                  2: "يومين / أسبوع",
+                  3: "٣ أيام / أسبوع",
+                  4: "٤ أيام / أسبوع",
+                  5: "٥ أيام / أسبوع",
+                  6: "٦ أيام / أسبوع",
+                };
+                return (
+                  <div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 12, marginBottom: 24 }}>
+                      {Array.from({ length: maxDays }, (_, i) => i + 1).map((n) => (
+                        <button
+                          key={n}
+                          onClick={() => setDaysPerWeek(n)}
+                          style={{
+                            padding: "18px 12px",
+                            borderRadius: 14,
+                            border: `2px solid ${daysPerWeek === n ? C.red : "rgba(255,255,255,.15)"}`,
+                            background: daysPerWeek === n ? "rgba(233,30,99,.18)" : "rgba(255,255,255,.04)",
+                            color: daysPerWeek === n ? "#fff" : "#c9b9c1",
+                            fontWeight: daysPerWeek === n ? 800 : 500,
+                            fontSize: 15,
+                            cursor: "pointer",
+                            textAlign: "center",
+                            transition: "all .18s",
+                          }}
+                        >
+                          <div style={{ fontSize: 28, marginBottom: 6 }}>{["1️⃣","2️⃣","3️⃣","4️⃣","5️⃣","6️⃣"][n - 1]}</div>
+                          {dayLabels[n]}
+                          <div style={{ fontSize: 11, color: daysPerWeek === n ? "#ffb7d0" : "#9a8a90", marginTop: 4 }}>
+                            {n}–{n * 2} حصة/أسبوع
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                    {daysPerWeek && (
+                      <div style={{ background: "rgba(245,197,66,.08)", border: "1px solid rgba(245,197,66,.25)", borderRadius: 10, padding: 12, color: "#f5c542", fontSize: 13, marginBottom: 20 }}>
+                        ستختارين مواعيد من <strong>{daysPerWeek}</strong> أيام مختلفة · من <strong>{daysPerWeek}</strong> إلى <strong>{daysPerWeek * 2}</strong> حصة في الأسبوع · حصتان كحد أقصى في اليوم
+                      </div>
+                    )}
+                    <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+                      <button
+                        onClick={() => setSchedulePlan(null)}
+                        style={{ padding: "10px 20px", borderRadius: 10, border: "1px solid rgba(255,255,255,.15)", background: "transparent", color: "#c9b9c1", cursor: "pointer", fontSize: 14 }}
+                      >
+                        إلغاء
+                      </button>
+                      <button
+                        onClick={() => { if (daysPerWeek) { setScheduleStep("slots"); setScheduleError(null); setScheduleSelections([]); } }}
+                        disabled={!daysPerWeek}
+                        style={{ padding: "10px 24px", borderRadius: 10, border: "none", background: daysPerWeek ? C.red : "rgba(255,255,255,.1)", color: daysPerWeek ? "#fff" : "#666", cursor: daysPerWeek ? "pointer" : "not-allowed", fontWeight: 700, fontSize: 14 }}
+                      >
+                        متابعة →
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()
+            ) : (
+              <>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 14, flexWrap: "wrap" }}>
               <div style={{ color: "#f5c542", fontWeight: 800, fontSize: 13 }}>
-                {schedulePlan.sessionsCount ? `يمكنك اختيار ${schedulePlan.sessionsCount} موعد` : "اختاري المواعيد المناسبة لك"}
-                <span style={{ color: "#c9b9c1", fontWeight: 400, marginInlineStart: 8 }}>· الحد الأقصى 3 حصص في الأسبوع الواحد</span>
+                {daysPerWeek
+                  ? <>{daysPerWeek} أيام / أسبوع · <span style={{ color: "#c9b9c1", fontWeight: 400 }}>اختاري من {daysPerWeek} إلى {daysPerWeek * 2} حصة</span></>
+                  : schedulePlan.sessionsCount ? `يمكنك اختيار ${schedulePlan.sessionsCount} موعد` : "اختاري المواعيد المناسبة لك"
+                }
               </div>
-              <div style={{ color: "#fff", fontSize: 12 }}>
-                تم اختيار {scheduleSelections.length}
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <button
+                  onClick={() => { setScheduleStep("frequency"); setScheduleSelections([]); setScheduleError(null); }}
+                  style={{ fontSize: 12, color: "#c9b9c1", background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}
+                >
+                  ← تغيير الأيام
+                </button>
+                <div style={{ color: "#fff", fontSize: 12 }}>
+                  تم اختيار {scheduleSelections.length}
+                </div>
               </div>
             </div>
 
@@ -3194,6 +3306,8 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                 تأكيد الاشتراك
               </button>
             </div>
+            </>
+            )}
           </div>
         </div>
       )}
