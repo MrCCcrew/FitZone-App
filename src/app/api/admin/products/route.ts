@@ -66,6 +66,11 @@ export async function GET() {
         images: parseJsonList(product.images),
         sizes: parseJsonList(product.sizes),
         colors: parseJsonList(product.colors),
+        faqs: parseJsonList(product.faqs),
+        whoShouldBuy: parseJsonList(product.whoShouldBuy),
+        importantInfo: product.importantInfo ?? "",
+        disclaimer: product.disclaimer ?? "",
+        editorialReview: product.editorialReview ?? "",
       };
     }),
   );
@@ -80,7 +85,7 @@ export async function POST(req: Request) {
   await ensureDefaultProductCategories();
 
   const body = await req.json();
-  const { name, nameEn, category, price, oldPrice, stock, description, descriptionEn, images, sizes, colors } = body;
+  const { name, nameEn, category, price, oldPrice, stock, description, descriptionEn, images, sizes, colors, faqs, whoShouldBuy, importantInfo, disclaimer, editorialReview } = body;
 
   if (!name || price == null) {
     return NextResponse.json({ error: "بيانات المنتج ناقصة." }, { status: 400 });
@@ -103,6 +108,11 @@ export async function POST(req: Request) {
       images: Array.isArray(images) ? JSON.stringify(images.filter(Boolean)) : null,
       sizes: Array.isArray(sizes) ? JSON.stringify(sizes.filter(Boolean)) : null,
       colors: Array.isArray(colors) ? JSON.stringify(colors.filter(Boolean)) : null,
+      faqs: Array.isArray(faqs) ? JSON.stringify(faqs) : null,
+      whoShouldBuy: Array.isArray(whoShouldBuy) ? JSON.stringify(whoShouldBuy) : null,
+      importantInfo: importantInfo ? String(importantInfo) : null,
+      disclaimer: disclaimer ? String(disclaimer) : null,
+      editorialReview: editorialReview ? String(editorialReview) : null,
       isActive: true,
     },
   });
@@ -127,6 +137,11 @@ export async function POST(req: Request) {
     images: Array.isArray(images) ? images.filter(Boolean) : [],
     sizes: Array.isArray(sizes) ? sizes.filter(Boolean) : [],
     colors: Array.isArray(colors) ? colors.filter(Boolean) : [],
+    faqs: Array.isArray(faqs) ? faqs : [],
+    whoShouldBuy: Array.isArray(whoShouldBuy) ? whoShouldBuy : [],
+    importantInfo: importantInfo ?? "",
+    disclaimer: disclaimer ?? "",
+    editorialReview: editorialReview ?? "",
   });
 }
 
@@ -153,6 +168,11 @@ export async function PATCH(req: Request) {
   if (rest.images !== undefined) data.images = Array.isArray(rest.images) ? JSON.stringify(rest.images.filter(Boolean)) : null;
   if (rest.sizes !== undefined) data.sizes = Array.isArray(rest.sizes) ? JSON.stringify(rest.sizes.filter(Boolean)) : null;
   if (rest.colors !== undefined) data.colors = Array.isArray(rest.colors) ? JSON.stringify(rest.colors.filter(Boolean)) : null;
+  if (rest.faqs !== undefined) data.faqs = Array.isArray(rest.faqs) ? JSON.stringify(rest.faqs) : null;
+  if (rest.whoShouldBuy !== undefined) data.whoShouldBuy = Array.isArray(rest.whoShouldBuy) ? JSON.stringify(rest.whoShouldBuy) : null;
+  if (rest.importantInfo !== undefined) data.importantInfo = rest.importantInfo ? String(rest.importantInfo) : null;
+  if (rest.disclaimer !== undefined) data.disclaimer = rest.disclaimer ? String(rest.disclaimer) : null;
+  if (rest.editorialReview !== undefined) data.editorialReview = rest.editorialReview ? String(rest.editorialReview) : null;
 
   if (rest.category !== undefined) {
     const categoryRecord = await db.productCategory.findFirst({
