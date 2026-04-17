@@ -2112,7 +2112,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                   <span style={{ color: C.gray, fontSize: 13 }}> / {m.period}</span>
                 </div>
                 {m.priceBefore && m.priceBefore > (m.priceAfter ?? m.price) ? (
-                  <div style={{ color: C.grayDark, fontSize: 13, textDecoration: "line-through", marginTop: -12, marginBottom: 12 }}>
+                  <div style={{ color: "#a08898", fontSize: 13, textDecoration: "line-through", marginTop: -12, marginBottom: 12 }}>
                     {m.priceBefore} {lang === "en" ? "EGP" : "ج.م"}
                   </div>
                 ) : null}
@@ -2284,7 +2284,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                     <h3 style={{ fontWeight: 700, fontSize: 14, color: "#1a0c14", marginBottom: 8, lineHeight: 1.5, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{p.name}</h3>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, marginTop: "auto" }}>
                       <span style={{ fontWeight: 900, color: C.red, fontSize: 20 }}>{p.price} <span style={{ fontSize: 12 }}>{lang === "en" ? "EGP" : "ج.م"}</span></span>
-                      {p.oldPrice && <span style={{ textDecoration: "line-through", color: "#9ca3af", fontSize: 13 }}>{p.oldPrice}</span>}
+                      {p.oldPrice && <span style={{ textDecoration: "line-through", color: "#a08898", fontSize: 13 }}>{p.oldPrice}</span>}
                     </div>
                     <button
                       style={{ width: "100%", padding: "10px", borderRadius: 10, border: "none", background: outOfStock ? "#e5e7eb" : `linear-gradient(135deg,${C.red},#c2185b)`, color: outOfStock ? "#9ca3af" : "#fff", fontWeight: 800, fontSize: 13, cursor: outOfStock ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontFamily: "inherit", boxShadow: outOfStock ? "none" : "0 4px 14px rgba(233,30,99,.3)" }}
@@ -3442,7 +3442,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                         <span style={{ color: C.gray, fontSize: 12 }}>{cycleLabel(p.cycle, p.durationDays)}</span>
                       </div>
                       {hasDiscount ? (
-                        <div style={{ marginTop: 6, color: C.grayDark, fontSize: 12, textDecoration: "line-through" }}>
+                        <div style={{ marginTop: 6, color: "#a08898", fontSize: 12, textDecoration: "line-through" }}>
                           {formatCurrency(before)} ج.م
                         </div>
                       ) : null}
@@ -3669,7 +3669,7 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
                       <span style={{ fontSize: 38, fontWeight: 900, color: C.red }}>{after}</span>
                       <span style={{ color: C.gray, fontSize: 14 }}>ج.م</span>
                       {before != null && before > after && (
-                        <span style={{ textDecoration: "line-through", color: C.grayDark, fontSize: 15 }}>{before} ج.م</span>
+                        <span style={{ textDecoration: "line-through", color: "#a08898", fontSize: 15 }}>{before} ج.م</span>
                       )}
                     </div>
                     <button className="btn-primary" style={{ width: "100%", justifyContent: "center" }} onClick={() => navigate("memberships")}>اختاري الباقة</button>
@@ -4269,15 +4269,15 @@ const ProductMiniCard = ({
         {product.rating > 0 && (
           <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 6 }}>
             {[1,2,3,4,5].map(s => <span key={s} style={{ fontSize: 12, color: s <= Math.round(product.rating) ? "#f59e0b" : "#e5e7eb" }}>★</span>)}
-            <span style={{ fontSize: 11, color: "#9ca3af" }}>({product.reviewCount ?? 0})</span>
+            <span style={{ fontSize: 11, color: "#a08898" }}>({product.reviewCount ?? 0})</span>
           </div>
         )}
         {product.sizeType !== "none" && product.sizes && product.sizes.length > 0 && (
-          <div style={{ color: "#9ca3af", fontSize: 11, marginBottom: 6 }}>{t("المقاسات", "Sizes")}: {product.sizes.slice(0, 4).join(" - ")}</div>
+          <div style={{ color: "#a08898", fontSize: 11, marginBottom: 6 }}>{t("المقاسات", "Sizes")}: {product.sizes.slice(0, 4).join(" - ")}</div>
         )}
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, marginTop: "auto" }}>
           <span style={{ fontWeight: 900, color: C.red, fontSize: 20 }}>{formatCurrency(product.price)} <span style={{ fontSize: 12, fontWeight: 600 }}>{lang === "en" ? "EGP" : "ج.م"}</span></span>
-          {product.oldPrice && <span style={{ textDecoration: "line-through", color: "#9ca3af", fontSize: 13 }}>{formatCurrency(product.oldPrice)}</span>}
+          {product.oldPrice && <span style={{ textDecoration: "line-through", color: "#a08898", fontSize: 13 }}>{formatCurrency(product.oldPrice)}</span>}
         </div>
         <button
           style={{ width: "100%", padding: "10px", borderRadius: 10, border: "none", background: outOfStock ? "#e5e7eb" : `linear-gradient(135deg,${C.red},#c2185b)`, color: outOfStock ? "#9ca3af" : "#fff", fontWeight: 800, fontSize: 13, cursor: outOfStock ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontFamily: "inherit", boxShadow: outOfStock ? "none" : "0 4px 14px rgba(233,30,99,.3)" }}
@@ -4673,7 +4673,7 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
             <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginBottom: 18 }}>
               <span style={{ fontSize: viewportWidth() < 768 ? 34 : 42, fontWeight: 900, color: C.red }}>{product.price}</span>
               <span style={{ color: C.gray }}>{lang === "en" ? "EGP" : "ج.م"}</span>
-              {product.oldPrice && <span style={{ textDecoration: "line-through", color: C.gray, fontSize: 16 }}>{formatCurrency(product.oldPrice)}</span>}
+              {product.oldPrice && <span style={{ textDecoration: "line-through", color: "#a08898", fontSize: 16 }}>{formatCurrency(product.oldPrice)}</span>}
               {product.badge && <span className="badge">{localizeDiscountBadge(product.badge, lang)}</span>}
               {outOfStock && <span className="badge" style={{ background: "#2b0f1b", color: "#ffd166" }}>{t("نفذت الكمية", "Out of stock")}</span>}
             </div>
@@ -4907,7 +4907,7 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
                       {item.rating > 0 && <div style={{ display: "flex", gap: 2, marginBottom: 6 }}>{[1,2,3,4,5].map(s => <span key={s} style={{ fontSize: 11, color: s <= Math.round(item.rating) ? "#f59e0b" : "#e5e7eb" }}>★</span>)}</div>}
                       <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10, marginTop: "auto" }}>
                         <span style={{ fontWeight: 900, color: C.red, fontSize: 17 }}>{formatCurrency(item.price)} <span style={{ fontSize: 11 }}>ج.م</span></span>
-                        {item.oldPrice && <span style={{ textDecoration: "line-through", color: "#9ca3af", fontSize: 12 }}>{formatCurrency(item.oldPrice)}</span>}
+                        {item.oldPrice && <span style={{ textDecoration: "line-through", color: "#a08898", fontSize: 12 }}>{formatCurrency(item.oldPrice)}</span>}
                       </div>
                       <button
                         style={{ width: "100%", padding: "8px", borderRadius: 9, border: "none", background: `linear-gradient(135deg,${C.red},#c2185b)`, color: "#fff", fontWeight: 800, fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, fontFamily: "inherit", boxShadow: "0 3px 10px rgba(233,30,99,.25)" }}
