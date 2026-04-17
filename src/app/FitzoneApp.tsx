@@ -1826,7 +1826,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
               }}
             >
             <div className="tag" style={{ marginBottom: 20, display: "inline-flex" }}>💪 {heroBadge}</div>
-            <h1 style={{ fontSize: viewportWidth() < 768 ? 34 : 56, fontWeight: 900, lineHeight: 1.1, color: C.white, marginBottom: 20 }}>
+            <h1 style={{ fontSize: viewportWidth() < 768 ? 34 : 56, fontWeight: 900, lineHeight: 1.3, color: C.white, marginBottom: 20 }}>
               {heroHeadline1}<br />
               {heroHeadline3} <span style={{ color: C.red, textShadow: `0 0 30px ${C.red}66` }}>{heroHeadline2}</span>
             </h1>
