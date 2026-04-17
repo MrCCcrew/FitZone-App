@@ -251,7 +251,7 @@ function OnboardingCard({
       key: "profile_complete" as const,
       icon: "👤",
       label: t("أكملي بياناتك", "Complete your profile"),
-      desc: t("أضيفي هاتفك، نوعك، تاريخ ميلادك، ومحافظتك", "Add phone, gender, birth date & governorate"),
+      desc: t("أضيفي هاتفك، حالتك الاجتماعية، تاريخ ميلادك، ومحافظتك", "Add phone, marital status, birth date & governorate"),
       done: ob.profileComplete,
       claimed: ob.profileRewardClaimed,
       reward: t("50 نقطة", "50 pts"),
@@ -606,15 +606,17 @@ function ProfileTab({ user }: { user: AccountData["user"] }) {
 
           <div className="grid sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-gray-500 text-xs mb-1.5">{t("النوع", "Gender")}</label>
+              <label className="block text-gray-500 text-xs mb-1.5">{t("الحالة الاجتماعية", "Marital status")}</label>
               <select
                 value={form.gender}
                 onChange={(e) => setForm({ ...form, gender: e.target.value })}
                 className={INPUT}
               >
                 <option value="">{t("اختاري", "Select")}</option>
-                <option value="female">{t("أنثى", "Female")}</option>
-                <option value="male">{t("ذكر", "Male")}</option>
+                <option value="single_graduated">{t("آنسة وخلصت دراسة", "Single (Graduated)")}</option>
+                <option value="married_new">{t("متزوجة جديد", "Newly Married")}</option>
+                <option value="married_with_kids">{t("متزوجة وعندي أطفال", "Married with Kids")}</option>
+                <option value="student">{t("طالبة", "Student")}</option>
               </select>
             </div>
             <div>

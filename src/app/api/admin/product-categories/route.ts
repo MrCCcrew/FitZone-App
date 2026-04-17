@@ -34,6 +34,7 @@ export async function GET() {
       label: category.label,
       labelEn: category.labelEn,
       sizeType: category.sizeType,
+      icon: category.icon ?? null,
       sortOrder: category.sortOrder,
       active: category.isActive,
     })),
@@ -50,6 +51,7 @@ export async function POST(req: Request) {
   const key = normalizeKey(String(body.key ?? label));
   const sizeType = ["none", "clothing", "shoes"].includes(body.sizeType) ? body.sizeType : "none";
   const sortOrder = Number(body.sortOrder ?? 0);
+  const icon = typeof body.icon === "string" ? body.icon.trim() || null : null;
 
   if (!label || !key) {
     return NextResponse.json({ error: "label and key are required" }, { status: 400 });
@@ -66,6 +68,7 @@ export async function POST(req: Request) {
       label,
       labelEn: labelEn || null,
       sizeType,
+      icon,
       sortOrder,
       isActive: body.active !== false,
     },
@@ -78,6 +81,7 @@ export async function POST(req: Request) {
     label: category.label,
     labelEn: category.labelEn,
     sizeType: category.sizeType,
+    icon: category.icon ?? null,
     sortOrder: category.sortOrder,
     active: category.isActive,
   });
@@ -100,6 +104,7 @@ export async function PATCH(req: Request) {
   if (body.sizeType !== undefined && ["none", "clothing", "shoes"].includes(body.sizeType)) data.sizeType = body.sizeType;
   if (body.sortOrder !== undefined) data.sortOrder = Number(body.sortOrder);
   if (body.active !== undefined) data.isActive = Boolean(body.active);
+  if (body.icon !== undefined) data.icon = typeof body.icon === "string" ? body.icon.trim() || null : null;
 
   await db.productCategory.update({
     where: { id },

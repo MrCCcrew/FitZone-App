@@ -17,7 +17,8 @@ export async function PATCH(req: Request) {
 
   const name       = body.name       ? String(body.name).trim()       : undefined;
   const phone      = body.phone      ? String(body.phone).trim()       : undefined;
-  const gender     = body.gender === "male" || body.gender === "female" ? body.gender : undefined;
+  const MARITAL_STATUSES = ["single_graduated", "married_new", "married_with_kids", "student"];
+  const gender     = body.gender && MARITAL_STATUSES.includes(String(body.gender)) ? String(body.gender) : undefined;
   const governorate = body.governorate && EGYPT_GOVERNORATES.includes(String(body.governorate))
     ? String(body.governorate)
     : undefined;
