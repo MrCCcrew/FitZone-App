@@ -235,6 +235,7 @@ export interface ProductCategory {
   label: string;
   labelEn?: string | null;
   sizeType: "none" | "clothing" | "shoes";
+  icon?: string | null;
   sortOrder: number;
   active: boolean;
 }

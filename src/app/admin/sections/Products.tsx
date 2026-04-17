@@ -16,6 +16,7 @@ type EditableCategory =
       label: string;
       labelEn?: string | null;
       sizeType: "none" | "clothing" | "shoes";
+      icon?: string | null;
       sortOrder: number;
       active: boolean;
     };
@@ -87,6 +88,7 @@ export default function Products() {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadingCategoryIcon, setUploadingCategoryIcon] = useState(false);
   const [productModal, setProductModal] = useState<EditableProduct | null>(null);
   const [categoryModal, setCategoryModal] = useState<EditableCategory | null>(null);
 
@@ -168,6 +170,23 @@ export default function Products() {
     }
   };
 
+  const uploadCategoryIcon = async (file: File | null) => {
+    if (!categoryModal || !file) return;
+    setUploadingCategoryIcon(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const response = await fetch("/api/admin/uploads", { method: "POST", body: formData });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error ?? "تعذر رفع الأيقونة");
+      if (data.url) setCategoryModal((current) => current ? { ...current, icon: data.url as string } : current);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "تعذر رفع الأيقونة حاليًا.");
+    } finally {
+      setUploadingCategoryIcon(false);
+    }
+  };
+
   const uploadImages = async (files: FileList | null) => {
     if (!productModal || !files?.length) return;
     setUploading(true);
@@ -209,7 +228,7 @@ export default function Products() {
                   <h3 className="font-black text-white">أقسام المنتجات</h3>
                   <p className="text-xs text-gray-500">اربط كل قسم بنوع المقاسات المناسب حتى لا تظهر مقاسات غير صحيحة للعميل.</p>
                 </div>
-                <button onClick={() => setCategoryModal({ key: "", label: "", labelEn: "", sizeType: "none", sortOrder: categories.length, active: true })} className="rounded-xl bg-pink-600 px-4 py-2 text-sm font-bold text-white">+ قسم</button>
+                <button onClick={() => setCategoryModal({ key: "", label: "", labelEn: "", sizeType: "none", icon: null, sortOrder: categories.length, active: true })} className="rounded-xl bg-pink-600 px-4 py-2 text-sm font-bold text-white">+ قسم</button>
               </div>
               <div className="grid gap-3 md:grid-cols-2">
                 {categories.map((category) => (
@@ -327,6 +346,18 @@ export default function Products() {
       {categoryModal && (
         <Modal title={categoryModal.id ? "تعديل القسم" : "قسم جديد"} onClose={() => setCategoryModal(null)}>
           <div className="space-y-4">
+            <FieldHint title="أيقونة القسم" hint="صورة أو أيقونة تظهر على زر القسم في المتجر. المقاس المثالي: 64 × 64 بكسل (PNG أو SVG بخلفية شفافة).">
+                <div className="space-y-2">
+                  {categoryModal.icon && (
+                    <div className="flex items-center gap-3">
+                      <img src={categoryModal.icon} alt="أيقونة القسم" className="h-12 w-12 rounded-lg object-contain border border-gray-600 bg-gray-800 p-1" />
+                      <button type="button" onClick={() => setCategoryModal({ ...categoryModal, icon: null })} className="text-xs text-red-400 hover:text-red-300">× حذف</button>
+                    </div>
+                  )}
+                  <input type="file" accept="image/*" disabled={uploadingCategoryIcon} onChange={(e) => { void uploadCategoryIcon(e.target.files?.[0] ?? null); e.currentTarget.value = ""; }} className="block w-full text-sm text-gray-400 file:ml-3 file:rounded-lg file:border-0 file:bg-red-600 file:px-4 file:py-2 file:text-sm file:font-bold file:text-white disabled:opacity-50" />
+                  <input value={categoryModal.icon ?? ""} onChange={(e) => setCategoryModal({ ...categoryModal, icon: e.target.value || null })} placeholder="أو أدخل رابط الأيقونة مباشرة" className={INPUT} dir="ltr" />
+                </div>
+              </FieldHint>
             <FieldHint title="اسم القسم" hint="الاسم الظاهر للعميل داخل المتجر."><input value={categoryModal.label} onChange={(e) => setCategoryModal({ ...categoryModal, label: e.target.value })} placeholder="مثال: أحذية" className={INPUT} /></FieldHint>
             <FieldHint title="اسم القسم بالإنجليزية" hint="اختياري، لكنه سيظهر للعميل عند اختيار اللغة الإنجليزية."><input value={categoryModal.labelEn ?? ""} onChange={(e) => setCategoryModal({ ...categoryModal, labelEn: e.target.value })} placeholder="Shoes" className={INPUT} dir="ltr" /></FieldHint>
             <FieldHint title="المفتاح الداخلي" hint="استخدم كلمة إنجليزية قصيرة بدون مسافات مثل shoes أو clothing."><input value={categoryModal.key} onChange={(e) => setCategoryModal({ ...categoryModal, key: e.target.value })} placeholder="shoes" className={INPUT} dir="ltr" /></FieldHint>

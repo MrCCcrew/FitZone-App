@@ -60,7 +60,7 @@ model User {
   email         String?   @unique
   emailVerified DateTime?
   phone         String?
-  gender        String?   // male | female
+  gender        String?   // single_graduated | married_new | married_with_kids | student
   birthDate     DateTime?
   governorate   String?
   address       String?
@@ -512,6 +512,7 @@ model ProductCategory {
   label     String
   labelEn   String?
   sizeType  String   @default("none") // none | clothing | shoes
+  icon      String?
   sortOrder Int      @default(0)
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())

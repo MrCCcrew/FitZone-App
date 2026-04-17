@@ -24,6 +24,7 @@ type PublicPayload = {
     label: string;
     labelEn?: string | null;
     sizeType: ProductSizeType;
+    icon?: string | null;
   }>;
   goals: Array<{
     id: string;
@@ -384,6 +385,7 @@ export async function GET(request: Request) {
         label: lang === "en" ? category.labelEn ?? category.label : category.label,
         labelEn: category.labelEn,
         sizeType: normalizeSizeType(category.sizeType),
+        icon: category.icon ?? null,
       })),
       goals: goals.map((goal) => ({
         id: goal.id,

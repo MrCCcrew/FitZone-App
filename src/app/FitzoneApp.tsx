@@ -4083,6 +4083,7 @@ type StoreCategory = {
   key: string;
   label: string;
   sizeType: "none" | "clothing" | "shoes";
+  icon?: string | null;
 };
 
 type PublicTestimonial = {
@@ -4308,7 +4309,7 @@ const ShopPage = ({ navigate }: { navigate: (p: string) => void }) => {
     loadPublicApi()
       .then((d) => {
         if (Array.isArray(d.categories) && d.categories.length > 0) {
-          setCategories(d.categories.map((item: { key: string; label: string; sizeType: "none" | "clothing" | "shoes" }) => ({ key: item.key, label: item.label, sizeType: item.sizeType })));
+          setCategories(d.categories.map((item: { key: string; label: string; sizeType: "none" | "clothing" | "shoes"; icon?: string | null }) => ({ key: item.key, label: item.label, sizeType: item.sizeType, icon: item.icon ?? null })));
         }
         if (Array.isArray(d.products) && d.products.length > 0) {
           setProducts(
@@ -4384,7 +4385,13 @@ const ShopPage = ({ navigate }: { navigate: (p: string) => void }) => {
               {categoryButtons.map((label) => {
                 const categoryRecord = categories.find((item) => item.label === label);
                 const displayLabel = label === allLabel ? allLabel : localizeStoreCategory(label, categoryRecord?.key, lang);
-                return <button key={label} className={`tab ${cat === label ? "active" : ""}`} onClick={() => setCat(label)}>{displayLabel}</button>;
+                const icon = label !== allLabel ? categoryRecord?.icon : null;
+                return (
+                  <button key={label} className={`tab ${cat === label ? "active" : ""}`} onClick={() => setCat(label)} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    {icon && <img src={icon} alt="" style={{ width: 20, height: 20, objectFit: "contain" }} />}
+                    {displayLabel}
+                  </button>
+                );
               })}
             </div>
             <div style={{ position: "relative", minWidth: 260, flex: "1 1 260px", maxWidth: 360 }}>
