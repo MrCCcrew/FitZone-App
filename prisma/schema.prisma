@@ -233,14 +233,15 @@ model Schedule {
 // ─── Booking ──────────────────────────────────────────────────────────────────
 
 model Booking {
-  id            String   @id @default(cuid())
+  id            String    @id @default(cuid())
   userId        String
   scheduleId    String
   userMembershipId String?
-  status        String   @default("confirmed") // confirmed | cancelled | attended | noshow
-  paidAmount    Float    @default(0)
-  paymentMethod String   @default("wallet") // wallet | card | cash
-  createdAt     DateTime @default(now())
+  status        String    @default("confirmed") // confirmed | cancelled | attended | noshow
+  paidAmount    Float     @default(0)
+  paymentMethod String    @default("wallet") // wallet | card | cash
+  reminderSentAt DateTime?
+  createdAt     DateTime  @default(now())
 
   user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   schedule Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)

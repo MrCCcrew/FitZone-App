@@ -117,9 +117,8 @@ export async function PATCH(req: Request) {
     if (currentSlot <= now) {
       return NextResponse.json({ error: "انتهى موعد هذا الحجز ولا يمكن تعديله" }, { status: 400 });
     }
-    const sameDay = currentSlot.toDateString() === now.toDateString();
-    if (sameDay && currentSlot.getTime() - now.getTime() < 60 * 60 * 1000) {
-      return NextResponse.json({ error: "لا يمكن تعديل الموعد قبل أقل من ساعة من بدايته" }, { status: 400 });
+    if (currentSlot.getTime() - now.getTime() < 4 * 60 * 60 * 1000) {
+      return NextResponse.json({ error: "لا يمكن تعديل الموعد قبل أقل من 4 ساعات من بدايته" }, { status: 400 });
     }
 
     if (scheduleId) {
