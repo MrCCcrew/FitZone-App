@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAdminFeature } from "@/lib/admin-guard";
+import { db } from "@/lib/db";
 import { listRecentPaymentTransactions, updatePaymentTransactionStatus } from "@/lib/payments/service";
 
 export async function GET() {
@@ -31,5 +32,22 @@ export async function PATCH(req: Request) {
     console.error("[ADMIN_PAYMENTS_PATCH]", error);
     const message = error instanceof Error ? error.message : "تعذر تحديث حالة المعاملة.";
     return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: Request) {
+  const guard = await requireAdminFeature("orders");
+  if ("error" in guard) return guard.error;
+
+  try {
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get("id");
+    if (!id) return NextResponse.json({ error: "معرّف المعاملة مطلوب." }, { status: 400 });
+
+    await db.paymentTransaction.delete({ where: { id } });
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("[ADMIN_PAYMENTS_DELETE]", error);
+    return NextResponse.json({ error: "تعذر حذف المعاملة." }, { status: 500 });
   }
 }

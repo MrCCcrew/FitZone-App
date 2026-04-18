@@ -98,7 +98,7 @@ function PaymentVerifyContent() {
 
   return (
     <div className="min-h-screen bg-[#12060c] text-white">
-      <div className="mx-auto max-w-3xl px-6 py-12">
+      <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 sm:py-12">
         <h1 className="text-2xl font-black">التحقق من الدفع</h1>
         <p className="mt-2 text-sm text-[#d7aabd]">
           استخدمي هذه الصفحة لتأكيد التحويل بعد الدفع من الهاتف.
@@ -131,7 +131,7 @@ function PaymentVerifyContent() {
                   href={transaction.checkoutUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center justify-center rounded-xl bg-pink-600 px-5 py-2.5 text-sm font-bold text-white"
+                  className="flex w-full items-center justify-center rounded-xl bg-pink-600 px-5 py-3 text-sm font-bold text-white sm:w-auto"
                 >
                   فتح رابط الدفع
                 </a>
@@ -157,7 +157,7 @@ function PaymentVerifyContent() {
                   type="button"
                   onClick={submitConfirmation}
                   disabled={confirming}
-                  className="mt-3 w-full rounded-xl border border-pink-300/20 bg-pink-500/15 px-4 py-2.5 text-sm font-bold text-pink-100 disabled:opacity-60"
+                  className="mt-3 w-full min-h-[44px] rounded-xl border border-pink-300/20 bg-pink-500/15 px-4 py-3 text-sm font-bold text-pink-100 disabled:opacity-60"
                 >
                   {confirming ? "جاري إرسال التأكيد..." : "إرسال التأكيد"}
                 </button>
