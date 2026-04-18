@@ -1772,7 +1772,7 @@ function WalletTab({
           {/* Quick top-up */}
           <div className={CARD}>
             <h4 className="text-white font-black mb-3">{t("شحن سريع", "Quick top-up")}</h4>
-            <div className="grid grid-cols-4 gap-2 mb-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
               {TOPUP_AMOUNTS.map((v) => (
                 <button
                   key={v}
@@ -1782,7 +1782,7 @@ function WalletTab({
                     setLastTx(null);
                     setPayError(null);
                   }}
-                  className={`text-white font-bold py-2 rounded-xl text-sm transition-colors ${selectedAmount === v ? "bg-blue-600" : "bg-gray-800 hover:bg-blue-600"}`}
+                  className={`text-white font-bold py-3 rounded-xl text-sm transition-colors ${selectedAmount === v ? "bg-blue-600" : "bg-gray-800 hover:bg-blue-600"}`}
                 >
                   {formatMoney(v, lang)} {lang === "en" ? "EGP" : "ج.م"}
                 </button>
@@ -1824,14 +1824,14 @@ function WalletTab({
               <button
                 onClick={() => startTopup("instapay")}
                 disabled={paying}
-                className="bg-pink-600 hover:bg-pink-700 disabled:opacity-60 text-white font-black px-4 py-2 rounded-xl text-sm"
+                className="flex-1 min-h-[44px] bg-pink-600 hover:bg-pink-700 disabled:opacity-60 text-white font-black px-4 py-3 rounded-xl text-sm"
               >
                 {t("الدفع عبر إنستاباي", "Pay with InstaPay")}
               </button>
               <button
                 onClick={() => startTopup("vodafone_cash")}
                 disabled={paying}
-                className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-black px-4 py-2 rounded-xl text-sm"
+                className="flex-1 min-h-[44px] bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-black px-4 py-3 rounded-xl text-sm"
               >
                 {t("الدفع عبر فودافون كاش", "Pay with Vodafone Cash")}
               </button>

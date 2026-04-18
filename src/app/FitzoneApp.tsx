@@ -100,32 +100,36 @@ const css = `
   .schedule-title{display:flex;flex-direction:column;align-items:center;gap:8px;margin-bottom:28px;text-align:center;}
   .schedule-title h2{font-size:34px;font-weight:900;color:#fff;letter-spacing:.3px;line-height:1.15;}
   .schedule-title span{background:rgba(245,197,66,.1);color:#f5c542;border-radius:999px;padding:5px 20px;font-size:15px;font-weight:800;border:1px solid rgba(245,197,66,.3);letter-spacing:.2px;}
-  .schedule-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%;scrollbar-width:thin;scrollbar-color:rgba(245,197,66,.35) rgba(255,255,255,.06);}
-  .schedule-scroll::-webkit-scrollbar{height:4px;}
+  .schedule-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%;scrollbar-width:thin;scrollbar-color:rgba(245,197,66,.4) rgba(255,255,255,.06);}
+  .schedule-scroll::-webkit-scrollbar{height:5px;}
   .schedule-scroll::-webkit-scrollbar-track{background:rgba(255,255,255,.04);border-radius:99px;}
-  .schedule-scroll::-webkit-scrollbar-thumb{background:rgba(245,197,66,.35);border-radius:99px;}
-  .schedule-grid{display:grid;border:1.5px solid rgba(255,255,255,.14);border-radius:16px;overflow:hidden;direction:ltr;background:#0e0b0d;width:100%;min-width:480px;}
-  .schedule-cell{min-height:72px;border-left:1px solid rgba(255,255,255,.08);border-top:1px solid rgba(255,255,255,.08);padding:6px 4px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:3px;overflow:hidden;}
-  .schedule-cell.time{background:linear-gradient(180deg,#1c161a,#151013);font-weight:900;font-size:12px;color:#fff;letter-spacing:.2px;min-width:72px;}
-  .schedule-cell.time span{font-size:10px;color:#a0909a;font-weight:700;margin-top:1px;}
-  .schedule-cell.day{background:linear-gradient(90deg,#1c161a,#151013);color:#fff;font-weight:900;font-size:12px;position:sticky;right:0;z-index:3;min-width:52px;border-left:1.5px solid rgba(255,255,255,.14);}
+  .schedule-scroll::-webkit-scrollbar-thumb{background:rgba(245,197,66,.4);border-radius:99px;}
+  .schedule-grid{display:grid;border:1.5px solid rgba(255,255,255,.12);border-radius:14px;overflow:hidden;direction:ltr;background:#0d0a0c;width:100%;min-width:560px;}
+  .schedule-cell{border-left:1px solid rgba(255,255,255,.08);border-top:1px solid rgba(255,255,255,.08);padding:8px 7px;display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;text-align:center;gap:5px;vertical-align:top;}
+  .schedule-cell.time{background:linear-gradient(180deg,#1d1619,#161114);font-weight:900;font-size:12px;color:#fff;letter-spacing:.3px;min-width:100px;padding:10px 8px;align-items:center;justify-content:center;}
+  .schedule-cell.time span{font-size:10px;color:#9d8a96;font-weight:700;margin-top:2px;}
+  .schedule-cell.day{background:linear-gradient(90deg,#1d1619,#161114);color:#fff;font-weight:900;font-size:11px;position:sticky;right:0;z-index:3;min-width:52px;border-left:1.5px solid rgba(255,255,255,.13);padding:10px 5px;align-items:center;justify-content:center;}
   @media(min-width:768px){.schedule-grid{min-width:unset;}.schedule-cell.time{font-size:13px;min-width:unset;}.schedule-cell.day{font-size:13px;min-width:unset;}}
   .schedule-cell.clock{background:#111;color:#fff;font-weight:800;gap:4px;}
   .schedule-cell.sticky{position:sticky;top:0;z-index:4;background:#161214;}
-  .schedule-cell.day-head{background:#161214;color:#a0909a;font-weight:800;font-size:13px;position:sticky;right:0;z-index:5;border-left:1.5px solid rgba(255,255,255,.14);}
+  .schedule-cell.day-head{background:#161214;color:#9d8a96;font-weight:800;font-size:12px;position:sticky;right:0;z-index:5;border-left:1.5px solid rgba(255,255,255,.13);}
   .schedule-grid .schedule-cell.sticky{border-top:none;}
   .schedule-block{margin-top:20px;}
   .schedule-block:first-child{margin-top:0;}
-  .schedule-block-title{display:inline-flex;align-items:center;gap:8px;color:#f5c542;font-weight:900;font-size:16px;margin-bottom:12px;padding:4px 14px 4px 0;border-bottom:2px solid rgba(245,197,66,.25);}
-  .schedule-slot-box{width:100%;border-radius:10px;padding:5px;border:1px solid rgba(255,255,255,.08);display:flex;flex-direction:column;gap:5px;background:rgba(255,255,255,.02);}
-  .schedule-slot-item{width:100%;border-radius:9px;padding:7px 8px;border:1px solid rgba(245,197,66,.2);background:rgba(245,197,66,.05);color:#f5c542;font-weight:800;font-size:12px;cursor:pointer;transition:background .15s,border-color .15s;text-align:center;}
-  .schedule-slot-item:hover:not(.disabled){background:rgba(245,197,66,.12);border-color:rgba(245,197,66,.45);}
-  .schedule-slot-item.selected{border-color:rgba(233,30,99,.75);background:rgba(233,30,99,.18);color:#ff80ab;}
-  .schedule-slot-item.disabled{cursor:not-allowed;opacity:.4;color:#888;border-color:rgba(255,255,255,.08);background:transparent;}
-  .schedule-item-title{color:#f5c542;font-weight:900;font-size:12px;line-height:1.25;}
-  .schedule-item-sub{color:#c9b8c2;font-size:10px;font-weight:600;margin-top:1px;}
-  .schedule-item-tag{display:inline-block;background:rgba(245,197,66,.1);color:#f5c542;font-size:9px;font-weight:800;padding:1px 6px;border-radius:99px;border:1px solid rgba(245,197,66,.2);margin-top:2px;}
-  .schedule-empty{color:rgba(255,255,255,.18);font-size:18px;font-weight:400;}
+  .schedule-block-title{display:inline-flex;align-items:center;gap:8px;color:#f5c542;font-weight:900;font-size:15px;margin-bottom:12px;padding:4px 14px 4px 0;border-bottom:2px solid rgba(245,197,66,.22);}
+  .schedule-slot-box{width:100%;display:flex;flex-direction:column;gap:5px;}
+  .schedule-slot-hint{font-size:9px;font-weight:700;color:#ffb7d0;background:rgba(233,30,99,.12);border:1px solid rgba(233,30,99,.22);border-radius:6px;padding:3px 6px;text-align:center;margin-bottom:2px;}
+  .schedule-slot-item{width:100%;border-radius:10px;padding:8px 7px;border:1.5px solid rgba(245,197,66,.2);background:rgba(245,197,66,.05);cursor:pointer;transition:background .15s,border-color .15s,box-shadow .15s;text-align:center;display:flex;flex-direction:column;align-items:center;gap:3px;}
+  .schedule-slot-item:hover:not(.disabled){background:rgba(245,197,66,.11);border-color:rgba(245,197,66,.45);box-shadow:0 2px 12px rgba(245,197,66,.1);}
+  .schedule-slot-item.selected{border-color:#e91e63;background:rgba(233,30,99,.15);box-shadow:0 2px 14px rgba(233,30,99,.18);}
+  .schedule-slot-item.disabled{cursor:not-allowed;opacity:.35;border-color:rgba(255,255,255,.07);background:rgba(255,255,255,.02);}
+  .schedule-item-title{color:#f5c542;font-weight:900;font-size:11px;line-height:1.35;word-break:break-word;}
+  .schedule-slot-item.selected .schedule-item-title{color:#ff8fb5;}
+  .schedule-item-sub{color:#cebdc7;font-size:10px;font-weight:600;}
+  .schedule-slot-item.selected .schedule-item-sub{color:#ffaece;}
+  .schedule-item-tag{display:inline-block;background:rgba(245,197,66,.1);color:#e8b840;font-size:9px;font-weight:800;padding:2px 7px;border-radius:6px;border:1px solid rgba(245,197,66,.18);}
+  .schedule-slot-item.selected .schedule-item-tag{background:rgba(233,30,99,.15);color:#ff8fb5;border-color:rgba(233,30,99,.28);}
+  .schedule-empty{color:rgba(255,255,255,.15);font-size:20px;font-weight:300;text-align:center;padding:6px 0;}
   .today-classes-carousel{position:relative;overflow:hidden;padding:6px 0;}
   .today-classes-carousel::before,.today-classes-carousel::after{content:'';position:absolute;top:0;bottom:0;width:72px;z-index:2;pointer-events:none;}
   .today-classes-carousel::before{left:0;background:linear-gradient(to right,${C.bg},rgba(255,245,248,0));}
@@ -135,19 +139,20 @@ const css = `
   @media(max-width:900px){
     .schedule-title h2{font-size:26px;}
     .schedule-shell{padding:22px 18px;}
-    .schedule-cell{min-height:76px;}
     .today-classes-carousel::before,.today-classes-carousel::after{width:32px;}
     .today-class-card{flex-basis:240px;}
   }
   @media(max-width:480px){
-    .schedule-shell{padding:16px 12px;}
+    .schedule-shell{padding:16px 10px;}
     .schedule-title h2{font-size:20px;}
-    .schedule-cell{min-height:66px;padding:6px 5px;}
-    .schedule-cell.time{font-size:13px;min-width:90px;}
-    .schedule-cell.day{font-size:13px;min-width:66px;}
+    .schedule-cell{padding:7px 5px;gap:4px;}
+    .schedule-cell.time{font-size:11px;min-width:90px;}
+    .schedule-cell.day{font-size:11px;min-width:50px;}
     .schedule-item-title{font-size:10px;}
-    .schedule-item-sub,.schedule-item-tag{font-size:9px;}
-    .schedule-block-title{font-size:14px;}
+    .schedule-item-sub{font-size:9px;}
+    .schedule-item-tag{font-size:8px;padding:2px 5px;}
+    .schedule-slot-item{padding:7px 5px;border-radius:8px;}
+    .schedule-block-title{font-size:13px;}
   }
   @media(max-width:640px){
     .today-class-card{flex-basis:220px;}
@@ -2914,8 +2919,8 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
   return (
     <div>
       {surveyPlan && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 210, display: "flex", alignItems: "center", justifyContent: "center", padding: 16, background: "rgba(233,30,99,.12)", backdropFilter: "blur(6px)" }}>
-          <div style={{ background: "#fff", borderRadius: 20, padding: 28, maxWidth: 680, width: "100%", boxShadow: "0 24px 60px rgba(233,30,99,.2)", border: `1px solid ${C.border}`, maxHeight: "88vh", overflowY: "auto" }}>
+        <div style={{ position: "fixed", inset: 0, zIndex: 210, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "10px 8px", overflowY: "auto", background: "rgba(233,30,99,.12)", backdropFilter: "blur(6px)" }}>
+          <div style={{ background: "#fff", borderRadius: 18, padding: viewportWidth() < 640 ? 16 : 28, maxWidth: 680, width: "100%", boxShadow: "0 24px 60px rgba(233,30,99,.2)", border: `1px solid ${C.border}`, marginTop: "auto", marginBottom: "auto" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
               <h2 style={{ fontWeight: 900, fontSize: 20, color: C.white }}>استبيان الإصابات</h2>
               <button onClick={() => setSurveyPlan(null)} style={{ border: "none", background: "none", fontSize: 22, cursor: "pointer", color: C.gray }}>×</button>
@@ -2936,12 +2941,13 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                         onClick={() => setSurveyAnswers((prev) => ({ ...prev, [question.id]: true }))}
                         className="btn-outline"
                         style={{
-                          padding: "6px 14px",
+                          padding: "9px 20px",
+                          minHeight: 40,
                           borderRadius: 999,
                           borderColor: answer === true ? C.red : C.border,
                           color: answer === true ? C.red : C.gray,
                           background: answer === true ? "rgba(233,30,99,.08)" : "transparent",
-                          fontSize: 12,
+                          fontSize: 13,
                         }}
                       >
                         نعم
@@ -2950,12 +2956,13 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                         onClick={() => setSurveyAnswers((prev) => ({ ...prev, [question.id]: false }))}
                         className="btn-outline"
                         style={{
-                          padding: "6px 14px",
+                          padding: "9px 20px",
+                          minHeight: 40,
                           borderRadius: 999,
                           borderColor: answer === false ? C.red : C.border,
                           color: answer === false ? C.red : C.gray,
                           background: answer === false ? "rgba(233,30,99,.08)" : "transparent",
-                          fontSize: 12,
+                          fontSize: 13,
                         }}
                       >
                         لا
@@ -2999,8 +3006,8 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
       )}
 
       {schedulePlan && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 210, display: "flex", alignItems: "center", justifyContent: "center", padding: 16, background: "rgba(15,10,12,.72)", backdropFilter: "blur(6px)" }}>
-          <div style={{ background: "#111", borderRadius: 22, padding: 28, maxWidth: 860, width: "100%", boxShadow: "0 24px 60px rgba(0,0,0,.45)", border: "1px solid rgba(255,255,255,.12)", maxHeight: "90vh", overflowY: "auto" }}>
+        <div style={{ position: "fixed", inset: 0, zIndex: 210, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "12px 8px", overflowY: "auto", background: "rgba(15,10,12,.72)", backdropFilter: "blur(6px)" }}>
+          <div style={{ background: "#111", borderRadius: 18, padding: viewportWidth() < 640 ? 16 : 28, maxWidth: 860, width: "100%", boxShadow: "0 24px 60px rgba(0,0,0,.45)", border: "1px solid rgba(255,255,255,.12)", marginTop: "auto", marginBottom: "auto" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
               <div>
                 <h2 style={{ fontWeight: 900, fontSize: 20, color: "#fff" }}>
@@ -3119,7 +3126,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                           className="schedule-grid"
                           style={{
                             gridTemplateColumns: `${scheduleSplit.morning
-                              .map(() => "minmax(80px, 1fr)")
+                              .map(() => "minmax(110px, 1fr)")
                               .join(" ")} 56px`,
                           }}
                         >
@@ -3142,8 +3149,8 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                                     ) : (
                                       <div className="schedule-slot-box">
                                         {cellEntries.length > 1 ? (
-                                          <div className="schedule-item-tag" style={{ color: "#ffb7d0" }}>
-                                            اختاري كلاس واحد فقط لهذا الموعد
+                                          <div className="schedule-slot-hint">
+                                            اختاري كلاس واحد فقط
                                           </div>
                                         ) : null}
                                         {cellEntries.map((entry) => {
@@ -3191,7 +3198,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                           className="schedule-grid"
                           style={{
                             gridTemplateColumns: `${scheduleSplit.evening
-                              .map(() => "minmax(80px, 1fr)")
+                              .map(() => "minmax(110px, 1fr)")
                               .join(" ")} 56px`,
                           }}
                         >
@@ -3214,8 +3221,8 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                                     ) : (
                                       <div className="schedule-slot-box">
                                         {cellEntries.length > 1 ? (
-                                          <div className="schedule-item-tag" style={{ color: "#ffb7d0" }}>
-                                            اختاري كلاس واحد فقط لهذا الموعد
+                                          <div className="schedule-slot-hint">
+                                            اختاري كلاس واحد فقط
                                           </div>
                                         ) : null}
                                         {cellEntries.map((entry) => {
@@ -3298,11 +3305,11 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
               </div>
             )}
 
-            <div style={{ display: "flex", gap: 12, alignItems: "center", justifyContent: "flex-end", marginTop: 20 }}>
-              <button onClick={() => setSchedulePlan(null)} className="btn-outline" style={{ padding: "8px 18px" }}>
+            <div style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "flex-end", marginTop: 20, flexWrap: "wrap" }}>
+              <button onClick={() => setSchedulePlan(null)} className="btn-outline" style={{ padding: "10px 18px", minHeight: 44 }}>
                 رجوع
               </button>
-              <button className="btn-primary" onClick={handleScheduleConfirm}>
+              <button className="btn-primary" onClick={handleScheduleConfirm} style={{ minHeight: 44 }}>
                 تأكيد الاشتراك
               </button>
             </div>
@@ -3314,8 +3321,8 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
 
       {/* ─ VERIFY EMAIL MODAL ─ */}
       {verifyModal && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 16, background: "rgba(233,30,99,.1)", backdropFilter: "blur(6px)" }}>
-          <div style={{ background: "#fff", borderRadius: 20, padding: 32, maxWidth: 420, width: "100%", boxShadow: "0 24px 60px rgba(233,30,99,.2)", border: `1px solid ${C.border}`, textAlign: "center" }}>
+        <div style={{ position: "fixed", inset: 0, zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: "12px 10px", background: "rgba(233,30,99,.1)", backdropFilter: "blur(6px)" }}>
+          <div style={{ background: "#fff", borderRadius: 20, padding: viewportWidth() < 640 ? 20 : 32, maxWidth: 420, width: "100%", boxShadow: "0 24px 60px rgba(233,30,99,.2)", border: `1px solid ${C.border}`, textAlign: "center" }}>
             <div style={{ fontSize: 48, marginBottom: 12 }}>📧</div>
             <h2 style={{ fontWeight: 900, fontSize: 22, color: C.white, marginBottom: 8 }}>تفعيل الحساب أولاً</h2>
             <p style={{ color: C.gray, fontSize: 14, lineHeight: 1.8, marginBottom: 24 }}>
@@ -5356,26 +5363,26 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
 
   return (
     <div>
-      <section style={{ background: C.bgCard, borderBottom: `1px solid ${C.border}`, padding: "28px 0" }}>
+      <section style={{ background: C.bgCard, borderBottom: `1px solid ${C.border}`, padding: "20px 0" }}>
         <div className="container">
-          <div style={{ display: "flex", gap: 24, justifyContent: "center" }}>
+          <div style={{ display: "flex", gap: viewportWidth() < 480 ? 8 : 16, justifyContent: "center", alignItems: "center", flexWrap: "nowrap", overflowX: "auto", padding: "0 8px" }}>
             {[
               ["cart", t("السلة", "Cart")],
               ["address", t("العنوان", "Address")],
               ["delivery", t("الشحن", "Shipping")],
               ["payment", t("الدفع", "Payment")],
             ].map(([s, label], i) => (
-              <div key={s} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <div style={{ width: 30, height: 30, borderRadius: "50%", background: step === s ? C.red : C.grayDark, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 13 }}>{i + 1}</div>
-                <span style={{ fontWeight: 700, fontSize: 14, color: step === s ? C.white : C.gray }}>{label}</span>
-                {i < 3 && <span style={{ color: C.grayDark }}>{lang === "ar" ? "←" : "→"}</span>}
+              <div key={s} style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0 }}>
+                <div style={{ width: 26, height: 26, borderRadius: "50%", background: step === s ? C.red : C.grayDark, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 12, flexShrink: 0 }}>{i + 1}</div>
+                <span style={{ fontWeight: 700, fontSize: viewportWidth() < 480 ? 12 : 14, color: step === s ? C.white : C.gray }}>{label}</span>
+                {i < 3 && <span style={{ color: C.grayDark, fontSize: 12 }}>{lang === "ar" ? "←" : "→"}</span>}
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      <div className="container" style={{ padding: "40px 24px" }}>
+      <div className="container" style={{ padding: viewportWidth() < 640 ? "20px 12px" : "40px 24px" }}>
         {orderMsg && (
           <div style={{ marginBottom: 20, padding: "14px 18px", borderRadius: 10, background: orderMsg.ok ? "#dcfce7" : "#fee2e2", color: orderMsg.ok ? "#166534" : "#991b1b", fontWeight: 700 }}>
             {orderMsg.text}
@@ -5398,12 +5405,12 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                       <h3 style={{ fontWeight: 700, fontSize: 14, color: C.white }}>{item.name}</h3>
                       {item.size && <p style={{ color: C.gray, fontSize: 12, marginTop: 3 }}>{t("المقاس", "Size")}: {item.size}</p>}
                     </div>
-                    <div style={{ display: "flex", alignItems: "center", border: `1px solid ${C.border}`, borderRadius: 6, overflow: "hidden" }}>
-                      <button onClick={() => updateQty(item.productId, item.size, -1)} style={{ width: 30, height: 30, background: C.bgCard2, border: "none", cursor: "pointer", color: C.white }}>-</button>
-                      <span style={{ width: 28, textAlign: "center", fontSize: 13, fontWeight: 700, color: C.white }}>{item.qty}</span>
-                      <button onClick={() => updateQty(item.productId, item.size, 1)} style={{ width: 30, height: 30, background: C.bgCard2, border: "none", cursor: "pointer", color: C.white }}>+</button>
+                    <div style={{ display: "flex", alignItems: "center", border: `1px solid ${C.border}`, borderRadius: 8, overflow: "hidden" }}>
+                      <button onClick={() => updateQty(item.productId, item.size, -1)} style={{ width: 36, height: 36, background: C.bgCard2, border: "none", cursor: "pointer", color: C.white, fontSize: 16 }}>-</button>
+                      <span style={{ width: 30, textAlign: "center", fontSize: 13, fontWeight: 700, color: C.white }}>{item.qty}</span>
+                      <button onClick={() => updateQty(item.productId, item.size, 1)} style={{ width: 36, height: 36, background: C.bgCard2, border: "none", cursor: "pointer", color: C.white, fontSize: 16 }}>+</button>
                     </div>
-                    <span style={{ fontWeight: 900, color: C.red, width: 110, textAlign: "center", fontSize: 15 }}>{formatCurrency(item.price * item.qty)}</span>
+                    <span style={{ fontWeight: 900, color: C.red, minWidth: 80, textAlign: "center", fontSize: 14 }}>{formatCurrency(item.price * item.qty)}</span>
                   </div>
                 ))}
                 <button className="btn-primary" disabled={cartItems.length === 0} style={{ width: "100%", justifyContent: "center", padding: "13px", fontSize: 15, marginTop: 14, opacity: cartItems.length === 0 ? 0.5 : 1 }} onClick={() => setStep("address")}>

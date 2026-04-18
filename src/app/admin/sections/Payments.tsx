@@ -297,6 +297,23 @@ export default function Payments() {
     return Array.from(map.values());
   }, [transactions, providers]);
 
+  async function handleDelete(transactionId: string) {
+    if (!window.confirm("هل تريدين حذف هذه المعاملة نهائيًا؟ لا يمكن التراجع.")) return;
+    setSavingId(transactionId);
+    try {
+      const response = await fetch(`/api/admin/payments?id=${transactionId}`, { method: "DELETE" });
+      if (!response.ok) {
+        window.alert("تعذر حذف المعاملة.");
+        return;
+      }
+      setTransactions((current) => current.filter((item) => item.id !== transactionId));
+    } catch {
+      window.alert("حدث خطأ أثناء الحذف.");
+    } finally {
+      setSavingId(null);
+    }
+  }
+
   async function handleStatusChange(transactionId: string, status: PaymentTransactionRow["status"]) {
     setSavingId(transactionId);
     try {
@@ -604,6 +621,7 @@ export default function Payments() {
                   <th className="px-3 py-2 font-bold">الحالة</th>
                   <th className="px-3 py-2 font-bold">التاريخ</th>
                   <th className="px-3 py-2 font-bold">تحديث الحالة</th>
+                  <th className="px-3 py-2 font-bold"></th>
                 </tr>
               </thead>
               <tbody>
@@ -638,7 +656,7 @@ export default function Payments() {
                         minute: "2-digit",
                       })}
                     </td>
-                    <td className="rounded-l-[18px] px-3 py-3 align-top">
+                    <td className="px-3 py-3 align-top">
                       <select
                         value={transaction.status}
                         onChange={(event) =>
@@ -653,6 +671,16 @@ export default function Payments() {
                           </option>
                         ))}
                       </select>
+                    </td>
+                    <td className="rounded-l-[18px] px-3 py-3 align-top">
+                      <button
+                        type="button"
+                        onClick={() => void handleDelete(transaction.id)}
+                        disabled={savingId === transaction.id}
+                        className="rounded-xl border border-rose-500/30 px-3 py-2 text-xs font-bold text-rose-300 hover:bg-rose-500/10 disabled:opacity-40"
+                      >
+                        حذف
+                      </button>
                     </td>
                   </tr>
                 ))}
