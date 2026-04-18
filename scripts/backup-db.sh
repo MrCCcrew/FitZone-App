@@ -2,14 +2,28 @@
 # FitZone - Auto Database Backup Script
 # Runs daily via cron, keeps last 14 backups
 
-DB_USER="fitzone_user"
-DB_PASS='A@dmin4268'
-DB_NAME="fitzone_prod"
-DB_HOST="127.0.0.1"
-DB_PORT="3306"
 BACKUP_DIR="/var/www/fitzone/backups"
 KEEP_DAYS=14
 LOG_FILE="/var/www/fitzone/backups/backup.log"
+
+# Read credentials from .env (never hardcode them here)
+ENV_FILE="/var/www/fitzone/.env"
+if [ ! -f "$ENV_FILE" ]; then
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: .env not found at $ENV_FILE" >> "$LOG_FILE"
+  exit 1
+fi
+
+DATABASE_URL=$(grep '^DATABASE_URL=' "$ENV_FILE" | head -1 | cut -d'=' -f2- | tr -d '"' | tr -d "'")
+if [ -z "$DATABASE_URL" ]; then
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: DATABASE_URL not set in .env" >> "$LOG_FILE"
+  exit 1
+fi
+
+DB_USER=$(echo "$DATABASE_URL" | sed 's|.*://\([^:]*\):.*|\1|')
+DB_PASS=$(echo "$DATABASE_URL" | sed 's|.*://[^:]*:\([^@]*\)@.*|\1|')
+DB_HOST=$(echo "$DATABASE_URL" | sed 's|.*@\([^:/]*\)[:/].*|\1|')
+DB_PORT=$(echo "$DATABASE_URL" | sed 's|.*@[^:]*:\([0-9]*\)/.*|\1|')
+DB_NAME=$(echo "$DATABASE_URL" | sed 's|.*/\([^?]*\).*|\1|')
 
 mkdir -p "$BACKUP_DIR"
 
