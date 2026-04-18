@@ -28,8 +28,8 @@ const css = `
   body{font-family:'Cairo','Tajawal',sans-serif;direction:inherit;background:${C.bg};color:${C.white};overflow-x:hidden;}
   .app{min-height:100vh;}
 
-  .btn-primary{background:${C.red};color:#fff;border:none;padding:12px 28px;border-radius:6px;font-family:'Cairo',sans-serif;font-size:15px;font-weight:700;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;gap:8px;letter-spacing:.3px;}
-  .btn-primary:hover{background:${C.redLight};transform:translateY(-1px);box-shadow:0 6px 20px rgba(233,30,99,.35);}
+  .btn-primary{background:${C.redDark};color:#fff;border:none;padding:12px 28px;border-radius:6px;font-family:'Cairo',sans-serif;font-size:15px;font-weight:700;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;gap:8px;letter-spacing:.3px;}
+  .btn-primary:hover{background:${C.red};transform:translateY(-1px);box-shadow:0 6px 20px rgba(233,30,99,.35);}
   .btn-gold{background:linear-gradient(135deg,${C.gold},${C.goldLight});color:#000;border:none;padding:12px 28px;border-radius:6px;font-family:'Cairo',sans-serif;font-size:15px;font-weight:700;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;gap:8px;}
   .btn-gold:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(200,162,0,.35);}
   .btn-outline{background:transparent;color:${C.red};border:2px solid ${C.red};padding:10px 26px;border-radius:6px;font-family:'Cairo',sans-serif;font-size:15px;font-weight:700;cursor:pointer;transition:all .2s;}
@@ -314,7 +314,7 @@ const SmartImage = ({
 // ─── FIT ZONE LOGO ─────────────────────────────────────────────────────────
 const FZLogo = ({ size = 40 }) => (
   <img
-    src="/fitzone-logo.jpeg"
+    src="/fitzone-logo-200.jpeg"
     alt="Fit Zone Logo"
     width={size}
     height={size}
@@ -679,7 +679,7 @@ const Header = ({
           >
             {lang === "ar" ? "EN" : "ع"}
           </button>
-          <button onClick={() => navigate("wallet")} style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(233,30,99,.12)", border: `1px solid ${C.red}33`, borderRadius: 6, padding: "6px 12px", cursor: "pointer", color: C.red, fontSize: 12, fontWeight: 700, fontFamily: "'Cairo', sans-serif" }}>
+          <button onClick={() => navigate("wallet")} aria-label={t("المحفظة", "Wallet")} style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(233,30,99,.12)", border: `1px solid ${C.red}33`, borderRadius: 6, padding: "6px 12px", cursor: "pointer", color: C.red, fontSize: 12, fontWeight: 700, fontFamily: "'Cairo', sans-serif" }}>
             <I n="wallet" s={14} c={C.red} />
             <span className="hide-mobile">
               {(summary?.walletBalance ?? 0) > 0
@@ -693,6 +693,7 @@ const Header = ({
           </button>
           <button
             onClick={() => navigate("account")}
+            aria-label={summary?.authenticated ? (summary.user?.name || t("حسابي", "My account")) : t("تسجيل الدخول", "Login")}
             style={{
               display: "flex",
               alignItems: "center",
@@ -2927,7 +2928,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
           <div style={{ background: "#fff", borderRadius: 18, padding: viewportWidth() < 640 ? 16 : 28, maxWidth: 680, width: "100%", boxShadow: "0 24px 60px rgba(233,30,99,.2)", border: `1px solid ${C.border}`, marginTop: "auto", marginBottom: "auto" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
               <h2 style={{ fontWeight: 900, fontSize: 20, color: C.white }}>استبيان الإصابات</h2>
-              <button onClick={() => setSurveyPlan(null)} style={{ border: "none", background: "none", fontSize: 22, cursor: "pointer", color: C.gray }}>×</button>
+              <button onClick={() => setSurveyPlan(null)} aria-label={t("إغلاق", "Close")} style={{ border: "none", background: "none", fontSize: 22, cursor: "pointer", color: C.gray }}>×</button>
             </div>
             <p style={{ color: C.gray, fontSize: 13, lineHeight: 1.8, marginBottom: 18 }}>
               أجيبي على الأسئلة التالية لنحدد الكلاسات المناسبة لك قبل الاشتراك.
@@ -3023,7 +3024,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                     : "المواعيد المعروضة تستبعد الكلاسات الممنوعة حسب الاستبيان."}
                 </p>
               </div>
-              <button onClick={() => { setSchedulePlan(null); setDaysPerWeek(null); setScheduleStep("frequency"); }} style={{ border: "none", background: "none", fontSize: 22, cursor: "pointer", color: "#c9b9c1" }}>×</button>
+              <button onClick={() => { setSchedulePlan(null); setDaysPerWeek(null); setScheduleStep("frequency"); }} aria-label={t("إغلاق", "Close")} style={{ border: "none", background: "none", fontSize: 22, cursor: "pointer", color: "#c9b9c1" }}>×</button>
             </div>
 
             {surveyBlockedTypes.length > 0 && scheduleStep === "slots" && (
