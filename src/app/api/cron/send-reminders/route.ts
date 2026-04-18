@@ -8,9 +8,12 @@ import { sendOnePush } from "@/lib/push";
 // Set CRON_SECRET in .env to protect this endpoint.
 
 export async function GET(req: Request) {
-  const secret = process.env.CRON_SECRET ?? "";
+  const secret = process.env.CRON_SECRET;
+  if (!secret) {
+    return NextResponse.json({ error: "Cron not configured" }, { status: 503 });
+  }
   const provided = new URL(req.url).searchParams.get("secret") ?? "";
-  if (secret && provided !== secret) {
+  if (provided !== secret) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

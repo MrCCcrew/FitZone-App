@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAdminFeature } from "@/lib/admin-guard";
 import { db } from "@/lib/db";
 
-const MASTER_PASSWORD = process.env.DB_RESET_MASTER_PASSWORD ?? "T@mer2025!";
+const MASTER_PASSWORD = process.env.DB_RESET_MASTER_PASSWORD ?? "";
 
 function ensureMasterPassword(password: string) {
   if (!password || password !== MASTER_PASSWORD) {

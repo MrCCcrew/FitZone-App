@@ -6,7 +6,7 @@ import { createWriteStream, promises as fs } from "fs";
 import { createGzip } from "zlib";
 import path from "path";
 
-const MASTER_PASSWORD = process.env.DB_RESET_MASTER_PASSWORD ?? "T@mer2025!";
+const MASTER_PASSWORD = process.env.DB_RESET_MASTER_PASSWORD ?? "";
 const BACKUP_DIR = process.env.DB_BACKUP_DIR ?? path.join(process.cwd(), "backups");
 
 function parseDatabaseUrl() {
