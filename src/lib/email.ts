@@ -74,21 +74,24 @@ export async function sendSubscriptionEmail(
             <div style="margin-top: 18px;">
               <div style="font-size: 14px; color: #f8b4d9; font-weight: 800; margin-bottom: 8px;">مواعيدك الأسبوعية</div>
               <div style="background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 10px; padding: 12px;">
-                ${scheduleRows
-                  .map((row) => {
-                    const dateStr = row.date.toLocaleDateString("ar-EG", {
-                      weekday: "long",
-                      day: "numeric",
-                      month: "long",
-                    });
-                    return `
-                      <div style="display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid #2a2a2a;">
-                        <div style="color: #fff; font-weight: 700; font-size: 13px;">${row.className}</div>
-                        <div style="color: #9ca3af; font-size: 12px;">${dateStr} - ${row.time}</div>
-                      </div>
-                    `;
-                  })
-                  .join("")}
+                <table style="width: 100%; border-collapse: collapse;">
+                  ${scheduleRows
+                    .map((row) => {
+                      const dateStr = row.date.toLocaleDateString("ar-EG", {
+                        weekday: "long",
+                        day: "numeric",
+                        month: "long",
+                      });
+                      return `
+                      <tr style="border-bottom: 1px solid #2a2a2a;">
+                        <td style="padding: 8px 4px; color: #fff; font-weight: 700; font-size: 13px;">${row.className}</td>
+                        <td style="padding: 8px 4px; color: #9ca3af; font-size: 12px;">${row.trainerName}</td>
+                        <td style="padding: 8px 4px; color: #9ca3af; font-size: 12px; text-align: left;">${dateStr} - ${row.time}</td>
+                      </tr>
+                      `;
+                    })
+                    .join("")}
+                </table>
               </div>
             </div>
           `
@@ -110,19 +113,21 @@ export async function sendSubscriptionEmail(
               تم تفعيل اشتراكك بنجاح. يسعدنا انضمامك إلى FitZone.
             </p>
             <div style="background: #1f1f1f; border: 2px solid #f8b4d9; border-radius: 12px; padding: 24px; margin: 0 0 20px;">
-              <div style="display: flex; justify-content: space-between; margin-bottom: 14px; padding-bottom: 14px; border-bottom: 1px solid #2a2a2a;">
-                <span style="color: #9ca3af; font-size: 13px;">الباقة</span>
-                <span style="color: #f8b4d9; font-weight: 900; font-size: 15px;">${planName}</span>
-              </div>
-              <div style="display: flex; justify-content: space-between; margin-bottom: 14px; padding-bottom: 14px; border-bottom: 1px solid #2a2a2a;">
-                <span style="color: #9ca3af; font-size: 13px;">صالح حتى</span>
-                <span style="color: #fff; font-weight: 700; font-size: 13px;">${endStr}</span>
-              </div>
-              ${walletBonus && walletBonus > 0 ? `
-              <div style="display: flex; justify-content: space-between;">
-                <span style="color: #9ca3af; font-size: 13px;">مكافأة المحفظة</span>
-                <span style="color: #4ade80; font-weight: 700; font-size: 13px;">+${walletBonus} ج.م</span>
-              </div>` : ""}
+              <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                  <td style="padding: 10px 0; color: #9ca3af; font-size: 13px; border-bottom: 1px solid #2a2a2a;">الباقة</td>
+                  <td style="padding: 10px 0; color: #f8b4d9; font-weight: 900; font-size: 15px; border-bottom: 1px solid #2a2a2a; text-align: left;">${planName}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 10px 0; color: #9ca3af; font-size: 13px; ${walletBonus && walletBonus > 0 ? "border-bottom: 1px solid #2a2a2a;" : ""}">صالح حتى</td>
+                  <td style="padding: 10px 0; color: #fff; font-weight: 700; font-size: 13px; ${walletBonus && walletBonus > 0 ? "border-bottom: 1px solid #2a2a2a;" : ""} text-align: left;">${endStr}</td>
+                </tr>
+                ${walletBonus && walletBonus > 0 ? `
+                <tr>
+                  <td style="padding: 10px 0; color: #9ca3af; font-size: 13px;">مكافأة المحفظة</td>
+                  <td style="padding: 10px 0; color: #4ade80; font-weight: 700; font-size: 13px; text-align: left;">+${walletBonus} ج.م</td>
+                </tr>` : ""}
+              </table>
             </div>
             ${scheduleHtml}
             <p style="font-size: 13px; color: #94a3b8; margin: 0;">
