@@ -104,32 +104,29 @@ const css = `
   .schedule-scroll::-webkit-scrollbar{height:5px;}
   .schedule-scroll::-webkit-scrollbar-track{background:rgba(255,255,255,.04);border-radius:99px;}
   .schedule-scroll::-webkit-scrollbar-thumb{background:rgba(245,197,66,.4);border-radius:99px;}
-  .schedule-grid{display:grid;border:1.5px solid rgba(255,255,255,.12);border-radius:14px;overflow:hidden;direction:ltr;background:#0d0a0c;width:100%;min-width:560px;}
-  .schedule-cell{border-left:1px solid rgba(255,255,255,.08);border-top:1px solid rgba(255,255,255,.08);padding:8px 7px;display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;text-align:center;gap:5px;vertical-align:top;}
-  .schedule-cell.time{background:linear-gradient(180deg,#1d1619,#161114);font-weight:900;font-size:12px;color:#fff;letter-spacing:.3px;min-width:100px;padding:10px 8px;align-items:center;justify-content:center;}
+  .schedule-grid{display:grid;border:1.5px solid rgba(255,255,255,.12);border-radius:14px;overflow:hidden;direction:ltr;background:#0d0a0c;width:100%;}
+  .schedule-cell{border-right:1px solid rgba(255,255,255,.08);border-top:1px solid rgba(255,255,255,.08);padding:7px 6px;display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;text-align:center;gap:4px;}
+  .schedule-cell.time{background:linear-gradient(180deg,#1d1619,#161114);font-weight:900;font-size:11px;color:#fff;letter-spacing:.2px;min-width:115px;padding:10px 6px;align-items:center;justify-content:center;}
   .schedule-cell.time span{font-size:10px;color:#9d8a96;font-weight:700;margin-top:2px;}
-  .schedule-cell.day{background:linear-gradient(90deg,#1d1619,#161114);color:#fff;font-weight:900;font-size:11px;position:sticky;right:0;z-index:3;min-width:52px;border-left:1.5px solid rgba(255,255,255,.13);padding:10px 5px;align-items:center;justify-content:center;}
-  @media(min-width:768px){.schedule-grid{min-width:unset;}.schedule-cell.time{font-size:13px;min-width:unset;}.schedule-cell.day{font-size:13px;min-width:unset;}}
-  .schedule-cell.clock{background:#111;color:#fff;font-weight:800;gap:4px;}
+  .schedule-cell.day{background:linear-gradient(90deg,#1d1619,#161114);color:#fff;font-weight:900;font-size:12px;position:sticky;left:0;z-index:3;width:52px;min-width:52px;max-width:52px;border-right:1.5px solid rgba(255,255,255,.16);padding:10px 4px;align-items:center;justify-content:center;text-align:center;}
+  @media(min-width:768px){.schedule-cell.time{font-size:13px;}.schedule-cell.day{font-size:13px;width:62px;min-width:62px;max-width:62px;}}
   .schedule-cell.sticky{position:sticky;top:0;z-index:4;background:#161214;}
-  .schedule-cell.day-head{background:#161214;color:#9d8a96;font-weight:800;font-size:12px;position:sticky;right:0;z-index:5;border-left:1.5px solid rgba(255,255,255,.13);}
+  .schedule-cell.day-head{background:#161214;color:#9d8a96;font-weight:800;font-size:11px;position:sticky;left:0;z-index:5;width:52px;min-width:52px;max-width:52px;border-right:1.5px solid rgba(255,255,255,.16);}
   .schedule-grid .schedule-cell.sticky{border-top:none;}
   .schedule-block{margin-top:20px;}
   .schedule-block:first-child{margin-top:0;}
   .schedule-block-title{display:inline-flex;align-items:center;gap:8px;color:#f5c542;font-weight:900;font-size:15px;margin-bottom:12px;padding:4px 14px 4px 0;border-bottom:2px solid rgba(245,197,66,.22);}
-  .schedule-slot-box{width:100%;display:flex;flex-direction:column;gap:5px;}
-  .schedule-slot-hint{font-size:9px;font-weight:700;color:#ffb7d0;background:rgba(233,30,99,.12);border:1px solid rgba(233,30,99,.22);border-radius:6px;padding:3px 6px;text-align:center;margin-bottom:2px;}
-  .schedule-slot-item{width:100%;border-radius:10px;padding:8px 7px;border:1.5px solid rgba(245,197,66,.2);background:rgba(245,197,66,.05);cursor:pointer;transition:background .15s,border-color .15s,box-shadow .15s;text-align:center;display:flex;flex-direction:column;align-items:center;gap:3px;}
-  .schedule-slot-item:hover:not(.disabled){background:rgba(245,197,66,.11);border-color:rgba(245,197,66,.45);box-shadow:0 2px 12px rgba(245,197,66,.1);}
-  .schedule-slot-item.selected{border-color:#e91e63;background:rgba(233,30,99,.15);box-shadow:0 2px 14px rgba(233,30,99,.18);}
-  .schedule-slot-item.disabled{cursor:not-allowed;opacity:.35;border-color:rgba(255,255,255,.07);background:rgba(255,255,255,.02);}
-  .schedule-item-title{color:#f5c542;font-weight:900;font-size:11px;line-height:1.35;word-break:break-word;}
+  .schedule-slot-box{width:100%;display:flex;flex-direction:column;gap:4px;}
+  .schedule-multi-hint{width:100%;height:3px;border-radius:2px;background:rgba(233,30,99,.5);margin-bottom:3px;}
+  .schedule-slot-item{width:100%;border-radius:8px;padding:7px 6px;border:1.5px solid rgba(245,197,66,.2);background:rgba(245,197,66,.05);cursor:pointer;transition:background .15s,border-color .15s,box-shadow .15s;text-align:center;display:flex;flex-direction:column;align-items:center;gap:2px;}
+  .schedule-slot-item:hover:not(.disabled){background:rgba(245,197,66,.11);border-color:rgba(245,197,66,.45);box-shadow:0 2px 10px rgba(245,197,66,.1);}
+  .schedule-slot-item.selected{border-color:#e91e63;background:rgba(233,30,99,.18);box-shadow:0 2px 12px rgba(233,30,99,.2);}
+  .schedule-slot-item.disabled{cursor:not-allowed;opacity:.3;border-color:rgba(255,255,255,.07);background:rgba(255,255,255,.02);}
+  .schedule-item-title{color:#f5c542;font-weight:900;font-size:11px;line-height:1.3;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;}
   .schedule-slot-item.selected .schedule-item-title{color:#ff8fb5;}
-  .schedule-item-sub{color:#cebdc7;font-size:10px;font-weight:600;}
-  .schedule-slot-item.selected .schedule-item-sub{color:#ffaece;}
-  .schedule-item-tag{display:inline-block;background:rgba(245,197,66,.1);color:#e8b840;font-size:9px;font-weight:800;padding:2px 7px;border-radius:6px;border:1px solid rgba(245,197,66,.18);}
-  .schedule-slot-item.selected .schedule-item-tag{background:rgba(233,30,99,.15);color:#ff8fb5;border-color:rgba(233,30,99,.28);}
-  .schedule-empty{color:rgba(255,255,255,.15);font-size:20px;font-weight:300;text-align:center;padding:6px 0;}
+  .schedule-item-tag{display:inline-block;background:rgba(245,197,66,.12);color:#e8b840;font-size:9px;font-weight:800;padding:2px 6px;border-radius:5px;border:1px solid rgba(245,197,66,.2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;}
+  .schedule-slot-item.selected .schedule-item-tag{background:rgba(233,30,99,.2);color:#ff8fb5;border-color:rgba(233,30,99,.3);}
+  .schedule-empty{color:rgba(255,255,255,.15);font-size:18px;font-weight:300;text-align:center;}
   .today-classes-carousel{position:relative;overflow:hidden;padding:6px 0;}
   .today-classes-carousel::before,.today-classes-carousel::after{content:'';position:absolute;top:0;bottom:0;width:72px;z-index:2;pointer-events:none;}
   .today-classes-carousel::before{left:0;background:linear-gradient(to right,${C.bg},rgba(255,245,248,0));}
@@ -145,13 +142,13 @@ const css = `
   @media(max-width:480px){
     .schedule-shell{padding:16px 10px;}
     .schedule-title h2{font-size:20px;}
-    .schedule-cell{padding:7px 5px;gap:4px;}
-    .schedule-cell.time{font-size:11px;min-width:90px;}
-    .schedule-cell.day{font-size:11px;min-width:50px;}
+    .schedule-cell{padding:6px 5px;gap:3px;}
+    .schedule-cell.time{font-size:10px;min-width:100px;}
+    .schedule-cell.day{font-size:11px;width:48px;min-width:48px;max-width:48px;}
+    .schedule-cell.day-head{width:48px;min-width:48px;max-width:48px;}
     .schedule-item-title{font-size:10px;}
-    .schedule-item-sub{font-size:9px;}
     .schedule-item-tag{font-size:8px;padding:2px 5px;}
-    .schedule-slot-item{padding:7px 5px;border-radius:8px;}
+    .schedule-slot-item{padding:6px 5px;gap:2px;}
     .schedule-block-title{font-size:13px;}
   }
   @media(max-width:640px){
@@ -3125,19 +3122,20 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                         <div
                           className="schedule-grid"
                           style={{
-                            gridTemplateColumns: `${scheduleSplit.morning
-                              .map(() => "minmax(110px, 1fr)")
-                              .join(" ")} 56px`,
+                            gridTemplateColumns: `52px ${scheduleSplit.morning
+                              .map(() => "minmax(115px, 1fr)")
+                              .join(" ")}`,
                           }}
                         >
+                          <div className="schedule-cell sticky day-head">اليوم</div>
                           {scheduleSplit.morning.map((slot) => (
                             <div key={`morning-head-${slot}`} className="schedule-cell time sticky">
                               {formatScheduleTimeLabel(slot)}
                             </div>
                           ))}
-                          <div className="schedule-cell sticky day-head">اليوم</div>
                           {scheduleDays.map((day) => (
                             <div key={`morning-row-${day}`} style={{ display: "contents" }}>
+                              <div className="schedule-cell day">{day}</div>
                               {scheduleSplit.morning.map((slot) => {
                                 const cellEntries = scheduleChoices.filter(
                                   (entry) => entry.day === day && entry.time === slot
@@ -3149,9 +3147,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                                     ) : (
                                       <div className="schedule-slot-box">
                                         {cellEntries.length > 1 ? (
-                                          <div className="schedule-slot-hint">
-                                            اختاري كلاس واحد فقط
-                                          </div>
+                                          <div className="schedule-multi-hint" title="اختاري كلاس واحد فقط" />
                                         ) : null}
                                         {cellEntries.map((entry) => {
                                           const selected = scheduleSelections.includes(entry.id);
@@ -3165,11 +3161,6 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                                               }`}
                                             >
                                               <div className="schedule-item-title">{entry.className}</div>
-                                              {entry.showTrainerName ? (
-                                                <div className="schedule-item-sub" style={{ color: "#fff" }}>
-                                                  {entry.trainer}
-                                                </div>
-                                              ) : null}
                                               <div className="schedule-item-tag">
                                                 {formatClassType(entry.type)}
                                                 {entry.subType ? ` - ${entry.subType}` : ""}
@@ -3182,7 +3173,6 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                                   </div>
                                 );
                               })}
-                              <div className="schedule-cell day">{day}</div>
                             </div>
                           ))}
                         </div>
@@ -3197,19 +3187,20 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                         <div
                           className="schedule-grid"
                           style={{
-                            gridTemplateColumns: `${scheduleSplit.evening
-                              .map(() => "minmax(110px, 1fr)")
-                              .join(" ")} 56px`,
+                            gridTemplateColumns: `52px ${scheduleSplit.evening
+                              .map(() => "minmax(115px, 1fr)")
+                              .join(" ")}`,
                           }}
                         >
+                          <div className="schedule-cell sticky day-head">اليوم</div>
                           {scheduleSplit.evening.map((slot) => (
                             <div key={`evening-head-${slot}`} className="schedule-cell time sticky">
                               {formatScheduleTimeLabel(slot)}
                             </div>
                           ))}
-                          <div className="schedule-cell sticky day-head">اليوم</div>
                           {scheduleDays.map((day) => (
                             <div key={`evening-row-${day}`} style={{ display: "contents" }}>
+                              <div className="schedule-cell day">{day}</div>
                               {scheduleSplit.evening.map((slot) => {
                                 const cellEntries = scheduleChoices.filter(
                                   (entry) => entry.day === day && entry.time === slot
@@ -3221,9 +3212,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                                     ) : (
                                       <div className="schedule-slot-box">
                                         {cellEntries.length > 1 ? (
-                                          <div className="schedule-slot-hint">
-                                            اختاري كلاس واحد فقط
-                                          </div>
+                                          <div className="schedule-multi-hint" title="اختاري كلاس واحد فقط" />
                                         ) : null}
                                         {cellEntries.map((entry) => {
                                           const selected = scheduleSelections.includes(entry.id);
@@ -3237,11 +3226,6 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                                               }`}
                                             >
                                               <div className="schedule-item-title">{entry.className}</div>
-                                              {entry.showTrainerName ? (
-                                                <div className="schedule-item-sub" style={{ color: "#fff" }}>
-                                                  {entry.trainer}
-                                                </div>
-                                              ) : null}
                                               <div className="schedule-item-tag">
                                                 {formatClassType(entry.type)}
                                                 {entry.subType ? ` - ${entry.subType}` : ""}
@@ -3254,7 +3238,6 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                                   </div>
                                 );
                               })}
-                              <div className="schedule-cell day">{day}</div>
                             </div>
                           ))}
                         </div>
