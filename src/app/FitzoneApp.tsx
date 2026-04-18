@@ -869,11 +869,11 @@ const Footer = ({ navigate }: { navigate: (p: string) => void }) => {
         </div>
       </div>
       <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 24, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
-        <p style={{ color: C.goldDark, fontSize: 12 }}>
+        <p style={{ color: C.gray, fontSize: 12 }}>
           {t("© 2026 FIT ZONE Fitness Club. جميع الحقوق محفوظة.", "© 2026 FIT ZONE Fitness Club. All rights reserved.")}
         </p>
         <div style={{ display: "flex", gap: 4 }}>
-          <span style={{ color: C.goldDark, fontSize: 11 }}>
+          <span style={{ color: C.gray, fontSize: 11 }}>
             {t("صُمم بـ ♥ لفريق فيت زون", "Made with ♥ by Fit Zone team")}
           </span>
         </div>
@@ -885,9 +885,10 @@ const Footer = ({ navigate }: { navigate: (p: string) => void }) => {
 
 
 function useViewportFlags() {
-  const [width, setWidth] = useState(typeof window === "undefined" ? 1280 : window.innerWidth);
+  const [width, setWidth] = useState(1280);
 
   useEffect(() => {
+    setWidth(window.innerWidth);
     const onResize = () => setWidth(window.innerWidth);
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
@@ -1816,7 +1817,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
   return (
     <div>
       {/* ─ HERO ─ */}
-      <section style={{ position: "relative", minHeight: viewportWidth() < 768 ? 520 : 600, display: "flex", alignItems: "center", overflow: "hidden" }}>
+      <section style={{ position: "relative", minHeight: 520, display: "flex", alignItems: "center", overflow: "hidden" }}>
         <div style={{ position: "absolute", inset: 0 }}>
           <GymImg type="gymReal" w="100%" h={600} />
           <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg, rgba(252,228,236,.85) 30%, rgba(255,240,245,.4) 100%)" }} />
@@ -2111,7 +2112,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
             <h2 className="section-title">{t("اختاري", "Choose")} <span>{t("الباقة", "the plan")}</span> {t("المناسبة", "that fits")}</h2>
             <p className="section-sub">{t("اشتراكات شهرية وباقات جيم مرنة تناسب أهداف السيدات والأطفال في بني سويف، بأسعار واضحة وخيارات متعددة.", "Flexible gym memberships and plans for women and kids in Beni Suef, with clear pricing and multiple options.")}</p>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 24 }}>
+          <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 24, minHeight: memberships.length === 0 ? 400 : undefined }}>
             {memberships.map(m => (
               <div key={m.name} className={`card card-hover`} style={{ padding: 32, position: "relative", border: m.popular ? `2px solid ${C.red}` : `1px solid ${C.border}`, transform: m.popular ? "scale(1.03)" : "none" }}>
                 {m.popular && (
