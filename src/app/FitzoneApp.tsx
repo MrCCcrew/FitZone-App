@@ -32,8 +32,8 @@ const css = `
   .btn-primary:hover{background:${C.red};transform:translateY(-1px);box-shadow:0 6px 20px rgba(233,30,99,.35);}
   .btn-gold{background:linear-gradient(135deg,${C.gold},${C.goldLight});color:#000;border:none;padding:12px 28px;border-radius:6px;font-family:'Cairo',sans-serif;font-size:15px;font-weight:700;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;gap:8px;}
   .btn-gold:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(200,162,0,.35);}
-  .btn-outline{background:transparent;color:${C.red};border:2px solid ${C.red};padding:10px 26px;border-radius:6px;font-family:'Cairo',sans-serif;font-size:15px;font-weight:700;cursor:pointer;transition:all .2s;}
-  .btn-outline:hover{background:${C.red};color:#fff;}
+  .btn-outline{background:transparent;color:${C.redDark};border:2px solid ${C.redDark};padding:10px 26px;border-radius:6px;font-family:'Cairo',sans-serif;font-size:15px;font-weight:700;cursor:pointer;transition:all .2s;}
+  .btn-outline:hover{background:${C.redDark};color:#fff;}
   .btn-outline-gold{background:transparent;color:${C.goldDark};border:1.5px solid ${C.gold};padding:8px 20px;border-radius:6px;font-family:'Cairo',sans-serif;font-size:14px;font-weight:600;cursor:pointer;transition:all .2s;}
   .btn-outline-gold:hover{background:${C.gold};color:#000;}
   .btn-ghost{background:rgba(233,30,99,.06);color:${C.white};border:1px solid ${C.border};padding:10px 22px;border-radius:6px;font-family:'Cairo',sans-serif;font-size:14px;font-weight:600;cursor:pointer;transition:all .2s;}
@@ -46,9 +46,9 @@ const css = `
   .section{padding:72px 0;}
   .container{max-width:1280px;margin:0 auto;padding:0 24px;}
 
-  .tag{display:inline-flex;align-items:center;background:rgba(233,30,99,.15);color:${C.red};padding:4px 14px;border-radius:4px;font-size:12px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;}
+  .tag{display:inline-flex;align-items:center;background:rgba(194,24,91,.12);color:${C.redDark};padding:4px 14px;border-radius:4px;font-size:12px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;}
   .tag-gold{background:rgba(200,162,0,.15);color:${C.goldDark};padding:4px 14px;border-radius:4px;font-size:11px;font-weight:700;display:inline-flex;align-items:center;}
-  .badge{display:inline-flex;align-items:center;background:${C.red};color:#fff;padding:3px 10px;border-radius:4px;font-size:11px;font-weight:700;}
+  .badge{display:inline-flex;align-items:center;background:${C.redDark};color:#fff;padding:3px 10px;border-radius:4px;font-size:11px;font-weight:700;}
   .badge-gold{background:${C.gold};color:#000;}
   .badge-green{background:rgba(34,197,94,.15);color:${C.success};border:1px solid rgba(34,197,94,.3);}
 
@@ -68,7 +68,7 @@ const css = `
   .tab.active{background:${C.red};color:#fff;border-color:${C.red};}
   .tab:not(.active):hover{border-color:${C.border};color:${C.white};}
 
-  .price-big{font-size:44px;font-weight:900;color:${C.red};}
+  .price-big{font-size:44px;font-weight:900;color:${C.redDark};}
   .price-currency{font-size:18px;font-weight:700;}
 
   ::-webkit-scrollbar{width:6px;}
@@ -664,12 +664,12 @@ const Header = ({
             title={lang === "ar" ? "English" : "العربية"}
             aria-label={lang === "ar" ? "Switch to English" : "التبديل إلى العربية"}
             style={{
-              background: "rgba(233,30,99,.12)",
-              border: `1px solid ${C.red}33`,
+              background: "rgba(194,24,91,.1)",
+              border: `1px solid ${C.redDark}44`,
               borderRadius: 6,
               padding: "6px 10px",
               cursor: "pointer",
-              color: C.red,
+              color: C.redDark,
               fontSize: 12,
               fontWeight: 700,
               fontFamily: "'Cairo', sans-serif",
@@ -679,7 +679,7 @@ const Header = ({
           >
             {lang === "ar" ? "EN" : "ع"}
           </button>
-          <button onClick={() => navigate("wallet")} aria-label={t("المحفظة", "Wallet")} style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(233,30,99,.12)", border: `1px solid ${C.red}33`, borderRadius: 6, padding: "6px 12px", cursor: "pointer", color: C.red, fontSize: 12, fontWeight: 700, fontFamily: "'Cairo', sans-serif" }}>
+          <button onClick={() => navigate("wallet")} aria-label={t("المحفظة", "Wallet")} style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(194,24,91,.1)", border: `1px solid ${C.redDark}44`, borderRadius: 6, padding: "6px 12px", cursor: "pointer", color: C.redDark, fontSize: 12, fontWeight: 700, fontFamily: "'Cairo', sans-serif" }}>
             <I n="wallet" s={14} c={C.red} />
             <span className="hide-mobile">
               {(summary?.walletBalance ?? 0) > 0
@@ -860,7 +860,7 @@ const Footer = ({ navigate }: { navigate: (p: string) => void }) => {
           </div>
         ))}
         <div>
-          <h4 style={{ fontWeight: 700, marginBottom: 16, color: C.white, fontSize: 14 }}>{t("معلومات التواصل", "Contact info")}</h4>
+          <p style={{ fontWeight: 700, marginBottom: 16, color: C.white, fontSize: 14, margin: "0 0 16px" }}>{t("معلومات التواصل", "Contact info")}</p>
           {[["phone", contact.phone], ["mail", contact.email], ["map", contact.address]].map(([icon, text]) => (
             <div key={text} style={{ display: "flex", gap: 8, alignItems: "flex-start", marginBottom: 10, color: C.gray, fontSize: 12 }}>
               <I n={icon} s={14} c={C.red} /><span>{text}</span>
@@ -1431,11 +1431,11 @@ const cycleLabel = (cycle?: string | null, days?: number) => {
   return labels.annual;
 };
 const DEFAULT_HERO_SLIDES = [
-  "https://images.unsplash.com/photo-1518611012118-696072aa579a?auto=format&fit=crop&w=1200&q=80",
-  "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?auto=format&fit=crop&w=1200&q=80",
-  "https://images.unsplash.com/photo-1518310383802-640c2de311b2?auto=format&fit=crop&w=1200&q=80",
-  "https://images.unsplash.com/photo-1517838277536-f5f99be501cd?auto=format&fit=crop&w=1200&q=80",
-  "https://images.unsplash.com/photo-1517838277536-f5f99be501cd?auto=format&fit=crop&w=1200&q=80&sat=-20",
+  "https://images.unsplash.com/photo-1518611012118-696072aa579a?auto=format&fit=crop&w=800&q=75",
+  "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?auto=format&fit=crop&w=800&q=75",
+  "https://images.unsplash.com/photo-1518310383802-640c2de311b2?auto=format&fit=crop&w=800&q=75",
+  "https://images.unsplash.com/photo-1517838277536-f5f99be501cd?auto=format&fit=crop&w=800&q=75",
+  "https://images.unsplash.com/photo-1517838277536-f5f99be501cd?auto=format&fit=crop&w=800&q=75&sat=-20",
 ];
 type HomeHeroContent = {
   badge: string;
@@ -1945,7 +1945,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
           <div style={{ width: 36, height: 36, background: "rgba(233,30,99,.15)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center" }}>🏆</div>
           <div>
             <div style={{ fontWeight: 700, fontSize: 13, color: C.white }}>{summary?.authenticated ? (summary.user?.name || "عضوة جديدة") : "مشتركات اليوم"}</div>
-            <div style={{ fontSize: 11, color: C.red }}>{summary?.authenticated ? `الباقة: ${summary.membership?.name ?? "بدون اشتراك"}` : "+12 عضوة جديدة"}</div>
+            <div style={{ fontSize: 11, color: C.redDark }}>{summary?.authenticated ? `الباقة: ${summary.membership?.name ?? "بدون اشتراك"}` : "+12 عضوة جديدة"}</div>
           </div>
         </div>
       </section>
@@ -2115,16 +2115,16 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
             {memberships.map(m => (
               <div key={m.name} className={`card card-hover`} style={{ padding: 32, position: "relative", border: m.popular ? `2px solid ${C.red}` : `1px solid ${C.border}`, transform: m.popular ? "scale(1.03)" : "none" }}>
                 {m.popular && (
-                  <div style={{ position: "absolute", top: -5, left: "50%", transform: "translateX(-50%)", background: C.red, color: "#fff", padding: "4px 20px", borderRadius: 4, fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>⭐ {t("الأكثر شعبية", "Most popular")}</div>
+                  <div style={{ position: "absolute", top: -5, left: "50%", transform: "translateX(-50%)", background: C.redDark, color: "#fff", padding: "4px 20px", borderRadius: 4, fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>⭐ {t("الأكثر شعبية", "Most popular")}</div>
                 )}
                 <h3 style={{ fontSize: 20, fontWeight: 900, color: C.white }}>{t("باقة", "Plan")} {m.name}</h3>
                 <div style={{ margin: "16px 0 24px" }}>
-                  <span className="price-currency" style={{ color: m.color === C.gold ? C.goldDark : m.color }}>{lang === "en" ? "EGP " : "ج.م "}</span>
-                  <span className="price-big" style={{ color: m.color === C.gold ? C.goldDark : m.color }}>{m.priceAfter ?? m.price}</span>
+                  <span className="price-currency" style={{ color: m.color === C.gold ? C.goldDark : m.color === C.red ? C.redDark : m.color }}>{lang === "en" ? "EGP " : "ج.م "}</span>
+                  <span className="price-big" style={{ color: m.color === C.gold ? C.goldDark : m.color === C.red ? C.redDark : m.color }}>{m.priceAfter ?? m.price}</span>
                   <span style={{ color: C.gray, fontSize: 13 }}> / {m.period}</span>
                 </div>
                 {m.priceBefore && m.priceBefore > (m.priceAfter ?? m.price) ? (
-                  <div style={{ color: "#a08898", fontSize: 13, textDecoration: "line-through", marginTop: -12, marginBottom: 12 }}>
+                  <div style={{ color: C.gray, fontSize: 13, textDecoration: "line-through", marginTop: -12, marginBottom: 12 }}>
                     {m.priceBefore} {lang === "en" ? "EGP" : "ج.م"}
                   </div>
                 ) : null}
@@ -2245,7 +2245,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
             {walletHighlights.map(([icon,val,lbl]) => (
               <div key={lbl} style={{ background: C.bgCard2, border: `1px solid ${C.border}`, borderRadius: 12, padding: "20px 16px", textAlign: "center" }}>
                 <div style={{ fontSize: 26, marginBottom: 8 }}>{icon}</div>
-                <div style={{ color: C.gold, fontWeight: 900, fontSize: 20 }}>{val}</div>
+                <div style={{ color: C.goldDark, fontWeight: 900, fontSize: 20 }}>{val}</div>
                 <div style={{ color: C.gray, fontSize: 11, marginTop: 4 }}>{lbl}</div>
               </div>
             ))}
@@ -2291,14 +2291,14 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                 >
                   <div style={{ position: "relative", aspectRatio: "1/1", overflow: "hidden", background: "#f8f3f5" }}>
                     <ProductVisual product={p} h={300} />
-                    {p.badge && <span style={{ position: "absolute", top: 10, right: 10, zIndex: 2, background: C.red, color: "#fff", fontSize: 11, fontWeight: 800, padding: "3px 10px", borderRadius: 99 }}>{p.badge}</span>}
+                    {p.badge && <span style={{ position: "absolute", top: 10, right: 10, zIndex: 2, background: C.redDark, color: "#fff", fontSize: 11, fontWeight: 800, padding: "3px 10px", borderRadius: 99 }}>{p.badge}</span>}
                     {outOfStock && <div style={{ position: "absolute", inset: 0, zIndex: 3, background: "rgba(0,0,0,.45)", display: "flex", alignItems: "center", justifyContent: "center" }}><span style={{ color: "#ffd166", fontWeight: 900, fontSize: 14 }}>{t("نفذت الكمية", "Out of stock")}</span></div>}
                   </div>
                   <div style={{ padding: "14px 16px 16px", display: "flex", flexDirection: "column", flex: 1 }}>
                     <h3 style={{ fontWeight: 700, fontSize: 14, color: "#1a0c14", marginBottom: 8, lineHeight: 1.5, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{p.name}</h3>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, marginTop: "auto" }}>
-                      <span style={{ fontWeight: 900, color: C.red, fontSize: 20 }}>{p.price} <span style={{ fontSize: 12 }}>{lang === "en" ? "EGP" : "ج.م"}</span></span>
-                      {p.oldPrice && <span style={{ textDecoration: "line-through", color: "#a08898", fontSize: 13 }}>{p.oldPrice}</span>}
+                      <span style={{ fontWeight: 900, color: C.redDark, fontSize: 20 }}>{p.price} <span style={{ fontSize: 12 }}>{lang === "en" ? "EGP" : "ج.م"}</span></span>
+                      {p.oldPrice && <span style={{ textDecoration: "line-through", color: C.gray, fontSize: 13 }}>{p.oldPrice}</span>}
                     </div>
                     <button
                       style={{ width: "100%", padding: "10px", borderRadius: 10, border: "none", background: outOfStock ? "#e5e7eb" : `linear-gradient(135deg,${C.red},#c2185b)`, color: outOfStock ? "#9ca3af" : "#fff", fontWeight: 800, fontSize: 13, cursor: outOfStock ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontFamily: "inherit", boxShadow: outOfStock ? "none" : "0 4px 14px rgba(233,30,99,.3)" }}
@@ -2346,9 +2346,9 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                 </div>
                 <div style={{ padding: "20px 24px 24px" }}>
                   <h3 style={{ fontWeight: 800, fontSize: 17, color: C.white }}>{t.name}</h3>
-                  <p style={{ color: C.red, fontSize: 13, fontWeight: 600, marginTop: 4, marginBottom: 16 }}>{t.specialty}</p>
+                  <p style={{ color: C.redDark, fontSize: 13, fontWeight: 600, marginTop: 4, marginBottom: 16 }}>{t.specialty}</p>
                   <div style={{ display: "flex", justifyContent: "center", gap: 24, marginBottom: 16 }}>
-                    <div><div style={{ fontWeight: 700, color: C.red }}>⭐ {t.rating}</div><div style={{ fontSize: 11, color: C.gray }}>التقييم</div></div>
+                    <div><div style={{ fontWeight: 700, color: C.redDark }}>⭐ {t.rating}</div><div style={{ fontSize: 11, color: C.gray }}>التقييم</div></div>
                     <div><div style={{ fontWeight: 700, color: C.white }}>{t.sessionsCount}</div><div style={{ fontSize: 11, color: C.gray }}>جلسة</div></div>
                   </div>
                   <button className="btn-outline" style={{ width: "100%" }} onClick={() => navigate("trainers")}>عرض الملف</button>
@@ -3558,7 +3558,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                         <span style={{ color: C.gray, fontSize: 12 }}>{cycleLabel(p.cycle, p.durationDays)}</span>
                       </div>
                       {hasDiscount ? (
-                        <div style={{ marginTop: 6, color: "#a08898", fontSize: 12, textDecoration: "line-through" }}>
+                        <div style={{ marginTop: 6, color: C.gray, fontSize: 12, textDecoration: "line-through" }}>
                           {formatCurrency(before)} ج.م
                         </div>
                       ) : null}
@@ -3785,7 +3785,7 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
                       <span style={{ fontSize: 38, fontWeight: 900, color: C.red }}>{after}</span>
                       <span style={{ color: C.gray, fontSize: 14 }}>ج.م</span>
                       {before != null && before > after && (
-                        <span style={{ textDecoration: "line-through", color: "#a08898", fontSize: 15 }}>{before} ج.م</span>
+                        <span style={{ textDecoration: "line-through", color: C.gray, fontSize: 15 }}>{before} ج.م</span>
                       )}
                     </div>
                     <button className="btn-primary" style={{ width: "100%", justifyContent: "center" }} onClick={() => navigate("memberships")}>اختاري الباقة</button>
@@ -4386,15 +4386,15 @@ const ProductMiniCard = ({
         {product.rating > 0 && (
           <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 6 }}>
             {[1,2,3,4,5].map(s => <span key={s} style={{ fontSize: 12, color: s <= Math.round(product.rating) ? "#f59e0b" : "#e5e7eb" }}>★</span>)}
-            <span style={{ fontSize: 11, color: "#a08898" }}>({product.reviewCount ?? 0})</span>
+            <span style={{ fontSize: 11, color: C.gray }}>({product.reviewCount ?? 0})</span>
           </div>
         )}
         {product.sizeType !== "none" && product.sizes && product.sizes.length > 0 && (
-          <div style={{ color: "#a08898", fontSize: 11, marginBottom: 6 }}>{t("المقاسات", "Sizes")}: {product.sizes.slice(0, 4).join(" - ")}</div>
+          <div style={{ color: C.gray, fontSize: 11, marginBottom: 6 }}>{t("المقاسات", "Sizes")}: {product.sizes.slice(0, 4).join(" - ")}</div>
         )}
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, marginTop: "auto" }}>
           <span style={{ fontWeight: 900, color: C.red, fontSize: 20 }}>{formatCurrency(product.price)} <span style={{ fontSize: 12, fontWeight: 600 }}>{lang === "en" ? "EGP" : "ج.م"}</span></span>
-          {product.oldPrice && <span style={{ textDecoration: "line-through", color: "#a08898", fontSize: 13 }}>{formatCurrency(product.oldPrice)}</span>}
+          {product.oldPrice && <span style={{ textDecoration: "line-through", color: C.gray, fontSize: 13 }}>{formatCurrency(product.oldPrice)}</span>}
         </div>
         <button
           style={{ width: "100%", padding: "10px", borderRadius: 10, border: "none", background: outOfStock ? "#e5e7eb" : `linear-gradient(135deg,${C.red},#c2185b)`, color: outOfStock ? "#9ca3af" : "#fff", fontWeight: 800, fontSize: 13, cursor: outOfStock ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontFamily: "inherit", boxShadow: outOfStock ? "none" : "0 4px 14px rgba(233,30,99,.3)" }}
@@ -4792,7 +4792,7 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
             <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginBottom: 18 }}>
               <span style={{ fontSize: viewportWidth() < 768 ? 34 : 42, fontWeight: 900, color: C.red }}>{product.price}</span>
               <span style={{ color: C.gray }}>{lang === "en" ? "EGP" : "ج.م"}</span>
-              {product.oldPrice && <span style={{ textDecoration: "line-through", color: "#a08898", fontSize: 16 }}>{formatCurrency(product.oldPrice)}</span>}
+              {product.oldPrice && <span style={{ textDecoration: "line-through", color: C.gray, fontSize: 16 }}>{formatCurrency(product.oldPrice)}</span>}
               {product.badge && <span className="badge">{localizeDiscountBadge(product.badge, lang)}</span>}
               {outOfStock && <span className="badge" style={{ background: "#2b0f1b", color: "#ffd166" }}>{t("نفذت الكمية", "Out of stock")}</span>}
             </div>
@@ -5026,7 +5026,7 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
                       {item.rating > 0 && <div style={{ display: "flex", gap: 2, marginBottom: 6 }}>{[1,2,3,4,5].map(s => <span key={s} style={{ fontSize: 11, color: s <= Math.round(item.rating) ? "#f59e0b" : "#e5e7eb" }}>★</span>)}</div>}
                       <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10, marginTop: "auto" }}>
                         <span style={{ fontWeight: 900, color: C.red, fontSize: 17 }}>{formatCurrency(item.price)} <span style={{ fontSize: 11 }}>ج.م</span></span>
-                        {item.oldPrice && <span style={{ textDecoration: "line-through", color: "#a08898", fontSize: 12 }}>{formatCurrency(item.oldPrice)}</span>}
+                        {item.oldPrice && <span style={{ textDecoration: "line-through", color: C.gray, fontSize: 12 }}>{formatCurrency(item.oldPrice)}</span>}
                       </div>
                       <button
                         style={{ width: "100%", padding: "8px", borderRadius: 9, border: "none", background: `linear-gradient(135deg,${C.red},#c2185b)`, color: "#fff", fontWeight: 800, fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, fontFamily: "inherit", boxShadow: "0 3px 10px rgba(233,30,99,.25)" }}

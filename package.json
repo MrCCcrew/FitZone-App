@@ -52,5 +52,20 @@
   },
   "devDependencies": {
     "@types/web-push": "^3.6.4"
+  },
+  "browserslist": {
+    "production": [
+      "chrome >= 93",
+      "firefox >= 92",
+      "safari >= 15",
+      "edge >= 93",
+      "not dead",
+      ">0.3%"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
   }
 }
