@@ -264,7 +264,7 @@ export async function GET(request: Request) {
   try {
     const lang = new URL(request.url).searchParams.get("lang") === "en" ? "en" : "ar";
     const now = Date.now();
-    const cached = getPublicApiCache();
+    const cached = getPublicApiCache(lang);
 
     if (cached && cached.expiresAt > now) {
       return NextResponse.json(cached.payload, { headers: RESPONSE_HEADERS });
@@ -636,7 +636,7 @@ export async function GET(request: Request) {
       },
     };
 
-    setPublicApiCache({
+    setPublicApiCache(lang, {
       expiresAt: now + 30_000,
       payload,
     });

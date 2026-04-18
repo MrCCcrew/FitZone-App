@@ -9,18 +9,23 @@ type PublicPayload = {
   testimonials: Array<unknown>;
 };
 
+type CacheEntry = { expiresAt: number; payload: PublicPayload };
+
 type PublicCacheState = {
-  fitzonePublicApiCache?: { expiresAt: number; payload: PublicPayload };
+  fitzonePublicApiCache?: Record<string, CacheEntry>;
 };
 
 const globalForPublicApiCache = globalThis as unknown as PublicCacheState;
 
-export function getPublicApiCache() {
-  return globalForPublicApiCache.fitzonePublicApiCache;
+export function getPublicApiCache(lang: string) {
+  return globalForPublicApiCache.fitzonePublicApiCache?.[lang];
 }
 
-export function setPublicApiCache(cache: { expiresAt: number; payload: PublicPayload }) {
-  globalForPublicApiCache.fitzonePublicApiCache = cache;
+export function setPublicApiCache(lang: string, cache: CacheEntry) {
+  if (!globalForPublicApiCache.fitzonePublicApiCache) {
+    globalForPublicApiCache.fitzonePublicApiCache = {};
+  }
+  globalForPublicApiCache.fitzonePublicApiCache[lang] = cache;
 }
 
 export function clearPublicApiCache() {
