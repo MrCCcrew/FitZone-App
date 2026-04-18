@@ -4512,21 +4512,23 @@ const ShopPage = ({ navigate }: { navigate: (p: string) => void }) => {
       </section>
       <section className="section">
         <div className="container">
-          <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginBottom: 32 }}>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {categoryButtons.map((label) => {
-                const categoryRecord = categories.find((item) => item.label === label);
-                const displayLabel = label === allLabel ? allLabel : localizeStoreCategory(label, categoryRecord?.key, lang);
-                const icon = label !== allLabel ? categoryRecord?.icon : null;
-                return (
-                  <button key={label} className={`tab ${cat === label ? "active" : ""}`} onClick={() => setCat(label)} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    {icon && <img src={icon} alt="" style={{ width: 20, height: 20, objectFit: "contain" }} />}
-                    {displayLabel}
-                  </button>
-                );
-              })}
+          <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 32 }}>
+            <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch", paddingBottom: 4 }}>
+              <div style={{ display: "flex", gap: 8, flexWrap: "nowrap", minWidth: "max-content" }}>
+                {categoryButtons.map((label) => {
+                  const categoryRecord = categories.find((item) => item.label === label);
+                  const displayLabel = label === allLabel ? allLabel : localizeStoreCategory(label, categoryRecord?.key, lang);
+                  const icon = label !== allLabel ? categoryRecord?.icon : null;
+                  return (
+                    <button key={label} className={`tab ${cat === label ? "active" : ""}`} onClick={() => setCat(label)} style={{ display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
+                      {icon && <img src={icon} alt="" style={{ width: 20, height: 20, objectFit: "contain" }} />}
+                      {displayLabel}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-            <div style={{ position: "relative", minWidth: 260, flex: "1 1 260px", maxWidth: 360 }}>
+            <div style={{ position: "relative", width: "100%" }}>
               <input className="input" placeholder={t("ابحثي عن منتج أو مقاس أو وصف...", "Search for a product, size, or description...")} value={search} onChange={e => setSearch(e.target.value)} style={{ paddingRight: 44 }} />
               <span style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)" }}><I n="search" s={18} c={C.gray} /></span>
             </div>
@@ -4723,8 +4725,8 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
 
   return (
     <div>
-      <div className="container" style={{ padding: "48px 24px" }}>
-        <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr", "1fr 1fr"), gap: 48, alignItems: "start" }}>
+      <div className="container" style={{ padding: viewportWidth() < 768 ? "24px 16px" : "48px 24px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr", "1fr 1fr"), gap: viewportWidth() < 768 ? 24 : 48, alignItems: "start" }}>
           <div>
             <div
               style={{ borderRadius: 12, overflow: "hidden", marginBottom: 12, position: "relative", cursor: product.images && product.images.length > 0 ? "zoom-in" : "default" }}
@@ -4787,7 +4789,7 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
           </div>
           <div>
             <span className="tag" style={{ marginBottom: 12, display: "inline-flex" }}>{product.cat}</span>
-            <h1 style={{ fontSize: 30, fontWeight: 900, color: C.white, marginBottom: 12 }}>{product.name}</h1>
+            <h1 style={{ fontSize: viewportWidth() < 768 ? 22 : 30, fontWeight: 900, color: C.white, marginBottom: 12 }}>{product.name}</h1>
             <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginBottom: 18 }}>
               <span style={{ fontSize: viewportWidth() < 768 ? 34 : 42, fontWeight: 900, color: C.red }}>{product.price}</span>
               <span style={{ color: C.gray }}>{lang === "en" ? "EGP" : "ج.م"}</span>
@@ -4832,7 +4834,7 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
               </div>
             )}
 
-            <div style={{ display: "flex", gap: 12, marginBottom: 24, alignItems: "center" }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 24, alignItems: "center" }}>
               <div style={{ display: "flex", alignItems: "center", border: `1px solid ${C.border}`, borderRadius: 8, overflow: "hidden" }}>
                 <button disabled={outOfStock} onClick={() => setQty((value) => Math.max(1, value - 1))} style={{ padding: "10px 14px", border: "none", background: C.bgCard, cursor: outOfStock ? "not-allowed" : "pointer", opacity: outOfStock ? 0.5 : 1 }}>-</button>
                 <div style={{ padding: "10px 16px", minWidth: 46, textAlign: "center" }}>{qty}</div>
@@ -4840,7 +4842,7 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
               </div>
               <button
                 className="btn-primary"
-                style={{ flex: 1, justifyContent: "center", opacity: outOfStock ? 0.5 : 1 }}
+                style={{ flex: 1, minWidth: 160, justifyContent: "center", opacity: outOfStock ? 0.5 : 1 }}
                 disabled={outOfStock}
                 onClick={() => {
                   if (outOfStock) return;
@@ -4892,8 +4894,8 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
         {/* من يجب أن يشتري */}
         {product.whoShouldBuy && product.whoShouldBuy.length > 0 && (
           <div style={{ marginTop: 40 }}>
-            <h2 style={{ fontSize: 22, fontWeight: 900, color: C.white, marginBottom: 20 }}>{t("من يجب أن يشتري؟", "Who Should Buy?")}</h2>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 16 }}>
+            <h2 style={{ fontSize: viewportWidth() < 768 ? 18 : 22, fontWeight: 900, color: C.white, marginBottom: 20 }}>{t("من يجب أن يشتري؟", "Who Should Buy?")}</h2>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(260px, 100%), 1fr))", gap: 16 }}>
               {product.whoShouldBuy.map((item, i) => (
                 <div key={i} className="card" style={{ padding: 20, borderRight: `4px solid ${item.suitable ? C.success : "#ef4444"}` }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
@@ -4926,7 +4928,7 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
         {/* أسئلة وأجوبة */}
         {product.faqs && product.faqs.length > 0 && (
           <div style={{ marginTop: 40 }}>
-            <h2 style={{ fontSize: 22, fontWeight: 900, color: C.white, marginBottom: 20 }}>{t("أسئلة وأجوبة العملاء", "Customer Q&A")}</h2>
+            <h2 style={{ fontSize: viewportWidth() < 768 ? 18 : 22, fontWeight: 900, color: C.white, marginBottom: 20 }}>{t("أسئلة وأجوبة العملاء", "Customer Q&A")}</h2>
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {product.faqs.map((faq, i) => (
                 <div key={i} className="card" style={{ padding: 20 }}>
