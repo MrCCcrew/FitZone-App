@@ -34,7 +34,7 @@ const css = `
   .btn-gold:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(200,162,0,.35);}
   .btn-outline{background:transparent;color:${C.red};border:2px solid ${C.red};padding:10px 26px;border-radius:6px;font-family:'Cairo',sans-serif;font-size:15px;font-weight:700;cursor:pointer;transition:all .2s;}
   .btn-outline:hover{background:${C.red};color:#fff;}
-  .btn-outline-gold{background:transparent;color:${C.gold};border:1.5px solid ${C.gold};padding:8px 20px;border-radius:6px;font-family:'Cairo',sans-serif;font-size:14px;font-weight:600;cursor:pointer;transition:all .2s;}
+  .btn-outline-gold{background:transparent;color:${C.goldDark};border:1.5px solid ${C.gold};padding:8px 20px;border-radius:6px;font-family:'Cairo',sans-serif;font-size:14px;font-weight:600;cursor:pointer;transition:all .2s;}
   .btn-outline-gold:hover{background:${C.gold};color:#000;}
   .btn-ghost{background:rgba(233,30,99,.06);color:${C.white};border:1px solid ${C.border};padding:10px 22px;border-radius:6px;font-family:'Cairo',sans-serif;font-size:14px;font-weight:600;cursor:pointer;transition:all .2s;}
   .btn-ghost:hover{background:rgba(233,30,99,.12);}
@@ -47,7 +47,7 @@ const css = `
   .container{max-width:1280px;margin:0 auto;padding:0 24px;}
 
   .tag{display:inline-flex;align-items:center;background:rgba(233,30,99,.15);color:${C.red};padding:4px 14px;border-radius:4px;font-size:12px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;}
-  .tag-gold{background:rgba(200,162,0,.15);color:${C.gold};padding:4px 14px;border-radius:4px;font-size:11px;font-weight:700;display:inline-flex;align-items:center;}
+  .tag-gold{background:rgba(200,162,0,.15);color:${C.goldDark};padding:4px 14px;border-radius:4px;font-size:11px;font-weight:700;display:inline-flex;align-items:center;}
   .badge{display:inline-flex;align-items:center;background:${C.red};color:#fff;padding:3px 10px;border-radius:4px;font-size:11px;font-weight:700;}
   .badge-gold{background:${C.gold};color:#000;}
   .badge-green{background:rgba(34,197,94,.15);color:${C.success};border:1px solid rgba(34,197,94,.3);}
@@ -622,7 +622,7 @@ const Header = ({
   return (
     <header style={{ background: "rgba(255,245,248,.97)", backdropFilter: "blur(12px)", borderBottom: `1px solid ${C.border}`, position: "sticky", top: 0, zIndex: 100 }}>
       {/* Top bar */}
-      <div style={{ background: C.red, padding: "6px 0", textAlign: "center" }}>
+      <div style={{ background: C.redDark, padding: "6px 0", textAlign: "center" }}>
         <span style={{ fontSize: 12, fontWeight: 600, color: "#fff" }}>
           {announcements.length > 0 ? announcements[annIndex] : t(DEFAULT_TOP_BAR.ar, DEFAULT_TOP_BAR.en)}
         </span>
@@ -632,7 +632,7 @@ const Header = ({
           <FZLogo size={56} />
           <div>
             <div style={{ fontSize: 19, fontWeight: 900, color: C.white, letterSpacing: 1, lineHeight: 1 }}>FIT ZONE</div>
-            <div style={{ fontSize: 10, color: C.gold, letterSpacing: 2, lineHeight: 1.1, marginTop: 3 }}>FITNESS CLUB</div>
+            <div style={{ fontSize: 10, color: C.redDark, letterSpacing: 2, lineHeight: 1.1, marginTop: 3 }}>FITNESS CLUB</div>
           </div>
         </div>
         <nav className="hide-mobile" style={{ display: "flex", gap: 2 }}>
@@ -662,6 +662,7 @@ const Header = ({
           <button
             onClick={toggleLang}
             title={lang === "ar" ? "English" : "العربية"}
+            aria-label={lang === "ar" ? "Switch to English" : "التبديل إلى العربية"}
             style={{
               background: "rgba(233,30,99,.12)",
               border: `1px solid ${C.red}33`,
@@ -686,7 +687,7 @@ const Header = ({
                 : t("شحن المحفظة", "Top up wallet")}
             </span>
           </button>
-          <button onClick={() => navigate("cart")} style={{ position: "relative", background: "none", border: "none", cursor: "pointer", padding: 8 }}>
+          <button onClick={() => navigate("cart")} aria-label={t("عربة التسوق", "Shopping cart")} style={{ position: "relative", background: "none", border: "none", cursor: "pointer", padding: 8 }}>
             <I n="cart" s={20} c={C.gray} />
             {cartCount > 0 && <span style={{ position: "absolute", top: 2, left: 2, width: 16, height: 16, background: C.red, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: "#fff", fontWeight: 700 }}>{cartCount}</span>}
           </button>
@@ -713,7 +714,7 @@ const Header = ({
           <button className="btn-primary hide-mobile" onClick={() => navigate("memberships")} style={{ padding: "8px 18px", fontSize: 13 }}>
             {t("اشتركي الآن", "Subscribe now")}
           </button>
-          <button onClick={() => setMobileOpen(!mobileOpen)} style={{ background: "none", border: "none", cursor: "pointer", padding: 8 }} className="hide-desktop">
+          <button onClick={() => setMobileOpen(!mobileOpen)} aria-label={mobileOpen ? t("إغلاق القائمة", "Close menu") : t("فتح القائمة", "Open menu")} style={{ background: "none", border: "none", cursor: "pointer", padding: 8 }} className="hide-desktop">
             <I n={mobileOpen ? "x" : "menu"} s={22} c={C.white} />
           </button>
         </div>
@@ -764,7 +765,7 @@ const Footer = ({ navigate }: { navigate: (p: string) => void }) => {
             <FZLogo size={44} />
             <div>
               <div style={{ fontSize: 18, fontWeight: 900, color: C.white, letterSpacing: 1 }}>FIT ZONE</div>
-              <div style={{ fontSize: 10, color: C.gold, letterSpacing: 2 }}>FITNESS CLUB</div>
+              <div style={{ fontSize: 10, color: C.redDark, letterSpacing: 2 }}>FITNESS CLUB</div>
             </div>
           </div>
           <p style={{ color: C.gray, fontSize: 13, lineHeight: 1.8, marginBottom: 16 }}>
@@ -839,7 +840,7 @@ const Footer = ({ navigate }: { navigate: (p: string) => void }) => {
           },
         ].map((col) => (
           <div key={col.title}>
-            <h4 style={{ fontWeight: 700, marginBottom: 16, color: C.white, fontSize: 14 }}>{col.title}</h4>
+            <p style={{ fontWeight: 700, marginBottom: 16, color: C.white, fontSize: 14, margin: "0 0 16px" }}>{col.title}</p>
             {col.links.map(([page, label]) => (
               <button
                 key={label}
@@ -1919,6 +1920,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                       <button
                         key={index}
                         type="button"
+                        aria-label={t(`الانتقال إلى الصورة ${index + 1}`, `Go to slide ${index + 1}`)}
                         onClick={() => setHeroSlideIndex(index)}
                         style={{
                           width: index === heroSlideIndex ? 26 : 10,
@@ -2116,8 +2118,8 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                 )}
                 <h3 style={{ fontSize: 20, fontWeight: 900, color: C.white }}>{t("باقة", "Plan")} {m.name}</h3>
                 <div style={{ margin: "16px 0 24px" }}>
-                  <span className="price-currency" style={{ color: m.color }}>{lang === "en" ? "EGP " : "ج.م "}</span>
-                  <span className="price-big" style={{ color: m.color }}>{m.priceAfter ?? m.price}</span>
+                  <span className="price-currency" style={{ color: m.color === C.gold ? C.goldDark : m.color }}>{lang === "en" ? "EGP " : "ج.م "}</span>
+                  <span className="price-big" style={{ color: m.color === C.gold ? C.goldDark : m.color }}>{m.priceAfter ?? m.price}</span>
                   <span style={{ color: C.gray, fontSize: 13 }}> / {m.period}</span>
                 </div>
                 {m.priceBefore && m.priceBefore > (m.priceAfter ?? m.price) ? (
@@ -2133,7 +2135,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                     </li>
                   ))}
                 </ul>
-                <button className={m.popular ? "btn-primary" : "btn-outline"} style={{ width: "100%", justifyContent: "center", background: m.popular ? C.red : "transparent", borderColor: m.color, color: m.popular ? "#fff" : m.color }} onClick={() => navigate("memberships")}>
+                <button className={m.popular ? "btn-primary" : "btn-outline"} style={{ width: "100%", justifyContent: "center", background: m.popular ? C.red : "transparent", borderColor: m.color, color: m.popular ? "#fff" : (m.color === C.gold ? C.goldDark : m.color) }} onClick={() => navigate("memberships")}>
                   {t("اشتركي الآن", "Subscribe now")}
                 </button>
               </div>
@@ -2160,6 +2162,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
             <div style={{ position: "relative" }}>
               <button
                 className="btn-outline"
+                aria-label={t("السابق", "Previous")}
                 onClick={() => moveTodayCarousel("prev")}
                 style={{
                   position: "absolute",
@@ -2175,6 +2178,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
               </button>
               <button
                 className="btn-outline"
+                aria-label={t("التالي", "Next")}
                 onClick={() => moveTodayCarousel("next")}
                 style={{
                   position: "absolute",
@@ -4348,6 +4352,7 @@ const ProductMiniCard = ({
         {/* Wishlist heart */}
         <button
           onClick={e => { e.stopPropagation(); wishlist.toggle(cardId); }}
+          aria-label={isWished ? t("إزالة من المفضلة", "Remove from wishlist") : t("إضافة إلى المفضلة", "Add to wishlist")}
           style={{
             position: "absolute", top: 8, left: 8, zIndex: 3,
             width: 32, height: 32, borderRadius: "50%",
