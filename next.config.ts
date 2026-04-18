@@ -56,6 +56,10 @@ const nextConfig: NextConfig = {
             key: "Strict-Transport-Security",
             value: "max-age=15552000",
           },
+          {
+            key: "Content-Security-Policy",
+            value: "frame-ancestors 'self'",
+          },
         ],
       },
     ];
