@@ -23,7 +23,6 @@ const C = {
 };
 
 const css = `
-  @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700;900&family=Tajawal:wght@300;400;500;700;900&display=swap');
   *{box-sizing:border-box;margin:0;padding:0;}
   html{scroll-behavior:smooth;}
   body{font-family:'Cairo','Tajawal',sans-serif;direction:inherit;background:${C.bg};color:${C.white};overflow-x:hidden;}
@@ -282,6 +281,7 @@ const SmartImage = ({
         src={src}
         alt=""
         aria-hidden
+        loading="lazy"
         style={{
           position: "absolute",
           inset: 0,
@@ -298,6 +298,7 @@ const SmartImage = ({
     <img
       src={src}
       alt={alt}
+      loading="lazy"
       style={{
         position: natural ? "static" : "relative",
         zIndex: 1,
@@ -1890,6 +1891,8 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                           src={slide}
                           alt={`hero-slide-${index + 1}`}
                           style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                          fetchPriority={index === 0 ? "high" : "low"}
+                          loading={index === 0 ? "eager" : "lazy"}
                         />
                         <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, transparent, rgba(26,8,18,.18))", pointerEvents: "none" }} />
                         <div
@@ -2331,7 +2334,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
               <div key={t.id} className="card card-hover" style={{ padding: 0, overflow: "hidden", textAlign: "center" }}>
                 <div style={{ height: 220, background: "#fff" }}>
                   {t.image ? (
-                    <img src={t.image} alt={t.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                    <img src={t.image} alt={t.name} loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                   ) : (
                     <GymImg type={`trainer${(index % 3) + 1}`} w="100%" h={220} />
                   )}
@@ -3425,7 +3428,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                     >
                       <div style={{ marginBottom: 12 }}>
                         {goal.image ? (
-                          <img src={goal.image} alt={goal.name} style={{ width: "100%", height: "auto", maxHeight: 200, objectFit: "cover", objectPosition: "top", display: "block", borderRadius: 12 }} />
+                          <img src={goal.image} alt={goal.name} loading="lazy" style={{ width: "100%", height: "auto", maxHeight: 200, objectFit: "cover", objectPosition: "top", display: "block", borderRadius: 12 }} />
                         ) : (
                           <div style={{ height: 120, borderRadius: 12, background: "rgba(233,30,99,.08)", display: "flex", alignItems: "center", justifyContent: "center", color: C.gray, fontWeight: 700 }}>
                             {goal.name}
@@ -6056,7 +6059,7 @@ const TrainersPage = () => {
               <div key={t.id} className="card card-hover" style={{ overflow: "hidden" }}>
                 <div style={{ height: 260, background: "#fff" }}>
                   {t.image ? (
-                    <img src={t.image} alt={t.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                    <img src={t.image} alt={t.name} loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                   ) : (
                     <GymImg type={`trainer${(index % 3) + 1}`} w="100%" h={260} />
                   )}

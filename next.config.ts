@@ -6,8 +6,29 @@ const nextConfig: NextConfig = {
     workerThreads: false,
     proxyClientMaxBodySize: "200mb",
   },
+  images: {
+    remotePatterns: [
+      { protocol: "https", hostname: "pub-0379158b967c4c599f9d754b82418d72.r2.dev" },
+      { protocol: "https", hostname: "*.r2.dev" },
+      { protocol: "https", hostname: "fitzoneland.com" },
+    ],
+    formats: ["image/avif", "image/webp"],
+    minimumCacheTTL: 86400,
+  },
   async headers() {
     return [
+      {
+        source: "/fonts/:path*",
+        headers: [
+          { key: "Cache-Control", value: "public, max-age=31536000, immutable" },
+        ],
+      },
+      {
+        source: "/_next/static/:path*",
+        headers: [
+          { key: "Cache-Control", value: "public, max-age=31536000, immutable" },
+        ],
+      },
       {
         source: "/:path*",
         headers: [
