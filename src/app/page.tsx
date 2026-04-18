@@ -3,14 +3,17 @@ import FitzoneApp from "./FitzoneApp";
 import LiveChatWidget from "@/components/LiveChatWidget";
 
 export const metadata: Metadata = {
-  title: "FitZone | أفضل نادي سيدات وأطفال في بني سويف",
+  title: "FitZone | أفضل نادي سيدات في بني سويف ومصر",
   description:
-    "FitZone أفضل نادي رياضي للسيدات والأطفال في بني سويف. كلاسات يوجا، زومبا، بيلاتس، باقات اشتراك بأسعار مناسبة، مدربات متخصصات، ومتجر منتجات رياضية. سجّلي الآن!",
+    "FitZone أفضل نادي رياضي للسيدات والأطفال في بني سويف، مصر. كلاسات يوجا، زومبا، بيلاتس، باقات اشتراك بأسعار مناسبة، مدربات متخصصات، ومتجر منتجات رياضية. سجّلي الآن!",
   keywords: [
     "أفضل نادي سيدات بني سويف",
     "أفضل جيم سيدات بني سويف",
     "نادي سيدات بني سويف",
     "جيم سيدات بني سويف",
+    "أفضل نادي سيدات في مصر",
+    "جيم سيدات في مصر",
+    "نادي سيدات مصر",
     "كلاسات يوجا بني سويف",
     "كلاسات زومبا بني سويف",
     "نادي أطفال بني سويف",
@@ -18,7 +21,7 @@ export const metadata: Metadata = {
     "FitZone",
     "فيت زون بني سويف",
     "best women gym Beni Suef",
-    "ladies gym Beni Suef",
+    "ladies gym Egypt",
   ],
   alternates: {
     canonical: "/",
@@ -47,10 +50,10 @@ export default function Home() {
       latitude: 29.0661,
       longitude: 31.0993,
     },
-    areaServed: {
-      "@type": "City",
-      name: "بني سويف",
-    },
+    areaServed: [
+      { "@type": "City", name: "بني سويف" },
+      { "@type": "Country", name: "مصر" },
+    ],
     openingHoursSpecification: [
       {
         "@type": "OpeningHoursSpecification",
@@ -115,6 +118,22 @@ export default function Home() {
         acceptedAnswer: {
           "@type": "Answer",
           text: "نعم، يقدم FitZone برامج رياضية متخصصة للأطفال في بني سويف، مصممة لتناسب مختلف الأعمار مع مدربات متخصصات في تدريب الأطفال.",
+        },
+      },
+      {
+        "@type": "Question",
+        name: "أين أجد نادي سيدات في مصر؟",
+        acceptedAnswer: {
+          "@type": "Answer",
+          text: "FitZone في بني سويف من أفضل أندية السيدات في مصر، ويقدم بيئة رياضية مخصصة للسيدات والأطفال مع مدربات متخصصات وكلاسات متنوعة.",
+        },
+      },
+      {
+        "@type": "Question",
+        name: "ما هو أفضل جيم للسيدات في مصر؟",
+        acceptedAnswer: {
+          "@type": "Answer",
+          text: "FitZone في بني سويف يُعدّ من أفضل أندية اللياقة للسيدات في مصر، حيث يجمع بين الكلاسات المتنوعة والمدربات المتخصصات والأسعار المناسبة.",
         },
       },
     ],

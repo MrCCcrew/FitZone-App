@@ -15,11 +15,11 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "FitZone | أفضل نادي سيدات وأطفال في بني سويف",
+    default: "FitZone | أفضل نادي سيدات في بني سويف ومصر",
     template: "%s | FitZone نادي سيدات بني سويف",
   },
   description:
-    "FitZone أفضل نادي رياضي للسيدات والأطفال في بني سويف. كلاسات يوجا، زومبا، بيلاتس، باقات اشتراك بأسعار مناسبة، مدربات متخصصات، ومتجر منتجات رياضية. سجّلي الآن!",
+    "FitZone أفضل نادي رياضي للسيدات والأطفال في بني سويف، مصر. كلاسات يوجا، زومبا، بيلاتس، باقات اشتراك بأسعار مناسبة، مدربات متخصصات، ومتجر منتجات رياضية. سجّلي الآن!",
   metadataBase: new URL("https://fitzoneland.com"),
   alternates: {
     canonical: "https://fitzoneland.com",
@@ -30,16 +30,15 @@ export const metadata: Metadata = {
   },
   applicationName: "FitZone",
   keywords: [
-    // Arabic local keywords (highest priority)
+    // بني سويف — أعلى أولوية
     "أفضل نادي سيدات بني سويف",
     "أفضل جيم سيدات بني سويف",
     "نادي سيدات بني سويف",
     "جيم سيدات بني سويف",
     "نادي رياضي للسيدات بني سويف",
     "جيم للبنات بني سويف",
-    "نادي لياقة سيدات",
-    "أفضل جيم للسيدات",
-    "أفضل نادي سيدات",
+    "جيم بني سويف",
+    "نادي لياقة بني سويف",
     "كلاسات يوجا بني سويف",
     "كلاسات زومبا بني سويف",
     "كلاسات بيلاتس بني سويف",
@@ -51,12 +50,26 @@ export const metadata: Metadata = {
     "مدربات لياقة بني سويف",
     "متجر مكملات رياضية بني سويف",
     "منتجات رياضية بني سويف",
+    // مصر — عام
+    "نادي سيدات في مصر",
+    "جيم سيدات في مصر",
+    "أفضل نادي سيدات في مصر",
+    "أفضل جيم للسيدات في مصر",
+    "نادي رياضي للسيدات مصر",
+    "جيم للبنات مصر",
+    "نادي لياقة للسيدات مصر",
+    "نادي سيدات وأطفال مصر",
+    "كلاسات رياضية للسيدات مصر",
+    "أفضل نادي سيدات",
+    "أفضل جيم للسيدات",
+    "نادي لياقة سيدات",
+    // العلامة التجارية
     "فيت زون",
     "فيت زون بني سويف",
     "نادي فيت زون",
     "FitZone",
     "FitZone Beni Suef",
-    // English keywords
+    // English
     "best women gym Beni Suef",
     "ladies gym Beni Suef",
     "women fitness club Beni Suef",
@@ -65,16 +78,18 @@ export const metadata: Metadata = {
     "zumba classes Beni Suef",
     "gym memberships Beni Suef",
     "fitness club Beni Suef",
-    "personal training Beni Suef",
+    "women gym Egypt",
+    "ladies gym Egypt",
+    "best women gym Egypt",
   ],
   category: "fitness",
   openGraph: {
     type: "website",
     url: "https://fitzoneland.com",
     siteName: "FitZone نادي سيدات بني سويف",
-    title: "FitZone | أفضل نادي سيدات وأطفال في بني سويف",
+    title: "FitZone | أفضل نادي سيدات في بني سويف ومصر",
     description:
-      "أفضل نادي رياضي للسيدات والأطفال في بني سويف. كلاسات يوجا وزومبا وبيلاتس، باقات اشتراك، مدربات متخصصات، ومتجر رياضي.",
+      "أفضل نادي رياضي للسيدات والأطفال في بني سويف، مصر. كلاسات يوجا وزومبا وبيلاتس، باقات اشتراك، مدربات متخصصات، ومتجر رياضي.",
     locale: "ar_EG",
     images: [
       {
@@ -87,9 +102,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "FitZone | أفضل نادي سيدات وأطفال في بني سويف",
+    title: "FitZone | أفضل نادي سيدات في بني سويف ومصر",
     description:
-      "أفضل نادي رياضي للسيدات والأطفال في بني سويف. كلاسات يوجا وزومبا وبيلاتس، باقات اشتراك، ومتجر رياضي.",
+      "أفضل نادي رياضي للسيدات والأطفال في بني سويف، مصر. كلاسات يوجا وزومبا وبيلاتس، باقات اشتراك، ومتجر رياضي.",
     images: ["/fitzone-logo.jpeg"],
   },
   robots: {
