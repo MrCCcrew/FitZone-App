@@ -131,7 +131,7 @@ async function restoreTablesFromBackup(backupFile: string, tables: string[]) {
   const filePath = path.join(BACKUP_DIR, backupFile);
   await fs.access(filePath);
 
-  // Read and decompress the backup
+  // Decompress
   const chunks: Buffer[] = [];
   const gunzip = createGunzip();
   const collector = new Writable({
@@ -146,25 +146,44 @@ async function restoreTablesFromBackup(backupFile: string, tables: string[]) {
     const lines = sql.split("\n");
     let inSection = false;
     for (const line of lines) {
-      if (line.includes(`Dumping data for table \`${table}\``)) { inSection = true; continue; }
-      if (inSection && line.startsWith("-- ") && !line.includes(table)) { inSection = false; }
-      if (inSection && line.startsWith("INSERT INTO")) inserts.push(line.replace(/;$/, ""));
+      const trimmed = line.trimEnd();
+      if (trimmed.includes(`Dumping data for table \`${table}\``)) { inSection = true; continue; }
+      if (inSection && trimmed.startsWith("-- ") && !trimmed.includes(`\`${table}\``)) { inSection = false; }
+      if (inSection && trimmed.toUpperCase().startsWith("INSERT INTO")) {
+        inserts.push(trimmed.endsWith(";") ? trimmed : trimmed + ";");
+      }
     }
   }
 
   if (inserts.length === 0) return 0;
 
-  // Delete then re-insert — all on the same connection via interactive transaction
-  await db.$transaction(async (tx) => {
-    await tx.$executeRawUnsafe("SET FOREIGN_KEY_CHECKS=0");
-    for (const table of [...tables].reverse()) {
-      await tx.$executeRawUnsafe(`DELETE FROM \`${table}\``);
-    }
-    for (const stmt of inserts) {
-      await tx.$executeRawUnsafe(stmt);
-    }
-    await tx.$executeRawUnsafe("SET FOREIGN_KEY_CHECKS=1");
-  }, { timeout: 60000 });
+  // Build a self-contained SQL script and run it via mysql CLI
+  const script = [
+    "SET FOREIGN_KEY_CHECKS=0;",
+    ...tables.map((t) => `DELETE FROM \`${t}\`;`),
+    ...inserts,
+    "SET FOREIGN_KEY_CHECKS=1;",
+  ].join("\n");
+
+  const dbConfig = parseDatabaseUrl();
+  await new Promise<void>((resolve, reject) => {
+    const proc = spawn(
+      "mysql",
+      ["-h", dbConfig.host, "-P", dbConfig.port, "-u", dbConfig.user, "--database", dbConfig.database],
+      { env: { ...process.env, MYSQL_PWD: dbConfig.password } },
+    );
+
+    let stderr = "";
+    proc.stderr.on("data", (chunk) => { stderr += chunk.toString(); });
+    proc.on("error", reject);
+    proc.on("close", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(stderr || `mysql exited with code ${code}`));
+    });
+
+    proc.stdin.write(script);
+    proc.stdin.end();
+  });
 
   return inserts.length;
 }
