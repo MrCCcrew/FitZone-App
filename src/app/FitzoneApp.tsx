@@ -1461,6 +1461,12 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
   const _w = useWindowWidth();
   const { lang } = useLang();
   const t = useT();
+  const [refreshTick, setRefreshTick] = useState(0);
+  useEffect(() => {
+    const onVisible = () => { if (document.visibilityState === "visible") setRefreshTick((n) => n + 1); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, []);
   // Shadow module-level functions with reactive versions (fixes SSR hydration mismatch)
   const viewportWidth = () => _w;
   const responsiveColumns = (mobile: string, tablet: string, desktop: string) => _w < 768 ? mobile : _w < 1024 ? tablet : desktop;
@@ -1652,7 +1658,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
         setTrialMembership(d.trialMembership as { id: string; name: string; price: number; sessionsCount: number; features: string[]; durationDays: number });
       }
     }).catch(() => {});
-  }, [lang]);
+  }, [lang, refreshTick]);
   useEffect(() => {
     fetch("/api/site-content?sections=hero", { cache: "no-store" })
       .then((r) => r.json())
