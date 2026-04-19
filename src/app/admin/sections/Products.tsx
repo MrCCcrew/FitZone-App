@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Order, Product, ProductCategory } from "../types";
+import { TranslateButton } from "./TranslateButton";
 
 const INPUT = "w-full rounded-xl border border-gray-700 bg-gray-800 px-4 py-2.5 text-sm text-white outline-none";
 const CLOTHING = ["XS", "S", "M", "L", "XL", "XXL"];
@@ -333,7 +334,12 @@ export default function Products() {
             <div className="rounded-2xl border border-gray-800 bg-black/20 p-4 text-xs leading-7 text-gray-400">أدخل بيانات المنتج كما ستظهر للعميل داخل المتجر وصفحة التفاصيل. الاسم والوصف والصور والسعر كلها ستنعكس مباشرة على عرض المنتج.</div>
             <div className="grid gap-4 md:grid-cols-2">
               <FieldHint title="اسم المنتج" hint="اكتب الاسم التسويقي الذي سيظهر للعميل داخل المتجر وصفحة المنتج."><input value={productModal.name} onChange={(e) => setProductModal({ ...productModal, name: e.target.value })} placeholder="مثال: حذاء Luna Sport" className={INPUT} /></FieldHint>
-              <FieldHint title="اسم المنتج بالإنجليزية" hint="اختياري، لكنه سيظهر للعميل عند اختيار اللغة الإنجليزية."><input value={productModal.nameEn ?? ""} onChange={(e) => setProductModal({ ...productModal, nameEn: e.target.value })} placeholder="Example: Luna Sport Shoes" className={INPUT} dir="ltr" /></FieldHint>
+              <FieldHint title="اسم المنتج بالإنجليزية" hint="اختياري، لكنه سيظهر للعميل عند اختيار اللغة الإنجليزية.">
+                <div className="flex gap-2">
+                  <input value={productModal.nameEn ?? ""} onChange={(e) => setProductModal({ ...productModal, nameEn: e.target.value })} placeholder="Example: Luna Sport Shoes" className={`${INPUT} flex-1`} dir="ltr" />
+                  <TranslateButton from={productModal.name} onTranslated={(t) => setProductModal({ ...productModal, nameEn: t })} />
+                </div>
+              </FieldHint>
               <FieldHint title="القسم" hint="اختر القسم الصحيح حتى تظهر المقاسات المناسبة للعميل فقط."><select value={productModal.category} onChange={(e) => setProductModal({ ...productModal, category: e.target.value, sizes: [] })} className={INPUT}>{categories.map((category) => <option key={category.id} value={category.key}>{category.label}</option>)}</select></FieldHint>
               <FieldHint title="أيقونة داخلية" hint="اختياري. تستخدم في لوحة الإدارة فقط لتسهيل تمييز المنتج."><input value={productModal.emoji} onChange={(e) => setProductModal({ ...productModal, emoji: e.target.value })} placeholder="مثال: 👟" className={INPUT} /></FieldHint>
               <FieldHint title="المخزون" hint="عدد القطع المتاحة الآن للبيع من هذا المنتج."><input type="number" value={productModal.stock} onChange={(e) => setProductModal({ ...productModal, stock: Number(e.target.value) })} placeholder="مثال: 25" className={INPUT} /></FieldHint>
@@ -341,7 +347,12 @@ export default function Products() {
               <FieldHint title="السعر قبل الخصم" hint="اختياري. اتركه فارغًا إذا لم يوجد خصم على المنتج."><input type="number" value={productModal.oldPrice ?? ""} onChange={(e) => setProductModal({ ...productModal, oldPrice: e.target.value ? Number(e.target.value) : null })} placeholder="مثال: 1200" className={INPUT} /></FieldHint>
             </div>
             <FieldHint title="وصف المنتج" hint="اذكر الفائدة أو الخامة أو الاستخدام الأساسي حتى يفهم العميل المنتج بسرعة."><textarea value={productModal.description ?? ""} onChange={(e) => setProductModal({ ...productModal, description: e.target.value })} placeholder="مثال: حذاء رياضي خفيف مناسب للمشي والجري اليومي." rows={4} className={`${INPUT} resize-none`} /></FieldHint>
-            <FieldHint title="وصف المنتج بالإنجليزية" hint="اختياري، لكنه سيظهر للعميل عند اختيار اللغة الإنجليزية."><textarea value={productModal.descriptionEn ?? ""} onChange={(e) => setProductModal({ ...productModal, descriptionEn: e.target.value })} placeholder="Example: Lightweight sports shoes for daily walking and running." rows={4} className={`${INPUT} resize-none`} dir="ltr" /></FieldHint>
+            <FieldHint title="وصف المنتج بالإنجليزية" hint="اختياري، لكنه سيظهر للعميل عند اختيار اللغة الإنجليزية.">
+              <div className="space-y-1">
+                <textarea value={productModal.descriptionEn ?? ""} onChange={(e) => setProductModal({ ...productModal, descriptionEn: e.target.value })} placeholder="Example: Lightweight sports shoes for daily walking and running." rows={4} className={`${INPUT} resize-none`} dir="ltr" />
+                <TranslateButton from={productModal.description ?? ""} onTranslated={(t) => setProductModal({ ...productModal, descriptionEn: t })} />
+              </div>
+            </FieldHint>
             <div className="space-y-3">
               <FieldHint title="رفع الصور" hint="يمكنك رفع أكثر من صورة لنفس المنتج دفعة واحدة. يفضل أن تكون كل صورة أقل من 5MB وبجودة واضحة."><input type="file" multiple accept="image/*" onChange={(e) => { void uploadImages(e.target.files); e.currentTarget.value = ""; }} className="block w-full text-sm text-gray-400 file:ml-3 file:rounded-lg file:border-0 file:bg-red-600 file:px-4 file:py-2 file:text-sm file:font-bold file:text-white" /></FieldHint>
               {uploading && <div className="text-xs text-yellow-400">جارٍ رفع الصور إلى التخزين السحابي...</div>}
@@ -428,7 +439,12 @@ export default function Products() {
                 </div>
               </FieldHint>
             <FieldHint title="اسم القسم" hint="الاسم الظاهر للعميل داخل المتجر."><input value={categoryModal.label} onChange={(e) => setCategoryModal({ ...categoryModal, label: e.target.value })} placeholder="مثال: أحذية" className={INPUT} /></FieldHint>
-            <FieldHint title="اسم القسم بالإنجليزية" hint="اختياري، لكنه سيظهر للعميل عند اختيار اللغة الإنجليزية."><input value={categoryModal.labelEn ?? ""} onChange={(e) => setCategoryModal({ ...categoryModal, labelEn: e.target.value })} placeholder="Shoes" className={INPUT} dir="ltr" /></FieldHint>
+            <FieldHint title="اسم القسم بالإنجليزية" hint="اختياري، لكنه سيظهر للعميل عند اختيار اللغة الإنجليزية.">
+              <div className="flex gap-2">
+                <input value={categoryModal.labelEn ?? ""} onChange={(e) => setCategoryModal({ ...categoryModal, labelEn: e.target.value })} placeholder="Shoes" className={`${INPUT} flex-1`} dir="ltr" />
+                <TranslateButton from={categoryModal.label} onTranslated={(t) => setCategoryModal({ ...categoryModal, labelEn: t })} />
+              </div>
+            </FieldHint>
             <FieldHint title="المفتاح الداخلي" hint="استخدم كلمة إنجليزية قصيرة بدون مسافات مثل shoes أو clothing."><input value={categoryModal.key} onChange={(e) => setCategoryModal({ ...categoryModal, key: e.target.value })} placeholder="shoes" className={INPUT} dir="ltr" /></FieldHint>
             <FieldHint title="نوع المقاسات" hint="حدد هل هذا القسم له مقاسات ملابس أو أحذية أو بدون مقاسات."><select value={categoryModal.sizeType} onChange={(e) => setCategoryModal({ ...categoryModal, sizeType: e.target.value as "none" | "clothing" | "shoes" })} className={INPUT}><option value="none">بدون مقاسات</option><option value="clothing">مقاسات ملابس</option><option value="shoes">مقاسات أحذية</option></select></FieldHint>
             <FieldHint title="الترتيب" hint="الأقسام ذات الرقم الأقل تظهر أولًا في المتجر."><input type="number" value={categoryModal.sortOrder} onChange={(e) => setCategoryModal({ ...categoryModal, sortOrder: Number(e.target.value) })} placeholder="0" className={INPUT} /></FieldHint>
