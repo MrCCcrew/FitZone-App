@@ -2215,7 +2215,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                         </span>
                       </div>
                       <div style={{ fontWeight: 700, fontSize: 16, color: C.white, marginBottom: 4 }}>{s.name}</div>
-                      <div style={{ color: C.gray, fontSize: 13, marginBottom: 16 }}>{t("مع", "With")} {s.trainer}</div>
+                      {s.trainer ? <div style={{ color: C.gray, fontSize: 13, marginBottom: 16 }}>{t("مع", "With")} {s.trainer}</div> : <div style={{ marginBottom: 16 }} />}
                       <button className="btn-primary" style={{ width: "100%", justifyContent: "center", padding: "8px", fontSize: 13, opacity: s.spots === 0 ? .5 : 1 }} disabled={s.spots === 0} onClick={() => navigate("schedule")}>
                         {s.spots === 0 ? t("ممتلئ", "Full") : t("احجزي الآن", "Book now")}
                       </button>
