@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { HealthQuestion } from "../types";
 import { AdminCard, AdminEmptyState, AdminSectionShell } from "./shared";
+import { TranslateButton } from "./TranslateButton";
 
 const INPUT =
   "w-full rounded-xl border border-gray-700 bg-gray-800 px-4 py-2.5 text-sm text-white outline-none transition-colors focus:border-[#ff4f93]";
@@ -351,12 +352,15 @@ export default function HealthQuestions() {
             </Field>
 
             <Field label="عنوان السؤال بالإنجليزية">
-              <input
-                value={modal.titleEn ?? ""}
-                onChange={(event) => setModal({ ...modal, titleEn: event.target.value })}
-                className={INPUT}
-                dir="ltr"
-              />
+              <div className="flex gap-2">
+                <input
+                  value={modal.titleEn ?? ""}
+                  onChange={(event) => setModal({ ...modal, titleEn: event.target.value })}
+                  className={`${INPUT} flex-1`}
+                  dir="ltr"
+                />
+                <TranslateButton from={modal.title} onTranslated={(t) => setModal({ ...modal, titleEn: t })} />
+              </div>
             </Field>
 
             <Field label="الرابط المختصر" hint="يستخدم لتسهيل الربط لاحقًا، ويمكن تركه فارغًا.">
@@ -377,12 +381,15 @@ export default function HealthQuestions() {
             </Field>
 
             <Field label="نص السؤال بالإنجليزية">
-              <textarea
-                value={modal.promptEn ?? ""}
-                onChange={(event) => setModal({ ...modal, promptEn: event.target.value })}
-                className={`${INPUT} min-h-24 resize-y`}
-                dir="ltr"
-              />
+              <div className="space-y-1">
+                <textarea
+                  value={modal.promptEn ?? ""}
+                  onChange={(event) => setModal({ ...modal, promptEn: event.target.value })}
+                  className={`${INPUT} min-h-24 resize-y`}
+                  dir="ltr"
+                />
+                <TranslateButton from={modal.prompt} onTranslated={(t) => setModal({ ...modal, promptEn: t })} />
+              </div>
             </Field>
 
             <Field
