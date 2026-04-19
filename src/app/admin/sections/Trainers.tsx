@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Trainer } from "../types";
+import { TranslateButton } from "./TranslateButton";
 
 const INPUT =
   "w-full rounded-xl border border-gray-700 bg-gray-800 px-4 py-2.5 text-sm text-white outline-none transition-colors focus:border-pink-500";
@@ -391,12 +392,15 @@ export default function Trainers() {
               </FieldHint>
 
               <FieldHint title="اسم المدربة بالإنجليزية" hint="اختياري، لكنه سيظهر عند اختيار اللغة الإنجليزية.">
-                <input
-                  value={modal.nameEn ?? ""}
-                  onChange={(event) => setModal({ ...modal, nameEn: event.target.value })}
-                  className={INPUT}
-                  dir="ltr"
-                />
+                <div className="flex gap-2">
+                  <input
+                    value={modal.nameEn ?? ""}
+                    onChange={(event) => setModal({ ...modal, nameEn: event.target.value })}
+                    className={`${INPUT} flex-1`}
+                    dir="ltr"
+                  />
+                  <TranslateButton from={modal.name} onTranslated={(t) => setModal({ ...modal, nameEn: t })} />
+                </div>
               </FieldHint>
 
               <FieldHint title="التخصص" hint="مثال: يوجا وتأهيل بدني أو زومبا وكارديو.">
@@ -408,12 +412,15 @@ export default function Trainers() {
               </FieldHint>
 
               <FieldHint title="التخصص بالإنجليزية" hint="اختياري، لكنه سيظهر عند اختيار اللغة الإنجليزية.">
-                <input
-                  value={modal.specialtyEn ?? ""}
-                  onChange={(event) => setModal({ ...modal, specialtyEn: event.target.value })}
-                  className={INPUT}
-                  dir="ltr"
-                />
+                <div className="flex gap-2">
+                  <input
+                    value={modal.specialtyEn ?? ""}
+                    onChange={(event) => setModal({ ...modal, specialtyEn: event.target.value })}
+                    className={`${INPUT} flex-1`}
+                    dir="ltr"
+                  />
+                  <TranslateButton from={modal.specialty} onTranslated={(t) => setModal({ ...modal, specialtyEn: t })} />
+                </div>
               </FieldHint>
 
               <FieldHint title="التقييم" hint="يظهر على شكل 4.9 أو 5.0 داخل البطاقة.">
@@ -487,13 +494,16 @@ export default function Trainers() {
               title="نبذة عن المدربة بالإنجليزية"
               hint="اختياري، لكنه سيظهر عند اختيار اللغة الإنجليزية."
             >
-              <textarea
-                value={modal.bioEn ?? ""}
-                onChange={(event) => setModal({ ...modal, bioEn: event.target.value })}
-                rows={4}
-                className={`${INPUT} resize-none`}
-                dir="ltr"
-              />
+              <div className="space-y-1">
+                <textarea
+                  value={modal.bioEn ?? ""}
+                  onChange={(event) => setModal({ ...modal, bioEn: event.target.value })}
+                  rows={4}
+                  className={`${INPUT} resize-none`}
+                  dir="ltr"
+                />
+                <TranslateButton from={modal.bio ?? ""} onTranslated={(t) => setModal({ ...modal, bioEn: t })} />
+              </div>
             </FieldHint>
 
             <FieldHint
@@ -512,13 +522,19 @@ export default function Trainers() {
               title="الشهادات والاعتمادات بالإنجليزية"
               hint="اكتب كل شهادة في سطر منفصل لتظهر عند اختيار اللغة الإنجليزية."
             >
-              <textarea
-                value={listToText(modal.certificationsEn ?? [])}
-                onChange={(event) => setModal({ ...modal, certificationsEn: textToList(event.target.value) })}
-                rows={4}
-                className={`${INPUT} resize-none`}
-                dir="ltr"
-              />
+              <div className="space-y-1">
+                <textarea
+                  value={listToText(modal.certificationsEn ?? [])}
+                  onChange={(event) => setModal({ ...modal, certificationsEn: textToList(event.target.value) })}
+                  rows={4}
+                  className={`${INPUT} resize-none`}
+                  dir="ltr"
+                />
+                <TranslateButton
+                  from={listToText(modal.certifications)}
+                  onTranslated={(t) => setModal({ ...modal, certificationsEn: textToList(t) })}
+                />
+              </div>
             </FieldHint>
 
             <div className="space-y-3">

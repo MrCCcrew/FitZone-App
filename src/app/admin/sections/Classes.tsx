@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { TranslateButton } from "./TranslateButton";
 import type { GymClass } from "../types";
 
 type ApiTrainer = {
@@ -639,13 +640,16 @@ export default function Classes() {
             </Field>
 
             <Field label="اسم القسم بالإنجليزية" hint="اختياري، لكنه سيظهر للعميل عند اختيار اللغة الإنجليزية.">
-              <input
-                value={modal.nameEn}
-                onChange={(event) => setModal({ ...modal, nameEn: event.target.value })}
-                className={INPUT}
-                placeholder="Example: Weight Loss"
-                dir="ltr"
-              />
+              <div className="flex gap-2">
+                <input
+                  value={modal.nameEn}
+                  onChange={(event) => setModal({ ...modal, nameEn: event.target.value })}
+                  className={`${INPUT} flex-1`}
+                  placeholder="Example: Weight Loss"
+                  dir="ltr"
+                />
+                <TranslateButton from={modal.name} onTranslated={(t) => setModal({ ...modal, nameEn: t })} />
+              </div>
             </Field>
 
             <Field label="المدربة">
@@ -716,13 +720,16 @@ export default function Classes() {
             </Field>
 
             <Field label="اسم النوع بالإنجليزية" hint="اختياري، وسيستخدم عند اختيار اللغة الإنجليزية.">
-              <input
-                value={modal.typeEn}
-                onChange={(event) => setModal({ ...modal, typeEn: event.target.value })}
-                className={INPUT}
-                placeholder="Example: CrossFit"
-                dir="ltr"
-              />
+              <div className="flex gap-2">
+                <input
+                  value={modal.typeEn}
+                  onChange={(event) => setModal({ ...modal, typeEn: event.target.value })}
+                  className={`${INPUT} flex-1`}
+                  placeholder="Example: CrossFit"
+                  dir="ltr"
+                />
+                <TranslateButton from={modal.type} onTranslated={(t) => setModal({ ...modal, typeEn: t })} />
+              </div>
             </Field>
 
             <Field label="تصنيف النوع" hint="اختياري، مثل: زومبا لاتيني أو أفريقي">
@@ -767,13 +774,16 @@ export default function Classes() {
             </Field>
 
             <Field label="اسم التصنيف بالإنجليزية" hint="اختياري، وسيستخدم عند اختيار اللغة الإنجليزية.">
-              <input
-                value={modal.subTypeEn}
-                onChange={(event) => setModal({ ...modal, subTypeEn: event.target.value })}
-                className={INPUT}
-                placeholder="Example: Latin Zumba"
-                dir="ltr"
-              />
+              <div className="flex gap-2">
+                <input
+                  value={modal.subTypeEn}
+                  onChange={(event) => setModal({ ...modal, subTypeEn: event.target.value })}
+                  className={`${INPUT} flex-1`}
+                  placeholder="Example: Latin Zumba"
+                  dir="ltr"
+                />
+                <TranslateButton from={modal.subType} onTranslated={(t) => setModal({ ...modal, subTypeEn: t })} />
+              </div>
             </Field>
 
             <Field label="اليوم">
@@ -922,23 +932,29 @@ export default function Classes() {
             </Field>
 
             <Field label="اسم القسم بالإنجليزية" hint="اختياري، لكنه سيظهر للعميل عند اختيار اللغة الإنجليزية.">
-              <input
-                value={modal.categoryEn}
-                onChange={(event) => setModal({ ...modal, categoryEn: event.target.value })}
-                className={INPUT}
-                placeholder="Example: Weight Loss"
-                dir="ltr"
-              />
+              <div className="flex gap-2">
+                <input
+                  value={modal.categoryEn}
+                  onChange={(event) => setModal({ ...modal, categoryEn: event.target.value })}
+                  className={`${INPUT} flex-1`}
+                  placeholder="Example: Weight Loss"
+                  dir="ltr"
+                />
+                <TranslateButton from={modal.category} onTranslated={(t) => setModal({ ...modal, categoryEn: t })} />
+              </div>
             </Field>
 
             <Field label="وصف مختصر بالإنجليزية" hint="اختياري، لاستخدامه عند عرض تفاصيل الكلاس بالإنجليزية.">
-              <textarea
-                value={modal.descriptionEn}
-                onChange={(event) => setModal({ ...modal, descriptionEn: event.target.value })}
-                className={`${INPUT} min-h-24 resize-y`}
-                placeholder="Example: Functional class focused on fat burning and stamina."
-                dir="ltr"
-              />
+              <div className="space-y-1">
+                <textarea
+                  value={modal.descriptionEn}
+                  onChange={(event) => setModal({ ...modal, descriptionEn: event.target.value })}
+                  className={`${INPUT} min-h-24 resize-y`}
+                  placeholder="Example: Functional class focused on fat burning and stamina."
+                  dir="ltr"
+                />
+                <TranslateButton from={modal.description} onTranslated={(t) => setModal({ ...modal, descriptionEn: t })} />
+              </div>
             </Field>
           </div>
 
