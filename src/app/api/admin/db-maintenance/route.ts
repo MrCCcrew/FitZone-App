@@ -127,6 +127,31 @@ function buildResetTables({ preserveSiteContent, resetUsers }: { preserveSiteCon
   return tables;
 }
 
+async function restoreFullDatabase(backupFile: string) {
+  const filePath = path.join(BACKUP_DIR, backupFile);
+  await fs.access(filePath);
+
+  const dbConfig = parseDatabaseUrl();
+  await new Promise<void>((resolve, reject) => {
+    const proc = spawn(
+      "mysql",
+      ["-h", dbConfig.host, "-P", dbConfig.port, "-u", dbConfig.user, "--database", dbConfig.database],
+      { env: { ...process.env, MYSQL_PWD: dbConfig.password } },
+    );
+
+    let stderr = "";
+    proc.stderr.on("data", (chunk) => { stderr += chunk.toString(); });
+    proc.on("error", reject);
+    proc.on("close", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(stderr || `mysql exited with code ${code}`));
+    });
+
+    const gunzip = createGunzip();
+    createReadStream(filePath).pipe(gunzip).pipe(proc.stdin);
+  });
+}
+
 async function restoreTablesFromBackup(backupFile: string, tables: string[]) {
   const filePath = path.join(BACKUP_DIR, backupFile);
   await fs.access(filePath);
@@ -295,7 +320,7 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     const masterPassword = String(body?.masterPassword ?? "");
-    const action = body?.action as "backup" | "reset" | "clear-inventory" | "restore-products";
+    const action = body?.action as "backup" | "reset" | "clear-inventory" | "restore-products" | "restore-full";
     const preserveSiteContent = body?.preserveSiteContent !== false;
     const resetUsers = Boolean(body?.resetUsers);
     const clearTarget = body?.clearTarget as "sales" | "purchases" | "both" | undefined;
@@ -305,7 +330,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: "كلمة المرور الرئيسية غير صحيحة." }, { status: 401 });
     }
 
-    if (!["backup", "reset", "clear-inventory", "restore-products"].includes(action)) {
+    if (!["backup", "reset", "clear-inventory", "restore-products", "restore-full"].includes(action)) {
       return NextResponse.json({ message: "طلب غير صالح." }, { status: 400 });
     }
 
@@ -327,6 +352,24 @@ export async function POST(req: Request) {
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         console.error("[RESTORE_PRODUCTS]", err);
+        return NextResponse.json({ message: `فشل الاسترجاع: ${msg}` }, { status: 500 });
+      }
+    }
+
+    if (action === "restore-full") {
+      if (!backupFile) return NextResponse.json({ message: "حدد ملف النسخة الاحتياطية." }, { status: 400 });
+      try {
+        const filePath = path.join(BACKUP_DIR, backupFile);
+        try {
+          await fs.access(filePath);
+        } catch {
+          return NextResponse.json({ message: `ملف النسخة الاحتياطية غير موجود: ${filePath}` }, { status: 404 });
+        }
+        await restoreFullDatabase(backupFile);
+        return NextResponse.json({ message: "تم استرجاع قاعدة البيانات بالكامل بنجاح ✅" });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error("[RESTORE_FULL]", err);
         return NextResponse.json({ message: `فشل الاسترجاع: ${msg}` }, { status: 500 });
       }
     }
