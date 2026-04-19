@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { TranslateButton } from "./TranslateButton";
 
 type Tab = "hero" | "contact" | "trainersPage" | "announcements" | "about" | "blog" | "policy" | "privacy" | "refund";
 
@@ -183,10 +184,12 @@ function TInput({
   value,
   onChange,
   placeholder = "",
+  className: extraClass = "",
 }: {
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
+  className?: string;
 }) {
   return (
     <input
@@ -194,7 +197,7 @@ function TInput({
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
-      className="w-full rounded-xl border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-white placeholder-gray-600 focus:border-red-600 focus:outline-none"
+      className={`w-full rounded-xl border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-white placeholder-gray-600 focus:border-red-600 focus:outline-none ${extraClass}`}
     />
   );
 }
@@ -472,10 +475,16 @@ function TrainersPageTab({
           <TInput value={data.ctaLabel} onChange={(v) => update("ctaLabel", v)} />
         </Field>
         <Field label="CTA Label (EN)">
-          <TInput value={data.ctaLabelEn ?? ""} onChange={(v) => update("ctaLabelEn", v)} />
+          <div className="flex gap-2">
+            <TInput className="flex-1" value={data.ctaLabelEn ?? ""} onChange={(v) => update("ctaLabelEn", v)} />
+            <TranslateButton from={data.ctaLabel} onTranslated={(v) => update("ctaLabelEn", v)} />
+          </div>
         </Field>
         <Field label="Badge (EN)">
-          <TInput value={data.badgeEn ?? ""} onChange={(v) => update("badgeEn", v)} />
+          <div className="flex gap-2">
+            <TInput className="flex-1" value={data.badgeEn ?? ""} onChange={(v) => update("badgeEn", v)} />
+            <TranslateButton from={data.badge} onTranslated={(v) => update("badgeEn", v)} />
+          </div>
         </Field>
       </div>
 
@@ -483,28 +492,40 @@ function TrainersPageTab({
         <TInput value={data.title} onChange={(v) => update("title", v)} />
       </Field>
       <Field label="Title (EN)">
-        <TInput value={data.titleEn ?? ""} onChange={(v) => update("titleEn", v)} />
+        <div className="flex gap-2">
+          <TInput className="flex-1" value={data.titleEn ?? ""} onChange={(v) => update("titleEn", v)} />
+          <TranslateButton from={data.title} onTranslated={(v) => update("titleEn", v)} />
+        </div>
       </Field>
 
       <Field label="العنوان الفرعي">
         <TInput value={data.subtitle} onChange={(v) => update("subtitle", v)} />
       </Field>
       <Field label="Subtitle (EN)">
-        <TInput value={data.subtitleEn ?? ""} onChange={(v) => update("subtitleEn", v)} />
+        <div className="flex gap-2">
+          <TInput className="flex-1" value={data.subtitleEn ?? ""} onChange={(v) => update("subtitleEn", v)} />
+          <TranslateButton from={data.subtitle} onTranslated={(v) => update("subtitleEn", v)} />
+        </div>
       </Field>
 
       <Field label="وصف الصفحة">
         <TTextarea value={data.description} onChange={(v) => update("description", v)} rows={4} />
       </Field>
       <Field label="Description (EN)">
-        <TTextarea value={data.descriptionEn ?? ""} onChange={(v) => update("descriptionEn", v)} rows={4} />
+        <div className="space-y-1">
+          <TTextarea value={data.descriptionEn ?? ""} onChange={(v) => update("descriptionEn", v)} rows={4} />
+          <TranslateButton from={data.description} onTranslated={(v) => update("descriptionEn", v)} />
+        </div>
       </Field>
 
       <Field label="سطر إبراز أسفل المقدمة">
         <TInput value={data.highlight} onChange={(v) => update("highlight", v)} />
       </Field>
       <Field label="Highlight (EN)">
-        <TInput value={data.highlightEn ?? ""} onChange={(v) => update("highlightEn", v)} />
+        <div className="flex gap-2">
+          <TInput className="flex-1" value={data.highlightEn ?? ""} onChange={(v) => update("highlightEn", v)} />
+          <TranslateButton from={data.highlight} onTranslated={(v) => update("highlightEn", v)} />
+        </div>
       </Field>
     </div>
   );
@@ -597,7 +618,10 @@ function LegalTab({ data, onChange }: { data: LegalData; onChange: (d: LegalData
           <TInput value={data.title} onChange={(v) => update("title", v)} />
         </Field>
         <Field label="Title (EN)">
-          <TInput value={data.titleEn ?? ""} onChange={(v) => update("titleEn", v)} />
+          <div className="flex gap-2">
+            <TInput className="flex-1" value={data.titleEn ?? ""} onChange={(v) => update("titleEn", v)} />
+            <TranslateButton from={data.title} onTranslated={(v) => update("titleEn", v)} />
+          </div>
         </Field>
         <Field label="تاريخ التحديث">
           <TInput value={data.updatedAt} onChange={(v) => update("updatedAt", v)} />
@@ -610,7 +634,10 @@ function LegalTab({ data, onChange }: { data: LegalData; onChange: (d: LegalData
         <TTextarea value={data.content} onChange={(v) => update("content", v)} rows={10} />
       </Field>
       <Field label="Content (EN)" hint="Use the English version of the same legal page here.">
-        <TTextarea value={data.contentEn ?? ""} onChange={(v) => update("contentEn", v)} rows={10} />
+        <div className="space-y-1">
+          <TTextarea value={data.contentEn ?? ""} onChange={(v) => update("contentEn", v)} rows={10} />
+          <TranslateButton from={data.content} onTranslated={(v) => update("contentEn", v)} />
+        </div>
       </Field>
     </div>
   );
@@ -722,11 +749,14 @@ function BlogTabFixed({ data, onChange }: { data: BlogData; onChange: (d: BlogDa
           />
         </Field>
         <Field label="Blog Categories EN (one per line)">
-          <TTextarea
-            value={listToText(data.categoriesEn)}
-            onChange={(v) => update("categoriesEn", textToList(v))}
-            rows={4}
-          />
+          <div className="space-y-1">
+            <TTextarea
+              value={listToText(data.categoriesEn)}
+              onChange={(v) => update("categoriesEn", textToList(v))}
+              rows={4}
+            />
+            <TranslateButton from={listToText(data.categories)} onTranslated={(v) => update("categoriesEn", textToList(v))} />
+          </div>
         </Field>
       </div>
 
@@ -774,13 +804,22 @@ function BlogTabFixed({ data, onChange }: { data: BlogData; onChange: (d: BlogDa
             <TInput value={draft.videoUrl} onChange={(v) => setDraftField("videoUrl", v)} placeholder="https://..." />
           </Field>
           <Field label="Title EN">
-            <TInput value={draft.titleEn ?? ""} onChange={(v) => setDraftField("titleEn", v)} placeholder="English title" />
+            <div className="flex gap-2">
+              <TInput className="flex-1" value={draft.titleEn ?? ""} onChange={(v) => setDraftField("titleEn", v)} placeholder="English title" />
+              <TranslateButton from={draft.title} onTranslated={(v) => setDraftField("titleEn", v)} />
+            </div>
           </Field>
           <Field label="Category EN">
-            <TInput value={draft.categoryEn ?? ""} onChange={(v) => setDraftField("categoryEn", v)} placeholder="Fitness" />
+            <div className="flex gap-2">
+              <TInput className="flex-1" value={draft.categoryEn ?? ""} onChange={(v) => setDraftField("categoryEn", v)} placeholder="Fitness" />
+              <TranslateButton from={draft.category} onTranslated={(v) => setDraftField("categoryEn", v)} />
+            </div>
           </Field>
           <Field label="Author EN">
-            <TInput value={draft.authorEn ?? ""} onChange={(v) => setDraftField("authorEn", v)} placeholder="Heba Zarif" />
+            <div className="flex gap-2">
+              <TInput className="flex-1" value={draft.authorEn ?? ""} onChange={(v) => setDraftField("authorEn", v)} placeholder="Heba Zarif" />
+              <TranslateButton from={draft.author} onTranslated={(v) => setDraftField("authorEn", v)} />
+            </div>
           </Field>
           <Field label="Date EN">
             <TInput value={draft.dateEn ?? ""} onChange={(v) => setDraftField("dateEn", v)} placeholder="April 11, 2026" />
@@ -789,10 +828,16 @@ function BlogTabFixed({ data, onChange }: { data: BlogData; onChange: (d: BlogDa
             <TInput value={draft.readTimeEn ?? ""} onChange={(v) => setDraftField("readTimeEn", v)} placeholder="5 min read" />
           </Field>
           <Field label="Summary EN">
-            <TTextarea value={draft.summaryEn ?? ""} onChange={(v) => setDraftField("summaryEn", v)} rows={2} />
+            <div className="space-y-1">
+              <TTextarea value={draft.summaryEn ?? ""} onChange={(v) => setDraftField("summaryEn", v)} rows={2} />
+              <TranslateButton from={draft.summary} onTranslated={(v) => setDraftField("summaryEn", v)} />
+            </div>
           </Field>
           <Field label="Content EN">
-            <TTextarea value={draft.contentEn ?? ""} onChange={(v) => setDraftField("contentEn", v)} rows={5} />
+            <div className="space-y-1">
+              <TTextarea value={draft.contentEn ?? ""} onChange={(v) => setDraftField("contentEn", v)} rows={5} />
+              <TranslateButton from={draft.content} onTranslated={(v) => setDraftField("contentEn", v)} />
+            </div>
           </Field>
           <div className="space-y-2">
             <label className="text-xs font-medium text-gray-400">رفع صورة الغلاف</label>

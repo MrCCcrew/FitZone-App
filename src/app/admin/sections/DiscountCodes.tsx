@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { AdminSectionShell, AdminCard, AdminEmptyState } from "./shared";
+import { TranslateButton } from "./TranslateButton";
 
 interface DiscountCode {
   id: string;
@@ -254,7 +255,10 @@ export default function DiscountCodes() {
             </div>
             <div>
               <label className={LABEL}>الوصف (إنجليزي — Description EN)</label>
-              <input className={INPUT} value={form.descriptionEn} onChange={f("descriptionEn")} placeholder="e.g. Summer discount" />
+              <div className="flex gap-2">
+                <input className={`${INPUT} flex-1`} value={form.descriptionEn} onChange={f("descriptionEn")} placeholder="e.g. Summer discount" />
+                <TranslateButton from={form.description} onTranslated={(t) => setForm((p) => ({ ...p, descriptionEn: t }))} />
+              </div>
             </div>
 
             <label className="flex cursor-pointer items-center gap-3">

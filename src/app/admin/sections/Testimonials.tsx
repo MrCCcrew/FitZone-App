@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { Testimonial } from "../types";
+import { TranslateButton } from "./TranslateButton";
 
 const INPUT = "w-full rounded-xl border border-gray-700 bg-gray-800 px-4 py-2.5 text-sm text-white outline-none";
 
@@ -147,9 +148,15 @@ export default function Testimonials() {
         <Modal title="تعديل الرأي" onClose={() => setModal(null)}>
           <div className="space-y-4">
             <input value={modal.displayName ?? ""} onChange={(e) => setModal({ ...modal, displayName: e.target.value })} className={INPUT} placeholder="الاسم الظاهر" />
-            <input value={modal.displayNameEn ?? ""} onChange={(e) => setModal({ ...modal, displayNameEn: e.target.value })} className={INPUT} placeholder="Display name in English" dir="ltr" />
+            <div className="flex gap-2">
+              <input value={modal.displayNameEn ?? ""} onChange={(e) => setModal({ ...modal, displayNameEn: e.target.value })} className={`${INPUT} flex-1`} placeholder="Display name in English" dir="ltr" />
+              <TranslateButton from={modal.displayName ?? ""} onTranslated={(t) => setModal({ ...modal, displayNameEn: t })} />
+            </div>
             <textarea value={modal.content} onChange={(e) => setModal({ ...modal, content: e.target.value })} rows={4} className={`${INPUT} resize-none`} placeholder="محتوى الرأي" />
-            <textarea value={modal.contentEn ?? ""} onChange={(e) => setModal({ ...modal, contentEn: e.target.value })} rows={4} className={`${INPUT} resize-none`} placeholder="Testimonial content in English" dir="ltr" />
+            <div className="space-y-1">
+              <textarea value={modal.contentEn ?? ""} onChange={(e) => setModal({ ...modal, contentEn: e.target.value })} rows={4} className={`${INPUT} resize-none`} placeholder="Testimonial content in English" dir="ltr" />
+              <TranslateButton from={modal.content} onTranslated={(t) => setModal({ ...modal, contentEn: t })} />
+            </div>
             <div className="grid gap-4 md:grid-cols-2">
               <select value={modal.rating} onChange={(e) => setModal({ ...modal, rating: Number(e.target.value) })} className={INPUT}>
                 {[1, 2, 3, 4, 5].map((rate) => <option key={rate} value={rate}>{rate}</option>)}

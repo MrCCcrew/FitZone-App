@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { DeliveryOption } from "../types";
 import { AdminCard, AdminEmptyState, AdminSectionShell } from "./shared";
+import { TranslateButton } from "./TranslateButton";
 
 const INPUT =
   "w-full rounded-xl border border-gray-700 bg-gray-800 px-4 py-2.5 text-sm text-white outline-none transition-colors focus:border-[#ff4f93]";
@@ -272,12 +273,15 @@ export default function DeliveryOptions() {
             </Field>
 
             <Field label="اسم وسيلة التوصيل بالإنجليزية">
-              <input
-                value={modal.nameEn ?? ""}
-                onChange={(event) => setModal({ ...modal, nameEn: event.target.value })}
-                className={INPUT}
-                dir="ltr"
-              />
+              <div className="flex gap-2">
+                <input
+                  value={modal.nameEn ?? ""}
+                  onChange={(event) => setModal({ ...modal, nameEn: event.target.value })}
+                  className={`${INPUT} flex-1`}
+                  dir="ltr"
+                />
+                <TranslateButton from={modal.name} onTranslated={(t) => setModal({ ...modal, nameEn: t })} />
+              </div>
             </Field>
 
             <Field label="نوع التوصيل">
@@ -303,12 +307,15 @@ export default function DeliveryOptions() {
             </Field>
 
             <Field label="وصف مختصر بالإنجليزية">
-              <textarea
-                value={modal.descriptionEn ?? ""}
-                onChange={(event) => setModal({ ...modal, descriptionEn: event.target.value })}
-                className={`${INPUT} min-h-24 resize-y`}
-                dir="ltr"
-              />
+              <div className="space-y-1">
+                <textarea
+                  value={modal.descriptionEn ?? ""}
+                  onChange={(event) => setModal({ ...modal, descriptionEn: event.target.value })}
+                  className={`${INPUT} min-h-24 resize-y`}
+                  dir="ltr"
+                />
+                <TranslateButton from={modal.description ?? ""} onTranslated={(t) => setModal({ ...modal, descriptionEn: t })} />
+              </div>
             </Field>
 
             <div className="grid gap-4 sm:grid-cols-2">

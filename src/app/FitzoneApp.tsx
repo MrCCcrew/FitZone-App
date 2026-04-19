@@ -1652,7 +1652,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
         setTrialMembership(d.trialMembership as { id: string; name: string; price: number; sessionsCount: number; features: string[]; durationDays: number });
       }
     }).catch(() => {});
-  }, []);
+  }, [lang]);
   useEffect(() => {
     fetch("/api/site-content?sections=hero", { cache: "no-store" })
       .then((r) => r.json())
@@ -2415,6 +2415,7 @@ const DEFAULT_PLANS: PlanItem[] = [
 const PLAN_COLORS = [C.gray, C.red, C.gold, "#A855F7", "#3498DB", "#27AE60"];
 const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
   const t = useT();
+  const { lang } = useLang();
   const [tab, setTab] = useState<"all" | "monthly" | "quarterly" | "semi_annual" | "annual" | "custom">("all");
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   const [plans, setPlans] = useState<PlanItem[]>(DEFAULT_PLANS);
@@ -2517,7 +2518,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
         }
       })
       .catch(() => {});
-  }, []);
+  }, [lang]);
 
   const rootGoals = useMemo(() => goals.filter((goal) => !goal.parentId), [goals]);
   const gamesRoot = useMemo(() => rootGoals.find((goal) => goal.kind === "games_root"), [rootGoals]);
@@ -3684,6 +3685,7 @@ const DEFAULT_OFFERS: Array<PublicOffer & { color: string }> = [
 ];
 const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
   const t = useT();
+  const { lang } = useLang();
   const [offers, setOffers] = useState(DEFAULT_OFFERS);
   const [packages, setPackages] = useState<PublicMembership[]>([]);
   useEffect(() => {
@@ -3700,7 +3702,7 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
         setPackages(pack);
       }
     }).catch(() => {});
-  }, []);
+  }, [lang]);
 
   return (
     <div>
@@ -6037,7 +6039,7 @@ const TrainersPage = () => {
         }));
       }
     }).catch(() => {});
-  }, []);
+  }, [lang]);
 
   const badge = lang === "en" ? pageContent.badgeEn ?? pageContent.badge : pageContent.badge;
   const title = lang === "en" ? pageContent.titleEn ?? pageContent.title : pageContent.title;
