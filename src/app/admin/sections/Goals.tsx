@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Goal } from "../types";
 import { AdminCard, AdminEmptyState, AdminSectionShell } from "./shared";
+import { TranslateButton } from "./TranslateButton";
 
 const INPUT =
   "w-full rounded-xl border border-gray-700 bg-gray-800 px-4 py-2.5 text-sm text-white outline-none transition-colors focus:border-[#ff4f93]";
@@ -263,6 +264,19 @@ export default function Goals() {
               <input value={goalModal.name} onChange={(event) => setGoalModal({ ...goalModal, name: event.target.value })} className={INPUT} />
             </Field>
 
+            <Field label="اسم الهدف بالإنجليزية" hint="اختياري، يظهر عند اختيار اللغة الإنجليزية.">
+              <div className="flex gap-2">
+                <input
+                  value={goalModal.nameEn ?? ""}
+                  onChange={(event) => setGoalModal({ ...goalModal, nameEn: event.target.value })}
+                  className={`${INPUT} flex-1`}
+                  dir="ltr"
+                  placeholder="Example: Weight Loss"
+                />
+                <TranslateButton from={goalModal.name} onTranslated={(t) => setGoalModal({ ...goalModal, nameEn: t })} />
+              </div>
+            </Field>
+
             <Field label="الرابط المختصر" hint="يُستخدم داخل الروابط، اتركه فارغًا ليتم توليده تلقائيًا.">
               <input
                 value={goalModal.slug ?? ""}
@@ -302,6 +316,19 @@ export default function Goals() {
                 onChange={(event) => setGoalModal({ ...goalModal, description: event.target.value })}
                 className={`${INPUT} min-h-24 resize-y`}
               />
+            </Field>
+
+            <Field label="الوصف بالإنجليزية" hint="اختياري، يظهر عند اختيار اللغة الإنجليزية.">
+              <div className="space-y-1">
+                <textarea
+                  value={goalModal.descriptionEn ?? ""}
+                  onChange={(event) => setGoalModal({ ...goalModal, descriptionEn: event.target.value })}
+                  className={`${INPUT} min-h-24 resize-y`}
+                  dir="ltr"
+                  placeholder="Example: Improve your body composition and burn fat effectively."
+                />
+                <TranslateButton from={goalModal.description ?? ""} onTranslated={(t) => setGoalModal({ ...goalModal, descriptionEn: t })} />
+              </div>
             </Field>
 
             <Field label="صورة الهدف" hint="المقاس المثالي: 690 × 400 بكسل (نسبة 1.7:1) — تملأ عرض الكارت كاملاً بدون قص ولا مسافات جانبية.">
