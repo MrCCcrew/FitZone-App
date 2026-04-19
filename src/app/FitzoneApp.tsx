@@ -2118,7 +2118,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                 {m.popular && (
                   <div style={{ position: "absolute", top: -5, left: "50%", transform: "translateX(-50%)", background: C.redDark, color: "#fff", padding: "4px 20px", borderRadius: 4, fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>⭐ {t("الأكثر شعبية", "Most popular")}</div>
                 )}
-                <h3 style={{ fontSize: 20, fontWeight: 900, color: C.white }}>{t("باقة", "Plan")} {m.name}</h3>
+                <h3 style={{ fontSize: 20, fontWeight: 900, color: C.white }}>{m.name}</h3>
                 <div style={{ margin: "16px 0 24px" }}>
                   <span className="price-currency" style={{ color: m.color === C.gold ? C.goldDark : m.color === C.red ? C.redDark : m.color }}>{lang === "en" ? "EGP " : "ج.م "}</span>
                   <span className="price-big" style={{ color: m.color === C.gold ? C.goldDark : m.color === C.red ? C.redDark : m.color }}>{m.priceAfter ?? m.price}</span>
@@ -3368,12 +3368,12 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
           <h1 style={{ fontSize: viewportWidth() < 768 ? 32 : 44, fontWeight: 900, marginBottom: 12, color: C.white }}>{t("اختاري", "Choose")} <span style={{ color: C.red }}>{t("هدفك واشتراكك", "your goal and membership")}</span></h1>
           <p style={{ color: C.gray, fontSize: 16, marginBottom: 32 }}>{t("اختاري من اشتراكات الجيم والباقات الرياضية في بني سويف حسب هدفك ومستوى تدريبك.", "Choose from gym memberships and fitness packages in Beni Suef based on your goal and training level.")}</p>
           <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
-            <button className={`tab ${tab === "all" ? "active" : ""}`} onClick={() => setTab("all")}>الكل</button>
-            <button className={`tab ${tab === "monthly" ? "active" : ""}`} onClick={() => setTab("monthly")}>شهري</button>
-            <button className={`tab ${tab === "quarterly" ? "active" : ""}`} onClick={() => setTab("quarterly")}>ربع سنوي</button>
-            <button className={`tab ${tab === "semi_annual" ? "active" : ""}`} onClick={() => setTab("semi_annual")}>نصف سنوي</button>
-            <button className={`tab ${tab === "annual" ? "active" : ""}`} onClick={() => setTab("annual")}>سنوي</button>
-            <button className={`tab ${tab === "custom" ? "active" : ""}`} onClick={() => setTab("custom")}>مخصص</button>
+            <button className={`tab ${tab === "all" ? "active" : ""}`} onClick={() => setTab("all")}>{t("الكل", "All")}</button>
+            <button className={`tab ${tab === "monthly" ? "active" : ""}`} onClick={() => setTab("monthly")}>{t("شهري", "Monthly")}</button>
+            <button className={`tab ${tab === "quarterly" ? "active" : ""}`} onClick={() => setTab("quarterly")}>{t("ربع سنوي", "Quarterly")}</button>
+            <button className={`tab ${tab === "semi_annual" ? "active" : ""}`} onClick={() => setTab("semi_annual")}>{t("نصف سنوي", "Semi-annual")}</button>
+            <button className={`tab ${tab === "annual" ? "active" : ""}`} onClick={() => setTab("annual")}>{t("سنوي", "Annual")}</button>
+            <button className={`tab ${tab === "custom" ? "active" : ""}`} onClick={() => setTab("custom")}>{t("مخصص", "Custom")}</button>
           </div>
         </div>
       </section>
@@ -3816,11 +3816,22 @@ const classTypeMap: Record<string, string> = {
   swimming: "سباحة",
   dance: "رقص",
 };
+const classTypeMapEn: Record<string, string> = {
+  yoga: "Yoga",
+  zumba: "Zumba",
+  strength: "Strength",
+  pilates: "Pilates",
+  cardio: "Cardio",
+  boxing: "Boxing",
+  swimming: "Swimming",
+  dance: "Dance",
+};
 const gymImageKnownTypes = new Set(["yoga", "zumba", "strength", "pilates", "cardio", "boxing", "swimming", "dance"]);
-function getClassTypeLabel(type: string) {
+function getClassTypeLabel(type: string, lang?: string) {
   const normalized = type?.trim();
-  if (!normalized) return "غير محدد";
-  return classTypeMap[normalized] ?? normalized;
+  if (!normalized) return lang === "en" ? "Other" : "غير محدد";
+  const map = lang === "en" ? classTypeMapEn : classTypeMap;
+  return map[normalized] ?? normalized;
 }
 function resolveClassImageType(type: string) {
   return gymImageKnownTypes.has(type) ? type : "cardio";
@@ -4031,25 +4042,25 @@ const ClassDetailPage = ({ navigate }: { navigate: (p: string) => void }) => {
 
 // ─── SCHEDULE PAGE ────────────────────────────────────────────────────────────
 const SchedulePage = () => {
+  const { lang } = useLang();
+  const t = useT();
   const [entries, setEntries] = useState<
-    { day: string; time: string; title: string; sub: string; tag: string }[]
+    { dayIndex: number; time: string; title: string; sub: string; tag: string }[]
   >([]);
 
   useEffect(() => {
     loadPublicApi()
       .then((data) => {
         if (!Array.isArray(data.classes)) return;
-        const rows: { day: string; time: string; title: string; sub: string; tag: string }[] = [];
-        const dayNames = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
+        const rows: { dayIndex: number; time: string; title: string; sub: string; tag: string }[] = [];
         (data.classes as PublicClass[]).forEach((c) => {
           (c.schedules || []).forEach((s) => {
             const date = new Date(s.date);
             if (Number.isNaN(date.getTime())) return;
-            const day = dayNames[date.getDay()] ?? "الأحد";
-            const typeLabel = getClassTypeLabel(c.type);
+            const typeLabel = getClassTypeLabel(c.type, lang);
             const tag = [typeLabel, c.subType].filter(Boolean).join(" - ");
             rows.push({
-              day,
+              dayIndex: date.getDay(),
               time: s.time,
               title: c.name,
               sub: c.trainer ? c.trainer : "",
@@ -4060,7 +4071,14 @@ const SchedulePage = () => {
         setEntries(rows);
       })
       .catch(() => {});
-  }, []);
+  }, [lang]);
+
+  const DAY_NAMES_AR = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
+  const DAY_NAMES_EN = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const dayName = (index: number) => (lang === "en" ? DAY_NAMES_EN : DAY_NAMES_AR)[index] ?? "";
+
+  // Saturday-first order (indices: 6,0,1,2,3,4,5)
+  const DAY_ORDER_IDX = [6, 0, 1, 2, 3, 4, 5];
 
   const parseTime = (value: string) => {
     const [h, m] = value.split(":").map((n) => Number(n));
@@ -4071,12 +4089,16 @@ const SchedulePage = () => {
     const [h, m] = value.split(":").map((n) => Number(n));
     const hour = Number.isNaN(h) ? 0 : h;
     const minute = Number.isNaN(m) ? 0 : m;
+    if (lang === "en") {
+      const period = hour < 12 ? "AM" : "PM";
+      const displayHour = hour % 12 === 0 ? 12 : hour % 12;
+      return `${String(displayHour).padStart(2, "0")}:${String(minute).padStart(2, "0")} ${period}`;
+    }
     const period = hour < 12 ? "صباحًا" : hour < 16 ? "ظهرًا" : "مساءً";
     const displayHour = hour % 12 === 0 ? 12 : hour % 12;
     return `${String(displayHour).padStart(2, "0")}.${String(minute).padStart(2, "0")} ${period}`;
   };
 
-  const DAY_ORDER = ["السبت", "الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة"];
   const MORNING_FALLBACK = ["09:00", "10:00", "11:00", "12:00", "13:00"];
   const EVENING_FALLBACK = ["16:00", "17:00", "18:00", "19:00", "20:00", "21:00"];
 
@@ -4084,91 +4106,106 @@ const SchedulePage = () => {
     const morning: typeof entries = [];
     const evening: typeof entries = [];
     entries.forEach((entry) => {
-      if (parseTime(entry.time) < 15 * 60) {
-        morning.push(entry);
-      } else {
-        evening.push(entry);
-      }
+      if (parseTime(entry.time) < 15 * 60) morning.push(entry);
+      else evening.push(entry);
     });
     return { morning, evening };
   }, [entries]);
 
   const buildSlots = (list: typeof entries, fallback: string[]) => {
     const times = Array.from(new Set(list.map((item) => item.time)));
-    const merged = Array.from(new Set([...times, ...fallback]));
-    return merged.sort((a, b) => parseTime(a) - parseTime(b));
+    return Array.from(new Set([...times, ...fallback])).sort((a, b) => parseTime(a) - parseTime(b));
   };
 
   const morningSlots = useMemo(() => buildSlots(splitEntries.morning, MORNING_FALLBACK), [splitEntries.morning]);
   const eveningSlots = useMemo(() => buildSlots(splitEntries.evening, EVENING_FALLBACK), [splitEntries.evening]);
 
-  const days = useMemo(() => {
-    const used = new Set(entries.map((entry) => entry.day));
-    return DAY_ORDER.filter((day) => used.has(day) || day !== "الجمعة");
+  const activeDayIndices = useMemo(() => {
+    const used = new Set(entries.map((e) => e.dayIndex));
+    return DAY_ORDER_IDX.filter((idx) => used.has(idx) || idx !== 5);
   }, [entries]);
 
-  const renderBoard = (title: string, subtitle: string, list: typeof entries, slots: string[]) => (
-    <div className="schedule-shell" style={{ marginBottom: 36 }}>
-      <div className="schedule-title">
-        <h2>جدول</h2>
-        <span>{title}</span>
-        <div style={{ color: "#f1f1f1", fontSize: 14 }}>{subtitle}</div>
-      </div>
-      <div className="schedule-scroll" style={{ direction: "ltr" }}>
-        <div
-          className="schedule-grid"
-          style={{
-            gridTemplateColumns: `${slots.map(() => "minmax(120px, 1fr)").join(" ")} 120px`,
-          }}
-        >
-          {slots.map((slot) => (
-            <div key={`head-${slot}`} className="schedule-cell time">
-              {formatTimeLabel(slot)}
+  const renderBoard = (title: string, subtitle: string, list: typeof entries, slots: string[]) => {
+    if (list.length === 0 && slots === eveningSlots) return null;
+    return (
+      <div className="schedule-shell" style={{ marginBottom: 36 }}>
+        <div className="schedule-title">
+          <h2>{t("جدول", "Schedule")}</h2>
+          <span>{title}</span>
+          <div style={{ color: "#f1f1f1", fontSize: 14 }}>{subtitle}</div>
+        </div>
+        <div className="schedule-scroll" style={{ direction: "ltr", overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+          <div
+            className="schedule-grid"
+            style={{
+              display: "grid",
+              gridTemplateColumns: `${slots.map(() => "minmax(130px, 1fr)").join(" ")} minmax(90px, 120px)`,
+              minWidth: slots.length * 130 + 90,
+            }}
+          >
+            {slots.map((slot) => (
+              <div key={`head-${slot}`} className="schedule-cell time">
+                {formatTimeLabel(slot)}
+              </div>
+            ))}
+            <div className="schedule-cell clock">
+              <I n="clock" s={20} c="#f5c542" />
             </div>
-          ))}
-          <div className="schedule-cell clock">
-            <I n="clock" s={20} c="#f5c542" />
+            {activeDayIndices.map((dayIdx) => (
+              <div key={`row-${dayIdx}`} style={{ display: "contents" }}>
+                {slots.map((slot) => {
+                  const cellEntries = list.filter((e) => e.dayIndex === dayIdx && e.time === slot);
+                  return (
+                    <div key={`${dayIdx}-${slot}`} className="schedule-cell">
+                      {cellEntries.length === 0 ? (
+                        <div className="schedule-empty">—</div>
+                      ) : (
+                        cellEntries.map((entry, idx) => (
+                          <div key={`${dayIdx}-${slot}-${idx}`} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+                            <div className="schedule-item-title">{entry.title}</div>
+                            {entry.sub ? <div className="schedule-item-sub">{entry.sub}</div> : null}
+                            {entry.tag ? <div className="schedule-item-tag">{entry.tag}</div> : null}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  );
+                })}
+                <div className="schedule-cell day">{dayName(dayIdx)}</div>
+              </div>
+            ))}
           </div>
-          {days.map((day) => (
-            <div key={`row-${day}`} style={{ display: "contents" }}>
-              {slots.map((slot) => {
-                const cellEntries = list.filter((entry) => entry.day === day && entry.time === slot);
-                return (
-                  <div key={`${day}-${slot}`} className="schedule-cell">
-                    {cellEntries.length === 0 ? (
-                      <div className="schedule-empty">—</div>
-                    ) : (
-                      cellEntries.map((entry, idx) => (
-                        <div key={`${day}-${slot}-${idx}`} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
-                          <div className="schedule-item-title">{entry.title}</div>
-                          {entry.sub ? <div className="schedule-item-sub">{entry.sub}</div> : null}
-                          {entry.tag ? <div className="schedule-item-tag">{entry.tag}</div> : null}
-                        </div>
-                      ))
-                  )}
-                </div>
-              );
-            })}
-            <div className="schedule-cell day">{day}</div>
-          </div>
-        ))}
+        </div>
       </div>
-    </div>
-  </div>
-  );
+    );
+  };
 
   return (
     <div>
       <section style={{ background: `linear-gradient(135deg, #FFE0EC, ${C.bg})`, padding: "48px 0 32px" }}>
         <div className="container">
-          <h1 style={{ fontSize: viewportWidth() < 768 ? 30 : 40, fontWeight: 900, color: C.white, marginBottom: 8 }}>الجدول الأسبوعي</h1>
-          <p style={{ color: C.gray, fontSize: 15 }}>كل المواعيد تُسجَّل من لوحة الإدارة ويمكن تعديلها في أي وقت.</p>
+          <h1 style={{ fontSize: viewportWidth() < 768 ? 30 : 40, fontWeight: 900, color: C.white, marginBottom: 8 }}>
+            {t("الجدول الأسبوعي", "Weekly Schedule")}
+          </h1>
+          <p style={{ color: C.gray, fontSize: 15 }}>
+            {t("كل المواعيد تُسجَّل من لوحة الإدارة ويمكن تعديلها في أي وقت.", "All times are managed from the admin panel and can be updated anytime.")}
+          </p>
         </div>
       </section>
       <section className="section">
-        <div className="container">
-          {renderBoard("مواعيد الكلاسات الصباحية", "ابدئي يومك بنشاط وحماس", splitEntries.morning, morningSlots)}
-          {renderBoard("مواعيد الكلاسات المسائية", "اختاري أفضل توقيت بعد اليوم الطويل", splitEntries.evening, eveningSlots)}
+        <div className="container" style={{ overflowX: "hidden" }}>
+          {renderBoard(
+            t("مواعيد الكلاسات الصباحية", "Morning Classes"),
+            t("ابدئي يومك بنشاط وحماس", "Start your day with energy"),
+            splitEntries.morning,
+            morningSlots,
+          )}
+          {renderBoard(
+            t("مواعيد الكلاسات المسائية", "Evening Classes"),
+            t("اختاري أفضل توقيت بعد اليوم الطويل", "Pick the best time after a long day"),
+            splitEntries.evening,
+            eveningSlots,
+          )}
         </div>
       </section>
     </div>
