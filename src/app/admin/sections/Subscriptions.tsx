@@ -36,13 +36,16 @@ const EMPTY_PLAN: Omit<PlanDraft, "id" | "membersCount"> = {
 
 const EMPTY_OFFER: Omit<Offer, "id" | "usedCount" | "currentSubscribers"> = {
   title: "",
+  titleEn: "",
   discount: 0,
   type: "special",
   appliesTo: "",
+  appliesToEn: "",
   membershipId: null,
   validUntil: "",
   active: true,
   description: "",
+  descriptionEn: "",
   specialPrice: 0,
   maxSubscribers: 50,
   image: "",
@@ -964,12 +967,26 @@ export default function Subscriptions() {
               </select>
             </Field>
 
-            <Field label="عنوان العرض">
+            <Field label="عنوان العرض (عربي)">
               <input value={offerModal.title} onChange={(event) => setOfferModal({ ...offerModal, title: event.target.value })} className={INPUT} placeholder="مثال: عرض الصيف" />
             </Field>
 
-            <Field label="وصف مختصر" hint="يظهر هذا النص للعميل داخل الصفحة الرئيسية وصفحة الاشتراكات إن فُعّل العرض هناك.">
+            <Field label="عنوان العرض (إنجليزي — Title EN)">
+              <div className="flex gap-2">
+                <input value={offerModal.titleEn ?? ""} onChange={(event) => setOfferModal({ ...offerModal, titleEn: event.target.value })} className={`${INPUT} flex-1`} placeholder="e.g. Summer Offer" dir="ltr" />
+                <TranslateButton from={offerModal.title} onTranslated={(t) => setOfferModal((prev) => prev ? { ...prev, titleEn: t } : prev)} />
+              </div>
+            </Field>
+
+            <Field label="وصف مختصر (عربي)" hint="يظهر هذا النص للعميل داخل الصفحة الرئيسية وصفحة الاشتراكات إن فُعّل العرض هناك.">
               <textarea value={offerModal.description ?? ""} onChange={(event) => setOfferModal({ ...offerModal, description: event.target.value })} className={`${INPUT} min-h-24 resize-y`} placeholder="صف العرض بشكل مختصر ومقنع." />
+            </Field>
+
+            <Field label="وصف مختصر (إنجليزي — Description EN)">
+              <div className="space-y-1">
+                <textarea value={offerModal.descriptionEn ?? ""} onChange={(event) => setOfferModal({ ...offerModal, descriptionEn: event.target.value })} className={`${INPUT} min-h-20 resize-y`} placeholder="e.g. Describe the offer briefly." dir="ltr" />
+                <TranslateButton from={offerModal.description ?? ""} onTranslated={(t) => setOfferModal((prev) => prev ? { ...prev, descriptionEn: t } : prev)} />
+              </div>
             </Field>
 
             {offerModal.type === "special" ? (
@@ -1018,8 +1035,14 @@ export default function Subscriptions() {
                 <Field label="قيمة الخصم">
                   <input type="number" value={offerModal.discount} onChange={(event) => setOfferModal({ ...offerModal, discount: Number(event.target.value) })} className={INPUT} dir="ltr" />
                 </Field>
-                <Field label="ينطبق على">
+                <Field label="ينطبق على (عربي)">
                   <input value={offerModal.appliesTo} onChange={(event) => setOfferModal({ ...offerModal, appliesTo: event.target.value })} className={INPUT} placeholder="مثال: جميع الاشتراكات أو فئة محددة" />
+                </Field>
+                <Field label="ينطبق على (إنجليزي — Applies To EN)">
+                  <div className="flex gap-2">
+                    <input value={offerModal.appliesToEn ?? ""} onChange={(event) => setOfferModal({ ...offerModal, appliesToEn: event.target.value })} className={`${INPUT} flex-1`} placeholder="e.g. All memberships" dir="ltr" />
+                    <TranslateButton from={offerModal.appliesTo} onTranslated={(t) => setOfferModal((prev) => prev ? { ...prev, appliesToEn: t } : prev)} />
+                  </div>
                 </Field>
               </div>
             )}
