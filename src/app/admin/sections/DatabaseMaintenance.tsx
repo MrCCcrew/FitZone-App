@@ -110,6 +110,10 @@ export default function DatabaseMaintenance() {
   const [message, setMessage] = useState<ActionResult | null>(null);
   const [clearTarget, setClearTarget] = useState<"sales" | "purchases" | "both">("sales");
   const [clearLoading, setClearLoading] = useState(false);
+  const [restoreLoading, setRestoreLoading] = useState(false);
+  const [restoreProgress, setRestoreProgress] = useState(0);
+  const [restoreFile, setRestoreFile] = useState("");
+  const [restoreResult, setRestoreResult] = useState<{ ok: boolean; message: string } | null>(null);
 
   const [recordsTab, setRecordsTab] = useState<RecordsTab>("transactions");
   const [recordsQuery, setRecordsQuery] = useState("");
@@ -349,6 +353,7 @@ export default function DatabaseMaintenance() {
           <p className="mb-4 text-sm text-blue-200/70">
             اختاري نسخة احتياطية لاسترجاع جدول المنتجات منها. سيتم استبدال المنتجات الحالية بالمنتجات المحفوظة في النسخة المختارة.
           </p>
+
           <div className="mb-4 grid gap-4 sm:grid-cols-2">
             <div>
               <label className="mb-2 block text-xs font-medium text-gray-400">كلمة المرور الرئيسية</label>
@@ -363,46 +368,101 @@ export default function DatabaseMaintenance() {
             <div>
               <label className="mb-2 block text-xs font-medium text-gray-400">اختر النسخة الاحتياطية</label>
               <select
-                id="restore-backup-select"
-                defaultValue=""
+                value={restoreFile}
+                onChange={(e) => { setRestoreFile(e.target.value); setRestoreResult(null); }}
                 className="w-full rounded-xl border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none"
               >
-                <option value="" disabled>اختر ملف النسخة الاحتياطية</option>
+                <option value="">اختر ملف النسخة الاحتياطية</option>
                 {backups.map((b) => (
                   <option key={b.name} value={b.name}>{b.name} — {b.createdAt} ({formatSize(b.size)})</option>
                 ))}
               </select>
             </div>
           </div>
+
+          {/* Progress bar while loading */}
+          {restoreLoading && (
+            <div className="mb-4">
+              <div className="mb-2 flex items-center justify-between text-xs text-blue-300">
+                <span>جارٍ قراءة النسخة الاحتياطية واستعادة المنتجات...</span>
+                <span>{restoreProgress}%</span>
+              </div>
+              <div className="h-2.5 w-full overflow-hidden rounded-full bg-blue-950/60 border border-blue-500/20">
+                <div
+                  className="h-full rounded-full bg-blue-500 transition-all duration-300"
+                  style={{ width: `${restoreProgress}%` }}
+                />
+              </div>
+              <p className="mt-2 text-xs text-blue-400/70 text-center">يرجى الانتظار، لا تغلق الصفحة...</p>
+            </div>
+          )}
+
+          {/* Result message */}
+          {restoreResult && !restoreLoading && (
+            <div className={`mb-4 rounded-2xl px-4 py-4 text-sm ${
+              restoreResult.ok
+                ? "border border-emerald-500/40 bg-emerald-950/30 text-emerald-200"
+                : "border border-red-500/30 bg-red-950/30 text-red-200"
+            }`}>
+              {restoreResult.ok ? (
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center gap-2 text-base font-bold text-emerald-300">
+                    <span>✅</span> تم الاسترجاع بنجاح بدون أخطاء
+                  </div>
+                  <div className="text-xs text-emerald-400/80">{restoreResult.message}</div>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <span>❌</span> {restoreResult.message}
+                </div>
+              )}
+            </div>
+          )}
+
           <button
             type="button"
-            disabled={loading}
+            disabled={restoreLoading}
             onClick={async () => {
-              const sel = (document.getElementById("restore-backup-select") as HTMLSelectElement)?.value;
-              if (!masterPassword.trim()) { setMessage({ ok: false, message: "أدخل كلمة المرور الرئيسية أولاً." }); return; }
-              if (!sel) { setMessage({ ok: false, message: "اختر ملف النسخة الاحتياطية أولاً." }); return; }
-              const confirmed = window.confirm(`سيتم استبدال المنتجات الحالية بالمنتجات من: ${sel}\nهل تريد المتابعة؟`);
+              if (!masterPassword.trim()) { setRestoreResult({ ok: false, message: "أدخل كلمة المرور الرئيسية أولاً." }); return; }
+              if (!restoreFile) { setRestoreResult({ ok: false, message: "اختر ملف النسخة الاحتياطية أولاً." }); return; }
+              const confirmed = window.confirm(`سيتم استبدال المنتجات الحالية بالمنتجات من:\n${restoreFile}\n\nهل تريد المتابعة؟`);
               if (!confirmed) return;
-              setLoading(true);
-              setMessage(null);
+
+              setRestoreLoading(true);
+              setRestoreResult(null);
+              setRestoreProgress(0);
+
+              // Animate progress to 85% while waiting for server
+              const interval = setInterval(() => {
+                setRestoreProgress((p) => {
+                  if (p >= 85) { clearInterval(interval); return 85; }
+                  return p + (p < 40 ? 8 : p < 70 ? 4 : 2);
+                });
+              }, 200);
+
               try {
                 const res = await fetch("/api/admin/db-maintenance", {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ action: "restore-products", masterPassword, backupFile: sel }),
+                  body: JSON.stringify({ action: "restore-products", masterPassword, backupFile: restoreFile }),
                 });
+                clearInterval(interval);
+                setRestoreProgress(100);
+                await new Promise((r) => setTimeout(r, 400));
                 const data = await res.json();
-                setMessage({ ok: res.ok, message: data?.message ?? (res.ok ? "تم الاسترجاع." : "حدث خطأ.") });
+                setRestoreResult({ ok: res.ok, message: data?.message ?? (res.ok ? "تم الاسترجاع بنجاح." : "حدث خطأ أثناء الاسترجاع.") });
                 if (res.ok) setMasterPassword("");
               } catch {
-                setMessage({ ok: false, message: "تعذر الاتصال بالخادم." });
+                clearInterval(interval);
+                setRestoreProgress(0);
+                setRestoreResult({ ok: false, message: "تعذر الاتصال بالخادم." });
               } finally {
-                setLoading(false);
+                setRestoreLoading(false);
               }
             }}
-            className="rounded-2xl bg-blue-600 px-6 py-2.5 text-sm font-bold text-white hover:bg-blue-500 disabled:opacity-50"
+            className="rounded-2xl bg-blue-600 px-6 py-2.5 text-sm font-bold text-white hover:bg-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            {loading ? "جارٍ الاسترجاع..." : "🔄 استرجاع المنتجات"}
+            {restoreLoading ? "جارٍ الاسترجاع..." : "🔄 استرجاع المنتجات"}
           </button>
         </div>
       )}
