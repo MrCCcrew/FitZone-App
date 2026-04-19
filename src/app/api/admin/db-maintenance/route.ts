@@ -140,28 +140,27 @@ async function restoreTablesFromBackup(backupFile: string, tables: string[]) {
   await pipeline(createReadStream(filePath), gunzip, collector);
   const sql = Buffer.concat(chunks).toString("utf8");
 
-  // Extract INSERT statements for each requested table
-  const inserts: string[] = [];
+  // Extract LOCK TABLES...UNLOCK TABLES blocks wholesale (preserves multi-line INSERTs)
+  const blocks: string[] = [];
   for (const table of tables) {
-    const lines = sql.split("\n");
-    let inSection = false;
-    for (const line of lines) {
-      const trimmed = line.trimEnd();
-      if (trimmed.includes(`Dumping data for table \`${table}\``)) { inSection = true; continue; }
-      if (inSection && trimmed.startsWith("-- ") && !trimmed.includes(`\`${table}\``)) { inSection = false; }
-      if (inSection && trimmed.toUpperCase().startsWith("INSERT INTO")) {
-        inserts.push(trimmed.endsWith(";") ? trimmed : trimmed + ";");
-      }
-    }
+    const lockMarker = `LOCK TABLES \`${table}\` WRITE;`;
+    const unlockMarker = `UNLOCK TABLES;`;
+    const start = sql.indexOf(lockMarker);
+    if (start === -1) continue;
+    const end = sql.indexOf(unlockMarker, start);
+    if (end === -1) continue;
+    blocks.push(sql.slice(start, end + unlockMarker.length));
   }
 
-  if (inserts.length === 0) return 0;
+  // Count how many INSERT rows exist across all blocks
+  const insertCount = blocks.reduce((n, b) => n + (b.match(/^INSERT\s+INTO/gim)?.length ?? 0), 0);
+  if (insertCount === 0) return 0;
 
   // Build a self-contained SQL script and run it via mysql CLI
   const script = [
     "SET FOREIGN_KEY_CHECKS=0;",
-    ...tables.map((t) => `DELETE FROM \`${t}\`;`),
-    ...inserts,
+    ...tables.reverse().map((t) => `DELETE FROM \`${t}\`;`),
+    ...blocks,
     "SET FOREIGN_KEY_CHECKS=1;",
   ].join("\n");
 
@@ -185,7 +184,7 @@ async function restoreTablesFromBackup(backupFile: string, tables: string[]) {
     proc.stdin.end();
   });
 
-  return inserts.length;
+  return insertCount;
 }
 
 async function resetDatabase(options: { preserveSiteContent: boolean; resetUsers: boolean }) {
