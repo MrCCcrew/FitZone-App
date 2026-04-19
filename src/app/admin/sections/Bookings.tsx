@@ -178,6 +178,27 @@ export default function Bookings() {
     }
   }, [loadSchedules, rescheduleModal]);
 
+  const handleDelete = async (bookingId: string) => {
+    const confirmed = window.confirm("هل تريد حذف هذا الحجز نهائياً؟ لا يمكن التراجع.");
+    if (!confirmed) return;
+    setWorking(true);
+    try {
+      const response = await fetch("/api/admin/bookings", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bookingId }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        window.alert(payload.error ?? "تعذر حذف الحجز.");
+        return;
+      }
+      await loadBookings();
+    } finally {
+      setWorking(false);
+    }
+  };
+
   const handleAction = async (bookingId: string, action: "attended" | "cancel" | "confirm") => {
     setWorking(true);
     try {
@@ -397,6 +418,13 @@ export default function Bookings() {
                             إعادة تفعيل
                           </button>
                         )}
+                        <button
+                          onClick={() => handleDelete(booking.id)}
+                          disabled={working}
+                          className="rounded-lg bg-rose-900/30 px-3 py-2 text-xs text-rose-400 transition-colors hover:bg-rose-900/50 disabled:opacity-50"
+                        >
+                          حذف
+                        </button>
                       </div>
                     </td>
                   </tr>

@@ -295,3 +295,31 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: "تعذر تحديث الحجز." }, { status: 500 });
   }
 }
+
+export async function DELETE(req: Request) {
+  const err = await checkAdmin();
+  if (err) return err;
+
+  try {
+    const { bookingId } = (await req.json()) as { bookingId?: string };
+    if (!bookingId) return NextResponse.json({ error: "معرّف الحجز مطلوب." }, { status: 400 });
+
+    const booking = await db.booking.findUnique({ where: { id: bookingId } });
+    if (!booking) return NextResponse.json({ error: "الحجز غير موجود." }, { status: 404 });
+
+    await db.booking.delete({ where: { id: bookingId } });
+
+    // Restore the spot only if the booking was holding one (not cancelled)
+    if (booking.status !== "cancelled") {
+      await db.schedule.update({
+        where: { id: booking.scheduleId },
+        data: { availableSpots: { increment: 1 } },
+      });
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("[ADMIN_BOOKINGS_DELETE]", error);
+    return NextResponse.json({ error: "تعذر حذف الحجز." }, { status: 500 });
+  }
+}
