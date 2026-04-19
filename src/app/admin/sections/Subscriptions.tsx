@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Goal, Offer, Plan } from "../types";
 import { AdminCard, AdminEmptyState, AdminSectionShell } from "./shared";
+import { TranslateButton } from "./TranslateButton";
 
 const INPUT =
   "w-full rounded-xl border border-gray-700 bg-gray-800 px-4 py-2.5 text-sm text-white outline-none transition-colors focus:border-[#ff4f93]";
@@ -14,11 +15,13 @@ type PlanDraft = Plan & {
 
 const EMPTY_PLAN: Omit<PlanDraft, "id" | "membersCount"> = {
   name: "",
+  nameEn: "",
   price: 0,
   duration: 30,
   cycle: "monthly",
   sessionsCount: 8,
   features: [],
+  featuresEn: [],
   active: true,
   kind: "subscription",
   goalIds: [],
@@ -112,6 +115,7 @@ export default function Subscriptions() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [featureInput, setFeatureInput] = useState("");
+  const [featureInputEn, setFeatureInputEn] = useState("");
   const [productRewardDraft, setProductRewardDraft] = useState<{ productId: string; quantity: number }>({
     productId: "",
     quantity: 1,
@@ -170,11 +174,14 @@ export default function Subscriptions() {
 
   const addFeature = () => {
     if (!planModal || !featureInput.trim()) return;
-    setPlanModal({
-      ...planModal,
-      features: [...(planModal.features ?? []), featureInput.trim()],
-    });
+    setPlanModal({ ...planModal, features: [...(planModal.features ?? []), featureInput.trim()] });
     setFeatureInput("");
+  };
+
+  const addFeatureEn = () => {
+    if (!planModal || !featureInputEn.trim()) return;
+    setPlanModal({ ...planModal, featuresEn: [...(planModal.featuresEn ?? []), featureInputEn.trim()] });
+    setFeatureInputEn("");
   };
 
   const addProductReward = () => {
@@ -647,10 +654,23 @@ export default function Subscriptions() {
       </AdminCard>
 
       {planModal ? (
-        <Modal title={"id" in planModal && planModal.id ? "تعديل الاشتراك" : "إضافة اشتراك"} onClose={() => { setPlanModal(null); setFeatureInput(""); }}>
+        <Modal title={"id" in planModal && planModal.id ? "تعديل الاشتراك" : "إضافة اشتراك"} onClose={() => { setPlanModal(null); setFeatureInput(""); setFeatureInputEn(""); }}>
           <div className="space-y-4">
             <Field label="اسم الاشتراك">
               <input value={planModal.name} onChange={(event) => setPlanModal({ ...planModal, name: event.target.value })} className={INPUT} />
+            </Field>
+
+            <Field label="اسم الاشتراك بالإنجليزية" hint="اختياري، يظهر عند اختيار اللغة الإنجليزية.">
+              <div className="flex gap-2">
+                <input
+                  value={planModal.nameEn ?? ""}
+                  onChange={(event) => setPlanModal({ ...planModal, nameEn: event.target.value })}
+                  className={`${INPUT} flex-1`}
+                  dir="ltr"
+                  placeholder="Example: Monthly Membership"
+                />
+                <TranslateButton from={planModal.name} onTranslated={(t) => setPlanModal({ ...planModal, nameEn: t })} />
+              </div>
             </Field>
 
             <div className="grid gap-4 sm:grid-cols-3">
@@ -804,6 +824,64 @@ export default function Subscriptions() {
                     >
                       ×
                     </button>
+                  </div>
+                ))}
+              </div>
+            </Field>
+
+            <Field label="مميزات الاشتراك بالإنجليزية" hint="اختياري، تُعرض للعميل عند اختيار اللغة الإنجليزية.">
+              <div className="mb-2 flex gap-2">
+                <TranslateButton
+                  from={(planModal.features ?? []).join("\n")}
+                  onTranslated={(t) => setPlanModal({ ...planModal, featuresEn: t.split("\n").map((s) => s.trim()).filter(Boolean) })}
+                />
+              </div>
+              <div className="mb-3 flex gap-2">
+                <input
+                  value={featureInputEn}
+                  onChange={(event) => setFeatureInputEn(event.target.value)}
+                  onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addFeatureEn(); } }}
+                  placeholder="Example: Monthly follow-up with trainer"
+                  className={INPUT}
+                  dir="ltr"
+                />
+                <button type="button" onClick={addFeatureEn} className="rounded-lg bg-[#ff4f93] px-4 text-sm font-black text-white transition-colors hover:bg-[#ff2f7d]">+</button>
+              </div>
+              <div className="space-y-2">
+                {(planModal.featuresEn ?? []).map((feature, index) => (
+                  <div key={`en-${index}`} className="flex items-center gap-2 rounded-xl border border-[rgba(255,188,219,0.12)] bg-black/15 px-4 py-3">
+                    <span className="text-[#ff97bf]">✓</span>
+                    <span className="flex-1 text-sm text-[#fff4f8]" dir="ltr">{feature}</span>
+                    <button type="button" onClick={() => setPlanModal({ ...planModal, featuresEn: (planModal.featuresEn ?? []).filter((_, i) => i !== index) })} className="text-[#d7aabd] transition-colors hover:text-rose-300">×</button>
+                  </div>
+                ))}
+              </div>
+            </Field>
+
+            <Field label="مميزات الاشتراك بالإنجليزية" hint="اختياري، تُعرض للعميل عند اختيار اللغة الإنجليزية.">
+              <div className="mb-2 flex gap-2">
+                <TranslateButton
+                  from={(planModal.features ?? []).join("\n")}
+                  onTranslated={(t) => setPlanModal({ ...planModal, featuresEn: t.split("\n").map((s) => s.trim()).filter(Boolean) })}
+                />
+              </div>
+              <div className="mb-3 flex gap-2">
+                <input
+                  value={featureInputEn}
+                  onChange={(event) => setFeatureInputEn(event.target.value)}
+                  onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addFeatureEn(); } }}
+                  placeholder="Example: Monthly follow-up with trainer"
+                  className={INPUT}
+                  dir="ltr"
+                />
+                <button type="button" onClick={addFeatureEn} className="rounded-lg bg-[#ff4f93] px-4 text-sm font-black text-white transition-colors hover:bg-[#ff2f7d]">+</button>
+              </div>
+              <div className="space-y-2">
+                {(planModal.featuresEn ?? []).map((feature, index) => (
+                  <div key={`en-${index}`} className="flex items-center gap-2 rounded-xl border border-[rgba(255,188,219,0.12)] bg-black/15 px-4 py-3">
+                    <span className="text-[#ff97bf]">✓</span>
+                    <span className="flex-1 text-sm text-[#fff4f8]" dir="ltr">{feature}</span>
+                    <button type="button" onClick={() => setPlanModal({ ...planModal, featuresEn: (planModal.featuresEn ?? []).filter((_, i) => i !== index) })} className="text-[#d7aabd] transition-colors hover:text-rose-300">×</button>
                   </div>
                 ))}
               </div>
