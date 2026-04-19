@@ -2,8 +2,10 @@ import { NextResponse } from "next/server";
 import { requireAdminFeature } from "@/lib/admin-guard";
 import { db } from "@/lib/db";
 import { spawn } from "child_process";
-import { createWriteStream, promises as fs } from "fs";
-import { createGzip } from "zlib";
+import { createReadStream, createWriteStream, promises as fs } from "fs";
+import { createGunzip, createGzip } from "zlib";
+import { pipeline } from "stream/promises";
+import { Writable } from "stream";
 import path from "path";
 
 const MASTER_PASSWORD = process.env.DB_RESET_MASTER_PASSWORD ?? "";
@@ -125,6 +127,45 @@ function buildResetTables({ preserveSiteContent, resetUsers }: { preserveSiteCon
   return tables;
 }
 
+async function restoreTablesFromBackup(backupFile: string, tables: string[]) {
+  const filePath = path.join(BACKUP_DIR, backupFile);
+  await fs.access(filePath);
+
+  // Read and decompress the backup
+  const chunks: Buffer[] = [];
+  const gunzip = createGunzip();
+  const collector = new Writable({
+    write(chunk, _enc, cb) { chunks.push(chunk); cb(); },
+  });
+  await pipeline(createReadStream(filePath), gunzip, collector);
+  const sql = Buffer.concat(chunks).toString("utf8");
+
+  // Extract INSERT statements for each requested table
+  const inserts: string[] = [];
+  for (const table of tables) {
+    const lines = sql.split("\n");
+    let inSection = false;
+    for (const line of lines) {
+      if (line.includes(`Dumping data for table \`${table}\``)) { inSection = true; continue; }
+      if (inSection && line.startsWith("-- ") && !line.includes(table)) { inSection = false; }
+      if (inSection && line.startsWith("INSERT INTO")) inserts.push(line.replace(/;$/, ""));
+    }
+  }
+
+  if (inserts.length === 0) return 0;
+
+  // Truncate then re-insert
+  await db.$executeRawUnsafe("SET FOREIGN_KEY_CHECKS=0;");
+  for (const table of tables) {
+    await db.$executeRawUnsafe(`TRUNCATE TABLE \`${table}\`;`);
+  }
+  for (const stmt of inserts) {
+    await db.$executeRawUnsafe(stmt);
+  }
+  await db.$executeRawUnsafe("SET FOREIGN_KEY_CHECKS=1;");
+  return inserts.length;
+}
+
 async function resetDatabase(options: { preserveSiteContent: boolean; resetUsers: boolean }) {
   const tables = buildResetTables(options);
 
@@ -233,17 +274,24 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     const masterPassword = String(body?.masterPassword ?? "");
-    const action = body?.action as "backup" | "reset" | "clear-inventory";
+    const action = body?.action as "backup" | "reset" | "clear-inventory" | "restore-products";
     const preserveSiteContent = body?.preserveSiteContent !== false;
     const resetUsers = Boolean(body?.resetUsers);
     const clearTarget = body?.clearTarget as "sales" | "purchases" | "both" | undefined;
+    const backupFile = body?.backupFile as string | undefined;
 
     if (!masterPassword || masterPassword !== MASTER_PASSWORD) {
       return NextResponse.json({ message: "كلمة المرور الرئيسية غير صحيحة." }, { status: 401 });
     }
 
-    if (action !== "backup" && action !== "reset" && action !== "clear-inventory") {
+    if (!["backup", "reset", "clear-inventory", "restore-products"].includes(action)) {
       return NextResponse.json({ message: "طلب غير صالح." }, { status: 400 });
+    }
+
+    if (action === "restore-products") {
+      if (!backupFile) return NextResponse.json({ message: "حدد ملف النسخة الاحتياطية." }, { status: 400 });
+      const count = await restoreTablesFromBackup(backupFile, ["ProductCategory", "Product"]);
+      return NextResponse.json({ message: `تم استرجاع المنتجات بنجاح. عدد الصفوف المُستعادة: ${count}` });
     }
 
     const backup = await createBackup();

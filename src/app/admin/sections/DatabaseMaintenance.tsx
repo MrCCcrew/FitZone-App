@@ -342,6 +342,71 @@ export default function DatabaseMaintenance() {
         )}
       </div>
 
+      {/* ── Restore products from backup ── */}
+      {backups.length > 0 && (
+        <div className="rounded-3xl border border-blue-500/30 bg-blue-950/20 p-6">
+          <div className="mb-1 text-lg font-bold text-white">🔄 استرجاع المنتجات من نسخة احتياطية</div>
+          <p className="mb-4 text-sm text-blue-200/70">
+            اختاري نسخة احتياطية لاسترجاع جدول المنتجات منها. سيتم استبدال المنتجات الحالية بالمنتجات المحفوظة في النسخة المختارة.
+          </p>
+          <div className="mb-4 grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="mb-2 block text-xs font-medium text-gray-400">كلمة المرور الرئيسية</label>
+              <input
+                type="password"
+                value={masterPassword}
+                onChange={(e) => setMasterPassword(e.target.value)}
+                placeholder="أدخل كلمة المرور الرئيسية"
+                className="w-full rounded-xl border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-white placeholder-gray-600 focus:border-blue-500 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="mb-2 block text-xs font-medium text-gray-400">اختر النسخة الاحتياطية</label>
+              <select
+                id="restore-backup-select"
+                defaultValue=""
+                className="w-full rounded-xl border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none"
+              >
+                <option value="" disabled>اختر ملف النسخة الاحتياطية</option>
+                {backups.map((b) => (
+                  <option key={b.name} value={b.name}>{b.name} — {b.createdAt} ({formatSize(b.size)})</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <button
+            type="button"
+            disabled={loading}
+            onClick={async () => {
+              const sel = (document.getElementById("restore-backup-select") as HTMLSelectElement)?.value;
+              if (!masterPassword.trim()) { setMessage({ ok: false, message: "أدخل كلمة المرور الرئيسية أولاً." }); return; }
+              if (!sel) { setMessage({ ok: false, message: "اختر ملف النسخة الاحتياطية أولاً." }); return; }
+              const confirmed = window.confirm(`سيتم استبدال المنتجات الحالية بالمنتجات من: ${sel}\nهل تريد المتابعة؟`);
+              if (!confirmed) return;
+              setLoading(true);
+              setMessage(null);
+              try {
+                const res = await fetch("/api/admin/db-maintenance", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ action: "restore-products", masterPassword, backupFile: sel }),
+                });
+                const data = await res.json();
+                setMessage({ ok: res.ok, message: data?.message ?? (res.ok ? "تم الاسترجاع." : "حدث خطأ.") });
+                if (res.ok) setMasterPassword("");
+              } catch {
+                setMessage({ ok: false, message: "تعذر الاتصال بالخادم." });
+              } finally {
+                setLoading(false);
+              }
+            }}
+            className="rounded-2xl bg-blue-600 px-6 py-2.5 text-sm font-bold text-white hover:bg-blue-500 disabled:opacity-50"
+          >
+            {loading ? "جارٍ الاسترجاع..." : "🔄 استرجاع المنتجات"}
+          </button>
+        </div>
+      )}
+
       {/* ── Clear inventory data ── */}
       <div className="rounded-3xl border border-orange-500/30 bg-orange-950/20 p-6">
         <div className="mb-1 text-lg font-bold text-white">مسح حركات البيع والشراء</div>
