@@ -451,13 +451,13 @@ export async function GET(request: Request) {
         name: lang === "en" ? gymClass.nameEn ?? gymClass.name : gymClass.name,
         description: lang === "en" ? gymClass.descriptionEn ?? gymClass.description ?? "" : gymClass.description ?? "",
         trainer:
-          gymClass.showTrainerName === false
+          gymClass.showTrainerName === false || !gymClass.trainer
             ? ""
             : lang === "en"
               ? gymClass.trainer.nameEn ?? gymClass.trainer.name
               : gymClass.trainer.name,
         trainerSpecialty:
-          gymClass.showTrainerName === false
+          gymClass.showTrainerName === false || !gymClass.trainer
             ? ""
             : lang === "en"
               ? gymClass.trainer.specialtyEn ?? gymClass.trainer.specialty ?? ""
