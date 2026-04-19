@@ -114,6 +114,10 @@ export default function DatabaseMaintenance() {
   const [restoreProgress, setRestoreProgress] = useState(0);
   const [restoreFile, setRestoreFile] = useState("");
   const [restoreResult, setRestoreResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [restoreFullLoading, setRestoreFullLoading] = useState(false);
+  const [restoreFullProgress, setRestoreFullProgress] = useState(0);
+  const [restoreFullFile, setRestoreFullFile] = useState("");
+  const [restoreFullResult, setRestoreFullResult] = useState<{ ok: boolean; message: string } | null>(null);
 
   const [recordsTab, setRecordsTab] = useState<RecordsTab>("transactions");
   const [recordsQuery, setRecordsQuery] = useState("");
@@ -463,6 +467,131 @@ export default function DatabaseMaintenance() {
             className="rounded-2xl bg-blue-600 px-6 py-2.5 text-sm font-bold text-white hover:bg-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {restoreLoading ? "جارٍ الاسترجاع..." : "🔄 استرجاع المنتجات"}
+          </button>
+        </div>
+      )}
+
+      {/* ── Restore full database from backup ── */}
+      {backups.length > 0 && (
+        <div className="rounded-3xl border border-violet-500/30 bg-violet-950/20 p-6">
+          <div className="mb-1 text-lg font-bold text-white">🗄️ استرجاع قاعدة البيانات بالكامل</div>
+          <p className="mb-3 text-sm text-violet-200/70">
+            يسترجع جميع الجداول كما كانت لحظة أخذ النسخة الاحتياطية — مفيد لاسترعادة كل شيء دفعة واحدة بعد صيانة كبيرة.
+          </p>
+          <div className="mb-4 rounded-xl border border-violet-500/20 bg-violet-950/30 px-4 py-3 text-xs text-violet-200/80 space-y-1">
+            <div>⚠️ سيتم استبدال <strong>جميع بيانات قاعدة البيانات الحالية</strong> بمحتوى النسخة المختارة.</div>
+            <div>⚠️ يشمل ذلك: المنتجات، العملاء، الاشتراكات، الطلبات، المحتوى، وكل شيء آخر.</div>
+            <div>✅ لا يؤثر على ملفات الخادم أو الإعدادات خارج قاعدة البيانات.</div>
+          </div>
+
+          <div className="mb-4 grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="mb-2 block text-xs font-medium text-gray-400">كلمة المرور الرئيسية</label>
+              <input
+                type="password"
+                value={masterPassword}
+                onChange={(e) => setMasterPassword(e.target.value)}
+                placeholder="أدخل كلمة المرور الرئيسية"
+                className="w-full rounded-xl border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-white placeholder-gray-600 focus:border-violet-500 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="mb-2 block text-xs font-medium text-gray-400">اختر النسخة الاحتياطية</label>
+              <select
+                value={restoreFullFile}
+                onChange={(e) => { setRestoreFullFile(e.target.value); setRestoreFullResult(null); }}
+                className="w-full rounded-xl border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-white focus:border-violet-500 focus:outline-none"
+              >
+                <option value="">اختر ملف النسخة الاحتياطية</option>
+                {backups.map((b) => (
+                  <option key={b.name} value={b.name}>{b.name} — {b.createdAt} ({formatSize(b.size)})</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {restoreFullLoading && (
+            <div className="mb-4">
+              <div className="mb-2 flex items-center justify-between text-xs text-violet-300">
+                <span>جارٍ استرجاع قاعدة البيانات بالكامل...</span>
+                <span>{restoreFullProgress}%</span>
+              </div>
+              <div className="h-2.5 w-full overflow-hidden rounded-full bg-violet-950/60 border border-violet-500/20">
+                <div
+                  className="h-full rounded-full bg-violet-500 transition-all duration-300"
+                  style={{ width: `${restoreFullProgress}%` }}
+                />
+              </div>
+              <p className="mt-2 text-xs text-violet-400/70 text-center">يرجى الانتظار، لا تغلق الصفحة...</p>
+            </div>
+          )}
+
+          {restoreFullResult && !restoreFullLoading && (
+            <div className={`mb-4 rounded-2xl px-4 py-4 text-sm ${
+              restoreFullResult.ok
+                ? "border border-emerald-500/40 bg-emerald-950/30 text-emerald-200"
+                : "border border-red-500/30 bg-red-950/30 text-red-200"
+            }`}>
+              {restoreFullResult.ok ? (
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center gap-2 text-base font-bold text-emerald-300">
+                    <span>✅</span> تم استرجاع قاعدة البيانات بالكامل بنجاح
+                  </div>
+                  <div className="text-xs text-emerald-400/80">{restoreFullResult.message}</div>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <span>❌</span> {restoreFullResult.message}
+                </div>
+              )}
+            </div>
+          )}
+
+          <button
+            type="button"
+            disabled={restoreFullLoading}
+            onClick={async () => {
+              if (!masterPassword.trim()) { setRestoreFullResult({ ok: false, message: "أدخل كلمة المرور الرئيسية أولاً." }); return; }
+              if (!restoreFullFile) { setRestoreFullResult({ ok: false, message: "اختر ملف النسخة الاحتياطية أولاً." }); return; }
+              const c1 = window.confirm(`تحذير: سيتم استبدال كل بيانات قاعدة البيانات بمحتوى:\n${restoreFullFile}\n\nهل تريد المتابعة؟`);
+              if (!c1) return;
+              const c2 = window.confirm("تأكيد أخير: هذا الإجراء لا يمكن التراجع عنه. هل أنت متأكد؟");
+              if (!c2) return;
+
+              setRestoreFullLoading(true);
+              setRestoreFullResult(null);
+              setRestoreFullProgress(0);
+
+              const interval = setInterval(() => {
+                setRestoreFullProgress((p) => {
+                  if (p >= 85) { clearInterval(interval); return 85; }
+                  return p + (p < 40 ? 8 : p < 70 ? 4 : 2);
+                });
+              }, 300);
+
+              try {
+                const res = await fetch("/api/admin/db-maintenance", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ action: "restore-full", masterPassword, backupFile: restoreFullFile }),
+                });
+                clearInterval(interval);
+                setRestoreFullProgress(100);
+                await new Promise((r) => setTimeout(r, 400));
+                const data = await res.json();
+                setRestoreFullResult({ ok: res.ok, message: data?.message ?? (res.ok ? "تم الاسترجاع بنجاح." : "حدث خطأ أثناء الاسترجاع.") });
+                if (res.ok) { setMasterPassword(""); void loadBackups(); }
+              } catch {
+                clearInterval(interval);
+                setRestoreFullProgress(0);
+                setRestoreFullResult({ ok: false, message: "تعذر الاتصال بالخادم." });
+              } finally {
+                setRestoreFullLoading(false);
+              }
+            }}
+            className="rounded-2xl bg-violet-600 px-6 py-2.5 text-sm font-bold text-white hover:bg-violet-500 disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {restoreFullLoading ? "جارٍ الاسترجاع..." : "🗄️ استرجاع قاعدة البيانات بالكامل"}
           </button>
         </div>
       )}
