@@ -154,15 +154,18 @@ async function restoreTablesFromBackup(backupFile: string, tables: string[]) {
 
   if (inserts.length === 0) return 0;
 
-  // Truncate then re-insert
-  await db.$executeRawUnsafe("SET FOREIGN_KEY_CHECKS=0;");
-  for (const table of tables) {
-    await db.$executeRawUnsafe(`TRUNCATE TABLE \`${table}\`;`);
-  }
-  for (const stmt of inserts) {
-    await db.$executeRawUnsafe(stmt);
-  }
-  await db.$executeRawUnsafe("SET FOREIGN_KEY_CHECKS=1;");
+  // Delete then re-insert — all on the same connection via interactive transaction
+  await db.$transaction(async (tx) => {
+    await tx.$executeRawUnsafe("SET FOREIGN_KEY_CHECKS=0");
+    for (const table of [...tables].reverse()) {
+      await tx.$executeRawUnsafe(`DELETE FROM \`${table}\``);
+    }
+    for (const stmt of inserts) {
+      await tx.$executeRawUnsafe(stmt);
+    }
+    await tx.$executeRawUnsafe("SET FOREIGN_KEY_CHECKS=1");
+  }, { timeout: 60000 });
+
   return inserts.length;
 }
 
