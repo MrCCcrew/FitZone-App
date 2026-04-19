@@ -290,8 +290,24 @@ export async function POST(req: Request) {
 
     if (action === "restore-products") {
       if (!backupFile) return NextResponse.json({ message: "حدد ملف النسخة الاحتياطية." }, { status: 400 });
-      const count = await restoreTablesFromBackup(backupFile, ["ProductCategory", "Product"]);
-      return NextResponse.json({ message: `تم استرجاع المنتجات بنجاح. عدد الصفوف المُستعادة: ${count}` });
+      try {
+        const filePath = path.join(BACKUP_DIR, backupFile);
+        // Verify file exists first
+        try {
+          await fs.access(filePath);
+        } catch {
+          return NextResponse.json({ message: `ملف النسخة الاحتياطية غير موجود في المسار: ${filePath}` }, { status: 404 });
+        }
+        const count = await restoreTablesFromBackup(backupFile, ["ProductCategory", "Product"]);
+        if (count === 0) {
+          return NextResponse.json({ message: "لم يتم العثور على بيانات منتجات في هذه النسخة الاحتياطية. تأكد من اختيار النسخة الصحيحة." }, { status: 422 });
+        }
+        return NextResponse.json({ message: `تم استرجاع المنتجات بنجاح ✅ — عدد الصفوف المُستعادة: ${count}` });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error("[RESTORE_PRODUCTS]", err);
+        return NextResponse.json({ message: `فشل الاسترجاع: ${msg}` }, { status: 500 });
+      }
     }
 
     const backup = await createBackup();
