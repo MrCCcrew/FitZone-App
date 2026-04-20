@@ -1,4 +1,5 @@
 import type { CoachIntent, CoachLang, CoachProfileData, CoachQuickAction } from "@/lib/ai-coach/types";
+import { isCoachAdvancedFeaturesEnabled } from "@/lib/ai-coach/config";
 
 function action(id: string, label: string, prompt: string): CoachQuickAction {
   return { id, label, prompt };
@@ -16,6 +17,7 @@ export function buildQuickActions(options: {
   checkInDue?: boolean;
   attendanceLow?: boolean;
 }): CoachQuickAction[] {
+  const advancedEnabled = isCoachAdvancedFeaturesEnabled();
   const {
     lang,
     authenticated,
@@ -43,6 +45,8 @@ export function buildQuickActions(options: {
   const checkInAction = action("checkin", t("سجّلي وزني", "Log my weight"), t("وزني اليوم X كيلو", "my weight today is X kg"));
   const todayAction = action("today", t("مواعيد اليوم", "Today's schedule"), t("ما مواعيد اليوم؟", "What are today's classes?"));
   const hasProfile = Boolean(profile);
+  const coachFoodAction = advancedEnabled ? foodAction : todayAction;
+  const coachCheckInAction = advancedEnabled ? checkInAction : todayAction;
 
   // ── Live / complaint ───────────────────────────────────────────────────────
   if (intent === "complaint_help" || intent === "human_handoff") return [handoff];
@@ -51,7 +55,7 @@ export function buildQuickActions(options: {
   if (intent === "check_in") {
     return [
       ...(profile?.primaryGoal ? buildGoalActions(profile, lang).slice(0, 2) : [todayAction]),
-      foodAction,
+      coachFoodAction,
       handoff,
     ];
   }
@@ -65,7 +69,7 @@ export function buildQuickActions(options: {
       related.push(action("cardio", t("كلاسات الكارديو", "Cardio classes"), t("ما كلاسات الكارديو المتاحة؟", "What cardio classes are available?")));
     else
       related.push(action("class", t("رشحي لي كلاس", "Recommend a class"), t("رشحي لي كلاس مناسب", "Recommend a suitable class")));
-    if (checkInDue) related.push(checkInAction);
+    if (checkInDue) related.push(coachCheckInAction);
     related.push(handoff);
     return related;
   }
@@ -92,8 +96,8 @@ export function buildQuickActions(options: {
       action("bookings", t("حجوزاتي", "My bookings"), t("ما حجوزاتي القادمة؟", "What are my upcoming bookings?")),
       action("wallet", t("محفظتي ونقاطي", "Wallet and points"), t("ما رصيد محفظتي ونقاطي؟", "What are my wallet balance and points?")),
     ];
-    if (checkInDue || !hasProfile) base.push(checkInAction);
-    base.push(foodAction, handoff);
+    if (checkInDue || !hasProfile) base.push(coachCheckInAction);
+    base.push(coachFoodAction, handoff);
     return base;
   }
 
@@ -103,7 +107,7 @@ export function buildQuickActions(options: {
       ? [
           action("class", t("رشحي لي كلاس", "Recommend a class"), t("رشحي لي كلاس مناسب", "Recommend a suitable class")),
           todayAction,
-          foodAction,
+          coachFoodAction,
           handoff,
         ]
       : [
@@ -119,7 +123,7 @@ export function buildQuickActions(options: {
     return [
       action("book", t("احجزي حصة", "Book a class"), t("كيف أحجز حصة؟", "How do I book a class?")),
       ...buildGoalActions(profile, lang).slice(0, 2),
-      foodAction,
+      coachFoodAction,
       handoff,
     ];
   }
@@ -130,7 +134,7 @@ export function buildQuickActions(options: {
       todayAction,
       action("book", t("احجزي حصة خفيفة", "Book a light class"), t("ما أسهل كلاس متاح اليوم؟", "What is the easiest class available today?")),
       ...buildGoalActions(profile, lang).slice(0, 1),
-      checkInDue ? checkInAction : foodAction,
+      checkInDue ? coachCheckInAction : coachFoodAction,
       handoff,
     ];
   }
@@ -141,7 +145,7 @@ export function buildQuickActions(options: {
       todayAction,
       action("book", t("احجزي حصة", "Book a class"), t("كيف أحجز حصة؟", "How do I book a class?")),
       ...buildGoalActions(profile, lang).slice(0, 1),
-      checkInDue ? checkInAction : foodAction,
+      checkInDue ? coachCheckInAction : coachFoodAction,
       handoff,
     ];
   }
@@ -162,7 +166,7 @@ export function buildQuickActions(options: {
       action("start", t("أكملي ملفك", "Complete your profile"), t("أريد تقييم مخصص وترشيح باقة", "I want a personalized assessment")),
       todayAction,
       action("bookings", t("حجوزاتي", "My bookings"), t("ما حجوزاتي القادمة؟", "What are my upcoming bookings?")),
-      foodAction,
+      coachFoodAction,
       handoff,
     ];
   }
@@ -173,8 +177,8 @@ export function buildQuickActions(options: {
     ...buildGoalActions(profile, lang).slice(0, 2),
     action("bookings", t("حجوزاتي", "My bookings"), t("ما حجوزاتي القادمة؟", "What are my upcoming bookings?")),
   ];
-  if (checkInDue) defaults.push(checkInAction);
-  else defaults.push(foodAction);
+  if (checkInDue) defaults.push(coachCheckInAction);
+  else defaults.push(coachFoodAction);
   defaults.push(handoff);
   return defaults;
 }

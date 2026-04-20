@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { loadCoachProfile } from "@/lib/ai-coach/profile";
 import { getRecentCheckInsByProfile } from "@/lib/ai-coach/checkin";
+import { isCoachAdvancedFeaturesEnabled } from "@/lib/ai-coach/config";
 import type {
   CoachAccountSummary,
   CoachAttendanceStats,
@@ -130,6 +131,7 @@ export async function getCoachSiteSnapshot(
   userId: string | null,
   guestSessionId?: string | null,
 ): Promise<CoachSiteSnapshot> {
+  const advancedEnabled = isCoachAdvancedFeaturesEnabled();
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
   const weekEnd = new Date(todayStart);
@@ -177,11 +179,13 @@ export async function getCoachSiteSnapshot(
       db.supportPresence.count({
         where: { isOnline: true, lastSeenAt: { gte: onlineThreshold } },
       }),
-      loadCoachProfile(userId, guestSessionId),
+      advancedEnabled ? loadCoachProfile(userId, guestSessionId) : Promise.resolve(null),
     ]);
 
-  // Load recent check-ins after profile is resolved
-  const recentCheckIns = await getRecentCheckInsByProfile(coachProfile?.id ?? null, 5);
+  const recentCheckIns =
+    advancedEnabled && coachProfile?.id
+      ? await getRecentCheckInsByProfile(coachProfile.id, 5)
+      : [];
 
   const localizedMemberships: CoachPublicMembership[] = memberships.map((membership) => ({
     id: membership.id,

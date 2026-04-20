@@ -63,6 +63,7 @@ export type CoachConversationContext = {
   lang: CoachLang;
   lastIntent?: CoachIntent;
   questionnaire: CoachQuestionnaireState;
+  // Optional counter used only when advanced coaching nudges are enabled.
   nudgeShownCount?: number;
 };
 
@@ -174,6 +175,7 @@ export type CoachCheckInData = {
   createdAt: string;
 };
 
+// Advanced coaching profile. Core chat must continue to work when this is null.
 export type CoachProfileData = {
   id: string;
   primaryGoal: string | null;
@@ -191,6 +193,7 @@ export type CoachProfileData = {
   lastCheckInAt: string | null;
 };
 
+// Optional proactive prompt generated only by advanced coaching features.
 export type CoachNudge = {
   type: "check_in_reminder" | "attendance_low" | "book_class" | "complete_onboarding";
   message: string;
@@ -204,6 +207,7 @@ export type CoachSiteSnapshot = {
   products: CoachPublicProduct[];
   knowledge: CoachKnowledgeEntry[];
   account: CoachAccountSummary;
+  // Advanced coaching data. Treat as optional enrichment, not required core data.
   coachProfile: CoachProfileData | null;
   recentCheckIns: CoachCheckInData[];
   supportOnline: boolean;
