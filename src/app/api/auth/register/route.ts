@@ -73,11 +73,21 @@ export async function POST(req: Request) {
     // Validate referral code before creating user
     let referralRecord: { id: string; userId: string } | null = null;
     if (normalizedReferralCode) {
-      referralRecord = await db.referral.findUnique({
+      const found = await db.referral.findUnique({
         where: { code: normalizedReferralCode },
         select: { id: true, userId: true },
-      }) ?? null;
+      });
       // Silently ignore invalid codes — don't block registration
+      if (found) {
+        // Prevent self-referral: check if the code belongs to the same email
+        const codeOwner = await db.user.findUnique({
+          where: { id: found.userId },
+          select: { email: true },
+        });
+        if (codeOwner?.email?.toLowerCase() !== normalizedEmail) {
+          referralRecord = found;
+        }
+      }
     }
 
     const user = await db.$transaction(async (tx) => {
@@ -98,6 +108,13 @@ export async function POST(req: Request) {
       });
 
       // Record referral usage and reward the referrer with 50 EGP wallet credit
+      // Double-check: referredUserId must not already exist in ReferralUsage
+      if (referralRecord) {
+        const alreadyReferred = await tx.referralUsage.findUnique({
+          where: { referredUserId: createdUser.id },
+        });
+        if (alreadyReferred) referralRecord = null;
+      }
       if (referralRecord) {
         const REFERRAL_REWARD_EGP = 50;
 
