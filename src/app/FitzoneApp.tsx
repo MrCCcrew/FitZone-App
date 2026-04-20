@@ -1410,11 +1410,7 @@ const DEFAULT_HOME_MEMBERSHIPS: Array<{
   features: string[];
   color: string;
   popular: boolean;
-}> = [
-  { name: "لايت", price: 299, priceBefore: null, priceAfter: null, period: "شهر", features: ["4 كلاسات/شهر", "جدول أسبوعي", "تطبيق موبايل"], color: C.gray, popular: false },
-  { name: "برو", price: 599, priceBefore: null, priceAfter: null, period: "شهر", features: ["كلاسات غير محدودة", "مدربة خاصة", "خصم 10% متجر", "محفظة رقمية", "نقاط مكافآت"], color: C.red, popular: true },
-  { name: "بريميوم", price: 999, priceBefore: null, priceAfter: null, period: "شهر", features: ["كل مزايا برو", "4 جلسات خاصة", "خصم 25% متجر", "أولوية الحجز"], color: C.gold, popular: false },
-];
+}> = [];
 const HOME_PLAN_COLORS = [C.gray, C.red, C.gold, "#A855F7", "#3498DB"];
 const cycleLabel = (cycle?: string | null, days?: number) => {
   const lang = getUiLang();
@@ -1487,53 +1483,9 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
             { icon: "🏃", name: "كارديو", count: "6 كلاسات", color: "#F97316", bg: "rgba(249,115,22,.08)", border: "rgba(249,115,22,.2)" },
           ];
   const [memberships, setMemberships] = useState(DEFAULT_HOME_MEMBERSHIPS);
-  const [trainers, setTrainers] = useState<PublicTrainer[]>([
-    {
-      id: "trainer-1",
-      name: "هبة زارع",
-      specialty: "مدربة رئيسية · يوجا وقوة",
-      bio: "",
-      certifications: [],
-      rating: 4.9,
-      sessionsCount: 520,
-      image: null,
-      showOnHome: true,
-      sortOrder: 0,
-      classesCount: 12,
-    },
-    {
-      id: "trainer-2",
-      name: "منال علي",
-      specialty: "مدربة زومبا وكارديو",
-      bio: "",
-      certifications: [],
-      rating: 4.8,
-      sessionsCount: 380,
-      image: null,
-      showOnHome: true,
-      sortOrder: 1,
-      classesCount: 10,
-    },
-    {
-      id: "trainer-3",
-      name: "سحر كمال",
-      specialty: "مدربة قوة وبيلاتس",
-      bio: "",
-      certifications: [],
-      rating: 4.9,
-      sessionsCount: 415,
-      image: null,
-      showOnHome: true,
-      sortOrder: 2,
-      classesCount: 9,
-    },
-  ]);
-  const [testimonials, setTestimonials] = useState<PublicTestimonial[]>([
-    { displayName: "أميرة السيد", content: "أفضل جيم في بني سويف. المدربات محترفات جدًا والأجواء تشجعك على الاستمرار.", rating: 5 },
-    { displayName: "هنا محمد", content: "الجدول مرن ومناسب جدًا وأنصح به لأي سيدة تريد الالتزام بانتظام.", rating: 5 },
-    { displayName: "ريم أحمد", content: "الحجز يتم بسرعة وسهولة من الموقع والتجربة ممتازة.", rating: 5 },
-  ]);
-  const [products, setProducts] = useState<StoreProduct[]>(DEFAULT_PRODUCTS.slice(0, 3));
+  const [trainers, setTrainers] = useState<PublicTrainer[]>([]);
+  const [testimonials, setTestimonials] = useState<PublicTestimonial[]>([]);
+  const [products, setProducts] = useState<StoreProduct[]>([]);
   const [specialOffer, setSpecialOffer] = useState<PublicOffer | null>(null);
   const [specialOfferLoading, setSpecialOfferLoading] = useState(false);
   const [specialOfferMessage, setSpecialOfferMessage] = useState<{ text: string; ok: boolean } | null>(null);
@@ -2412,12 +2364,7 @@ type PlanItem = {
   popular: boolean;
   goalIds: string[];
 };
-const DEFAULT_PLANS: PlanItem[] = [
-  { id: null, name: "ليت", price: 299, durationDays: 30, cycle: "monthly", sessionsCount: 8, features: ["دخول الصالة 6 أيام","تمارين القلب","خزائن آمنة"], color: C.gray, popular: false, goalIds: [] },
-  { id: null, name: "برو", price: 599, durationDays: 30, cycle: "monthly", sessionsCount: 12, features: ["دخول غير محدود","مدربة خاصة","خصم 10% في المتجر","محفظة رقمية"], color: C.red, popular: true, goalIds: [] },
-  { id: null, name: "بريميوم", price: 999, durationDays: 30, cycle: "monthly", sessionsCount: 12, features: ["دخول غير محدود","مدربتان خاصتان","خصم 25% في المتجر","أولوية الحجز","4 جلسات خاصة"], color: C.gold, popular: false, goalIds: [] },
-  { id: null, name: "VIP", price: 1499, durationDays: 30, cycle: "monthly", sessionsCount: 12, features: ["دخول غير محدود","مدربة مخصصة","خصم 40% في المتجر","حجز VIP","8 جلسات خاصة"], color: "#A855F7", popular: false, goalIds: [] },
-];
+const DEFAULT_PLANS: PlanItem[] = [];
 const PLAN_COLORS = [C.gray, C.red, C.gold, "#A855F7", "#3498DB", "#27AE60"];
 const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
   const t = useT();
@@ -3653,42 +3600,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
 };
 
 // ─── OFFERS PAGE ──────────────────────────────────────────────────────────────
-const DEFAULT_OFFERS: Array<PublicOffer & { color: string }> = [
-  {
-    id: "default-special",
-    title: "العرض الذهبي",
-    type: "special",
-    discount: 0,
-    specialPrice: 399,
-    description: "اشتراك لفترة محدودة بعدد مقاعد قليل وسعر مميز.",
-    appliesTo: "باقة برو",
-    membershipId: null,
-    image: null,
-    showOnHome: true,
-    showMaxSubscribers: true,
-    maxSubscribers: 40,
-    currentSubscribers: 12,
-    expiresAt: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
-    color: C.red,
-  },
-  {
-    id: "default-offer-1",
-    title: "خصم العضوات الجديدات",
-    type: "percentage",
-    discount: 20,
-    specialPrice: null,
-    description: "خصم على أول اشتراك للعضوات الجديدات.",
-    appliesTo: "جميع الباقات",
-    membershipId: null,
-    image: null,
-    showOnHome: false,
-    showMaxSubscribers: true,
-    maxSubscribers: null,
-    currentSubscribers: 0,
-    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-    color: C.gold,
-  },
-];
+const DEFAULT_OFFERS: Array<PublicOffer & { color: string }> = [];
 const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
   const t = useT();
   const { lang } = useLang();
@@ -4261,12 +4173,7 @@ type PublicTestimonial = {
 };
 
 const PRODUCT_STORAGE_KEY = "fitzone:selected-product";
-const DEFAULT_PRODUCTS: StoreProduct[] = [
-  { name: "حذاء Luna Sport", price: 850, oldPrice: 1200, type: "product1", cat: "أحذية", categoryKey: "shoes", sizeType: "shoes", badge: "الأكثر مبيعًا", rating: 4.9, sizes: ["37", "38", "39", "40"], stock: 12 },
-  { name: "بروتين وايت لايت 1kg", price: 450, oldPrice: null as number | null, type: "product2", cat: "مكملات", categoryKey: "supplement", sizeType: "none", badge: null as string | null, rating: 4.7, stock: 6 },
-  { name: "طقم معدات يوغا", price: 680, oldPrice: 900, type: "product3", cat: "معدات", categoryKey: "gear", sizeType: "none", badge: "خصم 25%", rating: 4.8, stock: 4 },
-  { name: "تيشيرت رياضي", price: 320, oldPrice: null as number | null, type: "product1", cat: "ملابس", categoryKey: "clothing", sizeType: "clothing", badge: null as string | null, rating: 4.6, sizes: ["S", "M", "L", "XL"], stock: 10 },
-];
+const DEFAULT_PRODUCTS: StoreProduct[] = [];
 const DEFAULT_STORE_CATEGORIES: StoreCategory[] = [
   { key: "shoes", label: "أحذية", sizeType: "shoes" },
   { key: "clothing", label: "ملابس", sizeType: "clothing" },
@@ -4623,8 +4530,8 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
   const t = useT();
   const { lang } = useLang();
   const [qty, setQty] = useState(1);
-  const [product, setProduct] = useState<StoreProduct>(DEFAULT_PRODUCTS[0]);
-  const [catalog, setCatalog] = useState<StoreProduct[]>(DEFAULT_PRODUCTS);
+  const [product, setProduct] = useState<StoreProduct | null>(null);
+  const [catalog, setCatalog] = useState<StoreProduct[]>([]);
   const [selectedImage, setSelectedImage] = useState(0);
   const [imageZoomed, setImageZoomed] = useState(false);
   const [zoomOrigin, setZoomOrigin] = useState("50% 50%");
@@ -4767,6 +4674,12 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
     const y = ((event.clientY - bounds.top) / bounds.height) * 100;
     setZoomOrigin(`${x}% ${y}%`);
   };
+
+  if (!product) return (
+    <div className="container" style={{ padding: "48px 24px", textAlign: "center", color: C.gray }}>
+      {t("جاري تحميل المنتج...", "Loading product...")}
+    </div>
+  );
 
   return (
     <div>
