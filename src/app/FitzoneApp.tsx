@@ -4581,7 +4581,7 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
             reviewCount?: number;
           }, index: number) => mapApiProductToStoreProduct(item, index));
           setCatalog(mapped);
-          const refreshed = mapped.find((item) => item.id && item.id === product.id);
+          const refreshed = product?.id ? mapped.find((item) => item.id && item.id === product.id) : undefined;
           if (refreshed) {
             setProduct(refreshed);
             setSelectedSize(refreshed.sizeType === "none" ? null : refreshed.sizes?.[0] ?? null);
