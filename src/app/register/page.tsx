@@ -32,7 +32,7 @@ function AppleIcon() {
   );
 }
 
-function SocialButtons({ lang }: { lang: string }) {
+function SocialButtons({ lang, acceptedTerms }: { lang: string; acceptedTerms: boolean }) {
   const t = (ar: string, en: string) => (lang === "ar" ? ar : en);
   return (
     <div className="space-y-3">
@@ -42,8 +42,14 @@ function SocialButtons({ lang }: { lang: string }) {
         <div className="flex-grow border-t border-white/10" />
       </div>
       <a
-        href="/api/auth/oauth/google"
-        className="flex w-full items-center justify-center gap-3 rounded-xl border border-white/10 bg-white/5 py-3 text-sm font-medium text-white transition-colors hover:bg-white/10"
+        href={acceptedTerms ? "/api/auth/oauth/google" : undefined}
+        onClick={!acceptedTerms ? (e) => e.preventDefault() : undefined}
+        aria-disabled={!acceptedTerms}
+        className={`flex w-full items-center justify-center gap-3 rounded-xl border border-white/10 bg-white/5 py-3 text-sm font-medium transition-colors ${
+          acceptedTerms
+            ? "text-white hover:bg-white/10 cursor-pointer"
+            : "text-white/40 cursor-not-allowed"
+        }`}
       >
         <GoogleIcon />
         {t("المتابعة بحساب جوجل", "Continue with Google")}
@@ -389,7 +395,7 @@ function RegisterForm() {
             </button>
           </form>
 
-          <SocialButtons lang={lang} />
+          <SocialButtons lang={lang} acceptedTerms={acceptedTerms} />
 
           <div className="mt-6 text-center text-sm">
             <span className="text-gray-400">{t("لديك حساب بالفعل؟", "Already have an account?")} </span>
