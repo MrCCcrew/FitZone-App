@@ -399,13 +399,37 @@ function OnboardingCard({
   );
 }
 
-function StatCard({ icon, label, value, sub, color = "text-white" }: { icon: string; label: string; value: string; sub?: string; color?: string }) {
+function StatCard({
+  icon,
+  label,
+  value,
+  sub,
+  color = "text-white",
+  actionLabel,
+  actionHref,
+}: {
+  icon: string;
+  label: string;
+  value: string;
+  sub?: string;
+  color?: string;
+  actionLabel?: string;
+  actionHref?: string;
+}) {
   return (
     <div className={CARD + " text-center"}>
       <div className="text-2xl mb-2">{icon}</div>
       <div className={`text-xl font-black ${color}`}>{value}</div>
       <div className="text-gray-400 text-xs font-medium mt-0.5">{label}</div>
       {sub && <div className="text-gray-600 text-xs mt-0.5">{sub}</div>}
+      {actionLabel && actionHref ? (
+        <a
+          href={actionHref}
+          className="mt-3 inline-flex items-center justify-center rounded-lg border border-pink-400/40 bg-pink-500/10 px-3 py-1.5 text-xs font-bold text-pink-200 transition-colors hover:bg-pink-500/20 hover:text-white"
+        >
+          {actionLabel}
+        </a>
+      ) : null}
     </div>
   );
 }
@@ -2298,6 +2322,11 @@ export default function AccountClient({ data }: { data: AccountData }) {
   const membershipDaysLeft = data.membership
     ? Math.max(0, differenceInDays(new Date(data.membership.endDate), new Date()))
     : 0;
+  const membershipActionLabel = !data.membership
+    ? t("اشترك الآن", "Subscribe now")
+    : membershipDaysLeft <= 0
+      ? t("تجديد الاشتراك", "Renew membership")
+      : undefined;
 
   return (
     <div dir={lang === "ar" ? "rtl" : "ltr"} className="account-theme min-h-screen bg-[radial-gradient(circle_at_top,rgba(255,140,190,0.22),transparent_34%),radial-gradient(circle_at_bottom_left,rgba(255,186,216,0.16),transparent_30%),linear-gradient(180deg,#2a0f1b_0%,#391320_48%,#4a1b2d_100%)] text-[#fff4f8]">
@@ -2366,7 +2395,14 @@ export default function AccountClient({ data }: { data: AccountData }) {
           <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
             <StatCard icon="💳" label={t("رصيد المحفظة", "Wallet balance")} value={`${formatMoney(data.wallet.balance, lang)} ${lang === "en" ? "EGP" : "ج.م"}`} color="text-blue-400" />
             <StatCard icon="🏅" label={t("نقاط الولاء", "Reward points")} value={formatMoney(data.rewards.points, lang)} color="text-yellow-400" />
-            <StatCard icon="📅" label={t("أيام الاشتراك", "Membership days")} value={membershipDaysLeft > 0 ? `${formatMoney(membershipDaysLeft, lang)} ${t("يوم", "days")}` : t("منتهي", "Expired")} color={membershipDaysLeft > 7 ? "text-green-400" : "text-red-400"} />
+            <StatCard
+              icon="📅"
+              label={t("أيام الاشتراك", "Membership days")}
+              value={membershipDaysLeft > 0 ? `${formatMoney(membershipDaysLeft, lang)} ${t("يوم", "days")}` : t("منتهي", "Expired")}
+              color={membershipDaysLeft > 7 ? "text-green-400" : "text-red-400"}
+              actionLabel={membershipActionLabel}
+              actionHref={membershipActionLabel ? "/?page=memberships" : undefined}
+            />
             <StatCard icon="🔔" label={t("إشعارات جديدة", "New notifications")} value={unreadCount.toString()} color={unreadCount > 0 ? "text-red-400" : "text-gray-400"} />
           </div>
         </div>
