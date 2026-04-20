@@ -2427,7 +2427,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
     vodafoneCashAccounts: [],
   });
   useEffect(() => {
-    loadPublicApi()
+    loadPublicApi(true)
       .then((d) => {
         if (Array.isArray(d.goals)) {
           setGoals((d.goals as PublicGoal[]).sort((a, b) => a.sortOrder - b.sortOrder));
@@ -3354,7 +3354,9 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
         <div className="container">
           <div style={{ textAlign: "center", marginBottom: 28 }}>
             <h2 className="section-title">
-              {goalViewParentId ? <>اختاري هدفك <span>الفرعي</span></> : <>اختاري هدفك <span>الرياضي</span></>}
+              {goalViewParentId
+                ? <>{t("اختاري هدفك", "Choose your")} <span>{t("الفرعي", "sub-goal")}</span></>
+                : <>{t("اختاري هدفك", "Choose your")} <span>{t("الرياضي", "fitness goal")}</span></>}
             </h2>
             <p className="section-sub">
               {goalViewParentId
@@ -3370,14 +3372,14 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                   setSelectedGoals([]);
                 }}
               >
-                رجوع لكل الأهداف
+                {t("رجوع لكل الأهداف", "Back to all goals")}
               </button>
             )}
           </div>
 
           {goals.length === 0 ? (
             <div className="card" style={{ padding: 20, textAlign: "center", color: C.gray }}>
-              جاري تحميل الأهداف...
+              {t("جاري تحميل الأهداف...", "Loading goals...")}
             </div>
           ) : (
             <>
