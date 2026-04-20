@@ -137,7 +137,7 @@ export async function PATCH(req: Request) {
     const data: Record<string, unknown> = {};
 
     if (body.title !== undefined) data.title = String(body.title).trim();
-    if (body.titleEn !== undefined) data.titleEn = String(body.titleEn).trim();
+    if (body.titleEn !== undefined) data.titleEn = String(body.titleEn).trim() || null;
     if (body.type !== undefined) data.type = normalizeOfferType(String(body.type));
     if (body.discount !== undefined) data.discount = Number(body.discount ?? 0);
     if (body.description !== undefined) data.description = body.description ? String(body.description).trim() : null;
