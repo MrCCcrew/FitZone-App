@@ -3724,6 +3724,15 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
 // ─── CLASSES PAGE ─────────────────────────────────────────────────────────────
 const DEFAULT_CLASSES: PublicClass[] = [];
 const intMap: Record<string, string> = { low: "خفيف", medium: "متوسط", high: "عالي", extreme: "عالي جدًا" };
+const intMapEn: Record<string, string> = { low: "Low", medium: "Medium", high: "High", extreme: "Very High" };
+function getIntensityLabel(val: string, lang: string) {
+  const map = lang === "en" ? intMapEn : intMap;
+  return map[val] ?? map[val?.toLowerCase()] ?? val;
+}
+const intensityColorMap: Record<string, string> = { low: "#22c55e", medium: "#EAB308", high: "#E91E63", extreme: "#A855F7" };
+function getIntensityColor(val: string) {
+  return intensityColorMap[val] ?? intensityColorMap[val?.toLowerCase()] ?? "#9ca3af";
+}
 const classTypeMap: Record<string, string> = {
   yoga: "يوجا",
   zumba: "زومبا",
@@ -3755,67 +3764,70 @@ function resolveClassImageType(type: string) {
   return gymImageKnownTypes.has(type) ? type : "cardio";
 }
 const ClassesPage = ({ navigate }: { navigate: (p: string) => void }) => {
+  const t = useT();
+  const { lang } = useLang();
   const [search, setSearch] = useState("");
-  const [filterType, setFilterType] = useState("الكل");
+  const allLabel = t("الكل", "All");
+  const [filterType, setFilterType] = useState(allLabel);
   const [classes, setClasses] = useState<PublicClass[]>(DEFAULT_CLASSES);
+
   useEffect(() => {
-    loadPublicApi().then(d => {
+    loadPublicApi(true).then(d => {
       if (Array.isArray(d.classes) && d.classes.length > 0) {
-        setClasses(d.classes.map((c: PublicClass) => ({
-          ...c,
-          intensity: intMap[c.intensity] ?? c.intensity,
-        })));
+        setClasses(d.classes as PublicClass[]);
       }
     }).catch(() => {});
-  }, []);
-  const intensityColors: Record<string, string> = { "خفيف": C.success, "متوسط": "#EAB308", "عالي": C.red, "عالي جدًا": "#A855F7" };
-  const types = ["الكل", ...Array.from(new Set(classes.map(c => getClassTypeLabel(c.type)).filter(Boolean)))];
+    setFilterType(allLabel);
+  }, [lang]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const types = [allLabel, ...Array.from(new Set(classes.map(c => getClassTypeLabel(c.type, lang)).filter(Boolean)))];
   const filtered = classes.filter(c =>
-    (filterType === "الكل" || getClassTypeLabel(c.type) === filterType) &&
-    (search === "" || c.name.includes(search) || c.trainer.includes(search))
+    (filterType === allLabel || getClassTypeLabel(c.type, lang) === filterType) &&
+    (search === "" || c.name.toLowerCase().includes(search.toLowerCase()) || c.trainer.toLowerCase().includes(search.toLowerCase()))
   );
 
   return (
     <div>
       <section style={{ background: `linear-gradient(135deg, #FFE0EC, ${C.bg})`, padding: "48px 0" }}>
         <div className="container">
-          <h1 style={{ fontSize: viewportWidth() < 768 ? 30 : 40, fontWeight: 900, color: C.white, marginBottom: 8 }}>كلاساتنا</h1>
-          <p style={{ color: C.gray, fontSize: 15, marginBottom: 24 }}>اكتشفي كلاساتنا المتنوعة واحجزي مكانك الآن</p>
+          <h1 style={{ fontSize: viewportWidth() < 768 ? 30 : 40, fontWeight: 900, color: C.white, marginBottom: 8 }}>{t("كلاساتنا", "Our Classes")}</h1>
+          <p style={{ color: C.gray, fontSize: 15, marginBottom: 24 }}>{t("اكتشفي كلاساتنا المتنوعة واحجزي مكانك الآن", "Explore our diverse classes and book your spot now")}</p>
           <div style={{ position: "relative", maxWidth: 480 }}>
-            <input className="input" placeholder="ابحثي عن كلاس أو مدربة..." value={search} onChange={e => setSearch(e.target.value)} style={{ paddingRight: 44 }} />
-            <span style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)" }}><I n="search" s={18} c={C.gray} /></span>
+            <input className="input" placeholder={t("ابحثي عن كلاس أو مدربة...", "Search for a class or trainer...")} value={search} onChange={e => setSearch(e.target.value)} style={{ paddingRight: lang === "ar" ? 44 : undefined, paddingLeft: lang === "en" ? 44 : undefined }} />
+            <span style={{ position: "absolute", [lang === "ar" ? "right" : "left"]: 14, top: "50%", transform: "translateY(-50%)" }}><I n="search" s={18} c={C.gray} /></span>
           </div>
         </div>
       </section>
       <section className="section">
         <div className="container">
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 32 }}>
-            {types.map(t => <button key={t} className={`tab ${filterType === t ? "active" : ""}`} onClick={() => setFilterType(t)}>{t}</button>)}
+            {types.map(tp => <button key={tp} className={`tab ${filterType === tp ? "active" : ""}`} onClick={() => setFilterType(tp)}>{tp}</button>)}
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 24 }}>
             {filtered.map(c => {
               const firstSchedule = c.schedules[0];
               const spots = firstSchedule?.availableSpots ?? c.maxSpots;
+              const iColor = getIntensityColor(c.intensity);
               return (
               <div key={c.id} className="card card-hover" style={{ cursor: "pointer" }} onClick={() => { if (typeof window !== "undefined") { window.sessionStorage.setItem(CLASS_STORAGE_KEY, JSON.stringify(c)); } navigate("classDetail"); }}>
                 <div style={{ height: 180 }}><GymImg type={resolveClassImageType(c.type)} w="100%" h={180} /></div>
                 <div style={{ padding: 20 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
                     <h3 style={{ fontWeight: 800, fontSize: 16, color: C.white }}>{c.name}</h3>
-                    <span style={{ fontWeight: 700, color: C.red }}>{c.price} ج.م</span>
+                    <span style={{ fontWeight: 700, color: C.red }}>{c.price} {lang === "en" ? "EGP" : "ج.م"}</span>
                   </div>
-                  <div style={{ color: C.gray, fontSize: 13, marginBottom: 12 }}>مع {c.trainer}</div>
+                  {c.trainer && <div style={{ color: C.gray, fontSize: 13, marginBottom: 12 }}>{t("مع", "With")} {c.trainer}</div>}
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 16 }}>
                     <span style={{ display: "flex", alignItems: "center", gap: 4, background: C.bgCard2, padding: "3px 10px", borderRadius: 4, fontSize: 11, color: C.gray }}>
                       <I n="clock" s={11} c={C.gray} /> {c.duration}
                     </span>
-                    <span style={{ background: `${intensityColors[c.intensity]}22`, color: intensityColors[c.intensity], padding: "3px 10px", borderRadius: 4, fontSize: 11, fontWeight: 600 }}>{c.intensity}</span>
+                    {c.intensity && <span style={{ background: `${iColor}22`, color: iColor, padding: "3px 10px", borderRadius: 4, fontSize: 11, fontWeight: 600 }}>{getIntensityLabel(c.intensity, lang)}</span>}
                     <span style={{ background: spots === 0 ? "rgba(239,68,68,.12)" : spots < 4 ? "rgba(234,179,8,.12)" : "rgba(34,197,94,.12)", color: spots === 0 ? "#EF4444" : spots < 4 ? "#EAB308" : C.success, padding: "3px 10px", borderRadius: 4, fontSize: 11, fontWeight: 600 }}>
-                      {spots === 0 ? "ممتلئ" : `${spots} متبقية`}
+                      {spots === 0 ? t("ممتلئ", "Full") : `${spots} ${t("متبقية", "left")}`}
                     </span>
                   </div>
                   <button className="btn-primary" style={{ width: "100%", justifyContent: "center", opacity: spots === 0 ? .5 : 1, padding: "9px", fontSize: 13 }} disabled={spots === 0} onClick={e => { e.stopPropagation(); if (typeof window !== "undefined") { window.sessionStorage.setItem(CLASS_STORAGE_KEY, JSON.stringify(c)); } navigate("classDetail"); }}>
-                    {spots === 0 ? "ممتلئ" : "احجزي الآن"}
+                    {spots === 0 ? t("ممتلئ", "Full") : t("احجزي الآن", "Book now")}
                   </button>
                 </div>
               </div>
@@ -3829,6 +3841,8 @@ const ClassesPage = ({ navigate }: { navigate: (p: string) => void }) => {
 
 // ─── CLASS DETAIL ─────────────────────────────────────────────────────────────
 const ClassDetailPage = ({ navigate }: { navigate: (p: string) => void }) => {
+  const t = useT();
+  const { lang } = useLang();
   const [gymClass, setGymClass] = useState<PublicClass | null>(null);
   const [bookingMsg, setBookingMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [bookingId, setBookingId] = useState<string | null>(null);
@@ -3860,34 +3874,33 @@ const ClassDetailPage = ({ navigate }: { navigate: (p: string) => void }) => {
       }
       const data = await res.json() as { error?: string; message?: string };
       if (!res.ok) {
-        setBookingMsg({ text: data.error ?? "تعذر إتمام الحجز حاليًا.", ok: false });
+        setBookingMsg({ text: data.error ?? t("تعذر إتمام الحجز حاليًا.", "Unable to complete the booking right now."), ok: false });
         return;
       }
-      setBookingMsg({ text: data.message ?? "تم الحجز بنجاح. جاري تحويلك إلى حسابك.", ok: true });
+      setBookingMsg({ text: data.message ?? t("تم الحجز بنجاح. جاري تحويلك إلى حسابك.", "Booked successfully. Redirecting to your account."), ok: true });
       setBookingScheduleId(scheduleId);
       setTimeout(() => { window.location.href = "/account?tab=bookings"; }, 1200);
     } catch {
-      setBookingMsg({ text: "حدث خطأ غير متوقع أثناء تنفيذ الحجز.", ok: false });
+      setBookingMsg({ text: t("حدث خطأ غير متوقع أثناء تنفيذ الحجز.", "An unexpected error occurred while booking."), ok: false });
     } finally {
       setBookingId(null);
     }
   };
 
   const sessions = gymClass?.schedules ?? [];
+  const iColor = getIntensityColor(gymClass?.intensity ?? "");
   return (
     <div>
       <div style={{ height: 340, position: "relative" }}>
         <GymImg type={resolveClassImageType(gymClass?.type ?? "yoga")} w="100%" h={340} />
         <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom, rgba(10,10,10,.3) 0%, rgba(10,10,10,.85) 100%)" }} />
         <div style={{ position: "absolute", bottom: 32, left: 0, right: 0 }}><div className="container">
-          <span className="tag" style={{ marginBottom: 12, display: "inline-flex" }}>{getClassTypeLabel(gymClass?.type ?? "yoga")}</span>
+          <span className="tag" style={{ marginBottom: 12, display: "inline-flex" }}>{getClassTypeLabel(gymClass?.type ?? "yoga", lang)}</span>
           <h1 style={{ color: C.white, fontSize: 38, fontWeight: 900 }}>{gymClass?.name ?? " "}</h1>
           <div style={{ display: "flex", gap: 16, marginTop: 10, flexWrap: "wrap" }}>
-            {[["clock", gymClass?.duration ?? ""],["fire", gymClass?.intensity ?? ""],["users", `${sessions[0]?.availableSpots ?? gymClass?.maxSpots ?? 0} مقعد متاح`]].map(([icon, text]) => (
-              <span key={text} style={{ color: C.gray, fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
-                <I n={icon} s={13} c={C.gray} /> {text}
-              </span>
-            ))}
+            {gymClass?.duration && <span style={{ color: C.gray, fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}><I n="clock" s={13} c={C.gray} /> {gymClass.duration}</span>}
+            {gymClass?.intensity && <span style={{ color: iColor, fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}><I n="fire" s={13} c={iColor} /> {getIntensityLabel(gymClass.intensity, lang)}</span>}
+            {gymClass?.maxSpots != null && <span style={{ color: C.gray, fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}><I n="users" s={13} c={C.gray} /> {sessions[0]?.availableSpots ?? gymClass.maxSpots} {t("مقعد متاح", "seats available")}</span>}
           </div>
         </div></div>
       </div>
@@ -3895,50 +3908,40 @@ const ClassDetailPage = ({ navigate }: { navigate: (p: string) => void }) => {
         <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr", "1fr 360px"), gap: 40 }}>
           <div>
             <div className="card" style={{ padding: 28, marginBottom: 20 }}>
-              <h2 style={{ fontWeight: 800, fontSize: 20, color: C.white, marginBottom: 14 }}>عن الكلاس</h2>
-              <p style={{ color: C.gray, lineHeight: 1.8, fontSize: 14 }}>{gymClass?.description || "لا يوجد وصف لهذا الكلاس."}</p>
-              <h3 style={{ fontWeight: 700, color: C.white, marginTop: 20, marginBottom: 14 }}>الفوائد</h3>
-              <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr", "1fr 1fr"), gap: 10 }}>
-                {["تحسين المرونة","تقليل التوتر","تقوية العضلات","تحسين التركيز","توازن الجسم","تنفس أعمق"].map(b => (
-                  <div key={b} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: C.grayLight }}>
-                    <I n="check" s={13} c={C.success} /> {b}
-                  </div>
-                ))}
-              </div>
+              <h2 style={{ fontWeight: 800, fontSize: 20, color: C.white, marginBottom: 14 }}>{t("عن الكلاس", "About the Class")}</h2>
+              <p style={{ color: C.gray, lineHeight: 1.8, fontSize: 14 }}>{gymClass?.description || t("لا يوجد وصف لهذا الكلاس.", "No description available for this class.")}</p>
             </div>
-            <div className="card" style={{ padding: 28 }}>
-              <h2 style={{ fontWeight: 800, fontSize: 20, color: C.white, marginBottom: 16 }}>المدربة</h2>
-              <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
-                <div style={{ width: 80, height: 80, borderRadius: 12, overflow: "hidden", flexShrink: 0 }}><GymImg type="trainer1" w={80} h={80} /></div>
-                <div>
-                  <h3 style={{ fontWeight: 800, fontSize: 17, color: C.white }}>{gymClass?.trainer ?? ""}</h3>
-                  <p style={{ color: C.red, fontSize: 13, fontWeight: 600 }}>{gymClass?.trainerSpecialty ?? ""}</p>
-                  <div style={{ display: "flex", gap: 16, marginTop: 8 }}>
-                    <span style={{ fontSize: 12, color: C.gray }}>⭐ 4.9 تقييم</span>
-                    <span style={{ fontSize: 12, color: C.gray }}>520 جلسة</span>
+            {gymClass?.trainer && (
+              <div className="card" style={{ padding: 28 }}>
+                <h2 style={{ fontWeight: 800, fontSize: 20, color: C.white, marginBottom: 16 }}>{t("المدربة", "Trainer")}</h2>
+                <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
+                  <div style={{ width: 80, height: 80, borderRadius: 12, overflow: "hidden", flexShrink: 0 }}><GymImg type="trainer1" w={80} h={80} /></div>
+                  <div>
+                    <h3 style={{ fontWeight: 800, fontSize: 17, color: C.white }}>{gymClass.trainer}</h3>
+                    {gymClass.trainerSpecialty && <p style={{ color: C.red, fontSize: 13, fontWeight: 600 }}>{gymClass.trainerSpecialty}</p>}
                   </div>
                 </div>
               </div>
-            </div>
+            )}
           </div>
           <div className="card" style={{ padding: 24, position: viewportWidth() < 1024 ? "static" : "sticky", top: 86 }}>
-            <h3 style={{ fontWeight: 800, fontSize: 17, color: C.white, marginBottom: 16 }}>اختاري الموعد</h3>
+            <h3 style={{ fontWeight: 800, fontSize: 17, color: C.white, marginBottom: 16 }}>{t("اختاري الموعد", "Choose a session")}</h3>
             {bookingMsg && <div style={{ marginBottom: 12, padding: "12px 14px", borderRadius: 8, background: bookingMsg.ok ? "#dcfce7" : "#fee2e2", color: bookingMsg.ok ? "#166534" : "#991b1b", fontWeight: 700, fontSize: 13 }}>{bookingMsg.text}</div>}
             {sessions.map(s => (
               <div key={s.id} className="card" style={{ padding: 14, marginBottom: 12, border: `1px solid ${C.border}` }}>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
                   <div>
-                    <div style={{ fontWeight: 700, fontSize: 13, color: C.white }}>{new Date(s.date).toLocaleDateString("ar-EG", { weekday: "long", day: "numeric", month: "long" })}</div>
+                    <div style={{ fontWeight: 700, fontSize: 13, color: C.white }}>{new Date(s.date).toLocaleDateString(lang === "en" ? "en-US" : "ar-EG", { weekday: "long", day: "numeric", month: "long" })}</div>
                     <div style={{ color: C.gray, fontSize: 12 }}>{s.time}</div>
                   </div>
                   <span style={{ background: s.availableSpots === 0 ? "rgba(239,68,68,.12)" : "rgba(34,197,94,.12)", color: s.availableSpots === 0 ? "#EF4444" : C.success, padding: "3px 8px", borderRadius: 4, fontSize: 11, fontWeight: 600, height: "fit-content" }}>
-                    {s.availableSpots === 0 ? "ممتلئ" : `${s.availableSpots} متبقية`}
+                    {s.availableSpots === 0 ? t("ممتلئ", "Full") : `${s.availableSpots} ${t("متبقية", "left")}`}
                   </span>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span style={{ fontWeight: 900, color: C.red }}>{formatCurrency(gymClass?.price ?? 0)}</span>
                   <button className="btn-primary" style={{ padding: "5px 14px", fontSize: 12, opacity: s.availableSpots === 0 ? .4 : 1 }} disabled={s.availableSpots === 0 || bookingId === s.id || bookingScheduleId === s.id} onClick={() => bookSchedule(s.id)}>
-                    {bookingScheduleId === s.id ? "تم الحجز" : bookingId === s.id ? "جارٍ..." : s.availableSpots === 0 ? "ممتلئ" : "احجزي الآن"}
+                    {bookingScheduleId === s.id ? t("تم الحجز", "Booked") : bookingId === s.id ? t("جارٍ...", "Processing...") : s.availableSpots === 0 ? t("ممتلئ", "Full") : t("احجزي الآن", "Book now")}
                   </button>
                 </div>
               </div>
@@ -3947,9 +3950,9 @@ const ClassDetailPage = ({ navigate }: { navigate: (p: string) => void }) => {
             <div style={{ background: "rgba(233,30,99,.08)", border: `1px solid ${C.red}33`, borderRadius: 8, padding: 14 }}>
               <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
                 <I n="wallet" s={15} c={C.red} />
-                  <span style={{ fontWeight: 700, fontSize: 13, color: C.red }}>ميزة الاشتراك والحجز</span>
+                <span style={{ fontWeight: 700, fontSize: 13, color: C.red }}>{t("ميزة الاشتراك والحجز", "Subscription & Booking Perk")}</span>
               </div>
-              <p style={{ fontSize: 11, color: C.gray }}>احجزي حصتك الآن، وسيظهر الحجز مباشرة داخل صفحة حسابك.</p>
+              <p style={{ fontSize: 11, color: C.gray }}>{t("احجزي حصتك الآن، وسيظهر الحجز مباشرة داخل صفحة حسابك.", "Book your spot now and it will appear instantly in your account page.")}</p>
             </div>
           </div>
         </div>
@@ -6064,20 +6067,21 @@ const TrainersPage = () => {
 // ─── BLOG PAGE ────────────────────────────────────────────────────────────────
 const BlogPage = () => {
   const t = useT();
+  const { lang } = useLang();
   const [activeArticle, setActiveArticle] = useState<PublicBlogPost | null>(null);
   const allLabel = t("الكل", "All");
   const [cat, setCat] = useState(allLabel);
   const [blog, setBlog] = useState<PublicBlog>({ categories: [], posts: [] });
 
   useEffect(() => {
-    loadPublicApi()
+    loadPublicApi(true)
       .then((data) => {
         if (data.blog && typeof data.blog === "object") {
           setBlog((current) => ({ ...current, ...(data.blog as PublicBlog) }));
         }
       })
       .catch(() => {});
-  }, []);
+  }, [lang]);
 
   const categories =
     blog.categories.length > 0
