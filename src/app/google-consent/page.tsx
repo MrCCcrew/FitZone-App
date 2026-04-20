@@ -99,7 +99,7 @@ export default function GoogleConsentPage() {
             ["🎉", t("نقاط الترحيب", "Welcome Points"),
               t("بمجرد إنشاء الحساب، هيتم إضافة 100 نقطة هدية ترحيباً بيكِ 🎁", "Upon account creation, 100 gift points will be added as a welcome bonus 🎁")],
             ["👥", t("نظام الإحالة", "Referral System"),
-              t("ستجدين كود الإحالة الخاص بك داخل حسابك. شاركيه واكسبي 50 جنيه لكل صديقة.", "You'll find your referral code in your profile. Share it and earn 50 EGP per friend.")],
+              t("ستجدين كود الإحالة الخاص بك داخل حسابك. شاركيه مع أصحابك — لما أي عضو يشترك في باقة مدفوعة باستخدام كودك، هتاخدي 50 جنيه رصيد في محفظتك.", "You'll find your referral code in your profile. Share it — when any member subscribes to a paid plan using your code, you earn 50 EGP wallet credit.")],
             ["🔒", t("الأمان والخصوصية", "Security & Privacy"),
               t("بياناتك سرية تماماً ولن تُشارك مع أي طرف ثالث.", "Your data is completely confidential and will not be shared with any third party.")],
             ["📞", t("الدعم", "Support"),

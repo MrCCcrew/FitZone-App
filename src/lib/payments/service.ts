@@ -245,6 +245,13 @@ export async function updatePaymentTransactionStatus(
           data: { status: "active", startDate: now, endDate },
         });
 
+        // Unlock pending referral reward for the user who just subscribed
+        if (existing.userId) {
+          try {
+            await unlockPendingReferralReward(existing.userId);
+          } catch {}
+        }
+
         // Give wallet bonus
         const walletBonus = membership.membership?.walletBonus ?? 0;
         if (walletBonus > 0 && existing.userId) {
@@ -470,4 +477,72 @@ function mapPaymentTransaction(
     updatedAt: transaction.updatedAt,
     message: message ?? null,
   };
+}
+
+// Called after a subscription becomes active — rewards the referrer who brought this user
+// if their previous pending referral had not yet been rewarded.
+export async function unlockPendingReferralReward(subscribedUserId: string) {
+  const usage = await db.referralUsage.findUnique({
+    where: { referredUserId: subscribedUserId },
+    include: { referral: { select: { id: true, userId: true } } },
+  });
+
+  if (!usage || usage.subscriptionActivated) return;
+
+  // Mark this referred user as having subscribed
+  await db.referralUsage.update({
+    where: { id: usage.id },
+    data: { subscriptionActivated: true, subscriptionActivatedAt: new Date() },
+  });
+
+  // Always increment the referrer's subscriptionActivatedCount
+  await db.referral.update({
+    where: { id: usage.referral.id },
+    data: { subscriptionActivatedCount: { increment: 1 } },
+  });
+
+  // If the reward was not yet given at registration time, give it now
+  if (!usage.rewardGiven) {
+    const REWARD = 50;
+    const referrerUserId = usage.referral.userId;
+
+    const referrerWallet = await db.wallet.upsert({
+      where: { userId: referrerUserId },
+      update: {},
+      create: { userId: referrerUserId, balance: 0 },
+    });
+
+    await db.wallet.update({
+      where: { id: referrerWallet.id },
+      data: { balance: { increment: REWARD } },
+    });
+
+    await db.walletTransaction.create({
+      data: {
+        walletId: referrerWallet.id,
+        amount: REWARD,
+        type: "credit",
+        description: "مكافأة إحالة — اشترك العضو المُحال بنجاح",
+      },
+    });
+
+    await db.referralUsage.update({
+      where: { id: usage.id },
+      data: { rewardGiven: true, rewardType: "wallet", rewardValue: REWARD },
+    });
+
+    await db.referral.update({
+      where: { id: usage.referral.id },
+      data: { totalEarned: { increment: REWARD } },
+    });
+
+    await db.notification.create({
+      data: {
+        userId: referrerUserId,
+        title: "🎉 مكافأة إحالة!",
+        body: `اشترك أحد أعضائك المُحالين بنجاح وحصلتِ على ${REWARD} ج.م في محفظتك!`,
+        type: "success",
+      },
+    });
+  }
 }
