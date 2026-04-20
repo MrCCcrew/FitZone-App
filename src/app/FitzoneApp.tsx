@@ -4537,7 +4537,7 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
   const [zoomOrigin, setZoomOrigin] = useState("50% 50%");
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
   const [selectedColor, setSelectedColor] = useState(C.red);
-  const outOfStock = typeof product.stock === "number" && product.stock <= 0;
+  const outOfStock = typeof product?.stock === "number" && product.stock <= 0;
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewContent, setReviewContent] = useState("");
   const [reviewMessage, setReviewMessage] = useState<{ text: string; ok: boolean } | null>(null);
