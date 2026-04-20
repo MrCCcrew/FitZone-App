@@ -56,6 +56,20 @@ export async function GET(req: NextRequest) {
       role: result.user.role as "member" | "admin" | "staff" | "trainer" | "accountant",
     });
 
+    // New users must accept terms before getting a session
+    if (result.isNew) {
+      const res = NextResponse.redirect(`${base}/google-consent`);
+      res.cookies.set("oauth_pending_session", token, {
+        httpOnly: true,
+        maxAge: 600, // 10 minutes to accept
+        path: "/",
+        sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
+      });
+      res.cookies.set("oauth_state", "", { httpOnly: true, maxAge: 0, path: "/" });
+      return res;
+    }
+
     const res = NextResponse.redirect(`${base}/`);
     res.cookies.set(APP_SESSION_COOKIE, token, getAppSessionCookieOptions());
     res.cookies.set(ADMIN_SESSION_COOKIE, "", { ...getAdminSessionCookieOptions(), maxAge: 0 });
