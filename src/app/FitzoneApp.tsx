@@ -4393,7 +4393,7 @@ const ShopPage = ({ navigate }: { navigate: (p: string) => void }) => {
   const [products, setProducts] = useState<StoreProduct[]>(DEFAULT_PRODUCTS);
 
   useEffect(() => {
-    loadPublicApi()
+    loadPublicApi(true)
       .then((d) => {
         if (Array.isArray(d.categories) && d.categories.length > 0) {
           setCategories(d.categories.map((item: { key: string; label: string; sizeType: "none" | "clothing" | "shoes"; icon?: string | null }) => ({ key: item.key, label: item.label, sizeType: item.sizeType, icon: item.icon ?? null })));
@@ -4424,7 +4424,7 @@ const ShopPage = ({ navigate }: { navigate: (p: string) => void }) => {
         }
       })
       .catch(() => {});
-  }, []);
+  }, [lang]);
 
   useEffect(() => {
     setCat(allLabel);
@@ -5048,7 +5048,7 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
   }, []);
 
   useEffect(() => {
-    loadPublicApi()
+    loadPublicApi(true)
       .then((d) => {
         if (Array.isArray(d.deliveryOptions)) {
           const options = (d.deliveryOptions as PublicDeliveryOption[]).slice().sort((a, b) => a.sortOrder - b.sortOrder);
@@ -5060,7 +5060,7 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
         }
       })
       .catch(() => {});
-  }, []);
+  }, [lang]);
 
   useEffect(() => {
     if (summary?.authenticated) {
@@ -5987,7 +5987,7 @@ const TrainersPage = () => {
   });
 
   useEffect(() => {
-    loadPublicApi().then((data) => {
+    loadPublicApi(true).then((data) => {
       if (Array.isArray(data.trainers)) {
         setTrainers(data.trainers as PublicTrainer[]);
       }
