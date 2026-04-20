@@ -2294,23 +2294,23 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
             <p className="section-sub">{t("فريق مدربات محترفات في بني سويف لمساعدتك على بناء برنامج مناسب لهدفك، سواء لياقة أو تخسيس أو تأهيل.", "A team of professional coaches in Beni Suef to help you follow the right plan for fitness, weight loss, or recovery goals.")}</p>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 24 }}>
-            {trainers.map((t, index) => (
-              <div key={t.id} className="card card-hover" style={{ padding: 0, overflow: "hidden", textAlign: "center" }}>
+            {trainers.map((trainer, index) => (
+              <div key={trainer.id} className="card card-hover" style={{ padding: 0, overflow: "hidden", textAlign: "center" }}>
                 <div style={{ height: 220, background: "#fff" }}>
-                  {t.image ? (
-                    <img src={t.image} alt={t.name} loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  {trainer.image ? (
+                    <img src={trainer.image} alt={trainer.name} loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                   ) : (
                     <GymImg type={`trainer${(index % 3) + 1}`} w="100%" h={220} />
                   )}
                 </div>
                 <div style={{ padding: "20px 24px 24px" }}>
-                  <h3 style={{ fontWeight: 800, fontSize: 17, color: C.white }}>{t.name}</h3>
-                  <p style={{ color: C.redDark, fontSize: 13, fontWeight: 600, marginTop: 4, marginBottom: 16 }}>{t.specialty}</p>
+                  <h3 style={{ fontWeight: 800, fontSize: 17, color: C.white }}>{trainer.name}</h3>
+                  <p style={{ color: C.redDark, fontSize: 13, fontWeight: 600, marginTop: 4, marginBottom: 16 }}>{trainer.specialty}</p>
                   <div style={{ display: "flex", justifyContent: "center", gap: 24, marginBottom: 16 }}>
-                    <div><div style={{ fontWeight: 700, color: C.redDark }}>⭐ {t.rating}</div><div style={{ fontSize: 11, color: C.gray }}>التقييم</div></div>
-                    <div><div style={{ fontWeight: 700, color: C.white }}>{t.sessionsCount}</div><div style={{ fontSize: 11, color: C.gray }}>جلسة</div></div>
+                    <div><div style={{ fontWeight: 700, color: C.redDark }}>⭐ {trainer.rating}</div><div style={{ fontSize: 11, color: C.gray }}>{t("التقييم", "Rating")}</div></div>
+                    <div><div style={{ fontWeight: 700, color: C.white }}>{trainer.sessionsCount}</div><div style={{ fontSize: 11, color: C.gray }}>{t("جلسة", "sessions")}</div></div>
                   </div>
-                  <button className="btn-outline" style={{ width: "100%" }} onClick={() => navigate("trainers")}>عرض الملف</button>
+                  <button className="btn-outline" style={{ width: "100%" }} onClick={() => navigate("trainers")}>{t("عرض الملف", "View profile")}</button>
                 </div>
               </div>
             ))}
