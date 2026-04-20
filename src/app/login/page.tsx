@@ -145,6 +145,21 @@ function LoginForm() {
       <div className="fitzone-login-orb fitzone-login-orb-1" />
       <div className="fitzone-login-orb fitzone-login-orb-2" />
 
+      {/* Fixed back button */}
+      <a
+        href="/"
+        aria-label={t("العودة للرئيسية", "Back to home")}
+        className="fixed top-4 z-50"
+        style={{ [lang === "ar" ? "right" : "left"]: "16px" }}
+      >
+        <span className="flex items-center gap-1.5 rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-sm font-bold text-white backdrop-blur-md">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" style={{ transform: lang === "ar" ? "scaleX(-1)" : undefined }}>
+            <path d="M19 12H5M12 5l-7 7 7 7" />
+          </svg>
+          {t("الرئيسية", "Home")}
+        </span>
+      </a>
+
       <div className="relative z-10 w-full max-w-md">
         <div className="mb-8 text-center">
           <div className="mb-2 inline-flex items-center gap-1" dir="ltr">
