@@ -4221,6 +4221,10 @@ const SchedulePage = () => {
           <span>{title}</span>
           <div style={{ color: "#f1f1f1", fontSize: 14 }}>{subtitle}</div>
         </div>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 8, background: "rgba(245,197,66,.07)", border: "1px solid rgba(245,197,66,.25)", borderRadius: 10, padding: "10px 14px", marginBottom: 20, fontSize: 13, color: "#f5c542", fontWeight: 700, lineHeight: 1.6 }}>
+          <span style={{ fontSize: 16, flexShrink: 0 }}>⚠️</span>
+          <span>{t("لا يمكن حجز أكثر من كلاس واحد في نفس التوقيت ونفس اليوم.", "You cannot book more than one class at the same time on the same day.")}</span>
+        </div>
         <div className="schedule-scroll" style={{ direction: "ltr", overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
           <div
             className="schedule-grid"
