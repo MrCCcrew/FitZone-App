@@ -2,6 +2,25 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { sendOnePush } from "@/lib/push";
 
+const DEFAULT_REMINDER = {
+  title: "تذكير بموعدك في FitZone 💪",
+  body: "{className} مع {trainerName} — {day} الساعة {time}",
+};
+
+async function getReminderTemplate() {
+  try {
+    const record = await db.siteContent.findUnique({ where: { section: "pushReminderSettings" } });
+    if (!record) return DEFAULT_REMINDER;
+    const parsed = JSON.parse(record.content) as { title?: string; body?: string };
+    return {
+      title: parsed.title?.trim() || DEFAULT_REMINDER.title,
+      body: parsed.body?.trim() || DEFAULT_REMINDER.body,
+    };
+  } catch {
+    return DEFAULT_REMINDER;
+  }
+}
+
 // Called by a Linux cron job every 30 min via:
 //   */30 * * * * curl "https://fitzoneland.com/api/cron/send-reminders?secret=YOUR_SECRET"
 //
@@ -41,6 +60,7 @@ export async function GET(req: Request) {
     },
   });
 
+  const template = await getReminderTemplate();
   let sent = 0;
   let skipped = 0;
 
@@ -69,10 +89,14 @@ export async function GET(req: Request) {
     }
 
     const dayLabel = DAY_NAMES[slotDate.getDay()] ?? "";
-    const title = `تذكير بموعدك في FitZone 💪`;
-    const body  =
-      `${booking.schedule.class.name} مع ${booking.schedule.class.trainer.name}` +
-      ` — ${dayLabel} الساعة ${booking.schedule.time}`;
+    const className   = booking.schedule.class.name;
+    const trainerName = booking.schedule.class.trainer?.name ?? "";
+    const title = template.title;
+    const body  = template.body
+      .replace("{className}",   className)
+      .replace("{trainerName}", trainerName)
+      .replace("{day}",         dayLabel)
+      .replace("{time}",        booking.schedule.time);
 
     let userSent = false;
     for (const sub of subs) {
