@@ -32,8 +32,11 @@ function AppleIcon() {
   );
 }
 
-function SocialButtons({ lang, acceptedTerms }: { lang: string; acceptedTerms: boolean }) {
+function SocialButtons({ lang, acceptedTerms, referralCode }: { lang: string; acceptedTerms: boolean; referralCode?: string }) {
   const t = (ar: string, en: string) => (lang === "ar" ? ar : en);
+  const googleHref = acceptedTerms
+    ? `/api/auth/oauth/google${referralCode ? `?ref=${encodeURIComponent(referralCode)}` : ""}`
+    : undefined;
   return (
     <div className="space-y-3">
       <div className="relative flex items-center py-2">
@@ -42,7 +45,7 @@ function SocialButtons({ lang, acceptedTerms }: { lang: string; acceptedTerms: b
         <div className="flex-grow border-t border-white/10" />
       </div>
       <a
-        href={acceptedTerms ? "/api/auth/oauth/google" : undefined}
+        href={googleHref}
         onClick={!acceptedTerms ? (e) => e.preventDefault() : undefined}
         aria-disabled={!acceptedTerms}
         className={`flex w-full items-center justify-center gap-3 rounded-xl border border-white/10 bg-white/5 py-3 text-sm font-medium transition-colors ${
@@ -410,7 +413,7 @@ function RegisterForm() {
             </button>
           </form>
 
-          <SocialButtons lang={lang} acceptedTerms={acceptedTerms} />
+          <SocialButtons lang={lang} acceptedTerms={acceptedTerms} referralCode={referralCode || undefined} />
 
           <div className="mt-6 text-center text-sm">
             <span className="text-gray-400">{t("لديك حساب بالفعل؟", "Already have an account?")} </span>
