@@ -2868,11 +2868,11 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
   };
 
   const faqs = [
-    { q: "هل يمكن إلغاء الاشتراك في أي وقت؟", a: "نعم، يمكنك إلغاء اشتراكك في أي وقت. سيستمر الاشتراك حتى نهاية الفترة المدفوعة." },
-    { q: "كيف أحجز الكلاسات؟", a: "بعد الاشتراك، يمكنك الحجز مباشرة من صفحة الجدول الأسبوعي أو من تفاصيل الكلاس." },
-    { q: "هل يمكن تجميد الاشتراك؟", a: "نعم، نتيح تجميد الاشتراك لمدة تصل إلى شهرين في السنة." },
-    { q: "ما طرق الدفع المتاحة؟", a: "نقبل النقدي، بطاقات الدفع، إنستاباي، والمحفظة الرقمية." },
-    { q: "هل يوجد كلاسات للأطفال؟", a: "نعم! لدينا برامج مخصصة للأطفال من سن 4 سنوات فأكثر." },
+    { q: t("هل يمكن إلغاء الاشتراك في أي وقت؟", "Can I cancel my subscription at any time?"), a: t("نعم، يمكنك إلغاء اشتراكك في أي وقت. سيستمر الاشتراك حتى نهاية الفترة المدفوعة.", "Yes, you can cancel your subscription at any time. It will remain active until the end of the paid period.") },
+    { q: t("كيف أحجز الكلاسات؟", "How do I book classes?"), a: t("بعد الاشتراك، يمكنك الحجز مباشرة من صفحة الجدول الأسبوعي أو من تفاصيل الكلاس.", "After subscribing, you can book directly from the weekly schedule page or from the class details.") },
+    { q: t("هل يمكن تجميد الاشتراك؟", "Can I freeze my subscription?"), a: t("نعم، نتيح تجميد الاشتراك لمدة تصل إلى شهرين في السنة.", "Yes, you can freeze your subscription for up to two months per year.") },
+    { q: t("ما طرق الدفع المتاحة؟", "What payment methods are available?"), a: t("نقبل النقدي، بطاقات الدفع، إنستاباي، والمحفظة الرقمية.", "We accept cash, bank cards, InstaPay, and digital wallets.") },
+    { q: t("هل يوجد كلاسات للأطفال؟", "Are there classes for kids?"), a: t("نعم! لدينا برامج مخصصة للأطفال من سن 4 سنوات فأكثر.", "Yes! We have dedicated programs for children from age 4 and up.") },
   ];
   const primaryPlan = filteredPlans[0] ?? plans[0];
 
@@ -3494,12 +3494,12 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                     >
                       {p.popular && (
                         <div style={{ position: "absolute", top: 16, left: 16, background: C.red, color: "#fff", padding: "4px 14px", borderRadius: 999, fontSize: 11, fontWeight: 800 }}>
-                          الأكثر شعبية
+                          {t("الأكثر شعبية", "Most popular")}
                         </div>
                       )}
                       {hasDiscount && discountPercent != null ? (
                         <div style={{ position: "absolute", top: 10, right: 16, background: C.gold, color: "#000", padding: "3px 10px", borderRadius: 999, fontSize: 10, fontWeight: 800 }}>
-                          خصم {discountPercent}%
+                          {t(`خصم ${discountPercent}%`, `${discountPercent}% off`)}
                         </div>
                       ) : null}
                       {p.image ? (
@@ -3514,15 +3514,15 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                       </div>
                       {hasDiscount ? (
                         <div style={{ marginTop: 6, color: C.gray, fontSize: 12, textDecoration: "line-through" }}>
-                          {formatCurrency(before)} ج.م
+                          {formatCurrency(before)} {t("ج.م", "EGP")}
                         </div>
                       ) : null}
                     </div>
 
                     <div style={{ padding: "18px 24px 22px" }}>
                       <div style={{ display: "flex", gap: 12, color: C.gray, fontSize: 12, marginBottom: 12, flexWrap: "wrap" }}>
-                        {p.sessionsCount ? <span>عدد الحصص: {p.sessionsCount}</span> : null}
-                        <span>المدة: {p.durationDays} يوم</span>
+                        {p.sessionsCount ? <span>{t("عدد الحصص:", "Sessions:")} {p.sessionsCount}</span> : null}
+                        <span>{t("المدة:", "Duration:")} {p.durationDays} {t("يوم", "days")}</span>
                       </div>
                       {p.features.map((feat, fi) => (
                         <div key={fi} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0", borderBottom: `1px dashed ${C.border}`, fontSize: 12 }}>
@@ -3552,7 +3552,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                           boxShadow: p.popular ? "0 10px 25px rgba(233,30,99,.25)" : "none",
                         }}
                       >
-                        {(p.id !== null && subscribing === p.id) ? "جارٍ الاشتراك..." : "اشتركي الآن"}
+                        {(p.id !== null && subscribing === p.id) ? t("جارٍ الاشتراك...", "Processing...") : t("اشتركي الآن", "Subscribe now")}
                       </button>
                     </div>
                   </div>
@@ -3565,7 +3565,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
 
       <section className="section" style={{ background: C.bgCard }}>
         <div className="container" style={{ maxWidth: 700, margin: "0 auto" }}>
-          <h2 className="section-title" style={{ textAlign: "center", marginBottom: 32 }}>الأسئلة <span>الشائعة</span></h2>
+          <h2 className="section-title" style={{ textAlign: "center", marginBottom: 32 }}>{t("الأسئلة", "Frequently")} <span>{t("الشائعة", "Asked Questions")}</span></h2>
           {faqs.map((f, i) => (
             <div key={i} className="card" style={{ marginBottom: 10, padding: 0 }}>
               <button onClick={() => setOpenFaq(openFaq === i ? null : i)} style={{ width: "100%", background: "none", border: "none", padding: "18px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", fontFamily: "'Cairo', sans-serif", fontWeight: 600, fontSize: 14, color: C.white, textAlign: "right" }}>
@@ -3579,7 +3579,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
 
       <div style={{ position: viewportWidth() < 768 ? "static" : "sticky", bottom: 0, background: C.bgCard, borderTop: `1px solid ${C.border}`, padding: "14px 0", zIndex: 50 }}>
         <div className="container" style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 16 }}>
-          <p style={{ fontWeight: 600, color: C.gray, fontSize: 14 }}>مستعدة تبدئي رحلتك مع فيت زون؟</p>
+          <p style={{ fontWeight: 600, color: C.gray, fontSize: 14 }}>{t("مستعدة تبدئي رحلتك مع فيت زون؟", "Ready to start your journey with Fit Zone?")}</p>
           <button
             className="btn-primary"
             style={{ padding: "10px 32px", opacity: selectedGoals.length === 0 || !primaryPlan ? 0.6 : 1 }}
@@ -3591,7 +3591,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
             }}
             disabled={selectedGoals.length === 0 || !primaryPlan}
           >
-            ابدئي الآن
+            {t("ابدئي الآن", "Get started")}
           </button>
         </div>
       </div>
@@ -3647,10 +3647,10 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
                 <div style={{ background: `linear-gradient(135deg, ${o.color}33, ${o.color}11)`, padding: "36px 24px", textAlign: "center", borderBottom: `1px solid ${o.color}22` }}>
                   <div style={{ fontSize: viewportWidth() < 768 ? 34 : 44, marginBottom: 12 }}>{o.type === "special" ? "⏳" : "🎁"}</div>
                   <div style={{ fontSize: 56, fontWeight: 900, color: o.color, lineHeight: 1 }}>
-                    {o.type === "special" ? formatCurrency(o.specialPrice ?? 0) : o.type === "percentage" ? `${o.discount}%` : `${o.discount} ج.م`}
+                    {o.type === "special" ? formatCurrency(o.specialPrice ?? 0) : o.type === "percentage" ? `${o.discount}%` : `${o.discount} ${t("ج.م", "EGP")}`}
                   </div>
                   <div style={{ color: C.gray, fontSize: 13, marginTop: 4 }}>
-                    {o.type === "special" ? "سعر العرض الخاص" : "قيمة الخصم"}
+                    {o.type === "special" ? t("سعر العرض الخاص", "Special offer price") : t("قيمة الخصم", "Discount value")}
                   </div>
                 </div>
                 <div style={{ padding: "20px 24px" }}>
@@ -3658,14 +3658,14 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
                   <p style={{ color: C.gray, fontSize: 13, marginBottom: 16 }}>{o.description}</p>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16 }}>
                     <span style={{ fontSize: 12, color: C.gray }}>
-                      ⏰ {countdown.expired ? "انتهى العرض" : `ينتهي في ${countdown.days} يوم`}
+                      ⏰ {countdown.expired ? t("انتهى العرض", "Offer ended") : t(`ينتهي في ${countdown.days} يوم`, `Ends in ${countdown.days} day${countdown.days === 1 ? "" : "s"}`)}
                     </span>
                     {remaining != null && (
-                      <span style={{ fontSize: 12, color: C.gray }}>المتبقي: {remaining}</span>
+                      <span style={{ fontSize: 12, color: C.gray }}>{t("المتبقي:", "Remaining:")} {remaining}</span>
                     )}
                   </div>
                   <button style={{ width: "100%", padding: "10px", borderRadius: 6, border: `2px solid ${o.color}`, background: "transparent", color: o.color, fontFamily: "'Cairo', sans-serif", fontSize: 14, fontWeight: 700, cursor: "pointer" }} onClick={() => navigate(o.type === "special" ? "home" : "memberships")}>
-                    {o.type === "special" ? "اشتركي في العرض" : "استفيدي الآن"}
+                    {o.type === "special" ? t("اشتركي في العرض", "Join the offer") : t("استفيدي الآن", "Claim now")}
                   </button>
                 </div>
               </div>
@@ -3675,7 +3675,7 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
           <h2 className="section-title" style={{ marginTop: 64, marginBottom: 32 }}>{t("الباقات", "Special")} <span>{t("الخاصة", "packages")}</span></h2>
           {packages.length === 0 ? (
             <div className="card" style={{ padding: 20, textAlign: "center", color: C.gray }}>
-              لا توجد باقات متاحة حالياً.
+              {t("لا توجد باقات متاحة حالياً.", "No packages available at the moment.")}
             </div>
           ) : (
             <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr", "repeat(2, 1fr)"), gap: 24 }}>
@@ -3692,7 +3692,7 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
                       </div>
                     ) : null}
                     {hasDiscount && discount != null ? (
-                      <span className="badge" style={{ marginBottom: 16, display: "inline-flex" }}>وفري {discount}%</span>
+                      <span className="badge" style={{ marginBottom: 16, display: "inline-flex" }}>{t(`وفري ${discount}%`, `Save ${discount}%`)}</span>
                     ) : null}
                     <h3 style={{ fontWeight: 800, fontSize: 22, color: C.white, marginBottom: 20 }}>{pkg.name}</h3>
                     <ul style={{ marginBottom: 24 }}>
@@ -3704,12 +3704,12 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
                     </ul>
                     <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 20 }}>
                       <span style={{ fontSize: 38, fontWeight: 900, color: C.red }}>{after}</span>
-                      <span style={{ color: C.gray, fontSize: 14 }}>ج.م</span>
+                      <span style={{ color: C.gray, fontSize: 14 }}>{t("ج.م", "EGP")}</span>
                       {before != null && before > after && (
-                        <span style={{ textDecoration: "line-through", color: C.gray, fontSize: 15 }}>{before} ج.م</span>
+                        <span style={{ textDecoration: "line-through", color: C.gray, fontSize: 15 }}>{before} {t("ج.م", "EGP")}</span>
                       )}
                     </div>
-                    <button className="btn-primary" style={{ width: "100%", justifyContent: "center" }} onClick={() => navigate("memberships")}>اختاري الباقة</button>
+                    <button className="btn-primary" style={{ width: "100%", justifyContent: "center" }} onClick={() => navigate("memberships")}>{t("اختاري الباقة", "Choose package")}</button>
                   </div>
                 );
               })}
