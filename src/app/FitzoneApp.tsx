@@ -3029,7 +3029,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                     </div>
                     {daysPerWeek && (
                       <div style={{ background: "rgba(245,197,66,.08)", border: "1px solid rgba(245,197,66,.25)", borderRadius: 10, padding: 12, color: "#f5c542", fontSize: 13, marginBottom: 20 }}>
-                        ستختارين مواعيد من <strong>{daysPerWeek}</strong> أيام مختلفة · من <strong>{daysPerWeek}</strong> إلى <strong>{daysPerWeek * 2}</strong> حصة في الأسبوع · حصتان كحد أقصى في اليوم
+                        {t(`اختاري من ${daysPerWeek} إلى ${daysPerWeek * 2} حصة في اليوم خلال الأسبوع`, `Choose from ${daysPerWeek} to ${daysPerWeek * 2} sessions per day throughout the week`)}
                       </div>
                     )}
                     <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
