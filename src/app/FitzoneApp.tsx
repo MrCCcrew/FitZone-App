@@ -2707,7 +2707,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
     if (!surveyPlan) return;
     const unanswered = healthQuestions.some((question) => surveyAnswers[question.id] == null);
     if (unanswered) {
-      setSurveyError("يرجى الإجابة على جميع الأسئلة قبل المتابعة.");
+      setSurveyError(t("يرجى الإجابة على جميع الأسئلة قبل المتابعة.", "Please answer all questions before continuing."));
       return;
     }
     setSurveyError(null);
@@ -2882,11 +2882,11 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
         <div style={{ position: "fixed", inset: 0, zIndex: 210, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "10px 8px", overflowY: "auto", background: "rgba(233,30,99,.12)", backdropFilter: "blur(6px)" }}>
           <div style={{ background: "#fff", borderRadius: 18, padding: viewportWidth() < 640 ? 16 : 28, maxWidth: 680, width: "100%", boxShadow: "0 24px 60px rgba(233,30,99,.2)", border: `1px solid ${C.border}`, marginTop: "auto", marginBottom: "auto" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-              <h2 style={{ fontWeight: 900, fontSize: 20, color: C.white }}>استبيان الإصابات</h2>
+              <h2 style={{ fontWeight: 900, fontSize: 20, color: C.white }}>{t("استبيان الإصابات", "Health Survey")}</h2>
               <button onClick={() => setSurveyPlan(null)} aria-label={t("إغلاق", "Close")} style={{ border: "none", background: "none", fontSize: 22, cursor: "pointer", color: C.gray }}>×</button>
             </div>
             <p style={{ color: C.gray, fontSize: 13, lineHeight: 1.8, marginBottom: 18 }}>
-              أجيبي على الأسئلة التالية لنحدد الكلاسات المناسبة لك قبل الاشتراك.
+              {t("أجيبي على الأسئلة التالية لنحدد الكلاسات المناسبة لك قبل الاشتراك.", "Answer the following questions so we can determine the right classes for you before subscribing.")}
             </p>
 
             <div style={{ display: "grid", gap: 12 }}>
@@ -2910,7 +2910,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                           fontSize: 13,
                         }}
                       >
-                        نعم
+                        {t("نعم", "Yes")}
                       </button>
                       <button
                         onClick={() => setSurveyAnswers((prev) => ({ ...prev, [question.id]: false }))}
@@ -2925,12 +2925,12 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                           fontSize: 13,
                         }}
                       >
-                        لا
+                        {t("لا", "No")}
                       </button>
                     </div>
                     {answer === true && question.restrictedClassTypes.length > 0 ? (
                       <div style={{ marginTop: 10, fontSize: 12, color: C.red }}>
-                        الكلاسات الممنوعة: {question.restrictedClassTypes.map(formatClassType).join("، ")}
+                        {t("الكلاسات الممنوعة:", "Restricted classes:")} {question.restrictedClassTypes.map(formatClassType).join("، ")}
                       </div>
                     ) : null}
                   </div>
@@ -2940,7 +2940,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
 
             {surveyBlockedTypes.length > 0 ? (
               <div className="card" style={{ marginTop: 18, padding: 14, background: "rgba(233,30,99,.06)" }}>
-                <div style={{ fontWeight: 800, color: C.white, marginBottom: 6 }}>ملخص الكلاسات الممنوعة</div>
+                <div style={{ fontWeight: 800, color: C.white, marginBottom: 6 }}>{t("ملخص الكلاسات الممنوعة", "Restricted classes summary")}</div>
                 <div style={{ color: C.gray, fontSize: 13 }}>
                   {surveyBlockedTypes.map(formatClassType).join("، ")}
                 </div>
@@ -2955,10 +2955,10 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
 
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 18 }}>
               <button onClick={() => setSurveyPlan(null)} className="btn-outline" style={{ padding: "8px 18px" }}>
-                رجوع
+                {t("رجوع", "Back")}
               </button>
               <button onClick={() => void handleSurveyContinue()} className="btn-primary" style={{ padding: "8px 18px" }}>
-                متابعة للاشتراك
+                {t("متابعة للاشتراك", "Continue to subscribe")}
               </button>
             </div>
           </div>
