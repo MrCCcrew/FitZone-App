@@ -4589,13 +4589,13 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
         }
       })
       .catch(() => {});
-  }, [product.id]);
+  }, [product?.id]);
 
   useEffect(() => {
-    if (!product.id) {
+    if (!product?.id) {
       setReviews([]);
-      setAverageRating(product.rating ?? 0);
-      setReviewCount(product.reviewCount ?? 0);
+      setAverageRating(product?.rating ?? 0);
+      setReviewCount(product?.reviewCount ?? 0);
       return;
     }
 
@@ -4612,19 +4612,19 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
       })
       .catch(() => {
         setReviews([]);
-        setAverageRating(product.rating ?? 0);
-        setReviewCount(product.reviewCount ?? 0);
+        setAverageRating(product?.rating ?? 0);
+        setReviewCount(product?.reviewCount ?? 0);
       })
       .finally(() => setReviewsLoading(false));
-  }, [product.id, product.rating, product.reviewCount]);
+  }, [product?.id, product?.rating, product?.reviewCount]);
 
-  const gallery = product.images && product.images.length > 0 ? product.images : [product.type];
-  const fallbackSizes = product.sizeType === "shoes" ? ["36", "37", "38", "39", "40", "41"] : product.sizeType === "clothing" ? ["S", "M", "L", "XL"] : [];
-  const sizes = product.sizes && product.sizes.length > 0 ? product.sizes : fallbackSizes;
-  const relatedProducts = catalog.filter((item) => item.id !== product.id && item.categoryKey === product.categoryKey).slice(0, 4);
+  const gallery = product?.images && product.images.length > 0 ? product.images : [product?.type ?? ""];
+  const fallbackSizes = product?.sizeType === "shoes" ? ["36", "37", "38", "39", "40", "41"] : product?.sizeType === "clothing" ? ["S", "M", "L", "XL"] : [];
+  const sizes = product?.sizes && product.sizes.length > 0 ? product.sizes : fallbackSizes;
+  const relatedProducts = catalog.filter((item) => item.id !== product?.id && item.categoryKey === product?.categoryKey).slice(0, 4);
 
   const submitReview = async () => {
-    if (!product.id) {
+    if (!product?.id) {
       setReviewMessage({ text: t("هذا المنتج غير مربوط بقاعدة البيانات بعد.", "This product is not linked to the database yet."), ok: false });
       return;
     }
