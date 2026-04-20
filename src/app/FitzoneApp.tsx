@@ -2713,11 +2713,15 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
 
   const openSurvey = (plan: PlanItem) => {
     if (healthQuestions.length === 0) {
-      setSchedulePlan(plan);
-      setScheduleSelections([]);
-      setScheduleError(null);
-      setDaysPerWeek(null);
-      setScheduleStep("frequency");
+      if (scheduleChoices.length === 0) {
+        openCheckoutPreview(plan, []);
+      } else {
+        setSchedulePlan(plan);
+        setScheduleSelections([]);
+        setScheduleError(null);
+        setDaysPerWeek(null);
+        setScheduleStep("frequency");
+      }
       return;
     }
     const initialAnswers: Record<string, boolean | null> = {};
@@ -2739,6 +2743,10 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
     setSurveyError(null);
     const plan = surveyPlan;
     setSurveyPlan(null);
+    if (scheduleChoices.length === 0) {
+      openCheckoutPreview(plan, []);
+      return;
+    }
     setSchedulePlan(plan);
     setScheduleSelections([]);
     setScheduleError(null);
@@ -3030,6 +3038,39 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
 
             {scheduleStep === "frequency" ? (
               (() => {
+                if (scheduleChoices.length === 0) {
+                  return (
+                    <div>
+                      <div style={{ background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.12)", borderRadius: 14, padding: 18, color: "#c9b9c1", fontSize: 14, lineHeight: 1.8, marginBottom: 24 }}>
+                        {t("لا توجد مواعيد مطلوبة لهذه الباقة الآن، يمكنك المتابعة مباشرة إلى ملخص الاشتراك ثم اختيار وسيلة الدفع.", "No schedule selection is required for this membership right now. You can continue directly to the subscription summary and then choose your payment method.")}
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" }}>
+                        <button
+                          onClick={() => setSchedulePlan(null)}
+                          style={{ padding: "10px 20px", borderRadius: 10, border: "1px solid rgba(255,255,255,.15)", background: "transparent", color: "#c9b9c1", cursor: "pointer", fontSize: 14 }}
+                        >
+                          {t("إلغاء", "Cancel")}
+                        </button>
+                        <button
+                          onClick={() => {
+                            const plan = schedulePlan;
+                            if (!plan) return;
+                            setSchedulePlan(null);
+                            setScheduleSelections([]);
+                            setScheduleError(null);
+                            setDaysPerWeek(null);
+                            setScheduleStep("frequency");
+                            openCheckoutPreview(plan, []);
+                          }}
+                          style={{ padding: "10px 24px", borderRadius: 10, border: "none", background: C.red, color: "#fff", cursor: "pointer", fontWeight: 700, fontSize: 14 }}
+                        >
+                          {t("متابعة إلى ملخص الاشتراك", "Continue to subscription summary")}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }
+
                 const maxDays = Math.min(6, schedulePlan.sessionsCount ?? 6);
                 const dayLabels: Record<number, string> = {
                   1: "يوم واحد / أسبوع",
