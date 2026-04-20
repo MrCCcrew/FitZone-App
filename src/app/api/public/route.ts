@@ -382,16 +382,16 @@ export async function GET(request: Request) {
           : contactRecord,
       categories: categories.map((category) => ({
         key: category.key,
-        label: lang === "en" ? category.labelEn ?? category.label : category.label,
+        label: lang === "en" ? (category.labelEn || category.label) : category.label,
         labelEn: category.labelEn,
         sizeType: normalizeSizeType(category.sizeType),
         icon: category.icon ?? null,
       })),
       goals: goals.map((goal) => ({
         id: goal.id,
-        name: lang === "en" ? goal.nameEn ?? goal.name : goal.name,
+        name: lang === "en" ? (goal.nameEn || goal.name) : goal.name,
         slug: goal.slug,
-        description: lang === "en" ? goal.descriptionEn ?? goal.description : goal.description,
+        description: lang === "en" ? (goal.descriptionEn || goal.description) : goal.description,
         image: goal.image,
         kind: goal.kind,
         parentId: goal.parentId,
@@ -401,7 +401,7 @@ export async function GET(request: Request) {
         .filter((membership) => membership.kind !== "trial")
         .map((membership) => ({
           id: membership.id,
-          name: lang === "en" ? membership.nameEn ?? membership.name : membership.name,
+          name: lang === "en" ? (membership.nameEn || membership.name) : membership.name,
           price: membership.price,
           priceBefore: membership.priceBefore ?? null,
           priceAfter: membership.priceAfter ?? null,
@@ -412,7 +412,7 @@ export async function GET(request: Request) {
           sessionsCount: membership.sessionsCount ?? null,
           features: lang === "en" ? parseJsonArray(membership.featuresEn) : parseJsonArray(membership.features),
           walletBonus: membership.walletBonus,
-          gift: lang === "en" ? membership.giftEn ?? membership.gift : membership.gift,
+          gift: lang === "en" ? (membership.giftEn || membership.gift) : membership.gift,
           kind: membership.kind,
           goalIds: membership.goals.map((goal) => goal.goalId),
         })),
@@ -423,7 +423,7 @@ export async function GET(request: Request) {
         if ((trialSettings as { enabled?: boolean }).enabled === false) return null;
         return {
           id: trial.id,
-          name: lang === "en" ? trial.nameEn ?? trial.name : trial.name,
+          name: lang === "en" ? (trial.nameEn || trial.name) : trial.name,
           price: trial.price,
           sessionsCount: trial.sessionsCount ?? 1,
           features: lang === "en" ? parseJsonArray(trial.featuresEn) : parseJsonArray(trial.features),
@@ -448,25 +448,25 @@ export async function GET(request: Request) {
       })),
       classes: classes.map((gymClass) => ({
         id: gymClass.id,
-        name: lang === "en" ? gymClass.nameEn ?? gymClass.name : gymClass.name,
-        description: lang === "en" ? gymClass.descriptionEn ?? gymClass.description ?? "" : gymClass.description ?? "",
+        name: lang === "en" ? (gymClass.nameEn || gymClass.name) : gymClass.name,
+        description: lang === "en" ? (gymClass.descriptionEn || gymClass.description || "") : (gymClass.description || ""),
         trainer:
           gymClass.showTrainerName === false || !gymClass.trainer
             ? ""
             : lang === "en"
-              ? gymClass.trainer.nameEn ?? gymClass.trainer.name
+              ? (gymClass.trainer.nameEn || gymClass.trainer.name)
               : gymClass.trainer.name,
         trainerSpecialty:
           gymClass.showTrainerName === false || !gymClass.trainer
             ? ""
             : lang === "en"
-              ? gymClass.trainer.specialtyEn ?? gymClass.trainer.specialty ?? ""
-              : gymClass.trainer.specialty ?? "",
+              ? (gymClass.trainer.specialtyEn || gymClass.trainer.specialty || "")
+              : (gymClass.trainer.specialty || ""),
         duration: lang === "en" ? `${gymClass.duration} min` : `${gymClass.duration} دقيقة`,
         intensity: gymClass.intensity,
-        category: lang === "en" ? gymClass.categoryEn ?? gymClass.category ?? null : gymClass.category ?? null,
-        type: lang === "en" ? gymClass.typeEn ?? gymClass.type : gymClass.type,
-        subType: lang === "en" ? gymClass.subTypeEn ?? gymClass.subType ?? null : gymClass.subType ?? null,
+        category: lang === "en" ? (gymClass.categoryEn || gymClass.category || null) : (gymClass.category || null),
+        type: lang === "en" ? (gymClass.typeEn || gymClass.type) : gymClass.type,
+        subType: lang === "en" ? (gymClass.subTypeEn || gymClass.subType || null) : (gymClass.subType || null),
         price: gymClass.price,
         maxSpots: gymClass.maxSpots,
         showTrainerName: gymClass.showTrainerName ?? true,
@@ -479,9 +479,9 @@ export async function GET(request: Request) {
       })),
       trainers: trainers.map((trainer) => ({
         id: trainer.id,
-        name: lang === "en" ? trainer.nameEn ?? trainer.name : trainer.name,
-        specialty: lang === "en" ? trainer.specialtyEn ?? trainer.specialty : trainer.specialty,
-        bio: lang === "en" ? trainer.bioEn ?? trainer.bio ?? "" : trainer.bio ?? "",
+        name: lang === "en" ? (trainer.nameEn || trainer.name) : trainer.name,
+        specialty: lang === "en" ? (trainer.specialtyEn || trainer.specialty) : trainer.specialty,
+        bio: lang === "en" ? (trainer.bioEn || trainer.bio || "") : (trainer.bio || ""),
         certifications: lang === "en" ? parseJsonArray(trainer.certificationsEn) : parseJsonArray(trainer.certifications),
         rating: trainer.rating,
         sessionsCount: trainer.sessionsCount,
@@ -570,13 +570,13 @@ export async function GET(request: Request) {
 
         return {
           id: product.id,
-          name: lang === "en" ? product.nameEn ?? product.name : product.name,
+          name: lang === "en" ? (product.nameEn || product.name) : product.name,
           price: product.price,
           oldPrice: product.oldPrice,
           category: product.category,
-          categoryLabel: lang === "en" ? category?.labelEn ?? category?.label ?? product.category : category?.label ?? product.category,
+          categoryLabel: lang === "en" ? (category?.labelEn || category?.label || product.category) : (category?.label || product.category),
           sizeType: normalizeSizeType(category?.sizeType),
-          description: lang === "en" ? product.descriptionEn ?? product.description ?? "" : product.description ?? "",
+          description: lang === "en" ? (product.descriptionEn || product.description || "") : (product.description || ""),
           images: parseJsonArray(product.images),
           sizes: parseJsonArray(product.sizes),
           colors: parseJsonArray(product.colors),
@@ -595,27 +595,27 @@ export async function GET(request: Request) {
 
         return {
           id: testimonial.id,
-          displayName: lang === "en" ? testimonial.displayNameEn ?? name : name,
+          displayName: lang === "en" ? (testimonial.displayNameEn || name) : name,
           displayNameEn: testimonial.displayNameEn,
-          content: lang === "en" ? testimonial.contentEn ?? testimonial.content : testimonial.content,
+          content: lang === "en" ? (testimonial.contentEn || testimonial.content) : testimonial.content,
           contentEn: testimonial.contentEn,
           rating: testimonial.rating,
           createdAt: testimonial.createdAt.toISOString(),
-          user: { name: lang === "en" ? testimonial.displayNameEn ?? name : name },
+          user: { name: lang === "en" ? (testimonial.displayNameEn || name) : name },
         };
       }),
       healthQuestions: healthQuestions.map((question) => ({
         id: question.id,
-        title: lang === "en" ? question.titleEn ?? question.title : question.title,
-        prompt: lang === "en" ? question.promptEn ?? question.prompt : question.prompt,
+        title: lang === "en" ? (question.titleEn || question.title) : question.title,
+        prompt: lang === "en" ? (question.promptEn || question.prompt) : question.prompt,
         sortOrder: question.sortOrder,
         restrictedClassTypes: question.restrictions.map((item) => item.classType),
       })),
       deliveryOptions: deliveryOptions.map((option) => ({
         id: option.id,
-        name: lang === "en" ? option.nameEn ?? option.name : option.name,
+        name: lang === "en" ? (option.nameEn || option.name) : option.name,
         type: option.type,
-        description: lang === "en" ? option.descriptionEn ?? option.description ?? "" : option.description ?? "",
+        description: lang === "en" ? (option.descriptionEn || option.description || "") : (option.description || ""),
         fee: option.fee,
         estimatedDaysMin: option.estimatedDaysMin,
         estimatedDaysMax: option.estimatedDaysMax,
