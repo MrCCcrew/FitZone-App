@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/app-session";
 import { db } from "@/lib/db";
 import { sendSubscriptionEmail } from "@/lib/email";
+import { generateMembershipInvoicePdf, type MembershipInvoiceDetails } from "@/lib/membership-invoice";
 import { createPaymentTransaction } from "@/lib/payments/service";
 
 type SubscribePayload = {
@@ -122,7 +123,8 @@ export async function POST(req: Request) {
     .$transaction(async (tx) => {
       let resolvedMembershipId = membershipId as string | undefined;
       let offerTitle: string | null = null;
-      let offerRecord: { id: string; title: string; specialPrice: number | null } | null = null;
+      let offerTitleEn: string | null = null;
+      let offerRecord: { id: string; title: string; titleEn: string | null; specialPrice: number | null } | null = null;
       let walletBonus = 0;
 
       if (offerId) {
@@ -139,7 +141,8 @@ export async function POST(req: Request) {
 
         resolvedMembershipId = offer.membershipId;
         offerTitle = offer.title;
-        offerRecord = { id: offer.id, title: offer.title, specialPrice: offer.specialPrice ?? null };
+        offerTitleEn = offer.titleEn ?? null;
+        offerRecord = { id: offer.id, title: offer.title, titleEn: offer.titleEn ?? null, specialPrice: offer.specialPrice ?? null };
       }
 
       if (!resolvedMembershipId) {
@@ -163,8 +166,11 @@ export async function POST(req: Request) {
       const endDate = new Date();
       endDate.setDate(endDate.getDate() + plan.duration);
 
-      let paymentAmount =
+      const originalPrice = plan.priceBefore && plan.priceBefore > 0 ? plan.priceBefore : plan.price;
+      const priceAfterMembershipDiscount =
         offerRecord?.specialPrice ?? (plan.priceAfter && plan.priceAfter > 0 ? plan.priceAfter : plan.price);
+      const membershipDiscountAmount = Math.max(0, originalPrice - priceAfterMembershipDiscount);
+      let paymentAmount = priceAfterMembershipDiscount;
 
       let discountApplied = 0;
       if (discountRecord && paymentAmount) {
@@ -415,14 +421,23 @@ export async function POST(req: Request) {
       return {
         subscriptionId: subscription.id,
         planName: plan.name,
+        planNameEn: plan.nameEn ?? null,
+        startDate,
         endDate,
         walletBonus,
         offerTitle,
+        offerTitleEn,
         bookedSchedules,
         paymentAmount,
         membershipPaymentMethod,
         discountApplied,
         needsPaymentConfirmation,
+        originalPrice,
+        membershipDiscountAmount,
+        priceAfterMembershipDiscount,
+        actualWalletDeduct,
+        actualPointsEGP,
+        discountCode: discountRecord && discountApplied > 0 ? String(discountCode ?? "").trim().toUpperCase() : null,
       };
     })
     .catch((error: unknown) => {
@@ -436,6 +451,26 @@ export async function POST(req: Request) {
 
   let checkoutUrl: string | null = null;
   let transactionId: string | null = null;
+  const invoiceDetails: MembershipInvoiceDetails = {
+    invoiceNumber: `MBR-${result.subscriptionId.slice(-8).toUpperCase()}`,
+    customerName: userRecord.name ?? "FitZone Member",
+    customerEmail: userRecord.email ?? "",
+    membershipName: result.planName,
+    membershipNameEn: result.planNameEn,
+    offerTitle: result.offerTitle ?? null,
+    offerTitleEn: result.offerTitleEn ?? null,
+    paymentMethod: result.membershipPaymentMethod,
+    originalPrice: result.originalPrice,
+    membershipDiscount: result.membershipDiscountAmount,
+    discountCodeAmount: result.discountApplied,
+    discountCode: result.discountCode,
+    walletDeduct: result.actualWalletDeduct,
+    pointsDeduct: result.actualPointsEGP,
+    finalAmount: result.paymentAmount,
+    startDate: result.startDate,
+    endDate: result.endDate,
+    issuedAt: new Date(),
+  };
   if (result.paymentAmount > 0 && ["instapay", "vodafone_cash"].includes(result.membershipPaymentMethod)) {
     const transaction = await createPaymentTransaction({
       userId,
@@ -446,12 +481,21 @@ export async function POST(req: Request) {
       paymentMethod: result.membershipPaymentMethod,
       membershipId: result.subscriptionId,
       description: `Membership ${result.planName}`,
+      metadata: {
+        membershipInvoice: {
+          ...invoiceDetails,
+          startDate: invoiceDetails.startDate?.toISOString() ?? null,
+          endDate: invoiceDetails.endDate.toISOString(),
+          issuedAt: invoiceDetails.issuedAt?.toISOString() ?? null,
+        },
+      },
     });
     checkoutUrl = transaction.checkoutUrl ?? null;
     transactionId = transaction.id;
   }
 
-  if (userRecord.email) {
+  if (userRecord.email && !result.needsPaymentConfirmation) {
+    const invoicePdf = await generateMembershipInvoicePdf(invoiceDetails);
     void sendSubscriptionEmail(
       userRecord.email,
       userRecord.name ?? "العضوة",
@@ -459,6 +503,11 @@ export async function POST(req: Request) {
       result.endDate,
       result.walletBonus,
       result.bookedSchedules ?? [],
+      {
+        details: invoiceDetails,
+        filename: `fitzone-membership-invoice-${invoiceDetails.invoiceNumber}.pdf`,
+        content: invoicePdf,
+      },
     ).catch((error) => console.error("[SUBSCRIBE_EMAIL]", error));
   }
 
