@@ -153,6 +153,13 @@ const css = `
   @media(max-width:640px){
     .today-class-card{flex-basis:220px;}
   }
+
+  /* ── Mobile bottom nav ── */
+  .mobile-bottom-nav{display:none;}
+  @media(max-width:768px){
+    .mobile-bottom-nav{display:flex;}
+    main{padding-bottom:calc(60px + env(safe-area-inset-bottom, 0px));}
+  }
 `;
 
 const publicApiCache: Record<string, Promise<Record<string, unknown>> | null> = {};
@@ -628,11 +635,23 @@ const Header = ({
         </span>
       </div>
       <div className="container" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", height: 78 }}>
-        <div onClick={() => navigate("home")} style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: 10 }}>
-          <FZLogo size={56} />
-          <div>
-            <div style={{ fontSize: 19, fontWeight: 900, color: C.white, letterSpacing: 1, lineHeight: 1 }}>FIT ZONE</div>
-            <div style={{ fontSize: 10, color: C.redDark, letterSpacing: 2, lineHeight: 1.1, marginTop: 3 }}>FITNESS CLUB</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          {currentPage !== "home" && (
+            <button
+              className="hide-desktop"
+              onClick={() => window.history.back()}
+              aria-label={t("رجوع", "Back")}
+              style={{ background: "none", border: "none", cursor: "pointer", padding: "6px 2px", display: "flex", alignItems: "center" }}
+            >
+              <I n={lang === "ar" ? "chevronRight" : "chevronLeft"} s={24} c={C.gray} />
+            </button>
+          )}
+          <div onClick={() => navigate("home")} style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: 10 }}>
+            <FZLogo size={56} />
+            <div>
+              <div style={{ fontSize: 19, fontWeight: 900, color: C.white, letterSpacing: 1, lineHeight: 1 }}>FIT ZONE</div>
+              <div style={{ fontSize: 10, color: C.redDark, letterSpacing: 2, lineHeight: 1.1, marginTop: 3 }}>FITNESS CLUB</div>
+            </div>
           </div>
         </div>
         <nav className="hide-mobile" style={{ display: "flex", gap: 2 }}>
@@ -6354,6 +6373,64 @@ const ContactPage = () => {
   );
 };
 
+// ─── MOBILE BOTTOM NAV ────────────────────────────────────────────────────────
+const BottomNav = ({
+  currentPage,
+  navigate,
+  cartCount,
+}: {
+  currentPage: string;
+  navigate: (p: string) => void;
+  cartCount: number;
+}) => {
+  const { lang } = useLang();
+  const t = (ar: string, en: string) => (lang === "ar" ? ar : en);
+  const items = [
+    { id: "home",        label: t("الرئيسية", "Home"),     icon: "home"     },
+    { id: "memberships", label: t("اشتراكات", "Plans"),    icon: "star"     },
+    { id: "schedule",    label: t("الجدول",   "Schedule"), icon: "calendar" },
+    { id: "shop",        label: t("المتجر",   "Shop"),     icon: "cart"     },
+    { id: "account",     label: t("حسابي",    "Account"),  icon: "user"     },
+  ];
+  return (
+    <nav className="mobile-bottom-nav" style={{
+      position: "fixed", bottom: 0, left: 0, right: 0,
+      background: "rgba(255,245,248,.97)",
+      backdropFilter: "blur(12px)",
+      borderTop: `1px solid ${C.border}`,
+      zIndex: 100,
+      paddingBottom: "env(safe-area-inset-bottom, 0px)",
+    }}>
+      {items.map(item => {
+        const active = currentPage === item.id ||
+          (item.id === "account" && ["wallet","rewards","referral"].includes(currentPage));
+        return (
+          <button key={item.id} onClick={() => navigate(item.id)} style={{
+            flex: 1, display: "flex", flexDirection: "column", alignItems: "center",
+            justifyContent: "center", padding: "8px 0", minHeight: 56,
+            background: "none", border: "none", cursor: "pointer",
+            color: active ? C.red : C.gray,
+            fontFamily: "'Cairo', sans-serif", fontSize: 10, fontWeight: 700,
+            gap: 3, position: "relative", transition: "color .2s",
+          }}>
+            {item.id === "shop" && cartCount > 0 && (
+              <span style={{
+                position: "absolute", top: 6,
+                [lang === "ar" ? "left" : "right"]: "calc(50% - 20px)",
+                width: 14, height: 14, background: C.red, borderRadius: "50%",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 9, color: "#fff", fontWeight: 700,
+              }}>{cartCount}</span>
+            )}
+            <I n={item.icon} s={22} c={active ? C.red : C.grayLight} />
+            <span style={{ fontSize: 10 }}>{item.label}</span>
+          </button>
+        );
+      })}
+    </nav>
+  );
+};
+
 // ─── APP ROOT ─────────────────────────────────────────────────────────────────
 function RedirectToAccountTab({ tab }: { tab: string }) {
   useEffect(() => {
@@ -6369,6 +6446,7 @@ export default function App() {
   const [page, setPage] = useState("home");
   const [summary, setSummary] = useState<UserSummary | null>(null);
   const [cartCount, setCartCount] = useState(0);
+  const navigating = useRef(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -6386,16 +6464,26 @@ export default function App() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-
     const url = new URL(window.location.href);
-    if (page === "home") {
-      url.searchParams.delete("page");
+    if (page === "home") url.searchParams.delete("page");
+    else url.searchParams.set("page", page);
+    if (navigating.current) {
+      window.history.pushState({ page }, "", url.toString());
+      navigating.current = false;
     } else {
-      url.searchParams.set("page", page);
+      window.history.replaceState({ page }, "", url.toString());
     }
-
-    window.history.replaceState({}, "", url.toString());
   }, [page]);
+
+  useEffect(() => {
+    const handle = () => {
+      const p = new URL(window.location.href).searchParams.get("page") || "home";
+      setPage(p);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    };
+    window.addEventListener("popstate", handle);
+    return () => window.removeEventListener("popstate", handle);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -6467,6 +6555,7 @@ export default function App() {
       return;
     }
 
+    navigating.current = true;
     setPage(p);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -6504,6 +6593,7 @@ export default function App() {
       />
       <main>{pages[page as keyof typeof pages] || pages.home}</main>
       <Footer navigate={navigate} />
+      <BottomNav currentPage={page} navigate={navigate} cartCount={cartCount} />
     </div>
   );
 }
