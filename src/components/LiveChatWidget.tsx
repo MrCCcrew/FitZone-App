@@ -69,6 +69,14 @@ export default function LiveChatWidget() {
   const [recommendedMembership, setRecommendedMembership] =
     useState<ChatSessionPayload["recommendedMembership"]>(null);
   const [error, setError] = useState("");
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth <= 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
   const lastMessageId = useMemo(() => messages[messages.length - 1]?.id, [messages]);
 
@@ -264,7 +272,7 @@ export default function LiveChatWidget() {
         }}
         style={{
           position: "fixed",
-          bottom: 20,
+          bottom: isMobile ? 76 : 20,
           right: 20,
           zIndex: 80,
           width: 68,
@@ -287,13 +295,13 @@ export default function LiveChatWidget() {
           dir={lang === "ar" ? "rtl" : "ltr"}
           style={{
             position: "fixed",
-            bottom: 96,
-            top: 112,
+            bottom: isMobile ? 156 : 96,
+            top: isMobile ? 70 : 112,
             right: 20,
             zIndex: 80,
-            width: "min(390px, calc(100vw - 24px))",
+            width: isMobile ? "calc(100vw - 40px)" : "min(390px, calc(100vw - 24px))",
             maxWidth: "calc(100vw - 24px)",
-            maxHeight: "calc(100vh - 212px)",
+            maxHeight: isMobile ? "calc(100vh - 226px)" : "calc(100vh - 212px)",
             background: "#FFF5F8",
             border: "1px solid #F5D0DC",
             borderRadius: 24,
