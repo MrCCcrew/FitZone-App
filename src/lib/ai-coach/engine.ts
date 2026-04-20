@@ -22,13 +22,16 @@ import {
 import { detectSafetyFlags } from "@/lib/ai-coach/guards";
 import { detectCoachIntent } from "@/lib/ai-coach/intents";
 import { phraseCoachReply } from "@/lib/ai-coach/llm";
-import { detectNudge } from "@/lib/ai-coach/nudge";
-import { logCoachEvent } from "@/lib/ai-coach/observability";
-import { upsertCoachProfileFromAnswers } from "@/lib/ai-coach/profile";
+import {
+  buildAdvancedNudge,
+  createAdvancedCheckIn,
+  logAdvancedCoachEvent,
+  parseAdvancedCheckIn,
+  persistQuestionnaireProfile,
+} from "@/lib/ai-coach/advanced";
 import { buildQuickActions } from "@/lib/ai-coach/quick-actions";
 import { recommendClasses, recommendMembership } from "@/lib/ai-coach/recommender";
 import { getCoachSiteSnapshot } from "@/lib/ai-coach/site-data";
-import { createCheckInForSession, parseCheckInFromMessage } from "@/lib/ai-coach/checkin";
 import type {
   CoachConversationContext,
   CoachIntent,
@@ -240,7 +243,7 @@ async function handleQuestionnaireFlow(args: {
       data: { context: serializeCoachContext(nextContext), recommendedMembershipId: membership?.id ?? null, status: "open", lastMessageAt: new Date() },
     });
 
-    await upsertCoachProfileFromAnswers(userId, sessionId, nextAnswers).catch(() => null);
+    await persistQuestionnaireProfile(userId, sessionId, nextAnswers);
 
     const { text, usedAI } = await phraseStructuredReply({
       lang,
@@ -250,7 +253,7 @@ async function handleQuestionnaireFlow(args: {
       facts: membership ? [`membership=${membership.name}`, `price=${membership.price}`] : [],
     });
 
-    logCoachEvent({ sessionId, intent: "membership_recommendation", usedAI, outcome: membership ? "membership_recommended" : "no_membership" });
+    logAdvancedCoachEvent({ sessionId, intent: "membership_recommendation", usedAI, outcome: membership ? "membership_recommended" : "no_membership" });
 
     return {
       intent: "membership_recommendation",
@@ -287,16 +290,17 @@ async function buildDeterministicReply(args: {
   const profile = snapshot.coachProfile;
   const attendance = snapshot.account.attendanceStats;
   const knowledgeEntry = matchKnowledge(userMessage, snapshot.knowledge);
+  const baseContext = { ...context, nudgeShownCount: context.nudgeShownCount ?? 0 };
 
   // ── Live support ───────────────────────────────────────────────────────────
   if (intent === "human_handoff" || wantsLiveSupport(userMessage)) {
     await transferToLiveSupport(sessionId, lang);
-    logCoachEvent({ sessionId, intent: "human_handoff", usedAI: false, handoff: true, outcome: "handoff" });
+    logAdvancedCoachEvent({ sessionId, intent: "human_handoff", usedAI: false, handoff: true, outcome: "handoff" });
     return {
       intent: "human_handoff",
       text: "",
       facts: [],
-      quickActions: buildActions(snapshot, "human_handoff", context, true),
+      quickActions: buildActions(snapshot, "human_handoff", baseContext, true),
       switchToLive: true,
     };
   }
@@ -307,8 +311,8 @@ async function buildDeterministicReply(args: {
     intent === "membership_recommendation" &&
     context.questionnaire.stage === "done" &&
     !context.questionnaire.awaitingContinuation
-      ? { ...context, questionnaire: { stage: "idle" as const, answers: {}, awaitingContinuation: false } }
-      : context;
+      ? { ...baseContext, questionnaire: { stage: "idle" as const, answers: {}, awaitingContinuation: false } }
+      : baseContext;
 
   if (intent === "membership_recommendation" || (effectiveContext.questionnaire.stage !== "idle" && effectiveContext.questionnaire.stage !== "done")) {
     const questionnaireReply = await handleQuestionnaireFlow({ sessionId, context: effectiveContext, userMessage, lang, userId: user?.id ?? null });
@@ -317,29 +321,43 @@ async function buildDeterministicReply(args: {
 
   // ── Check-in ───────────────────────────────────────────────────────────────
   if (intent === "check_in") {
-    const parsed = parseCheckInFromMessage(userMessage);
+    const parsed = parseAdvancedCheckIn(userMessage);
 
     if (!parsed) {
       const text = lang === "ar"
         ? "لم أتمكن من قراءة وزنك. اكتبي مثلاً: **وزني اليوم ٧٠ كيلو** وسأسجله لكِ."
         : "I couldn't read your weight. Try something like: **my weight today is 70 kg**.";
-      await updateContext(sessionId, context, intent);
-      logCoachEvent({ sessionId, intent: "check_in", usedAI: false, outcome: "parse_failed" });
-      return { intent, text, facts: [], quickActions: buildActions(snapshot, intent, context) };
+      await updateContext(sessionId, baseContext, intent);
+      logAdvancedCoachEvent({ sessionId, intent: "check_in", usedAI: false, outcome: "parse_failed" });
+      return { intent, text, facts: [], quickActions: buildActions(snapshot, intent, baseContext) };
     }
 
-    const { checkIn, previous } = await createCheckInForSession(user?.id ?? null, sessionId, parsed);
+    const savedCheckIn = await createAdvancedCheckIn(user?.id ?? null, sessionId, parsed);
+    if (!savedCheckIn) {
+      await updateContext(sessionId, baseContext, intent);
+      return {
+        intent,
+        text:
+          lang === "en"
+            ? "I can help you log your weight, but this feature is currently unavailable."
+            : "أقدر أساعدك في تسجيل وزنك، لكن هذه الخاصية غير متاحة حاليًا.",
+        facts: [],
+        quickActions: buildActions(snapshot, intent, baseContext),
+      };
+    }
+
+    const { checkIn, previous } = savedCheckIn;
     const draft = buildCheckInReply(lang, checkIn, previous, profile);
     const { text, usedAI } = await phraseStructuredReply({ lang, intent, userMessage, draft, facts: [] });
 
-    await updateContext(sessionId, context, intent);
-    logCoachEvent({ sessionId, intent: "check_in", usedAI, outcome: "check_in" });
+    await updateContext(sessionId, baseContext, intent);
+    logAdvancedCoachEvent({ sessionId, intent: "check_in", usedAI, outcome: "check_in" });
 
     return {
       intent,
       text,
       facts: [],
-      quickActions: buildActions(snapshot, intent, context),
+      quickActions: buildActions(snapshot, intent, baseContext),
       usedAI,
     };
   }
@@ -348,9 +366,9 @@ async function buildDeterministicReply(args: {
   if (intent === "food_check") {
     const draft = buildFoodCheckReply(lang, userMessage, profile);
     const { text, usedAI } = await phraseStructuredReply({ lang, intent, userMessage, draft, facts: [] });
-    await updateContext(sessionId, context, intent);
-    logCoachEvent({ sessionId, intent: "food_check", usedAI, outcome: "food_check" });
-    return { intent, text, facts: [], quickActions: buildActions(snapshot, intent, context), usedAI };
+    await updateContext(sessionId, baseContext, intent);
+    logAdvancedCoachEvent({ sessionId, intent: "food_check", usedAI, outcome: "food_check" });
+    return { intent, text, facts: [], quickActions: buildActions(snapshot, intent, baseContext), usedAI };
   }
 
   // ── Class recommendation ───────────────────────────────────────────────────
@@ -388,15 +406,11 @@ async function buildDeterministicReply(args: {
   const { text: mainText, usedAI } = await phraseStructuredReply({ lang, intent, userMessage, draft, facts });
 
   // ── Nudge ──────────────────────────────────────────────────────────────────
-  const nudgeShownCount = context.nudgeShownCount ?? 0;
-  const nudge = detectNudge({
+  const nudgeShownCount = baseContext.nudgeShownCount ?? 0;
+  const nudge = buildAdvancedNudge({
     lang,
     profile,
-    hasMembership: Boolean(snapshot.account.membership),
-    hasUpcomingBooking: Boolean(snapshot.account.upcomingBookingDate),
-    recentCheckIns: snapshot.recentCheckIns,
-    daysSinceLastAttended: attendance?.daysSinceLastAttended ?? null,
-    authenticated: snapshot.account.authenticated,
+    snapshot,
     lastIntent: intent,
     nudgeShownCount,
     messageCount,
@@ -406,7 +420,7 @@ async function buildDeterministicReply(args: {
 
   // Update context (bump nudgeShownCount if nudge was shown)
   const nextContext: CoachConversationContext = {
-    ...context,
+    ...baseContext,
     lang,
     lastIntent: intent,
     nudgeShownCount: nudge ? nudgeShownCount + 1 : nudgeShownCount,
@@ -420,7 +434,7 @@ async function buildDeterministicReply(args: {
     : intent === "pricing" || intent === "membership_recommendation" ? "membership_recommended"
     : intent;
 
-  logCoachEvent({ sessionId, intent, usedAI, outcome });
+  logAdvancedCoachEvent({ sessionId, intent, usedAI, outcome });
 
   return {
     intent,
