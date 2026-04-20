@@ -308,7 +308,7 @@ function RegisterForm() {
               </div>
               {referralCode && !referralFromUrl && (
                 <p className="mt-1 text-xs text-pink-300">
-                  {t("سيتم مكافأة صاحب هذا الكود عند تفعيل حسابك.", "The referrer will be rewarded when your account is activated.")}
+                  {t("سيتم مكافأة صاحب هذا الكود عند اشتراكك في أول باقة مدفوعة.", "The referrer will be rewarded when you subscribe to your first paid plan.")}
                 </p>
               )}
             </div>
@@ -362,7 +362,8 @@ function RegisterForm() {
                   <ul className="space-y-1 ps-1">
                     <li>• {t("هتلاقي كود الإحالة الخاص بيكي داخل حسابك الشخصي بعد التسجيل.", "You'll find your personal referral code inside your profile after registration.")}</li>
                     <li>• {t("تقدري تشاركيه مع أصحابك.", "You can share it with your friends.")}</li>
-                    <li>• {t("أول ما حد يسجل باستخدام كودك، هينزل في حسابك 50 جنيه رصيد صافي 💰", "Once someone registers using your code, 50 EGP net balance will be credited to your account 💰")}</li>
+                    <li>• {t("لما حد يسجل باستخدام كودك ويشترك في أي باقة مدفوعة، هينزل في حسابك 50 جنيه رصيد صافي 💰", "When someone registers with your code and subscribes to any paid plan, 50 EGP net balance will be credited to your account 💰")}</li>
+                    <li>• {t("المكافأة بتتحسب لكل عضو جديد بيشترك بنجاح — مش مجرد التسجيل.", "The reward is credited for each new member who successfully subscribes — not just registers.")}</li>
                   </ul>
                 </div>
 

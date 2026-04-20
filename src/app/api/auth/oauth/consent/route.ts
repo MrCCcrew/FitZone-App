@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
     try {
       const referralRecord = await db.referral.findUnique({
         where: { code: refCode },
-        select: { id: true, userId: true },
+        select: { id: true, userId: true, referredCount: true, subscriptionActivatedCount: true },
       });
 
       const isOwnCode = referralRecord?.userId === result.user.id;
@@ -50,43 +50,55 @@ export async function POST(req: NextRequest) {
 
       if (referralRecord && !isOwnCode && !alreadyUsed) {
         const REWARD = 50;
+        const eligible = referralRecord.subscriptionActivatedCount >= referralRecord.referredCount;
+        const displayName = result.user.name ?? result.user.email;
+
         await db.$transaction(async (tx) => {
-          const referrerWallet = await tx.wallet.upsert({
-            where: { userId: referralRecord.userId },
-            update: {},
-            create: { userId: referralRecord.userId, balance: 0 },
-          });
-          await tx.wallet.update({
-            where: { id: referrerWallet.id },
-            data: { balance: { increment: REWARD } },
-          });
-          await tx.walletTransaction.create({
-            data: {
-              walletId: referrerWallet.id,
-              amount: REWARD,
-              type: "credit",
-              description: `مكافأة إحالة — انضمت ${result.user.name ?? result.user.email} (Google)`,
-            },
-          });
+          if (eligible) {
+            const referrerWallet = await tx.wallet.upsert({
+              where: { userId: referralRecord.userId },
+              update: {},
+              create: { userId: referralRecord.userId, balance: 0 },
+            });
+            await tx.wallet.update({
+              where: { id: referrerWallet.id },
+              data: { balance: { increment: REWARD } },
+            });
+            await tx.walletTransaction.create({
+              data: {
+                walletId: referrerWallet.id,
+                amount: REWARD,
+                type: "credit",
+                description: `مكافأة إحالة — انضمت ${displayName} (Google)`,
+              },
+            });
+            await tx.referral.update({
+              where: { id: referralRecord.id },
+              data: { referredCount: { increment: 1 }, totalEarned: { increment: REWARD } },
+            });
+            await tx.notification.create({
+              data: {
+                userId: referralRecord.userId,
+                title: "🎉 مكافأة إحالة!",
+                body: `انضمت ${displayName} بكودك وحصلتِ على ${REWARD} ج.م في محفظتك!`,
+                type: "success",
+              },
+            });
+          } else {
+            // Track referral but hold reward until a subscription is activated
+            await tx.referral.update({
+              where: { id: referralRecord.id },
+              data: { referredCount: { increment: 1 } },
+            });
+          }
+
           await tx.referralUsage.create({
             data: {
               referralId: referralRecord.id,
               referredUserId: result.user.id,
-              rewardGiven: true,
-              rewardType: "wallet",
-              rewardValue: REWARD,
-            },
-          });
-          await tx.referral.update({
-            where: { id: referralRecord.id },
-            data: { referredCount: { increment: 1 }, totalEarned: { increment: REWARD } },
-          });
-          await tx.notification.create({
-            data: {
-              userId: referralRecord.userId,
-              title: "🎉 مكافأة إحالة!",
-              body: `انضمت ${result.user.name ?? result.user.email} بكودك وحصلتِ على ${REWARD} ج.م في محفظتك!`,
-              type: "success",
+              rewardGiven: eligible,
+              rewardType: eligible ? "wallet" : null,
+              rewardValue: eligible ? REWARD : null,
             },
           });
         });

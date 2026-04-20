@@ -3,7 +3,7 @@ import { getCurrentAppUser } from "@/lib/app-session";
 import { db } from "@/lib/db";
 import { sendSubscriptionEmail } from "@/lib/email";
 import { generateMembershipInvoicePdf, type MembershipInvoiceDetails } from "@/lib/membership-invoice";
-import { createPaymentTransaction } from "@/lib/payments/service";
+import { createPaymentTransaction, unlockPendingReferralReward } from "@/lib/payments/service";
 
 type SubscribePayload = {
   membershipId?: string | null;
@@ -221,10 +221,8 @@ export async function POST(req: Request) {
 
       const membershipPaymentMethod = offerId ? "offer" : resolvedPaymentMethod;
 
-      // Pending payment for online transfer methods that need admin confirmation
-      const needsPaymentConfirmation =
-        (paymentAmount ?? 0) > 0 &&
-        ["instapay", "vodafone_cash"].includes(membershipPaymentMethod);
+      // All subscriptions with a remaining balance require admin payment confirmation
+      const needsPaymentConfirmation = (paymentAmount ?? 0) > 0;
 
       const subscription = await tx.userMembership.create({
         data: {
@@ -449,6 +447,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: result.error }, { status: 400 });
   }
 
+  // Unlock pending referral reward when subscription is immediately active
+  if (!result.needsPaymentConfirmation) {
+    try {
+      await unlockPendingReferralReward(userId);
+    } catch {}
+  }
+
   let checkoutUrl: string | null = null;
   let transactionId: string | null = null;
   const invoiceDetails: MembershipInvoiceDetails = {
@@ -471,7 +476,7 @@ export async function POST(req: Request) {
     endDate: result.endDate,
     issuedAt: new Date(),
   };
-  if (result.paymentAmount > 0 && ["instapay", "vodafone_cash"].includes(result.membershipPaymentMethod)) {
+  if (result.paymentAmount > 0) {
     const transaction = await createPaymentTransaction({
       userId,
       provider: result.membershipPaymentMethod,
