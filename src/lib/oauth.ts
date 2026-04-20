@@ -34,15 +34,16 @@ export async function findOrCreateOAuthUser(profile: {
   if (existingAccount) {
     const user = existingAccount.user;
     if (!user.email || user.emailVerified) {
-      return { user, requiresVerification: false, emailSent: false };
+      return { user, requiresVerification: false, emailSent: false, isNew: false };
     }
 
     const verification = await issueOAuthVerification(user.email, user.name ?? user.email.split("@")[0]);
-    return { user, requiresVerification: true, emailSent: verification.emailSent };
+    return { user, requiresVerification: true, emailSent: verification.emailSent, isNew: false };
   }
 
   // 2. Find user by email or create new one
   let user = email ? await db.user.findUnique({ where: { email } }) : null;
+  const isNew = !user;
 
   if (!user) {
     if (!email) return null; // Can't create without email
@@ -70,10 +71,10 @@ export async function findOrCreateOAuthUser(profile: {
 
   if (!user.emailVerified && user.email) {
     const verification = await issueOAuthVerification(user.email, user.name ?? user.email.split("@")[0]);
-    return { user, requiresVerification: true, emailSent: verification.emailSent };
+    return { user, requiresVerification: true, emailSent: verification.emailSent, isNew };
   }
 
-  return { user, requiresVerification: false, emailSent: false };
+  return { user, requiresVerification: false, emailSent: false, isNew };
 }
 
 // Verify Apple id_token (RS256 JWT signed by Apple)
