@@ -272,7 +272,7 @@ export default function LiveChatWidget() {
         }}
         style={{
           position: "fixed",
-          bottom: isMobile ? 76 : 20,
+          bottom: isMobile ? "calc(76px + env(safe-area-inset-bottom, 0px))" : 20,
           right: 20,
           zIndex: 80,
           width: 68,
@@ -295,7 +295,7 @@ export default function LiveChatWidget() {
           dir={lang === "ar" ? "rtl" : "ltr"}
           style={{
             position: "fixed",
-            bottom: isMobile ? 156 : 96,
+            bottom: isMobile ? "calc(156px + env(safe-area-inset-bottom, 0px))" : 96,
             top: isMobile ? 70 : 112,
             right: 20,
             zIndex: 80,
