@@ -1,8 +1,36 @@
+import { createHmac, timingSafeEqual } from "crypto";
 import { db } from "./db";
 import { sendVerificationEmail } from "./email";
 
 export function getAppBaseUrl(): string {
   return (process.env.NEXTAUTH_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "https://fitzoneland.com").replace(/\/$/, "");
+}
+
+type PendingOAuthPayload = {
+  provider: string;
+  providerId: string;
+  email: string;
+  name: string | null;
+  exp: number;
+};
+
+function getOAuthSecret() {
+  const secret = process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET;
+  if (secret) return secret;
+  if (process.env.NODE_ENV !== "production") return "fitzone-oauth-dev-secret";
+  throw new Error("AUTH_SECRET is required in production");
+}
+
+function encodeBase64Url(value: string) {
+  return Buffer.from(value, "utf8").toString("base64url");
+}
+
+function decodeBase64Url(value: string) {
+  return Buffer.from(value, "base64url").toString("utf8");
+}
+
+function sign(value: string) {
+  return createHmac("sha256", getOAuthSecret()).update(value).digest("base64url");
 }
 
 async function issueOAuthVerification(email: string, name: string) {
@@ -75,6 +103,78 @@ export async function findOrCreateOAuthUser(profile: {
   }
 
   return { user, requiresVerification: false, emailSent: false, isNew };
+}
+
+export async function findExistingOAuthUser(profile: {
+  provider: string;
+  providerId: string;
+  email: string | null;
+}) {
+  const { provider, providerId, email } = profile;
+
+  const existingAccount = await db.account.findUnique({
+    where: { provider_providerAccountId: { provider, providerAccountId: providerId } },
+    include: { user: true },
+  });
+
+  if (existingAccount) {
+    const user = existingAccount.user;
+    if (!user.email || user.emailVerified) {
+      return { user, requiresVerification: false, emailSent: false, isNew: false };
+    }
+
+    const verification = await issueOAuthVerification(user.email, user.name ?? user.email.split("@")[0]);
+    return { user, requiresVerification: true, emailSent: verification.emailSent, isNew: false };
+  }
+
+  if (!email) return null;
+
+  const user = await db.user.findUnique({ where: { email } });
+  if (!user) return null;
+
+  await db.account
+    .create({ data: { userId: user.id, type: "oauth", provider, providerAccountId: providerId } })
+    .catch(() => {});
+
+  if (!user.emailVerified && user.email) {
+    const verification = await issueOAuthVerification(user.email, user.name ?? user.email.split("@")[0]);
+    return { user, requiresVerification: true, emailSent: verification.emailSent, isNew: false };
+  }
+
+  return { user, requiresVerification: false, emailSent: false, isNew: false };
+}
+
+export function createPendingOAuthToken(payload: Omit<PendingOAuthPayload, "exp">) {
+  const fullPayload: PendingOAuthPayload = {
+    ...payload,
+    exp: Math.floor(Date.now() / 1000) + 600,
+  };
+  const encodedPayload = encodeBase64Url(JSON.stringify(fullPayload));
+  return `${encodedPayload}.${sign(encodedPayload)}`;
+}
+
+export function parsePendingOAuthToken(token?: string | null): PendingOAuthPayload | null {
+  if (!token) return null;
+
+  const [encodedPayload, signature] = token.split(".");
+  if (!encodedPayload || !signature) return null;
+
+  const expectedSignature = sign(encodedPayload);
+  const actualBuffer = Buffer.from(signature);
+  const expectedBuffer = Buffer.from(expectedSignature);
+
+  if (actualBuffer.length !== expectedBuffer.length || !timingSafeEqual(actualBuffer, expectedBuffer)) {
+    return null;
+  }
+
+  try {
+    const payload = JSON.parse(decodeBase64Url(encodedPayload)) as PendingOAuthPayload;
+    if (!payload.email || !payload.provider || !payload.providerId || !payload.exp) return null;
+    if (payload.exp < Math.floor(Date.now() / 1000)) return null;
+    return payload;
+  } catch {
+    return null;
+  }
 }
 
 // Verify Apple id_token (RS256 JWT signed by Apple)

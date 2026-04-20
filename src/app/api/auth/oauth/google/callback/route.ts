@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { findOrCreateOAuthUser, getAppBaseUrl } from "@/lib/oauth";
+import { createPendingOAuthToken, findExistingOAuthUser, getAppBaseUrl } from "@/lib/oauth";
 import { APP_SESSION_COOKIE, createAppSessionToken, getAppSessionCookieOptions } from "@/lib/app-session";
 import { ADMIN_SESSION_COOKIE, getAdminSessionCookieOptions } from "@/lib/admin-session";
 
@@ -35,44 +35,53 @@ export async function GET(req: NextRequest) {
     const profile = (await profileRes.json()) as { sub?: string; email?: string; name?: string };
     if (!profile.sub) throw new Error("no_sub");
 
-    const result = await findOrCreateOAuthUser({
+    const existing = await findExistingOAuthUser({
       provider: "google",
       providerId: profile.sub,
       email: profile.email ?? null,
-      name: profile.name ?? null,
-    });
-    if (!result?.user) throw new Error("no_user");
-
-    if (result.requiresVerification && result.user.email) {
-      const verifyParams = new URLSearchParams({ email: result.user.email });
-      if (!result.emailSent) verifyParams.set("sent", "0");
-      return NextResponse.redirect(`${base}/verify-email?${verifyParams.toString()}`);
-    }
-
-    const token = createAppSessionToken({
-      id: result.user.id,
-      email: result.user.email ?? "",
-      name: result.user.name ?? "عضو FitZone",
-      role: result.user.role as "member" | "admin" | "staff" | "trainer" | "accountant",
     });
 
-    // New users must accept terms before getting a session
-    if (result.isNew) {
+    if (!existing) {
+      if (!profile.email) throw new Error("no_email");
+
+      const pendingToken = createPendingOAuthToken({
+        provider: "google",
+        providerId: profile.sub,
+        email: profile.email,
+        name: profile.name ?? null,
+      });
+
       const res = NextResponse.redirect(`${base}/google-consent`);
-      res.cookies.set("oauth_pending_session", token, {
+      res.cookies.set("oauth_pending_profile", pendingToken, {
         httpOnly: true,
-        maxAge: 600, // 10 minutes to accept
+        maxAge: 600,
         path: "/",
         sameSite: "lax",
         secure: process.env.NODE_ENV === "production",
       });
+      res.cookies.set("oauth_pending_session", "", { httpOnly: true, maxAge: 0, path: "/" });
       res.cookies.set("oauth_state", "", { httpOnly: true, maxAge: 0, path: "/" });
       return res;
     }
 
+    if (existing.requiresVerification && existing.user.email) {
+      const verifyParams = new URLSearchParams({ email: existing.user.email });
+      if (!existing.emailSent) verifyParams.set("sent", "0");
+      return NextResponse.redirect(`${base}/verify-email?${verifyParams.toString()}`);
+    }
+
+    const token = createAppSessionToken({
+      id: existing.user.id,
+      email: existing.user.email ?? "",
+      name: existing.user.name ?? "عضو FitZone",
+      role: existing.user.role as "member" | "admin" | "staff" | "trainer" | "accountant",
+    });
+
     const res = NextResponse.redirect(`${base}/`);
     res.cookies.set(APP_SESSION_COOKIE, token, getAppSessionCookieOptions());
     res.cookies.set(ADMIN_SESSION_COOKIE, "", { ...getAdminSessionCookieOptions(), maxAge: 0 });
+    res.cookies.set("oauth_pending_profile", "", { httpOnly: true, maxAge: 0, path: "/" });
+    res.cookies.set("oauth_pending_session", "", { httpOnly: true, maxAge: 0, path: "/" });
     res.cookies.set("oauth_state", "", { httpOnly: true, maxAge: 0, path: "/" });
     return res;
   } catch (err) {

@@ -26,9 +26,9 @@ export default function GoogleConsentPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ accepted: true }),
       });
-      const d = await res.json() as { ok?: boolean; error?: string };
+      const d = await res.json() as { ok?: boolean; error?: string; redirectTo?: string };
       if (d.ok) {
-        router.replace("/");
+        router.replace(d.redirectTo ?? "/");
       } else {
         setError(d.error ?? t("حدث خطأ، حاول مرة أخرى.", "An error occurred. Please try again."));
       }
