@@ -49,10 +49,22 @@ function fmt(iso: string) {
   });
 }
 
+type ReminderSettings = { title: string; body: string };
+const DEFAULT_REMINDER: ReminderSettings = {
+  title: "تذكير بموعدك في FitZone 💪",
+  body: "{className} مع {trainerName} — {day} الساعة {time}",
+};
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function PushNotifications() {
   const [stats, setStats]   = useState<StatsData | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Reminder template state
+  const [reminder, setReminder]           = useState<ReminderSettings>(DEFAULT_REMINDER);
+  const [reminderLoading, setReminderLoading] = useState(true);
+  const [reminderSaving, setReminderSaving]   = useState(false);
+  const [reminderResult, setReminderResult]   = useState<{ ok: boolean; msg: string } | null>(null);
 
   // Form state
   const [title, setTitle]         = useState("");
@@ -69,6 +81,32 @@ export default function PushNotifications() {
   const [selectedIds, setSelectedIds]   = useState<string[]>([]);
   const [userSearch, setUserSearch]     = useState("");
   const [loadingUsers, setLoadingUsers] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/push/reminder-settings")
+      .then((r) => r.json())
+      .then((d: ReminderSettings) => setReminder({ title: d.title || DEFAULT_REMINDER.title, body: d.body || DEFAULT_REMINDER.body }))
+      .catch(() => {})
+      .finally(() => setReminderLoading(false));
+  }, []);
+
+  async function saveReminder() {
+    setReminderSaving(true);
+    setReminderResult(null);
+    try {
+      const res = await fetch("/api/push/reminder-settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(reminder),
+      });
+      const d = await res.json() as { ok?: boolean; error?: string };
+      setReminderResult(d.ok ? { ok: true, msg: "✅ تم حفظ القالب بنجاح" } : { ok: false, msg: d.error ?? "حدث خطأ" });
+    } catch {
+      setReminderResult({ ok: false, msg: "فشل الاتصال بالخادم" });
+    } finally {
+      setReminderSaving(false);
+    }
+  }
 
   const loadStats = () => {
     setLoading(true);
@@ -315,6 +353,51 @@ export default function PushNotifications() {
             </button>
           </div>
         </div>
+      </Section>
+
+      {/* Auto reminder template */}
+      <Section title="قالب التذكير التلقائي" icon="⏰">
+        {reminderLoading ? (
+          <div style={{ color: "#9ca3af", fontSize: 13 }}>جاري التحميل...</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <div style={{ padding: "10px 14px", borderRadius: 10, background: "rgba(234,179,8,.08)", border: "1px solid rgba(234,179,8,.2)", color: "#facc15", fontSize: 12, lineHeight: 1.8 }}>
+              يُرسَل هذا التذكير تلقائياً قبل ٥ ساعات من موعد الكلاس.<br />
+              المتغيرات المتاحة: <strong>{"{className}"}</strong> · <strong>{"{trainerName}"}</strong> · <strong>{"{day}"}</strong> · <strong>{"{time}"}</strong>
+            </div>
+            <Field label="عنوان الإشعار *">
+              <input
+                value={reminder.title}
+                onChange={(e) => setReminder((p) => ({ ...p, title: e.target.value }))}
+                placeholder="مثال: تذكير بموعدك في FitZone 💪"
+                maxLength={100}
+                style={inputStyle}
+              />
+            </Field>
+            <Field label="نص الإشعار *">
+              <input
+                value={reminder.body}
+                onChange={(e) => setReminder((p) => ({ ...p, body: e.target.value }))}
+                placeholder={`مثال: {className} مع {trainerName} — {day} الساعة {time}`}
+                maxLength={200}
+                style={inputStyle}
+              />
+              <div style={{ fontSize: 11, color: "#6b7280", marginTop: 4 }}>
+                معاينة: {reminder.body.replace("{className}", "يوغا").replace("{trainerName}", "هبه").replace("{day}", "الاثنين").replace("{time}", "08:00")}
+              </div>
+            </Field>
+            {reminderResult && <Msg ok={reminderResult.ok}>{reminderResult.msg}</Msg>}
+            <div>
+              <button
+                onClick={saveReminder}
+                disabled={reminderSaving || !reminder.title.trim() || !reminder.body.trim()}
+                style={{ ...btnStyle, background: "rgba(233,30,99,.18)", borderColor: "rgba(233,30,99,.45)", color: "#e91e63" }}
+              >
+                {reminderSaving ? "⏳ جاري الحفظ..." : "💾 حفظ القالب"}
+              </button>
+            </div>
+          </div>
+        )}
       </Section>
 
       {/* Campaign logs */}
