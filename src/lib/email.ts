@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import type { MembershipInvoiceDetails } from "@/lib/membership-invoice";
 
 function getTransporter() {
   return nodemailer.createTransport({
@@ -14,6 +15,16 @@ function getTransporter() {
 
 const FROM = `"FitZone" <${process.env.SMTP_USER ?? "info@fitzoneland.com"}>`;
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? process.env.SMTP_USER ?? "info@fitzoneland.com";
+
+type MembershipInvoiceAttachment = {
+  details: MembershipInvoiceDetails;
+  filename: string;
+  content: Buffer;
+};
+
+function money(value: number) {
+  return value.toLocaleString("ar-EG", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
 
 export async function sendVerificationEmail(email: string, name: string, code: string) {
   try {
@@ -61,6 +72,7 @@ export async function sendSubscriptionEmail(
   endDate: Date,
   walletBonus?: number,
   scheduleRows: { date: Date; time: string; className: string; trainerName: string }[] = [],
+  invoice?: MembershipInvoiceAttachment | null,
 ) {
   try {
     const endStr = endDate.toLocaleDateString("ar-EG", {
@@ -97,6 +109,49 @@ export async function sendSubscriptionEmail(
           `
       : "";
 
+    const invoiceHtml = invoice
+      ? `
+            <div style="margin-top: 18px; background: #1f1f1f; border: 1px solid #2a2a2a; border-radius: 12px; padding: 18px;">
+              <div style="font-size: 14px; color: #f8b4d9; font-weight: 800; margin-bottom: 10px;">ملخص الفاتورة</div>
+              <table style="width:100%; border-collapse: collapse;">
+                <tr>
+                  <td style="padding: 8px 0; color: #9ca3af; font-size: 13px; border-bottom: 1px solid #2a2a2a;">رقم الفاتورة</td>
+                  <td style="padding: 8px 0; color: #fff; font-weight: 700; font-size: 13px; border-bottom: 1px solid #2a2a2a; text-align: left;">${invoice.details.invoiceNumber}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 0; color: #9ca3af; font-size: 13px; border-bottom: 1px solid #2a2a2a;">السعر الأصلي</td>
+                  <td style="padding: 8px 0; color: #fff; font-weight: 700; font-size: 13px; border-bottom: 1px solid #2a2a2a; text-align: left;">${money(invoice.details.originalPrice)} ج.م</td>
+                </tr>
+                ${invoice.details.membershipDiscount > 0 ? `
+                <tr>
+                  <td style="padding: 8px 0; color: #9ca3af; font-size: 13px; border-bottom: 1px solid #2a2a2a;">خصم الباقة</td>
+                  <td style="padding: 8px 0; color: #4ade80; font-weight: 700; font-size: 13px; border-bottom: 1px solid #2a2a2a; text-align: left;">- ${money(invoice.details.membershipDiscount)} ج.م</td>
+                </tr>` : ""}
+                ${invoice.details.discountCodeAmount > 0 ? `
+                <tr>
+                  <td style="padding: 8px 0; color: #9ca3af; font-size: 13px; border-bottom: 1px solid #2a2a2a;">${invoice.details.discountCode ? `خصم الكود (${invoice.details.discountCode})` : "خصم إضافي"}</td>
+                  <td style="padding: 8px 0; color: #4ade80; font-weight: 700; font-size: 13px; border-bottom: 1px solid #2a2a2a; text-align: left;">- ${money(invoice.details.discountCodeAmount)} ج.م</td>
+                </tr>` : ""}
+                ${(invoice.details.walletDeduct ?? 0) > 0 ? `
+                <tr>
+                  <td style="padding: 8px 0; color: #9ca3af; font-size: 13px; border-bottom: 1px solid #2a2a2a;">خصم من المحفظة</td>
+                  <td style="padding: 8px 0; color: #4ade80; font-weight: 700; font-size: 13px; border-bottom: 1px solid #2a2a2a; text-align: left;">- ${money(invoice.details.walletDeduct ?? 0)} ج.م</td>
+                </tr>` : ""}
+                ${(invoice.details.pointsDeduct ?? 0) > 0 ? `
+                <tr>
+                  <td style="padding: 8px 0; color: #9ca3af; font-size: 13px; border-bottom: 1px solid #2a2a2a;">خصم نقاط المكافآت</td>
+                  <td style="padding: 8px 0; color: #4ade80; font-weight: 700; font-size: 13px; border-bottom: 1px solid #2a2a2a; text-align: left;">- ${money(invoice.details.pointsDeduct ?? 0)} ج.م</td>
+                </tr>` : ""}
+                <tr>
+                  <td style="padding: 8px 0; color: #9ca3af; font-size: 13px;">الإجمالي المدفوع</td>
+                  <td style="padding: 8px 0; color: #f8b4d9; font-weight: 900; font-size: 14px; text-align: left;">${money(invoice.details.finalAmount)} ج.م</td>
+                </tr>
+              </table>
+              <div style="margin-top: 12px; font-size: 12px; color: #94a3b8;">تم إرفاق فاتورة PDF مع هذه الرسالة.</div>
+            </div>
+          `
+      : "";
+
     await getTransporter().sendMail({
       from: FROM,
       to: email,
@@ -129,6 +184,7 @@ export async function sendSubscriptionEmail(
                 </tr>` : ""}
               </table>
             </div>
+            ${invoiceHtml}
             ${scheduleHtml}
             <p style="font-size: 13px; color: #94a3b8; margin: 0;">
               لأي استفسار: <a href="mailto:info@fitzoneland.com" style="color: #f8b4d9;">info@fitzoneland.com</a>
@@ -139,6 +195,15 @@ export async function sendSubscriptionEmail(
           </div>
         </div>
       `,
+      attachments: invoice
+        ? [
+            {
+              filename: invoice.filename,
+              content: invoice.content,
+              contentType: "application/pdf",
+            },
+          ]
+        : undefined,
     });
     return true;
   } catch (err) {

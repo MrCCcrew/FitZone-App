@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { sendSubscriptionEmail } from "@/lib/email";
+import { generateMembershipInvoicePdf, type MembershipInvoiceDetails } from "@/lib/membership-invoice";
 import { getDefaultPaymentProvider, getPaymentProvider, listPaymentProviders } from "@/lib/payments/registry";
 import type {
   PaymentProviderKey,
@@ -41,6 +42,37 @@ function parseJson(value: string | null | undefined) {
   } catch {
     return null;
   }
+}
+
+function toInvoiceDetails(value: Record<string, unknown> | null | undefined): MembershipInvoiceDetails | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value.membershipInvoice;
+  if (!raw || typeof raw !== "object") return null;
+  const invoice = raw as Record<string, unknown>;
+  const endDateValue = invoice.endDate ? new Date(String(invoice.endDate)) : null;
+  if (!endDateValue || Number.isNaN(endDateValue.getTime())) return null;
+  const startDateValue = invoice.startDate ? new Date(String(invoice.startDate)) : null;
+  const issuedAtValue = invoice.issuedAt ? new Date(String(invoice.issuedAt)) : undefined;
+  return {
+    invoiceNumber: String(invoice.invoiceNumber ?? ""),
+    customerName: String(invoice.customerName ?? "FitZone Member"),
+    customerEmail: String(invoice.customerEmail ?? ""),
+    membershipName: String(invoice.membershipName ?? "Membership plan"),
+    membershipNameEn: invoice.membershipNameEn ? String(invoice.membershipNameEn) : null,
+    offerTitle: invoice.offerTitle ? String(invoice.offerTitle) : null,
+    offerTitleEn: invoice.offerTitleEn ? String(invoice.offerTitleEn) : null,
+    paymentMethod: String(invoice.paymentMethod ?? "membership"),
+    originalPrice: Number(invoice.originalPrice ?? 0),
+    membershipDiscount: Number(invoice.membershipDiscount ?? 0),
+    discountCodeAmount: Number(invoice.discountCodeAmount ?? 0),
+    discountCode: invoice.discountCode ? String(invoice.discountCode) : null,
+    walletDeduct: Number(invoice.walletDeduct ?? 0),
+    pointsDeduct: Number(invoice.pointsDeduct ?? 0),
+    finalAmount: Number(invoice.finalAmount ?? 0),
+    startDate: startDateValue && !Number.isNaN(startDateValue.getTime()) ? startDateValue : null,
+    endDate: endDateValue,
+    issuedAt: issuedAtValue && !Number.isNaN(issuedAtValue.getTime()) ? issuedAtValue : undefined,
+  };
 }
 
 function getDefaultBusinessUnit(purpose: PaymentPurpose) {
@@ -299,6 +331,19 @@ export async function updatePaymentTransactionStatus(
               className: b.schedule.class.name,
               trainerName: b.schedule.class.trainer.name,
             }));
+            const metadata = parseJson(transaction.metadata);
+            const invoiceDetails = toInvoiceDetails(metadata);
+            const normalizedInvoice = invoiceDetails
+              ? {
+                  ...invoiceDetails,
+                  paymentMethod: transaction.paymentMethod,
+                  startDate: now,
+                  endDate,
+                  issuedAt: transaction.paidAt ?? new Date(),
+                  finalAmount: transaction.amount,
+                }
+              : null;
+            const invoicePdf = normalizedInvoice ? await generateMembershipInvoicePdf(normalizedInvoice) : null;
             void sendSubscriptionEmail(
               userRecord.email,
               userRecord.name ?? "العضوة",
@@ -306,6 +351,13 @@ export async function updatePaymentTransactionStatus(
               endDate,
               walletBonus > 0 ? walletBonus : undefined,
               scheduleRows,
+              normalizedInvoice && invoicePdf
+                ? {
+                    details: normalizedInvoice,
+                    filename: `fitzone-membership-invoice-${normalizedInvoice.invoiceNumber}.pdf`,
+                    content: invoicePdf,
+                  }
+                : null,
             ).catch((err) => console.error("[PAYMENT_EMAIL]", err));
           }
         }

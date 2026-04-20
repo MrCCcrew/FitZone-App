@@ -2383,6 +2383,12 @@ type PlanItem = {
   popular: boolean;
   goalIds: string[];
 };
+
+type MembershipCheckoutPreview = {
+  plan: PlanItem;
+  scheduleIds: string[];
+  confirmed: boolean;
+};
 const DEFAULT_PLANS: PlanItem[] = [];
 const PLAN_COLORS = [C.gray, C.red, C.gold, "#A855F7", "#3498DB", "#27AE60"];
 const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
@@ -2399,7 +2405,8 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
   const plansRef = useRef<HTMLDivElement | null>(null);
   const [subscribing, setSubscribing] = useState<string | null>(null);
   const [subMsg, setSubMsg] = useState<{ text: string; ok: boolean } | null>(null);
-  const [verifyModal, setVerifyModal] = useState<{ plan: PlanItem } | null>(null);
+  const [verifyModal, setVerifyModal] = useState<{ plan: PlanItem; scheduleIds: string[] } | null>(null);
+  const [checkoutPreview, setCheckoutPreview] = useState<MembershipCheckoutPreview | null>(null);
   const [verifyCode, setVerifyCode] = useState("");
   const [verifyLoading, setVerifyLoading] = useState(false);
   const [verifyMsg, setVerifyMsg] = useState<{ text: string; ok: boolean } | null>(null);
@@ -2762,6 +2769,19 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
     }
   };
 
+  const getMembershipFinancialSummary = (plan: PlanItem) => {
+    const originalPrice = plan.priceBefore != null && plan.priceBefore > 0 ? plan.priceBefore : plan.price;
+    const membershipPrice = plan.priceAfter != null && plan.priceAfter > 0 ? plan.priceAfter : plan.price;
+    const membershipDiscount = Math.max(0, originalPrice - membershipPrice);
+    const promoDiscount = Math.max(0, discountResult?.discountAmount ?? 0);
+    const finalAmount = Math.max(0, membershipPrice - promoDiscount);
+    return { originalPrice, membershipPrice, membershipDiscount, promoDiscount, finalAmount };
+  };
+
+  const openCheckoutPreview = (plan: PlanItem, scheduleIds: string[] = []) => {
+    setCheckoutPreview({ plan, scheduleIds, confirmed: false });
+  };
+
   const handleSubscribe = async (plan: PlanItem, scheduleIds: string[] = [], paymentOverride?: "instapay" | "vodafone_cash") => {
     if (!plan.id) { navigate("register"); return; }
     setSubscribing(plan.id);
@@ -2786,7 +2806,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
       const data = await res.json() as { error?: string; needsVerification?: boolean; checkoutUrl?: string; transactionId?: string | null };
       if (!res.ok) {
         if (data.needsVerification) {
-          setVerifyModal({ plan });
+          setVerifyModal({ plan, scheduleIds });
           setVerifyCode(""); setVerifyMsg(null);
           // أرسل كود تفعيل تلقائياً
           fetch("/api/auth/resend-verification", { method: "POST" }).catch(() => {});
@@ -2796,6 +2816,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
         return;
       }
       setSubMsg({ text: `✅ تم الاشتراك في باقة ${plan.name} بنجاح!`, ok: true });
+      setCheckoutPreview(null);
       if (data.checkoutUrl) {
         window.open(data.checkoutUrl, "_blank", "noopener,noreferrer");
         if (data.transactionId) {
@@ -2844,7 +2865,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
     setScheduleSelections([]);
     setDaysPerWeek(null);
     setScheduleStep("frequency");
-    await handleSubscribe(plan, selected, membershipPayMethod);
+    openCheckoutPreview(plan, selected);
   };
 
   const handleVerify = async () => {
@@ -2861,9 +2882,9 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
       if (!res.ok) { setVerifyMsg({ text: data.error || t("كود غير صحيح", "Invalid code"), ok: false }); return; }
       setVerifyMsg({ text: t("✅ تم تفعيل حسابك بنجاح! جارٍ الاشتراك...", "✅ Your account has been verified successfully. Completing subscription..."), ok: true });
       // Retry the subscription automatically after verification.
-      const pendingPlan = verifyModal?.plan;
+      const pendingPlan = verifyModal;
       setVerifyModal(null);
-      if (pendingPlan) setTimeout(() => handleSubscribe(pendingPlan), 800);
+      if (pendingPlan) setTimeout(() => handleSubscribe(pendingPlan.plan, pendingPlan.scheduleIds, membershipPayMethod), 800);
     } catch {
       setVerifyMsg({ text: t("تعذر الاتصال بالخادم", "Could not reach the server"), ok: false });
     } finally {
@@ -3229,41 +3250,6 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                 </>
               )}
 
-            <div className="card" style={{ marginTop: 18, padding: 16, background: "rgba(255,255,255,.04)" }}>
-              <div style={{ fontWeight: 800, color: "#fff", marginBottom: 8 }}>طريقة الدفع</div>
-              <div style={{ display: "grid", gap: 10 }}>
-                {[
-                  {
-                    id: "instapay",
-                    label: getDefaultAccount(
-                      membershipPaymentSettings.instapayAccounts,
-                      membershipPaymentSettings.instapayLabel || "InstaPay",
-                      membershipPaymentSettings.instapayUrl,
-                    ).label,
-                  },
-                  {
-                    id: "vodafone_cash",
-                    label: getDefaultAccount(
-                      membershipPaymentSettings.vodafoneCashAccounts,
-                      membershipPaymentSettings.vodafoneCashLabel || "Vodafone Cash",
-                      membershipPaymentSettings.vodafoneCashUrl,
-                    ).label,
-                  },
-                ].map((method) => (
-                  <button
-                    key={method.id}
-                    type="button"
-                    onClick={() => setMembershipPayMethod(method.id as "instapay" | "vodafone_cash")}
-                    className={`schedule-slot-item${membershipPayMethod === method.id ? " selected" : ""}`}
-                    style={{ textAlign: "right" }}
-                  >
-                    <div className="schedule-item-title">{method.label}</div>
-                    <div className="schedule-item-sub">الدفع يتم عبر الهاتف بعد تأكيد الاشتراك.</div>
-                  </button>
-                ))}
-              </div>
-            </div>
-
             {scheduleError && (
               <div style={{ marginTop: 12, color: "#ff9aa5", fontSize: 12, fontWeight: 700 }}>
                 {scheduleError}
@@ -3280,6 +3266,124 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
             </div>
             </>
             )}
+          </div>
+        </div>
+      )}
+
+      {checkoutPreview && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 205, display: "flex", alignItems: "center", justifyContent: "center", padding: "12px 10px", background: "rgba(233,30,99,.12)", backdropFilter: "blur(6px)" }}>
+          <div style={{ background: "#fff", borderRadius: 20, padding: viewportWidth() < 640 ? 18 : 28, maxWidth: 520, width: "100%", boxShadow: "0 24px 60px rgba(233,30,99,.2)", border: `1px solid ${C.border}` }}>
+            {(() => {
+              const summary = getMembershipFinancialSummary(checkoutPreview.plan);
+              const paymentOptions = [
+                {
+                  id: "instapay" as const,
+                  label: getDefaultAccount(
+                    membershipPaymentSettings.instapayAccounts,
+                    membershipPaymentSettings.instapayLabel || "InstaPay",
+                    membershipPaymentSettings.instapayUrl,
+                  ).label,
+                },
+                {
+                  id: "vodafone_cash" as const,
+                  label: getDefaultAccount(
+                    membershipPaymentSettings.vodafoneCashAccounts,
+                    membershipPaymentSettings.vodafoneCashLabel || "Vodafone Cash",
+                    membershipPaymentSettings.vodafoneCashUrl,
+                  ).label,
+                },
+              ];
+
+              return (
+                <>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                    <h2 style={{ fontWeight: 900, fontSize: 22, color: C.white }}>{t("ملخص الاشتراك", "Subscription summary")}</h2>
+                    <button onClick={() => setCheckoutPreview(null)} aria-label={t("إغلاق", "Close")} style={{ border: "none", background: "none", fontSize: 22, cursor: "pointer", color: C.gray }}>×</button>
+                  </div>
+
+                  <div className="card" style={{ padding: 18, marginBottom: 16 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 10 }}>
+                      <div>
+                        <div style={{ fontWeight: 900, fontSize: 18, color: C.white }}>{checkoutPreview.plan.name}</div>
+                        <div style={{ color: C.gray, fontSize: 12, marginTop: 4 }}>
+                          {t("مدة الاشتراك", "Membership duration")} {checkoutPreview.plan.durationDays} {t("يوم", "days")}
+                        </div>
+                      </div>
+                      {checkoutPreview.scheduleIds.length > 0 ? (
+                        <div style={{ color: C.red, fontWeight: 800, fontSize: 12 }}>
+                          {checkoutPreview.scheduleIds.length} {t("مواعيد مختارة", "selected slots")}
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div style={{ display: "grid", gap: 8, fontSize: 13 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", color: C.gray }}>
+                        <span>{t("السعر الأصلي", "Original price")}</span>
+                        <strong style={{ color: C.white }}>{formatCurrency(summary.originalPrice)}</strong>
+                      </div>
+                      {summary.membershipDiscount > 0 ? (
+                        <div style={{ display: "flex", justifyContent: "space-between", color: C.gray }}>
+                          <span>{t("خصم الباقة", "Membership discount")}</span>
+                          <strong style={{ color: C.success }}>- {formatCurrency(summary.membershipDiscount)}</strong>
+                        </div>
+                      ) : null}
+                      {summary.promoDiscount > 0 ? (
+                        <div style={{ display: "flex", justifyContent: "space-between", color: C.gray }}>
+                          <span>{discountResult?.description ? `${t("كود الخصم", "Promo code")} (${discountCode.trim().toUpperCase()})` : t("خصم الكود", "Promo discount")}</span>
+                          <strong style={{ color: C.success }}>- {formatCurrency(summary.promoDiscount)}</strong>
+                        </div>
+                      ) : null}
+                      <div style={{ height: 1, background: C.border, margin: "4px 0" }} />
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <span style={{ fontWeight: 900, color: C.white }}>{t("الإجمالي المستحق", "Amount due")}</span>
+                        <strong style={{ color: C.red, fontSize: 18 }}>{formatCurrency(summary.finalAmount)}</strong>
+                      </div>
+                    </div>
+                  </div>
+
+                  {!checkoutPreview.confirmed ? (
+                    <button
+                      className="btn-primary"
+                      style={{ width: "100%", justifyContent: "center" }}
+                      onClick={() => setCheckoutPreview((current) => (current ? { ...current, confirmed: true } : current))}
+                    >
+                      {t("تأكيد الاشتراك", "Confirm subscription")}
+                    </button>
+                  ) : (
+                    <>
+                      <div className="card" style={{ padding: 16, marginBottom: 14, background: "rgba(255,255,255,.04)" }}>
+                        <div style={{ fontWeight: 800, color: C.white, marginBottom: 8 }}>{t("اختاري وسيلة الدفع", "Choose payment method")}</div>
+                        <div style={{ display: "grid", gap: 10 }}>
+                          {paymentOptions.map((method) => (
+                            <button
+                              key={method.id}
+                              type="button"
+                              onClick={() => setMembershipPayMethod(method.id)}
+                              className={`schedule-slot-item${membershipPayMethod === method.id ? " selected" : ""}`}
+                              style={{ textAlign: "right" }}
+                            >
+                              <div className="schedule-item-title">{method.label}</div>
+                              <div className="schedule-item-sub">{t("بعد الضغط سيتم إنشاء طلب الدفع وإرسالِك إلى صفحة المتابعة.", "After clicking, your payment request will be created and you will be sent to the follow-up page.")}</div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <button
+                        className="btn-primary"
+                        style={{ width: "100%", justifyContent: "center" }}
+                        onClick={() => handleSubscribe(checkoutPreview.plan, checkoutPreview.scheduleIds, membershipPayMethod)}
+                        disabled={checkoutPreview.plan.id !== null && subscribing === checkoutPreview.plan.id}
+                      >
+                        {checkoutPreview.plan.id !== null && subscribing === checkoutPreview.plan.id
+                          ? t("جارٍ التنفيذ...", "Processing...")
+                          : t("المتابعة إلى الدفع", "Continue to payment")}
+                      </button>
+                    </>
+                  )}
+                </>
+              );
+            })()}
           </div>
         </div>
       )}
