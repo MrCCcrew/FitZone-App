@@ -4,6 +4,24 @@ import { useState, useEffect, useCallback } from "react";
 import { AdminSectionShell, AdminCard, AdminEmptyState } from "./shared";
 import { TranslateButton } from "./TranslateButton";
 
+interface TrainerDiscountCode {
+  id: string;
+  code: string;
+  trainerName: string;
+  trainerId: string;
+  clientName: string;
+  clientEmail: string;
+  clientId: string;
+  discountType: string;
+  discountValue: number;
+  maxDiscount: number | null;
+  note: string | null;
+  isUsed: boolean;
+  usedAt: string | null;
+  monthYear: string;
+  createdAt: string;
+}
+
 interface DiscountCode {
   id: string;
   code: string;
@@ -46,7 +64,148 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
   );
 }
 
+// ─── Trainer Discount Codes Sub-section ────────────────────────────────────────
+function TrainerDiscountCodesTable() {
+  const [codes, setCodes] = useState<TrainerDiscountCode[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [filterUsed, setFilterUsed] = useState<"all" | "used" | "unused">("all");
+  const [deleting, setDeleting] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/trainer-discount-codes");
+      const json = await res.json() as { codes?: TrainerDiscountCode[] };
+      setCodes(Array.isArray(json.codes) ? json.codes : []);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const deleteCode = async (id: string) => {
+    if (!confirm("هل أنت متأكد من حذف هذا الكود؟")) return;
+    setDeleting(id);
+    await fetch(`/api/admin/trainer-discount-codes?id=${id}`, { method: "DELETE" });
+    setDeleting(null);
+    void load();
+  };
+
+  const filtered = codes.filter((c) => {
+    const q = search.toLowerCase();
+    const matchSearch = !q || c.trainerName.toLowerCase().includes(q) || c.clientName.toLowerCase().includes(q) || c.clientEmail.toLowerCase().includes(q) || c.code.toLowerCase().includes(q);
+    const matchUsed = filterUsed === "all" || (filterUsed === "used" ? c.isUsed : !c.isUsed);
+    return matchSearch && matchUsed;
+  });
+
+  const stats = {
+    total: codes.length,
+    used: codes.filter((c) => c.isUsed).length,
+    unused: codes.filter((c) => !c.isUsed).length,
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Stats */}
+      <div className="grid grid-cols-3 gap-3">
+        {[
+          { label: "إجمالي الأكواد", value: stats.total, color: "text-pink-300" },
+          { label: "مستخدمة", value: stats.used, color: "text-emerald-400" },
+          { label: "متاحة", value: stats.unused, color: "text-yellow-400" },
+        ].map((s) => (
+          <div key={s.label} className="rounded-xl border border-[rgba(255,188,219,0.12)] bg-white/5 p-4 text-center">
+            <div className={`text-2xl font-black ${s.color}`}>{s.value}</div>
+            <div className="mt-1 text-xs text-[#d7aabd]">{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Filters */}
+      <div className="flex flex-wrap gap-3">
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="ابحث باسم المدربة أو العميل أو الكود..."
+          className={INPUT + " max-w-xs"}
+        />
+        <div className="flex gap-2">
+          {(["all", "used", "unused"] as const).map((f) => (
+            <button key={f} onClick={() => setFilterUsed(f)}
+              className={`rounded-xl px-3 py-2 text-xs font-bold transition-colors ${filterUsed === f ? "bg-pink-600 text-white" : "border border-[rgba(255,188,219,0.2)] text-[#d7aabd] hover:border-pink-400"}`}>
+              {f === "all" ? "الكل" : f === "used" ? "مستخدمة" : "متاحة"}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <AdminCard>
+        {loading ? (
+          <div className="py-10 text-center text-sm text-[#d7aabd]">جاري التحميل...</div>
+        ) : filtered.length === 0 ? (
+          <AdminEmptyState title="لا توجد أكواد" description="لم تُنشئ أي مدربة أكواد خصم بعد" />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-[rgba(255,188,219,0.12)] text-[#d7aabd]">
+                  <th className="py-3 pr-2 text-right font-bold">الكود</th>
+                  <th className="py-3 pr-2 text-right font-bold">المدربة</th>
+                  <th className="py-3 pr-2 text-right font-bold">العميل</th>
+                  <th className="py-3 pr-2 text-right font-bold">الخصم</th>
+                  <th className="py-3 pr-2 text-right font-bold">الشهر</th>
+                  <th className="py-3 pr-2 text-right font-bold">الحالة</th>
+                  <th className="py-3 pr-2 text-right font-bold">تاريخ الاستخدام</th>
+                  <th className="py-3 pr-2 text-right font-bold"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((c) => (
+                  <tr key={c.id} className="border-b border-[rgba(255,188,219,0.07)] transition-colors hover:bg-white/5">
+                    <td className="py-3 pr-2 font-black tracking-wider text-pink-300">{c.code}</td>
+                    <td className="py-3 pr-2 font-bold text-[#fff4f8]">{c.trainerName}</td>
+                    <td className="py-3 pr-2">
+                      <div className="font-medium text-[#fff4f8]">{c.clientName}</div>
+                      <div className="text-xs text-[#d7aabd]">{c.clientEmail}</div>
+                    </td>
+                    <td className="py-3 pr-2 text-[#d7aabd]">
+                      {c.discountType === "fixed"
+                        ? `${c.discountValue} جنيه`
+                        : `${c.discountValue}%${c.maxDiscount ? ` (حد ${c.maxDiscount} ج)` : ""}`}
+                      {c.note && <div className="text-xs text-[#a07080] mt-0.5">{c.note}</div>}
+                    </td>
+                    <td className="py-3 pr-2 text-[#d7aabd] text-xs">{c.monthYear}</td>
+                    <td className="py-3 pr-2">
+                      <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${c.isUsed ? "bg-emerald-500/15 text-emerald-300" : "bg-yellow-500/15 text-yellow-300"}`}>
+                        {c.isUsed ? "✓ مستخدم" : "متاح"}
+                      </span>
+                    </td>
+                    <td className="py-3 pr-2 text-xs text-[#d7aabd]">
+                      {c.usedAt ? new Date(c.usedAt).toLocaleDateString("ar-EG") : "—"}
+                    </td>
+                    <td className="py-3 pr-2">
+                      <button
+                        disabled={deleting === c.id}
+                        onClick={() => void deleteCode(c.id)}
+                        className={BTN_DANGER + " disabled:opacity-40"}>
+                        {deleting === c.id ? "..." : "حذف"}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </AdminCard>
+    </div>
+  );
+}
+
+// ─── Main Component ─────────────────────────────────────────────────────────────
 export default function DiscountCodes() {
+  const [activeTab, setActiveTab] = useState<"global" | "trainer">("global");
   const [codes, setCodes] = useState<DiscountCode[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -143,8 +302,26 @@ export default function DiscountCodes() {
     <AdminSectionShell
       title="أكواد الخصم"
       subtitle="Discount Codes — أنشئ وأدر أكواد الخصم للاشتراكات"
-      actions={<button className={BTN_PRIMARY} onClick={openCreate}>+ إضافة كود جديد</button>}
+      actions={activeTab === "global" ? <button className={BTN_PRIMARY} onClick={openCreate}>+ إضافة كود جديد</button> : undefined}
     >
+      {/* Tabs */}
+      <div className="flex gap-2 border-b border-[rgba(255,188,219,0.12)] pb-0">
+        {([["global", "🌐 أكواد عامة"], ["trainer", "🎟 أكواد المدربات"]] as const).map(([id, label]) => (
+          <button
+            key={id}
+            onClick={() => setActiveTab(id)}
+            className={`rounded-t-xl px-5 py-2.5 text-sm font-bold transition-colors ${activeTab === id ? "bg-pink-600 text-white" : "text-[#d7aabd] hover:text-white"}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Trainer codes tab */}
+      {activeTab === "trainer" && <TrainerDiscountCodesTable />}
+
+      {/* Global codes tab */}
+      {activeTab === "global" && <>
       {/* Global message */}
       {msg && !showForm && (
         <div className={`rounded-xl px-4 py-3 text-sm font-bold ${msg.ok ? "bg-emerald-950/40 text-emerald-300 border border-emerald-500/30" : "bg-red-950/40 text-red-300 border border-red-500/30"}`}>
@@ -287,6 +464,7 @@ export default function DiscountCodes() {
           </div>
         </Modal>
       )}
+      </>}
     </AdminSectionShell>
   );
 }
