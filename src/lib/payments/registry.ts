@@ -1,48 +1,30 @@
 import { manualPaymentProvider } from "@/lib/payments/providers/manual";
-import { instapayPaymentProvider } from "@/lib/payments/providers/instapay";
-import { vodafoneCashPaymentProvider } from "@/lib/payments/providers/vodafone-cash";
+import { paymobPaymentProvider } from "@/lib/payments/providers/paymob";
 import type { PaymentProviderDefinition, PaymentProviderKey } from "@/lib/payments/types";
 
+// instapay and vodafone_cash remain in the map for backward-compatibility with
+// existing DB records, but are disabled so they never appear in the production
+// checkout flow.
+const disabledStub = (key: PaymentProviderKey, label: string): PaymentProviderDefinition => ({
+  key,
+  label,
+  enabled: false,
+  supportsCards: false,
+  async createCheckout() {
+    throw new Error(`${label} معطّل. استخدم Paymob للدفع الإلكتروني.`);
+  },
+  async verifyTransaction() {
+    return { status: "pending", message: `${label} معطّل.` };
+  },
+});
+
 const PAYMENT_PROVIDERS: Record<PaymentProviderKey, PaymentProviderDefinition> = {
+  paymob: paymobPaymentProvider,
   manual: manualPaymentProvider,
-  instapay: instapayPaymentProvider,
-  vodafone_cash: vodafoneCashPaymentProvider,
-  paymob: {
-    key: "paymob",
-    label: "Paymob",
-    enabled: false,
-    supportsCards: true,
-    async createCheckout() {
-      throw new Error("مزوّد Paymob غير مفعل بعد.");
-    },
-    async verifyTransaction() {
-      return { status: "pending", message: "مزوّد Paymob غير مفعل بعد." };
-    },
-  },
-  paytabs: {
-    key: "paytabs",
-    label: "PayTabs",
-    enabled: false,
-    supportsCards: true,
-    async createCheckout() {
-      throw new Error("مزوّد PayTabs غير مفعل بعد.");
-    },
-    async verifyTransaction() {
-      return { status: "pending", message: "مزوّد PayTabs غير مفعل بعد." };
-    },
-  },
-  custom: {
-    key: "custom",
-    label: "مزود مخصص",
-    enabled: false,
-    supportsCards: true,
-    async createCheckout() {
-      throw new Error("المزوّد المخصص غير مفعل بعد.");
-    },
-    async verifyTransaction() {
-      return { status: "pending", message: "المزوّد المخصص غير مفعل بعد." };
-    },
-  },
+  instapay: disabledStub("instapay", "InstaPay"),
+  vodafone_cash: disabledStub("vodafone_cash", "Vodafone Cash"),
+  paytabs: disabledStub("paytabs", "PayTabs"),
+  custom: disabledStub("custom", "Custom"),
 };
 
 export function listPaymentProviders() {
@@ -55,6 +37,8 @@ export function getPaymentProvider(key: string | null | undefined) {
 }
 
 export function getDefaultPaymentProvider() {
+  // Prefer Paymob if configured; fall back to manual for dev/testing
+  if (paymobPaymentProvider.enabled) return paymobPaymentProvider;
   const configured = process.env.DEFAULT_PAYMENT_PROVIDER?.trim().toLowerCase();
   const provider = getPaymentProvider(configured);
   if (provider?.enabled) return provider;

@@ -3,41 +3,20 @@
 import { useEffect, useMemo, useState } from "react";
 import { AdminCard, AdminEmptyState, AdminSectionShell } from "./shared";
 
-type PaymentProviderSummary = {
-  key: string;
-  label: string;
-  enabled: boolean;
-  supportsCards: boolean;
-};
-
-type PaymentProvidersResponse = {
-  providers: PaymentProviderSummary[];
-  defaultProvider?: string | null;
-};
-
-type PaymentAccount = {
-  id: string;
-  label: string;
-  url: string;
-  isDefault?: boolean;
-};
+type SecretsStatus = { apiKey: boolean; hmac: boolean };
 
 type PaymentSettings = {
   activeProvider: string;
   merchantId: string;
   publicKey: string;
+  integrationId: string;
   iframeId: string;
   returnUrl: string;
   cancelUrl: string;
   webhookUrl: string;
   sandboxMode: boolean;
   notes: string;
-  instapayUrl: string;
-  instapayLabel: string;
-  vodafoneCashUrl: string;
-  vodafoneCashLabel: string;
-  instapayAccounts: PaymentAccount[];
-  vodafoneCashAccounts: PaymentAccount[];
+  secretsConfigured?: SecretsStatus;
 };
 
 type PaymentTransactionRow = {
@@ -51,41 +30,33 @@ type PaymentTransactionRow = {
   currency: string;
   status: "pending" | "requires_action" | "paid" | "failed" | "cancelled" | "expired";
   paymentMethod: string;
+  orderId?: string | null;
+  membershipId?: string | null;
   createdAt: string;
-  metadata?: Record<string, unknown> | null;
-  payload?: Record<string, unknown> | null;
+  providerReference?: string | null;
+  externalReference?: string | null;
+};
+
+type ValidationResult = {
+  ok: boolean;
+  message: string;
+  secrets?: SecretsStatus;
+  authTest?: { ok: boolean; message: string };
+  issues?: string[];
 };
 
 const DEFAULT_SETTINGS: PaymentSettings = {
-  activeProvider: "manual",
+  activeProvider: "paymob",
   merchantId: "",
   publicKey: "",
+  integrationId: "",
   iframeId: "",
   returnUrl: "https://fitzoneland.com/account",
   cancelUrl: "https://fitzoneland.com/account",
-  webhookUrl: "https://fitzoneland.com/api/payments/webhook/manual",
-  sandboxMode: true,
+  webhookUrl: "https://fitzoneland.com/api/payments/webhook/paymob",
+  sandboxMode: false,
   notes: "",
-  instapayUrl: "https://ipn.eg/S/rotanaqnb/instapay/34D04q",
-  instapayLabel: "InstaPay",
-  vodafoneCashUrl: "http://vf.eg/vfcash?id=mt&qrId=gn6qLY",
-  vodafoneCashLabel: "Vodafone Cash",
-  instapayAccounts: [
-    { id: "instapay-1", label: "InstaPay", url: "https://ipn.eg/S/rotanaqnb/instapay/34D04q", isDefault: true },
-  ],
-  vodafoneCashAccounts: [
-    { id: "vodafone-1", label: "Vodafone Cash", url: "http://vf.eg/vfcash?id=mt&qrId=gn6qLY", isDefault: true },
-  ],
 };
-
-const STATUS_OPTIONS: { value: PaymentTransactionRow["status"]; label: string }[] = [
-  { value: "pending", label: "قيد الانتظار" },
-  { value: "requires_action", label: "بانتظار إجراء" },
-  { value: "paid", label: "مدفوعة" },
-  { value: "failed", label: "فشلت" },
-  { value: "cancelled", label: "ملغية" },
-  { value: "expired", label: "منتهية" },
-];
 
 const STATUS_STYLES: Record<PaymentTransactionRow["status"], string> = {
   pending: "bg-amber-500/15 text-amber-200 border-amber-400/20",
@@ -96,591 +67,468 @@ const STATUS_STYLES: Record<PaymentTransactionRow["status"], string> = {
   expired: "bg-fuchsia-500/15 text-fuchsia-200 border-fuchsia-400/20",
 };
 
-function getPurposeLabel(purpose: string) {
-  if (purpose === "membership") return "اشتراك";
-  if (purpose === "order") return "طلب متجر";
-  if (purpose === "wallet_topup") return "شحن محفظة";
-  return purpose;
+const STATUS_LABELS: Record<PaymentTransactionRow["status"], string> = {
+  pending: "قيد الانتظار",
+  requires_action: "بانتظار إجراء",
+  paid: "مدفوعة",
+  failed: "فشلت",
+  cancelled: "ملغية",
+  expired: "منتهية",
+};
+
+function getPurposeLabel(p: string) {
+  if (p === "membership") return "اشتراك";
+  if (p === "order") return "طلب متجر";
+  if (p === "wallet_topup") return "شحن محفظة";
+  return p;
 }
 
-function getAccountLabel(transaction: PaymentTransactionRow) {
-  const payload = transaction.payload || {};
-  const label = typeof payload.label === "string" ? payload.label : null;
-  return label || "المحفظة الافتراضية";
-}
-
-function normalizeAccounts(accounts: PaymentAccount[]) {
-  if (accounts.length === 0) return accounts;
-  const firstDefaultIndex = accounts.findIndex((item) => item.isDefault);
-  if (firstDefaultIndex === -1) {
-    return accounts.map((item, index) => ({ ...item, isDefault: index === 0 }));
-  }
-  return accounts.map((item, index) => ({ ...item, isDefault: index === firstDefaultIndex }));
-}
-
-function AccountEditor({
-  title,
-  accounts,
+function Field({
+  label,
+  value,
   onChange,
+  placeholder,
+  readOnly,
+  type = "text",
 }: {
-  title: string;
-  accounts: PaymentAccount[];
-  onChange: (next: PaymentAccount[]) => void;
+  label: string;
+  value: string;
+  onChange?: (v: string) => void;
+  placeholder?: string;
+  readOnly?: boolean;
+  type?: string;
 }) {
-  const handleUpdate = (id: string, patch: Partial<PaymentAccount>) => {
-    onChange(
-      normalizeAccounts(
-        accounts.map((item) => (item.id === id ? { ...item, ...patch } : item)),
-      ),
-    );
-  };
-
-  const addAccount = () => {
-    const next = [
-      ...accounts,
-      {
-        id: `account-${Date.now()}`,
-        label: "",
-        url: "",
-        isDefault: accounts.length === 0,
-      },
-    ];
-    onChange(normalizeAccounts(next));
-  };
-
-  const removeAccount = (id: string) => {
-    const next = accounts.filter((item) => item.id !== id);
-    onChange(normalizeAccounts(next));
-  };
-
   return (
-    <div className="rounded-2xl border border-[rgba(255,188,219,0.14)] bg-black/10 p-4">
-      <div className="mb-3 flex items-center justify-between">
-        <h4 className="text-sm font-black text-[#fff4f8]">{title}</h4>
-        <button
-          type="button"
-          onClick={addAccount}
-          className="rounded-full border border-pink-300/30 bg-pink-500/10 px-3 py-1 text-xs font-bold text-pink-200"
-        >
-          إضافة محفظة
-        </button>
-      </div>
-      <div className="space-y-3">
-        {accounts.length === 0 ? (
-          <div className="text-xs text-[#d7aabd]">لا توجد محافظ مضافة.</div>
-        ) : (
-          accounts.map((account) => (
-            <div
-              key={account.id}
-              className="rounded-xl border border-[rgba(255,188,219,0.16)] bg-[rgba(255,255,255,0.03)] p-3"
-            >
-              <div className="grid gap-3 md:grid-cols-[1fr_1.2fr_120px]">
-                <input
-                  value={account.label}
-                  onChange={(event) => handleUpdate(account.id, { label: event.target.value })}
-                  placeholder="اسم المحفظة"
-                  className="rounded-xl border border-[rgba(255,188,219,0.18)] bg-[rgba(255,255,255,0.05)] px-3 py-2 text-xs text-[#fff4f8] outline-none transition focus:border-pink-400"
-                />
-                <input
-                  value={account.url}
-                  onChange={(event) => handleUpdate(account.id, { url: event.target.value })}
-                  placeholder="رابط الدفع"
-                  className="rounded-xl border border-[rgba(255,188,219,0.18)] bg-[rgba(255,255,255,0.05)] px-3 py-2 text-xs text-[#fff4f8] outline-none transition focus:border-pink-400"
-                />
-                <div className="flex items-center justify-between gap-2">
-                  <label className="flex items-center gap-2 text-xs text-[#d7aabd]">
-                    <input
-                      type="radio"
-                      name={`${title}-default`}
-                      checked={Boolean(account.isDefault)}
-                      onChange={() => handleUpdate(account.id, { isDefault: true })}
-                    />
-                    افتراضية
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => removeAccount(account.id)}
-                    className="text-xs text-rose-300 hover:text-rose-200"
-                  >
-                    حذف
-                  </button>
-                </div>
-              </div>
-            </div>
-          ))
-        )}
+    <label className="block">
+      <span className="mb-1.5 block text-xs font-bold text-[#d7aabd]">{label}</span>
+      <input
+        type={type}
+        value={value}
+        readOnly={readOnly}
+        onChange={(e) => onChange?.(e.target.value)}
+        placeholder={placeholder}
+        className={`w-full rounded-xl border border-[rgba(255,188,219,0.18)] bg-[rgba(255,255,255,0.05)] px-3 py-2 text-sm text-[#fff4f8] outline-none transition focus:border-pink-400 ${readOnly ? "opacity-60 cursor-default" : ""}`}
+      />
+    </label>
+  );
+}
+
+function SecretBadge({ configured, label }: { configured: boolean; label: string }) {
+  return (
+    <div className={`flex items-center gap-2 rounded-xl border px-4 py-3 text-sm ${configured ? "border-emerald-400/25 bg-emerald-500/10 text-emerald-200" : "border-rose-400/25 bg-rose-500/10 text-rose-200"}`}>
+      <span className="text-base">{configured ? "✅" : "❌"}</span>
+      <div>
+        <div className="font-bold text-xs font-mono">{label}</div>
+        <div className="text-xs opacity-75 mt-0.5">{configured ? "مُعيَّن على السيرفر" : "غير مُعيَّن — أضفه في .env"}</div>
       </div>
     </div>
   );
 }
 
 export default function Payments() {
-  const [providers, setProviders] = useState<PaymentProviderSummary[]>([]);
-  const [defaultProvider, setDefaultProvider] = useState<string | null>(null);
   const [transactions, setTransactions] = useState<PaymentTransactionRow[]>([]);
   const [settings, setSettings] = useState<PaymentSettings>(DEFAULT_SETTINGS);
   const [loading, setLoading] = useState(true);
-  const [savingId, setSavingId] = useState<string | null>(null);
   const [savingSettings, setSavingSettings] = useState(false);
+  const [actionId, setActionId] = useState<string | null>(null);
+  const [validation, setValidation] = useState<ValidationResult | null>(null);
+  const [validating, setValidating] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
 
     async function load() {
       try {
-        const [providersRes, transactionsRes, settingsRes] = await Promise.all([
-          fetch("/api/payments/providers", { cache: "no-store" }),
+        const [txRes, settingsRes] = await Promise.all([
           fetch("/api/admin/payments", { cache: "no-store" }),
           fetch("/api/admin/payments/settings", { cache: "no-store" }),
         ]);
-
-        const providersPayload = (await providersRes.json()) as PaymentProvidersResponse;
-        const transactionsPayload = (await transactionsRes.json()) as PaymentTransactionRow[];
-        const settingsPayload = (await settingsRes.json()) as PaymentSettings;
+        const txData = (await txRes.json()) as PaymentTransactionRow[];
+        const settingsData = (await settingsRes.json()) as PaymentSettings;
 
         if (!cancelled) {
-          setProviders(providersPayload.providers ?? []);
-          setDefaultProvider(providersPayload.defaultProvider ?? null);
-          setTransactions(Array.isArray(transactionsPayload) ? transactionsPayload : []);
-          setSettings({
-            ...DEFAULT_SETTINGS,
-            ...(settingsPayload ?? {}),
-            instapayAccounts: normalizeAccounts(settingsPayload?.instapayAccounts ?? DEFAULT_SETTINGS.instapayAccounts),
-            vodafoneCashAccounts: normalizeAccounts(
-              settingsPayload?.vodafoneCashAccounts ?? DEFAULT_SETTINGS.vodafoneCashAccounts,
-            ),
-          });
+          setTransactions(Array.isArray(txData) ? txData : []);
+          setSettings({ ...DEFAULT_SETTINGS, ...settingsData });
         }
       } catch {
         if (!cancelled) {
-          setProviders([]);
-          setDefaultProvider(null);
           setTransactions([]);
           setSettings(DEFAULT_SETTINGS);
         }
       } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+        if (!cancelled) setLoading(false);
       }
     }
 
     void load();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, []);
 
   const summary = useMemo(() => {
-    const paidCount = transactions.filter((item) => item.status === "paid").length;
-    const pendingCount = transactions.filter((item) => item.status === "pending" || item.status === "requires_action").length;
-    const paidAmount = transactions
-      .filter((item) => item.status === "paid")
-      .reduce((sum, item) => sum + Number(item.amount || 0), 0);
-
-    return { paidCount, pendingCount, paidAmount };
+    const paid = transactions.filter((t) => t.status === "paid");
+    const pending = transactions.filter((t) => t.status === "pending" || t.status === "requires_action");
+    return {
+      total: transactions.length,
+      paidCount: paid.length,
+      paidAmount: paid.reduce((s, t) => s + Number(t.amount), 0),
+      pendingCount: pending.length,
+    };
   }, [transactions]);
-
-  const providerSummary = useMemo(() => {
-    const map = new Map<string, { label: string; total: number; pending: number; paid: number }>();
-    transactions.forEach((row) => {
-      const key = row.provider;
-      const label = providers.find((provider) => provider.key === key)?.label ?? key;
-      if (!map.has(key)) {
-        map.set(key, { label, total: 0, pending: 0, paid: 0 });
-      }
-      const entry = map.get(key)!;
-      entry.total += 1;
-      if (row.status === "paid") entry.paid += 1;
-      if (row.status === "pending" || row.status === "requires_action") entry.pending += 1;
-    });
-    return Array.from(map.values());
-  }, [transactions, providers]);
-
-  async function handleDelete(transactionId: string) {
-    if (!window.confirm("هل تريدين حذف هذه المعاملة نهائيًا؟ لا يمكن التراجع.")) return;
-    setSavingId(transactionId);
-    try {
-      const response = await fetch(`/api/admin/payments?id=${transactionId}`, { method: "DELETE" });
-      if (!response.ok) {
-        window.alert("تعذر حذف المعاملة.");
-        return;
-      }
-      setTransactions((current) => current.filter((item) => item.id !== transactionId));
-    } catch {
-      window.alert("حدث خطأ أثناء الحذف.");
-    } finally {
-      setSavingId(null);
-    }
-  }
-
-  async function handleStatusChange(transactionId: string, status: PaymentTransactionRow["status"]) {
-    setSavingId(transactionId);
-    try {
-      const response = await fetch("/api/admin/payments", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transactionId, status }),
-      });
-
-      const payload = (await response.json()) as { error?: string; transaction?: PaymentTransactionRow };
-      if (!response.ok) {
-        window.alert(payload.error ?? "تعذر تحديث حالة المعاملة.");
-        return;
-      }
-
-      setTransactions((current) =>
-        current.map((item) => (item.id === transactionId && payload.transaction ? { ...item, ...payload.transaction } : item)),
-      );
-    } catch {
-      window.alert("حدث خطأ أثناء تحديث حالة المعاملة.");
-    } finally {
-      setSavingId(null);
-    }
-  }
 
   async function saveSettings() {
     setSavingSettings(true);
     try {
-      const response = await fetch("/api/admin/payments/settings", {
+      const res = await fetch("/api/admin/payments/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(settings),
       });
-
-      const payload = (await response.json()) as { error?: string; settings?: PaymentSettings };
-      if (!response.ok) {
-        window.alert(payload.error ?? "تعذر حفظ إعدادات الدفع.");
-        return;
-      }
-
-      setSettings({ ...DEFAULT_SETTINGS, ...(payload.settings ?? settings) });
+      const data = (await res.json()) as { error?: string; settings?: PaymentSettings };
+      if (!res.ok) { window.alert(data.error ?? "تعذر حفظ الإعدادات."); return; }
+      setSettings({ ...DEFAULT_SETTINGS, ...(data.settings ?? settings) });
       window.alert("تم حفظ إعدادات الدفع بنجاح.");
     } catch {
-      window.alert("حدث خطأ أثناء حفظ إعدادات الدفع.");
+      window.alert("حدث خطأ أثناء حفظ الإعدادات.");
     } finally {
       setSavingSettings(false);
     }
   }
 
+  async function validateConfig() {
+    setValidating(true);
+    setValidation(null);
+    try {
+      const res = await fetch("/api/admin/payments/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "validate" }),
+      });
+      const data = (await res.json()) as ValidationResult;
+      setValidation(data);
+    } catch {
+      setValidation({ ok: false, message: "تعذر الاتصال بالسيرفر." });
+    } finally {
+      setValidating(false);
+    }
+  }
+
+  async function reVerify(transactionId: string) {
+    setActionId(transactionId);
+    try {
+      const res = await fetch("/api/admin/payments", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transactionId, action: "re-verify" }),
+      });
+      const data = (await res.json()) as { error?: string; transaction?: { status: string } };
+      if (!res.ok) { window.alert(data.error ?? "تعذر التحقق."); return; }
+      // Refresh transactions list
+      const txRes = await fetch("/api/admin/payments", { cache: "no-store" });
+      const txData = (await txRes.json()) as PaymentTransactionRow[];
+      setTransactions(Array.isArray(txData) ? txData : []);
+    } catch {
+      window.alert("حدث خطأ أثناء التحقق.");
+    } finally {
+      setActionId(null);
+    }
+  }
+
+  async function cancelTransaction(transactionId: string) {
+    if (!window.confirm("هل تريدين إلغاء هذه المعاملة؟")) return;
+    setActionId(transactionId);
+    try {
+      const res = await fetch("/api/admin/payments", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transactionId, action: "cancel" }),
+      });
+      const data = (await res.json()) as { error?: string };
+      if (!res.ok) { window.alert(data.error ?? "تعذر الإلغاء."); return; }
+      setTransactions((prev) => prev.map((t) => t.id === transactionId ? { ...t, status: "cancelled" } : t));
+    } catch {
+      window.alert("حدث خطأ أثناء الإلغاء.");
+    } finally {
+      setActionId(null);
+    }
+  }
+
+  async function deleteTransaction(transactionId: string) {
+    if (!window.confirm("هل تريدين حذف هذه المعاملة نهائيًا؟")) return;
+    setActionId(transactionId);
+    try {
+      const res = await fetch(`/api/admin/payments?id=${transactionId}`, { method: "DELETE" });
+      if (!res.ok) { window.alert("تعذر الحذف."); return; }
+      setTransactions((prev) => prev.filter((t) => t.id !== transactionId));
+    } catch {
+      window.alert("حدث خطأ أثناء الحذف.");
+    } finally {
+      setActionId(null);
+    }
+  }
+
+  const secrets = settings.secretsConfigured ?? { apiKey: false, hmac: false };
+
   return (
     <AdminSectionShell
       title="المدفوعات"
-      subtitle="لوحة موحدة لإدارة وسائل الدفع، المحافظ، والمتابعة اليدوية للمعاملات."
+      subtitle="إدارة Paymob كـ payment gateway تلقائي — الدفع يتم ويتأكد أوتوماتيك بدون تدخل يدوي."
     >
+      {/* ── Stats ── */}
       <div className="grid gap-4 md:grid-cols-3">
         <AdminCard>
           <div className="text-sm text-[#d7aabd]">إجمالي المعاملات</div>
-          <div className="mt-2 text-3xl font-black text-[#fff4f8]">{transactions.length.toLocaleString("ar-EG")}</div>
-          <div className="mt-2 text-xs text-[#d7aabd]">آخر 100 معاملة تم تسجيلها داخل النظام.</div>
+          <div className="mt-2 text-3xl font-black text-[#fff4f8]">{summary.total.toLocaleString("ar-EG")}</div>
+          <div className="mt-2 text-xs text-[#d7aabd]">آخر 100 معاملة</div>
         </AdminCard>
         <AdminCard>
-          <div className="text-sm text-[#d7aabd]">المعاملات المدفوعة</div>
+          <div className="text-sm text-[#d7aabd]">مدفوعة بنجاح</div>
           <div className="mt-2 text-3xl font-black text-emerald-300">{summary.paidCount.toLocaleString("ar-EG")}</div>
-          <div className="mt-2 text-xs text-[#d7aabd]">بإجمالي {summary.paidAmount.toLocaleString("ar-EG")} ج.م</div>
+          <div className="mt-2 text-xs text-[#d7aabd]">إجمالي {summary.paidAmount.toLocaleString("ar-EG")} ج.م</div>
         </AdminCard>
         <AdminCard>
-          <div className="text-sm text-[#d7aabd]">بانتظار المتابعة</div>
+          <div className="text-sm text-[#d7aabd]">قيد الانتظار</div>
           <div className="mt-2 text-3xl font-black text-amber-300">{summary.pendingCount.toLocaleString("ar-EG")}</div>
-          <div className="mt-2 text-xs text-[#d7aabd]">المزوّد الافتراضي: {defaultProvider ?? "غير محدد"}</div>
+          <div className="mt-2 text-xs text-[#d7aabd]">
+            المزود: <span className={`font-bold ${secrets.apiKey ? "text-emerald-300" : "text-rose-300"}`}>
+              {settings.activeProvider} {secrets.apiKey ? "✅" : "⚠️"}
+            </span>
+          </div>
         </AdminCard>
       </div>
 
-      {providerSummary.length > 0 && (
-        <AdminCard>
-          <div className="mb-3 text-sm font-black text-[#fff4f8]">ملخص المحافظ حسب وسيلة الدفع</div>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            {providerSummary.map((entry) => (
-              <div
-                key={entry.label}
-                className="rounded-2xl border border-[rgba(255,188,219,0.14)] bg-black/10 p-4 text-sm text-[#fff4f8]"
-              >
-                <div className="font-black">{entry.label}</div>
-                <div className="mt-2 text-xs text-[#d7aabd]">الإجمالي: {entry.total}</div>
-                <div className="mt-1 text-xs text-emerald-300">مدفوعة: {entry.paid}</div>
-                <div className="mt-1 text-xs text-amber-300">بانتظار: {entry.pending}</div>
-              </div>
-            ))}
-          </div>
-        </AdminCard>
-      )}
+      {/* ── Secrets Status ── */}
+      <AdminCard>
+        <div className="mb-4">
+          <h3 className="text-lg font-black text-[#fff4f8]">حالة الأسرار (env-only)</h3>
+          <p className="mt-1 text-sm text-[#d7aabd]">
+            هذه القيم تُحفظ فقط في ملف <code className="text-pink-300">.env</code> على السيرفر، ولا تُعرض ولا تُخزن في قاعدة البيانات.
+          </p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <SecretBadge configured={secrets.apiKey} label="PAYMOB_SECRET_KEY" />
+          <SecretBadge configured={secrets.hmac} label="PAYMOB_HMAC_SECRET" />
+        </div>
 
+        {/* Validate button */}
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={() => void validateConfig()}
+            disabled={validating}
+            className="rounded-2xl border border-pink-400/30 bg-pink-500/10 px-5 py-2.5 text-sm font-bold text-pink-200 transition hover:bg-pink-500/20 disabled:opacity-50"
+          >
+            {validating ? "جارٍ التحقق..." : "🔍 تحقق من الإعدادات"}
+          </button>
+          {validation && (
+            <div className={`rounded-xl border px-4 py-2.5 text-sm ${validation.ok ? "border-emerald-400/25 bg-emerald-500/10 text-emerald-200" : "border-amber-400/25 bg-amber-500/10 text-amber-100"}`}>
+              <div className="font-bold">{validation.message}</div>
+              {validation.authTest && (
+                <div className="mt-1 text-xs opacity-80">{validation.authTest.message}</div>
+              )}
+              {validation.issues && validation.issues.length > 0 && (
+                <ul className="mt-1 text-xs space-y-0.5">
+                  {validation.issues.map((issue, i) => <li key={i}>• {issue}</li>)}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
+      </AdminCard>
+
+      {/* ── Paymob Config ── */}
       <AdminCard>
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h3 className="text-lg font-black text-[#fff4f8]">إعدادات الدفع</h3>
-            <p className="mt-1 text-sm leading-6 text-[#d7aabd]">
-              اجمع المحافظ لكل وسيلة دفع هنا، وحدد الافتراضي الذي سيظهر للعميل.
+            <h3 className="text-lg font-black text-[#fff4f8]">إعدادات Paymob العامة</h3>
+            <p className="mt-1 text-sm text-[#d7aabd]">
+              هذه البيانات غير حساسة ويمكن تعديلها من هنا. لا تُدخل API Key أو HMAC هنا.
             </p>
           </div>
           <button
             type="button"
             onClick={() => void saveSettings()}
             disabled={savingSettings}
-            className="rounded-2xl bg-pink-600 px-5 py-3 text-sm font-black text-white transition-colors hover:bg-pink-500 disabled:opacity-50"
+            className="rounded-2xl bg-pink-600 px-5 py-3 text-sm font-black text-white transition hover:bg-pink-500 disabled:opacity-50"
           >
-            {savingSettings ? "جارٍ حفظ الإعدادات..." : "حفظ الإعدادات"}
+            {savingSettings ? "جارٍ الحفظ..." : "حفظ الإعدادات"}
           </button>
         </div>
 
         <div className="grid gap-4 md:grid-cols-2">
-          <label className="block">
-            <span className="mb-1.5 block text-xs font-bold text-[#d7aabd]">المزوّد النشط</span>
-            <select
-              value={settings.activeProvider}
-              onChange={(event) =>
-                setSettings((current) => ({
-                  ...current,
-                  activeProvider: event.target.value,
-                  webhookUrl: `https://fitzoneland.com/api/payments/webhook/${event.target.value}`,
-                }))
-              }
-              className="w-full rounded-xl border border-[rgba(255,188,219,0.18)] bg-[rgba(255,255,255,0.05)] px-3 py-2 text-sm text-[#fff4f8] outline-none transition focus:border-pink-400"
-            >
-              {providers.map((provider) => (
-                <option key={provider.key} value={provider.key} className="bg-[#34111f]">
-                  {provider.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="block">
-            <span className="mb-1.5 block text-xs font-bold text-[#d7aabd]">معرّف التاجر أو الحساب</span>
-            <input
-              type="text"
-              value={settings.merchantId}
-              onChange={(event) => setSettings((current) => ({ ...current, merchantId: event.target.value }))}
-              className="w-full rounded-xl border border-[rgba(255,188,219,0.18)] bg-[rgba(255,255,255,0.05)] px-3 py-2 text-sm text-[#fff4f8] outline-none transition focus:border-pink-400"
+          <Field
+            label="معرّف التاجر / Profile ID"
+            value={settings.merchantId}
+            onChange={(v) => setSettings((s) => ({ ...s, merchantId: v }))}
+            placeholder="مثال: 123456"
+          />
+          <Field
+            label="المفتاح العام Public Key"
+            value={settings.publicKey}
+            onChange={(v) => setSettings((s) => ({ ...s, publicKey: v }))}
+            placeholder="مثال: egy_pk_test_..."
+          />
+          <Field
+            label="Integration ID (لإنشاء مفتاح الدفع)"
+            value={settings.integrationId}
+            onChange={(v) => setSettings((s) => ({ ...s, integrationId: v }))}
+            placeholder="مثال: 1234567"
+          />
+          <Field
+            label="Iframe ID (للـ hosted checkout URL)"
+            value={settings.iframeId}
+            onChange={(v) => setSettings((s) => ({ ...s, iframeId: v }))}
+            placeholder="مثال: 987654"
+          />
+          <Field
+            label="Return URL (بعد الدفع)"
+            value={settings.returnUrl}
+            onChange={(v) => setSettings((s) => ({ ...s, returnUrl: v }))}
+          />
+          <Field
+            label="Cancel URL (عند الإلغاء)"
+            value={settings.cancelUrl}
+            onChange={(v) => setSettings((s) => ({ ...s, cancelUrl: v }))}
+          />
+          <div className="md:col-span-2">
+            <Field
+              label="Webhook URL (اضبطه على لوحة Paymob)"
+              value={settings.webhookUrl}
+              readOnly
             />
-          </label>
-
-          <label className="block">
-            <span className="mb-1.5 block text-xs font-bold text-[#d7aabd]">المفتاح العام Public Key</span>
-            <input
-              type="text"
-              value={settings.publicKey}
-              onChange={(event) => setSettings((current) => ({ ...current, publicKey: event.target.value }))}
-              className="w-full rounded-xl border border-[rgba(255,188,219,0.18)] bg-[rgba(255,255,255,0.05)] px-3 py-2 text-sm text-[#fff4f8] outline-none transition focus:border-pink-400"
-            />
-          </label>
-
-          <label className="block">
-            <span className="mb-1.5 block text-xs font-bold text-[#d7aabd]">Integration أو Iframe ID</span>
-            <input
-              type="text"
-              value={settings.iframeId}
-              onChange={(event) => setSettings((current) => ({ ...current, iframeId: event.target.value }))}
-              className="w-full rounded-xl border border-[rgba(255,188,219,0.18)] bg-[rgba(255,255,255,0.05)] px-3 py-2 text-sm text-[#fff4f8] outline-none transition focus:border-pink-400"
-            />
-          </label>
-
-          <label className="block">
-            <span className="mb-1.5 block text-xs font-bold text-[#d7aabd]">رابط الرجوع بعد الدفع</span>
-            <input
-              type="text"
-              value={settings.returnUrl}
-              onChange={(event) => setSettings((current) => ({ ...current, returnUrl: event.target.value }))}
-              className="w-full rounded-xl border border-[rgba(255,188,219,0.18)] bg-[rgba(255,255,255,0.05)] px-3 py-2 text-sm text-[#fff4f8] outline-none transition focus:border-pink-400"
-            />
-          </label>
-
-          <label className="block">
-            <span className="mb-1.5 block text-xs font-bold text-[#d7aabd]">رابط الإلغاء أو الفشل</span>
-            <input
-              type="text"
-              value={settings.cancelUrl}
-              onChange={(event) => setSettings((current) => ({ ...current, cancelUrl: event.target.value }))}
-              className="w-full rounded-xl border border-[rgba(255,188,219,0.18)] bg-[rgba(255,255,255,0.05)] px-3 py-2 text-sm text-[#fff4f8] outline-none transition focus:border-pink-400"
-            />
-          </label>
+            <p className="mt-1 text-xs text-[#d7aabd]">
+              أضف هذا الرابط في لوحة تحكم Paymob → Integrations → Webhook URL.
+            </p>
+          </div>
         </div>
 
-        <div className="mt-4 grid gap-4">
-          <label className="block">
-            <span className="mb-1.5 block text-xs font-bold text-[#d7aabd]">رابط Webhook</span>
-            <input
-              type="text"
-              value={settings.webhookUrl}
-              onChange={(event) => setSettings((current) => ({ ...current, webhookUrl: event.target.value }))}
-              className="w-full rounded-xl border border-[rgba(255,188,219,0.18)] bg-[rgba(255,255,255,0.05)] px-3 py-2 text-sm text-[#fff4f8] outline-none transition focus:border-pink-400"
-            />
-          </label>
-
-          <div className="grid gap-4 lg:grid-cols-2">
-            <AccountEditor
-              title="محافظ إنستاباي"
-              accounts={settings.instapayAccounts}
-              onChange={(next) => setSettings((current) => ({ ...current, instapayAccounts: next }))}
-            />
-            <AccountEditor
-              title="محافظ فودافون كاش"
-              accounts={settings.vodafoneCashAccounts}
-              onChange={(next) => setSettings((current) => ({ ...current, vodafoneCashAccounts: next }))}
-            />
-          </div>
-
-          <label className="flex items-center gap-3 rounded-2xl border border-[rgba(255,188,219,0.12)] bg-black/10 px-4 py-3 text-sm text-[#fff4f8]">
+        <div className="mt-4 space-y-4">
+          <label className="flex items-center gap-3 rounded-2xl border border-[rgba(255,188,219,0.12)] bg-black/10 px-4 py-3 text-sm text-[#fff4f8] cursor-pointer">
             <input
               type="checkbox"
               checked={settings.sandboxMode}
-              onChange={(event) => setSettings((current) => ({ ...current, sandboxMode: event.target.checked }))}
+              onChange={(e) => setSettings((s) => ({ ...s, sandboxMode: e.target.checked }))}
+              className="accent-pink-500"
             />
-            تشغيل وضع الاختبار Sandbox
+            <span>
+              وضع الاختبار Sandbox
+              {settings.sandboxMode && <span className="mr-2 rounded-full bg-amber-500/20 px-2 py-0.5 text-xs text-amber-200">مفعّل</span>}
+            </span>
           </label>
 
           <label className="block">
             <span className="mb-1.5 block text-xs font-bold text-[#d7aabd]">ملاحظات تشغيلية</span>
             <textarea
               value={settings.notes}
-              onChange={(event) => setSettings((current) => ({ ...current, notes: event.target.value }))}
-              rows={4}
+              onChange={(e) => setSettings((s) => ({ ...s, notes: e.target.value }))}
+              rows={3}
               className="w-full rounded-xl border border-[rgba(255,188,219,0.18)] bg-[rgba(255,255,255,0.05)] px-3 py-2 text-sm text-[#fff4f8] outline-none transition focus:border-pink-400"
-              placeholder="مثال: نستخدم Paymob في البداية، بينما المفتاح السري محفوظ فقط داخل .env على السيرفر."
+              placeholder="ملاحظات داخلية..."
             />
           </label>
 
           <div className="rounded-2xl border border-amber-400/20 bg-amber-500/10 px-4 py-3 text-xs leading-6 text-amber-100">
-            لا تحفظ المفاتيح السرية مثل Server Key أو Secret Key داخل هذه الشاشة. استخدم هذه الصفحة للتهيئة العامة
-            فقط، واحفظ القيم السرية في ملفات البيئة على السيرفر.
+            ⚠️ لا تُدخل <strong>PAYMOB_SECRET_KEY</strong> أو <strong>PAYMOB_HMAC_SECRET</strong> في هذه الشاشة.
+            أضفهم فقط في ملف <code>.env</code> على السيرفر.
           </div>
         </div>
       </AdminCard>
 
-      <AdminCard>
-        <div className="mb-4">
-          <h3 className="text-lg font-black text-[#fff4f8]">مزودات الدفع</h3>
-          <p className="mt-1 text-sm leading-6 text-[#d7aabd]">
-            يمكنك لاحقًا تفعيل أي مزود جديد دون العبث بكود الطلبات أو الاشتراكات.
-          </p>
-        </div>
-
-        {providers.length === 0 ? (
-          <AdminEmptyState
-            title="لا توجد مزودات متاحة"
-            description="ستظهر هنا مزودات الدفع الجاهزة داخل المشروع عند إضافتها أو تفعيلها."
-          />
-        ) : (
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            {providers.map((provider) => (
-              <div key={provider.key} className="rounded-[22px] border border-[rgba(255,188,219,0.14)] bg-black/10 p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="text-base font-black text-[#fff4f8]">{provider.label}</div>
-                    <div className="mt-1 text-xs uppercase tracking-[0.18em] text-[#d7aabd]">{provider.key}</div>
-                  </div>
-                  <span
-                    className={`rounded-full px-3 py-1 text-xs font-bold ${
-                      provider.enabled ? "bg-emerald-500/15 text-emerald-200" : "bg-white/10 text-[#d7aabd]"
-                    }`}
-                  >
-                    {provider.enabled ? "مفعّل" : "غير مفعّل"}
-                  </span>
-                </div>
-                <div className="mt-4 text-sm text-[#d7aabd]">
-                  {provider.supportsCards ? "يدعم البطاقات البنكية" : "دعم البطاقات غير مفعل"}
-                </div>
-                {defaultProvider === provider.key ? (
-                  <div className="mt-4 inline-flex rounded-full bg-pink-500/15 px-3 py-1 text-xs font-bold text-pink-200">
-                    المزود الافتراضي
-                  </div>
-                ) : null}
-              </div>
-            ))}
-          </div>
-        )}
-      </AdminCard>
-
+      {/* ── Transactions ── */}
       <AdminCard>
         <div className="mb-4">
           <h3 className="text-lg font-black text-[#fff4f8]">المعاملات الأخيرة</h3>
-          <p className="mt-1 text-sm leading-6 text-[#d7aabd]">
-            تابع حالة كل معاملة، مع إمكانية تحديث حالتها يدويًا خلال التشغيل التجريبي أو عند مطابقة التحويلات.
+          <p className="mt-1 text-sm text-[#d7aabd]">
+            تأكيد الدفع يتم أوتوماتيك عبر Paymob webhook. استخدم زر «تحقق» لاستعلام الحالة يدويًا إن لزم.
           </p>
         </div>
 
         {loading ? (
           <div className="rounded-[22px] border border-[rgba(255,188,219,0.14)] bg-black/10 px-4 py-12 text-center text-sm text-[#d7aabd]">
-            جاري تحميل بيانات المدفوعات...
+            جاري تحميل المعاملات...
           </div>
         ) : transactions.length === 0 ? (
           <AdminEmptyState
             title="لا توجد معاملات بعد"
-            description="ستظهر هنا المعاملات الخاصة بالطلبات أو الاشتراكات بمجرد بدء استخدام طبقة الدفع الجديدة."
+            description="ستظهر هنا المعاملات بمجرد بدء عمليات الدفع عبر Paymob."
           />
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full border-separate border-spacing-y-3 text-sm">
+            <table className="min-w-full border-separate border-spacing-y-2 text-sm">
               <thead>
                 <tr className="text-right text-xs text-[#d7aabd]">
                   <th className="px-3 py-2 font-bold">العميل</th>
                   <th className="px-3 py-2 font-bold">الغرض</th>
-                  <th className="px-3 py-2 font-bold">المزود</th>
-                  <th className="px-3 py-2 font-bold">المحفظة</th>
                   <th className="px-3 py-2 font-bold">القيمة</th>
                   <th className="px-3 py-2 font-bold">الحالة</th>
+                  <th className="px-3 py-2 font-bold">Paymob Ref</th>
                   <th className="px-3 py-2 font-bold">التاريخ</th>
-                  <th className="px-3 py-2 font-bold">تحديث الحالة</th>
-                  <th className="px-3 py-2 font-bold"></th>
+                  <th className="px-3 py-2 font-bold">إجراءات</th>
                 </tr>
               </thead>
               <tbody>
-                {transactions.map((transaction) => (
-                  <tr
-                    key={transaction.id}
-                    className="rounded-[18px] border border-[rgba(255,188,219,0.12)] bg-black/10 text-[#fff4f8]"
-                  >
+                {transactions.map((tx) => (
+                  <tr key={tx.id} className="rounded-[18px] border border-[rgba(255,188,219,0.12)] bg-black/10 text-[#fff4f8]">
                     <td className="rounded-r-[18px] px-3 py-3 align-top">
-                      <div className="font-bold">{transaction.customerName}</div>
-                      <div className="mt-1 text-xs text-[#d7aabd]">
-                        {transaction.customerEmail ?? transaction.customerPhone ?? "بدون بيانات إضافية"}
-                      </div>
+                      <div className="font-bold">{tx.customerName}</div>
+                      <div className="mt-0.5 text-xs text-[#d7aabd]">{tx.customerEmail ?? tx.customerPhone ?? "—"}</div>
                     </td>
-                    <td className="px-3 py-3 align-top">{getPurposeLabel(transaction.purpose)}</td>
-                    <td className="px-3 py-3 align-top font-bold">{transaction.provider}</td>
-                    <td className="px-3 py-3 align-top text-xs text-[#d7aabd]">{getAccountLabel(transaction)}</td>
+                    <td className="px-3 py-3 align-top text-xs">
+                      <div>{getPurposeLabel(tx.purpose)}</div>
+                      <div className="mt-0.5 font-mono text-[10px] text-[#d7aabd] opacity-70">{tx.provider}</div>
+                    </td>
                     <td className="px-3 py-3 align-top font-bold">
-                      {Number(transaction.amount).toLocaleString("ar-EG")} {transaction.currency}
+                      {Number(tx.amount).toLocaleString("ar-EG")} {tx.currency}
                     </td>
                     <td className="px-3 py-3 align-top">
-                      <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-bold ${STATUS_STYLES[transaction.status]}`}>
-                        {STATUS_OPTIONS.find((option) => option.value === transaction.status)?.label ?? transaction.status}
+                      <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-bold ${STATUS_STYLES[tx.status]}`}>
+                        {STATUS_LABELS[tx.status] ?? tx.status}
                       </span>
                     </td>
+                    <td className="px-3 py-3 align-top">
+                      <div className="font-mono text-[10px] text-[#d7aabd]">
+                        {tx.providerReference ? `Order: ${tx.providerReference}` : "—"}
+                      </div>
+                      {tx.externalReference && (
+                        <div className="font-mono text-[10px] text-[#d7aabd]">Txn: {tx.externalReference}</div>
+                      )}
+                    </td>
                     <td className="px-3 py-3 align-top text-xs text-[#d7aabd]">
-                      {new Date(transaction.createdAt).toLocaleString("ar-EG", {
-                        year: "numeric",
-                        month: "short",
-                        day: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
+                      {new Date(tx.createdAt).toLocaleString("ar-EG", {
+                        year: "numeric", month: "short", day: "numeric",
+                        hour: "2-digit", minute: "2-digit",
                       })}
                     </td>
-                    <td className="px-3 py-3 align-top">
-                      <select
-                        value={transaction.status}
-                        onChange={(event) =>
-                          void handleStatusChange(transaction.id, event.target.value as PaymentTransactionRow["status"])
-                        }
-                        disabled={savingId === transaction.id}
-                        className="w-full rounded-xl border border-[rgba(255,188,219,0.18)] bg-[rgba(255,255,255,0.05)] px-3 py-2 text-sm text-[#fff4f8] outline-none transition focus:border-pink-400"
-                      >
-                        {STATUS_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value} className="bg-[#34111f]">
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
                     <td className="rounded-l-[18px] px-3 py-3 align-top">
-                      <button
-                        type="button"
-                        onClick={() => void handleDelete(transaction.id)}
-                        disabled={savingId === transaction.id}
-                        className="rounded-xl border border-rose-500/30 px-3 py-2 text-xs font-bold text-rose-300 hover:bg-rose-500/10 disabled:opacity-40"
-                      >
-                        حذف
-                      </button>
+                      <div className="flex flex-wrap gap-1.5">
+                        {tx.status !== "paid" && (
+                          <button
+                            type="button"
+                            onClick={() => void reVerify(tx.id)}
+                            disabled={actionId === tx.id}
+                            className="rounded-lg border border-sky-400/30 px-2.5 py-1.5 text-xs font-bold text-sky-300 hover:bg-sky-500/10 disabled:opacity-40"
+                          >
+                            {actionId === tx.id ? "..." : "تحقق"}
+                          </button>
+                        )}
+                        {(tx.status === "pending" || tx.status === "requires_action") && (
+                          <button
+                            type="button"
+                            onClick={() => void cancelTransaction(tx.id)}
+                            disabled={actionId === tx.id}
+                            className="rounded-lg border border-amber-400/30 px-2.5 py-1.5 text-xs font-bold text-amber-300 hover:bg-amber-500/10 disabled:opacity-40"
+                          >
+                            إلغاء
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => void deleteTransaction(tx.id)}
+                          disabled={actionId === tx.id}
+                          className="rounded-lg border border-rose-500/30 px-2.5 py-1.5 text-xs font-bold text-rose-300 hover:bg-rose-500/10 disabled:opacity-40"
+                        >
+                          حذف
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
