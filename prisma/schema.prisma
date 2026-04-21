@@ -96,6 +96,9 @@ model User {
   coachProfile        CoachProfile?
   pushSubscriptions   PushSubscription[]
   pushCampaigns       PushCampaign[]     @relation("CampaignAdmin")
+  trainerProfile             Trainer?                    @relation("TrainerAccount")
+  trainerDiscountCodesTarget TrainerDiscountCode[]        @relation("TrainerCodeTarget")
+  privateApplications        PrivateSessionApplication[] @relation("PrivateApplicationUser")
 }
 
 model AuditLog {
@@ -173,6 +176,7 @@ model UserMembership {
 
 model Trainer {
   id             String  @id @default(cuid())
+  userId         String? @unique
   name           String
   nameEn         String?
   specialty      String
@@ -181,6 +185,7 @@ model Trainer {
   bioEn          String? @db.Text
   certifications String? // JSON array
   certificationsEn String? // JSON array
+  certificateFiles String? @db.LongText // JSON array of image URLs
   rating         Float   @default(5.0)
   sessionsCount  Int     @default(0)
   image          String?
@@ -188,7 +193,10 @@ model Trainer {
   showOnHome     Boolean @default(true)
   sortOrder      Int     @default(0)
 
-  classes Class[]
+  user                  User?                      @relation("TrainerAccount", fields: [userId], references: [id], onDelete: SetNull)
+  classes               Class[]
+  discountCodes         TrainerDiscountCode[]
+  privateApplications   PrivateSessionApplication[]
 }
 
 // ─── Class ────────────────────────────────────────────────────────────────────
@@ -884,4 +892,60 @@ model Testimonial {
   updatedAt   DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ─── Trainer Discount Codes ────────────────────────────────────────────────────
+
+model TrainerDiscountCode {
+  id            String    @id @default(cuid())
+  trainerId     String
+  code          String    @unique
+  targetUserId  String
+  discountType  String    @default("percentage") // percentage | fixed
+  discountValue Float
+  maxDiscount   Float?    // cap in EGP for percentage type
+  note          String?
+  isUsed        Boolean   @default(false)
+  usedAt        DateTime?
+  monthYear     String    // "2026-04" — for monthly limit (4/month per trainer)
+  createdAt     DateTime  @default(now())
+
+  trainer    Trainer @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  targetUser User    @relation("TrainerCodeTarget", fields: [targetUserId], references: [id], onDelete: Cascade)
+
+  @@index([trainerId, monthYear])
+  @@index([code])
+}
+
+// ─── Private Session Applications ─────────────────────────────────────────────
+
+model PrivateSessionApplication {
+  id          String    @id @default(cuid())
+  userId      String
+  trainerId   String
+  type        String    @default("private") // private | mini_private
+  status      String    @default("pending") // pending | approved | rejected | paid | cancelled
+
+  // Application form
+  goalsJson    String?  @db.Text  // JSON array
+  injuries     String?  @db.Text
+  availability String?  @db.Text  // JSON
+  notes        String?  @db.Text
+
+  // Trainer response
+  trainerNote  String?  @db.Text
+  trainerPrice Float?
+
+  // Payment
+  paymentTransactionId String?
+  paidAt               DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user    User    @relation("PrivateApplicationUser", fields: [userId], references: [id], onDelete: Cascade)
+  trainer Trainer @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([trainerId])
 }

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { ensureDefaultProductCategories } from "@/lib/product-categories";
 import { getPublicApiCache, setPublicApiCache } from "@/lib/public-cache";
+import { parseStoredTrainerFileLinks } from "@/lib/trainer-profile";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 30;
@@ -102,6 +103,7 @@ type PublicPayload = {
     specialty: string;
     bio: string;
     certifications: string[];
+    certificateFiles: Array<{ url: string; label: string }>;
     rating: number;
     sessionsCount: number;
     image: string | null;
@@ -483,6 +485,7 @@ export async function GET(request: Request) {
         specialty: lang === "en" ? (trainer.specialtyEn || trainer.specialty) : trainer.specialty,
         bio: lang === "en" ? (trainer.bioEn || trainer.bio || "") : (trainer.bio || ""),
         certifications: lang === "en" ? parseJsonArray(trainer.certificationsEn) : parseJsonArray(trainer.certifications),
+        certificateFiles: parseStoredTrainerFileLinks(trainer.certificateFiles),
         rating: trainer.rating,
         sessionsCount: trainer.sessionsCount,
         image: trainer.image,

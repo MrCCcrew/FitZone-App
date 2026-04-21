@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { format, differenceInDays } from "date-fns";
 import { ar, enUS } from "date-fns/locale";
 import { useLang } from "@/lib/language";
+import { TranslateButton } from "@/app/admin/sections/TranslateButton";
 import PushNotificationToggle from "@/components/PushNotificationToggle";
 import PushPromptModal from "@/components/PushPromptModal";
 
@@ -79,6 +80,31 @@ interface AccountData {
 }
 
 // ─── Config ────────────────────────────────────────────────────────────────────
+type TrainerCertificateFile = {
+  url: string;
+  label: string;
+};
+
+type TrainerProfileData = {
+  id: string;
+  userId?: string | null;
+  name: string;
+  nameEn?: string | null;
+  specialty: string;
+  specialtyEn?: string | null;
+  bio?: string | null;
+  bioEn?: string | null;
+  certifications: string[];
+  certificationsEn?: string[];
+  certificateFiles?: TrainerCertificateFile[];
+  image?: string | null;
+  active: boolean;
+  showOnHome: boolean;
+  sortOrder: number;
+  rating: number;
+  sessionsCount: number;
+};
+
 const TIER_CONFIG = {
   bronze:   { label: "برونزي",  color: "text-amber-700",  bg: "bg-amber-900/20",  border: "border-amber-700/30",  next: 1000 },
   silver:   { label: "فضي",    color: "text-gray-300",   bg: "bg-gray-700/30",   border: "border-gray-500/30",   next: 2000 },
@@ -105,16 +131,32 @@ const NOTIF_ICONS: Record<string, string> = {
 };
 
 const TABS = [
-  { id: "profile",       label: "الملف الشخصي", icon: "◎" },
-  { id: "membership",    label: "الاشتراك",      icon: "◈" },
-  { id: "bookings",      label: "الحجوزات",      icon: "▣" },
-  { id: "orders",        label: "الطلبات",       icon: "▤" },
-  { id: "wallet",        label: "المحفظة",       icon: "¤" },
-  { id: "reviews",       label: "آرائي",         icon: "✎" },
-  { id: "notifications", label: "الإشعارات",     icon: "✱" },
-  { id: "complaints",    label: "الشكاوى",       icon: "☒" },
+  { id: "profile", label: "Profile", icon: "P" },
+  { id: "trainerProfile", label: "Trainer Profile", icon: "T" },
+  { id: "trainerDiscountCodes", label: "Trainer Codes", icon: "🎟" },
+  { id: "privateSessions", label: "Private Sessions", icon: "🎯" },
+  { id: "myPrivateSessions", label: "My Privates", icon: "📋" },
+  { id: "membership", label: "Membership", icon: "M" },
+  { id: "bookings", label: "Bookings", icon: "B" },
+  { id: "orders", label: "Orders", icon: "O" },
+  { id: "wallet", label: "Wallet", icon: "W" },
+  { id: "reviews", label: "Reviews", icon: "R" },
+  { id: "notifications", label: "Notifications", icon: "N" },
+  { id: "complaints", label: "Complaints", icon: "C" },
 ] as const;
-type TabId = typeof TABS[number]["id"];
+type TabId =
+  | "profile"
+  | "trainerProfile"
+  | "trainerDiscountCodes"
+  | "privateSessions"
+  | "myPrivateSessions"
+  | "membership"
+  | "bookings"
+  | "orders"
+  | "wallet"
+  | "reviews"
+  | "notifications"
+  | "complaints";
 
 function formatMoney(value: number, lang: "ar" | "en") {
   return new Intl.NumberFormat(lang === "en" ? "en-US" : "ar-EG").format(value);
@@ -133,6 +175,10 @@ function getTierLabel(tier: string, lang: "ar" | "en") {
 function getTabLabel(tabId: TabId, lang: "ar" | "en") {
   const labels: Record<TabId, { ar: string; en: string }> = {
     profile: { ar: "الملف الشخصي", en: "Profile" },
+    trainerProfile: { ar: "ملف المدربة", en: "Trainer profile" },
+    trainerDiscountCodes: { ar: "أكواد الخصم", en: "Discount codes" },
+    privateSessions: { ar: "طلبات البرايفيت", en: "Private sessions" },
+    myPrivateSessions: { ar: "طلباتي", en: "My applications" },
     membership: { ar: "الاشتراك", en: "Membership" },
     bookings: { ar: "الحجوزات", en: "Bookings" },
     orders: { ar: "الطلبات", en: "Orders" },
@@ -780,6 +826,200 @@ function ProfileTab({ user }: { user: AccountData["user"] }) {
 }
 
 // ─── Tab: Membership ──────────────────────────────────────────────────────────
+
+function listToText(items: string[]) {
+  return items.join("\n");
+}
+
+function textToList(value: string) {
+  return value
+    .split(/\r?\n|,/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function TrainerProfileTab() {
+  const { lang } = useLang();
+  const t = (arText: string, enText: string) => (lang === "ar" ? arText : enText);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [profile, setProfile] = useState<TrainerProfileData | null>(null);
+  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadProfile = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/me/trainer-profile", { cache: "no-store" });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(json.error ?? t("Could not load trainer profile.", "Could not load trainer profile."));
+      }
+      setProfile(json.trainer ?? null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("Could not load trainer profile.", "Could not load trainer profile."));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadProfile();
+  }, []);
+
+  const uploadAsset = async (file: File, kind: "image" | "certificate") => {
+    setUploading(true);
+    setMessage(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/me/trainer-profile/uploads", { method: "POST", body: formData });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.url) {
+        throw new Error(json.error ?? t("Could not upload the image right now.", "Could not upload the image right now."));
+      }
+
+      setProfile((current) => {
+        if (!current) return current;
+        if (kind === "image") return { ...current, image: json.url as string };
+        const label = typeof json.fileName === "string" ? json.fileName.replace(/\.[^.]+$/, "") : file.name.replace(/\.[^.]+$/, "");
+        return {
+          ...current,
+          certificateFiles: [...(current.certificateFiles ?? []), { url: json.url as string, label }],
+        };
+      });
+    } catch (err) {
+      setMessage({ ok: false, text: err instanceof Error ? err.message : t("Could not upload the image right now.", "Could not upload the image right now.") });
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const saveProfile = async () => {
+    if (!profile) return;
+    setSaving(true);
+    setMessage(null);
+    try {
+      const res = await fetch("/api/me/trainer-profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(profile),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(json.error ?? t("Could not save trainer profile.", "Could not save trainer profile."));
+      }
+      setMessage({ ok: true, text: t("Trainer profile saved successfully.", "Trainer profile saved successfully.") });
+      await loadProfile();
+    } catch (err) {
+      setMessage({ ok: false, text: err instanceof Error ? err.message : t("Could not save trainer profile.", "Could not save trainer profile.") });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return <div className={CARD + " text-center py-10 text-sm text-[#d7aabd]"}>{t("Loading trainer profile...", "Loading trainer profile...")}</div>;
+  }
+
+  if (error || !profile) {
+    return (
+      <div className={CARD + " space-y-4"}>
+        <div className="text-lg font-black text-white">{t("Trainer profile is unavailable", "Trainer profile is unavailable")}</div>
+        <div className="text-sm leading-7 text-[#d7aabd]">{error ?? t("There is no trainer profile linked to this account yet.", "There is no trainer profile linked to this account yet.")}</div>
+        <button onClick={() => void loadProfile()} className="rounded-xl bg-pink-600 px-5 py-2.5 text-sm font-black text-white">{t("Retry", "Retry")}</button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className={CARD + " space-y-4"}>
+        <div>
+          <h3 className="text-xl font-black text-white">{t("Trainer profile", "Trainer profile")}</h3>
+          <p className="mt-2 text-sm leading-7 text-[#d7aabd]">{t("You can update the public details shown on the trainers page, including bio, image, and certificates.", "You can update the public details shown on the trainers page, including bio, image, and certificates.")}</p>
+        </div>
+        {message ? <div className={message.ok ? "rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200" : "rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200"}>{message.text}</div> : null}
+        <div className="grid gap-4 md:grid-cols-2">
+          <div>
+            <label className="mb-1.5 block text-xs text-[#d7aabd]">{t("Name", "Name")}</label>
+            <input value={profile.name} onChange={(e) => setProfile({ ...profile, name: e.target.value })} className={INPUT} />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs text-[#d7aabd]">{t("Name in English", "Name in English")}</label>
+            <input value={profile.nameEn ?? ""} onChange={(e) => setProfile({ ...profile, nameEn: e.target.value })} className={INPUT} dir="ltr" />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs text-[#d7aabd]">{t("Specialty", "Specialty")}</label>
+            <input value={profile.specialty} onChange={(e) => setProfile({ ...profile, specialty: e.target.value })} className={INPUT} />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs text-[#d7aabd]">{t("Specialty in English", "Specialty in English")}</label>
+            <input value={profile.specialtyEn ?? ""} onChange={(e) => setProfile({ ...profile, specialtyEn: e.target.value })} className={INPUT} dir="ltr" />
+          </div>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <div>
+            <label className="mb-1.5 block text-xs text-[#d7aabd]">{t("Bio", "Bio")}</label>
+            <textarea value={profile.bio ?? ""} onChange={(e) => setProfile({ ...profile, bio: e.target.value })} rows={5} className={INPUT + " resize-none"} />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs text-[#d7aabd]">{t("Bio in English", "Bio in English")}</label>
+            <textarea value={profile.bioEn ?? ""} onChange={(e) => setProfile({ ...profile, bioEn: e.target.value })} rows={5} className={INPUT + " resize-none"} dir="ltr" />
+          </div>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <div>
+            <label className="mb-1.5 block text-xs text-[#d7aabd]">{t("Certifications", "Certifications")}</label>
+            <textarea value={listToText(profile.certifications)} onChange={(e) => setProfile({ ...profile, certifications: textToList(e.target.value) })} rows={5} className={INPUT + " resize-none"} />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs text-[#d7aabd]">{t("Certifications in English", "Certifications in English")}</label>
+            <textarea value={listToText(profile.certificationsEn ?? [])} onChange={(e) => setProfile({ ...profile, certificationsEn: textToList(e.target.value) })} rows={5} className={INPUT + " resize-none"} dir="ltr" />
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-[0.9fr,1.1fr]">
+        <div className={CARD + " space-y-4"}>
+          <div className="text-sm font-bold text-white">{t("Profile image", "Profile image")}</div>
+          <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={(e) => { const file = e.target.files?.[0]; if (file) void uploadAsset(file, "image"); e.currentTarget.value = ""; }} className="block w-full text-sm text-[#d7aabd] file:ml-3 file:rounded-lg file:border-0 file:bg-pink-600 file:px-4 file:py-2 file:text-sm file:font-bold file:text-white" />
+          <input value={profile.image ?? ""} onChange={(e) => setProfile({ ...profile, image: e.target.value })} placeholder="https://example.com/trainer.jpg" className={INPUT} dir="ltr" />
+          {uploading ? <div className="text-xs text-yellow-300">{t("Uploading files...", "Uploading files...")}</div> : null}
+          {profile.image ? <div className="overflow-hidden rounded-2xl border border-[#ffbcdb]/15 bg-black/20"><img src={profile.image} alt={profile.name} className="h-[320px] w-full object-cover" /></div> : null}
+        </div>
+
+        <div className={CARD + " space-y-4"}>
+          <div className="text-sm font-bold text-white">{t("Certificate images", "Certificate images")}</div>
+          <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={(e) => { const file = e.target.files?.[0]; if (file) void uploadAsset(file, "certificate"); e.currentTarget.value = ""; }} className="block w-full text-sm text-[#d7aabd] file:ml-3 file:rounded-lg file:border-0 file:bg-sky-600 file:px-4 file:py-2 file:text-sm file:font-bold file:text-white" />
+          {profile.certificateFiles && profile.certificateFiles.length ? (
+            <div className="grid gap-3 md:grid-cols-2">
+              {profile.certificateFiles.map((file, index) => (
+                <div key={file.url + "-" + index} className="rounded-2xl border border-[#ffbcdb]/15 bg-black/20 p-3">
+                  <div className="mb-3 overflow-hidden rounded-xl border border-[#ffbcdb]/10"><img src={file.url} alt={file.label || ("certificate-" + (index + 1))} className="h-36 w-full object-cover" /></div>
+                  <input value={file.label} onChange={(e) => setProfile({ ...profile, certificateFiles: (profile.certificateFiles ?? []).map((entry, entryIndex) => entryIndex === index ? { ...entry, label: e.target.value } : entry) })} placeholder={t("????? " + (index + 1), "Certificate " + (index + 1))} className={INPUT} />
+                  <div className="mt-3 flex items-center justify-between gap-2">
+                    <a href={file.url} target="_blank" rel="noreferrer" className="rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-xs font-bold text-sky-200">{t("Open", "Open")}</a>
+                    <button type="button" onClick={() => setProfile({ ...profile, certificateFiles: (profile.certificateFiles ?? []).filter((_, entryIndex) => entryIndex !== index) })} className="rounded-lg bg-red-950/50 px-3 py-2 text-xs font-bold text-red-300">{t("Delete", "Delete")}</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : <div className="rounded-2xl border border-dashed border-[#ffbcdb]/20 px-4 py-8 text-center text-sm text-[#d7aabd]">{t("No certificate images uploaded yet.", "No certificate images uploaded yet.")}</div>}
+        </div>
+      </div>
+
+      <div className="flex justify-end">
+        <button onClick={() => void saveProfile()} disabled={saving || uploading} className="rounded-xl bg-pink-600 px-6 py-3 text-sm font-black text-white disabled:opacity-50">
+          {saving ? t("Saving...", "Saving...") : t("Save trainer profile", "Save trainer profile")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function MembershipTab({ membership }: { membership: AccountData["membership"] }) {
   const { lang } = useLang();
   const t = (arText: string, enText: string) => (lang === "ar" ? arText : enText);
@@ -2295,22 +2535,470 @@ function NotificationsTab({ notifications: init }: { notifications: AccountData[
   );
 }
 
+// ─── Tab: Trainer Discount Codes ───────────────────────────────────────────────
+type TrainerCode = {
+  id: string;
+  code: string;
+  discountType: string;
+  discountValue: number;
+  maxDiscount?: number | null;
+  note?: string | null;
+  isUsed: boolean;
+  usedAt?: string | null;
+  createdAt: string;
+  targetUser: { id: string; name: string; email: string };
+};
+
+function TrainerDiscountCodesTab() {
+  const { lang } = useLang();
+  const t = (arText: string, enText: string) => (lang === "ar" ? arText : enText);
+
+  const [codes, setCodes] = useState<TrainerCode[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  // Search clients
+  const [clientSearch, setClientSearch] = useState("");
+  const [clientResults, setClientResults] = useState<{ id: string; name: string; email: string }[]>([]);
+  const [selectedClient, setSelectedClient] = useState<{ id: string; name: string; email: string } | null>(null);
+  const [discountType, setDiscountType] = useState<"fixed" | "percentage">("fixed");
+  const [discountValue, setDiscountValue] = useState("");
+  const [maxDiscount, setMaxDiscount] = useState("");
+  const [note, setNote] = useState("");
+
+  const loadCodes = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/trainer/discount-codes");
+      const json = await res.json().catch(() => ({}));
+      setCodes(Array.isArray(json.codes) ? json.codes : []);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { void loadCodes(); }, []);
+
+  useEffect(() => {
+    if (!clientSearch.trim()) { setClientResults([]); return; }
+    const timer = setTimeout(async () => {
+      const res = await fetch(`/api/admin/users?search=${encodeURIComponent(clientSearch)}&limit=6`);
+      const json = await res.json().catch(() => ({}));
+      setClientResults(Array.isArray(json.users) ? json.users : []);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [clientSearch]);
+
+  const createCode = async () => {
+    if (!selectedClient) { setMsg({ ok: false, text: t("اختاري العميل أولاً", "Select a client first") }); return; }
+    const val = parseFloat(discountValue);
+    if (!val || val <= 0) { setMsg({ ok: false, text: t("أدخلي قيمة الخصم", "Enter discount value") }); return; }
+    setCreating(true);
+    setMsg(null);
+    try {
+      const res = await fetch("/api/trainer/discount-codes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          targetUserId: selectedClient.id,
+          discountType,
+          discountValue: val,
+          maxDiscount: discountType === "percentage" && maxDiscount ? parseFloat(maxDiscount) : undefined,
+          note: note.trim() || undefined,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error ?? t("حدث خطأ", "An error occurred"));
+      setMsg({ ok: true, text: t(`تم إنشاء الكود: ${json.code}`, `Code created: ${json.code}`) });
+      setSelectedClient(null); setClientSearch(""); setDiscountValue(""); setMaxDiscount(""); setNote("");
+      await loadCodes();
+    } catch (err) {
+      setMsg({ ok: false, text: err instanceof Error ? err.message : t("حدث خطأ", "An error occurred") });
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  return (
+    <div className="space-y-5">
+      {/* Create form */}
+      <div className={CARD + " space-y-4"}>
+        <h3 className="text-lg font-black text-white">{t("إنشاء كود خصم جديد", "Create new discount code")}</h3>
+        <p className="text-sm text-[#d7aabd]">{t("يمكنك إنشاء حتى 4 أكواد شهرياً، كل كود لعميل واحد مرة واحدة فقط.", "Up to 4 codes per month. Each code is for one client, one use only.")}</p>
+        {msg && <div className={msg.ok ? "rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200" : "rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200"}>{msg.text}</div>}
+
+        {/* Client search */}
+        <div>
+          <label className="mb-1.5 block text-xs text-[#d7aabd]">{t("اختاري العميل", "Select client")}</label>
+          {selectedClient ? (
+            <div className="flex items-center gap-3 rounded-xl border border-pink-400/30 bg-pink-900/20 px-4 py-2.5">
+              <span className="flex-1 text-sm text-white">{selectedClient.name} <span className="text-[#d7aabd]">({selectedClient.email})</span></span>
+              <button onClick={() => setSelectedClient(null)} className="text-xs text-red-400 hover:text-red-300">✕ {t("تغيير", "Change")}</button>
+            </div>
+          ) : (
+            <div className="relative">
+              <input value={clientSearch} onChange={(e) => setClientSearch(e.target.value)} placeholder={t("ابحثي بالاسم أو الإيميل...", "Search by name or email...")} className={INPUT} />
+              {clientResults.length > 0 && (
+                <div className="absolute top-full z-10 mt-1 w-full rounded-xl border border-[#ffbcdb]/20 bg-[#3f1426] shadow-xl">
+                  {clientResults.map((u) => (
+                    <button key={u.id} onClick={() => { setSelectedClient(u); setClientSearch(""); setClientResults([]); }} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-white hover:bg-pink-900/30">
+                      <span className="font-medium">{u.name}</span>
+                      <span className="text-[#d7aabd] text-xs">{u.email}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label className="mb-1.5 block text-xs text-[#d7aabd]">{t("نوع الخصم", "Discount type")}</label>
+            <select value={discountType} onChange={(e) => setDiscountType(e.target.value as "fixed" | "percentage")} className={INPUT}>
+              <option value="fixed">{t("مبلغ ثابت (جنيه)", "Fixed amount (EGP)")}</option>
+              <option value="percentage">{t("نسبة مئوية (%)", "Percentage (%)")}</option>
+            </select>
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs text-[#d7aabd]">{discountType === "fixed" ? t("المبلغ (جنيه)", "Amount (EGP)") : t("النسبة (%)", "Percentage (%)")}</label>
+            <input type="number" value={discountValue} onChange={(e) => setDiscountValue(e.target.value)} min="1" max={discountType === "percentage" ? "100" : undefined} className={INPUT} />
+          </div>
+          {discountType === "percentage" && (
+            <div>
+              <label className="mb-1.5 block text-xs text-[#d7aabd]">{t("أقصى خصم (جنيه، اختياري)", "Max discount (EGP, optional)")}</label>
+              <input type="number" value={maxDiscount} onChange={(e) => setMaxDiscount(e.target.value)} min="1" className={INPUT} />
+            </div>
+          )}
+          <div className={discountType === "percentage" ? "" : "sm:col-span-2"}>
+            <label className="mb-1.5 block text-xs text-[#d7aabd]">{t("ملاحظة (اختياري)", "Note (optional)")}</label>
+            <input value={note} onChange={(e) => setNote(e.target.value)} className={INPUT} />
+          </div>
+        </div>
+
+        <button disabled={creating} onClick={() => void createCode()} className="rounded-xl bg-gradient-to-r from-pink-600 to-pink-500 px-6 py-2.5 text-sm font-black text-white hover:opacity-90 disabled:opacity-50">
+          {creating ? t("جاري الإنشاء...", "Creating...") : t("إنشاء الكود", "Create code")}
+        </button>
+      </div>
+
+      {/* Existing codes */}
+      <div className={CARD + " space-y-3"}>
+        <h3 className="text-lg font-black text-white">{t("الأكواد المُنشأة", "Created codes")}</h3>
+        {loading ? (
+          <p className="text-sm text-[#d7aabd]">{t("جاري التحميل...", "Loading...")}</p>
+        ) : codes.length === 0 ? (
+          <p className="text-sm text-[#d7aabd]">{t("لم تقومي بإنشاء أي أكواد بعد.", "No codes created yet.")}</p>
+        ) : (
+          <div className="space-y-3">
+            {codes.map((c) => (
+              <div key={c.id} className="rounded-xl border border-[#ffbcdb]/15 bg-white/5 p-4 flex flex-col sm:flex-row sm:items-center gap-3">
+                <div className="flex-1 space-y-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-black text-pink-300 font-mono tracking-wider">{c.code}</span>
+                    <span className={c.isUsed ? "text-xs bg-gray-600/30 text-gray-400 rounded-full px-2 py-0.5" : "text-xs bg-emerald-500/20 text-emerald-400 rounded-full px-2 py-0.5"}>
+                      {c.isUsed ? t("مستخدم", "Used") : t("متاح", "Active")}
+                    </span>
+                  </div>
+                  <p className="text-sm text-white">
+                    {c.discountType === "fixed" ? `${c.discountValue} ${t("جنيه", "EGP")}` : `${c.discountValue}%${c.maxDiscount ? ` (${t("بحد أقصى", "max")} ${c.maxDiscount} ${t("ج", "EGP")})` : ""}`}
+                    <span className="text-[#d7aabd] mx-2">—</span>
+                    {t("لـ", "for")} <span className="text-pink-300">{c.targetUser.name}</span>
+                  </p>
+                  {c.note && <p className="text-xs text-[#d7aabd]">{c.note}</p>}
+                  {c.isUsed && c.usedAt && <p className="text-xs text-gray-400">{t("استُخدم في", "Used on")} {new Date(c.usedAt).toLocaleDateString(lang === "ar" ? "ar-EG" : "en-US")}</p>}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Tab: Private Sessions (Trainer view) ──────────────────────────────────────
+type PrivateApp = {
+  id: string;
+  type: string;
+  status: string;
+  goalsJson?: string | null;
+  injuries?: string | null;
+  notes?: string | null;
+  availability?: string | null;
+  trainerNote?: string | null;
+  trainerPrice?: number | null;
+  createdAt: string;
+  user: { id: string; name: string; email: string; phone?: string | null };
+};
+
+function PrivateSessionsTab() {
+  const { lang } = useLang();
+  const t = (arText: string, enText: string) => (lang === "ar" ? arText : enText);
+
+  const [apps, setApps] = useState<PrivateApp[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [actioning, setActioning] = useState<string | null>(null);
+  const [priceInputs, setPriceInputs] = useState<Record<string, string>>({});
+  const [noteInputs, setNoteInputs] = useState<Record<string, string>>({});
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/trainer/private-sessions");
+      const json = await res.json().catch(() => ({}));
+      setApps(Array.isArray(json.applications) ? json.applications : []);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { void load(); }, []);
+
+  const action = async (appId: string, status: "approved" | "rejected") => {
+    const price = parseFloat(priceInputs[appId] ?? "0");
+    if (status === "approved" && (!price || price <= 0)) {
+      setMsg({ ok: false, text: t("أدخلي السعر المطلوب قبل الموافقة", "Enter the price before approving") });
+      return;
+    }
+    setActioning(appId);
+    setMsg(null);
+    try {
+      const res = await fetch("/api/trainer/private-sessions", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ applicationId: appId, status, trainerPrice: price || undefined, trainerNote: noteInputs[appId] || undefined }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error ?? t("حدث خطأ", "An error occurred"));
+      setMsg({ ok: true, text: status === "approved" ? t("تمت الموافقة وتم إرسال إشعار للعميل", "Approved and client notified") : t("تم رفض الطلب", "Application rejected") });
+      await load();
+    } catch (err) {
+      setMsg({ ok: false, text: err instanceof Error ? err.message : t("حدث خطأ", "An error occurred") });
+    } finally {
+      setActioning(null);
+    }
+  };
+
+  const TYPE_LABELS: Record<string, string> = { private: t("برايفيت", "Private"), mini_private: t("ميني برايفيت", "Mini-private") };
+  const STATUS_LABELS: Record<string, { label: string; color: string }> = {
+    pending: { label: t("في الانتظار", "Pending"), color: "bg-yellow-500/20 text-yellow-400" },
+    approved: { label: t("مقبول", "Approved"), color: "bg-emerald-500/20 text-emerald-400" },
+    rejected: { label: t("مرفوض", "Rejected"), color: "bg-red-500/20 text-red-400" },
+    paid: { label: t("تم الدفع", "Paid"), color: "bg-blue-500/20 text-blue-400" },
+  };
+
+  return (
+    <div className="space-y-5">
+      <div className={CARD + " space-y-3"}>
+        <h3 className="text-lg font-black text-white">{t("طلبات البرايفيت", "Private session applications")}</h3>
+        {msg && <div className={msg.ok ? "rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200" : "rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200"}>{msg.text}</div>}
+        {loading ? (
+          <p className="text-sm text-[#d7aabd]">{t("جاري التحميل...", "Loading...")}</p>
+        ) : apps.length === 0 ? (
+          <p className="text-sm text-[#d7aabd]">{t("لا توجد طلبات حتى الآن.", "No applications yet.")}</p>
+        ) : (
+          <div className="space-y-4">
+            {apps.map((app) => {
+              const statusInfo = STATUS_LABELS[app.status] ?? { label: app.status, color: "bg-gray-500/20 text-gray-400" };
+              let goals: string[] = [];
+              try { goals = JSON.parse(app.goalsJson ?? "[]"); } catch { /* empty */ }
+              return (
+                <div key={app.id} className="rounded-xl border border-[#ffbcdb]/15 bg-white/5 p-4 space-y-3">
+                  <div className="flex items-start justify-between gap-3 flex-wrap">
+                    <div>
+                      <p className="font-black text-white">{app.user.name}</p>
+                      <p className="text-xs text-[#d7aabd]">{app.user.email}{app.user.phone ? ` · ${app.user.phone}` : ""}</p>
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs rounded-full bg-pink-500/20 text-pink-300 px-2 py-0.5">{TYPE_LABELS[app.type] ?? app.type}</span>
+                      <span className={`text-xs rounded-full px-2 py-0.5 ${statusInfo.color}`}>{statusInfo.label}</span>
+                    </div>
+                  </div>
+                  {goals.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {goals.map((g) => <span key={g} className="text-xs bg-purple-500/20 text-purple-300 rounded-full px-2 py-0.5">{g}</span>)}
+                    </div>
+                  )}
+                  {app.injuries && <p className="text-sm text-[#d7aabd]"><span className="font-bold text-white">{t("إصابات:", "Injuries:")} </span>{app.injuries}</p>}
+                  {app.notes && <p className="text-sm text-[#d7aabd]"><span className="font-bold text-white">{t("ملاحظات:", "Notes:")} </span>{app.notes}</p>}
+                  {app.availability && <p className="text-sm text-[#d7aabd]"><span className="font-bold text-white">{t("التوافر:", "Availability:")} </span>{app.availability}</p>}
+                  {app.status === "approved" && app.trainerPrice && (
+                    <p className="text-sm text-emerald-400 font-bold">{t("السعر المحدد:", "Set price:")} {app.trainerPrice} {t("جنيه", "EGP")}</p>
+                  )}
+                  {app.status === "pending" && (
+                    <div className="grid gap-3 sm:grid-cols-2 pt-2 border-t border-white/10">
+                      <div>
+                        <label className="mb-1 block text-xs text-[#d7aabd]">{t("السعر (جنيه) *", "Price (EGP) *")}</label>
+                        <input type="number" value={priceInputs[app.id] ?? ""} onChange={(e) => setPriceInputs((p) => ({ ...p, [app.id]: e.target.value }))} className={INPUT} min="0" />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs text-[#d7aabd]">{t("ملاحظة (اختياري)", "Note (optional)")}</label>
+                        <input value={noteInputs[app.id] ?? ""} onChange={(e) => setNoteInputs((p) => ({ ...p, [app.id]: e.target.value }))} className={INPUT} />
+                      </div>
+                      <div className="sm:col-span-2 flex gap-3">
+                        <button disabled={actioning === app.id} onClick={() => void action(app.id, "approved")} className="flex-1 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-black text-white hover:opacity-90 disabled:opacity-50">
+                          {actioning === app.id ? "..." : t("موافقة", "Approve")}
+                        </button>
+                        <button disabled={actioning === app.id} onClick={() => void action(app.id, "rejected")} className="flex-1 rounded-xl bg-red-700/70 px-4 py-2 text-sm font-black text-white hover:opacity-90 disabled:opacity-50">
+                          {actioning === app.id ? "..." : t("رفض", "Reject")}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Tab: My Private Sessions (Client view) ────────────────────────────────────
+type MyPrivateApp = {
+  id: string;
+  type: string;
+  status: string;
+  trainerNote?: string | null;
+  trainerPrice?: number | null;
+  paidAt?: string | null;
+  createdAt: string;
+  trainer: { id: string; name: string; image?: string | null };
+};
+
+function MyPrivateSessionsTab() {
+  const { lang } = useLang();
+  const t = (arText: string, enText: string) => (lang === "ar" ? arText : enText);
+
+  const [apps, setApps] = useState<MyPrivateApp[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [paying, setPaying] = useState<string | null>(null);
+  const [payMsg, setPayMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/private-sessions");
+      const json = await res.json().catch(() => ({}));
+      setApps(Array.isArray(json.applications) ? json.applications : []);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { void load(); }, []);
+
+  const payNow = async (appId: string) => {
+    setPaying(appId);
+    setPayMsg(null);
+    try {
+      const res = await fetch("/api/private-sessions/pay", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ applicationId: appId }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error ?? t("حدث خطأ", "An error occurred"));
+      if (json.redirectUrl) {
+        window.location.href = json.redirectUrl;
+      } else {
+        setPayMsg({ ok: true, text: t("تم الدفع بنجاح!", "Payment successful!") });
+        await load();
+      }
+    } catch (err) {
+      setPayMsg({ ok: false, text: err instanceof Error ? err.message : t("حدث خطأ", "An error occurred") });
+    } finally {
+      setPaying(null);
+    }
+  };
+
+  const TYPE_LABELS: Record<string, string> = { private: t("برايفيت", "Private"), mini_private: t("ميني برايفيت", "Mini-private") };
+  const STATUS_LABELS: Record<string, { label: string; color: string }> = {
+    pending: { label: t("في انتظار الموافقة", "Awaiting approval"), color: "bg-yellow-500/20 text-yellow-400" },
+    approved: { label: t("مقبول — في انتظار الدفع", "Approved — awaiting payment"), color: "bg-emerald-500/20 text-emerald-400" },
+    rejected: { label: t("مرفوض", "Rejected"), color: "bg-red-500/20 text-red-400" },
+    paid: { label: t("مدفوع ✓", "Paid ✓"), color: "bg-blue-500/20 text-blue-400" },
+  };
+
+  return (
+    <div className="space-y-5">
+      <div className={CARD + " space-y-3"}>
+        <h3 className="text-lg font-black text-white">{t("طلبات البرايفيت الخاصة بي", "My private session applications")}</h3>
+        {payMsg && <div className={payMsg.ok ? "rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200" : "rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200"}>{payMsg.text}</div>}
+        {loading ? (
+          <p className="text-sm text-[#d7aabd]">{t("جاري التحميل...", "Loading...")}</p>
+        ) : apps.length === 0 ? (
+          <div className="text-center py-8">
+            <div className="text-4xl mb-3">🎯</div>
+            <p className="text-sm text-[#d7aabd]">{t("لم تقدمي على أي جلسة برايفيت بعد.", "No private session applications yet.")}</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {apps.map((app) => {
+              const statusInfo = STATUS_LABELS[app.status] ?? { label: app.status, color: "bg-gray-500/20 text-gray-400" };
+              return (
+                <div key={app.id} className="rounded-xl border border-[#ffbcdb]/15 bg-white/5 p-4 space-y-3">
+                  <div className="flex items-start justify-between gap-3 flex-wrap">
+                    <div className="flex items-center gap-3">
+                      {app.trainer.image && <img src={app.trainer.image} alt={app.trainer.name} className="w-10 h-10 rounded-full object-cover" />}
+                      <div>
+                        <p className="font-black text-white">{app.trainer.name}</p>
+                        <p className="text-xs text-[#d7aabd]">{TYPE_LABELS[app.type] ?? app.type}</p>
+                      </div>
+                    </div>
+                    <span className={`text-xs rounded-full px-2 py-0.5 ${statusInfo.color}`}>{statusInfo.label}</span>
+                  </div>
+                  {app.status === "approved" && app.trainerPrice && (
+                    <div className="rounded-xl border border-emerald-500/30 bg-emerald-900/20 px-4 py-3 space-y-2">
+                      <p className="text-sm text-emerald-300">{t("وافقت المدربة على طلبك! السعر:", "Your trainer approved your request! Price:")} <span className="font-black text-white">{app.trainerPrice} {t("جنيه", "EGP")}</span></p>
+                      {app.trainerNote && <p className="text-sm text-[#d7aabd]">{app.trainerNote}</p>}
+                      <button disabled={paying === app.id} onClick={() => void payNow(app.id)} className="mt-1 rounded-xl bg-gradient-to-r from-pink-600 to-pink-500 px-6 py-2.5 text-sm font-black text-white hover:opacity-90 disabled:opacity-50">
+                        {paying === app.id ? t("جاري الدفع...", "Processing...") : t("ادفعي الآن", "Pay now")}
+                      </button>
+                    </div>
+                  )}
+                  {app.status === "rejected" && app.trainerNote && (
+                    <p className="text-sm text-[#d7aabd]">{t("ملاحظة:", "Note:")} {app.trainerNote}</p>
+                  )}
+                  {app.status === "paid" && app.paidAt && (
+                    <p className="text-xs text-blue-400">{t("تم الدفع في", "Paid on")} {new Date(app.paidAt).toLocaleDateString(lang === "ar" ? "ar-EG" : "en-US")}</p>
+                  )}
+                  <p className="text-xs text-gray-500">{t("تاريخ الطلب:", "Applied:")} {new Date(app.createdAt).toLocaleDateString(lang === "ar" ? "ar-EG" : "en-US")}</p>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Component ────────────────────────────────────────────────────────────
 export default function AccountClient({ data }: { data: AccountData }) {
   const { lang } = useLang();
   const t = (arText: string, enText: string) => (lang === "ar" ? arText : enText);
   const searchParams = useSearchParams();
   const requestedTab = searchParams.get("tab");
-  const [activeTab, setActiveTab]     = useState<TabId>(isTabId(requestedTab) ? requestedTab : "profile");
+  const TRAINER_ONLY_TABS: TabId[] = ["trainerProfile", "trainerDiscountCodes", "privateSessions"];
+  const availableTabs = useMemo(
+    () =>
+      data.user.role === "trainer" || data.user.role === "admin"
+        ? TABS
+        : TABS.filter((tab) => !TRAINER_ONLY_TABS.includes(tab.id as TabId)),
+    [data.user.role],
+  );
+  const resolveTab = (value: string | null): TabId => (availableTabs.some((tab) => tab.id === value) ? (value as TabId) : "profile");
+  const [activeTab, setActiveTab]     = useState<TabId>(resolveTab(requestedTab));
   const [loggingOut, setLoggingOut]   = useState(false);
   const [congratsMsg, setCongratsMsg] = useState<string | null>(null);
 
   useEffect(() => {
-    const nextTab = searchParams.get("tab");
-    if (isTabId(nextTab)) {
-      setActiveTab(nextTab);
-    }
-  }, [searchParams]);
+    setActiveTab(resolveTab(searchParams.get("tab")));
+  }, [availableTabs, searchParams]);
 
   const unreadCount = data.notifications.filter((n) => !n.isRead).length;
 
@@ -2429,7 +3117,7 @@ export default function AccountClient({ data }: { data: AccountData }) {
           {/* Sidebar tabs */}
           <aside className="shrink-0 lg:w-56">
             <nav className="grid grid-cols-2 gap-2 lg:flex lg:flex-col lg:gap-1">
-              {TABS.map((tab) => (
+              {availableTabs.map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
@@ -2454,8 +3142,12 @@ export default function AccountClient({ data }: { data: AccountData }) {
 
           {/* Content */}
           <main className="flex-1 min-w-0">
-            {activeTab === "profile"       && <ProfileTab       user={data.user} />}
-            {activeTab === "membership"    && <MembershipTab    membership={data.membership} />}
+            {activeTab === "profile"              && <ProfileTab              user={data.user} />}
+            {activeTab === "trainerProfile"       && <TrainerProfileTab />}
+            {activeTab === "trainerDiscountCodes" && <TrainerDiscountCodesTab />}
+            {activeTab === "privateSessions"      && <PrivateSessionsTab />}
+            {activeTab === "myPrivateSessions"    && <MyPrivateSessionsTab />}
+            {activeTab === "membership"           && <MembershipTab    membership={data.membership} />}
             {activeTab === "bookings"      && <BookingsTab      bookings={data.bookings} />}
             {activeTab === "orders"        && <OrdersTab        orders={data.orders} />}
             {activeTab === "wallet"        && <WalletTab        wallet={data.wallet} rewards={data.rewards} referral={data.referral} />}

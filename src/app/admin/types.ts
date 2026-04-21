@@ -154,6 +154,7 @@ export interface GymClass {
 
 export interface Trainer {
   id: string;
+  userId?: string | null;
   name: string;
   nameEn?: string | null;
   specialty: string;
@@ -162,6 +163,10 @@ export interface Trainer {
   bioEn?: string | null;
   certifications: string[];
   certificationsEn?: string[];
+  certificateFiles?: Array<{
+    url: string;
+    label: string;
+  }>;
   rating: number;
   sessionsCount: number;
   image?: string | null;
@@ -169,6 +174,11 @@ export interface Trainer {
   active: boolean;
   showOnHome: boolean;
   sortOrder: number;
+  linkedUser?: {
+    id: string;
+    name: string;
+    email: string;
+  } | null;
 }
 
 export interface Product {

@@ -8,6 +8,12 @@ const INPUT =
   "w-full rounded-xl border border-gray-700 bg-gray-800 px-4 py-2.5 text-sm text-white outline-none transition-colors focus:border-pink-500";
 
 type EditableTrainer = Omit<Trainer, "id" | "classesCount"> & { id?: string };
+type TrainerAccountOption = {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+};
 
 const EMPTY_TRAINER: EditableTrainer = {
   name: "",
@@ -18,9 +24,12 @@ const EMPTY_TRAINER: EditableTrainer = {
   bioEn: "",
   certifications: [],
   certificationsEn: [],
+  certificateFiles: [],
   rating: 5,
   sessionsCount: 0,
   image: "",
+  userId: null,
+  linkedUser: null,
   active: true,
   showOnHome: true,
   sortOrder: 0,
@@ -86,6 +95,7 @@ function FieldHint({
 
 export default function Trainers() {
   const [trainers, setTrainers] = useState<Trainer[]>([]);
+  const [trainerAccounts, setTrainerAccounts] = useState<TrainerAccountOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -96,9 +106,21 @@ export default function Trainers() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await fetch("/api/admin/trainers", { cache: "no-store" });
-      const data = await response.json().catch(() => []);
-      setTrainers(Array.isArray(data) ? data : []);
+      const [trainersResponse, employeesResponse] = await Promise.all([
+        fetch("/api/admin/trainers", { cache: "no-store" }),
+        fetch("/api/admin/settings/staff", { cache: "no-store" }),
+      ]);
+      const trainersPayload = await trainersResponse.json().catch(() => []);
+      const employeesPayload = await employeesResponse.json().catch(() => ({ employees: [] }));
+      setTrainers(Array.isArray(trainersPayload) ? trainersPayload : []);
+      setTrainerAccounts(
+        Array.isArray(employeesPayload.employees)
+          ? employeesPayload.employees.filter(
+              (employee: { id?: string; name?: string; email?: string; role?: string }) =>
+                employee.role === "trainer" && employee.id && employee.email,
+            )
+          : [],
+      );
     } finally {
       setLoading(false);
     }
@@ -121,6 +143,17 @@ export default function Trainers() {
         (trainer.bio ?? "").includes(query),
     );
   }, [search, trainers]);
+
+  const linkedUserOptions = useMemo(() => {
+    const currentUserId = modal?.userId ?? null;
+    const takenUserIds = new Set(
+      trainers
+        .map((trainer) => trainer.userId)
+        .filter((userId): userId is string => Boolean(userId) && userId !== currentUserId),
+    );
+
+    return trainerAccounts.filter((account) => !takenUserIds.has(account.id));
+  }, [modal?.userId, trainerAccounts, trainers]);
 
   const saveTrainer = async () => {
     if (!modal) return;
@@ -197,6 +230,44 @@ export default function Trainers() {
       setModal((current) => (current ? { ...current, image: payload.url } : current));
     } catch (error) {
       setUploadError(error instanceof Error ? error.message : "تعذر رفع صورة المدربة الآن.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const uploadCertificate = async (file: File) => {
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("folder", "trainers");
+
+      const response = await fetch("/api/admin/uploads", {
+        method: "POST",
+        body: formData,
+      });
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok || !payload.url) {
+        throw new Error(payload.error ?? "تعذر رفع صورة الشهادة الآن.");
+      }
+
+      const label =
+        typeof payload.fileName === "string"
+          ? payload.fileName.replace(/\.[^.]+$/, "")
+          : file.name.replace(/\.[^.]+$/, "");
+
+      setModal((current) =>
+        current
+          ? {
+              ...current,
+              certificateFiles: [...(current.certificateFiles ?? []), { url: payload.url as string, label }],
+            }
+          : current,
+      );
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : "تعذر رفع صورة الشهادة الآن.");
     } finally {
       setUploading(false);
     }
@@ -295,6 +366,13 @@ export default function Trainers() {
                       <div className="text-xs text-gray-500">{trainer.nameEn || "—"}</div>
                       <div className="text-sm font-semibold text-pink-300">{trainer.specialty}</div>
                       {trainer.specialtyEn ? <div className="text-xs text-gray-500">{trainer.specialtyEn}</div> : null}
+                      {trainer.linkedUser ? (
+                        <div className="mt-1 text-xs text-emerald-300">
+                          {trainer.linkedUser.name || "حساب مدربة"} · {trainer.linkedUser.email}
+                        </div>
+                      ) : (
+                        <div className="mt-1 text-xs text-amber-300">غير مرتبطة بحساب</div>
+                      )}
                     </div>
                     <div className="rounded-full bg-gray-800 px-3 py-1 text-xs text-gray-300">
                       ترتيب {trainer.sortOrder}
@@ -352,6 +430,22 @@ export default function Trainers() {
                 </div>
               ) : null}
 
+              {trainer.certificateFiles && trainer.certificateFiles.length ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {trainer.certificateFiles.map((file, index) => (
+                    <a
+                      key={`${file.url}-${index}`}
+                      href={file.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="rounded-full border border-sky-500/30 bg-sky-500/10 px-3 py-1 text-xs text-sky-200"
+                    >
+                      {file.label || `شهادة ${index + 1}`}
+                    </a>
+                  ))}
+                </div>
+              ) : null}
+
               <div className="mt-4 flex gap-2">
                 <button
                   onClick={() => {
@@ -383,6 +477,20 @@ export default function Trainers() {
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
+              <FieldHint title="ربط الحساب" hint="اختاري حساب المدربة حتى تتمكن من تعديل ملفها من داخل حسابها.">
+                <select
+                  value={modal.userId ?? ""}
+                  onChange={(event) => setModal({ ...modal, userId: event.target.value || null })}
+                  className={INPUT}
+                >
+                  <option value="">بدون ربط حاليًا</option>
+                  {linkedUserOptions.map((account) => (
+                    <option key={account.id} value={account.id}>
+                      {account.name} - {account.email}
+                    </option>
+                  ))}
+                </select>
+              </FieldHint>
               <FieldHint title="اسم المدربة" hint="الاسم الظاهر للعميلات داخل صفحة المدربات.">
                 <input
                   value={modal.name}
@@ -577,6 +685,71 @@ export default function Trainers() {
               {modal.image ? (
                 <div className="max-w-[220px] overflow-hidden rounded-2xl border border-gray-700 bg-gray-800">
                   <img src={modal.image} alt={modal.name || "trainer-preview"} className="h-[280px] w-full object-cover" />
+                </div>
+              ) : null}
+            </div>
+
+            <div className="space-y-3">
+              <FieldHint
+                title="صور الشهادات"
+                hint="ارفعي صور الشهادات واحدة تلو الأخرى، ويمكن تعديل اسم كل شهادة بعد الرفع."
+              >
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) void uploadCertificate(file);
+                    event.currentTarget.value = "";
+                  }}
+                  className="block w-full text-sm text-gray-400 file:ml-3 file:rounded-lg file:border-0 file:bg-sky-600 file:px-4 file:py-2 file:text-sm file:font-bold file:text-white"
+                />
+              </FieldHint>
+
+              {modal.certificateFiles && modal.certificateFiles.length ? (
+                <div className="grid gap-3 md:grid-cols-2">
+                  {modal.certificateFiles.map((file, index) => (
+                    <div key={`${file.url}-${index}`} className="rounded-2xl border border-gray-700 bg-gray-800/60 p-3">
+                      <div className="mb-3 overflow-hidden rounded-xl border border-gray-700 bg-black/20">
+                        <img src={file.url} alt={file.label || `certificate-${index + 1}`} className="h-40 w-full object-cover" />
+                      </div>
+                      <input
+                        value={file.label}
+                        onChange={(event) =>
+                          setModal({
+                            ...modal,
+                            certificateFiles: (modal.certificateFiles ?? []).map((entry, entryIndex) =>
+                              entryIndex === index ? { ...entry, label: event.target.value } : entry,
+                            ),
+                          })
+                        }
+                        placeholder={`شهادة ${index + 1}`}
+                        className={INPUT}
+                      />
+                      <div className="mt-3 flex justify-between gap-2">
+                        <a
+                          href={file.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-xs font-bold text-sky-200"
+                        >
+                          فتح الصورة
+                        </a>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setModal({
+                              ...modal,
+                              certificateFiles: (modal.certificateFiles ?? []).filter((_, entryIndex) => entryIndex !== index),
+                            })
+                          }
+                          className="rounded-lg bg-red-950/50 px-3 py-2 text-xs font-bold text-red-300"
+                        >
+                          حذف
+                        </button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               ) : null}
             </div>

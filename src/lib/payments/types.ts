@@ -1,5 +1,5 @@
 export type PaymentProviderKey = "manual" | "instapay" | "vodafone_cash" | "paymob" | "paytabs" | "custom";
-export type PaymentPurpose = "order" | "membership" | "wallet_topup";
+export type PaymentPurpose = "order" | "membership" | "wallet_topup" | "private_session";
 export type PaymentStatus =
   | "pending"
   | "requires_action"
