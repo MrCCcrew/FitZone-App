@@ -927,10 +927,11 @@ model PrivateSessionApplication {
   status      String    @default("pending") // pending | approved | rejected | paid | cancelled
 
   // Application form
-  goalsJson    String?  @db.Text  // JSON array
-  injuries     String?  @db.Text
-  availability String?  @db.Text  // JSON
-  notes        String?  @db.Text
+  goalsJson           String?  @db.Text      // JSON array of goals
+  injuries            String?  @db.Text
+  availability        String?  @db.Text      // JSON
+  notes               String?  @db.Text
+  applicationFormJson String?  @db.LongText  // Full 11-section application JSON
 
   // Trainer response
   trainerNote  String?  @db.Text

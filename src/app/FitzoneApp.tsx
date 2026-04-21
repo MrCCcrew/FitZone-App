@@ -1481,73 +1481,292 @@ type HomeHeroContent = {
 const PrivateBookingModal = ({ trainer, type, onClose }: { trainer: PublicTrainer; type: "private" | "mini_private"; onClose: () => void }) => {
   const t = useT();
   const _w = useWindowWidth();
-  const [goals, setGoals] = useState<string[]>([]);
-  const [injuries, setInjuries] = useState("");
-  const [notes, setNotes] = useState("");
+  const isPrivate = type === "private";
   const [submitting, setSubmitting] = useState(false);
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
 
-  const isPrivate = type === "private";
-  const goalOptions = ["خسارة وزن", "بناء عضلات", "تحسين اللياقة", "تأهيل إصابة", "تحسين المرونة", "تحضير مسابقة"];
-  const toggleGoal = (g: string) => setGoals((prev) => prev.includes(g) ? prev.filter((x) => x !== g) : [...prev, g]);
+  // ── Section 1: Basic info ─────────────────────────────────────────────────
+  const [fullName, setFullName] = useState("");
+  const [age, setAge] = useState("");
+  const [height, setHeight] = useState("");
+  const [weight, setWeight] = useState("");
+  const [phone, setPhone] = useState("");
+  const [jobType, setJobType] = useState<string[]>([]);
+
+  // ── Section 2: Goals ──────────────────────────────────────────────────────
+  const [goals, setGoals] = useState<string[]>([]);
+  const [otherGoal, setOtherGoal] = useState("");
+
+  // ── Section 3: Medical ────────────────────────────────────────────────────
+  const [medConditions, setMedConditions] = useState<string[]>([]);
+  const [takesMeds, setTakesMeds] = useState("");
+  const [medsDetail, setMedsDetail] = useState("");
+
+  // ── Section 4: Injuries ───────────────────────────────────────────────────
+  const [injuries, setInjuries] = useState("");
+  const [surgeries, setSurgeries] = useState("");
+
+  // ── Section 5: Sports experience ─────────────────────────────────────────
+  const [sportsExp, setSportsExp] = useState("");
+
+  // ── Section 6: Lifestyle ──────────────────────────────────────────────────
+  const [sleepHours, setSleepHours] = useState("");
+  const [sleepQuality, setSleepQuality] = useState("");
+  const [stressLevel, setStressLevel] = useState("");
+  const [waterLiters, setWaterLiters] = useState("");
+
+  // ── Section 7: Nutrition ──────────────────────────────────────────────────
+  const [mealsCount, setMealsCount] = useState("");
+  const [followsDiet, setFollowsDiet] = useState("");
+  const [foodAllergies, setFoodAllergies] = useState("");
+  const [supplements, setSupplements] = useState("");
+
+  // ── Section 8: Current activity ──────────────────────────────────────────
+  const [trainingDays, setTrainingDays] = useState("");
+  const [trainingType, setTrainingType] = useState("");
+  const [trainingDuration, setTrainingDuration] = useState("");
+
+  // ── Section 9: Women's health ────────────────────────────────────────────
+  const [pregnant, setPregnant] = useState("");
+  const [gaveBirth, setGaveBirth] = useState("");
+  const [lastBirth, setLastBirth] = useState("");
+  const [hormonalIssues, setHormonalIssues] = useState("");
+
+  // ── Section 10: Commitment ───────────────────────────────────────────────
+  const [goalTimeline, setGoalTimeline] = useState("");
+  const [commitDays, setCommitDays] = useState("");
+  const [dietReady, setDietReady] = useState("");
+
+  // ── Section 11: Notes ─────────────────────────────────────────────────────
+  const [notes, setNotes] = useState("");
+
+  const toggle = (arr: string[], set: (v: string[]) => void, val: string) =>
+    set(arr.includes(val) ? arr.filter((x) => x !== val) : [...arr, val]);
+
+  // styles helpers
+  const S = {
+    section: { marginBottom: 24 } as React.CSSProperties,
+    sectionTitle: { fontWeight: 900, fontSize: 15, color: C.red, marginBottom: 12, paddingBottom: 6, borderBottom: "1px solid rgba(255,255,255,.08)" } as React.CSSProperties,
+    label: { display: "block", fontWeight: 700, color: "#e0d0d8", marginBottom: 5, fontSize: 13 } as React.CSSProperties,
+    input: { width: "100%", borderRadius: 8, border: "1px solid rgba(255,255,255,.15)", background: "rgba(255,255,255,.06)", color: "#fff", padding: "9px 12px", fontSize: 13, boxSizing: "border-box" as const, outline: "none" },
+    textarea: { width: "100%", borderRadius: 8, border: "1px solid rgba(255,255,255,.15)", background: "rgba(255,255,255,.06)", color: "#fff", padding: "9px 12px", fontSize: 13, boxSizing: "border-box" as const, resize: "vertical" as const, outline: "none" },
+    chip: (active: boolean) => ({ padding: "5px 12px", borderRadius: 16, border: `1.5px solid ${active ? C.red : "rgba(255,255,255,.18)"}`, background: active ? "rgba(233,30,99,.22)" : "transparent", color: active ? "#fff" : "#b0a0a8", fontSize: 12, cursor: "pointer", fontWeight: active ? 700 : 400 }),
+    radio: { display: "flex", flexWrap: "wrap" as const, gap: 8 },
+    grid2: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 } as React.CSSProperties,
+  };
 
   const submit = async () => {
+    if (!fullName.trim()) { setMsg({ text: "من فضلك أدخلي اسمك.", ok: false }); return; }
     if (goals.length === 0) { setMsg({ text: "اختاري هدفاً واحداً على الأقل.", ok: false }); return; }
     setSubmitting(true); setMsg(null);
+    const allGoals = otherGoal.trim() ? [...goals, otherGoal.trim()] : goals;
+    const formData = {
+      basicInfo: { fullName, age, height, weight, phone, jobType },
+      goals: allGoals,
+      medical: { conditions: medConditions, takesMeds, medsDetail },
+      injuries: { injuries, surgeries },
+      sportsExperience: sportsExp,
+      lifestyle: { sleepHours, sleepQuality, stressLevel, waterLiters },
+      nutrition: { mealsCount, followsDiet, foodAllergies, supplements },
+      currentActivity: { trainingDays, trainingType, trainingDuration },
+      womensHealth: { pregnant, gaveBirth, lastBirth, hormonalIssues },
+      commitment: { goalTimeline, commitDays, dietReady },
+      notes,
+    };
     try {
       const res = await fetch("/api/private-sessions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ trainerId: trainer.id, type, goals, injuries: injuries.trim() || undefined, notes: notes.trim() || undefined }),
+        body: JSON.stringify({ trainerId: trainer.id, type, goals: allGoals, injuries: injuries.trim() || undefined, notes: notes.trim() || undefined, formData }),
       });
       const data = await res.json() as { error?: string };
       if (!res.ok) { setMsg({ text: data.error ?? "حدث خطأ.", ok: false }); return; }
-      setMsg({ text: "✅ تم إرسال طلبك بنجاح. ستتلقى إشعاراً عند موافقة المدربة.", ok: true });
-      setTimeout(() => onClose(), 3000);
+      setMsg({ text: "✅ تم إرسال طلبك بنجاح! ستصلك إشعار فور موافقة المدربة.", ok: true });
+      setTimeout(() => onClose(), 4000);
     } catch { setMsg({ text: "تعذر الاتصال بالخادم.", ok: false }); }
     finally { setSubmitting(false); }
   };
 
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 310, display: "flex", alignItems: "center", justifyContent: "center", padding: "12px 10px", background: "rgba(0,0,0,.8)", backdropFilter: "blur(8px)", overflowY: "auto" }}>
-      <div style={{ background: "#111", borderRadius: 20, maxWidth: 520, width: "100%", boxShadow: "0 24px 60px rgba(0,0,0,.6)", border: "1px solid rgba(255,255,255,.12)", padding: _w < 640 ? 20 : 32, marginTop: "auto", marginBottom: "auto" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+    <div style={{ position: "fixed", inset: 0, zIndex: 310, background: "rgba(0,0,0,.85)", backdropFilter: "blur(8px)", overflowY: "auto", padding: "16px 10px" }}>
+      <div style={{ background: "#0e0812", borderRadius: 20, maxWidth: 560, width: "100%", margin: "0 auto", boxShadow: "0 24px 60px rgba(0,0,0,.7)", border: "1px solid rgba(255,255,255,.1)", padding: _w < 640 ? 18 : 28 }}>
+
+        {/* Header */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
           <div>
-            <h2 style={{ fontWeight: 900, fontSize: 20, color: "#fff" }}>{isPrivate ? t("طلب برايفيت", "Book Private") : t("طلب ميني برايفيت", "Book Mini Private")}</h2>
-            <p style={{ color: C.red, fontSize: 13, marginTop: 4 }}>{t("مع", "With")} {trainer.name}</p>
+            <h2 style={{ fontWeight: 900, fontSize: 20, color: "#fff", margin: 0 }}>{isPrivate ? "طلب برايفيت 🎯" : "طلب ميني برايفيت 👥"}</h2>
+            <p style={{ color: C.red, fontSize: 13, marginTop: 4, margin: "4px 0 0" }}>{t("مع المدربة", "With trainer")} {trainer.name}</p>
           </div>
-          <button onClick={onClose} style={{ border: "none", background: "none", color: "#888", fontSize: 24, cursor: "pointer" }}>×</button>
+          <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,.08)", borderRadius: 8, color: "#aaa", fontSize: 18, cursor: "pointer", width: 32, height: 32 }}>×</button>
         </div>
-        <div style={{ background: "rgba(233,30,99,.08)", border: "1px solid rgba(233,30,99,.25)", borderRadius: 12, padding: "12px 16px", marginBottom: 20, fontSize: 13, color: "#ffb7d0", lineHeight: 1.8 }}>
-          {isPrivate ? (
-            <><strong style={{ color: "#fff" }}>🎯 برايفيت</strong><br />
-            12 حصة شهرياً · من ساعة إلى ساعة ونصف · برنامج مخصص حسب حالتك<br />
-            <strong style={{ color: C.gold }}>السعر: تحدده المدربة عند الموافقة</strong></>
-          ) : (
-            <><strong style={{ color: "#fff" }}>👥 ميني برايفيت</strong><br />
-            12 حصة شهرياً · ساعة كل مرة · من 3 إلى 5 عملاء معاً<br />
-            <strong style={{ color: C.gold }}>السعر: تحدده المدربة عند الموافقة</strong></>
-          )}
+
+        {/* Info banner */}
+        <div style={{ background: "rgba(233,30,99,.08)", border: "1px solid rgba(233,30,99,.22)", borderRadius: 10, padding: "10px 14px", marginBottom: 20, fontSize: 12, color: "#ffb7d0", lineHeight: 1.9 }}>
+          {isPrivate
+            ? <><strong style={{ color: "#fff" }}>🎯 برايفيت —</strong> 12 حصة / شهر · من ساعة إلى ساعة ونصف · برنامج مخصص حسب حالتك 100%<br /><strong style={{ color: C.gold }}>السعر: تحدده المدربة بعد مراجعة طلبك</strong></>
+            : <><strong style={{ color: "#fff" }}>👥 ميني برايفيت —</strong> 12 حصة / شهر · ساعة كل مرة · مجموعة من 3 إلى 5 عملاء<br /><strong style={{ color: C.gold }}>السعر: تحدده المدربة بعد مراجعة طلبك</strong></>}
         </div>
-        <div style={{ marginBottom: 18 }}>
-          <div style={{ fontWeight: 700, color: "#fff", marginBottom: 10, fontSize: 14 }}>ما هي أهدافك؟</div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-            {goalOptions.map((g) => (
-              <button key={g} onClick={() => toggleGoal(g)} style={{ padding: "6px 14px", borderRadius: 20, border: `2px solid ${goals.includes(g) ? C.red : "rgba(255,255,255,.2)"}`, background: goals.includes(g) ? "rgba(233,30,99,.2)" : "transparent", color: goals.includes(g) ? "#fff" : "#c9b9c1", fontSize: 12, cursor: "pointer", fontWeight: goals.includes(g) ? 700 : 400 }}>{g}</button>
-            ))}
+
+        <p style={{ fontSize: 12, color: "#888", marginBottom: 20 }}>من فضلك أملئي البيانات بدقة عشان نقدر نعمل برنامج مناسب ليكي 100% 👌</p>
+
+        {/* ── Q1: Basic info ── */}
+        <div style={S.section}>
+          <div style={S.sectionTitle}>القسم 1: البيانات الأساسية</div>
+          <div style={S.grid2}>
+            <div><label style={S.label}>الاسم *</label><input value={fullName} onChange={e => setFullName(e.target.value)} style={S.input} placeholder="اسمك الكامل" /></div>
+            <div><label style={S.label}>السن</label><input type="number" value={age} onChange={e => setAge(e.target.value)} style={S.input} placeholder="سنة" /></div>
+            <div><label style={S.label}>الطول (سم)</label><input type="number" value={height} onChange={e => setHeight(e.target.value)} style={S.input} placeholder="سم" /></div>
+            <div><label style={S.label}>الوزن (كجم)</label><input type="number" value={weight} onChange={e => setWeight(e.target.value)} style={S.input} placeholder="كجم" /></div>
+          </div>
+          <div style={{ marginTop: 12 }}><label style={S.label}>رقم الموبايل</label><input value={phone} onChange={e => setPhone(e.target.value)} style={S.input} placeholder="01xxxxxxxxx" /></div>
+          <div style={{ marginTop: 12 }}>
+            <label style={S.label}>طبيعة الشغل</label>
+            <div style={S.radio}>
+              {["مكتبي", "حركة خفيفة", "مجهود بدني"].map(j => <button key={j} type="button" onClick={() => toggle(jobType, setJobType, j)} style={S.chip(jobType.includes(j))}>{j}</button>)}
+            </div>
           </div>
         </div>
-        <div style={{ marginBottom: 14 }}>
-          <label style={{ display: "block", fontWeight: 700, color: "#fff", marginBottom: 6, fontSize: 14 }}>هل لديك إصابات أو حالات طبية؟ <span style={{ color: "#888", fontWeight: 400, fontSize: 12 }}>(اختياري)</span></label>
-          <textarea value={injuries} onChange={(e) => setInjuries(e.target.value)} rows={3} placeholder="اذكري أي إصابات أو أمراض يجب أخذها في الاعتبار..." style={{ width: "100%", borderRadius: 10, border: "1px solid rgba(255,255,255,.15)", background: "rgba(255,255,255,.05)", color: "#fff", padding: "10px 14px", fontSize: 13, resize: "vertical", boxSizing: "border-box" }} />
+
+        {/* ── Q2: Goals ── */}
+        <div style={S.section}>
+          <div style={S.sectionTitle}>القسم 2: الهدف *</div>
+          <div style={S.radio}>
+            {["خسارة وزن", "بناء عضل", "شد الجسم", "تحسين اللياقة", "تأهيل إصابة"].map(g => <button key={g} type="button" onClick={() => toggle(goals, setGoals, g)} style={S.chip(goals.includes(g))}>{g}</button>)}
+          </div>
+          <div style={{ marginTop: 10 }}>
+            <input value={otherGoal} onChange={e => setOtherGoal(e.target.value)} style={S.input} placeholder="هدف آخر (اكتبيه هنا)" />
+          </div>
         </div>
-        <div style={{ marginBottom: 20 }}>
-          <label style={{ display: "block", fontWeight: 700, color: "#fff", marginBottom: 6, fontSize: 14 }}>ملاحظات إضافية <span style={{ color: "#888", fontWeight: 400, fontSize: 12 }}>(اختياري)</span></label>
-          <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="أي معلومات إضافية تودين مشاركتها..." style={{ width: "100%", borderRadius: 10, border: "1px solid rgba(255,255,255,.15)", background: "rgba(255,255,255,.05)", color: "#fff", padding: "10px 14px", fontSize: 13, resize: "vertical", boxSizing: "border-box" }} />
+
+        {/* ── Q3: Medical ── */}
+        <div style={S.section}>
+          <div style={S.sectionTitle}>القسم 3: الحالة الصحية</div>
+          <div style={S.radio}>
+            {["ضغط", "سكر", "مشاكل قلب", "غدة درقية", "كلى", "أنيميا", "مشاكل مفاصل / عمود فقري"].map(c => <button key={c} type="button" onClick={() => toggle(medConditions, setMedConditions, c)} style={S.chip(medConditions.includes(c))}>{c}</button>)}
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <label style={S.label}>هل بتاخدي أدوية بانتظام؟</label>
+            <div style={S.radio}>
+              {["نعم", "لا"].map(v => <button key={v} type="button" onClick={() => setTakesMeds(v)} style={S.chip(takesMeds === v)}>{v}</button>)}
+            </div>
+            {takesMeds === "نعم" && <input value={medsDetail} onChange={e => setMedsDetail(e.target.value)} style={{ ...S.input, marginTop: 8 }} placeholder="اكتبي الأدوية..." />}
+          </div>
         </div>
+
+        {/* ── Q4: Injuries ── */}
+        <div style={S.section}>
+          <div style={S.sectionTitle}>القسم 4: الإصابات</div>
+          <div style={{ marginBottom: 12 }}>
+            <label style={S.label}>هل عندك إصابات؟</label>
+            <textarea value={injuries} onChange={e => setInjuries(e.target.value)} rows={2} style={S.textarea} placeholder="اذكري أي إصابات..." />
+          </div>
+          <div>
+            <label style={S.label}>هل عملتي عمليات قبل كده؟</label>
+            <textarea value={surgeries} onChange={e => setSurgeries(e.target.value)} rows={2} style={S.textarea} placeholder="اذكري أي عمليات جراحية..." />
+          </div>
+        </div>
+
+        {/* ── Q5: Sports experience ── */}
+        <div style={S.section}>
+          <div style={S.sectionTitle}>القسم 5: الخبرة الرياضية</div>
+          <label style={S.label}>هل تمرنتي قبل كده؟</label>
+          <div style={S.radio}>
+            {["لا", "أحياناً", "بانتظام"].map(v => <button key={v} type="button" onClick={() => setSportsExp(v)} style={S.chip(sportsExp === v)}>{v}</button>)}
+          </div>
+        </div>
+
+        {/* ── Q6: Lifestyle ── */}
+        <div style={S.section}>
+          <div style={S.sectionTitle}>القسم 6: نمط الحياة</div>
+          <div style={S.grid2}>
+            <div><label style={S.label}>عدد ساعات النوم</label><input type="number" value={sleepHours} onChange={e => setSleepHours(e.target.value)} style={S.input} placeholder="ساعات" /></div>
+            <div><label style={S.label}>شرب المياه (لتر)</label><input type="number" value={waterLiters} onChange={e => setWaterLiters(e.target.value)} style={S.input} placeholder="لتر" /></div>
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <label style={S.label}>جودة النوم</label>
+            <div style={S.radio}>
+              {["كويسة", "متقطعة", "ضعيفة"].map(v => <button key={v} type="button" onClick={() => setSleepQuality(v)} style={S.chip(sleepQuality === v)}>{v}</button>)}
+            </div>
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <label style={S.label}>مستوى التوتر</label>
+            <div style={S.radio}>
+              {["قليل", "متوسط", "عالي"].map(v => <button key={v} type="button" onClick={() => setStressLevel(v)} style={S.chip(stressLevel === v)}>{v}</button>)}
+            </div>
+          </div>
+        </div>
+
+        {/* ── Q7: Nutrition ── */}
+        <div style={S.section}>
+          <div style={S.sectionTitle}>القسم 7: التغذية</div>
+          <div style={S.grid2}>
+            <div><label style={S.label}>عدد الوجبات / يوم</label><input type="number" value={mealsCount} onChange={e => setMealsCount(e.target.value)} style={S.input} placeholder="وجبات" /></div>
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <label style={S.label}>هل بتتبعي نظام غذائي؟</label>
+            <div style={S.radio}>
+              {["نعم", "لا"].map(v => <button key={v} type="button" onClick={() => setFollowsDiet(v)} style={S.chip(followsDiet === v)}>{v}</button>)}
+            </div>
+          </div>
+          <div style={{ marginTop: 12 }}><label style={S.label}>حساسية من أكل؟</label><input value={foodAllergies} onChange={e => setFoodAllergies(e.target.value)} style={S.input} placeholder="مثال: لاكتوز، جلوتين..." /></div>
+          <div style={{ marginTop: 12 }}><label style={S.label}>مكملات غذائية؟</label><input value={supplements} onChange={e => setSupplements(e.target.value)} style={S.input} placeholder="بروتين، فيتامينات..." /></div>
+        </div>
+
+        {/* ── Q8: Current activity ── */}
+        <div style={S.section}>
+          <div style={S.sectionTitle}>القسم 8: النشاط الحالي</div>
+          <div style={S.grid2}>
+            <div><label style={S.label}>عدد أيام التمرين / أسبوع</label><input type="number" value={trainingDays} onChange={e => setTrainingDays(e.target.value)} style={S.input} placeholder="أيام" /></div>
+            <div><label style={S.label}>مدة التمرين</label><input value={trainingDuration} onChange={e => setTrainingDuration(e.target.value)} style={S.input} placeholder="مثال: 45 دقيقة" /></div>
+          </div>
+          <div style={{ marginTop: 12 }}><label style={S.label}>نوع التمرين</label><input value={trainingType} onChange={e => setTrainingType(e.target.value)} style={S.input} placeholder="مثال: كارديو، وزن حر..." /></div>
+        </div>
+
+        {/* ── Q9: Women's health ── */}
+        <div style={S.section}>
+          <div style={S.sectionTitle}>القسم 9: للسيدات</div>
+          <div style={{ marginBottom: 12 }}>
+            <label style={S.label}>هل فيه حمل؟</label>
+            <div style={S.radio}>
+              {["نعم", "لا"].map(v => <button key={v} type="button" onClick={() => setPregnant(v)} style={S.chip(pregnant === v)}>{v}</button>)}
+            </div>
+          </div>
+          <div style={{ marginBottom: 12 }}>
+            <label style={S.label}>هل سبق الولادة؟</label>
+            <div style={S.radio}>
+              {["نعم", "لا"].map(v => <button key={v} type="button" onClick={() => setGaveBirth(v)} style={S.chip(gaveBirth === v)}>{v}</button>)}
+            </div>
+            {gaveBirth === "نعم" && <input value={lastBirth} onChange={e => setLastBirth(e.target.value)} style={{ ...S.input, marginTop: 8 }} placeholder="آخر ولادة من قد إيه؟" />}
+          </div>
+          <div>
+            <label style={S.label}>مشاكل هرمونية؟</label>
+            <input value={hormonalIssues} onChange={e => setHormonalIssues(e.target.value)} style={S.input} placeholder="تكيس مبايض، انقطاع دورة..." />
+          </div>
+        </div>
+
+        {/* ── Q10: Commitment ── */}
+        <div style={S.section}>
+          <div style={S.sectionTitle}>القسم 10: الالتزام</div>
+          <div style={{ marginBottom: 12 }}><label style={S.label}>عايزة توصلي لهدفك في قد إيه؟</label><input value={goalTimeline} onChange={e => setGoalTimeline(e.target.value)} style={S.input} placeholder="مثال: 3 شهور" /></div>
+          <div style={{ marginBottom: 12 }}><label style={S.label}>تقدري تلتزمي كام يوم أسبوعياً؟</label><input type="number" value={commitDays} onChange={e => setCommitDays(e.target.value)} style={S.input} placeholder="أيام" /></div>
+          <div>
+            <label style={S.label}>مستعدة لنظام غذائي؟</label>
+            <div style={S.radio}>
+              {["نعم", "لا"].map(v => <button key={v} type="button" onClick={() => setDietReady(v)} style={S.chip(dietReady === v)}>{v}</button>)}
+            </div>
+          </div>
+        </div>
+
+        {/* ── Q11: Notes ── */}
+        <div style={S.section}>
+          <div style={S.sectionTitle}>القسم 11: ملاحظات إضافية</div>
+          <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} style={S.textarea} placeholder="أي معلومات إضافية تودين مشاركتها مع المدربة..." />
+        </div>
+
+        {/* Submit */}
         {msg && <div style={{ background: msg.ok ? "rgba(74,222,128,.12)" : "rgba(233,30,99,.12)", border: `1px solid ${msg.ok ? "#4ade80" : C.red}`, borderRadius: 10, padding: "10px 14px", marginBottom: 14, fontSize: 13, color: msg.ok ? "#4ade80" : "#ffb7d0" }}>{msg.text}</div>}
-        <button className="btn-primary" style={{ width: "100%", justifyContent: "center" }} onClick={submit} disabled={submitting}>
-          {submitting ? "جارٍ الإرسال..." : "إرسال الطلب"}
+        <button className="btn-primary" style={{ width: "100%", justifyContent: "center", fontSize: 15 }} onClick={submit} disabled={submitting}>
+          {submitting ? "جارٍ الإرسال..." : "إرسال الطلب 📩"}
         </button>
       </div>
     </div>

@@ -10,9 +10,7 @@ export async function GET() {
   const applications = await db.privateSessionApplication.findMany({
     where: { userId: user.id },
     include: {
-      trainer: {
-        select: { id: true, name: true, specialty: true, image: true },
-      },
+      trainer: { select: { id: true, name: true, specialty: true, image: true } },
     },
     orderBy: { createdAt: "desc" },
   });
@@ -30,8 +28,8 @@ export async function POST(req: Request) {
     type?: string;
     goals?: string[];
     injuries?: string;
-    availability?: Record<string, unknown>;
     notes?: string;
+    formData?: Record<string, unknown>; // full 11-section form
   };
 
   if (!body.trainerId) return NextResponse.json({ error: "يجب تحديد المدربة." }, { status: 400 });
@@ -45,7 +43,6 @@ export async function POST(req: Request) {
   if (!trainer || !trainer.isActive)
     return NextResponse.json({ error: "المدربة غير متاحة حالياً." }, { status: 404 });
 
-  // Prevent duplicate pending applications
   const existing = await db.privateSessionApplication.findFirst({
     where: { userId: user.id, trainerId: body.trainerId, type: body.type, status: { in: ["pending", "approved"] } },
   });
@@ -62,8 +59,8 @@ export async function POST(req: Request) {
       type: body.type ?? "private",
       goalsJson: body.goals?.length ? JSON.stringify(body.goals) : null,
       injuries: body.injuries?.trim() || null,
-      availability: body.availability ? JSON.stringify(body.availability) : null,
       notes: body.notes?.trim() || null,
+      applicationFormJson: body.formData ? JSON.stringify(body.formData) : null,
     },
     include: {
       trainer: { select: { id: true, name: true, specialty: true, image: true } },
