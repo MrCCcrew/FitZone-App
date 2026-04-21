@@ -98,25 +98,28 @@ export async function POST(req: Request) {
 
   // Validate discount code before transaction
   let discountRecord: { id: string; type: string; value: number } | null = null;
+  let trainerDiscountRecord: { id: string; discountType: string; discountValue: number; maxDiscount: number | null } | null = null;
   if (discountCode) {
     const normalizedCode = String(discountCode).trim().toUpperCase();
     const dc = await db.discountCode.findUnique({ where: { code: normalizedCode } });
-    if (!dc || !dc.isActive) {
-      return NextResponse.json({ error: "كود الخصم غير صالح." }, { status: 400 });
+    if (dc && dc.isActive) {
+      if (dc.expiresAt && dc.expiresAt < new Date()) {
+        return NextResponse.json({ error: "انتهت صلاحية كود الخصم." }, { status: 400 });
+      }
+      if (dc.maxUses != null && dc.usedCount >= dc.maxUses) {
+        return NextResponse.json({ error: "تم استنفاد الحد الأقصى لهذا الكود." }, { status: 400 });
+      }
+      const alreadyUsed = await db.discountCodeUsage.findFirst({ where: { discountCodeId: dc.id, userId } });
+      if (alreadyUsed) return NextResponse.json({ error: "لقد استخدمت هذا الكود من قبل." }, { status: 400 });
+      discountRecord = { id: dc.id, type: dc.type, value: dc.value };
+    } else {
+      // Check TrainerDiscountCode
+      const tdc = await db.trainerDiscountCode.findUnique({ where: { code: normalizedCode } });
+      if (!tdc) return NextResponse.json({ error: "كود الخصم غير صالح." }, { status: 400 });
+      if (tdc.targetUserId !== userId) return NextResponse.json({ error: "هذا الكود خاص بعميل آخر." }, { status: 403 });
+      if (tdc.isUsed) return NextResponse.json({ error: "تم استخدام هذا الكود من قبل." }, { status: 400 });
+      trainerDiscountRecord = { id: tdc.id, discountType: tdc.discountType, discountValue: tdc.discountValue, maxDiscount: tdc.maxDiscount };
     }
-    if (dc.expiresAt && dc.expiresAt < new Date()) {
-      return NextResponse.json({ error: "انتهت صلاحية كود الخصم." }, { status: 400 });
-    }
-    if (dc.maxUses != null && dc.usedCount >= dc.maxUses) {
-      return NextResponse.json({ error: "تم استنفاد الحد الأقصى لهذا الكود." }, { status: 400 });
-    }
-    const alreadyUsed = await db.discountCodeUsage.findFirst({
-      where: { discountCodeId: dc.id, userId },
-    });
-    if (alreadyUsed) {
-      return NextResponse.json({ error: "لقد استخدمت هذا الكود من قبل." }, { status: 400 });
-    }
-    discountRecord = { id: dc.id, type: dc.type, value: dc.value };
   }
 
   const result = await db
@@ -178,6 +181,15 @@ export async function POST(req: Request) {
           discountApplied = Math.round((paymentAmount * discountRecord.value) / 100 * 100) / 100;
         } else {
           discountApplied = Math.min(discountRecord.value, paymentAmount);
+        }
+        paymentAmount = Math.max(0, paymentAmount - discountApplied);
+      } else if (trainerDiscountRecord && paymentAmount) {
+        if (trainerDiscountRecord.discountType === "fixed") {
+          discountApplied = Math.min(trainerDiscountRecord.discountValue, paymentAmount);
+        } else {
+          const raw = (paymentAmount * trainerDiscountRecord.discountValue) / 100;
+          discountApplied = trainerDiscountRecord.maxDiscount != null ? Math.min(raw, trainerDiscountRecord.maxDiscount) : raw;
+          discountApplied = Math.round(discountApplied * 100) / 100;
         }
         paymentAmount = Math.max(0, paymentAmount - discountApplied);
       }
@@ -378,6 +390,13 @@ export async function POST(req: Request) {
         await tx.discountCode.update({
           where: { id: discountRecord.id },
           data: { usedCount: { increment: 1 } },
+        });
+      }
+      // Mark trainer discount code as used
+      if (trainerDiscountRecord && discountApplied > 0) {
+        await tx.trainerDiscountCode.update({
+          where: { id: trainerDiscountRecord.id },
+          data: { isUsed: true, usedAt: new Date() },
         });
       }
 

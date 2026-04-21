@@ -1195,12 +1195,18 @@ type PublicHealthQuestion = {
   restrictedClassTypes: string[];
 };
 
+type TrainerCertFile = { url: string; label: string };
 type PublicTrainer = {
   id: string;
   name: string;
+  nameEn?: string;
   specialty: string;
+  specialtyEn?: string;
   bio: string;
+  bioEn?: string;
   certifications: string[];
+  certificationsEn?: string[];
+  certificateFiles: TrainerCertFile[];
   rating: number;
   sessionsCount: number;
   image: string | null;
@@ -1472,6 +1478,82 @@ type HomeHeroContent = {
   stats: { value: string; label: string }[];
   statsEn?: { value: string; label: string }[];
 };
+const PrivateBookingModal = ({ trainer, type, onClose }: { trainer: PublicTrainer; type: "private" | "mini_private"; onClose: () => void }) => {
+  const t = useT();
+  const _w = useWindowWidth();
+  const [goals, setGoals] = useState<string[]>([]);
+  const [injuries, setInjuries] = useState("");
+  const [notes, setNotes] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
+
+  const isPrivate = type === "private";
+  const goalOptions = ["خسارة وزن", "بناء عضلات", "تحسين اللياقة", "تأهيل إصابة", "تحسين المرونة", "تحضير مسابقة"];
+  const toggleGoal = (g: string) => setGoals((prev) => prev.includes(g) ? prev.filter((x) => x !== g) : [...prev, g]);
+
+  const submit = async () => {
+    if (goals.length === 0) { setMsg({ text: "اختاري هدفاً واحداً على الأقل.", ok: false }); return; }
+    setSubmitting(true); setMsg(null);
+    try {
+      const res = await fetch("/api/private-sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ trainerId: trainer.id, type, goals, injuries: injuries.trim() || undefined, notes: notes.trim() || undefined }),
+      });
+      const data = await res.json() as { error?: string };
+      if (!res.ok) { setMsg({ text: data.error ?? "حدث خطأ.", ok: false }); return; }
+      setMsg({ text: "✅ تم إرسال طلبك بنجاح. ستتلقى إشعاراً عند موافقة المدربة.", ok: true });
+      setTimeout(() => onClose(), 3000);
+    } catch { setMsg({ text: "تعذر الاتصال بالخادم.", ok: false }); }
+    finally { setSubmitting(false); }
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 310, display: "flex", alignItems: "center", justifyContent: "center", padding: "12px 10px", background: "rgba(0,0,0,.8)", backdropFilter: "blur(8px)", overflowY: "auto" }}>
+      <div style={{ background: "#111", borderRadius: 20, maxWidth: 520, width: "100%", boxShadow: "0 24px 60px rgba(0,0,0,.6)", border: "1px solid rgba(255,255,255,.12)", padding: _w < 640 ? 20 : 32, marginTop: "auto", marginBottom: "auto" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+          <div>
+            <h2 style={{ fontWeight: 900, fontSize: 20, color: "#fff" }}>{isPrivate ? t("طلب برايفيت", "Book Private") : t("طلب ميني برايفيت", "Book Mini Private")}</h2>
+            <p style={{ color: C.red, fontSize: 13, marginTop: 4 }}>{t("مع", "With")} {trainer.name}</p>
+          </div>
+          <button onClick={onClose} style={{ border: "none", background: "none", color: "#888", fontSize: 24, cursor: "pointer" }}>×</button>
+        </div>
+        <div style={{ background: "rgba(233,30,99,.08)", border: "1px solid rgba(233,30,99,.25)", borderRadius: 12, padding: "12px 16px", marginBottom: 20, fontSize: 13, color: "#ffb7d0", lineHeight: 1.8 }}>
+          {isPrivate ? (
+            <><strong style={{ color: "#fff" }}>🎯 برايفيت</strong><br />
+            12 حصة شهرياً · من ساعة إلى ساعة ونصف · برنامج مخصص حسب حالتك<br />
+            <strong style={{ color: C.gold }}>السعر: تحدده المدربة عند الموافقة</strong></>
+          ) : (
+            <><strong style={{ color: "#fff" }}>👥 ميني برايفيت</strong><br />
+            12 حصة شهرياً · ساعة كل مرة · من 3 إلى 5 عملاء معاً<br />
+            <strong style={{ color: C.gold }}>السعر: تحدده المدربة عند الموافقة</strong></>
+          )}
+        </div>
+        <div style={{ marginBottom: 18 }}>
+          <div style={{ fontWeight: 700, color: "#fff", marginBottom: 10, fontSize: 14 }}>ما هي أهدافك؟</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {goalOptions.map((g) => (
+              <button key={g} onClick={() => toggleGoal(g)} style={{ padding: "6px 14px", borderRadius: 20, border: `2px solid ${goals.includes(g) ? C.red : "rgba(255,255,255,.2)"}`, background: goals.includes(g) ? "rgba(233,30,99,.2)" : "transparent", color: goals.includes(g) ? "#fff" : "#c9b9c1", fontSize: 12, cursor: "pointer", fontWeight: goals.includes(g) ? 700 : 400 }}>{g}</button>
+            ))}
+          </div>
+        </div>
+        <div style={{ marginBottom: 14 }}>
+          <label style={{ display: "block", fontWeight: 700, color: "#fff", marginBottom: 6, fontSize: 14 }}>هل لديك إصابات أو حالات طبية؟ <span style={{ color: "#888", fontWeight: 400, fontSize: 12 }}>(اختياري)</span></label>
+          <textarea value={injuries} onChange={(e) => setInjuries(e.target.value)} rows={3} placeholder="اذكري أي إصابات أو أمراض يجب أخذها في الاعتبار..." style={{ width: "100%", borderRadius: 10, border: "1px solid rgba(255,255,255,.15)", background: "rgba(255,255,255,.05)", color: "#fff", padding: "10px 14px", fontSize: 13, resize: "vertical", boxSizing: "border-box" }} />
+        </div>
+        <div style={{ marginBottom: 20 }}>
+          <label style={{ display: "block", fontWeight: 700, color: "#fff", marginBottom: 6, fontSize: 14 }}>ملاحظات إضافية <span style={{ color: "#888", fontWeight: 400, fontSize: 12 }}>(اختياري)</span></label>
+          <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="أي معلومات إضافية تودين مشاركتها..." style={{ width: "100%", borderRadius: 10, border: "1px solid rgba(255,255,255,.15)", background: "rgba(255,255,255,.05)", color: "#fff", padding: "10px 14px", fontSize: 13, resize: "vertical", boxSizing: "border-box" }} />
+        </div>
+        {msg && <div style={{ background: msg.ok ? "rgba(74,222,128,.12)" : "rgba(233,30,99,.12)", border: `1px solid ${msg.ok ? "#4ade80" : C.red}`, borderRadius: 10, padding: "10px 14px", marginBottom: 14, fontSize: 13, color: msg.ok ? "#4ade80" : "#ffb7d0" }}>{msg.text}</div>}
+        <button className="btn-primary" style={{ width: "100%", justifyContent: "center" }} onClick={submit} disabled={submitting}>
+          {submitting ? "جارٍ الإرسال..." : "إرسال الطلب"}
+        </button>
+      </div>
+    </div>
+  );
+};
+
 const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summary: UserSummary | null }) => {
   const _w = useWindowWidth();
   const { lang } = useLang();
@@ -1503,6 +1585,8 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
           ];
   const [memberships, setMemberships] = useState(DEFAULT_HOME_MEMBERSHIPS);
   const [trainers, setTrainers] = useState<PublicTrainer[]>([]);
+  const [trainerDetailModal, setTrainerDetailModal] = useState<PublicTrainer | null>(null);
+  const [privateBookingModal, setPrivateBookingModal] = useState<{ trainer: PublicTrainer; type: "private" | "mini_private" } | null>(null);
   const [testimonials, setTestimonials] = useState<PublicTestimonial[]>([]);
   const [products, setProducts] = useState<StoreProduct[]>([]);
   const [specialOffer, setSpecialOffer] = useState<PublicOffer | null>(null);
@@ -2315,7 +2399,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
           <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 24 }}>
             {trainers.map((trainer, index) => (
               <div key={trainer.id} className="card card-hover" style={{ padding: 0, overflow: "hidden", textAlign: "center" }}>
-                <div style={{ height: 220, background: "#fff" }}>
+                <div style={{ height: 220, background: "#fff", cursor: "pointer" }} onClick={() => setTrainerDetailModal(trainer)}>
                   {trainer.image ? (
                     <img src={trainer.image} alt={trainer.name} loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                   ) : (
@@ -2323,13 +2407,21 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                   )}
                 </div>
                 <div style={{ padding: "20px 24px 24px" }}>
-                  <h3 style={{ fontWeight: 800, fontSize: 17, color: C.white }}>{trainer.name}</h3>
-                  <p style={{ color: C.redDark, fontSize: 13, fontWeight: 600, marginTop: 4, marginBottom: 16 }}>{trainer.specialty}</p>
+                  <h3 style={{ fontWeight: 800, fontSize: 17, color: C.white }}>{lang === "en" && trainer.nameEn ? trainer.nameEn : trainer.name}</h3>
+                  <p style={{ color: C.redDark, fontSize: 13, fontWeight: 600, marginTop: 4, marginBottom: 16 }}>{lang === "en" && trainer.specialtyEn ? trainer.specialtyEn : trainer.specialty}</p>
                   <div style={{ display: "flex", justifyContent: "center", gap: 24, marginBottom: 16 }}>
                     <div><div style={{ fontWeight: 700, color: C.redDark }}>⭐ {trainer.rating}</div><div style={{ fontSize: 11, color: C.gray }}>{t("التقييم", "Rating")}</div></div>
                     <div><div style={{ fontWeight: 700, color: C.white }}>{trainer.sessionsCount}</div><div style={{ fontSize: 11, color: C.gray }}>{t("جلسة", "sessions")}</div></div>
                   </div>
-                  <button className="btn-outline" style={{ width: "100%" }} onClick={() => navigate("trainers")}>{t("عرض الملف", "View profile")}</button>
+                  <div style={{ display: "grid", gap: 8 }}>
+                    <button className="btn-outline" style={{ width: "100%", fontSize: 13 }} onClick={() => setTrainerDetailModal(trainer)}>{t("عرض الملف الكامل", "Full profile")}</button>
+                    {summary?.authenticated && (
+                      <>
+                        <button className="btn-primary" style={{ width: "100%", fontSize: 12, padding: "8px 12px" }} onClick={() => setPrivateBookingModal({ trainer, type: "private" })}>🎯 {t("برايفيت معها", "Book private")}</button>
+                        <button style={{ width: "100%", fontSize: 12, padding: "8px 12px", borderRadius: 10, border: `1px solid ${C.gold}`, background: "rgba(200,162,0,.1)", color: C.gold, cursor: "pointer", fontWeight: 700 }} onClick={() => setPrivateBookingModal({ trainer, type: "mini_private" })}>👥 {t("ميني برايفيت", "Mini private")}</button>
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
             ))}
@@ -2362,6 +2454,87 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
           </div>
         </div>
       </section>
+
+      {/* ─ TRAINER DETAIL MODAL ─ */}
+      {trainerDetailModal && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center", padding: "12px 10px", background: "rgba(0,0,0,.75)", backdropFilter: "blur(8px)", overflowY: "auto" }}>
+          <div style={{ background: "#111", borderRadius: 20, maxWidth: 600, width: "100%", boxShadow: "0 24px 60px rgba(0,0,0,.6)", border: "1px solid rgba(255,255,255,.12)", marginTop: "auto", marginBottom: "auto" }}>
+            {/* Header image */}
+            <div style={{ height: 260, borderRadius: "20px 20px 0 0", overflow: "hidden", position: "relative" }}>
+              {trainerDetailModal.image ? (
+                <img src={trainerDetailModal.image} alt={trainerDetailModal.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              ) : (
+                <GymImg type="trainer1" w="100%" h={260} />
+              )}
+              <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(10,5,8,.9) 0%, transparent 60%)" }} />
+              <button onClick={() => setTrainerDetailModal(null)} style={{ position: "absolute", top: 14, insetInlineEnd: 14, width: 36, height: 36, borderRadius: "50%", border: "none", background: "rgba(0,0,0,.5)", color: "#fff", fontSize: 20, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
+              <div style={{ position: "absolute", bottom: 18, right: 20 }}>
+                <div style={{ fontWeight: 900, fontSize: 22, color: "#fff" }}>{lang === "en" && trainerDetailModal.nameEn ? trainerDetailModal.nameEn : trainerDetailModal.name}</div>
+                <div style={{ color: C.redDark, fontWeight: 700, fontSize: 14 }}>{lang === "en" && trainerDetailModal.specialtyEn ? trainerDetailModal.specialtyEn : trainerDetailModal.specialty}</div>
+              </div>
+            </div>
+            <div style={{ padding: 24 }}>
+              {/* Stats */}
+              <div style={{ display: "flex", gap: 20, marginBottom: 20 }}>
+                <div style={{ textAlign: "center" }}><div style={{ fontWeight: 800, color: C.gold }}>⭐ {trainerDetailModal.rating}</div><div style={{ fontSize: 11, color: "#888" }}>{t("التقييم", "Rating")}</div></div>
+                <div style={{ textAlign: "center" }}><div style={{ fontWeight: 800, color: C.white }}>{trainerDetailModal.sessionsCount}</div><div style={{ fontSize: 11, color: "#888" }}>{t("جلسة", "Sessions")}</div></div>
+                <div style={{ textAlign: "center" }}><div style={{ fontWeight: 800, color: C.white }}>{trainerDetailModal.classesCount}</div><div style={{ fontSize: 11, color: "#888" }}>{t("كلاس", "Classes")}</div></div>
+              </div>
+              {/* Bio */}
+              {(lang === "en" ? (trainerDetailModal.bioEn || trainerDetailModal.bio) : trainerDetailModal.bio) && (
+                <div style={{ marginBottom: 20 }}>
+                  <div style={{ fontWeight: 800, color: C.white, marginBottom: 8 }}>{t("نبذة", "About")}</div>
+                  <p style={{ color: "#c9b9c1", fontSize: 14, lineHeight: 1.9 }}>{lang === "en" ? (trainerDetailModal.bioEn || trainerDetailModal.bio) : trainerDetailModal.bio}</p>
+                </div>
+              )}
+              {/* Certifications */}
+              {((lang === "en" ? (trainerDetailModal.certificationsEn ?? trainerDetailModal.certifications) : trainerDetailModal.certifications)).length > 0 && (
+                <div style={{ marginBottom: 20 }}>
+                  <div style={{ fontWeight: 800, color: C.white, marginBottom: 10 }}>{t("الشهادات والمؤهلات", "Certifications")}</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    {(lang === "en" ? (trainerDetailModal.certificationsEn ?? trainerDetailModal.certifications) : trainerDetailModal.certifications).map((cert, i) => (
+                      <span key={i} style={{ background: "rgba(233,30,99,.12)", border: `1px solid ${C.red}`, borderRadius: 20, padding: "4px 12px", fontSize: 12, color: "#ffb7d0" }}>🎓 {cert}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {/* Certificate files (images) */}
+              {trainerDetailModal.certificateFiles.length > 0 && (
+                <div style={{ marginBottom: 20 }}>
+                  <div style={{ fontWeight: 800, color: C.white, marginBottom: 10 }}>{t("صور الشهادات", "Certificate Images")}</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 10 }}>
+                    {trainerDetailModal.certificateFiles.map((f, i) => (
+                      <a key={i} href={f.url} target="_blank" rel="noopener noreferrer" style={{ display: "block", borderRadius: 10, overflow: "hidden", border: "1px solid rgba(255,255,255,.12)" }}>
+                        <img src={f.url} alt={f.label || `شهادة ${i + 1}`} style={{ width: "100%", height: 100, objectFit: "cover", display: "block" }} />
+                        {f.label && <div style={{ fontSize: 10, color: "#888", padding: "4px 6px", textAlign: "center" }}>{f.label}</div>}
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {/* Booking buttons */}
+              {summary?.authenticated ? (
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 8 }}>
+                  <button className="btn-primary" onClick={() => { setTrainerDetailModal(null); setPrivateBookingModal({ trainer: trainerDetailModal, type: "private" }); }}>🎯 {t("برايفيت", "Private")}<br /><span style={{ fontSize: 11, fontWeight: 400, opacity: .8 }}>{t("3000 ج.م / 12 حصة", "3000 EGP / 12 sessions")}</span></button>
+                  <button style={{ borderRadius: 12, border: `1px solid ${C.gold}`, background: "rgba(200,162,0,.1)", color: C.gold, cursor: "pointer", fontWeight: 700, fontSize: 13, padding: "12px 8px", textAlign: "center" }} onClick={() => { setTrainerDetailModal(null); setPrivateBookingModal({ trainer: trainerDetailModal, type: "mini_private" }); }}>👥 {t("ميني برايفيت", "Mini Private")}<br /><span style={{ fontSize: 11, fontWeight: 400, opacity: .8 }}>{t("1000 ج.م / 12 حصة", "1000 EGP / 12 sessions")}</span></button>
+                </div>
+              ) : (
+                <button className="btn-primary" style={{ width: "100%" }} onClick={() => { setTrainerDetailModal(null); navigate("register"); }}>{t("سجلي الدخول للحجز", "Login to book")}</button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─ PRIVATE BOOKING APPLICATION MODAL ─ */}
+      {privateBookingModal && (
+        <PrivateBookingModal
+          trainer={privateBookingModal.trainer}
+          type={privateBookingModal.type}
+          onClose={() => setPrivateBookingModal(null)}
+        />
+      )}
+
     </div>
   );
 };

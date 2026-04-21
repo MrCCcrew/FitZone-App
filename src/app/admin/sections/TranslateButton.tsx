@@ -5,9 +5,11 @@ import { useState } from "react";
 export function TranslateButton({
   from,
   onTranslated,
+  endpoint = "/api/admin/translate",
 }: {
   from: string;
   onTranslated: (text: string) => void;
+  endpoint?: string;
 }) {
   const [loading, setLoading] = useState(false);
 
@@ -15,7 +17,7 @@ export function TranslateButton({
     if (!from.trim() || loading) return;
     setLoading(true);
     try {
-      const res = await fetch("/api/admin/translate", {
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: from }),

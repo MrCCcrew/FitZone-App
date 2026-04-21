@@ -55,7 +55,7 @@ export async function GET() {
     where: {
       OR: [
         { adminAccess: true },
-        { role: { in: ["admin", "staff"] } },
+        { role: { in: ["admin", "staff", "trainer"] } },
       ],
     },
     orderBy: [{ role: "asc" }, { createdAt: "desc" }],

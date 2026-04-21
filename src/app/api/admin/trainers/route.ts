@@ -2,35 +2,16 @@ import { NextResponse } from "next/server";
 import { requireAdminFeature } from "@/lib/admin-guard";
 import { db } from "@/lib/db";
 import { clearPublicApiCache } from "@/lib/public-cache";
-
-function parseCertifications(value: unknown) {
-  if (Array.isArray(value)) {
-    return value.map((item) => String(item).trim()).filter(Boolean);
-  }
-
-  if (typeof value === "string") {
-    return value
-      .split(/\r?\n|,/)
-      .map((item) => item.trim())
-      .filter(Boolean);
-  }
-
-  return [];
-}
-
-function parseStoredCertifications(value: string | null) {
-  if (!value) return [];
-
-  try {
-    const parsed = JSON.parse(value);
-    return Array.isArray(parsed) ? parsed.map((item) => String(item).trim()).filter(Boolean) : [];
-  } catch {
-    return [];
-  }
-}
+import {
+  parseStoredTrainerFileLinks,
+  parseStoredTrainerTextList,
+  parseTrainerTextList,
+  serializeTrainerFileLinks,
+} from "@/lib/trainer-profile";
 
 function formatTrainer(trainer: {
   id: string;
+  userId: string | null;
   name: string;
   nameEn: string | null;
   specialty: string;
@@ -39,6 +20,7 @@ function formatTrainer(trainer: {
   bioEn: string | null;
   certifications: string | null;
   certificationsEn: string | null;
+  certificateFiles: string | null;
   rating: number;
   sessionsCount: number;
   image: string | null;
@@ -46,17 +28,20 @@ function formatTrainer(trainer: {
   showOnHome: boolean;
   sortOrder: number;
   _count: { classes: number };
+  user: { id: string; name: string | null; email: string | null } | null;
 }) {
   return {
     id: trainer.id,
+    userId: trainer.userId,
     name: trainer.name,
     nameEn: trainer.nameEn,
     specialty: trainer.specialty,
     specialtyEn: trainer.specialtyEn,
     bio: trainer.bio,
     bioEn: trainer.bioEn,
-    certifications: parseStoredCertifications(trainer.certifications),
-    certificationsEn: parseStoredCertifications(trainer.certificationsEn),
+    certifications: parseStoredTrainerTextList(trainer.certifications),
+    certificationsEn: parseStoredTrainerTextList(trainer.certificationsEn),
+    certificateFiles: parseStoredTrainerFileLinks(trainer.certificateFiles),
     rating: trainer.rating,
     sessionsCount: trainer.sessionsCount,
     image: trainer.image,
@@ -64,6 +49,13 @@ function formatTrainer(trainer: {
     active: trainer.isActive,
     showOnHome: trainer.showOnHome,
     sortOrder: trainer.sortOrder,
+    linkedUser: trainer.user
+      ? {
+          id: trainer.user.id,
+          name: trainer.user.name ?? "",
+          email: trainer.user.email ?? "",
+        }
+      : null,
   };
 }
 
@@ -77,7 +69,10 @@ export async function GET() {
   if (error) return error;
 
   const trainers = await db.trainer.findMany({
-    include: { _count: { select: { classes: true } } },
+    include: {
+      _count: { select: { classes: true } },
+      user: { select: { id: true, name: true, email: true } },
+    },
     orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
   });
 
@@ -103,16 +98,21 @@ export async function POST(req: Request) {
         specialtyEn: body.specialtyEn?.trim() || null,
         bio: body.bio?.trim() || null,
         bioEn: body.bioEn?.trim() || null,
-        certifications: JSON.stringify(parseCertifications(body.certifications)),
-        certificationsEn: JSON.stringify(parseCertifications(body.certificationsEn)),
+        certifications: JSON.stringify(parseTrainerTextList(body.certifications)),
+        certificationsEn: JSON.stringify(parseTrainerTextList(body.certificationsEn)),
+        certificateFiles: serializeTrainerFileLinks(body.certificateFiles),
         rating: Number(body.rating ?? 5) || 5,
         sessionsCount: Number(body.sessionsCount ?? 0) || 0,
         image: body.image?.trim() || null,
         isActive: body.active !== false,
         showOnHome: body.showOnHome !== false,
         sortOrder: Number(body.sortOrder ?? 0) || 0,
+        userId: body.userId?.trim() || null,
       },
-      include: { _count: { select: { classes: true } } },
+      include: {
+        _count: { select: { classes: true } },
+        user: { select: { id: true, name: true, email: true } },
+      },
     });
 
     clearPublicApiCache();
@@ -144,10 +144,13 @@ export async function PATCH(req: Request) {
         ...(body.bio !== undefined ? { bio: String(body.bio).trim() || null } : {}),
         ...(body.bioEn !== undefined ? { bioEn: String(body.bioEn).trim() || null } : {}),
         ...(body.certifications !== undefined
-          ? { certifications: JSON.stringify(parseCertifications(body.certifications)) }
+          ? { certifications: JSON.stringify(parseTrainerTextList(body.certifications)) }
           : {}),
         ...(body.certificationsEn !== undefined
-          ? { certificationsEn: JSON.stringify(parseCertifications(body.certificationsEn)) }
+          ? { certificationsEn: JSON.stringify(parseTrainerTextList(body.certificationsEn)) }
+          : {}),
+        ...(body.certificateFiles !== undefined
+          ? { certificateFiles: serializeTrainerFileLinks(body.certificateFiles) }
           : {}),
         ...(body.rating !== undefined ? { rating: Number(body.rating) || 0 } : {}),
         ...(body.sessionsCount !== undefined ? { sessionsCount: Number(body.sessionsCount) || 0 } : {}),
@@ -155,8 +158,12 @@ export async function PATCH(req: Request) {
         ...(body.active !== undefined ? { isActive: Boolean(body.active) } : {}),
         ...(body.showOnHome !== undefined ? { showOnHome: Boolean(body.showOnHome) } : {}),
         ...(body.sortOrder !== undefined ? { sortOrder: Number(body.sortOrder) || 0 } : {}),
+        ...(body.userId !== undefined ? { userId: String(body.userId).trim() || null } : {}),
       },
-      include: { _count: { select: { classes: true } } },
+      include: {
+        _count: { select: { classes: true } },
+        user: { select: { id: true, name: true, email: true } },
+      },
     });
 
     clearPublicApiCache();
