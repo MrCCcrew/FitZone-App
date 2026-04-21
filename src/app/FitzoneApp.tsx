@@ -1555,9 +1555,17 @@ const PrivateBookingModal = ({ trainer, type, onClose }: { trainer: PublicTraine
     grid2: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 } as React.CSSProperties,
   };
 
+  // bilingual chip options
+  const JOB_OPTS   = [[t("مكتبي","Office/Desk"), t("حركة خفيفة","Light movement"), t("مجهود بدني","Physical labor")],
+                       ["مكتبي","حركة خفيفة","مجهود بدني"]] as const;
+  const GOAL_OPTS  = [[t("خسارة وزن","Weight loss"), t("بناء عضل","Muscle gain"), t("شد الجسم","Toning"), t("تحسين اللياقة","Fitness"), t("تأهيل إصابة","Injury rehab")],
+                       ["خسارة وزن","بناء عضل","شد الجسم","تحسين اللياقة","تأهيل إصابة"]] as const;
+  const MED_OPTS   = [[t("ضغط","Blood pressure"), t("سكر","Diabetes"), t("مشاكل قلب","Heart issues"), t("غدة درقية","Thyroid"), t("كلى","Kidneys"), t("أنيميا","Anemia"), t("مشاكل مفاصل / عمود فقري","Joint/spine issues")],
+                       ["ضغط","سكر","مشاكل قلب","غدة درقية","كلى","أنيميا","مشاكل مفاصل / عمود فقري"]] as const;
+
   const submit = async () => {
-    if (!fullName.trim()) { setMsg({ text: "من فضلك أدخلي اسمك.", ok: false }); return; }
-    if (goals.length === 0) { setMsg({ text: "اختاري هدفاً واحداً على الأقل.", ok: false }); return; }
+    if (!fullName.trim()) { setMsg({ text: t("من فضلك أدخلي اسمك.","Please enter your name."), ok: false }); return; }
+    if (goals.length === 0) { setMsg({ text: t("اختاري هدفاً واحداً على الأقل.","Choose at least one goal."), ok: false }); return; }
     setSubmitting(true); setMsg(null);
     const allGoals = otherGoal.trim() ? [...goals, otherGoal.trim()] : goals;
     const formData = {
@@ -1580,12 +1588,14 @@ const PrivateBookingModal = ({ trainer, type, onClose }: { trainer: PublicTraine
         body: JSON.stringify({ trainerId: trainer.id, type, goals: allGoals, injuries: injuries.trim() || undefined, notes: notes.trim() || undefined, formData }),
       });
       const data = await res.json() as { error?: string };
-      if (!res.ok) { setMsg({ text: data.error ?? "حدث خطأ.", ok: false }); return; }
-      setMsg({ text: "✅ تم إرسال طلبك بنجاح! ستصلك إشعار فور موافقة المدربة.", ok: true });
+      if (!res.ok) { setMsg({ text: data.error ?? t("حدث خطأ.","An error occurred."), ok: false }); return; }
+      setMsg({ text: t("✅ تم إرسال طلبك بنجاح! ستصلك إشعار فور موافقة المدربة.","✅ Application sent! You'll be notified once the trainer responds."), ok: true });
       setTimeout(() => onClose(), 4000);
-    } catch { setMsg({ text: "تعذر الاتصال بالخادم.", ok: false }); }
+    } catch { setMsg({ text: t("تعذر الاتصال بالخادم.","Could not reach the server."), ok: false }); }
     finally { setSubmitting(false); }
   };
+
+  const yn = [t("نعم","Yes"), t("لا","No")] as const;
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 310, background: "rgba(0,0,0,.85)", backdropFilter: "blur(8px)", overflowY: "auto", padding: "16px 10px" }}>
@@ -1594,8 +1604,8 @@ const PrivateBookingModal = ({ trainer, type, onClose }: { trainer: PublicTraine
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
           <div>
-            <h2 style={{ fontWeight: 900, fontSize: 20, color: "#fff", margin: 0 }}>{isPrivate ? "طلب برايفيت 🎯" : "طلب ميني برايفيت 👥"}</h2>
-            <p style={{ color: C.red, fontSize: 13, marginTop: 4, margin: "4px 0 0" }}>{t("مع المدربة", "With trainer")} {trainer.name}</p>
+            <h2 style={{ fontWeight: 900, fontSize: 20, color: "#fff", margin: 0 }}>{isPrivate ? t("طلب برايفيت 🎯","Private Session Request 🎯") : t("طلب ميني برايفيت 👥","Mini Private Request 👥")}</h2>
+            <p style={{ color: C.red, fontSize: 13, marginTop: 4, margin: "4px 0 0" }}>{t("مع المدربة","With trainer")} {trainer.name}</p>
           </div>
           <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,.08)", borderRadius: 8, color: "#aaa", fontSize: 18, cursor: "pointer", width: 32, height: 32 }}>×</button>
         </div>
@@ -1603,170 +1613,173 @@ const PrivateBookingModal = ({ trainer, type, onClose }: { trainer: PublicTraine
         {/* Info banner */}
         <div style={{ background: "rgba(233,30,99,.08)", border: "1px solid rgba(233,30,99,.22)", borderRadius: 10, padding: "10px 14px", marginBottom: 20, fontSize: 12, color: "#ffb7d0", lineHeight: 1.9 }}>
           {isPrivate
-            ? <><strong style={{ color: "#fff" }}>🎯 برايفيت —</strong> 12 حصة / شهر · من ساعة إلى ساعة ونصف · برنامج مخصص حسب حالتك 100%<br /><strong style={{ color: C.gold }}>السعر: تحدده المدربة بعد مراجعة طلبك</strong></>
-            : <><strong style={{ color: "#fff" }}>👥 ميني برايفيت —</strong> 12 حصة / شهر · ساعة كل مرة · مجموعة من 3 إلى 5 عملاء<br /><strong style={{ color: C.gold }}>السعر: تحدده المدربة بعد مراجعة طلبك</strong></>}
+            ? <><strong style={{ color: "#fff" }}>🎯 {t("برايفيت","Private")} —</strong> {t("12 حصة / شهر · من ساعة إلى ساعة ونصف · برنامج مخصص حسب حالتك 100%","12 sessions/month · 60–90 min · 100% personalised program")}<br /><strong style={{ color: C.gold }}>{t("السعر: تحدده المدربة بعد مراجعة طلبك","Price: set by your trainer after reviewing your application")}</strong></>
+            : <><strong style={{ color: "#fff" }}>👥 {t("ميني برايفيت","Mini Private")} —</strong> {t("12 حصة / شهر · ساعة كل مرة · مجموعة من 3 إلى 5 عملاء","12 sessions/month · 60 min · group of 3–5 clients")}<br /><strong style={{ color: C.gold }}>{t("السعر: تحدده المدربة بعد مراجعة طلبك","Price: set by your trainer after reviewing your application")}</strong></>}
         </div>
 
-        <p style={{ fontSize: 12, color: "#888", marginBottom: 20 }}>من فضلك أملئي البيانات بدقة عشان نقدر نعمل برنامج مناسب ليكي 100% 👌</p>
+        <p style={{ fontSize: 12, color: "#888", marginBottom: 20 }}>{t("من فضلك أملئي البيانات بدقة عشان نقدر نعمل برنامج مناسب ليكي 100% 👌","Please fill in accurately so we can build the perfect program for you 100% 👌")}</p>
 
-        {/* ── Q1: Basic info ── */}
+        {/* ── Q1 ── */}
         <div style={S.section}>
-          <div style={S.sectionTitle}>القسم 1: البيانات الأساسية</div>
+          <div style={S.sectionTitle}>{t("القسم 1: البيانات الأساسية","Section 1: Basic Info")}</div>
           <div style={S.grid2}>
-            <div><label style={S.label}>الاسم *</label><input value={fullName} onChange={e => setFullName(e.target.value)} style={S.input} placeholder="اسمك الكامل" /></div>
-            <div><label style={S.label}>السن</label><input type="number" value={age} onChange={e => setAge(e.target.value)} style={S.input} placeholder="سنة" /></div>
-            <div><label style={S.label}>الطول (سم)</label><input type="number" value={height} onChange={e => setHeight(e.target.value)} style={S.input} placeholder="سم" /></div>
-            <div><label style={S.label}>الوزن (كجم)</label><input type="number" value={weight} onChange={e => setWeight(e.target.value)} style={S.input} placeholder="كجم" /></div>
+            <div><label style={S.label}>{t("الاسم *","Name *")}</label><input value={fullName} onChange={e => setFullName(e.target.value)} style={S.input} placeholder={t("اسمك الكامل","Full name")} /></div>
+            <div><label style={S.label}>{t("السن","Age")}</label><input type="number" value={age} onChange={e => setAge(e.target.value)} style={S.input} placeholder={t("سنة","years")} /></div>
+            <div><label style={S.label}>{t("الطول (سم)","Height (cm)")}</label><input type="number" value={height} onChange={e => setHeight(e.target.value)} style={S.input} placeholder="cm" /></div>
+            <div><label style={S.label}>{t("الوزن (كجم)","Weight (kg)")}</label><input type="number" value={weight} onChange={e => setWeight(e.target.value)} style={S.input} placeholder="kg" /></div>
           </div>
-          <div style={{ marginTop: 12 }}><label style={S.label}>رقم الموبايل</label><input value={phone} onChange={e => setPhone(e.target.value)} style={S.input} placeholder="01xxxxxxxxx" /></div>
+          <div style={{ marginTop: 12 }}><label style={S.label}>{t("رقم الموبايل","Mobile number")}</label><input value={phone} onChange={e => setPhone(e.target.value)} style={S.input} placeholder="01xxxxxxxxx" /></div>
           <div style={{ marginTop: 12 }}>
-            <label style={S.label}>طبيعة الشغل</label>
+            <label style={S.label}>{t("طبيعة الشغل","Job type")}</label>
             <div style={S.radio}>
-              {["مكتبي", "حركة خفيفة", "مجهود بدني"].map(j => <button key={j} type="button" onClick={() => toggle(jobType, setJobType, j)} style={S.chip(jobType.includes(j))}>{j}</button>)}
+              {JOB_OPTS[0].map((label, i) => <button key={i} type="button" onClick={() => toggle(jobType, setJobType, JOB_OPTS[1][i])} style={S.chip(jobType.includes(JOB_OPTS[1][i]))}>{label}</button>)}
             </div>
           </div>
         </div>
 
-        {/* ── Q2: Goals ── */}
+        {/* ── Q2 ── */}
         <div style={S.section}>
-          <div style={S.sectionTitle}>القسم 2: الهدف *</div>
+          <div style={S.sectionTitle}>{t("القسم 2: الهدف *","Section 2: Goals *")}</div>
           <div style={S.radio}>
-            {["خسارة وزن", "بناء عضل", "شد الجسم", "تحسين اللياقة", "تأهيل إصابة"].map(g => <button key={g} type="button" onClick={() => toggle(goals, setGoals, g)} style={S.chip(goals.includes(g))}>{g}</button>)}
+            {GOAL_OPTS[0].map((label, i) => <button key={i} type="button" onClick={() => toggle(goals, setGoals, GOAL_OPTS[1][i])} style={S.chip(goals.includes(GOAL_OPTS[1][i]))}>{label}</button>)}
           </div>
           <div style={{ marginTop: 10 }}>
-            <input value={otherGoal} onChange={e => setOtherGoal(e.target.value)} style={S.input} placeholder="هدف آخر (اكتبيه هنا)" />
+            <input value={otherGoal} onChange={e => setOtherGoal(e.target.value)} style={S.input} placeholder={t("هدف آخر (اكتبيه هنا)","Other goal (write here)")} />
           </div>
         </div>
 
-        {/* ── Q3: Medical ── */}
+        {/* ── Q3 ── */}
         <div style={S.section}>
-          <div style={S.sectionTitle}>القسم 3: الحالة الصحية</div>
+          <div style={S.sectionTitle}>{t("القسم 3: الحالة الصحية","Section 3: Medical Conditions")}</div>
           <div style={S.radio}>
-            {["ضغط", "سكر", "مشاكل قلب", "غدة درقية", "كلى", "أنيميا", "مشاكل مفاصل / عمود فقري"].map(c => <button key={c} type="button" onClick={() => toggle(medConditions, setMedConditions, c)} style={S.chip(medConditions.includes(c))}>{c}</button>)}
+            {MED_OPTS[0].map((label, i) => <button key={i} type="button" onClick={() => toggle(medConditions, setMedConditions, MED_OPTS[1][i])} style={S.chip(medConditions.includes(MED_OPTS[1][i]))}>{label}</button>)}
           </div>
           <div style={{ marginTop: 12 }}>
-            <label style={S.label}>هل بتاخدي أدوية بانتظام؟</label>
+            <label style={S.label}>{t("هل بتاخدي أدوية بانتظام؟","Do you take regular medication?")}</label>
             <div style={S.radio}>
-              {["نعم", "لا"].map(v => <button key={v} type="button" onClick={() => setTakesMeds(v)} style={S.chip(takesMeds === v)}>{v}</button>)}
+              {yn.map(v => <button key={v} type="button" onClick={() => setTakesMeds(v)} style={S.chip(takesMeds === v)}>{v}</button>)}
             </div>
-            {takesMeds === "نعم" && <input value={medsDetail} onChange={e => setMedsDetail(e.target.value)} style={{ ...S.input, marginTop: 8 }} placeholder="اكتبي الأدوية..." />}
+            {(takesMeds === "نعم" || takesMeds === "Yes") && <input value={medsDetail} onChange={e => setMedsDetail(e.target.value)} style={{ ...S.input, marginTop: 8 }} placeholder={t("اكتبي الأدوية...","List your medications...")} />}
           </div>
         </div>
 
-        {/* ── Q4: Injuries ── */}
+        {/* ── Q4 ── */}
         <div style={S.section}>
-          <div style={S.sectionTitle}>القسم 4: الإصابات</div>
+          <div style={S.sectionTitle}>{t("القسم 4: الإصابات","Section 4: Injuries")}</div>
           <div style={{ marginBottom: 12 }}>
-            <label style={S.label}>هل عندك إصابات؟</label>
-            <textarea value={injuries} onChange={e => setInjuries(e.target.value)} rows={2} style={S.textarea} placeholder="اذكري أي إصابات..." />
+            <label style={S.label}>{t("هل عندك إصابات؟","Do you have any injuries?")}</label>
+            <textarea value={injuries} onChange={e => setInjuries(e.target.value)} rows={2} style={S.textarea} placeholder={t("اذكري أي إصابات...","Describe any injuries...")} />
           </div>
           <div>
-            <label style={S.label}>هل عملتي عمليات قبل كده؟</label>
-            <textarea value={surgeries} onChange={e => setSurgeries(e.target.value)} rows={2} style={S.textarea} placeholder="اذكري أي عمليات جراحية..." />
+            <label style={S.label}>{t("هل عملتي عمليات قبل كده؟","Any previous surgeries?")}</label>
+            <textarea value={surgeries} onChange={e => setSurgeries(e.target.value)} rows={2} style={S.textarea} placeholder={t("اذكري أي عمليات جراحية...","Describe any surgeries...")} />
           </div>
         </div>
 
-        {/* ── Q5: Sports experience ── */}
+        {/* ── Q5 ── */}
         <div style={S.section}>
-          <div style={S.sectionTitle}>القسم 5: الخبرة الرياضية</div>
-          <label style={S.label}>هل تمرنتي قبل كده؟</label>
+          <div style={S.sectionTitle}>{t("القسم 5: الخبرة الرياضية","Section 5: Sports Experience")}</div>
+          <label style={S.label}>{t("هل تمرنتي قبل كده؟","Have you trained before?")}</label>
           <div style={S.radio}>
-            {["لا", "أحياناً", "بانتظام"].map(v => <button key={v} type="button" onClick={() => setSportsExp(v)} style={S.chip(sportsExp === v)}>{v}</button>)}
+            {([t("لا","No"), t("أحياناً","Sometimes"), t("بانتظام","Regularly")] as const).map((v, i) => {
+              const vals = ["لا","أحياناً","بانتظام"];
+              return <button key={i} type="button" onClick={() => setSportsExp(vals[i])} style={S.chip(sportsExp === vals[i])}>{v}</button>;
+            })}
           </div>
         </div>
 
-        {/* ── Q6: Lifestyle ── */}
+        {/* ── Q6 ── */}
         <div style={S.section}>
-          <div style={S.sectionTitle}>القسم 6: نمط الحياة</div>
+          <div style={S.sectionTitle}>{t("القسم 6: نمط الحياة","Section 6: Lifestyle")}</div>
           <div style={S.grid2}>
-            <div><label style={S.label}>عدد ساعات النوم</label><input type="number" value={sleepHours} onChange={e => setSleepHours(e.target.value)} style={S.input} placeholder="ساعات" /></div>
-            <div><label style={S.label}>شرب المياه (لتر)</label><input type="number" value={waterLiters} onChange={e => setWaterLiters(e.target.value)} style={S.input} placeholder="لتر" /></div>
+            <div><label style={S.label}>{t("عدد ساعات النوم","Sleep hours")}</label><input type="number" value={sleepHours} onChange={e => setSleepHours(e.target.value)} style={S.input} placeholder={t("ساعات","hrs")} /></div>
+            <div><label style={S.label}>{t("شرب المياه (لتر)","Water intake (L)")}</label><input type="number" value={waterLiters} onChange={e => setWaterLiters(e.target.value)} style={S.input} placeholder="L" /></div>
           </div>
           <div style={{ marginTop: 12 }}>
-            <label style={S.label}>جودة النوم</label>
+            <label style={S.label}>{t("جودة النوم","Sleep quality")}</label>
             <div style={S.radio}>
-              {["كويسة", "متقطعة", "ضعيفة"].map(v => <button key={v} type="button" onClick={() => setSleepQuality(v)} style={S.chip(sleepQuality === v)}>{v}</button>)}
+              {([t("كويسة","Good"), t("متقطعة","Interrupted"), t("ضعيفة","Poor")] as const).map((v, i) => {
+                const vals = ["كويسة","متقطعة","ضعيفة"];
+                return <button key={i} type="button" onClick={() => setSleepQuality(vals[i])} style={S.chip(sleepQuality === vals[i])}>{v}</button>;
+              })}
             </div>
           </div>
           <div style={{ marginTop: 12 }}>
-            <label style={S.label}>مستوى التوتر</label>
+            <label style={S.label}>{t("مستوى التوتر","Stress level")}</label>
             <div style={S.radio}>
-              {["قليل", "متوسط", "عالي"].map(v => <button key={v} type="button" onClick={() => setStressLevel(v)} style={S.chip(stressLevel === v)}>{v}</button>)}
+              {([t("قليل","Low"), t("متوسط","Medium"), t("عالي","High")] as const).map((v, i) => {
+                const vals = ["قليل","متوسط","عالي"];
+                return <button key={i} type="button" onClick={() => setStressLevel(vals[i])} style={S.chip(stressLevel === vals[i])}>{v}</button>;
+              })}
             </div>
           </div>
         </div>
 
-        {/* ── Q7: Nutrition ── */}
+        {/* ── Q7 ── */}
         <div style={S.section}>
-          <div style={S.sectionTitle}>القسم 7: التغذية</div>
+          <div style={S.sectionTitle}>{t("القسم 7: التغذية","Section 7: Nutrition")}</div>
           <div style={S.grid2}>
-            <div><label style={S.label}>عدد الوجبات / يوم</label><input type="number" value={mealsCount} onChange={e => setMealsCount(e.target.value)} style={S.input} placeholder="وجبات" /></div>
+            <div><label style={S.label}>{t("عدد الوجبات / يوم","Meals per day")}</label><input type="number" value={mealsCount} onChange={e => setMealsCount(e.target.value)} style={S.input} placeholder={t("وجبات","meals")} /></div>
           </div>
           <div style={{ marginTop: 12 }}>
-            <label style={S.label}>هل بتتبعي نظام غذائي؟</label>
+            <label style={S.label}>{t("هل بتتبعي نظام غذائي؟","Do you follow a diet?")}</label>
             <div style={S.radio}>
-              {["نعم", "لا"].map(v => <button key={v} type="button" onClick={() => setFollowsDiet(v)} style={S.chip(followsDiet === v)}>{v}</button>)}
+              {yn.map(v => <button key={v} type="button" onClick={() => setFollowsDiet(v)} style={S.chip(followsDiet === v)}>{v}</button>)}
             </div>
           </div>
-          <div style={{ marginTop: 12 }}><label style={S.label}>حساسية من أكل؟</label><input value={foodAllergies} onChange={e => setFoodAllergies(e.target.value)} style={S.input} placeholder="مثال: لاكتوز، جلوتين..." /></div>
-          <div style={{ marginTop: 12 }}><label style={S.label}>مكملات غذائية؟</label><input value={supplements} onChange={e => setSupplements(e.target.value)} style={S.input} placeholder="بروتين، فيتامينات..." /></div>
+          <div style={{ marginTop: 12 }}><label style={S.label}>{t("حساسية من أكل؟","Food allergies?")}</label><input value={foodAllergies} onChange={e => setFoodAllergies(e.target.value)} style={S.input} placeholder={t("مثال: لاكتوز، جلوتين...","e.g. lactose, gluten...")} /></div>
+          <div style={{ marginTop: 12 }}><label style={S.label}>{t("مكملات غذائية؟","Supplements?")}</label><input value={supplements} onChange={e => setSupplements(e.target.value)} style={S.input} placeholder={t("بروتين، فيتامينات...","protein, vitamins...")} /></div>
         </div>
 
-        {/* ── Q8: Current activity ── */}
+        {/* ── Q8 ── */}
         <div style={S.section}>
-          <div style={S.sectionTitle}>القسم 8: النشاط الحالي</div>
+          <div style={S.sectionTitle}>{t("القسم 8: النشاط الحالي","Section 8: Current Activity")}</div>
           <div style={S.grid2}>
-            <div><label style={S.label}>عدد أيام التمرين / أسبوع</label><input type="number" value={trainingDays} onChange={e => setTrainingDays(e.target.value)} style={S.input} placeholder="أيام" /></div>
-            <div><label style={S.label}>مدة التمرين</label><input value={trainingDuration} onChange={e => setTrainingDuration(e.target.value)} style={S.input} placeholder="مثال: 45 دقيقة" /></div>
+            <div><label style={S.label}>{t("عدد أيام التمرين / أسبوع","Training days/week")}</label><input type="number" value={trainingDays} onChange={e => setTrainingDays(e.target.value)} style={S.input} placeholder={t("أيام","days")} /></div>
+            <div><label style={S.label}>{t("مدة التمرين","Session duration")}</label><input value={trainingDuration} onChange={e => setTrainingDuration(e.target.value)} style={S.input} placeholder={t("مثال: 45 دقيقة","e.g. 45 min")} /></div>
           </div>
-          <div style={{ marginTop: 12 }}><label style={S.label}>نوع التمرين</label><input value={trainingType} onChange={e => setTrainingType(e.target.value)} style={S.input} placeholder="مثال: كارديو، وزن حر..." /></div>
+          <div style={{ marginTop: 12 }}><label style={S.label}>{t("نوع التمرين","Type of training")}</label><input value={trainingType} onChange={e => setTrainingType(e.target.value)} style={S.input} placeholder={t("مثال: كارديو، وزن حر...","e.g. cardio, free weights...")} /></div>
         </div>
 
-        {/* ── Q9: Women's health ── */}
+        {/* ── Q9 ── */}
         <div style={S.section}>
-          <div style={S.sectionTitle}>القسم 9: للسيدات</div>
+          <div style={S.sectionTitle}>{t("القسم 9: للسيدات","Section 9: Women's Health")}</div>
           <div style={{ marginBottom: 12 }}>
-            <label style={S.label}>هل فيه حمل؟</label>
-            <div style={S.radio}>
-              {["نعم", "لا"].map(v => <button key={v} type="button" onClick={() => setPregnant(v)} style={S.chip(pregnant === v)}>{v}</button>)}
-            </div>
+            <label style={S.label}>{t("هل فيه حمل؟","Currently pregnant?")}</label>
+            <div style={S.radio}>{yn.map(v => <button key={v} type="button" onClick={() => setPregnant(v)} style={S.chip(pregnant === v)}>{v}</button>)}</div>
           </div>
           <div style={{ marginBottom: 12 }}>
-            <label style={S.label}>هل سبق الولادة؟</label>
-            <div style={S.radio}>
-              {["نعم", "لا"].map(v => <button key={v} type="button" onClick={() => setGaveBirth(v)} style={S.chip(gaveBirth === v)}>{v}</button>)}
-            </div>
-            {gaveBirth === "نعم" && <input value={lastBirth} onChange={e => setLastBirth(e.target.value)} style={{ ...S.input, marginTop: 8 }} placeholder="آخر ولادة من قد إيه؟" />}
+            <label style={S.label}>{t("هل سبق الولادة؟","Any previous births?")}</label>
+            <div style={S.radio}>{yn.map(v => <button key={v} type="button" onClick={() => setGaveBirth(v)} style={S.chip(gaveBirth === v)}>{v}</button>)}</div>
+            {(gaveBirth === "نعم" || gaveBirth === "Yes") && <input value={lastBirth} onChange={e => setLastBirth(e.target.value)} style={{ ...S.input, marginTop: 8 }} placeholder={t("آخر ولادة من قد إيه؟","How long ago was the last birth?")} />}
           </div>
           <div>
-            <label style={S.label}>مشاكل هرمونية؟</label>
-            <input value={hormonalIssues} onChange={e => setHormonalIssues(e.target.value)} style={S.input} placeholder="تكيس مبايض، انقطاع دورة..." />
+            <label style={S.label}>{t("مشاكل هرمونية؟","Hormonal issues?")}</label>
+            <input value={hormonalIssues} onChange={e => setHormonalIssues(e.target.value)} style={S.input} placeholder={t("تكيس مبايض، انقطاع دورة...","PCOS, irregular cycle...")} />
           </div>
         </div>
 
-        {/* ── Q10: Commitment ── */}
+        {/* ── Q10 ── */}
         <div style={S.section}>
-          <div style={S.sectionTitle}>القسم 10: الالتزام</div>
-          <div style={{ marginBottom: 12 }}><label style={S.label}>عايزة توصلي لهدفك في قد إيه؟</label><input value={goalTimeline} onChange={e => setGoalTimeline(e.target.value)} style={S.input} placeholder="مثال: 3 شهور" /></div>
-          <div style={{ marginBottom: 12 }}><label style={S.label}>تقدري تلتزمي كام يوم أسبوعياً؟</label><input type="number" value={commitDays} onChange={e => setCommitDays(e.target.value)} style={S.input} placeholder="أيام" /></div>
+          <div style={S.sectionTitle}>{t("القسم 10: الالتزام","Section 10: Commitment")}</div>
+          <div style={{ marginBottom: 12 }}><label style={S.label}>{t("عايزة توصلي لهدفك في قد إيه؟","When do you want to reach your goal?")}</label><input value={goalTimeline} onChange={e => setGoalTimeline(e.target.value)} style={S.input} placeholder={t("مثال: 3 شهور","e.g. 3 months")} /></div>
+          <div style={{ marginBottom: 12 }}><label style={S.label}>{t("تقدري تلتزمي كام يوم أسبوعياً؟","How many days/week can you commit?")}</label><input type="number" value={commitDays} onChange={e => setCommitDays(e.target.value)} style={S.input} placeholder={t("أيام","days")} /></div>
           <div>
-            <label style={S.label}>مستعدة لنظام غذائي؟</label>
-            <div style={S.radio}>
-              {["نعم", "لا"].map(v => <button key={v} type="button" onClick={() => setDietReady(v)} style={S.chip(dietReady === v)}>{v}</button>)}
-            </div>
+            <label style={S.label}>{t("مستعدة لنظام غذائي؟","Ready to follow a diet plan?")}</label>
+            <div style={S.radio}>{yn.map(v => <button key={v} type="button" onClick={() => setDietReady(v)} style={S.chip(dietReady === v)}>{v}</button>)}</div>
           </div>
         </div>
 
-        {/* ── Q11: Notes ── */}
+        {/* ── Q11 ── */}
         <div style={S.section}>
-          <div style={S.sectionTitle}>القسم 11: ملاحظات إضافية</div>
-          <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} style={S.textarea} placeholder="أي معلومات إضافية تودين مشاركتها مع المدربة..." />
+          <div style={S.sectionTitle}>{t("القسم 11: ملاحظات إضافية","Section 11: Additional Notes")}</div>
+          <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} style={S.textarea} placeholder={t("أي معلومات إضافية تودين مشاركتها مع المدربة...","Any extra information you'd like to share with your trainer...")} />
         </div>
 
         {/* Submit */}
         {msg && <div style={{ background: msg.ok ? "rgba(74,222,128,.12)" : "rgba(233,30,99,.12)", border: `1px solid ${msg.ok ? "#4ade80" : C.red}`, borderRadius: 10, padding: "10px 14px", marginBottom: 14, fontSize: 13, color: msg.ok ? "#4ade80" : "#ffb7d0" }}>{msg.text}</div>}
         <button className="btn-primary" style={{ width: "100%", justifyContent: "center", fontSize: 15 }} onClick={submit} disabled={submitting}>
-          {submitting ? "جارٍ الإرسال..." : "إرسال الطلب 📩"}
+          {submitting ? t("جارٍ الإرسال...","Sending...") : t("إرسال الطلب 📩","Submit Application 📩")}
         </button>
       </div>
     </div>
