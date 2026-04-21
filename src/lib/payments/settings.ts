@@ -1,121 +1,51 @@
 import { db } from "@/lib/db";
 
-export type PaymentAccount = {
-  id: string;
-  label: string;
-  url: string;
-  isDefault?: boolean;
-};
-
-export type ManualPaymentSettings = {
+export type PaymentSettings = {
   activeProvider: string;
-  merchantId: string;
-  publicKey: string;
-  iframeId: string;
+  merchantId: string;     // Paymob merchant/profile ID
+  publicKey: string;      // Paymob public key (display in admin, safe to store)
+  integrationId: string;  // Paymob card integration ID (used in payment key request)
+  iframeId: string;       // Paymob iframe ID (used in hosted checkout URL)
   returnUrl: string;
   cancelUrl: string;
-  webhookUrl: string;
+  webhookUrl: string;     // Informational — admin sets this on Paymob dashboard
   sandboxMode: boolean;
   notes: string;
-  instapayUrl: string;
-  instapayLabel: string;
-  vodafoneCashUrl: string;
-  vodafoneCashLabel: string;
-  instapayAccounts: PaymentAccount[];
-  vodafoneCashAccounts: PaymentAccount[];
 };
 
-const DEFAULT_SETTINGS: ManualPaymentSettings = {
-  activeProvider: "manual",
+const DEFAULT_SETTINGS: PaymentSettings = {
+  activeProvider: "paymob",
   merchantId: "",
   publicKey: "",
+  integrationId: "",
   iframeId: "",
   returnUrl: "https://fitzoneland.com/account",
   cancelUrl: "https://fitzoneland.com/account",
-  webhookUrl: "https://fitzoneland.com/api/payments/webhook/manual",
-  sandboxMode: true,
+  webhookUrl: "https://fitzoneland.com/api/payments/webhook/paymob",
+  sandboxMode: false,
   notes: "",
-  instapayUrl: "https://ipn.eg/S/rotanaqnb/instapay/34D04q",
-  instapayLabel: "InstaPay",
-  vodafoneCashUrl: "http://vf.eg/vfcash?id=mt&qrId=gn6qLY",
-  vodafoneCashLabel: "Vodafone Cash",
-  instapayAccounts: [
-    { id: "instapay-1", label: "InstaPay", url: "https://ipn.eg/S/rotanaqnb/instapay/34D04q", isDefault: true },
-  ],
-  vodafoneCashAccounts: [
-    { id: "vodafone-1", label: "Vodafone Cash", url: "http://vf.eg/vfcash?id=mt&qrId=gn6qLY", isDefault: true },
-  ],
 };
 
-function normalizeAccounts(
-  accounts: PaymentAccount[] | null | undefined,
-  fallbackLabel: string,
-  fallbackUrl: string,
-  idPrefix: string,
-) {
-  const list = Array.isArray(accounts) ? accounts.filter((item) => item && item.url) : [];
-  const normalized = list.map((item, index) => ({
-    id: item.id || `${idPrefix}-${index + 1}`,
-    label: item.label || fallbackLabel,
-    url: item.url,
-    isDefault: Boolean(item.isDefault),
-  }));
-
-  if (normalized.length === 0 && fallbackUrl) {
-    return [{ id: `${idPrefix}-1`, label: fallbackLabel, url: fallbackUrl, isDefault: true }];
-  }
-
-  const hasDefault = normalized.some((item) => item.isDefault);
-  if (!hasDefault && normalized.length > 0) {
-    normalized[0].isDefault = true;
-  }
-
-  const firstDefault = normalized.findIndex((item) => item.isDefault);
-  if (firstDefault > 0) {
-    return normalized.map((item, index) => ({ ...item, isDefault: index === firstDefault }));
-  }
-
-  return normalized;
-}
-
-function normalizeSettings(raw: Partial<ManualPaymentSettings>) {
-  const instapayAccounts = normalizeAccounts(
-    raw.instapayAccounts,
-    raw.instapayLabel ?? DEFAULT_SETTINGS.instapayLabel,
-    raw.instapayUrl ?? DEFAULT_SETTINGS.instapayUrl,
-    "instapay",
-  );
-  const vodafoneCashAccounts = normalizeAccounts(
-    raw.vodafoneCashAccounts,
-    raw.vodafoneCashLabel ?? DEFAULT_SETTINGS.vodafoneCashLabel,
-    raw.vodafoneCashUrl ?? DEFAULT_SETTINGS.vodafoneCashUrl,
-    "vodafone",
-  );
-
-  const defaultInstapay = instapayAccounts.find((item) => item.isDefault) ?? instapayAccounts[0];
-  const defaultVodafone = vodafoneCashAccounts.find((item) => item.isDefault) ?? vodafoneCashAccounts[0];
-
+function normalizeSettings(raw: Record<string, unknown>): PaymentSettings {
   return {
-    ...DEFAULT_SETTINGS,
-    ...raw,
-    instapayAccounts,
-    vodafoneCashAccounts,
-    instapayUrl: defaultInstapay?.url ?? raw.instapayUrl ?? DEFAULT_SETTINGS.instapayUrl,
-    instapayLabel: defaultInstapay?.label ?? raw.instapayLabel ?? DEFAULT_SETTINGS.instapayLabel,
-    vodafoneCashUrl: defaultVodafone?.url ?? raw.vodafoneCashUrl ?? DEFAULT_SETTINGS.vodafoneCashUrl,
-    vodafoneCashLabel: defaultVodafone?.label ?? raw.vodafoneCashLabel ?? DEFAULT_SETTINGS.vodafoneCashLabel,
+    activeProvider: String(raw.activeProvider ?? DEFAULT_SETTINGS.activeProvider),
+    merchantId: String(raw.merchantId ?? ""),
+    publicKey: String(raw.publicKey ?? ""),
+    integrationId: String(raw.integrationId ?? raw.iframeId ?? ""),
+    iframeId: String(raw.iframeId ?? ""),
+    returnUrl: String(raw.returnUrl ?? DEFAULT_SETTINGS.returnUrl),
+    cancelUrl: String(raw.cancelUrl ?? DEFAULT_SETTINGS.cancelUrl),
+    webhookUrl: String(raw.webhookUrl ?? DEFAULT_SETTINGS.webhookUrl),
+    sandboxMode: Boolean(raw.sandboxMode ?? DEFAULT_SETTINGS.sandboxMode),
+    notes: String(raw.notes ?? ""),
   };
 }
 
-export async function getPaymentSettings() {
-  const record = await db.siteContent.findUnique({
-    where: { section: "paymentSettings" },
-  });
-
+export async function getPaymentSettings(): Promise<PaymentSettings> {
+  const record = await db.siteContent.findUnique({ where: { section: "paymentSettings" } });
   if (!record) return DEFAULT_SETTINGS;
-
   try {
-    const parsed = JSON.parse(record.content) as Partial<ManualPaymentSettings>;
+    const parsed = JSON.parse(record.content) as Record<string, unknown>;
     return normalizeSettings(parsed);
   } catch {
     return DEFAULT_SETTINGS;

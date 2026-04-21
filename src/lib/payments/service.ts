@@ -178,19 +178,24 @@ export async function verifyPaymentTransaction(transactionId: string) {
     metadata: transaction.metadata,
   });
 
-  const updated = await db.paymentTransaction.update({
+  // Store updated references regardless of status
+  await db.paymentTransaction.update({
     where: { id: transaction.id },
     data: {
-      status: verification.status,
       providerReference: verification.providerReference ?? transaction.providerReference,
       externalReference: verification.externalReference ?? transaction.externalReference,
       providerPayload: stringifyJson(verification.payload ?? parseJson(transaction.providerPayload)),
-      paidAt: verification.status === "paid" ? new Date() : transaction.paidAt,
-      failedAt: verification.status === "failed" ? new Date() : transaction.failedAt,
     },
   });
 
-  return mapPaymentTransaction(updated, verification.message);
+  // If paid or failed, delegate to updatePaymentTransactionStatus which handles
+  // membership activation, order confirmation, notifications, etc.
+  if (verification.status === "paid" || verification.status === "failed") {
+    return updatePaymentTransactionStatus(transactionId, verification.status, null);
+  }
+
+  const updated = await db.paymentTransaction.findUnique({ where: { id: transactionId } });
+  return mapPaymentTransaction(updated!, verification.message);
 }
 
 export async function updatePaymentTransactionStatus(
@@ -200,8 +205,14 @@ export async function updatePaymentTransactionStatus(
 ) {
   const existing = await db.paymentTransaction.findUnique({
     where: { id: transactionId },
-    select: { metadata: true, membershipId: true, orderId: true, userId: true },
+    select: { status: true, metadata: true, membershipId: true, orderId: true, userId: true },
   });
+
+  // Idempotency: if already in a terminal state, skip re-processing
+  if (existing?.status === "paid" && status === "paid") {
+    const current = await db.paymentTransaction.findUnique({ where: { id: transactionId } });
+    return mapPaymentTransaction(current!);
+  }
 
   const transaction = await db.paymentTransaction.update({
     where: { id: transactionId },
@@ -209,7 +220,7 @@ export async function updatePaymentTransactionStatus(
       status,
       metadata: stringifyJson({
         ...(parseJson(existing?.metadata) ?? {}),
-        adminNote: note ?? null,
+        ...(note != null ? { adminNote: note } : {}),
       }),
       paidAt: status === "paid" ? new Date() : undefined,
       failedAt: status === "failed" ? new Date() : undefined,
@@ -235,15 +246,20 @@ export async function updatePaymentTransactionStatus(
         },
       });
       if (membership?.status === "pending_payment") {
-        // Set startDate/endDate from now (payment just confirmed)
         const now = new Date();
         const duration = membership.membership?.duration ?? 30;
         const endDate = new Date(now.getTime() + duration * 24 * 60 * 60 * 1000);
 
-        await db.userMembership.update({
-          where: { id: existing.membershipId },
+        // updateMany with WHERE status=pending_payment makes this idempotent:
+        // concurrent webhook calls won't double-activate.
+        const activated = await db.userMembership.updateMany({
+          where: { id: existing.membershipId, status: "pending_payment" },
           data: { status: "active", startDate: now, endDate },
         });
+        if (activated.count === 0) {
+          // Already activated by a concurrent webhook — skip side effects
+          return mapPaymentTransaction(transaction);
+        }
 
         // Unlock pending referral reward for the user who just subscribed
         if (existing.userId) {
