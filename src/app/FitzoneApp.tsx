@@ -2407,6 +2407,9 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
   const [subMsg, setSubMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [verifyModal, setVerifyModal] = useState<{ plan: PlanItem; scheduleIds: string[] } | null>(null);
   const [checkoutPreview, setCheckoutPreview] = useState<MembershipCheckoutPreview | null>(null);
+  const [subCheckoutOptions, setSubCheckoutOptions] = useState<{ walletBalance: number; rewardPoints: number; pointValueEGP: number; rewardPointsEGP: number } | null>(null);
+  const [subUseWallet, setSubUseWallet] = useState(false);
+  const [subUseRewards, setSubUseRewards] = useState(false);
   const [verifyCode, setVerifyCode] = useState("");
   const [verifyLoading, setVerifyLoading] = useState(false);
   const [verifyMsg, setVerifyMsg] = useState<{ text: string; ok: boolean } | null>(null);
@@ -2782,12 +2785,27 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
     const membershipPrice = plan.priceAfter != null && plan.priceAfter > 0 ? plan.priceAfter : plan.price;
     const membershipDiscount = Math.max(0, originalPrice - membershipPrice);
     const promoDiscount = Math.max(0, discountResult?.discountAmount ?? 0);
-    const finalAmount = Math.max(0, membershipPrice - promoDiscount);
-    return { originalPrice, membershipPrice, membershipDiscount, promoDiscount, finalAmount };
+    const afterPromo = Math.max(0, membershipPrice - promoDiscount);
+    const subRewardsEGP = subCheckoutOptions?.rewardPointsEGP ?? 0;
+    const subWalletBal = subCheckoutOptions?.walletBalance ?? 0;
+    const rewardsDiscount = subUseRewards ? Math.min(subRewardsEGP, afterPromo) : 0;
+    const walletDiscount = subUseWallet ? Math.min(subWalletBal, Math.max(0, afterPromo - rewardsDiscount)) : 0;
+    const finalAmount = Math.max(0, afterPromo - rewardsDiscount - walletDiscount);
+    const pointsToDeduct = subUseRewards && subCheckoutOptions ? Math.ceil(rewardsDiscount / subCheckoutOptions.pointValueEGP) : 0;
+    return { originalPrice, membershipPrice, membershipDiscount, promoDiscount, rewardsDiscount, walletDiscount, finalAmount, pointsToDeduct };
   };
 
   const openCheckoutPreview = (plan: PlanItem, scheduleIds: string[] = []) => {
     setCheckoutPreview({ plan, scheduleIds, confirmed: false });
+    setSubUseWallet(false);
+    setSubUseRewards(false);
+    setSubCheckoutOptions(null);
+    fetch("/api/me/checkout-options", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { walletBalance: number; rewardPoints: number; pointValueEGP: number; rewardPointsEGP: number } | null) => {
+        if (d) setSubCheckoutOptions(d);
+      })
+      .catch(() => {});
   };
 
   const handleSubscribe = async (plan: PlanItem, scheduleIds: string[] = [], paymentOverride?: "instapay" | "vodafone_cash") => {
@@ -2800,7 +2818,17 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
       const res = await fetch("/api/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ membershipId: plan.id, scheduleIds, paymentMethod: paymentOverride ?? membershipPayMethod, discountCode: discountResult ? discountCode.trim().toUpperCase() : null }),
+        body: JSON.stringify((() => {
+          const fs = getMembershipFinancialSummary(plan);
+          return {
+            membershipId: plan.id,
+            scheduleIds,
+            paymentMethod: paymentOverride ?? membershipPayMethod,
+            discountCode: discountResult ? discountCode.trim().toUpperCase() : null,
+            walletDeduct: fs.walletDiscount > 0 ? fs.walletDiscount : undefined,
+            pointsDeduct: fs.pointsToDeduct > 0 ? fs.pointsToDeduct : undefined,
+          };
+        })()),
         signal: controller.signal,
       });
       clearTimeout(timer);
@@ -3378,6 +3406,18 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                           <strong style={{ color: C.success }}>- {formatCurrency(summary.promoDiscount)}</strong>
                         </div>
                       ) : null}
+                      {summary.rewardsDiscount > 0 ? (
+                        <div style={{ display: "flex", justifyContent: "space-between", color: C.gray }}>
+                          <span>{t("خصم نقاط المكافآت", "Rewards discount")}</span>
+                          <strong style={{ color: C.gold }}>- {formatCurrency(summary.rewardsDiscount)}</strong>
+                        </div>
+                      ) : null}
+                      {summary.walletDiscount > 0 ? (
+                        <div style={{ display: "flex", justifyContent: "space-between", color: C.gray }}>
+                          <span>{t("خصم المحفظة", "Wallet discount")}</span>
+                          <strong style={{ color: "#4ade80" }}>- {formatCurrency(summary.walletDiscount)}</strong>
+                        </div>
+                      ) : null}
                       <div style={{ height: 1, background: C.border, margin: "4px 0" }} />
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                         <span style={{ fontWeight: 900, color: C.white }}>{t("الإجمالي المستحق", "Amount due")}</span>
@@ -3385,6 +3425,35 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                       </div>
                     </div>
                   </div>
+
+                  {/* Wallet & Points selection */}
+                  {subCheckoutOptions && (subCheckoutOptions.rewardPointsEGP > 0 || subCheckoutOptions.walletBalance > 0) && (
+                    <div className="card" style={{ padding: "12px 16px", marginBottom: 14, background: "rgba(255,255,255,.03)" }}>
+                      <div style={{ fontWeight: 800, color: C.white, fontSize: 13, marginBottom: 8 }}>{t("استخدام رصيدك", "Use your balance")}</div>
+                      {subCheckoutOptions.rewardPointsEGP > 0 && (
+                        <div onClick={() => setSubUseRewards((v) => !v)} style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", padding: "8px 0", borderBottom: subCheckoutOptions.walletBalance > 0 ? `1px solid ${C.border}` : "none" }}>
+                          <div style={{ width: 18, height: 18, borderRadius: 4, border: `2px solid ${subUseRewards ? C.red : C.border}`, background: subUseRewards ? C.red : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                            {subUseRewards && <I n="check" s={11} c="#fff" />}
+                          </div>
+                          <span style={{ fontSize: 13, color: C.grayLight }}>
+                            {t("استخدام نقاط المكافآت", "Use reward points")}
+                            {" "}<strong style={{ color: C.gold }}>({subCheckoutOptions.rewardPoints.toLocaleString(lang === "ar" ? "ar-EG" : "en-US")} {t("نقطة", "pts")} = {formatCurrency(subCheckoutOptions.rewardPointsEGP)})</strong>
+                          </span>
+                        </div>
+                      )}
+                      {subCheckoutOptions.walletBalance > 0 && (
+                        <div onClick={() => setSubUseWallet((v) => !v)} style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", padding: "8px 0" }}>
+                          <div style={{ width: 18, height: 18, borderRadius: 4, border: `2px solid ${subUseWallet ? C.red : C.border}`, background: subUseWallet ? C.red : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                            {subUseWallet && <I n="check" s={11} c="#fff" />}
+                          </div>
+                          <span style={{ fontSize: 13, color: C.grayLight }}>
+                            {t("استخدام رصيد المحفظة", "Use wallet balance")}
+                            {" "}<strong style={{ color: "#4ade80" }}>({formatCurrency(subCheckoutOptions.walletBalance)} {t("ج.م", "EGP")})</strong>
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {!checkoutPreview.confirmed ? (
                     <button
@@ -3396,33 +3465,37 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                     </button>
                   ) : (
                     <>
-                      <div className="card" style={{ padding: 16, marginBottom: 14, background: "rgba(255,255,255,.04)" }}>
-                        <div style={{ fontWeight: 800, color: C.white, marginBottom: 8 }}>{t("اختاري وسيلة الدفع", "Choose payment method")}</div>
-                        <div style={{ display: "grid", gap: 10 }}>
-                          {paymentOptions.map((method) => (
-                            <button
-                              key={method.id}
-                              type="button"
-                              onClick={() => setMembershipPayMethod(method.id)}
-                              className={`schedule-slot-item${membershipPayMethod === method.id ? " selected" : ""}`}
-                              style={{ textAlign: "right" }}
-                            >
-                              <div className="schedule-item-title">{method.label}</div>
-                              <div className="schedule-item-sub">{t("بعد الضغط سيتم إنشاء طلب الدفع وإرسالِك إلى صفحة المتابعة.", "After clicking, your payment request will be created and you will be sent to the follow-up page.")}</div>
-                            </button>
-                          ))}
+                      {summary.finalAmount > 0 && (
+                        <div className="card" style={{ padding: 16, marginBottom: 14, background: "rgba(255,255,255,.04)" }}>
+                          <div style={{ fontWeight: 800, color: C.white, marginBottom: 8 }}>{t("اختاري وسيلة الدفع", "Choose payment method")}</div>
+                          <div style={{ display: "grid", gap: 10 }}>
+                            {paymentOptions.map((method) => (
+                              <button
+                                key={method.id}
+                                type="button"
+                                onClick={() => setMembershipPayMethod(method.id)}
+                                className={`schedule-slot-item${membershipPayMethod === method.id ? " selected" : ""}`}
+                                style={{ textAlign: "right" }}
+                              >
+                                <div className="schedule-item-title">{method.label}</div>
+                                <div className="schedule-item-sub">{t("بعد الضغط سيتم إنشاء طلب الدفع وإرسالِك إلى صفحة المتابعة.", "After clicking, your payment request will be created and you will be sent to the follow-up page.")}</div>
+                              </button>
+                            ))}
+                          </div>
                         </div>
-                      </div>
+                      )}
 
                       <button
                         className="btn-primary"
                         style={{ width: "100%", justifyContent: "center" }}
-                        onClick={() => handleSubscribe(checkoutPreview.plan, checkoutPreview.scheduleIds, membershipPayMethod)}
+                        onClick={() => handleSubscribe(checkoutPreview.plan, checkoutPreview.scheduleIds, summary.finalAmount === 0 ? "cash" : membershipPayMethod)}
                         disabled={checkoutPreview.plan.id !== null && subscribing === checkoutPreview.plan.id}
                       >
                         {checkoutPreview.plan.id !== null && subscribing === checkoutPreview.plan.id
                           ? t("جارٍ التنفيذ...", "Processing...")
-                          : t("المتابعة إلى الدفع", "Continue to payment")}
+                          : summary.finalAmount === 0
+                            ? t("تأكيد الاشتراك مجاناً", "Confirm free subscription")
+                            : t("المتابعة إلى الدفع", "Continue to payment")}
                       </button>
                     </>
                   )}
