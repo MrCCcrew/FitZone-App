@@ -2382,6 +2382,7 @@ type PlanItem = {
   color: string;
   popular: boolean;
   goalIds: string[];
+  isTrial?: boolean;
 };
 
 type MembershipCheckoutPreview = {
@@ -2483,19 +2484,22 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
           const trialPlan: PlanItem = {
             id: trialMb?.id ?? "trial-class",
             name: trialMb?.name ?? "كلاس تجريبي",
-            price: trialMb?.price ?? 0,
+            price: 50, // default price; updated dynamically based on selected slot type
             priceBefore: null,
             priceAfter: null,
             durationDays: trialMb?.durationDays ?? 1,
             cycle: null,
-            sessionsCount: trialMb?.sessionsCount ?? 1,
+            sessionsCount: 1,
             features: trialMb?.features?.length ? trialMb.features : ["حجز كلاس فردي من جميع الأنواع", "اختاري أي موعد متاح"],
             color: C.red,
             popular: false,
             goalIds: [],
+            isTrial: true,
           };
           setScheduleSelections([]);
           setScheduleError(null);
+          setDaysPerWeek(null);
+          setScheduleStep("slots"); // skip frequency step for trial
           setSchedulePlan(trialPlan);
         }
       })
@@ -2894,8 +2898,14 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
       }
     }
 
-    const plan = schedulePlan;
+    let plan = schedulePlan;
     const selected = [...scheduleSelections];
+    // For trial class: determine price from selected slot type (yoga=100, other=50)
+    if (plan.isTrial && selected.length > 0) {
+      const slot = scheduleChoices.find((c) => c.id === selected[0]);
+      const isYoga = normalizeClassTypeKey(slot?.type ?? "") === "yoga";
+      plan = { ...plan, price: isYoga ? 100 : 50 };
+    }
     setSchedulePlan(null);
     setScheduleError(null);
     setScheduleSelections([]);
@@ -3047,12 +3057,16 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
               <div>
                 <h2 style={{ fontWeight: 900, fontSize: 20, color: "#fff" }}>
-                  {scheduleStep === "frequency" ? "كثافة الحضور الأسبوعية" : "اختاري مواعيدك المناسبة"}
+                  {schedulePlan?.isTrial
+                    ? t("اختاري موعد الكلاس التجريبي", "Choose your trial class slot")
+                    : scheduleStep === "frequency" ? "كثافة الحضور الأسبوعية" : "اختاري مواعيدك المناسبة"}
                 </h2>
                 <p style={{ color: "#c9b9c1", fontSize: 13, marginTop: 4 }}>
-                  {scheduleStep === "frequency"
-                    ? "اختاري كم يوم في الأسبوع تريدين الحضور"
-                    : "المواعيد المعروضة تستبعد الكلاسات الممنوعة حسب الاستبيان."}
+                  {schedulePlan?.isTrial
+                    ? t("اختاري يوماً وحصة واحدة فقط.", "Select one day and one session only.")
+                    : scheduleStep === "frequency"
+                      ? "اختاري كم يوم في الأسبوع تريدين الحضور"
+                      : "المواعيد المعروضة تستبعد الكلاسات الممنوعة حسب الاستبيان."}
                 </p>
               </div>
               <button onClick={() => { setSchedulePlan(null); setDaysPerWeek(null); setScheduleStep("frequency"); }} aria-label={t("إغلاق", "Close")} style={{ border: "none", background: "none", fontSize: 22, cursor: "pointer", color: "#c9b9c1" }}>×</button>
@@ -3163,23 +3177,42 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
               <>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 14, flexWrap: "wrap" }}>
               <div style={{ color: "#f5c542", fontWeight: 800, fontSize: 13 }}>
-                {daysPerWeek
-                  ? <>{daysPerWeek} أيام / أسبوع · <span style={{ color: "#c9b9c1", fontWeight: 400 }}>اختاري من {daysPerWeek} إلى {daysPerWeek * 2} حصة</span></>
-                  : schedulePlan.sessionsCount ? `يمكنك اختيار ${schedulePlan.sessionsCount} موعد` : "اختاري المواعيد المناسبة لك"
+                {schedulePlan.isTrial
+                  ? t("اختاري موعداً واحداً للكلاس التجريبي", "Select one slot for your trial class")
+                  : daysPerWeek
+                    ? <>{daysPerWeek} أيام / أسبوع · <span style={{ color: "#c9b9c1", fontWeight: 400 }}>اختاري من {daysPerWeek} إلى {daysPerWeek * 2} حصة</span></>
+                    : schedulePlan.sessionsCount ? `يمكنك اختيار ${schedulePlan.sessionsCount} موعد` : "اختاري المواعيد المناسبة لك"
                 }
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <button
-                  onClick={() => { setScheduleStep("frequency"); setScheduleSelections([]); setScheduleError(null); }}
-                  style={{ fontSize: 12, color: "#c9b9c1", background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}
-                >
-                  ← تغيير الأيام
-                </button>
+                {!schedulePlan.isTrial && (
+                  <button
+                    onClick={() => { setScheduleStep("frequency"); setScheduleSelections([]); setScheduleError(null); }}
+                    style={{ fontSize: 12, color: "#c9b9c1", background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}
+                  >
+                    ← تغيير الأيام
+                  </button>
+                )}
                 <div style={{ color: "#fff", fontSize: 12 }}>
                   تم اختيار {scheduleSelections.length}
                 </div>
               </div>
             </div>
+
+            {/* Trial pricing notice */}
+            {schedulePlan.isTrial && (
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 8, background: "rgba(155,89,182,.1)", border: "1px solid rgba(155,89,182,.4)", borderRadius: 10, padding: "10px 14px", marginBottom: 14, fontSize: 13, color: "#c9aaff", lineHeight: 1.7 }}>
+                <span style={{ fontSize: 15, flexShrink: 0 }}>💡</span>
+                <span>
+                  {t("سعر الكلاس التجريبي:", "Trial class price:")}
+                  {" "}<strong style={{ color: "#9B59B6" }}>{t("كلاس اليوجا = 100 ج.م", "Yoga class = 100 EGP")}</strong>
+                  {" · "}
+                  <strong style={{ color: "#c9aaff" }}>{t("أي كلاس آخر = 50 ج.م", "Any other class = 50 EGP")}</strong>
+                  <br />
+                  {t("السعر يتحدد تلقائياً بعد اختيار الموعد.", "Price updates automatically after selecting your slot.")}
+                </span>
+              </div>
+            )}
 
               {scheduleChoices.length === 0 ? (
                 <div style={{ textAlign: "center", padding: "40px 0", color: "#c9b9c1" }}>
@@ -3187,10 +3220,12 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                 </div>
               ) : (
                 <>
-                  <div style={{ display: "flex", alignItems: "flex-start", gap: 8, background: "rgba(245,197,66,.07)", border: "1px solid rgba(245,197,66,.25)", borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 13, color: "#f5c542", fontWeight: 700, lineHeight: 1.6 }}>
-                    <span style={{ fontSize: 16, flexShrink: 0 }}>⚠️</span>
-                    <span>{t("لا يمكن حجز أكثر من كلاس واحد في نفس التوقيت ونفس اليوم.", "You cannot book more than one class at the same time on the same day.")}</span>
-                  </div>
+                  {!schedulePlan.isTrial && (
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: 8, background: "rgba(245,197,66,.07)", border: "1px solid rgba(245,197,66,.25)", borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 13, color: "#f5c542", fontWeight: 700, lineHeight: 1.6 }}>
+                      <span style={{ fontSize: 16, flexShrink: 0 }}>⚠️</span>
+                      <span>{t("لا يمكن حجز أكثر من كلاس واحد في نفس التوقيت ونفس اليوم.", "You cannot book more than one class at the same time on the same day.")}</span>
+                    </div>
+                  )}
                   {scheduleSplit.morning.length > 0 && (
                     <div className="schedule-block">
                       <div className="schedule-block-title">الجدول الصباحي</div>
@@ -3228,6 +3263,9 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                                         {cellEntries.map((entry) => {
                                           const selected = scheduleSelections.includes(entry.id);
                                           const disabled = entry.availableSpots <= 0;
+                                          const trialPrice = schedulePlan?.isTrial
+                                            ? (normalizeClassTypeKey(entry.type) === "yoga" ? 100 : 50)
+                                            : null;
                                           return (
                                             <button
                                               key={entry.id}
@@ -3241,6 +3279,11 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                                                 {formatClassType(entry.type)}
                                                 {entry.subType ? ` - ${entry.subType}` : ""}
                                               </div>
+                                              {trialPrice !== null && (
+                                                <div style={{ fontSize: 10, fontWeight: 800, color: trialPrice === 100 ? "#9B59B6" : "#4ade80", marginTop: 2 }}>
+                                                  {trialPrice} {t("ج.م", "EGP")}
+                                                </div>
+                                              )}
                                             </button>
                                           );
                                         })}
@@ -3293,6 +3336,9 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                                         {cellEntries.map((entry) => {
                                           const selected = scheduleSelections.includes(entry.id);
                                           const disabled = entry.availableSpots <= 0;
+                                          const trialPrice = schedulePlan?.isTrial
+                                            ? (normalizeClassTypeKey(entry.type) === "yoga" ? 100 : 50)
+                                            : null;
                                           return (
                                             <button
                                               key={entry.id}
@@ -3306,6 +3352,11 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                                                 {formatClassType(entry.type)}
                                                 {entry.subType ? ` - ${entry.subType}` : ""}
                                               </div>
+                                              {trialPrice !== null && (
+                                                <div style={{ fontSize: 10, fontWeight: 800, color: trialPrice === 100 ? "#9B59B6" : "#4ade80", marginTop: 2 }}>
+                                                  {trialPrice} {t("ج.م", "EGP")}
+                                                </div>
+                                              )}
                                             </button>
                                           );
                                         })}
@@ -3334,7 +3385,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                 رجوع
               </button>
               <button className="btn-primary" onClick={handleScheduleConfirm} style={{ minHeight: 44 }}>
-                تأكيد الاشتراك
+                {schedulePlan?.isTrial ? t("متابعة إلى الدفع", "Continue to payment") : t("تأكيد الاشتراك", "Confirm subscription")}
               </button>
             </div>
             </>
@@ -3488,7 +3539,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                       <button
                         className="btn-primary"
                         style={{ width: "100%", justifyContent: "center" }}
-                        onClick={() => handleSubscribe(checkoutPreview.plan, checkoutPreview.scheduleIds, summary.finalAmount === 0 ? "cash" : membershipPayMethod)}
+                        onClick={() => handleSubscribe(checkoutPreview.plan, checkoutPreview.scheduleIds, summary.finalAmount === 0 ? undefined : membershipPayMethod)}
                         disabled={checkoutPreview.plan.id !== null && subscribing === checkoutPreview.plan.id}
                       >
                         {checkoutPreview.plan.id !== null && subscribing === checkoutPreview.plan.id
