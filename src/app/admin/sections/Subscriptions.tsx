@@ -51,6 +51,7 @@ const EMPTY_OFFER: Omit<Offer, "id" | "usedCount" | "currentSubscribers"> = {
   image: "",
   showOnHome: true,
   showMaxSubscribers: true,
+  showCurrentSubscribers: true,
 };
 
 const CYCLE_LABELS: Record<NonNullable<Plan["cycle"]>, string> = {
@@ -1027,7 +1028,15 @@ export default function Subscriptions() {
                     checked={offerModal.showMaxSubscribers !== false}
                     onChange={(event) => setOfferModal({ ...offerModal, showMaxSubscribers: event.target.checked })}
                   />
-                  إظهار الحد الأقصى والمتبقي للمشتركين داخل الموقع
+                  إظهار عدد المقاعد المتبقية داخل الموقع
+                </label>
+                <label className="flex items-center gap-3 rounded-2xl border border-[rgba(255,188,219,0.12)] bg-black/15 px-4 py-3 text-sm text-[#fff4f8]">
+                  <input
+                    type="checkbox"
+                    checked={offerModal.showCurrentSubscribers !== false}
+                    onChange={(event) => setOfferModal({ ...offerModal, showCurrentSubscribers: event.target.checked })}
+                  />
+                  إظهار عدد المشتركات الحاليات داخل الموقع
                 </label>
               </>
             ) : (

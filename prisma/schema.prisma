@@ -516,8 +516,9 @@ model Offer {
   maxSubscribers     Int?
   currentSubscribers Int         @default(0)
   image              String?
-  showOnHome         Boolean     @default(false)
-  showMaxSubscribers Boolean     @default(true)
+  showOnHome              Boolean     @default(false)
+  showMaxSubscribers      Boolean     @default(true)
+  showCurrentSubscribers  Boolean     @default(true)
 
   membership Membership? @relation(fields: [membershipId], references: [id])
   userMemberships UserMembership[]
