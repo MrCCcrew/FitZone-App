@@ -1153,6 +1153,7 @@ type PublicOffer = {
   image: string | null;
   showOnHome: boolean;
   showMaxSubscribers?: boolean;
+  showCurrentSubscribers?: boolean;
   maxSubscribers: number | null;
   currentSubscribers: number;
   expiresAt: string;
@@ -1821,6 +1822,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
   const [privateBookingModal, setPrivateBookingModal] = useState<{ trainer: PublicTrainer; type: "private" | "mini_private" } | null>(null);
   const [testimonials, setTestimonials] = useState<PublicTestimonial[]>([]);
   const [products, setProducts] = useState<StoreProduct[]>([]);
+  const [homeOffers, setHomeOffers] = useState<PublicOffer[]>([]);
   const [specialOffer, setSpecialOffer] = useState<PublicOffer | null>(null);
   const [specialOfferLoading, setSpecialOfferLoading] = useState(false);
   const [specialOfferMessage, setSpecialOfferMessage] = useState<{ text: string; ok: boolean } | null>(null);
@@ -1863,8 +1865,10 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
   useEffect(() => {
     loadPublicApi(true).then(d => {
       if (Array.isArray(d.memberships) && d.memberships.length > 0) {
+        const packages = (d.memberships as PublicMembership[]).filter((mb) => mb.kind === "package");
         const subscriptions = (d.memberships as PublicMembership[]).filter((mb) => mb.kind === "subscription");
-        setMemberships(subscriptions.slice(0, 3).map((mb, i) => ({
+        const source = packages.length > 0 ? packages : subscriptions;
+        setMemberships(source.slice(0, 3).map((mb, i) => ({
           name: mb.name,
           price: mb.price,
           priceBefore: mb.priceBefore ?? null,
@@ -1880,7 +1884,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
           (d.trainers as PublicTrainer[])
             .filter((trainer) => trainer.showOnHome)
             .sort((a, b) => a.sortOrder - b.sortOrder)
-            .slice(0, 6),
+            .slice(0, 3),
         );
       }
       if (Array.isArray(d.testimonials) && d.testimonials.length > 0) {
@@ -1904,7 +1908,9 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
         })));
       }
       if (Array.isArray(d.offers)) {
-        const highlighted = (d.offers as PublicOffer[]).find((offer) => offer.type === "special" && offer.showOnHome);
+        const onHome = (d.offers as PublicOffer[]).filter((o) => o.showOnHome).slice(0, 3);
+        setHomeOffers(onHome);
+        const highlighted = onHome.find((o) => o.type === "special") ?? null;
         setSpecialOffer(highlighted ?? null);
       }
       if (Array.isArray(d.classes)) {
@@ -2097,8 +2103,9 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
       setSpecialOfferMessage({ text: t("تم الاشتراك في العرض الخاص بنجاح.", "Special offer subscribed successfully."), ok: true });
       await loadPublicApi(true).then((d) => {
         if (Array.isArray(d.offers)) {
-          const highlighted = (d.offers as PublicOffer[]).find((offer) => offer.type === "special" && offer.showOnHome);
-          setSpecialOffer(highlighted ?? null);
+          const onHome = (d.offers as PublicOffer[]).filter((o) => o.showOnHome).slice(0, 3);
+          setHomeOffers(onHome);
+          setSpecialOffer(onHome.find((o) => o.type === "special") ?? null);
         }
       }).catch(() => {});
     } catch {
@@ -2245,108 +2252,101 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
         </div>
       </section>
 
-      {specialOffer && (
-        <section style={{ padding: "18px 0 8px" }}>
+      {/* ─ HOME OFFERS GRID ─ */}
+      {homeOffers.length > 0 && (
+        <section className="section" style={{ paddingTop: 48, paddingBottom: 48 }}>
           <div className="container">
-            <div
-              className="card"
-              style={{
-                border: `1px solid ${C.red}33`,
-                background: "linear-gradient(135deg, rgba(233,30,99,.08), rgba(255,255,255,.95))",
-                overflow: "hidden",
-              }}
-            >
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: responsiveColumns("1fr", "1fr", "1.1fr .9fr"),
-                  gap: 0,
-                  alignItems: "stretch",
-                }}
-              >
-                <div style={{ padding: viewportWidth() < 768 ? 22 : 32, display: "flex", flexDirection: "column", justifyContent: "center" }}>
-                  <span className="badge" style={{ width: "fit-content", marginBottom: 14, background: C.red }}>
-                    {t("عرض خاص محدود", "Limited special offer")}
-                  </span>
-                  <h2 style={{ fontSize: viewportWidth() < 768 ? 24 : 34, fontWeight: 900, color: C.white, marginBottom: 10, lineHeight: 1.3 }}>
-                    {specialOffer.title}
-                  </h2>
-                  <p style={{ color: C.gray, fontSize: 14, lineHeight: 1.9, marginBottom: 18 }}>
-                    {specialOffer.description || t("عرض خاص لفترة محدودة على إحدى باقات النادي.", "Limited-time offer on a club package.")}
-                  </p>
-                  <div style={{ display: "flex", gap: 18, flexWrap: "wrap", marginBottom: 18 }}>
-                    <div>
-                      <div style={{ fontSize: 30, fontWeight: 900, color: C.red }}>
-                        {formatCurrency(specialOffer.specialPrice ?? 0)}
-                      </div>
-                      <div style={{ fontSize: 12, color: C.gray }}>{t("قيمة الاشتراك أثناء العرض", "Offer price")}</div>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 24, fontWeight: 900, color: C.white }}>
-                        {specialOffer.currentSubscribers.toLocaleString(lang === "en" ? "en-US" : "ar-EG")}
-                      </div>
-                      <div style={{ fontSize: 12, color: C.gray }}>{t("اشتركن بالفعل", "Already joined")}</div>
-                    </div>
-                    {remainingSubscribers != null && (
-                      <div>
-                        <div style={{ fontSize: 24, fontWeight: 900, color: C.gold }}>
-                          {remainingSubscribers.toLocaleString(lang === "en" ? "en-US" : "ar-EG")}
-                        </div>
-                        <div style={{ fontSize: 12, color: C.gray }}>{t("المقاعد المتبقية", "Seats remaining")}</div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 32, flexWrap: "wrap", gap: 12 }}>
+              <div>
+                <h2 className="section-title">{t("العروض", "Current")} <span>{t("الحالية", "Offers")}</span></h2>
+                <p style={{ color: C.gray, fontSize: 14, marginTop: 4 }}>{t("عروض لفترة محدودة — اشتركي قبل انتهاء الوقت", "Limited-time offers — subscribe before time runs out")}</p>
+              </div>
+              <button className="btn-outline" onClick={() => navigate("offers")}>{t("مزيد من العروض", "More offers")}</button>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", homeOffers.length === 1 ? "1fr" : "1fr 1fr", `repeat(${Math.min(homeOffers.length, 3)}, 1fr)`), gap: 24 }}>
+              {homeOffers.map((offer) => {
+                const cd = getCountdownParts(offer.expiresAt);
+                const remaining = offer.showMaxSubscribers && offer.maxSubscribers != null
+                  ? Math.max(offer.maxSubscribers - offer.currentSubscribers, 0) : null;
+                const isSpecial = offer.type === "special";
+                const accentColor = isSpecial ? C.red : C.gold;
+                return (
+                  <div key={offer.id} className="card card-hover" style={{ padding: 0, overflow: "hidden", border: `1px solid ${accentColor}33` }}>
+                    {/* Image */}
+                    {offer.image && (
+                      <div style={{ height: 180, overflow: "hidden", position: "relative" }}>
+                        <img src={offer.image} alt={offer.title} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(10,5,8,.75) 0%, transparent 55%)" }} />
+                        <span style={{ position: "absolute", top: 12, insetInlineStart: 12, background: accentColor, color: "#fff", fontSize: 11, fontWeight: 800, padding: "3px 10px", borderRadius: 20 }}>
+                          {isSpecial ? t("عرض خاص", "Special") : offer.type === "percentage" ? `${offer.discount}% ${t("خصم","off")}` : t("عرض","Offer")}
+                        </span>
                       </div>
                     )}
-                  </div>
-
-                  {offerCountdown && (
-                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 20 }}>
-                      {[
-                        { label: t("يوم", "Days"), value: offerCountdown.days },
-                        { label: t("ساعة", "Hours"), value: offerCountdown.hours },
-                        { label: t("دقيقة", "Minutes"), value: offerCountdown.minutes },
-                        { label: t("ثانية", "Seconds"), value: offerCountdown.seconds },
-                      ].map((item) => (
-                        <div key={item.label} style={{ minWidth: 74, borderRadius: 14, background: "rgba(255,255,255,.88)", border: `1px solid ${C.border}`, padding: "10px 12px", textAlign: "center" }}>
-                          <div style={{ fontSize: 22, fontWeight: 900, color: offerCountdown.expired ? C.gray : C.red }}>
-                            {String(item.value).padStart(2, "0")}
-                          </div>
-                          <div style={{ fontSize: 11, color: C.gray }}>{item.label}</div>
+                    <div style={{ padding: "20px 22px 22px" }}>
+                      {!offer.image && (
+                        <span style={{ display: "inline-block", background: `${accentColor}22`, color: accentColor, fontSize: 11, fontWeight: 800, padding: "3px 10px", borderRadius: 20, marginBottom: 10 }}>
+                          {isSpecial ? t("عرض خاص", "Special") : offer.type === "percentage" ? `${offer.discount}% ${t("خصم","off")}` : t("عرض","Offer")}
+                        </span>
+                      )}
+                      {/* Price */}
+                      <div style={{ fontSize: 32, fontWeight: 900, color: accentColor, lineHeight: 1, marginBottom: 4 }}>
+                        {isSpecial ? formatCurrency(offer.specialPrice ?? 0) : offer.type === "percentage" ? `${offer.discount}%` : `${offer.discount} ${t("ج.م","EGP")}`}
+                      </div>
+                      <div style={{ fontSize: 11, color: C.gray, marginBottom: 10 }}>
+                        {isSpecial ? t("سعر العرض", "Offer price") : t("قيمة الخصم", "Discount value")}
+                      </div>
+                      <h3 style={{ fontWeight: 800, fontSize: 15, color: C.white, marginBottom: 6 }}>{offer.title}</h3>
+                      {offer.description ? <p style={{ color: C.gray, fontSize: 12, lineHeight: 1.7, marginBottom: 12 }}>{offer.description}</p> : null}
+                      {/* Stats row */}
+                      {(offer.showCurrentSubscribers !== false || remaining != null) && (
+                        <div style={{ display: "flex", gap: 16, marginBottom: 14, flexWrap: "wrap" }}>
+                          {offer.showCurrentSubscribers !== false && (
+                            <div style={{ textAlign: "center" }}>
+                              <div style={{ fontWeight: 800, fontSize: 18, color: C.white }}>{offer.currentSubscribers.toLocaleString(lang === "en" ? "en-US" : "ar-EG")}</div>
+                              <div style={{ fontSize: 10, color: C.gray }}>{t("اشتركن", "Joined")}</div>
+                            </div>
+                          )}
+                          {remaining != null && (
+                            <div style={{ textAlign: "center" }}>
+                              <div style={{ fontWeight: 800, fontSize: 18, color: C.gold }}>{remaining.toLocaleString(lang === "en" ? "en-US" : "ar-EG")}</div>
+                              <div style={{ fontSize: 10, color: C.gray }}>{t("مقعد متبقي", "left")}</div>
+                            </div>
+                          )}
                         </div>
-                      ))}
+                      )}
+                      {/* Countdown */}
+                      <div style={{ display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" }}>
+                        {[
+                          { label: t("يوم","d"), value: cd.days },
+                          { label: t("ساعة","h"), value: cd.hours },
+                          { label: t("دقيقة","m"), value: cd.minutes },
+                          { label: t("ثانية","s"), value: cd.seconds },
+                        ].map((item) => (
+                          <div key={item.label} style={{ minWidth: 48, borderRadius: 10, background: "rgba(255,255,255,.06)", border: `1px solid rgba(255,255,255,.1)`, padding: "8px 6px", textAlign: "center" }}>
+                            <div style={{ fontSize: 16, fontWeight: 900, color: cd.expired ? C.gray : accentColor }}>{String(item.value).padStart(2,"0")}</div>
+                            <div style={{ fontSize: 9, color: C.gray }}>{item.label}</div>
+                          </div>
+                        ))}
+                      </div>
+                      {/* CTA */}
+                      {isSpecial ? (
+                        <div style={{ display: "grid", gap: 8 }}>
+                          <button className="btn-primary" style={{ width: "100%", justifyContent: "center", fontSize: 13 }} onClick={handleSpecialOfferSubscribe} disabled={specialOfferLoading || cd.expired}>
+                            {specialOfferLoading ? t("جارٍ...","Processing...") : cd.expired ? t("انتهى العرض","Ended") : t("اشتركي الآن","Join now")}
+                          </button>
+                          {specialOfferMessage && offer.id === specialOffer?.id && (
+                            <div style={{ fontSize: 12, fontWeight: 700, color: specialOfferMessage.ok ? C.successDark : C.redDark, textAlign: "center" }}>{specialOfferMessage.text}</div>
+                          )}
+                        </div>
+                      ) : (
+                        <button className="btn-outline" style={{ width: "100%", justifyContent: "center", fontSize: 13, borderColor: accentColor, color: accentColor }} onClick={() => navigate("memberships")}>
+                          {t("استفيدي الآن","Claim now")}
+                        </button>
+                      )}
                     </div>
-                  )}
-
-                  <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
-                    <button className="btn-primary" onClick={handleSpecialOfferSubscribe} disabled={specialOfferLoading || offerCountdown?.expired}>
-                      {specialOfferLoading ? t("جارٍ التنفيذ...", "Processing...") : offerCountdown?.expired ? t("انتهى العرض", "Offer ended") : t("اشتركي في العرض", "Join the offer")}
-                    </button>
-                    <button className="btn-outline" onClick={() => navigate("offers")}>{t("تفاصيل العرض", "Offer details")}</button>
                   </div>
-
-                  {specialOfferMessage && (
-                    <div
-                      style={{
-                        marginTop: 14,
-                        borderRadius: 12,
-                        padding: "10px 14px",
-                        background: specialOfferMessage.ok ? "rgba(22,163,74,.1)" : "rgba(233,30,99,.1)",
-                        color: specialOfferMessage.ok ? C.successDark : C.redDark,
-                        fontSize: 13,
-                        fontWeight: 700,
-                      }}
-                    >
-                      {specialOfferMessage.text}
-                    </div>
-                  )}
-                </div>
-
-                <div style={{ minHeight: viewportWidth() < 768 ? 280 : 360, overflow: "hidden" }}>
-                  <img
-                    src={specialOffer.image || heroSlides[0]}
-                    alt={specialOffer.title}
-                    style={{ width: "100%", height: viewportWidth() < 768 ? 280 : 360, objectFit: "cover", display: "block" }}
-                  />
-                </div>
-              </div>
+                );
+              })}
             </div>
           </div>
         </section>
@@ -2398,13 +2398,16 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
         </section>
       ) : null}
 
-      {/* ─ MEMBERSHIPS ─ */}
+      {/* ─ MEMBERSHIPS / PACKAGES ─ */}
       <section className="section" style={{ background: C.bgCard }}>
         <div className="container">
-          <div style={{ textAlign: "center", marginBottom: 48 }}>
-            <span className="tag" style={{ marginBottom: 12, display: "inline-block" }}>{t("الأسعار", "Pricing")}</span>
-            <h2 className="section-title">{t("اختاري", "Choose")} <span>{t("الباقة", "the plan")}</span> {t("المناسبة", "that fits")}</h2>
-            <p className="section-sub">{t("اشتراكات شهرية وباقات جيم مرنة تناسب أهداف السيدات والأطفال في بني سويف، بأسعار واضحة وخيارات متعددة.", "Flexible gym memberships and plans for women and kids in Beni Suef, with clear pricing and multiple options.")}</p>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 40, flexWrap: "wrap", gap: 12 }}>
+            <div>
+              <span className="tag" style={{ marginBottom: 10, display: "inline-block" }}>{t("الأسعار", "Pricing")}</span>
+              <h2 className="section-title">{t("اختاري", "Choose")} <span>{t("الباقة", "the plan")}</span> {t("المناسبة", "that fits")}</h2>
+              <p className="section-sub" style={{ marginTop: 6 }}>{t("باقات جيم مرنة تناسب أهداف السيدات والأطفال في بني سويف، بأسعار واضحة وخيارات متعددة.", "Flexible gym plans for women and kids in Beni Suef, with clear pricing and multiple options.")}</p>
+            </div>
+            <button className="btn-outline" onClick={() => navigate("offers")}>{t("مزيد من الباقات", "More plans")}</button>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 24, minHeight: memberships.length === 0 ? 400 : undefined }}>
             {memberships.map(m => (
@@ -2423,7 +2426,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                     {m.priceBefore} {lang === "en" ? "EGP" : "ج.م"}
                   </div>
                 ) : null}
-            <div className="divider" />
+                <div className="divider" />
                 <ul style={{ listStyle: "none", marginBottom: 28 }}>
                   {m.features.map(f => (
                     <li key={f} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", fontSize: 14, color: C.grayLight, borderBottom: `1px solid ${C.border}` }}>
@@ -2431,7 +2434,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                     </li>
                   ))}
                 </ul>
-                <button className={m.popular ? "btn-primary" : "btn-outline"} style={{ width: "100%", justifyContent: "center", background: m.popular ? C.red : "transparent", borderColor: m.color, color: m.popular ? "#fff" : (m.color === C.gold ? C.goldDark : m.color) }} onClick={() => navigate("memberships")}>
+                <button className={m.popular ? "btn-primary" : "btn-outline"} style={{ width: "100%", justifyContent: "center", background: m.popular ? C.red : "transparent", borderColor: m.color, color: m.popular ? "#fff" : (m.color === C.gold ? C.goldDark : m.color) }} onClick={() => navigate("offers")}>
                   {t("اشتركي الآن", "Subscribe now")}
                 </button>
               </div>
@@ -2631,9 +2634,12 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
       {/* ─ TRAINERS ─ */}
       <section className="section">
         <div className="container">
-          <div style={{ textAlign: "center", marginBottom: 40 }}>
-            <h2 className="section-title">{t("مدرباتنا", "Our trainers")} <span>{t("المحترفات", "experts")}</span></h2>
-            <p className="section-sub">{t("فريق مدربات محترفات في بني سويف لمساعدتك على بناء برنامج مناسب لهدفك، سواء لياقة أو تخسيس أو تأهيل.", "A team of professional coaches in Beni Suef to help you follow the right plan for fitness, weight loss, or recovery goals.")}</p>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 40, flexWrap: "wrap", gap: 12 }}>
+            <div>
+              <h2 className="section-title">{t("مدرباتنا", "Our trainers")} <span>{t("المحترفات", "experts")}</span></h2>
+              <p className="section-sub" style={{ marginTop: 6 }}>{t("فريق مدربات محترفات في بني سويف لمساعدتك على بناء برنامج مناسب لهدفك.", "A team of professional coaches in Beni Suef to help you reach your goal.")}</p>
+            </div>
+            <button className="btn-outline" onClick={() => navigate("trainers")}>{t("عرض كل المدربات", "All trainers")}</button>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: trainers.length === 1 ? "minmax(0,360px)" : responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 24, justifyContent: trainers.length === 1 ? "center" : undefined }}>
             {trainers.map((trainer, index) => (
@@ -4410,16 +4416,39 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
                 </div>
                 <div style={{ padding: "20px 24px" }}>
                   <h3 style={{ fontWeight: 800, fontSize: 18, color: C.white, marginBottom: 8 }}>{o.title}</h3>
-                  <p style={{ color: C.gray, fontSize: 13, marginBottom: 16 }}>{o.description}</p>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16 }}>
-                    <span style={{ fontSize: 12, color: C.gray }}>
-                      ⏰ {countdown.expired ? t("انتهى العرض", "Offer ended") : t(`ينتهي في ${countdown.days} يوم`, `Ends in ${countdown.days} day${countdown.days === 1 ? "" : "s"}`)}
-                    </span>
-                    {remaining != null && (
-                      <span style={{ fontSize: 12, color: C.gray }}>{t("المتبقي:", "Remaining:")} {remaining}</span>
-                    )}
+                  <p style={{ color: C.gray, fontSize: 13, marginBottom: 12 }}>{o.description}</p>
+                  {/* Countdown */}
+                  <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+                    {[
+                      { label: t("يوم","d"), value: countdown.days },
+                      { label: t("ساعة","h"), value: countdown.hours },
+                      { label: t("دقيقة","m"), value: countdown.minutes },
+                      { label: t("ثانية","s"), value: countdown.seconds },
+                    ].map((item) => (
+                      <div key={item.label} style={{ minWidth: 52, borderRadius: 10, background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.1)", padding: "8px 6px", textAlign: "center" }}>
+                        <div style={{ fontSize: 17, fontWeight: 900, color: countdown.expired ? C.gray : o.color }}>{String(item.value).padStart(2,"0")}</div>
+                        <div style={{ fontSize: 9, color: C.gray }}>{item.label}</div>
+                      </div>
+                    ))}
                   </div>
-                  <button style={{ width: "100%", padding: "10px", borderRadius: 6, border: `2px solid ${o.color}`, background: "transparent", color: o.color, fontFamily: "'Cairo', sans-serif", fontSize: 14, fontWeight: 700, cursor: "pointer" }} onClick={() => navigate(o.type === "special" ? "home" : "memberships")}>
+                  {/* Stats */}
+                  {(o.showCurrentSubscribers !== false || remaining != null) && (
+                    <div style={{ display: "flex", gap: 16, marginBottom: 14, flexWrap: "wrap" }}>
+                      {o.showCurrentSubscribers !== false && (
+                        <div>
+                          <div style={{ fontWeight: 800, fontSize: 16, color: C.white }}>{o.currentSubscribers.toLocaleString(lang === "en" ? "en-US" : "ar-EG")}</div>
+                          <div style={{ fontSize: 10, color: C.gray }}>{t("اشتركن", "Joined")}</div>
+                        </div>
+                      )}
+                      {remaining != null && (
+                        <div>
+                          <div style={{ fontWeight: 800, fontSize: 16, color: C.gold }}>{remaining.toLocaleString(lang === "en" ? "en-US" : "ar-EG")}</div>
+                          <div style={{ fontSize: 10, color: C.gray }}>{t("مقعد متبقي", "left")}</div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <button style={{ width: "100%", padding: "10px", borderRadius: 10, border: `2px solid ${o.color}`, background: "transparent", color: o.color, fontFamily: "'Cairo', sans-serif", fontSize: 14, fontWeight: 700, cursor: "pointer" }} onClick={() => navigate(o.type === "special" ? "home" : "memberships")}>
                     {o.type === "special" ? t("اشتركي في العرض", "Join the offer") : t("استفيدي الآن", "Claim now")}
                   </button>
                 </div>
@@ -6727,9 +6756,13 @@ const AccountPage = ({ navigate }: { navigate: (p: string) => void }) => {
 };
 
 // ─── TRAINERS PAGE ────────────────────────────────────────────────────────────
-const TrainersPage = () => {
+const TrainersPage = ({ navigate, summary }: { navigate: (p: string) => void; summary: UserSummary | null }) => {
   const { lang } = useLang();
+  const t = useT();
+  const _w = useWindowWidth();
   const [trainers, setTrainers] = useState<PublicTrainer[]>([]);
+  const [trainerDetailModal, setTrainerDetailModal] = useState<PublicTrainer | null>(null);
+  const [privateBookingModal, setPrivateBookingModal] = useState<{ trainer: PublicTrainer; type: "private" | "mini_private" } | null>(null);
   const [pageContent, setPageContent] = useState<TrainersPageContent>({
     badge: "فريق التدريب",
     title: "مدربات فيت زون",
@@ -6764,16 +6797,13 @@ const TrainersPage = () => {
   const subtitle = lang === "en" ? pageContent.subtitleEn ?? pageContent.subtitle : pageContent.subtitle;
   const description = lang === "en" ? pageContent.descriptionEn ?? pageContent.description : pageContent.description;
   const highlight = lang === "en" ? pageContent.highlightEn ?? pageContent.highlight : pageContent.highlight;
-  const ctaLabel = lang === "en" ? pageContent.ctaLabelEn ?? pageContent.ctaLabel : pageContent.ctaLabel;
 
   return (
     <div>
       <section style={{ background: `linear-gradient(135deg, #FFE0EC, ${C.bg})`, padding: "60px 0", textAlign: "center" }}>
         <div className="container">
           <span className="tag" style={{ marginBottom: 14, display: "inline-block" }}>{badge}</span>
-          <h1 style={{ fontSize: viewportWidth() < 768 ? 32 : 44, fontWeight: 900, color: C.white, marginBottom: 12 }}>
-            {title}
-          </h1>
+          <h1 style={{ fontSize: viewportWidth() < 768 ? 32 : 44, fontWeight: 900, color: C.white, marginBottom: 12 }}>{title}</h1>
           <p style={{ color: C.gray, fontSize: 17, marginBottom: 8 }}>{subtitle}</p>
           <p style={{ color: C.gray, fontSize: 15, maxWidth: 760, margin: "0 auto", lineHeight: 1.9 }}>{description}</p>
           <div style={{ marginTop: 18, color: C.red, fontWeight: 700, fontSize: 14 }}>{highlight}</div>
@@ -6782,43 +6812,127 @@ const TrainersPage = () => {
       <section className="section">
         <div className="container">
           <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 24 }}>
-            {trainers.map((t, index) => (
-              <div key={t.id} className="card card-hover" style={{ overflow: "hidden" }}>
-                <div style={{ height: 260, background: "#fff" }}>
-                  {t.image ? (
-                    <img src={t.image} alt={t.name} loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            {trainers.map((tr, index) => (
+              <div key={tr.id} className="card card-hover" style={{ padding: 0, overflow: "hidden", textAlign: "center" }}>
+                {/* Photo */}
+                <div style={{ height: 230, cursor: "pointer", position: "relative", overflow: "hidden" }} onClick={() => setTrainerDetailModal(tr)}>
+                  {tr.image ? (
+                    <img src={tr.image} alt={tr.name} loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "top" }} />
                   ) : (
-                    <GymImg type={`trainer${(index % 3) + 1}`} w="100%" h={260} />
+                    <GymImg type={`trainer${(index % 3) + 1}`} w="100%" h={230} />
                   )}
+                  <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(10,5,8,.6) 0%, transparent 55%)" }} />
                 </div>
-                <div style={{ padding: 22 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                    <h3 style={{ fontWeight: 800, fontSize: 17, color: C.white }}>{t.name}</h3>
-                    <span style={{ color: C.gold, fontWeight: 700, fontSize: 13 }}>⭐ {t.rating}</span>
+                {/* Info */}
+                <div style={{ padding: "16px 18px 20px" }}>
+                  <h3 style={{ fontWeight: 900, fontSize: 17, color: C.white, marginBottom: 3 }}>{lang === "en" && tr.nameEn ? tr.nameEn : tr.name}</h3>
+                  <p style={{ color: C.red, fontSize: 12, fontWeight: 700, marginBottom: 10 }}>{lang === "en" && tr.specialtyEn ? tr.specialtyEn : tr.specialty}</p>
+                  {tr.bio && <p style={{ color: C.gray, fontSize: 12, lineHeight: 1.7, marginBottom: 10 }}>{tr.bio}</p>}
+                  {tr.certifications.length > 0 && (
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "center", marginBottom: 12 }}>
+                      {tr.certifications.slice(0, 3).map((cert) => (
+                        <span key={cert} className="tag-gold" style={{ fontSize: 10 }}>{cert}</span>
+                      ))}
+                    </div>
+                  )}
+                  {/* Stats */}
+                  <div style={{ display: "flex", justifyContent: "center", gap: 0, marginBottom: 14, border: "1px solid rgba(255,255,255,.08)", borderRadius: 10, overflow: "hidden" }}>
+                    <div style={{ flex: 1, textAlign: "center", padding: "9px 6px", borderInlineEnd: "1px solid rgba(255,255,255,.08)" }}>
+                      <div style={{ fontWeight: 800, fontSize: 15, color: C.gold }}>⭐ {tr.rating}</div>
+                      <div style={{ fontSize: 10, color: C.gray, marginTop: 2 }}>{t("التقييم", "Rating")}</div>
+                    </div>
+                    <div style={{ flex: 1, textAlign: "center", padding: "9px 6px" }}>
+                      <div style={{ fontWeight: 800, fontSize: 15, color: C.white }}>{tr.sessionsCount}</div>
+                      <div style={{ fontSize: 10, color: C.gray, marginTop: 2 }}>{t("جلسة", "sessions")}</div>
+                    </div>
                   </div>
-                  <p style={{ color: C.red, fontSize: 12, fontWeight: 600, marginBottom: 10 }}>{t.specialty}</p>
-                  <p style={{ color: C.gray, fontSize: 12, lineHeight: 1.8, marginBottom: 14 }}>{t.bio}</p>
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
-                    {t.certifications.map((cert) => (
-                      <span key={cert} className="tag-gold" style={{ fontSize: 10 }}>
-                        {cert}
-                      </span>
-                    ))}
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ fontSize: 12, color: C.gray }}>
-                      {t.sessionsCount.toLocaleString(lang === "en" ? "en-US" : "ar-EG")} {lang === "en" ? "sessions" : "جلسة"} · {t.classesCount.toLocaleString(lang === "en" ? "en-US" : "ar-EG")} {lang === "en" ? "classes" : "كلاسات"}
-                    </span>
-                    <button className="btn-outline-gold" style={{ padding: "5px 14px", fontSize: 11 }}>
-                      {ctaLabel}
+                  {/* Buttons */}
+                  <button className="btn-outline" style={{ width: "100%", fontSize: 13, padding: "10px", marginBottom: 8 }} onClick={() => setTrainerDetailModal(tr)}>
+                    {t("عرض الملف الكامل", "Full profile")}
+                  </button>
+                  {summary?.authenticated ? (
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                      <button onClick={() => setPrivateBookingModal({ trainer: tr, type: "private" })} style={{ padding: "10px 6px", borderRadius: 10, border: "none", background: C.red, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+                        🎯 {t("برايفيت", "Private")}
+                      </button>
+                      <button onClick={() => setPrivateBookingModal({ trainer: tr, type: "mini_private" })} style={{ padding: "10px 6px", borderRadius: 10, border: `1.5px solid ${C.red}`, background: "rgba(233,30,99,.12)", color: "#ff7aa8", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+                        👥 {t("ميني", "Mini")}
+                      </button>
+                    </div>
+                  ) : (
+                    <button className="btn-outline" style={{ width: "100%", fontSize: 13, padding: "10px" }} onClick={() => navigate("register")}>
+                      {t("سجلي الدخول للحجز", "Login to book")}
                     </button>
-                  </div>
+                  )}
                 </div>
               </div>
             ))}
           </div>
         </div>
       </section>
+
+      {/* Trainer detail modal */}
+      {trainerDetailModal && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 300, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: _w < 640 ? "0" : "20px 12px", background: "rgba(0,0,0,.82)", backdropFilter: "blur(10px)", overflowY: "auto" }}>
+          <div style={{ background: "#111", borderRadius: _w < 640 ? "0 0 24px 24px" : 20, maxWidth: 580, width: "100%", boxShadow: "0 24px 60px rgba(0,0,0,.7)", border: "1px solid rgba(255,255,255,.12)", marginBottom: _w < 640 ? 24 : 0 }}>
+            <div style={{ height: _w < 640 ? 220 : 260, borderRadius: _w < 640 ? 0 : "20px 20px 0 0", overflow: "hidden", position: "relative" }}>
+              {trainerDetailModal.image ? <img src={trainerDetailModal.image} alt={trainerDetailModal.name} style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "top" }} /> : <GymImg type="trainer1" w="100%" h={_w < 640 ? 220 : 260} />}
+              <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(10,5,8,.92) 0%, rgba(10,5,8,.3) 50%, transparent 100%)" }} />
+              <button onClick={() => setTrainerDetailModal(null)} style={{ position: "absolute", top: 14, insetInlineEnd: 14, width: 38, height: 38, borderRadius: "50%", border: "none", background: "rgba(0,0,0,.55)", color: "#fff", fontSize: 22, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
+              <div style={{ position: "absolute", bottom: 16, insetInlineStart: 20, insetInlineEnd: 60 }}>
+                <div style={{ fontWeight: 900, fontSize: _w < 640 ? 20 : 22, color: "#fff" }}>{lang === "en" && trainerDetailModal.nameEn ? trainerDetailModal.nameEn : trainerDetailModal.name}</div>
+                <div style={{ color: "#ff7aa8", fontWeight: 700, fontSize: 13, marginTop: 2 }}>{lang === "en" && trainerDetailModal.specialtyEn ? trainerDetailModal.specialtyEn : trainerDetailModal.specialty}</div>
+              </div>
+            </div>
+            <div style={{ padding: _w < 640 ? "18px 16px 24px" : "24px 28px 28px" }}>
+              <div style={{ display: "flex", justifyContent: "space-around", gap: 8, marginBottom: 20, background: "rgba(255,255,255,.04)", borderRadius: 12, padding: "14px 8px" }}>
+                <div style={{ textAlign: "center" }}><div style={{ fontWeight: 800, fontSize: 18, color: C.gold }}>⭐ {trainerDetailModal.rating}</div><div style={{ fontSize: 11, color: "#888", marginTop: 2 }}>{t("التقييم", "Rating")}</div></div>
+                <div style={{ width: 1, background: "rgba(255,255,255,.08)" }} />
+                <div style={{ textAlign: "center" }}><div style={{ fontWeight: 800, fontSize: 18, color: C.white }}>{trainerDetailModal.sessionsCount}</div><div style={{ fontSize: 11, color: "#888", marginTop: 2 }}>{t("جلسة", "Sessions")}</div></div>
+                <div style={{ width: 1, background: "rgba(255,255,255,.08)" }} />
+                <div style={{ textAlign: "center" }}><div style={{ fontWeight: 800, fontSize: 18, color: C.white }}>{trainerDetailModal.classesCount}</div><div style={{ fontSize: 11, color: "#888", marginTop: 2 }}>{t("كلاس", "Classes")}</div></div>
+              </div>
+              {(lang === "en" ? (trainerDetailModal.bioEn || trainerDetailModal.bio) : trainerDetailModal.bio) && (
+                <div style={{ marginBottom: 18 }}>
+                  <div style={{ fontWeight: 800, color: C.white, marginBottom: 8, fontSize: 14 }}>{t("نبذة", "About")}</div>
+                  <p style={{ color: "#c9b9c1", fontSize: 14, lineHeight: 1.85 }}>{lang === "en" ? (trainerDetailModal.bioEn || trainerDetailModal.bio) : trainerDetailModal.bio}</p>
+                </div>
+              )}
+              {((lang === "en" ? (trainerDetailModal.certificationsEn ?? trainerDetailModal.certifications) : trainerDetailModal.certifications)).length > 0 && (
+                <div style={{ marginBottom: 18 }}>
+                  <div style={{ fontWeight: 800, color: C.white, marginBottom: 10, fontSize: 14 }}>{t("الشهادات", "Certifications")}</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    {(lang === "en" ? (trainerDetailModal.certificationsEn ?? trainerDetailModal.certifications) : trainerDetailModal.certifications).map((cert, i) => (
+                      <span key={i} style={{ background: "rgba(233,30,99,.12)", border: `1px solid ${C.red}`, borderRadius: 20, padding: "5px 14px", fontSize: 12, color: "#ffb7d0" }}>🎓 {cert}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {summary?.authenticated ? (
+                <div style={{ display: "grid", gridTemplateColumns: _w < 400 ? "1fr" : "1fr 1fr", gap: 10, marginTop: 4 }}>
+                  <button className="btn-primary" style={{ padding: "14px 8px", fontSize: 14, borderRadius: 12, textAlign: "center" }} onClick={() => { setTrainerDetailModal(null); setPrivateBookingModal({ trainer: trainerDetailModal, type: "private" }); }}>
+                    🎯 {t("برايفيت", "Private")}<br /><span style={{ fontSize: 11, fontWeight: 400, opacity: .75 }}>{t("برنامج مخصص 100%", "100% personalised")}</span>
+                  </button>
+                  <button style={{ borderRadius: 12, border: `1px solid ${C.red}`, background: "rgba(233,30,99,.12)", color: "#ff7aa8", cursor: "pointer", fontWeight: 700, fontSize: 14, padding: "14px 8px", textAlign: "center" }} onClick={() => { setTrainerDetailModal(null); setPrivateBookingModal({ trainer: trainerDetailModal, type: "mini_private" }); }}>
+                    👥 {t("ميني برايفيت", "Mini Private")}<br /><span style={{ fontSize: 11, fontWeight: 400, opacity: .75 }}>{t("3–5 عملاء", "3–5 clients")}</span>
+                  </button>
+                </div>
+              ) : (
+                <button className="btn-primary" style={{ width: "100%", fontSize: 15, padding: "14px" }} onClick={() => navigate("register")}>{t("سجلي الدخول للحجز", "Login to book")}</button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Private booking modal */}
+      {privateBookingModal && (
+        <PrivateBookingModal
+          trainer={privateBookingModal.trainer}
+          type={privateBookingModal.type}
+          onClose={() => setPrivateBookingModal(null)}
+        />
+      )}
     </div>
   );
 };
@@ -7316,7 +7430,7 @@ export default function App() {
     rewards: <RedirectToAccountTab tab="wallet" />,
     referral: <RedirectToAccountTab tab="wallet" />,
     account: <RedirectToAccountTab tab="profile" />,
-    trainers: <TrainersPage />,
+    trainers: <TrainersPage navigate={navigate} summary={summary} />,
     blog: <BlogPage />,
     contact: <ContactPage />,
   };

@@ -127,6 +127,7 @@ export interface Offer {
   image?: string | null;
   showOnHome?: boolean;
   showMaxSubscribers?: boolean;
+  showCurrentSubscribers?: boolean;
 }
 
 export interface GymClass {

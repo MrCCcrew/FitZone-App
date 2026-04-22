@@ -72,6 +72,7 @@ type PublicPayload = {
     image: string | null;
     showOnHome: boolean;
     showMaxSubscribers: boolean;
+    showCurrentSubscribers: boolean;
     maxSubscribers: number | null;
     currentSubscribers: number;
     expiresAt: string;
@@ -444,6 +445,7 @@ export async function GET(request: Request) {
         image: offer.image,
         showOnHome: offer.showOnHome,
         showMaxSubscribers: offer.showMaxSubscribers,
+        showCurrentSubscribers: offer.showCurrentSubscribers,
         maxSubscribers: offer.maxSubscribers,
         currentSubscribers: offer.currentSubscribers,
         expiresAt: offer.expiresAt.toISOString(),

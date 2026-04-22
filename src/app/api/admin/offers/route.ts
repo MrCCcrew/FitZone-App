@@ -36,6 +36,7 @@ function mapOffer(
     image: string | null;
     showOnHome: boolean;
     showMaxSubscribers: boolean;
+    showCurrentSubscribers: boolean;
     membership?: { name: string } | null;
   },
 ) {
@@ -59,6 +60,7 @@ function mapOffer(
     image: offer.image,
     showOnHome: offer.showOnHome,
     showMaxSubscribers: offer.showMaxSubscribers,
+    showCurrentSubscribers: offer.showCurrentSubscribers,
   };
 }
 
@@ -111,6 +113,7 @@ export async function POST(req: Request) {
         image: typeof body.image === "string" && body.image.trim() ? body.image.trim() : null,
         showOnHome: Boolean(body.showOnHome),
         showMaxSubscribers: body.showMaxSubscribers !== false,
+        showCurrentSubscribers: body.showCurrentSubscribers !== false,
       },
       include: { membership: { select: { name: true } } },
     });
@@ -157,6 +160,7 @@ export async function PATCH(req: Request) {
     if (body.image !== undefined) data.image = body.image ? String(body.image).trim() : null;
     if (body.showOnHome !== undefined) data.showOnHome = Boolean(body.showOnHome);
     if (body.showMaxSubscribers !== undefined) data.showMaxSubscribers = Boolean(body.showMaxSubscribers);
+    if (body.showCurrentSubscribers !== undefined) data.showCurrentSubscribers = Boolean(body.showCurrentSubscribers);
 
     const updated = await db.offer.update({
       where: { id },
