@@ -1825,7 +1825,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
   const [specialOfferLoading, setSpecialOfferLoading] = useState(false);
   const [specialOfferMessage, setSpecialOfferMessage] = useState<{ text: string; ok: boolean } | null>(null);
   const [trialMembership, setTrialMembership] = useState<{ id: string; name: string; price: number; sessionsCount: number; features: string[]; durationDays: number } | null>(null);
-  const [todayClasses, setTodayClasses] = useState<Array<{ id: string; time: string; name: string; trainer: string; spots: number; color: string }>>([]);
+  const [todayClasses, setTodayClasses] = useState<Array<{ id: string; time: string; name: string; trainer: string; spots: number; color: string; type: string }>>([]);
   const [todayIndex, setTodayIndex] = useState(0);
   const todayCarouselRef = useRef<HTMLDivElement | null>(null);
   const todayTrackRef = useRef<HTMLDivElement | null>(null);
@@ -1931,6 +1931,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
               trainer: cls.trainer,
               spots: schedule.availableSpots,
               color: typeColor(cls.type),
+              type: cls.type,
               day,
             };
           }),
@@ -2509,7 +2510,13 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                       </div>
                       <div style={{ fontWeight: 700, fontSize: 16, color: C.white, marginBottom: 4 }}>{s.name}</div>
                       {s.trainer ? <div style={{ color: C.gray, fontSize: 13, marginBottom: 16 }}>{t("مع", "With")} {s.trainer}</div> : <div style={{ marginBottom: 16 }} />}
-                      <button className="btn-primary" style={{ width: "100%", justifyContent: "center", padding: "8px", fontSize: 13, opacity: s.spots === 0 ? .5 : 1 }} disabled={s.spots === 0} onClick={() => navigate("schedule")}>
+                      <button className="btn-primary" style={{ width: "100%", justifyContent: "center", padding: "8px", fontSize: 13, opacity: s.spots === 0 ? .5 : 1 }} disabled={s.spots === 0} onClick={() => {
+                        if (typeof window !== "undefined") {
+                          window.sessionStorage.setItem("fitzone_trial_booking", "1");
+                          window.sessionStorage.setItem("fitzone_trial_schedule_id", s.id);
+                        }
+                        navigate("memberships");
+                      }}>
                         {s.spots === 0 ? t("ممتلئ", "Full") : t("احجزي الآن", "Book now")}
                       </button>
                     </div>
@@ -2900,9 +2907,11 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
         if (d.paymentSettings && typeof d.paymentSettings === "object") {
           setMembershipPaymentSettings((prev) => ({ ...prev, ...(d.paymentSettings as PublicPaymentSettings) }));
         }
-        // Open trial booking modal if triggered from hero button
+        // Open trial booking modal if triggered from hero button or home class card
         if (typeof window !== "undefined" && window.sessionStorage.getItem("fitzone_trial_booking")) {
           window.sessionStorage.removeItem("fitzone_trial_booking");
+          const preSelectedId = window.sessionStorage.getItem("fitzone_trial_schedule_id") ?? null;
+          if (preSelectedId) window.sessionStorage.removeItem("fitzone_trial_schedule_id");
           const trialMb = d.trialMembership as { id: string; name: string; price: number; sessionsCount: number; features: string[]; durationDays: number } | null;
           const trialPlan: PlanItem = {
             id: trialMb?.id ?? "trial-class",
@@ -2919,11 +2928,16 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
             goalIds: [],
             isTrial: true,
           };
-          setScheduleSelections([]);
           setScheduleError(null);
           setDaysPerWeek(null);
           setScheduleStep("slots"); // skip frequency step for trial
           setSchedulePlan(trialPlan);
+          // Pre-select the schedule from the home page card if provided
+          if (preSelectedId) {
+            setScheduleSelections([preSelectedId]);
+          } else {
+            setScheduleSelections([]);
+          }
         }
       })
       .catch(() => {});
