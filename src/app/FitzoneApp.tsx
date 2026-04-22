@@ -968,7 +968,6 @@ const Footer = ({ navigate }: { navigate: (p: string) => void }) => {
             { src: "/payment-logos/u-valu-logo.webp",      alt: "valU",              bg: "#fff"        },
             { src: "/payment-logos/sympl-menu2.png",       alt: "Sympl",             bg: "#fff"        },
             { src: "/payment-logos/sohoooooola.png",       alt: "Souhoola",          bg: "#fff"        },
-            { src: "/payment-logos/aman.svg",              alt: "Aman",              bg: "transparent" },
           ].map(({ src, alt, bg }) => (
             <div
               key={alt}
