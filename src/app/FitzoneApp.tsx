@@ -1433,6 +1433,7 @@ const DEFAULT_HOME_MEMBERSHIPS: Array<{
   price: number;
   priceBefore: number | null;
   priceAfter: number | null;
+  image: string | null;
   period: string;
   features: string[];
   color: string;
@@ -1871,6 +1872,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
           price: mb.price,
           priceBefore: mb.priceBefore ?? null,
           priceAfter: mb.priceAfter ?? null,
+          image: mb.image ?? null,
           period: cycleLabel(mb.cycle, mb.durationDays),
           features: Array.isArray(mb.features) ? mb.features.slice(0, 4) : [],
           color: HOME_PLAN_COLORS[i % HOME_PLAN_COLORS.length],
@@ -2378,35 +2380,56 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
             <button className="btn-outline" onClick={() => navigate("offers")}>{t("مزيد من الباقات", "More plans")}</button>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 24, minHeight: memberships.length === 0 ? 400 : undefined }}>
-            {memberships.map(m => (
-              <div key={m.name} className={`card card-hover`} style={{ padding: 32, position: "relative", border: m.popular ? `2px solid ${C.red}` : `1px solid ${C.border}`, transform: m.popular ? "scale(1.03)" : "none" }}>
-                {m.popular && (
-                  <div style={{ position: "absolute", top: -5, left: "50%", transform: "translateX(-50%)", background: C.redDark, color: "#fff", padding: "4px 20px", borderRadius: 4, fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>⭐ {t("الأكثر شعبية", "Most popular")}</div>
-                )}
-                <h3 style={{ fontSize: 20, fontWeight: 900, color: C.white }}>{m.name}</h3>
-                <div style={{ margin: "16px 0 24px" }}>
-                  <span className="price-currency" style={{ color: m.color === C.gold ? C.goldDark : m.color === C.red ? C.redDark : m.color }}>{lang === "en" ? "EGP " : "ج.م "}</span>
-                  <span className="price-big" style={{ color: m.color === C.gold ? C.goldDark : m.color === C.red ? C.redDark : m.color }}>{m.priceAfter ?? m.price}</span>
-                  <span style={{ color: C.gray, fontSize: 13 }}> / {m.period}</span>
-                </div>
-                {m.priceBefore && m.priceBefore > (m.priceAfter ?? m.price) ? (
-                  <div style={{ color: C.gray, fontSize: 13, textDecoration: "line-through", marginTop: -12, marginBottom: 12 }}>
-                    {m.priceBefore} {lang === "en" ? "EGP" : "ج.م"}
+            {memberships.map((m, i) => {
+              const accentColor = m.color ?? PLAN_COLORS[i % PLAN_COLORS.length];
+              const hasDis = m.priceBefore != null && m.priceBefore > (m.priceAfter ?? m.price);
+              const discount = hasDis ? Math.round((1 - (m.priceAfter ?? m.price) / m.priceBefore!) * 100) : null;
+              return (
+                <div key={m.name} className="card card-hover" style={{ padding: 0, overflow: "hidden", border: `1px solid ${accentColor}33`, boxShadow: m.popular ? `0 0 0 2px ${C.red}` : "none", display: "flex", flexDirection: "column", height: "100%" }}>
+                  {/* Full-bleed image */}
+                  <div style={{ height: 180, overflow: "hidden", position: "relative", flexShrink: 0 }}>
+                    {m.image ? (
+                      <img src={m.image} alt={m.name} style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "center", display: "block" }} />
+                    ) : (
+                      <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, background: `linear-gradient(135deg, ${accentColor}22, ${accentColor}0D)` }}>
+                        <div style={{ fontSize: 38 }}>🎟️</div>
+                        <div style={{ color: accentColor, fontSize: 12, fontWeight: 800 }}>{m.name}</div>
+                      </div>
+                    )}
+                    <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(10,5,8,.80) 0%, transparent 55%)" }} />
+                    {m.popular && (
+                      <span style={{ position: "absolute", top: 12, insetInlineEnd: 12, background: C.redDark, color: "#fff", fontSize: 10, fontWeight: 800, padding: "3px 10px", borderRadius: 20 }}>⭐ {t("الأكثر شعبية", "Most popular")}</span>
+                    )}
+                    {hasDis && discount != null && (
+                      <span style={{ position: "absolute", top: 12, insetInlineStart: 12, background: C.gold, color: "#000", fontSize: 11, fontWeight: 800, padding: "3px 10px", borderRadius: 20 }}>
+                        {t(`خصم ${discount}%`, `${discount}% off`)}
+                      </span>
+                    )}
                   </div>
-                ) : null}
-                <div className="divider" />
-                <ul style={{ listStyle: "none", marginBottom: 28 }}>
-                  {m.features.map(f => (
-                    <li key={f} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", fontSize: 14, color: C.grayLight, borderBottom: `1px solid ${C.border}` }}>
-                      <I n="check" s={14} c={m.popular ? C.red : C.gold} /> {f}
-                    </li>
-                  ))}
-                </ul>
-                <button className={m.popular ? "btn-primary" : "btn-outline"} style={{ width: "100%", justifyContent: "center", background: m.popular ? C.red : "transparent", borderColor: m.color, color: m.popular ? "#fff" : (m.color === C.gold ? C.goldDark : m.color) }} onClick={() => navigate("offers")}>
-                  {t("اشتركي الآن", "Subscribe now")}
-                </button>
-              </div>
-            ))}
+                  {/* Content */}
+                  <div style={{ padding: "18px 20px 20px", display: "flex", flexDirection: "column", flex: 1 }}>
+                    <div style={{ fontSize: 30, fontWeight: 900, color: accentColor, lineHeight: 1, marginBottom: 2 }}>
+                      {formatCurrency(m.priceAfter ?? m.price)}
+                    </div>
+                    {hasDis && m.priceBefore != null && (
+                      <div style={{ color: C.gray, fontSize: 12, textDecoration: "line-through", marginBottom: 2 }}>{formatCurrency(m.priceBefore)} {t("ج.م", "EGP")}</div>
+                    )}
+                    <div style={{ fontSize: 11, color: C.gray, marginBottom: 10 }}>{m.period}</div>
+                    <h3 style={{ fontWeight: 800, fontSize: 15, color: C.white, marginBottom: 12 }}>{m.name}</h3>
+                    <ul style={{ listStyle: "none", marginBottom: 20, flex: 1 }}>
+                      {m.features.map(f => (
+                        <li key={f} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", fontSize: 13, color: C.grayLight, borderBottom: `1px solid ${C.border}` }}>
+                          <I n="check" s={14} c={accentColor} /> {f}
+                        </li>
+                      ))}
+                    </ul>
+                    <button className="btn-primary" style={{ width: "100%", justifyContent: "center", fontSize: 14, background: accentColor, borderColor: accentColor, marginTop: "auto" }} onClick={() => navigate("offers")}>
+                      {t("اشتركي الآن", "Subscribe now")}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       </section>
@@ -4533,7 +4556,7 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
               {t("لا توجد باقات متاحة حالياً.", "No packages available at the moment.")}
             </div>
           ) : (
-            <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr", "repeat(2, 1fr)"), gap: 24 }}>
+            <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 24 }}>
               {packages.map((pkg, i) => {
                 const before = pkg.priceBefore ?? null;
                 const after = pkg.priceAfter ?? pkg.price;
@@ -4541,78 +4564,48 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
                 const discount = hasDiscount ? Math.round((1 - after / before) * 100) : null;
                 const packageColor = PLAN_COLORS[i % PLAN_COLORS.length];
                 return (
-                  <div
-                    key={pkg.id}
-                    className="card card-hover"
-                    style={{
-                      padding: 0,
-                      position: "relative",
-                      border: `1px solid ${C.border}`,
-                      boxShadow: "0 18px 45px rgba(233,30,99,.12)",
-                      overflow: "hidden",
-                      display: "flex",
-                      flexDirection: "column",
-                      height: "100%",
-                    }}
-                  >
-                    <div
-                      style={{
-                        padding: "28px 24px 18px",
-                        background: `linear-gradient(135deg, ${packageColor}20, rgba(255,255,255,.72))`,
-                        borderBottom: `1px solid ${C.border}`,
-                        position: "relative",
-                      }}
-                    >
-                      {hasDiscount && discount != null ? (
-                        <div style={{ position: "absolute", top: 10, right: 16, background: C.gold, color: "#000", padding: "3px 10px", borderRadius: 999, fontSize: 10, fontWeight: 800 }}>
-                          {t(`خصم ${discount}%`, `${discount}% off`)}
-                        </div>
-                      ) : null}
+                  <div key={pkg.id} className="card card-hover" style={{ padding: 0, overflow: "hidden", border: `1px solid ${packageColor}33`, boxShadow: "0 18px 45px rgba(233,30,99,.12)", display: "flex", flexDirection: "column", height: "100%" }}>
+                    {/* Full-bleed image */}
+                    <div style={{ height: 200, overflow: "hidden", position: "relative", flexShrink: 0 }}>
                       {pkg.image ? (
-                        <div style={{ marginBottom: 14, borderRadius: 14, overflow: "hidden" }}>
-                          <img src={pkg.image} alt={pkg.name} style={{ width: "100%", height: 140, objectFit: "cover", objectPosition: "center", display: "block" }} />
-                        </div>
+                        <img src={pkg.image} alt={pkg.name} style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "center", display: "block" }} />
                       ) : (
-                        <div style={{ marginBottom: 14, borderRadius: 14, overflow: "hidden", height: 140, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, background: `linear-gradient(135deg, ${packageColor}22, ${packageColor}0D)` }}>
-                          <div style={{ fontSize: viewportWidth() < 768 ? 34 : 42 }}>🎟️</div>
-                          <div style={{ color: packageColor, fontSize: 12, fontWeight: 800 }}>
-                            {t("باقة خاصة", "Special package")}
-                          </div>
+                        <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, background: `linear-gradient(135deg, ${packageColor}22, ${packageColor}0D)` }}>
+                          <div style={{ fontSize: 42 }}>🎟️</div>
+                          <div style={{ color: packageColor, fontSize: 12, fontWeight: 800 }}>{t("باقة خاصة", "Special package")}</div>
                         </div>
                       )}
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 10 }}>
-                        <h3 style={{ fontWeight: 900, fontSize: 20, color: C.white }}>{pkg.name}</h3>
-                        <div style={{ flexShrink: 0, textAlign: "left" }}>
-                          <div style={{ fontSize: 34, fontWeight: 900, color: packageColor, lineHeight: 1 }}>
-                            {formatCurrency(after)}
-                          </div>
-                          <div style={{ color: C.gray, fontSize: 11, marginTop: 4 }}>
-                            {t("سعر الباقة", "Package price")}
-                          </div>
-                        </div>
-                      </div>
-                      <div style={{ display: "flex", gap: 12, color: C.gray, fontSize: 12, marginBottom: 8, flexWrap: "wrap" }}>
-                        <span>{t("المدة:", "Duration:")} {pkg.durationDays} {t("يوم", "days")}</span>
-                        <span>{cycleLabel(pkg.cycle, pkg.durationDays)}</span>
-                        {pkg.sessionsCount ? <span>{t("عدد الحصص:", "Sessions:")} {pkg.sessionsCount}</span> : null}
-                      </div>
-                      {hasDiscount ? (
-                        <div style={{ marginTop: 6, color: C.gray, fontSize: 12, textDecoration: "line-through" }}>
-                          {formatCurrency(before)} {t("ج.م", "EGP")}
-                        </div>
-                      ) : null}
+                      <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(10,5,8,.80) 0%, transparent 55%)" }} />
+                      {hasDiscount && discount != null && (
+                        <span style={{ position: "absolute", top: 12, insetInlineStart: 12, background: C.gold, color: "#000", fontSize: 11, fontWeight: 800, padding: "3px 10px", borderRadius: 20 }}>
+                          {t(`خصم ${discount}%`, `${discount}% off`)}
+                        </span>
+                      )}
                     </div>
-
-                    <div style={{ padding: "18px 24px 22px", display: "flex", flexDirection: "column", flex: 1 }}>
-                      <ul style={{ marginBottom: 24, flex: 1 }}>
+                    {/* Content */}
+                    <div style={{ padding: "20px 22px 22px", display: "flex", flexDirection: "column", flex: 1 }}>
+                      <div style={{ fontSize: 32, fontWeight: 900, color: packageColor, lineHeight: 1, marginBottom: 2 }}>
+                        {formatCurrency(after)}
+                      </div>
+                      {hasDiscount && before != null && (
+                        <div style={{ color: C.gray, fontSize: 12, textDecoration: "line-through", marginBottom: 2 }}>{formatCurrency(before)} {t("ج.م", "EGP")}</div>
+                      )}
+                      <div style={{ fontSize: 11, color: C.gray, marginBottom: 10 }}>{t("سعر الباقة", "Package price")}</div>
+                      <h3 style={{ fontWeight: 800, fontSize: 16, color: C.white, marginBottom: 8 }}>{pkg.name}</h3>
+                      <div style={{ display: "flex", gap: 10, color: C.gray, fontSize: 12, marginBottom: 14, flexWrap: "wrap" }}>
+                        <span>📅 {pkg.durationDays} {t("يوم", "days")}</span>
+                        {pkg.sessionsCount ? <span>🎯 {pkg.sessionsCount} {t("حصة", "sessions")}</span> : null}
+                      </div>
+                      <ul style={{ listStyle: "none", marginBottom: 20, flex: 1 }}>
                         {(pkg.features ?? []).map((item) => (
-                          <li key={`${pkg.id}-${item}`} style={{ display: "flex", gap: 10, padding: "8px 0", fontSize: 14, color: C.grayLight, borderBottom: `1px solid ${C.border}` }}>
-                            <I n="check" s={14} c={C.success} /> {item}
+                          <li key={`${pkg.id}-${item}`} style={{ display: "flex", gap: 10, padding: "7px 0", fontSize: 13, color: C.grayLight, borderBottom: `1px solid ${C.border}` }}>
+                            <I n="check" s={14} c={packageColor} /> {item}
                           </li>
                         ))}
                       </ul>
                       <button
-                        style={{ width: "100%", padding: "10px", borderRadius: 10, border: `2px solid ${packageColor}`, background: "transparent", color: packageColor, fontFamily: "'Cairo', sans-serif", fontSize: 14, fontWeight: 700, cursor: "pointer", marginTop: "auto" }}
+                        className="btn-primary"
+                        style={{ width: "100%", justifyContent: "center", fontSize: 14, background: packageColor, borderColor: packageColor, marginTop: "auto" }}
                         onClick={() => startMembershipFlow(pkg.id, "package")}
                       >
                         {t("اشتركي الآن", "Subscribe now")}
