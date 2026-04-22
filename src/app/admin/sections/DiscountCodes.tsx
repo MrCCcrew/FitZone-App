@@ -302,7 +302,6 @@ export default function DiscountCodes() {
     <AdminSectionShell
       title="أكواد الخصم"
       subtitle="Discount Codes — أنشئ وأدر أكواد الخصم للاشتراكات"
-      actions={activeTab === "global" ? <button className={BTN_PRIMARY} onClick={openCreate}>+ إضافة كود جديد</button> : undefined}
     >
       {/* Tabs */}
       <div className="flex gap-2 border-b border-[rgba(255,188,219,0.12)] pb-0">
@@ -322,13 +321,15 @@ export default function DiscountCodes() {
 
       {/* Global codes tab */}
       {activeTab === "global" && <>
-      {/* Global message */}
-      {msg && !showForm && (
-        <div className={`rounded-xl px-4 py-3 text-sm font-bold ${msg.ok ? "bg-emerald-950/40 text-emerald-300 border border-emerald-500/30" : "bg-red-950/40 text-red-300 border border-red-500/30"}`}>
-          {msg.text}
-        </div>
-      )}
-
+      {/* Add button + Global message */}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <button className={BTN_PRIMARY} onClick={openCreate}>+ إضافة كود جديد</button>
+        {msg && !showForm && (
+          <div className={`flex-1 rounded-xl px-4 py-3 text-sm font-bold ${msg.ok ? "bg-emerald-950/40 text-emerald-300 border border-emerald-500/30" : "bg-red-950/40 text-red-300 border border-red-500/30"}`}>
+            {msg.text}
+          </div>
+        )}
+      </div>
       <AdminCard>
         {loading ? (
           <div className="py-10 text-center text-sm text-[#d7aabd]">جاري التحميل...</div>
