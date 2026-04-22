@@ -14,16 +14,32 @@ function parseFeatures(value: string) {
   }
 }
 
+function parseJsonArray<T>(value: string | null | undefined) {
+  if (!value) return [] as T[];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? (parsed as T[]) : [];
+  } catch {
+    return [] as T[];
+  }
+}
+
 async function getAccountData(userId: string) {
   try {
     const user = await db.user.findUnique({
       where: { id: userId },
       include: {
         memberships: {
-          where: { status: "active" },
-          include: { membership: true },
+          include: {
+            membership: true,
+            offer: true,
+            bookings: {
+              include: { schedule: { include: { class: { include: { trainer: true } } } } },
+              orderBy: { createdAt: "desc" },
+            },
+          },
           orderBy: { startDate: "desc" },
-          take: 1,
+          take: 30,
         },
         wallet: { include: { transactions: { orderBy: { createdAt: "desc" }, take: 10 } } },
         rewardPoints: { include: { history: { orderBy: { createdAt: "desc" }, take: 20 } } },
@@ -34,9 +50,22 @@ async function getAccountData(userId: string) {
           take: 20,
         },
         orders: {
-          include: { items: { include: { product: true } } },
+          include: {
+            items: { include: { product: true } },
+            paymentTransactions: {
+              orderBy: { createdAt: "desc" },
+              take: 1,
+            },
+          },
           orderBy: { createdAt: "desc" },
-          take: 10,
+          take: 20,
+        },
+        privateApplications: {
+          include: {
+            trainer: { select: { id: true, name: true, specialty: true, image: true } },
+          },
+          orderBy: { createdAt: "desc" },
+          take: 20,
         },
         notifications: { orderBy: { createdAt: "desc" }, take: 30 },
       },
@@ -44,13 +73,30 @@ async function getAccountData(userId: string) {
 
     if (!user) return null;
 
-    const activeMembership = user.memberships[0];
+    const activeMembership = user.memberships.find((membership) => membership.status === "active") ?? user.memberships[0] ?? null;
     const classesUsed = user.bookings.filter(
       (booking) =>
         booking.status === "attended" &&
         activeMembership &&
         new Date(booking.createdAt) >= new Date(activeMembership.startDate),
     ).length;
+
+    const productRewardIds = Array.from(
+      new Set(
+        user.memberships.flatMap((membership) =>
+          parseJsonArray<{ productId?: string }>(membership.productRewardsUsed).map((reward) => reward.productId).filter(Boolean) as string[],
+        ),
+      ),
+    );
+
+    const rewardProducts = productRewardIds.length
+      ? await db.product.findMany({
+          where: { id: { in: productRewardIds } },
+          select: { id: true, name: true, nameEn: true },
+        })
+      : [];
+
+    const rewardProductMap = new Map(rewardProducts.map((product) => [product.id, product]));
 
     return {
       user: {
@@ -69,15 +115,61 @@ async function getAccountData(userId: string) {
       },
       membership: activeMembership
         ? {
+            id: activeMembership.id,
             plan: activeMembership.membership.name,
+            kind: activeMembership.membership.kind,
             startDate: activeMembership.startDate.toISOString(),
             endDate: activeMembership.endDate.toISOString(),
             status: activeMembership.status,
             features: parseFeatures(activeMembership.membership.features),
             maxClasses: activeMembership.membership.maxClasses,
             classesUsed,
+            paymentAmount: activeMembership.paymentAmount,
+            paymentMethod: activeMembership.paymentMethod ?? "",
+            offerTitle: activeMembership.offerTitle ?? null,
           }
         : null,
+      membershipHistory: user.memberships.map((membership) => {
+        const features = parseFeatures(membership.membership.features);
+        const attendedCount = membership.bookings.filter((booking) => booking.status === "attended").length;
+        const totalSessions = membership.totalSessions ?? membership.membership.sessionsCount ?? membership.membership.maxClasses;
+        const sessionsRemaining =
+          totalSessions == null || totalSessions < 0 ? null : Math.max(0, totalSessions - membership.bookings.length);
+        const productRewards = parseJsonArray<{ productId?: string; quantity?: number }>(membership.productRewardsUsed).map((reward) => ({
+          productId: reward.productId ?? "",
+          quantity: reward.quantity ?? 0,
+          name: reward.productId ? rewardProductMap.get(reward.productId)?.name ?? reward.productId : "",
+        }));
+
+        return {
+          id: membership.id,
+          plan: membership.membership.name,
+          kind: membership.membership.kind,
+          image: membership.membership.image ?? null,
+          startDate: membership.startDate.toISOString(),
+          endDate: membership.endDate.toISOString(),
+          status: membership.status,
+          paymentAmount: membership.paymentAmount,
+          paymentMethod: membership.paymentMethod ?? "",
+          offerTitle: membership.offerTitle ?? membership.offer?.title ?? null,
+          durationDays: membership.membership.duration,
+          features,
+          maxClasses: membership.membership.maxClasses,
+          totalSessions,
+          classesUsed: attendedCount,
+          sessionsRemaining,
+          bookedCount: membership.bookings.length,
+          bookings: membership.bookings.map((booking) => ({
+            id: booking.id,
+            className: booking.schedule.class.name,
+            trainerName: booking.schedule.class.trainer.name,
+            date: booking.schedule.date.toISOString(),
+            time: booking.schedule.time,
+            status: booking.status,
+          })),
+          productRewards: productRewards.filter((reward) => reward.productId && reward.quantity > 0),
+        };
+      }),
       wallet: {
         balance: user.wallet?.balance ?? 0,
         transactions: (user.wallet?.transactions ?? []).map((tx) => ({
@@ -129,14 +221,42 @@ async function getAccountData(userId: string) {
       })),
       orders: user.orders.map((order) => ({
         id: order.id,
+        subtotal: order.subtotal,
+        discountTotal: order.discountTotal,
+        shippingFee: order.shippingFee,
         total: order.total,
         status: order.status,
+        paymentMethod: order.paymentMethod,
+        recipientName: order.recipientName ?? "",
+        recipientPhone: order.recipientPhone ?? "",
+        address: order.address ?? "",
+        deliveryLabel: order.deliveryLabel ?? "",
+        estimatedDeliveryDays: order.estimatedDeliveryDays ?? null,
+        isClubPickup: order.isClubPickup,
+        paymentStatus: order.paymentTransactions[0]?.status ?? null,
+        checkoutUrl: order.paymentTransactions[0]?.checkoutUrl ?? null,
         createdAt: order.createdAt.toISOString(),
         items: order.items.map((item) => ({
           name: item.product.name,
           quantity: item.quantity,
           price: item.price,
+          size: item.size ?? "",
         })),
+      })),
+      privateApplications: user.privateApplications.map((application) => ({
+        id: application.id,
+        type: application.type,
+        status: application.status,
+        trainerName: application.trainer.name,
+        trainerSpecialty: application.trainer.specialty,
+        trainerImage: application.trainer.image ?? null,
+        trainerNote: application.trainerNote ?? null,
+        trainerPrice: application.trainerPrice ?? null,
+        goals: parseJsonArray<string>(application.goalsJson),
+        notes: application.notes ?? "",
+        injuries: application.injuries ?? "",
+        paidAt: application.paidAt ? application.paidAt.toISOString() : null,
+        createdAt: application.createdAt.toISOString(),
       })),
       notifications: user.notifications.map((notification) => ({
         id: notification.id,

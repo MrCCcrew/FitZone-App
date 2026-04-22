@@ -1824,9 +1824,6 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
   const [testimonials, setTestimonials] = useState<PublicTestimonial[]>([]);
   const [products, setProducts] = useState<StoreProduct[]>([]);
   const [homeOffers, setHomeOffers] = useState<PublicOffer[]>([]);
-  const [specialOffer, setSpecialOffer] = useState<PublicOffer | null>(null);
-  const [specialOfferLoading, setSpecialOfferLoading] = useState(false);
-  const [specialOfferMessage, setSpecialOfferMessage] = useState<{ text: string; ok: boolean } | null>(null);
   const [trialMembership, setTrialMembership] = useState<{ id: string; name: string; price: number; sessionsCount: number; features: string[]; durationDays: number } | null>(null);
   const [todayClasses, setTodayClasses] = useState<Array<{ id: string; time: string; name: string; trainer: string; spots: number; color: string; type: string }>>([]);
   const [todayIndex, setTodayIndex] = useState(0);
@@ -1911,8 +1908,6 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
       if (Array.isArray(d.offers)) {
         const onHome = (d.offers as PublicOffer[]).filter((o) => o.showOnHome).slice(0, 3);
         setHomeOffers(onHome);
-        const highlighted = onHome.find((o) => o.type === "special") ?? null;
-        setSpecialOffer(highlighted ?? null);
       }
       if (Array.isArray(d.classes)) {
         const now = new Date();
@@ -1979,10 +1974,10 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
     return () => clearInterval(timer);
   }, [heroContent.slides]);
   useEffect(() => {
-    if (!specialOffer) return;
+    if (homeOffers.length === 0) return;
     const timer = setInterval(() => setOfferNow(Date.now()), 1000);
     return () => clearInterval(timer);
-  }, [specialOffer]);
+  }, [homeOffers.length]);
   const animatedTodayClasses = useMemo(() => todayClasses, [todayClasses]);
   useEffect(() => {
     const applyTransform = () => {
@@ -2066,12 +2061,6 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
     const heroSubtext = lang === "en" ? heroContent.subtextEn ?? heroContent.subtext : heroContent.subtext;
     const heroCtaPrimary = lang === "en" ? heroContent.ctaPrimaryEn ?? heroContent.ctaPrimary : heroContent.ctaPrimary;
     const heroCtaSecondary = lang === "en" ? heroContent.ctaSecondaryEn ?? heroContent.ctaSecondary : heroContent.ctaSecondary;
-  const offerCountdown = specialOffer ? getCountdownParts(specialOffer.expiresAt) : null;
-  const remainingSubscribers =
-    specialOffer?.maxSubscribers != null && specialOffer?.showMaxSubscribers
-      ? Math.max(specialOffer.maxSubscribers - specialOffer.currentSubscribers, 0)
-      : null;
-
   const handleTrialBooking = () => {
     if (typeof window !== "undefined") {
       window.sessionStorage.setItem("fitzone_trial_booking", "1");
@@ -2079,41 +2068,14 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
     navigate("memberships");
   };
 
-  const handleSpecialOfferSubscribe = async () => {
-    if (!specialOffer) return;
-    if (!summary?.authenticated) {
-      window.location.href = `/login?callbackUrl=${encodeURIComponent("/?page=home")}`;
-      return;
+  const startMembershipFlow = (membershipId?: string | null, source: "offer" | "package" = "offer", offerId?: string | null) => {
+    if (typeof window !== "undefined" && membershipId) {
+      window.sessionStorage.setItem(
+        MEMBERSHIP_FLOW_STORAGE_KEY,
+        JSON.stringify({ membershipId, source, offerId: offerId ?? null } satisfies PendingMembershipFlow),
+      );
     }
-
-    setSpecialOfferLoading(true);
-    setSpecialOfferMessage(null);
-    try {
-      const response = await fetch("/api/subscribe", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ offerId: specialOffer.id }),
-      });
-      const payload = await response.json();
-
-      if (!response.ok) {
-        setSpecialOfferMessage({ text: payload.error || t("تعذر الاشتراك في العرض الآن.", "Unable to subscribe to the offer right now."), ok: false });
-        return;
-      }
-
-      setSpecialOfferMessage({ text: t("تم الاشتراك في العرض الخاص بنجاح.", "Special offer subscribed successfully."), ok: true });
-      await loadPublicApi(true).then((d) => {
-        if (Array.isArray(d.offers)) {
-          const onHome = (d.offers as PublicOffer[]).filter((o) => o.showOnHome).slice(0, 3);
-          setHomeOffers(onHome);
-          setSpecialOffer(onHome.find((o) => o.type === "special") ?? null);
-        }
-      }).catch(() => {});
-    } catch {
-      setSpecialOfferMessage({ text: t("تعذر الاتصال بالخادم أثناء الاشتراك.", "Failed to reach the server while subscribing."), ok: false });
-    } finally {
-      setSpecialOfferLoading(false);
-    }
+    navigate("memberships");
   };
 
   return (
@@ -2330,20 +2292,23 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                         ))}
                       </div>
                       {/* CTA */}
-                      {isSpecial ? (
-                        <div style={{ display: "grid", gap: 8 }}>
-                          <button className="btn-primary" style={{ width: "100%", justifyContent: "center", fontSize: 13 }} onClick={handleSpecialOfferSubscribe} disabled={specialOfferLoading || cd.expired}>
-                            {specialOfferLoading ? t("جارٍ...","Processing...") : cd.expired ? t("انتهى العرض","Ended") : t("اشتركي الآن","Join now")}
-                          </button>
-                          {specialOfferMessage && offer.id === specialOffer?.id && (
-                            <div style={{ fontSize: 12, fontWeight: 700, color: specialOfferMessage.ok ? C.successDark : C.redDark, textAlign: "center" }}>{specialOfferMessage.text}</div>
-                          )}
-                        </div>
-                      ) : (
-                        <button className="btn-outline" style={{ width: "100%", justifyContent: "center", fontSize: 13, borderColor: accentColor, color: accentColor }} onClick={() => navigate("memberships")}>
-                          {t("استفيدي الآن","Claim now")}
-                        </button>
-                      )}
+                      <button
+                        className={isSpecial ? "btn-primary" : "btn-outline"}
+                        style={{
+                          width: "100%",
+                          justifyContent: "center",
+                          fontSize: 13,
+                          borderColor: isSpecial ? undefined : accentColor,
+                          color: isSpecial ? undefined : accentColor,
+                          opacity: cd.expired || !offer.membershipId ? 0.65 : 1,
+                        }}
+                        onClick={() => startMembershipFlow(offer.membershipId, "offer", offer.id)}
+                        disabled={cd.expired || !offer.membershipId}
+                      >
+                        {cd.expired
+                          ? t("انتهى العرض", "Ended")
+                          : t("اشتركي الآن", "Join now")}
+                      </button>
                     </div>
                   </div>
                 );
@@ -7397,6 +7362,7 @@ const BottomNav = ({
   const items = [
     { id: "home",        label: t("الرئيسية", "Home"),     icon: "home"     },
     { id: "memberships", label: t("اشتراكات", "Plans"),    icon: "star"     },
+    { id: "offers",      label: t("العروض",   "Offers"),   icon: "gift"     },
     { id: "schedule",    label: t("الجدول",   "Schedule"), icon: "calendar" },
     { id: "shop",        label: t("المتجر",   "Shop"),     icon: "cart"     },
     { id: "account",     label: t("حسابي",    "Account"),  icon: "user"     },

@@ -26,14 +26,51 @@ interface AccountData {
     hasPassword: boolean;
   };
   membership: {
+    id: string;
     plan: string;
+    kind: string;
     startDate: string;
     endDate: string;
     status: string;
     features: string[];
     maxClasses: number;
     classesUsed: number;
+    paymentAmount: number;
+    paymentMethod: string;
+    offerTitle: string | null;
   } | null;
+  membershipHistory: {
+    id: string;
+    plan: string;
+    kind: string;
+    image: string | null;
+    startDate: string;
+    endDate: string;
+    status: string;
+    paymentAmount: number;
+    paymentMethod: string;
+    offerTitle: string | null;
+    durationDays: number;
+    features: string[];
+    maxClasses: number;
+    totalSessions: number | null;
+    classesUsed: number;
+    sessionsRemaining: number | null;
+    bookedCount: number;
+    bookings: {
+      id: string;
+      className: string;
+      trainerName: string;
+      date: string;
+      time: string;
+      status: string;
+    }[];
+    productRewards: {
+      productId: string;
+      quantity: number;
+      name: string;
+    }[];
+  }[];
   wallet: {
     balance: number;
     transactions: { id: string; amount: number; type: string; description: string; createdAt: string }[];
@@ -64,10 +101,37 @@ interface AccountData {
   }[];
   orders: {
     id: string;
+    subtotal: number;
+    discountTotal: number;
+    shippingFee: number;
     total: number;
     status: string;
+    paymentMethod: string;
+    recipientName: string;
+    recipientPhone: string;
+    address: string;
+    deliveryLabel: string;
+    estimatedDeliveryDays: number | null;
+    isClubPickup: boolean;
+    paymentStatus: string | null;
+    checkoutUrl: string | null;
     createdAt: string;
-    items: { name: string; quantity: number; price: number }[];
+    items: { name: string; quantity: number; price: number; size: string }[];
+  }[];
+  privateApplications: {
+    id: string;
+    type: string;
+    status: string;
+    trainerName: string;
+    trainerSpecialty: string;
+    trainerImage: string | null;
+    trainerNote: string | null;
+    trainerPrice: number | null;
+    goals: string[];
+    notes: string;
+    injuries: string;
+    paidAt: string | null;
+    createdAt: string;
   }[];
   notifications: {
     id: string;
@@ -118,6 +182,10 @@ const STATUS_MAP: Record<string, { label: string; color: string }> = {
   cancelled: { label: "ملغي",         color: "bg-red-500/20 text-red-400" },
   noshow:    { label: "لم تحضر",      color: "bg-gray-500/20 text-gray-400" },
   pending:   { label: "معلق",         color: "bg-yellow-500/20 text-yellow-400" },
+  pending_payment: { label: "بانتظار الدفع", color: "bg-amber-500/20 text-amber-300" },
+  approved:  { label: "مقبول",        color: "bg-emerald-500/20 text-emerald-400" },
+  rejected:  { label: "مرفوض",        color: "bg-red-500/20 text-red-400" },
+  paid:      { label: "مدفوع",        color: "bg-blue-500/20 text-blue-400" },
   delivered: { label: "تم التسليم",   color: "bg-green-500/20 text-green-400" },
   active:    { label: "نشط",          color: "bg-green-500/20 text-green-400" },
   expired:   { label: "منتهي",        color: "bg-red-500/20 text-red-400" },
@@ -160,6 +228,30 @@ type TabId =
 
 function formatMoney(value: number, lang: "ar" | "en") {
   return new Intl.NumberFormat(lang === "en" ? "en-US" : "ar-EG").format(value);
+}
+
+function getPaymentMethodLabel(method: string, lang: "ar" | "en") {
+  const labels: Record<string, { ar: string; en: string }> = {
+    instapay: { ar: "إنستاباي", en: "InstaPay" },
+    vodafone_cash: { ar: "فودافون كاش", en: "Vodafone Cash" },
+    cash: { ar: "كاش", en: "Cash" },
+    wallet: { ar: "المحفظة", en: "Wallet" },
+    card: { ar: "بطاقة", en: "Card" },
+    offer: { ar: "عرض خاص", en: "Special offer" },
+    free: { ar: "مجاني", en: "Free" },
+    membership: { ar: "ضمن الاشتراك", en: "Included in membership" },
+    cod: { ar: "الدفع عند الاستلام", en: "Cash on delivery" },
+  };
+  return labels[method]?.[lang] ?? method;
+}
+
+function getMembershipKindLabel(kind: string, lang: "ar" | "en") {
+  const labels: Record<string, { ar: string; en: string }> = {
+    subscription: { ar: "اشتراك", en: "Subscription" },
+    package: { ar: "باقة", en: "Package" },
+    trial: { ar: "كلاس تجريبي", en: "Trial class" },
+  };
+  return labels[kind]?.[lang] ?? kind;
 }
 
 function getTierLabel(tier: string, lang: "ar" | "en") {
@@ -1193,6 +1285,238 @@ function MembershipTab({ membership }: { membership: AccountData["membership"] }
   );
 }
 
+function AccountMembershipTab({
+  membership,
+  membershipHistory,
+  privateApplications,
+}: {
+  membership: AccountData["membership"];
+  membershipHistory: AccountData["membershipHistory"];
+  privateApplications: AccountData["privateApplications"];
+}) {
+  const { lang } = useLang();
+  const t = (arText: string, enText: string) => (lang === "ar" ? arText : enText);
+  const currentMembership = membershipHistory.find((item) => item.id === membership?.id) ?? null;
+
+  return (
+    <div className="space-y-5">
+      {currentMembership ? (
+        <div className="bg-gradient-to-br from-red-950/40 to-black border border-red-600/40 rounded-2xl p-6">
+          <div className="flex items-start justify-between gap-4 mb-4 flex-wrap">
+            <div>
+              <div className="text-gray-400 text-xs mb-1">{t("اشتراكك الحالي", "Your current membership")}</div>
+              <div className="text-3xl font-black text-white">{currentMembership.plan}</div>
+              <div className="mt-2 flex items-center gap-2 flex-wrap">
+                <span className="rounded-full bg-pink-500/15 px-3 py-1 text-xs font-bold text-pink-200">
+                  {getMembershipKindLabel(currentMembership.kind, lang)}
+                </span>
+                {currentMembership.offerTitle ? (
+                  <span className="rounded-full bg-amber-500/15 px-3 py-1 text-xs font-bold text-amber-200">
+                    {currentMembership.offerTitle}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+            <span className={`text-xs px-3 py-1.5 rounded-full font-black ${STATUS_MAP[currentMembership.status]?.color ?? "text-white bg-gray-700"}`}>
+              {STATUS_MAP[currentMembership.status]?.label ?? currentMembership.status}
+            </span>
+          </div>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="bg-black/40 rounded-xl p-3 text-center">
+              <div className="text-yellow-400 font-black text-lg">{Math.max(0, differenceInDays(new Date(currentMembership.endDate), new Date()))}</div>
+              <div className="text-gray-500 text-xs">{t("أيام متبقية", "Days left")}</div>
+            </div>
+            <div className="bg-black/40 rounded-xl p-3 text-center">
+              <div className="text-white font-black text-lg">{currentMembership.classesUsed}</div>
+              <div className="text-gray-500 text-xs">{t("حصص حضرتها", "Attended sessions")}</div>
+            </div>
+            <div className="bg-black/40 rounded-xl p-3 text-center">
+              <div className="text-green-400 font-black text-lg">{currentMembership.sessionsRemaining == null ? "∞" : currentMembership.sessionsRemaining}</div>
+              <div className="text-gray-500 text-xs">{t("المتبقي", "Remaining")}</div>
+            </div>
+            <div className="bg-black/40 rounded-xl p-3 text-center">
+              <div className="text-pink-300 font-black text-lg">{formatMoney(currentMembership.paymentAmount, lang)}</div>
+              <div className="text-gray-500 text-xs">{t("المدفوع", "Paid")}</div>
+            </div>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-3 text-xs text-gray-300">
+            <span>{t("من", "From")} {format(new Date(currentMembership.startDate), "d MMM yyyy", { locale: lang === "en" ? enUS : ar })}</span>
+            <span>{t("إلى", "To")} {format(new Date(currentMembership.endDate), "d MMM yyyy", { locale: lang === "en" ? enUS : ar })}</span>
+            <span>{t("الدفع:", "Payment:")} {getPaymentMethodLabel(currentMembership.paymentMethod, lang)}</span>
+          </div>
+        </div>
+      ) : (
+        <div className={CARD + " text-center py-10"}>
+          <div className="text-5xl mb-4">💳</div>
+          <h3 className="text-white font-black text-xl mb-2">{t("لا يوجد اشتراك نشط حالياً", "No active membership right now")}</h3>
+          <p className="text-gray-400 mb-6">{t("لكن ستجدين هنا كل اشتراكاتك وعروضك وباقاتك السابقة.", "You will still find all your previous memberships, offers, and packages here.")}</p>
+          <a href="/?page=memberships" className="inline-block bg-red-600 hover:bg-red-700 text-white font-black px-8 py-3 rounded-xl transition-colors">
+            {t("عرض الاشتراكات", "Browse memberships")}
+          </a>
+        </div>
+      )}
+
+      <div className={CARD}>
+        <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+          <h3 className="text-white font-black">{t("كل اشتراكاتك وعروضك وباقاتك", "All memberships, offers, and packages")}</h3>
+          <span className="text-xs text-[#d7aabd]">{membershipHistory.length} {t("عنصر", "items")}</span>
+        </div>
+        {membershipHistory.length === 0 ? (
+          <p className="text-sm text-[#d7aabd]">{t("لا توجد سجلات اشتراك حتى الآن.", "No membership records yet.")}</p>
+        ) : (
+          <div className="space-y-4">
+            {membershipHistory.map((item) => (
+              <div key={item.id} className="rounded-2xl border border-[#ffbcdb]/15 bg-white/5 p-4 space-y-4">
+                <div className="flex items-start justify-between gap-4 flex-wrap">
+                  <div className="flex items-start gap-3">
+                    {item.image ? (
+                      <img src={item.image} alt={item.plan} className="h-16 w-16 rounded-xl object-cover" />
+                    ) : (
+                      <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-pink-500/10 text-2xl">🎟️</div>
+                    )}
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="font-black text-white">{item.plan}</h4>
+                        <span className="rounded-full bg-pink-500/15 px-2.5 py-1 text-[11px] font-bold text-pink-200">
+                          {getMembershipKindLabel(item.kind, lang)}
+                        </span>
+                        {item.offerTitle ? (
+                          <span className="rounded-full bg-amber-500/15 px-2.5 py-1 text-[11px] font-bold text-amber-200">
+                            {item.offerTitle}
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-3 text-xs text-[#d7aabd]">
+                        <span>{t("من", "From")} {format(new Date(item.startDate), "d MMM yyyy", { locale: lang === "en" ? enUS : ar })}</span>
+                        <span>{t("إلى", "To")} {format(new Date(item.endDate), "d MMM yyyy", { locale: lang === "en" ? enUS : ar })}</span>
+                        <span>{t("الدفع:", "Payment:")} {getPaymentMethodLabel(item.paymentMethod, lang)}</span>
+                        <span>{t("القيمة:", "Amount:")} {formatMoney(item.paymentAmount, lang)} {lang === "en" ? "EGP" : "ج.م"}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <span className={`text-xs px-3 py-1.5 rounded-full font-black ${STATUS_MAP[item.status]?.color ?? "text-white bg-gray-700"}`}>
+                    {STATUS_MAP[item.status]?.label ?? item.status}
+                  </span>
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-3">
+                  <div className="rounded-xl border border-[#ffbcdb]/10 bg-black/20 p-3">
+                    <div className="text-xs text-[#d7aabd]">{t("الحصص المستخدمة", "Used sessions")}</div>
+                    <div className="mt-1 text-sm font-bold text-white">{item.classesUsed}</div>
+                  </div>
+                  <div className="rounded-xl border border-[#ffbcdb]/10 bg-black/20 p-3">
+                    <div className="text-xs text-[#d7aabd]">{t("الحصص المتبقية", "Remaining sessions")}</div>
+                    <div className="mt-1 text-sm font-bold text-white">{item.sessionsRemaining == null ? t("غير محدود", "Unlimited") : item.sessionsRemaining}</div>
+                  </div>
+                  <div className="rounded-xl border border-[#ffbcdb]/10 bg-black/20 p-3">
+                    <div className="text-xs text-[#d7aabd]">{t("الحجوزات المرتبطة", "Linked bookings")}</div>
+                    <div className="mt-1 text-sm font-bold text-white">{item.bookedCount}</div>
+                  </div>
+                </div>
+
+                {item.features.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {item.features.map((feature, index) => (
+                      <span key={`${item.id}-feature-${index}`} className="rounded-full border border-[#ffbcdb]/15 bg-[#2f111d] px-3 py-1 text-xs text-[#ffdbe7]">
+                        {feature}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+
+                {item.productRewards.length > 0 ? (
+                  <div className="space-y-2">
+                    <div className="text-xs font-bold text-[#ffd6e7]">{t("المنتجات المرفقة", "Included products")}</div>
+                    {item.productRewards.map((reward) => (
+                      <div key={`${item.id}-${reward.productId}`} className="rounded-xl border border-[#ffbcdb]/10 bg-black/20 px-3 py-2 text-sm text-gray-200">
+                        {reward.name} × {reward.quantity}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
+                {item.bookings.length > 0 ? (
+                  <div className="space-y-2">
+                    <div className="text-xs font-bold text-[#ffd6e7]">{t("الحصص المحجوزة ضمن هذا الاشتراك", "Booked classes under this membership")}</div>
+                    {item.bookings.slice(0, 4).map((booking) => (
+                      <div key={booking.id} className="flex items-center justify-between gap-3 rounded-xl border border-[#ffbcdb]/10 bg-black/20 px-3 py-2 text-sm">
+                        <div>
+                          <div className="font-bold text-white">{booking.className}</div>
+                          <div className="text-xs text-[#d7aabd]">{booking.trainerName} • {format(new Date(booking.date), "d MMM yyyy", { locale: lang === "en" ? enUS : ar })} • {booking.time}</div>
+                        </div>
+                        <span className={`text-[11px] px-2 py-1 rounded-full font-bold ${STATUS_MAP[booking.status]?.color ?? "bg-gray-700 text-gray-300"}`}>
+                          {STATUS_MAP[booking.status]?.label ?? booking.status}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className={CARD}>
+        <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+          <h3 className="text-white font-black">{t("جلسات البرايفيت والميني برايفيت", "Private and mini-private sessions")}</h3>
+          <span className="text-xs text-[#d7aabd]">{privateApplications.length} {t("طلب", "requests")}</span>
+        </div>
+        {privateApplications.length === 0 ? (
+          <p className="text-sm text-[#d7aabd]">{t("لا توجد جلسات خاصة مسجلة بعد.", "No private sessions recorded yet.")}</p>
+        ) : (
+          <div className="space-y-3">
+            {privateApplications.map((application) => (
+              <div key={application.id} className="rounded-2xl border border-[#ffbcdb]/15 bg-white/5 p-4 space-y-3">
+                <div className="flex items-start justify-between gap-4 flex-wrap">
+                  <div className="flex items-center gap-3">
+                    {application.trainerImage ? (
+                      <img src={application.trainerImage} alt={application.trainerName} className="h-12 w-12 rounded-full object-cover" />
+                    ) : (
+                      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-pink-500/15">🎯</div>
+                    )}
+                    <div>
+                      <div className="font-black text-white">{application.type === "mini_private" ? t("ميني برايفيت", "Mini-private") : t("برايفيت", "Private")}</div>
+                      <div className="text-xs text-[#d7aabd]">{application.trainerName} • {application.trainerSpecialty}</div>
+                    </div>
+                  </div>
+                  <span className={`text-xs px-3 py-1.5 rounded-full font-black ${STATUS_MAP[application.status]?.color ?? "bg-gray-700 text-gray-300"}`}>
+                    {STATUS_MAP[application.status]?.label ?? application.status}
+                  </span>
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="rounded-xl border border-[#ffbcdb]/10 bg-black/20 p-3 text-sm text-gray-200">
+                    <div className="text-xs text-[#d7aabd] mb-1">{t("تاريخ الطلب", "Request date")}</div>
+                    {format(new Date(application.createdAt), "d MMM yyyy", { locale: lang === "en" ? enUS : ar })}
+                  </div>
+                  <div className="rounded-xl border border-[#ffbcdb]/10 bg-black/20 p-3 text-sm text-gray-200">
+                    <div className="text-xs text-[#d7aabd] mb-1">{t("السعر", "Price")}</div>
+                    {application.trainerPrice != null ? `${formatMoney(application.trainerPrice, lang)} ${lang === "en" ? "EGP" : "ج.م"}` : t("سيحدده المدرب", "Trainer will set it")}
+                  </div>
+                </div>
+                {application.goals.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {application.goals.map((goal, index) => (
+                      <span key={`${application.id}-goal-${index}`} className="rounded-full bg-pink-500/10 px-3 py-1 text-xs text-pink-100">
+                        {goal}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+                {application.trainerNote ? (
+                  <div className="rounded-xl border border-[#ffbcdb]/10 bg-black/20 p-3 text-sm text-gray-200">{application.trainerNote}</div>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// â”€â”€â”€ Tab: Bookings â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
 // ─── Tab: Bookings ────────────────────────────────────────────────────────────
 function BookingsTabLegacy({ bookings }: { bookings: AccountData["bookings"] }) {
   const { lang } = useLang();
@@ -1860,6 +2184,184 @@ function OrdersTab({ orders }: { orders: AccountData["orders"] }) {
               )}
             </div>
           )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AccountOrdersTab({ orders }: { orders: AccountData["orders"] }) {
+  const { lang } = useLang();
+  const t = (arText: string, enText: string) => (lang === "ar" ? arText : enText);
+  const [items, setItems] = useState(orders);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
+
+  const cancelOrder = async (orderId: string) => {
+    if (cancellingId) return;
+    setCancellingId(orderId);
+    try {
+      const res = await fetch("/api/orders", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId }),
+      });
+      const data = await res.json() as { error?: string };
+      if (!res.ok) {
+        alert(data.error ?? t("تعذر إلغاء الطلب حالياً.", "Unable to cancel the order right now."));
+        return;
+      }
+      setItems((current) => current.map((item) => (item.id === orderId ? { ...item, status: "cancelled" } : item)));
+    } catch {
+      alert(t("حدث خطأ أثناء إلغاء الطلب.", "An error occurred while cancelling the order."));
+    } finally {
+      setCancellingId(null);
+    }
+  };
+
+  if (items.length === 0) {
+    return (
+      <div className={CARD + " text-center py-10"}>
+        <div className="text-4xl mb-3">🛍️</div>
+        <p className="text-gray-400 mb-4">{t("لا توجد طلبات من المتجر حتى الآن.", "No store orders yet.")}</p>
+        <a href="/?page=shop" className="inline-block bg-red-600 text-white font-bold px-5 py-2 rounded-xl text-sm">{t("اذهبي إلى المتجر", "Go to shop")}</a>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {items.map((order) => (
+        <div key={order.id} className={CARD}>
+          <div className="flex items-center gap-3 cursor-pointer" onClick={() => setExpanded(expanded === order.id ? null : order.id)}>
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-1 flex-wrap">
+                <span className="text-gray-500 text-xs font-mono">#{order.id.slice(-6).toUpperCase()}</span>
+                <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${STATUS_MAP[order.status]?.color ?? "bg-gray-700 text-gray-300"}`}>
+                  {STATUS_MAP[order.status]?.label ?? order.status}
+                </span>
+                {order.paymentStatus ? (
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${STATUS_MAP[order.paymentStatus]?.color ?? "bg-slate-700 text-slate-200"}`}>
+                    {t("الدفع:", "Payment:")} {STATUS_MAP[order.paymentStatus]?.label ?? order.paymentStatus}
+                  </span>
+                ) : null}
+              </div>
+              <div className="text-gray-500 text-xs flex flex-wrap gap-3">
+                <span>{format(new Date(order.createdAt), "d MMMM yyyy", { locale: lang === "en" ? enUS : ar })}</span>
+                <span>{order.items.length} {t("منتج", "items")}</span>
+                <span>{t("طريقة الدفع:", "Method:")} {getPaymentMethodLabel(order.paymentMethod, lang)}</span>
+              </div>
+            </div>
+            <div className="text-yellow-400 font-black">{formatMoney(order.total, lang)} {lang === "en" ? "EGP" : "ج.م"}</div>
+          </div>
+
+          {expanded === order.id ? (
+            <div className="mt-4 pt-4 border-t border-gray-800 space-y-4">
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-xl border border-[#ffbcdb]/10 bg-black/20 p-3">
+                  <div className="text-xs text-[#d7aabd]">{t("نوع الاستلام", "Delivery type")}</div>
+                  <div className="mt-1 text-sm font-bold text-white">{order.isClubPickup ? t("استلام من الجيم", "Club pickup") : (order.deliveryLabel || t("توصيل", "Delivery"))}</div>
+                </div>
+                <div className="rounded-xl border border-[#ffbcdb]/10 bg-black/20 p-3">
+                  <div className="text-xs text-[#d7aabd]">{t("المدة المتوقعة", "Estimated time")}</div>
+                  <div className="mt-1 text-sm font-bold text-white">{order.estimatedDeliveryDays ? `${order.estimatedDeliveryDays} ${t("يوم", "days")}` : t("سيتم التحديد", "To be confirmed")}</div>
+                </div>
+                <div className="rounded-xl border border-[#ffbcdb]/10 bg-black/20 p-3">
+                  <div className="text-xs text-[#d7aabd]">{t("اسم المستلم", "Recipient")}</div>
+                  <div className="mt-1 text-sm font-bold text-white">{order.recipientName || t("نفس العميل", "Same customer")}</div>
+                </div>
+                <div className="rounded-xl border border-[#ffbcdb]/10 bg-black/20 p-3">
+                  <div className="text-xs text-[#d7aabd]">{t("رقم المستلم", "Recipient phone")}</div>
+                  <div className="mt-1 text-sm font-bold text-white">{order.recipientPhone || t("غير مسجل", "Not provided")}</div>
+                </div>
+              </div>
+
+              {order.address ? (
+                <div className="rounded-xl border border-[#ffbcdb]/10 bg-black/20 p-3 text-sm text-gray-200">
+                  <div className="text-xs text-[#d7aabd] mb-1">{t("عنوان الطلب", "Order address")}</div>
+                  {order.address}
+                </div>
+              ) : null}
+
+              <div className="space-y-2">
+                {order.items.map((item, index) => (
+                  <div key={`${order.id}-${index}`} className="flex items-center justify-between text-sm rounded-xl border border-[#ffbcdb]/10 bg-black/20 px-3 py-2">
+                    <div>
+                      <div className="text-gray-100">{item.name} × {item.quantity}</div>
+                      {item.size ? <div className="text-xs text-[#d7aabd]">{t("المقاس", "Size")}: {item.size}</div> : null}
+                    </div>
+                    <span className="text-gray-300">{formatMoney(item.price * item.quantity, lang)} {lang === "en" ? "EGP" : "ج.م"}</span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-3">
+                <div className="rounded-xl border border-[#ffbcdb]/10 bg-black/20 p-3 text-sm text-gray-200">
+                  <div className="text-xs text-[#d7aabd]">{t("الإجمالي قبل الخصم", "Subtotal")}</div>
+                  <div className="mt-1 font-bold text-white">{formatMoney(order.subtotal, lang)} {lang === "en" ? "EGP" : "ج.م"}</div>
+                </div>
+                <div className="rounded-xl border border-[#ffbcdb]/10 bg-black/20 p-3 text-sm text-gray-200">
+                  <div className="text-xs text-[#d7aabd]">{t("الخصم + الشحن", "Discount + shipping")}</div>
+                  <div className="mt-1 font-bold text-white">
+                    -{formatMoney(order.discountTotal, lang)} / +{formatMoney(order.shippingFee, lang)} {lang === "en" ? "EGP" : "ج.م"}
+                  </div>
+                </div>
+                <div className="rounded-xl border border-[#ffbcdb]/10 bg-black/20 p-3 text-sm text-gray-200">
+                  <div className="text-xs text-[#d7aabd]">{t("الإجمالي النهائي", "Final total")}</div>
+                  <div className="mt-1 font-bold text-yellow-300">{formatMoney(order.total, lang)} {lang === "en" ? "EGP" : "ج.م"}</div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-[#ffbcdb]/10 bg-black/20 p-3 text-sm text-gray-200">
+                <div className="text-xs text-[#d7aabd] mb-2">{t("تتبع الحالة", "Status tracking")}</div>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { key: "pending", label: t("تم إنشاء الطلب", "Order created") },
+                    { key: "confirmed", label: t("تم تأكيد الطلب", "Order confirmed") },
+                    { key: "delivered", label: t("تم التسليم", "Delivered") },
+                  ].map((step) => {
+                    const active =
+                      step.key === "pending" ||
+                      (step.key === "confirmed" && ["confirmed", "delivered"].includes(order.status)) ||
+                      (step.key === "delivered" && order.status === "delivered");
+                    const cancelled = order.status === "cancelled";
+                    return (
+                      <span
+                        key={`${order.id}-${step.key}`}
+                        className={`rounded-full px-3 py-1 text-xs font-bold ${
+                          cancelled
+                            ? "bg-red-500/15 text-red-200"
+                            : active
+                              ? "bg-emerald-500/15 text-emerald-200"
+                              : "bg-white/5 text-[#d7aabd]"
+                        }`}
+                      >
+                        {step.label}
+                      </span>
+                    );
+                  })}
+                  {order.status === "cancelled" ? <span className="rounded-full px-3 py-1 text-xs font-bold bg-red-500/15 text-red-200">{t("تم إلغاء الطلب", "Order cancelled")}</span> : null}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 flex-wrap">
+                {order.checkoutUrl && order.paymentStatus !== "paid" && order.status !== "cancelled" ? (
+                  <a href={order.checkoutUrl} className="rounded-xl bg-pink-600 px-4 py-2 text-sm font-black text-white hover:bg-pink-500">
+                    {t("استكمال الدفع", "Continue payment")}
+                  </a>
+                ) : null}
+                {["pending", "confirmed"].includes(order.status) ? (
+                  <button
+                    onClick={() => void cancelOrder(order.id)}
+                    disabled={cancellingId === order.id}
+                    className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm font-bold text-red-200 disabled:opacity-50"
+                  >
+                    {cancellingId === order.id ? t("جارٍ الإلغاء...", "Cancelling...") : t("إلغاء الطلب", "Cancel order")}
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
         </div>
       ))}
     </div>
@@ -3147,9 +3649,9 @@ export default function AccountClient({ data }: { data: AccountData }) {
             {activeTab === "trainerDiscountCodes" && <TrainerDiscountCodesTab />}
             {activeTab === "privateSessions"      && <PrivateSessionsTab />}
             {activeTab === "myPrivateSessions"    && <MyPrivateSessionsTab />}
-            {activeTab === "membership"           && <MembershipTab    membership={data.membership} />}
+            {activeTab === "membership"           && <AccountMembershipTab membership={data.membership} membershipHistory={data.membershipHistory} privateApplications={data.privateApplications} />}
             {activeTab === "bookings"      && <BookingsTab      bookings={data.bookings} />}
-            {activeTab === "orders"        && <OrdersTab        orders={data.orders} />}
+            {activeTab === "orders"        && <AccountOrdersTab orders={data.orders} />}
             {activeTab === "wallet"        && <WalletTab        wallet={data.wallet} rewards={data.rewards} referral={data.referral} />}
             {activeTab === "reviews"       && <ReviewsTab      user={data.user} />}
             {activeTab === "notifications" && <NotificationsTab notifications={data.notifications} />}
