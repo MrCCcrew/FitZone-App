@@ -261,6 +261,75 @@ const I = ({ n, s = 20, c = "currentColor" }: { n: string; s?: number; c?: strin
   );
 };
 
+// ─── PAYMOB IFRAME MODAL ─────────────────────────────────────────────────────
+const PaymobIframeModal = ({
+  url,
+  transactionId,
+  onClose,
+}: {
+  url: string;
+  transactionId: string | null;
+  onClose: () => void;
+}) => {
+  const t = useT();
+  const _w = useWindowWidth();
+  const isMobile = _w < 640;
+
+  const handleDone = () => {
+    onClose();
+    if (transactionId) {
+      window.location.href = `/payment/verify?transactionId=${transactionId}`;
+    } else {
+      window.location.href = "/account";
+    }
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 9999, display: "flex", flexDirection: "column", background: "rgba(0,0,0,.96)" }}>
+      {/* Header */}
+      <div style={{ background: "#0d1117", borderBottom: "1px solid rgba(255,255,255,.08)", padding: "12px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0, gap: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#22c55e", boxShadow: "0 0 6px #22c55e" }} />
+          <span style={{ color: "#fff", fontWeight: 700, fontSize: isMobile ? 13 : 15, fontFamily: "'Cairo', sans-serif" }}>
+            🔒 {t("الدفع الآمن والمشفر", "Secure & Encrypted Payment")}
+          </span>
+        </div>
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          {/* Payment brand logos */}
+          {["Visa", "MC", "valU"].map(b => (
+            <span key={b} style={{ fontSize: 10, fontWeight: 800, padding: "2px 7px", borderRadius: 4, background: b === "Visa" ? "#1A1F71" : b === "MC" ? "#EB001B" : "#000", color: "#fff", fontFamily: "sans-serif" }}>{b}</span>
+          ))}
+          <button onClick={onClose} style={{ background: "rgba(255,255,255,.1)", border: "none", color: "#fff", width: 32, height: 32, borderRadius: 8, cursor: "pointer", fontSize: 18, display: "flex", alignItems: "center", justifyContent: "center", marginInlineStart: 4 }}>×</button>
+        </div>
+      </div>
+
+      {/* iframe */}
+      <iframe
+        src={url}
+        title="Paymob Secure Payment"
+        allow="payment *"
+        style={{ flex: 1, width: "100%", border: "none", background: "#fff" }}
+      />
+
+      {/* Footer */}
+      <div style={{ background: "#0d1117", borderTop: "1px solid rgba(255,255,255,.08)", padding: "14px 20px", display: "flex", gap: 10, justifyContent: "center", flexShrink: 0, flexWrap: "wrap" }}>
+        <button
+          onClick={handleDone}
+          style={{ background: "#22c55e", color: "#fff", border: "none", padding: isMobile ? "12px 20px" : "13px 32px", borderRadius: 12, fontWeight: 800, fontSize: isMobile ? 13 : 15, cursor: "pointer", fontFamily: "'Cairo', sans-serif", display: "flex", alignItems: "center", gap: 8, touchAction: "manipulation" }}
+        >
+          ✅ {t("تم الدفع — عرض حالة الطلب", "Payment Done — View Order")}
+        </button>
+        <button
+          onClick={onClose}
+          style={{ background: "transparent", border: "1px solid rgba(255,255,255,.2)", color: "#aaa", padding: isMobile ? "12px 16px" : "13px 24px", borderRadius: 12, cursor: "pointer", fontSize: isMobile ? 13 : 14, fontFamily: "'Cairo', sans-serif", touchAction: "manipulation" }}
+        >
+          {t("إغلاق", "Close")}
+        </button>
+      </div>
+    </div>
+  );
+};
+
 // ─── SMART IMAGE — shows full image, blurred backdrop fills empty space ──────
 const SmartImage = ({
   src,
@@ -887,7 +956,48 @@ const Footer = ({ navigate }: { navigate: (p: string) => void }) => {
           ))}
         </div>
       </div>
-      <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 24, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+      {/* Payment methods */}
+      <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 20, marginBottom: 16 }}>
+        <p style={{ color: C.gray, fontSize: 11, marginBottom: 12, textAlign: "center" }}>{t("وسائل الدفع المتاحة", "Accepted payment methods")}</p>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center", alignItems: "center" }}>
+          {/* Cash on Delivery */}
+          <div style={{ display: "flex", alignItems: "center", gap: 5, background: "#1a2744", borderRadius: 8, padding: "5px 10px", border: "1px solid rgba(255,255,255,.1)" }}>
+            <span style={{ fontSize: 14 }}>💵</span>
+            <span style={{ color: "#fff", fontSize: 10, fontWeight: 800, whiteSpace: "nowrap" }}>Cash on Delivery</span>
+          </div>
+          {/* Mastercard */}
+          <div style={{ display: "flex", alignItems: "center", gap: 4, background: "#1a1a1a", borderRadius: 8, padding: "5px 10px", border: "1px solid rgba(255,255,255,.1)" }}>
+            <span style={{ fontSize: 18, lineHeight: 1 }}>🔴</span>
+            <span style={{ color: "#eb001b", fontSize: 10, fontWeight: 900 }}>master</span><span style={{ color: "#f79e1b", fontSize: 10, fontWeight: 900 }}>card</span>
+          </div>
+          {/* Visa */}
+          <div style={{ background: "#1A1F71", borderRadius: 8, padding: "5px 12px", border: "1px solid rgba(255,255,255,.1)" }}>
+            <span style={{ color: "#fff", fontSize: 13, fontWeight: 900, fontStyle: "italic", letterSpacing: 1, fontFamily: "sans-serif" }}>VISA</span>
+          </div>
+          {/* Meeza / Premium Card */}
+          <div style={{ background: "#E85D04", borderRadius: 8, padding: "5px 10px", border: "1px solid rgba(255,255,255,.1)" }}>
+            <span style={{ color: "#fff", fontSize: 10, fontWeight: 900, fontFamily: "sans-serif" }}>PREMIUM CARD</span>
+          </div>
+          {/* valU */}
+          <div style={{ background: "#000", borderRadius: 8, padding: "5px 12px", border: "1px solid rgba(255,255,255,.15)" }}>
+            <span style={{ color: "#fff", fontSize: 12, fontWeight: 900, fontFamily: "sans-serif" }}>valu<span style={{ color: "#FFD700" }}>*</span></span>
+          </div>
+          {/* Sympl */}
+          <div style={{ background: "#0057FF", borderRadius: 8, padding: "5px 12px", border: "1px solid rgba(255,255,255,.1)" }}>
+            <span style={{ color: "#fff", fontSize: 12, fontWeight: 900, fontFamily: "sans-serif" }}>s/mpl.</span>
+          </div>
+          {/* Souhoola */}
+          <div style={{ background: "#6B21A8", borderRadius: 8, padding: "5px 12px", border: "1px solid rgba(255,255,255,.1)" }}>
+            <span style={{ color: "#fff", fontSize: 12, fontWeight: 900, fontFamily: "sans-serif" }}>Souhoola</span>
+          </div>
+          {/* Aman */}
+          <div style={{ background: "#0EA5E9", borderRadius: 8, padding: "5px 12px", border: "1px solid rgba(255,255,255,.1)" }}>
+            <span style={{ color: "#fff", fontSize: 12, fontWeight: 800, fontFamily: "sans-serif" }}>Aman</span>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 20, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
         <p style={{ color: C.gray, fontSize: 12 }}>
           {t("© 2026 FIT ZONE Fitness Club. جميع الحقوق محفوظة.", "© 2026 FIT ZONE Fitness Club. All rights reserved.")}
         </p>
@@ -2914,6 +3024,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
   const [daysPerWeek, setDaysPerWeek] = useState<number | null>(null);
   const [scheduleStep, setScheduleStep] = useState<"frequency" | "slots">("frequency");
   const [membershipPayMethod, setMembershipPayMethod] = useState<"paymob">("paymob");
+  const [paymobModal, setPaymobModal] = useState<{ url: string; transactionId: string | null } | null>(null);
   const [membershipDataReady, setMembershipDataReady] = useState(false);
   const [pendingPlan, setPendingPlan] = useState<PlanItem | null>(null);
   const [membershipPaymentSettings, setMembershipPaymentSettings] = useState<PublicPaymentSettings>({
@@ -3380,12 +3491,10 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
       setSubMsg({ text: `✅ تم الاشتراك في باقة ${plan.name} بنجاح!`, ok: true });
       setCheckoutPreview(null);
       if (data.checkoutUrl) {
-        window.open(data.checkoutUrl, "_blank", "noopener,noreferrer");
-        if (data.transactionId) {
-          window.open(`/payment/verify?transactionId=${data.transactionId}`, "_blank", "noopener,noreferrer");
-        }
+        setPaymobModal({ url: data.checkoutUrl, transactionId: data.transactionId ?? null });
+      } else {
+        setTimeout(() => { window.location.href = "/account"; }, 1500);
       }
-      setTimeout(() => { window.location.href = "/account"; }, 1500);
     } catch (err: unknown) {
       clearTimeout(timer);
       if (err instanceof Error && err.name === "AbortError") {
@@ -4399,6 +4508,14 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
           </button>
         </div>
       </div>
+      {/* Paymob payment iframe modal */}
+      {paymobModal && (
+        <PaymobIframeModal
+          url={paymobModal.url}
+          transactionId={paymobModal.transactionId}
+          onClose={() => setPaymobModal(null)}
+        />
+      )}
     </div>
   );
 };
@@ -5927,6 +6044,7 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
   const [orderMsg, setOrderMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [createdOrderId, setCreatedOrderId] = useState<string | null>(null);
   const [paymentAction, setPaymentAction] = useState<{ url: string; label: string; transactionId?: string | null } | null>(null);
+  const [cartPaymobModal, setCartPaymobModal] = useState<{ url: string; transactionId: string | null } | null>(null);
   const [deliveryOptions, setDeliveryOptions] = useState<PublicDeliveryOption[]>([]);
   const [selectedDeliveryId, setSelectedDeliveryId] = useState<string | null>(null);
   const [paymentSettings, setPaymentSettings] = useState<PublicPaymentSettings>({
@@ -6137,8 +6255,8 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
 
       setCreatedOrderId(data.orderId ?? null);
       if (data.checkoutUrl) {
-        const label = "Paymob";
-        setPaymentAction({ url: data.checkoutUrl, label, transactionId: data.transactionId ?? null });
+        setCartPaymobModal({ url: data.checkoutUrl, transactionId: data.transactionId ?? null });
+        setPaymentAction({ url: data.checkoutUrl, label: "Paymob", transactionId: data.transactionId ?? null });
       } else {
         setPaymentAction(null);
       }
@@ -6160,31 +6278,29 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
       {createdOrderId && <p style={{ color: C.gray, fontSize: 15, marginBottom: 6 }}>رقم الطلب: {createdOrderId}</p>}
       <p style={{ color: C.gray, fontSize: 13, marginBottom: 24 }}>تم حفظ الطلب في النظام، وسيظهر في حسابك.</p>
       {paymentAction && (
-        <div className="card" style={{ padding: 16, marginBottom: 20 }}>
-          <div style={{ fontWeight: 800, color: C.white, marginBottom: 6 }}>إكمال الدفع عبر {paymentAction.label}</div>
-          <div style={{ color: C.gray, fontSize: 12, marginBottom: 12 }}>افتحي الرابط التالي من الهاتف لإتمام التحويل.</div>
+        <div className="card" style={{ padding: 16, marginBottom: 20, maxWidth: 380, width: "100%" }}>
+          <div style={{ fontWeight: 800, color: C.white, marginBottom: 6 }}>إكمال الدفع الآمن</div>
+          <div style={{ color: C.gray, fontSize: 12, marginBottom: 12 }}>اضغطي لفتح نافذة الدفع الآمنة بالبطاقة أو valU أو Sympl.</div>
           <button
             className="btn-primary"
             style={{ justifyContent: "center", width: "100%" }}
-            onClick={() => window.open(paymentAction.url, "_blank", "noopener,noreferrer")}
+            onClick={() => setCartPaymobModal({ url: paymentAction.url, transactionId: paymentAction.transactionId ?? null })}
           >
-            فتح رابط الدفع
+            🔒 إتمام الدفع الآن
           </button>
-          {paymentAction.transactionId && (
-            <button
-              className="btn-outline"
-              style={{ justifyContent: "center", width: "100%", marginTop: 10 }}
-              onClick={() => window.open(`/payment/verify?transactionId=${paymentAction.transactionId}`, "_blank", "noopener,noreferrer")}
-            >
-              التحقق من الدفع
-            </button>
-          )}
         </div>
       )}
       <div style={{ display: "flex", gap: 14, flexWrap: "wrap", justifyContent: "center" }}>
         <button className="btn-primary" onClick={() => window.location.href = "/account?tab=orders"}>عرض طلباتي</button>
         <button className="btn-ghost" onClick={() => navigate("home")}>العودة للرئيسية</button>
       </div>
+      {cartPaymobModal && (
+        <PaymobIframeModal
+          url={cartPaymobModal.url}
+          transactionId={cartPaymobModal.transactionId}
+          onClose={() => setCartPaymobModal(null)}
+        />
+      )}
     </div>
   );
 
