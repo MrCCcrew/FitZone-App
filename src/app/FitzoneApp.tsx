@@ -103,7 +103,7 @@ const css = `
   .schedule-scroll::-webkit-scrollbar{height:5px;}
   .schedule-scroll::-webkit-scrollbar-track{background:rgba(255,255,255,.04);border-radius:99px;}
   .schedule-scroll::-webkit-scrollbar-thumb{background:rgba(245,197,66,.4);border-radius:99px;}
-  .schedule-grid{display:grid;border:1.5px solid rgba(255,255,255,.12);border-radius:14px;overflow:hidden;direction:rtl;background:#0d0a0c;width:100%;}
+  .schedule-grid{display:grid;border:1.5px solid rgba(255,255,255,.12);border-radius:14px;overflow:hidden;direction:ltr;background:#0d0a0c;width:100%;}
   .schedule-cell{border-right:1px solid rgba(255,255,255,.08);border-top:1px solid rgba(255,255,255,.08);padding:7px 6px;display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;text-align:center;gap:4px;}
   .schedule-cell.time{background:linear-gradient(180deg,#1d1619,#161114);font-weight:900;font-size:11px;color:#fff;letter-spacing:.2px;min-width:115px;padding:10px 6px;align-items:center;justify-content:center;}
   .schedule-cell.time span{font-size:10px;color:#9d8a96;font-weight:700;margin-top:2px;}
@@ -3838,6 +3838,12 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                 </div>
               ) : (
                 <>
+                  {!schedulePlan.isTrial && (
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: 8, background: "rgba(74,222,128,.07)", border: "1px solid rgba(74,222,128,.3)", borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 13, color: "#4ade80", fontWeight: 700, lineHeight: 1.6 }}>
+                      <span style={{ fontSize: 16, flexShrink: 0 }}>✅</span>
+                      <span>{t("يمكنكِ حجز أكثر من كلاس في نفس اليوم.", "You can book more than one class on the same day.")}</span>
+                    </div>
+                  )}
                   {scheduleSplit.morning.length > 0 && (
                     <div className="schedule-block">
                       <div className="schedule-block-title">الجدول الصباحي</div>
@@ -3845,21 +3851,20 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                         <div
                           className="schedule-grid"
                           style={{
-                            gridTemplateColumns: `52px ${scheduleSplit.morning
+                            gridTemplateColumns: `${scheduleSplit.morning
                               .map(() => "minmax(115px, 1fr)")
-                              .join(" ")}`,
+                              .join(" ")} 52px`,
                           }}
                         >
-                          <div className="schedule-cell sticky day-head">اليوم</div>
-                          {scheduleSplit.morning.map((slot) => (
+                          {[...scheduleSplit.morning].reverse().map((slot) => (
                             <div key={`morning-head-${slot}`} className="schedule-cell time sticky">
                               {formatScheduleTimeLabel(slot)}
                             </div>
                           ))}
+                          <div className="schedule-cell sticky day-head">اليوم</div>
                           {scheduleDays.map((day) => (
                             <div key={`morning-row-${day}`} style={{ display: "contents" }}>
-                              <div className="schedule-cell day">{day}</div>
-                              {scheduleSplit.morning.map((slot) => {
+                              {[...scheduleSplit.morning].reverse().map((slot) => {
                                 const cellEntries = scheduleChoices.filter(
                                   (entry) => entry.day === day && entry.time === slot
                                 );
@@ -3870,7 +3875,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                                     ) : (
                                       <div className="schedule-slot-box">
                                         {cellEntries.length > 1 ? (
-                                          <div className="schedule-multi-hint" title="اختاري كلاس واحد فقط" />
+                                          <div className="schedule-multi-hint" />
                                         ) : null}
                                         {cellEntries.map((entry) => {
                                           const selected = scheduleSelections.includes(entry.id);
@@ -3904,6 +3909,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                                   </div>
                                 );
                               })}
+                              <div className="schedule-cell day">{day}</div>
                             </div>
                           ))}
                         </div>
@@ -3918,21 +3924,20 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                         <div
                           className="schedule-grid"
                           style={{
-                            gridTemplateColumns: `52px ${scheduleSplit.evening
+                            gridTemplateColumns: `${scheduleSplit.evening
                               .map(() => "minmax(115px, 1fr)")
-                              .join(" ")}`,
+                              .join(" ")} 52px`,
                           }}
                         >
-                          <div className="schedule-cell sticky day-head">اليوم</div>
-                          {scheduleSplit.evening.map((slot) => (
+                          {[...scheduleSplit.evening].reverse().map((slot) => (
                             <div key={`evening-head-${slot}`} className="schedule-cell time sticky">
                               {formatScheduleTimeLabel(slot)}
                             </div>
                           ))}
+                          <div className="schedule-cell sticky day-head">اليوم</div>
                           {scheduleDays.map((day) => (
                             <div key={`evening-row-${day}`} style={{ display: "contents" }}>
-                              <div className="schedule-cell day">{day}</div>
-                              {scheduleSplit.evening.map((slot) => {
+                              {[...scheduleSplit.evening].reverse().map((slot) => {
                                 const cellEntries = scheduleChoices.filter(
                                   (entry) => entry.day === day && entry.time === slot
                                 );
@@ -3943,7 +3948,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                                     ) : (
                                       <div className="schedule-slot-box">
                                         {cellEntries.length > 1 ? (
-                                          <div className="schedule-multi-hint" title="اختاري كلاس واحد فقط" />
+                                          <div className="schedule-multi-hint" />
                                         ) : null}
                                         {cellEntries.map((entry) => {
                                           const selected = scheduleSelections.includes(entry.id);
@@ -3977,6 +3982,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                                   </div>
                                 );
                               })}
+                              <div className="schedule-cell day">{day}</div>
                             </div>
                           ))}
                         </div>
@@ -5067,7 +5073,7 @@ const SchedulePage = () => {
               minWidth: slots.length * 130 + 90,
             }}
           >
-            {slots.map((slot) => (
+            {[...slots].reverse().map((slot) => (
               <div key={`head-${slot}`} className="schedule-cell time">
                 {formatTimeLabel(slot)}
               </div>
@@ -5077,7 +5083,7 @@ const SchedulePage = () => {
             </div>
             {activeDayIndices.map((dayIdx) => (
               <div key={`row-${dayIdx}`} style={{ display: "contents" }}>
-                {slots.map((slot) => {
+                {[...slots].reverse().map((slot) => {
                   const cellEntries = list.filter((e) => e.dayIndex === dayIdx && e.time === slot);
                   return (
                     <div key={`${dayIdx}-${slot}`} className="schedule-cell">
