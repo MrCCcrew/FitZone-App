@@ -2635,33 +2635,57 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
             <h2 className="section-title">{t("مدرباتنا", "Our trainers")} <span>{t("المحترفات", "experts")}</span></h2>
             <p className="section-sub">{t("فريق مدربات محترفات في بني سويف لمساعدتك على بناء برنامج مناسب لهدفك، سواء لياقة أو تخسيس أو تأهيل.", "A team of professional coaches in Beni Suef to help you follow the right plan for fitness, weight loss, or recovery goals.")}</p>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 24 }}>
+          <div style={{ display: "grid", gridTemplateColumns: trainers.length === 1 ? "minmax(0,360px)" : responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 24, justifyContent: trainers.length === 1 ? "center" : undefined }}>
             {trainers.map((trainer, index) => (
               <div key={trainer.id} className="card card-hover" style={{ padding: 0, overflow: "hidden", textAlign: "center" }}>
-                <div style={{ height: 220, background: "#fff", cursor: "pointer" }} onClick={() => setTrainerDetailModal(trainer)}>
+                {/* Photo */}
+                <div style={{ height: 230, cursor: "pointer", position: "relative", overflow: "hidden" }} onClick={() => setTrainerDetailModal(trainer)}>
                   {trainer.image ? (
-                    <img src={trainer.image} alt={trainer.name} loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                    <img src={trainer.image} alt={trainer.name} loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "top" }} />
                   ) : (
-                    <GymImg type={`trainer${(index % 3) + 1}`} w="100%" h={220} />
+                    <GymImg type={`trainer${(index % 3) + 1}`} w="100%" h={230} />
                   )}
+                  <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(10,5,8,.6) 0%, transparent 55%)" }} />
                 </div>
-                <div style={{ padding: "18px 20px 22px" }}>
-                  <h3 style={{ fontWeight: 800, fontSize: 16, color: C.white, marginBottom: 2 }}>{lang === "en" && trainer.nameEn ? trainer.nameEn : trainer.name}</h3>
-                  <p style={{ color: "#ff7aa8", fontSize: 12, fontWeight: 600, marginBottom: 14 }}>{lang === "en" && trainer.specialtyEn ? trainer.specialtyEn : trainer.specialty}</p>
-                  <div style={{ display: "flex", justifyContent: "center", gap: 20, marginBottom: 16, background: "rgba(255,255,255,.04)", borderRadius: 10, padding: "10px 8px" }}>
-                    <div style={{ textAlign: "center" }}><div style={{ fontWeight: 700, fontSize: 15, color: C.gold }}>⭐ {trainer.rating}</div><div style={{ fontSize: 10, color: C.gray, marginTop: 2 }}>{t("التقييم", "Rating")}</div></div>
-                    <div style={{ width: 1, background: "rgba(255,255,255,.1)" }} />
-                    <div style={{ textAlign: "center" }}><div style={{ fontWeight: 700, fontSize: 15, color: C.white }}>{trainer.sessionsCount}</div><div style={{ fontSize: 10, color: C.gray, marginTop: 2 }}>{t("جلسة", "sessions")}</div></div>
+                {/* Info */}
+                <div style={{ padding: "16px 18px 20px" }}>
+                  <h3 style={{ fontWeight: 900, fontSize: 17, color: C.white, marginBottom: 3 }}>{lang === "en" && trainer.nameEn ? trainer.nameEn : trainer.name}</h3>
+                  <p style={{ color: C.red, fontSize: 12, fontWeight: 700, marginBottom: 14, letterSpacing: ".3px" }}>{lang === "en" && trainer.specialtyEn ? trainer.specialtyEn : trainer.specialty}</p>
+                  {/* Stats */}
+                  <div style={{ display: "flex", justifyContent: "center", gap: 0, marginBottom: 16, border: "1px solid rgba(255,255,255,.08)", borderRadius: 10, overflow: "hidden" }}>
+                    <div style={{ flex: 1, textAlign: "center", padding: "10px 6px", borderInlineEnd: "1px solid rgba(255,255,255,.08)" }}>
+                      <div style={{ fontWeight: 800, fontSize: 16, color: C.gold }}>⭐ {trainer.rating}</div>
+                      <div style={{ fontSize: 10, color: C.gray, marginTop: 2 }}>{t("التقييم", "Rating")}</div>
+                    </div>
+                    <div style={{ flex: 1, textAlign: "center", padding: "10px 6px" }}>
+                      <div style={{ fontWeight: 800, fontSize: 16, color: C.white }}>{trainer.sessionsCount}</div>
+                      <div style={{ fontSize: 10, color: C.gray, marginTop: 2 }}>{t("جلسة", "sessions")}</div>
+                    </div>
                   </div>
-                  <div style={{ display: "grid", gap: 8 }}>
-                    <button className="btn-outline" style={{ width: "100%", fontSize: 13, padding: "10px" }} onClick={() => setTrainerDetailModal(trainer)}>{t("عرض الملف الكامل", "Full profile")}</button>
-                    {summary?.authenticated && (
-                      <>
-                        <button className="btn-primary" style={{ width: "100%", fontSize: 13, padding: "10px 12px" }} onClick={() => setPrivateBookingModal({ trainer, type: "private" })}>🎯 {t("برايفيت", "Private")}</button>
-                        <button style={{ width: "100%", fontSize: 13, padding: "10px 12px", borderRadius: 10, border: `1px solid ${C.gold}`, background: "rgba(200,162,0,.1)", color: C.gold, cursor: "pointer", fontWeight: 700 }} onClick={() => setPrivateBookingModal({ trainer, type: "mini_private" })}>👥 {t("ميني برايفيت", "Mini private")}</button>
-                      </>
-                    )}
-                  </div>
+                  {/* Buttons */}
+                  <button
+                    className="btn-outline"
+                    style={{ width: "100%", fontSize: 13, padding: "10px", marginBottom: 8 }}
+                    onClick={() => setTrainerDetailModal(trainer)}
+                  >
+                    {t("عرض الملف الكامل", "Full profile")}
+                  </button>
+                  {summary?.authenticated && (
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                      <button
+                        onClick={() => setPrivateBookingModal({ trainer, type: "private" })}
+                        style={{ padding: "10px 6px", borderRadius: 10, border: "none", background: C.red, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}
+                      >
+                        🎯 {t("برايفيت", "Private")}
+                      </button>
+                      <button
+                        onClick={() => setPrivateBookingModal({ trainer, type: "mini_private" })}
+                        style={{ padding: "10px 6px", borderRadius: 10, border: `1.5px solid ${C.red}`, background: "rgba(233,30,99,.12)", color: "#ff7aa8", fontSize: 13, fontWeight: 700, cursor: "pointer" }}
+                      >
+                        👥 {t("ميني", "Mini")}
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
