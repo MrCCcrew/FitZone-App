@@ -17,8 +17,8 @@ type SubscribePayload = {
 
 function sanitizeMethod(value: unknown) {
   const raw = String(value ?? "").toLowerCase().trim();
-  const allowed = new Set(["instapay", "vodafone_cash", "cash", "offer"]);
-  return allowed.has(raw) ? raw : "instapay";
+  if (raw === "offer") return "offer";
+  return "paymob";
 }
 
 function parseJsonArray<T>(value: string | null): T[] {
@@ -498,7 +498,7 @@ export async function POST(req: Request) {
   if (result.paymentAmount > 0) {
     const transaction = await createPaymentTransaction({
       userId,
-      provider: result.membershipPaymentMethod,
+      provider: "paymob",
       purpose: "membership",
       businessUnit: "club",
       amount: result.paymentAmount,

@@ -734,7 +734,7 @@ export default function Subscriptions() {
               </Field>
             </div>
 
-            <Field label="صورة الاشتراك" hint="المقاس المثالي: 436 × 280 بكسل (نسبة 1.56:1) — تملأ الكارت بالكامل بدون قص ولا مسافات.">
+            <Field label="صورة الاشتراك" hint="المقاس المثالي: 1020 × 720 بكسل بنسبة 1.4:1، وهو نفس مقاس صور العروض حتى تظهر الباقات بنفس التصميم والتناسق.">
               <div className="flex flex-wrap gap-2">
                 <input
                   type="file"
@@ -754,11 +754,15 @@ export default function Subscriptions() {
               </div>
               {uploadingPlanImage ? <div className="text-xs text-[#d7aabd]">جاري رفع صورة الاشتراك...</div> : null}
               {planModal.image ? (
-                <img
-                  src={planModal.image}
-                  alt="صورة الاشتراك"
-                  className="mt-2 h-44 w-full rounded-2xl border border-[rgba(255,188,219,0.14)] object-cover"
-                />
+                <div className="mt-2 overflow-hidden rounded-2xl border border-[rgba(255,188,219,0.14)]">
+                  <div className="relative w-full" style={{ aspectRatio: "1.4 / 1" }}>
+                    <img
+                      src={planModal.image}
+                      alt="صورة الاشتراك"
+                      className="absolute inset-0 h-full w-full object-cover"
+                    />
+                  </div>
+                </div>
               ) : null}
             </Field>
 

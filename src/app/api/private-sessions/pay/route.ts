@@ -30,10 +30,11 @@ export async function POST(req: Request) {
   try {
     const result = await createPaymentTransaction({
       userId: user.id,
+      provider: "paymob",
       amount: app.trainerPrice,
       purpose: "private_session",
       description,
-      paymentMethod: body.paymentMethod ?? "card",
+      paymentMethod: "paymob",
       returnUrl: `${origin}/account?tab=myPrivateSessions`,
       cancelUrl: `${origin}/account?tab=myPrivateSessions`,
       customer: { name: app.user.name, email: app.user.email, phone: app.user.phone },

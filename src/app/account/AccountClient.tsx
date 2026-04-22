@@ -232,6 +232,7 @@ function formatMoney(value: number, lang: "ar" | "en") {
 
 function getPaymentMethodLabel(method: string, lang: "ar" | "en") {
   const labels: Record<string, { ar: string; en: string }> = {
+    paymob: { ar: "باي موب", en: "Paymob" },
     instapay: { ar: "إنستاباي", en: "InstaPay" },
     vodafone_cash: { ar: "فودافون كاش", en: "Vodafone Cash" },
     cash: { ar: "كاش", en: "Cash" },
@@ -2484,7 +2485,7 @@ function WalletTab({
   const TOPUP_AMOUNTS = [50, 100, 200, 500, 1000];
   const effectiveAmount = selectedAmount ?? (customAmount ? Number(customAmount) : 0);
 
-  const startTopup = async (provider: "instapay" | "vodafone_cash") => {
+  const startTopup = async () => {
     if (!Number.isFinite(effectiveAmount) || effectiveAmount <= 0) {
       setPayError(t("يرجى اختيار مبلغ صالح للشحن.", "Please choose a valid top-up amount."));
       return;
@@ -2497,10 +2498,10 @@ function WalletTab({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           purpose: "wallet_topup",
-          provider,
+          provider: "paymob",
           amount: effectiveAmount,
           currency: "EGP",
-          paymentMethod: provider,
+          paymentMethod: "paymob",
         }),
       });
       const payload = await res.json();
@@ -2592,18 +2593,11 @@ function WalletTab({
             </div>
             <div className="mt-3 flex flex-wrap gap-2">
               <button
-                onClick={() => startTopup("instapay")}
+                onClick={() => startTopup()}
                 disabled={paying}
                 className="flex-1 min-h-[44px] bg-pink-600 hover:bg-pink-700 disabled:opacity-60 text-white font-black px-4 py-3 rounded-xl text-sm"
               >
-                {t("الدفع عبر إنستاباي", "Pay with InstaPay")}
-              </button>
-              <button
-                onClick={() => startTopup("vodafone_cash")}
-                disabled={paying}
-                className="flex-1 min-h-[44px] bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-black px-4 py-3 rounded-xl text-sm"
-              >
-                {t("الدفع عبر فودافون كاش", "Pay with Vodafone Cash")}
+                {t("الدفع عبر Paymob", "Pay with Paymob")}
               </button>
             </div>
             {payError && <div className="mt-2 text-xs text-red-400">{payError}</div>}

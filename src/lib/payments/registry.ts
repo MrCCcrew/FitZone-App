@@ -37,10 +37,9 @@ export function getPaymentProvider(key: string | null | undefined) {
 }
 
 export function getDefaultPaymentProvider() {
-  // Prefer Paymob if configured; fall back to manual for dev/testing
   if (paymobPaymentProvider.enabled) return paymobPaymentProvider;
   const configured = process.env.DEFAULT_PAYMENT_PROVIDER?.trim().toLowerCase();
   const provider = getPaymentProvider(configured);
-  if (provider?.enabled) return provider;
-  return manualPaymentProvider;
+  if (provider?.enabled && provider.key !== "manual") return provider;
+  throw new Error("Paymob is not configured. Set the required PAYMOB environment variables before enabling checkout.");
 }

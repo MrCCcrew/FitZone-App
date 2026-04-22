@@ -18,6 +18,16 @@ type CheckoutBody = {
   metadata?: Record<string, unknown>;
 };
 
+function sanitizeProvider(value: unknown) {
+  return String(value ?? "").trim().toLowerCase() === "paymob" ? "paymob" : "paymob";
+}
+
+function sanitizePaymentMethod(value: unknown) {
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (raw === "wallet" || raw === "free" || raw === "membership" || raw === "offer") return raw;
+  return "paymob";
+}
+
 export async function POST(req: Request) {
   try {
     const user = await getCurrentAppUser();
@@ -101,12 +111,12 @@ export async function POST(req: Request) {
 
     const result = await createPaymentTransaction({
       userId: user.id,
-      provider: body.provider ?? null,
+      provider: sanitizeProvider(body.provider),
       purpose,
       businessUnit: purpose === "order" ? "store" : "club",
       amount: resolvedAmount,
       currency: body.currency ?? "EGP",
-      paymentMethod: body.paymentMethod ?? "card",
+      paymentMethod: sanitizePaymentMethod(body.paymentMethod),
       orderId,
       membershipId: resolvedMembershipId,
       offerId: resolvedOfferId,

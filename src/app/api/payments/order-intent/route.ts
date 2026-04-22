@@ -168,11 +168,11 @@ export async function POST(req: Request) {
 
     const transaction = await createPaymentTransaction({
       userId: currentUser.id,
-      provider: body.provider ?? null,
+      provider: "paymob",
       purpose: "order",
       businessUnit: "store",
       amount: amountAfterDeductions,
-      paymentMethod: body.paymentMethod ?? "card",
+      paymentMethod: "paymob",
       orderId: order.id,
       returnUrl: body.returnUrl ?? null,
       cancelUrl: body.cancelUrl ?? null,
