@@ -103,14 +103,14 @@ const css = `
   .schedule-scroll::-webkit-scrollbar{height:5px;}
   .schedule-scroll::-webkit-scrollbar-track{background:rgba(255,255,255,.04);border-radius:99px;}
   .schedule-scroll::-webkit-scrollbar-thumb{background:rgba(245,197,66,.4);border-radius:99px;}
-  .schedule-grid{display:grid;border:1.5px solid rgba(255,255,255,.12);border-radius:14px;overflow:hidden;direction:ltr;background:#0d0a0c;width:100%;}
+  .schedule-grid{display:grid;border:1.5px solid rgba(255,255,255,.12);border-radius:14px;overflow:hidden;direction:rtl;background:#0d0a0c;width:100%;}
   .schedule-cell{border-right:1px solid rgba(255,255,255,.08);border-top:1px solid rgba(255,255,255,.08);padding:7px 6px;display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;text-align:center;gap:4px;}
   .schedule-cell.time{background:linear-gradient(180deg,#1d1619,#161114);font-weight:900;font-size:11px;color:#fff;letter-spacing:.2px;min-width:115px;padding:10px 6px;align-items:center;justify-content:center;}
   .schedule-cell.time span{font-size:10px;color:#9d8a96;font-weight:700;margin-top:2px;}
-  .schedule-cell.day{background:linear-gradient(90deg,#1d1619,#161114);color:#fff;font-weight:900;font-size:12px;position:sticky;left:0;z-index:3;width:52px;min-width:52px;max-width:52px;border-right:1.5px solid rgba(255,255,255,.16);padding:10px 4px;align-items:center;justify-content:center;text-align:center;}
+  .schedule-cell.day{background:linear-gradient(90deg,#1d1619,#161114);color:#fff;font-weight:900;font-size:12px;position:sticky;right:0;z-index:3;width:52px;min-width:52px;max-width:52px;border-left:1.5px solid rgba(255,255,255,.16);padding:10px 4px;align-items:center;justify-content:center;text-align:center;}
   @media(min-width:768px){.schedule-cell.time{font-size:13px;}.schedule-cell.day{font-size:13px;width:62px;min-width:62px;max-width:62px;}}
   .schedule-cell.sticky{position:sticky;top:0;z-index:4;background:#161214;}
-  .schedule-cell.day-head{background:#161214;color:#9d8a96;font-weight:800;font-size:11px;position:sticky;left:0;z-index:5;width:52px;min-width:52px;max-width:52px;border-right:1.5px solid rgba(255,255,255,.16);}
+  .schedule-cell.day-head{background:#161214;color:#9d8a96;font-weight:800;font-size:11px;position:sticky;right:0;z-index:5;width:52px;min-width:52px;max-width:52px;border-left:1.5px solid rgba(255,255,255,.16);}
   .schedule-grid .schedule-cell.sticky{border-top:none;}
   .schedule-block{margin-top:20px;}
   .schedule-block:first-child{margin-top:0;}
@@ -3310,18 +3310,14 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
     if (disabled) return;
     setScheduleError(null);
     setScheduleSelections((prev) => {
-      const sameSlotIds = scheduleChoices
-        .filter((item) => item.day === entry.day && item.time === entry.time)
-        .map((item) => item.id);
       const exists = prev.includes(entry.id);
       if (exists) {
         return prev.filter((id) => id !== entry.id);
       }
-      const cleaned = prev.filter((id) => !sameSlotIds.includes(id));
 
-      // Max sessions = daysPerWeek * 2 (or sessionsCount if no daysPerWeek set)
-      const maxSessions = daysPerWeek ? daysPerWeek * 2 : (schedulePlan?.sessionsCount ?? null);
-      if (maxSessions && cleaned.length >= maxSessions) {
+      // Max sessions = daysPerWeek * sessions or sessionsCount cap
+      const maxSessions = daysPerWeek ? daysPerWeek * 3 : (schedulePlan?.sessionsCount ?? null);
+      if (maxSessions && prev.length >= maxSessions) {
         const msg = daysPerWeek
           ? `الحد الأقصى ${maxSessions} حصة لـ ${daysPerWeek} أيام في الأسبوع.`
           : `يمكنك اختيار ${maxSessions} موعد كحد أقصى لهذه الباقة.`;
@@ -3329,26 +3325,16 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
         return prev;
       }
 
-      // Max 2 sessions per day
-      const dayCount = cleaned.filter((id) => {
-        const e = scheduleChoices.find((c) => c.id === id);
-        return e?.day === entry.day;
-      }).length;
-      if (dayCount >= 2) {
-        setScheduleError("يمكنك اختيار حصتين كحد أقصى في اليوم الواحد.");
-        return prev;
-      }
-
       // Max unique days = daysPerWeek
       if (daysPerWeek) {
-        const selectedDays = new Set(cleaned.map((id) => scheduleChoices.find((c) => c.id === id)?.day).filter(Boolean));
+        const selectedDays = new Set(prev.map((id) => scheduleChoices.find((c) => c.id === id)?.day).filter(Boolean));
         if (!selectedDays.has(entry.day) && selectedDays.size >= daysPerWeek) {
           setScheduleError(`يمكنك اختيار ${daysPerWeek} أيام مختلفة فقط في الأسبوع.`);
           return prev;
         }
       }
 
-      return [...cleaned, entry.id];
+      return [...prev, entry.id];
     });
   };
 
@@ -3852,16 +3838,10 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                 </div>
               ) : (
                 <>
-                  {!schedulePlan.isTrial && (
-                    <div style={{ display: "flex", alignItems: "flex-start", gap: 8, background: "rgba(245,197,66,.07)", border: "1px solid rgba(245,197,66,.25)", borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 13, color: "#f5c542", fontWeight: 700, lineHeight: 1.6 }}>
-                      <span style={{ fontSize: 16, flexShrink: 0 }}>⚠️</span>
-                      <span>{t("لا يمكن حجز أكثر من كلاس واحد في نفس التوقيت ونفس اليوم.", "You cannot book more than one class at the same time on the same day.")}</span>
-                    </div>
-                  )}
                   {scheduleSplit.morning.length > 0 && (
                     <div className="schedule-block">
                       <div className="schedule-block-title">الجدول الصباحي</div>
-                      <div className="schedule-scroll" style={{ direction: "ltr" }}>
+                      <div className="schedule-scroll" style={{ direction: "rtl" }}>
                         <div
                           className="schedule-grid"
                           style={{
@@ -3934,7 +3914,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                   {scheduleSplit.evening.length > 0 && (
                     <div className="schedule-block">
                       <div className="schedule-block-title">الجدول المسائي</div>
-                      <div className="schedule-scroll" style={{ direction: "ltr" }}>
+                      <div className="schedule-scroll" style={{ direction: "rtl" }}>
                         <div
                           className="schedule-grid"
                           style={{
@@ -5078,11 +5058,7 @@ const SchedulePage = () => {
           <span>{title}</span>
           <div style={{ color: "#f1f1f1", fontSize: 14 }}>{subtitle}</div>
         </div>
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 8, background: "rgba(245,197,66,.07)", border: "1px solid rgba(245,197,66,.25)", borderRadius: 10, padding: "10px 14px", marginBottom: 20, fontSize: 13, color: "#f5c542", fontWeight: 700, lineHeight: 1.6 }}>
-          <span style={{ fontSize: 16, flexShrink: 0 }}>⚠️</span>
-          <span>{t("لا يمكن حجز أكثر من كلاس واحد في نفس التوقيت ونفس اليوم.", "You cannot book more than one class at the same time on the same day.")}</span>
-        </div>
-        <div className="schedule-scroll" style={{ direction: "ltr", overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+        <div className="schedule-scroll" style={{ direction: "rtl", overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
           <div
             className="schedule-grid"
             style={{
