@@ -1549,8 +1549,8 @@ const PrivateBookingModal = ({ trainer, type, onClose }: { trainer: PublicTraine
     section: { marginBottom: 24 } as React.CSSProperties,
     sectionTitle: { fontWeight: 900, fontSize: 15, color: C.red, marginBottom: 12, paddingBottom: 6, borderBottom: "1px solid rgba(255,255,255,.08)" } as React.CSSProperties,
     label: { display: "block", fontWeight: 700, color: "#e0d0d8", marginBottom: 5, fontSize: 13 } as React.CSSProperties,
-    input: { width: "100%", borderRadius: 8, border: "1px solid rgba(255,255,255,.15)", background: "rgba(255,255,255,.06)", color: "#fff", padding: "9px 12px", fontSize: 13, boxSizing: "border-box" as const, outline: "none" },
-    textarea: { width: "100%", borderRadius: 8, border: "1px solid rgba(255,255,255,.15)", background: "rgba(255,255,255,.06)", color: "#fff", padding: "9px 12px", fontSize: 13, boxSizing: "border-box" as const, resize: "vertical" as const, outline: "none" },
+    input: { width: "100%", borderRadius: 8, border: "1px solid rgba(255,255,255,.15)", background: "rgba(255,255,255,.06)", color: "#fff", padding: "10px 12px", fontSize: 16, boxSizing: "border-box" as const, outline: "none" },
+    textarea: { width: "100%", borderRadius: 8, border: "1px solid rgba(255,255,255,.15)", background: "rgba(255,255,255,.06)", color: "#fff", padding: "10px 12px", fontSize: 16, boxSizing: "border-box" as const, resize: "vertical" as const, outline: "none" },
     chip: (active: boolean) => ({ padding: "6px 14px", borderRadius: 20, border: `1.5px solid ${active ? C.red : "rgba(255,255,255,.18)"}`, background: active ? "rgba(233,30,99,.22)" : "transparent", color: active ? "#fff" : "#b0a0a8", fontSize: 13, cursor: "pointer", fontWeight: active ? 700 : 400, touchAction: "manipulation" as const }),
     radio: { display: "flex", flexWrap: "wrap" as const, gap: 8 },
     grid2: { display: "grid", gridTemplateColumns: _w < 500 ? "1fr" : "1fr 1fr", gap: 12 } as React.CSSProperties,
@@ -1599,16 +1599,16 @@ const PrivateBookingModal = ({ trainer, type, onClose }: { trainer: PublicTraine
   const yn = [t("نعم","Yes"), t("لا","No")] as const;
 
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 310, background: "rgba(0,0,0,.85)", backdropFilter: "blur(8px)", overflowY: "auto", padding: "16px 10px" }}>
-      <div style={{ background: "#0e0812", borderRadius: 20, maxWidth: 560, width: "100%", margin: "0 auto", boxShadow: "0 24px 60px rgba(0,0,0,.7)", border: "1px solid rgba(255,255,255,.1)", padding: _w < 640 ? 18 : 28 }}>
+    <div style={{ position: "fixed", inset: 0, zIndex: 310, background: "rgba(0,0,0,.85)", backdropFilter: "blur(8px)", overflowY: "auto", WebkitOverflowScrolling: "touch" as never, padding: _w < 640 ? "0" : "16px 10px" }}>
+      <div style={{ background: "#0e0812", borderRadius: _w < 640 ? "0 0 24px 24px" : 20, maxWidth: 560, width: "100%", margin: "0 auto", boxShadow: "0 24px 60px rgba(0,0,0,.7)", border: "1px solid rgba(255,255,255,.1)", padding: _w < 640 ? "16px 14px 28px" : 28, marginBottom: _w < 640 ? 24 : 0 }}>
 
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
-          <div>
-            <h2 style={{ fontWeight: 900, fontSize: 20, color: "#fff", margin: 0 }}>{isPrivate ? t("طلب برايفيت 🎯","Private Session Request 🎯") : t("طلب ميني برايفيت 👥","Mini Private Request 👥")}</h2>
-            <p style={{ color: C.red, fontSize: 13, marginTop: 4, margin: "4px 0 0" }}>{t("مع المدربة","With trainer")} {trainer.name}</p>
+          <div style={{ flex: 1, paddingInlineEnd: 12 }}>
+            <h2 style={{ fontWeight: 900, fontSize: _w < 640 ? 17 : 20, color: "#fff", margin: 0, lineHeight: 1.3 }}>{isPrivate ? t("طلب برايفيت 🎯","Private Session 🎯") : t("طلب ميني برايفيت 👥","Mini Private 👥")}</h2>
+            <p style={{ color: C.red, fontSize: 12, margin: "4px 0 0" }}>{t("مع المدربة","With")} {trainer.name}</p>
           </div>
-          <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,.08)", borderRadius: 8, color: "#aaa", fontSize: 18, cursor: "pointer", width: 32, height: 32 }}>×</button>
+          <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,.1)", borderRadius: 10, color: "#ccc", fontSize: 20, cursor: "pointer", width: 40, height: 40, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, touchAction: "manipulation" }}>×</button>
         </div>
 
         {/* Info banner */}
@@ -1778,8 +1778,8 @@ const PrivateBookingModal = ({ trainer, type, onClose }: { trainer: PublicTraine
         </div>
 
         {/* Submit */}
-        {msg && <div style={{ background: msg.ok ? "rgba(74,222,128,.12)" : "rgba(233,30,99,.12)", border: `1px solid ${msg.ok ? "#4ade80" : C.red}`, borderRadius: 10, padding: "10px 14px", marginBottom: 14, fontSize: 13, color: msg.ok ? "#4ade80" : "#ffb7d0" }}>{msg.text}</div>}
-        <button className="btn-primary" style={{ width: "100%", justifyContent: "center", fontSize: 15 }} onClick={submit} disabled={submitting}>
+        {msg && <div style={{ background: msg.ok ? "rgba(74,222,128,.12)" : "rgba(233,30,99,.12)", border: `1px solid ${msg.ok ? "#4ade80" : C.red}`, borderRadius: 10, padding: "12px 14px", marginBottom: 14, fontSize: 14, color: msg.ok ? "#4ade80" : "#ffb7d0", lineHeight: 1.6 }}>{msg.text}</div>}
+        <button className="btn-primary" style={{ width: "100%", justifyContent: "center", fontSize: 16, padding: "14px", borderRadius: 12, touchAction: "manipulation" }} onClick={submit} disabled={submitting}>
           {submitting ? t("جارٍ الإرسال...","Sending...") : t("إرسال الطلب 📩","Submit Application 📩")}
         </button>
       </div>
@@ -2671,26 +2671,34 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                   {/* Buttons */}
                   <button
                     className="btn-outline"
-                    style={{ width: "100%", fontSize: 13, padding: "10px", marginBottom: 8 }}
+                    style={{ width: "100%", fontSize: 13, padding: "10px", marginBottom: 8, touchAction: "manipulation" }}
                     onClick={() => setTrainerDetailModal(trainer)}
                   >
                     {t("عرض الملف الكامل", "Full profile")}
                   </button>
-                  {summary?.authenticated && (
+                  {summary?.authenticated ? (
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                       <button
                         onClick={() => setPrivateBookingModal({ trainer, type: "private" })}
-                        style={{ padding: "10px 6px", borderRadius: 10, border: "none", background: C.red, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}
+                        style={{ padding: "11px 6px", borderRadius: 10, border: "none", background: C.red, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", touchAction: "manipulation" }}
                       >
                         🎯 {t("برايفيت", "Private")}
                       </button>
                       <button
                         onClick={() => setPrivateBookingModal({ trainer, type: "mini_private" })}
-                        style={{ padding: "10px 6px", borderRadius: 10, border: `1.5px solid ${C.red}`, background: "rgba(233,30,99,.12)", color: "#ff7aa8", fontSize: 13, fontWeight: 700, cursor: "pointer" }}
+                        style={{ padding: "11px 6px", borderRadius: 10, border: `1.5px solid ${C.red}`, background: "rgba(233,30,99,.12)", color: "#ff7aa8", fontSize: 13, fontWeight: 700, cursor: "pointer", touchAction: "manipulation" }}
                       >
                         👥 {t("ميني", "Mini")}
                       </button>
                     </div>
+                  ) : (
+                    <button
+                      className="btn-outline"
+                      style={{ width: "100%", fontSize: 13, padding: "11px", touchAction: "manipulation" }}
+                      onClick={() => navigate("register")}
+                    >
+                      {t("سجلي الدخول للحجز", "Login to book")}
+                    </button>
                   )}
                 </div>
               </div>
@@ -2796,17 +2804,17 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
               {/* Booking buttons */}
               {summary?.authenticated ? (
                 <div style={{ display: "grid", gridTemplateColumns: _w < 400 ? "1fr" : "1fr 1fr", gap: 10, marginTop: 4 }}>
-                  <button className="btn-primary" style={{ padding: "14px 8px", fontSize: 14, borderRadius: 12, textAlign: "center" }} onClick={() => { setTrainerDetailModal(null); setPrivateBookingModal({ trainer: trainerDetailModal, type: "private" }); }}>
+                  <button className="btn-primary" style={{ padding: "14px 8px", fontSize: 14, borderRadius: 12, textAlign: "center", touchAction: "manipulation" }} onClick={() => { setTrainerDetailModal(null); setPrivateBookingModal({ trainer: trainerDetailModal, type: "private" }); }}>
                     🎯 {t("برايفيت", "Private")}<br />
                     <span style={{ fontSize: 11, fontWeight: 400, opacity: .75 }}>{t("برنامج مخصص 100%", "100% personalised")}</span>
                   </button>
-                  <button style={{ borderRadius: 12, border: `1px solid ${C.gold}`, background: "rgba(200,162,0,.1)", color: C.gold, cursor: "pointer", fontWeight: 700, fontSize: 14, padding: "14px 8px", textAlign: "center" }} onClick={() => { setTrainerDetailModal(null); setPrivateBookingModal({ trainer: trainerDetailModal, type: "mini_private" }); }}>
+                  <button style={{ borderRadius: 12, border: `1.5px solid ${C.red}`, background: "rgba(233,30,99,.12)", color: "#ff7aa8", cursor: "pointer", fontWeight: 700, fontSize: 14, padding: "14px 8px", textAlign: "center", touchAction: "manipulation" }} onClick={() => { setTrainerDetailModal(null); setPrivateBookingModal({ trainer: trainerDetailModal, type: "mini_private" }); }}>
                     👥 {t("ميني برايفيت", "Mini Private")}<br />
                     <span style={{ fontSize: 11, fontWeight: 400, opacity: .75 }}>{t("3–5 عملاء", "3–5 clients")}</span>
                   </button>
                 </div>
               ) : (
-                <button className="btn-primary" style={{ width: "100%", fontSize: 15, padding: "14px" }} onClick={() => { setTrainerDetailModal(null); navigate("register"); }}>{t("سجلي الدخول للحجز", "Login to book")}</button>
+                <button className="btn-primary" style={{ width: "100%", fontSize: 15, padding: "14px", touchAction: "manipulation" }} onClick={() => { setTrainerDetailModal(null); navigate("register"); }}>{t("سجلي الدخول للحجز", "Login to book")}</button>
               )}
             </div>
           </div>
