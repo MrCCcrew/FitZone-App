@@ -20,8 +20,8 @@ type DeliverySnapshot = {
 
 function sanitizeMethod(value: unknown) {
   const raw = String(value ?? "").toLowerCase().trim();
-  const allowed = new Set(["instapay", "vodafone_cash", "cod", "wallet", "cash"]);
-  return allowed.has(raw) ? raw : "instapay";
+  if (raw === "wallet") return "wallet";
+  return "paymob";
 }
 
 export async function POST(req: Request) {
@@ -91,10 +91,6 @@ export async function POST(req: Request) {
     }
 
     const isClubPickup = deliveryOption?.type === "pickup" ? true : Boolean(body.isClubPickup);
-    if (paymentMethod === "cod" && !isClubPickup) {
-      return NextResponse.json({ error: "الدفع عند الاستلام متاح فقط مع الاستلام من الجيم." }, { status: 400 });
-    }
-
     const shippingFee = deliveryOption?.type === "pickup" ? 0 : deliveryOption?.fee ?? 0;
     const baseTotal = Math.max(0, subtotal + shippingFee);
 
@@ -220,10 +216,10 @@ export async function POST(req: Request) {
 
     let checkoutUrl: string | null = null;
     let transactionId: string | null = null;
-    if (total > 0 && (paymentMethod === "instapay" || paymentMethod === "vodafone_cash")) {
+    if (total > 0 && paymentMethod === "paymob") {
       const transaction = await createPaymentTransaction({
         userId,
-        provider: paymentMethod,
+        provider: "paymob",
         purpose: "order",
         businessUnit: "store",
         amount: total,

@@ -30,6 +30,16 @@ type CreatePaymentTransactionInput = {
   };
 };
 
+function normalizeExternalPaymentMethod(method: string | null | undefined) {
+  const raw = String(method ?? "").trim().toLowerCase();
+
+  if (raw === "wallet" || raw === "free" || raw === "membership" || raw === "offer") {
+    return raw;
+  }
+
+  return "paymob";
+}
+
 function stringifyJson(value: Record<string, unknown> | null | undefined) {
   if (!value || Object.keys(value).length === 0) return null;
   return JSON.stringify(value);
@@ -90,9 +100,11 @@ export function getAvailablePaymentProviders() {
 }
 
 export async function createPaymentTransaction(input: CreatePaymentTransactionInput) {
+  const requestedProviderKey = String(input.provider ?? "").trim().toLowerCase();
+  const requestedProvider = getPaymentProvider(requestedProviderKey);
   const provider =
-    getPaymentProvider(input.provider) && getPaymentProvider(input.provider)?.enabled
-      ? getPaymentProvider(input.provider)!
+    requestedProviderKey === "paymob" && requestedProvider?.enabled
+      ? requestedProvider
       : getDefaultPaymentProvider();
 
   const amount = Number(input.amount);
@@ -111,7 +123,7 @@ export async function createPaymentTransaction(input: CreatePaymentTransactionIn
       provider: provider.key,
       amount,
       currency: (input.currency || "EGP").toUpperCase(),
-      paymentMethod: input.paymentMethod ?? "card",
+      paymentMethod: normalizeExternalPaymentMethod(input.paymentMethod),
       returnUrl: input.returnUrl ?? null,
       cancelUrl: input.cancelUrl ?? null,
       metadata: stringifyJson({

@@ -217,10 +217,10 @@ const EMPTY_PAYLOAD: PublicPayload = {
   deliveryOptions: [],
   paymentSettings: {
     instapayUrl: "",
-    instapayLabel: "InstaPay",
+    instapayLabel: "Paymob",
     vodafoneCashUrl: "",
-    vodafoneCashLabel: "Vodafone Cash",
-    instapayAccounts: [],
+    vodafoneCashLabel: "Paymob",
+    instapayAccounts: [{ id: "paymob", label: "Paymob", url: "", isDefault: true }],
     vodafoneCashAccounts: [],
   },
 };
@@ -362,10 +362,10 @@ export async function GET(request: Request) {
 
     const paymentSettingsRecord = parseSiteContentRecord(siteContent, "paymentSettings", {
       instapayUrl: "",
-      instapayLabel: "InstaPay",
+      instapayLabel: "Paymob",
       vodafoneCashUrl: "",
-      vodafoneCashLabel: "Vodafone Cash",
-      instapayAccounts: [],
+      vodafoneCashLabel: "Paymob",
+      instapayAccounts: [{ id: "paymob", label: "Paymob", url: "", isDefault: true }],
       vodafoneCashAccounts: [],
     });
 
@@ -628,16 +628,12 @@ export async function GET(request: Request) {
         sortOrder: option.sortOrder,
       })),
       paymentSettings: {
-        instapayUrl: String((paymentSettingsRecord as Record<string, unknown>).instapayUrl ?? ""),
-        instapayLabel: String((paymentSettingsRecord as Record<string, unknown>).instapayLabel ?? "InstaPay"),
-        vodafoneCashUrl: String((paymentSettingsRecord as Record<string, unknown>).vodafoneCashUrl ?? ""),
-        vodafoneCashLabel: String((paymentSettingsRecord as Record<string, unknown>).vodafoneCashLabel ?? "Vodafone Cash"),
-        instapayAccounts: Array.isArray((paymentSettingsRecord as Record<string, unknown>).instapayAccounts)
-          ? ((paymentSettingsRecord as Record<string, unknown>).instapayAccounts as { id: string; label: string; url: string; isDefault?: boolean }[])
-          : [],
-        vodafoneCashAccounts: Array.isArray((paymentSettingsRecord as Record<string, unknown>).vodafoneCashAccounts)
-          ? ((paymentSettingsRecord as Record<string, unknown>).vodafoneCashAccounts as { id: string; label: string; url: string; isDefault?: boolean }[])
-          : [],
+        instapayUrl: "",
+        instapayLabel: "Paymob",
+        vodafoneCashUrl: "",
+        vodafoneCashLabel: "Paymob",
+        instapayAccounts: [{ id: "paymob", label: "Paymob", url: "", isDefault: true }],
+        vodafoneCashAccounts: [],
       },
     };
 

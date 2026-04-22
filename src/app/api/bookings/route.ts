@@ -53,7 +53,7 @@ export async function POST(req: Request) {
         userMembershipId: activeMembership?.id ?? null,
         status: "confirmed",
         paidAmount: schedule.class.price,
-        paymentMethod: "manual_pending",
+        paymentMethod: activeMembership?.id ? "membership" : "paymob",
       },
     });
 

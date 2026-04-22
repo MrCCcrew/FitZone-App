@@ -89,11 +89,11 @@ export async function POST(req: Request) {
 
     const transaction = await createPaymentTransaction({
       userId: currentUser.id,
-      provider: body.provider ?? null,
+      provider: "paymob",
       purpose: "membership",
       businessUnit: "club",
       amount,
-      paymentMethod: body.paymentMethod ?? "card",
+      paymentMethod: "paymob",
       membershipId,
       offerId,
       returnUrl: body.returnUrl ?? null,

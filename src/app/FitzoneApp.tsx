@@ -2890,15 +2890,15 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
   const [scheduleError, setScheduleError] = useState<string | null>(null);
   const [daysPerWeek, setDaysPerWeek] = useState<number | null>(null);
   const [scheduleStep, setScheduleStep] = useState<"frequency" | "slots">("frequency");
-  const [membershipPayMethod, setMembershipPayMethod] = useState<"instapay" | "vodafone_cash">("instapay");
+  const [membershipPayMethod, setMembershipPayMethod] = useState<"paymob">("paymob");
   const [membershipDataReady, setMembershipDataReady] = useState(false);
   const [pendingPlan, setPendingPlan] = useState<PlanItem | null>(null);
   const [membershipPaymentSettings, setMembershipPaymentSettings] = useState<PublicPaymentSettings>({
     instapayUrl: "",
-    instapayLabel: "InstaPay",
+    instapayLabel: "Paymob",
     vodafoneCashUrl: "",
-    vodafoneCashLabel: "Vodafone Cash",
-    instapayAccounts: [],
+    vodafoneCashLabel: "Paymob",
+    instapayAccounts: [{ id: "paymob", label: "Paymob", url: "", isDefault: true }],
     vodafoneCashAccounts: [],
   });
   useEffect(() => {
@@ -3311,7 +3311,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
       .catch(() => {});
   };
 
-  const handleSubscribe = async (plan: PlanItem, scheduleIds: string[] = [], paymentOverride?: "instapay" | "vodafone_cash") => {
+  const handleSubscribe = async (plan: PlanItem, scheduleIds: string[] = [], paymentOverride?: "paymob") => {
     if (!plan.id) { navigate("register"); return; }
     setSubscribing(plan.id);
     setSubMsg(null);
@@ -3456,7 +3456,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
     { q: t("هل يمكن إلغاء الاشتراك في أي وقت؟", "Can I cancel my subscription at any time?"), a: t("نعم، يمكنك إلغاء اشتراكك في أي وقت. سيستمر الاشتراك حتى نهاية الفترة المدفوعة.", "Yes, you can cancel your subscription at any time. It will remain active until the end of the paid period.") },
     { q: t("كيف أحجز الكلاسات؟", "How do I book classes?"), a: t("بعد الاشتراك، يمكنك الحجز مباشرة من صفحة الجدول الأسبوعي أو من تفاصيل الكلاس.", "After subscribing, you can book directly from the weekly schedule page or from the class details.") },
     { q: t("هل يمكن تجميد الاشتراك؟", "Can I freeze my subscription?"), a: t("نعم، نتيح تجميد الاشتراك لمدة تصل إلى شهرين في السنة.", "Yes, you can freeze your subscription for up to two months per year.") },
-    { q: t("ما طرق الدفع المتاحة؟", "What payment methods are available?"), a: t("نقبل النقدي، بطاقات الدفع، إنستاباي، والمحفظة الرقمية.", "We accept cash, bank cards, InstaPay, and digital wallets.") },
+    { q: t("ما طرق الدفع المتاحة؟", "What payment methods are available?"), a: t("جميع وسائل الدفع الإلكترونية تتم عبر Paymob، ومنها البطاقات والمحافظ وخيارات الدفع المتاحة من خلاله.", "All electronic payment methods are processed through Paymob, including cards, wallets, and the available payment options it supports.") },
     { q: t("هل يوجد كلاسات للأطفال؟", "Are there classes for kids?"), a: t("نعم! لدينا برامج مخصصة للأطفال من سن 4 سنوات فأكثر.", "Yes! We have dedicated programs for children from age 4 and up.") },
   ];
   const primaryPlan = filteredPlans[0] ?? plans[0];
@@ -3900,20 +3900,8 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
               const summary = getMembershipFinancialSummary(checkoutPreview.plan);
               const paymentOptions = [
                 {
-                  id: "instapay" as const,
-                  label: getDefaultAccount(
-                    membershipPaymentSettings.instapayAccounts,
-                    membershipPaymentSettings.instapayLabel || "InstaPay",
-                    membershipPaymentSettings.instapayUrl,
-                  ).label,
-                },
-                {
-                  id: "vodafone_cash" as const,
-                  label: getDefaultAccount(
-                    membershipPaymentSettings.vodafoneCashAccounts,
-                    membershipPaymentSettings.vodafoneCashLabel || "Vodafone Cash",
-                    membershipPaymentSettings.vodafoneCashUrl,
-                  ).label,
+                  id: "paymob" as const,
+                  label: "Paymob",
                 },
               ];
 
@@ -4551,6 +4539,7 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
                 const after = pkg.priceAfter ?? pkg.price;
                 const hasDiscount = before != null && before > after;
                 const discount = hasDiscount ? Math.round((1 - after / before) * 100) : null;
+                const packageColor = PLAN_COLORS[i % PLAN_COLORS.length];
                 return (
                   <div
                     key={pkg.id}
@@ -4569,7 +4558,7 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
                     <div
                       style={{
                         padding: "28px 24px 18px",
-                        background: "linear-gradient(135deg, rgba(233,30,99,.12), rgba(255,255,255,.6))",
+                        background: `linear-gradient(135deg, ${packageColor}20, rgba(255,255,255,.72))`,
                         borderBottom: `1px solid ${C.border}`,
                         position: "relative",
                       }}
@@ -4581,17 +4570,31 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
                       ) : null}
                       {pkg.image ? (
                         <div style={{ marginBottom: 14, borderRadius: 14, overflow: "hidden" }}>
-                          <img src={pkg.image} alt={pkg.name} style={{ width: "100%", height: 140, objectFit: "cover", objectPosition: "top", display: "block" }} />
+                          <img src={pkg.image} alt={pkg.name} style={{ width: "100%", height: 140, objectFit: "cover", objectPosition: "center", display: "block" }} />
                         </div>
                       ) : (
-                        <div style={{ marginBottom: 14, borderRadius: 14, overflow: "hidden", height: 140, display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg, rgba(233,30,99,.12), rgba(200,162,0,.12))", color: C.red, fontSize: 34 }}>
-                          🎟️
+                        <div style={{ marginBottom: 14, borderRadius: 14, overflow: "hidden", height: 140, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, background: `linear-gradient(135deg, ${packageColor}22, ${packageColor}0D)` }}>
+                          <div style={{ fontSize: viewportWidth() < 768 ? 34 : 42 }}>🎟️</div>
+                          <div style={{ color: packageColor, fontSize: 12, fontWeight: 800 }}>
+                            {t("باقة خاصة", "Special package")}
+                          </div>
                         </div>
                       )}
-                      <h3 style={{ fontWeight: 900, fontSize: 20, color: C.white, marginBottom: 10 }}>{pkg.name}</h3>
-                      <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-                        <span style={{ fontSize: 38, fontWeight: 900, color: PLAN_COLORS[i % PLAN_COLORS.length] }}>{formatCurrency(after)}</span>
-                        <span style={{ color: C.gray, fontSize: 12 }}>{cycleLabel(pkg.cycle, pkg.durationDays)}</span>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 10 }}>
+                        <h3 style={{ fontWeight: 900, fontSize: 20, color: C.white }}>{pkg.name}</h3>
+                        <div style={{ flexShrink: 0, textAlign: "left" }}>
+                          <div style={{ fontSize: 34, fontWeight: 900, color: packageColor, lineHeight: 1 }}>
+                            {formatCurrency(after)}
+                          </div>
+                          <div style={{ color: C.gray, fontSize: 11, marginTop: 4 }}>
+                            {t("سعر الباقة", "Package price")}
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", gap: 12, color: C.gray, fontSize: 12, marginBottom: 8, flexWrap: "wrap" }}>
+                        <span>{t("المدة:", "Duration:")} {pkg.durationDays} {t("يوم", "days")}</span>
+                        <span>{cycleLabel(pkg.cycle, pkg.durationDays)}</span>
+                        {pkg.sessionsCount ? <span>{t("عدد الحصص:", "Sessions:")} {pkg.sessionsCount}</span> : null}
                       </div>
                       {hasDiscount ? (
                         <div style={{ marginTop: 6, color: C.gray, fontSize: 12, textDecoration: "line-through" }}>
@@ -4601,18 +4604,19 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
                     </div>
 
                     <div style={{ padding: "18px 24px 22px", display: "flex", flexDirection: "column", flex: 1 }}>
-                    <div style={{ display: "flex", gap: 12, color: C.gray, fontSize: 12, marginBottom: 12, flexWrap: "wrap" }}>
-                      {pkg.sessionsCount ? <span>{t("عدد الحصص:", "Sessions:")} {pkg.sessionsCount}</span> : null}
-                      <span>{t("المدة:", "Duration:")} {pkg.durationDays} {t("يوم", "days")}</span>
-                    </div>
-                    <ul style={{ marginBottom: 24, flex: 1 }}>
-                      {(pkg.features ?? []).map((item) => (
-                        <li key={`${pkg.id}-${item}`} style={{ display: "flex", gap: 10, padding: "8px 0", fontSize: 14, color: C.grayLight, borderBottom: `1px solid ${C.border}` }}>
-                          <I n="check" s={14} c={C.success} /> {item}
-                        </li>
-                      ))}
-                    </ul>
-                    <button className="btn-primary" style={{ width: "100%", justifyContent: "center", marginTop: "auto" }} onClick={() => startMembershipFlow(pkg.id, "package")}>{t("اشتركي الآن", "Subscribe now")}</button>
+                      <ul style={{ marginBottom: 24, flex: 1 }}>
+                        {(pkg.features ?? []).map((item) => (
+                          <li key={`${pkg.id}-${item}`} style={{ display: "flex", gap: 10, padding: "8px 0", fontSize: 14, color: C.grayLight, borderBottom: `1px solid ${C.border}` }}>
+                            <I n="check" s={14} c={C.success} /> {item}
+                          </li>
+                        ))}
+                      </ul>
+                      <button
+                        style={{ width: "100%", padding: "10px", borderRadius: 10, border: `2px solid ${packageColor}`, background: "transparent", color: packageColor, fontFamily: "'Cairo', sans-serif", fontSize: 14, fontWeight: 700, cursor: "pointer", marginTop: "auto" }}
+                        onClick={() => startMembershipFlow(pkg.id, "package")}
+                      >
+                        {t("اشتركي الآن", "Subscribe now")}
+                      </button>
                     </div>
                   </div>
                 );
@@ -5732,7 +5736,7 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
             <div style={{ marginTop: 18 }}>
               <div style={{ color: C.gray, fontSize: 12, marginBottom: 10 }}>{t("وسائل الدفع المتاحة", "Available payment methods")}</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                {[{ label: "VISA", bg: "#1a1f71", color: "#fff" }, { label: "Mastercard", bg: "#eb001b", color: "#fff" }, { label: "InstaPay", bg: "#6c3483", color: "#fff" }, { label: "Vodafone Cash", bg: "#e60000", color: "#fff" }, { label: "الدفع عند الاستلام", bg: "#1e7e34", color: "#fff" }].map((m) => (
+                {[{ label: "VISA", bg: "#1a1f71", color: "#fff" }, { label: "Mastercard", bg: "#eb001b", color: "#fff" }, { label: "Paymob", bg: "#6c3483", color: "#fff" }].map((m) => (
                   <span key={m.label} style={{ background: m.bg, color: m.color, fontSize: 11, fontWeight: 800, padding: "4px 10px", borderRadius: 6 }}>{m.label}</span>
                 ))}
               </div>
@@ -5920,7 +5924,7 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
   const { lang } = useLang();
   const t = useT();
   const [step, setStep] = useState("cart");
-  const [payMethod, setPayMethod] = useState("instapay");
+  const [payMethod, setPayMethod] = useState("paymob");
   const [useRewards, setUseRewards] = useState(false);
   const [useWallet, setUseWallet] = useState(false);
   const [pointValueEGP, setPointValueEGP] = useState(0.1);
@@ -5934,10 +5938,10 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
   const [selectedDeliveryId, setSelectedDeliveryId] = useState<string | null>(null);
   const [paymentSettings, setPaymentSettings] = useState<PublicPaymentSettings>({
     instapayUrl: "",
-    instapayLabel: "InstaPay",
+    instapayLabel: "Paymob",
     vodafoneCashUrl: "",
-    vodafoneCashLabel: "Vodafone Cash",
-    instapayAccounts: [],
+    vodafoneCashLabel: "Paymob",
+    instapayAccounts: [{ id: "paymob", label: "Paymob", url: "", isDefault: true }],
     vodafoneCashAccounts: [],
   });
   const [address, setAddress] = useState({
@@ -6012,33 +6016,12 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
   const pointsToDeduct = useRewards ? Math.ceil(rewardsDiscount / pointValueEGP) : 0;
 
   const availablePayMethods = useMemo(() => {
-    const methods = [
-      {
-        id: "instapay",
-        label: getDefaultAccount(
-          paymentSettings.instapayAccounts,
-          paymentSettings.instapayLabel || "InstaPay",
-          paymentSettings.instapayUrl,
-        ).label,
-      },
-      {
-        id: "vodafone_cash",
-        label: getDefaultAccount(
-          paymentSettings.vodafoneCashAccounts,
-          paymentSettings.vodafoneCashLabel || "Vodafone Cash",
-          paymentSettings.vodafoneCashUrl,
-        ).label,
-      },
-    ];
-    if (selectedDelivery?.type === "pickup") {
-      methods.unshift({ id: "cod", label: "الدفع عند الاستلام (داخل الجيم)" });
-    }
-    return methods;
-  }, [paymentSettings.instapayLabel, paymentSettings.vodafoneCashLabel, selectedDelivery?.type]);
+    return [{ id: "paymob", label: "Paymob" }];
+  }, []);
 
   useEffect(() => {
     if (!availablePayMethods.find((m) => m.id === payMethod)) {
-      setPayMethod(availablePayMethods[0]?.id ?? "instapay");
+      setPayMethod(availablePayMethods[0]?.id ?? "paymob");
     }
   }, [availablePayMethods, payMethod]);
 
@@ -6161,18 +6144,7 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
 
       setCreatedOrderId(data.orderId ?? null);
       if (data.checkoutUrl) {
-        const label =
-          payMethod === "vodafone_cash"
-            ? getDefaultAccount(
-                paymentSettings.vodafoneCashAccounts,
-                paymentSettings.vodafoneCashLabel,
-                paymentSettings.vodafoneCashUrl,
-              ).label
-            : getDefaultAccount(
-                paymentSettings.instapayAccounts,
-                paymentSettings.instapayLabel,
-                paymentSettings.instapayUrl,
-              ).label;
+        const label = "Paymob";
         setPaymentAction({ url: data.checkoutUrl, label, transactionId: data.transactionId ?? null });
       } else {
         setPaymentAction(null);
@@ -6369,7 +6341,7 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                   </div>
                 ) : (
                   <div className="card" style={{ marginTop: 12, padding: 14, background: "rgba(233,30,99,.08)", border: `1px solid ${C.red}33` }}>
-                    <div style={{ color: C.red, fontWeight: 700, fontSize: 12 }}>{t("عند اختيار شركة شحن، يتم الدفع مسبقاً عبر إنستا باي أو فودافون كاش.", "When shipping is selected, payment is made in advance via InstaPay or Vodafone Cash.")}</div>
+                    <div style={{ color: C.red, fontWeight: 700, fontSize: 12 }}>{t("عند اختيار شركة شحن، يتم الدفع إلكترونياً عبر Paymob قبل تأكيد الطلب.", "When shipping is selected, payment is completed electronically through Paymob before the order is confirmed.")}</div>
                   </div>
                 )}
                 <div style={{ display: "flex", gap: 12, marginTop: 16 }}>
@@ -6384,7 +6356,7 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                 <h2 style={{ fontWeight: 800, fontSize: 22, color: C.white, marginBottom: 20 }}>{t("طريقة الدفع", "Payment method")}</h2>
                 <div className="card" style={{ padding: 20 }}>
                   {availablePayMethods.map((method) => {
-                    const icon = method.id === "instapay" ? "⚡" : method.id === "vodafone_cash" ? "💳" : "💵";
+                    const icon = "💳";
                     return (
                     <div key={method.id} onClick={() => setPayMethod(method.id)} style={{ display: "flex", alignItems: "center", gap: 14, padding: 14, borderRadius: 8, border: payMethod === method.id ? `2px solid ${C.red}` : `1px solid ${C.border}`, marginBottom: 10, cursor: "pointer", background: payMethod === method.id ? "rgba(233,30,99,.08)" : "transparent" }}>
                       <div style={{ width: 40, height: 40, borderRadius: 8, background: payMethod === method.id ? "rgba(233,30,99,.2)" : C.bgCard2, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>{icon}</div>
@@ -7206,7 +7178,7 @@ const ContactPage = () => {
     { q: t("إيه ساعات العمل؟", "What are your working hours?"), a: t("بنشتغل من الأحد للخميس من الساعة ٧ الصبح لـ ١٠ بالليل، والجمعة والسبت من ٨ الصبح لـ ٨ بالليل.", "We operate Sunday to Thursday from 7 AM to 10 PM, and Friday and Saturday from 8 AM to 8 PM.") },
     { q: t("هل في كلاسات للأطفال؟", "Do you offer classes for kids?"), a: t("أيوه! عندنا برامج مخصصة للأطفال من سن ٤ سنوات. تواصلي معنا لمعرفة التفاصيل.", "Yes. We offer dedicated programs for children starting from age 4. Contact us for the details.") },
     { q: t("ممكن أجمد العضوية؟", "Can I freeze my membership?"), a: t("أيوه، تقدري تجمدي العضوية مرة في الشهر لمدة مش أكتر من أسبوعين.", "Yes, you can freeze your membership once per month for up to two weeks.") },
-    { q: t("إيه طرق الدفع المتاحة؟", "What payment methods are available?"), a: t("نقبل كاش، بطاقات دفع، انستاباي، والمحفظة الرقمية.", "We accept cash, bank cards, InstaPay, and digital wallets.") },
+    { q: t("إيه طرق الدفع المتاحة؟", "What payment methods are available?"), a: t("كل وسائل الدفع الإلكترونية متاحة من خلال Paymob حسب الوسائل المفعلة على حسابك.", "All electronic payment methods are available through Paymob depending on what is enabled on your account.") },
     { q: t("هل في عروض للمجموعات؟", "Do you have group offers?"), a: t("أيوه! في عروض خاصة للمجموعات من ٤ أشخاص فأكثر بخصومات لحد ٣٠٪.", "Yes. We offer special deals for groups of 4 or more with discounts up to 30%.") },
   ];
 
