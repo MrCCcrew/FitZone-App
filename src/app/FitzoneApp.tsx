@@ -958,42 +958,41 @@ const Footer = ({ navigate }: { navigate: (p: string) => void }) => {
       </div>
       {/* Payment methods */}
       <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 20, marginBottom: 16 }}>
-        <p style={{ color: C.gray, fontSize: 11, marginBottom: 12, textAlign: "center" }}>{t("وسائل الدفع المتاحة", "Accepted payment methods")}</p>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center", alignItems: "center" }}>
-          {/* Cash on Delivery */}
-          <div style={{ display: "flex", alignItems: "center", gap: 5, background: "#1a2744", borderRadius: 8, padding: "5px 10px", border: "1px solid rgba(255,255,255,.1)" }}>
-            <span style={{ fontSize: 14 }}>💵</span>
-            <span style={{ color: "#fff", fontSize: 10, fontWeight: 800, whiteSpace: "nowrap" }}>Cash on Delivery</span>
-          </div>
-          {/* Mastercard */}
-          <div style={{ display: "flex", alignItems: "center", gap: 4, background: "#1a1a1a", borderRadius: 8, padding: "5px 10px", border: "1px solid rgba(255,255,255,.1)" }}>
-            <span style={{ fontSize: 18, lineHeight: 1 }}>🔴</span>
-            <span style={{ color: "#eb001b", fontSize: 10, fontWeight: 900 }}>master</span><span style={{ color: "#f79e1b", fontSize: 10, fontWeight: 900 }}>card</span>
-          </div>
-          {/* Visa */}
-          <div style={{ background: "#1A1F71", borderRadius: 8, padding: "5px 12px", border: "1px solid rgba(255,255,255,.1)" }}>
-            <span style={{ color: "#fff", fontSize: 13, fontWeight: 900, fontStyle: "italic", letterSpacing: 1, fontFamily: "sans-serif" }}>VISA</span>
-          </div>
-          {/* Meeza / Premium Card */}
-          <div style={{ background: "#E85D04", borderRadius: 8, padding: "5px 10px", border: "1px solid rgba(255,255,255,.1)" }}>
-            <span style={{ color: "#fff", fontSize: 10, fontWeight: 900, fontFamily: "sans-serif" }}>PREMIUM CARD</span>
-          </div>
-          {/* valU */}
-          <div style={{ background: "#000", borderRadius: 8, padding: "5px 12px", border: "1px solid rgba(255,255,255,.15)" }}>
-            <span style={{ color: "#fff", fontSize: 12, fontWeight: 900, fontFamily: "sans-serif" }}>valu<span style={{ color: "#FFD700" }}>*</span></span>
-          </div>
-          {/* Sympl */}
-          <div style={{ background: "#0057FF", borderRadius: 8, padding: "5px 12px", border: "1px solid rgba(255,255,255,.1)" }}>
-            <span style={{ color: "#fff", fontSize: 12, fontWeight: 900, fontFamily: "sans-serif" }}>s/mpl.</span>
-          </div>
-          {/* Souhoola */}
-          <div style={{ background: "#6B21A8", borderRadius: 8, padding: "5px 12px", border: "1px solid rgba(255,255,255,.1)" }}>
-            <span style={{ color: "#fff", fontSize: 12, fontWeight: 900, fontFamily: "sans-serif" }}>Souhoola</span>
-          </div>
-          {/* Aman */}
-          <div style={{ background: "#0EA5E9", borderRadius: 8, padding: "5px 12px", border: "1px solid rgba(255,255,255,.1)" }}>
-            <span style={{ color: "#fff", fontSize: 12, fontWeight: 800, fontFamily: "sans-serif" }}>Aman</span>
-          </div>
+        <p style={{ color: C.gray, fontSize: 11, marginBottom: 14, textAlign: "center" }}>{t("وسائل الدفع المتاحة", "Accepted payment methods")}</p>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center", alignItems: "center" }}>
+          {[
+            { src: "/payment-logos/cash-on-delivery.svg", alt: "Cash on Delivery",  h: 36, bg: "transparent" },
+            { src: "/payment-logos/mastercard.svg",       alt: "Mastercard",         h: 36, bg: "#fff"        },
+            { src: "/payment-logos/visa.svg",             alt: "Visa",               h: 36, bg: "#fff"        },
+            { src: "/payment-logos/premium-card.svg",     alt: "Premium Card",       h: 36, bg: "transparent" },
+            { src: "/payment-logos/valu.svg",             alt: "valU",               h: 36, bg: "transparent" },
+            { src: "/payment-logos/sympl.svg",            alt: "Sympl",              h: 36, bg: "transparent" },
+            { src: "/payment-logos/souhoola.svg",         alt: "Souhoola",           h: 36, bg: "transparent" },
+            { src: "/payment-logos/aman.svg",             alt: "Aman",               h: 36, bg: "transparent" },
+          ].map(({ src, alt, h, bg }) => (
+            <div
+              key={alt}
+              style={{
+                height: h,
+                borderRadius: 8,
+                overflow: "hidden",
+                border: "1px solid rgba(255,255,255,.12)",
+                background: bg,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: bg === "#fff" ? "4px 8px" : 0,
+                flexShrink: 0,
+              }}
+            >
+              <img
+                src={src}
+                alt={alt}
+                style={{ height: bg === "#fff" ? h - 8 : h, width: "auto", display: "block", objectFit: "contain" }}
+                loading="lazy"
+              />
+            </div>
+          ))}
         </div>
       </div>
 
