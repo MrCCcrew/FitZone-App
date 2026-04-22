@@ -2355,9 +2355,11 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
       {/* ─ QUICK ACTIONS ─ */}
       <section style={{ background: C.bgCard, borderBottom: `1px solid ${C.border}`, padding: "0" }}>
         <div className="container">
-          <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr 1fr", "repeat(4, 1fr)", "repeat(4, 1fr)") }}>
+          <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr 1fr", "repeat(3, 1fr)", "repeat(6, 1fr)") }}>
             {[
               { icon: "repeat", label: t("الاشتراكات", "Memberships"), page: "memberships", sub: t("باقات متنوعة", "Flexible plans") },
+              { icon: "gift", label: t("الباقات", "Packages"), page: "offers", sub: t("عروض خاصة", "Special deals") },
+              { icon: "tag", label: t("العروض", "Offers"), page: "offers", sub: t("خصومات حصرية", "Exclusive discounts") },
               { icon: "calendar", label: t("الجدول الأسبوعي", "Weekly schedule"), page: "schedule", sub: t("احجزي مقعدك", "Book your spot") },
               { icon: "box", label: t("المتجر", "Shop"), page: "shop", sub: t("منتجات رياضية", "Sports products") },
               { icon: "wallet", label: t("شحن المحفظة", "Top up wallet"), page: "wallet", sub: t("بونص حتى 15%", "Bonus up to 15%") },
