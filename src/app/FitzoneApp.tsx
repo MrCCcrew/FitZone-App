@@ -961,19 +961,22 @@ const Footer = ({ navigate }: { navigate: (p: string) => void }) => {
         <p style={{ color: C.gray, fontSize: 11, marginBottom: 14, textAlign: "center" }}>{t("وسائل الدفع المتاحة", "Accepted payment methods")}</p>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center", alignItems: "center" }}>
           {[
-            { src: "/payment-logos/cash-on-delivery.svg", alt: "Cash on Delivery",  h: 36, bg: "transparent" },
-            { src: "/payment-logos/mastercard.svg",       alt: "Mastercard",         h: 36, bg: "#fff"        },
-            { src: "/payment-logos/visa.svg",             alt: "Visa",               h: 36, bg: "#fff"        },
-            { src: "/payment-logos/premium-card.svg",     alt: "Premium Card",       h: 36, bg: "transparent" },
-            { src: "/payment-logos/valu.svg",             alt: "valU",               h: 36, bg: "transparent" },
-            { src: "/payment-logos/sympl.svg",            alt: "Sympl",              h: 36, bg: "transparent" },
-            { src: "/payment-logos/souhoola.svg",         alt: "Souhoola",           h: 36, bg: "transparent" },
-            { src: "/payment-logos/aman.svg",             alt: "Aman",               h: 36, bg: "transparent" },
-          ].map(({ src, alt, h, bg }) => (
+            { src: "/payment-logos/cash-on-delivery.svg", alt: "Cash on Delivery", bg: "transparent" },
+            { src: "/payment-logos/mastercard.svg",        alt: "Mastercard",        bg: "#fff"        },
+            { src: "/payment-logos/visa.svg",              alt: "Visa",              bg: "#fff"        },
+            { src: "/payment-logos/primium.webp",          alt: "Premium Card",      bg: "#fff"        },
+            { src: "/payment-logos/u-valu-logo.webp",      alt: "valU",              bg: "#fff"        },
+            { src: "/payment-logos/sympl-menu2.png",       alt: "Sympl",             bg: "#fff"        },
+            { src: "/payment-logos/sohoooooola.png",       alt: "Souhoola",          bg: "#fff"        },
+            { src: "/payment-logos/aman.svg",              alt: "Aman",              bg: "transparent" },
+          ].map(({ src, alt, bg }) => (
             <div
               key={alt}
+              title={alt}
               style={{
-                height: h,
+                height: 40,
+                minWidth: 64,
+                maxWidth: 110,
                 borderRadius: 8,
                 overflow: "hidden",
                 border: "1px solid rgba(255,255,255,.12)",
@@ -981,14 +984,14 @@ const Footer = ({ navigate }: { navigate: (p: string) => void }) => {
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                padding: bg === "#fff" ? "4px 8px" : 0,
+                padding: bg === "#fff" ? "5px 10px" : 0,
                 flexShrink: 0,
               }}
             >
               <img
                 src={src}
                 alt={alt}
-                style={{ height: bg === "#fff" ? h - 8 : h, width: "auto", display: "block", objectFit: "contain" }}
+                style={{ height: bg === "#fff" ? 28 : 40, width: "auto", maxWidth: "100%", display: "block", objectFit: "contain" }}
                 loading="lazy"
               />
             </div>
