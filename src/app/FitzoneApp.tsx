@@ -1292,6 +1292,7 @@ type PublicPaymentSettings = {
 
 const CART_STORAGE_KEY = "fitzone:cart";
 const CLASS_STORAGE_KEY = "fitzone:selected-class";
+const MEMBERSHIP_FLOW_STORAGE_KEY = "fitzone:membership-flow";
 
 const CLASS_TYPE_LABELS: Record<string, string> = {
   fitness: "فيتنس",
@@ -2860,6 +2861,32 @@ type MembershipCheckoutPreview = {
   scheduleIds: string[];
   confirmed: boolean;
 };
+
+type PendingMembershipFlow = {
+  membershipId: string;
+  source?: "offer" | "package";
+  offerId?: string | null;
+};
+
+function mapMembershipToPlanItem(membership: PublicMembership, color: string, popular = false): PlanItem {
+  return {
+    id: membership.id,
+    name: membership.name,
+    price: membership.price,
+    priceBefore: membership.priceBefore ?? null,
+    priceAfter: membership.priceAfter ?? null,
+    image: membership.image ?? null,
+    sortOrder: membership.sortOrder ?? 0,
+    durationDays: membership.durationDays,
+    cycle: membership.cycle,
+    sessionsCount: membership.sessionsCount,
+    features: Array.isArray(membership.features) ? membership.features : [],
+    color,
+    popular,
+    goalIds: Array.isArray(membership.goalIds) ? membership.goalIds : [],
+  };
+}
+
 const DEFAULT_PLANS: PlanItem[] = [];
 const PLAN_COLORS = [C.gray, C.red, C.gold, "#A855F7", "#3498DB", "#27AE60"];
 const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
@@ -2899,6 +2926,8 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
   const [daysPerWeek, setDaysPerWeek] = useState<number | null>(null);
   const [scheduleStep, setScheduleStep] = useState<"frequency" | "slots">("frequency");
   const [membershipPayMethod, setMembershipPayMethod] = useState<"instapay" | "vodafone_cash">("instapay");
+  const [membershipDataReady, setMembershipDataReady] = useState(false);
+  const [pendingPlan, setPendingPlan] = useState<PlanItem | null>(null);
   const [membershipPaymentSettings, setMembershipPaymentSettings] = useState<PublicPaymentSettings>({
     instapayUrl: "",
     instapayLabel: "InstaPay",
@@ -2908,8 +2937,10 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
     vodafoneCashAccounts: [],
   });
   useEffect(() => {
+    setMembershipDataReady(false);
     loadPublicApi(true)
       .then((d) => {
+        let allMemberships: PublicMembership[] = [];
         if (Array.isArray(d.goals)) {
           setGoals((d.goals as PublicGoal[]).sort((a, b) => a.sortOrder - b.sortOrder));
         }
@@ -2922,30 +2953,44 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
           );
         }
         if (Array.isArray(d.memberships) && d.memberships.length > 0) {
-          const subscriptions = (d.memberships as PublicMembership[])
+          allMemberships = d.memberships as PublicMembership[];
+          const subscriptions = allMemberships
             .filter((mb) => mb.kind === "subscription")
             .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
           setPlans(
-            subscriptions.map((mb, i) => ({
-              id: mb.id,
-              name: mb.name,
-              price: mb.price,
-              priceBefore: mb.priceBefore ?? null,
-              priceAfter: mb.priceAfter ?? null,
-              image: mb.image ?? null,
-              sortOrder: mb.sortOrder ?? 0,
-              durationDays: mb.durationDays,
-              cycle: mb.cycle,
-              sessionsCount: mb.sessionsCount,
-              features: Array.isArray(mb.features) ? mb.features : [],
-              color: PLAN_COLORS[i % PLAN_COLORS.length],
-              popular: i === 1,
-              goalIds: Array.isArray(mb.goalIds) ? mb.goalIds : [],
-            })),
+            subscriptions.map((mb, i) => mapMembershipToPlanItem(mb, PLAN_COLORS[i % PLAN_COLORS.length], i === 1)),
           );
         }
         if (d.paymentSettings && typeof d.paymentSettings === "object") {
           setMembershipPaymentSettings((prev) => ({ ...prev, ...(d.paymentSettings as PublicPaymentSettings) }));
+        }
+        if (typeof window !== "undefined") {
+          const rawPendingFlow = window.sessionStorage.getItem(MEMBERSHIP_FLOW_STORAGE_KEY);
+          if (rawPendingFlow) {
+            try {
+              const parsed = JSON.parse(rawPendingFlow) as PendingMembershipFlow;
+              if (parsed?.membershipId) {
+                const matchedMembership = allMemberships.find((membership) => membership.id === parsed.membershipId);
+                if (matchedMembership) {
+                  const colorIndex = Math.max(
+                    0,
+                    allMemberships.findIndex((membership) => membership.id === matchedMembership.id),
+                  );
+                  setPendingPlan(
+                    mapMembershipToPlanItem(
+                      matchedMembership,
+                      PLAN_COLORS[colorIndex % PLAN_COLORS.length],
+                      matchedMembership.kind === "subscription" && colorIndex === 1,
+                    ),
+                  );
+                } else {
+                  window.sessionStorage.removeItem(MEMBERSHIP_FLOW_STORAGE_KEY);
+                }
+              }
+            } catch {
+              window.sessionStorage.removeItem(MEMBERSHIP_FLOW_STORAGE_KEY);
+            }
+          }
         }
         // Open trial booking modal if triggered from hero button or home class card
         if (typeof window !== "undefined" && window.sessionStorage.getItem("fitzone_trial_booking")) {
@@ -2979,9 +3024,21 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
             setScheduleSelections([]);
           }
         }
+        setMembershipDataReady(true);
       })
-      .catch(() => {});
+      .catch(() => {
+        setMembershipDataReady(true);
+      });
   }, [lang]);
+
+  useEffect(() => {
+    if (!membershipDataReady || !pendingPlan) return;
+    openSurvey(pendingPlan);
+    setPendingPlan(null);
+    if (typeof window !== "undefined") {
+      window.sessionStorage.removeItem(MEMBERSHIP_FLOW_STORAGE_KEY);
+    }
+  }, [membershipDataReady, pendingPlan]);
 
   const rootGoals = useMemo(() => goals.filter((goal) => !goal.parentId), [goals]);
   const gamesRoot = useMemo(() => rootGoals.find((goal) => goal.kind === "games_root"), [rootGoals]);
@@ -4377,6 +4434,15 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
   const { lang } = useLang();
   const [offers, setOffers] = useState(DEFAULT_OFFERS);
   const [packages, setPackages] = useState<PublicMembership[]>([]);
+  const startMembershipFlow = (membershipId?: string | null, source: "offer" | "package" = "offer", offerId?: string | null) => {
+    if (typeof window !== "undefined" && membershipId) {
+      window.sessionStorage.setItem(
+        MEMBERSHIP_FLOW_STORAGE_KEY,
+        JSON.stringify({ membershipId, source, offerId: offerId ?? null } satisfies PendingMembershipFlow),
+      );
+    }
+    navigate("memberships");
+  };
   useEffect(() => {
     loadPublicApi().then(d => {
       if (Array.isArray(d.offers) && d.offers.length > 0) {
@@ -4414,19 +4480,54 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
                 ? Math.max(o.maxSubscribers - o.currentSubscribers, 0)
                 : null;
               return (
-              <div key={o.id} className="card card-hover" style={{ padding: 0, overflow: "hidden", border: `1px solid ${o.color}33` }}>
-                <div style={{ background: `linear-gradient(135deg, ${o.color}33, ${o.color}11)`, padding: "36px 24px", textAlign: "center", borderBottom: `1px solid ${o.color}22` }}>
-                  <div style={{ fontSize: viewportWidth() < 768 ? 34 : 44, marginBottom: 12 }}>{o.type === "special" ? "⏳" : "🎁"}</div>
-                  <div style={{ fontSize: 56, fontWeight: 900, color: o.color, lineHeight: 1 }}>
-                    {o.type === "special" ? formatCurrency(o.specialPrice ?? 0) : o.type === "percentage" ? `${o.discount}%` : `${o.discount} ${t("ج.م", "EGP")}`}
+              <div
+                key={o.id}
+                className="card card-hover"
+                style={{
+                  padding: 0,
+                  position: "relative",
+                  border: `1px solid ${o.color}33`,
+                  boxShadow: "0 18px 45px rgba(233,30,99,.12)",
+                  overflow: "hidden",
+                  display: "flex",
+                  flexDirection: "column",
+                  height: "100%",
+                }}
+              >
+                <div
+                  style={{
+                    padding: "28px 24px 18px",
+                    background: `linear-gradient(135deg, ${o.color}20, rgba(255,255,255,.72))`,
+                    borderBottom: `1px solid ${C.border}`,
+                    position: "relative",
+                  }}
+                >
+                  <div style={{ marginBottom: 14, borderRadius: 14, overflow: "hidden" }}>
+                    {o.image ? (
+                      <img src={o.image} alt={o.title} style={{ width: "100%", height: 140, objectFit: "cover", objectPosition: "top", display: "block" }} />
+                    ) : (
+                      <div style={{ height: 140, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, background: `linear-gradient(135deg, ${o.color}22, ${o.color}0D)` }}>
+                        <div style={{ fontSize: viewportWidth() < 768 ? 34 : 42 }}>{o.type === "special" ? "⏳" : "🎁"}</div>
+                        <div style={{ color: o.color, fontSize: 12, fontWeight: 800 }}>
+                          {o.type === "special" ? t("عرض خاص", "Special offer") : t("خصم متاح", "Active discount")}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <div style={{ color: C.gray, fontSize: 13, marginTop: 4 }}>
-                    {o.type === "special" ? t("سعر العرض الخاص", "Special offer price") : t("قيمة الخصم", "Discount value")}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 10 }}>
+                    <h3 style={{ fontWeight: 900, fontSize: 20, color: C.white }}>{o.title}</h3>
+                    <div style={{ flexShrink: 0, textAlign: "left" }}>
+                      <div style={{ fontSize: 34, fontWeight: 900, color: o.color, lineHeight: 1 }}>
+                        {o.type === "special" ? formatCurrency(o.specialPrice ?? 0) : o.type === "percentage" ? `${o.discount}%` : `${o.discount} ${t("ج.م", "EGP")}`}
+                      </div>
+                      <div style={{ color: C.gray, fontSize: 11, marginTop: 4 }}>
+                        {o.type === "special" ? t("سعر العرض الخاص", "Special offer price") : t("قيمة الخصم", "Discount value")}
+                      </div>
+                    </div>
                   </div>
+                  {o.description ? <p style={{ color: C.gray, fontSize: 13, lineHeight: 1.8 }}>{o.description}</p> : null}
                 </div>
-                <div style={{ padding: "20px 24px" }}>
-                  <h3 style={{ fontWeight: 800, fontSize: 18, color: C.white, marginBottom: 8 }}>{o.title}</h3>
-                  <p style={{ color: C.gray, fontSize: 13, marginBottom: 12 }}>{o.description}</p>
+                <div style={{ padding: "18px 24px 22px", display: "flex", flexDirection: "column", flex: 1 }}>
                   {/* Countdown */}
                   <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
                     {[
@@ -4458,8 +4559,15 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
                       )}
                     </div>
                   )}
-                  <button style={{ width: "100%", padding: "10px", borderRadius: 10, border: `2px solid ${o.color}`, background: "transparent", color: o.color, fontFamily: "'Cairo', sans-serif", fontSize: 14, fontWeight: 700, cursor: "pointer" }} onClick={() => navigate(o.type === "special" ? "home" : "memberships")}>
-                    {o.type === "special" ? t("اشتركي في العرض", "Join the offer") : t("استفيدي الآن", "Claim now")}
+                  <div style={{ display: "flex", gap: 12, color: C.gray, fontSize: 12, marginBottom: 14, flexWrap: "wrap" }}>
+                    {o.appliesTo ? <span>{t("ينطبق على:", "Applies to:")} {o.appliesTo}</span> : null}
+                    <span>{countdown.expired ? t("انتهى العرض", "Offer expired") : t("العرض ساري الآن", "Offer is active")}</span>
+                  </div>
+                  <button
+                    onClick={() => startMembershipFlow(o.membershipId, "offer", o.id)}
+                    style={{ width: "100%", padding: "10px", borderRadius: 10, border: `2px solid ${o.color}`, background: "transparent", color: o.color, fontFamily: "'Cairo', sans-serif", fontSize: 14, fontWeight: 700, cursor: "pointer", marginTop: "auto", opacity: o.membershipId ? 1 : 0.7 }}
+                  >
+                    {t("اشتركي الآن", "Subscribe now")}
                   </button>
                 </div>
               </div>
@@ -4479,31 +4587,68 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
                 const hasDiscount = before != null && before > after;
                 const discount = hasDiscount ? Math.round((1 - after / before) * 100) : null;
                 return (
-                  <div key={pkg.id} className="card" style={{ padding: 28 }}>
-                    {pkg.image ? (
-                      <div style={{ marginBottom: 16, borderRadius: 12, overflow: "hidden" }}>
-                        <img src={pkg.image} alt={pkg.name} style={{ width: "100%", height: 180, objectFit: "cover", display: "block" }} />
+                  <div
+                    key={pkg.id}
+                    className="card card-hover"
+                    style={{
+                      padding: 0,
+                      position: "relative",
+                      border: `1px solid ${C.border}`,
+                      boxShadow: "0 18px 45px rgba(233,30,99,.12)",
+                      overflow: "hidden",
+                      display: "flex",
+                      flexDirection: "column",
+                      height: "100%",
+                    }}
+                  >
+                    <div
+                      style={{
+                        padding: "28px 24px 18px",
+                        background: "linear-gradient(135deg, rgba(233,30,99,.12), rgba(255,255,255,.6))",
+                        borderBottom: `1px solid ${C.border}`,
+                        position: "relative",
+                      }}
+                    >
+                      {hasDiscount && discount != null ? (
+                        <div style={{ position: "absolute", top: 10, right: 16, background: C.gold, color: "#000", padding: "3px 10px", borderRadius: 999, fontSize: 10, fontWeight: 800 }}>
+                          {t(`خصم ${discount}%`, `${discount}% off`)}
+                        </div>
+                      ) : null}
+                      {pkg.image ? (
+                        <div style={{ marginBottom: 14, borderRadius: 14, overflow: "hidden" }}>
+                          <img src={pkg.image} alt={pkg.name} style={{ width: "100%", height: 140, objectFit: "cover", objectPosition: "top", display: "block" }} />
+                        </div>
+                      ) : (
+                        <div style={{ marginBottom: 14, borderRadius: 14, overflow: "hidden", height: 140, display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg, rgba(233,30,99,.12), rgba(200,162,0,.12))", color: C.red, fontSize: 34 }}>
+                          🎟️
+                        </div>
+                      )}
+                      <h3 style={{ fontWeight: 900, fontSize: 20, color: C.white, marginBottom: 10 }}>{pkg.name}</h3>
+                      <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                        <span style={{ fontSize: 38, fontWeight: 900, color: PLAN_COLORS[i % PLAN_COLORS.length] }}>{formatCurrency(after)}</span>
+                        <span style={{ color: C.gray, fontSize: 12 }}>{cycleLabel(pkg.cycle, pkg.durationDays)}</span>
                       </div>
-                    ) : null}
-                    {hasDiscount && discount != null ? (
-                      <span className="badge" style={{ marginBottom: 16, display: "inline-flex" }}>{t(`وفري ${discount}%`, `Save ${discount}%`)}</span>
-                    ) : null}
-                    <h3 style={{ fontWeight: 800, fontSize: 22, color: C.white, marginBottom: 20 }}>{pkg.name}</h3>
-                    <ul style={{ marginBottom: 24 }}>
+                      {hasDiscount ? (
+                        <div style={{ marginTop: 6, color: C.gray, fontSize: 12, textDecoration: "line-through" }}>
+                          {formatCurrency(before)} {t("ج.م", "EGP")}
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div style={{ padding: "18px 24px 22px", display: "flex", flexDirection: "column", flex: 1 }}>
+                    <div style={{ display: "flex", gap: 12, color: C.gray, fontSize: 12, marginBottom: 12, flexWrap: "wrap" }}>
+                      {pkg.sessionsCount ? <span>{t("عدد الحصص:", "Sessions:")} {pkg.sessionsCount}</span> : null}
+                      <span>{t("المدة:", "Duration:")} {pkg.durationDays} {t("يوم", "days")}</span>
+                    </div>
+                    <ul style={{ marginBottom: 24, flex: 1 }}>
                       {(pkg.features ?? []).map((item) => (
                         <li key={`${pkg.id}-${item}`} style={{ display: "flex", gap: 10, padding: "8px 0", fontSize: 14, color: C.grayLight, borderBottom: `1px solid ${C.border}` }}>
                           <I n="check" s={14} c={C.success} /> {item}
                         </li>
                       ))}
                     </ul>
-                    <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 20 }}>
-                      <span style={{ fontSize: 38, fontWeight: 900, color: C.red }}>{after}</span>
-                      <span style={{ color: C.gray, fontSize: 14 }}>{t("ج.م", "EGP")}</span>
-                      {before != null && before > after && (
-                        <span style={{ textDecoration: "line-through", color: C.gray, fontSize: 15 }}>{before} {t("ج.م", "EGP")}</span>
-                      )}
+                    <button className="btn-primary" style={{ width: "100%", justifyContent: "center", marginTop: "auto" }} onClick={() => startMembershipFlow(pkg.id, "package")}>{t("اشتركي الآن", "Subscribe now")}</button>
                     </div>
-                    <button className="btn-primary" style={{ width: "100%", justifyContent: "center" }} onClick={() => navigate("memberships")}>{t("اختاري الباقة", "Choose package")}</button>
                   </div>
                 );
               })}
