@@ -1550,9 +1550,9 @@ const PrivateBookingModal = ({ trainer, type, onClose }: { trainer: PublicTraine
     label: { display: "block", fontWeight: 700, color: "#e0d0d8", marginBottom: 5, fontSize: 13 } as React.CSSProperties,
     input: { width: "100%", borderRadius: 8, border: "1px solid rgba(255,255,255,.15)", background: "rgba(255,255,255,.06)", color: "#fff", padding: "9px 12px", fontSize: 13, boxSizing: "border-box" as const, outline: "none" },
     textarea: { width: "100%", borderRadius: 8, border: "1px solid rgba(255,255,255,.15)", background: "rgba(255,255,255,.06)", color: "#fff", padding: "9px 12px", fontSize: 13, boxSizing: "border-box" as const, resize: "vertical" as const, outline: "none" },
-    chip: (active: boolean) => ({ padding: "5px 12px", borderRadius: 16, border: `1.5px solid ${active ? C.red : "rgba(255,255,255,.18)"}`, background: active ? "rgba(233,30,99,.22)" : "transparent", color: active ? "#fff" : "#b0a0a8", fontSize: 12, cursor: "pointer", fontWeight: active ? 700 : 400 }),
+    chip: (active: boolean) => ({ padding: "6px 14px", borderRadius: 20, border: `1.5px solid ${active ? C.red : "rgba(255,255,255,.18)"}`, background: active ? "rgba(233,30,99,.22)" : "transparent", color: active ? "#fff" : "#b0a0a8", fontSize: 13, cursor: "pointer", fontWeight: active ? 700 : 400, touchAction: "manipulation" as const }),
     radio: { display: "flex", flexWrap: "wrap" as const, gap: 8 },
-    grid2: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 } as React.CSSProperties,
+    grid2: { display: "grid", gridTemplateColumns: _w < 500 ? "1fr" : "1fr 1fr", gap: 12 } as React.CSSProperties,
   };
 
   // bilingual chip options
@@ -2638,19 +2638,20 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                     <GymImg type={`trainer${(index % 3) + 1}`} w="100%" h={220} />
                   )}
                 </div>
-                <div style={{ padding: "20px 24px 24px" }}>
-                  <h3 style={{ fontWeight: 800, fontSize: 17, color: C.white }}>{lang === "en" && trainer.nameEn ? trainer.nameEn : trainer.name}</h3>
-                  <p style={{ color: C.redDark, fontSize: 13, fontWeight: 600, marginTop: 4, marginBottom: 16 }}>{lang === "en" && trainer.specialtyEn ? trainer.specialtyEn : trainer.specialty}</p>
-                  <div style={{ display: "flex", justifyContent: "center", gap: 24, marginBottom: 16 }}>
-                    <div><div style={{ fontWeight: 700, color: C.redDark }}>⭐ {trainer.rating}</div><div style={{ fontSize: 11, color: C.gray }}>{t("التقييم", "Rating")}</div></div>
-                    <div><div style={{ fontWeight: 700, color: C.white }}>{trainer.sessionsCount}</div><div style={{ fontSize: 11, color: C.gray }}>{t("جلسة", "sessions")}</div></div>
+                <div style={{ padding: "18px 20px 22px" }}>
+                  <h3 style={{ fontWeight: 800, fontSize: 16, color: C.white, marginBottom: 2 }}>{lang === "en" && trainer.nameEn ? trainer.nameEn : trainer.name}</h3>
+                  <p style={{ color: "#ff7aa8", fontSize: 12, fontWeight: 600, marginBottom: 14 }}>{lang === "en" && trainer.specialtyEn ? trainer.specialtyEn : trainer.specialty}</p>
+                  <div style={{ display: "flex", justifyContent: "center", gap: 20, marginBottom: 16, background: "rgba(255,255,255,.04)", borderRadius: 10, padding: "10px 8px" }}>
+                    <div style={{ textAlign: "center" }}><div style={{ fontWeight: 700, fontSize: 15, color: C.gold }}>⭐ {trainer.rating}</div><div style={{ fontSize: 10, color: C.gray, marginTop: 2 }}>{t("التقييم", "Rating")}</div></div>
+                    <div style={{ width: 1, background: "rgba(255,255,255,.1)" }} />
+                    <div style={{ textAlign: "center" }}><div style={{ fontWeight: 700, fontSize: 15, color: C.white }}>{trainer.sessionsCount}</div><div style={{ fontSize: 10, color: C.gray, marginTop: 2 }}>{t("جلسة", "sessions")}</div></div>
                   </div>
                   <div style={{ display: "grid", gap: 8 }}>
-                    <button className="btn-outline" style={{ width: "100%", fontSize: 13 }} onClick={() => setTrainerDetailModal(trainer)}>{t("عرض الملف الكامل", "Full profile")}</button>
+                    <button className="btn-outline" style={{ width: "100%", fontSize: 13, padding: "10px" }} onClick={() => setTrainerDetailModal(trainer)}>{t("عرض الملف الكامل", "Full profile")}</button>
                     {summary?.authenticated && (
                       <>
-                        <button className="btn-primary" style={{ width: "100%", fontSize: 12, padding: "8px 12px" }} onClick={() => setPrivateBookingModal({ trainer, type: "private" })}>🎯 {t("برايفيت معها", "Book private")}</button>
-                        <button style={{ width: "100%", fontSize: 12, padding: "8px 12px", borderRadius: 10, border: `1px solid ${C.gold}`, background: "rgba(200,162,0,.1)", color: C.gold, cursor: "pointer", fontWeight: 700 }} onClick={() => setPrivateBookingModal({ trainer, type: "mini_private" })}>👥 {t("ميني برايفيت", "Mini private")}</button>
+                        <button className="btn-primary" style={{ width: "100%", fontSize: 13, padding: "10px 12px" }} onClick={() => setPrivateBookingModal({ trainer, type: "private" })}>🎯 {t("برايفيت", "Private")}</button>
+                        <button style={{ width: "100%", fontSize: 13, padding: "10px 12px", borderRadius: 10, border: `1px solid ${C.gold}`, background: "rgba(200,162,0,.1)", color: C.gold, cursor: "pointer", fontWeight: 700 }} onClick={() => setPrivateBookingModal({ trainer, type: "mini_private" })}>👥 {t("ميني برايفيت", "Mini private")}</button>
                       </>
                     )}
                   </div>
@@ -2689,43 +2690,54 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
 
       {/* ─ TRAINER DETAIL MODAL ─ */}
       {trainerDetailModal && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center", padding: "12px 10px", background: "rgba(0,0,0,.75)", backdropFilter: "blur(8px)", overflowY: "auto" }}>
-          <div style={{ background: "#111", borderRadius: 20, maxWidth: 600, width: "100%", boxShadow: "0 24px 60px rgba(0,0,0,.6)", border: "1px solid rgba(255,255,255,.12)", marginTop: "auto", marginBottom: "auto" }}>
+        <div style={{ position: "fixed", inset: 0, zIndex: 300, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: _w < 640 ? "0" : "20px 12px", background: "rgba(0,0,0,.82)", backdropFilter: "blur(10px)", overflowY: "auto" }}>
+          <div style={{ background: "#111", borderRadius: _w < 640 ? "0 0 24px 24px" : 20, maxWidth: 580, width: "100%", boxShadow: "0 24px 60px rgba(0,0,0,.7)", border: "1px solid rgba(255,255,255,.12)", marginBottom: _w < 640 ? 24 : 0 }}>
             {/* Header image */}
-            <div style={{ height: 260, borderRadius: "20px 20px 0 0", overflow: "hidden", position: "relative" }}>
+            <div style={{ height: _w < 640 ? 220 : 260, borderRadius: _w < 640 ? 0 : "20px 20px 0 0", overflow: "hidden", position: "relative" }}>
               {trainerDetailModal.image ? (
-                <img src={trainerDetailModal.image} alt={trainerDetailModal.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                <img src={trainerDetailModal.image} alt={trainerDetailModal.name} style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "top" }} />
               ) : (
-                <GymImg type="trainer1" w="100%" h={260} />
+                <GymImg type="trainer1" w="100%" h={_w < 640 ? 220 : 260} />
               )}
-              <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(10,5,8,.9) 0%, transparent 60%)" }} />
-              <button onClick={() => setTrainerDetailModal(null)} style={{ position: "absolute", top: 14, insetInlineEnd: 14, width: 36, height: 36, borderRadius: "50%", border: "none", background: "rgba(0,0,0,.5)", color: "#fff", fontSize: 20, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
-              <div style={{ position: "absolute", bottom: 18, right: 20 }}>
-                <div style={{ fontWeight: 900, fontSize: 22, color: "#fff" }}>{lang === "en" && trainerDetailModal.nameEn ? trainerDetailModal.nameEn : trainerDetailModal.name}</div>
-                <div style={{ color: C.redDark, fontWeight: 700, fontSize: 14 }}>{lang === "en" && trainerDetailModal.specialtyEn ? trainerDetailModal.specialtyEn : trainerDetailModal.specialty}</div>
+              <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(10,5,8,.92) 0%, rgba(10,5,8,.3) 50%, transparent 100%)" }} />
+              <button onClick={() => setTrainerDetailModal(null)} style={{ position: "absolute", top: 14, insetInlineEnd: 14, width: 38, height: 38, borderRadius: "50%", border: "none", background: "rgba(0,0,0,.55)", color: "#fff", fontSize: 22, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(4px)" }}>×</button>
+              <div style={{ position: "absolute", bottom: 16, insetInlineStart: 20, insetInlineEnd: 60 }}>
+                <div style={{ fontWeight: 900, fontSize: _w < 640 ? 20 : 22, color: "#fff", textShadow: "0 2px 8px rgba(0,0,0,.6)" }}>{lang === "en" && trainerDetailModal.nameEn ? trainerDetailModal.nameEn : trainerDetailModal.name}</div>
+                <div style={{ color: "#ff7aa8", fontWeight: 700, fontSize: 13, marginTop: 2 }}>{lang === "en" && trainerDetailModal.specialtyEn ? trainerDetailModal.specialtyEn : trainerDetailModal.specialty}</div>
               </div>
             </div>
-            <div style={{ padding: 24 }}>
+            <div style={{ padding: _w < 640 ? "18px 16px 24px" : "24px 28px 28px" }}>
               {/* Stats */}
-              <div style={{ display: "flex", gap: 20, marginBottom: 20 }}>
-                <div style={{ textAlign: "center" }}><div style={{ fontWeight: 800, color: C.gold }}>⭐ {trainerDetailModal.rating}</div><div style={{ fontSize: 11, color: "#888" }}>{t("التقييم", "Rating")}</div></div>
-                <div style={{ textAlign: "center" }}><div style={{ fontWeight: 800, color: C.white }}>{trainerDetailModal.sessionsCount}</div><div style={{ fontSize: 11, color: "#888" }}>{t("جلسة", "Sessions")}</div></div>
-                <div style={{ textAlign: "center" }}><div style={{ fontWeight: 800, color: C.white }}>{trainerDetailModal.classesCount}</div><div style={{ fontSize: 11, color: "#888" }}>{t("كلاس", "Classes")}</div></div>
+              <div style={{ display: "flex", justifyContent: "space-around", gap: 8, marginBottom: 22, background: "rgba(255,255,255,.04)", borderRadius: 12, padding: "14px 8px" }}>
+                <div style={{ textAlign: "center" }}>
+                  <div style={{ fontWeight: 800, fontSize: 18, color: C.gold }}>⭐ {trainerDetailModal.rating}</div>
+                  <div style={{ fontSize: 11, color: "#888", marginTop: 2 }}>{t("التقييم", "Rating")}</div>
+                </div>
+                <div style={{ width: 1, background: "rgba(255,255,255,.08)" }} />
+                <div style={{ textAlign: "center" }}>
+                  <div style={{ fontWeight: 800, fontSize: 18, color: C.white }}>{trainerDetailModal.sessionsCount}</div>
+                  <div style={{ fontSize: 11, color: "#888", marginTop: 2 }}>{t("جلسة", "Sessions")}</div>
+                </div>
+                <div style={{ width: 1, background: "rgba(255,255,255,.08)" }} />
+                <div style={{ textAlign: "center" }}>
+                  <div style={{ fontWeight: 800, fontSize: 18, color: C.white }}>{trainerDetailModal.classesCount}</div>
+                  <div style={{ fontSize: 11, color: "#888", marginTop: 2 }}>{t("كلاس", "Classes")}</div>
+                </div>
               </div>
               {/* Bio */}
               {(lang === "en" ? (trainerDetailModal.bioEn || trainerDetailModal.bio) : trainerDetailModal.bio) && (
                 <div style={{ marginBottom: 20 }}>
-                  <div style={{ fontWeight: 800, color: C.white, marginBottom: 8 }}>{t("نبذة", "About")}</div>
-                  <p style={{ color: "#c9b9c1", fontSize: 14, lineHeight: 1.9 }}>{lang === "en" ? (trainerDetailModal.bioEn || trainerDetailModal.bio) : trainerDetailModal.bio}</p>
+                  <div style={{ fontWeight: 800, color: C.white, marginBottom: 8, fontSize: 14 }}>{t("نبذة", "About")}</div>
+                  <p style={{ color: "#c9b9c1", fontSize: 14, lineHeight: 1.85 }}>{lang === "en" ? (trainerDetailModal.bioEn || trainerDetailModal.bio) : trainerDetailModal.bio}</p>
                 </div>
               )}
               {/* Certifications */}
               {((lang === "en" ? (trainerDetailModal.certificationsEn ?? trainerDetailModal.certifications) : trainerDetailModal.certifications)).length > 0 && (
                 <div style={{ marginBottom: 20 }}>
-                  <div style={{ fontWeight: 800, color: C.white, marginBottom: 10 }}>{t("الشهادات والمؤهلات", "Certifications")}</div>
+                  <div style={{ fontWeight: 800, color: C.white, marginBottom: 10, fontSize: 14 }}>{t("الشهادات والمؤهلات", "Certifications")}</div>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                     {(lang === "en" ? (trainerDetailModal.certificationsEn ?? trainerDetailModal.certifications) : trainerDetailModal.certifications).map((cert, i) => (
-                      <span key={i} style={{ background: "rgba(233,30,99,.12)", border: `1px solid ${C.red}`, borderRadius: 20, padding: "4px 12px", fontSize: 12, color: "#ffb7d0" }}>🎓 {cert}</span>
+                      <span key={i} style={{ background: "rgba(233,30,99,.12)", border: `1px solid ${C.red}`, borderRadius: 20, padding: "5px 14px", fontSize: 12, color: "#ffb7d0" }}>🎓 {cert}</span>
                     ))}
                   </div>
                 </div>
@@ -2733,11 +2745,11 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
               {/* Certificate files (images) */}
               {trainerDetailModal.certificateFiles.length > 0 && (
                 <div style={{ marginBottom: 20 }}>
-                  <div style={{ fontWeight: 800, color: C.white, marginBottom: 10 }}>{t("صور الشهادات", "Certificate Images")}</div>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 10 }}>
+                  <div style={{ fontWeight: 800, color: C.white, marginBottom: 10, fontSize: 14 }}>{t("صور الشهادات", "Certificate Images")}</div>
+                  <div style={{ display: "grid", gridTemplateColumns: _w < 400 ? "repeat(2, 1fr)" : "repeat(auto-fill, minmax(130px, 1fr))", gap: 10 }}>
                     {trainerDetailModal.certificateFiles.map((f, i) => (
                       <a key={i} href={f.url} target="_blank" rel="noopener noreferrer" style={{ display: "block", borderRadius: 10, overflow: "hidden", border: "1px solid rgba(255,255,255,.12)" }}>
-                        <img src={f.url} alt={f.label || `شهادة ${i + 1}`} style={{ width: "100%", height: 100, objectFit: "cover", display: "block" }} />
+                        <img src={f.url} alt={f.label || `شهادة ${i + 1}`} style={{ width: "100%", height: 90, objectFit: "cover", display: "block" }} />
                         {f.label && <div style={{ fontSize: 10, color: "#888", padding: "4px 6px", textAlign: "center" }}>{f.label}</div>}
                       </a>
                     ))}
@@ -2746,12 +2758,18 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
               )}
               {/* Booking buttons */}
               {summary?.authenticated ? (
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 8 }}>
-                  <button className="btn-primary" onClick={() => { setTrainerDetailModal(null); setPrivateBookingModal({ trainer: trainerDetailModal, type: "private" }); }}>🎯 {t("برايفيت", "Private")}<br /><span style={{ fontSize: 11, fontWeight: 400, opacity: .8 }}>{t("3000 ج.م / 12 حصة", "3000 EGP / 12 sessions")}</span></button>
-                  <button style={{ borderRadius: 12, border: `1px solid ${C.gold}`, background: "rgba(200,162,0,.1)", color: C.gold, cursor: "pointer", fontWeight: 700, fontSize: 13, padding: "12px 8px", textAlign: "center" }} onClick={() => { setTrainerDetailModal(null); setPrivateBookingModal({ trainer: trainerDetailModal, type: "mini_private" }); }}>👥 {t("ميني برايفيت", "Mini Private")}<br /><span style={{ fontSize: 11, fontWeight: 400, opacity: .8 }}>{t("1000 ج.م / 12 حصة", "1000 EGP / 12 sessions")}</span></button>
+                <div style={{ display: "grid", gridTemplateColumns: _w < 400 ? "1fr" : "1fr 1fr", gap: 10, marginTop: 4 }}>
+                  <button className="btn-primary" style={{ padding: "14px 8px", fontSize: 14, borderRadius: 12, textAlign: "center" }} onClick={() => { setTrainerDetailModal(null); setPrivateBookingModal({ trainer: trainerDetailModal, type: "private" }); }}>
+                    🎯 {t("برايفيت", "Private")}<br />
+                    <span style={{ fontSize: 11, fontWeight: 400, opacity: .75 }}>{t("برنامج مخصص 100%", "100% personalised")}</span>
+                  </button>
+                  <button style={{ borderRadius: 12, border: `1px solid ${C.gold}`, background: "rgba(200,162,0,.1)", color: C.gold, cursor: "pointer", fontWeight: 700, fontSize: 14, padding: "14px 8px", textAlign: "center" }} onClick={() => { setTrainerDetailModal(null); setPrivateBookingModal({ trainer: trainerDetailModal, type: "mini_private" }); }}>
+                    👥 {t("ميني برايفيت", "Mini Private")}<br />
+                    <span style={{ fontSize: 11, fontWeight: 400, opacity: .75 }}>{t("3–5 عملاء", "3–5 clients")}</span>
+                  </button>
                 </div>
               ) : (
-                <button className="btn-primary" style={{ width: "100%" }} onClick={() => { setTrainerDetailModal(null); navigate("register"); }}>{t("سجلي الدخول للحجز", "Login to book")}</button>
+                <button className="btn-primary" style={{ width: "100%", fontSize: 15, padding: "14px" }} onClick={() => { setTrainerDetailModal(null); navigate("register"); }}>{t("سجلي الدخول للحجز", "Login to book")}</button>
               )}
             </div>
           </div>
