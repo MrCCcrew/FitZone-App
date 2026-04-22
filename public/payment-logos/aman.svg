@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 48" width="120" height="48">
+  <rect width="120" height="48" rx="8" fill="#FFFFFF"/>
+  <!-- House/shield icon -->
+  <path d="M18 30 L18 22 L26 15 L34 22 L34 30 Z" fill="#0057B8" stroke="#0057B8" stroke-width="1"/>
+  <rect x="22" y="24" width="8" height="6" fill="#FFFFFF" rx="1"/>
+  <!-- Aman text -->
+  <text x="42" y="21" font-family="'Arial Black',Arial,sans-serif" font-size="11" font-weight="900" fill="#0057B8" letter-spacing="1">AMAN</text>
+  <text x="42" y="36" font-family="Arial,sans-serif" font-size="11" font-weight="700" fill="#0057B8">أمان</text>
+</svg>
