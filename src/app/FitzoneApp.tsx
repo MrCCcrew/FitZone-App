@@ -5846,9 +5846,18 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
             {/* وسائل الدفع */}
             <div style={{ marginTop: 18 }}>
               <div style={{ color: C.gray, fontSize: 12, marginBottom: 10 }}>{t("وسائل الدفع المتاحة", "Available payment methods")}</div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                {[{ label: "VISA", bg: "#1a1f71", color: "#fff" }, { label: "Mastercard", bg: "#eb001b", color: "#fff" }, { label: "Paymob", bg: "#6c3483", color: "#fff" }].map((m) => (
-                  <span key={m.label} style={{ background: m.bg, color: m.color, fontSize: 11, fontWeight: 800, padding: "4px 10px", borderRadius: 6 }}>{m.label}</span>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+                {[
+                  { src: "/payment-logos/visa.svg",          alt: "Visa",         bg: "#fff" },
+                  { src: "/payment-logos/mastercard.svg",     alt: "Mastercard",   bg: "#fff" },
+                  { src: "/payment-logos/primium.webp",       alt: "Premium Card", bg: "#fff" },
+                  { src: "/payment-logos/u-valu-logo.webp",   alt: "valU",         bg: "#fff" },
+                  { src: "/payment-logos/sympl-menu2.png",    alt: "Sympl",        bg: "#fff" },
+                  { src: "/payment-logos/sohoooooola.png",    alt: "Souhoola",     bg: "#fff" },
+                ].map(({ src, alt, bg }) => (
+                  <div key={alt} style={{ height: 28, borderRadius: 6, background: bg, border: "1px solid rgba(255,255,255,.15)", padding: "3px 7px", display: "flex", alignItems: "center" }}>
+                    <img src={src} alt={alt} style={{ height: 20, width: "auto", objectFit: "contain", display: "block" }} loading="lazy" />
+                  </div>
                 ))}
               </div>
             </div>
@@ -6465,16 +6474,25 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
               <div>
                 <h2 style={{ fontWeight: 800, fontSize: 22, color: C.white, marginBottom: 20 }}>{t("طريقة الدفع", "Payment method")}</h2>
                 <div className="card" style={{ padding: 20 }}>
-                  {availablePayMethods.map((method) => {
-                    const icon = "💳";
-                    return (
+                  {availablePayMethods.map((method) => (
                     <div key={method.id} onClick={() => setPayMethod(method.id)} style={{ display: "flex", alignItems: "center", gap: 14, padding: 14, borderRadius: 8, border: payMethod === method.id ? `2px solid ${C.red}` : `1px solid ${C.border}`, marginBottom: 10, cursor: "pointer", background: payMethod === method.id ? "rgba(233,30,99,.08)" : "transparent" }}>
-                      <div style={{ width: 40, height: 40, borderRadius: 8, background: payMethod === method.id ? "rgba(233,30,99,.2)" : C.bgCard2, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>{icon}</div>
-                      <span style={{ fontWeight: 600, fontSize: 14, color: payMethod === method.id ? C.white : C.gray }}>{method.label}</span>
+                      {/* Payment logos strip */}
+                      <div style={{ display: "flex", gap: 4, alignItems: "center", flexShrink: 0 }}>
+                        {[
+                          { src: "/payment-logos/visa.svg",        alt: "Visa"         },
+                          { src: "/payment-logos/mastercard.svg",   alt: "Mastercard"   },
+                          { src: "/payment-logos/u-valu-logo.webp", alt: "valU"         },
+                          { src: "/payment-logos/sympl-menu2.png",  alt: "Sympl"        },
+                        ].map(({ src, alt }) => (
+                          <div key={alt} style={{ height: 26, borderRadius: 5, background: "#fff", border: "1px solid rgba(0,0,0,.12)", padding: "2px 5px", display: "flex", alignItems: "center" }}>
+                            <img src={src} alt={alt} style={{ height: 18, width: "auto", objectFit: "contain", display: "block" }} loading="lazy" />
+                          </div>
+                        ))}
+                      </div>
+                      <span style={{ fontWeight: 600, fontSize: 14, color: payMethod === method.id ? C.white : C.gray, flex: 1 }}>{method.label}</span>
                       {payMethod === method.id && <I n="check" s={16} c={C.red} />}
                     </div>
-                  );
-                  })}
+                  ))}
                 </div>
                 {(rewardsValue > 0 || walletBalance > 0) && (
                   <div className="card" style={{ padding: 16, marginTop: 12 }}>
