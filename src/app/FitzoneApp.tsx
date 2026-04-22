@@ -3838,12 +3838,10 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                 </div>
               ) : (
                 <>
-                  {!schedulePlan.isTrial && (
-                    <div style={{ display: "flex", alignItems: "flex-start", gap: 8, background: "rgba(74,222,128,.07)", border: "1px solid rgba(74,222,128,.3)", borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 13, color: "#4ade80", fontWeight: 700, lineHeight: 1.6 }}>
-                      <span style={{ fontSize: 16, flexShrink: 0 }}>✅</span>
-                      <span>{t("يمكنكِ حجز أكثر من كلاس في نفس اليوم.", "You can book more than one class on the same day.")}</span>
-                    </div>
-                  )}
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: 8, background: "rgba(74,222,128,.07)", border: "1px solid rgba(74,222,128,.3)", borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 13, color: "#4ade80", fontWeight: 700, lineHeight: 1.6 }}>
+                    <span style={{ fontSize: 16, flexShrink: 0 }}>✅</span>
+                    <span>{t("يمكنكِ حجز أكثر من كلاس في نفس اليوم.", "You can book more than one class on the same day.")}</span>
+                  </div>
                   {scheduleSplit.morning.length > 0 && (
                     <div className="schedule-block">
                       <div className="schedule-block-title">الجدول الصباحي</div>
@@ -5057,6 +5055,17 @@ const SchedulePage = () => {
 
   const renderBoard = (title: string, subtitle: string, list: typeof entries, slots: string[]) => {
     if (list.length === 0 && slots === eveningSlots) return null;
+    const isAr = lang === "ar";
+    const orderedSlots = isAr ? [...slots].reverse() : [...slots];
+    const colTemplate = isAr
+      ? `${slots.map(() => "minmax(130px, 1fr)").join(" ")} 88px`
+      : `88px ${slots.map(() => "minmax(130px, 1fr)").join(" ")}`;
+    const dayHeadSt: React.CSSProperties = isAr
+      ? { position: "sticky", right: 0, zIndex: 5, background: "#161214", color: "#9d8a96", fontWeight: 800, fontSize: 11, borderLeft: "1.5px solid rgba(255,255,255,.16)", borderTop: "none", textAlign: "center", padding: "10px 4px" }
+      : { position: "sticky", left: 0, zIndex: 5, background: "#161214", color: "#9d8a96", fontWeight: 800, fontSize: 11, borderRight: "1.5px solid rgba(255,255,255,.16)", borderTop: "none", textAlign: "center", padding: "10px 4px" };
+    const daySt: React.CSSProperties = isAr
+      ? { position: "sticky", right: 0, zIndex: 3, background: "linear-gradient(90deg,#1d1619,#161114)", color: "#fff", fontWeight: 900, fontSize: 12, borderLeft: "1.5px solid rgba(255,255,255,.16)", padding: "10px 4px", textAlign: "center", alignItems: "center", justifyContent: "center" }
+      : { position: "sticky", left: 0, zIndex: 3, background: "linear-gradient(90deg,#161114,#1d1619)", color: "#fff", fontWeight: 900, fontSize: 12, borderRight: "1.5px solid rgba(255,255,255,.16)", padding: "10px 4px", textAlign: "center", alignItems: "center", justifyContent: "center" };
     return (
       <div className="schedule-shell" style={{ marginBottom: 36 }}>
         <div className="schedule-title">
@@ -5064,26 +5073,26 @@ const SchedulePage = () => {
           <span>{title}</span>
           <div style={{ color: "#f1f1f1", fontSize: 14 }}>{subtitle}</div>
         </div>
-        <div className="schedule-scroll" style={{ direction: "rtl", overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 8, background: "rgba(74,222,128,.07)", border: "1px solid rgba(74,222,128,.3)", borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 13, color: "#4ade80", fontWeight: 700, lineHeight: 1.6 }}>
+          <span style={{ fontSize: 16, flexShrink: 0 }}>✅</span>
+          <span>{t("يمكنكِ حجز أكثر من كلاس في نفس اليوم.", "You can book more than one class on the same day.")}</span>
+        </div>
+        <div className="schedule-scroll" style={{ direction: isAr ? "rtl" : "ltr", overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
           <div
             className="schedule-grid"
-            style={{
-              display: "grid",
-              gridTemplateColumns: `${slots.map(() => "minmax(130px, 1fr)").join(" ")} minmax(90px, 120px)`,
-              minWidth: slots.length * 130 + 90,
-            }}
+            style={{ display: "grid", gridTemplateColumns: colTemplate, minWidth: slots.length * 130 + 88 }}
           >
-            {[...slots].reverse().map((slot) => (
-              <div key={`head-${slot}`} className="schedule-cell time">
+            {!isAr && <div className="schedule-cell sticky" style={dayHeadSt}>{t("اليوم", "Day")}</div>}
+            {orderedSlots.map((slot) => (
+              <div key={`head-${slot}`} className="schedule-cell time sticky">
                 {formatTimeLabel(slot)}
               </div>
             ))}
-            <div className="schedule-cell clock">
-              <I n="clock" s={20} c="#f5c542" />
-            </div>
+            {isAr && <div className="schedule-cell sticky" style={dayHeadSt}>{t("اليوم", "Day")}</div>}
             {activeDayIndices.map((dayIdx) => (
               <div key={`row-${dayIdx}`} style={{ display: "contents" }}>
-                {[...slots].reverse().map((slot) => {
+                {!isAr && <div className="schedule-cell" style={daySt}>{dayName(dayIdx)}</div>}
+                {orderedSlots.map((slot) => {
                   const cellEntries = list.filter((e) => e.dayIndex === dayIdx && e.time === slot);
                   return (
                     <div key={`${dayIdx}-${slot}`} className="schedule-cell">
@@ -5101,7 +5110,7 @@ const SchedulePage = () => {
                     </div>
                   );
                 })}
-                <div className="schedule-cell day">{dayName(dayIdx)}</div>
+                {isAr && <div className="schedule-cell" style={daySt}>{dayName(dayIdx)}</div>}
               </div>
             ))}
           </div>
