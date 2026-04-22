@@ -4138,20 +4138,24 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                     <>
                       {summary.finalAmount > 0 && (
                         <div className="card" style={{ padding: 16, marginBottom: 14, background: "rgba(255,255,255,.04)" }}>
-                          <div style={{ fontWeight: 800, color: C.white, marginBottom: 8 }}>{t("اختاري وسيلة الدفع", "Choose payment method")}</div>
-                          <div style={{ display: "grid", gap: 10 }}>
-                            {paymentOptions.map((method) => (
-                              <button
-                                key={method.id}
-                                type="button"
-                                onClick={() => setMembershipPayMethod(method.id)}
-                                className={`schedule-slot-item${membershipPayMethod === method.id ? " selected" : ""}`}
-                                style={{ textAlign: "right" }}
-                              >
-                                <div className="schedule-item-title">{method.label}</div>
-                                <div className="schedule-item-sub">{t("بعد الضغط سيتم إنشاء طلب الدفع وإرسالِك إلى صفحة المتابعة.", "After clicking, your payment request will be created and you will be sent to the follow-up page.")}</div>
-                              </button>
+                          <div style={{ fontWeight: 800, color: C.white, marginBottom: 10 }}>{t("وسائل الدفع المتاحة", "Available payment methods")}</div>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center", marginBottom: 10 }}>
+                            {[
+                              { src: "/payment-logos/visa.svg",        alt: "Visa",         bg: "#fff" },
+                              { src: "/payment-logos/mastercard.svg",  alt: "Mastercard",   bg: "#fff" },
+                              { src: "/payment-logos/primium.webp",    alt: "Premium Card", bg: "#fff" },
+                              { src: "/payment-logos/u-valu-logo.webp",alt: "valU",         bg: "#fff" },
+                              { src: "/payment-logos/sympl-menu2.png", alt: "Sympl",        bg: "#fff" },
+                              { src: "/payment-logos/sohoooooola.png", alt: "Souhoola",     bg: "#fff" },
+                              { src: "/payment-logos/cash-on-delivery.svg", alt: "Cash on Delivery", bg: "transparent" },
+                            ].map((logo) => (
+                              <div key={logo.alt} style={{ background: logo.bg, borderRadius: 6, padding: logo.bg === "transparent" ? 0 : "3px 6px", display: "flex", alignItems: "center", justifyContent: "center", height: 32, border: logo.bg === "transparent" ? "none" : "1px solid rgba(0,0,0,.08)" }}>
+                                <img src={logo.src} alt={logo.alt} style={{ height: 26, maxWidth: 64, objectFit: "contain" }} />
+                              </div>
                             ))}
+                          </div>
+                          <div style={{ fontSize: 11, color: "rgba(255,255,255,.5)", textAlign: "center" }}>
+                            {t("سيتم اختيار وسيلة الدفع داخل نموذج الدفع الآمن", "Payment method will be selected inside the secure payment form")}
                           </div>
                         </div>
                       )}
