@@ -24,7 +24,7 @@ function sanitizeProvider(value: unknown) {
 
 function sanitizePaymentMethod(value: unknown) {
   const raw = String(value ?? "").trim().toLowerCase();
-  if (raw === "wallet" || raw === "free" || raw === "membership" || raw === "offer") return raw;
+  if (raw === "wallet" || raw === "free" || raw === "membership" || raw === "offer" || raw === "cod" || raw === "cash_on_delivery") return raw;
   return "paymob";
 }
 
@@ -110,6 +110,13 @@ export async function POST(req: Request) {
     }
 
     const normalizedPaymentMethod = sanitizePaymentMethod(body.paymentMethod);
+    if (normalizedPaymentMethod === "cod") {
+      return NextResponse.json(
+        { error: "الدفع عند الاستلام يتم عبر مسار الطلب المباشر وليس عبر Paymob checkout." },
+        { status: 400 },
+      );
+    }
+
     let customerPhone: string | null = null;
     if (normalizedPaymentMethod === "wallet") {
       const userRecord = await db.user.findUnique({ where: { id: user.id }, select: { phone: true } });

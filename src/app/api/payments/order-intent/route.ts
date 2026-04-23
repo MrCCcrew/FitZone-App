@@ -9,6 +9,11 @@ type OrderItemInput = {
   size?: string | null;
 };
 
+function resolvePaymentMethod(value: unknown) {
+  const raw = String(value ?? "").trim().toLowerCase();
+  return ["cod", "cash_on_delivery", "cash"].includes(raw) ? "cod" : "paymob";
+}
+
 export async function POST(req: Request) {
   try {
     const currentUser = await getCurrentAppUser();
@@ -27,6 +32,7 @@ export async function POST(req: Request) {
       pointsDeduct?: number;
     };
 
+    const paymentMethod = resolvePaymentMethod(body.paymentMethod);
     const items = Array.isArray(body.items)
       ? body.items.filter((item) => item.productId && Number(item.quantity) > 0)
       : [];
@@ -64,7 +70,6 @@ export async function POST(req: Request) {
     const walletDeductAmount = Math.min(Math.max(0, Number(body.walletDeduct ?? 0)), total);
     const pointsDeductCount = Math.floor(Math.max(0, Number(body.pointsDeduct ?? 0)));
 
-    // Validate wallet & points
     let pointValueEGP = 0.1;
     let validatedWalletDeduct = 0;
     let validatedPointsDeduct = 0;
@@ -72,15 +77,17 @@ export async function POST(req: Request) {
 
     if (walletDeductAmount > 0 || pointsDeductCount > 0) {
       const [walletRow, pointsRow, rewardSettings] = await Promise.all([
-        walletDeductAmount > 0 ? db.wallet.findUnique({ where: { userId: currentUser.id }, select: { balance: true } }) : null,
+        walletDeductAmount > 0
+          ? db.wallet.findUnique({ where: { userId: currentUser.id }, select: { balance: true } })
+          : null,
         pointsDeductCount > 0 ? db.rewardPoints.findUnique({ where: { userId: currentUser.id } }) : null,
         db.siteContent.findUnique({ where: { section: "reward_settings" } }),
       ]);
 
       if (rewardSettings?.content) {
         try {
-          const s = JSON.parse(rewardSettings.content) as { pointValueEGP?: number };
-          if (typeof s.pointValueEGP === "number") pointValueEGP = s.pointValueEGP;
+          const settings = JSON.parse(rewardSettings.content) as { pointValueEGP?: number };
+          if (typeof settings.pointValueEGP === "number") pointValueEGP = settings.pointValueEGP;
         } catch {}
       }
 
@@ -102,7 +109,6 @@ export async function POST(req: Request) {
 
     const amountAfterDeductions = Math.max(0, total - validatedWalletDeduct - pointsEGP);
 
-    // Deduct wallet and points, create order in one transaction
     const { order, walletId } = await db.$transaction(async (tx) => {
       const createdOrder = await tx.order.create({
         data: {
@@ -110,7 +116,7 @@ export async function POST(req: Request) {
           total,
           status: "pending",
           address: body.address?.trim() || null,
-          paymentMethod: body.paymentMethod ?? "card",
+          paymentMethod,
           items: {
             create: items.map((item) => {
               const product = products.find((entry) => entry.id === item.productId)!;
@@ -160,10 +166,14 @@ export async function POST(req: Request) {
       return { order: createdOrder, walletId: wId };
     });
 
-    // If fully paid by wallet/points, mark order confirmed directly
     if (amountAfterDeductions <= 0) {
       await db.order.update({ where: { id: order.id }, data: { status: "confirmed" } });
       return NextResponse.json({ success: true, orderId: order.id, transaction: null, fullyPaid: true });
+    }
+
+    if (paymentMethod === "cod") {
+      await db.order.update({ where: { id: order.id }, data: { status: "confirmed" } });
+      return NextResponse.json({ success: true, orderId: order.id, transaction: null, cashOnDelivery: true });
     }
 
     const transaction = await createPaymentTransaction({

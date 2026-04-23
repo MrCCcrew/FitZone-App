@@ -188,6 +188,8 @@ type PublicPayload = {
     vodafoneCashLabel: string;
     instapayAccounts: { id: string; label: string; url: string; isDefault?: boolean }[];
     vodafoneCashAccounts: { id: string; label: string; url: string; isDefault?: boolean }[];
+    cashOnDeliveryEnabled?: boolean;
+    cashOnDeliveryLabel?: string;
   };
 };
 
@@ -222,6 +224,8 @@ const EMPTY_PAYLOAD: PublicPayload = {
     vodafoneCashLabel: "Paymob",
     instapayAccounts: [{ id: "paymob", label: "Paymob", url: "", isDefault: true }],
     vodafoneCashAccounts: [],
+    cashOnDeliveryEnabled: true,
+    cashOnDeliveryLabel: "الدفع عند الاستلام",
   },
 };
 
@@ -634,6 +638,8 @@ export async function GET(request: Request) {
         vodafoneCashLabel: "Paymob",
         instapayAccounts: [{ id: "paymob", label: "Paymob", url: "", isDefault: true }],
         vodafoneCashAccounts: [],
+        cashOnDeliveryEnabled: true,
+        cashOnDeliveryLabel: lang === "en" ? "Cash on delivery" : "الدفع عند الاستلام",
       },
     };
 
