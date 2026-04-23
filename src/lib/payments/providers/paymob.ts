@@ -189,6 +189,7 @@ async function createPaymentKey(params: {
   currency: string;
   integrationId: number;
   billingData: ReturnType<typeof buildBillingData>;
+  redirectionUrl: string;
 }) {
   const response = await fetch(`${getRegionBase()}/api/acceptance/payment_keys`, {
     method: "POST",
@@ -202,6 +203,7 @@ async function createPaymentKey(params: {
       currency: params.currency,
       integration_id: params.integrationId,
       lock_order_when_paid: false,
+      redirection_url: params.redirectionUrl,
     }),
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
@@ -298,6 +300,8 @@ async function createCheckout(input: PaymentCheckoutInput): Promise<PaymentCheck
     currency: input.currency || "EGP",
     transactionId: input.transactionId,
   });
+  const returnUrl = buildReturnUrl(settings.returnUrl, input.transactionId, "return");
+
   const paymentToken = await createPaymentKey({
     authToken,
     orderId: paymobOrderId,
@@ -305,6 +309,7 @@ async function createCheckout(input: PaymentCheckoutInput): Promise<PaymentCheck
     currency: input.currency || "EGP",
     integrationId,
     billingData: buildBillingData(input.customer),
+    redirectionUrl: returnUrl,
   });
 
   const checkoutUrl = buildHostedCheckoutUrl(iframeId, paymentToken);
