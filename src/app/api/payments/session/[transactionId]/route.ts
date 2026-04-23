@@ -60,6 +60,7 @@ export async function GET(_: Request, context: { params: Promise<{ transactionId
       intentionId: payload.intentionId ?? null,
       checkoutUrl: payload.checkoutUrl ?? transaction.checkoutUrl ?? null,
       iframeUrl: payload.iframeUrl ?? transaction.iframeUrl ?? null,
+      paymentMethods: Array.isArray(payload.paymentMethods) ? payload.paymentMethods : [],
     },
   });
 }
