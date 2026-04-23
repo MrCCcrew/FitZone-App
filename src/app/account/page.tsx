@@ -73,7 +73,15 @@ async function getAccountData(userId: string) {
 
     if (!user) return null;
 
-    const activeMembership = user.memberships.find((membership) => membership.status === "active") ?? user.memberships[0] ?? null;
+    const activeMembership = user.memberships.find((membership) => membership.status === "active") ?? null;
+    const pendingPaymentMembership = user.memberships.find((membership) => membership.status === "pending_payment") ?? null;
+    const pendingPaymentTx = pendingPaymentMembership
+      ? await db.paymentTransaction.findFirst({
+          where: { membershipId: pendingPaymentMembership.id, status: { in: ["pending", "requires_action"] } },
+          select: { id: true, checkoutUrl: true },
+          orderBy: { createdAt: "desc" },
+        })
+      : null;
     const classesUsed = user.bookings.filter(
       (booking) =>
         booking.status === "attended" &&
@@ -170,6 +178,14 @@ async function getAccountData(userId: string) {
           productRewards: productRewards.filter((reward) => reward.productId && reward.quantity > 0),
         };
       }),
+      pendingPayment: pendingPaymentMembership
+        ? {
+            plan: pendingPaymentMembership.membership.name,
+            amount: pendingPaymentMembership.paymentAmount,
+            transactionId: pendingPaymentTx?.id ?? null,
+            checkoutUrl: pendingPaymentTx?.checkoutUrl ?? null,
+          }
+        : null,
       wallet: {
         balance: user.wallet?.balance ?? 0,
         transactions: (user.wallet?.transactions ?? []).map((tx) => ({
