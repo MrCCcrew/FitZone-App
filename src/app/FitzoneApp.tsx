@@ -3493,6 +3493,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
             discountCode: discountResult ? discountCode.trim().toUpperCase() : null,
             walletDeduct: fs.walletDiscount > 0 ? fs.walletDiscount : undefined,
             pointsDeduct: fs.pointsToDeduct > 0 ? fs.pointsToDeduct : undefined,
+            trialPrice: plan.isTrial ? plan.price : undefined,
           };
         })()),
         signal: controller.signal,
