@@ -6115,6 +6115,7 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
   const [locating, setLocating] = useState(false);
   const [orderMsg, setOrderMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [createdOrderId, setCreatedOrderId] = useState<string | null>(null);
+  const [pendingPaymentUrl, setPendingPaymentUrl] = useState<string | null>(null);
   const [paymentAction, setPaymentAction] = useState<{ url: string; label: string; transactionId?: string | null } | null>(null);
   const [cartPaymobModal, setCartPaymobModal] = useState<{ url: string; transactionId: string | null } | null>(null);
   const [deliveryOptions, setDeliveryOptions] = useState<PublicDeliveryOption[]>([]);
@@ -6618,6 +6619,22 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
           </div>
         </div>
       </div>
+
+      {pendingPaymentUrl && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 300, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "rgba(12,4,8,.92)", backdropFilter: "blur(10px)", padding: 24, textAlign: "center" }}>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>🔒</div>
+          <div style={{ color: "#fff", fontWeight: 900, fontSize: 20, marginBottom: 8 }}>{t("صفحة الدفع الآمن جاهزة", "Secure payment page ready")}</div>
+          <div style={{ color: "#d7aabd", fontSize: 14, marginBottom: 28, lineHeight: 1.7 }}>
+            {t("اضغطي على الزرار للانتقال إلى صفحة الدفع", "Tap the button to proceed to the payment page")}
+          </div>
+          <a href={pendingPaymentUrl} style={{ display: "block", background: C.red, color: "#fff", fontWeight: 900, fontSize: 18, padding: "16px 40px", borderRadius: 16, textDecoration: "none", marginBottom: 16 }}>
+            {t("متابعة إلى الدفع", "Continue to payment")}
+          </a>
+          <button onClick={() => setPendingPaymentUrl(null)} style={{ background: "none", border: "none", color: "#d7aabd", fontSize: 13, cursor: "pointer", textDecoration: "underline" }}>
+            {t("إلغاء", "Cancel")}
+          </button>
+        </div>
+      )}
     </div>
   );
 };
