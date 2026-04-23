@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 
 type PaymentTransaction = {
   id: string;
+  referenceCode?: string | null;
   status: "pending" | "requires_action" | "paid" | "failed" | "cancelled" | "expired";
   amount: number;
   currency: string;
@@ -160,7 +161,7 @@ function PaymentVerifyContent() {
               ) : null}
 
               <div className="text-xs text-[#d7aabd]">
-                رقم المعاملة: <span className="text-white">{transaction.id}</span>
+                رقم المعاملة: <span className="text-white">{transaction.referenceCode ?? transaction.id}</span>
               </div>
 
               {transaction.status === "pending" || transaction.status === "requires_action" ? (
