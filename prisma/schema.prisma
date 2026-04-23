@@ -360,10 +360,10 @@ model PaymentTransaction {
   currency          String    @default("EGP")
   status            String    @default("pending") // pending | requires_action | paid | failed | cancelled | expired
   paymentMethod     String    @default("card")
-  checkoutUrl       String?
-  iframeUrl         String?
-  returnUrl         String?
-  cancelUrl         String?
+  checkoutUrl       String?   @db.Text
+  iframeUrl         String?   @db.Text
+  returnUrl         String?   @db.Text
+  cancelUrl         String?   @db.Text
   providerPayload   String?   @db.LongText
   metadata          String?   @db.LongText
   expiresAt         DateTime?
