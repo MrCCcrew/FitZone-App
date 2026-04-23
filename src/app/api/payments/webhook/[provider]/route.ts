@@ -3,6 +3,16 @@ import { db } from "@/lib/db";
 import { getPaymentProvider } from "@/lib/payments/registry";
 import { verifyPaymentTransaction } from "@/lib/payments/service";
 
+// Browsers that land here via GET (misconfigured Paymob redirect) get sent to the verify page
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url);
+  const transactionId = searchParams.get("merchant_order_id") ?? searchParams.get("transactionId") ?? "";
+  const destination = transactionId
+    ? `/payment/verify?transactionId=${encodeURIComponent(transactionId)}`
+    : "/payment/verify";
+  return NextResponse.redirect(new URL(destination, req.url), { status: 302 });
+}
+
 export async function POST(req: Request, context: { params: Promise<{ provider: string }> }) {
   const { provider: providerKey } = await context.params;
 
