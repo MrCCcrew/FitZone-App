@@ -14,9 +14,13 @@ type PaymentSettingsResponse = PaymentSettings & {
   envConfigured: {
     merchantId: boolean;
     publicKey: boolean;
-    integrationId: boolean;
+    cardIntegrationId: boolean;
     walletIntegrationId: boolean;
+    valuIntegrationId: boolean;
+    symplIntegrationId: boolean;
+    souhoolaIntegrationId: boolean;
     iframeId: boolean;
+    installmentIframeId: boolean;
     env: string;
   };
 };
@@ -30,11 +34,18 @@ function normalize(raw: Partial<PaymentSettings>): PaymentSettings {
     publicKey: String(raw.publicKey ?? ""),
     integrationId: String(raw.integrationId ?? raw.iframeId ?? ""),
     walletIntegrationId: String(raw.walletIntegrationId ?? ""),
+    valuIntegrationId: String(raw.valuIntegrationId ?? ""),
+    symplIntegrationId: String(raw.symplIntegrationId ?? ""),
+    souhoolaIntegrationId: String(raw.souhoolaIntegrationId ?? ""),
     iframeId: String(raw.iframeId ?? ""),
+    installmentIframeId: String(raw.installmentIframeId ?? DEFAULT_PAYMENT_SETTINGS.installmentIframeId ?? ""),
     returnUrl: String(raw.returnUrl ?? DEFAULT_PAYMENT_SETTINGS.returnUrl),
     cancelUrl: String(raw.cancelUrl ?? DEFAULT_PAYMENT_SETTINGS.cancelUrl),
     webhookUrl: String(raw.webhookUrl ?? DEFAULT_PAYMENT_SETTINGS.webhookUrl),
     sandboxMode: Boolean(raw.sandboxMode ?? DEFAULT_PAYMENT_SETTINGS.sandboxMode),
+    cashOnDeliveryEnabled: Boolean(raw.cashOnDeliveryEnabled ?? DEFAULT_PAYMENT_SETTINGS.cashOnDeliveryEnabled),
+    cashOnDeliveryLabelAr: String(raw.cashOnDeliveryLabelAr ?? DEFAULT_PAYMENT_SETTINGS.cashOnDeliveryLabelAr),
+    cashOnDeliveryLabelEn: String(raw.cashOnDeliveryLabelEn ?? DEFAULT_PAYMENT_SETTINGS.cashOnDeliveryLabelEn),
     notes: String(raw.notes ?? ""),
     displayLabelAr: String(raw.displayLabelAr ?? DEFAULT_PAYMENT_SETTINGS.displayLabelAr),
     displayLabelEn: String(raw.displayLabelEn ?? DEFAULT_PAYMENT_SETTINGS.displayLabelEn),
@@ -64,9 +75,15 @@ function envConfigured() {
   return {
     merchantId: Boolean(process.env.PAYMOB_MERCHANT_ID?.trim()),
     publicKey: Boolean(process.env.PAYMOB_PUBLIC_KEY?.trim()),
-    integrationId: Boolean(process.env.PAYMOB_INTEGRATION_ID?.trim()),
+    cardIntegrationId: Boolean(
+      process.env.PAYMOB_CARD_INTEGRATION_ID?.trim() || process.env.PAYMOB_INTEGRATION_ID?.trim(),
+    ),
     walletIntegrationId: Boolean(process.env.PAYMOB_WALLET_INTEGRATION_ID?.trim()),
+    valuIntegrationId: Boolean(process.env.PAYMOB_VALU_INTEGRATION_ID?.trim()),
+    symplIntegrationId: Boolean(process.env.PAYMOB_SYMPL_INTEGRATION_ID?.trim()),
+    souhoolaIntegrationId: Boolean(process.env.PAYMOB_SOUHOOLA_INTEGRATION_ID?.trim()),
     iframeId: Boolean(process.env.PAYMOB_IFRAME_CARD_ID?.trim()),
+    installmentIframeId: Boolean(process.env.PAYMOB_IFRAME_INSTALLMENT_ID?.trim()),
     env: String(process.env.PAYMOB_ENV ?? "").trim().toLowerCase(),
   };
 }
@@ -144,13 +161,19 @@ export async function POST(req: Request) {
     const issues: string[] = [];
 
     if (!settings.enabled) issues.push("المزوّد معطّل من لوحة الأدمن.");
+    const electronicIntegrationIds = [
+      settings.integrationId,
+      settings.walletIntegrationId,
+      settings.valuIntegrationId,
+      settings.symplIntegrationId,
+      settings.souhoolaIntegrationId,
+    ].filter((value) => String(value ?? "").trim() !== "");
+
     if (!settings.merchantId) issues.push("Merchant ID غير مضبوط.");
     if (!settings.publicKey) issues.push("Public key غير مضبوط.");
-    if (!settings.integrationId) issues.push("Integration ID (بطاقة) غير مضبوط.");
+    if (electronicIntegrationIds.length === 0) issues.push("لا توجد أي Integration IDs مفعلة حاليًا لوسائل Paymob الإلكترونية.");
     if (!settings.returnUrl) issues.push("Return URL غير مضبوط.");
     if (!settings.cancelUrl) issues.push("Cancel URL غير مضبوط.");
-    if (!settings.iframeId) issues.push("Iframe ID غير مضبوط.");
-    if (!settings.walletIntegrationId) issues.push("Wallet Integration ID غير مضبوط — المحافظ الإلكترونية لن تعمل.");
     if (!secrets.apiKey) issues.push("PAYMOB_API_KEY غير مضبوط على السيرفر.");
     if (!secrets.secretKey) issues.push("PAYMOB_SECRET_KEY غير مضبوط على السيرفر.");
     if (!secrets.hmac) issues.push("PAYMOB_HMAC_SECRET غير مضبوط على السيرفر.");

@@ -33,7 +33,7 @@ type CreatePaymentTransactionInput = {
 function normalizeExternalPaymentMethod(method: string | null | undefined) {
   const raw = String(method ?? "").trim().toLowerCase();
 
-  if (raw === "wallet" || raw === "free" || raw === "membership" || raw === "offer") {
+  if (raw === "wallet" || raw === "free" || raw === "membership" || raw === "offer" || raw === "cod" || raw === "cash_on_delivery") {
     return raw;
   }
 

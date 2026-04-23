@@ -21,6 +21,7 @@ type DeliverySnapshot = {
 function sanitizeMethod(value: unknown) {
   const raw = String(value ?? "").toLowerCase().trim();
   if (raw === "wallet") return "wallet";
+  if (raw === "cod" || raw === "cash_on_delivery" || raw === "cash") return "cod";
   return "paymob";
 }
 
@@ -236,6 +237,8 @@ export async function POST(req: Request) {
       });
       checkoutUrl = transaction.checkoutUrl ?? null;
       transactionId = transaction.id;
+    } else if (total > 0 && paymentMethod === "cod") {
+      await db.order.update({ where: { id: order.id }, data: { status: "confirmed" } });
     } else if (total <= 0) {
       // Fully paid by wallet/points
       await db.order.update({ where: { id: order.id }, data: { status: "confirmed" } });

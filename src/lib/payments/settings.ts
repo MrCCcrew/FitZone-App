@@ -7,11 +7,18 @@ export type PaymentSettings = {
   publicKey: string;
   integrationId: string;
   walletIntegrationId: string;
+  valuIntegrationId: string;
+  symplIntegrationId: string;
+  souhoolaIntegrationId: string;
   iframeId: string;
+  installmentIframeId: string;
   returnUrl: string;
   cancelUrl: string;
   webhookUrl: string;
   sandboxMode: boolean;
+  cashOnDeliveryEnabled: boolean;
+  cashOnDeliveryLabelAr: string;
+  cashOnDeliveryLabelEn: string;
   notes: string;
   displayLabelAr: string;
   displayLabelEn: string;
@@ -29,12 +36,19 @@ const DEFAULT_SETTINGS: PaymentSettings = {
   merchantId: "1152714",
   publicKey: "",
   integrationId: "5613515",
-  walletIntegrationId: "",
+  walletIntegrationId: "5632185",
+  valuIntegrationId: "",
+  symplIntegrationId: "",
+  souhoolaIntegrationId: "",
   iframeId: "1032257",
+  installmentIframeId: "1032256",
   returnUrl: "https://fitzoneland.com/payment/verify",
   cancelUrl: "https://fitzoneland.com/payment/verify?state=cancel",
   webhookUrl: "https://fitzoneland.com/api/payments/webhook/paymob",
   sandboxMode: true,
+  cashOnDeliveryEnabled: true,
+  cashOnDeliveryLabelAr: "الدفع عند الاستلام",
+  cashOnDeliveryLabelEn: "Cash on delivery",
   notes: "",
   displayLabelAr: "الدفع الإلكتروني عبر Paymob",
   displayLabelEn: "Paymob online payment",
@@ -58,9 +72,16 @@ function getEnvOverrides() {
   return {
     merchantId: process.env.PAYMOB_MERCHANT_ID?.trim() || null,
     publicKey: process.env.PAYMOB_PUBLIC_KEY?.trim() || null,
-    integrationId: process.env.PAYMOB_INTEGRATION_ID?.trim() || null,
+    integrationId:
+      process.env.PAYMOB_CARD_INTEGRATION_ID?.trim() ||
+      process.env.PAYMOB_INTEGRATION_ID?.trim() ||
+      null,
     walletIntegrationId: process.env.PAYMOB_WALLET_INTEGRATION_ID?.trim() || null,
+    valuIntegrationId: process.env.PAYMOB_VALU_INTEGRATION_ID?.trim() || null,
+    symplIntegrationId: process.env.PAYMOB_SYMPL_INTEGRATION_ID?.trim() || null,
+    souhoolaIntegrationId: process.env.PAYMOB_SOUHOOLA_INTEGRATION_ID?.trim() || null,
     iframeId: process.env.PAYMOB_IFRAME_CARD_ID?.trim() || null,
+    installmentIframeId: process.env.PAYMOB_IFRAME_INSTALLMENT_ID?.trim() || null,
     sandboxMode:
       paymobEnv === "test"
         ? true
@@ -80,11 +101,18 @@ function normalizeSettings(raw: Record<string, unknown>): PaymentSettings {
     publicKey: env.publicKey ?? String(raw.publicKey ?? ""),
     integrationId: env.integrationId ?? String(raw.integrationId ?? raw.iframeId ?? ""),
     walletIntegrationId: env.walletIntegrationId ?? String(raw.walletIntegrationId ?? ""),
+    valuIntegrationId: env.valuIntegrationId ?? String(raw.valuIntegrationId ?? ""),
+    symplIntegrationId: env.symplIntegrationId ?? String(raw.symplIntegrationId ?? ""),
+    souhoolaIntegrationId: env.souhoolaIntegrationId ?? String(raw.souhoolaIntegrationId ?? ""),
     iframeId: env.iframeId ?? String(raw.iframeId ?? ""),
+    installmentIframeId: env.installmentIframeId ?? String(raw.installmentIframeId ?? ""),
     returnUrl: String(raw.returnUrl ?? DEFAULT_SETTINGS.returnUrl),
     cancelUrl: String(raw.cancelUrl ?? DEFAULT_SETTINGS.cancelUrl),
     webhookUrl: String(raw.webhookUrl ?? DEFAULT_SETTINGS.webhookUrl),
     sandboxMode: env.sandboxMode ?? Boolean(raw.sandboxMode ?? DEFAULT_SETTINGS.sandboxMode),
+    cashOnDeliveryEnabled: Boolean(raw.cashOnDeliveryEnabled ?? DEFAULT_SETTINGS.cashOnDeliveryEnabled),
+    cashOnDeliveryLabelAr: String(raw.cashOnDeliveryLabelAr ?? DEFAULT_SETTINGS.cashOnDeliveryLabelAr),
+    cashOnDeliveryLabelEn: String(raw.cashOnDeliveryLabelEn ?? DEFAULT_SETTINGS.cashOnDeliveryLabelEn),
     notes: String(raw.notes ?? ""),
     displayLabelAr: String(raw.displayLabelAr ?? DEFAULT_SETTINGS.displayLabelAr),
     displayLabelEn: String(raw.displayLabelEn ?? DEFAULT_SETTINGS.displayLabelEn),
