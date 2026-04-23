@@ -3025,6 +3025,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
   const plansRef = useRef<HTMLDivElement | null>(null);
   const [subscribing, setSubscribing] = useState<string | null>(null);
   const [subMsg, setSubMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [pendingPaymentUrl, setPendingPaymentUrl] = useState<string | null>(null);
   const [verifyModal, setVerifyModal] = useState<{ plan: PlanItem; scheduleIds: string[] } | null>(null);
   const [checkoutPreview, setCheckoutPreview] = useState<MembershipCheckoutPreview | null>(null);
   const [subCheckoutOptions, setSubCheckoutOptions] = useState<{ walletBalance: number; rewardPoints: number; pointValueEGP: number; rewardPointsEGP: number } | null>(null);
@@ -3517,7 +3518,9 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
         return;
       }
       if (data.checkoutUrl) {
-        window.location.href = data.checkoutUrl;
+        setPendingPaymentUrl(data.checkoutUrl);
+        // Try auto-redirect (works on desktop; mobile may block async redirects)
+        try { window.location.href = data.checkoutUrl; } catch {}
       } else {
         setSubMsg({ text: `✅ تم الاشتراك في باقة ${plan.name} بنجاح!`, ok: true });
         setCheckoutPreview(null);
@@ -4048,6 +4051,29 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
             </>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Payment redirect overlay — shown when checkoutUrl received, handles mobile async-redirect blocking */}
+      {pendingPaymentUrl && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 300, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "rgba(12,4,8,.92)", backdropFilter: "blur(10px)", padding: 24, textAlign: "center" }}>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>🔒</div>
+          <div style={{ color: "#fff", fontWeight: 900, fontSize: 20, marginBottom: 8 }}>{t("صفحة الدفع الآمن جاهزة", "Secure payment page ready")}</div>
+          <div style={{ color: "#d7aabd", fontSize: 14, marginBottom: 28, lineHeight: 1.7 }}>
+            {t("اضغطي على الزرار للانتقال إلى صفحة الدفع", "Tap the button to proceed to the payment page")}
+          </div>
+          <a
+            href={pendingPaymentUrl}
+            style={{ display: "block", background: C.red, color: "#fff", fontWeight: 900, fontSize: 18, padding: "16px 40px", borderRadius: 16, textDecoration: "none", marginBottom: 16 }}
+          >
+            {t("متابعة إلى الدفع", "Continue to payment")}
+          </a>
+          <button
+            onClick={() => setPendingPaymentUrl(null)}
+            style={{ background: "none", border: "none", color: "#d7aabd", fontSize: 13, cursor: "pointer", textDecoration: "underline" }}
+          >
+            {t("إلغاء", "Cancel")}
+          </button>
         </div>
       )}
 
@@ -6300,7 +6326,8 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
       }
 
       if (data.checkoutUrl) {
-        window.location.href = data.checkoutUrl;
+        setPendingPaymentUrl(data.checkoutUrl);
+        try { window.location.href = data.checkoutUrl; } catch {}
       } else {
         setCreatedOrderId(data.orderId ?? null);
         setPaymentAction(null);
