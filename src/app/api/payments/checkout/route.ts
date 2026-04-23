@@ -109,6 +109,13 @@ export async function POST(req: Request) {
       description = description ?? "شحن رصيد المحفظة";
     }
 
+    const normalizedPaymentMethod = sanitizePaymentMethod(body.paymentMethod);
+    let customerPhone: string | null = null;
+    if (normalizedPaymentMethod === "wallet") {
+      const userRecord = await db.user.findUnique({ where: { id: user.id }, select: { phone: true } });
+      customerPhone = userRecord?.phone ?? null;
+    }
+
     const result = await createPaymentTransaction({
       userId: user.id,
       provider: sanitizeProvider(body.provider),
@@ -116,7 +123,7 @@ export async function POST(req: Request) {
       businessUnit: purpose === "order" ? "store" : "club",
       amount: resolvedAmount,
       currency: body.currency ?? "EGP",
-      paymentMethod: sanitizePaymentMethod(body.paymentMethod),
+      paymentMethod: normalizedPaymentMethod,
       orderId,
       membershipId: resolvedMembershipId,
       offerId: resolvedOfferId,
@@ -127,7 +134,7 @@ export async function POST(req: Request) {
       customer: {
         name: user.name,
         email: user.email,
-        phone: null,
+        phone: customerPhone,
       },
     });
 

@@ -3049,7 +3049,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
   const [scheduleError, setScheduleError] = useState<string | null>(null);
   const [daysPerWeek, setDaysPerWeek] = useState<number | null>(null);
   const [scheduleStep, setScheduleStep] = useState<"frequency" | "slots">("frequency");
-  const [membershipPayMethod, setMembershipPayMethod] = useState<"paymob">("paymob");
+  const [membershipPayMethod, setMembershipPayMethod] = useState<"paymob" | "wallet">("paymob");
   const [paymobModal, setPaymobModal] = useState<{ url: string; transactionId: string | null } | null>(null);
   const [membershipDataReady, setMembershipDataReady] = useState(false);
   const [pendingPlan, setPendingPlan] = useState<PlanItem | null>(null);
@@ -4197,25 +4197,44 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                     <>
                       {summary.finalAmount > 0 && (
                         <div className="card" style={{ padding: 16, marginBottom: 14, background: "rgba(255,255,255,.04)" }}>
-                          <div style={{ fontWeight: 800, color: C.white, marginBottom: 10 }}>{t("وسائل الدفع المتاحة", "Available payment methods")}</div>
-                          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center", marginBottom: 10 }}>
-                            {[
-                              { src: "/payment-logos/visa.svg",        alt: "Visa",         bg: "#fff" },
-                              { src: "/payment-logos/mastercard.svg",  alt: "Mastercard",   bg: "#fff" },
-                              { src: "/payment-logos/primium.webp",    alt: "Premium Card", bg: "#fff" },
-                              { src: "/payment-logos/u-valu-logo.webp",alt: "valU",         bg: "#fff" },
-                              { src: "/payment-logos/sympl-menu2.png", alt: "Sympl",        bg: "#fff" },
-                              { src: "/payment-logos/sohoooooola.png", alt: "Souhoola",     bg: "#fff" },
-                              { src: "/payment-logos/cash-on-delivery.svg", alt: "Cash on Delivery", bg: "transparent" },
-                            ].map((logo) => (
-                              <div key={logo.alt} style={{ background: logo.bg, borderRadius: 6, padding: logo.bg === "transparent" ? 0 : "3px 6px", display: "flex", alignItems: "center", justifyContent: "center", height: 32, border: logo.bg === "transparent" ? "none" : "1px solid rgba(0,0,0,.08)" }}>
-                                <img src={logo.src} alt={logo.alt} style={{ height: 26, maxWidth: 64, objectFit: "contain" }} />
+                          <div style={{ fontWeight: 800, color: C.white, marginBottom: 10 }}>{t("طريقة الدفع", "Payment method")}</div>
+                          {[
+                            {
+                              id: "paymob" as const,
+                              label: t("بطاقة بنكية", "Bank Card"),
+                              sub: "Visa / Mastercard / Meeza",
+                              logos: ["/payment-logos/visa.svg", "/payment-logos/mastercard.svg", "/payment-logos/primium.webp"],
+                            },
+                            {
+                              id: "wallet" as const,
+                              label: t("محفظة إلكترونية", "Mobile Wallet"),
+                              sub: t("فودافون كاش / اورنج كاش / اتصالات كاش", "Vodafone Cash / Orange Cash / Etisalat Cash"),
+                              logos: [],
+                            },
+                          ].map((method) => (
+                            <div
+                              key={method.id}
+                              onClick={() => setMembershipPayMethod(method.id)}
+                              style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", borderRadius: 10, border: membershipPayMethod === method.id ? `2px solid ${C.red}` : "1px solid rgba(255,255,255,.1)", marginBottom: 8, cursor: "pointer", background: membershipPayMethod === method.id ? "rgba(233,30,99,.08)" : "transparent" }}
+                            >
+                              <div style={{ width: 18, height: 18, borderRadius: "50%", border: `2px solid ${membershipPayMethod === method.id ? C.red : "rgba(255,255,255,.3)"}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                                {membershipPayMethod === method.id && <div style={{ width: 9, height: 9, borderRadius: "50%", background: C.red }} />}
                               </div>
-                            ))}
-                          </div>
-                          <div style={{ fontSize: 11, color: "rgba(255,255,255,.5)", textAlign: "center" }}>
-                            {t("سيتم اختيار وسيلة الدفع داخل نموذج الدفع الآمن", "Payment method will be selected inside the secure payment form")}
-                          </div>
+                              <div style={{ flex: 1 }}>
+                                <div style={{ fontWeight: 700, fontSize: 13, color: membershipPayMethod === method.id ? C.white : C.gray }}>{method.label}</div>
+                                <div style={{ fontSize: 11, color: "rgba(255,255,255,.4)", marginTop: 2 }}>{method.sub}</div>
+                              </div>
+                              {method.logos.length > 0 && (
+                                <div style={{ display: "flex", gap: 4 }}>
+                                  {method.logos.map((src) => (
+                                    <div key={src} style={{ background: "#fff", borderRadius: 4, padding: "2px 4px", height: 24, display: "flex", alignItems: "center" }}>
+                                      <img src={src} alt="" style={{ height: 18, maxWidth: 40, objectFit: "contain" }} />
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          ))}
                         </div>
                       )}
 
@@ -6214,8 +6233,11 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
   const pointsToDeduct = useRewards ? Math.ceil(rewardsDiscount / pointValueEGP) : 0;
 
   const availablePayMethods = useMemo(() => {
-    return [{ id: "paymob", label: "Paymob" }];
-  }, []);
+    return [
+      { id: "paymob", label: t("بطاقة بنكية (Paymob)", "Bank Card (Paymob)") },
+      { id: "wallet", label: t("محفظة إلكترونية (فودافون كاش / اورنج كاش)", "Mobile Wallet (Vodafone Cash / Orange Cash)") },
+    ];
+  }, [lang]);
 
   useEffect(() => {
     if (!availablePayMethods.find((m) => m.id === payMethod)) {

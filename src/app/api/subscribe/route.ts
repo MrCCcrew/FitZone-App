@@ -19,6 +19,7 @@ type SubscribePayload = {
 function sanitizeMethod(value: unknown) {
   const raw = String(value ?? "").toLowerCase().trim();
   if (raw === "offer") return "offer";
+  if (raw === "wallet") return "wallet";
   return "paymob";
 }
 
@@ -49,7 +50,7 @@ export async function POST(req: Request) {
 
   const userRecord = await db.user.findUnique({
     where: { id: userId },
-    select: { emailVerified: true, email: true, name: true },
+    select: { emailVerified: true, email: true, name: true, phone: true },
   });
 
   if (!userRecord?.emailVerified) {
@@ -537,6 +538,11 @@ export async function POST(req: Request) {
         paymentMethod: result.membershipPaymentMethod,
         membershipId: result.subscriptionId,
         description: `Membership ${result.planName}`,
+        customer: {
+          name: userRecord?.name ?? null,
+          email: userRecord?.email ?? null,
+          phone: result.membershipPaymentMethod === "wallet" ? (userRecord?.phone ?? null) : null,
+        },
         metadata: {
           membershipInvoice: {
             ...invoiceDetails,

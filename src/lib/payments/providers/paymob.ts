@@ -76,6 +76,14 @@ function getIntegrationId(settings: PaymobSettings) {
   return raw;
 }
 
+function getWalletIntegrationId(settings: PaymobSettings) {
+  const raw = Number(String(settings.walletIntegrationId ?? "").trim());
+  if (!Number.isFinite(raw) || raw <= 0) {
+    throw new Error("Paymob wallet integration ID is not configured.");
+  }
+  return raw;
+}
+
 function getIframeId(settings: PaymobSettings) {
   const iframeId = String(settings.iframeId ?? "").trim();
   if (!iframeId) {
@@ -279,6 +287,30 @@ function mapAcceptanceStatus(transaction: PaymobAcceptanceTransaction) {
   return "pending" as const;
 }
 
+async function createWalletCheckout(params: {
+  paymentToken: string;
+  customerPhone: string | null | undefined;
+}): Promise<{ redirectUrl: string }> {
+  const identifier = params.customerPhone?.trim() || "AGGREGATOR";
+  const response = await fetch(`${getRegionBase()}/api/acceptance/payments/pay`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      source: { identifier, subtype: "WALLET" },
+      payment_token: params.paymentToken,
+    }),
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+
+  const payload = (await response.json()) as { redirect_url?: string; message?: string };
+  if (!response.ok || !payload.redirect_url) {
+    const msg = payload.message ?? `HTTP ${response.status}`;
+    throw new Error(`Paymob wallet pay initiation failed: ${msg}`);
+  }
+
+  return { redirectUrl: payload.redirect_url };
+}
+
 async function createCheckout(input: PaymentCheckoutInput): Promise<PaymentCheckoutResult> {
   const settings = await getPaymentSettings();
   const amountCents = Math.round(input.amount * 100);
@@ -291,8 +323,8 @@ async function createCheckout(input: PaymentCheckoutInput): Promise<PaymentCheck
     throw new Error("Payment amount must be greater than zero.");
   }
 
-  const integrationId = getIntegrationId(settings);
-  const iframeId = getIframeId(settings);
+  const isWallet = input.context.paymentMethod === "wallet";
+  const integrationId = isWallet ? getWalletIntegrationId(settings) : getIntegrationId(settings);
   const authToken = await authenticate();
   const paymobOrderId = await createOrder({
     authToken,
@@ -312,8 +344,37 @@ async function createCheckout(input: PaymentCheckoutInput): Promise<PaymentCheck
     redirectionUrl: returnUrl,
   });
 
-  const checkoutUrl = buildHostedCheckoutUrl(iframeId, paymentToken);
   const expiresAt = new Date(Date.now() + PAYMENT_KEY_EXPIRATION_SECONDS * 1000);
+
+  if (isWallet) {
+    const { redirectUrl } = await createWalletCheckout({
+      paymentToken,
+      customerPhone: input.context.customerPhone,
+    });
+
+    return {
+      provider: "paymob",
+      status: "pending",
+      message: "Paymob wallet checkout created successfully.",
+      checkoutUrl: redirectUrl,
+      iframeUrl: null,
+      providerReference: String(paymobOrderId),
+      externalReference: null,
+      expiresAt,
+      payload: {
+        providerMode: "paymob_wallet_redirect",
+        paymobOrderId,
+        paymentToken,
+        integrationId,
+        sandboxMode: settings.sandboxMode,
+        returnUrl,
+        cancelUrl: buildReturnUrl(settings.cancelUrl, input.transactionId, "cancel"),
+      },
+    };
+  }
+
+  const iframeId = getIframeId(settings);
+  const checkoutUrl = buildHostedCheckoutUrl(iframeId, paymentToken);
 
   return {
     provider: "paymob",
