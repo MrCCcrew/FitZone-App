@@ -496,26 +496,35 @@ export async function POST(req: Request) {
     issuedAt: new Date(),
   };
   if (result.paymentAmount > 0) {
-    const transaction = await createPaymentTransaction({
-      userId,
-      provider: "paymob",
-      purpose: "membership",
-      businessUnit: "club",
-      amount: result.paymentAmount,
-      paymentMethod: result.membershipPaymentMethod,
-      membershipId: result.subscriptionId,
-      description: `Membership ${result.planName}`,
-      metadata: {
-        membershipInvoice: {
-          ...invoiceDetails,
-          startDate: invoiceDetails.startDate?.toISOString() ?? null,
-          endDate: invoiceDetails.endDate.toISOString(),
-          issuedAt: invoiceDetails.issuedAt?.toISOString() ?? null,
+    try {
+      const transaction = await createPaymentTransaction({
+        userId,
+        provider: "paymob",
+        purpose: "membership",
+        businessUnit: "club",
+        amount: result.paymentAmount,
+        paymentMethod: result.membershipPaymentMethod,
+        membershipId: result.subscriptionId,
+        description: `Membership ${result.planName}`,
+        metadata: {
+          membershipInvoice: {
+            ...invoiceDetails,
+            startDate: invoiceDetails.startDate?.toISOString() ?? null,
+            endDate: invoiceDetails.endDate.toISOString(),
+            issuedAt: invoiceDetails.issuedAt?.toISOString() ?? null,
+          },
         },
-      },
-    });
-    checkoutUrl = transaction.checkoutUrl ?? null;
-    transactionId = transaction.id;
+      });
+      checkoutUrl = transaction.checkoutUrl ?? null;
+      transactionId = transaction.id;
+    } catch (error) {
+      console.error("[SUBSCRIBE_PAYMENT_INIT]", error);
+      const message =
+        error instanceof Error
+          ? error.message
+          : "تعذر تهيئة صفحة الدفع الإلكترونية للاشتراك.";
+      return NextResponse.json({ error: message }, { status: 502 });
+    }
   }
 
   if (userRecord.email && !result.needsPaymentConfirmation) {
