@@ -73,6 +73,7 @@ export type PaymentProviderDefinition = {
     amount: number;
     currency: string;
     metadata?: string | null;
+    providerPayload?: string | null;
   }): Promise<PaymentVerificationResult>;
   handleWebhook?(payload: unknown, headers: Headers): Promise<PaymentWebhookResult>;
 };

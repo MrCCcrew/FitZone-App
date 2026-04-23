@@ -41,6 +41,11 @@ export async function POST(req: Request) {
       metadata: { privateSessionApplicationId: app.id, type: app.type, trainerId: app.trainer.id },
     });
 
+    await db.privateSessionApplication.update({
+      where: { id: app.id },
+      data: { paymentTransactionId: result.id },
+    });
+
     // If payment succeeds immediately (e.g. wallet-only), mark as paid
     if (result.status === "paid") {
       await db.privateSessionApplication.update({

@@ -188,6 +188,7 @@ export async function verifyPaymentTransaction(transactionId: string) {
     amount: transaction.amount,
     currency: transaction.currency,
     metadata: transaction.metadata,
+    providerPayload: transaction.providerPayload,
   });
 
   // Store updated references regardless of status
@@ -410,6 +411,26 @@ export async function updatePaymentTransactionStatus(
           data: { status: "confirmed" },
         });
       }
+    }
+
+    const metadata = parseJson(existing?.metadata);
+    const privateSessionApplicationId =
+      typeof metadata?.privateSessionApplicationId === "string"
+        ? metadata.privateSessionApplicationId
+        : null;
+
+    if (privateSessionApplicationId) {
+      await db.privateSessionApplication.updateMany({
+        where: {
+          id: privateSessionApplicationId,
+          status: "approved",
+        },
+        data: {
+          status: "paid",
+          paymentTransactionId: transactionId,
+          paidAt: transaction.paidAt ?? new Date(),
+        },
+      });
     }
   }
 
