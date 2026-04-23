@@ -15,6 +15,7 @@ type PaymentSettingsResponse = PaymentSettings & {
     merchantId: boolean;
     publicKey: boolean;
     integrationId: boolean;
+    walletIntegrationId: boolean;
     iframeId: boolean;
     env: string;
   };
@@ -28,6 +29,7 @@ function normalize(raw: Partial<PaymentSettings>): PaymentSettings {
     merchantId: String(raw.merchantId ?? ""),
     publicKey: String(raw.publicKey ?? ""),
     integrationId: String(raw.integrationId ?? raw.iframeId ?? ""),
+    walletIntegrationId: String(raw.walletIntegrationId ?? ""),
     iframeId: String(raw.iframeId ?? ""),
     returnUrl: String(raw.returnUrl ?? DEFAULT_PAYMENT_SETTINGS.returnUrl),
     cancelUrl: String(raw.cancelUrl ?? DEFAULT_PAYMENT_SETTINGS.cancelUrl),
@@ -63,6 +65,7 @@ function envConfigured() {
     merchantId: Boolean(process.env.PAYMOB_MERCHANT_ID?.trim()),
     publicKey: Boolean(process.env.PAYMOB_PUBLIC_KEY?.trim()),
     integrationId: Boolean(process.env.PAYMOB_INTEGRATION_ID?.trim()),
+    walletIntegrationId: Boolean(process.env.PAYMOB_WALLET_INTEGRATION_ID?.trim()),
     iframeId: Boolean(process.env.PAYMOB_IFRAME_CARD_ID?.trim()),
     env: String(process.env.PAYMOB_ENV ?? "").trim().toLowerCase(),
   };
@@ -143,10 +146,11 @@ export async function POST(req: Request) {
     if (!settings.enabled) issues.push("المزوّد معطّل من لوحة الأدمن.");
     if (!settings.merchantId) issues.push("Merchant ID غير مضبوط.");
     if (!settings.publicKey) issues.push("Public key غير مضبوط.");
-    if (!settings.integrationId) issues.push("Integration ID غير مضبوط.");
+    if (!settings.integrationId) issues.push("Integration ID (بطاقة) غير مضبوط.");
     if (!settings.returnUrl) issues.push("Return URL غير مضبوط.");
     if (!settings.cancelUrl) issues.push("Cancel URL غير مضبوط.");
     if (!settings.iframeId) issues.push("Iframe ID غير مضبوط.");
+    if (!settings.walletIntegrationId) issues.push("Wallet Integration ID غير مضبوط — المحافظ الإلكترونية لن تعمل.");
     if (!secrets.apiKey) issues.push("PAYMOB_API_KEY غير مضبوط على السيرفر.");
     if (!secrets.secretKey) issues.push("PAYMOB_SECRET_KEY غير مضبوط على السيرفر.");
     if (!secrets.hmac) issues.push("PAYMOB_HMAC_SECRET غير مضبوط على السيرفر.");

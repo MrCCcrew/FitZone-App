@@ -13,6 +13,7 @@ type EnvStatus = {
   merchantId?: boolean;
   publicKey?: boolean;
   integrationId?: boolean;
+  walletIntegrationId?: boolean;
   iframeId?: boolean;
   env?: string;
 };
@@ -33,6 +34,7 @@ type PaymentSettings = {
   merchantId: string;
   publicKey: string;
   integrationId: string;
+  walletIntegrationId: string;
   iframeId: string;
   returnUrl: string;
   cancelUrl: string;
@@ -76,6 +78,7 @@ const DEFAULT_SETTINGS: PaymentSettings = {
   merchantId: "1152714",
   publicKey: "",
   integrationId: "5613515",
+  walletIntegrationId: "5632185",
   iframeId: "1032257",
   returnUrl: "https://fitzoneland.com/payment/verify",
   cancelUrl: "https://fitzoneland.com/payment/verify?state=cancel",
@@ -370,7 +373,8 @@ export default function Payments() {
         <div className="mt-3 grid gap-3 sm:grid-cols-3">
           <SecretBadge configured={Boolean(envConfigured.merchantId)} label="PAYMOB_MERCHANT_ID" />
           <SecretBadge configured={Boolean(envConfigured.publicKey)} label="PAYMOB_PUBLIC_KEY" />
-          <SecretBadge configured={Boolean(envConfigured.integrationId)} label="PAYMOB_INTEGRATION_ID" />
+          <SecretBadge configured={Boolean(envConfigured.integrationId)} label="PAYMOB_INTEGRATION_ID (Card)" />
+          <SecretBadge configured={Boolean(envConfigured.walletIntegrationId)} label="PAYMOB_WALLET_INTEGRATION_ID" />
           <SecretBadge configured={Boolean(envConfigured.iframeId)} label="PAYMOB_IFRAME_CARD_ID" />
           <div className="rounded-2xl border border-pink-400/20 bg-pink-500/10 px-4 py-3 text-sm text-pink-100">
             <div className="font-mono text-xs font-bold">PAYMOB_ENV</div>
@@ -426,7 +430,8 @@ export default function Payments() {
           <Field label="Active provider" value={settings.activeProvider} readOnly />
           <Field label="PAYMOB_MERCHANT_ID" value={settings.merchantId} onChange={(value) => setSettings((current) => ({ ...current, merchantId: value }))} />
           <Field label="PAYMOB_PUBLIC_KEY" value={settings.publicKey} onChange={(value) => setSettings((current) => ({ ...current, publicKey: value }))} />
-          <Field label="PAYMOB_INTEGRATION_ID" value={settings.integrationId} onChange={(value) => setSettings((current) => ({ ...current, integrationId: value }))} placeholder="5613515" />
+          <Field label="PAYMOB_INTEGRATION_ID (بطاقة بنكية)" value={settings.integrationId} onChange={(value) => setSettings((current) => ({ ...current, integrationId: value }))} placeholder="5613515" />
+          <Field label="PAYMOB_WALLET_INTEGRATION_ID (محفظة إلكترونية)" value={settings.walletIntegrationId} onChange={(value) => setSettings((current) => ({ ...current, walletIntegrationId: value }))} placeholder="5632185" />
           <Field label="PAYMOB_IFRAME_CARD_ID" value={settings.iframeId} onChange={(value) => setSettings((current) => ({ ...current, iframeId: value }))} placeholder="1032257" />
           <Field label="Display label AR" value={settings.displayLabelAr} onChange={(value) => setSettings((current) => ({ ...current, displayLabelAr: value }))} />
           <Field label="Display label EN" value={settings.displayLabelEn} onChange={(value) => setSettings((current) => ({ ...current, displayLabelEn: value }))} />
