@@ -39,6 +39,12 @@ interface AccountData {
     paymentMethod: string;
     offerTitle: string | null;
   } | null;
+  pendingPayment: {
+    plan: string;
+    amount: number;
+    transactionId: string | null;
+    checkoutUrl: string | null;
+  } | null;
   membershipHistory: {
     id: string;
     plan: string;
@@ -1113,18 +1119,51 @@ function TrainerProfileTab() {
   );
 }
 
-function MembershipTab({ membership }: { membership: AccountData["membership"] }) {
+function MembershipTab({ membership, pendingPayment }: { membership: AccountData["membership"]; pendingPayment: AccountData["pendingPayment"] }) {
   const { lang } = useLang();
   const t = (arText: string, enText: string) => (lang === "ar" ? arText : enText);
+
+  const pendingBanner = pendingPayment ? (
+    <div className="mb-4 rounded-2xl border border-amber-500/40 bg-amber-500/10 p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div className="text-xs font-bold text-amber-300 mb-1">{t("⏳ بانتظار إتمام الدفع", "⏳ Payment pending")}</div>
+          <div className="text-white font-black text-lg">{pendingPayment.plan}</div>
+          <div className="text-amber-200 text-sm mt-0.5">
+            {t(`المبلغ المطلوب: ${pendingPayment.amount.toLocaleString("ar-EG")} ج.م`, `Amount due: ${pendingPayment.amount.toLocaleString("en-US")} EGP`)}
+          </div>
+        </div>
+        <div className="flex flex-col gap-2">
+          {pendingPayment.transactionId && (
+            <a
+              href={`/payment/verify?transactionId=${encodeURIComponent(pendingPayment.transactionId)}`}
+              className="rounded-xl bg-amber-500 px-5 py-2.5 text-sm font-black text-black text-center"
+            >
+              {t("متابعة الدفع", "Complete payment")}
+            </a>
+          )}
+          {!pendingPayment.transactionId && pendingPayment.checkoutUrl && (
+            <a href={pendingPayment.checkoutUrl} className="rounded-xl bg-amber-500 px-5 py-2.5 text-sm font-black text-black text-center">
+              {t("إكمال الدفع", "Complete payment")}
+            </a>
+          )}
+        </div>
+      </div>
+    </div>
+  ) : null;
+
   if (!membership) {
     return (
-      <div className={CARD + " text-center py-12"}>
-        <div className="text-5xl mb-4">💳</div>
-        <h3 className="text-white font-black text-xl mb-2">{t("لا يوجد اشتراك نشط", "No active membership")}</h3>
-        <p className="text-gray-400 mb-6">{t("اشترك الآن وابدأ رحلتك الرياضية", "Subscribe now and start your fitness journey")}</p>
-        <a href="/#plans" className="inline-block bg-red-600 hover:bg-red-700 text-white font-black px-8 py-3 rounded-xl transition-colors">
-          {t("🔥 اشترك الآن", "🔥 Subscribe now")}
-        </a>
+      <div className="space-y-4">
+        {pendingBanner}
+        <div className={CARD + " text-center py-12"}>
+          <div className="text-5xl mb-4">💳</div>
+          <h3 className="text-white font-black text-xl mb-2">{t("لا يوجد اشتراك نشط", "No active membership")}</h3>
+          <p className="text-gray-400 mb-6">{t("اشترك الآن وابدأ رحلتك الرياضية", "Subscribe now and start your fitness journey")}</p>
+          <a href="/#plans" className="inline-block bg-red-600 hover:bg-red-700 text-white font-black px-8 py-3 rounded-xl transition-colors">
+            {t("🔥 اشترك الآن", "🔥 Subscribe now")}
+          </a>
+        </div>
       </div>
     );
   }
@@ -1140,6 +1179,7 @@ function MembershipTab({ membership }: { membership: AccountData["membership"] }
 
   return (
     <div className="space-y-5">
+      {pendingBanner}
       {/* Main plan card */}
       <div className="bg-gradient-to-br from-red-950/40 to-black border border-red-600/40 rounded-2xl p-6">
         <div className="flex items-start justify-between mb-4">
@@ -1290,17 +1330,42 @@ function AccountMembershipTab({
   membership,
   membershipHistory,
   privateApplications,
+  pendingPayment,
 }: {
   membership: AccountData["membership"];
   membershipHistory: AccountData["membershipHistory"];
   privateApplications: AccountData["privateApplications"];
+  pendingPayment: AccountData["pendingPayment"];
 }) {
   const { lang } = useLang();
   const t = (arText: string, enText: string) => (lang === "ar" ? arText : enText);
   const currentMembership = membershipHistory.find((item) => item.id === membership?.id) ?? null;
 
+  const pendingBanner = pendingPayment ? (
+    <div className="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div className="text-xs font-bold text-amber-300 mb-1">{t("⏳ بانتظار إتمام الدفع", "⏳ Payment pending")}</div>
+          <div className="text-white font-black text-lg">{pendingPayment.plan}</div>
+          <div className="text-amber-200 text-sm mt-0.5">
+            {t(`المبلغ المطلوب: ${pendingPayment.amount.toLocaleString("ar-EG")} ج.م`, `Amount due: ${pendingPayment.amount.toLocaleString("en-US")} EGP`)}
+          </div>
+        </div>
+        {pendingPayment.transactionId && (
+          <a
+            href={`/payment/verify?transactionId=${encodeURIComponent(pendingPayment.transactionId)}`}
+            className="rounded-xl bg-amber-500 px-5 py-2.5 text-sm font-black text-black"
+          >
+            {t("متابعة الدفع", "Complete payment")}
+          </a>
+        )}
+      </div>
+    </div>
+  ) : null;
+
   return (
     <div className="space-y-5">
+      {pendingBanner}
       {currentMembership ? (
         <div className="bg-gradient-to-br from-red-950/40 to-black border border-red-600/40 rounded-2xl p-6">
           <div className="flex items-start justify-between gap-4 mb-4 flex-wrap">
@@ -3643,7 +3708,7 @@ export default function AccountClient({ data }: { data: AccountData }) {
             {activeTab === "trainerDiscountCodes" && <TrainerDiscountCodesTab />}
             {activeTab === "privateSessions"      && <PrivateSessionsTab />}
             {activeTab === "myPrivateSessions"    && <MyPrivateSessionsTab />}
-            {activeTab === "membership"           && <AccountMembershipTab membership={data.membership} membershipHistory={data.membershipHistory} privateApplications={data.privateApplications} />}
+            {activeTab === "membership"           && <AccountMembershipTab membership={data.membership} membershipHistory={data.membershipHistory} privateApplications={data.privateApplications} pendingPayment={data.pendingPayment} />}
             {activeTab === "bookings"      && <BookingsTab      bookings={data.bookings} />}
             {activeTab === "orders"        && <AccountOrdersTab orders={data.orders} />}
             {activeTab === "wallet"        && <WalletTab        wallet={data.wallet} rewards={data.rewards} referral={data.referral} />}

@@ -12,12 +12,18 @@ type PaymentTransaction = {
   purpose: string;
   provider: string;
   checkoutUrl?: string | null;
+  metadata?: {
+    membershipInvoice?: {
+      membershipName?: string;
+      membershipNameEn?: string;
+    };
+  } | null;
 };
 
 const STATUS_LABELS: Record<PaymentTransaction["status"], string> = {
   pending: "جارٍ انتظار تأكيد الدفع",
   requires_action: "الدفع قيد المعالجة",
-  paid: "تم تأكيد الدفع",
+  paid: "تم تأكيد الدفع بنجاح",
   failed: "فشل الدفع",
   cancelled: "تم إلغاء العملية",
   expired: "انتهت صلاحية العملية",
@@ -80,13 +86,39 @@ function PaymentVerifyContent() {
     return STATUS_LABELS[transaction.status] ?? transaction.status;
   }, [transaction]);
 
+  const membershipName = transaction?.metadata?.membershipInvoice?.membershipName ?? null;
+  const isPaid = transaction?.status === "paid";
+  const isMembership = transaction?.purpose === "membership";
+
   return (
     <div className="min-h-screen bg-[#12060c] text-white">
       <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 sm:py-12">
-        <h1 className="text-2xl font-black">متابعة الدفع</h1>
-        <p className="mt-2 text-sm text-[#d7aabd]">
-          لا يتم اعتماد الدفع من صفحة الرجوع نفسها. المصدر الفعلي للحالة هو Paymob webhook مع التحقق من السيرفر.
-        </p>
+
+        {/* Success banner — only after confirmed payment */}
+        {isPaid && (
+          <div className="mb-6 rounded-2xl border border-green-500/30 bg-green-500/10 p-6 text-center">
+            <div className="text-5xl mb-3">✅</div>
+            <div className="text-2xl font-black text-green-300 mb-1">
+              {isMembership
+                ? `تم الاشتراك${membershipName ? ` في ${membershipName}` : ""} بنجاح!`
+                : "تم تأكيد الدفع بنجاح!"}
+            </div>
+            {isMembership && (
+              <div className="text-sm text-green-200 mt-1">
+                اشتراكك الآن نشط — ابدئي رحلتك الرياضية مع FitZone
+              </div>
+            )}
+          </div>
+        )}
+
+        {!isPaid && (
+          <>
+            <h1 className="text-2xl font-black">متابعة الدفع</h1>
+            <p className="mt-2 text-sm text-[#d7aabd]">
+              سيتم تحديث حالة الدفع تلقائياً بعد وصول تأكيد Paymob.
+            </p>
+          </>
+        )}
 
         <div className="mt-6 rounded-3xl border border-[#ffbcdb]/20 bg-[#2a0f1b] p-6">
           {loading && <div className="text-sm text-[#d7aabd]">جارٍ التحقق من المعاملة...</div>}
@@ -100,7 +132,11 @@ function PaymentVerifyContent() {
           {!loading && !error && transaction ? (
             <div className="space-y-4">
               <div className="flex flex-wrap items-center gap-3 text-sm">
-                <span className="rounded-full border border-pink-300/20 bg-pink-500/15 px-3 py-1 text-xs font-bold text-pink-200">
+                <span className={`rounded-full border px-3 py-1 text-xs font-bold ${
+                  isPaid
+                    ? "border-green-500/30 bg-green-500/15 text-green-300"
+                    : "border-pink-300/20 bg-pink-500/15 text-pink-200"
+                }`}>
                   {statusLabel}
                 </span>
                 <span className="text-[#d7aabd]">المبلغ:</span>
@@ -108,6 +144,12 @@ function PaymentVerifyContent() {
                   {Number(transaction.amount).toLocaleString("ar-EG")} {transaction.currency}
                 </span>
               </div>
+
+              {membershipName && (
+                <div className="text-sm text-[#d7aabd]">
+                  الباقة: <span className="text-white font-bold">{membershipName}</span>
+                </div>
+              )}
 
               <div className="text-xs text-[#d7aabd]">
                 رقم المعاملة: <span className="text-white">{transaction.id}</span>
@@ -119,7 +161,7 @@ function PaymentVerifyContent() {
                 </div>
               )}
 
-              {transaction.status === "failed" || transaction.status === "cancelled" || transaction.status === "expired" ? (
+              {(transaction.status === "failed" || transaction.status === "cancelled" || transaction.status === "expired") ? (
                 <div className="flex flex-wrap gap-3">
                   {transaction.checkoutUrl ? (
                     <a
@@ -135,10 +177,10 @@ function PaymentVerifyContent() {
                 </div>
               ) : null}
 
-              {transaction.status === "paid" ? (
+              {isPaid ? (
                 <div className="flex flex-wrap gap-3">
                   <Link href="/account" className="rounded-xl bg-pink-600 px-5 py-3 text-sm font-bold text-white">
-                    الذهاب إلى الحساب
+                    الذهاب إلى حسابي
                   </Link>
                 </div>
               ) : null}
