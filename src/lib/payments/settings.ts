@@ -2,19 +2,29 @@ import { db } from "@/lib/db";
 
 export type PaymentSettings = {
   activeProvider: string;
-  merchantId: string;     // Paymob merchant/profile ID
-  publicKey: string;      // Paymob public key (display in admin, safe to store)
-  integrationId: string;  // Paymob card integration ID (used in payment key request)
-  iframeId: string;       // Paymob iframe ID (used in hosted checkout URL)
+  enabled: boolean;
+  merchantId: string;
+  publicKey: string;
+  integrationId: string;
+  iframeId: string;
   returnUrl: string;
   cancelUrl: string;
-  webhookUrl: string;     // Informational — admin sets this on Paymob dashboard
+  webhookUrl: string;
   sandboxMode: boolean;
   notes: string;
+  displayLabelAr: string;
+  displayLabelEn: string;
+  lastValidationResult?: {
+    ok: boolean;
+    message: string;
+    validatedAt: string;
+    issues?: string[];
+  } | null;
 };
 
 const DEFAULT_SETTINGS: PaymentSettings = {
   activeProvider: "paymob",
+  enabled: true,
   merchantId: "",
   publicKey: "",
   integrationId: "",
@@ -24,11 +34,26 @@ const DEFAULT_SETTINGS: PaymentSettings = {
   webhookUrl: "https://fitzoneland.com/api/payments/webhook/paymob",
   sandboxMode: false,
   notes: "",
+  displayLabelAr: "الدفع الإلكتروني عبر Paymob",
+  displayLabelEn: "Paymob online payment",
+  lastValidationResult: null,
 };
+
+function normalizeValidationResult(raw: unknown): PaymentSettings["lastValidationResult"] {
+  if (!raw || typeof raw !== "object") return DEFAULT_SETTINGS.lastValidationResult;
+  const value = raw as Record<string, unknown>;
+  return {
+    ok: Boolean(value.ok),
+    message: String(value.message ?? ""),
+    validatedAt: String(value.validatedAt ?? ""),
+    issues: Array.isArray(value.issues) ? value.issues.map((item) => String(item)) : undefined,
+  };
+}
 
 function normalizeSettings(raw: Record<string, unknown>): PaymentSettings {
   return {
     activeProvider: String(raw.activeProvider ?? DEFAULT_SETTINGS.activeProvider),
+    enabled: Boolean(raw.enabled ?? DEFAULT_SETTINGS.enabled),
     merchantId: String(raw.merchantId ?? ""),
     publicKey: String(raw.publicKey ?? ""),
     integrationId: String(raw.integrationId ?? raw.iframeId ?? ""),
@@ -38,6 +63,9 @@ function normalizeSettings(raw: Record<string, unknown>): PaymentSettings {
     webhookUrl: String(raw.webhookUrl ?? DEFAULT_SETTINGS.webhookUrl),
     sandboxMode: Boolean(raw.sandboxMode ?? DEFAULT_SETTINGS.sandboxMode),
     notes: String(raw.notes ?? ""),
+    displayLabelAr: String(raw.displayLabelAr ?? DEFAULT_SETTINGS.displayLabelAr),
+    displayLabelEn: String(raw.displayLabelEn ?? DEFAULT_SETTINGS.displayLabelEn),
+    lastValidationResult: normalizeValidationResult(raw.lastValidationResult),
   };
 }
 

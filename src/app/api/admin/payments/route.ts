@@ -11,7 +11,6 @@ export async function GET() {
   return NextResponse.json(transactions);
 }
 
-// Actions: "re-verify" | "add-note" | "cancel"
 export async function PATCH(req: Request) {
   const guard = await requireAdminFeature("orders");
   if ("error" in guard) return guard.error;
@@ -29,7 +28,7 @@ export async function PATCH(req: Request) {
 
     const existing = await db.paymentTransaction.findUnique({
       where: { id: body.transactionId },
-      select: { id: true, status: true },
+      select: { id: true, metadata: true },
     });
 
     if (!existing) {
@@ -38,7 +37,6 @@ export async function PATCH(req: Request) {
 
     switch (body.action) {
       case "re-verify": {
-        // Fetch latest status from payment provider (e.g., Paymob API)
         const transaction = await verifyPaymentTransaction(body.transactionId);
         return NextResponse.json({ success: true, transaction });
       }
@@ -47,41 +45,31 @@ export async function PATCH(req: Request) {
         if (!body.note?.trim()) {
           return NextResponse.json({ error: "الملاحظة مطلوبة." }, { status: 400 });
         }
-        const withMeta = await db.paymentTransaction.findUnique({
-          where: { id: body.transactionId },
-          select: { metadata: true },
-        });
-        let existingMeta: Record<string, unknown> = {};
+
+        let metadata: Record<string, unknown> = {};
         try {
-          if (withMeta?.metadata) existingMeta = JSON.parse(withMeta.metadata) as Record<string, unknown>;
-        } catch { /* ignore */ }
-        const updated = await db.paymentTransaction.update({
+          if (existing.metadata) metadata = JSON.parse(existing.metadata) as Record<string, unknown>;
+        } catch {
+          metadata = {};
+        }
+
+        await db.paymentTransaction.update({
           where: { id: body.transactionId },
           data: {
             metadata: JSON.stringify({
-              ...existingMeta,
+              ...metadata,
               adminNote: body.note.trim(),
               adminNoteAt: new Date().toISOString(),
             }),
           },
         });
-        return NextResponse.json({ success: true, transactionId: updated.id });
-      }
 
-      case "cancel": {
-        if (existing.status === "paid") {
-          return NextResponse.json({ error: "لا يمكن إلغاء معاملة مدفوعة بالفعل." }, { status: 400 });
-        }
-        const updated = await db.paymentTransaction.update({
-          where: { id: body.transactionId },
-          data: { status: "cancelled" },
-        });
-        return NextResponse.json({ success: true, transactionId: updated.id });
+        return NextResponse.json({ success: true, transactionId: body.transactionId });
       }
 
       default:
         return NextResponse.json(
-          { error: "إجراء غير معروف. الإجراءات المتاحة: re-verify, add-note, cancel." },
+          { error: "الإجراءات المتاحة فقط: re-verify, add-note." },
           { status: 400 },
         );
     }
@@ -92,19 +80,12 @@ export async function PATCH(req: Request) {
   }
 }
 
-export async function DELETE(req: Request) {
+export async function DELETE() {
   const guard = await requireAdminFeature("orders");
   if ("error" in guard) return guard.error;
 
-  try {
-    const { searchParams } = new URL(req.url);
-    const id = searchParams.get("id");
-    if (!id) return NextResponse.json({ error: "معرّف المعاملة مطلوب." }, { status: 400 });
-
-    await db.paymentTransaction.delete({ where: { id } });
-    return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error("[ADMIN_PAYMENTS_DELETE]", error);
-    return NextResponse.json({ error: "تعذر حذف المعاملة." }, { status: 500 });
-  }
+  return NextResponse.json(
+    { error: "حذف المعاملات من لوحة الأدمن معطل للحفاظ على سلامة سجلات الدفع." },
+    { status: 405 },
+  );
 }
