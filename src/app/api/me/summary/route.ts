@@ -19,6 +19,7 @@ export async function GET() {
     if (currentAdmin && !currentUser) {
       return NextResponse.json({
         authenticated: true,
+        isAppUser: false,
         user: {
           name: currentAdmin.name ?? "",
           email: currentAdmin.email ?? "",
@@ -82,6 +83,7 @@ export async function GET() {
 
     return NextResponse.json({
       authenticated: true,
+      isAppUser: true,
       user: {
         name: user.name ?? "",
         email: user.email ?? "",
