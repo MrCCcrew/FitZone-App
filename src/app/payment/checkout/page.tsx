@@ -39,7 +39,7 @@ async function ensureScriptLoaded(src: string) {
   if (existing) {
     await new Promise<void>((resolve, reject) => {
       existing.addEventListener("load", () => resolve(), { once: true });
-      existing.addEventListener("error", () => reject(new Error("تعذر تحميل مكتبة Paymob.")), { once: true });
+      existing.addEventListener("error", () => reject(new Error("تعذر تحميل صفحة الدفع.")), { once: true });
     });
     return;
   }
@@ -50,7 +50,7 @@ async function ensureScriptLoaded(src: string) {
     script.async = true;
     script.dataset.paymobSdk = "true";
     script.onload = () => resolve();
-    script.onerror = () => reject(new Error("تعذر تحميل مكتبة Paymob."));
+    script.onerror = () => reject(new Error("تعذر تحميل صفحة الدفع."));
     document.head.appendChild(script);
   });
 }
@@ -66,7 +66,7 @@ function PaymentCheckoutContent() {
 
   useEffect(() => {
     if (!transactionId) {
-      setError("رقم المعاملة غير موجود.");
+      setError("تعذر فتح صفحة الدفع.");
       setLoading(false);
       return;
     }
@@ -92,7 +92,7 @@ function PaymentCheckoutContent() {
         const scriptUrl = payload.session.paymobScriptUrl;
 
         if (!publicKey || !clientSecret || !scriptUrl) {
-          throw new Error("جلسة Paymob الموحدة غير مكتملة. راجع إعدادات Paymob على السيرفر.");
+          throw new Error("بيانات الدفع غير مكتملة حاليًا.");
         }
 
         setPaymentMethods(
@@ -107,10 +107,10 @@ function PaymentCheckoutContent() {
         if (cancelled) return;
 
         if (!window.Paymob) {
-          throw new Error("مكتبة Paymob لم يتم تهيئتها بشكل صحيح.");
+          throw new Error("تعذر تهيئة صفحة الدفع.");
         }
 
-        const selector = "#paymob-unified-checkout";
+        const selector = "#paymob-flash-checkout";
         if (containerRef.current) {
           containerRef.current.innerHTML = "";
         }
@@ -137,14 +137,14 @@ function PaymentCheckoutContent() {
       <div className="mx-auto max-w-4xl rounded-[32px] border border-[#ffbcdb]/15 bg-[#2a0f1b] p-6 shadow-[0_30px_120px_rgba(0,0,0,0.45)] sm:p-8">
         <div className="flex flex-col gap-3 border-b border-white/10 pb-5 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-2xl font-black">الدفع الإلكتروني عبر Paymob</h1>
+            <h1 className="text-2xl font-black">إتمام الدفع</h1>
             <p className="mt-2 text-sm text-[#d7aabd]">
-              هذه الصفحة تستخدم Unified Checkout من Paymob، لذلك ستظهر لك وسائل الدفع المفعلة على حسابك مثل البطاقات والمحافظ ووسائل الدفع الأخرى إن كانت مفعلة.
+              اختر وسيلة الدفع المناسبة لك وأكمل العملية بأمان من خلال Paymob.
             </p>
           </div>
           {transactionId ? (
             <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-xs text-[#d7aabd]">
-              رقم المعاملة: <span className="font-mono text-[#fff4f8]">{transactionId}</span>
+              رقم العملية: <span className="font-mono text-[#fff4f8]">{transactionId}</span>
             </div>
           ) : null}
         </div>
@@ -164,7 +164,7 @@ function PaymentCheckoutContent() {
 
         {transactionStatus === "pending" || transactionStatus === "requires_action" ? (
           <div className="mt-5 rounded-2xl border border-pink-400/15 bg-black/20 px-4 py-3 text-sm text-[#d7aabd]">
-            التفعيل داخل الموقع لن يتم إلا بعد تأكيد Paymob ووصول حالة الدفع النهائية عبر webhook والتحقق من السيرفر.
+            سيتم تحديث حالة الدفع تلقائيًا بعد إتمام العملية.
           </div>
         ) : null}
 
@@ -191,11 +191,11 @@ function PaymentCheckoutContent() {
           <div className="mt-6">
             {loading ? (
               <div className="rounded-3xl border border-[#ffbcdb]/15 bg-black/20 px-6 py-10 text-center text-sm text-[#d7aabd]">
-                جارٍ تجهيز Unified Checkout من Paymob...
+                جاري تجهيز صفحة الدفع...
               </div>
             ) : null}
             <div
-              id="paymob-unified-checkout"
+              id="paymob-flash-checkout"
               ref={containerRef}
               className={`min-h-[420px] rounded-[28px] border border-white/10 bg-white p-3 text-black ${loading ? "hidden" : ""}`}
             />
