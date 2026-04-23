@@ -13,6 +13,7 @@ type SubscribePayload = {
   discountCode?: string | null;
   walletDeduct?: number | null;
   pointsDeduct?: number | null;
+  trialPrice?: number | null;
 };
 
 function sanitizeMethod(value: unknown) {
@@ -38,7 +39,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "يجب تسجيل الدخول أولًا قبل الاشتراك." }, { status: 401 });
   }
 
-  const { membershipId, offerId, scheduleIds, paymentMethod, discountCode, walletDeduct, pointsDeduct } = (await req.json()) as SubscribePayload;
+  const { membershipId, offerId, scheduleIds, paymentMethod, discountCode, walletDeduct, pointsDeduct, trialPrice } = (await req.json()) as SubscribePayload;
   if (!membershipId && !offerId) {
     return NextResponse.json({ error: "يرجى اختيار الباقة أو العرض أولًا." }, { status: 400 });
   }
@@ -169,9 +170,15 @@ export async function POST(req: Request) {
       const endDate = new Date();
       endDate.setDate(endDate.getDate() + plan.duration);
 
-      const originalPrice = plan.priceBefore && plan.priceBefore > 0 ? plan.priceBefore : plan.price;
+      // For trial memberships the client sends the per-class-type price (yoga=100, other=50).
+      // Accept it only when it's >= the DB base price to prevent under-charging.
+      const resolvedBasePrice =
+        plan.kind === "trial" && trialPrice != null && trialPrice > 0 && trialPrice >= plan.price
+          ? trialPrice
+          : plan.price;
+      const originalPrice = plan.priceBefore && plan.priceBefore > 0 ? plan.priceBefore : resolvedBasePrice;
       const priceAfterMembershipDiscount =
-        offerRecord?.specialPrice ?? (plan.priceAfter && plan.priceAfter > 0 ? plan.priceAfter : plan.price);
+        offerRecord?.specialPrice ?? (plan.priceAfter && plan.priceAfter > 0 ? plan.priceAfter : resolvedBasePrice);
       const membershipDiscountAmount = Math.max(0, originalPrice - priceAfterMembershipDiscount);
       let paymentAmount = priceAfterMembershipDiscount;
 
@@ -310,12 +317,6 @@ export async function POST(req: Request) {
           throw new Error("تعذر العثور على بعض المواعيد المختارة.");
         }
 
-        schedules.forEach((schedule) => {
-          if (!schedule.isActive || schedule.availableSpots <= 0) {
-            throw new Error("أحد المواعيد المختارة غير متاح حاليًا.");
-          }
-        });
-
         // Validate max 2 sessions per day
         const dayCounts = new Map<string, number>();
         for (const schedule of schedules) {
@@ -335,6 +336,14 @@ export async function POST(req: Request) {
         const existingIds = new Set(existing.map((item) => item.scheduleId));
 
         const toCreate = schedules.filter((schedule) => !existingIds.has(schedule.id));
+
+        // Only check availability for slots that don't already have a booking
+        // (a retry after a pending_payment attempt already holds the spot)
+        toCreate.forEach((schedule) => {
+          if (!schedule.isActive || schedule.availableSpots <= 0) {
+            throw new Error("أحد المواعيد المختارة غير متاح حاليًا.");
+          }
+        });
         if (toCreate.length > 0) {
           await Promise.all(
             toCreate.map((schedule) =>
