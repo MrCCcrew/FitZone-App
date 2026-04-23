@@ -11,6 +11,13 @@ type PaymentSettingsResponse = PaymentSettings & {
     secretKey: boolean;
     hmac: boolean;
   };
+  envConfigured: {
+    merchantId: boolean;
+    publicKey: boolean;
+    integrationId: boolean;
+    iframeId: boolean;
+    env: string;
+  };
 };
 
 function normalize(raw: Partial<PaymentSettings>): PaymentSettings {
@@ -51,12 +58,23 @@ function secretsConfigured() {
   };
 }
 
+function envConfigured() {
+  return {
+    merchantId: Boolean(process.env.PAYMOB_MERCHANT_ID?.trim()),
+    publicKey: Boolean(process.env.PAYMOB_PUBLIC_KEY?.trim()),
+    integrationId: Boolean(process.env.PAYMOB_INTEGRATION_ID?.trim()),
+    iframeId: Boolean(process.env.PAYMOB_IFRAME_CARD_ID?.trim()),
+    env: String(process.env.PAYMOB_ENV ?? "").trim().toLowerCase(),
+  };
+}
+
 function toResponse(settings: PaymentSettings): PaymentSettingsResponse {
   return {
     ...settings,
     providerStatus: settings.enabled ? "enabled" : "disabled",
     providerMode: settings.sandboxMode ? "sandbox" : "live",
     secretsConfigured: secretsConfigured(),
+    envConfigured: envConfigured(),
   };
 }
 
@@ -130,6 +148,7 @@ export async function POST(req: Request) {
     if (!settings.cancelUrl) issues.push("Cancel URL غير مضبوط.");
     if (!settings.iframeId) issues.push("Iframe ID غير مضبوط.");
     if (!secrets.apiKey) issues.push("PAYMOB_API_KEY غير مضبوط على السيرفر.");
+    if (!secrets.secretKey) issues.push("PAYMOB_SECRET_KEY غير مضبوط على السيرفر.");
     if (!secrets.hmac) issues.push("PAYMOB_HMAC_SECRET غير مضبوط على السيرفر.");
 
     let authTest: { ok: boolean; message: string } = {
@@ -183,6 +202,7 @@ export async function POST(req: Request) {
       ...validationResult,
       authTest,
       secrets,
+      envConfigured: envConfigured(),
       settings: toResponse(nextSettings),
     });
   } catch (error) {

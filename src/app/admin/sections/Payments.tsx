@@ -9,6 +9,14 @@ type SecretsStatus = {
   hmac: boolean;
 };
 
+type EnvStatus = {
+  merchantId?: boolean;
+  publicKey?: boolean;
+  integrationId?: boolean;
+  iframeId?: boolean;
+  env?: string;
+};
+
 type ValidationResult = {
   ok: boolean;
   message: string;
@@ -16,6 +24,7 @@ type ValidationResult = {
   issues?: string[];
   authTest?: { ok: boolean; message: string };
   secrets?: SecretsStatus;
+  envConfigured?: EnvStatus;
 };
 
 type PaymentSettings = {
@@ -35,6 +44,7 @@ type PaymentSettings = {
   providerStatus?: "enabled" | "disabled";
   providerMode?: "sandbox" | "live";
   secretsConfigured?: SecretsStatus;
+  envConfigured?: EnvStatus;
   lastValidationResult?: {
     ok: boolean;
     message: string;
@@ -63,20 +73,27 @@ type PaymentTransactionRow = {
 const DEFAULT_SETTINGS: PaymentSettings = {
   activeProvider: "paymob",
   enabled: true,
-  merchantId: "",
+  merchantId: "1152714",
   publicKey: "",
-  integrationId: "",
-  iframeId: "",
+  integrationId: "5613515",
+  iframeId: "1032257",
   returnUrl: "https://fitzoneland.com/payment/verify",
   cancelUrl: "https://fitzoneland.com/payment/verify?state=cancel",
   webhookUrl: "https://fitzoneland.com/api/payments/webhook/paymob",
-  sandboxMode: false,
+  sandboxMode: true,
   notes: "",
   displayLabelAr: "الدفع الإلكتروني عبر Paymob",
   displayLabelEn: "Paymob online payment",
   providerStatus: "enabled",
   providerMode: "live",
   secretsConfigured: { apiKey: false, secretKey: false, hmac: false },
+  envConfigured: {
+    merchantId: false,
+    publicKey: false,
+    integrationId: false,
+    iframeId: false,
+    env: "",
+  },
   lastValidationResult: null,
 };
 
@@ -293,6 +310,7 @@ export default function Payments() {
   }
 
   const secrets = settings.secretsConfigured ?? DEFAULT_SETTINGS.secretsConfigured!;
+  const envConfigured = settings.envConfigured ?? DEFAULT_SETTINGS.envConfigured!;
   const lastValidation = settings.lastValidationResult;
 
   return (
@@ -349,6 +367,17 @@ export default function Payments() {
           <SecretBadge configured={secrets.hmac} label="PAYMOB_HMAC_SECRET" />
         </div>
 
+        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+          <SecretBadge configured={Boolean(envConfigured.merchantId)} label="PAYMOB_MERCHANT_ID" />
+          <SecretBadge configured={Boolean(envConfigured.publicKey)} label="PAYMOB_PUBLIC_KEY" />
+          <SecretBadge configured={Boolean(envConfigured.integrationId)} label="PAYMOB_INTEGRATION_ID" />
+          <SecretBadge configured={Boolean(envConfigured.iframeId)} label="PAYMOB_IFRAME_CARD_ID" />
+          <div className="rounded-2xl border border-pink-400/20 bg-pink-500/10 px-4 py-3 text-sm text-pink-100">
+            <div className="font-mono text-xs font-bold">PAYMOB_ENV</div>
+            <div className="mt-1 text-xs opacity-80">{envConfigured.env || "Not set"}</div>
+          </div>
+        </div>
+
         {(validation || lastValidation) && (
           <div
             className={`mt-4 rounded-2xl border px-4 py-3 text-sm ${
@@ -395,10 +424,10 @@ export default function Payments() {
 
         <div className="grid gap-4 md:grid-cols-2">
           <Field label="Active provider" value={settings.activeProvider} readOnly />
-          <Field label="Merchant ID" value={settings.merchantId} onChange={(value) => setSettings((current) => ({ ...current, merchantId: value }))} />
-          <Field label="Public key" value={settings.publicKey} onChange={(value) => setSettings((current) => ({ ...current, publicKey: value }))} />
-          <Field label="Integration IDs" value={settings.integrationId} onChange={(value) => setSettings((current) => ({ ...current, integrationId: value }))} placeholder="1234,5678" />
-          <Field label="Iframe ID" value={settings.iframeId} onChange={(value) => setSettings((current) => ({ ...current, iframeId: value }))} />
+          <Field label="PAYMOB_MERCHANT_ID" value={settings.merchantId} onChange={(value) => setSettings((current) => ({ ...current, merchantId: value }))} />
+          <Field label="PAYMOB_PUBLIC_KEY" value={settings.publicKey} onChange={(value) => setSettings((current) => ({ ...current, publicKey: value }))} />
+          <Field label="PAYMOB_INTEGRATION_ID" value={settings.integrationId} onChange={(value) => setSettings((current) => ({ ...current, integrationId: value }))} placeholder="5613515" />
+          <Field label="PAYMOB_IFRAME_CARD_ID" value={settings.iframeId} onChange={(value) => setSettings((current) => ({ ...current, iframeId: value }))} placeholder="1032257" />
           <Field label="Display label AR" value={settings.displayLabelAr} onChange={(value) => setSettings((current) => ({ ...current, displayLabelAr: value }))} />
           <Field label="Display label EN" value={settings.displayLabelEn} onChange={(value) => setSettings((current) => ({ ...current, displayLabelEn: value }))} />
           <Field label="Return URL" value={settings.returnUrl} onChange={(value) => setSettings((current) => ({ ...current, returnUrl: value }))} />
