@@ -3321,21 +3321,25 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
         .map((item) => item.id);
       const cleaned = prev.filter((id) => !sameSlotIds.includes(id));
 
+      // Max 2 sessions per day
+      const dayCount = cleaned.filter((id) => scheduleChoices.find((c) => c.id === id)?.day === entry.day).length;
+      if (dayCount >= 2) {
+        setScheduleError(
+          daysPerWeek
+            ? `الحد الأقصى في يوم "${entry.day}" هو حصتان — إجمالي ${daysPerWeek * 2} حصة لـ ${daysPerWeek} أيام في الأسبوع.`
+            : "يمكنكِ اختيار حصتين كحد أقصى في اليوم الواحد."
+        );
+        return prev;
+      }
+
       // Max total = daysPerWeek × 2 (or sessionsCount for plans without a frequency step)
       const maxSessions = daysPerWeek ? daysPerWeek * 2 : (schedulePlan?.sessionsCount ?? null);
       if (maxSessions && cleaned.length >= maxSessions) {
         setScheduleError(
           daysPerWeek
-            ? `وصلتِ للحد الأقصى: ${maxSessions} حصة لـ ${daysPerWeek} أيام في الأسبوع.`
+            ? `وصلتِ للحد الأقصى: ${daysPerWeek} أيام × 2 حصة = ${maxSessions} حصة في الأسبوع.`
             : `يمكنكِ اختيار ${maxSessions} موعد كحد أقصى لهذه الباقة.`
         );
-        return prev;
-      }
-
-      // Max 2 sessions per day
-      const dayCount = cleaned.filter((id) => scheduleChoices.find((c) => c.id === id)?.day === entry.day).length;
-      if (dayCount >= 2) {
-        setScheduleError("يمكنكِ اختيار حصتين كحد أقصى في اليوم الواحد.");
         return prev;
       }
 
@@ -3812,7 +3816,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                 {schedulePlan.isTrial
                   ? t("اختاري موعداً واحداً للكلاس التجريبي", "Select one slot for your trial class")
                   : daysPerWeek
-                    ? <>{daysPerWeek} أيام / أسبوع · <span style={{ color: "#c9b9c1", fontWeight: 400 }}>اختاري من {daysPerWeek} إلى {daysPerWeek * 2} حصة</span></>
+                    ? <>{daysPerWeek} أيام / أسبوع · <span style={{ color: "#c9b9c1", fontWeight: 400 }}>حصتان كحد أقصى في اليوم · إجمالي {daysPerWeek * 2} حصة</span></>
                     : schedulePlan.sessionsCount ? `يمكنك اختيار ${schedulePlan.sessionsCount} موعد` : "اختاري المواعيد المناسبة لك"
                 }
               </div>
