@@ -295,9 +295,32 @@ const PaymobIframeModal = ({
           </span>
         </div>
         <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          {/* Payment brand logos */}
-          {["Visa", "MC", "valU"].map(b => (
-            <span key={b} style={{ fontSize: 10, fontWeight: 800, padding: "2px 7px", borderRadius: 4, background: b === "Visa" ? "#1A1F71" : b === "MC" ? "#EB001B" : "#000", color: "#fff", fontFamily: "sans-serif" }}>{b}</span>
+          {[
+            { src: "/payment-logos/visa.svg", alt: "Visa" },
+            { src: "/payment-logos/mastercard.svg", alt: "Mastercard" },
+            { src: "/payment-logos/u-valu-logo.webp", alt: "valU" },
+            { src: "/payment-logos/souhoola.svg", alt: "Souhoola" },
+            { src: "/payment-logos/sympl.svg", alt: "Sympl" },
+          ].map((logo) => (
+            <div
+              key={logo.alt}
+              style={{
+                background: "#fff",
+                borderRadius: 6,
+                padding: "3px 8px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                minWidth: 42,
+                height: 24,
+              }}
+            >
+              <img
+                src={logo.src}
+                alt={logo.alt}
+                style={{ maxWidth: 46, maxHeight: 16, objectFit: "contain", display: "block" }}
+              />
+            </div>
           ))}
           <button onClick={onClose} style={{ background: "rgba(255,255,255,.1)", border: "none", color: "#fff", width: 32, height: 32, borderRadius: 8, cursor: "pointer", fontSize: 18, display: "flex", alignItems: "center", justifyContent: "center", marginInlineStart: 4 }}>×</button>
         </div>
@@ -3493,11 +3516,11 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
         }
         return;
       }
-      setSubMsg({ text: `✅ تم الاشتراك في باقة ${plan.name} بنجاح!`, ok: true });
-      setCheckoutPreview(null);
       if (data.checkoutUrl) {
-        setPaymobModal({ url: data.checkoutUrl, transactionId: data.transactionId ?? null });
+        window.location.href = data.checkoutUrl;
       } else {
+        setSubMsg({ text: `✅ تم الاشتراك في باقة ${plan.name} بنجاح!`, ok: true });
+        setCheckoutPreview(null);
         setTimeout(() => { window.location.href = "/account"; }, 1500);
       }
     } catch (err: unknown) {
@@ -6276,17 +6299,16 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
         return;
       }
 
-      setCreatedOrderId(data.orderId ?? null);
       if (data.checkoutUrl) {
-        setCartPaymobModal({ url: data.checkoutUrl, transactionId: data.transactionId ?? null });
-        setPaymentAction({ url: data.checkoutUrl, label: "Paymob", transactionId: data.transactionId ?? null });
+        window.location.href = data.checkoutUrl;
       } else {
+        setCreatedOrderId(data.orderId ?? null);
         setPaymentAction(null);
+        setOrderMsg({ text: data.message ?? "تم تسجيل طلبك بنجاح.", ok: true });
+        writeCart([]);
+        setCartItems([]);
+        setStep("success");
       }
-      setOrderMsg({ text: data.message ?? "تم تسجيل طلبك بنجاح.", ok: true });
-      writeCart([]);
-      setCartItems([]);
-      setStep("success");
     } catch {
       setOrderMsg({ text: "حدث خطأ غير متوقع أثناء إنشاء الطلب.", ok: false });
     } finally {

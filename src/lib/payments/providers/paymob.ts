@@ -9,29 +9,21 @@ import type {
 import { getPaymentSettings } from "@/lib/payments/settings";
 
 const REGION_BASE = "https://accept.paymob.com";
-const FLASH_API_BASE = "https://flashapi.paymob.com";
-const PAYMOB_JS_URL = "https://nextstagingenv.s3.amazonaws.com/js/v1/paymob.js";
 const FETCH_TIMEOUT_MS = 20_000;
+const PAYMENT_KEY_EXPIRATION_SECONDS = 3600;
 
 type PaymobSettings = Awaited<ReturnType<typeof getPaymentSettings>>;
 
-type PaymobIntentionResponse = {
-  id?: string | number;
-  client_secret?: string;
-  special_reference?: string | null;
-  status?: string | null;
-  payment_methods?: Array<{ name?: string | null; live?: boolean | null }>;
+type PaymobAuthResponse = {
+  token?: string;
 };
 
-type PaymobIntentionDetailsResponse = {
-  id?: string | number;
-  client_secret?: string;
-  payment_methods?: Array<{ name?: string | null; live?: boolean | null }>;
-  transactions?: Array<Record<string, unknown>>;
-  transaction_records?: Array<Record<string, unknown>>;
-  confirmed?: boolean;
-  status?: string | null;
-  intention_detail?: Record<string, unknown> | null;
+type PaymobOrderResponse = {
+  id?: number;
+};
+
+type PaymobPaymentKeyResponse = {
+  token?: string;
 };
 
 type PaymobAcceptanceTransaction = {
@@ -61,7 +53,7 @@ type PaymobWebhookBody = {
   hmac?: string;
 };
 
-function requireSecret(name: "PAYMOB_API_KEY" | "PAYMOB_SECRET_KEY" | "PAYMOB_HMAC_SECRET") {
+function requireSecret(name: "PAYMOB_API_KEY" | "PAYMOB_HMAC_SECRET") {
   const value = process.env[name]?.trim();
   if (!value) throw new Error(`${name} is not configured on the server.`);
   return value;
@@ -71,173 +63,173 @@ function getRegionBase() {
   return process.env.PAYMOB_REGION_BASE?.trim() || REGION_BASE;
 }
 
-function getFlashBase() {
-  return process.env.PAYMOB_FLASH_API_BASE?.trim() || FLASH_API_BASE;
-}
-
-function getPaymobScriptUrl() {
-  return process.env.PAYMOB_FLASH_SCRIPT_URL?.trim() || PAYMOB_JS_URL;
-}
-
-function getIntegrationIds(settings: PaymobSettings) {
+function getIntegrationId(settings: PaymobSettings) {
   const raw = String(settings.integrationId ?? "")
     .split(",")
     .map((value) => Number(value.trim()))
-    .filter((value) => Number.isFinite(value) && value > 0);
+    .find((value) => Number.isFinite(value) && value > 0);
 
-  return Array.from(new Set(raw));
+  if (!raw) {
+    throw new Error("Paymob integration ID is not configured.");
+  }
+
+  return raw;
+}
+
+function getIframeId(settings: PaymobSettings) {
+  const iframeId = String(settings.iframeId ?? "").trim();
+  if (!iframeId) {
+    throw new Error("Paymob iframe ID is not configured.");
+  }
+  return iframeId;
 }
 
 function buildBillingData(customer: PaymentCheckoutInput["customer"]) {
-  const nameParts = (customer.name ?? "FitZone Member").trim().split(/\s+/).filter(Boolean);
+  const nameParts = (customer.name ?? "FitZone Member")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
   const firstName = nameParts[0] ?? "FitZone";
   const lastName = nameParts.slice(1).join(" ") || "Member";
 
   return {
-    first_name: firstName,
-    last_name: lastName,
+    apartment: "NA",
     email: customer.email ?? "noreply@fitzoneland.com",
+    floor: "NA",
+    first_name: firstName,
+    street: "NA",
+    building: "NA",
     phone_number: customer.phone?.trim() || "+201000000000",
+    shipping_method: "NA",
+    postal_code: "NA",
+    city: "Cairo",
+    country: "EG",
+    last_name: lastName,
+    state: "Cairo",
   };
 }
 
 function buildReturnUrl(base: string, transactionId: string, state: "return" | "cancel") {
-  const fallback = `/payment/verify?transactionId=${encodeURIComponent(transactionId)}${state === "cancel" ? "&state=cancel" : ""}`;
+  const fallback = `https://fitzoneland.com/payment/verify?transactionId=${encodeURIComponent(transactionId)}${state === "cancel" ? "&state=cancel" : ""}`;
   const baseValue = String(base || "").trim();
   if (!baseValue) return fallback;
 
   try {
     const url = new URL(baseValue);
     url.searchParams.set("transactionId", transactionId);
-    url.searchParams.set("payment", state);
+    if (state === "cancel") {
+      url.searchParams.set("state", "cancel");
+    }
     return url.toString();
   } catch {
     return fallback;
   }
 }
 
-function buildCheckoutUrl(transactionId: string) {
-  return `/payment/checkout?transactionId=${encodeURIComponent(transactionId)}`;
-}
-
-async function createIntention(params: {
-  settings: PaymobSettings;
-  input: PaymentCheckoutInput;
-  amountCents: number;
-}) {
-  const secretKey = requireSecret("PAYMOB_SECRET_KEY");
-  const integrationIds = getIntegrationIds(params.settings);
-
-  const body: Record<string, unknown> = {
-    amount: params.amountCents,
-    currency: params.input.currency || "EGP",
-    billing_data: buildBillingData(params.input.customer),
-    items: [],
-    special_reference: params.input.transactionId,
-    notification_url: params.settings.webhookUrl || undefined,
-    redirection_url: buildReturnUrl(
-      params.settings.returnUrl || "",
-      params.input.transactionId,
-      "return",
-    ),
-    expiration: 3600,
-    extras: {
-      transactionId: params.input.transactionId,
-      purpose: params.input.purpose,
-      orderId: params.input.context.orderId ?? null,
-      membershipId: params.input.context.membershipId ?? null,
-      offerId: params.input.context.offerId ?? null,
-      description: params.input.context.description ?? null,
-    },
-  };
-
-  if (integrationIds.length > 0) {
-    body.payment_methods = integrationIds;
-  }
-
-  const res = await fetch(`${getRegionBase()}/v1/intention/`, {
+async function authenticate() {
+  const apiKey = requireSecret("PAYMOB_API_KEY");
+  const response = await fetch(`${getRegionBase()}/api/auth/tokens`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Token ${secretKey}`,
-    },
-    body: JSON.stringify(body),
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ api_key: apiKey }),
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
 
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`Paymob intention creation failed (${res.status}): ${text.slice(0, 300)}`);
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(`Paymob authentication failed (${response.status}): ${text.slice(0, 300)}`);
   }
 
-  const data = (await res.json()) as PaymobIntentionResponse;
-  if (!data.client_secret) {
-    throw new Error("Paymob intention response did not include a client secret.");
+  const payload = (await response.json()) as PaymobAuthResponse;
+  if (!payload.token) {
+    throw new Error("Paymob authentication did not return a token.");
   }
 
-  return {
-    intentionId: String(data.id ?? ""),
-    clientSecret: data.client_secret,
-    status: data.status ?? "intended",
-    paymentMethods: data.payment_methods ?? [],
-    integrationIds,
-  };
+  return payload.token;
 }
 
-function readStoredPayload(metadata: string | null | undefined) {
-  if (!metadata) return null;
+async function createOrder(params: {
+  authToken: string;
+  amountCents: number;
+  currency: string;
+  transactionId: string;
+}) {
+  const response = await fetch(`${getRegionBase()}/api/ecommerce/orders`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      auth_token: params.authToken,
+      delivery_needed: false,
+      amount_cents: params.amountCents,
+      currency: params.currency,
+      merchant_order_id: params.transactionId,
+      items: [],
+    }),
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(`Paymob order creation failed (${response.status}): ${text.slice(0, 300)}`);
+  }
+
+  const payload = (await response.json()) as PaymobOrderResponse;
+  if (!payload.id) {
+    throw new Error("Paymob order creation did not return an order ID.");
+  }
+
+  return payload.id;
+}
+
+async function createPaymentKey(params: {
+  authToken: string;
+  orderId: number;
+  amountCents: number;
+  currency: string;
+  integrationId: number;
+  billingData: ReturnType<typeof buildBillingData>;
+}) {
+  const response = await fetch(`${getRegionBase()}/api/acceptance/payment_keys`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      auth_token: params.authToken,
+      amount_cents: params.amountCents,
+      expiration: PAYMENT_KEY_EXPIRATION_SECONDS,
+      order_id: params.orderId,
+      billing_data: params.billingData,
+      currency: params.currency,
+      integration_id: params.integrationId,
+      lock_order_when_paid: false,
+    }),
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(`Paymob payment key creation failed (${response.status}): ${text.slice(0, 300)}`);
+  }
+
+  const payload = (await response.json()) as PaymobPaymentKeyResponse;
+  if (!payload.token) {
+    throw new Error("Paymob payment key creation did not return a payment token.");
+  }
+
+  return payload.token;
+}
+
+function buildHostedCheckoutUrl(iframeId: string, paymentToken: string) {
+  return `${getRegionBase()}/api/acceptance/iframes/${encodeURIComponent(iframeId)}?payment_token=${encodeURIComponent(paymentToken)}`;
+}
+
+function readStoredPayload(value: string | null | undefined) {
+  if (!value) return null;
   try {
-    return JSON.parse(metadata) as Record<string, unknown>;
+    return JSON.parse(value) as Record<string, unknown>;
   } catch {
     return null;
   }
-}
-
-function getStoredClientSecret(providerPayload: string | null | undefined) {
-  const payload = readStoredPayload(providerPayload);
-  const clientSecret = payload?.clientSecret;
-  return typeof clientSecret === "string" && clientSecret.trim() ? clientSecret.trim() : null;
-}
-
-function mapIntentionState(data: PaymobIntentionDetailsResponse) {
-  const normalizedStatus = String(data.status ?? "").toLowerCase();
-  const allTransactions = [...(data.transactions ?? []), ...(data.transaction_records ?? [])];
-
-  const hasPaidTransaction = allTransactions.some((item) => {
-    const status = String(item.status ?? item.state ?? item.requirement ?? "").toLowerCase();
-    const success = item.success === true || item.confirmed === true;
-    return success || ["success", "paid", "confirmed"].includes(status);
-  });
-
-  const hasFailedTransaction = allTransactions.some((item) => {
-    const status = String(item.status ?? item.state ?? item.requirement ?? "").toLowerCase();
-    return item.success === false || ["failed", "declined", "cancelled", "canceled", "expired"].includes(status);
-  });
-
-  if (data.confirmed === true || hasPaidTransaction || ["paid", "confirmed", "processed", "success"].includes(normalizedStatus)) {
-    return "paid" as const;
-  }
-
-  if (hasFailedTransaction || ["failed", "declined", "cancelled", "canceled", "expired"].includes(normalizedStatus)) {
-    return "failed" as const;
-  }
-
-  return "pending" as const;
-}
-
-async function readIntentionDetails(publicKey: string, clientSecret: string) {
-  const url = `${getFlashBase()}/v1/intention/element/${encodeURIComponent(publicKey)}/${encodeURIComponent(clientSecret)}/`;
-  const res = await fetch(url, {
-    method: "GET",
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-  });
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`Paymob intention inquiry failed (${res.status}): ${text.slice(0, 240)}`);
-  }
-
-  return (await res.json()) as PaymobIntentionDetailsResponse;
 }
 
 function computePaymobHmac(obj: PaymobAcceptanceTransaction, secret: string) {
@@ -279,52 +271,63 @@ function verifyHmac(provided: string, expected: string) {
 
 function mapAcceptanceStatus(transaction: PaymobAcceptanceTransaction) {
   if (transaction.success === true && transaction.pending === false) return "paid" as const;
-  if (transaction.error_occured === true || (transaction.success === false && transaction.pending === false)) return "failed" as const;
+  if (transaction.error_occured === true || (transaction.success === false && transaction.pending === false)) {
+    return "failed" as const;
+  }
   return "pending" as const;
 }
 
 async function createCheckout(input: PaymentCheckoutInput): Promise<PaymentCheckoutResult> {
   const settings = await getPaymentSettings();
-  const publicKey = String(settings.publicKey ?? "").trim();
   const amountCents = Math.round(input.amount * 100);
 
   if (!settings.enabled) {
     throw new Error("Paymob is disabled in admin settings.");
   }
-  if (!publicKey) {
-    throw new Error("Paymob public key is not configured.");
-  }
+
   if (amountCents <= 0) {
     throw new Error("Payment amount must be greater than zero.");
   }
 
-  const intention = await createIntention({
-    settings,
-    input,
+  const integrationId = getIntegrationId(settings);
+  const iframeId = getIframeId(settings);
+  const authToken = await authenticate();
+  const paymobOrderId = await createOrder({
+    authToken,
     amountCents,
+    currency: input.currency || "EGP",
+    transactionId: input.transactionId,
+  });
+  const paymentToken = await createPaymentKey({
+    authToken,
+    orderId: paymobOrderId,
+    amountCents,
+    currency: input.currency || "EGP",
+    integrationId,
+    billingData: buildBillingData(input.customer),
   });
 
-  const checkoutUrl = buildCheckoutUrl(input.transactionId);
-  const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+  const checkoutUrl = buildHostedCheckoutUrl(iframeId, paymentToken);
+  const expiresAt = new Date(Date.now() + PAYMENT_KEY_EXPIRATION_SECONDS * 1000);
 
   return {
     provider: "paymob",
     status: "pending",
-    message: "Paymob payment intention created successfully.",
+    message: "Paymob hosted checkout created successfully.",
     checkoutUrl,
-    iframeUrl: null,
-    providerReference: intention.intentionId || null,
+    iframeUrl: checkoutUrl,
+    providerReference: String(paymobOrderId),
     externalReference: null,
     expiresAt,
     payload: {
-      providerMode: "paymob_flash",
-      paymobScriptUrl: getPaymobScriptUrl(),
-      publicKey,
-      clientSecret: intention.clientSecret,
-      intentionId: intention.intentionId,
-      paymentMethods: intention.paymentMethods,
-      integrationIds: intention.integrationIds,
-      redirectUrl: buildReturnUrl(settings.returnUrl, input.transactionId, "return"),
+      providerMode: "paymob_hosted_redirect",
+      paymobOrderId,
+      paymentToken,
+      integrationId,
+      iframeId,
+      profileId: settings.merchantId || null,
+      sandboxMode: settings.sandboxMode,
+      returnUrl: buildReturnUrl(settings.returnUrl, input.transactionId, "return"),
       cancelUrl: buildReturnUrl(settings.cancelUrl, input.transactionId, "cancel"),
     },
   };
@@ -339,88 +342,46 @@ async function verifyTransaction(transaction: {
   metadata?: string | null;
   providerPayload?: string | null;
 }): Promise<PaymentVerificationResult> {
-  const settings = await getPaymentSettings();
-  const publicKey = String(settings.publicKey ?? "").trim();
-  const clientSecret = getStoredClientSecret(transaction.providerPayload);
-
-  if (publicKey && clientSecret) {
-    const intention = await readIntentionDetails(publicKey, clientSecret);
-    const status = mapIntentionState(intention);
-    const externalReference = (() => {
-      const transactionItem = [...(intention.transactions ?? []), ...(intention.transaction_records ?? [])].find(Boolean);
-      const id = transactionItem?.id;
-      return id == null ? transaction.externalReference ?? null : String(id);
-    })();
-
-    return {
-      status,
-      message:
-        status === "paid"
-          ? "Paymob confirmed the payment."
-          : status === "failed"
-            ? "Paymob marked the payment as failed."
-            : "Payment is still being processed by Paymob.",
-      providerReference: transaction.providerReference ?? (intention.id != null ? String(intention.id) : null),
-      externalReference,
-      payload: {
-        clientSecret,
-        intentionId: intention.id ?? null,
-        intentionStatus: intention.status ?? null,
-        confirmed: intention.confirmed ?? false,
-        paymentMethods: intention.payment_methods ?? [],
-      },
-    };
-  }
-
   if (transaction.externalReference) {
-    const apiKey = process.env.PAYMOB_API_KEY?.trim();
-    if (apiKey) {
-      const auth = await fetch(`${getRegionBase()}/api/auth/tokens`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ api_key: apiKey }),
-        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-      });
+    const authToken = await authenticate();
+    const response = await fetch(`${getRegionBase()}/api/acceptance/transactions/${transaction.externalReference}`, {
+      headers: { Authorization: `Token ${authToken}` },
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
 
-      if (auth.ok) {
-        const authData = (await auth.json()) as { token?: string };
-        if (authData.token) {
-          const res = await fetch(`${getRegionBase()}/api/acceptance/transactions/${transaction.externalReference}`, {
-            headers: { Authorization: `Token ${authData.token}` },
-            signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-          });
+    if (response.ok) {
+      const acceptance = (await response.json()) as PaymobAcceptanceTransaction;
+      const status = mapAcceptanceStatus(acceptance);
 
-          if (res.ok) {
-            const acceptance = (await res.json()) as PaymobAcceptanceTransaction;
-            const status = mapAcceptanceStatus(acceptance);
-            return {
-              status,
-              message:
-                status === "paid"
-                  ? "Paymob confirmed the payment."
-                  : status === "failed"
-                    ? "Paymob marked the payment as failed."
-                    : "Payment is still being processed by Paymob.",
-              providerReference: acceptance.order?.id != null ? String(acceptance.order.id) : transaction.providerReference ?? null,
-              externalReference: acceptance.id != null ? String(acceptance.id) : transaction.externalReference,
-              payload: {
-                paymobOrderId: acceptance.order?.id ?? null,
-                paymobTransactionId: acceptance.id ?? null,
-                success: acceptance.success ?? false,
-                pending: acceptance.pending ?? true,
-              },
-            };
-          }
-        }
-      }
+      return {
+        status,
+        message:
+          status === "paid"
+            ? "Paymob confirmed the payment."
+            : status === "failed"
+              ? "Paymob marked the payment as failed."
+              : "Payment is still being processed by Paymob.",
+        providerReference:
+          acceptance.order?.id != null ? String(acceptance.order.id) : transaction.providerReference ?? null,
+        externalReference:
+          acceptance.id != null ? String(acceptance.id) : transaction.externalReference ?? null,
+        payload: {
+          ...(readStoredPayload(transaction.providerPayload) ?? {}),
+          paymobOrderId: acceptance.order?.id ?? null,
+          paymobTransactionId: acceptance.id ?? null,
+          success: acceptance.success ?? false,
+          pending: acceptance.pending ?? true,
+        },
+      };
     }
   }
 
   return {
     status: "pending",
-    message: "Paymob verification is waiting for the initial callback.",
+    message: "Payment is still pending until Paymob sends a callback or transaction reference.",
     providerReference: transaction.providerReference ?? null,
     externalReference: transaction.externalReference ?? null,
+    payload: readStoredPayload(transaction.providerPayload),
   };
 }
 
@@ -444,12 +405,10 @@ async function handleWebhook(payload: unknown): Promise<PaymentWebhookResult> {
     return { ok: false, message: "Paymob webhook did not include merchant_order_id." };
   }
 
-  const status = mapAcceptanceStatus(body.obj);
-
   return {
     ok: true,
     transactionId,
-    status,
+    status: mapAcceptanceStatus(body.obj),
     providerReference: body.obj.order?.id != null ? String(body.obj.order.id) : null,
     externalReference: body.obj.id != null ? String(body.obj.id) : null,
     message: "Paymob webhook received successfully.",
