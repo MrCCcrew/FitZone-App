@@ -1239,6 +1239,7 @@ const AboutPage = () => {
 
 type UserSummary = {
   authenticated: boolean;
+  isAppUser?: boolean;
   user?: { name: string; email: string; role: string };
   walletBalance?: number;
   rewardPoints?: number;
@@ -6294,8 +6295,8 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
   };
 
   const submitOrder = async () => {
-    if (!summary?.authenticated) {
-      window.location.href = `/login?callbackUrl=${encodeURIComponent("/account?tab=orders")}`;
+    if (!summary?.authenticated || summary?.isAppUser === false) {
+      window.location.href = `/login?callbackUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`;
       return;
     }
     if (cartItems.length === 0) return;
@@ -6335,6 +6336,10 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
 
       const data = await res.json() as { error?: string; orderId?: string; message?: string; checkoutUrl?: string; transactionId?: string | null };
       if (!res.ok) {
+        if (res.status === 401) {
+          window.location.href = `/login?callbackUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`;
+          return;
+        }
         setOrderMsg({ text: data.error ?? "تعذر إنشاء الطلب حاليًا.", ok: false });
         return;
       }
