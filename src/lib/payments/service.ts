@@ -30,6 +30,27 @@ type CreatePaymentTransactionInput = {
   };
 };
 
+type PaymentReferenceCategory =
+  | "shop"
+  | "subscription"
+  | "trial"
+  | "offers"
+  | "package"
+  | "private"
+  | "wallet";
+
+const PAYMENT_REFERENCE_PREFIXES: Record<PaymentReferenceCategory, string> = {
+  shop: "FZ-Shop",
+  subscription: "FZ-Sub",
+  trial: "FZ-Trial",
+  offers: "FZ-Offers",
+  package: "FZ-Packg",
+  private: "FZ-Pri",
+  wallet: "FZ-Wallet",
+};
+
+type PaymentReferenceDbClient = Pick<typeof db, "userMembership" | "paymentReferenceCounter">;
+
 function normalizeExternalPaymentMethod(method: string | null | undefined) {
   const raw = String(method ?? "").trim().toLowerCase();
 
@@ -90,6 +111,62 @@ function getDefaultBusinessUnit(purpose: PaymentPurpose) {
   return "club";
 }
 
+async function resolvePaymentReferenceCategory(
+  tx: PaymentReferenceDbClient,
+  input: CreatePaymentTransactionInput,
+): Promise<PaymentReferenceCategory> {
+  if (input.purpose === "order") return "shop";
+  if (input.purpose === "wallet_topup") return "wallet";
+  if (input.purpose === "private_session") return "private";
+
+  if (input.offerId) return "offers";
+
+  if (input.membershipId) {
+    const membership = await tx.userMembership.findUnique({
+      where: { id: input.membershipId },
+      select: {
+        offerId: true,
+        membership: {
+          select: {
+            kind: true,
+          },
+        },
+      },
+    });
+
+    if (membership?.offerId) return "offers";
+
+    const membershipKind = String(membership?.membership?.kind ?? "").trim().toLowerCase();
+    if (membershipKind === "trial") return "trial";
+    if (membershipKind === "package") return "package";
+  }
+
+  const metadataKind = String(
+    input.metadata?.membershipKind ?? input.metadata?.membershipType ?? "",
+  )
+    .trim()
+    .toLowerCase();
+
+  if (metadataKind === "trial") return "trial";
+  if (metadataKind === "package") return "package";
+
+  return "subscription";
+}
+
+async function generatePaymentReferenceCode(
+  tx: PaymentReferenceDbClient,
+  category: PaymentReferenceCategory,
+) {
+  const counter = await tx.paymentReferenceCounter.upsert({
+    where: { key: category },
+    update: { value: { increment: 1 } },
+    create: { key: category, value: 1 },
+    select: { value: true },
+  });
+
+  return `${PAYMENT_REFERENCE_PREFIXES[category]}-${String(counter.value).padStart(7, "0")}`;
+}
+
 export function getAvailablePaymentProviders() {
   return listPaymentProviders().map((provider) => ({
     key: provider.key,
@@ -112,25 +189,31 @@ export async function createPaymentTransaction(input: CreatePaymentTransactionIn
     throw new Error("قيمة الدفع غير صحيحة.");
   }
 
-  const transaction = await db.paymentTransaction.create({
-    data: {
-      userId: input.userId,
-      orderId: input.orderId ?? null,
-      membershipId: input.membershipId ?? null,
-      offerId: input.offerId ?? null,
-      purpose: input.purpose,
-      businessUnit: input.businessUnit ?? getDefaultBusinessUnit(input.purpose),
-      provider: provider.key,
-      amount,
-      currency: (input.currency || "EGP").toUpperCase(),
-      paymentMethod: normalizeExternalPaymentMethod(input.paymentMethod),
-      returnUrl: input.returnUrl ?? null,
-      cancelUrl: input.cancelUrl ?? null,
-      metadata: stringifyJson({
-        description: input.description ?? null,
-        ...(input.metadata ?? {}),
-      }),
-    },
+  const transaction = await db.$transaction(async (tx) => {
+    const referenceCategory = await resolvePaymentReferenceCategory(tx, input);
+    const referenceCode = await generatePaymentReferenceCode(tx, referenceCategory);
+
+    return tx.paymentTransaction.create({
+      data: {
+        userId: input.userId,
+        orderId: input.orderId ?? null,
+        membershipId: input.membershipId ?? null,
+        offerId: input.offerId ?? null,
+        referenceCode,
+        purpose: input.purpose,
+        businessUnit: input.businessUnit ?? getDefaultBusinessUnit(input.purpose),
+        provider: provider.key,
+        amount,
+        currency: (input.currency || "EGP").toUpperCase(),
+        paymentMethod: normalizeExternalPaymentMethod(input.paymentMethod),
+        returnUrl: input.returnUrl ?? null,
+        cancelUrl: input.cancelUrl ?? null,
+        metadata: stringifyJson({
+          description: input.description ?? null,
+          ...(input.metadata ?? {}),
+        }),
+      },
+    });
   });
 
   const checkout = await provider.createCheckout({
@@ -451,6 +534,7 @@ export async function listRecentPaymentTransactions(limit = 50) {
 
   return rows.map((row) => ({
     id: row.id,
+    referenceCode: row.referenceCode,
     userId: row.userId,
     customerName: row.user?.name ?? "عميل",
     customerEmail: row.user?.email ?? null,
@@ -477,6 +561,7 @@ export async function listRecentPaymentTransactions(limit = 50) {
 function mapPaymentTransaction(
   transaction: {
     id: string;
+    referenceCode: string | null;
     provider: string;
     purpose: string;
     amount: number;
@@ -504,6 +589,7 @@ function mapPaymentTransaction(
 ) {
   return {
     id: transaction.id,
+    referenceCode: transaction.referenceCode,
     provider: transaction.provider as PaymentProviderKey,
     purpose: transaction.purpose as PaymentPurpose,
     amount: transaction.amount,

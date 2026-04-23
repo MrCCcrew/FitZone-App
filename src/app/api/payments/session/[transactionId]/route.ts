@@ -22,6 +22,7 @@ export async function GET(_: Request, context: { params: Promise<{ transactionId
     where: { id: transactionId },
     select: {
       id: true,
+      referenceCode: true,
       userId: true,
       provider: true,
       status: true,
@@ -46,6 +47,7 @@ export async function GET(_: Request, context: { params: Promise<{ transactionId
   return NextResponse.json({
     transaction: {
       id: transaction.id,
+      referenceCode: transaction.referenceCode,
       status: transaction.status,
       amount: transaction.amount,
       currency: transaction.currency,

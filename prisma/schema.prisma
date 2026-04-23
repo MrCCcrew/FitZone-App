@@ -351,6 +351,7 @@ model PaymentTransaction {
   orderId           String?
   membershipId      String?
   offerId           String?
+  referenceCode     String?   @unique
   purpose           String    // order | membership | wallet_topup
   businessUnit      String    @default("store") // store | club
   provider          String    // manual | paymob | paytabs | custom
@@ -378,6 +379,12 @@ model PaymentTransaction {
   @@index([userId, status])
   @@index([orderId])
   @@index([provider, status])
+}
+
+model PaymentReferenceCounter {
+  key       String   @id
+  value     Int      @default(0)
+  updatedAt DateTime @updatedAt
 }
 
 // ─── Wallet ───────────────────────────────────────────────────────────────────

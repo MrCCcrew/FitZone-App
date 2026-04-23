@@ -7,6 +7,7 @@ import { useSearchParams } from "next/navigation";
 type SessionPayload = {
   transaction: {
     id: string;
+    referenceCode?: string | null;
     status: "pending" | "requires_action" | "paid" | "failed" | "cancelled" | "expired";
     amount: number;
     currency: string;
@@ -62,6 +63,7 @@ function PaymentCheckoutContent() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [transactionStatus, setTransactionStatus] = useState<string | null>(null);
+  const [transactionReference, setTransactionReference] = useState<string | null>(null);
   const [paymentMethods, setPaymentMethods] = useState<string[]>([]);
 
   useEffect(() => {
@@ -81,6 +83,7 @@ function PaymentCheckoutContent() {
         if (cancelled) return;
 
         setTransactionStatus(payload.transaction.status);
+        setTransactionReference(payload.transaction.referenceCode ?? payload.transaction.id);
 
         if (payload.transaction.status === "paid") {
           window.location.href = `/payment/verify?transactionId=${payload.transaction.id}`;
@@ -144,7 +147,7 @@ function PaymentCheckoutContent() {
           </div>
           {transactionId ? (
             <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-xs text-[#d7aabd]">
-              رقم العملية: <span className="font-mono text-[#fff4f8]">{transactionId}</span>
+              رقم العملية: <span className="font-mono text-[#fff4f8]">{transactionReference ?? transactionId}</span>
             </div>
           ) : null}
         </div>

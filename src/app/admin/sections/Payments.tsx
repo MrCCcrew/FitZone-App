@@ -68,6 +68,7 @@ type PaymentSettings = {
 
 type PaymentTransactionRow = {
   id: string;
+  referenceCode?: string | null;
   customerName: string;
   customerEmail?: string | null;
   customerPhone?: string | null;
@@ -553,6 +554,8 @@ export default function Payments() {
                       {transaction.customerEmail ?? transaction.customerPhone ?? "No customer contact"}
                     </div>
                     <div className="font-mono text-[11px] text-[#d7aabd]">
+                      Ref: {transaction.referenceCode ?? transaction.id}
+                      <br />
                       Tx: {transaction.id}
                       <br />
                       Provider ref: {transaction.providerReference ?? "—"}
