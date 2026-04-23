@@ -25,14 +25,14 @@ export type PaymentSettings = {
 const DEFAULT_SETTINGS: PaymentSettings = {
   activeProvider: "paymob",
   enabled: true,
-  merchantId: "",
+  merchantId: "1152714",
   publicKey: "",
-  integrationId: "",
-  iframeId: "",
+  integrationId: "5613515",
+  iframeId: "1032257",
   returnUrl: "https://fitzoneland.com/payment/verify",
   cancelUrl: "https://fitzoneland.com/payment/verify?state=cancel",
   webhookUrl: "https://fitzoneland.com/api/payments/webhook/paymob",
-  sandboxMode: false,
+  sandboxMode: true,
   notes: "",
   displayLabelAr: "الدفع الإلكتروني عبر Paymob",
   displayLabelEn: "Paymob online payment",
@@ -50,18 +50,37 @@ function normalizeValidationResult(raw: unknown): PaymentSettings["lastValidatio
   };
 }
 
+function getEnvOverrides() {
+  const paymobEnv = String(process.env.PAYMOB_ENV ?? "").trim().toLowerCase();
+
+  return {
+    merchantId: process.env.PAYMOB_MERCHANT_ID?.trim() || null,
+    publicKey: process.env.PAYMOB_PUBLIC_KEY?.trim() || null,
+    integrationId: process.env.PAYMOB_INTEGRATION_ID?.trim() || null,
+    iframeId: process.env.PAYMOB_IFRAME_CARD_ID?.trim() || null,
+    sandboxMode:
+      paymobEnv === "test"
+        ? true
+        : paymobEnv === "live" || paymobEnv === "production"
+          ? false
+          : null,
+  };
+}
+
 function normalizeSettings(raw: Record<string, unknown>): PaymentSettings {
+  const env = getEnvOverrides();
+
   return {
     activeProvider: String(raw.activeProvider ?? DEFAULT_SETTINGS.activeProvider),
     enabled: Boolean(raw.enabled ?? DEFAULT_SETTINGS.enabled),
-    merchantId: String(raw.merchantId ?? ""),
-    publicKey: String(raw.publicKey ?? ""),
-    integrationId: String(raw.integrationId ?? raw.iframeId ?? ""),
-    iframeId: String(raw.iframeId ?? ""),
+    merchantId: env.merchantId ?? String(raw.merchantId ?? ""),
+    publicKey: env.publicKey ?? String(raw.publicKey ?? ""),
+    integrationId: env.integrationId ?? String(raw.integrationId ?? raw.iframeId ?? ""),
+    iframeId: env.iframeId ?? String(raw.iframeId ?? ""),
     returnUrl: String(raw.returnUrl ?? DEFAULT_SETTINGS.returnUrl),
     cancelUrl: String(raw.cancelUrl ?? DEFAULT_SETTINGS.cancelUrl),
     webhookUrl: String(raw.webhookUrl ?? DEFAULT_SETTINGS.webhookUrl),
-    sandboxMode: Boolean(raw.sandboxMode ?? DEFAULT_SETTINGS.sandboxMode),
+    sandboxMode: env.sandboxMode ?? Boolean(raw.sandboxMode ?? DEFAULT_SETTINGS.sandboxMode),
     notes: String(raw.notes ?? ""),
     displayLabelAr: String(raw.displayLabelAr ?? DEFAULT_SETTINGS.displayLabelAr),
     displayLabelEn: String(raw.displayLabelEn ?? DEFAULT_SETTINGS.displayLabelEn),
@@ -71,12 +90,12 @@ function normalizeSettings(raw: Record<string, unknown>): PaymentSettings {
 
 export async function getPaymentSettings(): Promise<PaymentSettings> {
   const record = await db.siteContent.findUnique({ where: { section: "paymentSettings" } });
-  if (!record) return DEFAULT_SETTINGS;
+  if (!record) return normalizeSettings({});
   try {
     const parsed = JSON.parse(record.content) as Record<string, unknown>;
     return normalizeSettings(parsed);
   } catch {
-    return DEFAULT_SETTINGS;
+    return normalizeSettings({});
   }
 }
 
