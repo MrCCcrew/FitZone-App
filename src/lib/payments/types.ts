@@ -27,6 +27,8 @@ export type PaymentCheckoutInput = {
     offerId?: string | null;
     description?: string | null;
     metadata?: Record<string, unknown> | null;
+    paymentMethod?: string | null;
+    customerPhone?: string | null;
   };
 };
 

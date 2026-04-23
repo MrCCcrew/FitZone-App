@@ -6,6 +6,7 @@ export type PaymentSettings = {
   merchantId: string;
   publicKey: string;
   integrationId: string;
+  walletIntegrationId: string;
   iframeId: string;
   returnUrl: string;
   cancelUrl: string;
@@ -28,6 +29,7 @@ const DEFAULT_SETTINGS: PaymentSettings = {
   merchantId: "1152714",
   publicKey: "",
   integrationId: "5613515",
+  walletIntegrationId: "",
   iframeId: "1032257",
   returnUrl: "https://fitzoneland.com/payment/verify",
   cancelUrl: "https://fitzoneland.com/payment/verify?state=cancel",
@@ -57,6 +59,7 @@ function getEnvOverrides() {
     merchantId: process.env.PAYMOB_MERCHANT_ID?.trim() || null,
     publicKey: process.env.PAYMOB_PUBLIC_KEY?.trim() || null,
     integrationId: process.env.PAYMOB_INTEGRATION_ID?.trim() || null,
+    walletIntegrationId: process.env.PAYMOB_WALLET_INTEGRATION_ID?.trim() || null,
     iframeId: process.env.PAYMOB_IFRAME_CARD_ID?.trim() || null,
     sandboxMode:
       paymobEnv === "test"
@@ -76,6 +79,7 @@ function normalizeSettings(raw: Record<string, unknown>): PaymentSettings {
     merchantId: env.merchantId ?? String(raw.merchantId ?? ""),
     publicKey: env.publicKey ?? String(raw.publicKey ?? ""),
     integrationId: env.integrationId ?? String(raw.integrationId ?? raw.iframeId ?? ""),
+    walletIntegrationId: env.walletIntegrationId ?? String(raw.walletIntegrationId ?? ""),
     iframeId: env.iframeId ?? String(raw.iframeId ?? ""),
     returnUrl: String(raw.returnUrl ?? DEFAULT_SETTINGS.returnUrl),
     cancelUrl: String(raw.cancelUrl ?? DEFAULT_SETTINGS.cancelUrl),

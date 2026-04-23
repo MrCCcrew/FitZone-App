@@ -152,6 +152,8 @@ export async function createPaymentTransaction(input: CreatePaymentTransactionIn
       offerId: input.offerId ?? null,
       description: input.description ?? null,
       metadata: input.metadata ?? null,
+      paymentMethod: input.paymentMethod ?? null,
+      customerPhone: input.customer?.phone ?? null,
     },
   });
 
