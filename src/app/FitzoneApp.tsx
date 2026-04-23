@@ -3475,7 +3475,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
       .catch(() => {});
   };
 
-  const handleSubscribe = async (plan: PlanItem, scheduleIds: string[] = [], paymentOverride?: "paymob") => {
+  const handleSubscribe = async (plan: PlanItem, scheduleIds: string[] = [], paymentOverride?: "paymob" | "wallet") => {
     if (!plan.id) { navigate("register"); return; }
     setSubscribing(plan.id);
     setSubMsg(null);
