@@ -1,7 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
-import Script from "next/script";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 
@@ -11,148 +10,83 @@ type SessionPayload = {
     status: "pending" | "requires_action" | "paid" | "failed" | "cancelled" | "expired";
     amount: number;
     currency: string;
+    checkoutUrl: string | null;
+    iframeUrl: string | null;
   };
   session: {
-    publicKey: string | null;
-    clientSecret: string | null;
-    paymobScriptUrl: string | null;
     checkoutUrl: string | null;
     iframeUrl: string | null;
   };
 };
 
-declare global {
-  interface Window {
-    Paymob?: (publicKey: string) => {
-      checkoutButton: (clientSecret: string) => {
-        mount: (selector: string) => void;
-      };
-    };
-  }
-}
-
 function PaymentCheckoutContent() {
   const searchParams = useSearchParams();
   const transactionId = searchParams.get("transactionId");
-  const [payload, setPayload] = useState<SessionPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [scriptReady, setScriptReady] = useState(false);
-  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     if (!transactionId) {
       setError("رقم المعاملة غير موجود.");
-      setLoading(false);
       return;
     }
 
     let cancelled = false;
-    async function load() {
+
+    async function redirectToHostedCheckout() {
       try {
         const response = await fetch(`/api/payments/session/${transactionId}`, { cache: "no-store" });
-        const data = (await response.json()) as SessionPayload & { error?: string };
-        if (!response.ok) throw new Error(data.error ?? "تعذر تحميل جلسة الدفع.");
+        const payload = (await response.json()) as SessionPayload & { error?: string };
+        if (!response.ok) throw new Error(payload.error ?? "تعذر تحميل رابط الدفع.");
         if (cancelled) return;
-        setPayload(data);
-        setError(null);
+
+        const checkoutUrl =
+          payload.session.checkoutUrl ??
+          payload.session.iframeUrl ??
+          payload.transaction.checkoutUrl ??
+          payload.transaction.iframeUrl;
+
+        if (payload.transaction.status === "paid") {
+          window.location.href = `/payment/verify?transactionId=${payload.transaction.id}`;
+          return;
+        }
+
+        if (!checkoutUrl) {
+          throw new Error("رابط الدفع غير متاح لهذه المعاملة.");
+        }
+
+        window.location.href = checkoutUrl;
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : "تعذر تحميل جلسة الدفع.");
+          setError(err instanceof Error ? err.message : "تعذر التحويل إلى صفحة الدفع.");
         }
-      } finally {
-        if (!cancelled) setLoading(false);
       }
     }
 
-    void load();
+    void redirectToHostedCheckout();
     return () => {
       cancelled = true;
     };
   }, [transactionId]);
 
-  useEffect(() => {
-    if (!payload || !scriptReady || mounted) return;
-    const publicKey = payload.session.publicKey;
-    const clientSecret = payload.session.clientSecret;
-
-    if (payload.transaction.status === "paid") {
-      window.location.href = `/payment/verify?transactionId=${payload.transaction.id}`;
-      return;
-    }
-
-    if (window.Paymob && publicKey && clientSecret) {
-      try {
-        window.Paymob(publicKey).checkoutButton(clientSecret).mount("#paymob-checkout");
-        setMounted(true);
-        return;
-      } catch (err) {
-        console.error("[PAYMOB_FLASH_MOUNT]", err);
-      }
-    }
-
-    if (payload.session.iframeUrl) {
-      window.location.href = payload.session.iframeUrl;
-      return;
-    }
-
-    if (payload.session.checkoutUrl && payload.session.checkoutUrl !== window.location.href) {
-      window.location.href = payload.session.checkoutUrl;
-    }
-  }, [payload, scriptReady, mounted]);
-
-  const scriptUrl = useMemo(() => {
-    return payload?.session.paymobScriptUrl ?? "https://nextstagingenv.s3.amazonaws.com/js/v1/paymob.js";
-  }, [payload]);
-
   return (
-    <div className="min-h-screen bg-[#12060c] text-white">
-      {payload?.session.publicKey && payload?.session.clientSecret ? (
-        <Script src={scriptUrl} strategy="afterInteractive" onLoad={() => setScriptReady(true)} />
-      ) : null}
-
-      <div className="mx-auto max-w-4xl px-4 py-10 sm:px-6">
-        <div className="rounded-[32px] border border-[#ffbcdb]/15 bg-[#2a0f1b] p-6 sm:p-8">
-          <h1 className="text-2xl font-black">الدفع الإلكتروني عبر Paymob</h1>
-          <p className="mt-2 text-sm text-[#d7aabd]">
-            سيتم تفعيل الطلب أو الاشتراك فقط بعد وصول webhook من Paymob والتحقق منه على السيرفر.
-          </p>
-
-          {loading ? <div className="mt-6 text-sm text-[#d7aabd]">جارٍ تجهيز جلسة الدفع...</div> : null}
-
-          {!loading && error ? (
-            <div className="mt-6 rounded-2xl border border-rose-400/25 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+    <div className="min-h-screen bg-[#12060c] px-4 py-10 text-white">
+      <div className="mx-auto max-w-2xl rounded-[28px] border border-[#ffbcdb]/15 bg-[#2a0f1b] p-6 text-center">
+        <h1 className="text-2xl font-black">التحويل إلى Paymob</h1>
+        <p className="mt-2 text-sm text-[#d7aabd]">
+          تم إيقاف embedded checkout. سيتم تحويلك إلى صفحة Paymob المستضافة لإكمال الدفع.
+        </p>
+        {error ? (
+          <div className="mt-6 space-y-4">
+            <div className="rounded-2xl border border-rose-400/25 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
               {error}
             </div>
-          ) : null}
-
-          {!loading && payload ? (
-            <div className="mt-6 space-y-5">
-              <div className="rounded-2xl border border-[#ffbcdb]/15 bg-black/20 p-4 text-sm text-[#fff4f8]">
-                <div>رقم المعاملة: {payload.transaction.id}</div>
-                <div className="mt-1">
-                  المبلغ: {Number(payload.transaction.amount).toLocaleString("ar-EG")} {payload.transaction.currency}
-                </div>
-              </div>
-
-              {payload.transaction.status === "paid" ? (
-                <Link
-                  href={`/payment/verify?transactionId=${payload.transaction.id}`}
-                  className="inline-flex rounded-xl bg-pink-600 px-5 py-3 text-sm font-bold text-white"
-                >
-                  متابعة حالة الدفع
-                </Link>
-              ) : (
-                <>
-                  <div id="paymob-checkout" className="min-h-[96px]" />
-                  <div className="text-xs text-[#d7aabd]">
-                    إذا لم يظهر نموذج الدفع تلقائيًا سيتم تحويلك إلى صفحة Paymob المستضافة.
-                  </div>
-                </>
-              )}
-            </div>
-          ) : null}
-        </div>
+            <Link href="/account" className="inline-flex rounded-xl bg-pink-600 px-5 py-3 text-sm font-bold text-white">
+              الرجوع إلى الحساب
+            </Link>
+          </div>
+        ) : (
+          <div className="mt-6 text-sm text-[#d7aabd]">جارٍ التحويل...</div>
+        )}
       </div>
     </div>
   );

@@ -128,8 +128,8 @@ export async function POST(req: Request) {
     if (!settings.integrationId) issues.push("Integration ID غير مضبوط.");
     if (!settings.returnUrl) issues.push("Return URL غير مضبوط.");
     if (!settings.cancelUrl) issues.push("Cancel URL غير مضبوط.");
+    if (!settings.iframeId) issues.push("Iframe ID غير مضبوط.");
     if (!secrets.apiKey) issues.push("PAYMOB_API_KEY غير مضبوط على السيرفر.");
-    if (!secrets.secretKey) issues.push("PAYMOB_SECRET_KEY غير مضبوط على السيرفر.");
     if (!secrets.hmac) issues.push("PAYMOB_HMAC_SECRET غير مضبوط على السيرفر.");
 
     let authTest: { ok: boolean; message: string } = {
@@ -139,35 +139,17 @@ export async function POST(req: Request) {
 
     if (issues.length === 0) {
       try {
-        const response = await fetch("https://accept.paymob.com/v1/intention/", {
+        const response = await fetch("https://accept.paymob.com/api/auth/tokens", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Token ${process.env.PAYMOB_SECRET_KEY!.trim()}`,
           },
-          body: JSON.stringify({
-            amount: 100,
-            currency: "EGP",
-            payment_methods: settings.integrationId
-              .split(",")
-              .map((value) => Number(value.trim()))
-              .filter((value) => Number.isFinite(value) && value > 0),
-            special_reference: `validation-${Date.now()}`,
-            billing_data: {
-              first_name: "Config",
-              last_name: "Validation",
-              email: "paymob-validation@fitzoneland.local",
-              phone_number: "+201000000000",
-            },
-            notification_url: settings.webhookUrl,
-            redirection_url: settings.returnUrl,
-            extras: { internalValidation: true },
-          }),
+          body: JSON.stringify({ api_key: process.env.PAYMOB_API_KEY!.trim() }),
           signal: AbortSignal.timeout(10_000),
         });
 
         if (response.ok) {
-          authTest = { ok: true, message: "نجح اختبار Intention API مع Paymob." };
+          authTest = { ok: true, message: "نجح اختبار المصادقة مع Paymob Hosted Checkout." };
         } else {
           authTest = { ok: false, message: `رفض Paymob التحقق (${response.status}).` };
         }

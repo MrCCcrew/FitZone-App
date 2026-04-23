@@ -2511,7 +2511,7 @@ function WalletTab({
       const tx = payload.transaction;
       setLastTx({ id: tx?.id, url: tx?.checkoutUrl });
       if (tx?.checkoutUrl) {
-        window.open(tx.checkoutUrl, "_blank", "noopener,noreferrer");
+        window.location.href = tx.checkoutUrl;
       }
     } catch (err: unknown) {
       setPayError(err instanceof Error ? err.message : t("تعذر بدء عملية الشحن.", "Unable to start the top-up process."));
