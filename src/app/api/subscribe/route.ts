@@ -153,7 +153,29 @@ export async function POST(req: Request) {
         throw new Error("تعذر تحديد الباقة المطلوبة.");
       }
 
-      const plan = await tx.membership.findUnique({ where: { id: resolvedMembershipId } });
+      let plan = resolvedMembershipId !== "trial-class"
+        ? await tx.membership.findUnique({ where: { id: resolvedMembershipId } })
+        : null;
+
+      if (!plan && resolvedMembershipId === "trial-class") {
+        plan = await tx.membership.findFirst({ where: { kind: "trial" } });
+        if (!plan) {
+          plan = await tx.membership.create({
+            data: {
+              name: "كلاس تجريبي",
+              nameEn: "Trial Class",
+              kind: "trial",
+              price: 0,
+              duration: 1,
+              sessionsCount: 1,
+              features: "[]",
+              maxClasses: 1,
+            },
+          });
+        }
+        resolvedMembershipId = plan.id;
+      }
+
       if (!plan) {
         throw new Error("الباقة غير موجودة.");
       }
