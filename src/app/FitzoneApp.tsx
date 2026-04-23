@@ -3562,7 +3562,13 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
     }
 
     let plan = schedulePlan;
-    const selected = [...scheduleSelections];
+    // Validate selected IDs still exist in scheduleChoices (stale sessionStorage IDs are rejected)
+    const validIds = new Set(scheduleChoices.map((c) => c.id));
+    const selected = scheduleSelections.filter((id) => !scheduleChoices.length || validIds.has(id));
+    if (plan.isTrial && selected.length === 0) {
+      setScheduleError("الموعد المختار لم يعد متاحًا. يرجى اختيار موعد آخر.");
+      return;
+    }
     // For trial class: determine price from selected slot type (yoga=100, other=50)
     if (plan.isTrial && selected.length > 0) {
       const slot = scheduleChoices.find((c) => c.id === selected[0]);
@@ -4209,6 +4215,12 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                           <div style={{ fontSize: 11, color: "rgba(255,255,255,.5)", textAlign: "center" }}>
                             {t("سيتم اختيار وسيلة الدفع داخل نموذج الدفع الآمن", "Payment method will be selected inside the secure payment form")}
                           </div>
+                        </div>
+                      )}
+
+                      {subMsg && !subMsg.ok && (
+                        <div style={{ marginBottom: 12, padding: "10px 14px", borderRadius: 8, background: "rgba(239,68,68,.15)", border: "1px solid rgba(239,68,68,.3)", color: "#fca5a5", fontWeight: 700, fontSize: 13, textAlign: "center" }}>
+                          {subMsg.text}
                         </div>
                       )}
 
