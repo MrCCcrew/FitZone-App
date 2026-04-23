@@ -3315,26 +3315,40 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
         return prev.filter((id) => id !== entry.id);
       }
 
-      // Max sessions = daysPerWeek * sessions or sessionsCount cap
-      const maxSessions = daysPerWeek ? daysPerWeek * 3 : (schedulePlan?.sessionsCount ?? null);
-      if (maxSessions && prev.length >= maxSessions) {
-        const msg = daysPerWeek
-          ? `الحد الأقصى ${maxSessions} حصة لـ ${daysPerWeek} أيام في الأسبوع.`
-          : `يمكنك اختيار ${maxSessions} موعد كحد أقصى لهذه الباقة.`;
-        setScheduleError(msg);
+      // Remove competing entries at the same (day, time) slot — can't attend two simultaneous classes
+      const sameSlotIds = scheduleChoices
+        .filter((item) => item.day === entry.day && item.time === entry.time)
+        .map((item) => item.id);
+      const cleaned = prev.filter((id) => !sameSlotIds.includes(id));
+
+      // Max total = daysPerWeek × 2 (or sessionsCount for plans without a frequency step)
+      const maxSessions = daysPerWeek ? daysPerWeek * 2 : (schedulePlan?.sessionsCount ?? null);
+      if (maxSessions && cleaned.length >= maxSessions) {
+        setScheduleError(
+          daysPerWeek
+            ? `وصلتِ للحد الأقصى: ${maxSessions} حصة لـ ${daysPerWeek} أيام في الأسبوع.`
+            : `يمكنكِ اختيار ${maxSessions} موعد كحد أقصى لهذه الباقة.`
+        );
+        return prev;
+      }
+
+      // Max 2 sessions per day
+      const dayCount = cleaned.filter((id) => scheduleChoices.find((c) => c.id === id)?.day === entry.day).length;
+      if (dayCount >= 2) {
+        setScheduleError("يمكنكِ اختيار حصتين كحد أقصى في اليوم الواحد.");
         return prev;
       }
 
       // Max unique days = daysPerWeek
       if (daysPerWeek) {
-        const selectedDays = new Set(prev.map((id) => scheduleChoices.find((c) => c.id === id)?.day).filter(Boolean));
+        const selectedDays = new Set(cleaned.map((id) => scheduleChoices.find((c) => c.id === id)?.day).filter(Boolean));
         if (!selectedDays.has(entry.day) && selectedDays.size >= daysPerWeek) {
-          setScheduleError(`يمكنك اختيار ${daysPerWeek} أيام مختلفة فقط في الأسبوع.`);
+          setScheduleError(`يمكنكِ اختيار ${daysPerWeek} أيام مختلفة فقط في الأسبوع.`);
           return prev;
         }
       }
 
-      return [...prev, entry.id];
+      return [...cleaned, entry.id];
     });
   };
 
@@ -3770,7 +3784,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                     </div>
                     {daysPerWeek && (
                       <div style={{ background: "rgba(245,197,66,.08)", border: "1px solid rgba(245,197,66,.25)", borderRadius: 10, padding: 12, color: "#f5c542", fontSize: 13, marginBottom: 20 }}>
-                        {t(`اختاري من ${daysPerWeek} إلى ${daysPerWeek * 2} حصة في اليوم خلال الأسبوع`, `Choose from ${daysPerWeek} to ${daysPerWeek * 2} sessions per day throughout the week`)}
+                        {t(`ستختارين ${daysPerWeek} أيام بحد أقصى حصتين لكل يوم — إجمالي من ${daysPerWeek} إلى ${daysPerWeek * 2} حصة/أسبوع`, `You will select ${daysPerWeek} days with max 2 sessions per day — ${daysPerWeek} to ${daysPerWeek * 2} sessions/week total`)}
                       </div>
                     )}
                     <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
