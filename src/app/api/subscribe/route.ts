@@ -233,7 +233,7 @@ export async function POST(req: Request) {
 
       const membershipPaymentMethod = offerId ? "offer" : resolvedPaymentMethod;
 
-      // All subscriptions with a remaining balance require admin payment confirmation
+      // Subscriptions with a remaining balance stay pending_payment until Paymob webhook confirms
       const needsPaymentConfirmation = (paymentAmount ?? 0) > 0;
 
       const subscription = await tx.userMembership.create({
@@ -424,10 +424,10 @@ export async function POST(req: Request) {
         data: {
           userId,
           title: needsPaymentConfirmation
-            ? `طلب الاشتراك في ${offerTitle ?? plan.name} قيد المراجعة`
+            ? `أكملي عملية الدفع للاشتراك في ${offerTitle ?? plan.name}`
             : offerTitle ? `تم الاشتراك في ${offerTitle}!` : `تم الاشتراك في باقة ${plan.name}!`,
           body: needsPaymentConfirmation
-            ? `سيتم تفعيل اشتراكك بعد تأكيد الدفع من الإدارة.`
+            ? `سيتم تفعيل اشتراكك تلقائياً فور تأكيد الدفع عبر Paymob.`
             : offerTitle
               ? `اشتراكك في العرض الخاص أصبح نشطًا حتى ${endDate.toLocaleDateString("ar-EG")}.`
               : `اشتراكك أصبح نشطًا حتى ${endDate.toLocaleDateString("ar-EG")}.`,
