@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAdminFeature } from "@/lib/admin-guard";
+import { requireAdminFeature, requireAdminMasterAccess } from "@/lib/admin-guard";
 import { db } from "@/lib/db";
 
 const MASTER_PASSWORD = process.env.DB_RESET_MASTER_PASSWORD ?? "";
@@ -22,6 +22,8 @@ function buildSearchQuery(q: string) {
 export async function GET(req: Request) {
   const guard = await requireAdminFeature("db-maintenance");
   if ("error" in guard) return guard.error;
+  const masterGuard = await requireAdminMasterAccess("database");
+  if ("error" in masterGuard) return masterGuard.error;
 
   const { searchParams } = new URL(req.url);
   const type = searchParams.get("type") ?? "transactions";
@@ -222,6 +224,8 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const guard = await requireAdminFeature("db-maintenance");
   if ("error" in guard) return guard.error;
+  const masterGuard = await requireAdminMasterAccess("database");
+  if ("error" in masterGuard) return masterGuard.error;
 
   try {
     const body = await req.json();
