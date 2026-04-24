@@ -33,7 +33,7 @@ export async function GET() {
 export async function POST(req: Request) {
   const auth = await requireAdminSession();
   if (!auth.ok) return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
-  enterAuditActor({ userId: auth.session.user.id, name: auth.session.user.name, email: auth.session.user.email, role: auth.session.user.role });
+  enterAuditActor({ userId: auth.session.id, name: auth.session.name, email: auth.session.email, role: auth.session.role });
 
   const body = await req.json();
   const {
