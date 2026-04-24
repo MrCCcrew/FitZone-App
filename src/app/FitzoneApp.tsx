@@ -2936,9 +2936,9 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                     🎯 {t("برايفيت", "Private")}<br />
                     <span style={{ fontSize: 11, fontWeight: 400, opacity: .75 }}>{t("برنامج مخصص 100%", "100% personalised")}</span>
                   </button>
-                  <button style={{ borderRadius: 12, border: `1.5px solid ${C.red}`, background: "rgba(233,30,99,.12)", color: "#ff7aa8", cursor: "pointer", fontWeight: 700, fontSize: 14, padding: "14px 8px", textAlign: "center", touchAction: "manipulation" }} onClick={() => { setTrainerDetailModal(null); setPrivateBookingModal({ trainer: trainerDetailModal, type: "mini_private" }); }}>
+                  <button style={{ borderRadius: 12, border: `1.5px solid #c060e0`, background: "rgba(160,60,200,0.45)", color: "#fff", cursor: "pointer", fontWeight: 700, fontSize: 14, padding: "14px 8px", textAlign: "center", touchAction: "manipulation" }} onClick={() => { setTrainerDetailModal(null); setPrivateBookingModal({ trainer: trainerDetailModal, type: "mini_private" }); }}>
                     👥 {t("ميني برايفيت", "Mini Private")}<br />
-                    <span style={{ fontSize: 11, fontWeight: 400, opacity: .75 }}>{t("3–5 عملاء", "3–5 clients")}</span>
+                    <span style={{ fontSize: 11, fontWeight: 400, opacity: .85 }}>{t("3–5 عملاء", "3–5 clients")}</span>
                   </button>
                 </div>
               ) : (
@@ -7254,8 +7254,8 @@ const TrainersPage = ({ navigate, summary }: { navigate: (p: string) => void; su
                   <button className="btn-primary" style={{ padding: "14px 8px", fontSize: 14, borderRadius: 12, textAlign: "center" }} onClick={() => { setTrainerDetailModal(null); setPrivateBookingModal({ trainer: trainerDetailModal, type: "private" }); }}>
                     🎯 {t("برايفيت", "Private")}<br /><span style={{ fontSize: 11, fontWeight: 400, opacity: .75 }}>{t("برنامج مخصص 100%", "100% personalised")}</span>
                   </button>
-                  <button style={{ borderRadius: 12, border: `1px solid ${C.red}`, background: "rgba(233,30,99,.12)", color: "#ff7aa8", cursor: "pointer", fontWeight: 700, fontSize: 14, padding: "14px 8px", textAlign: "center" }} onClick={() => { setTrainerDetailModal(null); setPrivateBookingModal({ trainer: trainerDetailModal, type: "mini_private" }); }}>
-                    👥 {t("ميني برايفيت", "Mini Private")}<br /><span style={{ fontSize: 11, fontWeight: 400, opacity: .75 }}>{t("3–5 عملاء", "3–5 clients")}</span>
+                  <button style={{ borderRadius: 12, border: `1px solid #c060e0`, background: "rgba(160,60,200,0.45)", color: "#fff", cursor: "pointer", fontWeight: 700, fontSize: 14, padding: "14px 8px", textAlign: "center" }} onClick={() => { setTrainerDetailModal(null); setPrivateBookingModal({ trainer: trainerDetailModal, type: "mini_private" }); }}>
+                    👥 {t("ميني برايفيت", "Mini Private")}<br /><span style={{ fontSize: 11, fontWeight: 400, opacity: .85 }}>{t("3–5 عملاء", "3–5 clients")}</span>
                   </button>
                 </div>
               ) : (
