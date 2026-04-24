@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/app-session";
 import { db } from "@/lib/db";
-import { createPaymentTransaction } from "@/lib/payments/service";
+import { createPaymentTransaction, restorePaymentBalanceAdjustments } from "@/lib/payments/service";
 
 type OrderItemInput = {
   productId: string;
@@ -95,7 +95,6 @@ export async function POST(req: Request) {
     const shippingFee = deliveryOption?.type === "pickup" ? 0 : deliveryOption?.fee ?? 0;
     const baseTotal = Math.max(0, subtotal + shippingFee);
 
-    // Validate and apply wallet/points deductions
     const walletDeductReq = Math.max(0, Number(body.walletDeduct ?? 0));
     const pointsDeductReq = Math.floor(Math.max(0, Number(body.pointsDeduct ?? 0)));
     let validatedWalletDeduct = 0;
@@ -112,8 +111,8 @@ export async function POST(req: Request) {
 
       if (rewardSettings?.content) {
         try {
-          const s = JSON.parse(rewardSettings.content) as { pointValueEGP?: number };
-          if (typeof s.pointValueEGP === "number") pointValueEGP = s.pointValueEGP;
+          const parsed = JSON.parse(rewardSettings.content) as { pointValueEGP?: number };
+          if (typeof parsed.pointValueEGP === "number") pointValueEGP = parsed.pointValueEGP;
         } catch {}
       }
 
@@ -194,14 +193,18 @@ export async function POST(req: Request) {
       });
     });
 
-    // Deduct wallet and points
     if (validatedWalletDeduct > 0) {
       const wallet = await db.wallet.update({
         where: { userId },
         data: { balance: { decrement: validatedWalletDeduct } },
       });
       await db.walletTransaction.create({
-        data: { walletId: wallet.id, amount: validatedWalletDeduct, type: "debit", description: `سداد طلب رقم ${order.id}` },
+        data: {
+          walletId: wallet.id,
+          amount: validatedWalletDeduct,
+          type: "debit",
+          description: `سداد طلب رقم ${order.id}`,
+        },
       });
     }
 
@@ -211,36 +214,61 @@ export async function POST(req: Request) {
         data: { points: { decrement: validatedPointsDeduct } },
       });
       await db.rewardHistory.create({
-        data: { rewardId: pointsRecord.id, points: -validatedPointsDeduct, reason: `استخدام نقاط لسداد طلب رقم ${order.id}` },
+        data: {
+          rewardId: pointsRecord.id,
+          points: -validatedPointsDeduct,
+          reason: `استخدام نقاط لسداد طلب رقم ${order.id}`,
+        },
       });
     }
 
     let checkoutUrl: string | null = null;
     let transactionId: string | null = null;
+
     if (total > 0 && paymentMethod === "paymob") {
-      const transaction = await createPaymentTransaction({
-        userId,
-        provider: "paymob",
-        purpose: "order",
-        businessUnit: "store",
-        amount: total,
-        paymentMethod,
-        orderId: order.id,
-        description: `Order ${order.id}`,
-        metadata: {
-          deliveryOptionId: deliveryOption?.id ?? null,
-          deliveryLabel: deliveryOption?.name ?? (isClubPickup ? "استلام من الجيم" : null),
-          shippingFee,
-          walletDeducted: validatedWalletDeduct || null,
-          pointsDeducted: validatedPointsDeduct || null,
-        },
-      });
-      checkoutUrl = transaction.checkoutUrl ?? null;
-      transactionId = transaction.id;
+      try {
+        const transaction = await createPaymentTransaction({
+          userId,
+          provider: "paymob",
+          purpose: "order",
+          businessUnit: "store",
+          amount: total,
+          paymentMethod,
+          orderId: order.id,
+          description: `Order ${order.id}`,
+          metadata: {
+            paymentAdjustments: {
+              walletAmount: validatedWalletDeduct,
+              pointsCount: validatedPointsDeduct,
+            },
+            walletDeductedAmount: validatedWalletDeduct || null,
+            pointsDeductedCount: validatedPointsDeduct || null,
+            deliveryOptionId: deliveryOption?.id ?? null,
+            deliveryLabel: deliveryOption?.name ?? (isClubPickup ? "استلام من الجيم" : null),
+            shippingFee,
+            walletDeducted: validatedWalletDeduct || null,
+            pointsDeducted: validatedPointsDeduct || null,
+          },
+        });
+        checkoutUrl = transaction.checkoutUrl ?? null;
+        transactionId = transaction.id;
+      } catch (error) {
+        await restorePaymentBalanceAdjustments({
+          userId,
+          walletAmount: validatedWalletDeduct,
+          pointsCount: validatedPointsDeduct,
+          reference: order.id,
+        }).catch((restoreError) => {
+          console.error("[ORDERS_PAYMENT_RESTORE]", restoreError);
+        });
+
+        console.error("[ORDERS_PAYMENT_INIT]", error);
+        const message = error instanceof Error ? error.message : "تعذر تهيئة صفحة الدفع.";
+        return NextResponse.json({ error: message }, { status: 502 });
+      }
     } else if (total > 0 && paymentMethod === "cod") {
       await db.order.update({ where: { id: order.id }, data: { status: "confirmed" } });
     } else if (total <= 0) {
-      // Fully paid by wallet/points
       await db.order.update({ where: { id: order.id }, data: { status: "confirmed" } });
     }
 

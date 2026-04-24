@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/app-session";
 import { db } from "@/lib/db";
-import { createPaymentTransaction } from "@/lib/payments/service";
+import { createPaymentTransaction, restorePaymentBalanceAdjustments } from "@/lib/payments/service";
 
 type OrderItemInput = {
   productId: string;
@@ -176,34 +176,53 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true, orderId: order.id, transaction: null, cashOnDelivery: true });
     }
 
-    const transaction = await createPaymentTransaction({
-      userId: currentUser.id,
-      provider: "paymob",
-      purpose: "order",
-      businessUnit: "store",
-      amount: amountAfterDeductions,
-      paymentMethod: "paymob",
-      orderId: order.id,
-      returnUrl: body.returnUrl ?? null,
-      cancelUrl: body.cancelUrl ?? null,
-      description: `سداد طلب رقم ${order.id}`,
-      metadata: {
-        address: body.address?.trim() || null,
-        walletDeducted: validatedWalletDeduct || null,
-        pointsDeducted: validatedPointsDeduct || null,
-        walletId: walletId || null,
-        items: items.map((item) => ({
-          productId: item.productId,
-          quantity: item.quantity,
-          size: item.size ?? null,
-        })),
-      },
-      customer: {
-        name: currentUser.name,
-        email: currentUser.email,
-        phone: null,
-      },
-    });
+    let transaction;
+    try {
+      transaction = await createPaymentTransaction({
+        userId: currentUser.id,
+        provider: "paymob",
+        purpose: "order",
+        businessUnit: "store",
+        amount: amountAfterDeductions,
+        paymentMethod: "paymob",
+        orderId: order.id,
+        returnUrl: body.returnUrl ?? null,
+        cancelUrl: body.cancelUrl ?? null,
+        description: `سداد طلب رقم ${order.id}`,
+        metadata: {
+          paymentAdjustments: {
+            walletAmount: validatedWalletDeduct,
+            pointsCount: validatedPointsDeduct,
+          },
+          walletDeductedAmount: validatedWalletDeduct || null,
+          pointsDeductedCount: validatedPointsDeduct || null,
+          address: body.address?.trim() || null,
+          walletDeducted: validatedWalletDeduct || null,
+          pointsDeducted: validatedPointsDeduct || null,
+          walletId: walletId || null,
+          items: items.map((item) => ({
+            productId: item.productId,
+            quantity: item.quantity,
+            size: item.size ?? null,
+          })),
+        },
+        customer: {
+          name: currentUser.name,
+          email: currentUser.email,
+          phone: null,
+        },
+      });
+    } catch (error) {
+      await restorePaymentBalanceAdjustments({
+        userId: currentUser.id,
+        walletAmount: validatedWalletDeduct,
+        pointsCount: validatedPointsDeduct,
+        reference: order.id,
+      }).catch((restoreError) => {
+        console.error("[PAYMENTS_ORDER_INTENT_RESTORE]", restoreError);
+      });
+      throw error;
+    }
 
     return NextResponse.json({
       success: true,
