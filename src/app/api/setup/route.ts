@@ -1,10 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcryptjs from "bcryptjs";
 import { db } from "@/lib/db";
-import { applyRateLimit, getClientIp } from "@/lib/rate-limit";
+import { applySensitiveRateLimit, getClientIp } from "@/lib/rate-limit";
 
-const SETUP_TOKEN = process.env.SETUP_TOKEN;
-const ENABLE_SETUP_ROUTE = process.env.ENABLE_SETUP_ROUTE === "true";
+function isProduction() {
+  return process.env.NODE_ENV === "production";
+}
+
+function isSetupRouteEnabled() {
+  const enabled = process.env.ENABLE_SETUP_ROUTE === "true";
+  if (!isProduction()) return enabled;
+  return enabled && Boolean(process.env.SETUP_TOKEN?.trim());
+}
+
+function logSetupEvent(event: string, details: Record<string, string | number | boolean | null> = {}) {
+  console.info("[SETUP_ROUTE]", JSON.stringify({ event, ...details }));
+}
 
 function isStrongPassword(password: string) {
   return (
@@ -20,9 +31,11 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  if (!ENABLE_SETUP_ROUTE) {
+  if (!isSetupRouteEnabled()) {
+    logSetupEvent("blocked_get", { production: isProduction() });
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
+
   return NextResponse.json(
     { error: "Use POST with token and password to initialize admin accounts." },
     { status: 405 },
@@ -31,25 +44,35 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    if (!ENABLE_SETUP_ROUTE) {
+    if (!isSetupRouteEnabled()) {
+      logSetupEvent("blocked_post", { production: isProduction() });
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
     const clientIp = getClientIp(req);
-    const limit = applyRateLimit(`setup:${clientIp}`, 5, 15 * 60 * 1000);
+    const limit = await applySensitiveRateLimit(`setup:${clientIp}`, 5, 15 * 60 * 1000);
     if (!limit.ok) {
+      logSetupEvent("rate_limited", { ip: clientIp, source: limit.source });
       return NextResponse.json(
         { error: "Too many setup attempts. Please try again later." },
         { status: 429, headers: { "Retry-After": String(Math.ceil(limit.retryAfterMs / 1000)) } },
       );
     }
 
-    if (!SETUP_TOKEN) {
+    const setupToken = process.env.SETUP_TOKEN?.trim();
+
+    if (!setupToken) {
+      logSetupEvent("misconfigured_token_missing", { production: isProduction() });
+      if (isProduction()) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+
       return NextResponse.json({ error: "SETUP_TOKEN is not configured" }, { status: 403 });
     }
 
     const { token, password } = await req.json().catch(() => ({ token: "", password: "" }));
-    if (token !== SETUP_TOKEN) {
+    if (token !== setupToken) {
+      logSetupEvent("unauthorized", { ip: clientIp });
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -104,13 +127,14 @@ export async function POST(req: NextRequest) {
       results.push(`Ready: ${userConfig.email}`);
     }
 
+    logSetupEvent("initialized_accounts", { count: results.length, ip: clientIp });
     return NextResponse.json({
       success: true,
       message: "Admin accounts initialized successfully.",
       results,
     });
   } catch (error) {
-    console.error("[SETUP]", error);
+    console.error("[SETUP_ROUTE_ERROR]", error instanceof Error ? error.message : "unknown");
     return NextResponse.json({ error: "Failed to initialize admin accounts." }, { status: 500 });
   }
 }

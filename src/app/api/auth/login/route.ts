@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import bcryptjs from "bcryptjs";
 import { APP_SESSION_COOKIE, createAppSessionToken, getAppSessionCookieOptions } from "@/lib/app-session";
 import { ADMIN_SESSION_COOKIE, getAdminSessionCookieOptions } from "@/lib/admin-session";
-import { applyRateLimit, getClientIp } from "@/lib/rate-limit";
+import { applySensitiveRateLimit, getClientIp } from "@/lib/rate-limit";
 import { db } from "@/lib/db";
 
 export const runtime = "nodejs";
@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   try {
     const clientIp = getClientIp(req);
-    const limit = applyRateLimit(`app-login:${clientIp}`, 8, 5 * 60 * 1000);
+    const limit = await applySensitiveRateLimit(`app-login:${clientIp}`, 8, 5 * 60 * 1000);
     if (!limit.ok) {
       return NextResponse.json(
         { error: "عدد محاولات تسجيل الدخول كبير جدًا. حاول مرة أخرى بعد قليل." },

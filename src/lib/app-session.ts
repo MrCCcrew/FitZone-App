@@ -82,6 +82,8 @@ export function getAppSessionCookieOptions() {
   };
 }
 
+// TODO(security): move to DB-backed session invalidation so compromised tokens can be revoked server-side.
+
 export async function getCurrentAppUser() {
   try {
     const appSession = await getAppSession();

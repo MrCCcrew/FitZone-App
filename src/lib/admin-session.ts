@@ -83,6 +83,8 @@ export function getAdminSessionCookieOptions() {
   };
 }
 
+// TODO(security): move to DB-backed session invalidation so admin sessions can be revoked immediately server-side.
+
 export async function requireAdminSession(): Promise<{ ok: true; session: AdminSessionPayload } | { ok: false }> {
   const session = await getAdminSession();
   if (!session) return { ok: false };
