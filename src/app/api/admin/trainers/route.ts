@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAdminFeature } from "@/lib/admin-guard";
 import { db } from "@/lib/db";
 import { clearPublicApiCache } from "@/lib/public-cache";
+import { logAudit } from "@/lib/audit-context";
 import {
   parseStoredTrainerFileLinks,
   parseStoredTrainerTextList,
@@ -116,6 +117,7 @@ export async function POST(req: Request) {
     });
 
     clearPublicApiCache();
+    void logAudit({ action: "create", targetType: "trainer", targetId: trainer.id, details: { name: trainer.name } });
     return NextResponse.json(formatTrainer(trainer));
   } catch (error) {
     console.error("[ADMIN_TRAINERS_POST]", error);
@@ -167,6 +169,7 @@ export async function PATCH(req: Request) {
     });
 
     clearPublicApiCache();
+    void logAudit({ action: "update", targetType: "trainer", targetId: trainer.id, details: { name: trainer.name } });
     return NextResponse.json(formatTrainer(trainer));
   } catch (error) {
     console.error("[ADMIN_TRAINERS_PATCH]", error);
@@ -187,6 +190,7 @@ export async function DELETE(req: Request) {
 
     await db.trainer.delete({ where: { id } });
     clearPublicApiCache();
+    void logAudit({ action: "delete", targetType: "trainer", targetId: id });
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("[ADMIN_TRAINERS_DELETE]", error);

@@ -3,6 +3,7 @@ import { requireAdminFeature } from "@/lib/admin-guard";
 import { db } from "@/lib/db";
 import { ensureDefaultProductCategories } from "@/lib/product-categories";
 import { clearPublicApiCache } from "@/lib/public-cache";
+import { logAudit } from "@/lib/audit-context";
 
 async function checkAdmin() {
   const guard = await requireAdminFeature("products");
@@ -116,6 +117,7 @@ export async function POST(req: Request) {
       isActive: true,
     },
   });
+  void logAudit({ action: "create", targetType: "product", targetId: product.id, details: { name: product.name, price: product.price } });
 
   clearPublicApiCache();
   return NextResponse.json({
@@ -181,11 +183,13 @@ export async function PATCH(req: Request) {
     data.category = categoryRecord?.key ?? String(rest.category);
   }
 
-  await db.product.update({
+  const updated = await db.product.update({
     where: { id: String(id) },
     data,
+    select: { name: true },
   });
 
+  void logAudit({ action: "update", targetType: "product", targetId: String(id), details: { name: updated.name, changes: Object.keys(data) } });
   clearPublicApiCache();
   return NextResponse.json({ success: true });
 }
@@ -199,7 +203,9 @@ export async function DELETE(req: Request) {
     return NextResponse.json({ error: "معرّف المنتج مطلوب." }, { status: 400 });
   }
 
+  const p = await db.product.findUnique({ where: { id: String(id) }, select: { name: true } });
   await db.product.delete({ where: { id: String(id) } });
+  void logAudit({ action: "delete", targetType: "product", targetId: String(id), details: { name: p?.name } });
   clearPublicApiCache();
   return NextResponse.json({ success: true });
 }

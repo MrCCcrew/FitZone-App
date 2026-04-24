@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAdminFeature, requireAdminMasterAccess } from "@/lib/admin-guard";
 import { db } from "@/lib/db";
 import { DEFAULT_PAYMENT_SETTINGS, type PaymentSettings } from "@/lib/payments/settings";
+import { logAudit } from "@/lib/audit-context";
 
 type PaymentSettingsResponse = PaymentSettings & {
   providerStatus: "enabled" | "disabled";
@@ -140,6 +141,7 @@ export async function PUT(req: Request) {
       create: { section: "paymentSettings", content: JSON.stringify(payload) },
     });
 
+    void logAudit({ action: "update", targetType: "payment_settings", details: { sandboxMode: payload.sandboxMode, integrationId: payload.integrationId } });
     return NextResponse.json({
       success: true,
       settings: toResponse(payload),

@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireAdminSession } from "@/lib/admin-session";
+import { enterAuditActor, logAudit } from "@/lib/audit-context";
 
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAdminSession();
   if (!auth.ok) return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
+  enterAuditActor({ userId: auth.session.user.id, name: auth.session.user.name, email: auth.session.user.email, role: auth.session.user.role });
 
   const { id } = await params;
   const body = await req.json();
@@ -28,17 +30,20 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     },
   });
 
+  void logAudit({ action: "update", targetType: "discount_code", targetId: id, details: { code: existing.code } });
   return NextResponse.json({ success: true });
 }
 
-export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAdminSession();
   if (!auth.ok) return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
+  enterAuditActor({ userId: auth.session.user.id, name: auth.session.user.name, email: auth.session.user.email, role: auth.session.user.role });
 
   const { id } = await params;
   const existing = await db.discountCode.findUnique({ where: { id } });
   if (!existing) return NextResponse.json({ error: "الكود غير موجود" }, { status: 404 });
 
   await db.discountCode.delete({ where: { id } });
+  void logAudit({ action: "delete", targetType: "discount_code", targetId: id, details: { code: existing.code } });
   return NextResponse.json({ success: true });
 }

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import bcryptjs from "bcryptjs";
 import { requireAdminFeature } from "@/lib/admin-guard";
 import { db } from "@/lib/db";
+import { logAudit } from "@/lib/audit-context";
 
 async function checkAdmin() {
   const guard = await requireAdminFeature("customers");
@@ -434,6 +435,7 @@ export async function PATCH(req: Request) {
       },
     });
 
+    void logAudit({ action: "update", targetType: "customer", targetId: id, details: { changes: Object.keys(data) } });
     return NextResponse.json(user ? mapCustomer(user, new Map(), new Map()) : null);
   } catch (error) {
     console.error("[ADMIN_CUSTOMERS_PATCH]", error);
@@ -451,7 +453,9 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: "معرّف العميل مطلوب" }, { status: 400 });
     }
 
+    const u = await db.user.findUnique({ where: { id }, select: { name: true, email: true } });
     await db.user.delete({ where: { id } });
+    void logAudit({ action: "delete", targetType: "customer", targetId: id, details: { name: u?.name, email: u?.email } });
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("[ADMIN_CUSTOMERS_DELETE]", error);
