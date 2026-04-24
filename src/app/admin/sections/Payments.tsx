@@ -169,6 +169,35 @@ function Field({
   );
 }
 
+function SelectField({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: Array<{ value: string; label: string }>;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1.5 block text-xs font-bold text-[#d7aabd]">{label}</span>
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="w-full rounded-xl border border-[rgba(255,188,219,0.18)] bg-[rgba(255,255,255,0.05)] px-3 py-2 text-sm text-[#fff4f8] outline-none transition focus:border-pink-400"
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 function SecretBadge({ configured, label }: { configured: boolean; label: string }) {
   return (
     <div
@@ -201,6 +230,11 @@ export default function Payments() {
   const [validating, setValidating] = useState(false);
   const [actionId, setActionId] = useState<string | null>(null);
   const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [purposeFilter, setPurposeFilter] = useState("all");
+  const [providerFilter, setProviderFilter] = useState("all");
+  const [methodFilter, setMethodFilter] = useState("all");
 
   async function loadData() {
     const [txRes, settingsRes] = await Promise.all([
@@ -245,6 +279,43 @@ export default function Payments() {
       pendingCount: pending.length,
     };
   }, [transactions]);
+
+  const filterOptions = useMemo(() => {
+    const unique = (values: string[]) => Array.from(new Set(values.filter(Boolean))).sort();
+    return {
+      purposes: unique(transactions.map((transaction) => transaction.purpose)),
+      providers: unique(transactions.map((transaction) => transaction.provider)),
+      methods: unique(transactions.map((transaction) => transaction.paymentMethod)),
+    };
+  }, [transactions]);
+
+  const filteredTransactions = useMemo(() => {
+    const normalizedQuery = searchQuery.trim().toLowerCase();
+
+    return transactions.filter((transaction) => {
+      if (statusFilter !== "all" && transaction.status !== statusFilter) return false;
+      if (purposeFilter !== "all" && transaction.purpose !== purposeFilter) return false;
+      if (providerFilter !== "all" && transaction.provider !== providerFilter) return false;
+      if (methodFilter !== "all" && transaction.paymentMethod !== methodFilter) return false;
+
+      if (!normalizedQuery) return true;
+
+      const haystack = [
+        transaction.customerName,
+        transaction.customerEmail,
+        transaction.customerPhone,
+        transaction.referenceCode,
+        transaction.id,
+        transaction.providerReference,
+        transaction.externalReference,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      return haystack.includes(normalizedQuery);
+    });
+  }, [transactions, searchQuery, statusFilter, purposeFilter, providerFilter, methodFilter]);
 
   async function saveSettings() {
     setSavingSettings(true);
@@ -336,6 +407,30 @@ export default function Payments() {
     }
   }
 
+  async function deleteTransaction(transactionId: string) {
+    const confirmed = window.confirm("هل تريد حذف هذه المعاملة من السجل؟ لا يمكن التراجع بعد الحذف.");
+    if (!confirmed) return;
+
+    setActionId(transactionId);
+    try {
+      const response = await fetch("/api/admin/payments", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transactionId }),
+      });
+      const payload = (await response.json()) as { error?: string };
+      if (!response.ok) {
+        window.alert(payload.error ?? "تعذر حذف المعاملة.");
+        return;
+      }
+      await loadData();
+    } catch {
+      window.alert("حدث خطأ أثناء حذف المعاملة.");
+    } finally {
+      setActionId(null);
+    }
+  }
+
   const secrets = settings.secretsConfigured ?? DEFAULT_SETTINGS.secretsConfigured!;
   const envConfigured = settings.envConfigured ?? DEFAULT_SETTINGS.envConfigured!;
   const lastValidation = settings.lastValidationResult;
@@ -343,7 +438,7 @@ export default function Payments() {
   return (
     <AdminSectionShell
       title="المدفوعات"
-      subtitle="Paymob هو مزود الدفع التلقائي الوحيد. التفعيل الفعلي للطلبات والاشتراكات يتم فقط بعد webhook + verification."
+      subtitle="Paymob هو مزود الدفع الإلكتروني الأساسي. التفعيل النهائي للطلبات والاشتراكات يتم فقط بعد webhook + verification."
     >
       <div className="grid gap-4 md:grid-cols-4">
         <AdminCard>
@@ -375,7 +470,7 @@ export default function Payments() {
           <div>
             <h3 className="text-lg font-black text-[#fff4f8]">تشخيص Paymob</h3>
             <p className="mt-1 text-sm text-[#d7aabd]">
-              الأسرار محفوظة على السيرفر فقط، والأدمن يرى الحالة فقط بدون كشف القيم.
+              الأسرار محفوظة على السيرفر فقط، ولوحة الأدمن تعرض حالتها بدون كشف القيم.
             </p>
           </div>
           <button
@@ -441,7 +536,7 @@ export default function Payments() {
           <div>
             <h3 className="text-lg font-black text-[#fff4f8]">إعدادات Paymob العامة</h3>
             <p className="mt-1 text-sm text-[#d7aabd]">
-              هذه الشاشة تدير كل integration IDs بشكل مستقل. Paymob Unified Checkout هو المسار الأساسي لكل وسائل الدفع الإلكترونية، بينما الدفع عند الاستلام منفصل عن Paymob.
+              هذه الشاشة تدير كل integration IDs بشكل مستقل. Unified Checkout هو المسار الأساسي لوسائل الدفع الإلكترونية، بينما الدفع عند الاستلام منفصل عن Paymob.
             </p>
           </div>
           <button
@@ -525,8 +620,60 @@ export default function Payments() {
         <div className="mb-4">
           <h3 className="text-lg font-black text-[#fff4f8]">المعاملات الأخيرة</h3>
           <p className="mt-1 text-sm text-[#d7aabd]">
-            لا يمكن للأدمن تغيير الحالة إلى paid أو failed يدويًا. المتاح فقط: إعادة التحقق، إضافة ملاحظة داخلية، ومراجعة الـ references والـ metadata.
+            يمكنك الآن البحث في المعاملات وتصفية النتائج وحذف أي معاملة عند الحاجة، مع الإبقاء على إعادة التحقق والملاحظات الداخلية.
           </p>
+        </div>
+
+        <div className="mb-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-bold text-[#d7aabd]">بحث</span>
+            <input
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="الاسم أو البريد أو المرجع"
+              className="w-full rounded-xl border border-[rgba(255,188,219,0.18)] bg-[rgba(255,255,255,0.05)] px-3 py-2 text-sm text-[#fff4f8] outline-none transition focus:border-pink-400"
+            />
+          </label>
+
+          <SelectField
+            label="الحالة"
+            value={statusFilter}
+            onChange={setStatusFilter}
+            options={[
+              { value: "all", label: "كل الحالات" },
+              ...Object.entries(STATUS_LABELS).map(([value, label]) => ({ value, label })),
+            ]}
+          />
+
+          <SelectField
+            label="النوع"
+            value={purposeFilter}
+            onChange={setPurposeFilter}
+            options={[
+              { value: "all", label: "كل الأنواع" },
+              ...filterOptions.purposes.map((purpose) => ({ value: purpose, label: getPurposeLabel(purpose) })),
+            ]}
+          />
+
+          <SelectField
+            label="المزوّد"
+            value={providerFilter}
+            onChange={setProviderFilter}
+            options={[
+              { value: "all", label: "كل المزوّدين" },
+              ...filterOptions.providers.map((provider) => ({ value: provider, label: provider })),
+            ]}
+          />
+
+          <SelectField
+            label="وسيلة الدفع"
+            value={methodFilter}
+            onChange={setMethodFilter}
+            options={[
+              { value: "all", label: "كل الوسائل" },
+              ...filterOptions.methods.map((method) => ({ value: method, label: method })),
+            ]}
+          />
         </div>
 
         {loading ? (
@@ -535,9 +682,11 @@ export default function Payments() {
           </div>
         ) : transactions.length === 0 ? (
           <AdminEmptyState title="لا توجد معاملات بعد" description="ستظهر هنا المعاملات فور بدء الدفع عبر Paymob." />
+        ) : filteredTransactions.length === 0 ? (
+          <AdminEmptyState title="لا توجد نتائج" description="غيّر الفلاتر أو ابحث بكلمة مختلفة لعرض المعاملات." />
         ) : (
           <div className="space-y-3">
-            {transactions.map((transaction) => (
+            {filteredTransactions.map((transaction) => (
               <div key={transaction.id} className="rounded-[22px] border border-[rgba(255,188,219,0.12)] bg-black/10 p-4">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <div className="space-y-2">
@@ -602,6 +751,14 @@ export default function Payments() {
                       className="w-full rounded-xl border border-pink-400/30 px-4 py-2 text-sm font-bold text-pink-200 hover:bg-pink-500/10 disabled:opacity-40"
                     >
                       Save internal note
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void deleteTransaction(transaction.id)}
+                      disabled={actionId === transaction.id}
+                      className="w-full rounded-xl border border-rose-400/30 px-4 py-2 text-sm font-bold text-rose-200 hover:bg-rose-500/10 disabled:opacity-40"
+                    >
+                      {actionId === transaction.id ? "جارٍ الحذف..." : "حذف المعاملة"}
                     </button>
                   </div>
                 </div>
