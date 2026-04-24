@@ -2048,6 +2048,8 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
       }
       if (Array.isArray(d.classes)) {
         const now = new Date();
+        // TODO(timezone): "today classes" currently depends on client-local weekday labels here in FitzoneApp.tsx.
+        // Revisit with a single explicit club timezone shared by client/server (likely Africa/Cairo) before changing behavior.
         const todayLabel = now.toLocaleDateString("ar-EG", { weekday: "long" });
         const timeToMinutes = (value: string) => {
           const [h, m] = value.split(":").map(Number);

@@ -3,6 +3,7 @@ import path from "path";
 import { NextResponse } from "next/server";
 import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { getAdminSession } from "@/lib/admin-session";
+import { applySensitiveRateLimit, getClientIp } from "@/lib/rate-limit";
 import { getMissingR2Env, getR2Client, R2_BUCKET, R2_PUBLIC_URL } from "@/lib/r2";
 
 const MAX_FILE_SIZE = 100 * 1024 * 1024;
@@ -15,6 +16,16 @@ const ALLOWED_TYPES = new Set([
   "video/webm",
   "video/quicktime",
 ]);
+const DANGEROUS_EXTENSIONS = new Set([".exe", ".js", ".sh", ".php", ".html", ".svg"]);
+const ALLOWED_EXTENSIONS_BY_TYPE: Record<string, string[]> = {
+  "image/jpeg": [".jpg", ".jpeg"],
+  "image/png": [".png"],
+  "image/webp": [".webp"],
+  "image/gif": [".gif"],
+  "video/mp4": [".mp4"],
+  "video/webm": [".webm"],
+  "video/quicktime": [".mov", ".qt"],
+};
 const ALLOWED_FOLDERS = new Set([
   "products",
   "hero",
@@ -44,11 +55,29 @@ function normalizeFolder(raw: FormDataEntryValue | null) {
   return ALLOWED_FOLDERS.has(value) ? value : "general";
 }
 
+function isMimeExtensionPairAllowed(fileName: string, mimeType: string) {
+  const ext = path.extname(fileName).toLowerCase();
+  if (!ext) return true;
+  if (DANGEROUS_EXTENSIONS.has(ext)) return false;
+
+  const allowedExtensions = ALLOWED_EXTENSIONS_BY_TYPE[mimeType] ?? [];
+  return allowedExtensions.includes(ext);
+}
+
 export async function POST(req: Request) {
   try {
     const adminSession = await getAdminSession();
     if (!adminSession) {
       return NextResponse.json({ error: "يجب تسجيل دخول الأدمن أولًا." }, { status: 401 });
+    }
+
+    const clientIp = getClientIp(req);
+    const limit = await applySensitiveRateLimit(`admin-upload:${adminSession.id}:${clientIp}`, 20, 10 * 60 * 1000);
+    if (!limit.ok) {
+      return NextResponse.json(
+        { error: "عدد محاولات الرفع كبير جدًا. حاول مرة أخرى بعد قليل." },
+        { status: 429, headers: { "Retry-After": String(Math.ceil(limit.retryAfterMs / 1000)) } },
+      );
     }
 
     const missingEnv = getMissingR2Env();
@@ -72,6 +101,13 @@ export async function POST(req: Request) {
     if (!ALLOWED_TYPES.has(file.type)) {
       return NextResponse.json(
         { error: "نوع الملف غير مدعوم. ارفعي JPG أو PNG أو WEBP أو GIF أو MP4 أو WEBM أو MOV." },
+        { status: 400 },
+      );
+    }
+
+    if (!isMimeExtensionPairAllowed(file.name, file.type)) {
+      return NextResponse.json(
+        { error: "امتداد الملف لا يطابق نوعه المسموح أو أن الامتداد غير آمن." },
         { status: 400 },
       );
     }
@@ -107,7 +143,7 @@ export async function POST(req: Request) {
       folder,
     });
   } catch (error) {
-    console.error("[ADMIN_UPLOAD]", error);
+    console.error("[ADMIN_UPLOAD]", error instanceof Error ? error.message : "unknown");
     return NextResponse.json(
       {
         error: "تعذر رفع الملف الآن. تأكدي من إعدادات التخزين أو حجم الملف ثم حاولي مرة أخرى.",
