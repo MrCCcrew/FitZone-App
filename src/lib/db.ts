@@ -71,6 +71,46 @@ globalForPrisma.prisma = basePrisma;
 
 const AUDITABLE_OPERATIONS = new Set(["create", "update", "delete", "upsert", "createMany", "updateMany", "deleteMany"]);
 
+function normalizeAuditValue(value: unknown, seen = new WeakSet<object>()): unknown {
+  if (value == null) return value;
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === "bigint") return value.toString();
+  if (typeof value !== "object") return value;
+
+  if (seen.has(value as object)) return "[Circular]";
+  seen.add(value as object);
+
+  if (Array.isArray(value)) {
+    return value.map((item) => normalizeAuditValue(item, seen));
+  }
+
+  const protoName = Object.getPrototypeOf(value)?.constructor?.name ?? "";
+  if (protoName === "Decimal" && "toString" in (value as Record<string, unknown>)) {
+    return String(value);
+  }
+
+  const output: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+    output[key] = normalizeAuditValue(entry, seen);
+  }
+  return output;
+}
+
+function serializeAuditDetails(payload: Record<string, unknown>) {
+  const normalized = normalizeAuditValue(payload);
+  const json = JSON.stringify(normalized);
+  if (!json) return null;
+
+  const MAX_LENGTH = 50000;
+  if (json.length <= MAX_LENGTH) return json;
+
+  return JSON.stringify({
+    truncated: true,
+    maxLength: MAX_LENGTH,
+    preview: json.slice(0, MAX_LENGTH),
+  });
+}
+
 export const db = basePrisma.$extends({
   query: {
     $allModels: {
@@ -101,7 +141,7 @@ export const db = basePrisma.$extends({
               action: operation,
               targetType: model,
               targetId,
-              details: JSON.stringify({
+              details: serializeAuditDetails({
                 args,
                 result,
               }),

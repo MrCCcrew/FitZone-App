@@ -131,6 +131,11 @@ export default function Settings() {
     };
   }, []);
 
+  useEffect(() => {
+    if (activeTab !== "audit") return;
+    void loadLogs();
+  }, [activeTab]);
+
   const updateForm = <K extends keyof EmployeeForm>(key: K, value: EmployeeForm[K]) =>
     setForm((current) => ({ ...current, [key]: value }));
   const updateAuditFilter = <K extends keyof typeof auditFilters>(key: K, value: (typeof auditFilters)[K]) =>
