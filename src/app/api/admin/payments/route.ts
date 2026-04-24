@@ -84,14 +84,38 @@ export async function PATCH(req: Request) {
   }
 }
 
-export async function DELETE() {
+export async function DELETE(req: Request) {
   const guard = await requireAdminFeature("orders");
   if ("error" in guard) return guard.error;
   const masterGuard = await requireAdminMasterAccess("payments");
   if ("error" in masterGuard) return masterGuard.error;
 
-  return NextResponse.json(
-    { error: "حذف المعاملات من لوحة الأدمن معطل للحفاظ على سلامة سجلات الدفع." },
-    { status: 405 },
-  );
+  try {
+    const body = (await req.json()) as {
+      transactionId?: string;
+    };
+
+    if (!body.transactionId) {
+      return NextResponse.json({ error: "معرّف المعاملة مطلوب." }, { status: 400 });
+    }
+
+    const existing = await db.paymentTransaction.findUnique({
+      where: { id: body.transactionId },
+      select: { id: true },
+    });
+
+    if (!existing) {
+      return NextResponse.json({ error: "المعاملة غير موجودة." }, { status: 404 });
+    }
+
+    await db.paymentTransaction.delete({
+      where: { id: body.transactionId },
+    });
+
+    return NextResponse.json({ success: true, transactionId: body.transactionId });
+  } catch (error) {
+    console.error("[ADMIN_PAYMENTS_DELETE]", error);
+    const message = error instanceof Error ? error.message : "تعذر حذف المعاملة.";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }
