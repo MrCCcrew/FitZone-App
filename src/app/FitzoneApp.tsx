@@ -1641,7 +1641,9 @@ const PrivateBookingModal = ({ trainer, type, onClose }: { trainer: PublicTraine
   const [medsDetail, setMedsDetail] = useState("");
 
   // ── Section 4: Injuries ───────────────────────────────────────────────────
+  const [hasInjuries, setHasInjuries] = useState("");
   const [injuries, setInjuries] = useState("");
+  const [hasSurgeries, setHasSurgeries] = useState("");
   const [surgeries, setSurgeries] = useState("");
 
   // ── Section 5: Sports experience ─────────────────────────────────────────
@@ -1664,10 +1666,11 @@ const PrivateBookingModal = ({ trainer, type, onClose }: { trainer: PublicTraine
   const [trainingType, setTrainingType] = useState("");
   const [trainingDuration, setTrainingDuration] = useState("");
 
-  // ── Section 9: Women's health ────────────────────────────────────────────
+  // ── Section 9: Pregnancy & birth ─────────────────────────────────────────
   const [pregnant, setPregnant] = useState("");
   const [gaveBirth, setGaveBirth] = useState("");
   const [lastBirth, setLastBirth] = useState("");
+  const [hasHormonalIssues, setHasHormonalIssues] = useState("");
   const [hormonalIssues, setHormonalIssues] = useState("");
 
   // ── Section 10: Commitment ───────────────────────────────────────────────
@@ -1702,20 +1705,33 @@ const PrivateBookingModal = ({ trainer, type, onClose }: { trainer: PublicTraine
                        ["ضغط","سكر","مشاكل قلب","غدة درقية","كلى","أنيميا","مشاكل مفاصل / عمود فقري"]] as const;
 
   const submit = async () => {
-    if (!fullName.trim()) { setMsg({ text: t("من فضلك أدخلي اسمك.","Please enter your name."), ok: false }); return; }
+    // Section 1 required (except jobType)
+    if (!fullName.trim()) { setMsg({ text: t("الاسم مطلوب.","Name is required."), ok: false }); return; }
+    if (!age.trim()) { setMsg({ text: t("السن مطلوب.","Age is required."), ok: false }); return; }
+    if (!height.trim()) { setMsg({ text: t("الطول مطلوب.","Height is required."), ok: false }); return; }
+    if (!weight.trim()) { setMsg({ text: t("الوزن مطلوب.","Weight is required."), ok: false }); return; }
+    if (!phone.trim()) { setMsg({ text: t("رقم الموبايل مطلوب.","Mobile number is required."), ok: false }); return; }
+    // Section 2 required
     if (goals.length === 0) { setMsg({ text: t("اختاري هدفاً واحداً على الأقل.","Choose at least one goal."), ok: false }); return; }
+    // Section 4 required
+    if (!hasInjuries) { setMsg({ text: t("حددي إذا كان عندك إصابات أو لا.","Please indicate if you have any injuries."), ok: false }); return; }
+    if (!hasSurgeries) { setMsg({ text: t("حددي إذا عملتي عمليات جراحية أو لا.","Please indicate if you've had any surgeries."), ok: false }); return; }
+    // Section 9 required
+    if (!pregnant) { setMsg({ text: t("حددي إذا كان فيه حمل أو لا.","Please indicate if you are pregnant."), ok: false }); return; }
+    if (!gaveBirth) { setMsg({ text: t("حددي إذا سبق الولادة أو لا.","Please indicate if you've given birth before."), ok: false }); return; }
+    if (!hasHormonalIssues) { setMsg({ text: t("حددي إذا كان عندك مشاكل هرمونية أو لا.","Please indicate if you have hormonal issues."), ok: false }); return; }
     setSubmitting(true); setMsg(null);
     const allGoals = otherGoal.trim() ? [...goals, otherGoal.trim()] : goals;
     const formData = {
       basicInfo: { fullName, age, height, weight, phone, jobType },
       goals: allGoals,
       medical: { conditions: medConditions, takesMeds, medsDetail },
-      injuries: { injuries, surgeries },
+      injuries: { hasInjuries, detail: injuries, hasSurgeries, surgeryDetail: surgeries },
       sportsExperience: sportsExp,
       lifestyle: { sleepHours, sleepQuality, stressLevel, waterLiters },
       nutrition: { mealsCount, followsDiet, foodAllergies, supplements },
       currentActivity: { trainingDays, trainingType, trainingDuration },
-      womensHealth: { pregnant, gaveBirth, lastBirth, hormonalIssues },
+      womensHealth: { pregnant, gaveBirth, lastBirth, hasHormonalIssues, hormonalIssuesDetail: hormonalIssues },
       commitment: { goalTimeline, commitDays, dietReady },
       notes,
     };
@@ -1762,11 +1778,11 @@ const PrivateBookingModal = ({ trainer, type, onClose }: { trainer: PublicTraine
           <div style={S.sectionTitle}>{t("القسم 1: البيانات الأساسية","Section 1: Basic Info")}</div>
           <div style={S.grid2}>
             <div><label style={S.label}>{t("الاسم *","Name *")}</label><input value={fullName} onChange={e => setFullName(e.target.value)} style={S.input} placeholder={t("اسمك الكامل","Full name")} /></div>
-            <div><label style={S.label}>{t("السن","Age")}</label><input type="number" value={age} onChange={e => setAge(e.target.value)} style={S.input} placeholder={t("سنة","years")} /></div>
-            <div><label style={S.label}>{t("الطول (سم)","Height (cm)")}</label><input type="number" value={height} onChange={e => setHeight(e.target.value)} style={S.input} placeholder="cm" /></div>
-            <div><label style={S.label}>{t("الوزن (كجم)","Weight (kg)")}</label><input type="number" value={weight} onChange={e => setWeight(e.target.value)} style={S.input} placeholder="kg" /></div>
+            <div><label style={S.label}>{t("السن *","Age *")}</label><input type="number" value={age} onChange={e => setAge(e.target.value)} style={S.input} placeholder={t("سنة","years")} /></div>
+            <div><label style={S.label}>{t("الطول (سم) *","Height (cm) *")}</label><input type="number" value={height} onChange={e => setHeight(e.target.value)} style={S.input} placeholder="cm" /></div>
+            <div><label style={S.label}>{t("الوزن (كجم) *","Weight (kg) *")}</label><input type="number" value={weight} onChange={e => setWeight(e.target.value)} style={S.input} placeholder="kg" /></div>
           </div>
-          <div style={{ marginTop: 12 }}><label style={S.label}>{t("رقم الموبايل","Mobile number")}</label><input value={phone} onChange={e => setPhone(e.target.value)} style={S.input} placeholder="01xxxxxxxxx" /></div>
+          <div style={{ marginTop: 12 }}><label style={S.label}>{t("رقم الموبايل *","Mobile number *")}</label><input value={phone} onChange={e => setPhone(e.target.value)} style={S.input} placeholder="01xxxxxxxxx" /></div>
           <div style={{ marginTop: 12 }}>
             <label style={S.label}>{t("طبيعة الشغل","Job type")}</label>
             <div style={S.radio}>
@@ -1790,7 +1806,11 @@ const PrivateBookingModal = ({ trainer, type, onClose }: { trainer: PublicTraine
         <div style={S.section}>
           <div style={S.sectionTitle}>{t("القسم 3: الحالة الصحية","Section 3: Medical Conditions")}</div>
           <div style={S.radio}>
-            {MED_OPTS[0].map((label, i) => <button key={i} type="button" onClick={() => toggle(medConditions, setMedConditions, MED_OPTS[1][i])} style={S.chip(medConditions.includes(MED_OPTS[1][i]))}>{label}</button>)}
+            {MED_OPTS[0].map((label, i) => <button key={i} type="button" onClick={() => {
+              const val = MED_OPTS[1][i];
+              setMedConditions(prev => prev.includes("لا يوجد") ? [val] : prev.includes(val) ? prev.filter(x => x !== val) : [...prev, val]);
+            }} style={S.chip(medConditions.includes(MED_OPTS[1][i]))}>{label}</button>)}
+            <button type="button" onClick={() => setMedConditions(prev => prev.includes("لا يوجد") ? [] : ["لا يوجد"])} style={S.chip(medConditions.includes("لا يوجد"))}>{t("لا يوجد","None")}</button>
           </div>
           <div style={{ marginTop: 12 }}>
             <label style={S.label}>{t("هل بتاخدي أدوية بانتظام؟","Do you take regular medication?")}</label>
@@ -1803,14 +1823,16 @@ const PrivateBookingModal = ({ trainer, type, onClose }: { trainer: PublicTraine
 
         {/* ── Q4 ── */}
         <div style={S.section}>
-          <div style={S.sectionTitle}>{t("القسم 4: الإصابات","Section 4: Injuries")}</div>
+          <div style={S.sectionTitle}>{t("القسم 4: الإصابات *","Section 4: Injuries *")}</div>
           <div style={{ marginBottom: 12 }}>
-            <label style={S.label}>{t("هل عندك إصابات؟","Do you have any injuries?")}</label>
-            <textarea value={injuries} onChange={e => setInjuries(e.target.value)} rows={2} style={S.textarea} placeholder={t("اذكري أي إصابات...","Describe any injuries...")} />
+            <label style={S.label}>{t("هل عندك إصابات؟ *","Do you have any injuries? *")}</label>
+            <div style={S.radio}>{yn.map(v => <button key={v} type="button" onClick={() => setHasInjuries(v)} style={S.chip(hasInjuries === v)}>{v}</button>)}</div>
+            {(hasInjuries === "نعم" || hasInjuries === "Yes") && <textarea value={injuries} onChange={e => setInjuries(e.target.value)} rows={2} style={{ ...S.textarea, marginTop: 8 }} placeholder={t("اذكري أي إصابات...","Describe any injuries...")} />}
           </div>
           <div>
-            <label style={S.label}>{t("هل عملتي عمليات قبل كده؟","Any previous surgeries?")}</label>
-            <textarea value={surgeries} onChange={e => setSurgeries(e.target.value)} rows={2} style={S.textarea} placeholder={t("اذكري أي عمليات جراحية...","Describe any surgeries...")} />
+            <label style={S.label}>{t("هل عملتي عمليات جراحية قبل كده؟ *","Any previous surgeries? *")}</label>
+            <div style={S.radio}>{yn.map(v => <button key={v} type="button" onClick={() => setHasSurgeries(v)} style={S.chip(hasSurgeries === v)}>{v}</button>)}</div>
+            {(hasSurgeries === "نعم" || hasSurgeries === "Yes") && <textarea value={surgeries} onChange={e => setSurgeries(e.target.value)} rows={2} style={{ ...S.textarea, marginTop: 8 }} placeholder={t("اذكري أي عمليات جراحية...","Describe any surgeries...")} />}
           </div>
         </div>
 
@@ -1881,19 +1903,20 @@ const PrivateBookingModal = ({ trainer, type, onClose }: { trainer: PublicTraine
 
         {/* ── Q9 ── */}
         <div style={S.section}>
-          <div style={S.sectionTitle}>{t("القسم 9: للسيدات","Section 9: Women's Health")}</div>
+          <div style={S.sectionTitle}>{t("القسم 9: الحمل والولادة *","Section 9: Pregnancy & Birth *")}</div>
           <div style={{ marginBottom: 12 }}>
-            <label style={S.label}>{t("هل فيه حمل؟","Currently pregnant?")}</label>
+            <label style={S.label}>{t("هل فيه حمل؟ *","Currently pregnant? *")}</label>
             <div style={S.radio}>{yn.map(v => <button key={v} type="button" onClick={() => setPregnant(v)} style={S.chip(pregnant === v)}>{v}</button>)}</div>
           </div>
           <div style={{ marginBottom: 12 }}>
-            <label style={S.label}>{t("هل سبق الولادة؟","Any previous births?")}</label>
+            <label style={S.label}>{t("هل سبق الولادة؟ *","Any previous births? *")}</label>
             <div style={S.radio}>{yn.map(v => <button key={v} type="button" onClick={() => setGaveBirth(v)} style={S.chip(gaveBirth === v)}>{v}</button>)}</div>
             {(gaveBirth === "نعم" || gaveBirth === "Yes") && <input value={lastBirth} onChange={e => setLastBirth(e.target.value)} style={{ ...S.input, marginTop: 8 }} placeholder={t("آخر ولادة من قد إيه؟","How long ago was the last birth?")} />}
           </div>
           <div>
-            <label style={S.label}>{t("مشاكل هرمونية؟","Hormonal issues?")}</label>
-            <input value={hormonalIssues} onChange={e => setHormonalIssues(e.target.value)} style={S.input} placeholder={t("تكيس مبايض، انقطاع دورة...","PCOS, irregular cycle...")} />
+            <label style={S.label}>{t("هل عندك مشاكل هرمونية؟ *","Do you have hormonal issues? *")}</label>
+            <div style={S.radio}>{yn.map(v => <button key={v} type="button" onClick={() => setHasHormonalIssues(v)} style={S.chip(hasHormonalIssues === v)}>{v}</button>)}</div>
+            {(hasHormonalIssues === "نعم" || hasHormonalIssues === "Yes") && <input value={hormonalIssues} onChange={e => setHormonalIssues(e.target.value)} style={{ ...S.input, marginTop: 8 }} placeholder={t("تكيس مبايض، انقطاع دورة...","PCOS, irregular cycle...")} />}
           </div>
         </div>
 
