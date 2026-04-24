@@ -30,6 +30,8 @@ import DatabaseMaintenance from "./sections/DatabaseMaintenance";
 import Settings from "./sections/Settings";
 import PushNotifications from "./sections/PushNotifications";
 
+const PROTECTED_SECTIONS = ["payments", "database"] as const;
+
 const NAV: { id: Section; label: string; icon: string }[] = [
   { id: "settings", label: "الإعدادات والصلاحيات", icon: "⚙️" },
   { id: "overview", label: "لوحة التحكم", icon: "📊" },
@@ -132,6 +134,72 @@ type AdminSessionUser = {
   permissions?: string[];
 };
 
+function isProtectedSection(section: Section): section is (typeof PROTECTED_SECTIONS)[number] {
+  return PROTECTED_SECTIONS.includes(section as (typeof PROTECTED_SECTIONS)[number]);
+}
+
+function MasterPasswordGate({
+  sectionLabel,
+  password,
+  error,
+  loading,
+  onChange,
+  onSubmit,
+}: {
+  sectionLabel: string;
+  password: string;
+  error: string | null;
+  loading: boolean;
+  onChange: (value: string) => void;
+  onSubmit: () => void;
+}) {
+  return (
+    <div className="flex min-h-full items-center justify-center py-10">
+      <div className="w-full max-w-md rounded-[28px] border border-[#ffbcdb]/20 bg-[#2a0f1b] p-6 shadow-[0_30px_120px_rgba(0,0,0,0.45)]">
+        <div className="text-center">
+          <div className="mb-3 text-3xl">🔒</div>
+          <h2 className="text-xl font-black text-[#fff7fb]">{sectionLabel}</h2>
+          <p className="mt-2 text-sm text-[#d7aabd]">
+            أدخل كلمة مرور الماستر لعرض بيانات هذا القسم.
+          </p>
+        </div>
+
+        <div className="mt-5">
+          <label className="mb-2 block text-xs font-bold text-[#d7aabd]">كلمة مرور الماستر</label>
+          <input
+            type="password"
+            value={password}
+            onChange={(event) => onChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                onSubmit();
+              }
+            }}
+            placeholder="اكتب كلمة المرور"
+            className="w-full rounded-2xl border border-[rgba(255,188,219,0.18)] bg-[rgba(255,255,255,0.05)] px-4 py-3 text-sm text-[#fff4f8] outline-none transition focus:border-pink-400"
+          />
+        </div>
+
+        {error ? (
+          <div className="mt-4 rounded-2xl border border-rose-400/25 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+            {error}
+          </div>
+        ) : null}
+
+        <button
+          type="button"
+          onClick={onSubmit}
+          disabled={loading}
+          className="mt-5 w-full rounded-2xl bg-pink-600 px-5 py-3 text-sm font-black text-white transition hover:bg-pink-500 disabled:opacity-50"
+        >
+          {loading ? "جارٍ التحقق..." : "عرض البيانات"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function AdminPanel() {
   const router = useRouter();
   const [session, setSession] = useState<{ user?: AdminSessionUser } | null>(null);
@@ -139,6 +207,11 @@ export default function AdminPanel() {
   const [active, setActive] = useState<Section>("overview");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [unlockedSections, setUnlockedSections] = useState<string[]>([]);
+  const [loadingMasterAccess, setLoadingMasterAccess] = useState(true);
+  const [masterPassword, setMasterPassword] = useState("");
+  const [masterError, setMasterError] = useState<string | null>(null);
+  const [unlockingSection, setUnlockingSection] = useState<string | null>(null);
 
   const role = session?.user?.role;
   const permissions = session?.user?.permissions;
@@ -146,6 +219,8 @@ export default function AdminPanel() {
   const allowedNav = NAV.filter((item) => canAccessAdminSection(role, permissions, item.id));
   const safeActive = canAccessAdminSection(role, permissions, active) ? active : defaultSection;
   const ActiveSection = SECTIONS[safeActive];
+  const protectedActive = isProtectedSection(safeActive);
+  const isSafeActiveUnlocked = !protectedActive || unlockedSections.includes(safeActive);
 
   useEffect(() => {
     let cancelled = false;
@@ -181,6 +256,36 @@ export default function AdminPanel() {
   }, []);
 
   useEffect(() => {
+    if (status !== "authenticated" || !isAdminRole(role)) return;
+
+    let cancelled = false;
+
+    async function loadMasterAccess() {
+      setLoadingMasterAccess(true);
+      try {
+        const response = await fetch("/api/admin/master-access", { cache: "no-store" });
+        if (!response.ok) {
+          if (!cancelled) setUnlockedSections([]);
+          return;
+        }
+        const payload = (await response.json()) as { unlockedSections?: string[] };
+        if (!cancelled) {
+          setUnlockedSections(Array.isArray(payload.unlockedSections) ? payload.unlockedSections : []);
+        }
+      } catch {
+        if (!cancelled) setUnlockedSections([]);
+      } finally {
+        if (!cancelled) setLoadingMasterAccess(false);
+      }
+    }
+
+    void loadMasterAccess();
+    return () => {
+      cancelled = true;
+    };
+  }, [role, status]);
+
+  useEffect(() => {
     if (status === "unauthenticated") {
       router.replace("/admin/login?callbackUrl=/admin");
       return;
@@ -199,8 +304,40 @@ export default function AdminPanel() {
 
   const navigate = (section: Section) => {
     if (!canAccessAdminSection(role, permissions, section)) return;
+    setMasterError(null);
     setActive(section);
     setSidebarOpen(false);
+  };
+
+  const unlockProtectedSection = async () => {
+    if (!isProtectedSection(safeActive)) return;
+    if (!masterPassword.trim()) {
+      setMasterError("أدخل كلمة مرور الماستر أولًا.");
+      return;
+    }
+
+    setUnlockingSection(safeActive);
+    setMasterError(null);
+    try {
+      const response = await fetch("/api/admin/master-access", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: masterPassword, section: safeActive }),
+      });
+      const payload = (await response.json()) as { error?: string; unlockedSections?: string[] };
+      if (!response.ok) {
+        setMasterError(payload.error ?? "تعذر التحقق من كلمة المرور الرئيسية.");
+        return;
+      }
+
+      setUnlockedSections(Array.isArray(payload.unlockedSections) ? payload.unlockedSections : []);
+      setMasterPassword("");
+      setMasterError(null);
+    } catch {
+      setMasterError("تعذر التحقق من كلمة المرور الرئيسية.");
+    } finally {
+      setUnlockingSection(null);
+    }
   };
 
   const handleLogout = async () => {
@@ -343,7 +480,18 @@ export default function AdminPanel() {
         </header>
 
         <main className="flex-1 overflow-y-auto px-4 py-5 lg:px-6">
-          <ActiveSection />
+          {protectedActive && (loadingMasterAccess || !isSafeActiveUnlocked) ? (
+            <MasterPasswordGate
+              sectionLabel={TITLES[safeActive]}
+              password={masterPassword}
+              error={masterError}
+              loading={loadingMasterAccess || unlockingSection === safeActive}
+              onChange={setMasterPassword}
+              onSubmit={() => void unlockProtectedSection()}
+            />
+          ) : (
+            <ActiveSection />
+          )}
         </main>
       </div>
     </div>

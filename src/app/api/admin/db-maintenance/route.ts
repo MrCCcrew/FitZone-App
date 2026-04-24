@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAdminFeature } from "@/lib/admin-guard";
+import { requireAdminFeature, requireAdminMasterAccess } from "@/lib/admin-guard";
 import { db } from "@/lib/db";
 import { spawn } from "child_process";
 import { createReadStream, createWriteStream, promises as fs } from "fs";
@@ -225,6 +225,8 @@ async function resetDatabase(options: { preserveSiteContent: boolean; resetUsers
 export async function GET() {
   const guard = await requireAdminFeature("db-maintenance");
   if ("error" in guard) return guard.error;
+  const masterGuard = await requireAdminMasterAccess("database");
+  if ("error" in masterGuard) return masterGuard.error;
 
   try {
     await fs.mkdir(BACKUP_DIR, { recursive: true });
@@ -316,6 +318,8 @@ async function clearInventoryData(target: "sales" | "purchases" | "both") {
 export async function POST(req: Request) {
   const guard = await requireAdminFeature("db-maintenance");
   if ("error" in guard) return guard.error;
+  const masterGuard = await requireAdminMasterAccess("database");
+  if ("error" in masterGuard) return masterGuard.error;
 
   try {
     const body = await req.json();
