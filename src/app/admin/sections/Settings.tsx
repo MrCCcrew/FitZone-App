@@ -76,6 +76,7 @@ export default function Settings() {
   const [activeTab, setActiveTab] = useState<"employees" | "audit">("employees");
   const [employees, setEmployees] = useState<AdminEmployee[]>([]);
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
+  const [auditLoading, setAuditLoading] = useState(false);
   const [form, setForm] = useState<EmployeeForm>(EMPTY_FORM);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -91,7 +92,7 @@ export default function Settings() {
     const response = await fetch("/api/admin/settings/staff", { cache: "no-store" });
     const payload = await response.json();
     if (!response.ok) {
-      throw new Error(payload.error ?? "تعذر تحميل حسابات الموظفين.");
+      throw new Error(payload.error ?? "???? ????? ?????? ????????.");
     }
     setEmployees(payload.employees ?? []);
   };
@@ -99,18 +100,26 @@ export default function Settings() {
   const loadLogs = async (
     filters: { actorUserId: string; targetType: string; action: string; search: string } = auditFilters,
   ) => {
+    setAuditLoading(true);
     const params = new URLSearchParams({ limit: "120" });
     if (filters.actorUserId) params.set("actorUserId", filters.actorUserId);
     if (filters.targetType) params.set("targetType", filters.targetType);
     if (filters.action) params.set("action", filters.action);
     if (filters.search) params.set("search", filters.search);
 
-    const response = await fetch(`/api/admin/settings/audit-log?${params.toString()}`, { cache: "no-store" });
-    const payload = await response.json();
-    if (!response.ok) {
-      throw new Error(payload.error ?? "تعذر تحميل سجل التغييرات.");
+    try {
+      const response = await fetch(`/api/admin/settings/audit-log?${params.toString()}`, { cache: "no-store" });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.error ?? "???? ????? ??? ?????????.");
+      }
+      setLogs(payload.logs ?? []);
+      setMessage(null);
+    } catch (error) {
+      setMessage({ text: error instanceof Error ? error.message : "???? ????? ??? ?????????.", ok: false });
+    } finally {
+      setAuditLoading(false);
     }
-    setLogs(payload.logs ?? []);
   };
 
   useEffect(() => {
@@ -350,7 +359,7 @@ export default function Settings() {
         ) : (
           <div className="space-y-4">
             <div className="rounded-2xl border border-white/10 bg-[#1b0d14] p-4 text-sm text-[#d7aabd]">
-              أي عملية `create / update / delete / upsert` تتم من خلال حسابات الإدارة تسجل هنا تلقائيًا مع اسم الحساب ونوع العملية والكيان المتأثر.
+              اعرض سجل العمليات التي تمت داخل لوحة الإدارة، مع توضيح اسم الحساب الذي قام بالإجراء ونوع العملية والبيانات المرتبطة بها.
             </div>
             <div className="grid gap-3 rounded-2xl border border-white/10 bg-[#1b0d14] p-4 md:grid-cols-2 xl:grid-cols-5">
               <select
@@ -399,7 +408,8 @@ export default function Settings() {
                 <button
                   type="button"
                   onClick={() => void loadLogs()}
-                  className="flex-1 rounded-xl bg-pink-600 px-4 py-3 text-sm font-bold text-white"
+                  disabled={auditLoading}
+                  className="flex-1 rounded-xl bg-pink-600 px-4 py-3 text-sm font-bold text-white disabled:opacity-60"
                 >
                   تحديث
                 </button>
@@ -416,6 +426,12 @@ export default function Settings() {
                 </button>
               </div>
             </div>
+            {logs.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-5 py-10 text-center">
+                <div className="text-base font-black text-white">لا توجد بيانات في سجل التغييرات</div>
+                <div className="mt-2 text-sm text-[#d7aabd]">إذا لم تظهر نتائج بعد التحديث، فإما لا توجد عمليات مسجلة بعد أو أن الطلب فشل وسيظهر كرسالة أعلى الصفحة.</div>
+              </div>
+            ) : (
             <div className="space-y-3">
               {logs.map((log) => (
                 <div key={log.id} className="rounded-2xl border border-white/10 bg-black/20 p-4">
@@ -436,6 +452,7 @@ export default function Settings() {
                 </div>
               ))}
             </div>
+            )}
           </div>
         )}
       </div>
