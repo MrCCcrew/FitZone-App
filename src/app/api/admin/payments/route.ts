@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
-import { requireAdminFeature } from "@/lib/admin-guard";
+import { requireAdminFeature, requireAdminMasterAccess } from "@/lib/admin-guard";
 import { db } from "@/lib/db";
 import { listRecentPaymentTransactions, verifyPaymentTransaction } from "@/lib/payments/service";
 
 export async function GET() {
   const guard = await requireAdminFeature("orders");
   if ("error" in guard) return guard.error;
+  const masterGuard = await requireAdminMasterAccess("payments");
+  if ("error" in masterGuard) return masterGuard.error;
 
   const transactions = await listRecentPaymentTransactions(100);
   return NextResponse.json(transactions);
@@ -14,6 +16,8 @@ export async function GET() {
 export async function PATCH(req: Request) {
   const guard = await requireAdminFeature("orders");
   if ("error" in guard) return guard.error;
+  const masterGuard = await requireAdminMasterAccess("payments");
+  if ("error" in masterGuard) return masterGuard.error;
 
   try {
     const body = (await req.json()) as {
@@ -83,6 +87,8 @@ export async function PATCH(req: Request) {
 export async function DELETE() {
   const guard = await requireAdminFeature("orders");
   if ("error" in guard) return guard.error;
+  const masterGuard = await requireAdminMasterAccess("payments");
+  if ("error" in masterGuard) return masterGuard.error;
 
   return NextResponse.json(
     { error: "حذف المعاملات من لوحة الأدمن معطل للحفاظ على سلامة سجلات الدفع." },

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAdminFeature } from "@/lib/admin-guard";
+import { requireAdminFeature, requireAdminMasterAccess } from "@/lib/admin-guard";
 import { db } from "@/lib/db";
 import { DEFAULT_PAYMENT_SETTINGS, type PaymentSettings } from "@/lib/payments/settings";
 
@@ -111,6 +111,8 @@ async function loadSettings() {
 export async function GET() {
   const guard = await requireAdminFeature("orders");
   if ("error" in guard) return guard.error;
+  const masterGuard = await requireAdminMasterAccess("payments");
+  if ("error" in masterGuard) return masterGuard.error;
 
   const settings = await loadSettings();
   return NextResponse.json(toResponse(settings));
@@ -119,6 +121,8 @@ export async function GET() {
 export async function PUT(req: Request) {
   const guard = await requireAdminFeature("orders");
   if ("error" in guard) return guard.error;
+  const masterGuard = await requireAdminMasterAccess("payments");
+  if ("error" in masterGuard) return masterGuard.error;
 
   try {
     const body = (await req.json()) as Partial<PaymentSettings>;
@@ -149,6 +153,8 @@ export async function PUT(req: Request) {
 export async function POST(req: Request) {
   const guard = await requireAdminFeature("orders");
   if ("error" in guard) return guard.error;
+  const masterGuard = await requireAdminMasterAccess("payments");
+  if ("error" in masterGuard) return masterGuard.error;
 
   try {
     const body = (await req.json()) as { action?: string };
