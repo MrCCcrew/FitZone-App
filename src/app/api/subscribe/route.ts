@@ -3,7 +3,11 @@ import { getCurrentAppUser } from "@/lib/app-session";
 import { db } from "@/lib/db";
 import { sendSubscriptionEmail } from "@/lib/email";
 import { generateMembershipInvoicePdf, type MembershipInvoiceDetails } from "@/lib/membership-invoice";
-import { createPaymentTransaction, unlockPendingReferralReward } from "@/lib/payments/service";
+import {
+  createPaymentTransaction,
+  restorePaymentBalanceAdjustments,
+  unlockPendingReferralReward,
+} from "@/lib/payments/service";
 
 type SubscribePayload = {
   membershipId?: string | null;
@@ -485,6 +489,7 @@ export async function POST(req: Request) {
         membershipDiscountAmount,
         priceAfterMembershipDiscount,
         actualWalletDeduct,
+        actualPointsDeduct,
         actualPointsEGP,
         discountCode: discountRecord && discountApplied > 0 ? String(discountCode ?? "").trim().toUpperCase() : null,
       };
@@ -544,6 +549,13 @@ export async function POST(req: Request) {
           phone: result.membershipPaymentMethod === "wallet" ? (userRecord?.phone ?? null) : null,
         },
         metadata: {
+          paymentAdjustments: {
+            walletAmount: result.actualWalletDeduct,
+            pointsCount: result.actualPointsDeduct,
+            pointsAmount: result.actualPointsEGP,
+          },
+          walletDeductedAmount: result.actualWalletDeduct,
+          pointsDeductedCount: result.actualPointsDeduct,
           membershipInvoice: {
             ...invoiceDetails,
             startDate: invoiceDetails.startDate?.toISOString() ?? null,
@@ -556,6 +568,14 @@ export async function POST(req: Request) {
       transactionId = transaction.id;
     } catch (error) {
       console.error("[SUBSCRIBE_PAYMENT_INIT]", error);
+      await restorePaymentBalanceAdjustments({
+        userId,
+        walletAmount: result.actualWalletDeduct,
+        pointsCount: result.actualPointsDeduct,
+        reference: result.subscriptionId,
+      }).catch((restoreError) => {
+        console.error("[SUBSCRIBE_PAYMENT_RESTORE]", restoreError);
+      });
       const message =
         error instanceof Error
           ? error.message

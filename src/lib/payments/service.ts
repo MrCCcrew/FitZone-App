@@ -75,6 +75,156 @@ function parseJson(value: string | null | undefined) {
   }
 }
 
+function extractPaymentAdjustments(metadata: Record<string, unknown> | null | undefined) {
+  const adjustmentRecord =
+    metadata?.paymentAdjustments && typeof metadata.paymentAdjustments === "object"
+      ? (metadata.paymentAdjustments as Record<string, unknown>)
+      : null;
+  const invoiceRecord =
+    metadata?.membershipInvoice && typeof metadata.membershipInvoice === "object"
+      ? (metadata.membershipInvoice as Record<string, unknown>)
+      : null;
+
+  const walletAmount = Number(
+    adjustmentRecord?.walletAmount ??
+      metadata?.walletDeductedAmount ??
+      metadata?.walletDeducted ??
+      invoiceRecord?.walletDeduct ??
+      0,
+  );
+
+  const pointsCount = Number(
+    adjustmentRecord?.pointsCount ??
+      metadata?.pointsDeductedCount ??
+      metadata?.pointsDeducted ??
+      0,
+  );
+
+  const restoredAt = typeof adjustmentRecord?.restoredAt === "string" ? adjustmentRecord.restoredAt : null;
+
+  return {
+    walletAmount: Number.isFinite(walletAmount) ? Math.max(0, walletAmount) : 0,
+    pointsCount: Number.isFinite(pointsCount) ? Math.max(0, Math.floor(pointsCount)) : 0,
+    restoredAt,
+  };
+}
+
+export async function restorePaymentBalanceAdjustments(input: {
+  userId: string;
+  walletAmount?: number | null;
+  pointsCount?: number | null;
+  reference?: string | null;
+}) {
+  const walletAmount = Math.max(0, Number(input.walletAmount ?? 0));
+  const pointsCount = Math.max(0, Math.floor(Number(input.pointsCount ?? 0)));
+
+  if (walletAmount <= 0 && pointsCount <= 0) return;
+
+  await db.$transaction(async (tx) => {
+    if (walletAmount > 0) {
+      const wallet = await tx.wallet.upsert({
+        where: { userId: input.userId },
+        update: { balance: { increment: walletAmount } },
+        create: { userId: input.userId, balance: walletAmount },
+      });
+
+      await tx.walletTransaction.create({
+        data: {
+          walletId: wallet.id,
+          amount: walletAmount,
+          type: "credit",
+          description: `استرجاع رصيد محفظة لعملية غير مكتملة ${input.reference ?? ""}`.trim(),
+        },
+      });
+    }
+
+    if (pointsCount > 0) {
+      const rewardPoints = await tx.rewardPoints.upsert({
+        where: { userId: input.userId },
+        update: { points: { increment: pointsCount } },
+        create: { userId: input.userId, points: pointsCount, tier: "bronze" },
+      });
+
+      await tx.rewardHistory.create({
+        data: {
+          rewardId: rewardPoints.id,
+          points: pointsCount,
+          reason: `استرجاع نقاط ولاء لعملية غير مكتملة ${input.reference ?? ""}`.trim(),
+        },
+      });
+    }
+  });
+}
+
+async function restorePaymentTransactionAdjustments(transactionId: string) {
+  await db.$transaction(async (tx) => {
+    const transaction = await tx.paymentTransaction.findUnique({
+      where: { id: transactionId },
+      select: {
+        id: true,
+        referenceCode: true,
+        userId: true,
+        status: true,
+        metadata: true,
+      },
+    });
+
+    if (!transaction || transaction.status === "paid") return;
+
+    const metadata = parseJson(transaction.metadata);
+    const adjustments = extractPaymentAdjustments(metadata);
+    if (adjustments.restoredAt || (adjustments.walletAmount <= 0 && adjustments.pointsCount <= 0)) return;
+
+    if (adjustments.walletAmount > 0) {
+      const wallet = await tx.wallet.upsert({
+        where: { userId: transaction.userId },
+        update: { balance: { increment: adjustments.walletAmount } },
+        create: { userId: transaction.userId, balance: adjustments.walletAmount },
+      });
+
+      await tx.walletTransaction.create({
+        data: {
+          walletId: wallet.id,
+          amount: adjustments.walletAmount,
+          type: "credit",
+          description: `استرجاع رصيد محفظة للمعاملة ${transaction.referenceCode ?? transaction.id}`,
+        },
+      });
+    }
+
+    if (adjustments.pointsCount > 0) {
+      const rewardPoints = await tx.rewardPoints.upsert({
+        where: { userId: transaction.userId },
+        update: { points: { increment: adjustments.pointsCount } },
+        create: { userId: transaction.userId, points: adjustments.pointsCount, tier: "bronze" },
+      });
+
+      await tx.rewardHistory.create({
+        data: {
+          rewardId: rewardPoints.id,
+          points: adjustments.pointsCount,
+          reason: `استرجاع نقاط ولاء للمعاملة ${transaction.referenceCode ?? transaction.id}`,
+        },
+      });
+    }
+
+    await tx.paymentTransaction.update({
+      where: { id: transactionId },
+      data: {
+        metadata: stringifyJson({
+          ...(metadata ?? {}),
+          paymentAdjustments: {
+            ...(((metadata?.paymentAdjustments as Record<string, unknown> | undefined) ?? {})),
+            walletAmount: adjustments.walletAmount,
+            pointsCount: adjustments.pointsCount,
+            restoredAt: new Date().toISOString(),
+          },
+        }),
+      },
+    });
+  });
+}
+
 function toInvoiceDetails(value: Record<string, unknown> | null | undefined): MembershipInvoiceDetails | null {
   if (!value || typeof value !== "object") return null;
   const raw = value.membershipInvoice;
@@ -288,7 +438,12 @@ export async function verifyPaymentTransaction(transactionId: string) {
 
   // If paid or failed, delegate to updatePaymentTransactionStatus which handles
   // membership activation, order confirmation, notifications, etc.
-  if (verification.status === "paid" || verification.status === "failed") {
+  if (
+    verification.status === "paid" ||
+    verification.status === "failed" ||
+    verification.status === "cancelled" ||
+    verification.status === "expired"
+  ) {
     return updatePaymentTransactionStatus(transactionId, verification.status, null);
   }
 
@@ -324,6 +479,12 @@ export async function updatePaymentTransactionStatus(
       failedAt: status === "failed" ? new Date() : undefined,
     },
   });
+
+  if (status === "failed" || status === "cancelled" || status === "expired") {
+    await restorePaymentTransactionAdjustments(transactionId);
+    const restored = await db.paymentTransaction.findUnique({ where: { id: transactionId } });
+    return mapPaymentTransaction(restored!);
+  }
 
   // Activate linked membership or order when payment confirmed
   if (status === "paid") {
