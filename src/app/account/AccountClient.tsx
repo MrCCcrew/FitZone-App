@@ -272,6 +272,10 @@ function getTierLabel(tier: string, lang: "ar" | "en") {
 }
 
 function getTabLabel(tabId: TabId, lang: "ar" | "en") {
+  if (tabId === "orders") {
+    return lang === "ar" ? "مشترياتي" : "My purchases";
+  }
+
   const labels: Record<TabId, { ar: string; en: string }> = {
     profile: { ar: "الملف الشخصي", en: "Profile" },
     trainerProfile: { ar: "ملف المدربة", en: "Trainer profile" },
