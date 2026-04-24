@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAdminSession } from "@/lib/admin-session";
+import { hasAdminMasterAccess } from "@/lib/admin-master-access";
 import { canAccessAdminFeature } from "@/lib/admin-permissions";
 import { enterAuditActor } from "@/lib/audit-context";
 
@@ -34,4 +35,13 @@ export async function requireAdminFeature(feature: Parameters<typeof canAccessAd
     role: adminSession.role,
     permissions: adminSession.permissions ?? [],
   };
+}
+
+export async function requireAdminMasterAccess(section: "payments" | "database") {
+  const allowed = await hasAdminMasterAccess(section);
+  if (!allowed) {
+    return { error: NextResponse.json({ error: "Master password required" }, { status: 423 }) };
+  }
+
+  return { ok: true as const };
 }
