@@ -2888,12 +2888,12 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                 </div>
                 <div style={{ width: 1, background: "rgba(255,255,255,.08)" }} />
                 <div style={{ textAlign: "center" }}>
-                  <div style={{ fontWeight: 800, fontSize: 18, color: C.white }}>{trainerDetailModal.sessionsCount}</div>
+                  <div style={{ fontWeight: 800, fontSize: 18, color: "#fff" }}>{trainerDetailModal.sessionsCount}</div>
                   <div style={{ fontSize: 11, color: "#888", marginTop: 2 }}>{t("جلسة", "Sessions")}</div>
                 </div>
                 <div style={{ width: 1, background: "rgba(255,255,255,.08)" }} />
                 <div style={{ textAlign: "center" }}>
-                  <div style={{ fontWeight: 800, fontSize: 18, color: C.white }}>{trainerDetailModal.classesCount}</div>
+                  <div style={{ fontWeight: 800, fontSize: 18, color: "#fff" }}>{trainerDetailModal.classesCount}</div>
                   <div style={{ fontSize: 11, color: "#888", marginTop: 2 }}>{t("كلاس", "Classes")}</div>
                 </div>
               </div>
@@ -7229,9 +7229,9 @@ const TrainersPage = ({ navigate, summary }: { navigate: (p: string) => void; su
               <div style={{ display: "flex", justifyContent: "space-around", gap: 8, marginBottom: 20, background: "rgba(255,255,255,.04)", borderRadius: 12, padding: "14px 8px" }}>
                 <div style={{ textAlign: "center" }}><div style={{ fontWeight: 800, fontSize: 18, color: C.gold }}>⭐ {trainerDetailModal.rating}</div><div style={{ fontSize: 11, color: "#888", marginTop: 2 }}>{t("التقييم", "Rating")}</div></div>
                 <div style={{ width: 1, background: "rgba(255,255,255,.08)" }} />
-                <div style={{ textAlign: "center" }}><div style={{ fontWeight: 800, fontSize: 18, color: C.white }}>{trainerDetailModal.sessionsCount}</div><div style={{ fontSize: 11, color: "#888", marginTop: 2 }}>{t("جلسة", "Sessions")}</div></div>
+                <div style={{ textAlign: "center" }}><div style={{ fontWeight: 800, fontSize: 18, color: "#fff" }}>{trainerDetailModal.sessionsCount}</div><div style={{ fontSize: 11, color: "#888", marginTop: 2 }}>{t("جلسة", "Sessions")}</div></div>
                 <div style={{ width: 1, background: "rgba(255,255,255,.08)" }} />
-                <div style={{ textAlign: "center" }}><div style={{ fontWeight: 800, fontSize: 18, color: C.white }}>{trainerDetailModal.classesCount}</div><div style={{ fontSize: 11, color: "#888", marginTop: 2 }}>{t("كلاس", "Classes")}</div></div>
+                <div style={{ textAlign: "center" }}><div style={{ fontWeight: 800, fontSize: 18, color: "#fff" }}>{trainerDetailModal.classesCount}</div><div style={{ fontSize: 11, color: "#888", marginTop: 2 }}>{t("كلاس", "Classes")}</div></div>
               </div>
               {(lang === "en" ? (trainerDetailModal.bioEn || trainerDetailModal.bio) : trainerDetailModal.bio) && (
                 <div style={{ marginBottom: 18 }}>
