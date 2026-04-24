@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireAdminSession } from "@/lib/admin-session";
+import { enterAuditActor, logAudit } from "@/lib/audit-context";
 
 export async function GET() {
   const auth = await requireAdminSession();
@@ -32,6 +33,7 @@ export async function GET() {
 export async function POST(req: Request) {
   const auth = await requireAdminSession();
   if (!auth.ok) return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
+  enterAuditActor({ userId: auth.session.user.id, name: auth.session.user.name, email: auth.session.user.email, role: auth.session.user.role });
 
   const body = await req.json();
   const {
@@ -70,5 +72,6 @@ export async function POST(req: Request) {
     },
   });
 
+  void logAudit({ action: "create", targetType: "discount_code", targetId: created.id, details: { code: created.code, type: created.type, value: created.value } });
   return NextResponse.json({ success: true, id: created.id }, { status: 201 });
 }

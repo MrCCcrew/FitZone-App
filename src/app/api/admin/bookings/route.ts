@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAdminFeature } from "@/lib/admin-guard";
 import { db } from "@/lib/db";
+import { logAudit } from "@/lib/audit-context";
 
 async function checkAdmin() {
   const guard = await requireAdminFeature("bookings");
@@ -289,6 +290,7 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ success: true });
     }
 
+    void logAudit({ action: payload.action, targetType: "booking", targetId: payload.bookingId, details: { userId: booking.userId, className: booking.schedule.class.name } });
     return NextResponse.json({ error: "إجراء غير معروف." }, { status: 400 });
   } catch (error) {
     console.error("[ADMIN_BOOKINGS_PATCH]", error);
@@ -317,6 +319,7 @@ export async function DELETE(req: Request) {
       });
     }
 
+    void logAudit({ action: "delete", targetType: "booking", targetId: bookingId });
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("[ADMIN_BOOKINGS_DELETE]", error);

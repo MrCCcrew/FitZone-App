@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAdminFeature } from "@/lib/admin-guard";
 import { db } from "@/lib/db";
+import { logAudit } from "@/lib/audit-context";
 
 async function checkAdmin() {
   const guard = await requireAdminFeature("orders");
@@ -130,5 +131,6 @@ export async function PATCH(req: Request) {
     }
   }
 
+  void logAudit({ action: "update_status", targetType: "order", targetId: id, details: { from: previousStatus, to: status } });
   return NextResponse.json({ success: true });
 }

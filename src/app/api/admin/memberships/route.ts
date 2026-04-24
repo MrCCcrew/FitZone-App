@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAdminFeature } from "@/lib/admin-guard";
 import { db } from "@/lib/db";
+import { logAudit } from "@/lib/audit-context";
 
 async function checkAdmin() {
   const guard = await requireAdminFeature("memberships");
@@ -151,6 +152,7 @@ export async function POST(req: Request) {
     },
   });
 
+  void logAudit({ action: "create", targetType: "membership", targetId: m.id, details: { name: m.name, price: m.price } });
   return NextResponse.json({
     id: m.id,
     name: m.name,
@@ -243,6 +245,7 @@ export async function PATCH(req: Request) {
     data,
     include: { goals: { select: { goalId: true } } },
   });
+  void logAudit({ action: "update", targetType: "membership", targetId: id, details: { name: m.name, changes: Object.keys(data) } });
   const membersCount = await db.userMembership.count({ where: { membershipId: id, status: "active" } });
   return NextResponse.json({
     id: m.id,
@@ -298,6 +301,8 @@ export async function DELETE(req: Request) {
   if (err) return err;
   const { id } = await req.json();
   if (!id) return NextResponse.json({ error: "id مطلوب" }, { status: 400 });
+  const m = await db.membership.findUnique({ where: { id }, select: { name: true } });
   await db.membership.delete({ where: { id } });
+  void logAudit({ action: "delete", targetType: "membership", targetId: id, details: { name: m?.name } });
   return NextResponse.json({ success: true });
 }

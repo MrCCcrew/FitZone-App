@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAdminFeature } from "@/lib/admin-guard";
 import { db } from "@/lib/db";
 import { clearPublicApiCache } from "@/lib/public-cache";
+import { logAudit } from "@/lib/audit-context";
 
 async function checkAdmin() {
   const guard = await requireAdminFeature("offers");
@@ -118,6 +119,7 @@ export async function POST(req: Request) {
       include: { membership: { select: { name: true } } },
     });
 
+    void logAudit({ action: "create", targetType: "offer", targetId: created.id, details: { title: created.title } });
     clearPublicApiCache();
     return NextResponse.json(mapOffer(created));
   } catch (error) {
@@ -168,6 +170,7 @@ export async function PATCH(req: Request) {
       include: { membership: { select: { name: true } } },
     });
 
+    void logAudit({ action: "update", targetType: "offer", targetId: id, details: { title: updated.title, changes: Object.keys(data) } });
     clearPublicApiCache();
     return NextResponse.json(mapOffer(updated));
   } catch (error) {
@@ -187,6 +190,7 @@ export async function DELETE(req: Request) {
     }
 
     await db.offer.delete({ where: { id } });
+    void logAudit({ action: "delete", targetType: "offer", targetId: id });
     clearPublicApiCache();
     return NextResponse.json({ success: true });
   } catch (error) {
