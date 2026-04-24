@@ -32,6 +32,7 @@ const FEATURE_LABELS: Record<string, string> = {
   discounts: "أكواد الخصم",
   rewards: "المكافآت والإحالة",
   "db-maintenance": "إدارة قاعدة البيانات",
+  accounting: "الحسابات والتقارير",
 };
 
 type EmployeeForm = {
