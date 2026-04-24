@@ -4,6 +4,30 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Trainer } from "../types";
 import { TranslateButton } from "./TranslateButton";
 
+type Application = {
+  id: string;
+  type: "private" | "mini_private";
+  status: string;
+  trainerPrice: number | null;
+  trainerNote: string | null;
+  paidAt: string | null;
+  createdAt: string;
+  goals: string[];
+  injuries: string | null;
+  notes: string | null;
+  formData: Record<string, unknown> | null;
+  user: { id: string; name: string | null; email: string | null; phone: string | null; avatar: string | null };
+  trainer: { id: string; name: string; specialty: string };
+};
+
+type Member = { id: string; name: string | null; email: string | null };
+type DiscountCode = {
+  id: string; code: string; trainerName: string; trainerId: string;
+  clientName: string | null; clientEmail: string | null; clientId: string;
+  discountType: string; discountValue: number; maxDiscount: number | null;
+  note: string | null; isUsed: boolean; usedAt: string | null; createdAt: string;
+};
+
 const INPUT =
   "w-full rounded-xl border border-gray-700 bg-gray-800 px-4 py-2.5 text-sm text-white outline-none transition-colors focus:border-pink-500";
 
@@ -102,6 +126,32 @@ export default function Trainers() {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [modal, setModal] = useState<EditableTrainer | null>(null);
+  const [activeTab, setActiveTab] = useState<"trainers" | "applications" | "discounts">("trainers");
+
+  // Applications
+  const [applications, setApplications] = useState<Application[]>([]);
+  const [appStatusFilter, setAppStatusFilter] = useState("all");
+  const [appLoading, setAppLoading] = useState(false);
+  const [approveModal, setApproveModal] = useState<Application | null>(null);
+  const [rejectModal, setRejectModal] = useState<Application | null>(null);
+  const [approvePrice, setApprovePrice] = useState("");
+  const [approveNote, setApproveNote] = useState("");
+  const [rejectNote, setRejectNote] = useState("");
+  const [actionLoading, setActionLoading] = useState(false);
+  const [expandedApp, setExpandedApp] = useState<string | null>(null);
+
+  // Discount codes
+  const [discountCodes, setDiscountCodes] = useState<DiscountCode[]>([]);
+  const [discountLoading, setDiscountLoading] = useState(false);
+  const [discountModal, setDiscountModal] = useState<Trainer | null>(null);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [dcTargetUser, setDcTargetUser] = useState("");
+  const [dcType, setDcType] = useState("percentage");
+  const [dcValue, setDcValue] = useState("");
+  const [dcMax, setDcMax] = useState("");
+  const [dcNote, setDcNote] = useState("");
+  const [dcSaving, setDcSaving] = useState(false);
+  const [dcError, setDcError] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -126,9 +176,86 @@ export default function Trainers() {
     }
   }, []);
 
+  const loadApplications = useCallback(async () => {
+    setAppLoading(true);
+    try {
+      const res = await fetch(`/api/admin/private-sessions?status=${appStatusFilter}`, { cache: "no-store" });
+      const data = await res.json().catch(() => ({ applications: [] }));
+      setApplications(Array.isArray(data.applications) ? data.applications : []);
+    } finally {
+      setAppLoading(false);
+    }
+  }, [appStatusFilter]);
+
+  const loadDiscounts = useCallback(async () => {
+    setDiscountLoading(true);
+    try {
+      const res = await fetch("/api/admin/trainer-discount-codes", { cache: "no-store" });
+      const data = await res.json().catch(() => ({ codes: [] }));
+      setDiscountCodes(Array.isArray(data.codes) ? data.codes : []);
+    } finally {
+      setDiscountLoading(false);
+    }
+  }, []);
+
+  const loadMembers = useCallback(async () => {
+    const res = await fetch("/api/admin/customers", { cache: "no-store" });
+    const data = (await res.json().catch(() => [])) as Array<{ id: string; name: string; email: string }>;
+    setMembers(Array.isArray(data) ? data.map((m) => ({ id: m.id, name: m.name, email: m.email })) : []);
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (activeTab === "applications") void loadApplications();
+    if (activeTab === "discounts") void loadDiscounts();
+  }, [activeTab, loadApplications, loadDiscounts]);
+
+  const handleApprove = async () => {
+    if (!approveModal || !approvePrice || Number(approvePrice) <= 0) return;
+    setActionLoading(true);
+    try {
+      const res = await fetch("/api/admin/private-sessions", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ applicationId: approveModal.id, action: "approve", trainerPrice: Number(approvePrice), trainerNote: approveNote }),
+      });
+      if (res.ok) { setApproveModal(null); setApprovePrice(""); setApproveNote(""); void loadApplications(); }
+      else { const d = await res.json().catch(() => ({})); window.alert((d as { error?: string }).error ?? "حدث خطأ."); }
+    } finally { setActionLoading(false); }
+  };
+
+  const handleReject = async () => {
+    if (!rejectModal) return;
+    setActionLoading(true);
+    try {
+      const res = await fetch("/api/admin/private-sessions", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ applicationId: rejectModal.id, action: "reject", trainerNote: rejectNote }),
+      });
+      if (res.ok) { setRejectModal(null); setRejectNote(""); void loadApplications(); }
+      else { const d = await res.json().catch(() => ({})); window.alert((d as { error?: string }).error ?? "حدث خطأ."); }
+    } finally { setActionLoading(false); }
+  };
+
+  const handleCreateDiscount = async () => {
+    if (!discountModal || !dcTargetUser || !dcValue) return;
+    setDcSaving(true); setDcError("");
+    try {
+      const res = await fetch("/api/admin/trainer-discount-codes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ trainerId: discountModal.id, targetUserId: dcTargetUser, discountType: dcType, discountValue: Number(dcValue), maxDiscount: dcMax ? Number(dcMax) : undefined, note: dcNote }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        window.alert(`✅ تم إنشاء الكود: ${(data as { code?: string }).code}`);
+        setDiscountModal(null); setDcTargetUser(""); setDcValue(""); setDcMax(""); setDcNote(""); setDcType("percentage");
+        void loadDiscounts();
+      } else { setDcError((data as { error?: string }).error ?? "حدث خطأ."); }
+    } finally { setDcSaving(false); }
+  };
 
   const filtered = useMemo(() => {
     const query = search.trim();
@@ -282,8 +409,139 @@ export default function Trainers() {
   const totalClasses = trainers.reduce((sum, trainer) => sum + trainer.classesCount, 0);
   const totalSessions = trainers.reduce((sum, trainer) => sum + trainer.sessionsCount, 0);
 
+  const STATUS_LABELS: Record<string, string> = {
+    pending: "قيد الانتظار", approved: "موافق عليه", rejected: "مرفوض",
+    paid: "مدفوع", cancelled: "ملغي",
+  };
+  const STATUS_COLORS: Record<string, string> = {
+    pending: "text-yellow-300 bg-yellow-900/30",
+    approved: "text-emerald-300 bg-emerald-900/30",
+    rejected: "text-red-300 bg-red-900/30",
+    paid: "text-sky-300 bg-sky-900/30",
+    cancelled: "text-gray-400 bg-gray-800",
+  };
+
   return (
     <div className="space-y-6">
+      {/* Tab navigation */}
+      <div className="flex gap-2 border-b border-gray-800 pb-1">
+        {([["trainers","المدربات"],["applications","طلبات البرايفيت"],["discounts","أكواد خصم المدربات"]] as const).map(([key,label]) => (
+          <button key={key} onClick={() => setActiveTab(key)}
+            className={`rounded-t-lg px-4 py-2 text-sm font-bold transition-colors ${activeTab === key ? "bg-pink-600 text-white" : "text-gray-400 hover:text-white"}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Applications Tab ── */}
+      {activeTab === "applications" && (
+        <section className="space-y-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <h3 className="text-lg font-black text-white">طلبات البرايفيت والميني برايفيت</h3>
+            <div className="flex gap-2">
+              {["all","pending","approved","rejected","paid"].map((s) => (
+                <button key={s} onClick={() => setAppStatusFilter(s)}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-bold transition-colors ${appStatusFilter === s ? "bg-pink-600 text-white" : "bg-gray-800 text-gray-400"}`}>
+                  {s === "all" ? "الكل" : STATUS_LABELS[s]}
+                </button>
+              ))}
+            </div>
+            <button onClick={() => void loadApplications()} className="rounded-lg bg-gray-800 px-3 py-1.5 text-xs font-bold text-gray-300">🔄 تحديث</button>
+          </div>
+
+          {appLoading ? (
+            <div className="py-10 text-center text-sm text-gray-500">جارٍ التحميل...</div>
+          ) : applications.length === 0 ? (
+            <div className="py-10 text-center text-sm text-gray-500">لا توجد طلبات{appStatusFilter !== "all" ? ` بحالة "${STATUS_LABELS[appStatusFilter] ?? appStatusFilter}"` : ""}</div>
+          ) : (
+            <div className="space-y-3">
+              {applications.map((app) => (
+                <div key={app.id} className="rounded-2xl border border-gray-800 bg-gray-900/60 p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-black text-white">{app.user.name ?? "—"}</span>
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${app.type === "private" ? "bg-pink-900/40 text-pink-300" : "bg-purple-900/40 text-purple-300"}`}>
+                          {app.type === "private" ? "برايفيت" : "ميني برايفيت"}
+                        </span>
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${STATUS_COLORS[app.status] ?? "text-gray-400"}`}>
+                          {STATUS_LABELS[app.status] ?? app.status}
+                        </span>
+                      </div>
+                      <div className="text-xs text-gray-400">مع: <span className="text-pink-300">{app.trainer.name}</span> · {app.user.email} · {app.user.phone ?? "—"}</div>
+                      <div className="text-xs text-gray-500">{new Date(app.createdAt).toLocaleDateString("ar-EG", { year:"numeric", month:"long", day:"numeric" })}</div>
+                      {app.goals.length > 0 && <div className="text-xs text-gray-400">الأهداف: {app.goals.join("، ")}</div>}
+                      {app.trainerPrice && <div className="text-xs font-bold text-emerald-300">السعر المحدد: {app.trainerPrice} ج.م</div>}
+                      {app.trainerNote && <div className="text-xs text-gray-400">ملاحظة: {app.trainerNote}</div>}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button onClick={() => setExpandedApp(expandedApp === app.id ? null : app.id)}
+                        className="rounded-lg bg-gray-800 px-3 py-1.5 text-xs font-bold text-gray-300">
+                        {expandedApp === app.id ? "إخفاء التفاصيل" : "عرض التفاصيل"}
+                      </button>
+                      {app.status === "pending" && (
+                        <>
+                          <button onClick={() => { setApproveModal(app); setApprovePrice(""); setApproveNote(""); }}
+                            className="rounded-lg bg-emerald-700 px-3 py-1.5 text-xs font-bold text-white">✓ موافقة</button>
+                          <button onClick={() => { setRejectModal(app); setRejectNote(""); }}
+                            className="rounded-lg bg-red-900/60 px-3 py-1.5 text-xs font-bold text-red-300">✕ رفض</button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  {expandedApp === app.id && app.formData && (
+                    <div className="mt-4 rounded-xl border border-gray-700 bg-black/20 p-4 text-xs leading-7 text-gray-300 space-y-1">
+                      {Object.entries(app.formData).map(([key, val]) => (
+                        <div key={key}><span className="font-bold text-gray-400">{key}:</span> {typeof val === "object" ? JSON.stringify(val) : String(val ?? "—")}</div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* ── Discounts Tab ── */}
+      {activeTab === "discounts" && (
+        <section className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-black text-white">أكواد خصم المدربات للعملاء المميزين</h3>
+            <button onClick={() => void loadDiscounts()} className="rounded-lg bg-gray-800 px-3 py-1.5 text-xs font-bold text-gray-300">🔄 تحديث</button>
+          </div>
+          {discountLoading ? (
+            <div className="py-10 text-center text-sm text-gray-500">جارٍ التحميل...</div>
+          ) : discountCodes.length === 0 ? (
+            <div className="py-10 text-center text-sm text-gray-500">لا توجد أكواد خصم حتى الآن</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead><tr className="border-b border-gray-800 text-right text-xs text-gray-500">
+                  <th className="pb-2 pr-2">الكود</th><th className="pb-2">المدربة</th><th className="pb-2">العميل</th>
+                  <th className="pb-2">الخصم</th><th className="pb-2">الحالة</th><th className="pb-2">التاريخ</th><th className="pb-2"></th>
+                </tr></thead>
+                <tbody className="divide-y divide-gray-800">
+                  {discountCodes.map((c) => (
+                    <tr key={c.id} className="text-xs">
+                      <td className="py-2 pr-2 font-mono font-bold text-pink-300">{c.code}</td>
+                      <td className="py-2 text-white">{c.trainerName}</td>
+                      <td className="py-2 text-gray-300">{c.clientName ?? "—"}<br /><span className="text-gray-500">{c.clientEmail}</span></td>
+                      <td className="py-2 font-bold text-emerald-300">{c.discountType === "percentage" ? `${c.discountValue}%` : `${c.discountValue} ج.م`}{c.maxDiscount ? ` (حد أقصى ${c.maxDiscount})` : ""}</td>
+                      <td className="py-2"><span className={`rounded-full px-2 py-0.5 font-bold ${c.isUsed ? "bg-gray-800 text-gray-400" : "bg-emerald-900/30 text-emerald-300"}`}>{c.isUsed ? "مستخدم" : "متاح"}</span></td>
+                      <td className="py-2 text-gray-500">{c.createdAt.slice(0,10)}</td>
+                      <td className="py-2"><button onClick={async () => { if (!confirm("حذف الكود؟")) return; await fetch(`/api/admin/trainer-discount-codes?id=${c.id}`, { method:"DELETE" }); void loadDiscounts(); }} className="text-red-400 hover:text-red-300">حذف</button></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* ── Trainers Tab ── */}
+      {activeTab === "trainers" && <>
       <section className="grid gap-4 lg:grid-cols-[1.4fr,1fr,1fr,1fr]">
         <div className="rounded-2xl border border-gray-800 bg-gray-900/60 p-5">
           <div className="text-sm text-gray-400">قسم المدربات</div>
@@ -457,6 +715,16 @@ export default function Trainers() {
                   تعديل
                 </button>
                 <button
+                  onClick={() => {
+                    setDiscountModal(trainer);
+                    setDcTargetUser(""); setDcValue(""); setDcMax(""); setDcNote(""); setDcType("percentage"); setDcError("");
+                    void loadMembers();
+                  }}
+                  className="rounded-lg bg-purple-900/50 px-3 py-2 text-xs font-bold text-purple-300"
+                >
+                  🎁 منح خصم
+                </button>
+                <button
                   onClick={() => void removeTrainer(trainer.id)}
                   className="rounded-lg bg-red-950/50 px-3 py-2 text-xs font-bold text-red-300"
                 >
@@ -470,6 +738,7 @@ export default function Trainers() {
 
       {modal ? (
         <Modal title={modal.id ? "تعديل بيانات المدربة" : "إضافة مدربة جديدة"} onClose={() => setModal(null)}>
+
           <div className="space-y-4">
             <div className="rounded-2xl border border-gray-800 bg-black/20 p-4 text-xs leading-7 text-gray-400">
               أدخلي البيانات كما ستظهر للعميلة داخل صفحة المدربات والصفحة الرئيسية. يفضل أن تكون
@@ -764,6 +1033,106 @@ export default function Trainers() {
           </div>
         </Modal>
       ) : null}
+      </> }
+
+      {/* ── Approve Modal ── */}
+      {approveModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => setApproveModal(null)}>
+          <div className="w-full max-w-md rounded-2xl border border-gray-700 bg-gray-900 p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-black text-white">✅ الموافقة على الطلب</h3>
+            <div className="text-sm text-gray-400">
+              العميل: <span className="text-white">{approveModal.user.name}</span> — {approveModal.type === "private" ? "برايفيت" : "ميني برايفيت"} مع <span className="text-pink-300">{approveModal.trainer.name}</span>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-400 mb-1">السعر (ج.م) *</label>
+              <input type="number" value={approvePrice} onChange={(e) => setApprovePrice(e.target.value)} className={INPUT} placeholder="مثال: 800" />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-400 mb-1">ملاحظة للعميل (اختياري)</label>
+              <textarea value={approveNote} onChange={(e) => setApproveNote(e.target.value)} rows={2} className={`${INPUT} resize-none`} placeholder="مثال: موعد البداية الأحد القادم..." />
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => void handleApprove()} disabled={actionLoading || !approvePrice}
+                className="flex-1 rounded-xl bg-emerald-700 py-2.5 font-black text-white disabled:opacity-50">
+                {actionLoading ? "جارٍ..." : "تأكيد الموافقة"}
+              </button>
+              <button onClick={() => setApproveModal(null)} className="rounded-xl bg-gray-800 px-4 py-2.5 font-bold text-gray-300">إلغاء</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Reject Modal ── */}
+      {rejectModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => setRejectModal(null)}>
+          <div className="w-full max-w-md rounded-2xl border border-gray-700 bg-gray-900 p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-black text-white">✕ رفض الطلب</h3>
+            <div className="text-sm text-gray-400">
+              العميل: <span className="text-white">{rejectModal.user.name}</span> — {rejectModal.type === "private" ? "برايفيت" : "ميني برايفيت"} مع <span className="text-pink-300">{rejectModal.trainer.name}</span>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-400 mb-1">سبب الرفض (اختياري)</label>
+              <textarea value={rejectNote} onChange={(e) => setRejectNote(e.target.value)} rows={3} className={`${INPUT} resize-none`} placeholder="اكتب سبب الرفض للعميل..." />
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => void handleReject()} disabled={actionLoading}
+                className="flex-1 rounded-xl bg-red-700 py-2.5 font-black text-white disabled:opacity-50">
+                {actionLoading ? "جارٍ..." : "تأكيد الرفض"}
+              </button>
+              <button onClick={() => setRejectModal(null)} className="rounded-xl bg-gray-800 px-4 py-2.5 font-bold text-gray-300">إلغاء</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Discount Modal ── */}
+      {discountModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => setDiscountModal(null)}>
+          <div className="w-full max-w-md rounded-2xl border border-gray-700 bg-gray-900 p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-black text-white">🎁 منح خصم — {discountModal.name}</h3>
+            <div>
+              <label className="block text-xs font-bold text-gray-400 mb-1">العميل *</label>
+              <select value={dcTargetUser} onChange={(e) => setDcTargetUser(e.target.value)} className={INPUT}>
+                <option value="">اختر العميل...</option>
+                {members.map((m) => (
+                  <option key={m.id} value={m.id}>{m.name ?? "—"} — {m.email}</option>
+                ))}
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-gray-400 mb-1">نوع الخصم</label>
+                <select value={dcType} onChange={(e) => setDcType(e.target.value)} className={INPUT}>
+                  <option value="percentage">نسبة مئوية %</option>
+                  <option value="fixed">مبلغ ثابت ج.م</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-400 mb-1">القيمة *</label>
+                <input type="number" value={dcValue} onChange={(e) => setDcValue(e.target.value)} className={INPUT} placeholder={dcType === "percentage" ? "مثال: 20" : "مثال: 100"} />
+              </div>
+            </div>
+            {dcType === "percentage" && (
+              <div>
+                <label className="block text-xs font-bold text-gray-400 mb-1">حد أقصى للخصم (ج.م) — اختياري</label>
+                <input type="number" value={dcMax} onChange={(e) => setDcMax(e.target.value)} className={INPUT} placeholder="مثال: 200" />
+              </div>
+            )}
+            <div>
+              <label className="block text-xs font-bold text-gray-400 mb-1">ملاحظة — اختياري</label>
+              <input value={dcNote} onChange={(e) => setDcNote(e.target.value)} className={INPUT} placeholder="مثال: خصم شهر رمضان..." />
+            </div>
+            {dcError && <div className="rounded-xl bg-red-950/40 border border-red-500/30 px-4 py-2 text-xs text-red-300">{dcError}</div>}
+            <div className="flex gap-2">
+              <button onClick={() => void handleCreateDiscount()} disabled={dcSaving || !dcTargetUser || !dcValue}
+                className="flex-1 rounded-xl bg-purple-700 py-2.5 font-black text-white disabled:opacity-50">
+                {dcSaving ? "جارٍ الإنشاء..." : "إنشاء كود الخصم"}
+              </button>
+              <button onClick={() => setDiscountModal(null)} className="rounded-xl bg-gray-800 px-4 py-2.5 font-bold text-gray-300">إلغاء</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
