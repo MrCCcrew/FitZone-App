@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { requireAdminFeature } from "@/lib/admin-guard";
 import { db } from "@/lib/db";
 import { logAudit } from "@/lib/audit-context";
+import { clearPublicApiCache } from "@/lib/public-cache";
+import { deleteMembershipAndLinkedClientData } from "@/lib/admin-linked-cleanup";
 
 async function checkAdmin() {
   const guard = await requireAdminFeature("memberships");
@@ -156,6 +158,7 @@ export async function POST(req: Request) {
   });
 
   void logAudit({ action: "create", targetType: "membership", targetId: m.id, details: { name: m.name, price: m.price } });
+  clearPublicApiCache();
   return NextResponse.json({
     id: m.id,
     name: m.name,
@@ -252,6 +255,7 @@ export async function PATCH(req: Request) {
     include: { goals: { select: { goalId: true } } },
   });
   void logAudit({ action: "update", targetType: "membership", targetId: id, details: { name: m.name, changes: Object.keys(data) } });
+  clearPublicApiCache();
   const membersCount = await db.userMembership.count({ where: { membershipId: id, status: "active" } });
   return NextResponse.json({
     id: m.id,
@@ -309,7 +313,19 @@ export async function DELETE(req: Request) {
   const { id } = await req.json();
   if (!id) return NextResponse.json({ error: "id مطلوب" }, { status: 400 });
   const m = await db.membership.findUnique({ where: { id }, select: { name: true } });
-  await db.membership.delete({ where: { id } });
-  void logAudit({ action: "delete", targetType: "membership", targetId: id, details: { name: m?.name } });
+  if (!m) return NextResponse.json({ error: "الاشتراك غير موجود." }, { status: 404 });
+  const cleanup = await db.$transaction((tx) => deleteMembershipAndLinkedClientData(tx, id));
+  void logAudit({
+    action: "delete",
+    targetType: "membership",
+    targetId: id,
+    details: {
+      name: m.name,
+      deletedOffers: cleanup.deletedOffers,
+      deletedMemberships: cleanup.deletedMemberships,
+      deletedBookings: cleanup.deletedBookings,
+    },
+  });
+  clearPublicApiCache();
   return NextResponse.json({ success: true });
 }

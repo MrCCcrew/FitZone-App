@@ -48,7 +48,10 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   const existing = await db.discountCode.findUnique({ where: { id } });
   if (!existing) return NextResponse.json({ error: "الكود غير موجود" }, { status: 404 });
 
-  await db.discountCode.delete({ where: { id } });
+  await db.$transaction([
+    db.discountCodeUsage.deleteMany({ where: { discountCodeId: id } }),
+    db.discountCode.delete({ where: { id } }),
+  ]);
   void logAudit({ action: "delete", targetType: "discount_code", targetId: id, details: { code: existing.code } });
   return NextResponse.json({ success: true });
 }
