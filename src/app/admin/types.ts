@@ -105,6 +105,7 @@ export interface Plan {
   membersCount: number;
   goalIds?: string[];
   giftEn?: string | null;
+  isFeatured?: boolean;
 }
 
 export interface Offer {

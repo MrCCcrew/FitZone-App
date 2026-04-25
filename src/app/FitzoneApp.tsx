@@ -1320,6 +1320,7 @@ type PublicMembership = {
   walletBonus: number;
   gift: string | null;
   kind: string;
+  isFeatured: boolean;
   goalIds: string[];
 };
 
@@ -3002,6 +3003,7 @@ type PlanItem = {
   popular: boolean;
   goalIds: string[];
   isTrial?: boolean;
+  isFeatured?: boolean;
 };
 
 type MembershipCheckoutPreview = {
@@ -3032,6 +3034,7 @@ function mapMembershipToPlanItem(membership: PublicMembership, color: string, po
     color,
     popular,
     goalIds: Array.isArray(membership.goalIds) ? membership.goalIds : [],
+    isFeatured: membership.isFeatured ?? false,
   };
 }
 
@@ -3062,6 +3065,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
   const [verifyMsg, setVerifyMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [resendLoading, setResendLoading] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
+  const [featuredStartDate, setFeaturedStartDate] = useState("");
   const [discountCode, setDiscountCode] = useState("");
   const [discountValidating, setDiscountValidating] = useState(false);
   const [discountResult, setDiscountResult] = useState<{ id: string; type: string; value: number; maxDiscount?: number | null; discountAmount: number | null; description?: string | null } | null>(null);
@@ -3533,6 +3537,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
             walletDeduct: fs.walletDiscount > 0 ? fs.walletDiscount : undefined,
             pointsDeduct: fs.pointsToDeduct > 0 ? fs.pointsToDeduct : undefined,
             trialPrice: plan.isTrial ? plan.price : undefined,
+            startDate: plan.isFeatured && featuredStartDate ? featuredStartDate : undefined,
           };
         })()),
         signal: controller.signal,
@@ -3669,6 +3674,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
     { q: t("هل يوجد كلاسات للأطفال؟", "Are there classes for kids?"), a: t("نعم! لدينا برامج مخصصة للأطفال من سن 4 سنوات فأكثر.", "Yes! We have dedicated programs for children from age 4 and up.") },
   ];
   const primaryPlan = filteredPlans[0] ?? plans[0];
+  const featuredPlan = plans.find((p) => p.isFeatured) ?? null;
 
   return (
     <div>
@@ -4149,6 +4155,11 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                         <div style={{ color: C.gray, fontSize: 12, marginTop: 4 }}>
                           {t("مدة الاشتراك", "Membership duration")} {checkoutPreview.plan.durationDays} {t("يوم", "days")}
                         </div>
+                        {checkoutPreview.plan.isFeatured && featuredStartDate && (
+                          <div style={{ marginTop: 6, fontSize: 12, color: "#D4AF37", fontWeight: 700 }}>
+                            📅 {t("تبدأ في:", "Starts:")} {new Date(featuredStartDate + "T00:00:00").toLocaleDateString("ar-EG", { year: "numeric", month: "long", day: "numeric" })}
+                          </div>
+                        )}
                       </div>
                       {checkoutPreview.scheduleIds.length > 0 ? (
                         <div style={{ color: C.red, fontWeight: 800, fontSize: 12 }}>
@@ -4494,6 +4505,112 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
               </div>
             )}
           </div>
+
+          {/* ─── Featured "اوبن تايم" Plan ───────────────────────────────── */}
+          {featuredPlan && (() => {
+            const todayStr = new Date().toISOString().slice(0, 10);
+            const maxDateStr = (() => { const d = new Date(); d.setDate(d.getDate() + 60); return d.toISOString().slice(0, 10); })();
+            const endDateStr = featuredStartDate
+              ? (() => { const d = new Date(featuredStartDate + "T00:00:00"); d.setDate(d.getDate() + featuredPlan.durationDays); return d.toLocaleDateString("ar-EG", { year: "numeric", month: "long", day: "numeric" }); })()
+              : null;
+            const featuredPrice = featuredPlan.priceAfter ?? featuredPlan.price;
+            return (
+              <div style={{
+                marginBottom: 32,
+                borderRadius: 20,
+                border: "2px solid rgba(212,175,55,0.45)",
+                background: "linear-gradient(135deg, rgba(30,10,18,0.97) 0%, rgba(50,20,10,0.97) 60%, rgba(35,15,5,0.97) 100%)",
+                boxShadow: "0 20px 60px rgba(212,175,55,0.12), 0 4px 20px rgba(0,0,0,0.4)",
+                overflow: "hidden",
+                position: "relative",
+              }}>
+                {/* Gold shimmer top border */}
+                <div style={{ height: 3, background: "linear-gradient(90deg, transparent, #D4AF37, #FFD700, #D4AF37, transparent)" }} />
+
+                <div style={{ padding: "28px 28px 24px", display: "flex", flexWrap: "wrap", gap: 28, alignItems: "flex-start" }}>
+                  {/* Left: Info */}
+                  <div style={{ flex: "1 1 240px" }}>
+                    {/* Badge */}
+                    <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "rgba(212,175,55,0.15)", border: "1px solid rgba(212,175,55,0.4)", borderRadius: 999, padding: "4px 14px", marginBottom: 14 }}>
+                      <span style={{ fontSize: 14 }}>⭐</span>
+                      <span style={{ fontSize: 11, fontWeight: 800, color: "#D4AF37", letterSpacing: 1 }}>{t("اشتراك مميز", "PREMIUM")}</span>
+                    </div>
+
+                    <h3 style={{ fontSize: 30, fontWeight: 900, color: "#FFD700", marginBottom: 6, lineHeight: 1.2 }}>{featuredPlan.name}</h3>
+                    <p style={{ color: "#c9b9a0", fontSize: 13, marginBottom: 18 }}>
+                      {t(`احضري كلاسات بلا حدود خلال ${featuredPlan.durationDays} يومًا كاملة`, `Unlimited classes for ${featuredPlan.durationDays} full days`)}
+                    </p>
+
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 20 }}>
+                      <span style={{ fontSize: 44, fontWeight: 900, color: "#E91E63", lineHeight: 1 }}>{featuredPrice.toLocaleString("ar-EG")}</span>
+                      <span style={{ color: "#a07060", fontSize: 13 }}>{t("ج.م", "EGP")}</span>
+                    </div>
+
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {featuredPlan.features.map((feat, fi) => (
+                        <div key={fi} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#d4c4b0" }}>
+                          <span style={{ color: "#D4AF37", fontWeight: 900, fontSize: 15, flexShrink: 0 }}>✓</span>
+                          <span>{feat}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Right: Date picker + CTA */}
+                  <div style={{ flex: "0 0 auto", minWidth: 220, display: "flex", flexDirection: "column", gap: 14 }}>
+                    <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(212,175,55,0.25)", borderRadius: 14, padding: "18px 18px 16px" }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: "#D4AF37", marginBottom: 10 }}>
+                        📅 {t("اختاري تاريخ بداية الاشتراك", "Choose your start date")}
+                      </div>
+                      <input
+                        type="date"
+                        min={todayStr}
+                        max={maxDateStr}
+                        value={featuredStartDate}
+                        onChange={(e) => setFeaturedStartDate(e.target.value)}
+                        style={{
+                          width: "100%", boxSizing: "border-box",
+                          background: "rgba(255,255,255,0.06)", border: "1px solid rgba(212,175,55,0.35)",
+                          borderRadius: 10, padding: "9px 12px", color: "#fff4e8",
+                          fontSize: 14, fontFamily: "'Cairo', sans-serif", outline: "none",
+                          colorScheme: "dark",
+                        }}
+                      />
+                      {endDateStr && (
+                        <div style={{ marginTop: 10, padding: "8px 12px", background: "rgba(212,175,55,0.1)", borderRadius: 8, fontSize: 12, color: "#D4AF37", fontWeight: 700 }}>
+                          {t("تنتهي في:", "Ends:")} {endDateStr}
+                        </div>
+                      )}
+                      {!featuredStartDate && (
+                        <div style={{ marginTop: 8, fontSize: 11, color: "#8a7060" }}>
+                          {t("اختاري التاريخ ثم اضغطي اشتركي", "Pick a date, then subscribe")}
+                        </div>
+                      )}
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        if (!featuredStartDate) { alert(t("اختاري تاريخ البداية أولاً", "Please select a start date first")); return; }
+                        openSurvey(featuredPlan);
+                      }}
+                      disabled={featuredPlan.id !== null && subscribing === featuredPlan.id}
+                      style={{
+                        width: "100%", padding: "13px 20px", borderRadius: 12, border: "none",
+                        background: featuredStartDate ? "linear-gradient(135deg, #D4AF37, #E91E63)" : "rgba(212,175,55,0.2)",
+                        color: featuredStartDate ? "#fff" : "#8a7060",
+                        fontWeight: 900, fontSize: 15, cursor: featuredStartDate ? "pointer" : "not-allowed",
+                        fontFamily: "'Cairo', sans-serif",
+                        boxShadow: featuredStartDate ? "0 8px 24px rgba(212,175,55,0.3)" : "none",
+                        transition: "all .2s",
+                      }}
+                    >
+                      {subscribing === featuredPlan.id ? t("جارٍ الاشتراك...", "Processing...") : t("اشتركي الآن ⭐", "Subscribe Now ⭐")}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
 
           {selectedGoals.length === 0 ? (
             <div className="card" style={{ padding: 20, textAlign: "center", color: C.gray }}>

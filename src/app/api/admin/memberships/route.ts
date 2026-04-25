@@ -74,6 +74,7 @@ export async function GET(req: Request) {
         })(),
         gift: m.gift ?? null,
         giftEn: m.giftEn ?? null,
+        isFeatured: m.isFeatured ?? false,
         active: m.isActive,
         membersCount,
         goalIds: m.goals.map((goal) => goal.goalId),
@@ -108,6 +109,7 @@ export async function POST(req: Request) {
     sortOrder,
     gift,
     giftEn,
+    isFeatured,
   } = body;
   if (!name || price == null) return NextResponse.json({ error: "بيانات ناقصة" }, { status: 400 });
 
@@ -141,6 +143,7 @@ export async function POST(req: Request) {
       featuresEn: JSON.stringify(featuresEn ?? []),
       gift: gift == null || gift === "" ? null : String(gift),
       giftEn: giftEn == null || giftEn === "" ? null : String(giftEn),
+      isFeatured: isFeatured === true,
       isActive: true,
       goals: goals.length
         ? {
@@ -172,6 +175,7 @@ export async function POST(req: Request) {
     featuresEn: featuresEn ?? [],
     gift: m.gift ?? null,
     giftEn: m.giftEn ?? null,
+    isFeatured: m.isFeatured ?? false,
     active: true,
     membersCount: 0,
     goalIds: goals,
@@ -204,6 +208,7 @@ export async function PATCH(req: Request) {
     sortOrder,
     gift,
     giftEn,
+    isFeatured,
   } = body;
   if (!id) return NextResponse.json({ error: "id مطلوب" }, { status: 400 });
 
@@ -228,6 +233,7 @@ export async function PATCH(req: Request) {
   if (featuresEn !== undefined) data.featuresEn = JSON.stringify(featuresEn ?? []);
   if (gift !== undefined) data.gift = gift == null || gift === "" ? null : String(gift);
   if (giftEn !== undefined) data.giftEn = giftEn == null || giftEn === "" ? null : String(giftEn);
+  if (isFeatured !== undefined) data.isFeatured = isFeatured === true;
   if (active !== undefined) data.isActive = active;
   if (Array.isArray(goalIds)) {
     data.goals = {
@@ -290,6 +296,7 @@ export async function PATCH(req: Request) {
     })(),
     gift: m.gift ?? null,
     giftEn: m.giftEn ?? null,
+    isFeatured: m.isFeatured ?? false,
     active: m.isActive,
     membersCount,
     goalIds: m.goals.map((goal) => goal.goalId),

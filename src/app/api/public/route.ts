@@ -50,6 +50,7 @@ type PublicPayload = {
     walletBonus: number;
     gift: string | null;
     kind: string;
+    isFeatured: boolean;
     goalIds: string[];
   }>;
   trialMembership: {
@@ -421,6 +422,7 @@ export async function GET(request: Request) {
           walletBonus: membership.walletBonus,
           gift: lang === "en" ? (membership.giftEn || membership.gift) : membership.gift,
           kind: membership.kind,
+          isFeatured: membership.isFeatured ?? false,
           goalIds: membership.goals.map((goal) => goal.goalId),
         })),
       trialMembership: (() => {
