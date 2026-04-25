@@ -7358,10 +7358,18 @@ const BlogPage = () => {
 
   if (activeArticle) {
     const a = activeArticle;
+    // Header shows coverImage only — video plays in content below
+    const headerMedia = a.coverImage
+      ? <img src={a.coverImage} alt={a.title} style={{ width: "100%", height: 300, objectFit: "cover" }} />
+      : a.videoUrl
+        ? <div style={{ width: "100%", height: 300, background: "linear-gradient(135deg,#1a0010,#2d0020)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div style={{ width: 64, height: 64, borderRadius: "50%", background: "rgba(233,30,99,.7)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28 }}>▶</div>
+          </div>
+        : <GymImg type="blog" w="100%" h={300} />;
     return (
       <div>
-        <div style={{ height: 300, position: "relative" }}>
-          {renderMedia(a, 300)}
+        <div style={{ height: 300, position: "relative", overflow: "hidden" }}>
+          {headerMedia}
           <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom, transparent, rgba(10,10,10,.9))" }} />
           <div style={{ position: "absolute", bottom: 28, left: 0, right: 0 }}><div className="container">
             <button onClick={() => setActiveArticle(null)} style={{ background: "rgba(255,255,255,.1)", border: `1px solid ${C.border}`, borderRadius: 6, padding: "5px 14px", color: C.white, cursor: "pointer", fontFamily: "'Cairo', sans-serif", marginBottom: 10, fontSize: 13 }}>← {t("رجوع", "Back")}</button>
