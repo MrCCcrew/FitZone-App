@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AdminCard, AdminEmptyState, AdminSectionShell } from "./shared";
 
 type BookingRow = {
@@ -33,6 +33,40 @@ type CustomerOption = {
   name: string;
   email: string;
   phone: string;
+};
+
+type AttendanceCheckInRow = {
+  id: string;
+  createdAt: string;
+  checkInType: string;
+  notes: string | null;
+  user: { id: string; name: string; email: string; phone: string };
+  passLabel: string | null;
+  scannedBy: { id: string; name: string } | null;
+  booking: {
+    id: string;
+    className: string;
+    trainerName: string;
+    date: string;
+    time: string;
+  } | null;
+  privateSession: {
+    id: string;
+    type: string;
+    trainerName: string;
+  } | null;
+};
+
+type AttendanceFeedback =
+  | { ok: true; text: string; details?: string }
+  | { ok: false; text: string; details?: string };
+
+type BarcodeDetectorLike = {
+  detect: (source: CanvasImageSource) => Promise<Array<{ rawValue?: string }>>;
+};
+
+type WindowWithBarcodeDetector = Window & {
+  BarcodeDetector?: new (options?: { formats?: string[] }) => BarcodeDetectorLike;
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -78,6 +112,18 @@ function formatPayment(method: string) {
   return PAYMENT_LABELS[method] ?? method;
 }
 
+function formatDateTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("ar-EG", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+}
+
 function Modal({
   title,
   onClose,
@@ -120,6 +166,20 @@ export default function Bookings() {
   const [rescheduleModal, setRescheduleModal] = useState<BookingRow | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState("");
   const [selectedSchedule, setSelectedSchedule] = useState("");
+  const [attendanceMode, setAttendanceMode] = useState<"class" | "private">("class");
+  const [attendanceScheduleId, setAttendanceScheduleId] = useState("");
+  const [attendanceCheckIns, setAttendanceCheckIns] = useState<AttendanceCheckInRow[]>([]);
+  const [attendanceSchedules, setAttendanceSchedules] = useState<ScheduleOption[]>([]);
+  const [attendanceLoading, setAttendanceLoading] = useState(true);
+  const [scanInput, setScanInput] = useState("");
+  const [scanFeedback, setScanFeedback] = useState<AttendanceFeedback | null>(null);
+  const [cameraActive, setCameraActive] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const scanIntervalRef = useRef<number | null>(null);
+  const scanInFlightRef = useRef(false);
 
   const loadBookings = useCallback(async () => {
     setLoading(true);
@@ -160,6 +220,150 @@ export default function Bookings() {
     setSchedules(Array.isArray(payload) ? payload : []);
   }, []);
 
+  const stopCamera = useCallback(() => {
+    if (scanIntervalRef.current != null) {
+      window.clearInterval(scanIntervalRef.current);
+      scanIntervalRef.current = null;
+    }
+
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+      mediaStreamRef.current = null;
+    }
+
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+
+    setCameraActive(false);
+    scanInFlightRef.current = false;
+  }, []);
+
+  const loadAttendance = useCallback(async () => {
+    setAttendanceLoading(true);
+    try {
+      const params = new URLSearchParams();
+      params.set("mode", attendanceMode);
+      params.set("date", new Date().toISOString());
+      if (attendanceMode === "class" && attendanceScheduleId) params.set("scheduleId", attendanceScheduleId);
+
+      const response = await fetch(`/api/admin/attendance?${params.toString()}`, { cache: "no-store" });
+      const payload = await response.json().catch(() => ({}));
+      setAttendanceSchedules(Array.isArray(payload.schedules) ? payload.schedules : []);
+      setAttendanceCheckIns(Array.isArray(payload.checkIns) ? payload.checkIns : []);
+    } finally {
+      setAttendanceLoading(false);
+    }
+  }, [attendanceMode, attendanceScheduleId]);
+
+  const submitScan = useCallback(
+    async (rawValue: string) => {
+      const value = rawValue.trim();
+      if (!value) return;
+
+      setWorking(true);
+      setScanFeedback(null);
+      try {
+        const response = await fetch("/api/admin/attendance", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            scanValue: value,
+            scheduleId: attendanceMode === "class" ? attendanceScheduleId || null : null,
+            mode: attendanceMode,
+          }),
+        });
+
+        const payload = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+          setScanFeedback({
+            ok: false,
+            text: payload.error ?? "تعذر تسجيل الحضور.",
+          });
+          return;
+        }
+
+        const result = payload.result ?? {};
+        setScanFeedback({
+          ok: true,
+          text: payload.alreadyCheckedIn ? "تم تسجيل هذا الحضور مسبقًا." : "تم تسجيل الحضور بنجاح.",
+          details:
+            attendanceMode === "class"
+              ? `${result.customerName ?? ""} - ${result.className ?? ""}`
+              : `${result.customerName ?? ""} - ${result.trainerName ?? ""}`,
+        });
+        setScanInput("");
+        stopCamera();
+        await Promise.all([loadAttendance(), loadBookings()]);
+      } finally {
+        setWorking(false);
+      }
+    },
+    [attendanceMode, attendanceScheduleId, loadAttendance, loadBookings, stopCamera],
+  );
+
+  const startCamera = useCallback(async () => {
+    const BarcodeDetectorCtor = (window as WindowWithBarcodeDetector).BarcodeDetector;
+    if (!BarcodeDetectorCtor) {
+      setCameraError("المتصفح الحالي لا يدعم مسح QR بالكاميرا. يمكنك استخدام الإدخال اليدوي.");
+      return;
+    }
+
+    if (attendanceMode === "class" && !attendanceScheduleId) {
+      setCameraError("اختَر الكلاس أو الموعد أولًا قبل بدء المسح.");
+      return;
+    }
+
+    stopCamera();
+    setCameraError(null);
+    setScanFeedback(null);
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: "environment" } },
+        audio: false,
+      });
+
+      mediaStreamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+      }
+
+      const detector = new BarcodeDetectorCtor({ formats: ["qr_code"] });
+      setCameraActive(true);
+
+      scanIntervalRef.current = window.setInterval(async () => {
+        if (scanInFlightRef.current || !videoRef.current || !canvasRef.current) return;
+        if (videoRef.current.readyState < 2) return;
+
+        scanInFlightRef.current = true;
+        try {
+          const video = videoRef.current;
+          const canvas = canvasRef.current;
+          canvas.width = video.videoWidth || 640;
+          canvas.height = video.videoHeight || 480;
+          const context = canvas.getContext("2d");
+          if (!context) return;
+          context.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const codes = await detector.detect(canvas);
+          const rawValue = codes[0]?.rawValue?.trim();
+          if (rawValue) {
+            await submitScan(rawValue);
+          }
+        } catch {
+          // ignore transient camera detection errors
+        } finally {
+          scanInFlightRef.current = false;
+        }
+      }, 900);
+    } catch {
+      setCameraError("تعذر فتح الكاميرا على هذا الجهاز أو المتصفح.");
+      stopCamera();
+    }
+  }, [attendanceMode, attendanceScheduleId, stopCamera, submitScan]);
+
   useEffect(() => {
     void loadBookings();
   }, [loadBookings]);
@@ -177,6 +381,27 @@ export default function Bookings() {
       setSelectedSchedule("");
     }
   }, [loadSchedules, rescheduleModal]);
+
+  useEffect(() => {
+    void loadAttendance();
+  }, [loadAttendance]);
+
+  useEffect(() => {
+    if (attendanceMode === "private") {
+      setAttendanceScheduleId("");
+    }
+    setScanFeedback(null);
+    stopCamera();
+  }, [attendanceMode, stopCamera]);
+
+  useEffect(() => {
+    if (attendanceMode !== "class") return;
+    if (!attendanceScheduleId && attendanceSchedules.length > 0) {
+      setAttendanceScheduleId(attendanceSchedules[0].id);
+    }
+  }, [attendanceMode, attendanceScheduleId, attendanceSchedules]);
+
+  useEffect(() => () => stopCamera(), [stopCamera]);
 
   const handleDelete = async (bookingId: string) => {
     const confirmed = window.confirm("هل تريد حذف هذا الحجز نهائياً؟ لا يمكن التراجع.");
@@ -323,6 +548,162 @@ export default function Bookings() {
           >
             تطبيق
           </button>
+        </div>
+      </AdminCard>
+
+      <AdminCard>
+        <div className="grid gap-5 xl:grid-cols-[1.1fr_.9fr]">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <h3 className="text-base font-black text-[#fff4f8]">الحضور بالـ QR</h3>
+                <p className="mt-1 text-sm text-[#d7aabd]">
+                  سجّل حضور العميل مباشرة من الكود، مع ربطه بالكلاس أو جلسة البرايفيت.
+                </p>
+              </div>
+              <button
+                onClick={() => void loadAttendance()}
+                className="rounded-xl bg-white/10 px-4 py-2 text-sm font-bold text-[#fff4f8] transition-colors hover:bg-white/20"
+              >
+                تحديث سجل الحضور
+              </button>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-3">
+              <select
+                value={attendanceMode}
+                onChange={(event) => setAttendanceMode(event.target.value as "class" | "private")}
+                className={INPUT}
+              >
+                <option value="class">حضور كلاس</option>
+                <option value="private">برايفيت / ميني برايفيت</option>
+              </select>
+
+              <select
+                value={attendanceScheduleId}
+                onChange={(event) => setAttendanceScheduleId(event.target.value)}
+                className={INPUT}
+                disabled={attendanceMode !== "class"}
+              >
+                <option value="">اختَر الموعد</option>
+                {attendanceSchedules.map((schedule) => (
+                  <option key={schedule.id} value={schedule.id}>
+                    {schedule.class.name} • {formatDay(schedule.date)} • {formatDate(schedule.date)} • {schedule.time}
+                  </option>
+                ))}
+              </select>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => void startCamera()}
+                  className="flex-1 rounded-xl bg-[#ff4f93] px-4 py-2.5 text-sm font-black text-white transition-colors hover:bg-[#ff2f7d]"
+                >
+                  فتح الكاميرا
+                </button>
+                <button
+                  type="button"
+                  onClick={stopCamera}
+                  className="rounded-xl bg-white/10 px-4 py-2.5 text-sm font-bold text-[#fff4f8] transition-colors hover:bg-white/20"
+                >
+                  إيقاف
+                </button>
+              </div>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+              <input
+                value={scanInput}
+                onChange={(event) => setScanInput(event.target.value)}
+                placeholder="الصق كود الـ QR هنا عند الحاجة"
+                className={INPUT}
+              />
+              <button
+                type="button"
+                onClick={() => void submitScan(scanInput)}
+                disabled={working || !scanInput.trim()}
+                className="rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-black text-white transition-colors hover:bg-emerald-500 disabled:opacity-50"
+              >
+                تسجيل الحضور
+              </button>
+            </div>
+
+            {scanFeedback ? (
+              <div className={`rounded-2xl border px-4 py-3 text-sm ${scanFeedback.ok ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200" : "border-red-500/30 bg-red-500/10 text-red-200"}`}>
+                <div className="font-bold">{scanFeedback.text}</div>
+                {scanFeedback.details ? <div className="mt-1 opacity-90">{scanFeedback.details}</div> : null}
+              </div>
+            ) : null}
+
+            {cameraError ? (
+              <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+                {cameraError}
+              </div>
+            ) : null}
+
+            <div className="overflow-hidden rounded-2xl border border-[rgba(255,188,219,0.16)] bg-black/25">
+              <div className="border-b border-[rgba(255,188,219,0.12)] px-4 py-3 text-sm font-bold text-[#fff4f8]">
+                {cameraActive ? "الكاميرا تعمل الآن" : "منطقة المسح بالكاميرا"}
+              </div>
+              <div className="relative flex min-h-[280px] items-center justify-center bg-black/40 p-3">
+                <video ref={videoRef} className={`max-h-[340px] w-full rounded-xl object-cover ${cameraActive ? "block" : "hidden"}`} muted playsInline />
+                {!cameraActive ? (
+                  <div className="text-center text-sm text-[#d7aabd]">
+                    افتح الكاميرا لبدء قراءة QR العميل مباشرة من شاشة الهاتف.
+                  </div>
+                ) : null}
+                <canvas ref={canvasRef} className="hidden" />
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-base font-black text-[#fff4f8]">آخر عمليات الحضور</h3>
+              <p className="mt-1 text-sm text-[#d7aabd]">سجل سريع لآخر عمليات المسح المسجلة اليوم.</p>
+            </div>
+
+            {attendanceLoading ? (
+              <div className="rounded-2xl border border-[rgba(255,188,219,0.14)] bg-black/20 px-4 py-8 text-center text-sm text-[#d7aabd]">
+                جارٍ تحميل سجل الحضور...
+              </div>
+            ) : attendanceCheckIns.length === 0 ? (
+              <div className="rounded-2xl border border-[rgba(255,188,219,0.14)] bg-black/20 px-4 py-8 text-center text-sm text-[#d7aabd]">
+                لا توجد عمليات حضور مسجلة اليوم لهذا الوضع.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {attendanceCheckIns.map((item) => (
+                  <div key={item.id} className="rounded-2xl border border-[rgba(255,188,219,0.14)] bg-black/20 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="font-black text-[#fff4f8]">{item.user.name}</div>
+                        <div className="mt-1 text-xs text-[#d7aabd]">{formatDateTime(item.createdAt)}</div>
+                      </div>
+                      <span className="rounded-full bg-pink-500/15 px-2.5 py-1 text-[11px] font-bold text-pink-200">
+                        {item.checkInType === "class"
+                          ? "كلاس"
+                          : item.checkInType === "mini_private"
+                            ? "ميني برايفيت"
+                            : "برايفيت"}
+                      </span>
+                    </div>
+                    <div className="mt-3 space-y-1 text-sm text-[#d7aabd]">
+                      {item.booking ? (
+                        <div>الكلاس: <span className="font-bold text-white">{item.booking.className}</span> • {item.booking.time}</div>
+                      ) : null}
+                      {item.privateSession ? (
+                        <div>المدربة: <span className="font-bold text-white">{item.privateSession.trainerName}</span></div>
+                      ) : null}
+                      {item.scannedBy ? (
+                        <div>تم التسجيل بواسطة: <span className="font-bold text-white">{item.scannedBy.name}</span></div>
+                      ) : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </AdminCard>
 
