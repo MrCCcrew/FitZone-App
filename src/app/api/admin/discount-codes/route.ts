@@ -23,6 +23,7 @@ export async function GET() {
       minAmount: c.minAmount,
       maxUses: c.maxUses,
       usedCount: c._count.usages,
+      scope: c.scope ?? "all",
       expiresAt: c.expiresAt?.toISOString() ?? null,
       isActive: c.isActive,
       createdAt: c.createdAt.toISOString(),
@@ -44,6 +45,7 @@ export async function POST(req: Request) {
     value,
     minAmount,
     maxUses,
+    scope = "all",
     expiresAt,
     isActive = true,
   } = body as Record<string, unknown>;
@@ -58,6 +60,7 @@ export async function POST(req: Request) {
   const existing = await db.discountCode.findUnique({ where: { code: codeStr } });
   if (existing) return NextResponse.json({ error: "هذا الكود موجود بالفعل" }, { status: 409 });
 
+  const validScope = ["subscriptions", "store", "all"].includes(String(scope)) ? String(scope) : "all";
   const created = await db.discountCode.create({
     data: {
       code: codeStr,
@@ -67,6 +70,7 @@ export async function POST(req: Request) {
       value: Number(value),
       minAmount: minAmount ? Number(minAmount) : null,
       maxUses: maxUses ? Number(maxUses) : null,
+      scope: validScope,
       expiresAt: expiresAt ? new Date(String(expiresAt)) : null,
       isActive: Boolean(isActive),
     },

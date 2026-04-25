@@ -10,11 +10,15 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 
   const { id } = await params;
   const body = await req.json();
-  const { description, descriptionEn, type, value, minAmount, maxUses, expiresAt, isActive } =
+  const { description, descriptionEn, type, value, minAmount, maxUses, scope, expiresAt, isActive } =
     body as Record<string, unknown>;
 
   const existing = await db.discountCode.findUnique({ where: { id } });
   if (!existing) return NextResponse.json({ error: "الكود غير موجود" }, { status: 404 });
+
+  const validScope = scope !== undefined
+    ? (["subscriptions", "store", "all"].includes(String(scope)) ? String(scope) : "all")
+    : undefined;
 
   await db.discountCode.update({
     where: { id },
@@ -25,6 +29,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       value: value !== undefined ? Number(value) : undefined,
       minAmount: minAmount !== undefined ? (minAmount ? Number(minAmount) : null) : undefined,
       maxUses: maxUses !== undefined ? (maxUses ? Number(maxUses) : null) : undefined,
+      scope: validScope,
       expiresAt: expiresAt !== undefined ? (expiresAt ? new Date(String(expiresAt)) : null) : undefined,
       isActive: isActive !== undefined ? Boolean(isActive) : undefined,
     },

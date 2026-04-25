@@ -12,6 +12,7 @@ export async function GET(req: Request) {
   const code = (searchParams.get("code") ?? "").trim().toUpperCase();
   const membershipId = searchParams.get("membershipId") ?? null;
   const amount = parseFloat(searchParams.get("amount") ?? "0") || 0;
+  const context = searchParams.get("context") ?? "all"; // "subscriptions" | "store" | "all"
 
   if (!code) {
     return NextResponse.json({ error: "الرجاء إدخال كود الخصم." }, { status: 400 });
@@ -20,7 +21,17 @@ export async function GET(req: Request) {
   // ── 1. Check standard DiscountCode table ─────────────────────────────────────
   const discount = await db.discountCode.findUnique({ where: { code } });
 
+  const scopeAllowed = (codeScope: string) => {
+    if (codeScope === "all") return true;
+    if (context === "all") return true;
+    return codeScope === context;
+  };
+
   if (discount && discount.isActive) {
+    if (!scopeAllowed(discount.scope ?? "all")) {
+      const scopeLabel = discount.scope === "subscriptions" ? "الاشتراكات" : "المتجر";
+      return NextResponse.json({ error: `هذا الكود صالح فقط في ${scopeLabel}.` }, { status: 400 });
+    }
     if (discount.expiresAt && discount.expiresAt < new Date()) {
       return NextResponse.json({ error: "انتهت صلاحية كود الخصم." }, { status: 400 });
     }
@@ -103,6 +114,7 @@ export async function GET(req: Request) {
     code: trainerCode.code,
     type: trainerCode.discountType,
     value: trainerCode.discountValue,
+    maxDiscount: trainerCode.maxDiscount ?? null,
     description: `كود خصم من المدربة ${trainerCode.trainer.name}${trainerCode.note ? ` - ${trainerCode.note}` : ""}`,
     descriptionEn: `Discount code from trainer ${trainerCode.trainer.name}`,
     discountAmount,

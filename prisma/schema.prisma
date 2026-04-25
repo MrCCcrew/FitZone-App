@@ -471,6 +471,7 @@ model DiscountCode {
   minAmount     Float?
   maxUses       Int?
   usedCount     Int      @default(0)
+  scope         String   @default("all") // subscriptions | store | all
   expiresAt     DateTime?
   isActive      Boolean  @default(true)
   createdAt     DateTime @default(now())
