@@ -3,6 +3,7 @@ import { requireAdminFeature } from "@/lib/admin-guard";
 import { db } from "@/lib/db";
 import { clearPublicApiCache } from "@/lib/public-cache";
 import { logAudit } from "@/lib/audit-context";
+import { deleteOfferAndLinkedClientData } from "@/lib/admin-linked-cleanup";
 
 async function checkAdmin() {
   const guard = await requireAdminFeature("offers");
@@ -189,8 +190,25 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: "معرف العرض مطلوب." }, { status: 400 });
     }
 
-    await db.offer.delete({ where: { id } });
-    void logAudit({ action: "delete", targetType: "offer", targetId: id });
+    const existing = await db.offer.findUnique({
+      where: { id },
+      select: { title: true },
+    });
+    if (!existing) {
+      return NextResponse.json({ error: "العرض غير موجود." }, { status: 404 });
+    }
+
+    const cleanup = await db.$transaction((tx) => deleteOfferAndLinkedClientData(tx, id));
+    void logAudit({
+      action: "delete",
+      targetType: "offer",
+      targetId: id,
+      details: {
+        title: existing.title,
+        deletedMemberships: cleanup.deletedMemberships,
+        deletedBookings: cleanup.deletedBookings,
+      },
+    });
     clearPublicApiCache();
     return NextResponse.json({ success: true });
   } catch (error) {
