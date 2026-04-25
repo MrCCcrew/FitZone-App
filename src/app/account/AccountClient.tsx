@@ -2764,21 +2764,13 @@ function WalletTab({
                 dir="ltr"
                 value={customAmount}
                 onChange={(e) => {
-                  setCustomAmount(e.target.value);
-                  setSelectedAmount(null);
+                  const val = e.target.value;
+                  setCustomAmount(val);
+                  setSelectedAmount(val ? Number(val) : null);
                   setLastTx(null);
                   setPayError(null);
                 }}
               />
-              <button
-                onClick={() => {
-                  if (!customAmount) return;
-                  setSelectedAmount(Number(customAmount));
-                }}
-                className="bg-blue-600 hover:bg-blue-700 text-white font-black px-5 rounded-xl transition-colors text-sm whitespace-nowrap"
-              >
-                {t("تثبيت", "Set")}
-              </button>
             </div>
             <div className="mt-3 flex flex-wrap gap-2">
               <button
