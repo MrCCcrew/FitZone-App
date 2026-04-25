@@ -350,8 +350,9 @@ export async function sendGiftTrialEmail(opts: {
   scheduleTime: string;
   note: string | null;
   membershipCard: import("@/lib/membership-card").MembershipCardAttachment | null;
+  qrPngBuffer: Buffer | null;
 }) {
-  const { email, name, className, trainerName, scheduleDate, scheduleTime, note, membershipCard } = opts;
+  const { email, name, className, trainerName, scheduleDate, scheduleTime, note, membershipCard, qrPngBuffer } = opts;
   const dateStr = scheduleDate.toLocaleDateString("ar-EG", {
     weekday: "long",
     year: "numeric",
@@ -359,15 +360,18 @@ export async function sendGiftTrialEmail(opts: {
     day: "numeric",
   });
 
-  const cardHtml = membershipCard
+  // QR code embedded via CID (works in all email clients, unlike base64 data URLs)
+  const qrCid = "qrcode@fitzone.gift";
+  const qrHtml = qrPngBuffer
     ? `
-      <div style="margin-top: 24px; background: #1f1f1f; border: 1px solid #2a2a2a; border-radius: 12px; padding: 18px;">
-        <div style="font-size: 14px; color: #f8b4d9; font-weight: 800; margin-bottom: 10px;">كارت الحضور + QR Code</div>
-        <div style="background: linear-gradient(135deg,#2f1020,#571133); border: 1px solid rgba(248,180,217,0.22); border-radius: 14px; padding: 14px;">
-          <img src="${membershipCard.previewDataUrl}" alt="Gift QR Card" style="display:block; width:100%; max-width:420px; margin:0 auto; border-radius:12px;" />
+      <div style="margin-top: 24px; background: #1f1f1f; border: 1px solid #2a2a2a; border-radius: 12px; padding: 24px; text-align: center;">
+        <div style="font-size: 14px; color: #f8b4d9; font-weight: 800; margin-bottom: 16px;">📱 رمز QR للحضور</div>
+        <div style="display: inline-block; background: #ffffff; border-radius: 16px; padding: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.4);">
+          <img src="cid:${qrCid}" alt="QR Code" width="220" height="220" style="display:block; border-radius: 8px;" />
         </div>
-        <div style="margin-top: 12px; font-size: 12px; color: #94a3b8; line-height: 1.8;">
-          تم إرفاق الكارت كملف منفصل — احتفظي به على هاتفك واعرضيه عند الوصول للجيم لتسجيل الحضور.
+        <div style="margin-top: 14px; font-size: 12px; color: #94a3b8; line-height: 1.8;">
+          أظهري هذا الرمز للمسؤولة عند الدخول لتسجيل حضورك تلقائيًا.<br/>
+          كما تم إرفاق كارت العضوية كاملًا في ملف منفصل مع هذه الرسالة.
         </div>
       </div>`
     : "";
@@ -376,14 +380,20 @@ export async function sendGiftTrialEmail(opts: {
     ? `<div style="margin-top: 18px; background: #1f2937; border-right: 3px solid #f59e0b; border-radius: 8px; padding: 14px 18px; font-size: 13px; color: #fcd34d;">${note.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</div>`
     : "";
 
+  const attachments: Array<{ filename: string; content: Buffer; contentType: string; cid?: string }> = [];
+  if (qrPngBuffer) {
+    attachments.push({ filename: "qr-code.png", content: qrPngBuffer, contentType: "image/png", cid: qrCid });
+  }
+  if (membershipCard) {
+    attachments.push({ filename: membershipCard.filename, content: membershipCard.content, contentType: membershipCard.contentType });
+  }
+
   try {
     await getTransporter().sendMail({
       from: FROM,
       to: email,
       subject: "🎁 هدية من إدارة FitZone — حصة تجريبية مجانية",
-      attachments: membershipCard
-        ? [{ filename: membershipCard.filename, content: membershipCard.content, contentType: membershipCard.contentType }]
-        : [],
+      attachments,
       html: `
         <div dir="rtl" style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; background: #111; color: #fff; border-radius: 16px; overflow: hidden;">
           <div style="background: linear-gradient(135deg, #7c3aed, #4f46e5); padding: 32px; text-align: center;">
@@ -418,12 +428,12 @@ export async function sendGiftTrialEmail(opts: {
               </table>
             </div>
             ${noteHtml}
-            ${cardHtml}
+            ${qrHtml}
             <div style="margin-top: 24px; background: #1f2937; border: 1px solid #374151; border-radius: 10px; padding: 14px 18px;">
               <div style="font-size: 13px; color: #9ca3af; margin-bottom: 6px; font-weight: 700;">كيفية استخدام الهدية</div>
               <ol style="margin: 0; padding-right: 18px; font-size: 13px; color: #d1d5db; line-height: 2;">
                 <li>احضري في الموعد المحدد أعلاه.</li>
-                <li>أظهري الكارت أو رمز QR للمسؤولة عند الدخول.</li>
+                <li>أظهري رمز QR أو الكارت المرفق للمسؤولة عند الدخول.</li>
                 <li>سيتم تسجيل حضورك تلقائيًا.</li>
               </ol>
             </div>
