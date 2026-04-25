@@ -87,6 +87,7 @@ const STATUS_BADGE: Record<string, string> = {
 const PAYMENT_LABELS: Record<string, string> = {
   cash: "كاش",
   free: "مجاني",
+  gift: "🎁 هدية من الإدارة",
   wallet: "محفظة",
   card: "بطاقة",
   instapay: "إنستا باي",
@@ -176,6 +177,12 @@ export default function Bookings() {
   const [scanFeedback, setScanFeedback] = useState<AttendanceFeedback | null>(null);
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [giftModal, setGiftModal] = useState(false);
+  const [giftCustomer, setGiftCustomer] = useState("");
+  const [giftSchedule, setGiftSchedule] = useState("");
+  const [giftNote, setGiftNote] = useState("");
+  const [giftWorking, setGiftWorking] = useState(false);
+  const [giftSuccess, setGiftSuccess] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -517,6 +524,35 @@ export default function Bookings() {
     [schedules],
   );
 
+  const handleSendGift = async () => {
+    if (!giftCustomer || !giftSchedule) {
+      window.alert("يرجى اختيار العميل والموعد.");
+      return;
+    }
+    setGiftWorking(true);
+    setGiftSuccess(null);
+    try {
+      const response = await fetch("/api/admin/gift-trial", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customerId: giftCustomer, scheduleId: giftSchedule, note: giftNote || undefined }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        window.alert(payload.error ?? "تعذر إرسال الهدية.");
+        return;
+      }
+      const customer = customers.find((c) => c.id === giftCustomer);
+      setGiftSuccess(`تم إرسال الهدية وإشعار البريد الإلكتروني لـ ${customer?.name ?? "العميلة"} بنجاح ✅`);
+      setGiftCustomer("");
+      setGiftSchedule("");
+      setGiftNote("");
+      await loadBookings();
+    } finally {
+      setGiftWorking(false);
+    }
+  };
+
   return (
     <AdminSectionShell
       title="الحجوزات"
@@ -528,6 +564,20 @@ export default function Bookings() {
             className="rounded-xl bg-white/10 px-4 py-2 text-sm font-bold text-[#fff4f8] transition-colors hover:bg-white/20"
           >
             تحديث
+          </button>
+          <button
+            onClick={() => {
+              setGiftSuccess(null);
+              setGiftCustomer("");
+              setGiftSchedule("");
+              setGiftNote("");
+              void loadSchedules();
+              void loadCustomers();
+              setGiftModal(true);
+            }}
+            className="rounded-xl bg-purple-600 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-purple-500"
+          >
+            🎁 هدية تجريبية
           </button>
           <button
             onClick={() => setAddModal(true)}
@@ -910,6 +960,76 @@ export default function Bookings() {
           </div>
         </Modal>
       )}
+      {giftModal && (
+        <Modal
+          title="🎁 إهداء حصة تجريبية مجانية"
+          onClose={() => { setGiftModal(false); setGiftSuccess(null); }}
+        >
+          <div className="space-y-4">
+            <p className="text-sm text-[#d7aabd] leading-relaxed">
+              أرسل للعميلة حصة تجريبية مجانية — ستصلها كارت الاشتراك مع رمز QR على بريدها الإلكتروني وتظهر في صفحتها الشخصية. التكلفة صفر ولا تؤثر على الحسابات.
+            </p>
+
+            {giftSuccess && (
+              <div className="rounded-xl bg-emerald-500/15 border border-emerald-500/30 px-4 py-3 text-sm font-bold text-emerald-300">
+                {giftSuccess}
+              </div>
+            )}
+
+            <div>
+              <label className="mb-2 block text-xs text-[#d7aabd]">العميلة</label>
+              <select
+                value={giftCustomer}
+                onChange={(e) => setGiftCustomer(e.target.value)}
+                className={INPUT}
+              >
+                <option value="">اختاري العميلة</option>
+                {customers.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} — {c.phone}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="mb-2 block text-xs text-[#d7aabd]">الموعد (الكلاس والوقت)</label>
+              <select
+                value={giftSchedule}
+                onChange={(e) => setGiftSchedule(e.target.value)}
+                className={INPUT}
+              >
+                <option value="">اختاري الموعد</option>
+                {scheduleOptions.map((item) => (
+                  <option key={item.value} value={item.value}>
+                    {item.label} • {item.availableSpots} مقاعد
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="mb-2 block text-xs text-[#d7aabd]">ملاحظة للعميلة (اختياري)</label>
+              <textarea
+                value={giftNote}
+                onChange={(e) => setGiftNote(e.target.value)}
+                placeholder="مثال: نتمنى لكِ تجربة رائعة!"
+                rows={2}
+                className="w-full rounded-xl border border-gray-700 bg-gray-800 px-4 py-2.5 text-sm text-white outline-none transition-colors focus:border-purple-500 placeholder:text-gray-500 resize-none"
+              />
+            </div>
+
+            <button
+              onClick={() => void handleSendGift()}
+              disabled={giftWorking || !giftCustomer || !giftSchedule}
+              className="w-full rounded-xl bg-purple-600 py-3 text-sm font-black text-white transition-colors hover:bg-purple-500 disabled:opacity-50"
+            >
+              {giftWorking ? "جارٍ الإرسال..." : "إرسال الهدية وبريد QR 🎁"}
+            </button>
+          </div>
+        </Modal>
+      )}
+
     </AdminSectionShell>
   );
 }
