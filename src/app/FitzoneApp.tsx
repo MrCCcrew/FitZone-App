@@ -7370,11 +7370,11 @@ const BlogPage = () => {
       <div>
         <div style={{ height: 300, position: "relative", overflow: "hidden" }}>
           {headerMedia}
-          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom, transparent, rgba(10,10,10,.9))" }} />
+          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom, rgba(0,0,0,.25) 0%, rgba(0,0,0,.75) 100%)" }} />
           <div style={{ position: "absolute", bottom: 28, left: 0, right: 0 }}><div className="container">
-            <button onClick={() => setActiveArticle(null)} style={{ background: "rgba(255,255,255,.1)", border: `1px solid ${C.border}`, borderRadius: 6, padding: "5px 14px", color: C.white, cursor: "pointer", fontFamily: "'Cairo', sans-serif", marginBottom: 10, fontSize: 13 }}>← {t("رجوع", "Back")}</button>
-            <span className="tag" style={{ marginBottom: 10, display: "inline-flex" }}>{a.category}</span>
-            <h1 style={{ color: C.white, fontSize: 30, fontWeight: 900 }}>{a.title}</h1>
+            <button onClick={() => setActiveArticle(null)} style={{ background: "rgba(0,0,0,.55)", backdropFilter: "blur(6px)", border: "1px solid rgba(255,255,255,.25)", borderRadius: 6, padding: "5px 14px", color: "#fff", cursor: "pointer", fontFamily: "'Cairo', sans-serif", marginBottom: 10, fontSize: 13, textShadow: "0 1px 4px rgba(0,0,0,.8)" }}>← {t("رجوع", "Back")}</button>
+            <div style={{ marginBottom: 8 }}><span style={{ display: "inline-flex", background: C.red, color: "#fff", borderRadius: 4, padding: "3px 12px", fontSize: 11, fontWeight: 700, letterSpacing: ".5px", boxShadow: "0 2px 8px rgba(0,0,0,.4)" }}>{a.category}</span></div>
+            <h1 style={{ color: "#fff", fontSize: 30, fontWeight: 900, textShadow: "0 2px 12px rgba(0,0,0,.9), 0 1px 3px rgba(0,0,0,.9)", margin: 0 }}>{a.title}</h1>
           </div></div>
         </div>
         <div className="container" style={{ maxWidth: 740, padding: "40px 24px" }}>
