@@ -2923,8 +2923,8 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
               {/* Bio */}
               {(lang === "en" ? (trainerDetailModal.bioEn || trainerDetailModal.bio) : trainerDetailModal.bio) && (
                 <div style={{ marginBottom: 20 }}>
-                  <div style={{ fontWeight: 800, color: C.white, marginBottom: 8, fontSize: 14 }}>{t("نبذة", "About")}</div>
-                  <p style={{ color: "#c9b9c1", fontSize: 14, lineHeight: 1.85 }}>{lang === "en" ? (trainerDetailModal.bioEn || trainerDetailModal.bio) : trainerDetailModal.bio}</p>
+                  <div style={{ fontWeight: 800, color: "#fff", marginBottom: 8, fontSize: 14 }}>{t("نبذة", "About")}</div>
+                  <p style={{ color: "#e8d8e0", fontSize: 14, lineHeight: 1.85 }}>{lang === "en" ? (trainerDetailModal.bioEn || trainerDetailModal.bio) : trainerDetailModal.bio}</p>
                 </div>
               )}
               {/* Certifications */}
@@ -7258,8 +7258,8 @@ const TrainersPage = ({ navigate, summary }: { navigate: (p: string) => void; su
               </div>
               {(lang === "en" ? (trainerDetailModal.bioEn || trainerDetailModal.bio) : trainerDetailModal.bio) && (
                 <div style={{ marginBottom: 18 }}>
-                  <div style={{ fontWeight: 800, color: C.white, marginBottom: 8, fontSize: 14 }}>{t("نبذة", "About")}</div>
-                  <p style={{ color: "#c9b9c1", fontSize: 14, lineHeight: 1.85 }}>{lang === "en" ? (trainerDetailModal.bioEn || trainerDetailModal.bio) : trainerDetailModal.bio}</p>
+                  <div style={{ fontWeight: 800, color: "#fff", marginBottom: 8, fontSize: 14 }}>{t("نبذة", "About")}</div>
+                  <p style={{ color: "#e8d8e0", fontSize: 14, lineHeight: 1.85 }}>{lang === "en" ? (trainerDetailModal.bioEn || trainerDetailModal.bio) : trainerDetailModal.bio}</p>
                 </div>
               )}
               {((lang === "en" ? (trainerDetailModal.certificationsEn ?? trainerDetailModal.certifications) : trainerDetailModal.certifications)).length > 0 && (
