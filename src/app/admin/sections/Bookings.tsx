@@ -1,5 +1,6 @@
 "use client";
 
+import jsQR from "jsqr";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AdminCard, AdminEmptyState, AdminSectionShell } from "./shared";
 
@@ -305,10 +306,6 @@ export default function Bookings() {
 
   const startCamera = useCallback(async () => {
     const BarcodeDetectorCtor = (window as WindowWithBarcodeDetector).BarcodeDetector;
-    if (!BarcodeDetectorCtor) {
-      setCameraError("المتصفح الحالي لا يدعم مسح QR بالكاميرا. يمكنك استخدام الإدخال اليدوي.");
-      return;
-    }
 
     if (attendanceMode === "class" && !attendanceScheduleId) {
       setCameraError("اختَر الكلاس أو الموعد أولًا قبل بدء المسح.");
@@ -331,7 +328,7 @@ export default function Bookings() {
         await videoRef.current.play();
       }
 
-      const detector = new BarcodeDetectorCtor({ formats: ["qr_code"] });
+      const detector = BarcodeDetectorCtor ? new BarcodeDetectorCtor({ formats: ["qr_code"] }) : null;
       setCameraActive(true);
 
       scanIntervalRef.current = window.setInterval(async () => {
@@ -347,8 +344,20 @@ export default function Bookings() {
           const context = canvas.getContext("2d");
           if (!context) return;
           context.drawImage(video, 0, 0, canvas.width, canvas.height);
-          const codes = await detector.detect(canvas);
-          const rawValue = codes[0]?.rawValue?.trim();
+          let rawValue = "";
+
+          if (detector) {
+            const codes = await detector.detect(canvas);
+            rawValue = codes[0]?.rawValue?.trim() ?? "";
+          }
+
+          if (!rawValue) {
+            const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+            const fallbackResult = jsQR(imageData.data, imageData.width, imageData.height, {
+              inversionAttempts: "attemptBoth",
+            });
+            rawValue = fallbackResult?.data?.trim() ?? "";
+          }
           if (rawValue) {
             await submitScan(rawValue);
           }
@@ -358,6 +367,10 @@ export default function Bookings() {
           scanInFlightRef.current = false;
         }
       }, 900);
+
+      if (!detector) {
+        setCameraError("تم تشغيل المسح بوضع التوافق لأن المتصفح لا يدعم BarcodeDetector.");
+      }
     } catch {
       setCameraError("تعذر فتح الكاميرا على هذا الجهاز أو المتصفح.");
       stopCamera();
