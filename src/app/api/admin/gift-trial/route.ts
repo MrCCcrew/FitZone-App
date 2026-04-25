@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { randomBytes } from "crypto";
+import QRCode from "qrcode";
 import { requireAdminFeature } from "@/lib/admin-guard";
 import { db } from "@/lib/db";
 import { logAudit } from "@/lib/audit-context";
@@ -140,6 +141,7 @@ export async function POST(req: Request) {
   });
 
   let membershipCard = null;
+  let qrPngBuffer: Buffer | null = null;
   try {
     membershipCard = await generateMembershipQrCard({
       memberName: user.name ?? "عميلتنا",
@@ -149,6 +151,9 @@ export async function POST(req: Request) {
       qrPayload,
       cardCode,
     });
+    // Generate standalone QR as PNG for inline CID embedding in email
+    const qrDataUrl = await QRCode.toDataURL(qrPayload, { width: 300, margin: 2, errorCorrectionLevel: "M" });
+    qrPngBuffer = Buffer.from(qrDataUrl.replace(/^data:image\/png;base64,/, ""), "base64");
   } catch (err) {
     console.error("[GIFT_QR_CARD]", err);
   }
@@ -164,6 +169,7 @@ export async function POST(req: Request) {
         scheduleTime: schedule.time,
         note: note ?? null,
         membershipCard,
+        qrPngBuffer,
       });
     } catch (err) {
       console.error("[GIFT_EMAIL]", err);
