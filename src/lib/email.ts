@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer";
 import type { MembershipInvoiceDetails } from "@/lib/membership-invoice";
+import type { MembershipCardAttachment } from "@/lib/membership-card";
 
 function getTransporter() {
   return nodemailer.createTransport({
@@ -73,6 +74,7 @@ export async function sendSubscriptionEmail(
   walletBonus?: number,
   scheduleRows: { date: Date; time: string; className: string; trainerName: string }[] = [],
   invoice?: MembershipInvoiceAttachment | null,
+  membershipCard?: MembershipCardAttachment | null,
 ) {
   try {
     const endStr = endDate.toLocaleDateString("ar-EG", {
@@ -152,6 +154,20 @@ export async function sendSubscriptionEmail(
           `
       : "";
 
+    const membershipCardHtml = membershipCard
+      ? `
+            <div style="margin-top: 18px; background: #1f1f1f; border: 1px solid #2a2a2a; border-radius: 12px; padding: 18px;">
+              <div style="font-size: 14px; color: #f8b4d9; font-weight: 800; margin-bottom: 10px;">كارت العضوية و QR الحضور</div>
+              <div style="background: linear-gradient(135deg,#2f1020,#571133); border: 1px solid rgba(248,180,217,0.22); border-radius: 14px; padding: 14px;">
+                <img src="${membershipCard.previewDataUrl}" alt="Membership QR Card" style="display:block; width:100%; max-width:420px; margin:0 auto; border-radius:12px;" />
+              </div>
+              <div style="margin-top: 12px; font-size: 12px; color: #94a3b8; line-height: 1.8;">
+                تم إرفاق كارت العضوية كملف منفصل مع هذه الرسالة. يمكنك الاحتفاظ به على الهاتف واستخدامه عند الوصول إلى الجيم لتسجيل الحضور.
+              </div>
+            </div>
+          `
+      : "";
+
     await getTransporter().sendMail({
       from: FROM,
       to: email,
@@ -184,6 +200,7 @@ export async function sendSubscriptionEmail(
                 </tr>` : ""}
               </table>
             </div>
+            ${membershipCardHtml}
             ${invoiceHtml}
             ${scheduleHtml}
             <p style="font-size: 13px; color: #94a3b8; margin: 0;">
@@ -195,15 +212,26 @@ export async function sendSubscriptionEmail(
           </div>
         </div>
       `,
-      attachments: invoice
-        ? [
-            {
-              filename: invoice.filename,
-              content: invoice.content,
-              contentType: "application/pdf",
-            },
-          ]
-        : undefined,
+      attachments: [
+        ...(invoice
+          ? [
+              {
+                filename: invoice.filename,
+                content: invoice.content,
+                contentType: "application/pdf",
+              },
+            ]
+          : []),
+        ...(membershipCard
+          ? [
+              {
+                filename: membershipCard.filename,
+                content: membershipCard.content,
+                contentType: membershipCard.contentType,
+              },
+            ]
+          : []),
+      ],
     });
     return true;
   } catch (err) {

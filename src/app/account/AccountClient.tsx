@@ -149,6 +149,17 @@ interface AccountData {
   }[];
 }
 
+type AttendancePassSummary = {
+  id: string;
+  kind: "membership" | "private_session";
+  label: string;
+  code: string;
+  payload: string;
+  qrDataUrl: string;
+  remainingSessions?: number | null;
+  privateType?: string | null;
+};
+
 // ─── Config ────────────────────────────────────────────────────────────────────
 type TrainerCertificateFile = {
   url: string;
@@ -1330,6 +1341,113 @@ function MembershipTab({ membership, pendingPayment }: { membership: AccountData
   );
 }
 
+function AttendanceQrPanel() {
+  const { lang } = useLang();
+  const t = (arText: string, enText: string) => (lang === "ar" ? arText : enText);
+  const [passes, setPasses] = useState<AttendancePassSummary[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      setLoading(true);
+      setError(null);
+      try {
+        const response = await fetch("/api/me/attendance-pass", { cache: "no-store" });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          if (!cancelled) setError(payload.error ?? t("تعذر تحميل كود الحضور.", "Unable to load attendance QR."));
+          return;
+        }
+        if (!cancelled) {
+          setPasses(Array.isArray(payload.passes) ? payload.passes : []);
+        }
+      } catch {
+        if (!cancelled) setError(t("تعذر تحميل كود الحضور.", "Unable to load attendance QR."));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [lang]);
+
+  if (loading) {
+    return (
+      <div className={CARD}>
+        <h3 className="mb-3 text-white font-black">{t("كود الحضور", "Attendance QR")}</h3>
+        <p className="text-sm text-[#d7aabd]">{t("جارٍ تحميل كود الحضور...", "Loading attendance QR...")}</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className={CARD}>
+        <h3 className="mb-3 text-white font-black">{t("كود الحضور", "Attendance QR")}</h3>
+        <p className="text-sm text-red-300">{error}</p>
+      </div>
+    );
+  }
+
+  if (passes.length === 0) return null;
+
+  return (
+    <div className={CARD}>
+      <div className="mb-4 flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <h3 className="text-white font-black">{t("كود الحضور", "Attendance QR")}</h3>
+          <p className="mt-1 text-sm text-[#d7aabd]">
+            {t("اعرضي هذا الكود عند الوصول للجيم ليتم تسجيل حضورك مباشرة.", "Show this code at the gym entrance so staff can check you in instantly.")}
+          </p>
+        </div>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        {passes.map((pass) => (
+          <div key={pass.id} className="rounded-2xl border border-[#ffbcdb]/15 bg-black/20 p-4">
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div>
+                <div className="text-sm font-black text-white">{pass.label}</div>
+                <div className="mt-1 text-xs text-[#d7aabd]">
+                  {pass.kind === "membership"
+                    ? t("صالح لحضور الكلاس المحجوز", "Valid for booked class attendance")
+                    : pass.privateType === "mini_private"
+                      ? t("صالح للميني برايفيت", "Valid for mini private sessions")
+                      : t("صالح للبرايفيت", "Valid for private sessions")}
+                </div>
+              </div>
+              <span className="rounded-full bg-pink-500/15 px-2.5 py-1 text-[11px] font-bold text-pink-200">
+                {pass.kind === "membership" ? t("اشتراك", "Membership") : t("جلسة خاصة", "Private")}
+              </span>
+            </div>
+
+            <div className="mx-auto mb-3 flex w-full max-w-[240px] justify-center overflow-hidden rounded-2xl bg-white p-3">
+              <img src={pass.qrDataUrl} alt={pass.label} className="h-auto w-full" />
+            </div>
+
+            <div className="space-y-2 text-xs text-[#d7aabd]">
+              <div className="rounded-xl border border-[#ffbcdb]/10 bg-white/5 px-3 py-2">
+                <span className="font-bold text-white">{t("الكود:", "Code:")}</span> {pass.code}
+              </div>
+              {typeof pass.remainingSessions === "number" ? (
+                <div className="rounded-xl border border-[#ffbcdb]/10 bg-white/5 px-3 py-2">
+                  <span className="font-bold text-white">{t("المتبقي:", "Remaining:")}</span> {pass.remainingSessions}
+                </div>
+              ) : null}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function AccountMembershipTab({
   membership,
   membershipHistory,
@@ -1425,6 +1543,8 @@ function AccountMembershipTab({
           </a>
         </div>
       )}
+
+      <AttendanceQrPanel />
 
       <div className={CARD}>
         <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">

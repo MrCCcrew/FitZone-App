@@ -3,6 +3,8 @@ import { getCurrentAppUser } from "@/lib/app-session";
 import { db } from "@/lib/db";
 import { sendSubscriptionEmail } from "@/lib/email";
 import { generateMembershipInvoicePdf, type MembershipInvoiceDetails } from "@/lib/membership-invoice";
+import { buildAttendancePayload, ensureMembershipAttendancePass } from "@/lib/attendance";
+import { generateMembershipQrCard } from "@/lib/membership-card";
 import {
   createPaymentTransaction,
   restorePaymentBalanceAdjustments,
@@ -517,6 +519,9 @@ export async function POST(req: Request) {
     try {
       await unlockPendingReferralReward(userId);
     } catch {}
+    try {
+      await ensureMembershipAttendancePass(result.subscriptionId);
+    } catch {}
   }
 
   let checkoutUrl: string | null = null;
@@ -595,6 +600,23 @@ export async function POST(req: Request) {
 
   if (userRecord.email && !result.needsPaymentConfirmation) {
     const invoicePdf = await generateMembershipInvoicePdf(invoiceDetails);
+    let membershipCard = null;
+    try {
+      const pass = await ensureMembershipAttendancePass(result.subscriptionId);
+      if (pass) {
+        membershipCard = await generateMembershipQrCard({
+          memberName: userRecord.name ?? "FitZone Member",
+          membershipName: result.planName,
+          membershipNameEn: result.planNameEn,
+          offerTitle: result.offerTitle ?? null,
+          endDate: result.endDate,
+          qrPayload: buildAttendancePayload(pass.code),
+          cardCode: pass.code,
+        });
+      }
+    } catch (error) {
+      console.error("[SUBSCRIBE_MEMBERSHIP_CARD]", error);
+    }
     void sendSubscriptionEmail(
       userRecord.email,
       userRecord.name ?? "العضوة",
@@ -607,6 +629,7 @@ export async function POST(req: Request) {
         filename: `fitzone-membership-invoice-${invoiceDetails.invoiceNumber}.pdf`,
         content: invoicePdf,
       },
+      membershipCard,
     ).catch((error) => console.error("[SUBSCRIBE_EMAIL]", error));
   }
 

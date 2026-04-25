@@ -1,5 +1,7 @@
 import { db } from "@/lib/db";
+import { buildAttendancePayload, ensureMembershipAttendancePass, ensurePrivateAttendancePass } from "@/lib/attendance";
 import { sendSubscriptionEmail } from "@/lib/email";
+import { generateMembershipQrCard } from "@/lib/membership-card";
 import { generateMembershipInvoicePdf, type MembershipInvoiceDetails } from "@/lib/membership-invoice";
 import { getDefaultPaymentProvider, getPaymentProvider, listPaymentProviders } from "@/lib/payments/registry";
 import type {
@@ -527,6 +529,10 @@ export async function updatePaymentTransactionStatus(
           } catch {}
         }
 
+        try {
+          await ensureMembershipAttendancePass(existing.membershipId);
+        } catch {}
+
         // Give wallet bonus
         const walletBonus = membership.membership?.walletBonus ?? 0;
         if (walletBonus > 0 && existing.userId) {
@@ -626,6 +632,23 @@ export async function updatePaymentTransactionStatus(
                 }
               : null;
             const invoicePdf = normalizedInvoice ? await generateMembershipInvoicePdf(normalizedInvoice) : null;
+            let membershipCard = null;
+            try {
+              const pass = await ensureMembershipAttendancePass(existing.membershipId);
+              if (pass) {
+                membershipCard = await generateMembershipQrCard({
+                  memberName: userRecord.name ?? "FitZone Member",
+                  membershipName: membership.membership?.name ?? "Membership",
+                  membershipNameEn: null,
+                  offerTitle: null,
+                  endDate,
+                  qrPayload: buildAttendancePayload(pass.code),
+                  cardCode: pass.code,
+                });
+              }
+            } catch (err) {
+              console.error("[PAYMENT_MEMBERSHIP_CARD]", err);
+            }
             void sendSubscriptionEmail(
               userRecord.email,
               userRecord.name ?? "العضوة",
@@ -640,6 +663,7 @@ export async function updatePaymentTransactionStatus(
                     content: invoicePdf,
                   }
                 : null,
+              membershipCard,
             ).catch((err) => console.error("[PAYMENT_EMAIL]", err));
           }
         }
@@ -677,6 +701,9 @@ export async function updatePaymentTransactionStatus(
           paidAt: transaction.paidAt ?? new Date(),
         },
       });
+      try {
+        await ensurePrivateAttendancePass(privateSessionApplicationId);
+      } catch {}
     }
   }
 

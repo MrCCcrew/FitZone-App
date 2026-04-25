@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/app-session";
 import { db } from "@/lib/db";
+import { ensurePrivateAttendancePass } from "@/lib/attendance";
 import { createPaymentTransaction } from "@/lib/payments/service";
 
 export async function POST(req: Request) {
@@ -52,6 +53,7 @@ export async function POST(req: Request) {
         where: { id: app.id },
         data: { status: "paid", paidAt: new Date() },
       });
+      await ensurePrivateAttendancePass(app.id).catch(() => null);
       return NextResponse.json({ success: true });
     }
 
