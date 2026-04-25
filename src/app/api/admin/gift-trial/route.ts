@@ -139,26 +139,35 @@ export async function POST(req: Request) {
     },
   });
 
-  const membershipCard = await generateMembershipQrCard({
-    memberName: user.name ?? "عميلتنا",
-    membershipName: "حصة تجريبية مجانية",
-    offerTitle: `هدية الإدارة — ${schedule.class.name}`,
-    endDate,
-    qrPayload,
-    cardCode,
-  }).catch(() => null);
+  let membershipCard = null;
+  try {
+    membershipCard = await generateMembershipQrCard({
+      memberName: user.name ?? "عميلتنا",
+      membershipName: "حصة تجريبية مجانية",
+      offerTitle: `هدية الإدارة — ${schedule.class.name}`,
+      endDate,
+      qrPayload,
+      cardCode,
+    });
+  } catch (err) {
+    console.error("[GIFT_QR_CARD]", err);
+  }
 
   if (user.email) {
-    void sendGiftTrialEmail({
-      email: user.email,
-      name: user.name ?? "عميلتنا العزيزة",
-      className: schedule.class.name,
-      trainerName: schedule.class.trainer.name,
-      scheduleDate,
-      scheduleTime: schedule.time,
-      note: note ?? null,
-      membershipCard: membershipCard ?? null,
-    }).catch(() => null);
+    try {
+      await sendGiftTrialEmail({
+        email: user.email,
+        name: user.name ?? "عميلتنا العزيزة",
+        className: schedule.class.name,
+        trainerName: schedule.class.trainer.name,
+        scheduleDate,
+        scheduleTime: schedule.time,
+        note: note ?? null,
+        membershipCard,
+      });
+    } catch (err) {
+      console.error("[GIFT_EMAIL]", err);
+    }
   }
 
   return NextResponse.json({ success: true, userMembershipId: userMembership.id });
