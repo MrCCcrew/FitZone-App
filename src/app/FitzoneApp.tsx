@@ -1984,6 +1984,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
   const [testimonials, setTestimonials] = useState<PublicTestimonial[]>([]);
   const [products, setProducts] = useState<StoreProduct[]>([]);
   const [homeOffers, setHomeOffers] = useState<PublicOffer[]>([]);
+  const [homeFeaturedPlan, setHomeFeaturedPlan] = useState<{ name: string; price: number; features: string[]; durationDays: number } | null>(null);
   const [trialMembership, setTrialMembership] = useState<{ id: string; name: string; price: number; sessionsCount: number; features: string[]; durationDays: number } | null>(null);
   const [todayClasses, setTodayClasses] = useState<Array<{ id: string; time: string; name: string; trainer: string; spots: number; color: string; type: string }>>([]);
   const [todayIndex, setTodayIndex] = useState(0);
@@ -2023,6 +2024,8 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
   useEffect(() => {
     loadPublicApi(true).then(d => {
       if (Array.isArray(d.memberships) && d.memberships.length > 0) {
+        const featured = (d.memberships as PublicMembership[]).find((mb) => mb.isFeatured);
+        setHomeFeaturedPlan(featured ? { name: featured.name, price: featured.priceAfter ?? featured.price, features: featured.features.slice(0, 4), durationDays: featured.durationDays } : null);
         const packages = (d.memberships as PublicMembership[]).filter((mb) => mb.kind === "package");
         const subscriptions = (d.memberships as PublicMembership[]).filter((mb) => mb.kind === "subscription");
         const source = packages.length > 0 ? packages : subscriptions;
@@ -2476,6 +2479,59 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                   </div>
                 );
               })}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ─ FEATURED PLAN (Open Time) on Home ─ */}
+      {homeFeaturedPlan && (
+        <section className="section" style={{ paddingTop: 40, paddingBottom: 40 }}>
+          <div className="container">
+            <div style={{
+              borderRadius: 20,
+              border: "2px solid rgba(212,175,55,0.45)",
+              background: "linear-gradient(135deg, rgba(30,10,18,0.97) 0%, rgba(50,20,10,0.97) 60%, rgba(35,15,5,0.97) 100%)",
+              boxShadow: "0 20px 60px rgba(212,175,55,0.12), 0 4px 20px rgba(0,0,0,0.4)",
+              overflow: "hidden",
+              display: "flex",
+              flexDirection: viewportWidth() < 768 ? "column" : "row",
+              alignItems: "center",
+              gap: 0,
+            }}>
+              {/* Left: gold accent strip */}
+              <div style={{ width: viewportWidth() < 768 ? "100%" : 6, height: viewportWidth() < 768 ? 6 : "auto", background: "linear-gradient(135deg, #FFD700, #C9A227)", flexShrink: 0, alignSelf: "stretch" }} />
+              <div style={{ padding: viewportWidth() < 768 ? "28px 20px" : "32px 40px", flex: 1 }}>
+                <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "flex-start", gap: 20 }}>
+                  <div>
+                    <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "rgba(212,175,55,0.15)", border: "1px solid rgba(212,175,55,0.35)", borderRadius: 8, padding: "4px 12px", marginBottom: 12 }}>
+                      <span style={{ fontSize: 14 }}>⭐</span>
+                      <span style={{ color: "#FFD700", fontSize: 12, fontWeight: 800 }}>اشتراك مميز</span>
+                    </div>
+                    <h3 style={{ fontSize: 28, fontWeight: 900, color: "#FFD700", marginBottom: 6 }}>{homeFeaturedPlan.name}</h3>
+                    <p style={{ color: "#c9b9c1", fontSize: 14, marginBottom: 14, lineHeight: 1.7 }}>
+                      {t(`احضري كلاسات بلا حدود خلال ${homeFeaturedPlan.durationDays} يومًا كاملة`, `Unlimited classes for ${homeFeaturedPlan.durationDays} full days`)}
+                    </p>
+                    <ul style={{ listStyle: "none", display: "flex", flexDirection: "column", gap: 6 }}>
+                      {homeFeaturedPlan.features.map((feat, i) => (
+                        <li key={i} style={{ display: "flex", alignItems: "center", gap: 8, color: "#d4af6a", fontSize: 13 }}>
+                          <span style={{ color: "#FFD700", fontSize: 14 }}>✦</span>{feat}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div style={{ textAlign: "center", flexShrink: 0 }}>
+                    <div style={{ fontSize: 38, fontWeight: 900, color: "#FFD700" }}>{homeFeaturedPlan.price.toLocaleString("ar-EG")}</div>
+                    <div style={{ color: "#c9b9c1", fontSize: 13, marginBottom: 16 }}>{t("جنيه", "EGP")} / {homeFeaturedPlan.durationDays} {t("يوم", "days")}</div>
+                    <button
+                      onClick={() => navigate("memberships")}
+                      style={{ background: "linear-gradient(135deg, #FFD700, #C9A227)", color: "#000", border: "none", borderRadius: 12, padding: "14px 28px", fontWeight: 900, fontSize: 15, cursor: "pointer", fontFamily: "'Cairo', sans-serif", boxShadow: "0 6px 20px rgba(212,175,55,0.4)" }}
+                    >
+                      {t("اشتركي الآن ⭐", "Subscribe Now ⭐")}
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </section>
@@ -3077,7 +3133,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
   const [scheduleSelections, setScheduleSelections] = useState<string[]>([]);
   const [scheduleError, setScheduleError] = useState<string | null>(null);
   const [daysPerWeek, setDaysPerWeek] = useState<number | null>(null);
-  const [scheduleStep, setScheduleStep] = useState<"frequency" | "slots">("frequency");
+  const [scheduleStep, setScheduleStep] = useState<"frequency" | "slots" | "view-only">("frequency");
   const [membershipPayMethod, setMembershipPayMethod] = useState<"paymob" | "wallet">("paymob");
   const [paymobModal, setPaymobModal] = useState<{ url: string; transactionId: string | null } | null>(null);
   const [membershipDataReady, setMembershipDataReady] = useState(false);
@@ -3411,6 +3467,14 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
   };
 
   const openSurvey = (plan: PlanItem) => {
+    if (plan.isFeatured) {
+      setSchedulePlan(plan);
+      setScheduleSelections([]);
+      setScheduleError(null);
+      setDaysPerWeek(null);
+      setScheduleStep("view-only");
+      return;
+    }
     if (healthQuestions.length === 0) {
       if (scheduleChoices.length === 0) {
         openCheckoutPreview(plan, []);
@@ -3770,17 +3834,21 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
           <div style={{ background: "#111", borderRadius: 18, padding: viewportWidth() < 640 ? 16 : 28, maxWidth: 860, width: "100%", boxShadow: "0 24px 60px rgba(0,0,0,.45)", border: "1px solid rgba(255,255,255,.12)", marginTop: "auto", marginBottom: "auto" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
               <div>
-                <h2 style={{ fontWeight: 900, fontSize: 20, color: "#fff" }}>
+                <h2 style={{ fontWeight: 900, fontSize: 20, color: scheduleStep === "view-only" ? "#f5c542" : "#fff" }}>
                   {schedulePlan?.isTrial
                     ? t("اختاري موعد الكلاس التجريبي", "Choose your trial class slot")
-                    : scheduleStep === "frequency" ? "كثافة الحضور الأسبوعية" : "اختاري مواعيدك المناسبة"}
+                    : scheduleStep === "view-only"
+                      ? "📅 مواعيد الكلاسات المتاحة"
+                      : scheduleStep === "frequency" ? "كثافة الحضور الأسبوعية" : "اختاري مواعيدك المناسبة"}
                 </h2>
                 <p style={{ color: "#c9b9c1", fontSize: 13, marginTop: 4 }}>
                   {schedulePlan?.isTrial
                     ? t("اختاري يوماً وحصة واحدة فقط.", "Select one day and one session only.")
-                    : scheduleStep === "frequency"
-                      ? "اختاري كم يوم في الأسبوع تريدين الحضور"
-                      : "المواعيد المعروضة تستبعد الكلاسات الممنوعة حسب الاستبيان."}
+                    : scheduleStep === "view-only"
+                      ? "للاطلاع فقط — يمكنك حضور أي كلاس خلال فترة اشتراكك دون الحاجة لتحديد مواعيد مسبقاً"
+                      : scheduleStep === "frequency"
+                        ? "اختاري كم يوم في الأسبوع تريدين الحضور"
+                        : "المواعيد المعروضة تستبعد الكلاسات الممنوعة حسب الاستبيان."}
                 </p>
               </div>
               <button onClick={() => { setSchedulePlan(null); setDaysPerWeek(null); setScheduleStep("frequency"); }} aria-label={t("إغلاق", "Close")} style={{ border: "none", background: "none", fontSize: 22, cursor: "pointer", color: "#c9b9c1" }}>×</button>
@@ -3792,7 +3860,115 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
               </div>
             )}
 
-            {scheduleStep === "frequency" ? (
+            {scheduleStep === "view-only" ? (
+              <div>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 8, background: "rgba(245,197,66,.08)", border: "1px solid rgba(245,197,66,.3)", borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 13, color: "#f5c542", fontWeight: 700, lineHeight: 1.6 }}>
+                  <span style={{ fontSize: 16, flexShrink: 0 }}>⭐</span>
+                  <span>اشتراك اوبن تايم — يمكنك حضور أي كلاس وأي عدد حصص خلال فترة اشتراكك بدون قيود</span>
+                </div>
+                {scheduleChoices.length === 0 ? (
+                  <div style={{ textAlign: "center", padding: "40px 0", color: "#c9b9c1" }}>
+                    لا توجد مواعيد معروضة حاليًا، تواصل مع الإدارة لمعرفة الجدول.
+                  </div>
+                ) : (
+                  <>
+                    {scheduleSplit.morning.length > 0 && (
+                      <div className="schedule-block">
+                        <div className="schedule-block-title">الجدول الصباحي</div>
+                        <div className="schedule-scroll" style={{ direction: "rtl" }}>
+                          <div className="schedule-grid" style={{ gridTemplateColumns: `${scheduleSplit.morning.map(() => "minmax(115px, 1fr)").join(" ")} 52px` }}>
+                            {[...scheduleSplit.morning].reverse().map((slot) => (
+                              <div key={`vo-morning-head-${slot}`} className="schedule-cell time sticky">{formatScheduleTimeLabel(slot)}</div>
+                            ))}
+                            <div className="schedule-cell sticky day-head">اليوم</div>
+                            {scheduleDays.map((day) => (
+                              <div key={`vo-morning-row-${day}`} style={{ display: "contents" }}>
+                                {[...scheduleSplit.morning].reverse().map((slot) => {
+                                  const cellEntries = scheduleChoices.filter((e) => e.day === day && e.time === slot);
+                                  return (
+                                    <div key={`vo-${day}-morning-${slot}`} className="schedule-cell">
+                                      {cellEntries.length === 0 ? (
+                                        <div className="schedule-empty">—</div>
+                                      ) : (
+                                        <div className="schedule-slot-box">
+                                          {cellEntries.map((entry) => (
+                                            <div key={entry.id} className="schedule-slot-item" style={{ cursor: "default", opacity: 0.85 }}>
+                                              <div className="schedule-item-title">{entry.className}</div>
+                                              <div className="schedule-item-tag">{formatClassType(entry.type)}{entry.subType ? ` - ${entry.subType}` : ""}</div>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                                <div className="schedule-cell day">{day}</div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    {scheduleSplit.evening.length > 0 && (
+                      <div className="schedule-block">
+                        <div className="schedule-block-title">الجدول المسائي</div>
+                        <div className="schedule-scroll" style={{ direction: "rtl" }}>
+                          <div className="schedule-grid" style={{ gridTemplateColumns: `${scheduleSplit.evening.map(() => "minmax(115px, 1fr)").join(" ")} 52px` }}>
+                            {[...scheduleSplit.evening].reverse().map((slot) => (
+                              <div key={`vo-evening-head-${slot}`} className="schedule-cell time sticky">{formatScheduleTimeLabel(slot)}</div>
+                            ))}
+                            <div className="schedule-cell sticky day-head">اليوم</div>
+                            {scheduleDays.map((day) => (
+                              <div key={`vo-evening-row-${day}`} style={{ display: "contents" }}>
+                                {[...scheduleSplit.evening].reverse().map((slot) => {
+                                  const cellEntries = scheduleChoices.filter((e) => e.day === day && e.time === slot);
+                                  return (
+                                    <div key={`vo-${day}-evening-${slot}`} className="schedule-cell">
+                                      {cellEntries.length === 0 ? (
+                                        <div className="schedule-empty">—</div>
+                                      ) : (
+                                        <div className="schedule-slot-box">
+                                          {cellEntries.map((entry) => (
+                                            <div key={entry.id} className="schedule-slot-item" style={{ cursor: "default", opacity: 0.85 }}>
+                                              <div className="schedule-item-title">{entry.className}</div>
+                                              <div className="schedule-item-tag">{formatClassType(entry.type)}{entry.subType ? ` - ${entry.subType}` : ""}</div>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                                <div className="schedule-cell day">{day}</div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+                <div style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "flex-end", marginTop: 20, flexWrap: "wrap" }}>
+                  <button onClick={() => { setSchedulePlan(null); setScheduleStep("frequency"); }} className="btn-outline" style={{ padding: "10px 18px", minHeight: 44 }}>
+                    رجوع
+                  </button>
+                  <button
+                    className="btn-primary"
+                    style={{ minHeight: 44, background: "#c9a227", borderColor: "#c9a227" }}
+                    onClick={() => {
+                      const plan = schedulePlan;
+                      if (!plan) return;
+                      setSchedulePlan(null);
+                      setScheduleSelections([]);
+                      setScheduleStep("frequency");
+                      openCheckoutPreview(plan, []);
+                    }}
+                  >
+                    متابعة إلى ملخص الاشتراك ←
+                  </button>
+                </div>
+              </div>
+            ) : scheduleStep === "frequency" ? (
               (() => {
                 if (scheduleChoices.length === 0) {
                   return (
