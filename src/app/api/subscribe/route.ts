@@ -18,6 +18,7 @@ type SubscribePayload = {
   walletDeduct?: number | null;
   pointsDeduct?: number | null;
   trialPrice?: number | null;
+  startDate?: string | null; // ISO date string "YYYY-MM-DD", for featured/open-time plans
 };
 
 function sanitizeMethod(value: unknown) {
@@ -44,7 +45,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "يجب تسجيل الدخول أولًا قبل الاشتراك." }, { status: 401 });
   }
 
-  const { membershipId, offerId, scheduleIds, paymentMethod, discountCode, walletDeduct, pointsDeduct, trialPrice } = (await req.json()) as SubscribePayload;
+  const { membershipId, offerId, scheduleIds, paymentMethod, discountCode, walletDeduct, pointsDeduct, trialPrice, startDate } = (await req.json()) as SubscribePayload;
   if (!membershipId && !offerId) {
     return NextResponse.json({ error: "يرجى اختيار الباقة أو العرض أولًا." }, { status: 400 });
   }
@@ -193,8 +194,16 @@ export async function POST(req: Request) {
         data: { status: "expired" },
       });
 
-      const startDate = new Date();
-      const endDate = new Date();
+      const resolvedStart = (() => {
+        if (startDate) {
+          const parsed = new Date(startDate + "T00:00:00");
+          const today = new Date(); today.setHours(0, 0, 0, 0);
+          const maxStart = new Date(today); maxStart.setDate(maxStart.getDate() + 60);
+          if (!isNaN(parsed.getTime()) && parsed >= today && parsed <= maxStart) return parsed;
+        }
+        return new Date();
+      })();
+      const endDate = new Date(resolvedStart);
       endDate.setDate(endDate.getDate() + plan.duration);
 
       // For trial memberships the client sends the per-class-type price (yoga=100, other=50).
@@ -274,7 +283,7 @@ export async function POST(req: Request) {
         data: {
           userId,
           membershipId: plan.id,
-          startDate,
+          startDate: resolvedStart,
           endDate,
           status: needsPaymentConfirmation ? "pending_payment" : "active",
           paymentAmount: paymentAmount ?? 0,
@@ -475,7 +484,7 @@ export async function POST(req: Request) {
         subscriptionId: subscription.id,
         planName: plan.name,
         planNameEn: plan.nameEn ?? null,
-        startDate,
+        startDate: resolvedStart,
         endDate,
         walletBonus,
         offerTitle,

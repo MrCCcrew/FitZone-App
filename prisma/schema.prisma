@@ -144,6 +144,7 @@ model Membership {
   walletBonus Float   @default(0)
   gift        String?
   giftEn      String?
+  isFeatured  Boolean @default(false)
   isActive    Boolean @default(true)
 
   userMemberships UserMembership[]

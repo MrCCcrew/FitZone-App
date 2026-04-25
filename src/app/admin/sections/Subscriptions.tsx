@@ -954,6 +954,19 @@ export default function Subscriptions() {
               </div>
             </Field>
 
+            <label className="flex items-center gap-3 rounded-2xl border border-[rgba(255,188,219,0.12)] bg-black/15 px-4 py-3 text-sm text-[#fff4f8] cursor-pointer">
+              <input
+                type="checkbox"
+                checked={planModal.isFeatured === true}
+                onChange={(e) => setPlanModal({ ...planModal, isFeatured: e.target.checked })}
+                className="accent-amber-400 h-4 w-4"
+              />
+              <div>
+                <div className="font-bold">⭐ اشتراك مميز (Open Time)</div>
+                <div className="text-xs text-[#d7aabd] mt-0.5">يظهر بشكل بارز في الصفحة الرئيسية مع اختيار تاريخ البداية</div>
+              </div>
+            </label>
+
             <button onClick={() => void savePlan()} disabled={saving} className="w-full rounded-xl bg-[#ff4f93] py-3 text-sm font-black text-white transition-colors hover:bg-[#ff2f7d] disabled:opacity-50">
               {saving ? "جاري حفظ الاشتراك..." : "حفظ الاشتراك"}
             </button>
