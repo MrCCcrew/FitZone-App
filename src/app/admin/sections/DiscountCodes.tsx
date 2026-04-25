@@ -32,6 +32,7 @@ interface DiscountCode {
   minAmount: number | null;
   maxUses: number | null;
   usedCount: number;
+  scope: "subscriptions" | "store" | "all";
   expiresAt: string | null;
   isActive: boolean;
   createdAt: string;
@@ -46,7 +47,9 @@ const BTN_DANGER = "rounded-xl border border-red-500/30 px-3 py-1.5 text-xs font
 const EMPTY_FORM = {
   code: "", description: "", descriptionEn: "",
   type: "percentage" as "percentage" | "fixed",
-  value: "", minAmount: "", maxUses: "", expiresAt: "", isActive: true,
+  value: "", minAmount: "", maxUses: "",
+  scope: "all" as "subscriptions" | "store" | "all",
+  expiresAt: "", isActive: true,
 };
 
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
@@ -236,6 +239,7 @@ export default function DiscountCodes() {
       code: c.code, description: c.description ?? "", descriptionEn: c.descriptionEn ?? "",
       type: c.type, value: String(c.value), minAmount: c.minAmount ? String(c.minAmount) : "",
       maxUses: c.maxUses ? String(c.maxUses) : "",
+      scope: c.scope ?? "all",
       expiresAt: c.expiresAt ? c.expiresAt.slice(0, 10) : "",
       isActive: c.isActive,
     });
@@ -261,6 +265,7 @@ export default function DiscountCodes() {
           value: Number(form.value),
           minAmount: form.minAmount ? Number(form.minAmount) : null,
           maxUses: form.maxUses ? Number(form.maxUses) : null,
+          scope: form.scope,
           expiresAt: form.expiresAt || null,
           isActive: form.isActive,
         }),
@@ -343,6 +348,7 @@ export default function DiscountCodes() {
                   <th className="py-3 text-right font-bold">الكود</th>
                   <th className="py-3 text-right font-bold">الخصم</th>
                   <th className="py-3 text-right font-bold">الوصف</th>
+                  <th className="py-3 text-right font-bold">النطاق</th>
                   <th className="py-3 text-right font-bold">الاستخدام</th>
                   <th className="py-3 text-right font-bold">الصلاحية</th>
                   <th className="py-3 text-right font-bold">الحالة</th>
@@ -355,6 +361,11 @@ export default function DiscountCodes() {
                     <td className="py-3 font-black text-pink-300 tracking-wider">{c.code}</td>
                     <td className="py-3 font-bold text-[#fff4f8]">{formatValue(c)}</td>
                     <td className="py-3 text-[#d7aabd] max-w-[180px] truncate">{c.description ?? "—"}</td>
+                    <td className="py-3">
+                      <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${c.scope === "subscriptions" ? "bg-blue-500/15 text-blue-300" : c.scope === "store" ? "bg-orange-500/15 text-orange-300" : "bg-white/10 text-[#d7aabd]"}`}>
+                        {c.scope === "subscriptions" ? "🏋 اشتراكات" : c.scope === "store" ? "🛍 متجر" : "🌐 الكل"}
+                      </span>
+                    </td>
                     <td className="py-3 text-[#d7aabd]">
                       {c.usedCount}{c.maxUses != null ? ` / ${c.maxUses}` : " / ∞"}
                     </td>
@@ -405,6 +416,16 @@ export default function DiscountCodes() {
                   <option value="fixed">مبلغ ثابت (جنيه)</option>
                 </select>
               </div>
+            </div>
+
+            <div>
+              <label className={LABEL}>صالح للاستخدام في (Scope)</label>
+              <select className={INPUT} style={{ backgroundColor: "#2a0f1b" }} value={form.scope}
+                onChange={(e) => setForm((p) => ({ ...p, scope: e.target.value as typeof form.scope }))}>
+                <option value="all">الكل (اشتراكات + متجر)</option>
+                <option value="subscriptions">الاشتراكات والباقات والعروض فقط</option>
+                <option value="store">المتجر فقط</option>
+              </select>
             </div>
 
             <div className="grid grid-cols-3 gap-4">

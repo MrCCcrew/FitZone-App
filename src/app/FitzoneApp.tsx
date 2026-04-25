@@ -3064,7 +3064,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
   const [resendCooldown, setResendCooldown] = useState(0);
   const [discountCode, setDiscountCode] = useState("");
   const [discountValidating, setDiscountValidating] = useState(false);
-  const [discountResult, setDiscountResult] = useState<{ id: string; type: string; value: number; discountAmount: number | null; description?: string | null } | null>(null);
+  const [discountResult, setDiscountResult] = useState<{ id: string; type: string; value: number; maxDiscount?: number | null; discountAmount: number | null; description?: string | null } | null>(null);
   const [discountError, setDiscountError] = useState<string | null>(null);
   const [surveyPlan, setSurveyPlan] = useState<PlanItem | null>(null);
   const [surveyAnswers, setSurveyAnswers] = useState<Record<string, boolean | null>>({});
@@ -3456,14 +3456,14 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
     setDiscountError(null);
     setDiscountResult(null);
     try {
-      const params = new URLSearchParams({ code });
+      const params = new URLSearchParams({ code, context: "subscriptions" });
       if (membershipId) params.set("membershipId", membershipId);
       const res = await fetch(`/api/discount/validate?${params.toString()}`);
-      const data = await res.json() as { valid?: boolean; error?: string; id?: string; type?: string; value?: number; discountAmount?: number | null; description?: string | null };
+      const data = await res.json() as { valid?: boolean; error?: string; id?: string; type?: string; value?: number; maxDiscount?: number | null; discountAmount?: number | null; description?: string | null };
       if (!res.ok || !data.valid) {
         setDiscountError(data.error || t("كود الخصم غير صالح.", "Invalid discount code."));
       } else {
-        setDiscountResult({ id: data.id!, type: data.type!, value: data.value!, discountAmount: data.discountAmount ?? null, description: data.description });
+        setDiscountResult({ id: data.id!, type: data.type!, value: data.value!, maxDiscount: data.maxDiscount ?? null, discountAmount: data.discountAmount ?? null, description: data.description });
       }
     } catch {
       setDiscountError(t("تعذر التحقق من الكود.", "Could not validate the code."));
@@ -3476,7 +3476,16 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
     const originalPrice = plan.priceBefore != null && plan.priceBefore > 0 ? plan.priceBefore : plan.price;
     const membershipPrice = plan.priceAfter != null && plan.priceAfter > 0 ? plan.priceAfter : plan.price;
     const membershipDiscount = Math.max(0, originalPrice - membershipPrice);
-    const promoDiscount = Math.max(0, discountResult?.discountAmount ?? 0);
+    let promoDiscount = 0;
+    if (discountResult) {
+      if (discountResult.type === "percentage") {
+        const raw = Math.round((membershipPrice * discountResult.value) / 100 * 100) / 100;
+        promoDiscount = discountResult.maxDiscount != null ? Math.min(raw, discountResult.maxDiscount) : raw;
+      } else {
+        promoDiscount = Math.min(discountResult.value, membershipPrice);
+      }
+      promoDiscount = Math.max(0, promoDiscount);
+    }
     const afterPromo = Math.max(0, membershipPrice - promoDiscount);
     const subRewardsEGP = subCheckoutOptions?.rewardPointsEGP ?? 0;
     const subWalletBal = subCheckoutOptions?.walletBalance ?? 0;
@@ -3492,6 +3501,10 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
     setSubUseWallet(false);
     setSubUseRewards(false);
     setSubCheckoutOptions(null);
+    // Re-validate with the specific plan to get accurate discountAmount
+    if (discountCode.trim() && plan.id) {
+      void validateDiscount(plan.id);
+    }
     fetch("/api/me/checkout-options", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
       .then((d: { walletBalance: number; rewardPoints: number; pointValueEGP: number; rewardPointsEGP: number } | null) => {
@@ -4470,7 +4483,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
               <div style={{ padding: "10px 14px", borderRadius: 8, background: "#dcfce7", color: "#166534", fontSize: 13, fontWeight: 700, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <span>
                   ✅ {t("تم تطبيق الخصم:", "Discount applied:")} {discountResult.type === "percentage" ? `${discountResult.value}%` : `${discountResult.value} ${t("جنيه", "EGP")}`}
-                  {discountResult.discountAmount != null && ` — ${t("توفيري", "You save")} ${discountResult.discountAmount} ${t("جنيه", "EGP")}`}
+                  {discountResult.discountAmount != null && discountResult.discountAmount > 0 && ` — ${t("توفيري", "You save")} ${discountResult.discountAmount} ${t("جنيه", "EGP")}`}
                 </span>
                 <button onClick={() => { setDiscountResult(null); setDiscountCode(""); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#166534", fontSize: 16, lineHeight: 1 }}>×</button>
               </div>
