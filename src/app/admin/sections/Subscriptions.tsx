@@ -30,6 +30,7 @@ const EMPTY_PLAN: Omit<PlanDraft, "id" | "membersCount"> = {
   priceAfter: null,
   image: "",
   sortOrder: 0,
+  subtitle: null,
   discountType: "percentage",
   discountValue: null,
 };
@@ -966,6 +967,18 @@ export default function Subscriptions() {
                 <div className="text-xs text-[#d7aabd] mt-0.5">يظهر بشكل بارز في الصفحة الرئيسية مع اختيار تاريخ البداية</div>
               </div>
             </label>
+
+            {planModal.isFeatured && (
+              <Field label="نص وصف الاشتراك المميز (الجملة الظاهرة تحت الاسم)">
+                <textarea
+                  className={INPUT}
+                  rows={2}
+                  placeholder={`مثال: احضري كلاسات بلا حدود خلال ${planModal.duration ?? 24} يومًا كاملة`}
+                  value={planModal.subtitle ?? ""}
+                  onChange={(e) => setPlanModal({ ...planModal, subtitle: e.target.value })}
+                />
+              </Field>
+            )}
 
             <button onClick={() => void savePlan()} disabled={saving} className="w-full rounded-xl bg-[#ff4f93] py-3 text-sm font-black text-white transition-colors hover:bg-[#ff2f7d] disabled:opacity-50">
               {saving ? "جاري حفظ الاشتراك..." : "حفظ الاشتراك"}

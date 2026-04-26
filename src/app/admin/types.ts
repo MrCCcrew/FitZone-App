@@ -104,6 +104,7 @@ export interface Plan {
   active: boolean;
   membersCount: number;
   goalIds?: string[];
+  subtitle?: string | null;
   giftEn?: string | null;
   isFeatured?: boolean;
 }
