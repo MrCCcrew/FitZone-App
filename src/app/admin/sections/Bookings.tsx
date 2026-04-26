@@ -323,22 +323,52 @@ export default function Bookings() {
     setCameraError(null);
     setScanFeedback(null);
 
+    // mediaDevices is undefined on HTTP (non-secure context) on Android Chrome
+    if (!navigator.mediaDevices?.getUserMedia) {
+      const isHttp = location.protocol === "http:";
+      setCameraError(
+        isHttp
+          ? "الكاميرا تتطلب اتصال HTTPS — افتح التطبيق عبر https:// وليس http://"
+          : "متصفحك لا يدعم الوصول للكاميرا. جرب Chrome أو Safari."
+      );
+      return;
+    }
+
     try {
-      // Try back camera first; fall back to any camera (needed on some Android devices)
-      let stream: MediaStream;
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } },
-          audio: false,
-        });
-      } catch {
-        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      // Try progressively looser constraints — some Android devices reject tight ones
+      let stream: MediaStream | null = null;
+      const attempts: MediaStreamConstraints[] = [
+        { video: { facingMode: { ideal: "environment" } }, audio: false },
+        { video: { facingMode: "environment" }, audio: false },
+        { video: true, audio: false },
+      ];
+      let lastErr: unknown;
+      for (const constraints of attempts) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia(constraints);
+          break;
+        } catch (e) {
+          lastErr = e;
+        }
+      }
+      if (!stream) {
+        const err = lastErr as { name?: string };
+        if (err?.name === "NotAllowedError" || err?.name === "PermissionDeniedError") {
+          setCameraError("تم رفض إذن الكاميرا — افتح إعدادات المتصفح واسمح بالوصول للكاميرا ثم أعد المحاولة.");
+        } else if (err?.name === "NotFoundError" || err?.name === "DevicesNotFoundError") {
+          setCameraError("لم يتم العثور على كاميرا في هذا الجهاز.");
+        } else if (err?.name === "NotReadableError" || err?.name === "TrackStartError") {
+          setCameraError("الكاميرا مستخدمة من تطبيق آخر — أغلق التطبيقات الأخرى وأعد المحاولة.");
+        } else {
+          setCameraError("تعذر فتح الكاميرا — تأكد من منح إذن الكاميرا للمتصفح.");
+        }
+        stopCamera();
+        return;
       }
 
       mediaStreamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        // .play() can throw AbortError on Android — ignore it, autoplay handles it
         videoRef.current.play().catch(() => null);
       }
 
@@ -386,7 +416,7 @@ export default function Bookings() {
         setCameraError("تم تشغيل المسح بوضع التوافق لأن المتصفح لا يدعم BarcodeDetector.");
       }
     } catch {
-      setCameraError("تعذر فتح الكاميرا على هذا الجهاز أو المتصفح.");
+      setCameraError("تعذر فتح الكاميرا — تأكد من منح إذن الكاميرا للمتصفح.");
       stopCamera();
     }
   }, [attendanceMode, attendanceScheduleId, stopCamera, submitScan]);
