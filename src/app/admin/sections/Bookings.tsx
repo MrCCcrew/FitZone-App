@@ -99,6 +99,35 @@ const PAYMENT_LABELS: Record<string, string> = {
 const INPUT =
   "w-full rounded-xl border border-gray-700 bg-gray-800 px-4 py-2.5 text-sm text-white outline-none transition-colors focus:border-[#ff4f93]";
 
+function rotateCanvas(source: HTMLCanvasElement, angleDeg: number) {
+  const angle = (angleDeg * Math.PI) / 180;
+  const sin = Math.abs(Math.sin(angle));
+  const cos = Math.abs(Math.cos(angle));
+  const width = source.width;
+  const height = source.height;
+  const outW = Math.max(1, Math.round(width * cos + height * sin));
+  const outH = Math.max(1, Math.round(width * sin + height * cos));
+  const out = document.createElement("canvas");
+  out.width = outW;
+  out.height = outH;
+  const ctx = out.getContext("2d");
+  if (!ctx) return null;
+  ctx.translate(outW / 2, outH / 2);
+  ctx.rotate(angle);
+  ctx.drawImage(source, -width / 2, -height / 2);
+  return out;
+}
+
+function resizeCanvas(source: HTMLCanvasElement, scale: number) {
+  const out = document.createElement("canvas");
+  out.width = Math.max(1, Math.round(source.width * scale));
+  out.height = Math.max(1, Math.round(source.height * scale));
+  const ctx = out.getContext("2d");
+  if (!ctx) return null;
+  ctx.drawImage(source, 0, 0, out.width, out.height);
+  return out;
+}
+
 function formatDate(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
@@ -466,22 +495,39 @@ export default function Bookings() {
 
           let rawValue = "";
           const BarcodeDetectorCtor = (window as WindowWithBarcodeDetector).BarcodeDetector;
-          if (BarcodeDetectorCtor) {
-            try {
-              const detector = new BarcodeDetectorCtor({ formats: ["qr_code"] });
-              const codes = await detector.detect(canvas);
-              rawValue = codes[0]?.rawValue?.trim() ?? "";
-            } catch {
-              rawValue = "";
-            }
-          }
+          const scales = [1, 1.35, 0.8, 0.6];
+          const rotations = [0, 90, 180, 270];
 
-          if (!rawValue) {
-            const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-            const result = jsQR(imageData.data, imageData.width, imageData.height, {
-              inversionAttempts: "attemptBoth",
-            });
-            rawValue = result?.data?.trim() ?? "";
+          for (const scale of scales) {
+            if (rawValue) break;
+            const scaledCanvas = scale === 1 ? canvas : resizeCanvas(canvas, scale);
+            if (!scaledCanvas) continue;
+
+            for (const rotation of rotations) {
+              if (rawValue) break;
+              const candidate = rotation === 0 ? scaledCanvas : rotateCanvas(scaledCanvas, rotation);
+              if (!candidate) continue;
+
+              if (BarcodeDetectorCtor) {
+                try {
+                  const detector = new BarcodeDetectorCtor({ formats: ["qr_code"] });
+                  const codes = await detector.detect(candidate);
+                  rawValue = codes[0]?.rawValue?.trim() ?? "";
+                } catch {
+                  rawValue = "";
+                }
+              }
+
+              if (!rawValue) {
+                const candidateCtx = candidate.getContext("2d");
+                if (!candidateCtx) continue;
+                const imageData = candidateCtx.getImageData(0, 0, candidate.width, candidate.height);
+                const result = jsQR(imageData.data, imageData.width, imageData.height, {
+                  inversionAttempts: "attemptBoth",
+                });
+                rawValue = result?.data?.trim() ?? "";
+              }
+            }
           }
 
           if (!rawValue) {
