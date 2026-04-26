@@ -91,6 +91,8 @@ const css = `
   .glow-red{box-shadow:0 0 30px rgba(233,30,99,.2);}
   .glow-gold{box-shadow:0 0 30px rgba(200,162,0,.2);}
 
+  @keyframes spin{to{transform:rotate(360deg);}}
+
   .noise-overlay::after{content:'';position:absolute;inset:0;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.03'/%3E%3C/svg%3E");pointer-events:none;}
 
   .schedule-shell{background:linear-gradient(160deg,#1a1015 0%,#0d0a0c 100%);border-radius:24px;padding:32px 28px;border:1px solid rgba(255,255,255,.1);position:relative;box-shadow:0 24px 60px rgba(0,0,0,.35);font-family:'Cairo','Tajawal',sans-serif;}
@@ -3138,6 +3140,10 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
   const [paymobModal, setPaymobModal] = useState<{ url: string; transactionId: string | null } | null>(null);
   const [membershipDataReady, setMembershipDataReady] = useState(false);
   const [pendingPlan, setPendingPlan] = useState<PlanItem | null>(null);
+  const hasPendingFlow = typeof window !== "undefined" && !!(
+    window.sessionStorage.getItem(MEMBERSHIP_FLOW_STORAGE_KEY) ||
+    window.sessionStorage.getItem("fitzone_trial_booking")
+  );
   const [membershipPaymentSettings, setMembershipPaymentSettings] = useState<PublicPaymentSettings>({
     instapayUrl: "",
     instapayLabel: "Paymob",
@@ -4556,7 +4562,16 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
         </div>
       </section>
 
-      <section className="section" style={{ paddingTop: 36 }}>
+      {hasPendingFlow && (
+        <section className="section" style={{ paddingTop: 80, paddingBottom: 80 }}>
+          <div className="container" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
+            <div style={{ width: 48, height: 48, border: `4px solid ${C.red}`, borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+            <p style={{ color: C.gray, fontSize: 16 }}>{t("جارٍ التحميل...", "Loading...")}</p>
+          </div>
+        </section>
+      )}
+
+      {!hasPendingFlow && <section className="section" style={{ paddingTop: 36 }}>
         <div className="container">
           <div style={{ textAlign: "center", marginBottom: 28 }}>
             <h2 className="section-title">
@@ -4633,9 +4648,9 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
               </>
             )}
         </div>
-      </section>
+      </section>}
 
-      <section className="section" ref={plansRef}>
+      {!hasPendingFlow && <section className="section" ref={plansRef}>
         <div className="container">
           {subMsg && (
             <div style={{ marginBottom: 20, padding: "14px 20px", borderRadius: 8, background: subMsg.ok ? "#dcfce7" : "#fee2e2", color: subMsg.ok ? "#166534" : "#991b1b", fontWeight: 700, textAlign: "center", fontSize: 14 }}>
@@ -4894,7 +4909,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
             </div>
           )}
         </div>
-      </section>
+      </section>}
 
       <section className="section" style={{ background: C.bgCard }}>
         <div className="container" style={{ maxWidth: 700, margin: "0 auto" }}>

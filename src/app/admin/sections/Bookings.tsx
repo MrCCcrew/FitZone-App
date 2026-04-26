@@ -324,15 +324,22 @@ export default function Bookings() {
     setScanFeedback(null);
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: "environment" } },
-        audio: false,
-      });
+      // Try back camera first; fall back to any camera (needed on some Android devices)
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } },
+          audio: false,
+        });
+      } catch {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      }
 
       mediaStreamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        await videoRef.current.play();
+        // .play() can throw AbortError on Android — ignore it, autoplay handles it
+        videoRef.current.play().catch(() => null);
       }
 
       const detector = BarcodeDetectorCtor ? new BarcodeDetectorCtor({ formats: ["qr_code"] }) : null;
@@ -709,7 +716,7 @@ export default function Bookings() {
                 {cameraActive ? "الكاميرا تعمل الآن" : "منطقة المسح بالكاميرا"}
               </div>
               <div className="relative flex min-h-[280px] items-center justify-center bg-black/40 p-3">
-                <video ref={videoRef} className={`max-h-[340px] w-full rounded-xl object-cover ${cameraActive ? "block" : "hidden"}`} muted playsInline />
+                <video ref={videoRef} className={`max-h-[340px] w-full rounded-xl object-cover ${cameraActive ? "block" : "hidden"}`} muted playsInline autoPlay />
                 {!cameraActive ? (
                   <div className="text-center text-sm text-[#d7aabd]">
                     افتح الكاميرا لبدء قراءة QR العميل مباشرة من شاشة الهاتف.
