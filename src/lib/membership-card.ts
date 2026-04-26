@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import QRCode from "qrcode";
+import sharp from "sharp";
 
 type MembershipCardInput = {
   memberName: string;
@@ -203,11 +204,12 @@ export async function generateMembershipQrCard(input: MembershipCardInput): Prom
   </g>
 </svg>`;
 
-  const buffer = Buffer.from(svg, "utf8");
+  const svgBuffer = Buffer.from(svg, "utf8");
+  const pngBuffer = await sharp(svgBuffer).png().toBuffer();
   return {
-    filename: `fitzone-membership-card-${input.cardCode}.svg`,
-    content: buffer,
-    contentType: "image/svg+xml",
-    previewDataUrl: `data:image/svg+xml;base64,${buffer.toString("base64")}`,
+    filename: `fitzone-membership-card-${input.cardCode}.png`,
+    content: pngBuffer,
+    contentType: "image/png",
+    previewDataUrl: `data:image/png;base64,${pngBuffer.toString("base64")}`,
   };
 }
