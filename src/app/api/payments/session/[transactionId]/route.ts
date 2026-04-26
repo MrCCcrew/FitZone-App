@@ -58,10 +58,11 @@ export async function GET(_: Request, context: { params: Promise<{ transactionId
     session: {
       publicKey: payload.publicKey ?? null,
       clientSecret: payload.clientSecret ?? null,
-      paymobScriptUrl: payload.paymobScriptUrl ?? null,
       intentionId: payload.intentionId ?? null,
       checkoutUrl: payload.checkoutUrl ?? transaction.checkoutUrl ?? null,
       iframeUrl: payload.iframeUrl ?? transaction.iframeUrl ?? null,
+      checkoutExperience: payload.checkoutExperience ?? null,
+      enabledMethodLabels: Array.isArray(payload.enabledMethodLabels) ? payload.enabledMethodLabels : [],
       paymentMethods: Array.isArray(payload.paymentMethods) ? payload.paymentMethods : [],
     },
   });

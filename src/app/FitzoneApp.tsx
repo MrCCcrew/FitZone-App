@@ -1420,12 +1420,13 @@ type PaymentAccount = {
 };
 
 type PublicPaymentSettings = {
-  instapayUrl: string;
-  instapayLabel: string;
-  vodafoneCashUrl: string;
-  vodafoneCashLabel: string;
+  displayLabel?: string;
+  displayLabelAr?: string;
+  displayLabelEn?: string;
   instapayAccounts: PaymentAccount[];
-  vodafoneCashAccounts: PaymentAccount[];
+  electronicMethods?: string[];
+  cashOnDeliveryEnabled?: boolean;
+  cashOnDeliveryLabel?: string;
 };
 
 const CART_STORAGE_KEY = "fitzone:cart";
@@ -3136,8 +3137,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
   const [scheduleError, setScheduleError] = useState<string | null>(null);
   const [daysPerWeek, setDaysPerWeek] = useState<number | null>(null);
   const [scheduleStep, setScheduleStep] = useState<"frequency" | "slots" | "view-only">("frequency");
-  const [membershipPayMethod, setMembershipPayMethod] = useState<"paymob" | "wallet">("paymob");
-  const [paymobModal, setPaymobModal] = useState<{ url: string; transactionId: string | null } | null>(null);
+  const [membershipPayMethod] = useState<"paymob">("paymob");
   const [membershipDataReady, setMembershipDataReady] = useState(false);
   const [pendingPlan, setPendingPlan] = useState<PlanItem | null>(null);
   const hasPendingFlow = typeof window !== "undefined" && !!(
@@ -3145,12 +3145,13 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
     window.sessionStorage.getItem("fitzone_trial_booking")
   );
   const [membershipPaymentSettings, setMembershipPaymentSettings] = useState<PublicPaymentSettings>({
-    instapayUrl: "",
-    instapayLabel: "Paymob",
-    vodafoneCashUrl: "",
-    vodafoneCashLabel: "Paymob",
+    displayLabel: "Paymob",
+    displayLabelAr: "الدفع الإلكتروني عبر Paymob",
+    displayLabelEn: "Paymob online payment",
     instapayAccounts: [{ id: "paymob", label: "Paymob", url: "", isDefault: true }],
-    vodafoneCashAccounts: [],
+    electronicMethods: ["cards", "wallets"],
+    cashOnDeliveryEnabled: true,
+    cashOnDeliveryLabel: t("الدفع عند الاستلام", "Cash on delivery"),
   });
   useEffect(() => {
     setMembershipDataReady(false);
@@ -3587,7 +3588,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
       .catch(() => {});
   };
 
-  const handleSubscribe = async (plan: PlanItem, scheduleIds: string[] = [], paymentOverride?: "paymob" | "wallet") => {
+  const handleSubscribe = async (plan: PlanItem, scheduleIds: string[] = [], paymentOverride?: "paymob") => {
     if (!plan.id) { navigate("register"); return; }
     setSubscribing(plan.id);
     setSubMsg(null);
@@ -4429,43 +4430,50 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                       {summary.finalAmount > 0 && (
                         <div className="card" style={{ padding: 16, marginBottom: 14, background: "rgba(255,255,255,.04)" }}>
                           <div style={{ fontWeight: 800, color: C.white, marginBottom: 10 }}>{t("طريقة الدفع", "Payment method")}</div>
-                          {[
-                            {
-                              id: "paymob" as const,
-                              label: t("بطاقة بنكية", "Bank Card"),
-                              sub: "Visa / Mastercard / Meeza",
-                              logos: ["/payment-logos/visa.svg", "/payment-logos/mastercard.svg", "/payment-logos/primium.webp"],
-                            },
-                            {
-                              id: "wallet" as const,
-                              label: t("محفظة إلكترونية", "Mobile Wallet"),
-                              sub: t("فودافون كاش / اورنج كاش / اتصالات كاش", "Vodafone Cash / Orange Cash / Etisalat Cash"),
-                              logos: [],
-                            },
-                          ].map((method) => (
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 12,
+                              padding: "12px 14px",
+                              borderRadius: 10,
+                              border: `2px solid ${C.red}`,
+                              background: "rgba(233,30,99,.08)",
+                            }}
+                          >
                             <div
-                              key={method.id}
-                              onClick={() => setMembershipPayMethod(method.id)}
-                              style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", borderRadius: 10, border: membershipPayMethod === method.id ? `2px solid ${C.red}` : "1px solid rgba(255,255,255,.1)", marginBottom: 8, cursor: "pointer", background: membershipPayMethod === method.id ? "rgba(233,30,99,.08)" : "transparent" }}
+                              style={{
+                                width: 18,
+                                height: 18,
+                                borderRadius: "50%",
+                                border: `2px solid ${C.red}`,
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                flexShrink: 0,
+                              }}
                             >
-                              <div style={{ width: 18, height: 18, borderRadius: "50%", border: `2px solid ${membershipPayMethod === method.id ? C.red : "rgba(255,255,255,.3)"}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                                {membershipPayMethod === method.id && <div style={{ width: 9, height: 9, borderRadius: "50%", background: C.red }} />}
-                              </div>
-                              <div style={{ flex: 1 }}>
-                                <div style={{ fontWeight: 700, fontSize: 13, color: membershipPayMethod === method.id ? C.white : C.gray }}>{method.label}</div>
-                                <div style={{ fontSize: 11, color: "rgba(255,255,255,.4)", marginTop: 2 }}>{method.sub}</div>
-                              </div>
-                              {method.logos.length > 0 && (
-                                <div style={{ display: "flex", gap: 4 }}>
-                                  {method.logos.map((src) => (
-                                    <div key={src} style={{ background: "#fff", borderRadius: 4, padding: "2px 4px", height: 24, display: "flex", alignItems: "center" }}>
-                                      <img src={src} alt="" style={{ height: 18, maxWidth: 40, objectFit: "contain" }} />
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
+                              <div style={{ width: 9, height: 9, borderRadius: "50%", background: C.red }} />
                             </div>
-                          ))}
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontWeight: 700, fontSize: 13, color: C.white }}>
+                                {membershipPaymentSettings.displayLabel || t("الدفع الإلكتروني عبر Paymob", "Online payment via Paymob")}
+                              </div>
+                              <div style={{ fontSize: 11, color: "rgba(255,255,255,.55)", marginTop: 2 }}>
+                                {t(
+                                  "سيتم تحويلك إلى Paymob لاختيار البطاقة أو المحفظة أو الوسائل المفعلة على الحساب.",
+                                  "You will be redirected to Paymob to choose card, wallet, or any enabled method.",
+                                )}
+                              </div>
+                            </div>
+                            <div style={{ display: "flex", gap: 4, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                              {["/payment-logos/visa.svg", "/payment-logos/mastercard.svg", "/payment-logos/u-valu-logo.webp", "/payment-logos/sympl-menu2.png"].map((src) => (
+                                <div key={src} style={{ background: "#fff", borderRadius: 4, padding: "2px 4px", height: 24, display: "flex", alignItems: "center" }}>
+                                  <img src={src} alt="" style={{ height: 18, maxWidth: 40, objectFit: "contain" }} />
+                                </div>
+                              ))}
+                            </div>
+                          </div>
                         </div>
                       )}
 
@@ -4943,14 +4951,6 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
           </button>
         </div>
       </div>
-      {/* Paymob payment iframe modal */}
-      {paymobModal && (
-        <PaymobIframeModal
-          url={paymobModal.url}
-          transactionId={paymobModal.transactionId}
-          onClose={() => setPaymobModal(null)}
-        />
-      )}
     </div>
   );
 };
@@ -6495,17 +6495,16 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
   const [orderMsg, setOrderMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [createdOrderId, setCreatedOrderId] = useState<string | null>(null);
   const [pendingPaymentUrl, setPendingPaymentUrl] = useState<string | null>(null);
-  const [paymentAction, setPaymentAction] = useState<{ url: string; label: string; transactionId?: string | null } | null>(null);
-  const [cartPaymobModal, setCartPaymobModal] = useState<{ url: string; transactionId: string | null } | null>(null);
   const [deliveryOptions, setDeliveryOptions] = useState<PublicDeliveryOption[]>([]);
   const [selectedDeliveryId, setSelectedDeliveryId] = useState<string | null>(null);
   const [paymentSettings, setPaymentSettings] = useState<PublicPaymentSettings>({
-    instapayUrl: "",
-    instapayLabel: "Paymob",
-    vodafoneCashUrl: "",
-    vodafoneCashLabel: "Paymob",
+    displayLabel: "Paymob",
+    displayLabelAr: "الدفع الإلكتروني عبر Paymob",
+    displayLabelEn: "Paymob online payment",
     instapayAccounts: [{ id: "paymob", label: "Paymob", url: "", isDefault: true }],
-    vodafoneCashAccounts: [],
+    electronicMethods: ["cards", "wallets"],
+    cashOnDeliveryEnabled: true,
+    cashOnDeliveryLabel: t("الدفع عند الاستلام", "Cash on delivery"),
   });
   const [address, setAddress] = useState({
     firstName: summary?.user?.name?.split(" ")[0] ?? "",
@@ -6579,11 +6578,24 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
   const pointsToDeduct = useRewards ? Math.ceil(rewardsDiscount / pointValueEGP) : 0;
 
   const availablePayMethods = useMemo(() => {
-    return [
-      { id: "paymob", label: t("بطاقة بنكية (Paymob)", "Bank Card (Paymob)") },
-      { id: "wallet", label: t("محفظة إلكترونية (فودافون كاش / اورنج كاش)", "Mobile Wallet (Vodafone Cash / Orange Cash)") },
+    const methods = [
+      {
+        id: "paymob",
+        label:
+          paymentSettings.displayLabel ||
+          t("الدفع الإلكتروني عبر Paymob", "Online payment via Paymob"),
+      },
     ];
-  }, [lang]);
+
+    if (selectedDelivery?.showCashOnDelivery && paymentSettings.cashOnDeliveryEnabled) {
+      methods.push({
+        id: "cod",
+        label: paymentSettings.cashOnDeliveryLabel || t("الدفع عند الاستلام", "Cash on delivery"),
+      });
+    }
+
+    return methods;
+  }, [lang, paymentSettings, selectedDelivery]);
 
   useEffect(() => {
     if (!availablePayMethods.find((m) => m.id === payMethod)) {
@@ -6717,7 +6729,6 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
         try { window.location.href = data.checkoutUrl; } catch {}
       } else {
         setCreatedOrderId(data.orderId ?? null);
-        setPaymentAction(null);
         setOrderMsg({ text: data.message ?? "تم تسجيل طلبك بنجاح.", ok: true });
         writeCart([]);
         setCartItems([]);
@@ -6736,30 +6747,10 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
       <h1 style={{ fontSize: 34, fontWeight: 900, color: C.white, marginBottom: 10 }}>تم تسجيل طلبك بنجاح</h1>
       {createdOrderId && <p style={{ color: C.gray, fontSize: 15, marginBottom: 6 }}>رقم الطلب: {createdOrderId}</p>}
       <p style={{ color: C.gray, fontSize: 13, marginBottom: 24 }}>تم حفظ الطلب في النظام، وسيظهر في حسابك.</p>
-      {paymentAction && (
-        <div className="card" style={{ padding: 16, marginBottom: 20, maxWidth: 380, width: "100%" }}>
-          <div style={{ fontWeight: 800, color: C.white, marginBottom: 6 }}>إكمال الدفع الآمن</div>
-          <div style={{ color: C.gray, fontSize: 12, marginBottom: 12 }}>اضغطي لفتح نافذة الدفع الآمنة بالبطاقة أو valU أو Sympl.</div>
-          <button
-            className="btn-primary"
-            style={{ justifyContent: "center", width: "100%" }}
-            onClick={() => setCartPaymobModal({ url: paymentAction.url, transactionId: paymentAction.transactionId ?? null })}
-          >
-            🔒 إتمام الدفع الآن
-          </button>
-        </div>
-      )}
       <div style={{ display: "flex", gap: 14, flexWrap: "wrap", justifyContent: "center" }}>
         <button className="btn-primary" onClick={() => window.location.href = "/account?tab=orders"}>عرض طلباتي</button>
         <button className="btn-ghost" onClick={() => navigate("home")}>العودة للرئيسية</button>
       </div>
-      {cartPaymobModal && (
-        <PaymobIframeModal
-          url={cartPaymobModal.url}
-          transactionId={cartPaymobModal.transactionId}
-          onClose={() => setCartPaymobModal(null)}
-        />
-      )}
     </div>
   );
 
@@ -6925,20 +6916,38 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                 <div className="card" style={{ padding: 20 }}>
                   {availablePayMethods.map((method) => (
                     <div key={method.id} onClick={() => setPayMethod(method.id)} style={{ display: "flex", alignItems: "center", gap: 14, padding: 14, borderRadius: 8, border: payMethod === method.id ? `2px solid ${C.red}` : `1px solid ${C.border}`, marginBottom: 10, cursor: "pointer", background: payMethod === method.id ? "rgba(233,30,99,.08)" : "transparent" }}>
-                      {/* Payment logos strip */}
-                      <div style={{ display: "flex", gap: 4, alignItems: "center", flexShrink: 0 }}>
-                        {[
-                          { src: "/payment-logos/visa.svg",        alt: "Visa"         },
-                          { src: "/payment-logos/mastercard.svg",   alt: "Mastercard"   },
-                          { src: "/payment-logos/u-valu-logo.webp", alt: "valU"         },
-                          { src: "/payment-logos/sympl-menu2.png",  alt: "Sympl"        },
-                        ].map(({ src, alt }) => (
-                          <div key={alt} style={{ height: 26, borderRadius: 5, background: "#fff", border: "1px solid rgba(0,0,0,.12)", padding: "2px 5px", display: "flex", alignItems: "center" }}>
-                            <img src={src} alt={alt} style={{ height: 18, width: "auto", objectFit: "contain", display: "block" }} loading="lazy" />
-                          </div>
-                        ))}
+                      {method.id === "paymob" ? (
+                        <div style={{ display: "flex", gap: 4, alignItems: "center", flexShrink: 0 }}>
+                          {[
+                            { src: "/payment-logos/visa.svg", alt: "Visa" },
+                            { src: "/payment-logos/mastercard.svg", alt: "Mastercard" },
+                            { src: "/payment-logos/u-valu-logo.webp", alt: "valU" },
+                            { src: "/payment-logos/sympl-menu2.png", alt: "Sympl" },
+                          ].map(({ src, alt }) => (
+                            <div key={alt} style={{ height: 26, borderRadius: 5, background: "#fff", border: "1px solid rgba(0,0,0,.12)", padding: "2px 5px", display: "flex", alignItems: "center" }}>
+                              <img src={src} alt={alt} style={{ height: 18, width: "auto", objectFit: "contain", display: "block" }} loading="lazy" />
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div style={{ width: 34, height: 34, borderRadius: 8, background: "rgba(200,162,0,.12)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                          <I n="wallet" s={18} c={C.gold} />
+                        </div>
+                      )}
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 600, fontSize: 14, color: payMethod === method.id ? C.white : C.gray }}>{method.label}</div>
+                        <div style={{ fontSize: 11, color: C.grayLight, marginTop: 3 }}>
+                          {method.id === "paymob"
+                            ? t(
+                                "سيتم تحويلك إلى صفحة Paymob لاختيار البطاقة أو المحفظة أو أي وسيلة مفعلة.",
+                                "You will be redirected to Paymob to choose card, wallet, or any enabled method.",
+                              )
+                            : t(
+                                "يتم تأكيد الطلب والدفع عند استلامه من الجيم أو حسب وسيلة الشحن المتاحة.",
+                                "The order will be confirmed and paid on delivery or pickup when available.",
+                              )}
+                        </div>
                       </div>
-                      <span style={{ fontWeight: 600, fontSize: 14, color: payMethod === method.id ? C.white : C.gray, flex: 1 }}>{method.label}</span>
                       {payMethod === method.id && <I n="check" s={16} c={C.red} />}
                     </div>
                   ))}
@@ -6964,8 +6973,16 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                   </div>
                 )}
                 <div className="card" style={{ padding: 18, marginTop: 12, background: "rgba(200,162,0,.08)", border: `1px solid ${C.gold}33` }}>
-                  <p style={{ color: C.gold, fontWeight: 700, fontSize: 13 }}>{t("الدفع يتم عبر الهاتف.", "Payment is completed via phone.")}</p>
-                  <p style={{ color: C.gray, fontSize: 12, marginTop: 6 }}>{t("بعد تسجيل الطلب ستصلك صفحة التحويل الخاصة بوسيلة الدفع المختارة.", "After placing the order, you will receive the transfer page for the selected payment method.")}</p>
+                  <p style={{ color: C.gold, fontWeight: 700, fontSize: 13 }}>
+                    {payMethod === "paymob"
+                      ? t("الدفع الإلكتروني يتم عبر Paymob Unified Checkout.", "Electronic payment is completed through Paymob Unified Checkout.")
+                      : t("سيتم تحصيل المبلغ عند الاستلام.", "The amount will be collected on delivery or pickup.")}
+                  </p>
+                  <p style={{ color: C.gray, fontSize: 12, marginTop: 6 }}>
+                    {payMethod === "paymob"
+                      ? t("بعد تأكيد الطلب سيتم تحويلك مباشرة إلى Paymob لاختيار وسيلة الدفع المفعلة.", "After confirming the order, you will be redirected to Paymob to choose an enabled payment method.")
+                      : t("سيظهر الطلب في حسابك مباشرة بدون بوابة دفع إلكترونية.", "The order will appear in your account immediately without an electronic payment gateway.")}
+                  </p>
                 </div>
                 <div style={{ display: "flex", gap: 12, marginTop: 16 }}>
                   <button className="btn-ghost" onClick={() => setStep("delivery")}>{t("العودة للشحن", "Back to shipping")}</button>

@@ -10,8 +10,6 @@ import { getPaymentSettings } from "@/lib/payments/settings";
 
 const REGION_BASE = "https://accept.paymob.com";
 const FETCH_TIMEOUT_MS = 20_000;
-const PAYMOB_JS_URL = "https://nextstagingenv.s3.amazonaws.com/js/v1/paymob.js";
-
 type PaymobSettings = Awaited<ReturnType<typeof getPaymentSettings>>;
 
 type PaymobAuthResponse = {
@@ -89,11 +87,11 @@ function parseIntegrationIds(raw: string | null | undefined) {
 
 function getAllowedPaymentMethodIds(settings: PaymobSettings) {
   const ids = [
-    ...parseIntegrationIds(settings.integrationId),
-    ...parseIntegrationIds(settings.walletIntegrationId),
-    ...parseIntegrationIds(settings.valuIntegrationId),
-    ...parseIntegrationIds(settings.symplIntegrationId),
-    ...parseIntegrationIds(settings.souhoolaIntegrationId),
+    ...(settings.enableCards ? parseIntegrationIds(settings.cardIntegrationId || settings.integrationId) : []),
+    ...(settings.enableWallets ? parseIntegrationIds(settings.walletIntegrationId) : []),
+    ...(settings.enableValu ? parseIntegrationIds(settings.valuIntegrationId) : []),
+    ...(settings.enableSympl ? parseIntegrationIds(settings.symplIntegrationId) : []),
+    ...(settings.enableSouhoola ? parseIntegrationIds(settings.souhoolaIntegrationId) : []),
   ].filter((value, index, values) => values.indexOf(value) === index);
 
   if (ids.length === 0) {
@@ -105,11 +103,11 @@ function getAllowedPaymentMethodIds(settings: PaymobSettings) {
 
 function getEnabledMethodLabels(settings: PaymobSettings) {
   return [
-    { key: "card", label: "Card", configured: parseIntegrationIds(settings.integrationId).length > 0 },
-    { key: "wallet", label: "Wallet", configured: parseIntegrationIds(settings.walletIntegrationId).length > 0 },
-    { key: "valu", label: "valU", configured: parseIntegrationIds(settings.valuIntegrationId).length > 0 },
-    { key: "sympl", label: "Sympl", configured: parseIntegrationIds(settings.symplIntegrationId).length > 0 },
-    { key: "souhoola", label: "Souhoola", configured: parseIntegrationIds(settings.souhoolaIntegrationId).length > 0 },
+    { key: "card", label: "Card", configured: settings.enableCards && parseIntegrationIds(settings.cardIntegrationId || settings.integrationId).length > 0 },
+    { key: "wallet", label: "Wallet", configured: settings.enableWallets && parseIntegrationIds(settings.walletIntegrationId).length > 0 },
+    { key: "valu", label: "valU", configured: settings.enableValu && parseIntegrationIds(settings.valuIntegrationId).length > 0 },
+    { key: "sympl", label: "Sympl", configured: settings.enableSympl && parseIntegrationIds(settings.symplIntegrationId).length > 0 },
+    { key: "souhoola", label: "Souhoola", configured: settings.enableSouhoola && parseIntegrationIds(settings.souhoolaIntegrationId).length > 0 },
   ].filter((method) => method.configured);
 }
 
@@ -156,15 +154,11 @@ function buildReturnUrl(base: string, transactionId: string, state?: "cancel") {
   }
 }
 
-function buildHostedCheckoutPageUrl(baseUrl: string, transactionId: string) {
-  try {
-    const url = new URL(baseUrl || "https://fitzoneland.com/payment/verify");
-    const hosted = new URL("/payment/checkout", `${url.protocol}//${url.host}`);
-    hosted.searchParams.set("transactionId", transactionId);
-    return hosted.toString();
-  } catch {
-    return `https://fitzoneland.com/payment/checkout?transactionId=${encodeURIComponent(transactionId)}`;
-  }
+function buildUnifiedCheckoutUrl(publicKey: string, clientSecret: string) {
+  const url = new URL("/unifiedcheckout/", getRegionBase());
+  url.searchParams.set("publicKey", publicKey);
+  url.searchParams.set("clientSecret", clientSecret);
+  return url.toString();
 }
 
 async function authenticate() {
@@ -349,7 +343,7 @@ async function createCheckout(input: PaymentCheckoutInput): Promise<PaymentCheck
     context: input.context,
   });
 
-  const checkoutUrl = buildHostedCheckoutPageUrl(settings.returnUrl, input.transactionId);
+  const checkoutUrl = buildUnifiedCheckoutUrl(publicKey, intention.clientSecret);
   const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
 
   console.info("[PAYMOB] Unified checkout prepared", {
@@ -363,7 +357,7 @@ async function createCheckout(input: PaymentCheckoutInput): Promise<PaymentCheck
   return {
     provider: "paymob",
     status: "pending",
-    message: "Paymob unified checkout session created successfully.",
+    message: "Paymob hosted unified checkout session created successfully.",
     checkoutUrl,
     iframeUrl: null,
     providerReference: intention.intentionId,
@@ -371,10 +365,10 @@ async function createCheckout(input: PaymentCheckoutInput): Promise<PaymentCheck
     expiresAt,
     payload: {
       providerMode: "paymob_unified_checkout",
+      checkoutExperience: "redirect",
       intentionId: intention.intentionId,
       clientSecret: intention.clientSecret,
       publicKey,
-      paymobScriptUrl: PAYMOB_JS_URL,
       paymentMethodIds: intention.paymentMethodIds,
       paymentMethods: intention.paymentMethods,
       enabledMethodLabels: intention.enabledMethodLabels,
