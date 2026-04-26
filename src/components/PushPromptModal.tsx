@@ -13,11 +13,22 @@ function urlBase64ToUint8Array(b64: string): Uint8Array<ArrayBuffer> {
   return output;
 }
 
+// Resolves navigator.serviceWorker.ready with a timeout fallback
+async function swReady(ms = 8000): Promise<ServiceWorkerRegistration> {
+  return Promise.race([
+    navigator.serviceWorker.ready,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error("sw-timeout")), ms)
+    ),
+  ]);
+}
+
 export default function PushPromptModal() {
   const [visible, setVisible]   = useState(false);
   const [animIn, setAnimIn]     = useState(false);
   const [loading, setLoading]   = useState(false);
   const [done, setDone]         = useState(false);
+  const [vapidKey, setVapidKey] = useState<string | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -27,8 +38,19 @@ export default function PushPromptModal() {
     if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
     if (Notification.permission !== "default") return;
 
+    // Register SW early so it's ready before the user taps the button
+    if (!navigator.serviceWorker.controller) {
+      navigator.serviceWorker.register("/sw.js").catch(() => {});
+    }
+
+    // Pre-fetch VAPID key in the background
+    fetch("/api/push/subscribe")
+      .then((r) => r.json())
+      .then((d: { vapidPublicKey?: string }) => { if (d.vapidPublicKey) setVapidKey(d.vapidPublicKey); })
+      .catch(() => {});
+
     // Check if already subscribed
-    navigator.serviceWorker.ready
+    swReady(5000)
       .then((reg) => reg.pushManager.getSubscription())
       .then((sub) => {
         if (sub) { localStorage.setItem(STORAGE_KEY, "1"); return; }
@@ -53,18 +75,22 @@ export default function PushPromptModal() {
   async function enable() {
     setLoading(true);
     try {
-      // Fetch VAPID key
-      const keyRes = await fetch("/api/push/subscribe");
-      const { vapidPublicKey } = (await keyRes.json()) as { vapidPublicKey?: string };
-      if (!vapidPublicKey) { dismiss(); return; }
+      // Use pre-fetched VAPID key or fetch now if not ready yet
+      let key = vapidKey;
+      if (!key) {
+        const keyRes = await fetch("/api/push/subscribe");
+        const data = (await keyRes.json()) as { vapidPublicKey?: string };
+        key = data.vapidPublicKey ?? null;
+      }
+      if (!key) { dismiss(); return; }
 
       const perm = await Notification.requestPermission();
       if (perm !== "granted") { dismiss(); return; }
 
-      const reg = await navigator.serviceWorker.ready;
+      const reg = await swReady(8000);
       const sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
+        applicationServerKey: urlBase64ToUint8Array(key),
       });
 
       const json = sub.toJSON() as { endpoint: string; keys: { p256dh: string; auth: string } };
@@ -74,7 +100,6 @@ export default function PushPromptModal() {
         body: JSON.stringify(json),
       });
 
-      // Show success tick for 1.8 s then close
       setDone(true);
       localStorage.setItem(STORAGE_KEY, "1");
       setTimeout(dismiss, 1800);
