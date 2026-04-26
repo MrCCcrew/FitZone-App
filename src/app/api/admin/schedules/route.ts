@@ -2,14 +2,9 @@ import { NextResponse } from "next/server";
 import { requireAdminFeature } from "@/lib/admin-guard";
 import { db } from "@/lib/db";
 
-async function checkAdmin() {
-  const guard = await requireAdminFeature("bookings");
-  return "error" in guard ? guard.error : null;
-}
-
 export async function GET(req: Request) {
-  const err = await checkAdmin();
-  if (err) return err;
+  const guard = await requireAdminFeature("bookings");
+  if ("error" in guard) return guard.error;
 
   const { searchParams } = new URL(req.url);
   const classId = searchParams.get("classId") || undefined;
@@ -17,11 +12,23 @@ export async function GET(req: Request) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
+  // Trainer sees only their own schedules
+  let trainerClassFilter: { trainerId: string } | undefined;
+  if (guard.role === "trainer") {
+    const trainerProfile = await db.trainer.findFirst({
+      where: { userId: guard.session.user.id },
+      select: { id: true },
+    });
+    if (!trainerProfile) return NextResponse.json([]);
+    trainerClassFilter = { trainerId: trainerProfile.id };
+  }
+
   const schedules = await db.schedule.findMany({
     where: {
       isActive: true,
       date: { gte: today },
       ...(classId ? { classId } : {}),
+      ...(trainerClassFilter ? { class: trainerClassFilter } : {}),
     },
     include: { class: true },
     orderBy: [{ date: "asc" }, { time: "asc" }],

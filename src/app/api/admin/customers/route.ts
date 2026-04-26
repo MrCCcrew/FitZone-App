@@ -9,6 +9,11 @@ async function checkAdmin() {
   return "error" in guard ? guard.error : null;
 }
 
+async function getTrainerProfileId(userId: string): Promise<string | null> {
+  const t = await db.trainer.findFirst({ where: { userId }, select: { id: true } });
+  return t?.id ?? null;
+}
+
 type CustomerPayload = {
   id?: string;
   name?: string;
@@ -268,12 +273,22 @@ async function applyWalletAndRewards(userId: string, nextBalance?: number, nextP
 }
 
 export async function GET() {
-  const err = await checkAdmin();
-  if (err) return err;
+  const guard = await requireAdminFeature("customers");
+  if ("error" in guard) return guard.error;
+
+  // Trainer sees only clients linked to their schedules/bookings
+  let trainerBookingFilter: { bookings: { some: { schedule: { class: { trainerId: string } } } } } | undefined;
+  if (guard.role === "trainer") {
+    const trainerId = await getTrainerProfileId(guard.session.user.id);
+    if (!trainerId) return NextResponse.json([]);
+    trainerBookingFilter = {
+      bookings: { some: { schedule: { class: { trainerId } } } },
+    };
+  }
 
   try {
     const users = await db.user.findMany({
-      where: { role: "member" },
+      where: { role: "member", ...trainerBookingFilter },
       orderBy: { createdAt: "desc" },
       include: {
         memberships: {
