@@ -49,21 +49,26 @@ export default function PushPromptModal() {
       .then((d: { vapidPublicKey?: string }) => { if (d.vapidPublicKey) setVapidKey(d.vapidPublicKey); })
       .catch(() => {});
 
-    // Check if already subscribed
+    // Show after 3 s delay; only skip if we confirm an active subscription
+    let timer: ReturnType<typeof setTimeout>;
     swReady(5000)
       .then((reg) => reg.pushManager.getSubscription())
       .then((sub) => {
         if (sub) { localStorage.setItem(STORAGE_KEY, "1"); return; }
-
-        // Show after 3 s delay
-        const timer = setTimeout(() => {
+        timer = setTimeout(() => {
           setVisible(true);
           requestAnimationFrame(() => setAnimIn(true));
         }, 3000);
-
-        return () => clearTimeout(timer);
       })
-      .catch(() => {});
+      .catch(() => {
+        // SW not ready or check failed — show the prompt anyway
+        timer = setTimeout(() => {
+          setVisible(true);
+          requestAnimationFrame(() => setAnimIn(true));
+        }, 3000);
+      });
+
+    return () => clearTimeout(timer);
   }, []);
 
   function dismiss() {
