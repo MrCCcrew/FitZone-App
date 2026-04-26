@@ -79,8 +79,8 @@ export default function PushPromptModal() {
 
   async function enable() {
     setLoading(true);
+    let hardTimer: ReturnType<typeof setTimeout> | null = null;
     try {
-      // Use pre-fetched VAPID key or fetch now if not ready yet
       let key = vapidKey;
       if (!key) {
         const keyRes = await fetch("/api/push/subscribe");
@@ -92,25 +92,38 @@ export default function PushPromptModal() {
       const perm = await Notification.requestPermission();
       if (perm !== "granted") { dismiss(); return; }
 
-      const reg = await swReady(8000);
-      const sub = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(key),
+      // Hard 12s timeout covering SW ready + subscribe + server POST
+      const hardTimeout = new Promise<never>((_, reject) => {
+        hardTimer = setTimeout(() => reject(new Error("enable-timeout")), 12000);
       });
 
+      const reg = await Promise.race([swReady(8000), hardTimeout]);
+      const sub = await Promise.race([
+        reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(key),
+        }),
+        hardTimeout,
+      ]);
+
       const json = sub.toJSON() as { endpoint: string; keys: { p256dh: string; auth: string } };
+      const ac = new AbortController();
+      setTimeout(() => ac.abort(), 8000);
       await fetch("/api/push/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(json),
+        signal: ac.signal,
       });
 
+      if (hardTimer) clearTimeout(hardTimer);
       setDone(true);
       localStorage.setItem(STORAGE_KEY, "1");
       setTimeout(dismiss, 1800);
     } catch {
       dismiss();
     } finally {
+      if (hardTimer) clearTimeout(hardTimer);
       setLoading(false);
     }
   }
