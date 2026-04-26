@@ -38,9 +38,20 @@ export async function GET(req: Request) {
   const from = startOfDay(selectedDate);
   const to = endOfDay(selectedDate);
 
+  let trainerProfileId: string | null = null;
+  if (guard.role === "trainer") {
+    const t = await db.trainer.findFirst({ where: { userId: guard.session.user.id }, select: { id: true } });
+    if (!t) return NextResponse.json({ schedules: [], checkIns: [] });
+    trainerProfileId = t.id;
+  }
+
   const [schedules, checkIns] = await Promise.all([
     db.schedule.findMany({
-      where: { isActive: true, date: { gte: from, lte: to } },
+      where: {
+        isActive: true,
+        date: { gte: from, lte: to },
+        ...(trainerProfileId ? { class: { trainerId: trainerProfileId } } : {}),
+      },
       include: {
         class: { include: { trainer: true } },
         bookings: { select: { id: true, status: true } },
