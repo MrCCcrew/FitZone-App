@@ -4798,6 +4798,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
                         max={maxDateStr}
                         value={featuredStartDate}
                         onChange={(e) => setFeaturedStartDate(e.target.value)}
+                        onKeyDown={(e) => e.preventDefault()}
                         style={{
                           width: "100%", boxSizing: "border-box",
                           background: "rgba(255,255,255,0.06)", border: "1px solid rgba(212,175,55,0.35)",
