@@ -7975,7 +7975,7 @@ const ContactPage = () => {
               {/* Map iframe */}
               <iframe
                 title="موقع FitZone"
-                src="https://maps.google.com/maps?q=29.0759382,31.098706&z=17&output=embed&hl=ar"
+                src="https://maps.google.com/maps?q=Fit+Zone+Fitness+Club&ll=29.0760696,31.0986147&z=17&output=embed&hl=ar"
                 width="100%"
                 height="400"
                 style={{ display: "block", border: "none", filter: "brightness(0.9) contrast(1.05)" }}
