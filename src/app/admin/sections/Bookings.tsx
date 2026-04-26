@@ -736,8 +736,19 @@ export default function Bookings() {
             ) : null}
 
             {cameraError ? (
-              <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-                {cameraError}
+              <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200 space-y-2">
+                <div className="font-bold">{cameraError}</div>
+                {cameraError.includes("إذن") && (
+                  <div className="space-y-1 text-amber-300/90">
+                    <div>لإعادة السماح بالكاميرا على Chrome:</div>
+                    <ol className="list-decimal list-inside space-y-0.5 pr-1">
+                      <li>اضغط على أيقونة القفل 🔒 في شريط العنوان</li>
+                      <li>اختر <strong>إعدادات الموقع</strong></li>
+                      <li>غيّر <strong>الكاميرا</strong> من "محظور" إلى "سماح"</li>
+                      <li>أعد تحميل الصفحة وافتح الكاميرا مجدداً</li>
+                    </ol>
+                  </div>
+                )}
               </div>
             ) : null}
 
