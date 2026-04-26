@@ -499,10 +499,14 @@ export async function updatePaymentTransactionStatus(
           membership: {
             select: {
               name: true,
+              nameEn: true,
               duration: true,
               walletBonus: true,
               productRewards: true,
             },
+          },
+          offer: {
+            select: { title: true },
           },
         },
       });
@@ -639,8 +643,8 @@ export async function updatePaymentTransactionStatus(
                 membershipCard = await generateMembershipQrCard({
                   memberName: userRecord.name ?? "FitZone Member",
                   membershipName: membership.membership?.name ?? "Membership",
-                  membershipNameEn: null,
-                  offerTitle: null,
+                  membershipNameEn: membership.membership?.nameEn ?? null,
+                  offerTitle: membership.offer?.title ?? null,
                   endDate,
                   qrPayload: buildAttendancePayload(pass.code),
                   cardCode: pass.code,
