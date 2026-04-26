@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { ensureDefaultProductCategories } from "@/lib/product-categories";
 import { getPublicApiCache, setPublicApiCache } from "@/lib/public-cache";
+import { getPaymentSettings } from "@/lib/payments/settings";
 import { parseStoredTrainerFileLinks } from "@/lib/trainer-profile";
 
 export const dynamic = "force-dynamic";
@@ -183,12 +184,11 @@ type PublicPayload = {
     sortOrder: number;
   }>;
   paymentSettings: {
-    instapayUrl: string;
-    instapayLabel: string;
-    vodafoneCashUrl: string;
-    vodafoneCashLabel: string;
+    displayLabel: string;
+    displayLabelAr: string;
+    displayLabelEn: string;
     instapayAccounts: { id: string; label: string; url: string; isDefault?: boolean }[];
-    vodafoneCashAccounts: { id: string; label: string; url: string; isDefault?: boolean }[];
+    electronicMethods: string[];
     cashOnDeliveryEnabled?: boolean;
     cashOnDeliveryLabel?: string;
   };
@@ -219,12 +219,11 @@ const EMPTY_PAYLOAD: PublicPayload = {
   healthQuestions: [],
   deliveryOptions: [],
   paymentSettings: {
-    instapayUrl: "",
-    instapayLabel: "Paymob",
-    vodafoneCashUrl: "",
-    vodafoneCashLabel: "Paymob",
+    displayLabel: "Paymob",
+    displayLabelAr: "الدفع الإلكتروني عبر Paymob",
+    displayLabelEn: "Paymob online payment",
     instapayAccounts: [{ id: "paymob", label: "Paymob", url: "", isDefault: true }],
-    vodafoneCashAccounts: [],
+    electronicMethods: ["cards", "wallets"],
     cashOnDeliveryEnabled: true,
     cashOnDeliveryLabel: "الدفع عند الاستلام",
   },
@@ -286,7 +285,7 @@ export async function GET(request: Request) {
     scheduleTo.setDate(scheduleTo.getDate() + 6);
     scheduleTo.setHours(23, 59, 59, 999);
 
-    const [categories, goals, memberships, offers, classes, trainers, siteContent, products, testimonials, healthQuestions, deliveryOptions] =
+    const [categories, goals, memberships, offers, classes, trainers, siteContent, products, testimonials, healthQuestions, deliveryOptions, paymobSettings] =
       await Promise.all([
         db.productCategory.findMany({
           where: { isActive: true },
@@ -356,6 +355,7 @@ export async function GET(request: Request) {
           where: { isActive: true },
           orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
         }),
+        getPaymentSettings(),
       ]);
 
     const categoryMeta = new Map(
@@ -364,15 +364,6 @@ export async function GET(request: Request) {
         { label: category.label, labelEn: category.labelEn, sizeType: category.sizeType },
       ]),
     );
-
-    const paymentSettingsRecord = parseSiteContentRecord(siteContent, "paymentSettings", {
-      instapayUrl: "",
-      instapayLabel: "Paymob",
-      vodafoneCashUrl: "",
-      vodafoneCashLabel: "Paymob",
-      instapayAccounts: [{ id: "paymob", label: "Paymob", url: "", isDefault: true }],
-      vodafoneCashAccounts: [],
-    });
 
     const contactRecord = parseSiteContentRecord(siteContent, "contact", EMPTY_PAYLOAD.contact) as PublicPayload["contact"] & {
       addressEn?: string;
@@ -634,14 +625,26 @@ export async function GET(request: Request) {
         sortOrder: option.sortOrder,
       })),
       paymentSettings: {
-        instapayUrl: "",
-        instapayLabel: "Paymob",
-        vodafoneCashUrl: "",
-        vodafoneCashLabel: "Paymob",
-        instapayAccounts: [{ id: "paymob", label: "Paymob", url: "", isDefault: true }],
-        vodafoneCashAccounts: [],
-        cashOnDeliveryEnabled: true,
-        cashOnDeliveryLabel: lang === "en" ? "Cash on delivery" : "الدفع عند الاستلام",
+        displayLabel: lang === "en" ? paymobSettings.displayLabelEn : paymobSettings.displayLabelAr,
+        displayLabelAr: paymobSettings.displayLabelAr,
+        displayLabelEn: paymobSettings.displayLabelEn,
+        instapayAccounts: [
+          {
+            id: "paymob",
+            label: lang === "en" ? paymobSettings.displayLabelEn : paymobSettings.displayLabelAr,
+            url: "",
+            isDefault: true,
+          },
+        ],
+        electronicMethods: [
+          ...(paymobSettings.enableCards ? ["cards"] : []),
+          ...(paymobSettings.enableWallets ? ["wallets"] : []),
+          ...(paymobSettings.enableValu ? ["valu"] : []),
+          ...(paymobSettings.enableSympl ? ["sympl"] : []),
+          ...(paymobSettings.enableSouhoola ? ["souhoola"] : []),
+        ],
+        cashOnDeliveryEnabled: paymobSettings.enableCod && paymobSettings.cashOnDeliveryEnabled,
+        cashOnDeliveryLabel: lang === "en" ? paymobSettings.cashOnDeliveryLabelEn : paymobSettings.cashOnDeliveryLabelAr,
       },
     };
 

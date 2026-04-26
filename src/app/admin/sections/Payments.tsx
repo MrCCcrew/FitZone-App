@@ -17,8 +17,8 @@ type EnvStatus = {
   valuIntegrationId?: boolean;
   symplIntegrationId?: boolean;
   souhoolaIntegrationId?: boolean;
-  iframeId?: boolean;
-  installmentIframeId?: boolean;
+  iframeCardId?: boolean;
+  iframeInstallmentId?: boolean;
   env?: string;
 };
 
@@ -37,17 +37,26 @@ type PaymentSettings = {
   enabled: boolean;
   merchantId: string;
   publicKey: string;
+  cardIntegrationId: string;
   integrationId: string;
   walletIntegrationId: string;
   valuIntegrationId: string;
   symplIntegrationId: string;
   souhoolaIntegrationId: string;
+  iframeCardId: string;
+  iframeInstallmentId: string;
   iframeId: string;
   installmentIframeId: string;
   returnUrl: string;
   cancelUrl: string;
   webhookUrl: string;
   sandboxMode: boolean;
+  enableCards: boolean;
+  enableWallets: boolean;
+  enableValu: boolean;
+  enableSympl: boolean;
+  enableSouhoola: boolean;
+  enableCod: boolean;
   cashOnDeliveryEnabled: boolean;
   cashOnDeliveryLabelAr: string;
   cashOnDeliveryLabelEn: string;
@@ -89,17 +98,26 @@ const DEFAULT_SETTINGS: PaymentSettings = {
   enabled: true,
   merchantId: "1152714",
   publicKey: "",
+  cardIntegrationId: "5613515",
   integrationId: "5613515",
   walletIntegrationId: "5632185",
   valuIntegrationId: "",
   symplIntegrationId: "",
   souhoolaIntegrationId: "",
+  iframeCardId: "1032257",
+  iframeInstallmentId: "1032256",
   iframeId: "1032257",
   installmentIframeId: "1032256",
   returnUrl: "https://fitzoneland.com/payment/verify",
   cancelUrl: "https://fitzoneland.com/payment/verify?state=cancel",
   webhookUrl: "https://fitzoneland.com/api/payments/webhook/paymob",
   sandboxMode: true,
+  enableCards: true,
+  enableWallets: true,
+  enableValu: false,
+  enableSympl: false,
+  enableSouhoola: false,
+  enableCod: true,
   cashOnDeliveryEnabled: true,
   cashOnDeliveryLabelAr: "الدفع عند الاستلام",
   cashOnDeliveryLabelEn: "Cash on delivery",
@@ -117,8 +135,8 @@ const DEFAULT_SETTINGS: PaymentSettings = {
     valuIntegrationId: false,
     symplIntegrationId: false,
     souhoolaIntegrationId: false,
-    iframeId: false,
-    installmentIframeId: false,
+    iframeCardId: false,
+    iframeInstallmentId: false,
     env: "",
   },
   lastValidationResult: null,
@@ -497,8 +515,8 @@ export default function Payments() {
           <SecretBadge configured={Boolean(envConfigured.valuIntegrationId)} label="PAYMOB_VALU_INTEGRATION_ID" />
           <SecretBadge configured={Boolean(envConfigured.symplIntegrationId)} label="PAYMOB_SYMPL_INTEGRATION_ID" />
           <SecretBadge configured={Boolean(envConfigured.souhoolaIntegrationId)} label="PAYMOB_SOUHOOLA_INTEGRATION_ID" />
-          <SecretBadge configured={Boolean(envConfigured.iframeId)} label="PAYMOB_IFRAME_CARD_ID" />
-          <SecretBadge configured={Boolean(envConfigured.installmentIframeId)} label="PAYMOB_IFRAME_INSTALLMENT_ID" />
+          <SecretBadge configured={Boolean(envConfigured.iframeCardId)} label="PAYMOB_IFRAME_CARD_ID" />
+          <SecretBadge configured={Boolean(envConfigured.iframeInstallmentId)} label="PAYMOB_IFRAME_INSTALLMENT_ID" />
           <div className="rounded-2xl border border-pink-400/20 bg-pink-500/10 px-4 py-3 text-sm text-pink-100">
             <div className="font-mono text-xs font-bold">PAYMOB_ENV</div>
             <div className="mt-1 text-xs opacity-80">{envConfigured.env || "Not set"}</div>
@@ -553,13 +571,13 @@ export default function Payments() {
           <Field label="Active provider" value={settings.activeProvider} readOnly />
           <Field label="PAYMOB_MERCHANT_ID" value={settings.merchantId} onChange={(value) => setSettings((current) => ({ ...current, merchantId: value }))} />
           <Field label="PAYMOB_PUBLIC_KEY" value={settings.publicKey} onChange={(value) => setSettings((current) => ({ ...current, publicKey: value }))} />
-          <Field label="PAYMOB_CARD_INTEGRATION_ID" value={settings.integrationId} onChange={(value) => setSettings((current) => ({ ...current, integrationId: value }))} placeholder="5613515" />
+          <Field label="PAYMOB_CARD_INTEGRATION_ID" value={settings.cardIntegrationId} onChange={(value) => setSettings((current) => ({ ...current, cardIntegrationId: value, integrationId: value }))} placeholder="5613515" />
           <Field label="PAYMOB_WALLET_INTEGRATION_ID (محفظة إلكترونية)" value={settings.walletIntegrationId} onChange={(value) => setSettings((current) => ({ ...current, walletIntegrationId: value }))} placeholder="5632185" />
           <Field label="PAYMOB_VALU_INTEGRATION_ID" value={settings.valuIntegrationId} onChange={(value) => setSettings((current) => ({ ...current, valuIntegrationId: value }))} placeholder="Optional" />
           <Field label="PAYMOB_SYMPL_INTEGRATION_ID" value={settings.symplIntegrationId} onChange={(value) => setSettings((current) => ({ ...current, symplIntegrationId: value }))} placeholder="Optional" />
           <Field label="PAYMOB_SOUHOOLA_INTEGRATION_ID" value={settings.souhoolaIntegrationId} onChange={(value) => setSettings((current) => ({ ...current, souhoolaIntegrationId: value }))} placeholder="Optional" />
-          <Field label="PAYMOB_IFRAME_CARD_ID (Reference only)" value={settings.iframeId} onChange={(value) => setSettings((current) => ({ ...current, iframeId: value }))} placeholder="1032257" />
-          <Field label="PAYMOB_IFRAME_INSTALLMENT_ID (Reference only)" value={settings.installmentIframeId} onChange={(value) => setSettings((current) => ({ ...current, installmentIframeId: value }))} placeholder="1032256" />
+          <Field label="PAYMOB_IFRAME_CARD_ID (Reference only)" value={settings.iframeCardId} onChange={(value) => setSettings((current) => ({ ...current, iframeCardId: value, iframeId: value }))} placeholder="1032257" />
+          <Field label="PAYMOB_IFRAME_INSTALLMENT_ID (Reference only)" value={settings.iframeInstallmentId} onChange={(value) => setSettings((current) => ({ ...current, iframeInstallmentId: value, installmentIframeId: value }))} placeholder="1032256" />
           <Field label="Display label AR" value={settings.displayLabelAr} onChange={(value) => setSettings((current) => ({ ...current, displayLabelAr: value }))} />
           <Field label="Display label EN" value={settings.displayLabelEn} onChange={(value) => setSettings((current) => ({ ...current, displayLabelEn: value }))} />
           <Field label="Return URL" value={settings.returnUrl} onChange={(value) => setSettings((current) => ({ ...current, returnUrl: value }))} />
@@ -588,12 +606,57 @@ export default function Payments() {
           </label>
         </div>
 
-        <div className="mt-4 grid gap-4 md:grid-cols-2">
+        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           <label className="flex items-center gap-3 rounded-2xl border border-[rgba(255,188,219,0.12)] bg-black/10 px-4 py-3 text-sm text-[#fff4f8]">
             <input
               type="checkbox"
-              checked={settings.cashOnDeliveryEnabled}
-              onChange={(event) => setSettings((current) => ({ ...current, cashOnDeliveryEnabled: event.target.checked }))}
+              checked={settings.enableCards}
+              onChange={(event) => setSettings((current) => ({ ...current, enableCards: event.target.checked }))}
+              className="accent-pink-500"
+            />
+            <span>Enable cards</span>
+          </label>
+          <label className="flex items-center gap-3 rounded-2xl border border-[rgba(255,188,219,0.12)] bg-black/10 px-4 py-3 text-sm text-[#fff4f8]">
+            <input
+              type="checkbox"
+              checked={settings.enableWallets}
+              onChange={(event) => setSettings((current) => ({ ...current, enableWallets: event.target.checked }))}
+              className="accent-pink-500"
+            />
+            <span>Enable wallets</span>
+          </label>
+          <label className="flex items-center gap-3 rounded-2xl border border-[rgba(255,188,219,0.12)] bg-black/10 px-4 py-3 text-sm text-[#fff4f8]">
+            <input
+              type="checkbox"
+              checked={settings.enableValu}
+              onChange={(event) => setSettings((current) => ({ ...current, enableValu: event.target.checked }))}
+              className="accent-pink-500"
+            />
+            <span>Enable valU</span>
+          </label>
+          <label className="flex items-center gap-3 rounded-2xl border border-[rgba(255,188,219,0.12)] bg-black/10 px-4 py-3 text-sm text-[#fff4f8]">
+            <input
+              type="checkbox"
+              checked={settings.enableSympl}
+              onChange={(event) => setSettings((current) => ({ ...current, enableSympl: event.target.checked }))}
+              className="accent-pink-500"
+            />
+            <span>Enable Sympl</span>
+          </label>
+          <label className="flex items-center gap-3 rounded-2xl border border-[rgba(255,188,219,0.12)] bg-black/10 px-4 py-3 text-sm text-[#fff4f8]">
+            <input
+              type="checkbox"
+              checked={settings.enableSouhoola}
+              onChange={(event) => setSettings((current) => ({ ...current, enableSouhoola: event.target.checked }))}
+              className="accent-pink-500"
+            />
+            <span>Enable Souhoola</span>
+          </label>
+          <label className="flex items-center gap-3 rounded-2xl border border-[rgba(255,188,219,0.12)] bg-black/10 px-4 py-3 text-sm text-[#fff4f8]">
+            <input
+              type="checkbox"
+              checked={settings.enableCod}
+              onChange={(event) => setSettings((current) => ({ ...current, enableCod: event.target.checked, cashOnDeliveryEnabled: event.target.checked }))}
               className="accent-pink-500"
             />
             <span>Enable Cash on Delivery</span>

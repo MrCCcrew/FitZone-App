@@ -20,47 +20,63 @@ type PaymentSettingsResponse = PaymentSettings & {
     valuIntegrationId: boolean;
     symplIntegrationId: boolean;
     souhoolaIntegrationId: boolean;
-    iframeId: boolean;
-    installmentIframeId: boolean;
+    iframeCardId: boolean;
+    iframeInstallmentId: boolean;
     env: string;
   };
 };
+
+function normalizeValidationResult(raw: PaymentSettings["lastValidationResult"] | unknown) {
+  if (!raw || typeof raw !== "object") return DEFAULT_PAYMENT_SETTINGS.lastValidationResult;
+  const value = raw as Record<string, unknown>;
+  return {
+    ok: Boolean(value.ok),
+    message: String(value.message ?? ""),
+    validatedAt: String(value.validatedAt ?? ""),
+    issues: Array.isArray(value.issues) ? value.issues.map((item) => String(item)) : undefined,
+  };
+}
 
 function normalize(raw: Partial<PaymentSettings>): PaymentSettings {
   return {
     ...DEFAULT_PAYMENT_SETTINGS,
     activeProvider: "paymob",
     enabled: Boolean(raw.enabled ?? DEFAULT_PAYMENT_SETTINGS.enabled),
-    merchantId: String(raw.merchantId ?? ""),
-    publicKey: String(raw.publicKey ?? ""),
-    integrationId: String(raw.integrationId ?? raw.iframeId ?? ""),
-    walletIntegrationId: String(raw.walletIntegrationId ?? ""),
-    valuIntegrationId: String(raw.valuIntegrationId ?? ""),
-    symplIntegrationId: String(raw.symplIntegrationId ?? ""),
-    souhoolaIntegrationId: String(raw.souhoolaIntegrationId ?? ""),
-    iframeId: String(raw.iframeId ?? ""),
-    installmentIframeId: String(raw.installmentIframeId ?? DEFAULT_PAYMENT_SETTINGS.installmentIframeId ?? ""),
+    merchantId: String(raw.merchantId ?? DEFAULT_PAYMENT_SETTINGS.merchantId),
+    publicKey: String(raw.publicKey ?? DEFAULT_PAYMENT_SETTINGS.publicKey),
+    cardIntegrationId: String(raw.cardIntegrationId ?? raw.integrationId ?? DEFAULT_PAYMENT_SETTINGS.cardIntegrationId),
+    integrationId: String(raw.integrationId ?? raw.cardIntegrationId ?? DEFAULT_PAYMENT_SETTINGS.integrationId),
+    walletIntegrationId: String(raw.walletIntegrationId ?? DEFAULT_PAYMENT_SETTINGS.walletIntegrationId),
+    valuIntegrationId: String(raw.valuIntegrationId ?? DEFAULT_PAYMENT_SETTINGS.valuIntegrationId),
+    symplIntegrationId: String(raw.symplIntegrationId ?? DEFAULT_PAYMENT_SETTINGS.symplIntegrationId),
+    souhoolaIntegrationId: String(raw.souhoolaIntegrationId ?? DEFAULT_PAYMENT_SETTINGS.souhoolaIntegrationId),
+    iframeCardId: String(raw.iframeCardId ?? raw.iframeId ?? DEFAULT_PAYMENT_SETTINGS.iframeCardId),
+    iframeInstallmentId: String(
+      raw.iframeInstallmentId ?? raw.installmentIframeId ?? DEFAULT_PAYMENT_SETTINGS.iframeInstallmentId,
+    ),
+    iframeId: String(raw.iframeId ?? raw.iframeCardId ?? DEFAULT_PAYMENT_SETTINGS.iframeId),
+    installmentIframeId: String(
+      raw.installmentIframeId ?? raw.iframeInstallmentId ?? DEFAULT_PAYMENT_SETTINGS.installmentIframeId,
+    ),
     returnUrl: String(raw.returnUrl ?? DEFAULT_PAYMENT_SETTINGS.returnUrl),
     cancelUrl: String(raw.cancelUrl ?? DEFAULT_PAYMENT_SETTINGS.cancelUrl),
     webhookUrl: String(raw.webhookUrl ?? DEFAULT_PAYMENT_SETTINGS.webhookUrl),
     sandboxMode: Boolean(raw.sandboxMode ?? DEFAULT_PAYMENT_SETTINGS.sandboxMode),
-    cashOnDeliveryEnabled: Boolean(raw.cashOnDeliveryEnabled ?? DEFAULT_PAYMENT_SETTINGS.cashOnDeliveryEnabled),
+    enableCards: Boolean(raw.enableCards ?? DEFAULT_PAYMENT_SETTINGS.enableCards),
+    enableWallets: Boolean(raw.enableWallets ?? DEFAULT_PAYMENT_SETTINGS.enableWallets),
+    enableValu: Boolean(raw.enableValu ?? DEFAULT_PAYMENT_SETTINGS.enableValu),
+    enableSympl: Boolean(raw.enableSympl ?? DEFAULT_PAYMENT_SETTINGS.enableSympl),
+    enableSouhoola: Boolean(raw.enableSouhoola ?? DEFAULT_PAYMENT_SETTINGS.enableSouhoola),
+    enableCod: Boolean(raw.enableCod ?? raw.cashOnDeliveryEnabled ?? DEFAULT_PAYMENT_SETTINGS.enableCod),
+    cashOnDeliveryEnabled: Boolean(
+      raw.cashOnDeliveryEnabled ?? raw.enableCod ?? DEFAULT_PAYMENT_SETTINGS.cashOnDeliveryEnabled,
+    ),
     cashOnDeliveryLabelAr: String(raw.cashOnDeliveryLabelAr ?? DEFAULT_PAYMENT_SETTINGS.cashOnDeliveryLabelAr),
     cashOnDeliveryLabelEn: String(raw.cashOnDeliveryLabelEn ?? DEFAULT_PAYMENT_SETTINGS.cashOnDeliveryLabelEn),
-    notes: String(raw.notes ?? ""),
+    notes: String(raw.notes ?? DEFAULT_PAYMENT_SETTINGS.notes),
     displayLabelAr: String(raw.displayLabelAr ?? DEFAULT_PAYMENT_SETTINGS.displayLabelAr),
     displayLabelEn: String(raw.displayLabelEn ?? DEFAULT_PAYMENT_SETTINGS.displayLabelEn),
-    lastValidationResult:
-      raw.lastValidationResult && typeof raw.lastValidationResult === "object"
-        ? {
-            ok: Boolean(raw.lastValidationResult.ok),
-            message: String(raw.lastValidationResult.message ?? ""),
-            validatedAt: String(raw.lastValidationResult.validatedAt ?? ""),
-            issues: Array.isArray(raw.lastValidationResult.issues)
-              ? raw.lastValidationResult.issues.map((item) => String(item))
-              : undefined,
-          }
-        : DEFAULT_PAYMENT_SETTINGS.lastValidationResult,
+    lastValidationResult: normalizeValidationResult(raw.lastValidationResult),
   };
 }
 
@@ -83,8 +99,8 @@ function envConfigured() {
     valuIntegrationId: Boolean(process.env.PAYMOB_VALU_INTEGRATION_ID?.trim()),
     symplIntegrationId: Boolean(process.env.PAYMOB_SYMPL_INTEGRATION_ID?.trim()),
     souhoolaIntegrationId: Boolean(process.env.PAYMOB_SOUHOOLA_INTEGRATION_ID?.trim()),
-    iframeId: Boolean(process.env.PAYMOB_IFRAME_CARD_ID?.trim()),
-    installmentIframeId: Boolean(process.env.PAYMOB_IFRAME_INSTALLMENT_ID?.trim()),
+    iframeCardId: Boolean(process.env.PAYMOB_IFRAME_CARD_ID?.trim()),
+    iframeInstallmentId: Boolean(process.env.PAYMOB_IFRAME_INSTALLMENT_ID?.trim()),
     env: String(process.env.PAYMOB_ENV ?? "").trim().toLowerCase(),
   };
 }
@@ -107,6 +123,16 @@ async function loadSettings() {
   } catch {
     return DEFAULT_PAYMENT_SETTINGS;
   }
+}
+
+function getEnabledElectronicMethods(settings: PaymentSettings) {
+  return [
+    settings.enableCards && String(settings.cardIntegrationId || settings.integrationId).trim() ? "cards" : null,
+    settings.enableWallets && String(settings.walletIntegrationId).trim() ? "wallets" : null,
+    settings.enableValu && String(settings.valuIntegrationId).trim() ? "valu" : null,
+    settings.enableSympl && String(settings.symplIntegrationId).trim() ? "sympl" : null,
+    settings.enableSouhoola && String(settings.souhoolaIntegrationId).trim() ? "souhoola" : null,
+  ].filter(Boolean);
 }
 
 export async function GET() {
@@ -132,6 +158,14 @@ export async function PUT(req: Request) {
       ...current,
       ...body,
       activeProvider: "paymob",
+      cardIntegrationId: body.cardIntegrationId ?? body.integrationId ?? current.cardIntegrationId,
+      integrationId: body.integrationId ?? body.cardIntegrationId ?? current.integrationId,
+      iframeCardId: body.iframeCardId ?? body.iframeId ?? current.iframeCardId,
+      iframeId: body.iframeId ?? body.iframeCardId ?? current.iframeId,
+      iframeInstallmentId: body.iframeInstallmentId ?? body.installmentIframeId ?? current.iframeInstallmentId,
+      installmentIframeId: body.installmentIframeId ?? body.iframeInstallmentId ?? current.installmentIframeId,
+      enableCod: body.enableCod ?? body.cashOnDeliveryEnabled ?? current.enableCod,
+      cashOnDeliveryEnabled: body.cashOnDeliveryEnabled ?? body.enableCod ?? current.cashOnDeliveryEnabled,
       webhookUrl: DEFAULT_PAYMENT_SETTINGS.webhookUrl,
     });
 
@@ -141,7 +175,22 @@ export async function PUT(req: Request) {
       create: { section: "paymentSettings", content: JSON.stringify(payload) },
     });
 
-    void logAudit({ action: "update", targetType: "payment_settings", details: { sandboxMode: payload.sandboxMode, integrationId: payload.integrationId } });
+    void logAudit({
+      action: "update",
+      targetType: "payment_settings",
+      details: {
+        sandboxMode: payload.sandboxMode,
+        cardIntegrationId: payload.cardIntegrationId,
+        walletIntegrationId: payload.walletIntegrationId,
+        enableCards: payload.enableCards,
+        enableWallets: payload.enableWallets,
+        enableValu: payload.enableValu,
+        enableSympl: payload.enableSympl,
+        enableSouhoola: payload.enableSouhoola,
+        enableCod: payload.enableCod,
+      },
+    });
+
     return NextResponse.json({
       success: true,
       settings: toResponse(payload),
@@ -167,28 +216,21 @@ export async function POST(req: Request) {
     const settings = await loadSettings();
     const secrets = secretsConfigured();
     const issues: string[] = [];
+    const enabledMethods = getEnabledElectronicMethods(settings);
 
-    if (!settings.enabled) issues.push("المزوّد معطّل من لوحة الأدمن.");
-    const electronicIntegrationIds = [
-      settings.integrationId,
-      settings.walletIntegrationId,
-      settings.valuIntegrationId,
-      settings.symplIntegrationId,
-      settings.souhoolaIntegrationId,
-    ].filter((value) => String(value ?? "").trim() !== "");
-
-    if (!settings.merchantId) issues.push("Merchant ID غير مضبوط.");
-    if (!settings.publicKey) issues.push("Public key غير مضبوط.");
-    if (electronicIntegrationIds.length === 0) issues.push("لا توجد أي Integration IDs مفعلة حاليًا لوسائل Paymob الإلكترونية.");
-    if (!settings.returnUrl) issues.push("Return URL غير مضبوط.");
-    if (!settings.cancelUrl) issues.push("Cancel URL غير مضبوط.");
-    if (!secrets.apiKey) issues.push("PAYMOB_API_KEY غير مضبوط على السيرفر.");
-    if (!secrets.secretKey) issues.push("PAYMOB_SECRET_KEY غير مضبوط على السيرفر.");
-    if (!secrets.hmac) issues.push("PAYMOB_HMAC_SECRET غير مضبوط على السيرفر.");
+    if (!settings.enabled) issues.push("Paymob is disabled in admin settings.");
+    if (!settings.merchantId) issues.push("Merchant ID is missing.");
+    if (!settings.publicKey) issues.push("Public key is missing.");
+    if (enabledMethods.length === 0) issues.push("No electronic Paymob payment methods are enabled.");
+    if (!settings.returnUrl) issues.push("Return URL is missing.");
+    if (!settings.cancelUrl) issues.push("Cancel URL is missing.");
+    if (!secrets.apiKey) issues.push("PAYMOB_API_KEY is missing on the server.");
+    if (!secrets.secretKey) issues.push("PAYMOB_SECRET_KEY is missing on the server.");
+    if (!secrets.hmac) issues.push("PAYMOB_HMAC_SECRET is missing on the server.");
 
     let authTest: { ok: boolean; message: string } = {
       ok: false,
-      message: "تم تخطي اختبار الاتصال بسبب نقص الإعدادات.",
+      message: "Skipped Paymob auth test because required settings are incomplete.",
     };
 
     if (issues.length === 0) {
@@ -203,21 +245,21 @@ export async function POST(req: Request) {
         });
 
         if (response.ok) {
-          authTest = { ok: true, message: "نجح اختبار المصادقة مع Paymob Hosted Checkout." };
+          authTest = { ok: true, message: "Paymob authentication test succeeded." };
         } else {
-          authTest = { ok: false, message: `رفض Paymob التحقق (${response.status}).` };
+          authTest = { ok: false, message: `Paymob authentication test was rejected (${response.status}).` };
         }
       } catch (error) {
         authTest = {
           ok: false,
-          message: `تعذر الاتصال بـ Paymob: ${error instanceof Error ? error.message : "خطأ غير معروف"}`,
+          message: `Could not reach Paymob: ${error instanceof Error ? error.message : "Unknown error"}`,
         };
       }
     }
 
     const validationResult = {
       ok: issues.length === 0 && authTest.ok,
-      message: issues.length === 0 && authTest.ok ? "إعدادات Paymob جاهزة." : "يوجد نقص أو خطأ في إعدادات Paymob.",
+      message: issues.length === 0 && authTest.ok ? "Paymob settings are ready." : "Paymob settings still need attention.",
       validatedAt: new Date().toISOString(),
       issues,
     };
