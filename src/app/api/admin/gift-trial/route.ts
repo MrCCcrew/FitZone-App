@@ -50,7 +50,7 @@ export async function POST(req: Request) {
     const sentThisMonth = await db.userMembership.count({
       where: {
         paymentMethod: "gift",
-        createdAt: { gte: monthStart, lt: monthEnd },
+        startDate: { gte: monthStart, lt: monthEnd },
         // Track by the schedule's trainer
         bookings: {
           some: {
