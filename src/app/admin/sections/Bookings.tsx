@@ -177,6 +177,7 @@ export default function Bookings() {
   const [scanFeedback, setScanFeedback] = useState<AttendanceFeedback | null>(null);
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [cameraBusy, setCameraBusy] = useState(false);
   const [giftModal, setGiftModal] = useState(false);
   const [giftCustomer, setGiftCustomer] = useState("");
   const [giftSchedule, setGiftSchedule] = useState("");
@@ -188,6 +189,7 @@ export default function Bookings() {
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const scanIntervalRef = useRef<number | null>(null);
   const scanInFlightRef = useRef(false);
+  const cameraAutoAttemptRef = useRef<string | null>(null);
 
   const loadBookings = useCallback(async () => {
     setLoading(true);
@@ -346,6 +348,7 @@ export default function Bookings() {
       // permissions API not supported — proceed and let getUserMedia handle it
     }
 
+    setCameraBusy(true);
     try {
       // Try progressively looser constraints — some Android devices reject tight ones
       let stream: MediaStream | null = null;
@@ -430,8 +433,15 @@ export default function Bookings() {
     } catch {
       setCameraError("تعذر فتح الكاميرا — تأكد من منح إذن الكاميرا للمتصفح.");
       stopCamera();
+    } finally {
+      setCameraBusy(false);
     }
   }, [attendanceMode, attendanceScheduleId, stopCamera, submitScan]);
+
+  const activateCamera = useCallback(async () => {
+    cameraAutoAttemptRef.current = `${attendanceMode}:${attendanceScheduleId || "none"}`;
+    await startCamera();
+  }, [attendanceMode, attendanceScheduleId, startCamera]);
 
   useEffect(() => {
     void loadBookings();
@@ -461,6 +471,7 @@ export default function Bookings() {
     }
     setScanFeedback(null);
     stopCamera();
+    cameraAutoAttemptRef.current = null;
   }, [attendanceMode, stopCamera]);
 
   useEffect(() => {
@@ -469,6 +480,33 @@ export default function Bookings() {
       setAttendanceScheduleId(attendanceSchedules[0].id);
     }
   }, [attendanceMode, attendanceScheduleId, attendanceSchedules]);
+
+  useEffect(() => {
+    if (cameraActive || cameraBusy) return;
+    if (cameraError?.includes("إذن")) return;
+    if (attendanceMode === "class" && !attendanceScheduleId) return;
+
+    const key = `${attendanceMode}:${attendanceScheduleId || "none"}`;
+    if (cameraAutoAttemptRef.current === key) return;
+    cameraAutoAttemptRef.current = key;
+
+    const timer = window.setTimeout(() => {
+      void startCamera();
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [attendanceMode, attendanceScheduleId, cameraActive, cameraBusy, cameraError, startCamera]);
+
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState !== "visible") return;
+      if (cameraActive || cameraBusy) return;
+      if (cameraError?.includes("إذن")) return;
+      if (attendanceMode === "class" && !attendanceScheduleId) return;
+      void startCamera();
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, [attendanceMode, attendanceScheduleId, cameraActive, cameraBusy, cameraError, startCamera]);
 
   useEffect(() => () => stopCamera(), [stopCamera]);
 
@@ -708,10 +746,11 @@ export default function Bookings() {
               <div className="flex gap-2">
                 <button
                   type="button"
-                  onClick={() => void startCamera()}
-                  className="flex-1 rounded-xl bg-[#ff4f93] px-4 py-2.5 text-sm font-black text-white transition-colors hover:bg-[#ff2f7d]"
+                  onClick={() => void activateCamera()}
+                  disabled={cameraBusy}
+                  className="flex-1 rounded-xl bg-[#ff4f93] px-4 py-2.5 text-sm font-black text-white transition-colors hover:bg-[#ff2f7d] disabled:opacity-60"
                 >
-                  فتح الكاميرا
+                  {cameraBusy ? "جاري تفعيل الكاميرا..." : "فتح الكاميرا"}
                 </button>
                 <button
                   type="button"
@@ -784,8 +823,16 @@ export default function Bookings() {
               <div className="relative flex min-h-[280px] items-center justify-center bg-black/40 p-3">
                 <video ref={videoRef} className={`max-h-[340px] w-full rounded-xl object-cover ${cameraActive ? "block" : "hidden"}`} muted playsInline autoPlay />
                 {!cameraActive ? (
-                  <div className="text-center text-sm text-[#d7aabd]">
-                    افتح الكاميرا لبدء قراءة QR العميل مباشرة من شاشة الهاتف.
+                  <div className="space-y-3 text-center text-sm text-[#d7aabd]">
+                    <div>افتح الكاميرا لبدء قراءة QR العميل مباشرة من شاشة الهاتف.</div>
+                    <button
+                      type="button"
+                      onClick={() => void activateCamera()}
+                      disabled={cameraBusy}
+                      className="rounded-xl bg-[#ff4f93] px-4 py-2.5 text-xs font-black text-white transition-colors hover:bg-[#ff2f7d] disabled:opacity-60"
+                    >
+                      {cameraBusy ? "جاري تفعيل الكاميرا..." : "تفعيل الكاميرا الآن"}
+                    </button>
                   </div>
                 ) : null}
                 <canvas ref={canvasRef} className="hidden" />
