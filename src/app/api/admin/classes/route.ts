@@ -18,6 +18,11 @@ async function checkAdmin() {
   return "error" in guard ? guard.error : null;
 }
 
+async function getTrainerProfileId(userId: string): Promise<string | null> {
+  const t = await db.trainer.findFirst({ where: { userId }, select: { id: true } });
+  return t?.id ?? null;
+}
+
 function getNextOccurrences(dayName: string, time: string, maxSpots: number, count = 8) {
   const dayIndex = DAYS_AR.indexOf(dayName);
   if (dayIndex === -1) return [];
@@ -42,11 +47,19 @@ function getNextOccurrences(dayName: string, time: string, maxSpots: number, cou
 }
 
 export async function GET() {
-  const error = await checkAdmin();
-  if (error) return error;
+  const guard = await requireAdminFeature("classes");
+  if ("error" in guard) return guard.error;
+
+  let trainerIdFilter: string | undefined;
+  if (guard.role === "trainer") {
+    const profileId = await getTrainerProfileId(guard.session.user.id);
+    if (!profileId) return NextResponse.json({ classes: [], trainers: [] });
+    trainerIdFilter = profileId;
+  }
 
   const [classes, trainers] = await Promise.all([
     db.class.findMany({
+      where: trainerIdFilter ? { trainerId: trainerIdFilter } : undefined,
       include: {
         trainer: true,
         schedules: { where: { isActive: true }, take: 10, orderBy: { date: "asc" } },
