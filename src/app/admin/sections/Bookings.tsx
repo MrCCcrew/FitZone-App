@@ -313,7 +313,7 @@ export default function Bookings() {
     [attendanceMode, attendanceScheduleId, loadAttendance, loadBookings, stopCamera],
   );
 
-  const startCamera = useCallback(async () => {
+  const startCamera = useCallback(async (manual = false) => {
     const BarcodeDetectorCtor = (window as WindowWithBarcodeDetector).BarcodeDetector;
 
     if (attendanceMode === "class" && !attendanceScheduleId) {
@@ -334,18 +334,6 @@ export default function Bookings() {
           : "متصفحك لا يدعم الوصول للكاميرا. جرب Chrome أو Safari."
       );
       return;
-    }
-
-    // Check permission state upfront — if 'denied' we can never show the dialog again
-    try {
-      const perm = await navigator.permissions.query({ name: "camera" as PermissionName });
-      if (perm.state === "denied") {
-        setCameraError("تم رفض إذن الكاميرا");
-        stopCamera();
-        return;
-      }
-    } catch {
-      // permissions API not supported — proceed and let getUserMedia handle it
     }
 
     setCameraBusy(true);
@@ -369,7 +357,11 @@ export default function Bookings() {
       if (!stream) {
         const err = lastErr as { name?: string };
         if (err?.name === "NotAllowedError" || err?.name === "PermissionDeniedError") {
-          setCameraError("تم رفض إذن الكاميرا");
+          setCameraError(
+            manual
+              ? "تم رفض إذن الكاميرا. تأكد من السماح للكاميرا لهذا التطبيق من إعدادات الموقع."
+              : "تعذر تشغيل الكاميرا تلقائيًا. اضغط زر \"تفعيل الكاميرا الآن\" للسماح.",
+          );
         } else if (err?.name === "NotFoundError" || err?.name === "DevicesNotFoundError") {
           setCameraError("لم يتم العثور على كاميرا في هذا الجهاز.");
         } else if (err?.name === "NotReadableError" || err?.name === "TrackStartError") {
@@ -440,7 +432,7 @@ export default function Bookings() {
 
   const activateCamera = useCallback(async () => {
     cameraAutoAttemptRef.current = `${attendanceMode}:${attendanceScheduleId || "none"}`;
-    await startCamera();
+    await startCamera(true);
   }, [attendanceMode, attendanceScheduleId, startCamera]);
 
   useEffect(() => {
@@ -485,24 +477,26 @@ export default function Bookings() {
     if (cameraActive || cameraBusy) return;
     if (cameraError?.includes("إذن")) return;
     if (attendanceMode === "class" && !attendanceScheduleId) return;
+    if (/Android/i.test(navigator.userAgent)) return;
 
     const key = `${attendanceMode}:${attendanceScheduleId || "none"}`;
     if (cameraAutoAttemptRef.current === key) return;
     cameraAutoAttemptRef.current = key;
 
     const timer = window.setTimeout(() => {
-      void startCamera();
+      void startCamera(false);
     }, 300);
     return () => window.clearTimeout(timer);
   }, [attendanceMode, attendanceScheduleId, cameraActive, cameraBusy, cameraError, startCamera]);
 
   useEffect(() => {
+    if (/Android/i.test(navigator.userAgent)) return;
     const handleVisibility = () => {
       if (document.visibilityState !== "visible") return;
       if (cameraActive || cameraBusy) return;
       if (cameraError?.includes("إذن")) return;
       if (attendanceMode === "class" && !attendanceScheduleId) return;
-      void startCamera();
+      void startCamera(false);
     };
     document.addEventListener("visibilitychange", handleVisibility);
     return () => document.removeEventListener("visibilitychange", handleVisibility);
