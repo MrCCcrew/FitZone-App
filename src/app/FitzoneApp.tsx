@@ -7950,6 +7950,88 @@ const ContactPage = () => {
               </div>
             </div>
           </div>
+          {/* ── Map section ── */}
+          <div style={{ marginTop: 64 }}>
+            <h2 className="section-title" style={{ textAlign: "center", marginBottom: 8 }}>
+              {t("موقعنا", "Our")} <span>{t("", "Location")}</span>
+            </h2>
+            <p style={{ textAlign: "center", color: C.gray, fontSize: 14, marginBottom: 32 }}>
+              {t("هتلاقينا في قلب بني سويف — مقابل بنك القاهرة 📍", "Find us in the heart of Beni Suef — opposite Cairo Bank 📍")}
+            </p>
+            <div style={{
+              position: "relative",
+              borderRadius: 24,
+              overflow: "hidden",
+              border: "1px solid rgba(233,30,99,.25)",
+              boxShadow: "0 0 0 1px rgba(233,30,99,.1), 0 24px 60px rgba(0,0,0,.45)",
+              background: "#0d0a0c",
+            }}>
+              {/* Top accent bar */}
+              <div style={{
+                position: "absolute", top: 0, left: 0, right: 0, height: 4, zIndex: 2,
+                background: "linear-gradient(90deg, #e91e63, #c2185b, #e91e63)",
+              }} />
+
+              {/* Map iframe */}
+              <iframe
+                title="موقع FitZone"
+                src="https://maps.google.com/maps?q=29.0759382,31.098706&z=17&output=embed&hl=ar"
+                width="100%"
+                height="400"
+                style={{ display: "block", border: "none", filter: "brightness(0.9) contrast(1.05)" }}
+                loading="lazy"
+                allowFullScreen
+              />
+
+              {/* Bottom overlay with address + button */}
+              <div style={{
+                background: "linear-gradient(135deg, rgba(26,12,20,.97), rgba(42,15,28,.97))",
+                borderTop: "1px solid rgba(233,30,99,.2)",
+                padding: "20px 24px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                flexWrap: "wrap",
+                gap: 14,
+              }}>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+                  <div style={{
+                    width: 40, height: 40, borderRadius: 10, flexShrink: 0,
+                    background: "rgba(233,30,99,.15)",
+                    border: "1px solid rgba(233,30,99,.3)",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                  }}>
+                    <I n="map" s={18} c={C.red} />
+                  </div>
+                  <div>
+                    <div style={{ color: C.white, fontWeight: 700, fontSize: 14, marginBottom: 3 }}>
+                      {t("FitZone — بني سويف", "FitZone — Beni Suef")}
+                    </div>
+                    <div style={{ color: C.gray, fontSize: 12, lineHeight: 1.6 }}>
+                      {t("مقابل أمام بنك القاهرة بجوار شام للسياحة فوق كازيون", "Opposite Cairo Bank, next to Sham Tourism, above Cazino")}
+                    </div>
+                  </div>
+                </div>
+                <a
+                  href="https://maps.app.goo.gl/cX9N9JSidgqdLe1h9"
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{
+                    display: "inline-flex", alignItems: "center", gap: 8,
+                    background: "linear-gradient(135deg,#e91e63,#c2185b)",
+                    color: "#fff", fontWeight: 800, fontSize: 13,
+                    padding: "10px 20px", borderRadius: 10,
+                    textDecoration: "none", whiteSpace: "nowrap",
+                    boxShadow: "0 4px 16px rgba(233,30,99,.35)",
+                    fontFamily: "'Cairo','Tajawal',sans-serif",
+                  }}
+                >
+                  📍 {t("افتحي في خرائط Google", "Open in Google Maps")}
+                </a>
+              </div>
+            </div>
+          </div>
+
           <div style={{ marginTop: 72 }}>
             <h2 className="section-title" style={{ textAlign: "center", marginBottom: 36 }}>{t("الأسئلة", "Frequently asked")} <span>{t("الشائعة", "questions")}</span></h2>
             <div style={{ maxWidth: 680, margin: "0 auto" }}>
