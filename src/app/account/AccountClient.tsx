@@ -3767,8 +3767,8 @@ export default function AccountClient({ data }: { data: AccountData }) {
             <StatCard
               icon="📅"
               label={t("أيام الاشتراك", "Membership days")}
-              value={membershipDaysLeft > 0 ? `${formatMoney(membershipDaysLeft, lang)} ${t("يوم", "days")}` : t("منتهي", "Expired")}
-              color={membershipDaysLeft > 7 ? "text-green-400" : "text-red-400"}
+              value={!data.membership ? t("غير مشترك", "Not subscribed") : membershipDaysLeft > 0 ? `${formatMoney(membershipDaysLeft, lang)} ${t("يوم", "days")}` : t("منتهي", "Expired")}
+              color={!data.membership ? "text-gray-400" : membershipDaysLeft > 7 ? "text-green-400" : "text-red-400"}
               actionLabel={membershipActionLabel}
               actionHref={membershipActionLabel ? "/?page=memberships" : undefined}
             />
