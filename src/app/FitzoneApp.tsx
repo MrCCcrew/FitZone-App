@@ -1321,6 +1321,7 @@ type PublicMembership = {
   features: string[];
   walletBonus: number;
   gift: string | null;
+  subtitle?: string | null;
   kind: string;
   isFeatured: boolean;
   goalIds: string[];
@@ -1987,7 +1988,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
   const [testimonials, setTestimonials] = useState<PublicTestimonial[]>([]);
   const [products, setProducts] = useState<StoreProduct[]>([]);
   const [homeOffers, setHomeOffers] = useState<PublicOffer[]>([]);
-  const [homeFeaturedPlan, setHomeFeaturedPlan] = useState<{ name: string; price: number; features: string[]; durationDays: number } | null>(null);
+  const [homeFeaturedPlan, setHomeFeaturedPlan] = useState<{ id: string; name: string; price: number; priceBefore: number | null; subtitle: string | null; features: string[]; durationDays: number } | null>(null);
   const [trialMembership, setTrialMembership] = useState<{ id: string; name: string; price: number; sessionsCount: number; features: string[]; durationDays: number } | null>(null);
   const [todayClasses, setTodayClasses] = useState<Array<{ id: string; time: string; name: string; trainer: string; spots: number; color: string; type: string }>>([]);
   const [todayIndex, setTodayIndex] = useState(0);
@@ -2028,7 +2029,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
     loadPublicApi(true).then(d => {
       if (Array.isArray(d.memberships) && d.memberships.length > 0) {
         const featured = (d.memberships as PublicMembership[]).find((mb) => mb.isFeatured);
-        setHomeFeaturedPlan(featured ? { name: featured.name, price: featured.priceAfter ?? featured.price, features: featured.features.slice(0, 4), durationDays: featured.durationDays } : null);
+        setHomeFeaturedPlan(featured ? { id: featured.id, name: featured.name, price: featured.priceAfter ?? featured.price, priceBefore: featured.priceBefore ?? null, subtitle: featured.subtitle ?? null, features: featured.features.slice(0, 4), durationDays: featured.durationDays } : null);
         const packages = (d.memberships as PublicMembership[]).filter((mb) => mb.kind === "package");
         const subscriptions = (d.memberships as PublicMembership[]).filter((mb) => mb.kind === "subscription");
         const source = packages.length > 0 ? packages : subscriptions;
@@ -2513,7 +2514,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                     </div>
                     <h3 style={{ fontSize: 28, fontWeight: 900, color: "#FFD700", marginBottom: 6 }}>{homeFeaturedPlan.name}</h3>
                     <p style={{ color: "#c9b9c1", fontSize: 14, marginBottom: 14, lineHeight: 1.7 }}>
-                      {t(`احضري كلاسات بلا حدود خلال ${homeFeaturedPlan.durationDays} يومًا كاملة`, `Unlimited classes for ${homeFeaturedPlan.durationDays} full days`)}
+                      {homeFeaturedPlan.subtitle ?? t(`احضري كلاسات بلا حدود خلال ${homeFeaturedPlan.durationDays} يومًا كاملة`, `Unlimited classes for ${homeFeaturedPlan.durationDays} full days`)}
                     </p>
                     <ul style={{ listStyle: "none", display: "flex", flexDirection: "column", gap: 6 }}>
                       {homeFeaturedPlan.features.map((feat, i) => (
@@ -2524,10 +2525,18 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                     </ul>
                   </div>
                   <div style={{ textAlign: "center", flexShrink: 0 }}>
-                    <div style={{ fontSize: 38, fontWeight: 900, color: "#FFD700" }}>{homeFeaturedPlan.price.toLocaleString("ar-EG")}</div>
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, marginBottom: 4 }}>
+                      {homeFeaturedPlan.priceBefore != null && homeFeaturedPlan.priceBefore > homeFeaturedPlan.price && (
+                        <div style={{ fontSize: 16, color: "#a07060", textDecoration: "line-through" }}>{homeFeaturedPlan.priceBefore.toLocaleString("ar-EG")} {t("ج.م", "EGP")}</div>
+                      )}
+                      <div style={{ fontSize: 38, fontWeight: 900, color: "#FFD700" }}>{homeFeaturedPlan.price.toLocaleString("ar-EG")}</div>
+                    </div>
                     <div style={{ color: "#c9b9c1", fontSize: 13, marginBottom: 16 }}>{t("جنيه", "EGP")} / {homeFeaturedPlan.durationDays} {t("يوم", "days")}</div>
                     <button
-                      onClick={() => navigate("memberships")}
+                      onClick={() => {
+                        window.sessionStorage.setItem("fitzone:goto-featured", "1");
+                        navigate("memberships");
+                      }}
                       style={{ background: "linear-gradient(135deg, #FFD700, #C9A227)", color: "#000", border: "none", borderRadius: 12, padding: "14px 28px", fontWeight: 900, fontSize: 15, cursor: "pointer", fontFamily: "'Cairo', sans-serif", boxShadow: "0 6px 20px rgba(212,175,55,0.4)" }}
                     >
                       {t("اشتركي الآن ⭐", "Subscribe Now ⭐")}
@@ -3061,6 +3070,7 @@ type PlanItem = {
   color: string;
   popular: boolean;
   goalIds: string[];
+  subtitle?: string | null;
   isTrial?: boolean;
   isFeatured?: boolean;
 };
@@ -3093,6 +3103,7 @@ function mapMembershipToPlanItem(membership: PublicMembership, color: string, po
     color,
     popular,
     goalIds: Array.isArray(membership.goalIds) ? membership.goalIds : [],
+    subtitle: membership.subtitle ?? null,
     isFeatured: membership.isFeatured ?? false,
   };
 }
@@ -3111,6 +3122,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
   const [selectedGoals, setSelectedGoals] = useState<string[]>([]);
   const [goalViewParentId, setGoalViewParentId] = useState<string | null>(null);
   const plansRef = useRef<HTMLDivElement | null>(null);
+  const featuredCardRef = useRef<HTMLDivElement | null>(null);
   const [subscribing, setSubscribing] = useState<string | null>(null);
   const [subMsg, setSubMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [pendingPaymentUrl, setPendingPaymentUrl] = useState<string | null>(null);
@@ -3247,6 +3259,15 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
         setMembershipDataReady(true);
       });
   }, [lang]);
+
+  useEffect(() => {
+    if (!membershipDataReady) return;
+    const gotoFeatured = typeof window !== "undefined" && window.sessionStorage.getItem("fitzone:goto-featured");
+    if (gotoFeatured) {
+      window.sessionStorage.removeItem("fitzone:goto-featured");
+      setTimeout(() => featuredCardRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 100);
+    }
+  }, [membershipDataReady]);
 
   useEffect(() => {
     if (!membershipDataReady || !pendingPlan) return;
@@ -4713,8 +4734,10 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
               ? (() => { const d = new Date(featuredStartDate + "T00:00:00"); d.setDate(d.getDate() + featuredPlan.durationDays); return d.toLocaleDateString("ar-EG", { year: "numeric", month: "long", day: "numeric" }); })()
               : null;
             const featuredPrice = featuredPlan.priceAfter ?? featuredPlan.price;
+            const featuredPriceBefore = featuredPlan.priceBefore ?? null;
+            const hasDiscount = featuredPriceBefore != null && featuredPriceBefore > featuredPrice;
             return (
-              <div style={{
+              <div ref={featuredCardRef} style={{
                 marginBottom: 32,
                 borderRadius: 20,
                 border: "2px solid rgba(212,175,55,0.45)",
@@ -4737,13 +4760,21 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
 
                     <h3 style={{ fontSize: 30, fontWeight: 900, color: "#FFD700", marginBottom: 6, lineHeight: 1.2 }}>{featuredPlan.name}</h3>
                     <p style={{ color: "#c9b9a0", fontSize: 13, marginBottom: 18 }}>
-                      {t(`احضري كلاسات بلا حدود خلال ${featuredPlan.durationDays} يومًا كاملة`, `Unlimited classes for ${featuredPlan.durationDays} full days`)}
+                      {featuredPlan.subtitle ?? t(`احضري كلاسات بلا حدود خلال ${featuredPlan.durationDays} يومًا كاملة`, `Unlimited classes for ${featuredPlan.durationDays} full days`)}
                     </p>
 
-                    <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 20 }}>
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 4 }}>
                       <span style={{ fontSize: 44, fontWeight: 900, color: "#E91E63", lineHeight: 1 }}>{featuredPrice.toLocaleString("ar-EG")}</span>
                       <span style={{ color: "#a07060", fontSize: 13 }}>{t("ج.م", "EGP")}</span>
+                      {hasDiscount && (
+                        <span style={{ fontSize: 16, color: "#7a5a50", textDecoration: "line-through" }}>{featuredPriceBefore!.toLocaleString("ar-EG")}</span>
+                      )}
                     </div>
+                    {hasDiscount && (
+                      <div style={{ marginBottom: 16, fontSize: 12, color: "#D4AF37", fontWeight: 700 }}>
+                        وفّري {Math.round((1 - featuredPrice / featuredPriceBefore!) * 100)}٪
+                      </div>
+                    )}
 
                     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                       {featuredPlan.features.map((feat, fi) => (

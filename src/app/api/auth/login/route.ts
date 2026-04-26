@@ -43,9 +43,23 @@ export async function POST(req: Request) {
       },
     });
 
-    if (!user?.password || user.isActive === false) {
+    if (!user) {
       return NextResponse.json(
-        { error: "البريد الإلكتروني أو كلمة المرور غير صحيحة." },
+        { error: "هذا البريد الإلكتروني غير مسجل لدينا." },
+        { status: 401 },
+      );
+    }
+
+    if (user.isActive === false) {
+      return NextResponse.json(
+        { error: "هذا الحساب موقوف. تواصلي مع الإدارة." },
+        { status: 401 },
+      );
+    }
+
+    if (!user.password) {
+      return NextResponse.json(
+        { error: "هذا الحساب مسجل عبر Google أو Apple — يرجى تسجيل الدخول بنفس الطريقة." },
         { status: 401 },
       );
     }
@@ -53,7 +67,7 @@ export async function POST(req: Request) {
     const valid = user.password.startsWith("$2") && (await bcryptjs.compare(normalizedPassword, user.password));
     if (!valid) {
       return NextResponse.json(
-        { error: "البريد الإلكتروني أو كلمة المرور غير صحيحة." },
+        { error: "كلمة المرور غير صحيحة." },
         { status: 401 },
       );
     }

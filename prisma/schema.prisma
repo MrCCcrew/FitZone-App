@@ -147,6 +147,7 @@ model Membership {
   walletBonus Float   @default(0)
   gift        String?
   giftEn      String?
+  subtitle    String? @db.Text
   isFeatured  Boolean @default(false)
   isActive    Boolean @default(true)
 

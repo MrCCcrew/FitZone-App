@@ -412,6 +412,7 @@ export async function GET(request: Request) {
           features: lang === "en" ? parseJsonArray(membership.featuresEn) : parseJsonArray(membership.features),
           walletBonus: membership.walletBonus,
           gift: lang === "en" ? (membership.giftEn || membership.gift) : membership.gift,
+          subtitle: membership.subtitle ?? null,
           kind: membership.kind,
           isFeatured: membership.isFeatured ?? false,
           goalIds: membership.goals.map((goal) => goal.goalId),
