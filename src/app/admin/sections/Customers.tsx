@@ -662,8 +662,33 @@ export default function Customers() {
               </div>
               <div>
                 <div className="text-xl font-black text-[#fff4f8]">{viewCustomer.name}</div>
-                <div className={`mt-1 text-sm font-bold ${PLAN_COLORS[viewCustomer.plan] ?? "text-[#d7aabd]"}`}>
-                  {viewCustomer.plan}
+                <div className="mt-1 flex items-center gap-2">
+                  {(() => {
+                    const activeMem = viewCustomer.memberships?.find((m: CustomerMembershipReport) => m.status === "active");
+                    if (activeMem) {
+                      return (
+                        <>
+                          <span className="h-2 w-2 rounded-full bg-emerald-400" />
+                          <span className="text-sm font-bold text-emerald-400">{activeMem.name}</span>
+                        </>
+                      );
+                    }
+                    const expiredMem = viewCustomer.memberships?.find((m: CustomerMembershipReport) => m.status === "expired");
+                    if (expiredMem) {
+                      return (
+                        <>
+                          <span className="h-2 w-2 rounded-full bg-rose-400" />
+                          <span className="text-sm font-bold text-rose-400">منتهي — {expiredMem.name}</span>
+                        </>
+                      );
+                    }
+                    return (
+                      <>
+                        <span className="h-2 w-2 rounded-full bg-gray-500" />
+                        <span className="text-sm font-bold text-gray-400">غير مشترك</span>
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
             </div>
@@ -708,7 +733,17 @@ export default function Customers() {
                         <div>
                           <div className="text-sm font-bold text-[#fff4f8]">{membership.name}</div>
                           <div className="mt-1 text-xs text-[#d7aabd]">
-                            {membership.kind === "package" ? "باقة" : "اشتراك"} • {membership.status}
+                            {membership.kind === "package" ? "باقة" : "اشتراك"} •{" "}
+                            <span className={
+                              membership.status === "active" ? "text-emerald-400" :
+                              membership.status === "expired" ? "text-rose-400" :
+                              membership.status === "cancelled" ? "text-amber-400" : "text-[#d7aabd]"
+                            }>
+                              {membership.status === "active" ? "نشط" :
+                               membership.status === "expired" ? "منتهي" :
+                               membership.status === "cancelled" ? "ملغي" :
+                               membership.status === "pending" ? "معلق" : membership.status}
+                            </span>
                           </div>
                         </div>
                         <div className="text-xs text-[#d7aabd]">
@@ -758,7 +793,10 @@ export default function Customers() {
                   ))}
                 </div>
               ) : (
-                <div className="text-sm text-[#d7aabd]">لا توجد اشتراكات مسجلة لهذا العميل حتى الآن.</div>
+                <div className="flex items-center gap-2 rounded-xl border border-gray-700/50 bg-black/20 px-4 py-3">
+                  <span className="h-2 w-2 rounded-full bg-gray-500" />
+                  <span className="text-sm font-bold text-gray-400">غير مشترك</span>
+                </div>
               )}
             </div>
 
