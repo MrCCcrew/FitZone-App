@@ -57,6 +57,8 @@ const EMPTY_TRAINER: EditableTrainer = {
   active: true,
   showOnHome: true,
   sortOrder: 0,
+  canSendGifts: false,
+  giftMonthlyLimit: 4,
 };
 
 function listToText(items: string[]) {
@@ -1021,6 +1023,35 @@ export default function Trainers() {
                   ))}
                 </div>
               ) : null}
+            </div>
+
+            <div className="rounded-2xl border border-amber-500/20 bg-amber-950/20 p-4 space-y-3">
+              <div className="text-sm font-black text-amber-300">صلاحيات الكلاسات الهدية</div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="rounded-xl border border-gray-700 bg-gray-800 p-3 text-sm text-white">
+                  <div className="mb-2 font-bold">إرسال كلاسات هدية</div>
+                  <select
+                    value={modal.canSendGifts ? "yes" : "no"}
+                    onChange={(event) => setModal({ ...modal, canSendGifts: event.target.value === "yes" })}
+                    className={INPUT}
+                  >
+                    <option value="no">غير مسموح</option>
+                    <option value="yes">مسموح</option>
+                  </select>
+                </label>
+
+                {modal.canSendGifts && (
+                  <FieldHint title="الحد الشهري للهدايا" hint="أقصى عدد كلاسات هدية يمكن للمدربة إرسالها شهريًا.">
+                    <input
+                      type="number"
+                      min={0}
+                      value={modal.giftMonthlyLimit}
+                      onChange={(event) => setModal({ ...modal, giftMonthlyLimit: Math.max(0, Number(event.target.value) || 0) })}
+                      className={INPUT}
+                    />
+                  </FieldHint>
+                )}
+              </div>
             </div>
 
             <button

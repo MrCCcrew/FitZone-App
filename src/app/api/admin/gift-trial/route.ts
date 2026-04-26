@@ -34,6 +34,39 @@ export async function POST(req: Request) {
   const guard = await requireAdminFeature("bookings");
   if ("error" in guard) return guard.error;
 
+  // If the sender is a trainer, check gift permissions and monthly limit
+  if (guard.role === "trainer") {
+    const trainerProfile = await db.trainer.findFirst({
+      where: { userId: guard.session.user.id },
+      select: { id: true, canSendGifts: true, giftMonthlyLimit: true },
+    });
+    if (!trainerProfile || !trainerProfile.canSendGifts) {
+      return NextResponse.json({ error: "ليس لديك صلاحية إرسال كلاسات هدية." }, { status: 403 });
+    }
+    // Count gifts sent this calendar month
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const sentThisMonth = await db.userMembership.count({
+      where: {
+        paymentMethod: "gift",
+        createdAt: { gte: monthStart, lt: monthEnd },
+        // Track by the schedule's trainer
+        bookings: {
+          some: {
+            schedule: { class: { trainerId: trainerProfile.id } },
+          },
+        },
+      },
+    });
+    if (sentThisMonth >= trainerProfile.giftMonthlyLimit) {
+      return NextResponse.json(
+        { error: `لقد وصلت للحد الأقصى من الكلاسات الهدية هذا الشهر (${trainerProfile.giftMonthlyLimit}).` },
+        { status: 429 },
+      );
+    }
+  }
+
   const body = await req.json().catch(() => ({})) as {
     customerId?: string;
     scheduleId?: string;

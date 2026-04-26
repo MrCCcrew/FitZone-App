@@ -28,6 +28,8 @@ function formatTrainer(trainer: {
   isActive: boolean;
   showOnHome: boolean;
   sortOrder: number;
+  canSendGifts: boolean;
+  giftMonthlyLimit: number;
   _count: { classes: number };
   user: { id: string; name: string | null; email: string | null } | null;
 }) {
@@ -50,6 +52,8 @@ function formatTrainer(trainer: {
     active: trainer.isActive,
     showOnHome: trainer.showOnHome,
     sortOrder: trainer.sortOrder,
+    canSendGifts: trainer.canSendGifts,
+    giftMonthlyLimit: trainer.giftMonthlyLimit,
     linkedUser: trainer.user
       ? {
           id: trainer.user.id,
@@ -109,6 +113,8 @@ export async function POST(req: Request) {
         showOnHome: body.showOnHome !== false,
         sortOrder: Number(body.sortOrder ?? 0) || 0,
         userId: body.userId?.trim() || null,
+        canSendGifts: Boolean(body.canSendGifts ?? false),
+        giftMonthlyLimit: Math.max(0, Number(body.giftMonthlyLimit ?? 4) || 4),
       },
       include: {
         _count: { select: { classes: true } },
@@ -161,6 +167,8 @@ export async function PATCH(req: Request) {
         ...(body.showOnHome !== undefined ? { showOnHome: Boolean(body.showOnHome) } : {}),
         ...(body.sortOrder !== undefined ? { sortOrder: Number(body.sortOrder) || 0 } : {}),
         ...(body.userId !== undefined ? { userId: String(body.userId).trim() || null } : {}),
+        ...(body.canSendGifts !== undefined ? { canSendGifts: Boolean(body.canSendGifts) } : {}),
+        ...(body.giftMonthlyLimit !== undefined ? { giftMonthlyLimit: Math.max(0, Number(body.giftMonthlyLimit) || 0) } : {}),
       },
       include: {
         _count: { select: { classes: true } },

@@ -182,6 +182,8 @@ export interface Trainer {
     name: string;
     email: string;
   } | null;
+  canSendGifts: boolean;
+  giftMonthlyLimit: number;
 }
 
 export interface Product {
