@@ -61,6 +61,16 @@
   body {
     max-width: 100%;
     overflow-x: hidden;
+    /* Prevent iOS Safari auto-zoom when focusing inputs with small font */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  /* Prevent iOS auto-zoom on input focus (Safari zooms when font-size < 16px) */
+  @media screen and (max-width: 768px) {
+    input, select, textarea {
+      font-size: max(16px, 1em) !important;
+    }
   }
 
   img,
