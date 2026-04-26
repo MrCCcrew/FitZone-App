@@ -242,9 +242,11 @@ model Trainer {
   rating         Float   @default(5.0)
   sessionsCount  Int     @default(0)
   image          String?
-  isActive       Boolean @default(true)
-  showOnHome     Boolean @default(true)
-  sortOrder      Int     @default(0)
+  isActive          Boolean @default(true)
+  showOnHome        Boolean @default(true)
+  sortOrder         Int     @default(0)
+  canSendGifts      Boolean @default(false)
+  giftMonthlyLimit  Int     @default(4)
 
   user                  User?                      @relation("TrainerAccount", fields: [userId], references: [id], onDelete: SetNull)
   classes               Class[]
