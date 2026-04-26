@@ -334,6 +334,18 @@ export default function Bookings() {
       return;
     }
 
+    // Check permission state upfront — if 'denied' we can never show the dialog again
+    try {
+      const perm = await navigator.permissions.query({ name: "camera" as PermissionName });
+      if (perm.state === "denied") {
+        setCameraError("تم رفض إذن الكاميرا");
+        stopCamera();
+        return;
+      }
+    } catch {
+      // permissions API not supported — proceed and let getUserMedia handle it
+    }
+
     try {
       // Try progressively looser constraints — some Android devices reject tight ones
       let stream: MediaStream | null = null;
@@ -354,7 +366,7 @@ export default function Bookings() {
       if (!stream) {
         const err = lastErr as { name?: string };
         if (err?.name === "NotAllowedError" || err?.name === "PermissionDeniedError") {
-          setCameraError("تم رفض إذن الكاميرا — افتح إعدادات المتصفح واسمح بالوصول للكاميرا ثم أعد المحاولة.");
+          setCameraError("تم رفض إذن الكاميرا");
         } else if (err?.name === "NotFoundError" || err?.name === "DevicesNotFoundError") {
           setCameraError("لم يتم العثور على كاميرا في هذا الجهاز.");
         } else if (err?.name === "NotReadableError" || err?.name === "TrackStartError") {
@@ -738,35 +750,29 @@ export default function Bookings() {
             {cameraError ? (
               <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200 space-y-2">
                 <div className="font-bold">{cameraError}</div>
-                {cameraError.includes("إذن") && (() => {
-                  const isPwa = typeof window !== "undefined" && window.matchMedia("(display-mode: standalone)").matches;
-                  return (
-                    <div className="space-y-1 text-amber-300/90">
-                      {isPwa ? (
-                        <>
-                          <div>لإعادة السماح بالكاميرا من التطبيق:</div>
-                          <ol className="list-decimal list-inside space-y-0.5 pr-1">
-                            <li>اضغط على قائمة النقاط الثلاث ⋮ أعلى الشاشة</li>
-                            <li>اختر <strong>إعدادات الموقع</strong></li>
-                            <li>غيّر <strong>الكاميرا</strong> من "محظور" إلى "سماح"</li>
-                            <li>ارجع للتطبيق وافتح الكاميرا مجدداً</li>
-                          </ol>
-                          <div className="mt-1 opacity-75">أو: إعدادات الهاتف ← التطبيقات ← Chrome ← الأذونات ← الكاميرا ← سماح</div>
-                        </>
-                      ) : (
-                        <>
-                          <div>لإعادة السماح بالكاميرا على Chrome:</div>
-                          <ol className="list-decimal list-inside space-y-0.5 pr-1">
-                            <li>اضغط على أيقونة القفل 🔒 في شريط العنوان</li>
-                            <li>اختر <strong>إعدادات الموقع</strong></li>
-                            <li>غيّر <strong>الكاميرا</strong> من "محظور" إلى "سماح"</li>
-                            <li>أعد تحميل الصفحة وافتح الكاميرا مجدداً</li>
-                          </ol>
-                        </>
-                      )}
+                {cameraError.includes("إذن") && (
+                  <div className="space-y-3 text-amber-300/90">
+                    <div className="font-semibold">جرّب الخطوات التالية بالترتيب:</div>
+                    <div>
+                      <div className="font-medium mb-1">① من إعدادات الهاتف (الأضمن):</div>
+                      <ol className="list-decimal list-inside space-y-0.5 pr-1">
+                        <li>إعدادات الهاتف ← <strong>التطبيقات</strong></li>
+                        <li>ابحث عن <strong>Chrome</strong> واضغط عليه</li>
+                        <li>اختر <strong>الأذونات</strong> ← <strong>الكاميرا</strong></li>
+                        <li>اختر <strong>السماح فقط أثناء استخدام التطبيق</strong></li>
+                        <li>ارجع للتطبيق واضغط "فتح الكاميرا" مجدداً</li>
+                      </ol>
                     </div>
-                  );
-                })()}
+                    <div>
+                      <div className="font-medium mb-1">② من داخل التطبيق:</div>
+                      <ol className="list-decimal list-inside space-y-0.5 pr-1">
+                        <li>اضغط ⋮ أعلى الشاشة ← <strong>إعدادات الموقع</strong></li>
+                        <li>غيّر <strong>الكاميرا</strong> إلى "سماح"</li>
+                        <li>أعد تشغيل التطبيق</li>
+                      </ol>
+                    </div>
+                  </div>
+                )}
               </div>
             ) : null}
 
