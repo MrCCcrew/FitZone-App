@@ -2,6 +2,7 @@
 
 import jsQR from "jsqr";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ChangeEvent } from "react";
 import { AdminCard, AdminEmptyState, AdminSectionShell } from "./shared";
 
 type BookingRow = {
@@ -178,6 +179,7 @@ export default function Bookings() {
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [cameraBusy, setCameraBusy] = useState(false);
+  const [imageScanBusy, setImageScanBusy] = useState(false);
   const [giftModal, setGiftModal] = useState(false);
   const [giftCustomer, setGiftCustomer] = useState("");
   const [giftSchedule, setGiftSchedule] = useState("");
@@ -186,6 +188,7 @@ export default function Bookings() {
   const [giftSuccess, setGiftSuccess] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const scanIntervalRef = useRef<number | null>(null);
   const scanInFlightRef = useRef(false);
@@ -434,6 +437,84 @@ export default function Bookings() {
     cameraAutoAttemptRef.current = `${attendanceMode}:${attendanceScheduleId || "none"}`;
     await startCamera(true);
   }, [attendanceMode, attendanceScheduleId, startCamera]);
+
+  const decodeQrFromImage = useCallback(
+    async (file: File) => {
+      setImageScanBusy(true);
+      setCameraError(null);
+      setScanFeedback(null);
+      try {
+        const objectUrl = URL.createObjectURL(file);
+        try {
+          const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => resolve(img);
+            img.onerror = () => reject(new Error("image_load_failed"));
+            img.src = objectUrl;
+          });
+
+          const canvas = canvasRef.current ?? document.createElement("canvas");
+          const context = canvas.getContext("2d");
+          if (!context) {
+            setCameraError("تعذر تجهيز قارئ الصورة. حاول مرة أخرى.");
+            return;
+          }
+
+          canvas.width = image.naturalWidth || image.width || 1280;
+          canvas.height = image.naturalHeight || image.height || 720;
+          context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+          let rawValue = "";
+          const BarcodeDetectorCtor = (window as WindowWithBarcodeDetector).BarcodeDetector;
+          if (BarcodeDetectorCtor) {
+            try {
+              const detector = new BarcodeDetectorCtor({ formats: ["qr_code"] });
+              const codes = await detector.detect(canvas);
+              rawValue = codes[0]?.rawValue?.trim() ?? "";
+            } catch {
+              rawValue = "";
+            }
+          }
+
+          if (!rawValue) {
+            const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+            const result = jsQR(imageData.data, imageData.width, imageData.height, {
+              inversionAttempts: "attemptBoth",
+            });
+            rawValue = result?.data?.trim() ?? "";
+          }
+
+          if (!rawValue) {
+            setCameraError("لم يتم العثور على QR واضح داخل الصورة. جرّب صورة أقرب أو أوضح.");
+            return;
+          }
+
+          await submitScan(rawValue);
+        } finally {
+          URL.revokeObjectURL(objectUrl);
+        }
+      } catch {
+        setCameraError("تعذر قراءة الصورة. حاول إعادة الالتقاط ثم أعد المحاولة.");
+      } finally {
+        setImageScanBusy(false);
+      }
+    },
+    [submitScan],
+  );
+
+  const handleImageInputChange = useCallback(
+    async (event: ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      event.currentTarget.value = "";
+      if (!file) return;
+      await decodeQrFromImage(file);
+    },
+    [decodeQrFromImage],
+  );
+
+  const openImageScanner = useCallback(() => {
+    imageInputRef.current?.click();
+  }, []);
 
   useEffect(() => {
     void loadBookings();
@@ -748,6 +829,14 @@ export default function Bookings() {
                 </button>
                 <button
                   type="button"
+                  onClick={openImageScanner}
+                  disabled={imageScanBusy}
+                  className="rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-sky-500 disabled:opacity-60"
+                >
+                  {imageScanBusy ? "جاري قراءة الصورة..." : "مسح من صورة"}
+                </button>
+                <button
+                  type="button"
                   onClick={stopCamera}
                   className="rounded-xl bg-white/10 px-4 py-2.5 text-sm font-bold text-[#fff4f8] transition-colors hover:bg-white/20"
                 >
@@ -755,6 +844,16 @@ export default function Bookings() {
                 </button>
               </div>
             </div>
+            <input
+              ref={imageInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={(event) => {
+                void handleImageInputChange(event);
+              }}
+              className="hidden"
+            />
 
             <div className="grid gap-3 md:grid-cols-[1fr_auto]">
               <input
@@ -826,6 +925,14 @@ export default function Bookings() {
                       className="rounded-xl bg-[#ff4f93] px-4 py-2.5 text-xs font-black text-white transition-colors hover:bg-[#ff2f7d] disabled:opacity-60"
                     >
                       {cameraBusy ? "جاري تفعيل الكاميرا..." : "تفعيل الكاميرا الآن"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={openImageScanner}
+                      disabled={imageScanBusy}
+                      className="rounded-xl bg-sky-600 px-4 py-2.5 text-xs font-black text-white transition-colors hover:bg-sky-500 disabled:opacity-60"
+                    >
+                      {imageScanBusy ? "جاري قراءة الصورة..." : "مسح QR من صورة"}
                     </button>
                   </div>
                 ) : null}
