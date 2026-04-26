@@ -79,11 +79,15 @@ export default function PushPromptModal() {
 
   async function enable() {
     setLoading(true);
-    let hardTimer: ReturnType<typeof setTimeout> | null = null;
+    // Emergency dismiss after 20s total (covers slow permission dialogs in Edge)
+    const killTimer = setTimeout(dismiss, 20000);
     try {
+      // Get VAPID key with 5s timeout
       let key = vapidKey;
       if (!key) {
-        const keyRes = await fetch("/api/push/subscribe");
+        const ac = new AbortController();
+        setTimeout(() => ac.abort(), 5000);
+        const keyRes = await fetch("/api/push/subscribe", { signal: ac.signal });
         const data = (await keyRes.json()) as { vapidPublicKey?: string };
         key = data.vapidPublicKey ?? null;
       }
@@ -92,38 +96,38 @@ export default function PushPromptModal() {
       const perm = await Notification.requestPermission();
       if (perm !== "granted") { dismiss(); return; }
 
-      // Hard 12s timeout covering SW ready + subscribe + server POST
-      const hardTimeout = new Promise<never>((_, reject) => {
-        hardTimer = setTimeout(() => reject(new Error("enable-timeout")), 12000);
-      });
+      // Wait for SW with 6s timeout
+      const reg = await swReady(6000);
 
-      const reg = await Promise.race([swReady(8000), hardTimeout]);
+      // Subscribe with its own 8s timeout
       const sub = await Promise.race([
         reg.pushManager.subscribe({
           userVisibleOnly: true,
           applicationServerKey: urlBase64ToUint8Array(key),
         }),
-        hardTimeout,
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("subscribe-timeout")), 8000)
+        ),
       ]);
 
-      const json = sub.toJSON() as { endpoint: string; keys: { p256dh: string; auth: string } };
-      const ac = new AbortController();
-      setTimeout(() => ac.abort(), 8000);
+      // POST subscription with 5s timeout
+      const postAc = new AbortController();
+      setTimeout(() => postAc.abort(), 5000);
       await fetch("/api/push/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(json),
-        signal: ac.signal,
+        body: JSON.stringify(sub.toJSON()),
+        signal: postAc.signal,
       });
 
-      if (hardTimer) clearTimeout(hardTimer);
+      clearTimeout(killTimer);
       setDone(true);
       localStorage.setItem(STORAGE_KEY, "1");
       setTimeout(dismiss, 1800);
     } catch {
       dismiss();
     } finally {
-      if (hardTimer) clearTimeout(hardTimer);
+      clearTimeout(killTimer);
       setLoading(false);
     }
   }
