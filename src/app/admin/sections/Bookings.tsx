@@ -752,23 +752,24 @@ export default function Bookings() {
                 <div className="font-bold">{cameraError}</div>
                 {cameraError.includes("إذن") && (
                   <div className="space-y-3 text-amber-300/90">
-                    <div className="font-semibold">جرّب الخطوات التالية بالترتيب:</div>
+                    <div className="font-semibold">إذن الكاميرا محجوب في Chrome — اتبع هذه الخطوات:</div>
                     <div>
-                      <div className="font-medium mb-1">① من إعدادات الهاتف (الأضمن):</div>
+                      <div className="font-medium mb-1">① افتح Chrome وأعطِ الإذن للموقع:</div>
                       <ol className="list-decimal list-inside space-y-0.5 pr-1">
-                        <li>إعدادات الهاتف ← <strong>التطبيقات</strong></li>
-                        <li>ابحث عن <strong>Chrome</strong> واضغط عليه</li>
-                        <li>اختر <strong>الأذونات</strong> ← <strong>الكاميرا</strong></li>
-                        <li>اختر <strong>السماح فقط أثناء استخدام التطبيق</strong></li>
-                        <li>ارجع للتطبيق واضغط "فتح الكاميرا" مجدداً</li>
+                        <li>افتح تطبيق <strong>Chrome</strong> (وليس FitZone مباشرة)</li>
+                        <li>اكتب رابط التطبيق في شريط العنوان</li>
+                        <li>اضغط على أيقونة القفل 🔒 ← <strong>إعدادات الموقع</strong></li>
+                        <li>غيّر <strong>الكاميرا</strong> من "محظور" إلى <strong>سماح</strong></li>
+                        <li>ارجع لتطبيق FitZone واضغط "فتح الكاميرا"</li>
                       </ol>
                     </div>
                     <div>
-                      <div className="font-medium mb-1">② من داخل التطبيق:</div>
+                      <div className="font-medium mb-1">② أو من إعدادات Chrome مباشرة:</div>
                       <ol className="list-decimal list-inside space-y-0.5 pr-1">
-                        <li>اضغط ⋮ أعلى الشاشة ← <strong>إعدادات الموقع</strong></li>
-                        <li>غيّر <strong>الكاميرا</strong> إلى "سماح"</li>
-                        <li>أعد تشغيل التطبيق</li>
+                        <li>Chrome ← النقاط الثلاث ⋮ ← <strong>الإعدادات</strong></li>
+                        <li><strong>إعدادات المواقع</strong> ← <strong>الكاميرا</strong></li>
+                        <li>ابحث عن رابط الموقع تحت "محظور" وغيّره لـ <strong>سماح</strong></li>
+                        <li>ارجع لتطبيق FitZone واضغط "فتح الكاميرا"</li>
                       </ol>
                     </div>
                   </div>
