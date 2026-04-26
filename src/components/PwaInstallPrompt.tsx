@@ -63,7 +63,7 @@ export default function PwaInstallPrompt() {
 
   return (
     <>
-      <div className="fixed bottom-5 left-5 z-[70] max-w-xs rounded-3xl border border-pink-200/40 bg-[#2a0f1f]/95 p-4 text-[#fff4f8] shadow-[0_24px_80px_rgba(30,8,18,0.35)] backdrop-blur-xl">
+      <div className="fixed bottom-[calc(1.25rem+env(safe-area-inset-bottom,0px))] left-1/2 z-[70] w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 rounded-3xl border border-pink-200/40 bg-[#2a0f1f]/95 p-4 text-[#fff4f8] shadow-[0_24px_80px_rgba(30,8,18,0.35)] backdrop-blur-xl">
         <div className="mb-2 text-sm font-black">ثبتي FitZone على الهاتف</div>
         <div className="mb-3 text-xs leading-6 text-[#f5cddd]">
           افتحي الموقع كتطبيق سريع من الشاشة الرئيسية للوصول السهل للحساب والكلاسات والعروض.
