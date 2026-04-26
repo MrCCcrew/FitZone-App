@@ -8,6 +8,11 @@ async function checkAdmin() {
   return "error" in guard ? guard.error : null;
 }
 
+async function getTrainerProfileId(userId: string): Promise<string | null> {
+  const t = await db.trainer.findFirst({ where: { userId }, select: { id: true } });
+  return t?.id ?? null;
+}
+
 function startOfDay(value: Date) {
   const date = new Date(value);
   date.setHours(0, 0, 0, 0);
@@ -21,8 +26,8 @@ function endOfDay(value: Date) {
 }
 
 export async function GET(req: Request) {
-  const err = await checkAdmin();
-  if (err) return err;
+  const guard = await requireAdminFeature("bookings");
+  if ("error" in guard) return guard.error;
 
   const { searchParams } = new URL(req.url);
   const status = searchParams.get("status") || "all";
@@ -30,19 +35,30 @@ export async function GET(req: Request) {
   const dateFrom = searchParams.get("dateFrom");
   const dateTo = searchParams.get("dateTo");
 
+  // Trainer filter
+  let trainerProfileId: string | null = null;
+  if (guard.role === "trainer") {
+    trainerProfileId = await getTrainerProfileId(guard.session.user.id);
+    if (!trainerProfileId) return NextResponse.json([]);
+  }
+
   const where: Record<string, unknown> = {};
   if (status !== "all") where.status = status;
 
+  // Build schedule filter (merge date + trainer)
+  const scheduleFilter: Record<string, unknown> = {};
   if (dateFrom || dateTo) {
     const fromDate = dateFrom ? startOfDay(new Date(dateFrom)) : undefined;
     const toDate = dateTo ? endOfDay(new Date(dateTo)) : undefined;
-    where.schedule = {
-      date: {
-        ...(fromDate ? { gte: fromDate } : {}),
-        ...(toDate ? { lte: toDate } : {}),
-      },
+    scheduleFilter.date = {
+      ...(fromDate ? { gte: fromDate } : {}),
+      ...(toDate ? { lte: toDate } : {}),
     };
   }
+  if (trainerProfileId) {
+    scheduleFilter.class = { trainerId: trainerProfileId };
+  }
+  if (Object.keys(scheduleFilter).length > 0) where.schedule = scheduleFilter;
 
   if (q) {
     where.OR = [
