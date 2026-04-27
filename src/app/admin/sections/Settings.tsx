@@ -46,6 +46,11 @@ type EmployeeForm = {
   adminAccess: boolean;
   isActive: boolean;
   adminPermissions: string[];
+  discountType: "percentage" | "fixed";
+  discountValue: number;
+  maxDiscount: number | null;
+  commissionRate: number;
+  commissionType: "percentage" | "fixed";
 };
 
 const EMPTY_FORM: EmployeeForm = {
@@ -58,6 +63,11 @@ const EMPTY_FORM: EmployeeForm = {
   adminAccess: true,
   isActive: true,
   adminPermissions: [...ROLE_FEATURE_TEMPLATES.staff],
+  discountType: "percentage",
+  discountValue: 0,
+  maxDiscount: null,
+  commissionRate: 0,
+  commissionType: "percentage",
 };
 
 function tryFormatJson(value?: string | null) {
@@ -168,6 +178,11 @@ export default function Settings() {
       adminAccess: employee.adminAccess,
       isActive: employee.isActive,
       adminPermissions: employee.adminPermissions,
+      discountType: (employee.discountType as "percentage" | "fixed") ?? "percentage",
+      discountValue: employee.discountValue ?? 0,
+      maxDiscount: employee.maxDiscount ?? null,
+      commissionRate: employee.commissionRate ?? 0,
+      commissionType: (employee.commissionType as "percentage" | "fixed") ?? "percentage",
     });
     setActiveTab("employees");
     setMessage(null);
@@ -273,6 +288,76 @@ export default function Settings() {
                 </select>
               </div>
 
+              {(form.role === "staff" || form.role === "trainer") && (
+                <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-4">
+                  <div className="mb-3 text-sm font-bold text-white">إعدادات الخصم والعمولة</div>
+                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    <div className="space-y-1">
+                      <label className="text-xs text-[#d7aabd]">نوع الخصم الممنوح للعملاء</label>
+                      <select
+                        className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2 text-sm text-white"
+                        value={form.discountType}
+                        onChange={(e) => updateForm("discountType", e.target.value as "percentage" | "fixed")}
+                      >
+                        <option value="percentage">نسبة مئوية %</option>
+                        <option value="fixed">مبلغ ثابت ج.م</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs text-[#d7aabd]">
+                        {form.discountType === "percentage" ? "نسبة الخصم %" : "مبلغ الخصم ج.م"}
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        step={form.discountType === "percentage" ? 1 : 10}
+                        className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2 text-sm text-white"
+                        value={form.discountValue}
+                        onChange={(e) => updateForm("discountValue", Number(e.target.value))}
+                      />
+                    </div>
+                    {form.discountType === "percentage" && (
+                      <div className="space-y-1">
+                        <label className="text-xs text-[#d7aabd]">الحد الأقصى للخصم ج.م (اختياري)</label>
+                        <input
+                          type="number"
+                          min={0}
+                          step={10}
+                          className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2 text-sm text-white"
+                          value={form.maxDiscount ?? ""}
+                          placeholder="بدون حد أقصى"
+                          onChange={(e) => updateForm("maxDiscount", e.target.value === "" ? null : Number(e.target.value))}
+                        />
+                      </div>
+                    )}
+                    <div className="space-y-1">
+                      <label className="text-xs text-[#d7aabd]">نوع العمولة</label>
+                      <select
+                        className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2 text-sm text-white"
+                        value={form.commissionType}
+                        onChange={(e) => updateForm("commissionType", e.target.value as "percentage" | "fixed")}
+                      >
+                        <option value="percentage">نسبة مئوية %</option>
+                        <option value="fixed">مبلغ ثابت ج.م</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs text-[#d7aabd]">
+                        {form.commissionType === "percentage" ? "نسبة العمولة %" : "مبلغ العمولة ج.م"}
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        step={form.commissionType === "percentage" ? 1 : 10}
+                        className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2 text-sm text-white"
+                        value={form.commissionRate}
+                        onChange={(e) => updateForm("commissionRate", Number(e.target.value))}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="mt-4 flex flex-wrap gap-3">
                 <label className="flex items-center gap-2 text-sm text-[#fff4f8]">
                   <input type="checkbox" checked={form.adminAccess} onChange={(e) => updateForm("adminAccess", e.target.checked)} />
@@ -322,8 +407,9 @@ export default function Settings() {
                   <tr>
                     <th className="px-4 py-3">الاسم</th>
                     <th className="px-4 py-3">الدور</th>
-                    <th className="px-4 py-3">الدخول</th>
                     <th className="px-4 py-3">النشاط</th>
+                    <th className="px-4 py-3">الخصم</th>
+                    <th className="px-4 py-3">العمولة</th>
                     <th className="px-4 py-3">الصلاحيات</th>
                     <th className="px-4 py-3">إجراء</th>
                   </tr>
@@ -339,8 +425,21 @@ export default function Settings() {
                         <div>{getRoleLabel(employee.role)}</div>
                         <div className="text-xs text-[#d7aabd]">{employee.jobTitle || "بدون مسمى"}</div>
                       </td>
-                      <td className="px-4 py-3">{employee.adminAccess ? "مفعل" : "غير مفعل"}</td>
                       <td className="px-4 py-3">{employee.isActive ? "نشط" : "موقوف"}</td>
+                      <td className="px-4 py-3 text-xs text-[#d7aabd]">
+                        {(employee.role === "staff" || employee.role === "trainer") && employee.discountValue > 0
+                          ? employee.discountType === "percentage"
+                            ? `${employee.discountValue}%${employee.maxDiscount ? ` (حد ${employee.maxDiscount} ج.م)` : ""}`
+                            : `${employee.discountValue} ج.م`
+                          : "—"}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-[#d7aabd]">
+                        {(employee.role === "staff" || employee.role === "trainer") && employee.commissionRate > 0
+                          ? employee.commissionType === "percentage"
+                            ? `${employee.commissionRate}%`
+                            : `${employee.commissionRate} ج.م`
+                          : "—"}
+                      </td>
                       <td className="px-4 py-3">
                         <div className="max-w-sm whitespace-normal text-xs text-[#d7aabd]">
                           {employee.adminPermissions.map((permission) => FEATURE_LABELS[permission] ?? permission).join("، ") || "بدون صلاحيات"}

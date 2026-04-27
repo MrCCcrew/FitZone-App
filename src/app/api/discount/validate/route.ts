@@ -82,41 +82,74 @@ export async function GET(req: Request) {
     include: { trainer: { select: { id: true, name: true } } },
   });
 
-  if (!trainerCode) {
-    return NextResponse.json({ error: "كود الخصم غير صالح أو غير موجود." }, { status: 404 });
-  }
-  if (trainerCode.targetUserId !== user.id) {
-    return NextResponse.json({ error: "هذا الكود خاص بعميل آخر ولا يمكنك استخدامه." }, { status: 403 });
-  }
-  if (trainerCode.isUsed) {
-    return NextResponse.json({ error: "تم استخدام هذا الكود من قبل." }, { status: 400 });
-  }
-
   const basePrice = membershipId
     ? await db.membership.findUnique({ where: { id: membershipId } }).then((m) =>
         m ? (m.priceAfter && m.priceAfter > 0 ? m.priceAfter : m.price) : amount,
       )
     : amount;
 
+  if (trainerCode) {
+    if (trainerCode.targetUserId !== user.id) {
+      return NextResponse.json({ error: "هذا الكود خاص بعميل آخر ولا يمكنك استخدامه." }, { status: 403 });
+    }
+    if (trainerCode.isUsed) {
+      return NextResponse.json({ error: "تم استخدام هذا الكود من قبل." }, { status: 400 });
+    }
+
+    let discountAmount = 0;
+    if (trainerCode.discountType === "fixed") {
+      discountAmount = Math.min(trainerCode.discountValue, basePrice);
+    } else {
+      const raw = (basePrice * trainerCode.discountValue) / 100;
+      discountAmount = trainerCode.maxDiscount != null ? Math.min(raw, trainerCode.maxDiscount) : raw;
+      discountAmount = Math.round(discountAmount * 100) / 100;
+    }
+
+    return NextResponse.json({
+      valid: true,
+      source: "trainer",
+      id: trainerCode.id,
+      code: trainerCode.code,
+      type: trainerCode.discountType,
+      value: trainerCode.discountValue,
+      maxDiscount: trainerCode.maxDiscount ?? null,
+      description: `كود خصم من المدربة ${trainerCode.trainer.name}${trainerCode.note ? ` - ${trainerCode.note}` : ""}`,
+      descriptionEn: `Discount code from trainer ${trainerCode.trainer.name}`,
+      discountAmount,
+    });
+  }
+
+  const staffCode = await db.staffDiscountCode.findUnique({ where: { code } });
+  if (!staffCode) {
+    return NextResponse.json({ error: "كود الخصم غير صالح أو غير موجود." }, { status: 404 });
+  }
+  if (staffCode.targetUserId !== user.id) {
+    return NextResponse.json({ error: "هذا الكود خاص بعميل آخر ولا يمكنك استخدامه." }, { status: 403 });
+  }
+  if (staffCode.isUsed) {
+    return NextResponse.json({ error: "تم استخدام هذا الكود من قبل." }, { status: 400 });
+  }
+
   let discountAmount = 0;
-  if (trainerCode.discountType === "fixed") {
-    discountAmount = Math.min(trainerCode.discountValue, basePrice);
+  if (staffCode.discountType === "fixed") {
+    discountAmount = Math.min(staffCode.discountValue, basePrice);
   } else {
-    const raw = (basePrice * trainerCode.discountValue) / 100;
-    discountAmount = trainerCode.maxDiscount != null ? Math.min(raw, trainerCode.maxDiscount) : raw;
+    const raw = (basePrice * staffCode.discountValue) / 100;
+    discountAmount = staffCode.maxDiscount != null ? Math.min(raw, staffCode.maxDiscount) : raw;
     discountAmount = Math.round(discountAmount * 100) / 100;
   }
 
   return NextResponse.json({
     valid: true,
-    source: "trainer",
-    id: trainerCode.id,
-    code: trainerCode.code,
-    type: trainerCode.discountType,
-    value: trainerCode.discountValue,
-    maxDiscount: trainerCode.maxDiscount ?? null,
-    description: `كود خصم من المدربة ${trainerCode.trainer.name}${trainerCode.note ? ` - ${trainerCode.note}` : ""}`,
-    descriptionEn: `Discount code from trainer ${trainerCode.trainer.name}`,
+    source: "staff",
+    id: staffCode.id,
+    code: staffCode.code,
+    type: staffCode.discountType,
+    value: staffCode.discountValue,
+    maxDiscount: staffCode.maxDiscount ?? null,
+    description: "كود خصم من موظف FitZone",
+    descriptionEn: "Discount code from FitZone staff",
     discountAmount,
   });
+
 }

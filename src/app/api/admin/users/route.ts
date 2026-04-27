@@ -23,7 +23,7 @@ export async function GET(req: Request) {
         { name: { contains: search } },
         { email: { contains: search } },
       ],
-      role: "user",
+      role: "member",
     },
     select: { id: true, name: true, email: true },
     take: limit,

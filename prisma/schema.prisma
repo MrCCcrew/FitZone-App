@@ -70,6 +70,11 @@ model User {
   adminAccess   Boolean   @default(false)
   adminPermissions String? @db.LongText // JSON array of AdminFeature keys
   isActive      Boolean   @default(true)
+  discountType  String    @default("fixed") // fixed | percentage
+  discountValue Float     @default(0)
+  maxDiscount   Float?
+  commissionRate Float    @default(0)
+  commissionType String   @default("percentage") // percentage | fixed
   avatar        String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -98,6 +103,10 @@ model User {
   pushCampaigns       PushCampaign[]     @relation("CampaignAdmin")
   trainerProfile             Trainer?                    @relation("TrainerAccount")
   trainerDiscountCodesTarget TrainerDiscountCode[]        @relation("TrainerCodeTarget")
+  staffDiscountCodesIssued   StaffDiscountCode[]          @relation("StaffCodeIssuer")
+  staffDiscountCodesTarget   StaffDiscountCode[]          @relation("StaffCodeTarget")
+  attributedMemberships      UserMembership[]             @relation("MembershipSalesAgent")
+  agentCommissions           AgentCommission[]            @relation("AgentCommissionUser")
   partnerProfile             Partner?                    @relation("PartnerAccount")
   privateApplications        PrivateSessionApplication[] @relation("PrivateApplicationUser")
   attendancePasses           AttendancePass[]
@@ -171,6 +180,8 @@ model UserMembership {
   offerId       String?
   totalSessions Int?
   productRewardsUsed String? @db.LongText
+  salesAgentUserId String?
+  salesCodeType    String?
 
   partnerId       String?
   partnerCodeId   String?
@@ -179,6 +190,7 @@ model UserMembership {
   user          User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
   membership    Membership            @relation(fields: [membershipId], references: [id])
   offer         Offer?                @relation(fields: [offerId], references: [id], onDelete: SetNull)
+  salesAgent    User?                 @relation("MembershipSalesAgent", fields: [salesAgentUserId], references: [id], onDelete: SetNull)
   partner       Partner?              @relation(fields: [partnerId], references: [id], onDelete: SetNull)
   partnerCode   PartnerCode?          @relation(fields: [partnerCodeId], references: [id], onDelete: SetNull)
   affiliateLink PartnerAffiliateLink? @relation(fields: [affiliateLinkId], references: [id], onDelete: SetNull)
@@ -186,8 +198,10 @@ model UserMembership {
   attendancePass      AttendancePass?
   attendanceCheckIns  AttendanceCheckIn[]
   partnerCommission   PartnerCommission?
+  agentCommission     AgentCommission?
 
   @@index([partnerId])
+  @@index([salesAgentUserId])
 }
 
 model AttendancePass {
@@ -993,6 +1007,27 @@ model TrainerDiscountCode {
   @@index([code])
 }
 
+model StaffDiscountCode {
+  id            String    @id @default(cuid())
+  staffUserId   String
+  code          String    @unique
+  targetUserId  String
+  discountType  String    @default("percentage") // percentage | fixed
+  discountValue Float
+  maxDiscount   Float?
+  note          String?
+  isUsed        Boolean   @default(false)
+  usedAt        DateTime?
+  monthYear     String
+  createdAt     DateTime  @default(now())
+
+  staff      User @relation("StaffCodeIssuer", fields: [staffUserId], references: [id], onDelete: Cascade)
+  targetUser User @relation("StaffCodeTarget", fields: [targetUserId], references: [id], onDelete: Cascade)
+
+  @@index([staffUserId, monthYear])
+  @@index([code])
+}
+
 // ─── Private Session Applications ─────────────────────────────────────────────
 
 model PrivateSessionApplication {
@@ -1106,6 +1141,22 @@ model PartnerCommission {
   userMembership UserMembership @relation(fields: [userMembershipId], references: [id], onDelete: Cascade)
 
   @@index([partnerId, status])
+  @@index([createdAt])
+}
+
+model AgentCommission {
+  id               String    @id @default(cuid())
+  agentUserId      String
+  userMembershipId String    @unique
+  amount           Float
+  status           String    @default("earned") // earned | settled
+  settledAt        DateTime?
+  createdAt        DateTime  @default(now())
+
+  agentUser      User           @relation("AgentCommissionUser", fields: [agentUserId], references: [id], onDelete: Cascade)
+  userMembership UserMembership @relation(fields: [userMembershipId], references: [id], onDelete: Cascade)
+
+  @@index([agentUserId, status])
   @@index([createdAt])
 }
 
