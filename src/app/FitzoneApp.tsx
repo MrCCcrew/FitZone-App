@@ -3247,6 +3247,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
         ...mapMembershipToPlanItem(mb, PLAN_COLORS[idx % PLAN_COLORS.length]),
         offerId: offerId ?? null,
         priceAfter: offerSpecialPrice != null ? offerSpecialPrice : (mb.priceAfter ?? null),
+        isFeatured: false, // always run normal checkout flow when explicitly clicked
       };
       openSurvey(planItem);
     }
