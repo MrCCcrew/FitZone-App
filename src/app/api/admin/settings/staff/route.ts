@@ -174,7 +174,7 @@ export async function PATCH(req: Request) {
   if (payload.adminPermissions != null) data.adminPermissions = JSON.stringify(parsePermissions(payload.adminPermissions));
   if (payload.discountType != null) data.discountType = payload.discountType === "fixed" ? "fixed" : "percentage";
   if (payload.discountValue != null) data.discountValue = Number(payload.discountValue) || 0;
-  if (payload.maxDiscount != null) data.maxDiscount = payload.maxDiscount === "" || payload.maxDiscount === null ? null : Number(payload.maxDiscount);
+  if (payload.maxDiscount !== undefined) data.maxDiscount = payload.maxDiscount === "" || payload.maxDiscount === null ? null : Number(payload.maxDiscount);
   if (payload.commissionRate != null) data.commissionRate = Number(payload.commissionRate) || 0;
   if (payload.commissionType != null) data.commissionType = payload.commissionType === "fixed" ? "fixed" : "percentage";
   if (payload.password) {
