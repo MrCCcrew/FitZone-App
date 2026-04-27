@@ -7705,7 +7705,11 @@ const PartnersPage = ({ navigate, summary }: { navigate: (p: string) => void; su
   const [loading, setLoading] = useState(true);
   const [activeCategory, setActiveCategory] = useState("all");
 
-  const hasActiveMembership = summary?.authenticated && summary?.membership?.status === "active";
+  const hasActiveMembership =
+    summary?.authenticated &&
+    summary?.membership?.status === "active" &&
+    !!summary.membership.endDate &&
+    new Date(summary.membership.endDate) > new Date();
 
   useEffect(() => {
     fetch("/api/public/partners", { cache: "no-store" })
@@ -7838,9 +7842,11 @@ const PartnersPage = ({ navigate, summary }: { navigate: (p: string) => void; su
                           >
                             <span style={{ fontSize: 14 }}>🔒</span>
                             <span style={{ fontSize: 12, fontWeight: 700, color: C.gray }}>
-                              {summary?.authenticated
-                                ? t("اشتركي للحصول على الكود", "Subscribe to get the code")
-                                : t("سجلي دخولك للحصول على الكود", "Login to get the code")}
+                              {!summary?.authenticated
+                                ? t("سجلي دخولك للحصول على الكود", "Login to get the code")
+                                : summary.membership
+                                ? t("اشتراكك انتهى — جددي للحصول على الكود", "Subscription expired — renew to get the code")
+                                : t("اشتركي للحصول على الكود", "Subscribe to get the code")}
                             </span>
                           </button>
                         )
