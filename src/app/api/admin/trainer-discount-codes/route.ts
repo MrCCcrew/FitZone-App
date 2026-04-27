@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import { randomBytes } from "crypto";
 import { db } from "@/lib/db";
-import { requireAdminSession } from "@/lib/admin-session";
+import { requireAdminFeature } from "@/lib/admin-guard";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const auth = await requireAdminSession();
-  if (!auth.ok) return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
+  const auth = await requireAdminFeature("trainers");
+  if ("error" in auth) return auth.error;
 
   const codes = await db.trainerDiscountCode.findMany({
     orderBy: { createdAt: "desc" },
@@ -39,8 +39,8 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const auth = await requireAdminSession();
-  if (!auth.ok) return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
+  const auth = await requireAdminFeature("trainers");
+  if ("error" in auth) return auth.error;
 
   const body = (await req.json()) as {
     trainerId?: string;
@@ -106,8 +106,8 @@ export async function POST(req: Request) {
 }
 
 export async function DELETE(req: Request) {
-  const auth = await requireAdminSession();
-  if (!auth.ok) return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
+  const auth = await requireAdminFeature("trainers");
+  if ("error" in auth) return auth.error;
 
   const { searchParams } = new URL(req.url);
   const id = searchParams.get("id");

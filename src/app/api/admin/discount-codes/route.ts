@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { requireAdminSession } from "@/lib/admin-session";
+import { requireAdminFeature } from "@/lib/admin-guard";
 import { enterAuditActor, logAudit } from "@/lib/audit-context";
 
 export async function GET() {
-  const auth = await requireAdminSession();
-  if (!auth.ok) return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
+  const auth = await requireAdminFeature("discounts");
+  if ("error" in auth) return auth.error;
 
   const codes = await db.discountCode.findMany({
     orderBy: { createdAt: "desc" },
@@ -32,9 +32,8 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const auth = await requireAdminSession();
-  if (!auth.ok) return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
-  enterAuditActor({ userId: auth.session.id, name: auth.session.name, email: auth.session.email, role: auth.session.role });
+  const auth = await requireAdminFeature("discounts");
+  if ("error" in auth) return auth.error;
 
   const body = await req.json();
   const {

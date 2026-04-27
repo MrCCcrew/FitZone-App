@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { requireAdminSession } from "@/lib/admin-session";
+import { requireAdminFeature } from "@/lib/admin-guard";
 
 const SECTION = "reward_settings";
 
@@ -24,14 +24,14 @@ async function getSettings() {
 }
 
 export async function GET(req: Request) {
-  const auth = await requireAdminSession();
-  if (!auth.ok) return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
+  const auth = await requireAdminFeature("rewards");
+  if ("error" in auth) return auth.error;
   return NextResponse.json(await getSettings());
 }
 
 export async function PUT(req: Request) {
-  const auth = await requireAdminSession();
-  if (!auth.ok) return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
+  const auth = await requireAdminFeature("rewards");
+  if ("error" in auth) return auth.error;
 
   const body = await req.json() as Record<string, unknown>;
   const current = await getSettings();
