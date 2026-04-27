@@ -156,7 +156,6 @@ model Membership {
   recommendedFor   ChatSession[]
   offers           Offer[]
   goals            MembershipGoal[]
-  affiliateLinks   PartnerAffiliateLink[]
 }
 
 model UserMembership {
@@ -1048,11 +1047,12 @@ model Partner {
   notes            String?  @db.Text
   createdAt        DateTime @default(now())
 
-  user            User                  @relation("PartnerAccount", fields: [userId], references: [id], onDelete: Cascade)
-  codes           PartnerCode[]
-  affiliateLinks  PartnerAffiliateLink[]
-  commissions     PartnerCommission[]
-  userMemberships UserMembership[]
+  user               User                       @relation("PartnerAccount", fields: [userId], references: [id], onDelete: Cascade)
+  codes              PartnerCode[]
+  affiliateLinks     PartnerAffiliateLink[]
+  commissions        PartnerCommission[]
+  userMemberships    UserMembership[]
+  withdrawalRequests PartnerWithdrawalRequest[]
 
   @@index([isActive])
 }
@@ -1079,15 +1079,13 @@ model PartnerCode {
 model PartnerAffiliateLink {
   id           String   @id @default(cuid())
   partnerId    String
-  membershipId String
   token        String   @unique // short slug used in ?ref=TOKEN
-  label        String?  // optional internal label
+  label        String?
   clickCount   Int      @default(0)
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
 
   partner         Partner        @relation(fields: [partnerId], references: [id], onDelete: Cascade)
-  membership      Membership     @relation(fields: [membershipId], references: [id], onDelete: Cascade)
   userMemberships UserMembership[]
 
   @@index([partnerId])
@@ -1099,8 +1097,8 @@ model PartnerCommission {
   partnerId        String
   userMembershipId String    @unique
   amount           Float
-  status           String    @default("pending") // pending | paid
-  paidAt           DateTime?
+  status           String    @default("pending") // pending | withdrawn
+  withdrawnAt      DateTime?
   notes            String?
   createdAt        DateTime  @default(now())
 
@@ -1108,5 +1106,22 @@ model PartnerCommission {
   userMembership UserMembership @relation(fields: [userMembershipId], references: [id], onDelete: Cascade)
 
   @@index([partnerId, status])
+  @@index([createdAt])
+}
+
+model PartnerWithdrawalRequest {
+  id          String    @id @default(cuid())
+  partnerId   String
+  amount      Float
+  status      String    @default("pending") // pending | approved | rejected
+  adminNotes  String?
+  receiptUrl  String?
+  createdAt   DateTime  @default(now())
+  processedAt DateTime?
+
+  partner Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  @@index([partnerId])
+  @@index([status])
   @@index([createdAt])
 }

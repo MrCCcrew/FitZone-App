@@ -135,7 +135,7 @@ export async function POST(req: Request) {
 
   // Validate partner code or affiliate ref before transaction
   let partnerCodeRecord: { id: string; partnerId: string; discountType: string; discountValue: number } | null = null;
-  let affiliateLinkRecord: { id: string; partnerId: string; membershipId: string } | null = null;
+  let affiliateLinkRecord: { id: string; partnerId: string } | null = null;
 
   if (partnerCode && !discountRecord && !trainerDiscountRecord) {
     const normalizedPCode = String(partnerCode).trim().toUpperCase();
@@ -159,10 +159,10 @@ export async function POST(req: Request) {
     const normalizedRef = String(affiliateRef).trim().toUpperCase();
     const al = await db.partnerAffiliateLink.findUnique({
       where: { token: normalizedRef },
-      select: { id: true, partnerId: true, membershipId: true, isActive: true },
+      select: { id: true, partnerId: true, isActive: true },
     });
     if (al && al.isActive) {
-      affiliateLinkRecord = { id: al.id, partnerId: al.partnerId, membershipId: al.membershipId };
+      affiliateLinkRecord = { id: al.id, partnerId: al.partnerId };
       // increment click count (fire-and-forget)
       void db.partnerAffiliateLink.update({ where: { id: al.id }, data: { clickCount: { increment: 1 } } }).catch(() => null);
     }
