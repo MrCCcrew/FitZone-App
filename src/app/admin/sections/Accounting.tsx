@@ -927,9 +927,144 @@ function FeeRulesTab({ data, onRefresh }: { data: AccountingData; onRefresh: () 
   );
 }
 
+// ─── Partner Commissions Tab ──────────────────────────────────────────────────
+
+type PartnerCommissionRow = {
+  id: string;
+  partnerName: string;
+  partnerCategory: string;
+  customerName: string;
+  membershipName: string;
+  paymentAmount: number;
+  amount: number;
+  status: "pending" | "paid";
+  paidAt: string | null;
+  notes: string | null;
+  createdAt: string;
+};
+
+type CommissionsData = {
+  commissions: PartnerCommissionRow[];
+  summary: { pending: number; paid: number; total: number; count: number };
+};
+
+const PARTNER_CAT_LABELS: Record<string, string> = {
+  beauty_center: "سنتر تجميل", salon: "كوافير", pharmacy: "صيدلية",
+  clinic: "عيادة", physiotherapy: "علاج طبيعي", nutrition: "تغذية",
+  nursery: "حضانة", education: "تعليم أطفال", clothing: "ملابس نسائية", other: "أخرى",
+};
+
+function PartnerCommissionsTab({ from, to }: { from: string; to: string }) {
+  const [data, setData] = useState<CommissionsData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [patching, setPatching] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const params = new URLSearchParams();
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
+    try {
+      const res = await fetch(`/api/admin/partner-commissions?${params}`);
+      if (res.ok) setData(await res.json() as CommissionsData);
+    } finally {
+      setLoading(false);
+    }
+  }, [from, to]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const toggleStatus = async (row: PartnerCommissionRow) => {
+    setPatching(row.id);
+    const newStatus = row.status === "paid" ? "pending" : "paid";
+    await fetch("/api/admin/partner-commissions", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: row.id, status: newStatus }),
+    });
+    await load();
+    setPatching(null);
+  };
+
+  if (loading) return <AdminCard><div className="py-12 text-center text-sm text-[#d7aabd]">جارٍ التحميل...</div></AdminCard>;
+  if (!data) return null;
+
+  const { summary, commissions } = data;
+
+  return (
+    <div className="space-y-4">
+      {/* Summary cards */}
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        {[
+          { label: "إجمالي العمولات", value: `${summary.total.toFixed(2)} ج`, color: "text-white" },
+          { label: "معلّقة", value: `${summary.pending.toFixed(2)} ج`, color: "text-amber-300" },
+          { label: "مدفوعة", value: `${summary.paid.toFixed(2)} ج`, color: "text-emerald-300" },
+          { label: "عدد السجلات", value: summary.count, color: "text-[#d7aabd]" },
+        ].map((card) => (
+          <AdminCard key={card.label}>
+            <div className="text-xs text-[#a07080] mb-1">{card.label}</div>
+            <div className={`text-xl font-black ${card.color}`}>{card.value}</div>
+          </AdminCard>
+        ))}
+      </div>
+
+      {/* Table */}
+      <AdminCard>
+        {commissions.length === 0 ? (
+          <AdminEmptyState title="🤝 لا توجد عمولات" description="لم يتم تسجيل أي عمولات في هذه الفترة." />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-[rgba(255,188,219,0.12)] text-[#a07080]">
+                  <th className="py-2 text-right font-bold">الشريك</th>
+                  <th className="py-2 text-right font-bold">العميل</th>
+                  <th className="py-2 text-right font-bold">الاشتراك</th>
+                  <th className="py-2 text-right font-bold">المبلوغ المدفوع</th>
+                  <th className="py-2 text-right font-bold">العمولة</th>
+                  <th className="py-2 text-right font-bold">التاريخ</th>
+                  <th className="py-2 text-right font-bold">الحالة</th>
+                </tr>
+              </thead>
+              <tbody>
+                {commissions.map((row) => (
+                  <tr key={row.id} className="border-b border-[rgba(255,188,219,0.07)] hover:bg-white/5">
+                    <td className="py-2">
+                      <div className="font-bold text-[#fff4f8]">{row.partnerName}</div>
+                      <div className="text-xs text-[#a07080]">{PARTNER_CAT_LABELS[row.partnerCategory] ?? row.partnerCategory}</div>
+                    </td>
+                    <td className="py-2 text-[#d7aabd]">{row.customerName}</td>
+                    <td className="py-2 text-[#d7aabd]">{row.membershipName}</td>
+                    <td className="py-2 text-[#d7aabd]">{row.paymentAmount} ج</td>
+                    <td className="py-2 font-bold text-amber-300">{row.amount.toFixed(2)} ج</td>
+                    <td className="py-2 text-[#a07080] text-xs">{fmtDate(row.createdAt)}</td>
+                    <td className="py-2">
+                      <button
+                        disabled={patching === row.id}
+                        onClick={() => void toggleStatus(row)}
+                        className={`rounded-full px-3 py-1 text-xs font-bold transition-colors disabled:opacity-50 ${
+                          row.status === "paid"
+                            ? "bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25"
+                            : "bg-amber-500/15 text-amber-300 hover:bg-amber-500/25"
+                        }`}
+                      >
+                        {row.status === "paid" ? "✓ مدفوعة" : "معلّقة"}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </AdminCard>
+    </div>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-type MainTab = "store" | "club" | "fees";
+type MainTab = "store" | "club" | "fees" | "commissions";
 
 const THIS_MONTH_START = new Date();
 THIS_MONTH_START.setDate(1);
@@ -966,6 +1101,7 @@ export default function Accounting() {
     { id: "store", label: "حسابات المتجر", icon: "🛒" },
     { id: "club", label: "حسابات الجيم", icon: "🏋️" },
     { id: "fees", label: "قواعد العمولات", icon: "⚙️" },
+    { id: "commissions", label: "عمولات الشركاء", icon: "🤝" },
   ];
 
   return (
@@ -1022,6 +1158,7 @@ export default function Accounting() {
       {!loading && data && tab === "store" && <StoreTab data={data} onRefresh={fetchData} dateRange={from && to ? `${from} — ${to}` : "كل الفترات"} />}
       {!loading && data && tab === "club" && <ClubTab data={data} onRefresh={fetchData} dateRange={from && to ? `${from} — ${to}` : "كل الفترات"} />}
       {!loading && data && tab === "fees" && <FeeRulesTab data={data} onRefresh={fetchData} />}
+      {tab === "commissions" && <PartnerCommissionsTab from={from} to={to} />}
     </AdminSectionShell>
   );
 }

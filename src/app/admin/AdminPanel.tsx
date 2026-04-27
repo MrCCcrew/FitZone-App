@@ -29,6 +29,7 @@ import RewardSettings from "./sections/RewardSettings";
 import DatabaseMaintenance from "./sections/DatabaseMaintenance";
 import Settings from "./sections/Settings";
 import PushNotifications from "./sections/PushNotifications";
+import Partners from "./sections/Partners";
 
 const PROTECTED_SECTIONS = ["payments", "database"] as const;
 
@@ -55,6 +56,7 @@ const NAV: { id: Section; label: string; icon: string }[] = [
   { id: "complaints", label: "الشكاوى", icon: "📝" },
   { id: "discounts", label: "أكواد الخصم", icon: "🏷️" },
   { id: "rewards", label: "المكافآت والإحالة", icon: "🎁" },
+  { id: "partners", label: "الشركاء والعمولات", icon: "🤝" },
   { id: "push",    label: "الإشعارات الفورية",  icon: "🔔" },
 ];
 
@@ -93,6 +95,7 @@ const TITLES: Record<string, string> = {
   complaints: "إدارة الشكاوى",
   discounts: "أكواد الخصم",
   rewards: "إعدادات المكافآت والإحالة",
+  partners: "الشركاء والعمولات",
   database: "إدارة قاعدة البيانات",
   push:     "الإشعارات الفورية (Web Push)",
 };
@@ -489,6 +492,8 @@ export default function AdminPanel() {
               onChange={setMasterPassword}
               onSubmit={() => void unlockProtectedSection()}
             />
+          ) : safeActive === "partners" ? (
+            <Partners viewMode={role === "partner" ? "partner" : "admin"} />
           ) : (
             <ActiveSection />
           )}
