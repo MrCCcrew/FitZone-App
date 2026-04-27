@@ -3622,11 +3622,13 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify((() => {
           const fs = getMembershipFinancialSummary(plan);
+          const storedPartnerCode = sessionStorage.getItem("fitzone:partner-code");
           return {
             membershipId: plan.id,
             scheduleIds,
             paymentMethod: paymentOverride ?? membershipPayMethod,
             discountCode: discountResult ? discountCode.trim().toUpperCase() : null,
+            partnerCode: !discountResult && storedPartnerCode ? storedPartnerCode : undefined,
             walletDeduct: fs.walletDiscount > 0 ? fs.walletDiscount : undefined,
             pointsDeduct: fs.pointsToDeduct > 0 ? fs.pointsToDeduct : undefined,
             trialPrice: plan.isTrial ? plan.price : undefined,
@@ -3655,9 +3657,9 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
         }
         return;
       }
+      sessionStorage.removeItem("fitzone:partner-code");
       if (data.checkoutUrl) {
         setPendingPaymentUrl(data.checkoutUrl);
-        // Try auto-redirect (works on desktop; mobile may block async redirects)
         try { window.location.href = data.checkoutUrl; } catch {}
       } else {
         setSubMsg({ text: `✅ تم الاشتراك في باقة ${plan.name} بنجاح!`, ok: true });
@@ -7696,13 +7698,14 @@ const PARTNER_CATEGORY_LABELS: Record<string, { ar: string; en: string }> = {
   other:         { ar: "خدمات أخرى",  en: "Other Services" },
 };
 
-const PartnersPage = () => {
+const PartnersPage = ({ navigate, summary }: { navigate: (p: string) => void; summary: UserSummary | null }) => {
   const t = useT();
   const { lang } = useLang();
   const [partners, setPartners] = useState<PublicPartner[]>([]);
   const [loading, setLoading] = useState(true);
-  const [copied, setCopied] = useState<string | null>(null);
   const [activeCategory, setActiveCategory] = useState("all");
+
+  const hasActiveMembership = summary?.authenticated && summary?.membership?.status === "active";
 
   useEffect(() => {
     fetch("/api/public/partners", { cache: "no-store" })
@@ -7715,10 +7718,9 @@ const PartnersPage = () => {
   const categories = ["all", ...Array.from(new Set(partners.map((p) => p.category)))];
   const filtered = activeCategory === "all" ? partners : partners.filter((p) => p.category === activeCategory);
 
-  const copyCode = (code: string) => {
-    navigator.clipboard.writeText(code).catch(() => {});
-    setCopied(code);
-    setTimeout(() => setCopied(null), 2000);
+  const applyCode = (code: string) => {
+    sessionStorage.setItem("fitzone:partner-code", code);
+    navigate("memberships");
   };
 
   const formatDiscount = (p: PublicPartner) => {
@@ -7783,18 +7785,13 @@ const PartnersPage = () => {
                   ? PARTNER_CATEGORY_LABELS[partner.category]?.ar
                   : PARTNER_CATEGORY_LABELS[partner.category]?.en;
                 const displayName = lang === "en" && partner.nameEn ? partner.nameEn : partner.name;
-                const isCopied = copied === partner.code?.code;
                 return (
                   <div key={partner.id} className="card card-hover" style={{ display: "flex", flexDirection: "column", overflow: "hidden" }}>
 
                     {/* Logo area */}
                     <div style={{ background: "#fff", padding: "28px 24px 20px", display: "flex", flexDirection: "column", alignItems: "center", gap: 12, borderBottom: `1px solid ${C.border}` }}>
                       {partner.logoUrl ? (
-                        <img
-                          src={partner.logoUrl}
-                          alt={displayName}
-                          style={{ width: 88, height: 88, objectFit: "contain" }}
-                        />
+                        <img src={partner.logoUrl} alt={displayName} style={{ width: 88, height: 88, objectFit: "contain" }} />
                       ) : (
                         <div style={{ width: 88, height: 88, borderRadius: 16, background: `linear-gradient(135deg, ${C.redDark}, #8B0034)`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 36, color: "#fff", fontWeight: 900 }}>
                           {displayName.charAt(0)}
@@ -7809,7 +7806,7 @@ const PartnersPage = () => {
                     {/* Discount + Code */}
                     <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 10, flex: 1 }}>
 
-                      {/* Discount */}
+                      {/* Discount — visible to all */}
                       {discount && (
                         <div style={{ textAlign: "center", background: "rgba(194,24,91,.07)", borderRadius: 8, padding: "8px 12px" }}>
                           <div style={{ fontSize: 11, color: C.gray, marginBottom: 2 }}>{t("خصم حصري لأعضاء فيت زون", "Exclusive member discount")}</div>
@@ -7817,25 +7814,36 @@ const PartnersPage = () => {
                         </div>
                       )}
 
-                      {/* Code */}
+                      {/* Code — members only */}
                       {partner.code && (
-                        <button
-                          onClick={() => copyCode(partner.code!.code)}
-                          style={{
-                            display: "flex", alignItems: "center", justifyContent: "space-between",
-                            background: isCopied ? "rgba(22,163,74,.08)" : C.bgCard2,
-                            border: `1.5px dashed ${isCopied ? C.success : C.border}`,
-                            borderRadius: 8, padding: "10px 14px", cursor: "pointer",
-                            transition: "all .2s", width: "100%",
-                          }}
-                        >
-                          <span style={{ fontFamily: "monospace", fontSize: 17, fontWeight: 900, color: isCopied ? C.success : C.redDark, letterSpacing: 3 }}>
-                            {partner.code.code}
-                          </span>
-                          <span style={{ fontSize: 11, fontWeight: 700, color: isCopied ? C.success : C.gray, whiteSpace: "nowrap" }}>
-                            {isCopied ? t("✓ تم النسخ", "✓ Copied") : t("انسخ", "Copy")}
-                          </span>
-                        </button>
+                        hasActiveMembership ? (
+                          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: C.bgCard2, border: `1.5px dashed ${C.border}`, borderRadius: 8, padding: "8px 12px" }}>
+                              <span style={{ fontFamily: "monospace", fontSize: 17, fontWeight: 900, color: C.redDark, letterSpacing: 3 }}>
+                                {partner.code.code}
+                              </span>
+                            </div>
+                            <button
+                              onClick={() => applyCode(partner.code!.code)}
+                              className="btn-primary"
+                              style={{ width: "100%", justifyContent: "center", fontSize: 13, padding: "10px" }}
+                            >
+                              {t("تطبيق الكود على اشتراكي", "Apply code to my plan")}
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => summary?.authenticated ? navigate("memberships") : navigate("account")}
+                            style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, background: "rgba(194,24,91,.06)", border: `1.5px dashed ${C.border}`, borderRadius: 8, padding: "10px 12px", cursor: "pointer", width: "100%", fontFamily: "'Cairo',sans-serif" }}
+                          >
+                            <span style={{ fontSize: 14 }}>🔒</span>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: C.gray }}>
+                              {summary?.authenticated
+                                ? t("اشتركي للحصول على الكود", "Subscribe to get the code")
+                                : t("سجلي دخولك للحصول على الكود", "Login to get the code")}
+                            </span>
+                          </button>
+                        )
                       )}
 
                       {/* Website */}
@@ -8442,7 +8450,7 @@ export default function App() {
     referral: <RedirectToAccountTab tab="wallet" />,
     account: <RedirectToAccountTab tab="profile" />,
     trainers: <TrainersPage navigate={navigate} summary={summary} />,
-    partners: <PartnersPage />,
+    partners: <PartnersPage navigate={navigate} summary={summary} />,
     blog: <BlogPage />,
     contact: <ContactPage />,
   };

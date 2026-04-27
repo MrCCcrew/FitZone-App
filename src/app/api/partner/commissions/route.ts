@@ -29,7 +29,7 @@ export async function GET() {
     id: c.id,
     amount: c.amount,
     status: c.status,
-    paidAt: c.paidAt?.toISOString() ?? null,
+    withdrawnAt: c.withdrawnAt?.toISOString() ?? null,
     notes: c.notes,
     createdAt: c.createdAt.toISOString(),
     customerName: c.userMembership.user.name ?? "—",
@@ -53,8 +53,8 @@ export async function PATCH(req: Request) {
     if (!body.id) return NextResponse.json({ error: "معرّف العمولة مطلوب." }, { status: 400 });
 
     const data: Record<string, unknown> = {};
-    if (body.status === "paid") { data.status = "paid"; data.paidAt = new Date(); }
-    else if (body.status === "pending") { data.status = "pending"; data.paidAt = null; }
+    if (body.status === "withdrawn") { data.status = "withdrawn"; data.withdrawnAt = new Date(); }
+    else if (body.status === "pending") { data.status = "pending"; data.withdrawnAt = null; }
     if (body.notes !== undefined) data.notes = body.notes.trim() || null;
 
     const updated = await db.partnerCommission.update({ where: { id: body.id }, data });

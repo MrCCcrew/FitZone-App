@@ -16,15 +16,11 @@ export async function GET() {
 
   const links = await db.partnerAffiliateLink.findMany({
     where: { partnerId: partner.id },
-    include: { membership: { select: { name: true, price: true } } },
     orderBy: { createdAt: "desc" },
   });
 
   return NextResponse.json(links.map((l) => ({
     id: l.id,
-    membershipId: l.membershipId,
-    membershipName: l.membership.name,
-    membershipPrice: l.membership.price,
     token: l.token,
     label: l.label,
     clickCount: l.clickCount,
@@ -43,37 +39,15 @@ export async function POST(req: Request) {
   }
 
   try {
-    const body = (await req.json()) as { membershipId?: string; label?: string };
-
-    if (!body.membershipId) {
-      return NextResponse.json({ error: "الاشتراك مطلوب." }, { status: 400 });
-    }
-
-    const membership = await db.membership.findUnique({
-      where: { id: body.membershipId },
-      select: { id: true, name: true, isActive: true },
-    });
-    if (!membership || !membership.isActive) {
-      return NextResponse.json({ error: "الاشتراك غير موجود أو غير نشط." }, { status: 404 });
-    }
-
+    const body = (await req.json()) as { label?: string };
     const token = randomBytes(6).toString("base64url").toUpperCase().slice(0, 8);
 
     const created = await db.partnerAffiliateLink.create({
-      data: {
-        partnerId: partner.id,
-        membershipId: body.membershipId,
-        token,
-        label: body.label?.trim() || null,
-      },
-      include: { membership: { select: { name: true, price: true } } },
+      data: { partnerId: partner.id, token, label: body.label?.trim() || null },
     });
 
     return NextResponse.json({
       id: created.id,
-      membershipId: created.membershipId,
-      membershipName: created.membership.name,
-      membershipPrice: created.membership.price,
       token: created.token,
       label: created.label,
       clickCount: created.clickCount,

@@ -194,8 +194,6 @@ export interface PartnerCode {
 export interface PartnerAffiliateLink {
   id: string;
   partnerId: string;
-  membershipId: string;
-  membershipName: string;
   token: string;
   label: string | null;
   clickCount: number;
@@ -212,10 +210,23 @@ export interface PartnerCommission {
   customerEmail: string;
   membershipName: string;
   amount: number;
-  status: "pending" | "paid";
-  paidAt: string | null;
+  status: "pending" | "withdrawn";
+  withdrawnAt: string | null;
   notes: string | null;
   createdAt: string;
+}
+
+export interface PartnerWithdrawalRequest {
+  id: string;
+  partnerName: string;
+  partnerCategory: string;
+  partnerPhone: string | null;
+  amount: number;
+  status: "pending" | "approved" | "rejected";
+  adminNotes: string | null;
+  receiptUrl: string | null;
+  createdAt: string;
+  processedAt: string | null;
 }
 
 export interface Trainer {

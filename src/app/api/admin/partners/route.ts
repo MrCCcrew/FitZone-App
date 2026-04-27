@@ -29,7 +29,7 @@ function formatPartner(p: {
   commissions: { amount: number; status: string }[];
 }) {
   const pending = p.commissions.filter((c) => c.status === "pending").reduce((s, c) => s + c.amount, 0);
-  const paid = p.commissions.filter((c) => c.status === "paid").reduce((s, c) => s + c.amount, 0);
+  const paid = p.commissions.filter((c) => c.status === "withdrawn").reduce((s, c) => s + c.amount, 0);
   return {
     id: p.id,
     userId: p.userId,

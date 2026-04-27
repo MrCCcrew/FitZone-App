@@ -20,7 +20,6 @@ export async function GET() {
     }),
     db.partnerAffiliateLink.findMany({
       where: { partnerId: partner.id },
-      include: { membership: { select: { name: true } } },
       orderBy: { createdAt: "desc" },
     }),
     db.partnerCommission.findMany({
@@ -48,7 +47,7 @@ export async function GET() {
   ]);
 
   const totalPending = commissions.filter((c) => c.status === "pending").reduce((s, c) => s + c.amount, 0);
-  const totalPaid = commissions.filter((c) => c.status === "paid").reduce((s, c) => s + c.amount, 0);
+  const totalPaid = commissions.filter((c) => c.status === "withdrawn").reduce((s, c) => s + c.amount, 0);
 
   return NextResponse.json({
     partner: {
@@ -82,8 +81,6 @@ export async function GET() {
     })),
     links: links.map((l) => ({
       id: l.id,
-      membershipId: l.membershipId,
-      membershipName: l.membership.name,
       token: l.token,
       label: l.label,
       clickCount: l.clickCount,
@@ -94,7 +91,7 @@ export async function GET() {
       id: c.id,
       amount: c.amount,
       status: c.status,
-      paidAt: c.paidAt?.toISOString() ?? null,
+      withdrawnAt: c.withdrawnAt?.toISOString() ?? null,
       createdAt: c.createdAt.toISOString(),
       customerName: c.userMembership.user.name ?? "—",
       membershipName: c.userMembership.membership.name,

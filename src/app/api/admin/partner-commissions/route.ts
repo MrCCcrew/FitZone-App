@@ -36,7 +36,7 @@ export async function GET(req: Request) {
   });
 
   const pending = commissions.filter((c) => c.status === "pending").reduce((s, c) => s + c.amount, 0);
-  const paid = commissions.filter((c) => c.status === "paid").reduce((s, c) => s + c.amount, 0);
+  const withdrawn = commissions.filter((c) => c.status === "withdrawn").reduce((s, c) => s + c.amount, 0);
 
   return NextResponse.json({
     commissions: commissions.map((c) => ({
@@ -48,11 +48,11 @@ export async function GET(req: Request) {
       paymentAmount: c.userMembership.paymentAmount,
       amount: c.amount,
       status: c.status,
-      paidAt: c.paidAt?.toISOString() ?? null,
+      withdrawnAt: c.withdrawnAt?.toISOString() ?? null,
       notes: c.notes,
       createdAt: c.createdAt.toISOString(),
     })),
-    summary: { pending, paid, total: pending + paid, count: commissions.length },
+    summary: { pending, withdrawn, total: pending + withdrawn, count: commissions.length },
   });
 }
 
@@ -67,8 +67,8 @@ export async function PATCH(req: Request) {
   if (!body.id) return NextResponse.json({ error: "معرّف العمولة مطلوب." }, { status: 400 });
 
   const data: Record<string, unknown> = {};
-  if (body.status === "paid") { data.status = "paid"; data.paidAt = new Date(); }
-  else if (body.status === "pending") { data.status = "pending"; data.paidAt = null; }
+  if (body.status === "withdrawn") { data.status = "withdrawn"; data.withdrawnAt = new Date(); }
+  else if (body.status === "pending") { data.status = "pending"; data.withdrawnAt = null; }
   if (body.notes !== undefined) data.notes = body.notes.trim() || null;
 
   const updated = await db.partnerCommission.update({ where: { id: body.id }, data });
