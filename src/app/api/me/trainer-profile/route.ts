@@ -81,11 +81,11 @@ export async function PATCH(req: Request) {
   const data: Record<string, unknown> = {};
 
   if (body.name !== undefined) data.name = String(body.name).trim();
-  if (body.nameEn !== undefined) data.nameEn = String(body.nameEn).trim() || null;
+  if (body.nameEn !== undefined) data.nameEn = body.nameEn ? String(body.nameEn).trim() || null : null;
   if (body.specialty !== undefined) data.specialty = String(body.specialty).trim();
-  if (body.specialtyEn !== undefined) data.specialtyEn = String(body.specialtyEn).trim() || null;
-  if (body.bio !== undefined) data.bio = String(body.bio).trim() || null;
-  if (body.bioEn !== undefined) data.bioEn = String(body.bioEn).trim() || null;
+  if (body.specialtyEn !== undefined) data.specialtyEn = body.specialtyEn ? String(body.specialtyEn).trim() || null : null;
+  if (body.bio !== undefined) data.bio = body.bio ? String(body.bio).trim() || null : null;
+  if (body.bioEn !== undefined) data.bioEn = body.bioEn ? String(body.bioEn).trim() || null : null;
   if (body.certifications !== undefined) data.certifications = JSON.stringify(parseTrainerTextList(body.certifications));
   if (body.certificationsEn !== undefined) data.certificationsEn = JSON.stringify(parseTrainerTextList(body.certificationsEn));
   if (body.certificateFiles !== undefined) data.certificateFiles = serializeTrainerFileLinks(body.certificateFiles);

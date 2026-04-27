@@ -7597,7 +7597,7 @@ const TrainersPage = ({ navigate, summary }: { navigate: (p: string) => void; su
                 <div style={{ padding: "16px 18px 20px" }}>
                   <h3 style={{ fontWeight: 900, fontSize: 17, color: C.white, marginBottom: 3 }}>{lang === "en" && tr.nameEn ? tr.nameEn : tr.name}</h3>
                   <p style={{ color: C.red, fontSize: 12, fontWeight: 700, marginBottom: 10 }}>{lang === "en" && tr.specialtyEn ? tr.specialtyEn : tr.specialty}</p>
-                  {tr.bio && <p style={{ color: C.gray, fontSize: 12, lineHeight: 1.7, marginBottom: 10 }}>{tr.bio}</p>}
+                  {tr.bio && tr.bio !== "null" && <p style={{ color: C.gray, fontSize: 12, lineHeight: 1.7, marginBottom: 10 }}>{tr.bio}</p>}
                   {tr.certifications.length > 0 && (
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "center", marginBottom: 12 }}>
                       {tr.certifications.slice(0, 3).map((cert) => (

@@ -174,11 +174,11 @@ export async function PATCH(req: Request) {
       where: { id: body.id },
       data: {
         ...(body.name !== undefined ? { name: String(body.name).trim() } : {}),
-        ...(body.nameEn !== undefined ? { nameEn: String(body.nameEn).trim() || null } : {}),
+        ...(body.nameEn !== undefined ? { nameEn: body.nameEn ? String(body.nameEn).trim() || null : null } : {}),
         ...(body.specialty !== undefined ? { specialty: String(body.specialty).trim() } : {}),
-        ...(body.specialtyEn !== undefined ? { specialtyEn: String(body.specialtyEn).trim() || null } : {}),
-        ...(body.bio !== undefined ? { bio: String(body.bio).trim() || null } : {}),
-        ...(body.bioEn !== undefined ? { bioEn: String(body.bioEn).trim() || null } : {}),
+        ...(body.specialtyEn !== undefined ? { specialtyEn: body.specialtyEn ? String(body.specialtyEn).trim() || null : null } : {}),
+        ...(body.bio !== undefined ? { bio: body.bio ? String(body.bio).trim() || null : null } : {}),
+        ...(body.bioEn !== undefined ? { bioEn: body.bioEn ? String(body.bioEn).trim() || null : null } : {}),
         ...(body.certifications !== undefined
           ? { certifications: JSON.stringify(parseTrainerTextList(body.certifications)) }
           : {}),
