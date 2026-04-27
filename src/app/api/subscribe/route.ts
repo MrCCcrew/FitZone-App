@@ -21,6 +21,8 @@ type SubscribePayload = {
   pointsDeduct?: number | null;
   trialPrice?: number | null;
   startDate?: string | null; // ISO date string "YYYY-MM-DD", for featured/open-time plans
+  partnerCode?: string | null;   // partner discount code
+  affiliateRef?: string | null;  // partner affiliate link token
 };
 
 function sanitizeMethod(value: unknown) {
@@ -47,7 +49,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "يجب تسجيل الدخول أولًا قبل الاشتراك." }, { status: 401 });
   }
 
-  const { membershipId, offerId, scheduleIds, paymentMethod, discountCode, walletDeduct, pointsDeduct, trialPrice, startDate } = (await req.json()) as SubscribePayload;
+  const { membershipId, offerId, scheduleIds, paymentMethod, discountCode, walletDeduct, pointsDeduct, trialPrice, startDate, partnerCode, affiliateRef } = (await req.json()) as SubscribePayload;
   if (!membershipId && !offerId) {
     return NextResponse.json({ error: "يرجى اختيار الباقة أو العرض أولًا." }, { status: 400 });
   }
@@ -128,6 +130,41 @@ export async function POST(req: Request) {
       if (tdc.targetUserId !== userId) return NextResponse.json({ error: "هذا الكود خاص بعميل آخر." }, { status: 403 });
       if (tdc.isUsed) return NextResponse.json({ error: "تم استخدام هذا الكود من قبل." }, { status: 400 });
       trainerDiscountRecord = { id: tdc.id, discountType: tdc.discountType, discountValue: tdc.discountValue, maxDiscount: tdc.maxDiscount };
+    }
+  }
+
+  // Validate partner code or affiliate ref before transaction
+  let partnerCodeRecord: { id: string; partnerId: string; discountType: string; discountValue: number } | null = null;
+  let affiliateLinkRecord: { id: string; partnerId: string; membershipId: string } | null = null;
+
+  if (partnerCode && !discountRecord && !trainerDiscountRecord) {
+    const normalizedPCode = String(partnerCode).trim().toUpperCase();
+    const pc = await db.partnerCode.findUnique({
+      where: { code: normalizedPCode },
+      select: { id: true, partnerId: true, discountType: true, discountValue: true, isActive: true, expiresAt: true, maxUsage: true, usageCount: true },
+    });
+    if (!pc || !pc.isActive) {
+      return NextResponse.json({ error: "كود الشريك غير صالح." }, { status: 400 });
+    }
+    if (pc.expiresAt && pc.expiresAt < new Date()) {
+      return NextResponse.json({ error: "انتهت صلاحية كود الشريك." }, { status: 400 });
+    }
+    if (pc.maxUsage !== null && pc.usageCount >= pc.maxUsage) {
+      return NextResponse.json({ error: "تم استنفاد الحد الأقصى لهذا الكود." }, { status: 400 });
+    }
+    partnerCodeRecord = { id: pc.id, partnerId: pc.partnerId, discountType: pc.discountType, discountValue: pc.discountValue };
+  }
+
+  if (affiliateRef && !partnerCodeRecord) {
+    const normalizedRef = String(affiliateRef).trim().toUpperCase();
+    const al = await db.partnerAffiliateLink.findUnique({
+      where: { token: normalizedRef },
+      select: { id: true, partnerId: true, membershipId: true, isActive: true },
+    });
+    if (al && al.isActive) {
+      affiliateLinkRecord = { id: al.id, partnerId: al.partnerId, membershipId: al.membershipId };
+      // increment click count (fire-and-forget)
+      void db.partnerAffiliateLink.update({ where: { id: al.id }, data: { clickCount: { increment: 1 } } }).catch(() => null);
     }
   }
 
@@ -237,6 +274,13 @@ export async function POST(req: Request) {
           discountApplied = Math.round(discountApplied * 100) / 100;
         }
         paymentAmount = Math.max(0, paymentAmount - discountApplied);
+      } else if (partnerCodeRecord && paymentAmount) {
+        if (partnerCodeRecord.discountType === "fixed") {
+          discountApplied = Math.min(partnerCodeRecord.discountValue, paymentAmount);
+        } else {
+          discountApplied = Math.round((paymentAmount * partnerCodeRecord.discountValue) / 100 * 100) / 100;
+        }
+        paymentAmount = Math.max(0, paymentAmount - discountApplied);
       }
 
       // Deduct wallet balance
@@ -281,6 +325,11 @@ export async function POST(req: Request) {
       // Subscriptions with a remaining balance stay pending_payment until Paymob webhook confirms
       const needsPaymentConfirmation = (paymentAmount ?? 0) > 0;
 
+      // Determine partner attribution (code wins over affiliate link)
+      const resolvedPartnerId = partnerCodeRecord?.partnerId ?? affiliateLinkRecord?.partnerId ?? null;
+      const resolvedPartnerCodeId = partnerCodeRecord?.id ?? null;
+      const resolvedAffiliateLinkId = affiliateLinkRecord?.id ?? null;
+
       const subscription = await tx.userMembership.create({
         data: {
           userId,
@@ -294,8 +343,38 @@ export async function POST(req: Request) {
           offerId: offerRecord?.id ?? null,
           totalSessions: plan.sessionsCount ?? null,
           productRewardsUsed: productRewards.length ? JSON.stringify(productRewards) : null,
+          partnerId: resolvedPartnerId,
+          partnerCodeId: resolvedPartnerCodeId,
+          affiliateLinkId: resolvedAffiliateLinkId,
         },
       });
+
+      // Increment partner code usage
+      if (resolvedPartnerCodeId) {
+        await tx.partnerCode.update({
+          where: { id: resolvedPartnerCodeId },
+          data: { usageCount: { increment: 1 } },
+        });
+      }
+
+      // Create commission immediately for free/wallet subscriptions
+      if (!needsPaymentConfirmation && resolvedPartnerId) {
+        const partner = await tx.partner.findUnique({
+          where: { id: resolvedPartnerId },
+          select: { commissionRate: true, commissionType: true },
+        });
+        if (partner) {
+          const paidAmount = paymentAmount ?? 0;
+          const commission = partner.commissionType === "fixed"
+            ? partner.commissionRate
+            : Math.round((paidAmount * partner.commissionRate) / 100 * 100) / 100;
+          if (commission > 0) {
+            await tx.partnerCommission.create({
+              data: { partnerId: resolvedPartnerId, userMembershipId: subscription.id, amount: commission },
+            });
+          }
+        }
+      }
 
       // Only deduct product rewards immediately if payment is not pending confirmation
       if (!needsPaymentConfirmation && productRewards.length > 0) {

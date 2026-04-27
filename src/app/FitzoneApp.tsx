@@ -718,6 +718,7 @@ const Header = ({
     { id: "shop", label: t("المتجر", "Shop") },
     { id: "offers", label: t("العروض", "Offers") },
     { id: "trainers", label: t("المدربات", "Trainers") },
+    { id: "partners", label: t("الشركاء", "Partners") },
     { id: "blog", label: t("المدونة", "Blog") },
   ];
   return (
@@ -7671,6 +7672,187 @@ const TrainersPage = ({ navigate, summary }: { navigate: (p: string) => void; su
   );
 };
 
+// ─── PARTNERS PAGE ───────────────────────────────────────────────────────────
+type PublicPartner = {
+  id: string;
+  name: string;
+  nameEn: string | null;
+  category: string;
+  logoUrl: string | null;
+  websiteUrl: string | null;
+  code: { code: string; discountType: string; discountValue: number } | null;
+};
+
+const PARTNER_CATEGORY_LABELS: Record<string, { ar: string; en: string }> = {
+  beauty_center: { ar: "سنتر تجميل", en: "Beauty Center" },
+  salon:         { ar: "كوافير",      en: "Salon" },
+  pharmacy:      { ar: "صيدلية",      en: "Pharmacy" },
+  clinic:        { ar: "عيادة",       en: "Clinic" },
+  physiotherapy: { ar: "علاج طبيعي", en: "Physiotherapy" },
+  nutrition:     { ar: "تغذية",       en: "Nutrition" },
+  nursery:       { ar: "حضانة",       en: "Nursery" },
+  education:     { ar: "تعليم أطفال", en: "Kids Education" },
+  clothing:      { ar: "ملابس نسائية",en: "Women's Clothing" },
+  other:         { ar: "خدمات أخرى",  en: "Other Services" },
+};
+
+const PartnersPage = () => {
+  const t = useT();
+  const { lang } = useLang();
+  const [partners, setPartners] = useState<PublicPartner[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [copied, setCopied] = useState<string | null>(null);
+  const [activeCategory, setActiveCategory] = useState("all");
+
+  useEffect(() => {
+    fetch("/api/public/partners", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((data: PublicPartner[]) => setPartners(Array.isArray(data) ? data : []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const categories = ["all", ...Array.from(new Set(partners.map((p) => p.category)))];
+  const filtered = activeCategory === "all" ? partners : partners.filter((p) => p.category === activeCategory);
+
+  const copyCode = (code: string) => {
+    navigator.clipboard.writeText(code).catch(() => {});
+    setCopied(code);
+    setTimeout(() => setCopied(null), 2000);
+  };
+
+  const formatDiscount = (p: PublicPartner) => {
+    if (!p.code) return null;
+    if (p.code.discountType === "fixed") return `${p.code.discountValue} ${t("جنيه خصم", "EGP off")}`;
+    return `${p.code.discountValue}% ${t("خصم", "off")}`;
+  };
+
+  return (
+    <div>
+      {/* Hero */}
+      <div style={{ background: `linear-gradient(135deg, ${C.redDark} 0%, #8B0034 100%)`, padding: "64px 0 56px", textAlign: "center" }}>
+        <div className="container">
+          <div style={{ fontSize: 48, marginBottom: 12 }}>🤝</div>
+          <h1 style={{ fontSize: 36, fontWeight: 900, color: "#fff", margin: "0 0 12px" }}>
+            {t("شركاؤنا المميزون", "Our Featured Partners")}
+          </h1>
+          <p style={{ fontSize: 16, color: "rgba(255,255,255,.8)", maxWidth: 520, margin: "0 auto", lineHeight: 1.8 }}>
+            {t(
+              "استمتعي بخصومات حصرية لدى شركائنا عند الاشتراك في فيت زون — استخدمي الكود الخاص عند الزيارة",
+              "Enjoy exclusive discounts at our partners when you join Fit Zone — use the special code on your next visit",
+            )}
+          </p>
+        </div>
+      </div>
+
+      <div className="section" style={{ paddingTop: 48 }}>
+        <div className="container">
+          {/* Category filter */}
+          {categories.length > 2 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 36, justifyContent: "center" }}>
+              {categories.map((cat) => {
+                const label = cat === "all"
+                  ? t("الكل", "All")
+                  : (lang === "ar" ? PARTNER_CATEGORY_LABELS[cat]?.ar : PARTNER_CATEGORY_LABELS[cat]?.en) ?? cat;
+                return (
+                  <button
+                    key={cat}
+                    onClick={() => setActiveCategory(cat)}
+                    className={`tab${activeCategory === cat ? " active" : ""}`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {loading ? (
+            <div style={{ textAlign: "center", padding: "60px 0", color: C.gray }}>
+              {t("جارٍ التحميل...", "Loading...")}
+            </div>
+          ) : filtered.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "60px 0", color: C.gray }}>
+              {t("لا يوجد شركاء حالياً", "No partners available yet")}
+            </div>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 24 }}>
+              {filtered.map((partner) => {
+                const discount = formatDiscount(partner);
+                const catLabel = lang === "ar"
+                  ? PARTNER_CATEGORY_LABELS[partner.category]?.ar
+                  : PARTNER_CATEGORY_LABELS[partner.category]?.en;
+                const displayName = lang === "en" && partner.nameEn ? partner.nameEn : partner.name;
+                return (
+                  <div key={partner.id} className="card card-hover" style={{ padding: 24, display: "flex", flexDirection: "column", gap: 16 }}>
+                    {/* Logo */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                      {partner.logoUrl ? (
+                        <img
+                          src={partner.logoUrl}
+                          alt={displayName}
+                          style={{ width: 64, height: 64, borderRadius: 12, objectFit: "contain", border: `1px solid ${C.border}`, background: "#fff", padding: 4 }}
+                        />
+                      ) : (
+                        <div style={{ width: 64, height: 64, borderRadius: 12, background: `linear-gradient(135deg, ${C.redDark}, #8B0034)`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, color: "#fff", fontWeight: 900 }}>
+                          {displayName.charAt(0)}
+                        </div>
+                      )}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 800, fontSize: 15, color: C.white, marginBottom: 4 }}>{displayName}</div>
+                        {catLabel && (
+                          <span className="tag" style={{ fontSize: 10 }}>{catLabel}</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Discount badge */}
+                    {discount && (
+                      <div style={{ background: "rgba(194,24,91,.08)", border: `1px solid rgba(194,24,91,.2)`, borderRadius: 10, padding: "10px 14px", textAlign: "center" }}>
+                        <div style={{ fontSize: 11, color: C.gray, marginBottom: 4 }}>{t("خصم حصري لأعضاء فيت زون", "Exclusive Fit Zone member discount")}</div>
+                        <div style={{ fontSize: 20, fontWeight: 900, color: C.redDark }}>{discount}</div>
+                      </div>
+                    )}
+
+                    {/* Code copy */}
+                    {partner.code && (
+                      <button
+                        onClick={() => copyCode(partner.code!.code)}
+                        style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#F5F5F5", border: `1.5px dashed ${C.border}`, borderRadius: 10, padding: "10px 14px", cursor: "pointer", transition: "all .2s", width: "100%" }}
+                      >
+                        <span style={{ fontFamily: "monospace", fontSize: 16, fontWeight: 900, color: C.white, letterSpacing: 2 }}>
+                          {partner.code.code}
+                        </span>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: copied === partner.code.code ? C.success : C.redDark }}>
+                          {copied === partner.code.code ? t("✓ تم النسخ!", "✓ Copied!") : t("📋 انسخ الكود", "📋 Copy")}
+                        </span>
+                      </button>
+                    )}
+
+                    {/* Website link */}
+                    {partner.websiteUrl && (
+                      <a
+                        href={partner.websiteUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ textAlign: "center", fontSize: 13, color: C.gray, textDecoration: "none", transition: "color .2s" }}
+                        onMouseEnter={(e) => (e.currentTarget.style.color = C.red)}
+                        onMouseLeave={(e) => (e.currentTarget.style.color = C.gray)}
+                      >
+                        🔗 {t("زيارة الموقع", "Visit website")}
+                      </a>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ─── BLOG PAGE ────────────────────────────────────────────────────────────────
 const BlogPage = () => {
   const t = useT();
@@ -8256,6 +8438,7 @@ export default function App() {
     referral: <RedirectToAccountTab tab="wallet" />,
     account: <RedirectToAccountTab tab="profile" />,
     trainers: <TrainersPage navigate={navigate} summary={summary} />,
+    partners: <PartnersPage />,
     blog: <BlogPage />,
     contact: <ContactPage />,
   };
