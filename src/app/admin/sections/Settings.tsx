@@ -70,13 +70,114 @@ const EMPTY_FORM: EmployeeForm = {
   commissionType: "percentage",
 };
 
-function tryFormatJson(value?: string | null) {
-  if (!value) return "";
+const AUDIT_ACTION_LABELS: Record<string, string> = {
+  create: "إنشاء",
+  update: "تعديل",
+  delete: "حذف",
+  approve: "موافقة",
+  reject: "رفض",
+  activate: "تفعيل",
+  deactivate: "تعطيل",
+  login: "تسجيل دخول",
+  logout: "تسجيل خروج",
+  gift_trial: "منح تجربة مجانية",
+  bulk_delete: "حذف جماعي",
+  mark_paid: "تسجيل دفع",
+  mark_delivered: "تسليم",
+  cancel: "إلغاء",
+  settle: "تسوية",
+  reset: "إعادة تعيين",
+  patch: "تحديث",
+};
+
+const AUDIT_TARGET_LABELS: Record<string, string> = {
+  userMembership: "اشتراك",
+  partner: "شريك",
+  partnerCommission: "عمولة شريك",
+  agentCommission: "عمولة موظف",
+  booking: "حجز",
+  user: "مستخدم",
+  order: "طلب",
+  product: "منتج",
+  discount: "كود خصم",
+  trainer: "مدربة",
+  expense: "مصروف",
+  feeRule: "قاعدة عمولة",
+  membership: "باقة اشتراك",
+  privateSession: "جلسة خاصة",
+  complaint: "شكوى",
+  notification: "إشعار",
+};
+
+const AUDIT_DETAIL_LABELS: Record<string, string> = {
+  customerName: "اسم العميل",
+  membershipName: "الاشتراك",
+  trainerName: "المدربة",
+  partnerName: "الشريك",
+  agentName: "الموظف",
+  amount: "المبلغ",
+  paymentMethod: "طريقة الدفع",
+  status: "الحالة",
+  name: "الاسم",
+  category: "الفئة",
+  email: "البريد الإلكتروني",
+  phone: "الهاتف",
+  reason: "السبب",
+  note: "الملاحظة",
+  notes: "ملاحظات",
+  startDate: "تاريخ البداية",
+  endDate: "تاريخ الانتهاء",
+  code: "الكود",
+  value: "القيمة",
+  type: "النوع",
+  className: "الكلاس",
+  label: "الوصف",
+  price: "السعر",
+  vendor: "المورد",
+  count: "العدد",
+  ids: "العناصر المحددة",
+  scheduledAt: "الموعد",
+  paidAt: "تاريخ الدفع",
+  settledAt: "تاريخ التسوية",
+  withdrawnAt: "تاريخ السحب",
+  role: "الصلاحية",
+  title: "العنوان",
+  description: "الوصف",
+  userId: "معرف المستخدم",
+  trainerId: "معرف المدربة",
+  membershipId: "معرف الباقة",
+};
+
+function fmtDetailVal(val: unknown): string {
+  if (val === null || val === undefined || val === "") return "—";
+  if (typeof val === "boolean") return val ? "نعم" : "لا";
+  if (Array.isArray(val)) return `${(val as unknown[]).length} عنصر`;
+  if (typeof val === "object") return JSON.stringify(val);
+  return String(val);
+}
+
+function AuditDetailsView({ details }: { details?: string | null }) {
+  if (!details) return null;
+  let parsed: Record<string, unknown>;
   try {
-    return JSON.stringify(JSON.parse(value), null, 2);
+    parsed = JSON.parse(details) as Record<string, unknown>;
   } catch {
-    return value;
+    return <p className="mt-2 rounded-xl bg-[#12080d] p-3 text-[11px] text-[#f5d4df]">{details}</p>;
   }
+  const entries = Object.entries(parsed);
+  if (entries.length === 0) return null;
+  return (
+    <div className="mt-2 rounded-xl bg-[#12080d] p-3">
+      <div className="grid gap-x-6 gap-y-1" style={{ gridTemplateColumns: "max-content 1fr" }}>
+        {entries.map(([key, val]) => (
+          <>
+            <span key={`${key}-k`} className="text-[11px] text-[#a07080] whitespace-nowrap">{AUDIT_DETAIL_LABELS[key] ?? key}</span>
+            <span key={`${key}-v`} className="text-[11px] text-[#f5d4df] font-medium break-all">{fmtDetailVal(val)}</span>
+          </>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function getRoleLabel(role: string) {
@@ -535,20 +636,24 @@ export default function Settings() {
             <div className="space-y-3">
               {logs.map((log) => (
                 <div key={log.id} className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                  <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
-                    <div className="text-sm font-bold text-white">
-                      {log.actorName || "System"} · {log.action} · {log.targetType}
+                  <div className="mb-1 flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex flex-wrap items-center gap-2 text-sm font-bold text-white">
+                      <span>{log.actorName || "System"}</span>
+                      <span className="rounded-full bg-pink-900/40 px-2 py-0.5 text-xs text-pink-300">
+                        {AUDIT_ACTION_LABELS[log.action] ?? log.action}
+                      </span>
+                      <span className="rounded-full bg-white/10 px-2 py-0.5 text-xs text-[#d7aabd]">
+                        {AUDIT_TARGET_LABELS[log.targetType] ?? log.targetType}
+                      </span>
                     </div>
                     <div className="text-xs text-[#d7aabd]">
                       {new Date(log.createdAt).toLocaleString("ar-EG")}
                     </div>
                   </div>
-                  <div className="mb-2 text-xs text-[#d7aabd]">
-                    {log.actorEmail || "بدون بريد"} {log.actorRole ? `• ${log.actorRole}` : ""} {log.targetId ? `• ${log.targetId}` : ""}
+                  <div className="mb-2 text-xs text-[#a07080]">
+                    {log.actorEmail || "بدون بريد"} {log.actorRole ? `· ${log.actorRole}` : ""}
                   </div>
-                  <pre className="overflow-x-auto rounded-xl bg-[#12080d] p-3 text-[11px] leading-6 text-[#f5d4df]">
-                    {tryFormatJson(log.details)}
-                  </pre>
+                  <AuditDetailsView details={log.details} />
                 </div>
               ))}
             </div>
