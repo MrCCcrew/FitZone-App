@@ -260,6 +260,9 @@ export interface Trainer {
     id: string;
     name: string;
     email: string;
+    discountType: string;
+    discountValue: number;
+    maxDiscount: number | null;
   } | null;
   canSendGifts: boolean;
   giftMonthlyLimit: number;

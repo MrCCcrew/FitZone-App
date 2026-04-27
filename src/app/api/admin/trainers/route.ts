@@ -31,7 +31,7 @@ function formatTrainer(trainer: {
   canSendGifts: boolean;
   giftMonthlyLimit: number;
   _count: { classes: number };
-  user: { id: string; name: string | null; email: string | null } | null;
+  user: { id: string; name: string | null; email: string | null; discountType: string; discountValue: number; maxDiscount: number | null } | null;
 }) {
   return {
     id: trainer.id,
@@ -59,6 +59,9 @@ function formatTrainer(trainer: {
           id: trainer.user.id,
           name: trainer.user.name ?? "",
           email: trainer.user.email ?? "",
+          discountType: trainer.user.discountType,
+          discountValue: trainer.user.discountValue,
+          maxDiscount: trainer.user.maxDiscount,
         }
       : null,
   };
@@ -88,7 +91,7 @@ export async function GET() {
       where: { id: trainerId },
       include: {
         _count: { select: { classes: true } },
-        user: { select: { id: true, name: true, email: true } },
+        user: { select: { id: true, name: true, email: true, discountType: true, discountValue: true, maxDiscount: true } },
       },
     });
     return NextResponse.json(trainer ? [formatTrainer(trainer)] : []);
@@ -97,7 +100,7 @@ export async function GET() {
   const trainers = await db.trainer.findMany({
     include: {
       _count: { select: { classes: true } },
-      user: { select: { id: true, name: true, email: true } },
+      user: { select: { id: true, name: true, email: true, discountType: true, discountValue: true, maxDiscount: true } },
     },
     orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
   });
@@ -140,7 +143,7 @@ export async function POST(req: Request) {
       },
       include: {
         _count: { select: { classes: true } },
-        user: { select: { id: true, name: true, email: true } },
+        user: { select: { id: true, name: true, email: true, discountType: true, discountValue: true, maxDiscount: true } },
       },
     });
 
@@ -200,7 +203,7 @@ export async function PATCH(req: Request) {
       },
       include: {
         _count: { select: { classes: true } },
-        user: { select: { id: true, name: true, email: true } },
+        user: { select: { id: true, name: true, email: true, discountType: true, discountValue: true, maxDiscount: true } },
       },
     });
 

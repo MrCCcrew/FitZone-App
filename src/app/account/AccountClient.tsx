@@ -3293,7 +3293,7 @@ function TrainerDiscountCodesTab() {
     }
   };
 
-  const discountLabel = config
+  const discountLabel = config && config.discountValue > 0
     ? config.discountType === "percentage"
       ? `${config.discountValue}%${config.maxDiscount ? ` (${t("حد أقصى", "max")} ${config.maxDiscount} ${t("ج.م", "EGP")})` : ""}`
       : `${config.discountValue} ${t("ج.م", "EGP")}`

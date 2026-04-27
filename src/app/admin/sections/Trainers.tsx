@@ -213,6 +213,7 @@ export default function Trainers() {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [modal, setModal] = useState<EditableTrainer | null>(null);
+  const [linkedUserDiscount, setLinkedUserDiscount] = useState<{ discountType: string; discountValue: number; maxDiscount: number | null } | null>(null);
   const [activeTab, setActiveTab] = useState<"trainers" | "applications" | "discounts">("trainers");
 
   // Applications
@@ -386,8 +387,23 @@ export default function Trainers() {
         return;
       }
 
+      // Save discount config to linked user account
+      if (modal.linkedUser?.id && linkedUserDiscount) {
+        await fetch("/api/admin/settings/staff", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: modal.linkedUser.id,
+            discountType: linkedUserDiscount.discountType,
+            discountValue: linkedUserDiscount.discountValue,
+            maxDiscount: linkedUserDiscount.maxDiscount,
+          }),
+        });
+      }
+
       await load();
       setModal(null);
+      setLinkedUserDiscount(null);
       setUploadError(null);
     } finally {
       setSaving(false);
@@ -679,6 +695,7 @@ export default function Trainers() {
             <button
               onClick={() => {
                 setUploadError(null);
+                setLinkedUserDiscount(null);
                 setModal({ ...EMPTY_TRAINER, sortOrder: trainers.length });
               }}
               className="rounded-xl bg-pink-600 px-4 py-2 text-sm font-bold text-white"
@@ -791,6 +808,11 @@ export default function Trainers() {
                 <button
                   onClick={() => {
                     setUploadError(null);
+                    setLinkedUserDiscount(trainer.linkedUser ? {
+                      discountType: trainer.linkedUser.discountType,
+                      discountValue: trainer.linkedUser.discountValue,
+                      maxDiscount: trainer.linkedUser.maxDiscount,
+                    } : null);
                     setModal({ ...trainer });
                   }}
                   className="flex-1 rounded-lg bg-gray-800 px-3 py-2 text-xs font-bold text-white"
@@ -1134,6 +1156,53 @@ export default function Trainers() {
                 )}
               </div>
             </div>
+
+            {modal?.linkedUser && linkedUserDiscount && (
+              <div className="rounded-2xl border border-emerald-500/20 bg-emerald-950/20 p-4 space-y-3">
+                <div className="text-sm font-black text-emerald-300">إعداد خصم أكواد المدربة</div>
+                <p className="text-xs text-gray-400">القيمة التي تستخدمها المدربة عند إنشاء أكواد خصم لعملائها — لا تستطيع المدربة تغييرها.</p>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-1">
+                    <label className="text-xs text-gray-400">نوع الخصم</label>
+                    <select
+                      value={linkedUserDiscount.discountType}
+                      onChange={(e) => setLinkedUserDiscount({ ...linkedUserDiscount, discountType: e.target.value })}
+                      className={INPUT}
+                    >
+                      <option value="percentage">نسبة مئوية %</option>
+                      <option value="fixed">مبلغ ثابت ج.م</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-gray-400">
+                      {linkedUserDiscount.discountType === "fixed" ? "مبلغ الخصم ج.م" : "نسبة الخصم %"}
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      step={linkedUserDiscount.discountType === "percentage" ? 1 : 10}
+                      value={linkedUserDiscount.discountValue}
+                      onChange={(e) => setLinkedUserDiscount({ ...linkedUserDiscount, discountValue: Number(e.target.value) })}
+                      className={INPUT}
+                    />
+                  </div>
+                  {linkedUserDiscount.discountType === "percentage" && (
+                    <div className="space-y-1">
+                      <label className="text-xs text-gray-400">الحد الأقصى للخصم ج.م (اختياري)</label>
+                      <input
+                        type="number"
+                        min={0}
+                        step={10}
+                        value={linkedUserDiscount.maxDiscount ?? ""}
+                        placeholder="بدون حد أقصى"
+                        onChange={(e) => setLinkedUserDiscount({ ...linkedUserDiscount, maxDiscount: e.target.value === "" ? null : Number(e.target.value) })}
+                        className={INPUT}
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             <button
               onClick={() => void saveTrainer()}
