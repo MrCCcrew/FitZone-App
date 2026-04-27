@@ -36,6 +36,8 @@ export default function Partners({ viewMode = "admin" }: { viewMode?: ViewMode }
   const [commissions, setCommissions] = useState<PartnerCommission[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [uploadLogoError, setUploadLogoError] = useState<string | null>(null);
   const [tab, setTab] = useState<"partners" | "commissions">("partners");
 
   // Admin modal
@@ -90,6 +92,25 @@ export default function Partners({ viewMode = "admin" }: { viewMode?: ViewMode }
     if (viewMode === "admin") void loadAdmin();
     else void loadPartnerPortal();
   }, [viewMode, loadAdmin, loadPartnerPortal]);
+
+  // ── Upload Logo ────────────────────────────────────────────────────────────
+  const uploadLogo = async (file: File) => {
+    setUploadingLogo(true);
+    setUploadLogoError(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("folder", "partners");
+      const res = await fetch("/api/admin/uploads", { method: "POST", body: formData });
+      const data = await res.json().catch(() => ({})) as { url?: string; error?: string };
+      if (!res.ok || !data.url) throw new Error(data.error ?? "تعذر رفع الشعار الآن.");
+      setModal((prev) => prev ? { ...prev, logoUrl: data.url } : prev);
+    } catch (err) {
+      setUploadLogoError(err instanceof Error ? err.message : "تعذر رفع الشعار الآن.");
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
 
   // ── Admin Save Partner ─────────────────────────────────────────────────────
   const savePartner = async () => {
@@ -569,11 +590,26 @@ export default function Partners({ viewMode = "admin" }: { viewMode?: ViewMode }
                 </select>
               </label>
 
-              <label className="block space-y-1 md:col-span-2">
-                <span className="text-xs font-bold text-gray-400">رابط الشعار (logo)</span>
+              <div className="block space-y-2 md:col-span-2">
+                <span className="text-xs font-bold text-gray-400">شعار الشريك (logo)</span>
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) void uploadLogo(f);
+                    e.currentTarget.value = "";
+                  }}
+                  className="block w-full text-sm text-[#d7aabd] file:ml-3 file:rounded-lg file:border-0 file:bg-pink-600 file:px-4 file:py-2 file:text-sm file:font-bold file:text-white"
+                />
                 <input value={modal.logoUrl ?? ""} onChange={(e) => setModal({ ...modal, logoUrl: e.target.value })}
-                  className={INPUT} placeholder="https://..." dir="ltr" />
-              </label>
+                  className={INPUT} placeholder="أو ضع رابط الصورة المباشر" dir="ltr" />
+                {uploadingLogo && <div className="text-xs text-[#d7aabd]">جارٍ رفع الشعار...</div>}
+                {uploadLogoError && <div className="text-xs text-red-400">{uploadLogoError}</div>}
+                {modal.logoUrl && (
+                  <img src={modal.logoUrl} alt="معاينة" className="h-16 w-16 rounded-xl border border-[rgba(255,188,219,0.2)] object-contain bg-white p-1" />
+                )}
+              </div>
 
               <label className="block space-y-1">
                 <span className="text-xs font-bold text-gray-400">الموقع الإلكتروني</span>
