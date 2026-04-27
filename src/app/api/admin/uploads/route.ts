@@ -34,6 +34,7 @@ const ALLOWED_FOLDERS = new Set([
   "memberships",
   "pages",
   "blog",
+  "partners",
   "general",
 ]);
 
