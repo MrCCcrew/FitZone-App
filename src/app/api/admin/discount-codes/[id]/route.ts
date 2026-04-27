@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { requireAdminSession } from "@/lib/admin-session";
-import { enterAuditActor, logAudit } from "@/lib/audit-context";
+import { requireAdminFeature } from "@/lib/admin-guard";
+import { logAudit } from "@/lib/audit-context";
 
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireAdminSession();
-  if (!auth.ok) return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
-  enterAuditActor({ userId: auth.session.id, name: auth.session.name, email: auth.session.email, role: auth.session.role });
+  const auth = await requireAdminFeature("discounts");
+  if ("error" in auth) return auth.error;
 
   const { id } = await params;
   const body = await req.json();
@@ -40,9 +39,8 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 }
 
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireAdminSession();
-  if (!auth.ok) return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
-  enterAuditActor({ userId: auth.session.id, name: auth.session.name, email: auth.session.email, role: auth.session.role });
+  const auth = await requireAdminFeature("discounts");
+  if ("error" in auth) return auth.error;
 
   const { id } = await params;
   const existing = await db.discountCode.findUnique({ where: { id } });

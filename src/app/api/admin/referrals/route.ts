@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { requireAdminSession } from "@/lib/admin-session";
+import { requireAdminFeature } from "@/lib/admin-guard";
 
 export async function GET(req: Request) {
-  const auth = await requireAdminSession();
-  if (!auth.ok) return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
+  const auth = await requireAdminFeature("rewards");
+  if ("error" in auth) return auth.error;
 
   const referrals = await db.referral.findMany({
     include: { user: { select: { name: true, email: true } } },
