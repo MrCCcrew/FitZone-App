@@ -20,6 +20,91 @@ type Application = {
   trainer: { id: string; name: string; specialty: string };
 };
 
+// ── Private session form labels ────────────────────────────────────────────────
+const SECTION_LABELS: Record<string, string> = {
+  basicInfo: "المعلومات الأساسية",
+  goals: "الأهداف",
+  medical: "الحالة الصحية",
+  injuries: "الإصابات والعمليات",
+  sportsExperience: "الخبرة الرياضية",
+  lifestyle: "نمط الحياة",
+  nutrition: "التغذية",
+  currentActivity: "النشاط الحالي",
+  womensHealth: "الصحة النسائية",
+  commitment: "الالتزام",
+  notes: "ملاحظات إضافية",
+};
+
+const FIELD_LABELS: Record<string, Record<string, string>> = {
+  basicInfo: { fullName: "الاسم الكامل", age: "العمر", height: "الطول (سم)", weight: "الوزن (كجم)", phone: "رقم الهاتف", jobType: "طبيعة العمل" },
+  medical: { conditions: "الحالات الطبية", takesMeds: "تتناول أدوية", medsDetail: "تفاصيل الأدوية" },
+  injuries: { hasInjuries: "لديها إصابات", detail: "تفاصيل الإصابات", hasSurgeries: "أجرت عمليات", surgeryDetail: "تفاصيل العمليات" },
+  lifestyle: { sleepHours: "ساعات النوم", sleepQuality: "جودة النوم", stressLevel: "مستوى الضغط", waterLiters: "شرب الماء (لتر)" },
+  nutrition: { mealsCount: "عدد الوجبات", followsDiet: "تتبع نظام غذائي", foodAllergies: "حساسية الطعام", supplements: "المكملات الغذائية" },
+  currentActivity: { trainingDays: "أيام التمرين أسبوعياً", trainingType: "نوع التمرين", trainingDuration: "مدة التمرين" },
+  womensHealth: { pregnant: "حامل", gaveBirth: "أنجبت", lastBirth: "آخر ولادة", hasHormonalIssues: "مشاكل هرمونية", hormonalIssuesDetail: "تفاصيل المشاكل الهرمونية" },
+  commitment: { goalTimeline: "المدة المستهدفة", commitDays: "أيام الالتزام أسبوعياً", dietReady: "مستعدة لنظام غذائي" },
+};
+
+function fmtVal(val: unknown): string {
+  if (val === null || val === undefined || val === "") return "—";
+  if (typeof val === "boolean") return val ? "نعم" : "لا";
+  if (Array.isArray(val)) return (val as unknown[]).map(String).join("، ") || "—";
+  return String(val);
+}
+
+function PrivateSessionFormDetails({ formData }: { formData: Record<string, unknown> }) {
+  return (
+    <div className="mt-4 space-y-4 rounded-xl border border-gray-700 bg-black/20 p-4">
+      {Object.entries(formData).map(([section, value]) => {
+        const label = SECTION_LABELS[section] ?? section;
+
+        if (section === "notes" || section === "sportsExperience") {
+          const text = fmtVal(value);
+          if (text === "—") return null;
+          return (
+            <div key={section}>
+              <p className="text-[11px] font-bold text-pink-400 mb-0.5">{label}</p>
+              <p className="text-xs text-gray-300">{text}</p>
+            </div>
+          );
+        }
+
+        if (section === "goals") {
+          const text = fmtVal(value);
+          return (
+            <div key={section}>
+              <p className="text-[11px] font-bold text-pink-400 mb-0.5">{label}</p>
+              <p className="text-xs text-gray-300">{text}</p>
+            </div>
+          );
+        }
+
+        if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+          const fieldMap = FIELD_LABELS[section] ?? {};
+          const rows = Object.entries(value as Record<string, unknown>).filter(([, v]) => v !== "" && v !== null && v !== undefined);
+          if (rows.length === 0) return null;
+          return (
+            <div key={section}>
+              <p className="text-[11px] font-bold text-pink-400 mb-1">{label}</p>
+              <div className="grid grid-cols-2 gap-x-6 gap-y-0.5">
+                {rows.map(([field, fieldVal]) => (
+                  <div key={field} className="flex gap-1.5 text-xs">
+                    <span className="text-gray-500 shrink-0">{fieldMap[field] ?? field}:</span>
+                    <span className="text-gray-300 font-medium">{fmtVal(fieldVal)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        }
+
+        return null;
+      })}
+    </div>
+  );
+}
+
 type Member = { id: string; name: string | null; email: string | null };
 type DiscountCode = {
   id: string; code: string; trainerName: string; trainerId: string;
@@ -492,11 +577,7 @@ export default function Trainers() {
                     </div>
                   </div>
                   {expandedApp === app.id && app.formData && (
-                    <div className="mt-4 rounded-xl border border-gray-700 bg-black/20 p-4 text-xs leading-7 text-gray-300 space-y-1">
-                      {Object.entries(app.formData).map(([key, val]) => (
-                        <div key={key}><span className="font-bold text-gray-400">{key}:</span> {typeof val === "object" ? JSON.stringify(val) : String(val ?? "—")}</div>
-                      ))}
-                    </div>
+                    <PrivateSessionFormDetails formData={app.formData} />
                   )}
                 </div>
               ))}
