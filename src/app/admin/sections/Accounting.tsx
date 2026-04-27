@@ -1064,7 +1064,175 @@ function PartnerCommissionsTab({ from, to }: { from: string; to: string }) {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-type MainTab = "store" | "club" | "fees" | "commissions";
+// ─── Agent Commissions (Staff / Trainer) ──────────────────────────────────────
+type AgentCommissionRow = {
+  id: string;
+  amount: number;
+  status: string;
+  settledAt: string | null;
+  createdAt: string;
+  customerName: string;
+  membershipName: string;
+  agentUser: { id: string; name: string; email: string; role: string };
+};
+type AgentCommissionsData = {
+  commissions: AgentCommissionRow[];
+  agents: { id: string; name: string; role: string; commissionRate: number; commissionType: string }[];
+  totals: { earned: number; settled: number };
+};
+
+function AgentCommissionsAdminTab() {
+  const [data, setData] = useState<AgentCommissionsData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [agentFilter, setAgentFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [settling, setSettling] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const params = new URLSearchParams();
+    if (agentFilter) params.set("agentUserId", agentFilter);
+    if (statusFilter !== "all") params.set("status", statusFilter);
+    try {
+      const res = await fetch(`/api/admin/agent-commissions?${params}`);
+      if (res.ok) setData(await res.json() as AgentCommissionsData);
+    } finally {
+      setLoading(false);
+    }
+  }, [agentFilter, statusFilter]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const toggle = (id: string) => setSelected((prev) => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
+
+  const settle = async () => {
+    if (!selected.size) return;
+    setSettling(true); setMsg(null);
+    try {
+      const res = await fetch("/api/admin/agent-commissions", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: [...selected], status: "settled" }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error ?? "خطأ");
+      setMsg({ ok: true, text: `تم تسوية ${selected.size} عمولة.` });
+      setSelected(new Set());
+      await load();
+    } catch (err) {
+      setMsg({ ok: false, text: err instanceof Error ? err.message : "خطأ" });
+    } finally {
+      setSettling(false);
+    }
+  };
+
+  const earned = data?.commissions.filter(c => c.status === "earned") ?? [];
+
+  return (
+    <div className="space-y-4">
+      {/* Summary */}
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+        {[
+          { label: "إجمالي مستحق", value: data?.totals.earned ?? 0, color: "#f9a8d4" },
+          { label: "إجمالي مُسوَّى", value: data?.totals.settled ?? 0, color: "#86efac" },
+        ].map(s => (
+          <AdminCard key={s.label}>
+            <div style={{ fontSize: 22, fontWeight: 900, color: s.color }}>{s.value.toFixed(0)} ج.م</div>
+            <div style={{ fontSize: 12, color: "#d7aabd", marginTop: 2 }}>{s.label}</div>
+          </AdminCard>
+        ))}
+      </div>
+
+      {/* Filters */}
+      <AdminCard>
+        <div className="flex flex-wrap gap-3">
+          <select className={INPUT} value={agentFilter} onChange={e => setAgentFilter(e.target.value)} style={{ maxWidth: 220 }}>
+            <option value="">كل الموظفين</option>
+            {(data?.agents ?? []).map(a => (
+              <option key={a.id} value={a.id}>{a.name} ({a.role === "trainer" ? "مدربة" : "موظف"})</option>
+            ))}
+          </select>
+          <select className={INPUT} value={statusFilter} onChange={e => setStatusFilter(e.target.value)} style={{ maxWidth: 160 }}>
+            <option value="all">كل الحالات</option>
+            <option value="earned">مستحقة</option>
+            <option value="settled">مُسوَّاة</option>
+          </select>
+          <button className={BTN_PRIMARY} onClick={load} disabled={loading}>تحديث</button>
+          {selected.size > 0 && (
+            <button className={BTN_PRIMARY} onClick={settle} disabled={settling} style={{ background: "#059669" }}>
+              {settling ? "جارٍ التسوية..." : `تسوية ${selected.size} محدد`}
+            </button>
+          )}
+        </div>
+        {msg && <div className={`mt-3 rounded-xl px-4 py-2 text-sm ${msg.ok ? "bg-emerald-950/40 text-emerald-200" : "bg-red-950/40 text-red-200"}`}>{msg.text}</div>}
+      </AdminCard>
+
+      {/* Table */}
+      {loading ? (
+        <AdminCard><div className="py-10 text-center text-sm text-[#d7aabd]">جارٍ التحميل...</div></AdminCard>
+      ) : (
+        <AdminCard>
+          {!data?.commissions.length ? (
+            <div className="py-10 text-center text-sm text-[#d7aabd]">لا توجد عمولات.</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-right text-sm">
+                <thead className="text-xs text-[#d7aabd] border-b border-white/10">
+                  <tr>
+                    <th className="py-2 px-3">
+                      <input type="checkbox"
+                        checked={selected.size === earned.length && earned.length > 0}
+                        onChange={() => setSelected(selected.size === earned.length ? new Set() : new Set(earned.map(c => c.id)))}
+                      />
+                    </th>
+                    <th className="py-2 px-3">الموظف / المدربة</th>
+                    <th className="py-2 px-3">العميل</th>
+                    <th className="py-2 px-3">الباقة</th>
+                    <th className="py-2 px-3">العمولة</th>
+                    <th className="py-2 px-3">الحالة</th>
+                    <th className="py-2 px-3">التاريخ</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.commissions.map(c => (
+                    <tr key={c.id} className="border-t border-white/10 text-white hover:bg-white/5">
+                      <td className="py-2.5 px-3">
+                        {c.status === "earned" && (
+                          <input type="checkbox" checked={selected.has(c.id)} onChange={() => toggle(c.id)} />
+                        )}
+                      </td>
+                      <td className="py-2.5 px-3">
+                        <div className="font-bold">{c.agentUser.name}</div>
+                        <div className="text-xs text-[#d7aabd]">{c.agentUser.role === "trainer" ? "مدربة" : "موظف"}</div>
+                      </td>
+                      <td className="py-2.5 px-3">{c.customerName}</td>
+                      <td className="py-2.5 px-3 text-[#d7aabd]">{c.membershipName}</td>
+                      <td className="py-2.5 px-3 font-bold text-pink-300">{c.amount.toFixed(0)} ج.م</td>
+                      <td className="py-2.5 px-3">
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${c.status === "settled" ? "bg-emerald-900/40 text-emerald-300" : "bg-yellow-900/40 text-yellow-300"}`}>
+                          {c.status === "settled" ? "مُسوَّاة" : "مستحقة"}
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-3 text-xs text-[#d7aabd]">{new Date(c.createdAt).toLocaleDateString("ar-EG")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </AdminCard>
+      )}
+    </div>
+  );
+}
+
+type MainTab = "store" | "club" | "fees" | "commissions" | "agentCommissions";
 
 const THIS_MONTH_START = new Date();
 THIS_MONTH_START.setDate(1);
@@ -1102,6 +1270,7 @@ export default function Accounting() {
     { id: "club", label: "حسابات الجيم", icon: "🏋️" },
     { id: "fees", label: "قواعد العمولات", icon: "⚙️" },
     { id: "commissions", label: "عمولات الشركاء", icon: "🤝" },
+    { id: "agentCommissions", label: "عمولات الموظفين", icon: "👥" },
   ];
 
   return (
@@ -1158,7 +1327,8 @@ export default function Accounting() {
       {!loading && data && tab === "store" && <StoreTab data={data} onRefresh={fetchData} dateRange={from && to ? `${from} — ${to}` : "كل الفترات"} />}
       {!loading && data && tab === "club" && <ClubTab data={data} onRefresh={fetchData} dateRange={from && to ? `${from} — ${to}` : "كل الفترات"} />}
       {!loading && data && tab === "fees" && <FeeRulesTab data={data} onRefresh={fetchData} />}
-      {tab === "commissions" && <PartnerCommissionsTab from={from} to={to} />}
+      {tab === "commissions"      && <PartnerCommissionsTab from={from} to={to} />}
+      {tab === "agentCommissions" && <AgentCommissionsAdminTab />}
     </AdminSectionShell>
   );
 }
