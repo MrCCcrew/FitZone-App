@@ -12,6 +12,7 @@ export type Section =
   | "payments"
   | "classes"
   | "trainers"
+  | "partners"
   | "products"
   | "inventory"
   | "reviews"
@@ -153,6 +154,68 @@ export interface GymClass {
   active: boolean;
   showTrainerName?: boolean;
   trainerId?: string;
+}
+
+export interface Partner {
+  id: string;
+  userId: string;
+  name: string;
+  nameEn?: string | null;
+  category: string;
+  logoUrl?: string | null;
+  websiteUrl?: string | null;
+  contactPhone?: string | null;
+  commissionRate: number;
+  commissionType: "percentage" | "fixed";
+  isActive: boolean;
+  showOnPublicPage: boolean;
+  notes?: string | null;
+  createdAt: string;
+  linkedUser: { id: string; name: string; email: string } | null;
+  codesCount: number;
+  linksCount: number;
+  totalCommissionPending: number;
+  totalCommissionPaid: number;
+}
+
+export interface PartnerCode {
+  id: string;
+  partnerId: string;
+  code: string;
+  discountType: "percentage" | "fixed";
+  discountValue: number;
+  maxUsage: number | null;
+  usageCount: number;
+  isActive: boolean;
+  expiresAt: string | null;
+  createdAt: string;
+}
+
+export interface PartnerAffiliateLink {
+  id: string;
+  partnerId: string;
+  membershipId: string;
+  membershipName: string;
+  token: string;
+  label: string | null;
+  clickCount: number;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface PartnerCommission {
+  id: string;
+  partnerId: string;
+  partnerName: string;
+  userMembershipId: string;
+  customerName: string;
+  customerEmail: string;
+  membershipName: string;
+  amount: number;
+  status: "pending" | "paid";
+  paidAt: string | null;
+  notes: string | null;
+  createdAt: string;
 }
 
 export interface Trainer {

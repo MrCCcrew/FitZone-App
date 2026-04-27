@@ -1,6 +1,6 @@
 import type { Section } from "@/app/admin/types";
 
-export type AdminRole = "admin" | "staff" | "trainer" | "accountant";
+export type AdminRole = "admin" | "staff" | "trainer" | "accountant" | "partner";
 
 export type AdminFeature =
   | "settings"
@@ -24,7 +24,8 @@ export type AdminFeature =
   | "discounts"
   | "rewards"
   | "db-maintenance"
-  | "push";
+  | "push"
+  | "partners";
 
 export const ADMIN_FEATURES: AdminFeature[] = [
   "settings",
@@ -49,6 +50,7 @@ export const ADMIN_FEATURES: AdminFeature[] = [
   "rewards",
   "db-maintenance",
   "push",
+  "partners",
 ];
 
 const STAFF_FEATURES: AdminFeature[] = [
@@ -67,12 +69,14 @@ const STAFF_FEATURES: AdminFeature[] = [
 
 const TRAINER_FEATURES: AdminFeature[] = ["classes", "trainers", "bookings", "customers"];
 const ACCOUNTANT_FEATURES: AdminFeature[] = ["overview", "accounting", "orders", "balance", "customers"];
+const PARTNER_FEATURES: AdminFeature[] = ["partners"];
 
 export const ROLE_FEATURE_TEMPLATES: Record<AdminRole, AdminFeature[]> = {
   admin: ADMIN_FEATURES,
   staff: STAFF_FEATURES,
   trainer: TRAINER_FEATURES,
   accountant: ACCOUNTANT_FEATURES,
+  partner: PARTNER_FEATURES,
 };
 
 export const SECTION_FEATURE_MAP: Record<Section, AdminFeature> = {
@@ -101,10 +105,11 @@ export const SECTION_FEATURE_MAP: Record<Section, AdminFeature> = {
   rewards: "rewards",
   database: "db-maintenance",
   push:     "push",
+  partners: "partners",
 };
 
 export function isAdminRole(role?: string): role is AdminRole {
-  return role === "admin" || role === "staff" || role === "trainer" || role === "accountant";
+  return role === "admin" || role === "staff" || role === "trainer" || role === "accountant" || role === "partner";
 }
 
 export function normalizeAdminPermissions(role: string | undefined, permissions?: string[] | null) {

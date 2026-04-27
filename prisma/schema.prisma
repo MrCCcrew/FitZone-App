@@ -98,6 +98,7 @@ model User {
   pushCampaigns       PushCampaign[]     @relation("CampaignAdmin")
   trainerProfile             Trainer?                    @relation("TrainerAccount")
   trainerDiscountCodesTarget TrainerDiscountCode[]        @relation("TrainerCodeTarget")
+  partnerProfile             Partner?                    @relation("PartnerAccount")
   privateApplications        PrivateSessionApplication[] @relation("PrivateApplicationUser")
   attendancePasses           AttendancePass[]
   attendanceCheckIns         AttendanceCheckIn[]         @relation("AttendanceMember")
@@ -151,10 +152,11 @@ model Membership {
   isFeatured  Boolean @default(false)
   isActive    Boolean @default(true)
 
-  userMemberships UserMembership[]
-  recommendedFor  ChatSession[]
-  offers          Offer[]
-  goals           MembershipGoal[]
+  userMemberships  UserMembership[]
+  recommendedFor   ChatSession[]
+  offers           Offer[]
+  goals            MembershipGoal[]
+  affiliateLinks   PartnerAffiliateLink[]
 }
 
 model UserMembership {
@@ -171,12 +173,22 @@ model UserMembership {
   totalSessions Int?
   productRewardsUsed String? @db.LongText
 
-  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  membership Membership @relation(fields: [membershipId], references: [id])
-  offer      Offer?     @relation(fields: [offerId], references: [id], onDelete: SetNull)
-  bookings   Booking[]
-  attendancePass AttendancePass?
-  attendanceCheckIns AttendanceCheckIn[]
+  partnerId       String?
+  partnerCodeId   String?
+  affiliateLinkId String?
+
+  user          User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  membership    Membership            @relation(fields: [membershipId], references: [id])
+  offer         Offer?                @relation(fields: [offerId], references: [id], onDelete: SetNull)
+  partner       Partner?              @relation(fields: [partnerId], references: [id], onDelete: SetNull)
+  partnerCode   PartnerCode?          @relation(fields: [partnerCodeId], references: [id], onDelete: SetNull)
+  affiliateLink PartnerAffiliateLink? @relation(fields: [affiliateLinkId], references: [id], onDelete: SetNull)
+  bookings      Booking[]
+  attendancePass      AttendancePass?
+  attendanceCheckIns  AttendanceCheckIn[]
+  partnerCommission   PartnerCommission?
+
+  @@index([partnerId])
 }
 
 model AttendancePass {
@@ -1016,4 +1028,85 @@ model PrivateSessionApplication {
 
   @@index([userId])
   @@index([trainerId])
+}
+
+// ─── Partner / Affiliate System ───────────────────────────────────────────────
+
+model Partner {
+  id               String   @id @default(cuid())
+  userId           String   @unique
+  name             String
+  nameEn           String?
+  category         String   // beauty_center | salon | pharmacy | clinic | physiotherapy | nutrition | nursery | education | clothing | other
+  logoUrl          String?
+  websiteUrl       String?
+  contactPhone     String?
+  commissionRate   Float    @default(10)   // percentage or fixed EGP amount
+  commissionType   String   @default("percentage") // percentage | fixed
+  isActive         Boolean  @default(true)
+  showOnPublicPage Boolean  @default(true)
+  notes            String?  @db.Text
+  createdAt        DateTime @default(now())
+
+  user            User                  @relation("PartnerAccount", fields: [userId], references: [id], onDelete: Cascade)
+  codes           PartnerCode[]
+  affiliateLinks  PartnerAffiliateLink[]
+  commissions     PartnerCommission[]
+  userMemberships UserMembership[]
+
+  @@index([isActive])
+}
+
+model PartnerCode {
+  id            String    @id @default(cuid())
+  partnerId     String
+  code          String    @unique
+  discountType  String    @default("percentage") // percentage | fixed
+  discountValue Float
+  maxUsage      Int?      // null = unlimited
+  usageCount    Int       @default(0)
+  isActive      Boolean   @default(true)
+  expiresAt     DateTime?
+  createdAt     DateTime  @default(now())
+
+  partner         Partner          @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  userMemberships UserMembership[]
+
+  @@index([partnerId])
+  @@index([code])
+}
+
+model PartnerAffiliateLink {
+  id           String   @id @default(cuid())
+  partnerId    String
+  membershipId String
+  token        String   @unique // short slug used in ?ref=TOKEN
+  label        String?  // optional internal label
+  clickCount   Int      @default(0)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  partner         Partner        @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  membership      Membership     @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  userMemberships UserMembership[]
+
+  @@index([partnerId])
+  @@index([token])
+}
+
+model PartnerCommission {
+  id               String    @id @default(cuid())
+  partnerId        String
+  userMembershipId String    @unique
+  amount           Float
+  status           String    @default("pending") // pending | paid
+  paidAt           DateTime?
+  notes            String?
+  createdAt        DateTime  @default(now())
+
+  partner        Partner        @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  userMembership UserMembership @relation(fields: [userMembershipId], references: [id], onDelete: Cascade)
+
+  @@index([partnerId, status])
+  @@index([createdAt])
 }

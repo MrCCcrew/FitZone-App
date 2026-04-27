@@ -533,6 +533,33 @@ export async function updatePaymentTransactionStatus(
           } catch {}
         }
 
+        // Create partner commission on confirmed Paymob payment
+        try {
+          const mem = await db.userMembership.findUnique({
+            where: { id: existing.membershipId },
+            select: { partnerId: true, paymentAmount: true },
+          });
+          if (mem?.partnerId) {
+            const partner = await db.partner.findUnique({
+              where: { id: mem.partnerId },
+              select: { commissionRate: true, commissionType: true },
+            });
+            if (partner) {
+              const base = mem.paymentAmount ?? 0;
+              const commission = partner.commissionType === "fixed"
+                ? partner.commissionRate
+                : Math.round((base * partner.commissionRate) / 100 * 100) / 100;
+              if (commission > 0) {
+                await db.partnerCommission.upsert({
+                  where: { userMembershipId: existing.membershipId },
+                  update: {},
+                  create: { partnerId: mem.partnerId, userMembershipId: existing.membershipId, amount: commission },
+                });
+              }
+            }
+          }
+        } catch {}
+
         try {
           await ensureMembershipAttendancePass(existing.membershipId);
         } catch {}
