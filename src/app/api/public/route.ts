@@ -483,7 +483,7 @@ export async function GET(request: Request) {
         id: trainer.id,
         name: lang === "en" ? (trainer.nameEn || trainer.name) : trainer.name,
         specialty: lang === "en" ? (trainer.specialtyEn || trainer.specialty) : trainer.specialty,
-        bio: lang === "en" ? (trainer.bioEn || trainer.bio || "") : (trainer.bio || ""),
+        bio: (() => { const b = lang === "en" ? (trainer.bioEn || trainer.bio) : trainer.bio; return b && b !== "null" ? b : ""; })(),
         certifications: lang === "en" ? parseJsonArray(trainer.certificationsEn) : parseJsonArray(trainer.certifications),
         certificateFiles: parseStoredTrainerFileLinks(trainer.certificateFiles),
         rating: trainer.rating,
