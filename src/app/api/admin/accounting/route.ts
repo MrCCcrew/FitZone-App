@@ -97,6 +97,8 @@ export async function GET(request: Request) {
     rewardHistory,
     paymentTransactions,
     pointValueEGP,
+    partnerCommissions,
+    agentCommissions,
   ] = await Promise.all([
     db.accountingFeeRule.findMany({
       orderBy: [{ isActive: "desc" }, { createdAt: "desc" }],
@@ -162,7 +164,7 @@ export async function GET(request: Request) {
       },
       include: {
         user: { select: { name: true } },
-        membership: { select: { name: true, walletBonus: true } },
+        membership: { select: { name: true, walletBonus: true, price: true, priceAfter: true } },
       },
       orderBy: { startDate: "desc" },
     }),
@@ -204,6 +206,20 @@ export async function GET(request: Request) {
       },
     }),
     getPointValue(),
+    // Partner commissions earned in period (by subscription startDate)
+    db.partnerCommission.findMany({
+      where: {
+        userMembership: inRangeFilter("startDate", from, to),
+      },
+      select: { amount: true, status: true },
+    }),
+    // Agent commissions earned in period (by membership startDate)
+    db.agentCommission.findMany({
+      where: {
+        userMembership: inRangeFilter("startDate", from, to),
+      },
+      select: { amount: true, status: true },
+    }),
   ]);
 
   const storeExpenses = expenses.filter((expense) => expense.businessUnit === "store");
@@ -357,8 +373,28 @@ export async function GET(request: Request) {
       })),
   );
   const clubFeeTotal = round2(clubFeeEntries.reduce((sum, item) => sum + item.amount, 0));
+
+  // Partner commissions — earned in this period (accrual basis)
+  const partnerCommissionsPending = round2(partnerCommissions.filter(c => c.status === "pending").reduce((s, c) => s + c.amount, 0));
+  const partnerCommissionsWithdrawn = round2(partnerCommissions.filter(c => c.status === "withdrawn").reduce((s, c) => s + c.amount, 0));
+  const partnerCommissionsTotal = round2(partnerCommissionsPending + partnerCommissionsWithdrawn);
+
+  // Agent commissions (staff / trainer) — earned in this period
+  const agentCommissionsPending = round2(agentCommissions.filter(c => c.status === "earned").reduce((s, c) => s + c.amount, 0));
+  const agentCommissionsSettled = round2(agentCommissions.filter(c => c.status === "settled").reduce((s, c) => s + c.amount, 0));
+  const agentCommissionsTotal = round2(agentCommissionsPending + agentCommissionsSettled);
+
+  // Discounts granted on club memberships (memo only — already reflected in paymentAmount)
+  const clubDiscountsGranted = round2(memberships.reduce((sum, m) => {
+    const originalPrice = m.membership.priceAfter && m.membership.priceAfter > 0
+      ? m.membership.priceAfter
+      : m.membership.price;
+    const discount = originalPrice - m.paymentAmount;
+    return sum + (discount > 0 ? discount : 0);
+  }, 0));
+
   const clubGrossProfit = round2(clubRevenue - walletBonusCost - redeemedPointsCost);
-  const clubNetProfit = round2(clubGrossProfit - clubExpensesTotal - clubFeeTotal);
+  const clubNetProfit = round2(clubGrossProfit - clubExpensesTotal - clubFeeTotal - partnerCommissionsTotal - agentCommissionsTotal);
 
   const payload = {
     range: {
@@ -446,6 +482,13 @@ export async function GET(request: Request) {
         currentPointsLiability: pointsLiability,
         expenseTotal: clubExpensesTotal,
         feeTotal: clubFeeTotal,
+        partnerCommissionsPending,
+        partnerCommissionsWithdrawn,
+        partnerCommissionsTotal,
+        agentCommissionsPending,
+        agentCommissionsSettled,
+        agentCommissionsTotal,
+        clubDiscountsGranted,
         grossProfit: clubGrossProfit,
         netProfit: clubNetProfit,
         membershipCount: membershipRows.length,

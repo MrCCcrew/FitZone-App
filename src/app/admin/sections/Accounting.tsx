@@ -37,6 +37,13 @@ interface ClubSummary {
   currentPointsLiability: number;
   expenseTotal: number;
   feeTotal: number;
+  partnerCommissionsPending: number;
+  partnerCommissionsWithdrawn: number;
+  partnerCommissionsTotal: number;
+  agentCommissionsPending: number;
+  agentCommissionsSettled: number;
+  agentCommissionsTotal: number;
+  clubDiscountsGranted: number;
   grossProfit: number;
   netProfit: number;
   membershipCount: number;
@@ -713,8 +720,56 @@ function ClubTab({ data, onRefresh, dateRange }: { data: AccountingData; onRefre
         <KpiCard label="نقاط مستردة (تكلفة)" value={`${fmt(s.redeemedPointsCost)} ج`} color="text-orange-400" sub={`سعر النقطة: ${r.pointValueEGP} ج`} />
         <KpiCard label="التزامات النقاط الحالية" value={`${fmt(r.currentPointsLiability)} ج`} color="text-yellow-300" />
         <KpiCard label="المصاريف" value={`${fmt(s.expenseTotal)} ج`} color="text-red-400" />
-        <KpiCard label="العمولات والرسوم" value={`${fmt(s.feeTotal)} ج`} color="text-orange-300" />
+        <KpiCard label="رسوم المنصات" value={`${fmt(s.feeTotal)} ج`} color="text-orange-300" />
       </div>
+
+      {/* Commissions — liability & cost */}
+      {(s.partnerCommissionsTotal > 0 || s.agentCommissionsTotal > 0) && (
+        <div className="rounded-2xl border border-amber-500/30 bg-amber-950/20 p-4 space-y-3">
+          <p className="text-sm font-bold text-amber-300">🤝 العمولات المستحقة (تُخصم من الربح)</p>
+          {s.partnerCommissionsTotal > 0 && (
+            <div className="flex items-center justify-between text-sm">
+              <div>
+                <span className="text-white font-medium">عمولات الشركاء</span>
+                <span className="mx-2 text-[#a07080] text-xs">
+                  ({fmt(s.partnerCommissionsPending)} ج مستحق غير مسوَّى · {fmt(s.partnerCommissionsWithdrawn)} ج مدفوع)
+                </span>
+              </div>
+              <span className="font-black text-amber-300">− {fmt(s.partnerCommissionsTotal)} ج</span>
+            </div>
+          )}
+          {s.agentCommissionsTotal > 0 && (
+            <div className="flex items-center justify-between text-sm">
+              <div>
+                <span className="text-white font-medium">عمولات الموظفين والمدربات</span>
+                <span className="mx-2 text-[#a07080] text-xs">
+                  ({fmt(s.agentCommissionsPending)} ج مستحق غير مسوَّى · {fmt(s.agentCommissionsSettled)} ج مدفوع)
+                </span>
+              </div>
+              <span className="font-black text-amber-300">− {fmt(s.agentCommissionsTotal)} ج</span>
+            </div>
+          )}
+          <p className="text-xs text-[#a07080]">
+            تُحتسب بمجرد نشوئها بصرف النظر عن حالة الصرف (أساس الاستحقاق). الجزء المستحق غير المسوَّى هو التزام قائم في ذمة الجيم.
+          </p>
+        </div>
+      )}
+
+      {/* Discounts — memo line */}
+      {s.clubDiscountsGranted > 0 && (
+        <div className="rounded-2xl border border-blue-500/20 bg-blue-950/10 p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-bold text-blue-300">🏷️ إجمالي الخصومات الممنوحة (للمعلومية)</p>
+              <p className="mt-0.5 text-xs text-[#a07080]">
+                خصومات أكواد الجيم · المدربات · الموظفين · الشركاء — متضمنة بالفعل في الإيرادات الفعلية، لا تُخصم مرة أخرى.
+              </p>
+            </div>
+            <p className="text-xl font-black text-blue-300 shrink-0">{fmt(s.clubDiscountsGranted)} ج</p>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-3">
         <div className="rounded-2xl border border-[rgba(255,188,219,0.2)] bg-[rgba(255,255,255,.04)] p-5">
           <p className="mb-1 text-sm text-[#d7aabd]">إجمالي الربح</p>
@@ -724,7 +779,11 @@ function ClubTab({ data, onRefresh, dateRange }: { data: AccountingData; onRefre
         <div className="rounded-2xl border-2 border-[rgba(255,188,219,0.25)] bg-[rgba(255,255,255,.04)] p-5">
           <p className="mb-1 text-sm text-[#d7aabd]">صافي الربح</p>
           <p className={`text-2xl font-black ${s.netProfit >= 0 ? "text-emerald-400" : "text-red-400"}`}>{fmt(s.netProfit)} ج</p>
-          <p className="mt-1 text-xs text-[#a07080]">= إجمالي ربح − {fmt(s.expenseTotal)} مصاريف − {fmt(s.feeTotal)} عمولات</p>
+          <p className="mt-1 text-xs text-[#a07080]">
+            = إجمالي ربح − {fmt(s.expenseTotal)} مصاريف − {fmt(s.feeTotal)} رسوم
+            {s.partnerCommissionsTotal > 0 ? ` − ${fmt(s.partnerCommissionsTotal)} ع.شركاء` : ""}
+            {s.agentCommissionsTotal > 0 ? ` − ${fmt(s.agentCommissionsTotal)} ع.موظفين` : ""}
+          </p>
         </div>
       </div>
 
