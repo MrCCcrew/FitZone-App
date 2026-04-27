@@ -219,6 +219,8 @@ const TABS = [
   { id: "profile", label: "Profile", icon: "P" },
   { id: "trainerProfile", label: "Trainer Profile", icon: "T" },
   { id: "trainerDiscountCodes", label: "Trainer Codes", icon: "🎟" },
+  { id: "staffDiscountCodes", label: "Staff Codes", icon: "🎟" },
+  { id: "agentCommissions", label: "Commissions", icon: "💰" },
   { id: "privateSessions", label: "Private Sessions", icon: "🎯" },
   { id: "myPrivateSessions", label: "My Privates", icon: "📋" },
   { id: "membership", label: "Membership", icon: "M" },
@@ -233,6 +235,8 @@ type TabId =
   | "profile"
   | "trainerProfile"
   | "trainerDiscountCodes"
+  | "staffDiscountCodes"
+  | "agentCommissions"
   | "privateSessions"
   | "myPrivateSessions"
   | "membership"
@@ -291,6 +295,8 @@ function getTabLabel(tabId: TabId, lang: "ar" | "en") {
     profile: { ar: "الملف الشخصي", en: "Profile" },
     trainerProfile: { ar: "ملف المدربة", en: "Trainer profile" },
     trainerDiscountCodes: { ar: "أكواد الخصم", en: "Discount codes" },
+    staffDiscountCodes: { ar: "أكواد الخصم", en: "Discount codes" },
+    agentCommissions: { ar: "عمولاتي", en: "My commissions" },
     privateSessions: { ar: "طلبات البرايفيت", en: "Private sessions" },
     myPrivateSessions: { ar: "طلباتي", en: "My applications" },
     membership: { ar: "الاشتراك", en: "Membership" },
@@ -3654,20 +3660,251 @@ function MyPrivateSessionsTab() {
   );
 }
 
+// ─── Staff Discount Codes Tab ──────────────────────────────────────────────────
+type StaffCode = {
+  id: string;
+  code: string;
+  discountType: string;
+  discountValue: number;
+  maxDiscount: number | null;
+  note: string | null;
+  isUsed: boolean;
+  usedAt: string | null;
+  createdAt: string;
+  targetUser: { id: string; name: string; email: string };
+};
+function StaffDiscountCodesTab() {
+  const { lang } = useLang();
+  const t = (arText: string, enText: string) => (lang === "ar" ? arText : enText);
+
+  const [codes, setCodes] = useState<StaffCode[]>([]);
+  const [config, setConfig] = useState<{ discountType: string; discountValue: number; maxDiscount: number | null } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [clientSearch, setClientSearch] = useState("");
+  const [clientResults, setClientResults] = useState<{ id: string; name: string; email: string }[]>([]);
+  const [selectedClient, setSelectedClient] = useState<{ id: string; name: string; email: string } | null>(null);
+  const [note, setNote] = useState("");
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/staff/discount-codes");
+      const json = await res.json().catch(() => ({}));
+      setCodes(Array.isArray(json.codes) ? json.codes : []);
+      setConfig(json.config ?? null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { void load(); }, []);
+
+  useEffect(() => {
+    if (!clientSearch.trim()) { setClientResults([]); return; }
+    const timer = setTimeout(async () => {
+      const res = await fetch(`/api/admin/users?search=${encodeURIComponent(clientSearch)}&limit=6`);
+      const json = await res.json().catch(() => ({}));
+      setClientResults(Array.isArray(json.users) ? json.users : []);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [clientSearch]);
+
+  const createCode = async () => {
+    if (!selectedClient) { setMsg({ ok: false, text: t("اختار العميل أولاً", "Select a client first") }); return; }
+    setCreating(true); setMsg(null);
+    try {
+      const res = await fetch("/api/staff/discount-codes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetUserId: selectedClient.id, note: note.trim() || undefined }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error ?? t("حدث خطأ", "An error occurred"));
+      setMsg({ ok: true, text: t(`تم إنشاء الكود: ${json.code}`, `Code created: ${json.code}`) });
+      setSelectedClient(null); setClientSearch(""); setNote("");
+      await load();
+    } catch (err) {
+      setMsg({ ok: false, text: err instanceof Error ? err.message : t("حدث خطأ", "An error occurred") });
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  if (loading) return <div className={CARD + " text-[#d7aabd]"}>{t("جارٍ التحميل...", "Loading...")}</div>;
+
+  const discountLabel = config
+    ? config.discountType === "percentage"
+      ? `${config.discountValue}%${config.maxDiscount ? ` (حد أقصى ${config.maxDiscount} ج.م)` : ""}`
+      : `${config.discountValue} ج.م`
+    : null;
+
+  return (
+    <div className="space-y-5">
+      <div className={CARD + " space-y-4"}>
+        <h3 className="text-lg font-black text-white">{t("إنشاء كود خصم لعميل", "Create discount code for client")}</h3>
+        {discountLabel ? (
+          <div className="rounded-xl border border-pink-400/20 bg-pink-900/20 px-4 py-3 text-sm text-pink-200">
+            {t(`قيمة الخصم المحددة من الإدارة: ${discountLabel}`, `Admin-configured discount: ${discountLabel}`)}
+          </div>
+        ) : (
+          <div className="rounded-xl border border-yellow-400/20 bg-yellow-900/20 px-4 py-3 text-sm text-yellow-200">
+            {t("لم يتم تحديد إعدادات الخصم بعد. تواصل مع الإدارة.", "Discount settings not configured yet. Contact admin.")}
+          </div>
+        )}
+        {msg && <div className={msg.ok ? "rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200" : "rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200"}>{msg.text}</div>}
+        <div>
+          <label className="mb-1.5 block text-xs text-[#d7aabd]">{t("اختار العميل", "Select client")}</label>
+          {selectedClient ? (
+            <div className="flex items-center gap-3 rounded-xl border border-pink-400/30 bg-pink-900/20 px-4 py-2.5">
+              <span className="flex-1 text-sm text-white">{selectedClient.name} <span className="text-[#d7aabd]">({selectedClient.email})</span></span>
+              <button onClick={() => setSelectedClient(null)} className="text-xs text-red-400 hover:text-red-300">✕ {t("تغيير", "Change")}</button>
+            </div>
+          ) : (
+            <div className="relative">
+              <input value={clientSearch} onChange={(e) => setClientSearch(e.target.value)} placeholder={t("ابحث بالاسم أو الإيميل...", "Search by name or email...")} className={INPUT} />
+              {clientResults.length > 0 && (
+                <div className="absolute top-full z-10 mt-1 w-full rounded-xl border border-[#ffbcdb]/20 bg-[#3f1426] shadow-xl">
+                  {clientResults.map((u) => (
+                    <button key={u.id} onClick={() => { setSelectedClient(u); setClientSearch(""); setClientResults([]); }} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-white hover:bg-pink-900/30">
+                      <span className="font-medium">{u.name}</span>
+                      <span className="text-[#d7aabd] text-xs">{u.email}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+        <div>
+          <label className="mb-1.5 block text-xs text-[#d7aabd]">{t("ملاحظة (اختياري)", "Note (optional)")}</label>
+          <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("ملاحظة للعميل", "Note for client")} className={INPUT} />
+        </div>
+        <button onClick={createCode} disabled={creating || !config || !config.discountValue} className="rounded-xl bg-pink-600 px-5 py-2.5 text-sm font-bold text-white disabled:opacity-50">
+          {creating ? t("جارٍ الإنشاء...", "Creating...") : t("إنشاء الكود", "Create code")}
+        </button>
+      </div>
+      <div className={CARD}>
+        <h3 className="mb-4 text-base font-black text-white">{t("الأكواد الصادرة", "Issued codes")}</h3>
+        {codes.length === 0 ? (
+          <p className="text-sm text-[#d7aabd]">{t("لا توجد أكواد بعد.", "No codes yet.")}</p>
+        ) : (
+          <div className="space-y-3">
+            {codes.map((c) => (
+              <div key={c.id} className="flex flex-col gap-1 rounded-xl border border-[#ffbcdb]/10 bg-black/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="font-mono text-sm font-bold text-pink-300">{c.code}</div>
+                  <div className="text-xs text-[#d7aabd]">{t("لـ", "For")} {c.targetUser.name}</div>
+                  {c.note && <div className="text-xs text-[#d7aabd]">{c.note}</div>}
+                </div>
+                <div className="flex items-center gap-3 text-xs">
+                  <span className={c.isUsed ? "text-emerald-400" : "text-yellow-400"}>{c.isUsed ? t("✅ مستخدم", "✅ Used") : t("⏳ لم يُستخدم", "⏳ Unused")}</span>
+                  <span className="text-[#d7aabd]">{new Date(c.createdAt).toLocaleDateString("ar-EG")}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Agent Commissions Tab ─────────────────────────────────────────────────────
+type AgentCommission = {
+  id: string;
+  amount: number;
+  status: string;
+  settledAt: string | null;
+  createdAt: string;
+  customerName: string;
+  membershipName: string;
+};
+function AgentCommissionsTab() {
+  const { lang } = useLang();
+  const t = (arText: string, enText: string) => (lang === "ar" ? arText : enText);
+  const [commissions, setCommissions] = useState<AgentCommission[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/staff/commissions").then((r) => r.json()).then((json) => {
+      setCommissions(Array.isArray(json.commissions) ? json.commissions : []);
+    }).catch(() => {}).finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <div className={CARD + " text-[#d7aabd]"}>{t("جارٍ التحميل...", "Loading...")}</div>;
+
+  const totalEarned = commissions.filter((c) => c.status === "earned").reduce((s, c) => s + c.amount, 0);
+  const totalSettled = commissions.filter((c) => c.status === "settled").reduce((s, c) => s + c.amount, 0);
+
+  return (
+    <div className="space-y-5">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className={CARD + " text-center"}>
+          <div className="text-2xl font-black text-pink-300">{totalEarned.toFixed(0)} <span className="text-base font-medium text-[#d7aabd]">ج.م</span></div>
+          <div className="mt-1 text-sm text-[#d7aabd]">{t("عمولة مستحقة", "Pending commissions")}</div>
+        </div>
+        <div className={CARD + " text-center"}>
+          <div className="text-2xl font-black text-emerald-300">{totalSettled.toFixed(0)} <span className="text-base font-medium text-[#d7aabd]">ج.م</span></div>
+          <div className="mt-1 text-sm text-[#d7aabd]">{t("تم صرفها", "Settled")}</div>
+        </div>
+      </div>
+      <div className={CARD}>
+        <h3 className="mb-4 text-base font-black text-white">{t("سجل العمولات", "Commission history")}</h3>
+        {commissions.length === 0 ? (
+          <p className="text-sm text-[#d7aabd]">{t("لا توجد عمولات بعد. أنشئ كوداً لعميل ليشترك ويبدأ السجل.", "No commissions yet. Create a code for a client to get started.")}</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-right text-sm">
+              <thead className="text-xs text-[#d7aabd]">
+                <tr>
+                  <th className="py-2 px-3">{t("العميل", "Client")}</th>
+                  <th className="py-2 px-3">{t("الباقة", "Plan")}</th>
+                  <th className="py-2 px-3">{t("العمولة", "Commission")}</th>
+                  <th className="py-2 px-3">{t("الحالة", "Status")}</th>
+                  <th className="py-2 px-3">{t("التاريخ", "Date")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {commissions.map((c) => (
+                  <tr key={c.id} className="border-t border-white/10 text-white">
+                    <td className="py-2.5 px-3">{c.customerName}</td>
+                    <td className="py-2.5 px-3 text-[#d7aabd]">{c.membershipName}</td>
+                    <td className="py-2.5 px-3 font-bold text-pink-300">{c.amount.toFixed(0)} ج.م</td>
+                    <td className="py-2.5 px-3">
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${c.status === "settled" ? "bg-emerald-900/40 text-emerald-300" : "bg-yellow-900/40 text-yellow-300"}`}>
+                        {c.status === "settled" ? t("تم الصرف", "Settled") : t("مستحقة", "Pending")}
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-3 text-[#d7aabd]">{new Date(c.createdAt).toLocaleDateString("ar-EG")}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Component ────────────────────────────────────────────────────────────
 export default function AccountClient({ data }: { data: AccountData }) {
   const { lang } = useLang();
   const t = (arText: string, enText: string) => (lang === "ar" ? arText : enText);
   const searchParams = useSearchParams();
   const requestedTab = searchParams.get("tab");
-  const TRAINER_ONLY_TABS: TabId[] = ["trainerProfile", "trainerDiscountCodes", "privateSessions"];
-  const availableTabs = useMemo(
-    () =>
-      data.user.role === "trainer" || data.user.role === "admin"
-        ? TABS
-        : TABS.filter((tab) => !TRAINER_ONLY_TABS.includes(tab.id as TabId)),
-    [data.user.role],
-  );
+  const availableTabs = useMemo(() => {
+    const role = data.user.role;
+    if (role === "admin") return TABS;
+    // trainer: sees trainer-specific tabs + agentCommissions, NOT staff-specific
+    if (role === "trainer") return TABS.filter((tab) => tab.id !== "staffDiscountCodes");
+    // staff: sees staff-specific tabs + agentCommissions, NOT trainer-specific
+    if (role === "staff") return TABS.filter((tab) => !["trainerProfile", "trainerDiscountCodes", "privateSessions"].includes(tab.id));
+    // member / other: hide all staff and trainer specific tabs
+    return TABS.filter((tab) => !["trainerProfile", "trainerDiscountCodes", "privateSessions", "staffDiscountCodes", "agentCommissions"].includes(tab.id));
+  }, [data.user.role]);
   const resolveTab = (value: string | null): TabId => (availableTabs.some((tab) => tab.id === value) ? (value as TabId) : "profile");
   const [activeTab, setActiveTab]     = useState<TabId>(resolveTab(requestedTab));
   const [loggingOut, setLoggingOut]   = useState(false);
@@ -3822,6 +4059,8 @@ export default function AccountClient({ data }: { data: AccountData }) {
             {activeTab === "profile"              && <ProfileTab              user={data.user} />}
             {activeTab === "trainerProfile"       && <TrainerProfileTab />}
             {activeTab === "trainerDiscountCodes" && <TrainerDiscountCodesTab />}
+            {activeTab === "staffDiscountCodes"   && <StaffDiscountCodesTab />}
+            {activeTab === "agentCommissions"     && <AgentCommissionsTab />}
             {activeTab === "privateSessions"      && <PrivateSessionsTab />}
             {activeTab === "myPrivateSessions"    && <MyPrivateSessionsTab />}
             {activeTab === "membership"           && <AccountMembershipTab membership={data.membership} membershipHistory={data.membershipHistory} privateApplications={data.privateApplications} pendingPayment={data.pendingPayment} />}
