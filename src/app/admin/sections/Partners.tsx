@@ -23,11 +23,22 @@ type AdminTab = "partners" | "commissions" | "withdrawals";
 type WdFilter = "all" | "pending" | "approved" | "rejected";
 type WdEntry = { notes: string; receiptUrl: string; uploading: boolean; acting: boolean };
 
+type CodeCustomer = {
+  id: string; customerName: string; membershipName: string; paymentAmount: number;
+  codeName: string; discountType: string; discountValue: number; createdAt: string;
+};
+type ReferralCustomer = {
+  id: string; customerName: string; membershipName: string; paymentAmount: number;
+  commissionAmount: number; commissionStatus: string; linkLabel: string | null; createdAt: string;
+};
+
 type DashboardData = {
   partner: { id: string; name: string; commissionRate: number; commissionType: string };
   stats: { totalCodes: number; activeCodes: number; totalLinks: number; totalCustomers: number; totalCommissionPending: number; totalCommissionPaid: number };
   links: PartnerAffiliateLink[];
-  recentCommissions: Array<{ id: string; amount: number; status: string; createdAt: string; customerName: string; membershipName: string }>;
+  recentCommissions: Array<{ id: string; amount: number; status: string; createdAt: string; customerName: string; membershipName: string; source: "code" | "link" }>;
+  codeCustomers: CodeCustomer[];
+  referralCustomers: ReferralCustomer[];
 };
 
 type AdminCommission = {
@@ -62,7 +73,7 @@ export default function Partners({ viewMode = "admin" }: { viewMode?: ViewMode }
 
   // ── Partner Portal State ───────────────────────────────────────────────────
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
-  const [portalTab, setPortalTab] = useState<"links" | "commissions" | "withdrawal">("links");
+  const [portalTab, setPortalTab] = useState<"links" | "codeCustomers" | "referralCustomers" | "commissions" | "withdrawal">("links");
   const [linkForm, setLinkForm] = useState({ label: "" });
   const [linkSaving, setLinkSaving] = useState(false);
   const [linkError, setLinkError] = useState("");
@@ -291,7 +302,7 @@ export default function Partners({ viewMode = "admin" }: { viewMode?: ViewMode }
   if (viewMode === "partner") {
     if (!dashboard) return <div className="py-20 text-center text-sm text-gray-500">جارٍ التحميل...</div>;
 
-    const { stats, links, recentCommissions } = dashboard;
+    const { stats, links, recentCommissions, codeCustomers, referralCustomers } = dashboard;
     const origin = typeof window !== "undefined" ? window.location.origin : "";
 
     const requestWithdrawal = async () => {
@@ -321,8 +332,14 @@ export default function Partners({ viewMode = "admin" }: { viewMode?: ViewMode }
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-2 border-b border-gray-800 pb-1">
-          {([["links", "روابط الإحالة"], ["commissions", "العمولات"], ["withdrawal", "طلبات السحب"]] as const).map(([key, label]) => (
+        <div className="flex flex-wrap gap-2 border-b border-gray-800 pb-1">
+          {([
+            ["links", "روابط الإحالة"],
+            ["codeCustomers", `عملاء الكود${codeCustomers.length > 0 ? ` (${codeCustomers.length})` : ""}`],
+            ["referralCustomers", `عملاء الإحالة${referralCustomers.length > 0 ? ` (${referralCustomers.length})` : ""}`],
+            ["commissions", "العمولات"],
+            ["withdrawal", "طلبات السحب"],
+          ] as [typeof portalTab, string][]).map(([key, label]) => (
             <button key={key} onClick={() => setPortalTab(key)}
               className={`rounded-t-lg px-4 py-2 text-sm font-bold transition-colors ${portalTab === key ? "bg-pink-600 text-white" : "text-gray-400 hover:text-white"}`}>
               {label}
@@ -375,6 +392,66 @@ export default function Partners({ viewMode = "admin" }: { viewMode?: ViewMode }
           </div>
         )}
 
+        {/* ── Code Customers Tab ── */}
+        {portalTab === "codeCustomers" && (
+          <div className="space-y-3">
+            {codeCustomers.length === 0 && (
+              <div className="py-8 text-center text-sm text-gray-500">لا يوجد عملاء استخدموا كود الخصم بعد.</div>
+            )}
+            {codeCustomers.map((c) => (
+              <div key={c.id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gray-800 bg-gray-900/60 p-4">
+                <div className="space-y-1">
+                  <div className="font-bold text-white">{c.customerName}</div>
+                  <div className="text-xs text-gray-400">{c.membershipName} · {c.createdAt.slice(0, 10)}</div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-xs font-black text-pink-300">{c.codeName}</span>
+                    <span className="text-xs text-gray-500">
+                      {c.discountType === "percentage" ? `${c.discountValue}% خصم` : `${c.discountValue} ج.م خصم`}
+                    </span>
+                  </div>
+                </div>
+                <div className="text-lg font-black text-white">{c.paymentAmount.toFixed(0)} ج.م</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* ── Referral Customers Tab ── */}
+        {portalTab === "referralCustomers" && (
+          <div className="space-y-3">
+            <div className="rounded-xl border border-gray-700 bg-gray-800/40 px-4 py-3 text-xs text-gray-400">
+              يظهر هنا فقط العملاء اللي جوا عن طريق رابط الإحالة <span className="font-bold text-white">وأتمّوا اشتراك مدفوع</span> — العملاء اللي سجلوا بس ماشترکوش مش بيظهروا.
+            </div>
+            {referralCustomers.length === 0 && (
+              <div className="py-8 text-center text-sm text-gray-500">لا يوجد عملاء أكملوا اشتراكاً عن طريق رابط الإحالة بعد.</div>
+            )}
+            {referralCustomers.map((c) => (
+              <div key={c.id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gray-800 bg-gray-900/60 p-4">
+                <div className="space-y-1">
+                  <div className="font-bold text-white">{c.customerName}</div>
+                  <div className="text-xs text-gray-400">{c.membershipName} · {c.createdAt.slice(0, 10)}</div>
+                  {c.linkLabel && (
+                    <div className="text-xs text-gray-500">عبر: <span className="text-gray-300">{c.linkLabel}</span></div>
+                  )}
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="text-right">
+                    <div className="text-xs text-gray-500">قيمة الاشتراك</div>
+                    <div className="font-black text-white">{c.paymentAmount.toFixed(0)} ج.م</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-xs text-gray-500">عمولتك</div>
+                    <div className="text-lg font-black text-emerald-300">{c.commissionAmount.toFixed(0)} ج.م</div>
+                  </div>
+                  <span className={`rounded-full px-2 py-1 text-xs font-bold ${c.commissionStatus === "withdrawn" ? "bg-pink-900/40 text-pink-300" : "bg-yellow-900/40 text-yellow-300"}`}>
+                    {c.commissionStatus === "withdrawn" ? "مسحوبة" : "معلقة"}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* ── Commissions Tab ── */}
         {portalTab === "commissions" && (
           <div className="space-y-3">
@@ -384,6 +461,9 @@ export default function Partners({ viewMode = "admin" }: { viewMode?: ViewMode }
                 <div className="space-y-1">
                   <div className="font-bold text-white">{c.customerName}</div>
                   <div className="text-xs text-gray-400">{c.membershipName} · {c.createdAt.slice(0, 10)}</div>
+                  <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-bold ${c.source === "link" ? "bg-blue-900/40 text-blue-300" : "bg-purple-900/40 text-purple-300"}`}>
+                    {c.source === "link" ? "رابط إحالة" : "كود خصم"}
+                  </span>
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="text-lg font-black text-emerald-300">{c.amount.toFixed(0)} ج.م</div>
