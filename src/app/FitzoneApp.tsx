@@ -2533,7 +2533,10 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                     </div>
                     <div style={{ color: "#c9b9c1", fontSize: 13, marginBottom: 16 }}>{t("جنيه", "EGP")} / {homeFeaturedPlan.durationDays} {t("يوم", "days")}</div>
                     <button
-                      onClick={() => startMembershipFlow(homeFeaturedPlan.id)}
+                      onClick={() => {
+                        navigate("memberships");
+                        setTimeout(() => window.dispatchEvent(new CustomEvent("fitzone:goto-featured")), 120);
+                      }}
                       style={{ background: "linear-gradient(135deg, #FFD700, #C9A227)", color: "#000", border: "none", borderRadius: 12, padding: "14px 28px", fontWeight: 900, fontSize: 15, cursor: "pointer", fontFamily: "'Cairo', sans-serif", boxShadow: "0 6px 20px rgba(212,175,55,0.4)" }}
                     >
                       {t("اشتركي الآن ⭐", "Subscribe Now ⭐")}
