@@ -12,7 +12,16 @@ async function getTrainerOrError() {
   const trainer = await db.trainer.findFirst({ where: { userId: user.id }, select: { id: true } });
   if (!trainer) return { error: NextResponse.json({ error: "هذا الحساب غير مرتبط بمدربة." }, { status: 403 }) };
 
-  return { userId: user.id, trainerId: trainer.id };
+  const trainerUser = await db.user.findUnique({
+    where: { id: user.id },
+    select: { id: true, discountType: true, discountValue: true, maxDiscount: true, isActive: true },
+  });
+
+  if (!trainerUser || !trainerUser.isActive) {
+    return { error: NextResponse.json({ error: "هذا الحساب غير نشط." }, { status: 403 }) };
+  }
+
+  return { userId: user.id, trainerId: trainer.id, trainerUser };
 }
 
 export async function GET() {
@@ -27,44 +36,43 @@ export async function GET() {
     orderBy: { createdAt: "desc" },
   });
 
-  return NextResponse.json({ codes });
+  return NextResponse.json({
+    config: {
+      discountType: result.trainerUser.discountType,
+      discountValue: result.trainerUser.discountValue,
+      maxDiscount: result.trainerUser.maxDiscount,
+    },
+    codes,
+  });
 }
 
 export async function POST(req: Request) {
   const result = await getTrainerOrError();
   if ("error" in result) return result.error;
-  const { trainerId } = result;
+  const { trainerId, trainerUser } = result;
 
-  const body = (await req.json()) as {
-    targetUserId?: string;
-    discountType?: string;
-    discountValue?: number;
-    maxDiscount?: number;
-    note?: string;
-  };
+  const body = (await req.json()) as { targetUserId?: string; note?: string };
 
   if (!body.targetUserId) return NextResponse.json({ error: "يجب تحديد العميل المستهدف." }, { status: 400 });
-  if (!body.discountValue || body.discountValue <= 0)
-    return NextResponse.json({ error: "قيمة الخصم يجب أن تكون أكبر من صفر." }, { status: 400 });
 
-  const discountType = body.discountType === "fixed" ? "fixed" : "percentage";
-  if (discountType === "percentage" && body.discountValue > 100)
-    return NextResponse.json({ error: "نسبة الخصم يجب أن تكون بين 1 و 100." }, { status: 400 });
+  if (!trainerUser.discountValue || trainerUser.discountValue <= 0) {
+    return NextResponse.json({ error: "لم يحدد الأدمن قيمة خصم لهذه المدربة بعد." }, { status: 400 });
+  }
 
-  // Check target user exists
-  const targetUser = await db.user.findUnique({ where: { id: body.targetUserId }, select: { id: true } });
-  if (!targetUser) return NextResponse.json({ error: "العميل المحدد غير موجود." }, { status: 404 });
+  const targetUser = await db.user.findUnique({ where: { id: body.targetUserId }, select: { id: true, role: true } });
+  if (!targetUser || targetUser.role !== "member") {
+    return NextResponse.json({ error: "العميل المحدد غير موجود." }, { status: 404 });
+  }
 
-  // Monthly limit check
-  const monthYear = new Date().toISOString().slice(0, 7); // "2026-04"
+  const monthYear = new Date().toISOString().slice(0, 7);
   const usedThisMonth = await db.trainerDiscountCode.count({ where: { trainerId, monthYear } });
-  if (usedThisMonth >= MONTHLY_LIMIT)
+  if (usedThisMonth >= MONTHLY_LIMIT) {
     return NextResponse.json(
       { error: `لقد استنفدت حصتك لهذا الشهر (${MONTHLY_LIMIT} أكواد/شهر). تجديد الحصة أول الشهر القادم.` },
       { status: 400 },
     );
+  }
 
-  // Generate unique code
   let code = "";
   for (let i = 0; i < 10; i++) {
     const candidate = `TDC-${randomBytes(3).toString("hex").toUpperCase()}`;
@@ -73,14 +81,16 @@ export async function POST(req: Request) {
   }
   if (!code) return NextResponse.json({ error: "تعذر إنشاء كود فريد، حاول مرة أخرى." }, { status: 500 });
 
+  const discountType = trainerUser.discountType === "fixed" ? "fixed" : "percentage";
+
   const created = await db.trainerDiscountCode.create({
     data: {
       trainerId,
       code,
       targetUserId: body.targetUserId,
       discountType,
-      discountValue: body.discountValue,
-      maxDiscount: body.maxDiscount ?? null,
+      discountValue: trainerUser.discountValue,
+      maxDiscount: discountType === "percentage" ? trainerUser.maxDiscount ?? null : null,
       note: body.note?.trim() ?? null,
       monthYear,
     },
