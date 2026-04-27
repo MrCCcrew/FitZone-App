@@ -36,7 +36,7 @@ export async function GET(req: Request) {
   });
 
   const pending = commissions.filter((c) => c.status === "pending").reduce((s, c) => s + c.amount, 0);
-  const withdrawn = commissions.filter((c) => c.status === "withdrawn").reduce((s, c) => s + c.amount, 0);
+  const paid = commissions.filter((c) => c.status === "withdrawn").reduce((s, c) => s + c.amount, 0);
 
   return NextResponse.json({
     commissions: commissions.map((c) => ({
@@ -47,12 +47,12 @@ export async function GET(req: Request) {
       membershipName: c.userMembership.membership.name,
       paymentAmount: c.userMembership.paymentAmount,
       amount: c.amount,
-      status: c.status,
-      withdrawnAt: c.withdrawnAt?.toISOString() ?? null,
+      status: c.status === "withdrawn" ? "paid" : c.status,
+      paidAt: c.withdrawnAt?.toISOString() ?? null,
       notes: c.notes,
       createdAt: c.createdAt.toISOString(),
     })),
-    summary: { pending, withdrawn, total: pending + withdrawn, count: commissions.length },
+    summary: { pending, paid, total: pending + paid, count: commissions.length },
   });
 }
 
@@ -67,7 +67,7 @@ export async function PATCH(req: Request) {
   if (!body.id) return NextResponse.json({ error: "معرّف العمولة مطلوب." }, { status: 400 });
 
   const data: Record<string, unknown> = {};
-  if (body.status === "withdrawn") { data.status = "withdrawn"; data.withdrawnAt = new Date(); }
+  if (body.status === "withdrawn" || body.status === "paid") { data.status = "withdrawn"; data.withdrawnAt = new Date(); }
   else if (body.status === "pending") { data.status = "pending"; data.withdrawnAt = null; }
   if (body.notes !== undefined) data.notes = body.notes.trim() || null;
 
