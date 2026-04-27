@@ -3237,17 +3237,14 @@ function TrainerDiscountCodesTab() {
   const t = (arText: string, enText: string) => (lang === "ar" ? arText : enText);
 
   const [codes, setCodes] = useState<TrainerCode[]>([]);
+  const [config, setConfig] = useState<{ discountType: string; discountValue: number; maxDiscount: number | null } | null>(null);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
-  // Search clients
   const [clientSearch, setClientSearch] = useState("");
   const [clientResults, setClientResults] = useState<{ id: string; name: string; email: string }[]>([]);
   const [selectedClient, setSelectedClient] = useState<{ id: string; name: string; email: string } | null>(null);
-  const [discountType, setDiscountType] = useState<"fixed" | "percentage">("fixed");
-  const [discountValue, setDiscountValue] = useState("");
-  const [maxDiscount, setMaxDiscount] = useState("");
   const [note, setNote] = useState("");
 
   const loadCodes = async () => {
@@ -3256,6 +3253,7 @@ function TrainerDiscountCodesTab() {
       const res = await fetch("/api/trainer/discount-codes");
       const json = await res.json().catch(() => ({}));
       setCodes(Array.isArray(json.codes) ? json.codes : []);
+      if (json.config) setConfig(json.config as { discountType: string; discountValue: number; maxDiscount: number | null });
     } finally {
       setLoading(false);
     }
@@ -3275,26 +3273,18 @@ function TrainerDiscountCodesTab() {
 
   const createCode = async () => {
     if (!selectedClient) { setMsg({ ok: false, text: t("اختاري العميل أولاً", "Select a client first") }); return; }
-    const val = parseFloat(discountValue);
-    if (!val || val <= 0) { setMsg({ ok: false, text: t("أدخلي قيمة الخصم", "Enter discount value") }); return; }
     setCreating(true);
     setMsg(null);
     try {
       const res = await fetch("/api/trainer/discount-codes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          targetUserId: selectedClient.id,
-          discountType,
-          discountValue: val,
-          maxDiscount: discountType === "percentage" && maxDiscount ? parseFloat(maxDiscount) : undefined,
-          note: note.trim() || undefined,
-        }),
+        body: JSON.stringify({ targetUserId: selectedClient.id, note: note.trim() || undefined }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json.error ?? t("حدث خطأ", "An error occurred"));
       setMsg({ ok: true, text: t(`تم إنشاء الكود: ${json.code}`, `Code created: ${json.code}`) });
-      setSelectedClient(null); setClientSearch(""); setDiscountValue(""); setMaxDiscount(""); setNote("");
+      setSelectedClient(null); setClientSearch(""); setNote("");
       await loadCodes();
     } catch (err) {
       setMsg({ ok: false, text: err instanceof Error ? err.message : t("حدث خطأ", "An error occurred") });
@@ -3303,8 +3293,25 @@ function TrainerDiscountCodesTab() {
     }
   };
 
+  const discountLabel = config
+    ? config.discountType === "percentage"
+      ? `${config.discountValue}%${config.maxDiscount ? ` (${t("حد أقصى", "max")} ${config.maxDiscount} ${t("ج.م", "EGP")})` : ""}`
+      : `${config.discountValue} ${t("ج.م", "EGP")}`
+    : null;
+
+  if (loading) return <div className={CARD + " text-[#d7aabd]"}>{t("جارٍ التحميل...", "Loading...")}</div>;
+
   return (
     <div className="space-y-5">
+      {/* Admin-configured discount — read only */}
+      <div className="rounded-2xl border border-pink-500/20 bg-pink-950/20 p-4">
+        <p className="text-xs text-[#d7aabd] mb-1">{t("الخصم المحدد من الإدارة", "Discount set by admin")}</p>
+        {discountLabel
+          ? <p className="text-xl font-black text-pink-300">{discountLabel}</p>
+          : <p className="text-sm text-amber-400">{t("لم يتم تحديد خصم لك بعد، تواصلي مع الإدارة.", "No discount configured yet. Contact admin.")}</p>
+        }
+      </div>
+
       {/* Create form */}
       <div className={CARD + " space-y-4"}>
         <h3 className="text-lg font-black text-white">{t("إنشاء كود خصم جديد", "Create new discount code")}</h3>
@@ -3336,31 +3343,12 @@ function TrainerDiscountCodesTab() {
           )}
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <label className="mb-1.5 block text-xs text-[#d7aabd]">{t("نوع الخصم", "Discount type")}</label>
-            <select value={discountType} onChange={(e) => setDiscountType(e.target.value as "fixed" | "percentage")} className={INPUT}>
-              <option value="fixed">{t("مبلغ ثابت (جنيه)", "Fixed amount (EGP)")}</option>
-              <option value="percentage">{t("نسبة مئوية (%)", "Percentage (%)")}</option>
-            </select>
-          </div>
-          <div>
-            <label className="mb-1.5 block text-xs text-[#d7aabd]">{discountType === "fixed" ? t("المبلغ (جنيه)", "Amount (EGP)") : t("النسبة (%)", "Percentage (%)")}</label>
-            <input type="number" value={discountValue} onChange={(e) => setDiscountValue(e.target.value)} min="1" max={discountType === "percentage" ? "100" : undefined} className={INPUT} />
-          </div>
-          {discountType === "percentage" && (
-            <div>
-              <label className="mb-1.5 block text-xs text-[#d7aabd]">{t("أقصى خصم (جنيه، اختياري)", "Max discount (EGP, optional)")}</label>
-              <input type="number" value={maxDiscount} onChange={(e) => setMaxDiscount(e.target.value)} min="1" className={INPUT} />
-            </div>
-          )}
-          <div className={discountType === "percentage" ? "" : "sm:col-span-2"}>
-            <label className="mb-1.5 block text-xs text-[#d7aabd]">{t("ملاحظة (اختياري)", "Note (optional)")}</label>
-            <input value={note} onChange={(e) => setNote(e.target.value)} className={INPUT} />
-          </div>
+        <div>
+          <label className="mb-1.5 block text-xs text-[#d7aabd]">{t("ملاحظة (اختياري)", "Note (optional)")}</label>
+          <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("ملاحظة للعميل", "Note for client")} className={INPUT} />
         </div>
 
-        <button disabled={creating} onClick={() => void createCode()} className="rounded-xl bg-gradient-to-r from-pink-600 to-pink-500 px-6 py-2.5 text-sm font-black text-white hover:opacity-90 disabled:opacity-50">
+        <button onClick={() => void createCode()} disabled={creating || !config || !config.discountValue} className="rounded-xl bg-gradient-to-r from-pink-600 to-pink-500 px-6 py-2.5 text-sm font-black text-white hover:opacity-90 disabled:opacity-50">
           {creating ? t("جاري الإنشاء...", "Creating...") : t("إنشاء الكود", "Create code")}
         </button>
       </div>
