@@ -3623,12 +3623,14 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
         body: JSON.stringify((() => {
           const fs = getMembershipFinancialSummary(plan);
           const storedPartnerCode = sessionStorage.getItem("fitzone:partner-code");
+          const storedAffiliateRef = sessionStorage.getItem("fitzone:affiliate-ref");
           return {
             membershipId: plan.id,
             scheduleIds,
             paymentMethod: paymentOverride ?? membershipPayMethod,
             discountCode: discountResult ? discountCode.trim().toUpperCase() : null,
             partnerCode: !discountResult && storedPartnerCode ? storedPartnerCode : undefined,
+            affiliateRef: storedAffiliateRef || undefined,
             walletDeduct: fs.walletDiscount > 0 ? fs.walletDiscount : undefined,
             pointsDeduct: fs.pointsToDeduct > 0 ? fs.pointsToDeduct : undefined,
             trialPrice: plan.isTrial ? plan.price : undefined,
@@ -3658,6 +3660,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
         return;
       }
       sessionStorage.removeItem("fitzone:partner-code");
+      sessionStorage.removeItem("fitzone:affiliate-ref");
       if (data.checkoutUrl) {
         setPendingPaymentUrl(data.checkoutUrl);
         try { window.location.href = data.checkoutUrl; } catch {}
@@ -8330,9 +8333,17 @@ export default function App() {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    const pageFromUrl = new URL(window.location.href).searchParams.get("page");
-    if (pageFromUrl) {
-      setPage(pageFromUrl);
+    const url = new URL(window.location.href);
+    const pageFromUrl = url.searchParams.get("page");
+    if (pageFromUrl) setPage(pageFromUrl);
+
+    // Capture affiliate referral token and persist across navigation
+    const refFromUrl = url.searchParams.get("ref");
+    if (refFromUrl) {
+      sessionStorage.setItem("fitzone:affiliate-ref", refFromUrl.trim().toUpperCase());
+      // Clean ref from URL without reload
+      url.searchParams.delete("ref");
+      window.history.replaceState({}, "", url.toString());
     }
   }, []);
 
