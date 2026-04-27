@@ -5,16 +5,30 @@ import { logAudit } from "@/lib/audit-context";
 
 async function checkAdmin() {
   const guard = await requireAdminFeature("trainers");
-  return "error" in guard ? guard.error : null;
+  return "error" in guard
+    ? { error: guard.error, role: null, userId: null }
+    : { error: null, role: guard.role, userId: guard.session.user.id };
+}
+
+async function getOwnTrainerId(userId: string): Promise<string | null> {
+  const t = await db.trainer.findFirst({ where: { userId }, select: { id: true } });
+  return t?.id ?? null;
 }
 
 export async function GET(req: Request) {
-  const err = await checkAdmin();
-  if (err) return err;
+  const { error, role, userId } = await checkAdmin();
+  if (error) return error;
 
   const { searchParams } = new URL(req.url);
   const status = searchParams.get("status") || "all";
-  const trainerId = searchParams.get("trainerId") || undefined;
+  let trainerId = searchParams.get("trainerId") || undefined;
+
+  // Trainer can only see their own applications
+  if (role === "trainer") {
+    const ownId = await getOwnTrainerId(userId!);
+    if (!ownId) return NextResponse.json({ applications: [] });
+    trainerId = ownId;
+  }
 
   const where: Record<string, unknown> = {};
   if (status !== "all") where.status = status;
@@ -49,8 +63,8 @@ export async function GET(req: Request) {
 }
 
 export async function PATCH(req: Request) {
-  const err = await checkAdmin();
-  if (err) return err;
+  const { error, role, userId } = await checkAdmin();
+  if (error) return error;
 
   const body = (await req.json()) as {
     applicationId?: string;
@@ -71,6 +85,12 @@ export async function PATCH(req: Request) {
     },
   });
   if (!app) return NextResponse.json({ error: "الطلب غير موجود." }, { status: 404 });
+
+  // Trainer can only approve/reject applications assigned to them
+  if (role === "trainer") {
+    const ownId = await getOwnTrainerId(userId!);
+    if (app.trainerId !== ownId) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
   if (app.status !== "pending")
     return NextResponse.json({ error: "لا يمكن تعديل طلب تمت معالجته بالفعل." }, { status: 400 });
 

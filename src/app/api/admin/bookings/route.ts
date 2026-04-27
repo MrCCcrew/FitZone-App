@@ -5,7 +5,9 @@ import { logAudit } from "@/lib/audit-context";
 
 async function checkAdmin() {
   const guard = await requireAdminFeature("bookings");
-  return "error" in guard ? guard.error : null;
+  return "error" in guard
+    ? { error: guard.error, role: null, userId: null }
+    : { error: null, role: guard.role, userId: guard.session.user.id };
 }
 
 async function getTrainerProfileId(userId: string): Promise<string | null> {
@@ -116,8 +118,9 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const err = await checkAdmin();
+  const { error: err, role } = await checkAdmin();
   if (err) return err;
+  if (role === "trainer") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   try {
     const payload = (await req.json()) as {
@@ -181,7 +184,7 @@ export async function POST(req: Request) {
 }
 
 export async function PATCH(req: Request) {
-  const err = await checkAdmin();
+  const { error: err, role, userId } = await checkAdmin();
   if (err) return err;
 
   try {
@@ -205,6 +208,14 @@ export async function PATCH(req: Request) {
 
     if (!booking) {
       return NextResponse.json({ error: "الحجز غير موجود." }, { status: 404 });
+    }
+
+    // Trainers can only act on bookings for their own classes
+    if (role === "trainer") {
+      const ownTrainer = await getTrainerProfileId(userId!);
+      if (booking.schedule.class.trainerId !== ownTrainer) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
     }
 
     if (payload.action === "cancel") {
@@ -315,15 +326,26 @@ export async function PATCH(req: Request) {
 }
 
 export async function DELETE(req: Request) {
-  const err = await checkAdmin();
+  const { error: err, role, userId } = await checkAdmin();
   if (err) return err;
 
   try {
     const { bookingId } = (await req.json()) as { bookingId?: string };
     if (!bookingId) return NextResponse.json({ error: "معرّف الحجز مطلوب." }, { status: 400 });
 
-    const booking = await db.booking.findUnique({ where: { id: bookingId } });
+    const booking = await db.booking.findUnique({
+      where: { id: bookingId },
+      include: { schedule: { include: { class: true } } },
+    });
     if (!booking) return NextResponse.json({ error: "الحجز غير موجود." }, { status: 404 });
+
+    // Trainers can only delete bookings for their own classes
+    if (role === "trainer") {
+      const ownTrainer = await getTrainerProfileId(userId!);
+      if (booking.schedule.class.trainerId !== ownTrainer) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+    }
 
     await db.booking.delete({ where: { id: bookingId } });
 

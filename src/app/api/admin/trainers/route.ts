@@ -66,12 +66,33 @@ function formatTrainer(trainer: {
 
 async function guard() {
   const allowed = await requireAdminFeature("trainers");
-  return "error" in allowed ? allowed.error : null;
+  return "error" in allowed
+    ? { error: allowed.error, role: null, userId: null }
+    : { error: null, role: allowed.role, userId: allowed.session.user.id };
+}
+
+async function getOwnTrainerId(userId: string): Promise<string | null> {
+  const t = await db.trainer.findFirst({ where: { userId }, select: { id: true } });
+  return t?.id ?? null;
 }
 
 export async function GET() {
-  const error = await guard();
+  const { error, role, userId } = await guard();
   if (error) return error;
+
+  // Trainers can only view their own record
+  if (role === "trainer") {
+    const trainerId = await getOwnTrainerId(userId!);
+    if (!trainerId) return NextResponse.json([]);
+    const trainer = await db.trainer.findUnique({
+      where: { id: trainerId },
+      include: {
+        _count: { select: { classes: true } },
+        user: { select: { id: true, name: true, email: true } },
+      },
+    });
+    return NextResponse.json(trainer ? [formatTrainer(trainer)] : []);
+  }
 
   const trainers = await db.trainer.findMany({
     include: {
@@ -85,8 +106,9 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const error = await guard();
+  const { error, role } = await guard();
   if (error) return error;
+  if (role === "trainer") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   try {
     const body = await req.json();
@@ -132,7 +154,7 @@ export async function POST(req: Request) {
 }
 
 export async function PATCH(req: Request) {
-  const error = await guard();
+  const { error, role, userId } = await guard();
   if (error) return error;
 
   try {
@@ -140,6 +162,12 @@ export async function PATCH(req: Request) {
 
     if (!body.id) {
       return NextResponse.json({ error: "معرّف المدربة مطلوب." }, { status: 400 });
+    }
+
+    // Trainers can only edit their own profile
+    if (role === "trainer") {
+      const ownId = await getOwnTrainerId(userId!);
+      if (body.id !== ownId) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const trainer = await db.trainer.update({
@@ -186,8 +214,9 @@ export async function PATCH(req: Request) {
 }
 
 export async function DELETE(req: Request) {
-  const error = await guard();
+  const { error, role } = await guard();
   if (error) return error;
+  if (role === "trainer") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   try {
     const { id } = await req.json();
