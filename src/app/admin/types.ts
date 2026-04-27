@@ -36,6 +36,11 @@ export interface AdminEmployee {
   adminAccess: boolean;
   isActive: boolean;
   adminPermissions: string[];
+  discountType: string;
+  discountValue: number;
+  maxDiscount?: number | null;
+  commissionRate: number;
+  commissionType: string;
   createdAt: string;
   updatedAt: string;
 }

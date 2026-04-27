@@ -19,6 +19,11 @@ function serializeEmployee(user: {
   adminAccess: boolean;
   isActive: boolean;
   adminPermissions: string | null;
+  discountType: string;
+  discountValue: number;
+  maxDiscount: number | null;
+  commissionRate: number;
+  commissionType: string;
   createdAt: Date;
   updatedAt: Date;
 }) {
@@ -39,6 +44,11 @@ function serializeEmployee(user: {
     adminAccess: user.adminAccess || isAdminRole(user.role),
     isActive: user.isActive,
     adminPermissions: permissions,
+    discountType: user.discountType,
+    discountValue: user.discountValue,
+    maxDiscount: user.maxDiscount,
+    commissionRate: user.commissionRate,
+    commissionType: user.commissionType,
     createdAt: user.createdAt.toISOString(),
     updatedAt: user.updatedAt.toISOString(),
   };
@@ -69,6 +79,11 @@ export async function GET() {
       adminAccess: true,
       isActive: true,
       adminPermissions: true,
+      discountType: true,
+      discountValue: true,
+      maxDiscount: true,
+      commissionRate: true,
+      commissionType: true,
       createdAt: true,
       updatedAt: true,
     },
@@ -125,6 +140,11 @@ export async function POST(req: Request) {
       adminAccess: true,
       isActive: true,
       adminPermissions: true,
+      discountType: true,
+      discountValue: true,
+      maxDiscount: true,
+      commissionRate: true,
+      commissionType: true,
       createdAt: true,
       updatedAt: true,
     },
@@ -152,6 +172,11 @@ export async function PATCH(req: Request) {
   if (payload.adminAccess != null) data.adminAccess = Boolean(payload.adminAccess);
   if (payload.isActive != null) data.isActive = Boolean(payload.isActive);
   if (payload.adminPermissions != null) data.adminPermissions = JSON.stringify(parsePermissions(payload.adminPermissions));
+  if (payload.discountType != null) data.discountType = payload.discountType === "fixed" ? "fixed" : "percentage";
+  if (payload.discountValue != null) data.discountValue = Number(payload.discountValue) || 0;
+  if (payload.maxDiscount != null) data.maxDiscount = payload.maxDiscount === "" || payload.maxDiscount === null ? null : Number(payload.maxDiscount);
+  if (payload.commissionRate != null) data.commissionRate = Number(payload.commissionRate) || 0;
+  if (payload.commissionType != null) data.commissionType = payload.commissionType === "fixed" ? "fixed" : "percentage";
   if (payload.password) {
     data.password = await bcryptjs.hash(String(payload.password), 10);
   }
@@ -169,6 +194,11 @@ export async function PATCH(req: Request) {
       adminAccess: true,
       isActive: true,
       adminPermissions: true,
+      discountType: true,
+      discountValue: true,
+      maxDiscount: true,
+      commissionRate: true,
+      commissionType: true,
       createdAt: true,
       updatedAt: true,
     },

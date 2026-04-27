@@ -109,7 +109,8 @@ export async function POST(req: Request) {
 
   // Validate discount code before transaction
   let discountRecord: { id: string; type: string; value: number } | null = null;
-  let trainerDiscountRecord: { id: string; discountType: string; discountValue: number; maxDiscount: number | null } | null = null;
+  let trainerDiscountRecord: { id: string; discountType: string; discountValue: number; maxDiscount: number | null; salesAgentUserId: string | null } | null = null;
+  let staffDiscountRecord: { id: string; discountType: string; discountValue: number; maxDiscount: number | null; salesAgentUserId: string } | null = null;
   if (discountCode) {
     const normalizedCode = String(discountCode).trim().toUpperCase();
     const dc = await db.discountCode.findUnique({ where: { code: normalizedCode } });
@@ -124,12 +125,34 @@ export async function POST(req: Request) {
       if (alreadyUsed) return NextResponse.json({ error: "لقد استخدمت هذا الكود من قبل." }, { status: 400 });
       discountRecord = { id: dc.id, type: dc.type, value: dc.value };
     } else {
-      // Check TrainerDiscountCode
-      const tdc = await db.trainerDiscountCode.findUnique({ where: { code: normalizedCode } });
-      if (!tdc) return NextResponse.json({ error: "كود الخصم غير صالح." }, { status: 400 });
-      if (tdc.targetUserId !== userId) return NextResponse.json({ error: "هذا الكود خاص بعميل آخر." }, { status: 403 });
-      if (tdc.isUsed) return NextResponse.json({ error: "تم استخدام هذا الكود من قبل." }, { status: 400 });
-      trainerDiscountRecord = { id: tdc.id, discountType: tdc.discountType, discountValue: tdc.discountValue, maxDiscount: tdc.maxDiscount };
+      // Check trainer/staff targeted discount codes
+      const tdc = await db.trainerDiscountCode.findUnique({
+        where: { code: normalizedCode },
+        include: { trainer: { select: { userId: true } } },
+      });
+      if (tdc) {
+        if (tdc.targetUserId !== userId) return NextResponse.json({ error: "هذا الكود خاص بعميل آخر." }, { status: 403 });
+        if (tdc.isUsed) return NextResponse.json({ error: "تم استخدام هذا الكود من قبل." }, { status: 400 });
+        trainerDiscountRecord = {
+          id: tdc.id,
+          discountType: tdc.discountType,
+          discountValue: tdc.discountValue,
+          maxDiscount: tdc.maxDiscount,
+          salesAgentUserId: tdc.trainer.userId ?? null,
+        };
+      } else {
+        const sdc = await db.staffDiscountCode.findUnique({ where: { code: normalizedCode } });
+        if (!sdc) return NextResponse.json({ error: "كود الخصم غير صالح." }, { status: 400 });
+        if (sdc.targetUserId !== userId) return NextResponse.json({ error: "هذا الكود خاص بعميل آخر." }, { status: 403 });
+        if (sdc.isUsed) return NextResponse.json({ error: "تم استخدام هذا الكود من قبل." }, { status: 400 });
+        staffDiscountRecord = {
+          id: sdc.id,
+          discountType: sdc.discountType,
+          discountValue: sdc.discountValue,
+          maxDiscount: sdc.maxDiscount,
+          salesAgentUserId: sdc.staffUserId,
+        };
+      }
     }
   }
 
@@ -137,7 +160,7 @@ export async function POST(req: Request) {
   let partnerCodeRecord: { id: string; partnerId: string; discountType: string; discountValue: number } | null = null;
   let affiliateLinkRecord: { id: string; partnerId: string } | null = null;
 
-  if (partnerCode && !discountRecord && !trainerDiscountRecord) {
+  if (partnerCode && !discountRecord && !trainerDiscountRecord && !staffDiscountRecord) {
     const normalizedPCode = String(partnerCode).trim().toUpperCase();
     const pc = await db.partnerCode.findUnique({
       where: { code: normalizedPCode },
@@ -274,6 +297,15 @@ export async function POST(req: Request) {
           discountApplied = Math.round(discountApplied * 100) / 100;
         }
         paymentAmount = Math.max(0, paymentAmount - discountApplied);
+      } else if (staffDiscountRecord && paymentAmount) {
+        if (staffDiscountRecord.discountType === "fixed") {
+          discountApplied = Math.min(staffDiscountRecord.discountValue, paymentAmount);
+        } else {
+          const raw = (paymentAmount * staffDiscountRecord.discountValue) / 100;
+          discountApplied = staffDiscountRecord.maxDiscount != null ? Math.min(raw, staffDiscountRecord.maxDiscount) : raw;
+          discountApplied = Math.round(discountApplied * 100) / 100;
+        }
+        paymentAmount = Math.max(0, paymentAmount - discountApplied);
       } else if (partnerCodeRecord && paymentAmount) {
         if (partnerCodeRecord.discountType === "fixed") {
           discountApplied = Math.min(partnerCodeRecord.discountValue, paymentAmount);
@@ -329,6 +361,8 @@ export async function POST(req: Request) {
       const resolvedPartnerId = partnerCodeRecord?.partnerId ?? affiliateLinkRecord?.partnerId ?? null;
       const resolvedPartnerCodeId = partnerCodeRecord?.id ?? null;
       const resolvedAffiliateLinkId = affiliateLinkRecord?.id ?? null;
+      const resolvedSalesAgentUserId = trainerDiscountRecord?.salesAgentUserId ?? staffDiscountRecord?.salesAgentUserId ?? null;
+      const resolvedSalesCodeType = trainerDiscountRecord ? "trainer_code" : staffDiscountRecord ? "staff_code" : null;
 
       const subscription = await tx.userMembership.create({
         data: {
@@ -343,6 +377,8 @@ export async function POST(req: Request) {
           offerId: offerRecord?.id ?? null,
           totalSessions: plan.sessionsCount ?? null,
           productRewardsUsed: productRewards.length ? JSON.stringify(productRewards) : null,
+          salesAgentUserId: resolvedSalesAgentUserId,
+          salesCodeType: resolvedSalesCodeType,
           partnerId: resolvedPartnerId,
           partnerCodeId: resolvedPartnerCodeId,
           affiliateLinkId: resolvedAffiliateLinkId,
@@ -371,6 +407,28 @@ export async function POST(req: Request) {
           if (commission > 0) {
             await tx.partnerCommission.create({
               data: { partnerId: resolvedPartnerId, userMembershipId: subscription.id, amount: commission },
+            });
+          }
+        }
+      }
+
+      if (!needsPaymentConfirmation && resolvedSalesAgentUserId) {
+        const salesAgent = await tx.user.findUnique({
+          where: { id: resolvedSalesAgentUserId },
+          select: { commissionRate: true, commissionType: true },
+        });
+        if (salesAgent) {
+          const paidAmount = paymentAmount ?? 0;
+          const commission = salesAgent.commissionType === "fixed"
+            ? salesAgent.commissionRate
+            : Math.round((paidAmount * salesAgent.commissionRate) / 100 * 100) / 100;
+          if (commission > 0) {
+            await tx.agentCommission.create({
+              data: {
+                agentUserId: resolvedSalesAgentUserId,
+                userMembershipId: subscription.id,
+                amount: commission,
+              },
             });
           }
         }
@@ -522,6 +580,12 @@ export async function POST(req: Request) {
       if (trainerDiscountRecord && discountApplied > 0) {
         await tx.trainerDiscountCode.update({
           where: { id: trainerDiscountRecord.id },
+          data: { isUsed: true, usedAt: new Date() },
+        });
+      }
+      if (staffDiscountRecord && discountApplied > 0) {
+        await tx.staffDiscountCode.update({
+          where: { id: staffDiscountRecord.id },
           data: { isUsed: true, usedAt: new Date() },
         });
       }
