@@ -7776,72 +7776,76 @@ const PartnersPage = () => {
               {t("لا يوجد شركاء حالياً", "No partners available yet")}
             </div>
           ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 24 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 20 }}>
               {filtered.map((partner) => {
                 const discount = formatDiscount(partner);
                 const catLabel = lang === "ar"
                   ? PARTNER_CATEGORY_LABELS[partner.category]?.ar
                   : PARTNER_CATEGORY_LABELS[partner.category]?.en;
                 const displayName = lang === "en" && partner.nameEn ? partner.nameEn : partner.name;
+                const isCopied = copied === partner.code?.code;
                 return (
-                  <div key={partner.id} className="card card-hover" style={{ padding: 24, display: "flex", flexDirection: "column", gap: 16 }}>
-                    {/* Logo */}
-                    <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                  <div key={partner.id} className="card card-hover" style={{ display: "flex", flexDirection: "column", overflow: "hidden" }}>
+
+                    {/* Logo area */}
+                    <div style={{ background: "#fff", padding: "28px 24px 20px", display: "flex", flexDirection: "column", alignItems: "center", gap: 12, borderBottom: `1px solid ${C.border}` }}>
                       {partner.logoUrl ? (
                         <img
                           src={partner.logoUrl}
                           alt={displayName}
-                          style={{ width: 64, height: 64, borderRadius: 12, objectFit: "contain", border: `1px solid ${C.border}`, background: "#fff", padding: 4 }}
+                          style={{ width: 88, height: 88, objectFit: "contain" }}
                         />
                       ) : (
-                        <div style={{ width: 64, height: 64, borderRadius: 12, background: `linear-gradient(135deg, ${C.redDark}, #8B0034)`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, color: "#fff", fontWeight: 900 }}>
+                        <div style={{ width: 88, height: 88, borderRadius: 16, background: `linear-gradient(135deg, ${C.redDark}, #8B0034)`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 36, color: "#fff", fontWeight: 900 }}>
                           {displayName.charAt(0)}
                         </div>
                       )}
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 800, fontSize: 15, color: C.white, marginBottom: 4 }}>{displayName}</div>
-                        {catLabel && (
-                          <span className="tag" style={{ fontSize: 10 }}>{catLabel}</span>
-                        )}
+                      <div style={{ textAlign: "center" }}>
+                        <div style={{ fontWeight: 800, fontSize: 15, color: C.white }}>{displayName}</div>
+                        {catLabel && <div style={{ fontSize: 11, color: C.gray, marginTop: 3 }}>{catLabel}</div>}
                       </div>
                     </div>
 
-                    {/* Discount badge */}
-                    {discount && (
-                      <div style={{ background: "rgba(194,24,91,.08)", border: `1px solid rgba(194,24,91,.2)`, borderRadius: 10, padding: "10px 14px", textAlign: "center" }}>
-                        <div style={{ fontSize: 11, color: C.gray, marginBottom: 4 }}>{t("خصم حصري لأعضاء فيت زون", "Exclusive Fit Zone member discount")}</div>
-                        <div style={{ fontSize: 20, fontWeight: 900, color: C.redDark }}>{discount}</div>
-                      </div>
-                    )}
+                    {/* Discount + Code */}
+                    <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 10, flex: 1 }}>
 
-                    {/* Code copy */}
-                    {partner.code && (
-                      <button
-                        onClick={() => copyCode(partner.code!.code)}
-                        style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#F5F5F5", border: `1.5px dashed ${C.border}`, borderRadius: 10, padding: "10px 14px", cursor: "pointer", transition: "all .2s", width: "100%" }}
-                      >
-                        <span style={{ fontFamily: "monospace", fontSize: 16, fontWeight: 900, color: C.white, letterSpacing: 2 }}>
-                          {partner.code.code}
-                        </span>
-                        <span style={{ fontSize: 12, fontWeight: 700, color: copied === partner.code.code ? C.success : C.redDark }}>
-                          {copied === partner.code.code ? t("✓ تم النسخ!", "✓ Copied!") : t("📋 انسخ الكود", "📋 Copy")}
-                        </span>
-                      </button>
-                    )}
+                      {/* Discount */}
+                      {discount && (
+                        <div style={{ textAlign: "center", background: "rgba(194,24,91,.07)", borderRadius: 8, padding: "8px 12px" }}>
+                          <div style={{ fontSize: 11, color: C.gray, marginBottom: 2 }}>{t("خصم حصري لأعضاء فيت زون", "Exclusive member discount")}</div>
+                          <div style={{ fontSize: 22, fontWeight: 900, color: C.redDark, lineHeight: 1.2 }}>{discount}</div>
+                        </div>
+                      )}
 
-                    {/* Website link */}
-                    {partner.websiteUrl && (
-                      <a
-                        href={partner.websiteUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{ textAlign: "center", fontSize: 13, color: C.gray, textDecoration: "none", transition: "color .2s" }}
-                        onMouseEnter={(e) => (e.currentTarget.style.color = C.red)}
-                        onMouseLeave={(e) => (e.currentTarget.style.color = C.gray)}
-                      >
-                        🔗 {t("زيارة الموقع", "Visit website")}
-                      </a>
-                    )}
+                      {/* Code */}
+                      {partner.code && (
+                        <button
+                          onClick={() => copyCode(partner.code!.code)}
+                          style={{
+                            display: "flex", alignItems: "center", justifyContent: "space-between",
+                            background: isCopied ? "rgba(22,163,74,.08)" : C.bgCard2,
+                            border: `1.5px dashed ${isCopied ? C.success : C.border}`,
+                            borderRadius: 8, padding: "10px 14px", cursor: "pointer",
+                            transition: "all .2s", width: "100%",
+                          }}
+                        >
+                          <span style={{ fontFamily: "monospace", fontSize: 17, fontWeight: 900, color: isCopied ? C.success : C.redDark, letterSpacing: 3 }}>
+                            {partner.code.code}
+                          </span>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: isCopied ? C.success : C.gray, whiteSpace: "nowrap" }}>
+                            {isCopied ? t("✓ تم النسخ", "✓ Copied") : t("انسخ", "Copy")}
+                          </span>
+                        </button>
+                      )}
+
+                      {/* Website */}
+                      {partner.websiteUrl && (
+                        <a href={partner.websiteUrl} target="_blank" rel="noopener noreferrer"
+                          style={{ textAlign: "center", fontSize: 12, color: C.grayLight, textDecoration: "none" }}>
+                          🔗 {t("زيارة الموقع", "Visit website")}
+                        </a>
+                      )}
+                    </div>
                   </div>
                 );
               })}
