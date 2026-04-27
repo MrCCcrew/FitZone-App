@@ -2233,20 +2233,14 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
     const heroCtaPrimary = lang === "en" ? heroContent.ctaPrimaryEn ?? heroContent.ctaPrimary : heroContent.ctaPrimary;
     const heroCtaSecondary = lang === "en" ? heroContent.ctaSecondaryEn ?? heroContent.ctaSecondary : heroContent.ctaSecondary;
   const handleTrialBooking = () => {
-    if (typeof window !== "undefined") {
-      window.sessionStorage.setItem("fitzone_trial_booking", "1");
-    }
-    navigate("memberships");
+    window.dispatchEvent(new CustomEvent("fitzone:trial-booking", { detail: { scheduleId: null } }));
   };
 
-  const startMembershipFlow = (membershipId?: string | null, source: "offer" | "package" = "offer", offerId?: string | null) => {
-    if (typeof window !== "undefined" && membershipId) {
-      window.sessionStorage.setItem(
-        MEMBERSHIP_FLOW_STORAGE_KEY,
-        JSON.stringify({ membershipId, source, offerId: offerId ?? null } satisfies PendingMembershipFlow),
-      );
-    }
-    navigate("memberships");
+  const startMembershipFlow = (membershipId?: string | null, _source: "offer" | "package" = "offer", offerId?: string | null, offerSpecialPrice?: number | null) => {
+    if (!membershipId) return;
+    window.dispatchEvent(new CustomEvent(GLOBAL_SUBSCRIBE_EVENT, {
+      detail: { membershipId, offerId: offerId ?? null, offerSpecialPrice: offerSpecialPrice ?? null },
+    }));
   };
 
   return (
@@ -2473,7 +2467,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                           color: isSpecial ? undefined : accentColor,
                           opacity: cd.expired || !offer.membershipId ? 0.65 : 1,
                         }}
-                        onClick={() => startMembershipFlow(offer.membershipId, "offer", offer.id)}
+                        onClick={() => startMembershipFlow(offer.membershipId, "offer", offer.id, offer.specialPrice ?? null)}
                         disabled={cd.expired || !offer.membershipId}
                       >
                         {cd.expired
@@ -2535,8 +2529,8 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                     <div style={{ color: "#c9b9c1", fontSize: 13, marginBottom: 16 }}>{t("جنيه", "EGP")} / {homeFeaturedPlan.durationDays} {t("يوم", "days")}</div>
                     <button
                       onClick={() => {
-                        window.sessionStorage.setItem("fitzone:goto-featured", "1");
                         navigate("memberships");
+                        setTimeout(() => window.dispatchEvent(new CustomEvent("fitzone:goto-featured")), 100);
                       }}
                       style={{ background: "linear-gradient(135deg, #FFD700, #C9A227)", color: "#000", border: "none", borderRadius: 12, padding: "14px 28px", fontWeight: 900, fontSize: 15, cursor: "pointer", fontFamily: "'Cairo', sans-serif", boxShadow: "0 6px 20px rgba(212,175,55,0.4)" }}
                     >
@@ -2735,11 +2729,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                       <div style={{ fontWeight: 700, fontSize: 16, color: C.white, marginBottom: 4 }}>{s.name}</div>
                       {s.trainer ? <div style={{ color: C.gray, fontSize: 13, marginBottom: 16 }}>{t("مع", "With")} {s.trainer}</div> : <div style={{ marginBottom: 16 }} />}
                       <button className="btn-primary" style={{ width: "100%", justifyContent: "center", padding: "8px", fontSize: 13, opacity: s.spots === 0 ? .5 : 1 }} disabled={s.spots === 0} onClick={() => {
-                        if (typeof window !== "undefined") {
-                          window.sessionStorage.setItem("fitzone_trial_booking", "1");
-                          window.sessionStorage.setItem("fitzone_trial_schedule_id", s.id);
-                        }
-                        navigate("memberships");
+                        window.dispatchEvent(new CustomEvent("fitzone:trial-booking", { detail: { scheduleId: s.id } }));
                       }}>
                         {s.spots === 0 ? t("ممتلئ", "Full") : t("احجزي الآن", "Book now")}
                       </button>
@@ -3074,6 +3064,7 @@ type PlanItem = {
   subtitle?: string | null;
   isTrial?: boolean;
   isFeatured?: boolean;
+  offerId?: string | null;
 };
 
 type MembershipCheckoutPreview = {
@@ -3111,12 +3102,15 @@ function mapMembershipToPlanItem(membership: PublicMembership, color: string, po
 
 const DEFAULT_PLANS: PlanItem[] = [];
 const PLAN_COLORS = [C.gray, C.red, C.gold, "#A855F7", "#3498DB", "#27AE60"];
-const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
+const GLOBAL_SUBSCRIBE_EVENT = "fitzone:open-subscribe";
+
+const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: string) => void; summary: UserSummary | null }) => {
   const t = useT();
   const { lang } = useLang();
   const [tab, setTab] = useState<"all" | "monthly" | "quarterly" | "semi_annual" | "annual" | "custom">("all");
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   const [plans, setPlans] = useState<PlanItem[]>(DEFAULT_PLANS);
+  const [allMemberships, setAllMemberships] = useState<PublicMembership[]>([]);
   const [goals, setGoals] = useState<PublicGoal[]>([]);
   const [publicClasses, setPublicClasses] = useState<PublicClass[]>([]);
   const [healthQuestions, setHealthQuestions] = useState<PublicHealthQuestion[]>([]);
@@ -3153,6 +3147,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
   const [membershipPayMethod] = useState<"paymob">("paymob");
   const [membershipDataReady, setMembershipDataReady] = useState(false);
   const [pendingPlan, setPendingPlan] = useState<PlanItem | null>(null);
+  const [pendingExternalSubscribe, setPendingExternalSubscribe] = useState<{ membershipId: string; offerId?: string | null; offerSpecialPrice?: number | null } | null>(null);
   const hasPendingFlow = typeof window !== "undefined" && !!(
     window.sessionStorage.getItem(MEMBERSHIP_FLOW_STORAGE_KEY) ||
     window.sessionStorage.getItem("fitzone_trial_booking")
@@ -3184,6 +3179,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
         }
         if (Array.isArray(d.memberships) && d.memberships.length > 0) {
           allMemberships = d.memberships as PublicMembership[];
+          setAllMemberships(allMemberships);
           const subscriptions = allMemberships
             .filter((mb) => mb.kind === "subscription")
             .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
@@ -3222,53 +3218,12 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
             }
           }
         }
-        // Open trial booking modal if triggered from hero button or home class card
-        if (typeof window !== "undefined" && window.sessionStorage.getItem("fitzone_trial_booking")) {
-          window.sessionStorage.removeItem("fitzone_trial_booking");
-          const preSelectedId = window.sessionStorage.getItem("fitzone_trial_schedule_id") ?? null;
-          if (preSelectedId) window.sessionStorage.removeItem("fitzone_trial_schedule_id");
-          const trialMb = d.trialMembership as { id: string; name: string; price: number; sessionsCount: number; features: string[]; durationDays: number } | null;
-          const trialPlan: PlanItem = {
-            id: trialMb?.id ?? "trial-class",
-            name: trialMb?.name ?? "كلاس تجريبي",
-            price: 50, // default price; updated dynamically based on selected slot type
-            priceBefore: null,
-            priceAfter: null,
-            durationDays: trialMb?.durationDays ?? 1,
-            cycle: null,
-            sessionsCount: 1,
-            features: trialMb?.features?.length ? trialMb.features : ["حجز كلاس فردي من جميع الأنواع", "اختاري أي موعد متاح"],
-            color: C.red,
-            popular: false,
-            goalIds: [],
-            isTrial: true,
-          };
-          setScheduleError(null);
-          setDaysPerWeek(null);
-          setScheduleStep("slots"); // skip frequency step for trial
-          setSchedulePlan(trialPlan);
-          // Pre-select the schedule from the home page card if provided
-          if (preSelectedId) {
-            setScheduleSelections([preSelectedId]);
-          } else {
-            setScheduleSelections([]);
-          }
-        }
         setMembershipDataReady(true);
       })
       .catch(() => {
         setMembershipDataReady(true);
       });
   }, [lang]);
-
-  useEffect(() => {
-    if (!membershipDataReady) return;
-    const gotoFeatured = typeof window !== "undefined" && window.sessionStorage.getItem("fitzone:goto-featured");
-    if (gotoFeatured) {
-      window.sessionStorage.removeItem("fitzone:goto-featured");
-      setTimeout(() => featuredCardRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 100);
-    }
-  }, [membershipDataReady]);
 
   useEffect(() => {
     if (!membershipDataReady || !pendingPlan) return;
@@ -3278,6 +3233,75 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
       window.sessionStorage.removeItem(MEMBERSHIP_FLOW_STORAGE_KEY);
     }
   }, [membershipDataReady, pendingPlan]);
+
+  // Process external subscribe trigger (from OffersPage / HomePage)
+  useEffect(() => {
+    if (!membershipDataReady || !pendingExternalSubscribe) return;
+    const { membershipId, offerId, offerSpecialPrice } = pendingExternalSubscribe;
+    const mb = allMemberships.find((m) => m.id === membershipId);
+    if (mb) {
+      const idx = allMemberships.findIndex((m) => m.id === membershipId);
+      const planItem: PlanItem = {
+        ...mapMembershipToPlanItem(mb, PLAN_COLORS[idx % PLAN_COLORS.length]),
+        offerId: offerId ?? null,
+        priceAfter: offerSpecialPrice != null ? offerSpecialPrice : (mb.priceAfter ?? null),
+      };
+      openSurvey(planItem);
+    }
+    setPendingExternalSubscribe(null);
+  }, [membershipDataReady, pendingExternalSubscribe, allMemberships]);
+
+  // Listen for subscription trigger from other pages
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ membershipId: string; offerId?: string | null; offerSpecialPrice?: number | null }>).detail;
+      if (!detail?.membershipId) return;
+      setPendingExternalSubscribe(detail);
+    };
+    window.addEventListener(GLOBAL_SUBSCRIBE_EVENT, handler);
+    return () => window.removeEventListener(GLOBAL_SUBSCRIBE_EVENT, handler);
+  }, []);
+
+  // Listen for goto-featured request from home page
+  useEffect(() => {
+    const handler = () => {
+      setTimeout(() => featuredCardRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 200);
+    };
+    window.addEventListener("fitzone:goto-featured", handler);
+    return () => window.removeEventListener("fitzone:goto-featured", handler);
+  }, []);
+
+  // Listen for trial class booking from home page / class schedule
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const scheduleId = (e as CustomEvent<{ scheduleId?: string | null }>).detail?.scheduleId ?? null;
+      loadPublicApi().then((d) => {
+        const trialMb = d.trialMembership as { id: string; name: string; price: number; sessionsCount: number; features: string[]; durationDays: number } | null;
+        const trialPlan: PlanItem = {
+          id: trialMb?.id ?? "trial-class",
+          name: trialMb?.name ?? "كلاس تجريبي",
+          price: 50,
+          priceBefore: null,
+          priceAfter: null,
+          durationDays: trialMb?.durationDays ?? 1,
+          cycle: null,
+          sessionsCount: 1,
+          features: trialMb?.features?.length ? trialMb.features : ["حجز كلاس فردي من جميع الأنواع", "اختاري أي موعد متاح"],
+          color: C.red,
+          popular: false,
+          goalIds: [],
+          isTrial: true,
+        };
+        setScheduleError(null);
+        setDaysPerWeek(null);
+        setScheduleStep("slots");
+        setSchedulePlan(trialPlan);
+        setScheduleSelections(scheduleId ? [scheduleId] : []);
+      }).catch(() => {});
+    };
+    window.addEventListener("fitzone:trial-booking", handler);
+    return () => window.removeEventListener("fitzone:trial-booking", handler);
+  }, []);
 
   const rootGoals = useMemo(() => goals.filter((goal) => !goal.parentId), [goals]);
   const gamesRoot = useMemo(() => rootGoals.find((goal) => goal.kind === "games_root"), [rootGoals]);
@@ -3496,6 +3520,10 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
   };
 
   const openSurvey = (plan: PlanItem) => {
+    if (!userSummary?.authenticated) {
+      window.location.href = `/login?callbackUrl=${encodeURIComponent("/?page=memberships")}`;
+      return;
+    }
     if (plan.isFeatured) {
       setSchedulePlan(plan);
       setScheduleSelections([]);
@@ -3612,6 +3640,10 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
 
   const handleSubscribe = async (plan: PlanItem, scheduleIds: string[] = [], paymentOverride?: "paymob") => {
     if (!plan.id) { navigate("register"); return; }
+    if (!userSummary?.authenticated) {
+      window.location.href = `/login?callbackUrl=${encodeURIComponent("/?page=memberships")}`;
+      return;
+    }
     setSubscribing(plan.id);
     setSubMsg(null);
     const controller = new AbortController();
@@ -3633,6 +3665,7 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
             affiliateRef: storedAffiliateRef || undefined,
             walletDeduct: fs.walletDiscount > 0 ? fs.walletDiscount : undefined,
             pointsDeduct: fs.pointsToDeduct > 0 ? fs.pointsToDeduct : undefined,
+            offerId: plan.offerId ?? undefined,
             trialPrice: plan.isTrial ? plan.price : undefined,
             startDate: plan.isFeatured && featuredStartDate ? featuredStartDate : undefined,
           };
@@ -4995,19 +5028,16 @@ const MembershipsPage = ({ navigate }: { navigate: (p: string) => void }) => {
 
 // ─── OFFERS PAGE ──────────────────────────────────────────────────────────────
 const DEFAULT_OFFERS: Array<PublicOffer & { color: string }> = [];
-const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
+const OffersPage = ({ navigate: _navigate }: { navigate: (p: string) => void }) => {
   const t = useT();
   const { lang } = useLang();
   const [offers, setOffers] = useState(DEFAULT_OFFERS);
   const [packages, setPackages] = useState<PublicMembership[]>([]);
-  const startMembershipFlow = (membershipId?: string | null, source: "offer" | "package" = "offer", offerId?: string | null) => {
-    if (typeof window !== "undefined" && membershipId) {
-      window.sessionStorage.setItem(
-        MEMBERSHIP_FLOW_STORAGE_KEY,
-        JSON.stringify({ membershipId, source, offerId: offerId ?? null } satisfies PendingMembershipFlow),
-      );
-    }
-    navigate("memberships");
+  const openSubscribeModal = (membershipId?: string | null, offerId?: string | null, offerSpecialPrice?: number | null) => {
+    if (!membershipId) return;
+    window.dispatchEvent(new CustomEvent(GLOBAL_SUBSCRIBE_EVENT, {
+      detail: { membershipId, offerId: offerId ?? null, offerSpecialPrice: offerSpecialPrice ?? null },
+    }));
   };
   useEffect(() => {
     loadPublicApi().then(d => {
@@ -5130,7 +5160,7 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
                     <span>{countdown.expired ? t("انتهى العرض", "Offer expired") : t("العرض ساري الآن", "Offer is active")}</span>
                   </div>
                   <button
-                    onClick={() => startMembershipFlow(o.membershipId, "offer", o.id)}
+                    onClick={() => openSubscribeModal(o.membershipId, o.id, o.specialPrice ?? null)}
                     style={{ width: "100%", padding: "10px", borderRadius: 10, border: `2px solid ${o.color}`, background: "transparent", color: o.color, fontFamily: "'Cairo', sans-serif", fontSize: 14, fontWeight: 700, cursor: "pointer", marginTop: "auto", opacity: o.membershipId ? 1 : 0.7 }}
                   >
                     {t("اشتركي الآن", "Subscribe now")}
@@ -5196,7 +5226,7 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
                       <button
                         className="btn-primary"
                         style={{ width: "100%", justifyContent: "center", fontSize: 14, background: packageColor, borderColor: packageColor, marginTop: "auto" }}
-                        onClick={() => startMembershipFlow(pkg.id, "package")}
+                        onClick={() => openSubscribeModal(pkg.id)}
                       >
                         {t("اشتركي الآن", "Subscribe now")}
                       </button>
@@ -8453,7 +8483,6 @@ export default function App() {
   const pages = {
     home: <HomePage navigate={navigate} summary={summary} />,
     about: <AboutPage />,
-    memberships: <MembershipsPage navigate={navigate} />,
     classes: <ClassesPage navigate={navigate} />,
     classDetail: <ClassDetailPage navigate={navigate} />,
     schedule: <SchedulePage />,
@@ -8482,7 +8511,13 @@ export default function App() {
         walletBalance={(summary?.walletBalance ?? 0).toLocaleString(lang === "ar" ? "ar-EG" : "en-US")}
         summary={summary}
       />
-      <main>{pages[page as keyof typeof pages] || pages.home}</main>
+      <main>
+        {/* MembershipsPage is always mounted so subscription modals work from any page */}
+        <div style={{ display: page === "memberships" ? "block" : "none" }}>
+          <MembershipsPage navigate={navigate} summary={summary} />
+        </div>
+        {page !== "memberships" && (pages[page as keyof typeof pages] || pages.home)}
+      </main>
       <Footer navigate={navigate} />
       <BottomNav currentPage={page} navigate={navigate} cartCount={cartCount} />
     </div>
