@@ -1570,6 +1570,7 @@ function normalizeWhatsappLink(value?: string) {
 }
 // ─── HOME PAGE ───────────────────────────────────────────────────────────────
 const DEFAULT_HOME_MEMBERSHIPS: Array<{
+  id: string;
   name: string;
   price: number;
   priceBefore: number | null;
@@ -2035,6 +2036,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
         const subscriptions = (d.memberships as PublicMembership[]).filter((mb) => mb.kind === "subscription");
         const source = packages.length > 0 ? packages : subscriptions;
         setMemberships(source.slice(0, 3).map((mb, i) => ({
+          id: mb.id,
           name: mb.name,
           price: mb.price,
           priceBefore: mb.priceBefore ?? null,
@@ -2238,9 +2240,12 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
 
   const startMembershipFlow = (membershipId?: string | null, _source: "offer" | "package" = "offer", offerId?: string | null, offerSpecialPrice?: number | null) => {
     if (!membershipId) return;
-    window.dispatchEvent(new CustomEvent(GLOBAL_SUBSCRIBE_EVENT, {
-      detail: { membershipId, offerId: offerId ?? null, offerSpecialPrice: offerSpecialPrice ?? null },
-    }));
+    navigate("memberships");
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent(GLOBAL_SUBSCRIBE_EVENT, {
+        detail: { membershipId, offerId: offerId ?? null, offerSpecialPrice: offerSpecialPrice ?? null },
+      }));
+    }, 80);
   };
 
   return (
@@ -2528,10 +2533,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                     </div>
                     <div style={{ color: "#c9b9c1", fontSize: 13, marginBottom: 16 }}>{t("جنيه", "EGP")} / {homeFeaturedPlan.durationDays} {t("يوم", "days")}</div>
                     <button
-                      onClick={() => {
-                        navigate("memberships");
-                        setTimeout(() => window.dispatchEvent(new CustomEvent("fitzone:goto-featured")), 100);
-                      }}
+                      onClick={() => startMembershipFlow(homeFeaturedPlan.id)}
                       style={{ background: "linear-gradient(135deg, #FFD700, #C9A227)", color: "#000", border: "none", borderRadius: 12, padding: "14px 28px", fontWeight: 900, fontSize: 15, cursor: "pointer", fontFamily: "'Cairo', sans-serif", boxShadow: "0 6px 20px rgba(212,175,55,0.4)" }}
                     >
                       {t("اشتركي الآن ⭐", "Subscribe Now ⭐")}
@@ -2647,7 +2649,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                         </li>
                       ))}
                     </ul>
-                    <button className="btn-primary" style={{ width: "100%", justifyContent: "center", fontSize: 14, background: accentColor, borderColor: accentColor, marginTop: "auto" }} onClick={() => navigate("offers")}>
+                    <button className="btn-primary" style={{ width: "100%", justifyContent: "center", fontSize: 14, background: accentColor, borderColor: accentColor, marginTop: "auto" }} onClick={() => startMembershipFlow(m.id)}>
                       {t("اشتركي الآن", "Subscribe now")}
                     </button>
                   </div>
@@ -5028,16 +5030,19 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
 
 // ─── OFFERS PAGE ──────────────────────────────────────────────────────────────
 const DEFAULT_OFFERS: Array<PublicOffer & { color: string }> = [];
-const OffersPage = ({ navigate: _navigate }: { navigate: (p: string) => void }) => {
+const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
   const t = useT();
   const { lang } = useLang();
   const [offers, setOffers] = useState(DEFAULT_OFFERS);
   const [packages, setPackages] = useState<PublicMembership[]>([]);
   const openSubscribeModal = (membershipId?: string | null, offerId?: string | null, offerSpecialPrice?: number | null) => {
     if (!membershipId) return;
-    window.dispatchEvent(new CustomEvent(GLOBAL_SUBSCRIBE_EVENT, {
-      detail: { membershipId, offerId: offerId ?? null, offerSpecialPrice: offerSpecialPrice ?? null },
-    }));
+    navigate("memberships");
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent(GLOBAL_SUBSCRIBE_EVENT, {
+        detail: { membershipId, offerId: offerId ?? null, offerSpecialPrice: offerSpecialPrice ?? null },
+      }));
+    }, 80);
   };
   useEffect(() => {
     loadPublicApi().then(d => {
