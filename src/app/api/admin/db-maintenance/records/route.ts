@@ -214,6 +214,75 @@ export async function GET(req: Request) {
       });
     }
 
+    if (type === "partners") {
+      const items = await db.partner.findMany({
+        where: q ? { OR: [{ id: search }, { name: search }] } : undefined,
+        include: { linkedUser: { select: { email: true } } },
+        orderBy: { createdAt: "desc" },
+        take: 200,
+      });
+      return NextResponse.json({
+        items: items.map((p) => ({
+          id: p.id,
+          name: p.name,
+          category: p.category,
+          email: p.linkedUser?.email ?? null,
+          commissionRate: p.commissionRate,
+          commissionType: p.commissionType,
+          isActive: p.isActive,
+          createdAt: p.createdAt.toLocaleDateString("ar-EG"),
+        })),
+      });
+    }
+
+    if (type === "partnerCommissions") {
+      const items = await db.partnerCommission.findMany({
+        where: q
+          ? { OR: [{ id: search }, { partner: { name: search } }, { user: { name: search } }, { user: { email: search } }] }
+          : undefined,
+        include: {
+          partner: { select: { name: true } },
+          user: { select: { name: true, email: true } },
+          membership: { select: { name: true } },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 200,
+      });
+      return NextResponse.json({
+        items: items.map((c) => ({
+          id: c.id,
+          partnerName: c.partner.name,
+          customerName: c.user.name ?? null,
+          customerEmail: c.user.email ?? null,
+          membershipName: c.membership?.name ?? null,
+          amount: c.amount,
+          status: c.status,
+          createdAt: c.createdAt.toLocaleDateString("ar-EG"),
+        })),
+      });
+    }
+
+    if (type === "partnerWithdrawals") {
+      const items = await db.partnerWithdrawalRequest.findMany({
+        where: q ? { OR: [{ id: search }, { partner: { name: search } }] } : undefined,
+        include: { partner: { select: { name: true, category: true } } },
+        orderBy: { createdAt: "desc" },
+        take: 200,
+      });
+      return NextResponse.json({
+        items: items.map((w) => ({
+          id: w.id,
+          partnerName: w.partner.name,
+          partnerCategory: w.partner.category,
+          amount: w.amount,
+          status: w.status,
+          adminNotes: w.adminNotes ?? null,
+          createdAt: w.createdAt.toLocaleDateString("ar-EG"),
+          processedAt: w.processedAt?.toLocaleDateString("ar-EG") ?? null,
+        })),
+      });
+    }
+
     return NextResponse.json({ items: [] });
   } catch (error) {
     console.error("[DB_MAINTENANCE_RECORDS_GET]", error);
@@ -250,6 +319,9 @@ export async function POST(req: Request) {
       if (type === "offers") await db.offer.delete({ where: { id } });
       if (type === "users") await db.user.delete({ where: { id } });
       if (type === "inventoryMovements") await db.inventoryMovement.delete({ where: { id } });
+      if (type === "partners") await db.partner.delete({ where: { id } });
+      if (type === "partnerCommissions") await db.partnerCommission.delete({ where: { id } });
+      if (type === "partnerWithdrawals") await db.partnerWithdrawalRequest.delete({ where: { id } });
       return NextResponse.json({ message: "تم حذف السجل بنجاح." });
     }
 
