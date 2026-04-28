@@ -822,7 +822,10 @@ export default function Trainers() {
                 <button
                   onClick={() => {
                     setDiscountModal(trainer);
-                    setDcTargetUser(""); setDcValue(""); setDcMax(""); setDcNote(""); setDcType("percentage"); setDcError("");
+                    setDcTargetUser(""); setDcNote(""); setDcError("");
+                    setDcType(trainer.linkedUser?.discountType ?? "percentage");
+                    setDcValue(trainer.linkedUser?.discountValue ? String(trainer.linkedUser.discountValue) : "");
+                    setDcMax(trainer.linkedUser?.maxDiscount ? String(trainer.linkedUser.maxDiscount) : "");
                     void loadMembers();
                   }}
                   className="rounded-lg bg-purple-900/50 px-3 py-2 text-xs font-bold text-purple-300"
@@ -1280,23 +1283,28 @@ export default function Trainers() {
                 ))}
               </select>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-bold text-gray-400 mb-1">نوع الخصم</label>
-                <select value={dcType} onChange={(e) => setDcType(e.target.value)} className={INPUT}>
-                  <option value="percentage">نسبة مئوية %</option>
-                  <option value="fixed">مبلغ ثابت ج.م</option>
-                </select>
+            {discountModal.linkedUser && discountModal.linkedUser.discountValue > 0 ? (
+              <div className="rounded-xl border border-emerald-500/20 bg-emerald-950/20 p-3 space-y-2">
+                <div className="text-xs font-bold text-gray-400">قيم الخصم المعتمدة للمدربة (غير قابلة للتعديل)</div>
+                <div className="flex flex-wrap gap-2">
+                  <span className="rounded-full bg-emerald-900/40 px-3 py-1 text-xs font-bold text-emerald-300">
+                    {discountModal.linkedUser.discountType === "percentage" ? "نسبة مئوية %" : "مبلغ ثابت ج.م"}
+                  </span>
+                  <span className="rounded-full bg-emerald-900/40 px-3 py-1 text-xs font-bold text-emerald-300">
+                    {discountModal.linkedUser.discountType === "percentage"
+                      ? `${discountModal.linkedUser.discountValue}%`
+                      : `${discountModal.linkedUser.discountValue} ج.م`}
+                  </span>
+                  {discountModal.linkedUser.maxDiscount && (
+                    <span className="rounded-full bg-gray-800 px-3 py-1 text-xs text-gray-400">
+                      حد أقصى: {discountModal.linkedUser.maxDiscount} ج.م
+                    </span>
+                  )}
+                </div>
               </div>
-              <div>
-                <label className="block text-xs font-bold text-gray-400 mb-1">القيمة *</label>
-                <input type="number" value={dcValue} onChange={(e) => setDcValue(e.target.value)} className={INPUT} placeholder={dcType === "percentage" ? "مثال: 20" : "مثال: 100"} />
-              </div>
-            </div>
-            {dcType === "percentage" && (
-              <div>
-                <label className="block text-xs font-bold text-gray-400 mb-1">حد أقصى للخصم (ج.م) — اختياري</label>
-                <input type="number" value={dcMax} onChange={(e) => setDcMax(e.target.value)} className={INPUT} placeholder="مثال: 200" />
+            ) : (
+              <div className="rounded-xl border border-amber-500/20 bg-amber-950/20 px-4 py-3 text-xs text-amber-300">
+                ⚠️ لم يتم تعيين قيم خصم لهذه المدربة. يرجى تعديل بيانات المدربة أولًا وتحديد نوع وقيمة الخصم.
               </div>
             )}
             <div>
