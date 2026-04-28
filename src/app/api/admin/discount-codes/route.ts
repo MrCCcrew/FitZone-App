@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireAdminFeature } from "@/lib/admin-guard";
-import { enterAuditActor, logAudit } from "@/lib/audit-context";
+import { logAudit } from "@/lib/audit-context";
+
+const TRAINER_FORBIDDEN = NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
 export async function GET() {
   const auth = await requireAdminFeature("discounts");
   if ("error" in auth) return auth.error;
+  if (auth.role === "trainer") return TRAINER_FORBIDDEN;
 
   const codes = await db.discountCode.findMany({
     orderBy: { createdAt: "desc" },
@@ -34,6 +37,7 @@ export async function GET() {
 export async function POST(req: Request) {
   const auth = await requireAdminFeature("discounts");
   if ("error" in auth) return auth.error;
+  if (auth.role === "trainer") return TRAINER_FORBIDDEN;
 
   const body = await req.json();
   const {

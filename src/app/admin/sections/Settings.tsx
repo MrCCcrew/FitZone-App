@@ -473,7 +473,11 @@ export default function Settings() {
               <div className="mt-5">
                 <div className="mb-3 text-sm font-bold text-white">الصلاحيات</div>
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                  {ADMIN_FEATURES.map((feature) => (
+                  {ADMIN_FEATURES.filter((feature) => {
+                    // Trainers can never be granted discount code management
+                    if (form.role === "trainer" && feature === "discounts") return false;
+                    return true;
+                  }).map((feature) => (
                     <label key={feature} className="flex items-center gap-3 rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-[#fff4f8]">
                       <input
                         type="checkbox"

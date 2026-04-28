@@ -3,9 +3,12 @@ import { db } from "@/lib/db";
 import { requireAdminFeature } from "@/lib/admin-guard";
 import { logAudit } from "@/lib/audit-context";
 
+const TRAINER_FORBIDDEN = NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAdminFeature("discounts");
   if ("error" in auth) return auth.error;
+  if (auth.role === "trainer") return TRAINER_FORBIDDEN;
 
   const { id } = await params;
   const body = await req.json();
@@ -41,6 +44,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAdminFeature("discounts");
   if ("error" in auth) return auth.error;
+  if (auth.role === "trainer") return TRAINER_FORBIDDEN;
 
   const { id } = await params;
   const existing = await db.discountCode.findUnique({ where: { id } });
