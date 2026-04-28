@@ -4833,7 +4833,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
                   </div>
 
                   {/* Right: Date picker + CTA */}
-                  <div style={{ flex: "1 1 220px", minWidth: 0, maxWidth: 300, margin: "0 auto", width: "100%", display: "flex", flexDirection: "column", gap: 14 }}>
+                  <div style={{ flex: "1 1 220px", minWidth: 0, maxWidth: 340, margin: "0 auto", width: "100%", display: "flex", flexDirection: "column", gap: 12 }}>
                     <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(212,175,55,0.25)", borderRadius: 12, padding: "16px 16px 14px" }}>
                       <div style={{ fontSize: 12, fontWeight: 700, color: "#D4AF37", marginBottom: 10 }}>
                         📅 {t("اختاري تاريخ بداية الاشتراك", "Choose your start date")}
