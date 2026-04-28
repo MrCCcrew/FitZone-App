@@ -255,6 +255,7 @@ const I = ({ n, s = 20, c = "currentColor" }: { n: string; s?: number; c?: strin
     info: "M12 22a10 10 0 100-20 10 10 0 000 20z M12 16v-4 M12 8h.01",
     whatsapp: "M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52",
     instagram: "M16 11.37A4 4 0 1112.63 8 4 4 0 0116 11.37z M17.5 6.5h.01 M7 2h10a5 5 0 015 5v10a5 5 0 01-5 5H7a5 5 0 01-5-5V7a5 5 0 015-5z",
+    handshake: "M20.5 14.5l-5 5-3-3-4 4-3-3 5-5 3 3 3-3m1-8l-4 4-2-2-4 4",
   };
   return (
     <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -4832,8 +4833,8 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
                   </div>
 
                   {/* Right: Date picker + CTA */}
-                  <div style={{ flex: "1 1 220px", minWidth: 0, display: "flex", flexDirection: "column", gap: 14 }}>
-                    <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(212,175,55,0.25)", borderRadius: 14, padding: "18px 18px 16px" }}>
+                  <div style={{ flex: "1 1 220px", minWidth: 0, maxWidth: 340, margin: "0 auto", width: "100%", display: "flex", flexDirection: "column", gap: 14 }}>
+                    <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(212,175,55,0.25)", borderRadius: 14, padding: "18px 18px 16px", overflow: "hidden" }}>
                       <div style={{ fontSize: 12, fontWeight: 700, color: "#D4AF37", marginBottom: 10 }}>
                         📅 {t("اختاري تاريخ بداية الاشتراك", "Choose your start date")}
                       </div>
@@ -4849,7 +4850,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
                           background: "rgba(255,255,255,0.06)", border: "1px solid rgba(212,175,55,0.35)",
                           borderRadius: 10, padding: "9px 12px", color: "#fff4e8",
                           fontSize: 14, fontFamily: "'Cairo', sans-serif", outline: "none",
-                          colorScheme: "dark",
+                          colorScheme: "dark", textAlign: "center", direction: "ltr",
                         }}
                       />
                       {endDateStr && (
@@ -8298,10 +8299,12 @@ const BottomNav = ({
   currentPage,
   navigate,
   cartCount,
+  userRole,
 }: {
   currentPage: string;
   navigate: (p: string) => void;
   cartCount: number;
+  userRole?: string;
 }) => {
   const { lang } = useLang();
   const t = (ar: string, en: string) => (lang === "ar" ? ar : en);
@@ -8311,6 +8314,7 @@ const BottomNav = ({
     { id: "offers",      label: t("العروض",   "Offers"),   icon: "gift"     },
     { id: "schedule",    label: t("الجدول",   "Schedule"), icon: "calendar" },
     { id: "shop",        label: t("المتجر",   "Shop"),     icon: "cart"     },
+    ...(userRole === "partner" ? [{ id: "partners", label: t("الشركاء", "Partners"), icon: "handshake" }] : []),
     { id: "account",     label: t("حسابي",    "Account"),  icon: "user"     },
   ];
   return (
@@ -8528,7 +8532,7 @@ export default function App() {
         {page !== "memberships" && (pages[page as keyof typeof pages] || pages.home)}
       </main>
       <Footer navigate={navigate} />
-      <BottomNav currentPage={page} navigate={navigate} cartCount={cartCount} />
+      <BottomNav currentPage={page} navigate={navigate} cartCount={cartCount} userRole={summary?.user?.role} />
     </div>
   );
 }
