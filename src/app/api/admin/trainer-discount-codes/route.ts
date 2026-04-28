@@ -60,12 +60,17 @@ export async function POST(req: Request) {
   if (discountType === "percentage" && body.discountValue > 100)
     return NextResponse.json({ error: "نسبة الخصم يجب أن تكون بين 1 و 100." }, { status: 400 });
 
-  const [trainer, targetUser] = await Promise.all([
+  const monthYear = new Date().toISOString().slice(0, 7);
+
+  const [trainer, targetUser, monthlyCount] = await Promise.all([
     db.trainer.findUnique({ where: { id: body.trainerId }, select: { id: true } }),
     db.user.findUnique({ where: { id: body.targetUserId }, select: { id: true } }),
+    db.trainerDiscountCode.count({ where: { trainerId: body.trainerId, monthYear } }),
   ]);
   if (!trainer) return NextResponse.json({ error: "المدربة غير موجودة." }, { status: 404 });
   if (!targetUser) return NextResponse.json({ error: "العميل غير موجود." }, { status: 404 });
+  if (monthlyCount >= 4)
+    return NextResponse.json({ error: "وصلت المدربة للحد الأقصى من أكواد الخصم لهذا الشهر (4 أكواد)." }, { status: 422 });
 
   let code = "";
   for (let i = 0; i < 10; i++) {
@@ -75,7 +80,6 @@ export async function POST(req: Request) {
   }
   if (!code) return NextResponse.json({ error: "تعذر إنشاء كود فريد." }, { status: 500 });
 
-  const monthYear = new Date().toISOString().slice(0, 7);
   const created = await db.trainerDiscountCode.create({
     data: {
       trainerId: body.trainerId,
