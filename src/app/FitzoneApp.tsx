@@ -4794,7 +4794,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
                 {/* Gold shimmer top border */}
                 <div style={{ height: 3, background: "linear-gradient(90deg, transparent, #D4AF37, #FFD700, #D4AF37, transparent)" }} />
 
-                <div style={{ padding: "28px 28px 24px", display: "flex", flexWrap: "wrap", gap: 28, alignItems: "flex-start" }}>
+                <div style={{ padding: "24px 20px 20px", display: "flex", flexWrap: "wrap", gap: 24, alignItems: "flex-start" }}>
                   {/* Left: Info */}
                   <div style={{ flex: "1 1 240px" }}>
                     {/* Badge */}
@@ -4832,7 +4832,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
                   </div>
 
                   {/* Right: Date picker + CTA */}
-                  <div style={{ flex: "0 0 auto", minWidth: 220, display: "flex", flexDirection: "column", gap: 14 }}>
+                  <div style={{ flex: "1 1 220px", minWidth: 0, display: "flex", flexDirection: "column", gap: 14 }}>
                     <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(212,175,55,0.25)", borderRadius: 14, padding: "18px 18px 16px" }}>
                       <div style={{ fontSize: 12, fontWeight: 700, color: "#D4AF37", marginBottom: 10 }}>
                         📅 {t("اختاري تاريخ بداية الاشتراك", "Choose your start date")}
