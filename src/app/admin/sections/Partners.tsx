@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { Partner, PartnerCode, PartnerAffiliateLink, PartnerWithdrawalRequest } from "../types";
+import { printPartnersReport } from "@/lib/print-pdf";
 
 const CATEGORY_LABELS: Record<string, string> = {
   beauty_center: "سنتر تجميل",
@@ -646,6 +647,34 @@ export default function Partners({ viewMode = "admin" }: { viewMode?: ViewMode }
       {/* ── Commissions Tab ── */}
       {tab === "commissions" && (
         <section className="space-y-5">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-black text-white">العمولات المالية</h3>
+            <button
+              onClick={() => printPartnersReport({
+                commissions: commissions.map((c) => ({
+                  partnerName: c.partnerName,
+                  customerName: c.customerName,
+                  membershipName: c.membershipName,
+                  amount: c.amount,
+                  status: c.status,
+                  createdAt: c.createdAt,
+                })),
+                withdrawals: adminWithdrawals.map((w) => ({
+                  partnerName: w.partnerName,
+                  partnerCategory: w.partnerCategory,
+                  amount: w.amount,
+                  status: w.status,
+                  adminNotes: w.adminNotes ?? null,
+                  createdAt: w.createdAt,
+                  processedAt: w.processedAt ?? null,
+                })),
+                categoryLabels: CATEGORY_LABELS,
+              })}
+              className="rounded-xl bg-gray-800 px-4 py-2 text-xs font-bold text-gray-300 hover:text-white"
+            >
+              📄 تصدير PDF
+            </button>
+          </div>
           <div className="grid gap-4 sm:grid-cols-3">
             <div className="rounded-2xl border border-gray-800 bg-gray-900/60 p-5">
               <div className="text-sm text-gray-400">إجمالي العمولات</div>
@@ -701,13 +730,38 @@ export default function Partners({ viewMode = "admin" }: { viewMode?: ViewMode }
       {/* ── Withdrawals Tab ── */}
       {tab === "withdrawals" && (
         <section className="space-y-5">
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {([["all", "الكل"], ["pending", "معلّق"], ["approved", "مدفوع"], ["rejected", "مرفوض"]] as [WdFilter, string][]).map(([key, label]) => (
               <button key={key} onClick={() => setWdFilter(key)}
                 className={`rounded-full px-4 py-1.5 text-xs font-bold transition-colors ${wdFilter === key ? "bg-pink-600 text-white" : "bg-gray-800 text-gray-400 hover:text-white"}`}>
                 {label}
               </button>
             ))}
+            <button
+              onClick={() => printPartnersReport({
+                commissions: commissions.map((c) => ({
+                  partnerName: c.partnerName,
+                  customerName: c.customerName,
+                  membershipName: c.membershipName,
+                  amount: c.amount,
+                  status: c.status,
+                  createdAt: c.createdAt,
+                })),
+                withdrawals: adminWithdrawals.map((w) => ({
+                  partnerName: w.partnerName,
+                  partnerCategory: w.partnerCategory,
+                  amount: w.amount,
+                  status: w.status,
+                  adminNotes: w.adminNotes ?? null,
+                  createdAt: w.createdAt,
+                  processedAt: w.processedAt ?? null,
+                })),
+                categoryLabels: CATEGORY_LABELS,
+              })}
+              className="mr-auto rounded-xl bg-gray-800 px-4 py-1.5 text-xs font-bold text-gray-300 hover:text-white"
+            >
+              📄 تصدير PDF
+            </button>
           </div>
 
           {filteredWithdrawals.length === 0 && (
