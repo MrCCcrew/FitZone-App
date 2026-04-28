@@ -4848,7 +4848,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
                         style={{
                           width: "100%", boxSizing: "border-box",
                           background: "rgba(255,255,255,0.06)", border: "1px solid rgba(212,175,55,0.35)",
-                          borderRadius: 10, padding: "1px 6px", color: "#fff4e8",
+                          borderRadius: 10, padding: "4px 3px", color: "#fff4e8",
                           fontSize: 14, fontFamily: "'Cairo', sans-serif", outline: "none",
                           colorScheme: "dark", textAlign: "center", direction: "ltr",
                         }}
