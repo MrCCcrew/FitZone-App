@@ -608,6 +608,141 @@ export function printSalesInvoice(order: {
   openPrint(html);
 }
 
+// ─── Partners & Commissions Report ───────────────────────────────────────────
+
+export interface PartnerCommissionForPrint {
+  partnerName: string;
+  customerName: string;
+  membershipName: string;
+  amount: number;
+  status: string;
+  createdAt: string;
+}
+
+export interface PartnerWithdrawalForPrint {
+  partnerName: string;
+  partnerCategory: string;
+  amount: number;
+  status: string;
+  adminNotes: string | null;
+  createdAt: string;
+  processedAt: string | null;
+}
+
+export function printPartnersReport(opts: {
+  commissions: PartnerCommissionForPrint[];
+  withdrawals: PartnerWithdrawalForPrint[];
+  categoryLabels: Record<string, string>;
+}) {
+  const totalPending = opts.commissions.filter((c) => c.status === "pending").reduce((s, c) => s + c.amount, 0);
+  const totalWithdrawn = opts.commissions.filter((c) => c.status === "withdrawn").reduce((s, c) => s + c.amount, 0);
+  const approvedWithdrawals = opts.withdrawals.filter((w) => w.status === "approved");
+  const pendingWithdrawalsCount = opts.withdrawals.filter((w) => w.status === "pending").length;
+
+  const kpis = `
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-label">إجمالي العمولات</div>
+        <div class="kpi-value pink">${fmt(totalPending + totalWithdrawn)} ج</div>
+        <div style="font-size:11px;color:#888">${opts.commissions.length} عملية</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">عمولات معلقة</div>
+        <div class="kpi-value orange">${fmt(totalPending)} ج</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">عمولات مسحوبة</div>
+        <div class="kpi-value green">${fmt(totalWithdrawn)} ج</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">سحوبات معتمدة</div>
+        <div class="kpi-value green">${fmt(approvedWithdrawals.reduce((s, w) => s + w.amount, 0))} ج</div>
+        <div style="font-size:11px;color:#888">${approvedWithdrawals.length} طلب</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">طلبات سحب معلقة</div>
+        <div class="kpi-value orange">${pendingWithdrawalsCount} طلب</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">إجمالي طلبات السحب</div>
+        <div class="kpi-value">${opts.withdrawals.length} طلب</div>
+      </div>
+    </div>
+  `;
+
+  const STATUS_AR: Record<string, string> = {
+    pending: "معلق", withdrawn: "مسحوبة", approved: "مدفوع", rejected: "مرفوض",
+  };
+  const statusBg = (s: string) =>
+    s === "withdrawn" || s === "approved" ? "#14532d40" : s === "rejected" ? "#7f1d1d40" : "#713f1240";
+  const statusColor = (s: string) =>
+    s === "withdrawn" || s === "approved" ? "#86efac" : s === "rejected" ? "#fca5a5" : "#fde68a";
+  const badge = (s: string) =>
+    `<span style="padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700;background:${statusBg(s)};color:${statusColor(s)}">${STATUS_AR[s] ?? s}</span>`;
+
+  const commissionsTable = opts.commissions.length === 0
+    ? "<p style='color:#888;font-size:12px'>لا توجد عمولات</p>"
+    : `
+    <table>
+      <thead><tr>
+        <th>الشريك</th><th>العميل</th><th>الاشتراك</th><th>العمولة</th><th>الحالة</th><th>التاريخ</th>
+      </tr></thead>
+      <tbody>
+        ${opts.commissions.map((c) => `<tr>
+          <td style="font-weight:700">${c.partnerName}</td>
+          <td>${c.customerName}</td>
+          <td>${c.membershipName}</td>
+          <td style="font-weight:700;color:#16a34a">${fmt(c.amount)} ج</td>
+          <td>${badge(c.status)}</td>
+          <td style="color:#888">${fmtDate(c.createdAt)}</td>
+        </tr>`).join("")}
+      </tbody>
+      <tfoot><tr>
+        <td colspan="3">الإجمالي (${opts.commissions.length} عملية)</td>
+        <td>${fmt(totalPending + totalWithdrawn)} ج</td>
+        <td colspan="2"></td>
+      </tr></tfoot>
+    </table>`;
+
+  const withdrawalsTable = opts.withdrawals.length === 0
+    ? "<p style='color:#888;font-size:12px'>لا توجد طلبات سحب</p>"
+    : `
+    <table>
+      <thead><tr>
+        <th>الشريك</th><th>الفئة</th><th>المبلغ</th><th>الحالة</th><th>تاريخ الطلب</th><th>تاريخ المعالجة</th>
+      </tr></thead>
+      <tbody>
+        ${opts.withdrawals.map((w) => `<tr>
+          <td style="font-weight:700">${w.partnerName}</td>
+          <td>${opts.categoryLabels[w.partnerCategory] ?? w.partnerCategory}</td>
+          <td style="font-weight:700;color:${w.status === "approved" ? "#16a34a" : w.status === "rejected" ? "#dc2626" : "#d97706"}">${fmt(w.amount)} ج</td>
+          <td>${badge(w.status)}</td>
+          <td style="color:#888">${fmtDate(w.createdAt)}</td>
+          <td style="color:#888">${w.processedAt ? fmtDate(w.processedAt) : "—"}</td>
+        </tr>`).join("")}
+      </tbody>
+      <tfoot><tr>
+        <td colspan="2">إجمالي المبالغ</td>
+        <td>${fmt(opts.withdrawals.reduce((s, w) => s + w.amount, 0))} ج</td>
+        <td colspan="3"></td>
+      </tr></tfoot>
+    </table>`;
+
+  const html = `
+    ${header("تقرير الشركاء والعمولات", "Partners & Commissions Report")}
+    <div class="report-title">تقرير الشركاء والعمولات</div>
+    <div class="report-sub">ملخص شامل للعمولات وطلبات السحب</div>
+    ${kpis}
+    <div class="section-title">تفاصيل العمولات</div>
+    ${commissionsTable}
+    <div class="section-title">طلبات السحب</div>
+    ${withdrawalsTable}
+    ${footer()}
+  `;
+
+  openPrint(html);
+}
+
 // ─── Purchase Invoice (single receipt) ───────────────────────────────────────
 
 export function printPurchaseInvoice(receipt: {
