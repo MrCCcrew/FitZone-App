@@ -4834,7 +4834,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
 
                   {/* Right: Date picker + CTA */}
                   <div style={{ flex: "1 1 220px", minWidth: 0, maxWidth: 340, margin: "0 auto", width: "100%", display: "flex", flexDirection: "column", gap: 14 }}>
-                    <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(212,175,55,0.25)", borderRadius: 14, padding: "18px 18px 16px", overflow: "hidden" }}>
+                    <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(212,175,55,0.25)", borderRadius: 14, padding: "18px 18px 16px" }}>
                       <div style={{ fontSize: 12, fontWeight: 700, color: "#D4AF37", marginBottom: 10 }}>
                         📅 {t("اختاري تاريخ بداية الاشتراك", "Choose your start date")}
                       </div>
@@ -8299,12 +8299,10 @@ const BottomNav = ({
   currentPage,
   navigate,
   cartCount,
-  userRole,
 }: {
   currentPage: string;
   navigate: (p: string) => void;
   cartCount: number;
-  userRole?: string;
 }) => {
   const { lang } = useLang();
   const t = (ar: string, en: string) => (lang === "ar" ? ar : en);
@@ -8314,7 +8312,7 @@ const BottomNav = ({
     { id: "offers",      label: t("العروض",   "Offers"),   icon: "gift"     },
     { id: "schedule",    label: t("الجدول",   "Schedule"), icon: "calendar" },
     { id: "shop",        label: t("المتجر",   "Shop"),     icon: "cart"     },
-    ...(userRole === "partner" ? [{ id: "partners", label: t("الشركاء", "Partners"), icon: "handshake" }] : []),
+    { id: "partners",    label: t("الشركاء",  "Partners"), icon: "handshake" },
     { id: "account",     label: t("حسابي",    "Account"),  icon: "user"     },
   ];
   return (
@@ -8532,7 +8530,7 @@ export default function App() {
         {page !== "memberships" && (pages[page as keyof typeof pages] || pages.home)}
       </main>
       <Footer navigate={navigate} />
-      <BottomNav currentPage={page} navigate={navigate} cartCount={cartCount} userRole={summary?.user?.role} />
+      <BottomNav currentPage={page} navigate={navigate} cartCount={cartCount} />
     </div>
   );
 }
