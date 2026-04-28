@@ -112,10 +112,17 @@ export function isAdminRole(role?: string): role is AdminRole {
   return role === "admin" || role === "staff" || role === "trainer" || role === "accountant" || role === "partner";
 }
 
+// Features that trainers can never hold, even if manually assigned
+const TRAINER_BLOCKED_FEATURES: AdminFeature[] = ["discounts", "settings", "accounting"];
+
 export function normalizeAdminPermissions(role: string | undefined, permissions?: string[] | null) {
   if (role === "admin") return [...ADMIN_FEATURES];
   if (Array.isArray(permissions) && permissions.length > 0) {
-    return permissions.filter((permission): permission is AdminFeature => ADMIN_FEATURES.includes(permission as AdminFeature));
+    let allowed = permissions.filter((p): p is AdminFeature => ADMIN_FEATURES.includes(p as AdminFeature));
+    if (role === "trainer") {
+      allowed = allowed.filter((p) => !TRAINER_BLOCKED_FEATURES.includes(p));
+    }
+    return allowed;
   }
   if (role && isAdminRole(role)) {
     return [...ROLE_FEATURE_TEMPLATES[role]];
