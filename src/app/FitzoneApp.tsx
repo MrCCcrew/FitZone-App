@@ -7725,20 +7725,26 @@ type PublicPartner = {
   category: string;
   logoUrl: string | null;
   websiteUrl: string | null;
+  contactPhone: string | null;
   code: { code: string; discountType: string; discountValue: number } | null;
 };
 
 const PARTNER_CATEGORY_LABELS: Record<string, { ar: string; en: string }> = {
-  beauty_center: { ar: "سنتر تجميل", en: "Beauty Center" },
-  salon:         { ar: "كوافير",      en: "Salon" },
-  pharmacy:      { ar: "صيدلية",      en: "Pharmacy" },
-  clinic:        { ar: "عيادة",       en: "Clinic" },
-  physiotherapy: { ar: "علاج طبيعي", en: "Physiotherapy" },
-  nutrition:     { ar: "تغذية",       en: "Nutrition" },
-  nursery:       { ar: "حضانة",       en: "Nursery" },
-  education:     { ar: "تعليم أطفال", en: "Kids Education" },
-  clothing:      { ar: "ملابس نسائية",en: "Women's Clothing" },
-  other:         { ar: "خدمات أخرى",  en: "Other Services" },
+  beauty_center: { ar: "سنتر تجميل",       en: "Beauty Center" },
+  salon:         { ar: "كوافير",            en: "Salon" },
+  pharmacy:      { ar: "صيدلية",            en: "Pharmacy" },
+  clinic:        { ar: "عيادة",             en: "Clinic" },
+  physiotherapy: { ar: "علاج طبيعي",       en: "Physiotherapy" },
+  nutrition:     { ar: "تغذية",             en: "Nutrition" },
+  nursery:       { ar: "حضانة",             en: "Nursery" },
+  education:     { ar: "تعليم أطفال",      en: "Kids Education" },
+  clothing:      { ar: "ملابس نسائية",     en: "Women's Clothing" },
+  spa:           { ar: "سبا وعافية",        en: "Spa & Wellness" },
+  restaurant:    { ar: "مطعم صحي",          en: "Healthy Restaurant" },
+  sports:        { ar: "مركز رياضي",        en: "Sports Center" },
+  supplement:    { ar: "مكملات غذائية",    en: "Supplements" },
+  services:      { ar: "خدمات أخرى",       en: "Other Services" },
+  other:         { ar: "خدمات نسائية أخرى",en: "Other Women's Services" },
 };
 
 const PartnersPage = ({ navigate, summary }: { navigate: (p: string) => void; summary: UserSummary | null }) => {
@@ -7900,6 +7906,13 @@ const PartnersPage = ({ navigate, summary }: { navigate: (p: string) => void; su
                         <a href={partner.websiteUrl} target="_blank" rel="noopener noreferrer"
                           style={{ textAlign: "center", fontSize: 12, color: C.grayLight, textDecoration: "none" }}>
                           🔗 {t("زيارة الموقع", "Visit website")}
+                        </a>
+                      )}
+                      {/* Phone */}
+                      {partner.contactPhone && (
+                        <a href={`tel:${partner.contactPhone}`}
+                          style={{ textAlign: "center", fontSize: 12, color: C.grayLight, textDecoration: "none" }}>
+                          📞 {partner.contactPhone}
                         </a>
                       )}
                     </div>
