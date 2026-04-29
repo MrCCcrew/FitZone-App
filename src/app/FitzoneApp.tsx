@@ -304,6 +304,11 @@ const PaymobIframeModal = ({
             { src: "/payment-logos/u-valu-logo.webp", alt: "valU" },
             { src: "/payment-logos/souhoola.svg", alt: "Souhoola" },
             { src: "/payment-logos/sympl.svg", alt: "Sympl" },
+            { src: "/payment-logos/vodafone-cash.svg", alt: "Vodafone Cash" },
+            { src: "/payment-logos/we-pay.svg", alt: "WE Pay" },
+            { src: "/payment-logos/etisalat-cash.svg", alt: "e& Cash" },
+            { src: "/payment-logos/orange-cash.svg", alt: "Orange Cash" },
+            { src: "/payment-logos/fawry.svg", alt: "Fawry" },
           ].map((logo) => (
             <div
               key={logo.alt}
@@ -995,6 +1000,11 @@ const Footer = ({ navigate }: { navigate: (p: string) => void }) => {
             { src: "/payment-logos/u-valu-logo.webp",      alt: "valU",              bg: "#fff"        },
             { src: "/payment-logos/sympl-menu2.png",       alt: "Sympl",             bg: "#fff"        },
             { src: "/payment-logos/sohoooooola.png",       alt: "Souhoola",          bg: "#fff"        },
+            { src: "/payment-logos/vodafone-cash.svg",     alt: "Vodafone Cash",     bg: "transparent" },
+            { src: "/payment-logos/we-pay.svg",            alt: "WE Pay",            bg: "transparent" },
+            { src: "/payment-logos/etisalat-cash.svg",     alt: "e& Cash",           bg: "transparent" },
+            { src: "/payment-logos/orange-cash.svg",       alt: "Orange Cash",       bg: "transparent" },
+            { src: "/payment-logos/fawry.svg",             alt: "Fawry",             bg: "transparent" },
           ].map(({ src, alt, bg }) => (
             <div
               key={alt}
