@@ -1119,7 +1119,7 @@ function TrainerProfileTab() {
               {profile.certificateFiles.map((file, index) => (
                 <div key={file.url + "-" + index} className="rounded-2xl border border-[#ffbcdb]/15 bg-black/20 p-3">
                   <div className="mb-3 overflow-hidden rounded-xl border border-[#ffbcdb]/10"><img src={file.url} alt={file.label || ("certificate-" + (index + 1))} className="h-36 w-full object-cover" /></div>
-                  <input value={file.label} onChange={(e) => setProfile({ ...profile, certificateFiles: (profile.certificateFiles ?? []).map((entry, entryIndex) => entryIndex === index ? { ...entry, label: e.target.value } : entry) })} placeholder={t("????? " + (index + 1), "Certificate " + (index + 1))} className={INPUT} />
+                  <input value={file.label} onChange={(e) => setProfile({ ...profile, certificateFiles: (profile.certificateFiles ?? []).map((entry, entryIndex) => entryIndex === index ? { ...entry, label: e.target.value } : entry) })} placeholder={t("شهادة " + (index + 1), "Certificate " + (index + 1))} className={INPUT} />
                   <div className="mt-3 flex items-center justify-between gap-2">
                     <a href={file.url} target="_blank" rel="noreferrer" className="rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-xs font-bold text-sky-200">{t("Open", "Open")}</a>
                     <button type="button" onClick={() => setProfile({ ...profile, certificateFiles: (profile.certificateFiles ?? []).filter((_, entryIndex) => entryIndex !== index) })} className="rounded-lg bg-red-950/50 px-3 py-2 text-xs font-bold text-red-300">{t("Delete", "Delete")}</button>

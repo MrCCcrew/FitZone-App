@@ -204,7 +204,7 @@ export default function Settings() {
     const response = await fetch("/api/admin/settings/staff", { cache: "no-store" });
     const payload = await response.json();
     if (!response.ok) {
-      throw new Error(payload.error ?? "???? ????? ?????? ????????.");
+      throw new Error(payload.error ?? "تعذر تحميل بيانات الموظفين.");
     }
     setEmployees(payload.employees ?? []);
   };
@@ -223,12 +223,12 @@ export default function Settings() {
       const response = await fetch(`/api/admin/settings/audit-log?${params.toString()}`, { cache: "no-store" });
       const payload = await response.json();
       if (!response.ok) {
-        throw new Error(payload.error ?? "???? ????? ??? ?????????.");
+        throw new Error(payload.error ?? "تعذر تحميل سجل التغييرات.");
       }
       setLogs(payload.logs ?? []);
       setMessage(null);
     } catch (error) {
-      setMessage({ text: error instanceof Error ? error.message : "???? ????? ??? ?????????.", ok: false });
+      setMessage({ text: error instanceof Error ? error.message : "تعذر تحميل سجل التغييرات.", ok: false });
     } finally {
       setAuditLoading(false);
     }

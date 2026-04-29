@@ -5090,8 +5090,8 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
   const [offers, setOffers] = useState(DEFAULT_OFFERS);
   const [packages, setPackages] = useState<PublicMembership[]>([]);
   const openSubscribeModal = (membershipId?: string | null, offerId?: string | null, offerSpecialPrice?: number | null) => {
-    if (!membershipId) return;
     navigate("memberships");
+    if (!membershipId) return;
     setTimeout(() => {
       window.dispatchEvent(new CustomEvent(GLOBAL_SUBSCRIBE_EVENT, {
         detail: { membershipId, offerId: offerId ?? null, offerSpecialPrice: offerSpecialPrice ?? null },
@@ -5220,7 +5220,7 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
                   </div>
                   <button
                     onClick={() => openSubscribeModal(o.membershipId, o.id, o.specialPrice ?? null)}
-                    style={{ width: "100%", padding: "10px", borderRadius: 10, border: `2px solid ${o.color}`, background: "transparent", color: o.color, fontFamily: "'Cairo', sans-serif", fontSize: 14, fontWeight: 700, cursor: "pointer", marginTop: "auto", opacity: o.membershipId ? 1 : 0.7 }}
+                    style={{ width: "100%", padding: "10px", borderRadius: 10, border: `2px solid ${o.color}`, background: "transparent", color: o.color, fontFamily: "'Cairo', sans-serif", fontSize: 14, fontWeight: 700, cursor: "pointer", marginTop: "auto" }}
                   >
                     {t("اشتركي الآن", "Subscribe now")}
                   </button>
