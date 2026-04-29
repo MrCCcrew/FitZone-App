@@ -4573,12 +4573,20 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
                                 )}
                               </div>
                             </div>
-                            <div style={{ display: "flex", gap: 4, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                            <div style={{ display: "flex", gap: 4, flexWrap: "wrap", justifyContent: "flex-end", alignItems: "center" }}>
                               {["/payment-logos/visa.svg", "/payment-logos/mastercard.svg", "/payment-logos/u-valu-logo.webp", "/payment-logos/sympl-menu2.png"].map((src) => (
                                 <div key={src} style={{ background: "#fff", borderRadius: 4, padding: "2px 4px", height: 24, display: "flex", alignItems: "center" }}>
                                   <img src={src} alt="" style={{ height: 18, maxWidth: 40, objectFit: "contain" }} />
                                 </div>
                               ))}
+                              <div style={{ background: "#fff", borderRadius: 4, padding: "2px 6px", height: 24, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2 }}>
+                                <span style={{ fontSize: 7, fontWeight: 700, color: "#555", lineHeight: 1, whiteSpace: "nowrap" }}>{t("المحافظ", "Wallets")}</span>
+                                <div style={{ display: "flex", gap: 2, alignItems: "center" }}>
+                                  {["/payment-logos/vodafone-cash.svg", "/payment-logos/we-pay.svg", "/payment-logos/etisalat-cash.svg", "/payment-logos/orange-cash.svg", "/payment-logos/fawry.svg"].map((src) => (
+                                    <img key={src} src={src} alt="" style={{ height: 10, width: "auto", borderRadius: 1, objectFit: "contain" }} />
+                                  ))}
+                                </div>
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -6418,6 +6426,14 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
                     <img src={src} alt={alt} style={{ height: 20, width: "auto", objectFit: "contain", display: "block" }} loading="lazy" />
                   </div>
                 ))}
+                <div style={{ height: 28, borderRadius: 6, background: "#fff", border: "1px solid rgba(255,255,255,.15)", padding: "2px 7px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2 }}>
+                  <span style={{ fontSize: 7, fontWeight: 700, color: "#555", lineHeight: 1, whiteSpace: "nowrap" }}>{t("المحافظ", "Wallets")}</span>
+                  <div style={{ display: "flex", gap: 2, alignItems: "center" }}>
+                    {["/payment-logos/vodafone-cash.svg", "/payment-logos/we-pay.svg", "/payment-logos/etisalat-cash.svg", "/payment-logos/orange-cash.svg", "/payment-logos/fawry.svg"].map((src) => (
+                      <img key={src} src={src} alt="" style={{ height: 10, width: "auto", borderRadius: 1, objectFit: "contain" }} loading="lazy" />
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -7035,7 +7051,7 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                   {availablePayMethods.map((method) => (
                     <div key={method.id} onClick={() => setPayMethod(method.id)} style={{ display: "flex", alignItems: "center", gap: 14, padding: 14, borderRadius: 8, border: payMethod === method.id ? `2px solid ${C.red}` : `1px solid ${C.border}`, marginBottom: 10, cursor: "pointer", background: payMethod === method.id ? "rgba(233,30,99,.08)" : "transparent" }}>
                       {method.id === "paymob" ? (
-                        <div style={{ display: "flex", gap: 4, alignItems: "center", flexShrink: 0 }}>
+                        <div style={{ display: "flex", gap: 4, alignItems: "center", flexShrink: 0, flexWrap: "wrap" }}>
                           {[
                             { src: "/payment-logos/visa.svg", alt: "Visa" },
                             { src: "/payment-logos/mastercard.svg", alt: "Mastercard" },
@@ -7046,6 +7062,14 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                               <img src={src} alt={alt} style={{ height: 18, width: "auto", objectFit: "contain", display: "block" }} loading="lazy" />
                             </div>
                           ))}
+                          <div style={{ height: 26, borderRadius: 5, background: "#fff", border: "1px solid rgba(0,0,0,.12)", padding: "2px 6px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2 }}>
+                            <span style={{ fontSize: 7, fontWeight: 700, color: "#555", lineHeight: 1, whiteSpace: "nowrap" }}>{t("المحافظ", "Wallets")}</span>
+                            <div style={{ display: "flex", gap: 2, alignItems: "center" }}>
+                              {["/payment-logos/vodafone-cash.svg", "/payment-logos/we-pay.svg", "/payment-logos/etisalat-cash.svg", "/payment-logos/orange-cash.svg", "/payment-logos/fawry.svg"].map((src) => (
+                                <img key={src} src={src} alt="" style={{ height: 10, width: "auto", borderRadius: 1, objectFit: "contain" }} loading="lazy" />
+                              ))}
+                            </div>
+                          </div>
                         </div>
                       ) : (
                         <div style={{ width: 34, height: 34, borderRadius: 8, background: "rgba(200,162,0,.12)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
