@@ -21,7 +21,8 @@ export async function GET() {
     nameEn: p.nameEn,
     category: p.category,
     logoUrl: p.logoUrl,
-    websiteUrl: p.websiteUrl,
+    websiteUrl: p.websiteUrl ?? null,
+    contactPhone: p.contactPhone ?? null,
     code: p.codes[0] ?? null,
   })));
 }
