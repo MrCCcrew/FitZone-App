@@ -70,12 +70,22 @@ export default function LiveChatWidget() {
     useState<ChatSessionPayload["recommendedMembership"]>(null);
   const [error, setError] = useState("");
   const [isMobile, setIsMobile] = useState(false);
+  const [gymPhone, setGymPhone] = useState("");
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth <= 768);
     check();
     window.addEventListener("resize", check);
     return () => window.removeEventListener("resize", check);
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/site-content?sections=contact", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d: { contact?: { phone?: string } }) => {
+        if (d.contact?.phone) setGymPhone(d.contact.phone.trim());
+      })
+      .catch(() => {});
   }, []);
 
   const lastMessageId = useMemo(() => messages[messages.length - 1]?.id, [messages]);
@@ -320,6 +330,23 @@ export default function LiveChatWidget() {
                 </div>
               </div>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                {gymPhone && (
+                  <a
+                    href={`tel:${gymPhone}`}
+                    style={{
+                      background: "rgba(255,255,255,.18)",
+                      border: "1px solid rgba(255,255,255,.28)",
+                      color: "#fff",
+                      fontSize: 12,
+                      borderRadius: 999,
+                      padding: "6px 10px",
+                      textDecoration: "none",
+                      fontWeight: 700,
+                    }}
+                  >
+                    📞 {t("اتصال", "Call")}
+                  </a>
+                )}
                 <button
                   onClick={() => createFreshSession().catch(() => {})}
                   style={{
