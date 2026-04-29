@@ -8601,8 +8601,10 @@ export default function App() {
         summary={summary}
       />
       <main>
-        {/* MembershipsPage is always mounted so subscription modals work from any page */}
-        <div style={{ display: page === "memberships" ? "block" : "none" }}>
+        {/* MembershipsPage is always mounted so subscription modals work from any page.
+            When hidden, use a 0×0 absolute container so fixed-position modals still
+            render and receive pointer events (display:none blocks them). */}
+        <div style={page !== "memberships" ? { position: "absolute", width: 0, height: 0, overflow: "hidden" } : {}}>
           <MembershipsPage navigate={navigate} summary={summary} />
         </div>
         {page !== "memberships" && (pages[page as keyof typeof pages] || pages.home)}
