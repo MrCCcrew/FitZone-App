@@ -217,7 +217,7 @@ export async function GET(req: Request) {
     if (type === "partners") {
       const items = await db.partner.findMany({
         where: q ? { OR: [{ id: search }, { name: search }] } : undefined,
-        include: { linkedUser: { select: { email: true } } },
+        include: { user: { select: { email: true } } },
         orderBy: { createdAt: "desc" },
         take: 200,
       });
@@ -226,7 +226,7 @@ export async function GET(req: Request) {
           id: p.id,
           name: p.name,
           category: p.category,
-          email: p.linkedUser?.email ?? null,
+          email: p.user?.email ?? null,
           commissionRate: p.commissionRate,
           commissionType: p.commissionType,
           isActive: p.isActive,
@@ -238,12 +238,23 @@ export async function GET(req: Request) {
     if (type === "partnerCommissions") {
       const items = await db.partnerCommission.findMany({
         where: q
-          ? { OR: [{ id: search }, { partner: { name: search } }, { user: { name: search } }, { user: { email: search } }] }
+          ? {
+              OR: [
+                { id: search },
+                { partner: { name: search } },
+                { userMembership: { user: { name: search } } },
+                { userMembership: { user: { email: search } } },
+              ],
+            }
           : undefined,
         include: {
           partner: { select: { name: true } },
-          user: { select: { name: true, email: true } },
-          membership: { select: { name: true } },
+          userMembership: {
+            include: {
+              user: { select: { name: true, email: true } },
+              membership: { select: { name: true } },
+            },
+          },
         },
         orderBy: { createdAt: "desc" },
         take: 200,
@@ -252,9 +263,9 @@ export async function GET(req: Request) {
         items: items.map((c) => ({
           id: c.id,
           partnerName: c.partner.name,
-          customerName: c.user.name ?? null,
-          customerEmail: c.user.email ?? null,
-          membershipName: c.membership?.name ?? null,
+          customerName: c.userMembership.user.name ?? null,
+          customerEmail: c.userMembership.user.email ?? null,
+          membershipName: c.userMembership.membership?.name ?? null,
           amount: c.amount,
           status: c.status,
           createdAt: c.createdAt.toLocaleDateString("ar-EG"),
