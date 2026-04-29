@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Partner, PartnerCode, PartnerAffiliateLink, PartnerWithdrawalRequest } from "../types";
 import { printPartnersReport } from "@/lib/print-pdf";
+import { TranslateButton } from "./TranslateButton";
 
 const CATEGORY_LABELS: Record<string, string> = {
   beauty_center: "سنتر تجميل",
@@ -974,6 +975,14 @@ export default function Partners({ viewMode = "admin" }: { viewMode?: ViewMode }
                 <span className="text-xs font-bold text-gray-400">اسم الشريك *</span>
                 <input value={modal.name ?? ""} onChange={(e) => setModal({ ...modal, name: e.target.value })} className={INPUT} />
               </label>
+              <div className="block space-y-1">
+                <span className="text-xs font-bold text-gray-400">الاسم بالإنجليزية</span>
+                <div className="flex gap-2">
+                  <input value={modal.nameEn ?? ""} onChange={(e) => setModal({ ...modal, nameEn: e.target.value })}
+                    className={`${INPUT} flex-1`} placeholder="Partner name in English" dir="ltr" />
+                  <TranslateButton from={modal.name ?? ""} onTranslated={(t) => setModal({ ...modal, nameEn: t })} />
+                </div>
+              </div>
               <label className="block space-y-1">
                 <span className="text-xs font-bold text-gray-400">الفئة *</span>
                 <select value={modal.category ?? ""} onChange={(e) => setModal({ ...modal, category: e.target.value })} className={INPUT}>
