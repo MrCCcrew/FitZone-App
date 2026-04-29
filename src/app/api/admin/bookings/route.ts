@@ -349,13 +349,31 @@ export async function DELETE(req: Request) {
 
     await db.booking.delete({ where: { id: bookingId } });
 
+    const ops: Promise<unknown>[] = [];
+
     // Restore the spot only if the booking was holding one (not cancelled)
     if (booking.status !== "cancelled") {
-      await db.schedule.update({
-        where: { id: booking.scheduleId },
-        data: { availableSpots: { increment: 1 } },
-      });
+      ops.push(
+        db.schedule.update({
+          where: { id: booking.scheduleId },
+          data: { availableSpots: { increment: 1 } },
+        }),
+      );
     }
+
+    // Notify the user that their booking was removed by admin
+    ops.push(
+      db.notification.create({
+        data: {
+          userId: booking.userId,
+          title: `تم إلغاء حجز ${booking.schedule.class.name}`,
+          body: `تم إلغاء حجزك في ${booking.schedule.class.name} بتاريخ ${booking.schedule.date.toLocaleDateString("ar-EG")} الساعة ${booking.schedule.time} من قِبل الإدارة.`,
+          type: "warning",
+        },
+      }),
+    );
+
+    await Promise.all(ops);
 
     void logAudit({ action: "delete", targetType: "booking", targetId: bookingId });
     return NextResponse.json({ success: true });
