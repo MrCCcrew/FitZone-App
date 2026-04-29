@@ -172,6 +172,11 @@ export interface Partner {
   contactPhone?: string | null;
   commissionRate: number;
   commissionType: "percentage" | "fixed";
+  contractStartDate?: string | null;
+  contractEndDate?: string | null;
+  referralDiscountRate?: number | null;
+  memberBenefitCode?: string | null;
+  memberBenefitRate?: number | null;
   isActive: boolean;
   showOnPublicPage: boolean;
   notes?: string | null;

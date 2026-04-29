@@ -20,6 +20,11 @@ function formatPartner(p: {
   contactPhone: string | null;
   commissionRate: number;
   commissionType: string;
+  contractStartDate: Date | null;
+  contractEndDate: Date | null;
+  referralDiscountRate: number | null;
+  memberBenefitCode: string | null;
+  memberBenefitRate: number | null;
   isActive: boolean;
   showOnPublicPage: boolean;
   notes: string | null;
@@ -41,6 +46,11 @@ function formatPartner(p: {
     contactPhone: p.contactPhone,
     commissionRate: p.commissionRate,
     commissionType: p.commissionType,
+    contractStartDate: p.contractStartDate?.toISOString().slice(0, 10) ?? null,
+    contractEndDate: p.contractEndDate?.toISOString().slice(0, 10) ?? null,
+    referralDiscountRate: p.referralDiscountRate,
+    memberBenefitCode: p.memberBenefitCode,
+    memberBenefitRate: p.memberBenefitRate,
     isActive: p.isActive,
     showOnPublicPage: p.showOnPublicPage,
     notes: p.notes,
@@ -95,6 +105,11 @@ export async function POST(req: Request) {
       contactPhone?: string;
       commissionRate?: number;
       commissionType?: string;
+      contractStartDate?: string | null;
+      contractEndDate?: string | null;
+      referralDiscountRate?: number | null;
+      memberBenefitCode?: string | null;
+      memberBenefitRate?: number | null;
       isActive?: boolean;
       showOnPublicPage?: boolean;
       notes?: string;
@@ -135,6 +150,11 @@ export async function POST(req: Request) {
         contactPhone: body.contactPhone?.trim() || null,
         commissionRate: Number(body.commissionRate ?? 10),
         commissionType: body.commissionType === "fixed" ? "fixed" : "percentage",
+        contractStartDate: body.contractStartDate ? new Date(body.contractStartDate) : null,
+        contractEndDate: body.contractEndDate ? new Date(body.contractEndDate) : null,
+        referralDiscountRate: body.referralDiscountRate != null ? Number(body.referralDiscountRate) : null,
+        memberBenefitCode: body.memberBenefitCode?.trim() || null,
+        memberBenefitRate: body.memberBenefitRate != null ? Number(body.memberBenefitRate) : null,
         isActive: body.isActive !== false,
         showOnPublicPage: body.showOnPublicPage !== false,
         notes: body.notes?.trim() || null,
@@ -168,6 +188,11 @@ export async function PATCH(req: Request) {
       contactPhone?: string;
       commissionRate?: number;
       commissionType?: string;
+      contractStartDate?: string | null;
+      contractEndDate?: string | null;
+      referralDiscountRate?: number | null;
+      memberBenefitCode?: string | null;
+      memberBenefitRate?: number | null;
       isActive?: boolean;
       showOnPublicPage?: boolean;
       notes?: string;
@@ -184,6 +209,11 @@ export async function PATCH(req: Request) {
     if (body.contactPhone !== undefined) data.contactPhone = String(body.contactPhone).trim() || null;
     if (body.commissionRate !== undefined) data.commissionRate = Number(body.commissionRate) || 0;
     if (body.commissionType !== undefined) data.commissionType = body.commissionType === "fixed" ? "fixed" : "percentage";
+    if ("contractStartDate" in body) data.contractStartDate = body.contractStartDate ? new Date(body.contractStartDate) : null;
+    if ("contractEndDate" in body) data.contractEndDate = body.contractEndDate ? new Date(body.contractEndDate) : null;
+    if ("referralDiscountRate" in body) data.referralDiscountRate = body.referralDiscountRate != null ? Number(body.referralDiscountRate) : null;
+    if ("memberBenefitCode" in body) data.memberBenefitCode = body.memberBenefitCode?.trim() || null;
+    if ("memberBenefitRate" in body) data.memberBenefitRate = body.memberBenefitRate != null ? Number(body.memberBenefitRate) : null;
     if (body.isActive !== undefined) data.isActive = Boolean(body.isActive);
     if (body.showOnPublicPage !== undefined) data.showOnPublicPage = Boolean(body.showOnPublicPage);
     if (body.notes !== undefined) data.notes = String(body.notes).trim() || null;

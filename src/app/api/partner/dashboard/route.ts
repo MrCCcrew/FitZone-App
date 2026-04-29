@@ -71,6 +71,11 @@ export async function GET() {
       logoUrl: partner.logoUrl,
       commissionRate: partner.commissionRate,
       commissionType: partner.commissionType,
+      contractStartDate: partner.contractStartDate?.toISOString().slice(0, 10) ?? null,
+      contractEndDate: partner.contractEndDate?.toISOString().slice(0, 10) ?? null,
+      referralDiscountRate: partner.referralDiscountRate,
+      memberBenefitCode: partner.memberBenefitCode,
+      memberBenefitRate: partner.memberBenefitRate,
       isActive: partner.isActive,
     },
     stats: {
