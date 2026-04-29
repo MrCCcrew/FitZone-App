@@ -184,22 +184,6 @@ export default function Partners({ viewMode = "admin" }: { viewMode?: ViewMode }
       const data = await res.json().catch(() => ({})) as { error?: string; id?: string };
       if (!res.ok) { window.alert(data.error ?? "حدث خطأ."); return; }
 
-      // Create discount code for new partners if code value was entered
-      if (isNew && newCodeForm.discountValue && data.id) {
-        await fetch("/api/admin/partner-codes", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            partnerId: data.id,
-            code: newCodeForm.code || undefined,
-            discountType: newCodeForm.discountType,
-            discountValue: Number(newCodeForm.discountValue),
-            maxUsage: newCodeForm.maxUsage ? Number(newCodeForm.maxUsage) : null,
-            expiresAt: newCodeForm.expiresAt || null,
-          }),
-        });
-      }
-
       setModal(null);
       void loadAdmin();
     } finally { setSaving(false); }
@@ -1104,90 +1088,6 @@ export default function Partners({ viewMode = "admin" }: { viewMode?: ViewMode }
                 <textarea value={modal.notes ?? ""} onChange={(e) => setModal({ ...modal, notes: e.target.value })}
                   rows={3} className={`${INPUT} resize-none`} />
               </label>
-            </div>
-
-            {/* ── Discount Code Section ── */}
-            <div className="border-t border-gray-800 pt-5 space-y-4">
-              <h4 className="font-black text-white">أكواد الخصم</h4>
-
-              {/* Existing codes — edit mode only */}
-              {!isNew && (
-                <div className="space-y-2">
-                  {codesLoading ? (
-                    <div className="text-xs text-gray-500">جارٍ تحميل الأكواد...</div>
-                  ) : partnerCodes.length > 0 ? (
-                    partnerCodes.map((c) => (
-                      <div key={c.id} className="flex items-center justify-between gap-3 rounded-xl border border-gray-700 bg-gray-800/50 px-4 py-3">
-                        <div className="space-y-0.5">
-                          <div className="font-mono font-black text-pink-300">{c.code}</div>
-                          <div className="text-xs text-gray-400">
-                            {c.discountType === "percentage" ? `${c.discountValue}%` : `${c.discountValue} ج.م`}
-                            {c.maxUsage ? ` · ${c.usageCount}/${c.maxUsage} استخدام` : ` · ${c.usageCount} استخدام`}
-                            {c.expiresAt ? ` · ينتهي ${c.expiresAt.slice(0, 10)}` : ""}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${c.isActive ? "bg-emerald-900/30 text-emerald-300" : "bg-gray-700 text-gray-400"}`}>
-                            {c.isActive ? "نشط" : "معطل"}
-                          </span>
-                          {c.usageCount === 0 && (
-                            <button onClick={() => void deletePartnerCode(c.id, modal.id!)}
-                              className="text-xs font-bold text-red-400 hover:text-red-300">حذف</button>
-                          )}
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="text-xs text-gray-500">لا توجد أكواد خصم بعد.</div>
-                  )}
-                </div>
-              )}
-
-              {/* Add new code form */}
-              <div className="rounded-xl border border-dashed border-gray-700 bg-gray-800/30 p-4 space-y-3">
-                <div className="text-xs font-bold text-gray-400">{isNew ? "كود خصم للشريك (اختياري)" : "إضافة كود جديد"}</div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">الكود (فارغ = توليد تلقائي)</label>
-                    <input value={newCodeForm.code}
-                      onChange={(e) => setNewCodeForm({ ...newCodeForm, code: e.target.value.toUpperCase() })}
-                      className={INPUT} placeholder="مثال: FITZONE20" dir="ltr" />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">نوع الخصم</label>
-                    <select value={newCodeForm.discountType}
-                      onChange={(e) => setNewCodeForm({ ...newCodeForm, discountType: e.target.value })} className={INPUT}>
-                      <option value="percentage">نسبة مئوية %</option>
-                      <option value="fixed">مبلغ ثابت ج.م</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">قيمة الخصم *</label>
-                    <input type="number" value={newCodeForm.discountValue}
-                      onChange={(e) => setNewCodeForm({ ...newCodeForm, discountValue: e.target.value })}
-                      className={INPUT} placeholder={newCodeForm.discountType === "percentage" ? "مثال: 20" : "مثال: 100"} />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">الحد الأقصى للاستخدام</label>
-                    <input type="number" value={newCodeForm.maxUsage}
-                      onChange={(e) => setNewCodeForm({ ...newCodeForm, maxUsage: e.target.value })}
-                      className={INPUT} placeholder="فارغ = غير محدود" />
-                  </div>
-                  <div className="sm:col-span-2">
-                    <label className="block text-xs text-gray-500 mb-1">تاريخ الانتهاء</label>
-                    <input type="date" value={newCodeForm.expiresAt}
-                      onChange={(e) => setNewCodeForm({ ...newCodeForm, expiresAt: e.target.value })} className={INPUT} />
-                  </div>
-                </div>
-                {newCodeError && <div className="rounded-xl bg-red-950/40 border border-red-500/30 px-4 py-2 text-xs text-red-300">{newCodeError}</div>}
-                {!isNew && (
-                  <button onClick={() => void addPartnerCode(modal.id!)} disabled={newCodeSaving}
-                    className="rounded-xl bg-gray-700 px-5 py-2 text-xs font-black text-white disabled:opacity-50">
-                    {newCodeSaving ? "جارٍ الإضافة..." : "+ إضافة كود"}
-                  </button>
-                )}
-                {isNew && <p className="text-xs text-gray-500">سيتم إنشاء الكود بعد حفظ بيانات الشريك.</p>}
-              </div>
             </div>
 
             <button onClick={() => void savePartner()} disabled={saving}
