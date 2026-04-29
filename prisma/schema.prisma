@@ -1071,12 +1071,17 @@ model Partner {
   userId           String   @unique
   name             String
   nameEn           String?
-  category         String   // beauty_center | salon | pharmacy | clinic | physiotherapy | nutrition | nursery | education | clothing | other
+  category         String   // beauty_center | salon | pharmacy | clinic | physiotherapy | nutrition | nursery | education | clothing | other | spa | restaurant | sports | supplement | services
   logoUrl          String?
   websiteUrl       String?
   contactPhone     String?
   commissionRate   Float    @default(10)   // percentage or fixed EGP amount
   commissionType   String   @default("percentage") // percentage | fixed
+  contractStartDate DateTime?
+  contractEndDate   DateTime?
+  referralDiscountRate Float?   // % gym discount client gets when signing up via partner referral link
+  memberBenefitCode String?  @unique // code gym members show at partner's location to get partner discount
+  memberBenefitRate Float?   // % discount at partner's business for active gym members
   isActive         Boolean  @default(true)
   showOnPublicPage Boolean  @default(true)
   notes            String?  @db.Text

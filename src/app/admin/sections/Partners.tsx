@@ -14,6 +14,11 @@ const CATEGORY_LABELS: Record<string, string> = {
   nursery: "حضانة",
   education: "مركز تعليم أطفال",
   clothing: "محل ملابس نسائية",
+  spa: "سبا وعافية",
+  restaurant: "مطعم صحي",
+  sports: "مركز رياضي",
+  supplement: "مكملات غذائية",
+  services: "خدمات أخرى",
   other: "خدمات نسائية أخرى",
 };
 
@@ -33,8 +38,17 @@ type ReferralCustomer = {
   commissionAmount: number; commissionStatus: string; linkLabel: string | null; createdAt: string;
 };
 
+type DashboardPartner = {
+  id: string; name: string; commissionRate: number; commissionType: string;
+  contractStartDate: string | null; contractEndDate: string | null;
+  referralDiscountRate: number | null; memberBenefitCode: string | null; memberBenefitRate: number | null;
+};
+type VerifyResult = {
+  found: boolean; name?: string; hasActiveMembership?: boolean;
+  membershipName?: string | null; endDate?: string; benefitRate?: number | null; message: string;
+};
 type DashboardData = {
-  partner: { id: string; name: string; commissionRate: number; commissionType: string };
+  partner: DashboardPartner;
   stats: { totalCodes: number; activeCodes: number; totalLinks: number; totalCustomers: number; totalCommissionPending: number; totalCommissionPaid: number };
   links: PartnerAffiliateLink[];
   recentCommissions: Array<{ id: string; amount: number; status: string; createdAt: string; customerName: string; membershipName: string; source: "code" | "link" }>;
@@ -74,7 +88,7 @@ export default function Partners({ viewMode = "admin" }: { viewMode?: ViewMode }
 
   // ── Partner Portal State ───────────────────────────────────────────────────
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
-  const [portalTab, setPortalTab] = useState<"links" | "codeCustomers" | "referralCustomers" | "commissions" | "withdrawal">("links");
+  const [portalTab, setPortalTab] = useState<"links" | "codeCustomers" | "referralCustomers" | "commissions" | "withdrawal" | "verifyMember">("links");
   const [linkForm, setLinkForm] = useState({ label: "" });
   const [linkSaving, setLinkSaving] = useState(false);
   const [linkError, setLinkError] = useState("");
@@ -84,6 +98,9 @@ export default function Partners({ viewMode = "admin" }: { viewMode?: ViewMode }
   } | null>(null);
   const [withdrawalLoading, setWithdrawalLoading] = useState(false);
   const [withdrawalRequesting, setWithdrawalRequesting] = useState(false);
+  const [verifyQuery, setVerifyQuery] = useState("");
+  const [verifyLoading, setVerifyLoading] = useState(false);
+  const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null);
 
   // ── Load ───────────────────────────────────────────────────────────────────
   const loadAdmin = useCallback(async () => {
@@ -270,6 +287,17 @@ export default function Partners({ viewMode = "admin" }: { viewMode?: ViewMode }
   };
 
   // ── Partner Portal Actions ─────────────────────────────────────────────────
+  const verifyMember = async () => {
+    if (!verifyQuery.trim()) return;
+    setVerifyLoading(true); setVerifyResult(null);
+    try {
+      const res = await fetch(`/api/partner/verify-member?q=${encodeURIComponent(verifyQuery.trim())}`, { cache: "no-store" });
+      const data = await res.json().catch(() => ({ message: "حدث خطأ." })) as VerifyResult & { error?: string };
+      if (!res.ok) { setVerifyResult({ found: false, message: data.error ?? "حدث خطأ." }); return; }
+      setVerifyResult(data);
+    } finally { setVerifyLoading(false); }
+  };
+
   const createLink = async () => {
     setLinkSaving(true); setLinkError("");
     try {
@@ -340,6 +368,7 @@ export default function Partners({ viewMode = "admin" }: { viewMode?: ViewMode }
             ["referralCustomers", `عملاء الإحالة${referralCustomers.length > 0 ? ` (${referralCustomers.length})` : ""}`],
             ["commissions", "العمولات"],
             ["withdrawal", "طلبات السحب"],
+            ["verifyMember", "التحقق من عضو"],
           ] as [typeof portalTab, string][]).map(([key, label]) => (
             <button key={key} onClick={() => setPortalTab(key)}
               className={`rounded-t-lg px-4 py-2 text-sm font-bold transition-colors ${portalTab === key ? "bg-pink-600 text-white" : "text-gray-400 hover:text-white"}`}>
@@ -547,6 +576,97 @@ export default function Partners({ viewMode = "admin" }: { viewMode?: ViewMode }
             ) : null}
           </div>
         )}
+
+        {/* ── Verify Member Tab ── */}
+        {portalTab === "verifyMember" && (
+          <div className="space-y-5">
+            {/* Member benefit info card */}
+            {dashboard.partner.memberBenefitCode ? (
+              <div className="rounded-2xl border border-pink-500/30 bg-pink-950/20 p-5 space-y-3">
+                <h3 className="font-black text-white">ميزة أعضاء الجيم عندك</h3>
+                <p className="text-xs text-gray-400 leading-6">
+                  أعضاء الجيم النشطون يستمتعون بخصم <span className="font-bold text-white">{dashboard.partner.memberBenefitRate ?? 0}%</span> عندك باستخدام الكود التالي — الميزة تنتهي تلقائياً عند انتهاء اشتراكهم في الجيم.
+                </p>
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="rounded-xl border border-pink-500/40 bg-black/40 px-5 py-3">
+                    <div className="text-xs text-gray-500 mb-1">كود الميزة</div>
+                    <div className="font-mono text-xl font-black text-pink-300">{dashboard.partner.memberBenefitCode}</div>
+                  </div>
+                  {dashboard.partner.memberBenefitRate != null && (
+                    <div className="rounded-xl border border-gray-700 bg-gray-800/60 px-5 py-3">
+                      <div className="text-xs text-gray-500 mb-1">نسبة الخصم</div>
+                      <div className="text-xl font-black text-white">{dashboard.partner.memberBenefitRate}%</div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-gray-700 bg-gray-800/30 px-4 py-4 text-sm text-gray-400">
+                لم يتم تعيين كود ميزة أعضاء بعد — تواصل مع الإدارة لإضافته.
+              </div>
+            )}
+
+            {/* Referral discount info */}
+            {dashboard.partner.referralDiscountRate != null && (
+              <div className="rounded-xl border border-blue-500/20 bg-blue-950/20 px-4 py-4 space-y-1">
+                <div className="text-xs font-bold text-blue-300">خصم رابط الإحالة</div>
+                <div className="text-sm text-gray-300">
+                  العملاء الجدد القادمون عبر رابطك يحصلون على خصم <span className="font-black text-white">{dashboard.partner.referralDiscountRate}%</span> على أول اشتراك في الجيم.
+                </div>
+              </div>
+            )}
+
+            {/* Verify tool */}
+            <div className="rounded-2xl border border-gray-700 bg-gray-900/60 p-5 space-y-4">
+              <h3 className="font-black text-white">التحقق من صلاحية عضو</h3>
+              <p className="text-xs text-gray-400">أدخل رقم هاتف العميل أو بريده الإلكتروني للتحقق من أن اشتراكه في الجيم لا يزال نشطاً.</p>
+              <div className="flex gap-2">
+                <input
+                  value={verifyQuery}
+                  onChange={(e) => setVerifyQuery(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") void verifyMember(); }}
+                  placeholder="رقم الهاتف أو البريد الإلكتروني"
+                  className={`${INPUT} flex-1`}
+                  dir="ltr"
+                />
+                <button
+                  onClick={() => void verifyMember()}
+                  disabled={verifyLoading || !verifyQuery.trim()}
+                  className="rounded-xl bg-pink-600 px-5 py-2.5 font-black text-white disabled:opacity-50"
+                >
+                  {verifyLoading ? "..." : "تحقق"}
+                </button>
+              </div>
+
+              {verifyResult && (
+                <div className={`rounded-2xl border p-4 space-y-2 ${
+                  verifyResult.hasActiveMembership
+                    ? "border-emerald-500/40 bg-emerald-950/20"
+                    : verifyResult.found
+                      ? "border-red-500/30 bg-red-950/20"
+                      : "border-gray-700 bg-gray-800/40"
+                }`}>
+                  {verifyResult.found && verifyResult.name && (
+                    <div className="font-bold text-white">{verifyResult.name}</div>
+                  )}
+                  <div className={`text-sm font-bold ${
+                    verifyResult.hasActiveMembership ? "text-emerald-300" :
+                    verifyResult.found ? "text-red-300" : "text-gray-400"
+                  }`}>
+                    {verifyResult.message}
+                  </div>
+                  {verifyResult.hasActiveMembership && (
+                    <div className="flex flex-wrap gap-3 text-xs text-gray-400 pt-1">
+                      {verifyResult.membershipName && <span>الاشتراك: <span className="text-white">{verifyResult.membershipName}</span></span>}
+                      {verifyResult.endDate && <span>ينتهي: <span className="text-white">{verifyResult.endDate}</span></span>}
+                      {verifyResult.benefitRate != null && <span>خصمه عندك: <span className="font-black text-pink-300">{verifyResult.benefitRate}%</span></span>}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -616,7 +736,13 @@ export default function Partners({ viewMode = "admin" }: { viewMode?: ViewMode }
                     <div className="mt-1 text-xs text-gray-400">{p.linkedUser?.email}</div>
                     <div className="mt-1 text-xs text-gray-500">
                       عمولة: <span className="font-bold text-white">{p.commissionType === "percentage" ? `${p.commissionRate}%` : `${p.commissionRate} ج.م`}</span>
+                      {p.memberBenefitCode && <span className="mr-2">· كود الأعضاء: <span className="font-mono font-bold text-pink-300">{p.memberBenefitCode}</span></span>}
                     </div>
+                    {(p.contractStartDate || p.contractEndDate) && (
+                      <div className="mt-1 text-xs text-gray-600">
+                        التعاقد: {p.contractStartDate ?? "—"} → {p.contractEndDate ?? "—"}
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -889,7 +1015,7 @@ export default function Partners({ viewMode = "admin" }: { viewMode?: ViewMode }
               )}
 
               <label className="block space-y-1">
-                <span className="text-xs font-bold text-gray-400">نسبة / قيمة العمولة</span>
+                <span className="text-xs font-bold text-gray-400">نسبة / قيمة العمولة للجيم</span>
                 <input type="number" value={modal.commissionRate ?? 10}
                   onChange={(e) => setModal({ ...modal, commissionRate: Number(e.target.value) })} className={INPUT} />
               </label>
@@ -900,6 +1026,39 @@ export default function Partners({ viewMode = "admin" }: { viewMode?: ViewMode }
                   <option value="percentage">نسبة مئوية %</option>
                   <option value="fixed">مبلغ ثابت ج.م</option>
                 </select>
+              </label>
+
+              {/* Contract Dates */}
+              <label className="block space-y-1">
+                <span className="text-xs font-bold text-gray-400">تاريخ بداية التعاقد</span>
+                <input type="date" value={modal.contractStartDate ?? ""}
+                  onChange={(e) => setModal({ ...modal, contractStartDate: e.target.value || null })} className={INPUT} />
+              </label>
+              <label className="block space-y-1">
+                <span className="text-xs font-bold text-gray-400">تاريخ نهاية التعاقد</span>
+                <input type="date" value={modal.contractEndDate ?? ""}
+                  onChange={(e) => setModal({ ...modal, contractEndDate: e.target.value || null })} className={INPUT} />
+              </label>
+
+              {/* Referral & Member Benefit */}
+              <label className="block space-y-1">
+                <span className="text-xs font-bold text-gray-400">خصم رابط الإحالة % <span className="font-normal text-gray-500">(خصم للعميل على الجيم)</span></span>
+                <input type="number" min="0" max="100" value={modal.referralDiscountRate ?? ""}
+                  onChange={(e) => setModal({ ...modal, referralDiscountRate: e.target.value ? Number(e.target.value) : null })}
+                  className={INPUT} placeholder="مثال: 10" />
+              </label>
+              <label className="block space-y-1">
+                <span className="text-xs font-bold text-gray-400">خصم ميزة الأعضاء % <span className="font-normal text-gray-500">(خصم لأعضاء الجيم عند الشريك)</span></span>
+                <input type="number" min="0" max="100" value={modal.memberBenefitRate ?? ""}
+                  onChange={(e) => setModal({ ...modal, memberBenefitRate: e.target.value ? Number(e.target.value) : null })}
+                  className={INPUT} placeholder="مثال: 15" />
+              </label>
+
+              <label className="block space-y-1 md:col-span-2">
+                <span className="text-xs font-bold text-gray-400">كود ميزة الأعضاء <span className="font-normal text-gray-500">(يظهر لأعضاء الجيم النشطين فقط)</span></span>
+                <input value={modal.memberBenefitCode ?? ""}
+                  onChange={(e) => setModal({ ...modal, memberBenefitCode: e.target.value.toUpperCase() || null })}
+                  className={INPUT} placeholder="مثال: FITZONE-PARTNER" dir="ltr" />
               </label>
 
               <div className="block space-y-2 md:col-span-2">
