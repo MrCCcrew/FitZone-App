@@ -1719,6 +1719,13 @@ function BookingsTabLegacy({ bookings }: { bookings: AccountData["bookings"] }) 
   const t = (arText: string, enText: string) => (lang === "en" ? enText : arText);
   const [items, setItems] = useState(bookings);
   const [filter, setFilter] = useState<"upcoming" | "past">("upcoming");
+
+  useEffect(() => {
+    fetch("/api/me/bookings", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((data: AccountData["bookings"]) => { if (Array.isArray(data)) setItems(data); })
+      .catch(() => {});
+  }, []);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const today = new Date();
   const upcoming = items.filter((b) => new Date(b.date) >= today && b.status === "confirmed");
@@ -1811,6 +1818,13 @@ function BookingsTab({ bookings }: { bookings: AccountData["bookings"] }) {
   const t = (arText: string, enText: string) => (lang === "ar" ? arText : enText);
   const [items, setItems] = useState(bookings);
   const [filter, setFilter] = useState<"upcoming" | "past">("upcoming");
+
+  useEffect(() => {
+    fetch("/api/me/bookings", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((data: AccountData["bookings"]) => { if (Array.isArray(data)) setItems(data); })
+      .catch(() => {});
+  }, []);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [editingBooking, setEditingBooking] = useState<AccountData["bookings"][number] | null>(null);
   const [selectedScheduleId, setSelectedScheduleId] = useState<string | null>(null);
