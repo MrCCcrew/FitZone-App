@@ -2281,12 +2281,10 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
 
   const startMembershipFlow = (membershipId?: string | null, _source: "offer" | "package" = "offer", offerId?: string | null, offerSpecialPrice?: number | null) => {
     if (!membershipId) return;
+    window.dispatchEvent(new CustomEvent(GLOBAL_SUBSCRIBE_EVENT, {
+      detail: { membershipId, offerId: offerId ?? null, offerSpecialPrice: offerSpecialPrice ?? null },
+    }));
     navigate("memberships");
-    setTimeout(() => {
-      window.dispatchEvent(new CustomEvent(GLOBAL_SUBSCRIBE_EVENT, {
-        detail: { membershipId, offerId: offerId ?? null, offerSpecialPrice: offerSpecialPrice ?? null },
-      }));
-    }, 80);
   };
 
   return (
@@ -5090,13 +5088,14 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
   const [offers, setOffers] = useState(DEFAULT_OFFERS);
   const [packages, setPackages] = useState<PublicMembership[]>([]);
   const openSubscribeModal = (membershipId?: string | null, offerId?: string | null, offerSpecialPrice?: number | null) => {
-    navigate("memberships");
-    if (!membershipId) return;
-    setTimeout(() => {
+    if (membershipId) {
+      // MembershipsPage is always mounted — dispatch immediately so the survey opens
+      // in the same render cycle as the page transition, with no visible goals-page flash.
       window.dispatchEvent(new CustomEvent(GLOBAL_SUBSCRIBE_EVENT, {
         detail: { membershipId, offerId: offerId ?? null, offerSpecialPrice: offerSpecialPrice ?? null },
       }));
-    }, 80);
+    }
+    navigate("memberships");
   };
   useEffect(() => {
     loadPublicApi().then(d => {
