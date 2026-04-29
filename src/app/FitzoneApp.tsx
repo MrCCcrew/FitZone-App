@@ -1000,11 +1000,6 @@ const Footer = ({ navigate }: { navigate: (p: string) => void }) => {
             { src: "/payment-logos/u-valu-logo.webp",      alt: "valU",              bg: "#fff"        },
             { src: "/payment-logos/sympl-menu2.png",       alt: "Sympl",             bg: "#fff"        },
             { src: "/payment-logos/sohoooooola.png",       alt: "Souhoola",          bg: "#fff"        },
-            { src: "/payment-logos/vodafone-cash.svg",     alt: "Vodafone Cash",     bg: "transparent" },
-            { src: "/payment-logos/we-pay.svg",            alt: "WE Pay",            bg: "transparent" },
-            { src: "/payment-logos/etisalat-cash.svg",     alt: "e& Cash",           bg: "transparent" },
-            { src: "/payment-logos/orange-cash.svg",       alt: "Orange Cash",       bg: "transparent" },
-            { src: "/payment-logos/fawry.svg",             alt: "Fawry",             bg: "transparent" },
           ].map(({ src, alt, bg }) => (
             <div
               key={alt}
@@ -1032,6 +1027,41 @@ const Footer = ({ navigate }: { navigate: (p: string) => void }) => {
               />
             </div>
           ))}
+          {/* Mobile wallets grouped card */}
+          <div
+            title={t("جميع المحافظ الإلكترونية", "All Mobile Wallets")}
+            style={{
+              height: 40,
+              borderRadius: 8,
+              border: "1px solid rgba(255,255,255,.12)",
+              background: "#fff",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "4px 10px",
+              gap: 3,
+              flexShrink: 0,
+            }}
+          >
+            <span style={{ fontSize: 9, fontWeight: 700, color: "#444", whiteSpace: "nowrap", lineHeight: 1 }}>
+              {t("جميع المحافظ", "All Wallets")}
+            </span>
+            <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+              {[
+                { src: "/payment-logos/vodafone-cash.svg", alt: "Vodafone Cash" },
+                { src: "/payment-logos/we-pay.svg",        alt: "WE Pay"        },
+                { src: "/payment-logos/etisalat-cash.svg", alt: "e& Cash"       },
+                { src: "/payment-logos/orange-cash.svg",   alt: "Orange Cash"   },
+                { src: "/payment-logos/fawry.svg",         alt: "Fawry"         },
+              ].map(({ src, alt }) => (
+                <img key={alt} src={src} alt={alt} title={alt}
+                  style={{ height: 16, width: "auto", borderRadius: 2, display: "block", objectFit: "contain" }}
+                  loading="lazy"
+                />
+              ))}
+            </div>
+          </div>
         </div>
       </div>
 
