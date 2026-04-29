@@ -3339,6 +3339,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
           goalIds: [],
           isTrial: true,
         };
+        if (Array.isArray(d.classes)) setPublicClasses(d.classes as PublicClass[]);
         setScheduleError(null);
         setDaysPerWeek(null);
         setScheduleStep("slots");
