@@ -3767,14 +3767,16 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify((() => {
           const fs = getMembershipFinancialSummary(plan);
-          const storedPartnerCode = sessionStorage.getItem("fitzone:partner-code");
-          const storedAffiliateRef = sessionStorage.getItem("fitzone:affiliate-ref");
+          const storedPartnerBenefitCode =
+            sessionStorage.getItem("fitzone:member-benefit-code") ||
+            sessionStorage.getItem("fitzone:partner-code");
+          const storedAffiliateRef = localStorage.getItem("fitzone:affiliate-ref");
           return {
             membershipId: plan.id,
             scheduleIds,
             paymentMethod: paymentOverride ?? membershipPayMethod,
             discountCode: discountResult ? discountCode.trim().toUpperCase() : null,
-            partnerCode: !discountResult && storedPartnerCode ? storedPartnerCode : undefined,
+            memberBenefitCode: !discountResult && storedPartnerBenefitCode ? storedPartnerBenefitCode : undefined,
             affiliateRef: storedAffiliateRef || undefined,
             walletDeduct: fs.walletDiscount > 0 ? fs.walletDiscount : undefined,
             pointsDeduct: fs.pointsToDeduct > 0 ? fs.pointsToDeduct : undefined,
@@ -3805,8 +3807,9 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
         }
         return;
       }
+      sessionStorage.removeItem("fitzone:member-benefit-code");
       sessionStorage.removeItem("fitzone:partner-code");
-      sessionStorage.removeItem("fitzone:affiliate-ref");
+      localStorage.removeItem("fitzone:affiliate-ref");
       if (data.checkoutUrl) {
         setPendingPaymentUrl(data.checkoutUrl);
         try { window.location.href = data.checkoutUrl; } catch {}
@@ -7926,7 +7929,8 @@ const PartnersPage = ({ navigate, summary }: { navigate: (p: string) => void; su
   const filtered = activeCategory === "all" ? partners : partners.filter((p) => p.category === activeCategory);
 
   const applyCode = (code: string) => {
-    sessionStorage.setItem("fitzone:partner-code", code);
+    sessionStorage.setItem("fitzone:member-benefit-code", code);
+    sessionStorage.removeItem("fitzone:partner-code");
     navigate("memberships");
   };
 
@@ -8035,7 +8039,7 @@ const PartnersPage = ({ navigate, summary }: { navigate: (p: string) => void; su
                               className="btn-primary"
                               style={{ width: "100%", justifyContent: "center", fontSize: 13, padding: "10px" }}
                             >
-                              {t("تطبيق الكود على اشتراكي", "Apply code to my plan")}
+                              {t("اختيار الكود لاستخدامه عند الشريك", "Choose code for partner benefit")}
                             </button>
                           </div>
                         ) : (
@@ -8548,7 +8552,7 @@ export default function App() {
     // Capture affiliate referral token and persist across navigation
     const refFromUrl = url.searchParams.get("ref");
     if (refFromUrl) {
-      sessionStorage.setItem("fitzone:affiliate-ref", refFromUrl.trim().toUpperCase());
+      localStorage.setItem("fitzone:affiliate-ref", refFromUrl.trim().toUpperCase());
       // Clean ref from URL without reload
       url.searchParams.delete("ref");
       window.history.replaceState({}, "", url.toString());

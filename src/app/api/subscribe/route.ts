@@ -21,7 +21,8 @@ type SubscribePayload = {
   pointsDeduct?: number | null;
   trialPrice?: number | null;
   startDate?: string | null; // ISO date string "YYYY-MM-DD", for featured/open-time plans
-  partnerCode?: string | null;   // partner discount code
+  partnerCode?: string | null;   // legacy partner subscription discount code
+  memberBenefitCode?: string | null; // external partner benefit code, no gym discount
   affiliateRef?: string | null;  // partner affiliate link token
 };
 
@@ -49,7 +50,20 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "يجب تسجيل الدخول أولًا قبل الاشتراك." }, { status: 401 });
   }
 
-  const { membershipId, offerId, scheduleIds, paymentMethod, discountCode, walletDeduct, pointsDeduct, trialPrice, startDate, partnerCode, affiliateRef } = (await req.json()) as SubscribePayload;
+  const {
+    membershipId,
+    offerId,
+    scheduleIds,
+    paymentMethod,
+    discountCode,
+    walletDeduct,
+    pointsDeduct,
+    trialPrice,
+    startDate,
+    partnerCode,
+    memberBenefitCode,
+    affiliateRef,
+  } = (await req.json()) as SubscribePayload;
   if (!membershipId && !offerId) {
     return NextResponse.json({ error: "يرجى اختيار الباقة أو العرض أولًا." }, { status: 400 });
   }
@@ -59,7 +73,7 @@ export async function POST(req: Request) {
 
   const userRecord = await db.user.findUnique({
     where: { id: userId },
-    select: { emailVerified: true, email: true, name: true, phone: true },
+    select: { emailVerified: true, email: true, name: true, phone: true, pendingPartnerRef: true },
   });
 
   if (!userRecord?.emailVerified) {
@@ -159,7 +173,20 @@ export async function POST(req: Request) {
   // Partner member-benefit code is for external partner stores only.
   // Gym subscription discount is applied only from affiliate links.
   let partnerCodeRecord: { id: string; partnerId: string; discountType: string; discountValue: number } | null = null;
+  let memberBenefitPartnerRecord: { id: string } | null = null;
   let affiliateLinkRecord: { id: string; partnerId: string } | null = null;
+
+  if (memberBenefitCode && !discountRecord && !trainerDiscountRecord && !staffDiscountRecord) {
+    const normalizedBenefitCode = String(memberBenefitCode).trim().toUpperCase();
+    const partner = await db.partner.findUnique({
+      where: { memberBenefitCode: normalizedBenefitCode },
+      select: { id: true, isActive: true },
+    });
+    if (!partner || !partner.isActive) {
+      return NextResponse.json({ error: "كود ميزة الشريك غير صالح." }, { status: 400 });
+    }
+    memberBenefitPartnerRecord = { id: partner.id };
+  }
 
   if (partnerCode && !discountRecord && !trainerDiscountRecord && !staffDiscountRecord) {
     const normalizedPCode = String(partnerCode).trim().toUpperCase();
@@ -187,8 +214,18 @@ export async function POST(req: Request) {
     });
     if (al && al.isActive) {
       affiliateLinkRecord = { id: al.id, partnerId: al.partnerId };
-      // increment click count (fire-and-forget)
       void db.partnerAffiliateLink.update({ where: { id: al.id }, data: { clickCount: { increment: 1 } } }).catch(() => null);
+    }
+  }
+
+  // Fallback: use the partner ref stored at registration time if not already resolved
+  if (!affiliateLinkRecord && !partnerCodeRecord && userRecord?.pendingPartnerRef) {
+    const al = await db.partnerAffiliateLink.findUnique({
+      where: { token: userRecord.pendingPartnerRef },
+      select: { id: true, partnerId: true, isActive: true },
+    });
+    if (al && al.isActive) {
+      affiliateLinkRecord = { id: al.id, partnerId: al.partnerId };
     }
   }
 
@@ -396,8 +433,9 @@ export async function POST(req: Request) {
       // Subscriptions with a remaining balance stay pending_payment until Paymob webhook confirms
       const needsPaymentConfirmation = (paymentAmount ?? 0) > 0;
 
-      // Determine partner attribution (code wins over affiliate link)
-      const resolvedPartnerId = partnerCodeRecord?.partnerId ?? affiliateLinkRecord?.partnerId ?? null;
+      // Determine partner attribution. Member-benefit codes are stored only for
+      // eligibility at the partner location; they do not discount the gym payment.
+      const resolvedPartnerId = partnerCodeRecord?.partnerId ?? affiliateLinkRecord?.partnerId ?? memberBenefitPartnerRecord?.id ?? null;
       const resolvedPartnerCodeId = partnerCodeRecord?.id ?? null;
       const resolvedAffiliateLinkId = affiliateLinkRecord?.id ?? null;
       const resolvedSalesAgentUserId = trainerDiscountRecord?.salesAgentUserId ?? staffDiscountRecord?.salesAgentUserId ?? null;
@@ -432,8 +470,9 @@ export async function POST(req: Request) {
         });
       }
 
-      // Create commission immediately for free/wallet subscriptions
-      if (!needsPaymentConfirmation && resolvedPartnerId) {
+      // Create commission immediately for free/wallet subscriptions that came
+      // through a referral link or legacy partner subscription code.
+      if (!needsPaymentConfirmation && resolvedPartnerId && (resolvedPartnerCodeId || resolvedAffiliateLinkId)) {
         const partner = await tx.partner.findUnique({
           where: { id: resolvedPartnerId },
           select: { commissionRate: true, commissionType: true },
@@ -704,6 +743,11 @@ export async function POST(req: Request) {
     try {
       await ensureMembershipAttendancePass(result.subscriptionId);
     } catch {}
+  }
+
+  // Clear the pending partner affiliate ref once a subscription is created (regardless of payment status)
+  if (userRecord?.pendingPartnerRef) {
+    void db.user.update({ where: { id: userId }, data: { pendingPartnerRef: null } }).catch(() => null);
   }
 
   let checkoutUrl: string | null = null;

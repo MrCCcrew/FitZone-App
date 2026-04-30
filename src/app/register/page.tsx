@@ -154,6 +154,7 @@ function RegisterForm() {
           phone: form.phone,
           password: form.password,
           referralCode: referralCode.trim().toUpperCase() || null,
+          affiliateRef: sessionStorage.getItem("fitzone:affiliate-ref") || null,
         }),
       });
 

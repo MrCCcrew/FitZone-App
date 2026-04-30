@@ -15,7 +15,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const { name, email, phone, password, referralCode } = await req.json();
+    const { name, email, phone, password, referralCode, affiliateRef } = await req.json();
 
     const normalizedName = String(name ?? "").trim();
     const normalizedEmail = String(email ?? "").trim().toLowerCase();
@@ -69,6 +69,17 @@ export async function POST(req: Request) {
     const hashedPassword = await bcryptjs.hash(normalizedPassword, 12);
     const normalizedReferralCode = referralCode ? String(referralCode).trim().toUpperCase() : null;
 
+    // Validate partner affiliate ref — store on user so commission fires even if they subscribe later
+    const normalizedAffiliateRef = affiliateRef ? String(affiliateRef).trim().toUpperCase() : null;
+    let pendingPartnerRef: string | null = null;
+    if (normalizedAffiliateRef) {
+      const al = await db.partnerAffiliateLink.findUnique({
+        where: { token: normalizedAffiliateRef },
+        select: { id: true, isActive: true },
+      });
+      if (al?.isActive) pendingPartnerRef = normalizedAffiliateRef;
+    }
+
     // Validate referral code before creating user
     let referralRecord: { id: string; userId: string; referredCount: number; subscriptionActivatedCount: number } | null = null;
     if (normalizedReferralCode) {
@@ -97,6 +108,7 @@ export async function POST(req: Request) {
           phone: normalizedPhone || null,
           password: hashedPassword,
           role: "member",
+          pendingPartnerRef: pendingPartnerRef || null,
         },
       });
 
