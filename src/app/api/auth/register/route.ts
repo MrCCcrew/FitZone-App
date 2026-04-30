@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import bcryptjs from "bcryptjs";
 import { db } from "@/lib/db";
 import { sendVerificationEmail } from "@/lib/email";
-import { ADMIN_SESSION_COOKIE, getAdminSessionCookieOptions } from "@/lib/admin-session";
 import { applySensitiveRateLimit, getClientIp } from "@/lib/rate-limit";
 
 export async function POST(req: Request) {
@@ -205,11 +204,6 @@ export async function POST(req: Request) {
       requiresVerification: true,
       email: normalizedEmail,
       emailSent,
-    });
-
-    response.cookies.set(ADMIN_SESSION_COOKIE, "", {
-      ...getAdminSessionCookieOptions(),
-      maxAge: 0,
     });
 
     return response;
