@@ -223,6 +223,11 @@ export async function POST(req: Request) {
       });
     }
 
+    const sessionLimit =
+      pass.userMembership!.totalSessions ??
+      pass.userMembership!.membership.sessionsCount ??
+      null;
+
     const checkIn = await db.$transaction(async (tx) => {
       await tx.booking.update({
         where: { id: booking.id },
@@ -241,27 +246,57 @@ export async function POST(req: Request) {
         },
       });
 
-      await tx.attendancePass.update({
-        where: { id: pass.id },
-        data: { lastUsedAt: new Date() },
-      });
+      // Auto-expire membership when all allocated sessions are used
+      let sessionsUsed = 0;
+      let membershipExpired = false;
+      if (sessionLimit != null && sessionLimit > 0) {
+        sessionsUsed = await tx.attendanceCheckIn.count({
+          where: { userMembershipId: pass.userMembership!.id },
+        });
+        if (sessionsUsed >= sessionLimit) {
+          membershipExpired = true;
+          await tx.attendancePass.update({
+            where: { id: pass.id },
+            data: { status: "expired", lastUsedAt: new Date() },
+          });
+          await tx.userMembership.update({
+            where: { id: pass.userMembership!.id },
+            data: { status: "expired" },
+          });
+        }
+      }
+
+      if (!membershipExpired) {
+        await tx.attendancePass.update({
+          where: { id: pass.id },
+          data: { lastUsedAt: new Date() },
+        });
+      }
+
+      const notificationBody = membershipExpired
+        ? `تم تسجيل حضورك في ${booking.schedule.class.name} الساعة ${booking.schedule.time}. لقد استهلكتِ جميع حصصك — انتهى اشتراكك.`
+        : `تم تسجيل حضورك في ${booking.schedule.class.name} الساعة ${booking.schedule.time}.`;
 
       await tx.notification.create({
         data: {
           userId: pass.userId,
-          title: `تم تسجيل حضور ${booking.schedule.class.name}`,
-          body: `تم تسجيل حضورك في ${booking.schedule.class.name} الساعة ${booking.schedule.time}.`,
+          title: membershipExpired
+            ? `✅ آخر حصة — ${booking.schedule.class.name}`
+            : `تم تسجيل حضور ${booking.schedule.class.name}`,
+          body: notificationBody,
           type: "success",
         },
       }).catch(() => null);
 
-      return created;
+      return { created, sessionsUsed, membershipExpired };
     });
 
     return NextResponse.json({
       success: true,
+      membershipExpired: checkIn.membershipExpired,
+      sessionsRemaining: sessionLimit != null ? Math.max(0, sessionLimit - checkIn.sessionsUsed) : null,
       result: {
-        id: checkIn.id,
+        id: checkIn.created.id,
         type: "class",
         customerName: pass.user.name ?? "Member",
         className: booking.schedule.class.name,
