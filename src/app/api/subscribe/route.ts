@@ -562,6 +562,21 @@ export async function POST(req: Request) {
           throw new Error("لا يمكن اختيار أكثر من 12 موعداً في الأسبوع.");
         }
 
+        // Validate that the chosen weekly frequency is enough to cover all sessions
+        // within the plan duration. Example: 12 sessions / 30 days → need ≥ 3/week.
+        if (plan.sessionsCount && plan.duration) {
+          const minPerWeek = Math.ceil((plan.sessionsCount * 7) / plan.duration);
+          if (selectedScheduleIds.length < minPerWeek) {
+            const theoreticalTotal = Math.floor(selectedScheduleIds.length * (plan.duration / 7));
+            throw new Error(
+              `عدد المواعيد المختارة (${selectedScheduleIds.length} في الأسبوع) لا يكفي لتغطية حصص اشتراكك. ` +
+              `بهذا الاختيار ستحصلين على ${theoreticalTotal} حصة فقط خلال مدة الاشتراك (${plan.duration} يوم)، ` +
+              `بينما اشتراكك يشمل ${plan.sessionsCount} حصة. ` +
+              `يلزم اختيار ${minPerWeek} مواعيد في الأسبوع على الأقل.`,
+            );
+          }
+        }
+
         // Fetch the chosen week-1 schedules
         const week1Schedules = await tx.schedule.findMany({
           where: { id: { in: selectedScheduleIds } },
