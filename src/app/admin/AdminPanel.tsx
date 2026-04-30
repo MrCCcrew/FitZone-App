@@ -444,7 +444,7 @@ export default function AdminPanel() {
 
         <div className="space-y-1 border-t border-[rgba(255,188,219,0.16)] px-3 py-4">
           <a
-            href="/api/admin/switch-to-site"
+            href="/"
             className="flex items-center gap-3 rounded-xl px-4 py-2.5 text-sm text-[#d7aabd] transition-all hover:bg-[rgba(255,130,186,0.14)] hover:text-white"
           >
             <span>↩</span>
