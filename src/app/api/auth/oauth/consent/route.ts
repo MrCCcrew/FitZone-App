@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAppSessionToken, APP_SESSION_COOKIE, getAppSessionCookieOptions } from "@/lib/app-session";
-import { ADMIN_SESSION_COOKIE, getAdminSessionCookieOptions } from "@/lib/admin-session";
 import { findOrCreateOAuthUser, parsePendingOAuthToken } from "@/lib/oauth";
 import { db } from "@/lib/db";
 
@@ -122,6 +121,5 @@ export async function POST(req: NextRequest) {
 
   const res = NextResponse.json({ ok: true });
   res.cookies.set(APP_SESSION_COOKIE, token, getAppSessionCookieOptions());
-  res.cookies.set(ADMIN_SESSION_COOKIE, "", { ...getAdminSessionCookieOptions(), maxAge: 0 });
   return CLEAR_COOKIES(res);
 }
