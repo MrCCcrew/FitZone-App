@@ -260,14 +260,16 @@ export default function Subscriptions() {
       });
 
       if (!response.ok) {
-        const payload = await response.json().catch(() => ({}));
-        window.alert(payload.error ?? "تعذر حفظ الاشتراك.");
+        const data = await response.json().catch(() => ({}));
+        window.alert(data.error ?? "تعذر حفظ الاشتراك.");
         return;
       }
 
       await loadData();
       setPlanModal(null);
       setFeatureInput("");
+    } catch {
+      window.alert("تعذر حفظ الاشتراك. تحقق من الاتصال بالإنترنت وحاول مجدداً.");
     } finally {
       setSaving(false);
     }

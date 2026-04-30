@@ -33,15 +33,20 @@ export async function PUT(req: Request) {
   const auth = await requireAdminFeature("rewards");
   if ("error" in auth) return auth.error;
 
-  const body = await req.json() as Record<string, unknown>;
-  const current = await getSettings();
-  const merged = { ...current, ...body };
+  try {
+    const body = await req.json() as Record<string, unknown>;
+    const current = await getSettings();
+    const merged = { ...current, ...body };
 
-  await db.siteContent.upsert({
-    where: { section: SECTION },
-    create: { section: SECTION, content: JSON.stringify(merged) },
-    update: { content: JSON.stringify(merged) },
-  });
+    await db.siteContent.upsert({
+      where: { section: SECTION },
+      create: { section: SECTION, content: JSON.stringify(merged) },
+      update: { content: JSON.stringify(merged) },
+    });
 
-  return NextResponse.json({ success: true, settings: merged });
+    return NextResponse.json({ success: true, settings: merged });
+  } catch (error) {
+    console.error("[ADMIN_REWARD_SETTINGS_PUT]", error);
+    return NextResponse.json({ error: "تعذر حفظ إعدادات المكافآت." }, { status: 500 });
+  }
 }

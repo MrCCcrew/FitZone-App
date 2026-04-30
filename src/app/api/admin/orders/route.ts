@@ -33,104 +33,110 @@ export async function GET() {
 
 export async function PATCH(req: Request) {
   const err = await checkAdmin(); if (err) return err;
-  const { id, status } = await req.json();
-  if (!id || !status) return NextResponse.json({ error: "بيانات ناقصة" }, { status: 400 });
 
-  // Get current order with items
-  const order = await db.order.findUnique({
-    where: { id },
-    include: { items: true },
-  });
+  try {
+    const { id, status } = await req.json();
+    if (!id || !status) return NextResponse.json({ error: "بيانات ناقصة" }, { status: 400 });
 
-  if (!order) return NextResponse.json({ error: "الطلب غير موجود." }, { status: 404 });
+    // Get current order with items
+    const order = await db.order.findUnique({
+      where: { id },
+      include: { items: true },
+    });
 
-  const previousStatus = order.status;
+    if (!order) return NextResponse.json({ error: "الطلب غير موجود." }, { status: 404 });
 
-  await db.order.update({ where: { id }, data: { status } });
+    const previousStatus = order.status;
 
-  // ── Sync inventory movements on status transitions ─────────────────────────
+    await db.order.update({ where: { id }, data: { status } });
 
-  const movingToCancelled = status === "cancelled" && previousStatus !== "cancelled";
-  const movingFromCancelled = previousStatus === "cancelled" && status !== "cancelled";
+    // ── Sync inventory movements on status transitions ─────────────────────────
 
-  if (!movingToCancelled && !movingFromCancelled) {
+    const movingToCancelled = status === "cancelled" && previousStatus !== "cancelled";
+    const movingFromCancelled = previousStatus === "cancelled" && status !== "cancelled";
+
+    if (!movingToCancelled && !movingFromCancelled) {
+      return NextResponse.json({ success: true });
+    }
+
+    // Fetch existing movements for this order once
+    const existingMovements = await db.inventoryMovement.findMany({
+      where: { referenceType: "order", referenceId: id },
+      select: { productId: true, type: true },
+    });
+
+    for (const item of order.items) {
+      const saleCount = existingMovements.filter(
+        (m) => m.productId === item.productId && m.type === "sale",
+      ).length;
+      const returnCount = existingMovements.filter(
+        (m) => m.productId === item.productId && m.type === "return",
+      ).length;
+
+      const product = await db.product.findUnique({ where: { id: item.productId } });
+      if (!product) continue;
+
+      if (movingToCancelled && returnCount < saleCount) {
+        // Create return movement — restore stock
+        const beforeStock = product.stock;
+        const afterStock = product.trackInventory ? beforeStock + item.quantity : beforeStock;
+
+        if (product.trackInventory) {
+          await db.product.update({
+            where: { id: item.productId },
+            data: { stock: { increment: item.quantity } },
+          });
+        }
+
+        await db.inventoryMovement.create({
+          data: {
+            productId: product.id,
+            type: "return",
+            quantityChange: Math.abs(item.quantity),
+            quantityBefore: beforeStock,
+            quantityAfter: afterStock,
+            unitCost: product.averageCost,
+            averageCostBefore: product.averageCost,
+            averageCostAfter: product.averageCost,
+            referenceType: "order",
+            referenceId: id,
+          },
+        });
+      }
+
+      if (movingFromCancelled && saleCount <= returnCount) {
+        // Create sale movement — reduce stock again
+        const beforeStock = product.stock;
+        const afterStock = product.trackInventory ? beforeStock - item.quantity : beforeStock;
+
+        if (product.trackInventory) {
+          await db.product.update({
+            where: { id: item.productId },
+            data: { stock: { decrement: item.quantity } },
+          });
+        }
+
+        await db.inventoryMovement.create({
+          data: {
+            productId: product.id,
+            type: "sale",
+            quantityChange: -Math.abs(item.quantity),
+            quantityBefore: beforeStock,
+            quantityAfter: afterStock,
+            unitCost: product.averageCost,
+            averageCostBefore: product.averageCost,
+            averageCostAfter: product.averageCost,
+            referenceType: "order",
+            referenceId: id,
+          },
+        });
+      }
+    }
+
+    void logAudit({ action: "update_status", targetType: "order", targetId: id, details: { from: previousStatus, to: status } });
     return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("[ADMIN_ORDERS_PATCH]", error);
+    return NextResponse.json({ error: "تعذر تحديث الطلب." }, { status: 500 });
   }
-
-  // Fetch existing movements for this order once
-  const existingMovements = await db.inventoryMovement.findMany({
-    where: { referenceType: "order", referenceId: id },
-    select: { productId: true, type: true },
-  });
-
-  for (const item of order.items) {
-    const saleCount = existingMovements.filter(
-      (m) => m.productId === item.productId && m.type === "sale",
-    ).length;
-    const returnCount = existingMovements.filter(
-      (m) => m.productId === item.productId && m.type === "return",
-    ).length;
-
-    const product = await db.product.findUnique({ where: { id: item.productId } });
-    if (!product) continue;
-
-    if (movingToCancelled && returnCount < saleCount) {
-      // Create return movement — restore stock
-      const beforeStock = product.stock;
-      const afterStock = product.trackInventory ? beforeStock + item.quantity : beforeStock;
-
-      if (product.trackInventory) {
-        await db.product.update({
-          where: { id: item.productId },
-          data: { stock: { increment: item.quantity } },
-        });
-      }
-
-      await db.inventoryMovement.create({
-        data: {
-          productId: product.id,
-          type: "return",
-          quantityChange: Math.abs(item.quantity),
-          quantityBefore: beforeStock,
-          quantityAfter: afterStock,
-          unitCost: product.averageCost,
-          averageCostBefore: product.averageCost,
-          averageCostAfter: product.averageCost,
-          referenceType: "order",
-          referenceId: id,
-        },
-      });
-    }
-
-    if (movingFromCancelled && saleCount <= returnCount) {
-      // Create sale movement — reduce stock again
-      const beforeStock = product.stock;
-      const afterStock = product.trackInventory ? beforeStock - item.quantity : beforeStock;
-
-      if (product.trackInventory) {
-        await db.product.update({
-          where: { id: item.productId },
-          data: { stock: { decrement: item.quantity } },
-        });
-      }
-
-      await db.inventoryMovement.create({
-        data: {
-          productId: product.id,
-          type: "sale",
-          quantityChange: -Math.abs(item.quantity),
-          quantityBefore: beforeStock,
-          quantityAfter: afterStock,
-          unitCost: product.averageCost,
-          averageCostBefore: product.averageCost,
-          averageCostAfter: product.averageCost,
-          referenceType: "order",
-          referenceId: id,
-        },
-      });
-    }
-  }
-
-  void logAudit({ action: "update_status", targetType: "order", targetId: id, details: { from: previousStatus, to: status } });
-  return NextResponse.json({ success: true });
 }

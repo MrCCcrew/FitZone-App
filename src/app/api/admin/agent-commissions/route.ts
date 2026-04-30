@@ -72,15 +72,20 @@ export async function PATCH(req: Request) {
   if ("error" in guard) return guard.error;
   if (guard.role !== "admin") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  const body = (await req.json()) as { ids?: string[]; status?: string };
-  if (!body.ids?.length || body.status !== "settled") {
-    return NextResponse.json({ error: "ids ومعرّف الحالة مطلوبان." }, { status: 400 });
+  try {
+    const body = (await req.json()) as { ids?: string[]; status?: string };
+    if (!body.ids?.length || body.status !== "settled") {
+      return NextResponse.json({ error: "ids ومعرّف الحالة مطلوبان." }, { status: 400 });
+    }
+
+    await db.agentCommission.updateMany({
+      where: { id: { in: body.ids }, status: "earned" },
+      data: { status: "settled", settledAt: new Date() },
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("[ADMIN_AGENT_COMMISSIONS_PATCH]", error);
+    return NextResponse.json({ error: "تعذر تحديث العمولات." }, { status: 500 });
   }
-
-  await db.agentCommission.updateMany({
-    where: { id: { in: body.ids }, status: "earned" },
-    data: { status: "settled", settledAt: new Date() },
-  });
-
-  return NextResponse.json({ success: true });
 }

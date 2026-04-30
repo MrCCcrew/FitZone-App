@@ -34,34 +34,39 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const body = (await req.json()) as {
-    id?: string;
-    status?: string;
-    adminNotes?: string;
-    receiptUrl?: string;
-  };
-  if (!body.id) return NextResponse.json({ error: "معرّف الطلب مطلوب." }, { status: 400 });
+  try {
+    const body = (await req.json()) as {
+      id?: string;
+      status?: string;
+      adminNotes?: string;
+      receiptUrl?: string;
+    };
+    if (!body.id) return NextResponse.json({ error: "معرّف الطلب مطلوب." }, { status: 400 });
 
-  const existing = await db.partnerWithdrawalRequest.findUnique({ where: { id: body.id } });
-  if (!existing) return NextResponse.json({ error: "الطلب غير موجود." }, { status: 404 });
+    const existing = await db.partnerWithdrawalRequest.findUnique({ where: { id: body.id } });
+    if (!existing) return NextResponse.json({ error: "الطلب غير موجود." }, { status: 404 });
 
-  const data: Record<string, unknown> = {};
-  if (body.adminNotes !== undefined) data.adminNotes = body.adminNotes.trim() || null;
-  if (body.receiptUrl !== undefined) data.receiptUrl = body.receiptUrl.trim() || null;
+    const data: Record<string, unknown> = {};
+    if (body.adminNotes !== undefined) data.adminNotes = body.adminNotes.trim() || null;
+    if (body.receiptUrl !== undefined) data.receiptUrl = body.receiptUrl.trim() || null;
 
-  if (body.status === "approved" && existing.status !== "approved") {
-    data.status = "approved";
-    data.processedAt = new Date();
-    // Mark all pending commissions for this partner as withdrawn
-    await db.partnerCommission.updateMany({
-      where: { partnerId: existing.partnerId, status: "pending" },
-      data: { status: "withdrawn", withdrawnAt: new Date() },
-    });
-  } else if (body.status === "rejected" && existing.status !== "rejected") {
-    data.status = "rejected";
-    data.processedAt = new Date();
+    if (body.status === "approved" && existing.status !== "approved") {
+      data.status = "approved";
+      data.processedAt = new Date();
+      // Mark all pending commissions for this partner as withdrawn
+      await db.partnerCommission.updateMany({
+        where: { partnerId: existing.partnerId, status: "pending" },
+        data: { status: "withdrawn", withdrawnAt: new Date() },
+      });
+    } else if (body.status === "rejected" && existing.status !== "rejected") {
+      data.status = "rejected";
+      data.processedAt = new Date();
+    }
+
+    const updated = await db.partnerWithdrawalRequest.update({ where: { id: body.id }, data });
+    return NextResponse.json({ success: true, status: updated.status });
+  } catch (error) {
+    console.error("[ADMIN_PARTNER_WITHDRAWALS_PATCH]", error);
+    return NextResponse.json({ error: "تعذر تحديث طلب السحب." }, { status: 500 });
   }
-
-  const updated = await db.partnerWithdrawalRequest.update({ where: { id: body.id }, data });
-  return NextResponse.json({ success: true, status: updated.status });
 }
