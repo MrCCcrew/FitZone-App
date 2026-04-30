@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import bcryptjs from "bcryptjs";
 import { APP_SESSION_COOKIE, createAppSessionToken, getAppSessionCookieOptions } from "@/lib/app-session";
+import { ADMIN_SESSION_COOKIE, getAdminSessionCookieOptions } from "@/lib/admin-session";
 import { applySensitiveRateLimit, getClientIp } from "@/lib/rate-limit";
 import { db } from "@/lib/db";
 
@@ -99,6 +100,7 @@ export async function POST(req: Request) {
       },
     });
 
+    response.cookies.set(ADMIN_SESSION_COOKIE, "", { ...getAdminSessionCookieOptions(), maxAge: 0 });
     response.cookies.set(APP_SESSION_COOKIE, token, getAppSessionCookieOptions());
     return response;
   } catch (error) {
