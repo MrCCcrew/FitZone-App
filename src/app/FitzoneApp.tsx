@@ -2281,6 +2281,14 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
 
   const startMembershipFlow = (membershipId?: string | null, _source: "offer" | "package" = "offer", offerId?: string | null, offerSpecialPrice?: number | null) => {
     if (!membershipId) return;
+    if (typeof window !== "undefined") {
+      const pendingFlow: PendingMembershipFlow = {
+        membershipId,
+        source: _source,
+        offerId: offerId ?? null,
+      };
+      window.sessionStorage.setItem(MEMBERSHIP_FLOW_STORAGE_KEY, JSON.stringify(pendingFlow));
+    }
     window.dispatchEvent(new CustomEvent(GLOBAL_SUBSCRIBE_EVENT, {
       detail: { membershipId, offerId: offerId ?? null, offerSpecialPrice: offerSpecialPrice ?? null },
     }));
@@ -5090,13 +5098,20 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
   const [offers, setOffers] = useState(DEFAULT_OFFERS);
   const [packages, setPackages] = useState<PublicMembership[]>([]);
   const openSubscribeModal = (membershipId?: string | null, offerId?: string | null, offerSpecialPrice?: number | null) => {
-    if (membershipId) {
-      // MembershipsPage is always mounted — dispatch immediately so the survey opens
-      // in the same render cycle as the page transition, with no visible goals-page flash.
-      window.dispatchEvent(new CustomEvent(GLOBAL_SUBSCRIBE_EVENT, {
-        detail: { membershipId, offerId: offerId ?? null, offerSpecialPrice: offerSpecialPrice ?? null },
-      }));
+    if (!membershipId) return;
+    if (typeof window !== "undefined") {
+      const pendingFlow: PendingMembershipFlow = {
+        membershipId,
+        source: offerId ? "offer" : "package",
+        offerId: offerId ?? null,
+      };
+      window.sessionStorage.setItem(MEMBERSHIP_FLOW_STORAGE_KEY, JSON.stringify(pendingFlow));
     }
+    // MembershipsPage is always mounted — dispatch immediately so the survey opens
+    // in the same render cycle as the page transition, with no visible goals-page flash.
+    window.dispatchEvent(new CustomEvent(GLOBAL_SUBSCRIBE_EVENT, {
+      detail: { membershipId, offerId: offerId ?? null, offerSpecialPrice: offerSpecialPrice ?? null },
+    }));
     navigate("memberships");
   };
   useEffect(() => {
@@ -5135,6 +5150,7 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
               const remaining = o.showMaxSubscribers && o.maxSubscribers != null
                 ? Math.max(o.maxSubscribers - o.currentSubscribers, 0)
                 : null;
+              const offerUnavailable = countdown.expired || !o.membershipId || (remaining != null && remaining <= 0);
               return (
               <div
                 key={o.id}
@@ -5221,9 +5237,23 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
                   </div>
                   <button
                     onClick={() => openSubscribeModal(o.membershipId, o.id, o.specialPrice ?? null)}
-                    style={{ width: "100%", padding: "10px", borderRadius: 10, border: `2px solid ${o.color}`, background: "transparent", color: o.color, fontFamily: "'Cairo', sans-serif", fontSize: 14, fontWeight: 700, cursor: "pointer", marginTop: "auto" }}
+                    disabled={offerUnavailable}
+                    style={{
+                      width: "100%",
+                      padding: "10px",
+                      borderRadius: 10,
+                      border: `2px solid ${o.color}`,
+                      background: "transparent",
+                      color: o.color,
+                      fontFamily: "'Cairo', sans-serif",
+                      fontSize: 14,
+                      fontWeight: 700,
+                      cursor: offerUnavailable ? "not-allowed" : "pointer",
+                      marginTop: "auto",
+                      opacity: offerUnavailable ? 0.6 : 1,
+                    }}
                   >
-                    {t("اشتركي الآن", "Subscribe now")}
+                    {offerUnavailable ? t("العرض غير متاح", "Offer unavailable") : t("اشتركي الآن", "Subscribe now")}
                   </button>
                 </div>
               </div>
