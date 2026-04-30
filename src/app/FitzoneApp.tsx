@@ -1,5 +1,5 @@
 ﻿'use client';
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useLang } from "@/lib/language";
 
 // ─── FIT ZONE BRAND COLORS ─────────────────────────────────────────────────
@@ -3279,7 +3279,9 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
   }, [membershipDataReady, pendingPlan]);
 
   // Process external subscribe trigger (from OffersPage / HomePage)
-  useEffect(() => {
+  // useLayoutEffect runs before the browser paints, so the survey opens in the same frame
+  // as the page transition — no goals-page flash.
+  useLayoutEffect(() => {
     if (!membershipDataReady || !pendingExternalSubscribe) return;
     const { membershipId, offerId, offerSpecialPrice } = pendingExternalSubscribe;
     const mb = allMemberships.find((m) => m.id === membershipId);
@@ -3541,9 +3543,9 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
         return prev;
       }
 
-      // Max total = daysPerWeek × 2 (or sessionsCount for plans without a frequency step)
-      const maxSessions = daysPerWeek ? daysPerWeek * 2 : (schedulePlan?.sessionsCount ?? null);
-      if (maxSessions && cleaned.length >= maxSessions) {
+      // Max total = daysPerWeek × 2 (cap at 12 for plans without a frequency step)
+      const maxSessions = daysPerWeek ? daysPerWeek * 2 : Math.min(12, schedulePlan?.sessionsCount ?? 12);
+      if (cleaned.length >= maxSessions) {
         setScheduleError(
           daysPerWeek
             ? `وصلتِ للحد الأقصى: ${daysPerWeek} أيام × 2 حصة = ${maxSessions} حصة في الأسبوع.`
@@ -4184,7 +4186,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
                   ? t("اختاري موعداً واحداً للكلاس التجريبي", "Select one slot for your trial class")
                   : daysPerWeek
                     ? <>{daysPerWeek} أيام / أسبوع · <span style={{ color: "#c9b9c1", fontWeight: 400 }}>حصتان كحد أقصى في اليوم · إجمالي {daysPerWeek * 2} حصة</span></>
-                    : schedulePlan.sessionsCount ? `يمكنك اختيار ${schedulePlan.sessionsCount} موعد` : "اختاري المواعيد المناسبة لك"
+                    : `يمكنك اختيار ${Math.min(12, schedulePlan.sessionsCount ?? 12)} موعد`
                 }
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
