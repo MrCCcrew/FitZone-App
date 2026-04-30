@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createPendingOAuthToken, findExistingOAuthUser, getAppBaseUrl } from "@/lib/oauth";
 import { APP_SESSION_COOKIE, createAppSessionToken, getAppSessionCookieOptions } from "@/lib/app-session";
+import { ADMIN_SESSION_COOKIE, getAdminSessionCookieOptions } from "@/lib/admin-session";
 
 export async function GET(req: NextRequest) {
-  const base = getAppBaseUrl(req);
+  const base = getAppBaseUrl();
   const { searchParams } = new URL(req.url);
   const code = searchParams.get("code");
   const state = searchParams.get("state");
@@ -78,6 +79,7 @@ export async function GET(req: NextRequest) {
 
     const res = NextResponse.redirect(`${base}/`);
     res.cookies.set(APP_SESSION_COOKIE, token, getAppSessionCookieOptions());
+    res.cookies.set(ADMIN_SESSION_COOKIE, "", { ...getAdminSessionCookieOptions(), maxAge: 0 });
     res.cookies.set("oauth_pending_profile", "", { httpOnly: true, maxAge: 0, path: "/" });
     res.cookies.set("oauth_pending_session", "", { httpOnly: true, maxAge: 0, path: "/" });
     res.cookies.set("oauth_state", "", { httpOnly: true, maxAge: 0, path: "/" });
