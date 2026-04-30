@@ -76,6 +76,7 @@ model User {
   commissionRate Float    @default(0)
   commissionType String   @default("percentage") // percentage | fixed
   avatar        String?
+  pendingPartnerRef String? // affiliate link token stored at registration, cleared after first paid subscription
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
