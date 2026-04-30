@@ -63,14 +63,19 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const body = (await req.json()) as { id?: string; status?: string; notes?: string };
-  if (!body.id) return NextResponse.json({ error: "معرّف العمولة مطلوب." }, { status: 400 });
+  try {
+    const body = (await req.json()) as { id?: string; status?: string; notes?: string };
+    if (!body.id) return NextResponse.json({ error: "معرّف العمولة مطلوب." }, { status: 400 });
 
-  const data: Record<string, unknown> = {};
-  if (body.status === "withdrawn" || body.status === "paid") { data.status = "withdrawn"; data.withdrawnAt = new Date(); }
-  else if (body.status === "pending") { data.status = "pending"; data.withdrawnAt = null; }
-  if (body.notes !== undefined) data.notes = body.notes.trim() || null;
+    const data: Record<string, unknown> = {};
+    if (body.status === "withdrawn" || body.status === "paid") { data.status = "withdrawn"; data.withdrawnAt = new Date(); }
+    else if (body.status === "pending") { data.status = "pending"; data.withdrawnAt = null; }
+    if (body.notes !== undefined) data.notes = body.notes.trim() || null;
 
-  const updated = await db.partnerCommission.update({ where: { id: body.id }, data });
-  return NextResponse.json({ success: true, status: updated.status });
+    const updated = await db.partnerCommission.update({ where: { id: body.id }, data });
+    return NextResponse.json({ success: true, status: updated.status });
+  } catch (error) {
+    console.error("[ADMIN_PARTNER_COMMISSIONS_PATCH]", error);
+    return NextResponse.json({ error: "تعذر تحديث العمولة." }, { status: 500 });
+  }
 }
