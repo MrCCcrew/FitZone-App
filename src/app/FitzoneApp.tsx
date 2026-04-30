@@ -3308,6 +3308,8 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
   // as the page transition — no goals-page flash.
   useLayoutEffect(() => {
     if (!membershipDataReady || !pendingExternalSubscribe) return;
+    // Wait for auth summary to be loaded; avoid false redirect to login while summary is still null.
+    if (userSummary == null) return;
     const { membershipId, offerId, offerSpecialPrice } = pendingExternalSubscribe;
     if (membershipId) {
       const mb = allMemberships.find((m) => m.id === membershipId);
@@ -3353,8 +3355,11 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
         openSurvey(virtualOfferPlan);
       }
     }
+    if (typeof window !== "undefined") {
+      window.sessionStorage.removeItem(MEMBERSHIP_FLOW_STORAGE_KEY);
+    }
     setPendingExternalSubscribe(null);
-  }, [membershipDataReady, pendingExternalSubscribe, allMemberships, allOffers, t]);
+  }, [membershipDataReady, pendingExternalSubscribe, allMemberships, allOffers, t, userSummary]);
 
   // Listen for subscription trigger from other pages
   useEffect(() => {
@@ -3626,10 +3631,12 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
   };
 
   const openSurvey = (plan: PlanItem) => {
-    if (!userSummary?.authenticated) {
+    // summary === null means "still loading", so do not force login redirect yet
+    if (userSummary?.authenticated === false) {
       window.location.href = `/login?callbackUrl=${encodeURIComponent("/?page=memberships")}`;
       return;
     }
+    if (userSummary == null) return;
     if (plan.isFeatured) {
       setSchedulePlan(plan);
       setScheduleSelections([]);
