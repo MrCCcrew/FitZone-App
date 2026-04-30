@@ -12,14 +12,13 @@ export async function GET(req: Request) {
   });
   if (!partner) return NextResponse.json({ error: "ملف الشريك غير موجود." }, { status: 404 });
   if (!partner.memberBenefitCode) {
-    return NextResponse.json({ error: "لا يوجد كود ميزة أعضاء مُعرَّف لحسابك." }, { status: 400 });
+    return NextResponse.json({ error: "لا يوجد كود ميزة أعضاء مُعرّف لحسابك." }, { status: 400 });
   }
 
   const { searchParams } = new URL(req.url);
   const q = searchParams.get("q")?.trim() ?? "";
   if (!q) return NextResponse.json({ error: "أدخل رقم هاتف أو بريد إلكتروني." }, { status: 400 });
 
-  // Find user by phone or email
   const user = await db.user.findFirst({
     where: { OR: [{ email: q }, { phone: q }] },
     select: { id: true, name: true, email: true, phone: true },
@@ -29,7 +28,6 @@ export async function GET(req: Request) {
     return NextResponse.json({ found: false, message: "لا يوجد حساب مسجل بهذه البيانات." });
   }
 
-  // Check for active gym membership
   const now = new Date();
   const activeMembership = await db.userMembership.findFirst({
     where: {
@@ -41,22 +39,43 @@ export async function GET(req: Request) {
     orderBy: { endDate: "desc" },
   });
 
-  if (!activeMembership) {
+  const paidPrivateSession = await db.privateSessionApplication.findFirst({
+    where: {
+      userId: user.id,
+      status: "paid",
+      paidAt: { not: null },
+    },
+    select: { type: true, paidAt: true },
+    orderBy: { paidAt: "desc" },
+  });
+
+  if (!activeMembership && !paidPrivateSession) {
     return NextResponse.json({
       found: true,
       name: user.name ?? user.email ?? "عميل",
       hasActiveMembership: false,
-      message: "ليس لديه اشتراك نشط في الجيم — لا يستحق الميزة حالياً.",
+      message: "لا يوجد اشتراك/جلسة مدفوعة فعّالة لهذا العميل حالياً.",
     });
   }
+
+  const membershipName = activeMembership
+    ? activeMembership.membership?.name ?? null
+    : paidPrivateSession
+      ? (paidPrivateSession.type === "mini_private" ? "ميني برايفيت" : "برايفيت")
+      : null;
+
+  const endDate = activeMembership?.endDate
+    ? activeMembership.endDate.toLocaleDateString("ar-EG")
+    : (paidPrivateSession?.paidAt ? new Date(paidPrivateSession.paidAt).toLocaleDateString("ar-EG") : null);
 
   return NextResponse.json({
     found: true,
     name: user.name ?? user.email ?? "عميل",
     hasActiveMembership: true,
-    membershipName: activeMembership.membership?.name ?? null,
-    endDate: activeMembership.endDate.toLocaleDateString("ar-EG"),
+    membershipName,
+    endDate,
     benefitRate: partner.memberBenefitRate,
-    message: "✓ عضو نشط — يستحق الميزة.",
+    message: "✓ العميل مستحق لميزة الشريك.",
   });
 }
+
