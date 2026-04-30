@@ -118,10 +118,15 @@ export async function DELETE(req: Request) {
   const auth = await requireAdminFeature("trainers");
   if ("error" in auth) return auth.error;
 
-  const { searchParams } = new URL(req.url);
-  const id = searchParams.get("id");
-  if (!id) return NextResponse.json({ error: "id مطلوب" }, { status: 400 });
+  try {
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get("id");
+    if (!id) return NextResponse.json({ error: "id مطلوب" }, { status: 400 });
 
-  await db.trainerDiscountCode.delete({ where: { id } });
-  return NextResponse.json({ success: true });
+    await db.trainerDiscountCode.delete({ where: { id } });
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("[ADMIN_TRAINER_DISCOUNT_CODES_DELETE]", error);
+    return NextResponse.json({ error: "تعذر حذف كود الخصم." }, { status: 500 });
+  }
 }
