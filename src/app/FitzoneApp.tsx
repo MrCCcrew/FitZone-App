@@ -2446,8 +2446,11 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
             <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", homeOffers.length === 1 ? "1fr" : "1fr 1fr", `repeat(${Math.min(homeOffers.length, 3)}, 1fr)`), gap: 24 }}>
               {homeOffers.map((offer) => {
                 const cd = getCountdownParts(offer.expiresAt);
-                const remaining = offer.showMaxSubscribers && offer.maxSubscribers != null
-                  ? Math.max(offer.maxSubscribers - offer.currentSubscribers, 0) : null;
+                const maxSubscribers = typeof offer.maxSubscribers === "number" ? offer.maxSubscribers : null;
+                const hasSeatLimit = offer.showMaxSubscribers && maxSubscribers != null && maxSubscribers > 0;
+                const remaining = hasSeatLimit
+                  ? Math.max(maxSubscribers - offer.currentSubscribers, 0)
+                  : null;
                 const isSpecial = offer.type === "special";
                 const accentColor = isSpecial ? C.red : C.gold;
                 return (
@@ -5147,8 +5150,10 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
           <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 24 }}>
             {offers.map(o => {
               const countdown = getCountdownParts(o.expiresAt);
-              const remaining = o.showMaxSubscribers && o.maxSubscribers != null
-                ? Math.max(o.maxSubscribers - o.currentSubscribers, 0)
+              const maxSubscribers = typeof o.maxSubscribers === "number" ? o.maxSubscribers : null;
+              const hasSeatLimit = o.showMaxSubscribers && maxSubscribers != null && maxSubscribers > 0;
+              const remaining = hasSeatLimit
+                ? Math.max(maxSubscribers - o.currentSubscribers, 0)
                 : null;
               const offerUnavailable = countdown.expired || !o.membershipId || (remaining != null && remaining <= 0);
               return (
