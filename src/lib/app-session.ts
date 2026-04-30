@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import { cookies } from "next/headers";
+import { getAdminSession } from "@/lib/admin-session";
 
 export const APP_SESSION_COOKIE = "fitzone_app_session";
 const APP_SESSION_TTL_SECONDS = 60 * 60 * 24 * 30;
@@ -87,14 +88,25 @@ export function getAppSessionCookieOptions() {
 export async function getCurrentAppUser() {
   try {
     const appSession = await getAppSession();
-    if (!appSession) return null;
-
-    return {
-      id: appSession.id,
-      email: appSession.email,
-      name: appSession.name ?? "",
-      role: appSession.role,
-    };
+    if (appSession) {
+      return {
+        id: appSession.id,
+        email: appSession.email,
+        name: appSession.name ?? "",
+        role: appSession.role,
+      };
+    }
+    // Fallback: admin/partner session counts as a logged-in user for app pages
+    const adminSession = await getAdminSession();
+    if (adminSession) {
+      return {
+        id: adminSession.id,
+        email: adminSession.email,
+        name: adminSession.name ?? "",
+        role: adminSession.role as "member" | "admin" | "staff" | "trainer" | "accountant",
+      };
+    }
+    return null;
   } catch (error) {
     console.error("[APP_SESSION_USER]", error);
     return null;
