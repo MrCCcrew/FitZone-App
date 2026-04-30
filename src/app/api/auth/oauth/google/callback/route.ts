@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createPendingOAuthToken, findExistingOAuthUser, getAppBaseUrl } from "@/lib/oauth";
 import { APP_SESSION_COOKIE, createAppSessionToken, getAppSessionCookieOptions } from "@/lib/app-session";
-import { ADMIN_SESSION_COOKIE, getAdminSessionCookieOptions } from "@/lib/admin-session";
 
 export async function GET(req: NextRequest) {
   const base = getAppBaseUrl();
@@ -70,16 +69,20 @@ export async function GET(req: NextRequest) {
       return NextResponse.redirect(`${base}/verify-email?${verifyParams.toString()}`);
     }
 
+    // Admin/staff/partner/trainer accounts must use the admin login page
+    if (existing.user.role !== "member") {
+      return NextResponse.redirect(`${base}/login?error=admin_account`);
+    }
+
     const token = createAppSessionToken({
       id: existing.user.id,
       email: existing.user.email ?? "",
       name: existing.user.name ?? "عضو FitZone",
-      role: existing.user.role as "member" | "admin" | "staff" | "trainer" | "accountant",
+      role: "member",
     });
 
     const res = NextResponse.redirect(`${base}/`);
     res.cookies.set(APP_SESSION_COOKIE, token, getAppSessionCookieOptions());
-    res.cookies.set(ADMIN_SESSION_COOKIE, "", { ...getAdminSessionCookieOptions(), maxAge: 0 });
     res.cookies.set("oauth_pending_profile", "", { httpOnly: true, maxAge: 0, path: "/" });
     res.cookies.set("oauth_pending_session", "", { httpOnly: true, maxAge: 0, path: "/" });
     res.cookies.set("oauth_state", "", { httpOnly: true, maxAge: 0, path: "/" });

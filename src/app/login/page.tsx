@@ -102,7 +102,11 @@ function LoginForm() {
   const verifiedEmail = params.get("email");
 
   const [form, setForm] = useState({ email: verifiedEmail ?? "", password: "" });
-  const [error, setError] = useState("");
+  const [error, setError] = useState(
+    params.get("error") === "admin_account"
+      ? "هذا الحساب خاص بالإدارة. يرجى تسجيل الدخول من بوابة الإدارة."
+      : ""
+  );
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 

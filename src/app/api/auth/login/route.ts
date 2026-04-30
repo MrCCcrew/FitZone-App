@@ -49,6 +49,14 @@ export async function POST(req: Request) {
       );
     }
 
+    // Admin/staff/partner/trainer accounts must use the admin login page
+    if (user.role !== "member") {
+      return NextResponse.json(
+        { error: "ليس لديك حساب عميل. يرجى تسجيل الدخول من بوابة الإدارة." },
+        { status: 401 },
+      );
+    }
+
     if (user.isActive === false) {
       return NextResponse.json(
         { error: "هذا الحساب موقوف. تواصلي مع الإدارة." },
