@@ -557,56 +557,96 @@ export async function POST(req: Request) {
       }[] = [];
 
       if (selectedScheduleIds.length > 0) {
-        if (plan.sessionsCount && selectedScheduleIds.length > plan.sessionsCount) {
-          throw new Error("عدد المواعيد المختارة أكبر من عدد الحصص المتاحة في الباقة.");
+        // Week-1 selection is capped at 12 (max slots visible in the weekly grid)
+        if (selectedScheduleIds.length > 12) {
+          throw new Error("لا يمكن اختيار أكثر من 12 موعداً في الأسبوع.");
         }
 
-        const schedules = await tx.schedule.findMany({
+        // Fetch the chosen week-1 schedules
+        const week1Schedules = await tx.schedule.findMany({
           where: { id: { in: selectedScheduleIds } },
           include: { class: { include: { trainer: true } } },
         });
 
-        if (schedules.length !== selectedScheduleIds.length) {
+        if (week1Schedules.length !== selectedScheduleIds.length) {
           throw new Error("تعذر العثور على بعض المواعيد المختارة.");
         }
 
-        // Validate max 2 sessions per day
+        // Validate max 2 sessions per day in week 1
         const dayCounts = new Map<string, number>();
-        for (const schedule of schedules) {
-          const dayKey = new Date(schedule.date).toISOString().slice(0, 10);
+        for (const s of week1Schedules) {
+          const dayKey = new Date(s.date).toISOString().slice(0, 10);
           dayCounts.set(dayKey, (dayCounts.get(dayKey) ?? 0) + 1);
         }
         for (const count of dayCounts.values()) {
-          if (count > 2) {
-            throw new Error("لا يمكن اختيار أكثر من حصتين في اليوم الواحد.");
+          if (count > 2) throw new Error("لا يمكن اختيار أكثر من حصتين في اليوم الواحد.");
+        }
+
+        // Week-1 availability is mandatory
+        for (const s of week1Schedules) {
+          if (!s.isActive || s.availableSpots <= 0) {
+            throw new Error("أحد المواعيد المختارة غير متاح حاليًا.");
           }
         }
 
-        const existing = await tx.booking.findMany({
-          where: { userId, scheduleId: { in: selectedScheduleIds } },
+        // Build the weekly pattern from week-1 selections: (classId, time, dayOfWeek)
+        const patterns = week1Schedules.map((s) => ({
+          classId: s.classId,
+          time: s.time,
+          dayOfWeek: new Date(s.date).getDay(), // 0=Sun … 6=Sat
+        }));
+        const patternKey = (classId: string, time: string, dow: number) =>
+          `${classId}|${time}|${dow}`;
+        const patternSet = new Set(patterns.map((p) => patternKey(p.classId, p.time, p.dayOfWeek)));
+
+        // Find all matching schedule slots within the subscription's full period
+        const classIds = [...new Set(patterns.map((p) => p.classId))];
+        const allMatchingSchedules = await tx.schedule.findMany({
+          where: {
+            classId: { in: classIds },
+            date: { gte: subscription.startDate, lte: subscription.endDate },
+            isActive: true,
+          },
+          include: { class: { include: { trainer: true } } },
+          orderBy: { date: "asc" },
+        });
+
+        // Keep only schedules that match the weekly pattern (same class + time + day)
+        const repeated = allMatchingSchedules.filter((s) =>
+          patternSet.has(patternKey(s.classId, s.time, new Date(s.date).getDay())),
+        );
+
+        // Cap total bookings at the plan's sessionsCount
+        const totalLimit = plan.sessionsCount ?? null;
+        const schedulesToBook = totalLimit != null ? repeated.slice(0, totalLimit) : repeated;
+
+        // Find any already-existing bookings for this user in the range
+        const bookingIds = schedulesToBook.map((s) => s.id);
+        const existingBookings = await tx.booking.findMany({
+          where: { userId, scheduleId: { in: bookingIds } },
           select: { scheduleId: true },
         });
-        const existingIds = new Set(existing.map((item) => item.scheduleId));
+        const existingIdSet = new Set(existingBookings.map((b) => b.scheduleId));
+        const week1IdSet = new Set(selectedScheduleIds);
 
-        const toCreate = schedules.filter((schedule) => !existingIds.has(schedule.id));
-
-        // Only check availability for slots that don't already have a booking
-        // (a retry after a pending_payment attempt already holds the spot)
-        toCreate.forEach((schedule) => {
-          if (!schedule.isActive || schedule.availableSpots <= 0) {
-            throw new Error("أحد المواعيد المختارة غير متاح حاليًا.");
-          }
+        // Week-1 slots: create regardless (already validated above)
+        // Future slots: skip if already booked or spot is full (non-fatal)
+        const toCreate = schedulesToBook.filter((s) => {
+          if (existingIdSet.has(s.id)) return false;
+          if (week1IdSet.has(s.id)) return true;
+          return s.availableSpots > 0;
         });
+
         if (toCreate.length > 0) {
           await Promise.all(
-            toCreate.map((schedule) =>
+            toCreate.map((s) =>
               tx.booking.create({
                 data: {
                   userId,
-                  scheduleId: schedule.id,
+                  scheduleId: s.id,
                   userMembershipId: subscription.id,
                   status: "confirmed",
-                  paidAmount: schedule.class.price,
+                  paidAmount: s.class.price,
                   paymentMethod: "cash",
                 },
               }),
@@ -614,20 +654,20 @@ export async function POST(req: Request) {
           );
 
           await Promise.all(
-            toCreate.map((schedule) =>
+            toCreate.map((s) =>
               tx.schedule.update({
-                where: { id: schedule.id },
+                where: { id: s.id },
                 data: { availableSpots: { decrement: 1 } },
               }),
             ),
           );
         }
 
-        bookedSchedules = schedules.map((schedule) => ({
-          date: schedule.date,
-          time: schedule.time,
-          className: schedule.class.name,
-          trainerName: schedule.class.trainer.name,
+        bookedSchedules = schedulesToBook.map((s) => ({
+          date: s.date,
+          time: s.time,
+          className: s.class.name,
+          trainerName: s.class.trainer.name,
         }));
       }
 
