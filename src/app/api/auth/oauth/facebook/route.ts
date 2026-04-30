@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { randomBytes } from "crypto";
 import { getAppBaseUrl } from "@/lib/oauth";
 
-export async function GET() {
+export async function GET(req: Request) {
   const appId = process.env.FACEBOOK_APP_ID;
   if (!appId) {
     return NextResponse.json({ error: "Facebook OAuth غير مفعّل." }, { status: 503 });
@@ -11,7 +11,7 @@ export async function GET() {
   const state = randomBytes(16).toString("hex");
   const params = new URLSearchParams({
     client_id: appId,
-    redirect_uri: `${getAppBaseUrl()}/api/auth/oauth/facebook/callback`,
+    redirect_uri: `${getAppBaseUrl({ headers: req.headers })}/api/auth/oauth/facebook/callback`,
     scope: "email,public_profile",
     response_type: "code",
     state,
