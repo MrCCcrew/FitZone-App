@@ -189,6 +189,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "هذا الاشتراك غير مؤهل للحضور بالمسح." }, { status: 400 });
     }
 
+    // Enforce subscription duration — expire immediately if endDate has passed
+    if (new Date() > new Date(pass.userMembership.endDate)) {
+      await Promise.all([
+        db.attendancePass.update({ where: { id: pass.id }, data: { status: "expired" } }),
+        db.userMembership.update({ where: { id: pass.userMembership.id }, data: { status: "expired" } }),
+      ]).catch(() => null);
+      return NextResponse.json({ error: "انتهت مدة الاشتراك." }, { status: 400 });
+    }
+
     const booking = await db.booking.findFirst({
       where: {
         userId: pass.userId,
