@@ -2280,7 +2280,6 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
   };
 
   const startMembershipFlow = (membershipId?: string | null, _source: "offer" | "package" = "offer", offerId?: string | null, offerSpecialPrice?: number | null) => {
-    if (!membershipId) return;
     if (typeof window !== "undefined") {
       const pendingFlow: PendingMembershipFlow = {
         membershipId,
@@ -2520,10 +2519,10 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                           fontSize: 13,
                           borderColor: isSpecial ? undefined : accentColor,
                           color: isSpecial ? undefined : accentColor,
-                          opacity: cd.expired || !offer.membershipId ? 0.65 : 1,
+                          opacity: cd.expired ? 0.65 : 1,
                         }}
                         onClick={() => startMembershipFlow(offer.membershipId, "offer", offer.id, offer.specialPrice ?? null)}
-                        disabled={cd.expired || !offer.membershipId}
+                        disabled={cd.expired}
                       >
                         {cd.expired
                           ? t("انتهى العرض", "Ended")
@@ -3129,7 +3128,7 @@ type MembershipCheckoutPreview = {
 };
 
 type PendingMembershipFlow = {
-  membershipId: string;
+  membershipId?: string | null;
   source?: "offer" | "package";
   offerId?: string | null;
 };
@@ -3202,7 +3201,12 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
   const [membershipPayMethod] = useState<"paymob">("paymob");
   const [membershipDataReady, setMembershipDataReady] = useState(false);
   const [pendingPlan, setPendingPlan] = useState<PlanItem | null>(null);
-  const [pendingExternalSubscribe, setPendingExternalSubscribe] = useState<{ membershipId: string; offerId?: string | null; offerSpecialPrice?: number | null } | null>(null);
+  const [pendingExternalSubscribe, setPendingExternalSubscribe] = useState<{
+    membershipId?: string | null;
+    offerId?: string | null;
+    offerSpecialPrice?: number | null;
+  } | null>(null);
+  const [allOffers, setAllOffers] = useState<PublicOffer[]>([]);
   const hasPendingFlow = typeof window !== "undefined" && !!(
     window.sessionStorage.getItem(MEMBERSHIP_FLOW_STORAGE_KEY) ||
     window.sessionStorage.getItem("fitzone_trial_booking")
@@ -3231,6 +3235,9 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
           setHealthQuestions(
             (d.healthQuestions as PublicHealthQuestion[]).sort((a, b) => a.sortOrder - b.sortOrder),
           );
+        }
+        if (Array.isArray(d.offers)) {
+          setAllOffers(d.offers as PublicOffer[]);
         }
         if (Array.isArray(d.memberships) && d.memberships.length > 0) {
           allMemberships = d.memberships as PublicMembership[];
@@ -3267,6 +3274,13 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
                 } else {
                   window.sessionStorage.removeItem(MEMBERSHIP_FLOW_STORAGE_KEY);
                 }
+              } else if (parsed?.offerId) {
+                setPendingExternalSubscribe({
+                  membershipId: null,
+                  offerId: parsed.offerId,
+                  offerSpecialPrice: null,
+                });
+                window.sessionStorage.removeItem(MEMBERSHIP_FLOW_STORAGE_KEY);
               }
             } catch {
               window.sessionStorage.removeItem(MEMBERSHIP_FLOW_STORAGE_KEY);
@@ -3295,25 +3309,58 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
   useLayoutEffect(() => {
     if (!membershipDataReady || !pendingExternalSubscribe) return;
     const { membershipId, offerId, offerSpecialPrice } = pendingExternalSubscribe;
-    const mb = allMemberships.find((m) => m.id === membershipId);
-    if (mb) {
-      const idx = allMemberships.findIndex((m) => m.id === membershipId);
-      const planItem: PlanItem = {
-        ...mapMembershipToPlanItem(mb, PLAN_COLORS[idx % PLAN_COLORS.length]),
-        offerId: offerId ?? null,
-        priceAfter: offerSpecialPrice != null ? offerSpecialPrice : (mb.priceAfter ?? null),
-        isFeatured: false, // always run normal checkout flow when explicitly clicked
-      };
-      openSurvey(planItem);
+    if (membershipId) {
+      const mb = allMemberships.find((m) => m.id === membershipId);
+      if (mb) {
+        const idx = allMemberships.findIndex((m) => m.id === membershipId);
+        const planItem: PlanItem = {
+          ...mapMembershipToPlanItem(mb, PLAN_COLORS[idx % PLAN_COLORS.length]),
+          offerId: offerId ?? null,
+          priceAfter: offerSpecialPrice != null ? offerSpecialPrice : (mb.priceAfter ?? null),
+          isFeatured: false, // always run normal checkout flow when explicitly clicked
+        };
+        openSurvey(planItem);
+      }
+    } else if (offerId) {
+      const offer = allOffers.find((item) => item.id === offerId);
+      if (offer) {
+        const effectivePrice =
+          offerSpecialPrice != null
+            ? offerSpecialPrice
+            : (offer.specialPrice != null && offer.specialPrice > 0 ? offer.specialPrice : 0);
+        const virtualOfferPlan: PlanItem = {
+          id: null,
+          offerId: offer.id,
+          name: offer.title,
+          price: effectivePrice,
+          priceBefore: null,
+          priceAfter: effectivePrice,
+          image: offer.image ?? null,
+          sortOrder: 0,
+          durationDays: 30,
+          cycle: "custom",
+          sessionsCount: null,
+          features: [
+            offer.description || t("اشتراك عرض خاص", "Special offer subscription"),
+            offer.appliesTo ? `${t("ينطبق على", "Applies to")}: ${offer.appliesTo}` : t("صلاحية الاشتراك حسب العرض", "Subscription validity follows offer policy"),
+          ],
+          color: C.red,
+          popular: false,
+          goalIds: [],
+          subtitle: t("اشتراك في عرض", "Offer subscription"),
+          isFeatured: false,
+        };
+        openSurvey(virtualOfferPlan);
+      }
     }
     setPendingExternalSubscribe(null);
-  }, [membershipDataReady, pendingExternalSubscribe, allMemberships]);
+  }, [membershipDataReady, pendingExternalSubscribe, allMemberships, allOffers, t]);
 
   // Listen for subscription trigger from other pages
   useEffect(() => {
     const handler = (e: Event) => {
-      const detail = (e as CustomEvent<{ membershipId: string; offerId?: string | null; offerSpecialPrice?: number | null }>).detail;
-      if (!detail?.membershipId) return;
+      const detail = (e as CustomEvent<{ membershipId?: string | null; offerId?: string | null; offerSpecialPrice?: number | null }>).detail;
+      if (!detail?.membershipId && !detail?.offerId) return;
       setPendingExternalSubscribe(detail);
     };
     window.addEventListener(GLOBAL_SUBSCRIBE_EVENT, handler);
@@ -3698,12 +3745,12 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
   };
 
   const handleSubscribe = async (plan: PlanItem, scheduleIds: string[] = [], paymentOverride?: "paymob") => {
-    if (!plan.id) { navigate("register"); return; }
+    if (!plan.id && !plan.offerId) { navigate("register"); return; }
     if (!userSummary?.authenticated) {
       window.location.href = `/login?callbackUrl=${encodeURIComponent("/?page=memberships")}`;
       return;
     }
-    setSubscribing(plan.id);
+    setSubscribing(plan.id ?? plan.offerId ?? "offer-subscribe");
     setSubMsg(null);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 10000);
@@ -5101,7 +5148,6 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
   const [offers, setOffers] = useState(DEFAULT_OFFERS);
   const [packages, setPackages] = useState<PublicMembership[]>([]);
   const openSubscribeModal = (membershipId?: string | null, offerId?: string | null, offerSpecialPrice?: number | null) => {
-    if (!membershipId) return;
     if (typeof window !== "undefined") {
       const pendingFlow: PendingMembershipFlow = {
         membershipId,
@@ -5155,7 +5201,7 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
               const remaining = hasSeatLimit
                 ? Math.max(maxSubscribers - o.currentSubscribers, 0)
                 : null;
-              const offerUnavailable = countdown.expired || !o.membershipId || (remaining != null && remaining <= 0);
+              const offerUnavailable = countdown.expired || (remaining != null && remaining <= 0);
               return (
               <div
                 key={o.id}

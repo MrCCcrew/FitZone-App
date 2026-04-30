@@ -43,7 +43,7 @@ export async function GET() {
         referral: true,
         memberships: {
           where: { status: "active" },
-          include: { membership: true },
+          include: { membership: true, offer: { select: { title: true } } },
           orderBy: { startDate: "desc" },
           take: 1,
         },
@@ -96,7 +96,7 @@ export async function GET() {
       referralEarned: user.referral?.totalEarned ?? 0,
       membership: activeMembership
         ? {
-            name: activeMembership.membership.name,
+            name: activeMembership.offerTitle || activeMembership.offer?.title || activeMembership.membership.name,
             status: activeMembership.status,
             endDate: activeMembership.endDate.toISOString(),
           }

@@ -204,14 +204,49 @@ export async function POST(req: Request) {
         if (!offer || !offer.isActive || offer.expiresAt <= new Date()) {
           throw new Error("العرض الخاص غير متاح الآن.");
         }
-        if (offer.type !== "special" || !offer.membershipId) {
+        if (offer.type !== "special") {
           throw new Error("هذا العرض غير صالح للاشتراك المباشر.");
         }
-        if (offer.maxSubscribers != null && offer.currentSubscribers >= offer.maxSubscribers) {
+        if (offer.maxSubscribers != null && offer.maxSubscribers > 0 && offer.currentSubscribers >= offer.maxSubscribers) {
           throw new Error("اكتمل عدد المشتركين في هذا العرض.");
         }
 
-        resolvedMembershipId = offer.membershipId;
+        resolvedMembershipId = offer.membershipId ?? undefined;
+        if (!resolvedMembershipId) {
+          const syntheticMarker = `__offer_subscription__:${offer.id}`;
+          const existingSynthetic = await tx.membership.findFirst({
+            where: { subtitle: syntheticMarker, isActive: false },
+          });
+          if (existingSynthetic) {
+            resolvedMembershipId = existingSynthetic.id;
+          } else {
+            const syntheticMembership = await tx.membership.create({
+              data: {
+                name: offer.title,
+                nameEn: offer.titleEn ?? offer.title,
+                kind: "subscription",
+                price: offer.specialPrice ?? 0,
+                priceBefore: offer.specialPrice ?? 0,
+                priceAfter: offer.specialPrice ?? 0,
+                duration: 30,
+                cycle: "custom",
+                sessionsCount: null,
+                features: JSON.stringify([offer.description || "Special offer subscription"]),
+                featuresEn: JSON.stringify([offer.descriptionEn || "Special offer subscription"]),
+                maxClasses: -1,
+                walletBonus: 0,
+                isFeatured: false,
+                isActive: false,
+                subtitle: syntheticMarker,
+              },
+            });
+            resolvedMembershipId = syntheticMembership.id;
+            await tx.offer.update({
+              where: { id: offer.id },
+              data: { membershipId: syntheticMembership.id },
+            });
+          }
+        }
         offerTitle = offer.title;
         offerTitleEn = offer.titleEn ?? null;
         offerRecord = { id: offer.id, title: offer.title, titleEn: offer.titleEn ?? null, specialPrice: offer.specialPrice ?? null };
