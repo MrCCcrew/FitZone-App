@@ -2,36 +2,8 @@ import { createHmac, timingSafeEqual } from "crypto";
 import { db } from "./db";
 import { sendVerificationEmail } from "./email";
 
-type BaseUrlRequestLike = {
-  headers: {
-    get(name: string): string | null;
-  };
-  nextUrl?: {
-    origin?: string;
-  };
-};
-
-export function getAppBaseUrl(req?: BaseUrlRequestLike): string {
-  const fallback = (process.env.NEXTAUTH_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "https://fitzoneland.com").replace(/\/$/, "");
-
-  if (!req) return fallback;
-
-  const forwardedProto = req.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
-  const forwardedHost = req.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
-  if (forwardedProto && forwardedHost) {
-    return `${forwardedProto}://${forwardedHost}`.replace(/\/$/, "");
-  }
-
-  const host = req.headers.get("host")?.trim();
-  if (host) {
-    const protocol = forwardedProto || (host.includes("localhost") || host.includes("127.0.0.1") ? "http" : "https");
-    return `${protocol}://${host}`.replace(/\/$/, "");
-  }
-
-  const origin = req.nextUrl?.origin?.trim();
-  if (origin) return origin.replace(/\/$/, "");
-
-  return fallback;
+export function getAppBaseUrl(): string {
+  return (process.env.NEXTAUTH_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "https://fitzoneland.com").replace(/\/$/, "");
 }
 
 type PendingOAuthPayload = {

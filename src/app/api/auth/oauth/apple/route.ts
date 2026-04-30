@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { randomBytes } from "crypto";
 import { getAppBaseUrl } from "@/lib/oauth";
 
-export async function GET(req: Request) {
+export async function GET() {
   const clientId = process.env.APPLE_CLIENT_ID;
   if (!clientId) {
     return NextResponse.json({ error: "Apple OAuth غير مفعّل." }, { status: 503 });
@@ -11,7 +11,7 @@ export async function GET(req: Request) {
   const state = randomBytes(16).toString("hex");
   const params = new URLSearchParams({
     client_id: clientId,
-    redirect_uri: `${getAppBaseUrl({ headers: req.headers })}/api/auth/oauth/apple/callback`,
+    redirect_uri: `${getAppBaseUrl()}/api/auth/oauth/apple/callback`,
     response_type: "code id_token",
     scope: "name email",
     response_mode: "form_post",
