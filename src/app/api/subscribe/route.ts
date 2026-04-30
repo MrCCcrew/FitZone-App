@@ -156,7 +156,8 @@ export async function POST(req: Request) {
     }
   }
 
-  // Validate partner code or affiliate ref before transaction
+  // Partner member-benefit code is for external partner stores only.
+  // Gym subscription discount is applied only from affiliate links.
   let partnerCodeRecord: { id: string; partnerId: string; discountType: string; discountValue: number } | null = null;
   let affiliateLinkRecord: { id: string; partnerId: string } | null = null;
 
@@ -341,13 +342,16 @@ export async function POST(req: Request) {
           discountApplied = Math.round(discountApplied * 100) / 100;
         }
         paymentAmount = Math.max(0, paymentAmount - discountApplied);
-      } else if (partnerCodeRecord && paymentAmount) {
-        if (partnerCodeRecord.discountType === "fixed") {
-          discountApplied = Math.min(partnerCodeRecord.discountValue, paymentAmount);
-        } else {
-          discountApplied = Math.round((paymentAmount * partnerCodeRecord.discountValue) / 100 * 100) / 100;
+      } else if (affiliateLinkRecord && paymentAmount) {
+        const partnerDiscountConfig = await tx.partner.findUnique({
+          where: { id: affiliateLinkRecord.partnerId },
+          select: { referralDiscountRate: true },
+        });
+        const rate = partnerDiscountConfig?.referralDiscountRate ?? 0;
+        if (rate > 0) {
+          discountApplied = Math.round((paymentAmount * rate) / 100 * 100) / 100;
+          paymentAmount = Math.max(0, paymentAmount - discountApplied);
         }
-        paymentAmount = Math.max(0, paymentAmount - discountApplied);
       }
 
       // Deduct wallet balance
