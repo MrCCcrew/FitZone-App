@@ -23,6 +23,13 @@ export async function GET() {
     logoUrl: p.logoUrl,
     websiteUrl: p.websiteUrl ?? null,
     contactPhone: p.contactPhone ?? null,
-    code: p.codes[0] ?? null,
+    code:
+      p.memberBenefitCode && p.memberBenefitRate != null
+        ? {
+            code: p.memberBenefitCode,
+            discountType: "percentage",
+            discountValue: p.memberBenefitRate,
+          }
+        : (p.codes[0] ?? null),
   })));
 }

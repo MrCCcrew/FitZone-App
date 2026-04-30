@@ -25,6 +25,13 @@ const CATEGORY_LABELS: Record<string, string> = {
 
 const INPUT = "w-full rounded-xl border border-gray-700 bg-gray-800 px-4 py-2.5 text-sm text-white outline-none focus:border-pink-500";
 
+function generatePartnerBenefitCode() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let body = "";
+  for (let i = 0; i < 8; i += 1) body += alphabet[Math.floor(Math.random() * alphabet.length)];
+  return `FZ-${body}`;
+}
+
 type ViewMode = "admin" | "partner";
 type AdminTab = "partners" | "commissions" | "withdrawals";
 type WdFilter = "all" | "pending" | "approved" | "rejected";
@@ -1052,6 +1059,13 @@ export default function Partners({ viewMode = "admin" }: { viewMode?: ViewMode }
                 <input value={modal.memberBenefitCode ?? ""}
                   onChange={(e) => setModal({ ...modal, memberBenefitCode: e.target.value.toUpperCase() || null })}
                   className={INPUT} placeholder="مثال: FITZONE-PARTNER" dir="ltr" />
+                <button
+                  type="button"
+                  onClick={() => setModal({ ...modal, memberBenefitCode: generatePartnerBenefitCode() })}
+                  className="mt-2 rounded-xl border border-pink-500/40 bg-pink-600/20 px-3 py-2 text-xs font-black text-pink-200 hover:bg-pink-600/30"
+                >
+                  إنشاء كود تلقائي
+                </button>
               </label>
 
               <div className="block space-y-2 md:col-span-2">
