@@ -8641,7 +8641,7 @@ export default function App() {
     };
 
     if (p in accountTabs) {
-      if (summary?.authenticated && (summary.user?.role === "admin" || summary.user?.role === "staff")) {
+      if (summary?.authenticated && !summary.isAppUser) {
         window.location.href = "/admin";
         return;
       }
