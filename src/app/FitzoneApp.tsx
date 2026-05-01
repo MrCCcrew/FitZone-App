@@ -3173,7 +3173,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
   const plansRef = useRef<HTMLDivElement | null>(null);
   const featuredCardRef = useRef<HTMLDivElement | null>(null);
   const [subscribing, setSubscribing] = useState<string | null>(null);
-  const [subMsg, setSubMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [subMsg, setSubMsg] = useState<{ text: string; ok: boolean; action?: "back_to_schedule" | "back_to_plan" } | null>(null);
   const [pendingPaymentUrl, setPendingPaymentUrl] = useState<string | null>(null);
   const [verifyModal, setVerifyModal] = useState<{ plan: PlanItem; scheduleIds: string[] } | null>(null);
   const [checkoutPreview, setCheckoutPreview] = useState<MembershipCheckoutPreview | null>(null);
@@ -3795,7 +3795,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
         }, 1500);
         return;
       }
-      const data = await res.json() as { error?: string; needsVerification?: boolean; checkoutUrl?: string; transactionId?: string | null };
+      const data = await res.json() as { error?: string; action?: "back_to_schedule" | "back_to_plan"; needsVerification?: boolean; checkoutUrl?: string; transactionId?: string | null };
       if (!res.ok) {
         if (data.needsVerification) {
           setVerifyModal({ plan, scheduleIds });
@@ -3803,7 +3803,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
           // أرسل كود تفعيل تلقائياً
           fetch("/api/auth/resend-verification", { method: "POST" }).catch(() => {});
         } else {
-          setSubMsg({ text: data.error || "حدث خطأ", ok: false });
+          setSubMsg({ text: data.error || "حدث خطأ", ok: false, action: data.action });
         }
         return;
       }
@@ -4663,7 +4663,23 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
 
                       {subMsg && !subMsg.ok && (
                         <div style={{ marginBottom: 12, padding: "10px 14px", borderRadius: 8, background: "rgba(239,68,68,.15)", border: "1px solid rgba(239,68,68,.3)", color: "#fca5a5", fontWeight: 700, fontSize: 13, textAlign: "center" }}>
-                          {subMsg.text}
+                          <div style={{ marginBottom: subMsg.action ? 10 : 0 }}>{subMsg.text}</div>
+                          {subMsg.action === "back_to_schedule" && (
+                            <button
+                              onClick={() => { setSubMsg(null); setCheckoutPreview(null); setScheduleSelections([]); setDaysPerWeek(null); setScheduleStep("frequency"); setSchedulePlan(checkoutPreview?.plan ?? null); }}
+                              style={{ marginTop: 4, padding: "7px 18px", borderRadius: 8, border: "none", background: "#f43f5e", color: "#fff", fontWeight: 800, fontSize: 13, cursor: "pointer" }}
+                            >
+                              ← اختاري مواعيد مختلفة
+                            </button>
+                          )}
+                          {subMsg.action === "back_to_plan" && (
+                            <button
+                              onClick={() => { setSubMsg(null); setCheckoutPreview(null); setSchedulePlan(null); setDaysPerWeek(null); setScheduleStep("frequency"); }}
+                              style={{ marginTop: 4, padding: "7px 18px", borderRadius: 8, border: "none", background: "#f43f5e", color: "#fff", fontWeight: 800, fontSize: 13, cursor: "pointer" }}
+                            >
+                              ← اختاري باقة مختلفة
+                            </button>
+                          )}
                         </div>
                       )}
 
@@ -4846,7 +4862,23 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
         <div className="container">
           {subMsg && (
             <div style={{ marginBottom: 20, padding: "14px 20px", borderRadius: 8, background: subMsg.ok ? "#dcfce7" : "#fee2e2", color: subMsg.ok ? "#166534" : "#991b1b", fontWeight: 700, textAlign: "center", fontSize: 14 }}>
-              {subMsg.text}
+              <div style={{ marginBottom: subMsg.action ? 10 : 0 }}>{subMsg.text}</div>
+              {subMsg.action === "back_to_schedule" && (
+                <button
+                  onClick={() => { setSubMsg(null); setCheckoutPreview(null); setScheduleSelections([]); setDaysPerWeek(null); setScheduleStep("frequency"); setSchedulePlan(checkoutPreview?.plan ?? null); }}
+                  style={{ padding: "7px 18px", borderRadius: 8, border: "none", background: "#dc2626", color: "#fff", fontWeight: 800, fontSize: 13, cursor: "pointer" }}
+                >
+                  ← اختاري مواعيد مختلفة
+                </button>
+              )}
+              {subMsg.action === "back_to_plan" && (
+                <button
+                  onClick={() => { setSubMsg(null); setCheckoutPreview(null); setSchedulePlan(null); setDaysPerWeek(null); setScheduleStep("frequency"); }}
+                  style={{ padding: "7px 18px", borderRadius: 8, border: "none", background: "#dc2626", color: "#fff", fontWeight: 800, fontSize: 13, cursor: "pointer" }}
+                >
+                  ← اختاري باقة مختلفة
+                </button>
+              )}
             </div>
           )}
           {/* Discount Code Box */}
