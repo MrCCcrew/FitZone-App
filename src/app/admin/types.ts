@@ -283,6 +283,7 @@ export interface Product {
   sizeType?: "none" | "clothing" | "shoes";
   price: number;
   oldPrice?: number | null;
+  vatEnabled?: boolean;
   stock: number;
   sold: number;
   averageCost?: number;

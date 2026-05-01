@@ -367,6 +367,7 @@ model Product {
   disclaimer      String? @db.Text
   editorialReview String? @db.Text
   isActive    Boolean @default(true)
+  vatEnabled  Boolean @default(false)
 
   orderItems OrderItem[]
   reviews    ProductReview[]
@@ -421,6 +422,7 @@ model OrderItem {
   productId String
   quantity  Int
   price     Float
+  vatAmount Float   @default(0)
   size      String?
 
   order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)

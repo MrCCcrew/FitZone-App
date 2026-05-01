@@ -2101,11 +2101,12 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
         setTestimonials(d.testimonials.slice(0, 6));
       }
       if (Array.isArray(d.products) && d.products.length > 0) {
-        setProducts(d.products.slice(0, 3).map((p: { id?: string; name: string; price: number; oldPrice: number | null; category: string; categoryLabel?: string; sizeType?: "none" | "clothing" | "shoes"; images?: string[]; sizes?: string[]; colors?: string[] }, i: number) => ({
+        setProducts(d.products.slice(0, 3).map((p: { id?: string; name: string; price: number; oldPrice: number | null; vatEnabled?: boolean; category: string; categoryLabel?: string; sizeType?: "none" | "clothing" | "shoes"; images?: string[]; sizes?: string[]; colors?: string[] }, i: number) => ({
           id: p.id,
           name: p.name,
           price: p.price,
           oldPrice: p.oldPrice,
+          vatEnabled: p.vatEnabled ?? false,
           type: `product${(i % 3) + 1}`,
           cat: p.categoryLabel ?? catMap[p.category] ?? p.category,
           categoryKey: p.category,
@@ -2865,14 +2866,17 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                   </div>
                   <div style={{ padding: "14px 16px 16px", display: "flex", flexDirection: "column", flex: 1 }}>
                     <h3 style={{ fontWeight: 700, fontSize: 14, color: "#1a0c14", marginBottom: 8, lineHeight: 1.5, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{p.name}</h3>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, marginTop: "auto" }}>
-                      <span style={{ fontWeight: 900, color: C.redDark, fontSize: 20 }}>{p.price} <span style={{ fontSize: 12 }}>{lang === "en" ? "EGP" : "ج.م"}</span></span>
-                      {p.oldPrice && <span style={{ textDecoration: "line-through", color: C.gray, fontSize: 13 }}>{p.oldPrice}</span>}
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 14, marginTop: "auto" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ fontWeight: 900, color: C.redDark, fontSize: 20 }}>{p.vatEnabled ? applyVat(p.price) : p.price} <span style={{ fontSize: 12 }}>{lang === "en" ? "EGP" : "ج.م"}</span></span>
+                        {p.oldPrice && <span style={{ textDecoration: "line-through", color: C.gray, fontSize: 13 }}>{p.oldPrice}</span>}
+                      </div>
+                      {p.vatEnabled && <span style={{ fontSize: 10, color: "#10b981", background: "rgba(16,185,129,0.12)", borderRadius: 4, padding: "2px 6px", alignSelf: "flex-start" }}>{lang === "en" ? "Incl. 14% VAT" : "شامل ضريبة 14%"}</span>}
                     </div>
                     <button
                       style={{ width: "100%", padding: "10px", borderRadius: 10, border: "none", background: outOfStock ? "#e5e7eb" : `linear-gradient(135deg,${C.red},#c2185b)`, color: outOfStock ? "#9ca3af" : "#fff", fontWeight: 800, fontSize: 13, cursor: outOfStock ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontFamily: "inherit", boxShadow: outOfStock ? "none" : "0 4px 14px rgba(233,30,99,.3)" }}
                       disabled={outOfStock}
-                      onClick={e => { e.stopPropagation(); if (outOfStock) return; addToCart({ productId: p.id ?? p.name, name: p.name, price: p.price, qty: 1, size: p.sizeType === "none" ? null : p.sizes?.[0] ?? null, type: p.type }); navigate("cart"); }}
+                      onClick={e => { e.stopPropagation(); if (outOfStock) return; addToCart({ productId: p.id ?? p.name, name: p.name, price: p.vatEnabled ? applyVat(p.price) : p.price, qty: 1, size: p.sizeType === "none" ? null : p.sizes?.[0] ?? null, type: p.type }); navigate("cart"); }}
                     >
                       <I n="cart" s={14} c={outOfStock ? "#9ca3af" : "#fff"} /> {outOfStock ? t("نفذت الكمية", "Out of stock") : t("أضيفي للسلة", "Add to cart")}
                     </button>
@@ -5868,6 +5872,7 @@ type StoreProduct = {
   name: string;
   price: number;
   oldPrice: number | null;
+  vatEnabled?: boolean;
   type: string;
   cat: string;
   categoryKey?: string;
@@ -5931,12 +5936,18 @@ function localizeDiscountBadge(badge: string | null | undefined, lang: "ar" | "e
   return badge;
 }
 
+const VAT_RATE = 0.14;
+function applyVat(price: number) {
+  return Math.round(price * (1 + VAT_RATE) * 100) / 100;
+}
+
 const mapApiProductToStoreProduct = (
   p: {
     id?: string;
     name: string;
     price: number;
     oldPrice: number | null;
+    vatEnabled?: boolean;
     category: string;
     categoryLabel?: string;
     sizeType?: "none" | "clothing" | "shoes";
@@ -5959,6 +5970,7 @@ const mapApiProductToStoreProduct = (
   name: p.name,
   price: p.price,
   oldPrice: p.oldPrice,
+  vatEnabled: p.vatEnabled ?? false,
   description: p.description ?? "",
   images: Array.isArray(p.images) ? p.images.filter(Boolean) : [],
   sizes: Array.isArray(p.sizes) ? p.sizes.filter(Boolean) : [],
@@ -6075,14 +6087,17 @@ const ProductMiniCard = ({
         {product.sizeType !== "none" && product.sizes && product.sizes.length > 0 && (
           <div style={{ color: C.gray, fontSize: 11, marginBottom: 6 }}>{t("المقاسات", "Sizes")}: {product.sizes.slice(0, 4).join(" - ")}</div>
         )}
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, marginTop: "auto" }}>
-          <span style={{ fontWeight: 900, color: C.red, fontSize: 20 }}>{formatCurrency(product.price)} <span style={{ fontSize: 12, fontWeight: 600 }}>{lang === "en" ? "EGP" : "ج.م"}</span></span>
-          {product.oldPrice && <span style={{ textDecoration: "line-through", color: C.gray, fontSize: 13 }}>{formatCurrency(product.oldPrice)}</span>}
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 12, marginTop: "auto" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontWeight: 900, color: C.red, fontSize: 20 }}>{formatCurrency(product.vatEnabled ? applyVat(product.price) : product.price)} <span style={{ fontSize: 12, fontWeight: 600 }}>{lang === "en" ? "EGP" : "ج.م"}</span></span>
+            {product.oldPrice && <span style={{ textDecoration: "line-through", color: C.gray, fontSize: 13 }}>{formatCurrency(product.oldPrice)}</span>}
+          </div>
+          {product.vatEnabled && <span style={{ fontSize: 10, color: "#10b981", background: "rgba(16,185,129,0.12)", borderRadius: 4, padding: "2px 6px", alignSelf: "flex-start" }}>{lang === "en" ? "Incl. 14% VAT" : "شامل ضريبة 14%"}</span>}
         </div>
         <button
           style={{ width: "100%", padding: "10px", borderRadius: 10, border: "none", background: outOfStock ? "#e5e7eb" : `linear-gradient(135deg,${C.red},#c2185b)`, color: outOfStock ? "#9ca3af" : "#fff", fontWeight: 800, fontSize: 13, cursor: outOfStock ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontFamily: "inherit", boxShadow: outOfStock ? "none" : "0 4px 14px rgba(233,30,99,.3)" }}
           disabled={outOfStock}
-          onClick={e => { e.stopPropagation(); if (outOfStock) return; addToCart({ productId: product.id ?? product.name, name: product.name, price: product.price, qty: 1, size: product.sizeType === "none" ? null : product.sizes?.[0] ?? null, type: product.type }); navigate("cart"); }}
+          onClick={e => { e.stopPropagation(); if (outOfStock) return; addToCart({ productId: product.id ?? product.name, name: product.name, price: product.vatEnabled ? applyVat(product.price) : product.price, qty: 1, size: product.sizeType === "none" ? null : product.sizes?.[0] ?? null, type: product.type }); navigate("cart"); }}
         >
           <I n="cart" s={14} c={outOfStock ? "#9ca3af" : "#fff"} />
           {outOfStock ? t("نفذت الكمية", "Out of stock") : t("أضيفي للسلة", "Add to cart")}
@@ -6479,10 +6494,11 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
             <span className="tag" style={{ marginBottom: 12, display: "inline-flex" }}>{product.cat}</span>
             <h1 style={{ fontSize: viewportWidth() < 768 ? 22 : 30, fontWeight: 900, color: C.white, marginBottom: 12 }}>{product.name}</h1>
             <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginBottom: 18 }}>
-              <span style={{ fontSize: viewportWidth() < 768 ? 34 : 42, fontWeight: 900, color: C.red }}>{product.price}</span>
+              <span style={{ fontSize: viewportWidth() < 768 ? 34 : 42, fontWeight: 900, color: C.red }}>{formatCurrency(product.vatEnabled ? applyVat(product.price) : product.price)}</span>
               <span style={{ color: C.gray }}>{lang === "en" ? "EGP" : "ج.م"}</span>
               {product.oldPrice && <span style={{ textDecoration: "line-through", color: C.gray, fontSize: 16 }}>{formatCurrency(product.oldPrice)}</span>}
               {product.badge && <span className="badge">{localizeDiscountBadge(product.badge, lang)}</span>}
+              {product.vatEnabled && <span style={{ fontSize: 11, color: "#10b981", background: "rgba(16,185,129,0.12)", borderRadius: 6, padding: "3px 8px", fontWeight: 700 }}>{lang === "en" ? "Incl. 14% VAT" : "شامل ضريبة 14%"}</span>}
               {outOfStock && <span className="badge" style={{ background: "#2b0f1b", color: "#ffd166" }}>{t("نفذت الكمية", "Out of stock")}</span>}
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 24, flexWrap: "wrap" }}>
@@ -6534,7 +6550,7 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
                 disabled={outOfStock}
                 onClick={() => {
                   if (outOfStock) return;
-                  addToCart({ productId: product.id ?? product.name, name: product.name, price: product.price, qty, size: product.sizeType === "none" ? null : selectedSize, type: product.type });
+                  addToCart({ productId: product.id ?? product.name, name: product.name, price: product.vatEnabled ? applyVat(product.price) : product.price, qty, size: product.sizeType === "none" ? null : selectedSize, type: product.type });
                   navigate("cart");
                 }}
               >

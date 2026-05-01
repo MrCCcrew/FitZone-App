@@ -576,6 +576,7 @@ export async function GET(request: Request) {
           name: lang === "en" ? (product.nameEn || product.name) : product.name,
           price: product.price,
           oldPrice: product.oldPrice,
+          vatEnabled: product.vatEnabled,
           category: product.category,
           categoryLabel: lang === "en" ? (category?.labelEn || category?.label || product.category) : (category?.label || product.category),
           sizeType: normalizeSizeType(category?.sizeType),

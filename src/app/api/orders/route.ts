@@ -69,9 +69,11 @@ export async function POST(req: Request) {
       }
     }
 
+    const VAT_RATE = 0.14;
     const subtotal = items.reduce((sum, item) => {
       const product = products.find((entry) => entry.id === item.productId)!;
-      return sum + product.price * item.quantity;
+      const itemPrice = product.vatEnabled ? Math.round(product.price * (1 + VAT_RATE) * 100) / 100 : product.price;
+      return sum + itemPrice * item.quantity;
     }, 0);
 
     const paymentMethod = sanitizeMethod(body.paymentMethod);
@@ -155,10 +157,13 @@ export async function POST(req: Request) {
         items: {
           create: items.map((item) => {
             const product = products.find((entry) => entry.id === item.productId)!;
+            const itemPrice = product.vatEnabled ? Math.round(product.price * (1 + VAT_RATE) * 100) / 100 : product.price;
+            const vatAmount = product.vatEnabled ? Math.round(product.price * VAT_RATE * 100) / 100 : 0;
             return {
               productId: product.id,
               quantity: item.quantity,
-              price: product.price,
+              price: itemPrice,
+              vatAmount,
               size: item.size ?? null,
             };
           }),

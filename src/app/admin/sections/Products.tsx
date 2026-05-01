@@ -37,6 +37,7 @@ const EMPTY_PRODUCT: EditableProduct = {
   category: "supplement",
   price: 0,
   oldPrice: null,
+  vatEnabled: false,
   stock: 0,
   active: true,
   emoji: "🛍️",
@@ -289,7 +290,10 @@ export default function Products() {
                 </div>
                 <h4 className="font-black text-white">{product.name}</h4>
                 {product.nameEn ? <div className="mt-1 text-xs text-gray-500">{product.nameEn}</div> : null}
-                <div className="mt-1 text-sm text-yellow-400">{product.price.toLocaleString("ar-EG")} ج.م</div>
+                <div className="mt-1 flex items-center gap-2">
+                  <span className="text-sm text-yellow-400">{product.price.toLocaleString("ar-EG")} ج.م</span>
+                  {product.vatEnabled && <span className="rounded bg-emerald-900/60 px-1.5 py-0.5 text-[10px] font-bold text-emerald-400">+14% VAT</span>}
+                </div>
                 <div className="mt-2 text-xs text-gray-500">صور: {product.images?.length ?? 0} | مقاسات: {product.sizes?.length ?? 0}</div>
                 <div className="mt-3 flex gap-2">
                   <button onClick={() => { setUploadError(null); setProductModal({ ...product }); }} className="flex-1 rounded-lg bg-gray-800 px-3 py-2 text-xs text-white">تعديل</button>
@@ -345,6 +349,19 @@ export default function Products() {
               <FieldHint title="المخزون" hint="عدد القطع المتاحة الآن للبيع من هذا المنتج."><input type="number" value={productModal.stock} onChange={(e) => setProductModal({ ...productModal, stock: Number(e.target.value) })} placeholder="مثال: 25" className={INPUT} /></FieldHint>
               <FieldHint title="السعر الحالي" hint="السعر الذي سيدفعه العميل عند إضافة المنتج إلى السلة."><input type="number" value={productModal.price} onChange={(e) => setProductModal({ ...productModal, price: Number(e.target.value) })} placeholder="مثال: 850" className={INPUT} /></FieldHint>
               <FieldHint title="السعر قبل الخصم" hint="اختياري. اتركه فارغًا إذا لم يوجد خصم على المنتج."><input type="number" value={productModal.oldPrice ?? ""} onChange={(e) => setProductModal({ ...productModal, oldPrice: e.target.value ? Number(e.target.value) : null })} placeholder="مثال: 1200" className={INPUT} /></FieldHint>
+              <div className="col-span-2 flex items-center gap-4 rounded-xl border border-gray-700 bg-black/20 px-4 py-3">
+                <label className="flex cursor-pointer items-center gap-3">
+                  <div className={`relative h-6 w-11 rounded-full transition-colors ${productModal.vatEnabled ? "bg-emerald-500" : "bg-gray-600"}`} onClick={() => setProductModal({ ...productModal, vatEnabled: !productModal.vatEnabled })}>
+                    <div className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow transition-transform ${productModal.vatEnabled ? "translate-x-1 rtl:-translate-x-5" : "translate-x-6 rtl:-translate-x-1"}`} />
+                  </div>
+                  <span className="text-sm font-bold text-white">ضريبة القيمة المضافة (VAT 14%)</span>
+                </label>
+                {productModal.vatEnabled && (
+                  <span className="text-xs text-emerald-400">
+                    السعر للعميل: {productModal.price ? `${(productModal.price * 1.14).toFixed(2)} ج.م` : "—"} (شامل ضريبة 14%)
+                  </span>
+                )}
+              </div>
             </div>
             <FieldHint title="وصف المنتج" hint="اذكر الفائدة أو الخامة أو الاستخدام الأساسي حتى يفهم العميل المنتج بسرعة."><textarea value={productModal.description ?? ""} onChange={(e) => setProductModal({ ...productModal, description: e.target.value })} placeholder="مثال: حذاء رياضي خفيف مناسب للمشي والجري اليومي." rows={4} className={`${INPUT} resize-none`} /></FieldHint>
             <FieldHint title="وصف المنتج بالإنجليزية" hint="اختياري، لكنه سيظهر للعميل عند اختيار اللغة الإنجليزية.">
