@@ -243,7 +243,7 @@ export async function POST(req: Request) {
       let resolvedMembershipId = membershipId as string | undefined;
       let offerTitle: string | null = null;
       let offerTitleEn: string | null = null;
-      let offerRecord: { id: string; title: string; titleEn: string | null; specialPrice: number | null } | null = null;
+      let offerRecord: { id: string; title: string; titleEn: string | null; specialPrice: number | null; sessionsCount: number | null; durationDays: number | null } | null = null;
       let walletBonus = 0;
 
       if (offerId) {
@@ -275,9 +275,9 @@ export async function POST(req: Request) {
                 price: offer.specialPrice ?? 0,
                 priceBefore: offer.specialPrice ?? 0,
                 priceAfter: offer.specialPrice ?? 0,
-                duration: 30,
+                duration: offer.durationDays ?? 30,
                 cycle: "custom",
-                sessionsCount: null,
+                sessionsCount: offer.sessionsCount ?? null,
                 features: JSON.stringify([offer.description || "Special offer subscription"]),
                 featuresEn: JSON.stringify([offer.descriptionEn || "Special offer subscription"]),
                 maxClasses: -1,
@@ -296,7 +296,7 @@ export async function POST(req: Request) {
         }
         offerTitle = offer.title;
         offerTitleEn = offer.titleEn ?? null;
-        offerRecord = { id: offer.id, title: offer.title, titleEn: offer.titleEn ?? null, specialPrice: offer.specialPrice ?? null };
+        offerRecord = { id: offer.id, title: offer.title, titleEn: offer.titleEn ?? null, specialPrice: offer.specialPrice ?? null, sessionsCount: offer.sessionsCount ?? null, durationDays: offer.durationDays ?? null };
       }
 
       if (!resolvedMembershipId) {

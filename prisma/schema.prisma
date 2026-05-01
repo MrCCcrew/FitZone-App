@@ -611,6 +611,8 @@ model Offer {
   showOnHome              Boolean     @default(false)
   showMaxSubscribers      Boolean     @default(true)
   showCurrentSubscribers  Boolean     @default(true)
+  sessionsCount           Int?
+  durationDays            Int?
 
   membership Membership? @relation(fields: [membershipId], references: [id])
   userMemberships UserMembership[]
@@ -1051,9 +1053,14 @@ model PrivateSessionApplication {
   trainerNote  String?  @db.Text
   trainerPrice Float?
 
+  // Session terms (set at approval)
+  sessionsCount Int?
+  durationDays  Int?
+
   // Payment
   paymentTransactionId String?
   paidAt               DateTime?
+  expiresAt            DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

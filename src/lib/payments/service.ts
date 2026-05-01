@@ -750,6 +750,15 @@ export async function updatePaymentTransactionStatus(
         : null;
 
     if (privateSessionApplicationId) {
+      const appForExpiry = await db.privateSessionApplication.findUnique({
+        where: { id: privateSessionApplicationId },
+        select: { durationDays: true },
+      });
+      const paidAt = transaction.paidAt ?? new Date();
+      let expiresAt: Date | null = null;
+      if (appForExpiry?.durationDays) {
+        expiresAt = new Date(paidAt.getTime() + appForExpiry.durationDays * 24 * 60 * 60 * 1000);
+      }
       await db.privateSessionApplication.updateMany({
         where: {
           id: privateSessionApplicationId,
@@ -758,7 +767,8 @@ export async function updatePaymentTransactionStatus(
         data: {
           status: "paid",
           paymentTransactionId: transactionId,
-          paidAt: transaction.paidAt ?? new Date(),
+          paidAt,
+          ...(expiresAt ? { expiresAt } : {}),
         },
       });
       try {

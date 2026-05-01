@@ -50,6 +50,9 @@ export async function GET(req: Request) {
       status: app.status,
       trainerPrice: app.trainerPrice,
       trainerNote: app.trainerNote,
+      sessionsCount: app.sessionsCount ?? null,
+      durationDays: app.durationDays ?? null,
+      expiresAt: app.expiresAt?.toISOString() ?? null,
       paidAt: app.paidAt?.toISOString() ?? null,
       createdAt: app.createdAt.toISOString(),
       goals: app.goalsJson ? (JSON.parse(app.goalsJson) as string[]) : [],
@@ -71,6 +74,8 @@ export async function PATCH(req: Request) {
     action?: "approve" | "reject";
     trainerPrice?: number;
     trainerNote?: string;
+    sessionsCount?: number | null;
+    durationDays?: number | null;
   };
 
   if (!body.applicationId) return NextResponse.json({ error: "معرّف الطلب مطلوب." }, { status: 400 });
@@ -105,6 +110,10 @@ export async function PATCH(req: Request) {
       status: isApproval ? "approved" : "rejected",
       trainerPrice: isApproval ? body.trainerPrice : null,
       trainerNote: body.trainerNote?.trim() ?? null,
+      ...(isApproval && {
+        sessionsCount: body.sessionsCount != null ? Number(body.sessionsCount) : null,
+        durationDays: body.durationDays != null ? Number(body.durationDays) : null,
+      }),
     },
   });
 

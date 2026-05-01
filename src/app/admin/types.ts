@@ -136,6 +136,8 @@ export interface Offer {
   showOnHome?: boolean;
   showMaxSubscribers?: boolean;
   showCurrentSubscribers?: boolean;
+  sessionsCount?: number | null;
+  durationDays?: number | null;
 }
 
 export interface GymClass {

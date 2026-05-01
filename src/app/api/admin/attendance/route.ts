@@ -166,7 +166,13 @@ export async function POST(req: Request) {
       user: { select: { id: true, name: true, email: true, phone: true, isActive: true } },
       userMembership: { include: { membership: true } },
       privateSessionApplication: {
-        include: {
+        select: {
+          id: true,
+          type: true,
+          status: true,
+          paidAt: true,
+          expiresAt: true,
+          sessionsCount: true,
           trainer: { select: { id: true, name: true } },
           attendanceCheckIns: { select: { id: true } },
         },
@@ -324,11 +330,16 @@ export async function POST(req: Request) {
   }
 
   if (!isPrivateApplicationEligibleForAttendance(pass.privateSessionApplication)) {
+    const isExpired = pass.privateSessionApplication.expiresAt && new Date() > pass.privateSessionApplication.expiresAt;
+    if (isExpired) {
+      await db.attendancePass.update({ where: { id: pass.id }, data: { status: "expired" } }).catch(() => null);
+      return NextResponse.json({ error: "انتهت مدة الجلسات الخاصة." }, { status: 400 });
+    }
     return NextResponse.json({ error: "هذا الطلب غير مؤهل للحضور بعد." }, { status: 400 });
   }
 
   const usedCount = pass.privateSessionApplication.attendanceCheckIns.length;
-  const remainingBefore = getPrivateSessionsRemaining(usedCount);
+  const remainingBefore = getPrivateSessionsRemaining(usedCount, pass.privateSessionApplication.sessionsCount);
 
   if (remainingBefore <= 0) {
     await db.attendancePass.update({

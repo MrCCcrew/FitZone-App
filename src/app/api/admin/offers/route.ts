@@ -39,6 +39,8 @@ function mapOffer(
     showOnHome: boolean;
     showMaxSubscribers: boolean;
     showCurrentSubscribers: boolean;
+    sessionsCount?: number | null;
+    durationDays?: number | null;
     membership?: { name: string } | null;
   },
 ) {
@@ -63,6 +65,8 @@ function mapOffer(
     showOnHome: offer.showOnHome,
     showMaxSubscribers: offer.showMaxSubscribers,
     showCurrentSubscribers: offer.showCurrentSubscribers,
+    sessionsCount: offer.sessionsCount ?? null,
+    durationDays: offer.durationDays ?? null,
   };
 }
 
@@ -116,6 +120,8 @@ export async function POST(req: Request) {
         showOnHome: Boolean(body.showOnHome),
         showMaxSubscribers: body.showMaxSubscribers !== false,
         showCurrentSubscribers: body.showCurrentSubscribers !== false,
+        sessionsCount: body.sessionsCount != null && body.sessionsCount !== "" ? Number(body.sessionsCount) : null,
+        durationDays: body.durationDays != null && body.durationDays !== "" ? Number(body.durationDays) : null,
       },
       include: { membership: { select: { name: true } } },
     });
@@ -164,6 +170,12 @@ export async function PATCH(req: Request) {
     if (body.showOnHome !== undefined) data.showOnHome = Boolean(body.showOnHome);
     if (body.showMaxSubscribers !== undefined) data.showMaxSubscribers = Boolean(body.showMaxSubscribers);
     if (body.showCurrentSubscribers !== undefined) data.showCurrentSubscribers = Boolean(body.showCurrentSubscribers);
+    if (body.sessionsCount !== undefined) {
+      data.sessionsCount = body.sessionsCount != null && body.sessionsCount !== "" ? Number(body.sessionsCount) : null;
+    }
+    if (body.durationDays !== undefined) {
+      data.durationDays = body.durationDays != null && body.durationDays !== "" ? Number(body.durationDays) : null;
+    }
 
     const updated = await db.offer.update({
       where: { id },

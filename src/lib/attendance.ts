@@ -50,8 +50,10 @@ export function isMembershipEligibleForAttendance(membership: MembershipWithPlan
   return membership.status === "active" && !isOpenTimeMembership(membership.membership);
 }
 
-export function isPrivateApplicationEligibleForAttendance(application: Pick<PrivateSessionApplication, "status" | "paidAt">) {
-  return application.status === "paid" || !!application.paidAt;
+export function isPrivateApplicationEligibleForAttendance(application: Pick<PrivateSessionApplication, "status" | "paidAt" | "expiresAt">) {
+  if (application.status !== "paid" && !application.paidAt) return false;
+  if (application.expiresAt && new Date() > application.expiresAt) return false;
+  return true;
 }
 
 export function buildAttendancePayload(code: string) {
@@ -140,6 +142,7 @@ export async function ensurePrivateAttendancePass(privateSessionApplicationId: s
   });
 }
 
-export function getPrivateSessionsRemaining(checkInCount: number) {
-  return Math.max(0, PRIVATE_SESSION_TOTAL_SESSIONS - checkInCount);
+export function getPrivateSessionsRemaining(checkInCount: number, totalSessions?: number | null) {
+  const cap = totalSessions ?? PRIVATE_SESSION_TOTAL_SESSIONS;
+  return Math.max(0, cap - checkInCount);
 }
