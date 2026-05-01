@@ -228,6 +228,7 @@ export async function GET(request: Request) {
 
   const storeOrderRows = orders.map((order) => {
     const payment = order.paymentTransactions[0] ?? null;
+    const vatTotal = round2(order.items.reduce((sum, item) => sum + (item.vatAmount ?? 0), 0));
     return {
       id: order.id,
       date: order.createdAt.toISOString(),
@@ -238,11 +239,13 @@ export async function GET(request: Request) {
       subtotal: order.subtotal,
       shippingFee: order.shippingFee,
       total: order.total,
+      vatTotal,
       status: order.status,
     };
   });
 
   const storeGrossSales = round2(storeOrderRows.reduce((sum, order) => sum + order.total, 0));
+  const storeVatCollected = round2(storeOrderRows.reduce((sum, order) => sum + order.vatTotal, 0));
   const storeShippingRevenue = round2(storeOrderRows.reduce((sum, order) => sum + order.shippingFee, 0));
   const storeDiscounts = round2(orders.reduce((sum, order) => sum + order.discountTotal, 0));
   const storePurchaseInvoicesTotal = round2(receipts.reduce((sum, receipt) => sum + receipt.totalCost, 0));
@@ -434,6 +437,7 @@ export async function GET(request: Request) {
         grossSales: storeGrossSales,
         returnsTotal: storeReturnsTotal,
         salesRevenue: storeSalesRevenue,
+        vatCollected: storeVatCollected,
         shippingRevenue: storeShippingRevenue,
         discountsGranted: storeDiscounts,
         purchaseInvoicesTotal: storePurchaseInvoicesTotal,

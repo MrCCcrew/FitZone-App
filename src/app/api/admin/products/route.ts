@@ -56,6 +56,7 @@ export async function GET() {
         sizeType: (category?.sizeType ?? "none") as "none" | "clothing" | "shoes",
         price: product.price,
         oldPrice: product.oldPrice,
+        vatEnabled: product.vatEnabled,
         stock: product.stock,
         averageCost: product.averageCost,
         lastPurchaseCost: product.lastPurchaseCost,
@@ -86,7 +87,7 @@ export async function POST(req: Request) {
   await ensureDefaultProductCategories();
 
   const body = await req.json();
-  const { name, nameEn, category, price, oldPrice, stock, description, descriptionEn, images, sizes, colors, faqs, whoShouldBuy, importantInfo, disclaimer, editorialReview } = body;
+  const { name, nameEn, category, price, oldPrice, vatEnabled, stock, description, descriptionEn, images, sizes, colors, faqs, whoShouldBuy, importantInfo, disclaimer, editorialReview } = body;
 
   if (!name || price == null) {
     return NextResponse.json({ error: "بيانات المنتج ناقصة." }, { status: 400 });
@@ -103,6 +104,7 @@ export async function POST(req: Request) {
       category: categoryRecord?.key ?? "gear",
       price: Number(price),
       oldPrice: oldPrice ? Number(oldPrice) : null,
+      vatEnabled: Boolean(vatEnabled ?? false),
       stock: Number(stock ?? 0),
       description: description ? String(description) : null,
       descriptionEn: descriptionEn ? String(descriptionEn) : null,
@@ -130,6 +132,7 @@ export async function POST(req: Request) {
     sizeType: (categoryRecord?.sizeType ?? "none") as "none" | "clothing" | "shoes",
     price: product.price,
     oldPrice: product.oldPrice,
+    vatEnabled: product.vatEnabled,
     stock: product.stock,
     sold: 0,
     active: product.isActive,
@@ -164,6 +167,7 @@ export async function PATCH(req: Request) {
   if (rest.nameEn !== undefined) data.nameEn = rest.nameEn ? String(rest.nameEn) : null;
   if (rest.price !== undefined) data.price = Number(rest.price);
   if (rest.oldPrice !== undefined) data.oldPrice = rest.oldPrice ? Number(rest.oldPrice) : null;
+  if (rest.vatEnabled !== undefined) data.vatEnabled = Boolean(rest.vatEnabled);
   if (rest.stock !== undefined) data.stock = Number(rest.stock);
   if (rest.description !== undefined) data.description = rest.description ? String(rest.description) : null;
   if (rest.descriptionEn !== undefined) data.descriptionEn = rest.descriptionEn ? String(rest.descriptionEn) : null;

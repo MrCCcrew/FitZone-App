@@ -13,6 +13,7 @@ interface StoreSummary {
   grossSales: number;
   returnsTotal: number;
   salesRevenue: number;
+  vatCollected: number;
   shippingRevenue: number;
   discountsGranted: number;
   purchaseInvoicesTotal: number;
@@ -57,6 +58,7 @@ interface SaleRow {
   items: string;
   paymentMethod: string;
   total: number;
+  vatTotal: number;
   shippingFee: number;
   subtotal: number;
   status: string;
@@ -437,6 +439,11 @@ function StoreTab({ data, onRefresh, dateRange }: { data: AccountingData; onRefr
         <KpiCard label="صافي الإيرادات" value={`${fmt(s.salesRevenue)} ج`} color="text-emerald-400" />
         <KpiCard label="رسوم التوصيل" value={`${fmt(s.shippingRevenue)} ج`} />
       </div>
+      {s.vatCollected > 0 && (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <KpiCard label="ضريبة القيمة المضافة المحصلة (14%)" value={`${fmt(s.vatCollected)} ج`} color="text-blue-400" sub="مجموع VAT من المنتجات الخاضعة للضريبة" />
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <KpiCard label="تكلفة البضاعة (COGS)" value={`${fmt(s.cogs)} ج`} color="text-yellow-400" />
         <KpiCard label="إجمالي المشتريات" value={`${fmt(s.purchaseInvoicesTotal)} ج`} sub={`${s.purchaseInvoiceCount} فاتورة`} />
@@ -475,6 +482,7 @@ function StoreTab({ data, onRefresh, dateRange }: { data: AccountingData; onRefr
                   <th className="py-2 text-right font-bold">العميل</th>
                   <th className="py-2 text-right font-bold">المنتجات</th>
                   <th className="py-2 text-right font-bold">الدفع</th>
+                  <th className="py-2 text-right font-bold">ضريبة</th>
                   <th className="py-2 text-right font-bold">الإجمالي</th>
                   <th className="py-2 text-right font-bold">فاتورة</th>
                 </tr>
@@ -486,6 +494,7 @@ function StoreTab({ data, onRefresh, dateRange }: { data: AccountingData; onRefr
                     <td className="py-2 font-bold text-[#fff4f8]">{row.customerName}</td>
                     <td className="py-2 text-[#d7aabd] max-w-[160px] truncate">{row.items}</td>
                     <td className="py-2 text-[#d7aabd]">{row.paymentMethod}</td>
+                    <td className="py-2 text-blue-400">{row.vatTotal > 0 ? `${fmt(row.vatTotal)} ج` : "—"}</td>
                     <td className="py-2 font-bold text-emerald-400">{fmt(row.total)} ج</td>
                     <td className="py-2">
                       <button className={BTN_GHOST} onClick={() => printSalesInvoice({
