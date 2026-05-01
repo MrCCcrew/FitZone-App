@@ -1301,6 +1301,7 @@ type CartItem = {
   qty: number;
   size?: string | null;
   type: string;
+  vatEnabled?: boolean;
 };
 
 type PublicClass = {
@@ -2876,7 +2877,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                     <button
                       style={{ width: "100%", padding: "10px", borderRadius: 10, border: "none", background: outOfStock ? "#e5e7eb" : `linear-gradient(135deg,${C.red},#c2185b)`, color: outOfStock ? "#9ca3af" : "#fff", fontWeight: 800, fontSize: 13, cursor: outOfStock ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontFamily: "inherit", boxShadow: outOfStock ? "none" : "0 4px 14px rgba(233,30,99,.3)" }}
                       disabled={outOfStock}
-                      onClick={e => { e.stopPropagation(); if (outOfStock) return; addToCart({ productId: p.id ?? p.name, name: p.name, price: p.vatEnabled ? applyVat(p.price) : p.price, qty: 1, size: p.sizeType === "none" ? null : p.sizes?.[0] ?? null, type: p.type }); navigate("cart"); }}
+                      onClick={e => { e.stopPropagation(); if (outOfStock) return; addToCart({ productId: p.id ?? p.name, name: p.name, price: p.vatEnabled ? applyVat(p.price) : p.price, vatEnabled: p.vatEnabled ?? false, qty: 1, size: p.sizeType === "none" ? null : p.sizes?.[0] ?? null, type: p.type }); navigate("cart"); }}
                     >
                       <I n="cart" s={14} c={outOfStock ? "#9ca3af" : "#fff"} /> {outOfStock ? t("نفذت الكمية", "Out of stock") : t("أضيفي للسلة", "Add to cart")}
                     </button>
@@ -6097,7 +6098,7 @@ const ProductMiniCard = ({
         <button
           style={{ width: "100%", padding: "10px", borderRadius: 10, border: "none", background: outOfStock ? "#e5e7eb" : `linear-gradient(135deg,${C.red},#c2185b)`, color: outOfStock ? "#9ca3af" : "#fff", fontWeight: 800, fontSize: 13, cursor: outOfStock ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontFamily: "inherit", boxShadow: outOfStock ? "none" : "0 4px 14px rgba(233,30,99,.3)" }}
           disabled={outOfStock}
-          onClick={e => { e.stopPropagation(); if (outOfStock) return; addToCart({ productId: product.id ?? product.name, name: product.name, price: product.vatEnabled ? applyVat(product.price) : product.price, qty: 1, size: product.sizeType === "none" ? null : product.sizes?.[0] ?? null, type: product.type }); navigate("cart"); }}
+          onClick={e => { e.stopPropagation(); if (outOfStock) return; addToCart({ productId: product.id ?? product.name, name: product.name, price: product.vatEnabled ? applyVat(product.price) : product.price, vatEnabled: product.vatEnabled ?? false, qty: 1, size: product.sizeType === "none" ? null : product.sizes?.[0] ?? null, type: product.type }); navigate("cart"); }}
         >
           <I n="cart" s={14} c={outOfStock ? "#9ca3af" : "#fff"} />
           {outOfStock ? t("نفذت الكمية", "Out of stock") : t("أضيفي للسلة", "Add to cart")}
@@ -6550,7 +6551,7 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
                 disabled={outOfStock}
                 onClick={() => {
                   if (outOfStock) return;
-                  addToCart({ productId: product.id ?? product.name, name: product.name, price: product.vatEnabled ? applyVat(product.price) : product.price, qty, size: product.sizeType === "none" ? null : selectedSize, type: product.type });
+                  addToCart({ productId: product.id ?? product.name, name: product.name, price: product.vatEnabled ? applyVat(product.price) : product.price, vatEnabled: product.vatEnabled ?? false, qty, size: product.sizeType === "none" ? null : selectedSize, type: product.type });
                   navigate("cart");
                 }}
               >
@@ -6819,6 +6820,26 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
         if (d.paymentSettings && typeof d.paymentSettings === "object") {
           setPaymentSettings((prev) => ({ ...prev, ...(d.paymentSettings as PublicPaymentSettings) }));
         }
+        // Refresh cart prices in case vatEnabled changed after items were added
+        if (Array.isArray(d.products) && d.products.length > 0) {
+          const current = readCart();
+          if (current.length === 0) return;
+          let changed = false;
+          const updated = current.map((cartItem) => {
+            const apiProduct = (d.products as Array<{ id?: string; price: number; vatEnabled?: boolean }>).find((p) => p.id === cartItem.productId);
+            if (!apiProduct) return cartItem;
+            const correctPrice = apiProduct.vatEnabled ? applyVat(apiProduct.price) : apiProduct.price;
+            if (cartItem.vatEnabled !== (apiProduct.vatEnabled ?? false) || Math.abs(cartItem.price - correctPrice) > 0.01) {
+              changed = true;
+              return { ...cartItem, price: correctPrice, vatEnabled: apiProduct.vatEnabled ?? false };
+            }
+            return cartItem;
+          });
+          if (changed) {
+            writeCart(updated);
+            setCartItems(updated);
+          }
+        }
       })
       .catch(() => {});
   }, [lang]);
@@ -6853,6 +6874,11 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
   };
 
   const subtotal = cartItems.reduce((sum, item) => sum + item.price * item.qty, 0);
+  const vatTotal = Math.round(cartItems.reduce((sum, item) => {
+    if (!item.vatEnabled) return sum;
+    const basePrice = Math.round(item.price / (1 + VAT_RATE) * 100) / 100;
+    return sum + Math.round(basePrice * VAT_RATE * 100) / 100 * item.qty;
+  }, 0) * 100) / 100;
   const rewardsValue = Math.round((summary?.rewardPoints ?? 0) * pointValueEGP * 100) / 100;
   const walletBalance = summary?.walletBalance ?? 0;
   const selectedDelivery = deliveryOptions.find((option) => option.id === selectedDeliveryId) ?? null;
@@ -7303,6 +7329,7 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
             ))}
             <div className="divider" />
             <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 13 }}><span style={{ color: C.gray }}>{t("الإجمالي الفرعي", "Subtotal")}</span><span style={{ color: C.white }}>{formatCurrency(subtotal)}</span></div>
+            {vatTotal > 0 && <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 12 }}><span style={{ color: "#10b981" }}>{t("منها ضريبة القيمة المضافة 14%", "Incl. 14% VAT")}</span><span style={{ color: "#10b981" }}>{formatCurrency(vatTotal)}</span></div>}
             {rewardsDiscount > 0 && <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 13 }}><span style={{ color: C.gray }}>{t("خصم النقاط", "Points discount")}</span><span style={{ color: C.gold }}>- {formatCurrency(rewardsDiscount)}</span></div>}
             {walletDiscount > 0 && <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 13 }}><span style={{ color: C.gray }}>{t("خصم المحفظة", "Wallet discount")}</span><span style={{ color: "#4ade80" }}>- {formatCurrency(walletDiscount)}</span></div>}
             <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 13 }}>
