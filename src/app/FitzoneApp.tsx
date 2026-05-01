@@ -3271,6 +3271,14 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
                       matchedMembership.kind === "subscription" && colorIndex === 1,
                     ),
                   );
+                } else if (parsed?.offerId) {
+                  // membershipId points to a synthetic/inactive membership — treat as offer
+                  setPendingExternalSubscribe({
+                    membershipId: null,
+                    offerId: parsed.offerId,
+                    offerSpecialPrice: null,
+                  });
+                  window.sessionStorage.removeItem(MEMBERSHIP_FLOW_STORAGE_KEY);
                 } else {
                   window.sessionStorage.removeItem(MEMBERSHIP_FLOW_STORAGE_KEY);
                 }
@@ -3311,6 +3319,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
     // Wait for auth summary to be loaded; avoid false redirect to login while summary is still null.
     if (userSummary == null) return;
     const { membershipId, offerId, offerSpecialPrice } = pendingExternalSubscribe;
+    let resolved = false;
     if (membershipId) {
       const mb = allMemberships.find((m) => m.id === membershipId);
       if (mb) {
@@ -3322,8 +3331,11 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
           isFeatured: false, // always run normal checkout flow when explicitly clicked
         };
         openSurvey(planItem);
+        resolved = true;
       }
-    } else if (offerId) {
+      // If membership not found (e.g. synthetic/inactive), fall through to offer path below
+    }
+    if (!resolved && offerId) {
       const offer = allOffers.find((item) => item.id === offerId);
       if (offer) {
         const effectivePrice =
