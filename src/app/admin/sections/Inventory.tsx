@@ -210,37 +210,44 @@ export default function Inventory() {
 
           <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
             <div className="mb-3 text-sm font-bold text-[#fff4f8]">تفاصيل المشتريات</div>
-            <div className="flex flex-wrap gap-2">
-              <select
-                value={draftItem.productId}
-                onChange={(e) => setDraftItem({ ...draftItem, productId: e.target.value })}
-                className={INPUT}
-              >
-                <option value="">اختاري المنتج</option>
-                {products.map((product) => (
-                  <option key={product.id} value={product.id}>
-                    {product.name}
-                  </option>
-                ))}
-              </select>
-              <input
-                type="number"
-                min={1}
-                value={draftItem.quantity}
-                onChange={(e) => setDraftItem({ ...draftItem, quantity: Number(e.target.value) })}
-                className={`${INPUT} w-28`}
-                placeholder="الكمية"
-                dir="ltr"
-              />
-              <input
-                type="number"
-                min={0}
-                value={draftItem.unitCost}
-                onChange={(e) => setDraftItem({ ...draftItem, unitCost: Number(e.target.value) })}
-                className={`${INPUT} w-32`}
-                placeholder="تكلفة الوحدة"
-                dir="ltr"
-              />
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-[#d7aabd]">المنتج</label>
+                <select
+                  value={draftItem.productId}
+                  onChange={(e) => setDraftItem({ ...draftItem, productId: e.target.value })}
+                  className={INPUT}
+                >
+                  <option value="">اختاري المنتج</option>
+                  {products.map((product) => (
+                    <option key={product.id} value={product.id}>
+                      {product.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-[#d7aabd]">الكمية</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={draftItem.quantity}
+                  onChange={(e) => setDraftItem({ ...draftItem, quantity: Number(e.target.value) })}
+                  className={`${INPUT} w-28`}
+                  dir="ltr"
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-[#d7aabd]">سعر الوحدة (ج.م)</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={draftItem.unitCost}
+                  onChange={(e) => setDraftItem({ ...draftItem, unitCost: Number(e.target.value) })}
+                  className={`${INPUT} w-32`}
+                  dir="ltr"
+                />
+              </div>
               <button
                 type="button"
                 onClick={addItem}
