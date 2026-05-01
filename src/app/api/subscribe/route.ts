@@ -555,7 +555,7 @@ export async function POST(req: Request) {
       }
 
       const selectedScheduleIds = Array.isArray(scheduleIds)
-        ? scheduleIds.filter((id) => typeof id === "string" && id.trim() !== "")
+        ? [...new Set(scheduleIds.filter((id) => typeof id === "string" && id.trim() !== ""))]
         : [];
 
       let bookedSchedules: {
@@ -579,6 +579,14 @@ export async function POST(req: Request) {
         // within the plan duration. Example: 12 sessions / 30 days → need ≥ 3/week.
         if (plan.sessionsCount && plan.duration) {
           const minPerWeek = Math.ceil((plan.sessionsCount * 7) / plan.duration);
+          // If the minimum required frequency exceeds the weekly cap, the plan itself
+          // is incompatible with weekly scheduling — redirect the member to pick a different plan.
+          if (minPerWeek > weekCap) {
+            throw new SubscribeError(
+              `هذه الباقة تتطلب حضور ${minPerWeek} مواعيد في الأسبوع على الأقل لتغطية ${plan.sessionsCount} حصة خلال ${plan.duration} يوم، وهو أكثر من الحد الأقصى المسموح به. يرجى اختيار باقة مختلفة.`,
+              "back_to_plan",
+            );
+          }
           if (selectedScheduleIds.length < minPerWeek) {
             const theoreticalTotal = Math.floor(selectedScheduleIds.length * (plan.duration / 7));
             throw new SubscribeError(
@@ -645,9 +653,12 @@ export async function POST(req: Request) {
           patternSet.has(patternKey(s.classId, s.time, new Date(s.date).getDay())),
         );
 
-        // Cap total bookings at the plan's sessionsCount
-        const totalLimit = plan.sessionsCount ?? null;
-        const schedulesToBook = totalLimit != null ? repeated.slice(0, totalLimit) : repeated;
+        // Cap total bookings at sessionsCount; for open-time plans (null sessionsCount) derive
+        // a cap from the selected weekly frequency so spots aren't over-reserved.
+        const totalLimit =
+          plan.sessionsCount ??
+          Math.round(selectedScheduleIds.length * (plan.duration / 7));
+        const schedulesToBook = repeated.slice(0, totalLimit);
 
         // Find any already-existing bookings for this user in the range
         const bookingIds = schedulesToBook.map((s) => s.id);
