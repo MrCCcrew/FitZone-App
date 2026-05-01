@@ -53,6 +53,8 @@ const EMPTY_OFFER: Omit<Offer, "id" | "usedCount" | "currentSubscribers"> = {
   showOnHome: true,
   showMaxSubscribers: true,
   showCurrentSubscribers: true,
+  sessionsCount: null,
+  durationDays: null,
 };
 
 const CYCLE_LABELS: Record<NonNullable<Plan["cycle"]>, string> = {
@@ -1052,6 +1054,14 @@ export default function Subscriptions() {
                   </Field>
                   <Field label="الحد الأقصى للمشتركات">
                     <input type="number" value={offerModal.maxSubscribers ?? 0} onChange={(event) => setOfferModal({ ...offerModal, maxSubscribers: Number(event.target.value) })} className={INPUT} dir="ltr" />
+                  </Field>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="عدد الحصص" hint="اتركيه فارغًا إذا كان العرض بدون حصص محددة">
+                    <input type="number" value={offerModal.sessionsCount ?? ""} onChange={(event) => setOfferModal({ ...offerModal, sessionsCount: event.target.value ? Number(event.target.value) : null })} className={INPUT} dir="ltr" placeholder="مثال: 12" />
+                  </Field>
+                  <Field label="مدة العرض (بالأيام)" hint="اتركيه فارغًا لاستخدام القيمة الافتراضية (30 يوم)">
+                    <input type="number" value={offerModal.durationDays ?? ""} onChange={(event) => setOfferModal({ ...offerModal, durationDays: event.target.value ? Number(event.target.value) : null })} className={INPUT} dir="ltr" placeholder="مثال: 30" />
                   </Field>
                 </div>
                 <label className="flex items-center gap-3 rounded-2xl border border-[rgba(255,188,219,0.12)] bg-black/15 px-4 py-3 text-sm text-[#fff4f8]">

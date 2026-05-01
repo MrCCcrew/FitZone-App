@@ -10,6 +10,9 @@ type Application = {
   status: string;
   trainerPrice: number | null;
   trainerNote: string | null;
+  sessionsCount: number | null;
+  durationDays: number | null;
+  expiresAt: string | null;
   paidAt: string | null;
   createdAt: string;
   goals: string[];
@@ -224,6 +227,8 @@ export default function Trainers() {
   const [rejectModal, setRejectModal] = useState<Application | null>(null);
   const [approvePrice, setApprovePrice] = useState("");
   const [approveNote, setApproveNote] = useState("");
+  const [approveSessionsCount, setApproveSessionsCount] = useState("");
+  const [approveDurationDays, setApproveDurationDays] = useState("");
   const [rejectNote, setRejectNote] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
   const [expandedApp, setExpandedApp] = useState<string | null>(null);
@@ -306,9 +311,16 @@ export default function Trainers() {
       const res = await fetch("/api/admin/private-sessions", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ applicationId: approveModal.id, action: "approve", trainerPrice: Number(approvePrice), trainerNote: approveNote }),
+        body: JSON.stringify({
+          applicationId: approveModal.id,
+          action: "approve",
+          trainerPrice: Number(approvePrice),
+          trainerNote: approveNote,
+          sessionsCount: approveSessionsCount ? Number(approveSessionsCount) : null,
+          durationDays: approveDurationDays ? Number(approveDurationDays) : null,
+        }),
       });
-      if (res.ok) { setApproveModal(null); setApprovePrice(""); setApproveNote(""); void loadApplications(); }
+      if (res.ok) { setApproveModal(null); setApprovePrice(""); setApproveNote(""); setApproveSessionsCount(""); setApproveDurationDays(""); void loadApplications(); }
       else { const d = await res.json().catch(() => ({})); window.alert((d as { error?: string }).error ?? "حدث خطأ."); }
     } finally { setActionLoading(false); }
   };
@@ -575,6 +587,14 @@ export default function Trainers() {
                       <div className="text-xs text-gray-500">{new Date(app.createdAt).toLocaleDateString("ar-EG", { year:"numeric", month:"long", day:"numeric" })}</div>
                       {app.goals.length > 0 && <div className="text-xs text-gray-400">الأهداف: {app.goals.join("، ")}</div>}
                       {app.trainerPrice && <div className="text-xs font-bold text-emerald-300">السعر المحدد: {app.trainerPrice} ج.م</div>}
+                      {(app.sessionsCount || app.durationDays) && (
+                        <div className="text-xs text-blue-300">
+                          {app.sessionsCount ? `${app.sessionsCount} حصة` : ""}
+                          {app.sessionsCount && app.durationDays ? " · " : ""}
+                          {app.durationDays ? `${app.durationDays} يوم` : ""}
+                          {app.expiresAt ? ` · تنتهي ${new Date(app.expiresAt).toLocaleDateString("ar-EG")}` : ""}
+                        </div>
+                      )}
                       {app.trainerNote && <div className="text-xs text-gray-400">ملاحظة: {app.trainerNote}</div>}
                     </div>
                     <div className="flex flex-wrap gap-2">
@@ -1221,7 +1241,7 @@ export default function Trainers() {
 
       {/* ── Approve Modal ── */}
       {approveModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => setApproveModal(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => { setApproveModal(null); setApproveSessionsCount(""); setApproveDurationDays(""); }}>
           <div className="w-full max-w-md rounded-2xl border border-gray-700 bg-gray-900 p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-lg font-black text-white">✅ الموافقة على الطلب</h3>
             <div className="text-sm text-gray-400">
@@ -1230,6 +1250,16 @@ export default function Trainers() {
             <div>
               <label className="block text-xs font-bold text-gray-400 mb-1">السعر (ج.م) *</label>
               <input type="number" value={approvePrice} onChange={(e) => setApprovePrice(e.target.value)} className={INPUT} placeholder="مثال: 800" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-gray-400 mb-1">عدد الحصص (اختياري)</label>
+                <input type="number" value={approveSessionsCount} onChange={(e) => setApproveSessionsCount(e.target.value)} className={INPUT} placeholder="مثال: 12" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-400 mb-1">المدة بالأيام (اختياري)</label>
+                <input type="number" value={approveDurationDays} onChange={(e) => setApproveDurationDays(e.target.value)} className={INPUT} placeholder="مثال: 30" />
+              </div>
             </div>
             <div>
               <label className="block text-xs font-bold text-gray-400 mb-1">ملاحظة للعميل (اختياري)</label>
@@ -1240,7 +1270,7 @@ export default function Trainers() {
                 className="flex-1 rounded-xl bg-emerald-700 py-2.5 font-black text-white disabled:opacity-50">
                 {actionLoading ? "جارٍ..." : "تأكيد الموافقة"}
               </button>
-              <button onClick={() => setApproveModal(null)} className="rounded-xl bg-gray-800 px-4 py-2.5 font-bold text-gray-300">إلغاء</button>
+              <button onClick={() => { setApproveModal(null); setApproveSessionsCount(""); setApproveDurationDays(""); }} className="rounded-xl bg-gray-800 px-4 py-2.5 font-bold text-gray-300">إلغاء</button>
             </div>
           </div>
         </div>
