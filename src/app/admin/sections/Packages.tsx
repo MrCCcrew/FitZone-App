@@ -36,6 +36,7 @@ const EMPTY_PLAN: Omit<Plan, "id" | "membersCount"> = {
   priceAfter: null,
   duration: 30,
   cycle: "custom",
+  sessionsCount: null,
   features: [],
   featuresEn: [],
   active: true,
@@ -342,6 +343,7 @@ export default function Packages() {
                   <div>
                     <div className="font-black text-[#fff4f8]">{plan.name}</div>
                     <div className="mt-1 text-xs text-[#d7aabd]">مدة التدريب: {plan.duration} يوم</div>
+                    {plan.sessionsCount ? <div className="mt-0.5 text-xs text-[#d7aabd]">عدد الحصص: {plan.sessionsCount}</div> : null}
                   </div>
                   <button
                     onClick={() => void togglePlan(plan.id, plan.active)}
@@ -420,7 +422,7 @@ export default function Packages() {
               </div>
             </Field>
 
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-4 sm:grid-cols-3">
                 <Field label="السعر بعد الخصم">
                   <input
                     type="number"
@@ -438,6 +440,17 @@ export default function Packages() {
                     onChange={(event) => setPlanModal({ ...planModal, duration: Number(event.target.value) })}
                     className={INPUT}
                     dir="ltr"
+                  />
+                </Field>
+
+                <Field label="عدد الحصص الإجمالي" hint="اتركه فارغًا إذا كانت الباقة بدون حد للحصص">
+                  <input
+                    type="number"
+                    value={planModal.sessionsCount ?? ""}
+                    onChange={(event) => setPlanModal({ ...planModal, sessionsCount: event.target.value ? Number(event.target.value) : null })}
+                    className={INPUT}
+                    dir="ltr"
+                    placeholder="مثال: 12"
                   />
                 </Field>
               </div>
