@@ -49,9 +49,12 @@ export async function POST(req: Request) {
 
     // If payment succeeds immediately (e.g. wallet-only), mark as paid
     if (result.status === "paid") {
+      const paidAt = new Date();
+      const durationDays = (app as Record<string, unknown>).durationDays as number | null | undefined;
+      const expiresAt = durationDays ? new Date(paidAt.getTime() + durationDays * 24 * 60 * 60 * 1000) : null;
       await db.privateSessionApplication.update({
         where: { id: app.id },
-        data: { status: "paid", paidAt: new Date() },
+        data: { status: "paid", paidAt, ...(expiresAt ? { expiresAt } : {}) },
       });
       await ensurePrivateAttendancePass(app.id).catch(() => null);
       return NextResponse.json({ success: true });

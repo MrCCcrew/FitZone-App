@@ -50,7 +50,7 @@ export function isMembershipEligibleForAttendance(membership: MembershipWithPlan
   return membership.status === "active" && !isOpenTimeMembership(membership.membership);
 }
 
-export function isPrivateApplicationEligibleForAttendance(application: Pick<PrivateSessionApplication, "status" | "paidAt" | "expiresAt">) {
+export function isPrivateApplicationEligibleForAttendance(application: { status: string; paidAt: Date | null; expiresAt?: Date | null }) {
   if (application.status !== "paid" && !application.paidAt) return false;
   if (application.expiresAt && new Date() > application.expiresAt) return false;
   return true;

@@ -81,7 +81,7 @@ export async function GET() {
 
   for (const application of privateApplications) {
     if (!isPrivateApplicationEligibleForAttendance(application)) continue;
-    const remainingSessions = getPrivateSessionsRemaining(application.attendanceCheckIns.length);
+    const remainingSessions = getPrivateSessionsRemaining(application.attendanceCheckIns.length, application.sessionsCount);
     if (remainingSessions <= 0) continue;
 
     const pass = await ensurePrivateAttendancePass(application.id);
