@@ -735,6 +735,12 @@ export default function Partners({ viewMode = "admin" }: { viewMode?: ViewMode }
                         التعاقد: {p.contractStartDate ?? "—"} → {p.contractEndDate ?? "—"}
                       </div>
                     )}
+                    {p.websiteUrl && (
+                      <a href={p.websiteUrl} target="_blank" rel="noopener noreferrer"
+                        className="mt-1 inline-block text-xs text-pink-300 hover:underline">
+                        🔗 {p.websiteUrl}
+                      </a>
+                    )}
                   </div>
                 </div>
 
