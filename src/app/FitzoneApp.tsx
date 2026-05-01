@@ -2543,32 +2543,32 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
           <div className="container">
             <div style={{
               borderRadius: 20,
-              border: "2px solid rgba(212,175,55,0.45)",
-              background: "linear-gradient(135deg, rgba(30,10,18,0.97) 0%, rgba(50,20,10,0.97) 60%, rgba(35,15,5,0.97) 100%)",
-              boxShadow: "0 20px 60px rgba(212,175,55,0.12), 0 4px 20px rgba(0,0,0,0.4)",
+              border: "2px solid rgba(199,0,114,0.45)",
+              background: "linear-gradient(135deg, rgba(28,0,22,0.97) 0%, rgba(48,0,32,0.97) 60%, rgba(33,0,25,0.97) 100%)",
+              boxShadow: "0 20px 60px rgba(199,0,114,0.15), 0 4px 20px rgba(0,0,0,0.4)",
               overflow: "hidden",
               display: "flex",
               flexDirection: viewportWidth() < 768 ? "column" : "row",
               alignItems: "center",
               gap: 0,
             }}>
-              {/* Left: gold accent strip */}
-              <div style={{ width: viewportWidth() < 768 ? "100%" : 6, height: viewportWidth() < 768 ? 6 : "auto", background: "linear-gradient(135deg, #FFD700, #C9A227)", flexShrink: 0, alignSelf: "stretch" }} />
+              {/* Left: accent strip */}
+              <div style={{ width: viewportWidth() < 768 ? "100%" : 6, height: viewportWidth() < 768 ? 6 : "auto", background: "linear-gradient(135deg, #c70072, #8c004f)", flexShrink: 0, alignSelf: "stretch" }} />
               <div style={{ padding: viewportWidth() < 768 ? "28px 20px" : "32px 40px", flex: 1 }}>
                 <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "flex-start", gap: 20 }}>
                   <div>
-                    <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "rgba(212,175,55,0.15)", border: "1px solid rgba(212,175,55,0.35)", borderRadius: 8, padding: "4px 12px", marginBottom: 12 }}>
+                    <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "rgba(199,0,114,0.15)", border: "1px solid rgba(199,0,114,0.35)", borderRadius: 8, padding: "4px 12px", marginBottom: 12 }}>
                       <span style={{ fontSize: 14 }}>⭐</span>
-                      <span style={{ color: "#FFD700", fontSize: 12, fontWeight: 800 }}>اشتراك مميز</span>
+                      <span style={{ color: "#c70072", fontSize: 12, fontWeight: 800 }}>اشتراك مميز</span>
                     </div>
-                    <h3 style={{ fontSize: 28, fontWeight: 900, color: "#FFD700", marginBottom: 6 }}>{homeFeaturedPlan.name}</h3>
-                    <p style={{ color: "#c9b9c1", fontSize: 14, marginBottom: 14, lineHeight: 1.7 }}>
+                    <h3 style={{ fontSize: 28, fontWeight: 900, color: "#c70072", marginBottom: 6 }}>{homeFeaturedPlan.name}</h3>
+                    <p style={{ color: "#f0c0d8", fontSize: 14, marginBottom: 14, lineHeight: 1.7 }}>
                       {homeFeaturedPlan.subtitle ?? t(`احضري كلاسات بلا حدود خلال ${homeFeaturedPlan.durationDays} يومًا كاملة`, `Unlimited classes for ${homeFeaturedPlan.durationDays} full days`)}
                     </p>
                     <ul style={{ listStyle: "none", display: "flex", flexDirection: "column", gap: 6 }}>
                       {homeFeaturedPlan.features.map((feat, i) => (
-                        <li key={i} style={{ display: "flex", alignItems: "center", gap: 8, color: "#d4af6a", fontSize: 13 }}>
-                          <span style={{ color: "#FFD700", fontSize: 14 }}>✦</span>{feat}
+                        <li key={i} style={{ display: "flex", alignItems: "center", gap: 8, color: "#f0c0d8", fontSize: 13 }}>
+                          <span style={{ color: "#c70072", fontSize: 14 }}>✦</span>{feat}
                         </li>
                       ))}
                     </ul>
@@ -2576,17 +2576,17 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                   <div style={{ textAlign: "center", flexShrink: 0 }}>
                     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, marginBottom: 4 }}>
                       {homeFeaturedPlan.priceBefore != null && homeFeaturedPlan.priceBefore > homeFeaturedPlan.price && (
-                        <div style={{ fontSize: 16, color: "#a07060", textDecoration: "line-through" }}>{homeFeaturedPlan.priceBefore.toLocaleString("ar-EG")} {t("ج.م", "EGP")}</div>
+                        <div style={{ fontSize: 16, color: "#b06080", textDecoration: "line-through" }}>{homeFeaturedPlan.priceBefore.toLocaleString("ar-EG")} {t("ج.م", "EGP")}</div>
                       )}
-                      <div style={{ fontSize: 38, fontWeight: 900, color: "#FFD700" }}>{homeFeaturedPlan.price.toLocaleString("ar-EG")}</div>
+                      <div style={{ fontSize: 38, fontWeight: 900, color: "#c70072" }}>{homeFeaturedPlan.price.toLocaleString("ar-EG")}</div>
                     </div>
-                    <div style={{ color: "#c9b9c1", fontSize: 13, marginBottom: 16 }}>{t("جنيه", "EGP")} / {homeFeaturedPlan.durationDays} {t("يوم", "days")}</div>
+                    <div style={{ color: "#f0c0d8", fontSize: 13, marginBottom: 16 }}>{t("جنيه", "EGP")} / {homeFeaturedPlan.durationDays} {t("يوم", "days")}</div>
                     <button
                       onClick={() => {
                         navigate("memberships");
                         setTimeout(() => window.dispatchEvent(new CustomEvent("fitzone:goto-featured")), 120);
                       }}
-                      style={{ background: "linear-gradient(135deg, #FFD700, #C9A227)", color: "#000", border: "none", borderRadius: 12, padding: "14px 28px", fontWeight: 900, fontSize: 15, cursor: "pointer", fontFamily: "'Cairo', sans-serif", boxShadow: "0 6px 20px rgba(212,175,55,0.4)" }}
+                      style={{ background: "linear-gradient(135deg, #c70072, #8c004f)", color: "#fff", border: "none", borderRadius: 12, padding: "14px 28px", fontWeight: 900, fontSize: 15, cursor: "pointer", fontFamily: "'Cairo', sans-serif", boxShadow: "0 6px 20px rgba(199,0,114,0.4)" }}
                     >
                       {t("اشتركي الآن ⭐", "Subscribe Now ⭐")}
                     </button>
@@ -4947,46 +4947,46 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
               <div ref={featuredCardRef} style={{
                 marginBottom: 32,
                 borderRadius: 20,
-                border: "2px solid rgba(212,175,55,0.45)",
-                background: "linear-gradient(135deg, rgba(30,10,18,0.97) 0%, rgba(50,20,10,0.97) 60%, rgba(35,15,5,0.97) 100%)",
-                boxShadow: "0 20px 60px rgba(212,175,55,0.12), 0 4px 20px rgba(0,0,0,0.4)",
+                border: "2px solid rgba(199,0,114,0.45)",
+                background: "linear-gradient(135deg, rgba(28,0,22,0.97) 0%, rgba(48,0,32,0.97) 60%, rgba(33,0,25,0.97) 100%)",
+                boxShadow: "0 20px 60px rgba(199,0,114,0.15), 0 4px 20px rgba(0,0,0,0.4)",
                 overflow: "hidden",
                 position: "relative",
               }}>
-                {/* Gold shimmer top border */}
-                <div style={{ height: 3, background: "linear-gradient(90deg, transparent, #D4AF37, #FFD700, #D4AF37, transparent)" }} />
+                {/* Accent shimmer top border */}
+                <div style={{ height: 3, background: "linear-gradient(90deg, transparent, #c70072, #e0359a, #c70072, transparent)" }} />
 
                 <div style={{ padding: "24px 20px 20px", display: "flex", flexWrap: "wrap", gap: 24, alignItems: "flex-start" }}>
                   {/* Left: Info */}
                   <div style={{ flex: "1 1 240px" }}>
                     {/* Badge */}
-                    <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "rgba(212,175,55,0.15)", border: "1px solid rgba(212,175,55,0.4)", borderRadius: 999, padding: "4px 14px", marginBottom: 14 }}>
+                    <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "rgba(199,0,114,0.15)", border: "1px solid rgba(199,0,114,0.4)", borderRadius: 999, padding: "4px 14px", marginBottom: 14 }}>
                       <span style={{ fontSize: 14 }}>⭐</span>
-                      <span style={{ fontSize: 11, fontWeight: 800, color: "#D4AF37", letterSpacing: 1 }}>{t("اشتراك مميز", "PREMIUM")}</span>
+                      <span style={{ fontSize: 11, fontWeight: 800, color: "#c70072", letterSpacing: 1 }}>{t("اشتراك مميز", "PREMIUM")}</span>
                     </div>
 
-                    <h3 style={{ fontSize: 30, fontWeight: 900, color: "#FFD700", marginBottom: 6, lineHeight: 1.2 }}>{featuredPlan.name}</h3>
-                    <p style={{ color: "#c9b9a0", fontSize: 13, marginBottom: 18 }}>
+                    <h3 style={{ fontSize: 30, fontWeight: 900, color: "#c70072", marginBottom: 6, lineHeight: 1.2 }}>{featuredPlan.name}</h3>
+                    <p style={{ color: "#f0c0d8", fontSize: 13, marginBottom: 18 }}>
                       {featuredPlan.subtitle ?? t(`احضري كلاسات بلا حدود خلال ${featuredPlan.durationDays} يومًا كاملة`, `Unlimited classes for ${featuredPlan.durationDays} full days`)}
                     </p>
 
                     <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 4 }}>
-                      <span style={{ fontSize: 44, fontWeight: 900, color: "#E91E63", lineHeight: 1 }}>{featuredPrice.toLocaleString("ar-EG")}</span>
-                      <span style={{ color: "#a07060", fontSize: 13 }}>{t("ج.م", "EGP")}</span>
+                      <span style={{ fontSize: 44, fontWeight: 900, color: "#c70072", lineHeight: 1 }}>{featuredPrice.toLocaleString("ar-EG")}</span>
+                      <span style={{ color: "#f0c0d8", fontSize: 13 }}>{t("ج.م", "EGP")}</span>
                       {hasDiscount && (
-                        <span style={{ fontSize: 16, color: "#7a5a50", textDecoration: "line-through" }}>{featuredPriceBefore!.toLocaleString("ar-EG")}</span>
+                        <span style={{ fontSize: 16, color: "#b06080", textDecoration: "line-through" }}>{featuredPriceBefore!.toLocaleString("ar-EG")}</span>
                       )}
                     </div>
                     {hasDiscount && (
-                      <div style={{ marginBottom: 16, fontSize: 12, color: "#D4AF37", fontWeight: 700 }}>
+                      <div style={{ marginBottom: 16, fontSize: 12, color: "#c70072", fontWeight: 700 }}>
                         وفّري {Math.round((1 - featuredPrice / featuredPriceBefore!) * 100)}٪
                       </div>
                     )}
 
                     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                       {featuredPlan.features.map((feat, fi) => (
-                        <div key={fi} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#d4c4b0" }}>
-                          <span style={{ color: "#D4AF37", fontWeight: 900, fontSize: 15, flexShrink: 0 }}>✓</span>
+                        <div key={fi} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#f0c0d8" }}>
+                          <span style={{ color: "#c70072", fontWeight: 900, fontSize: 15, flexShrink: 0 }}>✓</span>
                           <span>{feat}</span>
                         </div>
                       ))}
@@ -4995,8 +4995,8 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
 
                   {/* Right: Date picker + CTA */}
                   <div style={{ flex: "1 1 220px", minWidth: 0, maxWidth: 340, margin: "0 auto", width: "100%", display: "flex", flexDirection: "column", gap: 12 }}>
-                    <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(212,175,55,0.25)", borderRadius: 10, padding: "16px 16px 14px" }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: "#D4AF37", marginBottom: 10 }}>
+                    <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(199,0,114,0.25)", borderRadius: 10, padding: "16px 16px 14px" }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: "#c70072", marginBottom: 10 }}>
                         📅 {t("اختاري تاريخ بداية الاشتراك", "Choose your start date")}
                       </div>
                       <input
@@ -5008,19 +5008,19 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
                         onKeyDown={(e) => e.preventDefault()}
                         style={{
                           width: "100%", boxSizing: "border-box",
-                          background: "rgba(255,255,255,0.06)", border: "1px solid rgba(212,175,55,0.35)",
-                          borderRadius: 10, padding: "6px 0px", color: "#fff4e8",
+                          background: "rgba(255,255,255,0.06)", border: "1px solid rgba(199,0,114,0.35)",
+                          borderRadius: 10, padding: "6px 0px", color: "#fff0f8",
                           fontSize: 14, fontFamily: "'Cairo', sans-serif", outline: "none",
                           colorScheme: "dark", textAlign: "center", direction: "ltr",
                         }}
                       />
                       {endDateStr && (
-                        <div style={{ marginTop: 10, padding: "8px 12px", background: "rgba(212,175,55,0.1)", borderRadius: 8, fontSize: 12, color: "#D4AF37", fontWeight: 700 }}>
+                        <div style={{ marginTop: 10, padding: "8px 12px", background: "rgba(199,0,114,0.1)", borderRadius: 8, fontSize: 12, color: "#c70072", fontWeight: 700 }}>
                           {t("تنتهي في:", "Ends:")} {endDateStr}
                         </div>
                       )}
                       {!featuredStartDate && (
-                        <div style={{ marginTop: 8, fontSize: 11, color: "#8a7060" }}>
+                        <div style={{ marginTop: 8, fontSize: 11, color: "#906070" }}>
                           {t("اختاري التاريخ ثم اضغطي اشتركي", "Pick a date, then subscribe")}
                         </div>
                       )}
@@ -5034,11 +5034,11 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
                       disabled={featuredPlan.id !== null && subscribing === featuredPlan.id}
                       style={{
                         width: "100%", padding: "13px 20px", borderRadius: 12, border: "none",
-                        background: featuredStartDate ? "linear-gradient(135deg, #D4AF37, #E91E63)" : "rgba(212,175,55,0.2)",
-                        color: featuredStartDate ? "#fff" : "#8a7060",
+                        background: featuredStartDate ? "linear-gradient(135deg, #c70072, #8c004f)" : "rgba(199,0,114,0.2)",
+                        color: featuredStartDate ? "#fff" : "#906070",
                         fontWeight: 900, fontSize: 15, cursor: featuredStartDate ? "pointer" : "not-allowed",
                         fontFamily: "'Cairo', sans-serif",
-                        boxShadow: featuredStartDate ? "0 8px 24px rgba(212,175,55,0.3)" : "none",
+                        boxShadow: featuredStartDate ? "0 8px 24px rgba(199,0,114,0.35)" : "none",
                         transition: "all .2s",
                       }}
                     >
