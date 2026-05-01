@@ -38,9 +38,14 @@ export async function GET() {
       orderBy: { createdAt: "desc" },
       take: 100,
     }),
-    // All subscriptions where partner's discount code was used
+    // All subscriptions where partner's legacy code or external member benefit code was attached
     db.userMembership.findMany({
-      where: { partnerCode: { partnerId: partner.id } },
+      where: {
+        OR: [
+          { partnerCode: { partnerId: partner.id } },
+          { partnerId: partner.id, partnerCodeId: null, affiliateLinkId: null },
+        ],
+      },
       include: {
         user: { select: { name: true } },
         membership: { select: { name: true } },
@@ -120,9 +125,9 @@ export async function GET() {
       customerName: um.user.name ?? "—",
       membershipName: um.membership.name,
       paymentAmount: um.paymentAmount,
-      codeName: um.partnerCode!.code,
-      discountType: um.partnerCode!.discountType,
-      discountValue: um.partnerCode!.discountValue,
+      codeName: um.partnerCode?.code ?? partner.memberBenefitCode ?? "-",
+      discountType: um.partnerCode?.discountType ?? "percentage",
+      discountValue: um.partnerCode?.discountValue ?? partner.memberBenefitRate ?? 0,
       createdAt: um.startDate.toISOString(),
     })),
     referralCustomers: referralCustomers.map((c) => ({

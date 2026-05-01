@@ -4,14 +4,6 @@ import { db } from "@/lib/db";
 export async function GET() {
   const partners = await db.partner.findMany({
     where: { isActive: true, showOnPublicPage: true },
-    include: {
-      codes: {
-        where: { isActive: true },
-        select: { code: true, discountType: true, discountValue: true },
-        take: 1,
-        orderBy: { createdAt: "desc" },
-      },
-    },
     orderBy: { createdAt: "asc" },
   });
 
@@ -30,6 +22,6 @@ export async function GET() {
             discountType: "percentage",
             discountValue: p.memberBenefitRate,
           }
-        : (p.codes[0] ?? null),
+        : null,
   })));
 }

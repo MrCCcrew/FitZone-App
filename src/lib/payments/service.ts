@@ -484,6 +484,35 @@ export async function updatePaymentTransactionStatus(
 
   if (status === "failed" || status === "cancelled" || status === "expired") {
     await restorePaymentTransactionAdjustments(transactionId);
+
+    // Cancel any confirmed bookings that were pre-created for this membership and restore spots
+    const failedMembershipId = existing?.membershipId;
+    if (failedMembershipId) {
+      await db.userMembership.updateMany({
+        where: { id: failedMembershipId, status: "pending_payment" },
+        data: { status: "expired" },
+      });
+      const pendingBookings = await db.booking.findMany({
+        where: { userMembershipId: failedMembershipId, status: "confirmed" },
+        select: { id: true, scheduleId: true },
+      });
+      if (pendingBookings.length > 0) {
+        await db.booking.updateMany({
+          where: { id: { in: pendingBookings.map((b) => b.id) } },
+          data: { status: "cancelled" },
+        });
+        const uniqueScheduleIds = [...new Set(pendingBookings.map((b) => b.scheduleId))];
+        await Promise.all(
+          uniqueScheduleIds.map((id) =>
+            db.schedule.update({
+              where: { id },
+              data: { availableSpots: { increment: 1 } },
+            }),
+          ),
+        );
+      }
+    }
+
     const restored = await db.paymentTransaction.findUnique({ where: { id: transactionId } });
     return mapPaymentTransaction(restored!);
   }
@@ -537,9 +566,9 @@ export async function updatePaymentTransactionStatus(
         try {
           const mem = await db.userMembership.findUnique({
             where: { id: existing.membershipId },
-            select: { partnerId: true, paymentAmount: true },
+            select: { partnerId: true, partnerCodeId: true, affiliateLinkId: true, paymentAmount: true },
           });
-          if (mem?.partnerId) {
+          if (mem?.partnerId && (mem.partnerCodeId || mem.affiliateLinkId)) {
             const partner = await db.partner.findUnique({
               where: { id: mem.partnerId },
               select: { commissionRate: true, commissionType: true },
