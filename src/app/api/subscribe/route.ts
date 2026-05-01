@@ -1,6 +1,15 @@
 import { NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/app-session";
 import { db } from "@/lib/db";
+
+type SubscribeAction = "back_to_schedule" | "back_to_plan";
+class SubscribeError extends Error {
+  action: SubscribeAction;
+  constructor(message: string, action: SubscribeAction) {
+    super(message);
+    this.action = action;
+  }
+}
 import { sendSubscriptionEmail } from "@/lib/email";
 import { generateMembershipInvoicePdf, type MembershipInvoiceDetails } from "@/lib/membership-invoice";
 import { buildAttendancePayload, ensureMembershipAttendancePass } from "@/lib/attendance";
@@ -557,9 +566,13 @@ export async function POST(req: Request) {
       }[] = [];
 
       if (selectedScheduleIds.length > 0) {
-        // Week-1 selection is capped at 12 (max slots visible in the weekly grid)
-        if (selectedScheduleIds.length > 12) {
-          throw new Error("لا يمكن اختيار أكثر من 12 موعداً في الأسبوع.");
+        // Week-1 selection: can't exceed either 12 (grid max) or the plan's total sessions
+        const weekCap = Math.min(12, plan.sessionsCount ?? 12);
+        if (selectedScheduleIds.length > weekCap) {
+          throw new SubscribeError(
+            `لا يمكن اختيار أكثر من ${weekCap} موعداً في الأسبوع لهذا الاشتراك.`,
+            "back_to_schedule",
+          );
         }
 
         // Validate that the chosen weekly frequency is enough to cover all sessions
@@ -568,11 +581,12 @@ export async function POST(req: Request) {
           const minPerWeek = Math.ceil((plan.sessionsCount * 7) / plan.duration);
           if (selectedScheduleIds.length < minPerWeek) {
             const theoreticalTotal = Math.floor(selectedScheduleIds.length * (plan.duration / 7));
-            throw new Error(
+            throw new SubscribeError(
               `عدد المواعيد المختارة (${selectedScheduleIds.length} في الأسبوع) لا يكفي لتغطية حصص اشتراكك. ` +
               `بهذا الاختيار ستحصلين على ${theoreticalTotal} حصة فقط خلال مدة الاشتراك (${plan.duration} يوم)، ` +
               `بينما اشتراكك يشمل ${plan.sessionsCount} حصة. ` +
               `يلزم اختيار ${minPerWeek} مواعيد في الأسبوع على الأقل.`,
+              "back_to_schedule",
             );
           }
         }
@@ -783,11 +797,12 @@ export async function POST(req: Request) {
     })
     .catch((error: unknown) => {
       const message = error instanceof Error ? error.message : "تعذر إتمام الاشتراك حاليًا.";
-      return { error: message };
+      const action = error instanceof SubscribeError ? error.action : undefined;
+      return { error: message, action };
     });
 
   if ("error" in result) {
-    return NextResponse.json({ error: result.error }, { status: 400 });
+    return NextResponse.json({ error: result.error, action: result.action }, { status: 400 });
   }
 
   // Unlock pending referral reward when subscription is immediately active
