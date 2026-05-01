@@ -46,6 +46,18 @@ export async function POST(req: Request) {
       orderBy: { startDate: "desc" },
     });
 
+    if (activeMembership && activeMembership.totalSessions !== null && activeMembership.totalSessions > 0) {
+      const usedBookings = await db.booking.count({
+        where: {
+          userMembershipId: activeMembership.id,
+          status: { in: ["confirmed", "attended"] },
+        },
+      });
+      if (usedBookings >= activeMembership.totalSessions) {
+        return NextResponse.json({ error: "لقد استنفدتِ جميع حصص اشتراكك." }, { status: 400 });
+      }
+    }
+
     const booking = await db.booking.create({
       data: {
         userId,
