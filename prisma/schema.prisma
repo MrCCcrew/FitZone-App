@@ -1057,6 +1057,10 @@ model PrivateSessionApplication {
   sessionsCount Int?
   durationDays  Int?
 
+  // Scheduling (set at approval; client selects one)
+  trainerSlots String?  @db.Text  // JSON: ["الأحد 10 صباحاً", "الاثنين 6 مساءً"]
+  selectedSlot String?            // Client-chosen slot text
+
   // Payment
   paymentTransactionId String?
   paidAt               DateTime?

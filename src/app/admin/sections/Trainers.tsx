@@ -229,6 +229,8 @@ export default function Trainers() {
   const [approveNote, setApproveNote] = useState("");
   const [approveSessionsCount, setApproveSessionsCount] = useState("");
   const [approveDurationDays, setApproveDurationDays] = useState("");
+  const [approveSlots, setApproveSlots] = useState<string[]>([]);
+  const [approveSlotInput, setApproveSlotInput] = useState("");
   const [rejectNote, setRejectNote] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
   const [expandedApp, setExpandedApp] = useState<string | null>(null);
@@ -318,9 +320,15 @@ export default function Trainers() {
           trainerNote: approveNote,
           sessionsCount: approveSessionsCount ? Number(approveSessionsCount) : null,
           durationDays: approveDurationDays ? Number(approveDurationDays) : null,
+          trainerSlots: approveSlots,
         }),
       });
-      if (res.ok) { setApproveModal(null); setApprovePrice(""); setApproveNote(""); setApproveSessionsCount(""); setApproveDurationDays(""); void loadApplications(); }
+      if (res.ok) {
+        setApproveModal(null); setApprovePrice(""); setApproveNote("");
+        setApproveSessionsCount(""); setApproveDurationDays("");
+        setApproveSlots([]); setApproveSlotInput("");
+        void loadApplications();
+      }
       else { const d = await res.json().catch(() => ({})); window.alert((d as { error?: string }).error ?? "حدث خطأ."); }
     } finally { setActionLoading(false); }
   };
@@ -1241,7 +1249,7 @@ export default function Trainers() {
 
       {/* ── Approve Modal ── */}
       {approveModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => { setApproveModal(null); setApproveSessionsCount(""); setApproveDurationDays(""); }}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => { setApproveModal(null); setApproveSessionsCount(""); setApproveDurationDays(""); setApproveSlots([]); setApproveSlotInput(""); }}>
           <div className="w-full max-w-md rounded-2xl border border-gray-700 bg-gray-900 p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-lg font-black text-white">✅ الموافقة على الطلب</h3>
             <div className="text-sm text-gray-400">
@@ -1262,6 +1270,43 @@ export default function Trainers() {
               </div>
             </div>
             <div>
+              <label className="block text-xs font-bold text-gray-400 mb-1">المواعيد المتاحة (اختياري)</label>
+              <p className="text-xs text-gray-500 mb-2">أضف المواعيد التي تناسبك — العميل سيختار منها قبل الدفع</p>
+              <div className="flex gap-2 mb-2">
+                <input
+                  value={approveSlotInput}
+                  onChange={(e) => setApproveSlotInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      const v = approveSlotInput.trim();
+                      if (v && !approveSlots.includes(v)) { setApproveSlots([...approveSlots, v]); setApproveSlotInput(""); }
+                    }
+                  }}
+                  className={INPUT}
+                  placeholder="مثال: الأحد الساعة 10 صباحاً"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const v = approveSlotInput.trim();
+                    if (v && !approveSlots.includes(v)) { setApproveSlots([...approveSlots, v]); setApproveSlotInput(""); }
+                  }}
+                  className="rounded-xl bg-gray-700 px-3 py-2 text-sm font-bold text-white hover:bg-gray-600"
+                >+</button>
+              </div>
+              {approveSlots.length > 0 && (
+                <div className="space-y-1">
+                  {approveSlots.map((slot) => (
+                    <div key={slot} className="flex items-center justify-between rounded-lg bg-gray-800 px-3 py-2 text-sm text-white">
+                      <span>{slot}</span>
+                      <button type="button" onClick={() => setApproveSlots(approveSlots.filter((s) => s !== slot))} className="text-gray-400 hover:text-red-400">×</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div>
               <label className="block text-xs font-bold text-gray-400 mb-1">ملاحظة للعميل (اختياري)</label>
               <textarea value={approveNote} onChange={(e) => setApproveNote(e.target.value)} rows={2} className={`${INPUT} resize-none`} placeholder="مثال: موعد البداية الأحد القادم..." />
             </div>
@@ -1270,7 +1315,7 @@ export default function Trainers() {
                 className="flex-1 rounded-xl bg-emerald-700 py-2.5 font-black text-white disabled:opacity-50">
                 {actionLoading ? "جارٍ..." : "تأكيد الموافقة"}
               </button>
-              <button onClick={() => { setApproveModal(null); setApproveSessionsCount(""); setApproveDurationDays(""); }} className="rounded-xl bg-gray-800 px-4 py-2.5 font-bold text-gray-300">إلغاء</button>
+              <button onClick={() => { setApproveModal(null); setApproveSessionsCount(""); setApproveDurationDays(""); setApproveSlots([]); setApproveSlotInput(""); }} className="rounded-xl bg-gray-800 px-4 py-2.5 font-bold text-gray-300">إلغاء</button>
             </div>
           </div>
         </div>

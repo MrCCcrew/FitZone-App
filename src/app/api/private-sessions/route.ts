@@ -69,3 +69,31 @@ export async function POST(req: Request) {
 
   return NextResponse.json({ success: true, application }, { status: 201 });
 }
+
+// PATCH: client selects a time slot
+export async function PATCH(req: Request) {
+  const user = await getCurrentAppUser();
+  if (!user?.id) return NextResponse.json({ error: "يجب تسجيل الدخول أولاً." }, { status: 401 });
+
+  const body = (await req.json()) as { applicationId?: string; selectedSlot?: string };
+  if (!body.applicationId || !body.selectedSlot?.trim())
+    return NextResponse.json({ error: "بيانات غير مكتملة." }, { status: 400 });
+
+  const app = await db.privateSessionApplication.findFirst({
+    where: { id: body.applicationId, userId: user.id, status: "approved" },
+  });
+  if (!app) return NextResponse.json({ error: "الطلب غير موجود أو غير مؤهل." }, { status: 404 });
+
+  const ext = app as typeof app & { trainerSlots?: string | null };
+  const slots: string[] = ext.trainerSlots ? (JSON.parse(ext.trainerSlots) as string[]) : [];
+
+  if (slots.length > 0 && !slots.includes(body.selectedSlot.trim()))
+    return NextResponse.json({ error: "الموعد المختار غير ضمن المواعيد المتاحة." }, { status: 400 });
+
+  await db.privateSessionApplication.update({
+    where: { id: body.applicationId },
+    data: { selectedSlot: body.selectedSlot.trim() } as Record<string, unknown>,
+  });
+
+  return NextResponse.json({ success: true });
+}
