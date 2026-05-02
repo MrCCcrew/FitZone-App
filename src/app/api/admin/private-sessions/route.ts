@@ -88,6 +88,7 @@ export async function PATCH(req: Request) {
     sessionsCount?: number | null;
     durationDays?: number | null;
     trainerSlots?: string[];
+    trainerId?: string;
   };
 
   if (!body.applicationId) return NextResponse.json({ error: "معرّف الطلب مطلوب." }, { status: 400 });
@@ -98,7 +99,7 @@ export async function PATCH(req: Request) {
     where: { id: body.applicationId },
     include: {
       user: { select: { id: true, name: true } },
-      trainer: { select: { name: true } },
+      trainer: { select: { id: true, name: true } },
     },
   });
   if (!app) return NextResponse.json({ error: "الطلب غير موجود." }, { status: 404 });
@@ -116,6 +117,14 @@ export async function PATCH(req: Request) {
   if (isApproval && (!body.trainerPrice || body.trainerPrice <= 0))
     return NextResponse.json({ error: "يجب تحديد السعر عند الموافقة." }, { status: 400 });
 
+  // Admin can reassign a different trainer before approving
+  let resolvedTrainerName = app.trainer.name;
+  if (body.trainerId && role !== "trainer" && body.trainerId !== app.trainerId) {
+    const newTrainer = await db.trainer.findUnique({ where: { id: body.trainerId }, select: { id: true, name: true } });
+    if (!newTrainer) return NextResponse.json({ error: "المدربة المحددة غير موجودة." }, { status: 404 });
+    resolvedTrainerName = newTrainer.name;
+  }
+
   const slots = Array.isArray(body.trainerSlots)
     ? body.trainerSlots.map((s) => String(s).trim()).filter(Boolean)
     : [];
@@ -130,6 +139,7 @@ export async function PATCH(req: Request) {
     updateData.durationDays = body.durationDays != null ? Number(body.durationDays) : null;
     updateData.trainerSlots = slots.length ? JSON.stringify(slots) : null;
     updateData.selectedSlot = null;
+    if (body.trainerId && role !== "trainer") updateData.trainerId = body.trainerId;
   }
 
   await db.privateSessionApplication.update({
@@ -144,8 +154,8 @@ export async function PATCH(req: Request) {
       userId: app.user.id,
       title: isApproval ? "تمت الموافقة على طلبك ✅" : "تم رفض طلبك",
       body: isApproval
-        ? `تمت الموافقة على طلب ${app.type === "mini_private" ? "الميني برايفيت" : "البرايفيت"} مع ${app.trainer.name}. السعر: ${body.trainerPrice} ج.م.${slotsNote}`
-        : `تم رفض طلب ${app.type === "mini_private" ? "الميني برايفيت" : "البرايفيت"} مع ${app.trainer.name}.${body.trainerNote ? ` ملاحظة: ${body.trainerNote}` : ""}`,
+        ? `تمت الموافقة على طلب ${app.type === "mini_private" ? "الميني برايفيت" : "البرايفيت"} مع ${resolvedTrainerName}. السعر: ${body.trainerPrice} ج.م.${slotsNote}`
+        : `تم رفض طلب ${app.type === "mini_private" ? "الميني برايفيت" : "البرايفيت"} مع ${resolvedTrainerName}.${body.trainerNote ? ` ملاحظة: ${body.trainerNote}` : ""}`,
       type: isApproval ? "success" : "info",
     },
   }).catch(() => {});

@@ -3567,6 +3567,8 @@ function MyPrivateSessionsTab() {
   const [selectingSlot, setSelectingSlot] = useState<string | null>(null);
   const [pendingSlot, setPendingSlot] = useState<Record<string, string>>({});
   const [savingSlot, setSavingSlot] = useState<string | null>(null);
+  const [cancellingApp, setCancellingApp] = useState<string | null>(null);
+  const [confirmCancelId, setConfirmCancelId] = useState<string | null>(null);
 
   const load = async () => {
 
@@ -3606,6 +3608,25 @@ function MyPrivateSessionsTab() {
     }
   };
 
+  const cancelApp = async (appId: string) => {
+    setCancellingApp(appId);
+    setConfirmCancelId(null);
+    try {
+      const res = await fetch("/api/private-sessions", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ applicationId: appId }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error((json as { error?: string }).error ?? t("حدث خطأ", "An error occurred"));
+      await load();
+    } catch (err) {
+      setPayMsg({ ok: false, text: err instanceof Error ? err.message : t("حدث خطأ", "An error occurred") });
+    } finally {
+      setCancellingApp(null);
+    }
+  };
+
   const confirmSlot = async (appId: string) => {
     const slot = pendingSlot[appId];
     if (!slot) return;
@@ -3639,6 +3660,7 @@ function MyPrivateSessionsTab() {
       pending: { label: t("في انتظار الموافقة", "Awaiting approval"), color: "bg-yellow-500/20 text-yellow-400" },
       rejected: { label: t("مرفوض", "Rejected"), color: "bg-red-500/20 text-red-400" },
       paid: { label: t("مدفوع ✓", "Paid ✓"), color: "bg-blue-500/20 text-blue-400" },
+      cancelled: { label: t("ملغي", "Cancelled"), color: "bg-gray-500/20 text-gray-400" },
     };
     return map[app.status] ?? { label: app.status, color: "bg-gray-500/20 text-gray-400" };
   };
@@ -3693,13 +3715,18 @@ function MyPrivateSessionsTab() {
                             <button disabled={!pendingSlot[app.id] || savingSlot === app.id} onClick={() => void confirmSlot(app.id)} className="flex-1 rounded-xl bg-gradient-to-r from-pink-600 to-pink-500 py-2.5 text-sm font-black text-white hover:opacity-90 disabled:opacity-50">
                               {savingSlot === app.id ? t("جاري الحفظ...", "Saving...") : t("تأكيد الموعد", "Confirm slot")}
                             </button>
-                            <button onClick={() => setSelectingSlot(null)} className="rounded-xl bg-gray-800 px-4 py-2.5 text-sm font-bold text-gray-300">{t("إلغاء", "Cancel")}</button>
+                            <button onClick={() => setSelectingSlot(null)} className="rounded-xl bg-gray-800 px-4 py-2.5 text-sm font-bold text-gray-300">{t("رجوع", "Back")}</button>
                           </div>
                         </div>
                       ) : (
-                        <button onClick={() => setSelectingSlot(app.id)} className="rounded-xl bg-orange-600 px-6 py-2.5 text-sm font-black text-white hover:bg-orange-500">
-                          {t("اختاري موعدك", "Choose your slot")}
-                        </button>
+                        <div className="flex flex-wrap gap-2">
+                          <button onClick={() => setSelectingSlot(app.id)} className="rounded-xl bg-orange-600 px-6 py-2.5 text-sm font-black text-white hover:bg-orange-500">
+                            {t("اختاري موعدك", "Choose your slot")}
+                          </button>
+                          <button onClick={() => setConfirmCancelId(app.id)} className="rounded-xl border border-red-500/40 bg-red-900/20 px-4 py-2.5 text-sm font-bold text-red-400 hover:bg-red-900/40">
+                            {t("المواعيد لا تناسبني — إلغاء", "Slots don't work — Cancel")}
+                          </button>
+                        </div>
                       )}
                     </div>
                   )}
@@ -3730,6 +3757,28 @@ function MyPrivateSessionsTab() {
                   {app.status === "paid" && app.paidAt && (
                     <p className="text-xs text-blue-400">{t("تم الدفع في", "Paid on")} {new Date(app.paidAt).toLocaleDateString(lang === "ar" ? "ar-EG" : "en-US")}</p>
                   )}
+
+                  {/* Cancel for pending applications */}
+                  {app.status === "pending" && (
+                    <button onClick={() => setConfirmCancelId(app.id)} className="text-xs text-gray-500 hover:text-red-400 underline underline-offset-2">
+                      {t("إلغاء الطلب", "Cancel application")}
+                    </button>
+                  )}
+
+                  {/* Cancel confirmation dialog */}
+                  {confirmCancelId === app.id && (
+                    <div className="rounded-xl border border-red-500/30 bg-red-900/20 px-4 py-3 space-y-3">
+                      <p className="text-sm font-bold text-red-300">{t("هل أنتِ متأكدة من إلغاء الطلب؟", "Are you sure you want to cancel this application?")}</p>
+                      <p className="text-xs text-gray-400">{t("لا يمكن التراجع عن هذا الإجراء.", "This action cannot be undone.")}</p>
+                      <div className="flex gap-2">
+                        <button disabled={cancellingApp === app.id} onClick={() => void cancelApp(app.id)} className="flex-1 rounded-xl bg-red-700 py-2 text-sm font-black text-white hover:bg-red-600 disabled:opacity-50">
+                          {cancellingApp === app.id ? t("جاري الإلغاء...", "Cancelling...") : t("نعم، إلغاء الطلب", "Yes, cancel")}
+                        </button>
+                        <button onClick={() => setConfirmCancelId(null)} className="rounded-xl bg-gray-800 px-4 py-2 text-sm font-bold text-gray-300">{t("لا، رجوع", "No, go back")}</button>
+                      </div>
+                    </div>
+                  )}
+
                   <p className="text-xs text-gray-500">{t("تاريخ الطلب:", "Applied:")} {new Date(app.createdAt).toLocaleDateString(lang === "ar" ? "ar-EG" : "en-US")}</p>
                 </div>
               );
