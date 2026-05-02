@@ -220,6 +220,7 @@ export default function Trainers() {
   const [activeTab, setActiveTab] = useState<"trainers" | "applications" | "discounts">("trainers");
 
   // Applications
+  const [userRole, setUserRole] = useState<string | null>(null);
   const [applications, setApplications] = useState<Application[]>([]);
   const [appStatusFilter, setAppStatusFilter] = useState("all");
   const [appLoading, setAppLoading] = useState(false);
@@ -231,6 +232,7 @@ export default function Trainers() {
   const [approveDurationDays, setApproveDurationDays] = useState("");
   const [approveSlots, setApproveSlots] = useState<string[]>([]);
   const [approveSlotInput, setApproveSlotInput] = useState("");
+  const [approveTrainerId, setApproveTrainerId] = useState("");
   const [rejectNote, setRejectNote] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
   const [expandedApp, setExpandedApp] = useState<string | null>(null);
@@ -251,12 +253,14 @@ export default function Trainers() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [trainersResponse, employeesResponse] = await Promise.all([
+      const [trainersResponse, employeesResponse, sessionResponse] = await Promise.all([
         fetch("/api/admin/trainers", { cache: "no-store" }),
         fetch("/api/admin/settings/staff", { cache: "no-store" }),
+        fetch("/api/admin/session", { cache: "no-store" }),
       ]);
       const trainersPayload = await trainersResponse.json().catch(() => []);
       const employeesPayload = await employeesResponse.json().catch(() => ({ employees: [] }));
+      const sessionPayload = await sessionResponse.json().catch(() => ({}));
       setTrainers(Array.isArray(trainersPayload) ? trainersPayload : []);
       setTrainerAccounts(
         Array.isArray(employeesPayload.employees)
@@ -266,6 +270,7 @@ export default function Trainers() {
             )
           : [],
       );
+      if (sessionPayload?.user?.role) setUserRole(sessionPayload.user.role as string);
     } finally {
       setLoading(false);
     }
@@ -321,12 +326,13 @@ export default function Trainers() {
           sessionsCount: approveSessionsCount ? Number(approveSessionsCount) : null,
           durationDays: approveDurationDays ? Number(approveDurationDays) : null,
           trainerSlots: approveSlots,
+          ...(approveTrainerId && approveTrainerId !== approveModal.trainer.id ? { trainerId: approveTrainerId } : {}),
         }),
       });
       if (res.ok) {
         setApproveModal(null); setApprovePrice(""); setApproveNote("");
         setApproveSessionsCount(""); setApproveDurationDays("");
-        setApproveSlots([]); setApproveSlotInput("");
+        setApproveSlots([]); setApproveSlotInput(""); setApproveTrainerId("");
         void loadApplications();
       }
       else { const d = await res.json().catch(() => ({})); window.alert((d as { error?: string }).error ?? "حدث خطأ."); }
@@ -612,7 +618,7 @@ export default function Trainers() {
                       </button>
                       {app.status === "pending" && (
                         <>
-                          <button onClick={() => { setApproveModal(app); setApprovePrice(""); setApproveNote(""); }}
+                          <button onClick={() => { setApproveModal(app); setApprovePrice(""); setApproveNote(""); setApproveTrainerId(app.trainer.id); setApproveSlots([]); setApproveSlotInput(""); setApproveSessionsCount(""); setApproveDurationDays(""); }}
                             className="rounded-lg bg-emerald-700 px-3 py-1.5 text-xs font-bold text-white">✓ موافقة</button>
                           <button onClick={() => { setRejectModal(app); setRejectNote(""); }}
                             className="rounded-lg bg-red-900/60 px-3 py-1.5 text-xs font-bold text-red-300">✕ رفض</button>
@@ -1248,78 +1254,113 @@ export default function Trainers() {
       </> }
 
       {/* ── Approve Modal ── */}
-      {approveModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => { setApproveModal(null); setApproveSessionsCount(""); setApproveDurationDays(""); setApproveSlots([]); setApproveSlotInput(""); }}>
-          <div className="w-full max-w-md rounded-2xl border border-gray-700 bg-gray-900 p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-black text-white">✅ الموافقة على الطلب</h3>
-            <div className="text-sm text-gray-400">
-              العميل: <span className="text-white">{approveModal.user.name}</span> — {approveModal.type === "private" ? "برايفيت" : "ميني برايفيت"} مع <span className="text-pink-300">{approveModal.trainer.name}</span>
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-gray-400 mb-1">السعر (ج.م) *</label>
-              <input type="number" value={approvePrice} onChange={(e) => setApprovePrice(e.target.value)} className={INPUT} placeholder="مثال: 800" />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-bold text-gray-400 mb-1">عدد الحصص (اختياري)</label>
-                <input type="number" value={approveSessionsCount} onChange={(e) => setApproveSessionsCount(e.target.value)} className={INPUT} placeholder="مثال: 12" />
+      {approveModal && (() => {
+        const closeApproveModal = () => { setApproveModal(null); setApprovePrice(""); setApproveNote(""); setApproveSessionsCount(""); setApproveDurationDays(""); setApproveSlots([]); setApproveSlotInput(""); setApproveTrainerId(""); };
+        const isAdmin = userRole !== "trainer";
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={closeApproveModal}>
+            <div className="w-full max-w-md rounded-2xl border border-gray-700 bg-gray-900 p-6 space-y-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+              <h3 className="text-lg font-black text-white">✅ الموافقة على الطلب</h3>
+              <div className="text-sm text-gray-400">
+                العميل: <span className="text-white">{approveModal.user.name}</span> — {approveModal.type === "private" ? "برايفيت" : "ميني برايفيت"}
               </div>
-              <div>
-                <label className="block text-xs font-bold text-gray-400 mb-1">المدة بالأيام (اختياري)</label>
-                <input type="number" value={approveDurationDays} onChange={(e) => setApproveDurationDays(e.target.value)} className={INPUT} placeholder="مثال: 30" />
-              </div>
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-gray-400 mb-1">المواعيد المتاحة (اختياري)</label>
-              <p className="text-xs text-gray-500 mb-2">أضف المواعيد التي تناسبك — العميل سيختار منها قبل الدفع</p>
-              <div className="flex gap-2 mb-2">
-                <input
-                  value={approveSlotInput}
-                  onChange={(e) => setApproveSlotInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      const v = approveSlotInput.trim();
-                      if (v && !approveSlots.includes(v)) { setApproveSlots([...approveSlots, v]); setApproveSlotInput(""); }
-                    }
-                  }}
-                  className={INPUT}
-                  placeholder="مثال: الأحد الساعة 10 صباحاً"
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    const v = approveSlotInput.trim();
-                    if (v && !approveSlots.includes(v)) { setApproveSlots([...approveSlots, v]); setApproveSlotInput(""); }
-                  }}
-                  className="rounded-xl bg-gray-700 px-3 py-2 text-sm font-bold text-white hover:bg-gray-600"
-                >+</button>
-              </div>
-              {approveSlots.length > 0 && (
-                <div className="space-y-1">
-                  {approveSlots.map((slot) => (
-                    <div key={slot} className="flex items-center justify-between rounded-lg bg-gray-800 px-3 py-2 text-sm text-white">
-                      <span>{slot}</span>
-                      <button type="button" onClick={() => setApproveSlots(approveSlots.filter((s) => s !== slot))} className="text-gray-400 hover:text-red-400">×</button>
-                    </div>
-                  ))}
+
+              {/* Admin: trainer selector */}
+              {isAdmin && (
+                <div>
+                  <label className="block text-xs font-bold text-gray-400 mb-1">المدربة المسؤولة *</label>
+                  <select
+                    value={approveTrainerId}
+                    onChange={(e) => setApproveTrainerId(e.target.value)}
+                    className={INPUT}
+                  >
+                    {trainers.map((tr) => (
+                      <option key={tr.id} value={tr.id}>{tr.name}</option>
+                    ))}
+                  </select>
+                  {approveTrainerId && approveTrainerId !== approveModal.trainer.id && (
+                    <p className="text-xs text-amber-400 mt-1">سيتم تغيير المدربة من "{approveModal.trainer.name}" إلى المدربة المختارة</p>
+                  )}
                 </div>
               )}
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-gray-400 mb-1">ملاحظة للعميل (اختياري)</label>
-              <textarea value={approveNote} onChange={(e) => setApproveNote(e.target.value)} rows={2} className={`${INPUT} resize-none`} placeholder="مثال: موعد البداية الأحد القادم..." />
-            </div>
-            <div className="flex gap-2">
-              <button onClick={() => void handleApprove()} disabled={actionLoading || !approvePrice}
-                className="flex-1 rounded-xl bg-emerald-700 py-2.5 font-black text-white disabled:opacity-50">
-                {actionLoading ? "جارٍ..." : "تأكيد الموافقة"}
-              </button>
-              <button onClick={() => { setApproveModal(null); setApproveSessionsCount(""); setApproveDurationDays(""); setApproveSlots([]); setApproveSlotInput(""); }} className="rounded-xl bg-gray-800 px-4 py-2.5 font-bold text-gray-300">إلغاء</button>
+
+              {!isAdmin && (
+                <div className="text-sm text-gray-400">مع <span className="text-pink-300">{approveModal.trainer.name}</span></div>
+              )}
+
+              <div>
+                <label className="block text-xs font-bold text-gray-400 mb-1">السعر (ج.م) *</label>
+                <input type="number" value={approvePrice} onChange={(e) => setApprovePrice(e.target.value)} className={INPUT} placeholder="مثال: 800" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-gray-400 mb-1">عدد الحصص (اختياري)</label>
+                  <input type="number" value={approveSessionsCount} onChange={(e) => setApproveSessionsCount(e.target.value)} className={INPUT} placeholder="مثال: 12" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-400 mb-1">المدة بالأيام (اختياري)</label>
+                  <input type="number" value={approveDurationDays} onChange={(e) => setApproveDurationDays(e.target.value)} className={INPUT} placeholder="مثال: 30" />
+                </div>
+              </div>
+
+              {/* Slots builder */}
+              <div className="rounded-xl border border-pink-500/20 bg-pink-900/10 p-4 space-y-3">
+                <div>
+                  <p className="text-sm font-black text-pink-300">📅 المواعيد المتاحة</p>
+                  <p className="text-xs text-gray-400 mt-0.5">أضف المواعيد المناسبة — العميل سيختار منها قبل الدفع. اتركها فارغة إذا لم تكن مطلوبة.</p>
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    value={approveSlotInput}
+                    onChange={(e) => setApproveSlotInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        const v = approveSlotInput.trim();
+                        if (v && !approveSlots.includes(v)) { setApproveSlots([...approveSlots, v]); setApproveSlotInput(""); }
+                      }
+                    }}
+                    className={INPUT}
+                    placeholder="مثال: الأحد الساعة 10 صباحاً"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const v = approveSlotInput.trim();
+                      if (v && !approveSlots.includes(v)) { setApproveSlots([...approveSlots, v]); setApproveSlotInput(""); }
+                    }}
+                    className="rounded-xl bg-pink-700 px-3 py-2 text-sm font-bold text-white hover:bg-pink-600"
+                  >+</button>
+                </div>
+                {approveSlots.length > 0 ? (
+                  <div className="space-y-1">
+                    {approveSlots.map((slot) => (
+                      <div key={slot} className="flex items-center justify-between rounded-lg bg-gray-800 px-3 py-2 text-sm text-white">
+                        <span>📌 {slot}</span>
+                        <button type="button" onClick={() => setApproveSlots(approveSlots.filter((s) => s !== slot))} className="text-gray-400 hover:text-red-400 text-lg leading-none">×</button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-500 italic">لا توجد مواعيد مضافة بعد</p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-400 mb-1">ملاحظة للعميل (اختياري)</label>
+                <textarea value={approveNote} onChange={(e) => setApproveNote(e.target.value)} rows={2} className={`${INPUT} resize-none`} placeholder="مثال: موعد البداية الأحد القادم..." />
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => void handleApprove()} disabled={actionLoading || !approvePrice}
+                  className="flex-1 rounded-xl bg-emerald-700 py-2.5 font-black text-white disabled:opacity-50">
+                  {actionLoading ? "جارٍ..." : "تأكيد الموافقة"}
+                </button>
+                <button onClick={closeApproveModal} className="rounded-xl bg-gray-800 px-4 py-2.5 font-bold text-gray-300">إلغاء</button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ── Reject Modal ── */}
       {rejectModal && (

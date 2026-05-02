@@ -97,3 +97,25 @@ export async function PATCH(req: Request) {
 
   return NextResponse.json({ success: true });
 }
+
+// DELETE: client cancels their own application (pending or approved, not paid)
+export async function DELETE(req: Request) {
+  const user = await getCurrentAppUser();
+  if (!user?.id) return NextResponse.json({ error: "يجب تسجيل الدخول أولاً." }, { status: 401 });
+
+  const body = (await req.json()) as { applicationId?: string };
+  if (!body.applicationId) return NextResponse.json({ error: "معرّف الطلب مطلوب." }, { status: 400 });
+
+  const app = await db.privateSessionApplication.findFirst({
+    where: { id: body.applicationId, userId: user.id, status: { in: ["pending", "approved"] } },
+    include: { trainer: { select: { name: true } } },
+  });
+  if (!app) return NextResponse.json({ error: "الطلب غير موجود أو لا يمكن إلغاؤه." }, { status: 404 });
+
+  await db.privateSessionApplication.update({
+    where: { id: app.id },
+    data: { status: "cancelled" } as Record<string, unknown>,
+  });
+
+  return NextResponse.json({ success: true });
+}
