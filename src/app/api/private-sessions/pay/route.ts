@@ -24,6 +24,12 @@ export async function POST(req: Request) {
   if (app.status !== "approved") return NextResponse.json({ error: "لم تتم الموافقة على هذا الطلب بعد." }, { status: 400 });
   if (!app.trainerPrice || app.trainerPrice <= 0) return NextResponse.json({ error: "لم يتم تحديد سعر لهذا الطلب." }, { status: 400 });
 
+  const appExt = app as typeof app & { trainerSlots?: string | null; selectedSlot?: string | null };
+  const slots: string[] = appExt.trainerSlots ? (JSON.parse(appExt.trainerSlots) as string[]) : [];
+  if (slots.length > 0 && !appExt.selectedSlot) {
+    return NextResponse.json({ error: "يرجى اختيار موعد من المواعيد المتاحة قبل إتمام الدفع." }, { status: 400 });
+  }
+
   const label = app.type === "mini_private" ? "ميني برايفيت" : "برايفيت";
   const description = `${label} مع المدربة ${app.trainer.name}`;
   const origin = req.headers.get("origin") ?? process.env.NEXT_PUBLIC_APP_URL ?? "";

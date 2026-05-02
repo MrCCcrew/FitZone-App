@@ -3549,6 +3549,8 @@ type MyPrivateApp = {
   status: string;
   trainerNote?: string | null;
   trainerPrice?: number | null;
+  trainerSlots?: string[] | null;
+  selectedSlot?: string | null;
   paidAt?: string | null;
   createdAt: string;
   trainer: { id: string; name: string; image?: string | null };
@@ -3562,8 +3564,12 @@ function MyPrivateSessionsTab() {
   const [loading, setLoading] = useState(true);
   const [paying, setPaying] = useState<string | null>(null);
   const [payMsg, setPayMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [selectingSlot, setSelectingSlot] = useState<string | null>(null);
+  const [pendingSlot, setPendingSlot] = useState<Record<string, string>>({});
+  const [savingSlot, setSavingSlot] = useState<string | null>(null);
 
   const load = async () => {
+
     setLoading(true);
     try {
       const res = await fetch("/api/private-sessions");
@@ -3600,12 +3606,41 @@ function MyPrivateSessionsTab() {
     }
   };
 
+  const confirmSlot = async (appId: string) => {
+    const slot = pendingSlot[appId];
+    if (!slot) return;
+    setSavingSlot(appId);
+    try {
+      const res = await fetch("/api/private-sessions", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ applicationId: appId, selectedSlot: slot }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error((json as { error?: string }).error ?? t("حدث خطأ", "An error occurred"));
+      setSelectingSlot(null);
+      await load();
+    } catch (err) {
+      setPayMsg({ ok: false, text: err instanceof Error ? err.message : t("حدث خطأ", "An error occurred") });
+    } finally {
+      setSavingSlot(null);
+    }
+  };
+
   const TYPE_LABELS: Record<string, string> = { private: t("برايفيت", "Private"), mini_private: t("ميني برايفيت", "Mini-private") };
-  const STATUS_LABELS: Record<string, { label: string; color: string }> = {
-    pending: { label: t("في انتظار الموافقة", "Awaiting approval"), color: "bg-yellow-500/20 text-yellow-400" },
-    approved: { label: t("مقبول — في انتظار الدفع", "Approved — awaiting payment"), color: "bg-emerald-500/20 text-emerald-400" },
-    rejected: { label: t("مرفوض", "Rejected"), color: "bg-red-500/20 text-red-400" },
-    paid: { label: t("مدفوع ✓", "Paid ✓"), color: "bg-blue-500/20 text-blue-400" },
+  const getStatusInfo = (app: MyPrivateApp) => {
+    if (app.status === "approved") {
+      const hasSlots = (app.trainerSlots?.length ?? 0) > 0;
+      if (hasSlots && !app.selectedSlot)
+        return { label: t("مقبول — اختاري موعدك", "Approved — select your slot"), color: "bg-orange-500/20 text-orange-400" };
+      return { label: t("مقبول — في انتظار الدفع", "Approved — awaiting payment"), color: "bg-emerald-500/20 text-emerald-400" };
+    }
+    const map: Record<string, { label: string; color: string }> = {
+      pending: { label: t("في انتظار الموافقة", "Awaiting approval"), color: "bg-yellow-500/20 text-yellow-400" },
+      rejected: { label: t("مرفوض", "Rejected"), color: "bg-red-500/20 text-red-400" },
+      paid: { label: t("مدفوع ✓", "Paid ✓"), color: "bg-blue-500/20 text-blue-400" },
+    };
+    return map[app.status] ?? { label: app.status, color: "bg-gray-500/20 text-gray-400" };
   };
 
   return (
@@ -3623,7 +3658,11 @@ function MyPrivateSessionsTab() {
         ) : (
           <div className="space-y-4">
             {apps.map((app) => {
-              const statusInfo = STATUS_LABELS[app.status] ?? { label: app.status, color: "bg-gray-500/20 text-gray-400" };
+              const statusInfo = getStatusInfo(app);
+              const hasSlots = (app.trainerSlots?.length ?? 0) > 0;
+              const needsSlotSelection = app.status === "approved" && hasSlots && !app.selectedSlot;
+              const readyToPay = app.status === "approved" && app.trainerPrice && (!hasSlots || app.selectedSlot);
+              const isPickingSlot = selectingSlot === app.id;
               return (
                 <div key={app.id} className="rounded-xl border border-[#ffbcdb]/15 bg-white/5 p-4 space-y-3">
                   <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -3636,15 +3675,55 @@ function MyPrivateSessionsTab() {
                     </div>
                     <span className={`text-xs rounded-full px-2 py-0.5 ${statusInfo.color}`}>{statusInfo.label}</span>
                   </div>
-                  {app.status === "approved" && app.trainerPrice && (
+
+                  {/* Slot selection required */}
+                  {needsSlotSelection && (
+                    <div className="rounded-xl border border-orange-500/30 bg-orange-900/10 px-4 py-3 space-y-3">
+                      <p className="text-sm font-bold text-orange-300">{t("وافقت المدربة على طلبك! اختاري الموعد المناسب:", "Your trainer approved! Choose your preferred slot:")}</p>
+                      {app.trainerNote && <p className="text-sm text-[#d7aabd]">{app.trainerNote}</p>}
+                      {isPickingSlot ? (
+                        <div className="space-y-2">
+                          {app.trainerSlots!.map((slot) => (
+                            <label key={slot} className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 cursor-pointer transition-colors ${pendingSlot[app.id] === slot ? "border-pink-500 bg-pink-500/10" : "border-gray-700 bg-gray-800/50 hover:border-gray-600"}`}>
+                              <input type="radio" name={`slot-${app.id}`} value={slot} checked={pendingSlot[app.id] === slot} onChange={() => setPendingSlot({ ...pendingSlot, [app.id]: slot })} className="accent-pink-500" />
+                              <span className="text-sm text-white">{slot}</span>
+                            </label>
+                          ))}
+                          <div className="flex gap-2 pt-1">
+                            <button disabled={!pendingSlot[app.id] || savingSlot === app.id} onClick={() => void confirmSlot(app.id)} className="flex-1 rounded-xl bg-gradient-to-r from-pink-600 to-pink-500 py-2.5 text-sm font-black text-white hover:opacity-90 disabled:opacity-50">
+                              {savingSlot === app.id ? t("جاري الحفظ...", "Saving...") : t("تأكيد الموعد", "Confirm slot")}
+                            </button>
+                            <button onClick={() => setSelectingSlot(null)} className="rounded-xl bg-gray-800 px-4 py-2.5 text-sm font-bold text-gray-300">{t("إلغاء", "Cancel")}</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button onClick={() => setSelectingSlot(app.id)} className="rounded-xl bg-orange-600 px-6 py-2.5 text-sm font-black text-white hover:bg-orange-500">
+                          {t("اختاري موعدك", "Choose your slot")}
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Approved + slot chosen (or no slots) → show price & pay */}
+                  {readyToPay && (
                     <div className="rounded-xl border border-emerald-500/30 bg-emerald-900/20 px-4 py-3 space-y-2">
-                      <p className="text-sm text-emerald-300">{t("وافقت المدربة على طلبك! السعر:", "Your trainer approved your request! Price:")} <span className="font-black text-white">{app.trainerPrice} {t("جنيه", "EGP")}</span></p>
+                      <p className="text-sm text-emerald-300">{t("وافقت المدربة على طلبك! السعر:", "Approved! Price:")} <span className="font-black text-white">{app.trainerPrice} {t("جنيه", "EGP")}</span></p>
+                      {app.selectedSlot && (
+                        <div className="flex items-center gap-2 rounded-lg bg-emerald-900/30 px-3 py-2">
+                          <span className="text-emerald-400 text-xs">📅</span>
+                          <span className="text-sm text-emerald-200">{app.selectedSlot}</span>
+                          {hasSlots && (
+                            <button onClick={() => setSelectingSlot(app.id)} className="mr-auto text-xs text-gray-400 hover:text-white underline">{t("تغيير", "Change")}</button>
+                          )}
+                        </div>
+                      )}
                       {app.trainerNote && <p className="text-sm text-[#d7aabd]">{app.trainerNote}</p>}
                       <button disabled={paying === app.id} onClick={() => void payNow(app.id)} className="mt-1 rounded-xl bg-gradient-to-r from-pink-600 to-pink-500 px-6 py-2.5 text-sm font-black text-white hover:opacity-90 disabled:opacity-50">
                         {paying === app.id ? t("جاري الدفع...", "Processing...") : t("ادفعي الآن", "Pay now")}
                       </button>
                     </div>
                   )}
+
                   {app.status === "rejected" && app.trainerNote && (
                     <p className="text-sm text-[#d7aabd]">{t("ملاحظة:", "Note:")} {app.trainerNote}</p>
                   )}

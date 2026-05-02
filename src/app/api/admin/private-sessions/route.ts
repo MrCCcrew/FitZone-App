@@ -44,24 +44,35 @@ export async function GET(req: Request) {
   });
 
   return NextResponse.json({
-    applications: applications.map((app) => ({
-      id: app.id,
-      type: app.type,
-      status: app.status,
-      trainerPrice: app.trainerPrice,
-      trainerNote: app.trainerNote,
-      sessionsCount: app.sessionsCount ?? null,
-      durationDays: app.durationDays ?? null,
-      expiresAt: app.expiresAt?.toISOString() ?? null,
-      paidAt: app.paidAt?.toISOString() ?? null,
-      createdAt: app.createdAt.toISOString(),
-      goals: app.goalsJson ? (JSON.parse(app.goalsJson) as string[]) : [],
-      injuries: app.injuries ?? null,
-      notes: app.notes ?? null,
-      formData: app.applicationFormJson ? JSON.parse(app.applicationFormJson) : null,
-      user: app.user,
-      trainer: app.trainer,
-    })),
+    applications: applications.map((app) => {
+      const ext = app as typeof app & {
+        sessionsCount?: number | null;
+        durationDays?: number | null;
+        trainerSlots?: string | null;
+        selectedSlot?: string | null;
+        expiresAt?: Date | null;
+      };
+      return {
+        id: app.id,
+        type: app.type,
+        status: app.status,
+        trainerPrice: app.trainerPrice,
+        trainerNote: app.trainerNote,
+        sessionsCount: ext.sessionsCount ?? null,
+        durationDays: ext.durationDays ?? null,
+        trainerSlots: ext.trainerSlots ? (JSON.parse(ext.trainerSlots) as string[]) : [],
+        selectedSlot: ext.selectedSlot ?? null,
+        expiresAt: ext.expiresAt?.toISOString() ?? null,
+        paidAt: app.paidAt?.toISOString() ?? null,
+        createdAt: app.createdAt.toISOString(),
+        goals: app.goalsJson ? (JSON.parse(app.goalsJson) as string[]) : [],
+        injuries: app.injuries ?? null,
+        notes: app.notes ?? null,
+        formData: app.applicationFormJson ? JSON.parse(app.applicationFormJson) : null,
+        user: app.user,
+        trainer: app.trainer,
+      };
+    }),
   });
 }
 
@@ -76,6 +87,7 @@ export async function PATCH(req: Request) {
     trainerNote?: string;
     sessionsCount?: number | null;
     durationDays?: number | null;
+    trainerSlots?: string[];
   };
 
   if (!body.applicationId) return NextResponse.json({ error: "معرّف الطلب مطلوب." }, { status: 400 });
@@ -104,25 +116,35 @@ export async function PATCH(req: Request) {
   if (isApproval && (!body.trainerPrice || body.trainerPrice <= 0))
     return NextResponse.json({ error: "يجب تحديد السعر عند الموافقة." }, { status: 400 });
 
+  const slots = Array.isArray(body.trainerSlots)
+    ? body.trainerSlots.map((s) => String(s).trim()).filter(Boolean)
+    : [];
+
+  const updateData: Record<string, unknown> = {
+    status: isApproval ? "approved" : "rejected",
+    trainerPrice: isApproval ? body.trainerPrice : null,
+    trainerNote: body.trainerNote?.trim() ?? null,
+  };
+  if (isApproval) {
+    updateData.sessionsCount = body.sessionsCount != null ? Number(body.sessionsCount) : null;
+    updateData.durationDays = body.durationDays != null ? Number(body.durationDays) : null;
+    updateData.trainerSlots = slots.length ? JSON.stringify(slots) : null;
+    updateData.selectedSlot = null;
+  }
+
   await db.privateSessionApplication.update({
     where: { id: body.applicationId },
-    data: {
-      status: isApproval ? "approved" : "rejected",
-      trainerPrice: isApproval ? body.trainerPrice : null,
-      trainerNote: body.trainerNote?.trim() ?? null,
-      ...(isApproval && {
-        sessionsCount: body.sessionsCount != null ? Number(body.sessionsCount) : null,
-        durationDays: body.durationDays != null ? Number(body.durationDays) : null,
-      }),
-    },
+    data: updateData,
   });
+
+  const slotsNote = slots.length ? ` يرجى اختيار الموعد المناسب من المواعيد المتاحة.` : ` يمكنك إتمام الدفع الآن.`;
 
   await db.notification.create({
     data: {
       userId: app.user.id,
       title: isApproval ? "تمت الموافقة على طلبك ✅" : "تم رفض طلبك",
       body: isApproval
-        ? `تمت الموافقة على طلب ${app.type === "mini_private" ? "الميني برايفيت" : "البرايفيت"} مع ${app.trainer.name}. السعر: ${body.trainerPrice} ج.م. يمكنك إتمام الدفع الآن.`
+        ? `تمت الموافقة على طلب ${app.type === "mini_private" ? "الميني برايفيت" : "البرايفيت"} مع ${app.trainer.name}. السعر: ${body.trainerPrice} ج.م.${slotsNote}`
         : `تم رفض طلب ${app.type === "mini_private" ? "الميني برايفيت" : "البرايفيت"} مع ${app.trainer.name}.${body.trainerNote ? ` ملاحظة: ${body.trainerNote}` : ""}`,
       type: isApproval ? "success" : "info",
     },
