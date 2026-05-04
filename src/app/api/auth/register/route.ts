@@ -15,7 +15,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const { name, email, phone, password, referralCode, affiliateRef } = await req.json();
+    const { name, email, phone, password, referralCode, affiliateRef, agentRef } = await req.json();
 
     const normalizedName = String(name ?? "").trim();
     const normalizedEmail = String(email ?? "").trim().toLowerCase();
@@ -80,6 +80,16 @@ export async function POST(req: Request) {
       if (al?.isActive) pendingPartnerRef = normalizedAffiliateRef;
     }
 
+    // Validate sales agent referral code — store on user for later subscription attribution
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const dbx = db as any;
+    const normalizedAgentRef = agentRef ? String(agentRef).trim().toUpperCase() : null;
+    let pendingAgentRef: string | null = null;
+    if (normalizedAgentRef) {
+      const ag = await dbx.salesAgent.findUnique({ where: { referralCode: normalizedAgentRef }, select: { id: true, isActive: true } });
+      if (ag?.isActive) pendingAgentRef = normalizedAgentRef;
+    }
+
     // Validate referral code before creating user
     let referralRecord: { id: string; userId: string; referredCount: number; subscriptionActivatedCount: number } | null = null;
     if (normalizedReferralCode) {
@@ -101,7 +111,9 @@ export async function POST(req: Request) {
     }
 
     const user = await db.$transaction(async (tx) => {
-      const createdUser = await tx.user.create({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const txUser = (tx.user as any);
+      const createdUser = await txUser.create({
         data: {
           name: normalizedName,
           email: normalizedEmail,
@@ -109,6 +121,7 @@ export async function POST(req: Request) {
           password: hashedPassword,
           role: "member",
           pendingPartnerRef: pendingPartnerRef || null,
+          pendingAgentRef: pendingAgentRef || null,
         },
       });
 

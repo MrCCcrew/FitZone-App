@@ -30,6 +30,7 @@ import DatabaseMaintenance from "./sections/DatabaseMaintenance";
 import Settings from "./sections/Settings";
 import PushNotifications from "./sections/PushNotifications";
 import Partners from "./sections/Partners";
+import Contracts from "./sections/Contracts";
 
 const PROTECTED_SECTIONS = ["payments", "database"] as const;
 
@@ -57,6 +58,7 @@ const NAV: { id: Section; label: string; icon: string }[] = [
   { id: "discounts", label: "أكواد الخصم", icon: "🏷️" },
   { id: "rewards", label: "المكافآت والإحالة", icon: "🎁" },
   { id: "partners", label: "الشركاء والعمولات", icon: "🤝" },
+  { id: "contracts", label: "التعاقدات والمناديب", icon: "📋" },
   { id: "push",    label: "الإشعارات الفورية",  icon: "🔔" },
 ];
 
@@ -96,6 +98,7 @@ const TITLES: Record<string, string> = {
   discounts: "أكواد الخصم",
   rewards: "إعدادات المكافآت والإحالة",
   partners: "الشركاء والعمولات",
+  contracts: "التعاقدات والمناديب",
   database: "إدارة قاعدة البيانات",
   push:     "الإشعارات الفورية (Web Push)",
 };
@@ -126,6 +129,7 @@ const SECTIONS: Record<string, ComponentType> = {
   rewards: RewardSettings,
   database: DatabaseMaintenance,
   push:     PushNotifications,
+  contracts: Contracts,
 };
 
 type AdminSessionUser = {

@@ -1,6 +1,14 @@
 import type { Section } from "@/app/admin/types";
 
-export type AdminRole = "admin" | "staff" | "trainer" | "accountant" | "partner";
+export type AdminRole =
+  | "admin"
+  | "staff"
+  | "trainer"
+  | "accountant"
+  | "partner"
+  | "contracts_manager"
+  | "agent"
+  | "head_coach";
 
 export type AdminFeature =
   | "settings"
@@ -25,7 +33,8 @@ export type AdminFeature =
   | "rewards"
   | "db-maintenance"
   | "push"
-  | "partners";
+  | "partners"
+  | "contracts";
 
 export const ADMIN_FEATURES: AdminFeature[] = [
   "settings",
@@ -51,6 +60,7 @@ export const ADMIN_FEATURES: AdminFeature[] = [
   "db-maintenance",
   "push",
   "partners",
+  "contracts",
 ];
 
 const STAFF_FEATURES: AdminFeature[] = [
@@ -70,6 +80,9 @@ const STAFF_FEATURES: AdminFeature[] = [
 const TRAINER_FEATURES: AdminFeature[] = ["classes", "trainers", "bookings", "customers"];
 const ACCOUNTANT_FEATURES: AdminFeature[] = ["overview", "accounting", "orders", "balance", "customers"];
 const PARTNER_FEATURES: AdminFeature[] = ["partners"];
+const CONTRACTS_MANAGER_FEATURES: AdminFeature[] = ["contracts", "customers"];
+const AGENT_FEATURES: AdminFeature[] = ["contracts"];
+const HEAD_COACH_FEATURES: AdminFeature[] = ["trainers", "classes", "bookings", "customers"];
 
 export const ROLE_FEATURE_TEMPLATES: Record<AdminRole, AdminFeature[]> = {
   admin: ADMIN_FEATURES,
@@ -77,6 +90,9 @@ export const ROLE_FEATURE_TEMPLATES: Record<AdminRole, AdminFeature[]> = {
   trainer: TRAINER_FEATURES,
   accountant: ACCOUNTANT_FEATURES,
   partner: PARTNER_FEATURES,
+  contracts_manager: CONTRACTS_MANAGER_FEATURES,
+  agent: AGENT_FEATURES,
+  head_coach: HEAD_COACH_FEATURES,
 };
 
 export const SECTION_FEATURE_MAP: Record<Section, AdminFeature> = {
@@ -104,12 +120,22 @@ export const SECTION_FEATURE_MAP: Record<Section, AdminFeature> = {
   discounts: "discounts",
   rewards: "rewards",
   database: "db-maintenance",
-  push:     "push",
+  push: "push",
   partners: "partners",
+  contracts: "contracts",
 };
 
 export function isAdminRole(role?: string): role is AdminRole {
-  return role === "admin" || role === "staff" || role === "trainer" || role === "accountant" || role === "partner";
+  return (
+    role === "admin" ||
+    role === "staff" ||
+    role === "trainer" ||
+    role === "accountant" ||
+    role === "partner" ||
+    role === "contracts_manager" ||
+    role === "agent" ||
+    role === "head_coach"
+  );
 }
 
 // Features that trainers can never hold, even if manually assigned
@@ -147,5 +173,8 @@ export function getDefaultAdminSection(role: string | undefined, permissions?: s
     canAccessAdminSection(role, permissions, section as Section),
   ) as Section[];
   if (allowed.includes("overview")) return "overview";
+  // Role-specific defaults
+  if (role === "contracts_manager" || role === "agent") return "contracts";
+  if (role === "head_coach") return "trainers";
   return allowed[0] ?? "overview";
 }

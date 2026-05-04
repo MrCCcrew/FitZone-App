@@ -33,6 +33,7 @@ type SubscribePayload = {
   partnerCode?: string | null;   // legacy partner subscription discount code
   memberBenefitCode?: string | null; // external partner benefit code, no gym discount
   affiliateRef?: string | null;  // partner affiliate link token
+  agentRef?: string | null;      // sales agent referral code
 };
 
 function sanitizeMethod(value: unknown) {
@@ -72,6 +73,7 @@ export async function POST(req: Request) {
     partnerCode,
     memberBenefitCode,
     affiliateRef,
+    agentRef,
   } = (await req.json()) as SubscribePayload;
   if (!membershipId && !offerId) {
     return NextResponse.json({ error: "يرجى اختيار الباقة أو العرض أولًا." }, { status: 400 });
@@ -82,7 +84,7 @@ export async function POST(req: Request) {
 
   const userRecord = await db.user.findUnique({
     where: { id: userId },
-    select: { emailVerified: true, email: true, name: true, phone: true, pendingPartnerRef: true },
+    select: { emailVerified: true, email: true, name: true, phone: true, pendingPartnerRef: true, pendingAgentRef: true },
   });
 
   if (!userRecord?.emailVerified) {
@@ -236,6 +238,19 @@ export async function POST(req: Request) {
     if (al && al.isActive) {
       affiliateLinkRecord = { id: al.id, partnerId: al.partnerId };
     }
+  }
+
+  // Resolve sales agent referral (explicit param or stored at registration)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const dbx = db as any;
+  let agentRecord: { id: string; commissionRate: number; commissionType: string; clientDiscountType: string; clientDiscountValue: number; maxClientDiscount: number | null } | null = null;
+  const resolvedAgentCode = (agentRef ?? userRecord?.pendingAgentRef ?? "").trim().toUpperCase();
+  if (resolvedAgentCode) {
+    const ag = await dbx.salesAgent.findUnique({
+      where: { referralCode: resolvedAgentCode },
+      select: { id: true, commissionRate: true, commissionType: true, clientDiscountType: true, clientDiscountValue: true, maxClientDiscount: true, isActive: true },
+    });
+    if (ag && ag.isActive) agentRecord = ag as typeof agentRecord;
   }
 
   const result = await db
@@ -398,6 +413,16 @@ export async function POST(req: Request) {
           discountApplied = Math.round((paymentAmount * rate) / 100 * 100) / 100;
           paymentAmount = Math.max(0, paymentAmount - discountApplied);
         }
+      } else if (agentRecord && paymentAmount) {
+        // Agent referral discount for the client
+        if (agentRecord.clientDiscountType === "fixed") {
+          discountApplied = Math.min(agentRecord.clientDiscountValue, paymentAmount);
+        } else {
+          const raw = (paymentAmount * agentRecord.clientDiscountValue) / 100;
+          discountApplied = agentRecord.maxClientDiscount != null ? Math.min(raw, agentRecord.maxClientDiscount) : raw;
+          discountApplied = Math.round(discountApplied * 100) / 100;
+        }
+        paymentAmount = Math.max(0, paymentAmount - discountApplied);
       }
 
       // Deduct wallet balance
@@ -449,6 +474,7 @@ export async function POST(req: Request) {
       const resolvedAffiliateLinkId = affiliateLinkRecord?.id ?? null;
       const resolvedSalesAgentUserId = trainerDiscountRecord?.salesAgentUserId ?? staffDiscountRecord?.salesAgentUserId ?? null;
       const resolvedSalesCodeType = trainerDiscountRecord ? "trainer_code" : staffDiscountRecord ? "staff_code" : null;
+      const resolvedSalesAgentId = agentRecord?.id ?? null;
 
       const subscription = await tx.userMembership.create({
         data: {
@@ -468,8 +494,9 @@ export async function POST(req: Request) {
           partnerId: resolvedPartnerId,
           partnerCodeId: resolvedPartnerCodeId,
           affiliateLinkId: resolvedAffiliateLinkId,
+          ...(resolvedSalesAgentId ? { salesAgentId: resolvedSalesAgentId } : {}),
         },
-      });
+      } as Parameters<typeof tx.userMembership.create>[0]);
 
       // Increment partner code usage
       if (resolvedPartnerCodeId) {
@@ -518,6 +545,36 @@ export async function POST(req: Request) {
               },
             });
           }
+        }
+      }
+
+      // Sales agent referral commission + referral tracking
+      if (resolvedSalesAgentId && agentRecord) {
+        const paidAmount = paymentAmount ?? 0;
+        const commission = agentRecord.commissionType === "fixed"
+          ? agentRecord.commissionRate
+          : Math.round((paidAmount * agentRecord.commissionRate) / 100 * 100) / 100;
+        if (!needsPaymentConfirmation && commission > 0) {
+          await dbx.salesAgentCommission.create({
+            data: { agentId: resolvedSalesAgentId, userMembershipId: subscription.id, amount: commission },
+          });
+        }
+        // Upsert the referral record
+        const existingRef = await dbx.salesAgentReferral.findUnique({ where: { userId } });
+        if (!existingRef) {
+          await dbx.salesAgentReferral.create({
+            data: { agentId: resolvedSalesAgentId, userId, convertedAt: needsPaymentConfirmation ? null : new Date(), totalSpent: needsPaymentConfirmation ? 0 : (paidAmount) },
+          });
+        } else if (!existingRef.convertedAt && !needsPaymentConfirmation) {
+          await dbx.salesAgentReferral.update({
+            where: { userId },
+            data: { convertedAt: new Date(), totalSpent: { increment: paidAmount } },
+          });
+        } else if (!needsPaymentConfirmation) {
+          await dbx.salesAgentReferral.update({
+            where: { userId },
+            data: { totalSpent: { increment: paidAmount } },
+          });
         }
       }
 
@@ -829,6 +886,9 @@ export async function POST(req: Request) {
   // Clear the pending partner affiliate ref once a subscription is created (regardless of payment status)
   if (userRecord?.pendingPartnerRef) {
     void db.user.update({ where: { id: userId }, data: { pendingPartnerRef: null } }).catch(() => null);
+  }
+  if (userRecord?.pendingAgentRef) {
+    void db.user.update({ where: { id: userId }, data: { pendingAgentRef: null } as Record<string, unknown> }).catch(() => null);
   }
 
   let checkoutUrl: string | null = null;
