@@ -217,7 +217,7 @@ export default function Trainers() {
   const [search, setSearch] = useState("");
   const [modal, setModal] = useState<EditableTrainer | null>(null);
   const [linkedUserDiscount, setLinkedUserDiscount] = useState<{ discountType: string; discountValue: number; maxDiscount: number | null } | null>(null);
-  const [activeTab, setActiveTab] = useState<"trainers" | "applications" | "discounts">("trainers");
+  const [activeTab, setActiveTab] = useState<"trainers" | "applications" | "discounts" | "attendance">("trainers");
 
   // Applications
   const [userRole, setUserRole] = useState<string | null>(null);
@@ -249,6 +249,15 @@ export default function Trainers() {
   const [dcNote, setDcNote] = useState("");
   const [dcSaving, setDcSaving] = useState(false);
   const [dcError, setDcError] = useState("");
+
+  // Attendance
+  type AttendanceLog = { id: string; trainerId: string; date: string; status: string; notes: string | null; trainer: { id: string; name: string; image: string | null }; recordedBy: { id: string; name: string } | null };
+  const [attendanceLogs, setAttendanceLogs] = useState<AttendanceLog[]>([]);
+  const [attendanceLoading, setAttendanceLoading] = useState(false);
+  const [attendanceMonth, setAttendanceMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [attendanceTrainerId, setAttendanceTrainerId] = useState("");
+  const [attModal, setAttModal] = useState<{ trainerId: string; date: string; status: string; notes: string; id?: string } | null>(null);
+  const [attSaving, setAttSaving] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -298,6 +307,19 @@ export default function Trainers() {
     }
   }, []);
 
+  const loadAttendance = useCallback(async () => {
+    setAttendanceLoading(true);
+    try {
+      const params = new URLSearchParams({ month: attendanceMonth });
+      if (attendanceTrainerId) params.set("trainerId", attendanceTrainerId);
+      const res = await fetch(`/api/admin/trainer-attendance?${params.toString()}`, { cache: "no-store" });
+      const data = await res.json().catch(() => ({ logs: [] }));
+      setAttendanceLogs(Array.isArray(data.logs) ? data.logs : []);
+    } finally {
+      setAttendanceLoading(false);
+    }
+  }, [attendanceMonth, attendanceTrainerId]);
+
   const loadMembers = useCallback(async () => {
     const res = await fetch("/api/admin/customers", { cache: "no-store" });
     const data = (await res.json().catch(() => [])) as Array<{ id: string; name: string; email: string }>;
@@ -309,7 +331,12 @@ export default function Trainers() {
   useEffect(() => {
     if (activeTab === "applications") void loadApplications();
     if (activeTab === "discounts") void loadDiscounts();
-  }, [activeTab, loadApplications, loadDiscounts]);
+    if (activeTab === "attendance") void loadAttendance();
+  }, [activeTab, loadApplications, loadDiscounts, loadAttendance]);
+
+  useEffect(() => {
+    if (activeTab === "attendance") void loadAttendance();
+  }, [attendanceMonth, attendanceTrainerId, loadAttendance, activeTab]);
 
   const handleApprove = async () => {
     if (!approveModal || !approvePrice || Number(approvePrice) <= 0) return;
@@ -554,7 +581,7 @@ export default function Trainers() {
     <div className="space-y-6">
       {/* Tab navigation */}
       <div className="flex gap-2 border-b border-gray-800 pb-1">
-        {([["trainers","المدربات"],["applications","طلبات البرايفيت"],["discounts","أكواد خصم المدربات"]] as const).map(([key,label]) => (
+        {([["trainers","المدربات"],["applications","طلبات البرايفيت"],["discounts","أكواد خصم المدربات"],["attendance","الحضور والغياب"]] as const).map(([key,label]) => (
           <button key={key} onClick={() => setActiveTab(key)}
             className={`rounded-t-lg px-4 py-2 text-sm font-bold transition-colors ${activeTab === key ? "bg-pink-600 text-white" : "text-gray-400 hover:text-white"}`}>
             {label}
@@ -668,6 +695,168 @@ export default function Trainers() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* ── Attendance Tab ── */}
+      {activeTab === "attendance" && (
+        <section className="space-y-4">
+          {/* Filters */}
+          <div className="flex flex-wrap items-center gap-3">
+            <h3 className="text-lg font-black text-white">حضور وغياب المدربات</h3>
+            <input
+              type="month"
+              value={attendanceMonth}
+              onChange={(e) => setAttendanceMonth(e.target.value)}
+              className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white"
+            />
+            <select
+              value={attendanceTrainerId}
+              onChange={(e) => setAttendanceTrainerId(e.target.value)}
+              className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white"
+            >
+              <option value="">كل المدربات</option>
+              {trainers.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+            <button onClick={() => void loadAttendance()} className="rounded-lg bg-gray-800 px-3 py-1.5 text-xs font-bold text-gray-300">🔄 تحديث</button>
+            <button
+              onClick={() => setAttModal({ trainerId: attendanceTrainerId || (trainers[0]?.id ?? ""), date: new Date().toISOString().slice(0,10), status: "present", notes: "" })}
+              className="rounded-xl bg-pink-600 px-4 py-2 text-sm font-bold text-white hover:bg-pink-500"
+            >+ تسجيل حضور</button>
+          </div>
+
+          {/* Table */}
+          {attendanceLoading ? (
+            <div className="py-10 text-center text-sm text-gray-500">جارٍ التحميل...</div>
+          ) : attendanceLogs.length === 0 ? (
+            <div className="py-10 text-center text-sm text-gray-500">لا توجد سجلات لهذا الشهر</div>
+          ) : (
+            <div className="overflow-x-auto rounded-2xl border border-gray-800">
+              <table className="w-full text-sm">
+                <thead><tr className="border-b border-gray-800 bg-gray-900/60 text-right text-xs text-gray-500">
+                  <th className="px-4 py-3">المدربة</th>
+                  <th className="px-4 py-3">التاريخ</th>
+                  <th className="px-4 py-3">الحالة</th>
+                  <th className="px-4 py-3">ملاحظات</th>
+                  <th className="px-4 py-3">سُجِّل بواسطة</th>
+                  <th className="px-4 py-3"></th>
+                </tr></thead>
+                <tbody className="divide-y divide-gray-800">
+                  {attendanceLogs.map((log) => (
+                    <tr key={log.id} className="text-xs hover:bg-white/5">
+                      <td className="px-4 py-3 font-bold text-white">{log.trainer.name}</td>
+                      <td className="px-4 py-3 text-gray-300">{log.date.slice(0,10)}</td>
+                      <td className="px-4 py-3">
+                        <span className={`rounded-full px-2 py-0.5 font-bold ${
+                          log.status === "present" ? "bg-emerald-900/40 text-emerald-300" :
+                          log.status === "absent"  ? "bg-red-900/40 text-red-300" :
+                                                     "bg-yellow-900/40 text-yellow-300"
+                        }`}>
+                          {log.status === "present" ? "حاضر" : log.status === "absent" ? "غائب" : "متأخر"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-gray-400">{log.notes ?? "—"}</td>
+                      <td className="px-4 py-3 text-gray-500">{log.recordedBy?.name ?? "—"}</td>
+                      <td className="px-4 py-3 flex gap-2">
+                        <button
+                          onClick={() => setAttModal({ id: log.id, trainerId: log.trainerId, date: log.date.slice(0,10), status: log.status, notes: log.notes ?? "" })}
+                          className="text-pink-400 hover:text-pink-300"
+                        >تعديل</button>
+                        <button
+                          onClick={async () => {
+                            if (!confirm("حذف السجل؟")) return;
+                            await fetch(`/api/admin/trainer-attendance?id=${log.id}`, { method: "DELETE" });
+                            void loadAttendance();
+                          }}
+                          className="text-red-400 hover:text-red-300"
+                        >حذف</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Modal */}
+          {attModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+              <div className="w-full max-w-md rounded-2xl border border-white/10 bg-gray-900 p-6 space-y-4">
+                <h4 className="text-base font-black text-white">{attModal.id ? "تعديل سجل الحضور" : "تسجيل حضور / غياب"}</h4>
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <label className="text-xs text-gray-400">المدربة</label>
+                    <select
+                      value={attModal.trainerId}
+                      onChange={(e) => setAttModal({ ...attModal, trainerId: e.target.value })}
+                      className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white"
+                    >
+                      {trainers.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-gray-400">التاريخ</label>
+                    <input
+                      type="date"
+                      value={attModal.date}
+                      onChange={(e) => setAttModal({ ...attModal, date: e.target.value })}
+                      className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-gray-400">الحالة</label>
+                    <div className="flex gap-2">
+                      {([["present","حاضر","emerald"],["absent","غائب","red"],["late","متأخر","yellow"]] as const).map(([val, label, color]) => (
+                        <button
+                          key={val}
+                          onClick={() => setAttModal({ ...attModal, status: val })}
+                          className={`flex-1 rounded-xl py-2 text-sm font-bold border transition-colors ${
+                            attModal.status === val
+                              ? color === "emerald" ? "bg-emerald-600 border-emerald-500 text-white"
+                              : color === "red"     ? "bg-red-600 border-red-500 text-white"
+                                                   : "bg-yellow-600 border-yellow-500 text-white"
+                              : "border-white/10 bg-black/20 text-gray-400 hover:text-white"
+                          }`}
+                        >{label}</button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-gray-400">ملاحظات (اختياري)</label>
+                    <textarea
+                      value={attModal.notes}
+                      onChange={(e) => setAttModal({ ...attModal, notes: e.target.value })}
+                      rows={2}
+                      className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white"
+                      placeholder="مثال: أبلغت مسبقًا بالغياب"
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-3 pt-2">
+                  <button
+                    onClick={async () => {
+                      if (!attModal.trainerId || !attModal.date) return;
+                      setAttSaving(true);
+                      try {
+                        await fetch("/api/admin/trainer-attendance", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ trainerId: attModal.trainerId, date: attModal.date, status: attModal.status, notes: attModal.notes || undefined }),
+                        });
+                        setAttModal(null);
+                        void loadAttendance();
+                      } finally {
+                        setAttSaving(false);
+                      }
+                    }}
+                    disabled={attSaving}
+                    className="flex-1 rounded-xl bg-pink-600 py-2.5 text-sm font-bold text-white hover:bg-pink-500 disabled:opacity-50"
+                  >{attSaving ? "جارٍ الحفظ..." : "حفظ"}</button>
+                  <button onClick={() => setAttModal(null)} className="flex-1 rounded-xl border border-white/10 py-2.5 text-sm font-bold text-gray-300 hover:text-white">إلغاء</button>
+                </div>
+              </div>
             </div>
           )}
         </section>
