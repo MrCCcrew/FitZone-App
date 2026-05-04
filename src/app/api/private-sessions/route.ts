@@ -7,12 +7,30 @@ export async function GET() {
   const user = await getCurrentAppUser();
   if (!user?.id) return NextResponse.json({ error: "يجب تسجيل الدخول أولاً." }, { status: 401 });
 
-  const applications = await db.privateSessionApplication.findMany({
+  const rawApps = await db.privateSessionApplication.findMany({
     where: { userId: user.id },
     include: {
       trainer: { select: { id: true, name: true, specialty: true, image: true } },
     },
     orderBy: { createdAt: "desc" },
+  });
+
+  const applications = rawApps.map((app) => {
+    const ext = app as typeof app & {
+      trainerSlots?: string | null;
+      selectedSlot?: string | null;
+      sessionsCount?: number | null;
+      durationDays?: number | null;
+      expiresAt?: Date | null;
+    };
+    return {
+      ...app,
+      trainerSlots: ext.trainerSlots ? (JSON.parse(ext.trainerSlots) as string[]) : [],
+      selectedSlot: ext.selectedSlot ?? null,
+      sessionsCount: ext.sessionsCount ?? null,
+      durationDays: ext.durationDays ?? null,
+      expiresAt: ext.expiresAt?.toISOString() ?? null,
+    };
   });
 
   return NextResponse.json({ applications });
