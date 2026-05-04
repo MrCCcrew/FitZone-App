@@ -13,6 +13,7 @@ export type Section =
   | "classes"
   | "trainers"
   | "partners"
+  | "contracts"
   | "products"
   | "inventory"
   | "reviews"
@@ -418,6 +419,41 @@ export interface HealthQuestion {
   sortOrder: number;
   restrictedClassTypes?: string[];
   restrictions?: Array<{ id: string; classType: string; notes?: string | null }>;
+}
+
+export interface SalesAgentRow {
+  id: string;
+  userId: string;
+  name: string;
+  referralCode: string;
+  commissionRate: number;
+  commissionType: "percentage" | "fixed";
+  clientDiscountType: "percentage" | "fixed";
+  clientDiscountValue: number;
+  maxClientDiscount: number | null;
+  isActive: boolean;
+  notes: string | null;
+  createdAt: string;
+  user: { id: string; name: string | null; email: string | null; phone: string | null };
+  referralsCount: number;
+  convertedCount: number;
+  totalEarned: number;
+  pendingCommission: number;
+  settledCommission: number;
+}
+
+export interface SalesAgentCommissionRow {
+  id: string;
+  agentId: string;
+  agentName: string;
+  userMembershipId: string;
+  customerName: string;
+  customerEmail: string;
+  membershipName: string;
+  amount: number;
+  status: "earned" | "settled";
+  settledAt: string | null;
+  createdAt: string;
 }
 
 export interface Complaint {

@@ -77,6 +77,7 @@ model User {
   commissionType String   @default("percentage") // percentage | fixed
   avatar        String?
   pendingPartnerRef String? // affiliate link token stored at registration, cleared after first paid subscription
+  pendingAgentRef   String? // sales agent referral code stored at registration, cleared after first paid subscription
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -187,6 +188,7 @@ model UserMembership {
   partnerId       String?
   partnerCodeId   String?
   affiliateLinkId String?
+  salesAgentId    String?  // SalesAgent.id if subscribed via agent referral link
 
   user          User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
   membership    Membership            @relation(fields: [membershipId], references: [id])
@@ -195,14 +197,17 @@ model UserMembership {
   partner       Partner?              @relation(fields: [partnerId], references: [id], onDelete: SetNull)
   partnerCode   PartnerCode?          @relation(fields: [partnerCodeId], references: [id], onDelete: SetNull)
   affiliateLink PartnerAffiliateLink? @relation(fields: [affiliateLinkId], references: [id], onDelete: SetNull)
+  refAgent      SalesAgent?           @relation(fields: [salesAgentId], references: [id], onDelete: SetNull)
   bookings      Booking[]
   attendancePass      AttendancePass?
   attendanceCheckIns  AttendanceCheckIn[]
   partnerCommission   PartnerCommission?
   agentCommission     AgentCommission?
+  salesAgentCommission SalesAgentCommission?
 
   @@index([partnerId])
   @@index([salesAgentUserId])
+  @@index([salesAgentId])
 }
 
 model AttendancePass {
@@ -1193,5 +1198,63 @@ model PartnerWithdrawalRequest {
 
   @@index([partnerId])
   @@index([status])
+  @@index([createdAt])
+}
+
+// ─── Sales Agent / Contracts System ──────────────────────────────────────────
+
+model SalesAgent {
+  id                  String   @id @default(cuid())
+  userId              String   @unique
+  name                String
+  referralCode        String   @unique  // short code e.g. "FZ-ABCD1234"
+  commissionRate      Float    @default(0)
+  commissionType      String   @default("percentage") // percentage | fixed
+  clientDiscountType  String   @default("percentage") // discount client gets on subscription
+  clientDiscountValue Float    @default(0)
+  maxClientDiscount   Float?
+  isActive            Boolean  @default(true)
+  createdById         String?  // contracts_manager user id who created this agent
+  notes               String?  @db.Text
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  user         User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  commissions  SalesAgentCommission[]
+  referrals    SalesAgentReferral[]
+  memberships  UserMembership[]
+
+  @@index([referralCode])
+  @@index([userId])
+  @@index([createdById])
+}
+
+model SalesAgentReferral {
+  id          String     @id @default(cuid())
+  agentId     String
+  userId      String     @unique  // the referred user (one user can only be referred once)
+  convertedAt DateTime?           // when they first subscribed
+  totalSpent  Float      @default(0)
+  createdAt   DateTime   @default(now())
+
+  agent SalesAgent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  user  User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([agentId])
+}
+
+model SalesAgentCommission {
+  id               String     @id @default(cuid())
+  agentId          String
+  userMembershipId String     @unique
+  amount           Float
+  status           String     @default("earned") // earned | settled
+  settledAt        DateTime?
+  createdAt        DateTime   @default(now())
+
+  agent          SalesAgent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  userMembership UserMembership @relation(fields: [userMembershipId], references: [id], onDelete: Cascade)
+
+  @@index([agentId, status])
   @@index([createdAt])
 }
