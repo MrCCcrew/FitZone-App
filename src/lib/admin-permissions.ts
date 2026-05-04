@@ -82,7 +82,7 @@ const ACCOUNTANT_FEATURES: AdminFeature[] = ["overview", "accounting", "orders",
 const PARTNER_FEATURES: AdminFeature[] = ["partners"];
 const CONTRACTS_MANAGER_FEATURES: AdminFeature[] = ["contracts", "customers"];
 const AGENT_FEATURES: AdminFeature[] = ["contracts"];
-const HEAD_COACH_FEATURES: AdminFeature[] = ["trainers", "classes", "bookings", "customers"];
+const HEAD_COACH_FEATURES: AdminFeature[] = ["trainers", "classes", "bookings", "customers", "accounting", "discounts"];
 
 export const ROLE_FEATURE_TEMPLATES: Record<AdminRole, AdminFeature[]> = {
   admin: ADMIN_FEATURES,

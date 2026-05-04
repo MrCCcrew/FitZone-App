@@ -9,6 +9,7 @@ const ROLE_OPTIONS: Array<{ value: AdminRole; label: string }> = [
   { value: "staff", label: "استاف" },
   { value: "trainer", label: "مدربة" },
   { value: "accountant", label: "محاسب" },
+  { value: "head_coach", label: "هيد كوتش" },
 ];
 
 const FEATURE_LABELS: Record<string, string> = {
