@@ -61,8 +61,8 @@ export async function POST(req: NextRequest) {
 
   const log = await (db as any).trainerAttendanceLog.upsert({
     where: { trainerId_date: { trainerId, date: dateObj } },
-    create: { trainerId, date: dateObj, status, notes: notes ?? null, recordedById: auth.user.id },
-    update: { status, notes: notes ?? null, recordedById: auth.user.id },
+    create: { trainerId, date: dateObj, status, notes: notes ?? null, recordedById: auth.session.user.id },
+    update: { status, notes: notes ?? null, recordedById: auth.session.user.id },
   });
 
   return NextResponse.json({ log });
