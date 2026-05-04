@@ -243,13 +243,13 @@ export async function POST(req: Request) {
   // Resolve sales agent referral (explicit param or stored at registration)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const dbx = db as any;
-  type AgentInfo = { id: string; commissionRate: number; commissionType: string; clientDiscountType: string; clientDiscountValue: number; maxClientDiscount: number | null };
+  type AgentInfo = { id: string; commissionRate: number; commissionType: string; clientDiscountType: string; clientDiscountValue: number; maxClientDiscount: number | null; managerId: string | null };
   let agentRecord: AgentInfo | null = null;
   const resolvedAgentCode = (agentRef ?? userRecord?.pendingAgentRef ?? "").trim().toUpperCase();
   if (resolvedAgentCode) {
     const ag = await dbx.salesAgent.findUnique({
       where: { referralCode: resolvedAgentCode },
-      select: { id: true, commissionRate: true, commissionType: true, clientDiscountType: true, clientDiscountValue: true, maxClientDiscount: true, isActive: true },
+      select: { id: true, commissionRate: true, commissionType: true, clientDiscountType: true, clientDiscountValue: true, maxClientDiscount: true, isActive: true, managerId: true },
     });
     if (ag && ag.isActive) agentRecord = ag as AgentInfo;
   }
@@ -556,9 +556,36 @@ export async function POST(req: Request) {
           ? agentRecord.commissionRate
           : Math.round((paidAmount * agentRecord.commissionRate) / 100 * 100) / 100;
         if (!needsPaymentConfirmation && commission > 0) {
-          await dbx.salesAgentCommission.create({
+          const agentComm = await dbx.salesAgentCommission.create({
             data: { agentId: resolvedSalesAgentId, userMembershipId: subscription.id, amount: commission },
           });
+          // Manager commission
+          if (agentRecord.managerId) {
+            const mgr = await dbx.contractsManager.findUnique({
+              where: { id: agentRecord.managerId },
+              select: { id: true, commissionType: true, commissionRate: true, isActive: true },
+            });
+            if (mgr?.isActive && (mgr.commissionRate as number) > 0) {
+              let mgrAmount = 0;
+              if (mgr.commissionType === "percentage_of_agents") {
+                mgrAmount = Math.round((commission * (mgr.commissionRate as number)) / 100 * 100) / 100;
+              } else if (mgr.commissionType === "percentage_of_revenue") {
+                mgrAmount = Math.round((paidAmount * (mgr.commissionRate as number)) / 100 * 100) / 100;
+              } else {
+                mgrAmount = mgr.commissionRate as number;
+              }
+              if (mgrAmount > 0) {
+                await dbx.managerCommission.create({
+                  data: {
+                    managerId: mgr.id,
+                    agentCommissionId: (agentComm as { id: string }).id,
+                    userMembershipId: subscription.id,
+                    amount: mgrAmount,
+                  },
+                });
+              }
+            }
+          }
         }
         // Upsert the referral record
         const existingRef = await dbx.salesAgentReferral.findUnique({ where: { userId } });

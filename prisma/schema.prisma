@@ -116,6 +116,7 @@ model User {
   scannedAttendanceCheckIns  AttendanceCheckIn[]         @relation("AttendanceScannedBy")
   salesAgent                 SalesAgent?
   salesAgentReferral         SalesAgentReferral?
+  contractsManager           ContractsManager?
 }
 
 model AuditLog {
@@ -1216,19 +1217,20 @@ model SalesAgent {
   clientDiscountValue Float    @default(0)
   maxClientDiscount   Float?
   isActive            Boolean  @default(true)
-  createdById         String?  // contracts_manager user id who created this agent
+  managerId           String?  // ContractsManager.id who created/manages this agent
   notes               String?  @db.Text
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
   user         User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  manager      ContractsManager?      @relation("ManagedAgents", fields: [managerId], references: [id], onDelete: SetNull)
   commissions  SalesAgentCommission[]
   referrals    SalesAgentReferral[]
   memberships  UserMembership[]
 
   @@index([referralCode])
   @@index([userId])
-  @@index([createdById])
+  @@index([managerId])
 }
 
 model SalesAgentReferral {
@@ -1254,9 +1256,47 @@ model SalesAgentCommission {
   settledAt        DateTime?
   createdAt        DateTime   @default(now())
 
-  agent          SalesAgent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  userMembership UserMembership @relation(fields: [userMembershipId], references: [id], onDelete: Cascade)
+  agent             SalesAgent        @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  userMembership    UserMembership    @relation(fields: [userMembershipId], references: [id], onDelete: Cascade)
+  managerCommission ManagerCommission?
 
   @@index([agentId, status])
+  @@index([createdAt])
+}
+
+// ─── Contracts Manager System ─────────────────────────────────────────────────
+
+model ContractsManager {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  name           String
+  commissionType String   @default("percentage_of_agents") // percentage_of_agents | percentage_of_revenue | fixed
+  commissionRate Float    @default(0)
+  isActive       Boolean  @default(true)
+  notes          String?  @db.Text
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agents      SalesAgent[]        @relation("ManagedAgents")
+  commissions ManagerCommission[]
+
+  @@index([userId])
+}
+
+model ManagerCommission {
+  id                String    @id @default(cuid())
+  managerId         String
+  agentCommissionId String?   @unique   // linked to SalesAgentCommission when type=percentage_of_agents
+  userMembershipId  String?             // soft ref to UserMembership
+  amount            Float
+  status            String    @default("earned") // earned | settled
+  settledAt         DateTime?
+  createdAt         DateTime  @default(now())
+
+  manager         ContractsManager      @relation(fields: [managerId], references: [id], onDelete: Cascade)
+  agentCommission SalesAgentCommission? @relation(fields: [agentCommissionId], references: [id], onDelete: SetNull)
+
+  @@index([managerId, status])
   @@index([createdAt])
 }
