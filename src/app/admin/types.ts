@@ -432,6 +432,8 @@ export interface SalesAgentRow {
   clientDiscountValue: number;
   maxClientDiscount: number | null;
   isActive: boolean;
+  managerId: string | null;
+  managerName: string | null;
   notes: string | null;
   createdAt: string;
   user: { id: string; name: string | null; email: string | null; phone: string | null };
@@ -450,6 +452,35 @@ export interface SalesAgentCommissionRow {
   customerName: string;
   customerEmail: string;
   membershipName: string;
+  amount: number;
+  status: "earned" | "settled";
+  settledAt: string | null;
+  createdAt: string;
+}
+
+export interface ContractsManagerRow {
+  id: string;
+  userId: string;
+  name: string;
+  commissionType: "percentage_of_agents" | "percentage_of_revenue" | "fixed";
+  commissionRate: number;
+  isActive: boolean;
+  notes: string | null;
+  createdAt: string;
+  user: { id: string; name: string | null; email: string | null; phone: string | null };
+  agentsCount: number;
+  totalAgentEarned: number;
+  pendingCommission: number;
+  settledCommission: number;
+}
+
+export interface ManagerCommissionRow {
+  id: string;
+  managerId: string;
+  managerName: string;
+  agentName: string | null;
+  customerName: string | null;
+  membershipName: string | null;
   amount: number;
   status: "earned" | "settled";
   settledAt: string | null;
