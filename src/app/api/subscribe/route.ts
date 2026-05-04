@@ -243,14 +243,15 @@ export async function POST(req: Request) {
   // Resolve sales agent referral (explicit param or stored at registration)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const dbx = db as any;
-  let agentRecord: { id: string; commissionRate: number; commissionType: string; clientDiscountType: string; clientDiscountValue: number; maxClientDiscount: number | null } | null = null;
+  type AgentInfo = { id: string; commissionRate: number; commissionType: string; clientDiscountType: string; clientDiscountValue: number; maxClientDiscount: number | null };
+  let agentRecord: AgentInfo | null = null;
   const resolvedAgentCode = (agentRef ?? userRecord?.pendingAgentRef ?? "").trim().toUpperCase();
   if (resolvedAgentCode) {
     const ag = await dbx.salesAgent.findUnique({
       where: { referralCode: resolvedAgentCode },
       select: { id: true, commissionRate: true, commissionType: true, clientDiscountType: true, clientDiscountValue: true, maxClientDiscount: true, isActive: true },
     });
-    if (ag && ag.isActive) agentRecord = ag as typeof agentRecord;
+    if (ag && ag.isActive) agentRecord = ag as AgentInfo;
   }
 
   const result = await db
