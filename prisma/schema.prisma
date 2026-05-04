@@ -114,6 +114,8 @@ model User {
   attendancePasses           AttendancePass[]
   attendanceCheckIns         AttendanceCheckIn[]         @relation("AttendanceMember")
   scannedAttendanceCheckIns  AttendanceCheckIn[]         @relation("AttendanceScannedBy")
+  salesAgent                 SalesAgent?
+  salesAgentReferral         SalesAgentReferral?
 }
 
 model AuditLog {
