@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { SalesAgentRow, SalesAgentCommissionRow, ContractsManagerRow, ManagerCommissionRow, Partner } from "../types";
+import type { SalesAgentRow, SalesAgentCommissionRow, ContractsManagerRow, ManagerCommissionRow, Partner, PartnerManagerCommissionRow } from "../types";
 
 const INPUT = "w-full rounded-xl border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-pink-500 focus:outline-none";
 const CARD = "rounded-2xl border border-[rgba(255,188,219,0.12)] bg-[rgba(56,18,34,0.6)] p-5";
@@ -159,7 +159,8 @@ function ManagerDashboard() {
   const [loading, setLoading] = useState(true);
   const [agentComms, setAgentComms] = useState<SalesAgentCommissionRow[]>([]);
   const [mgrComms, setMgrComms] = useState<ManagerCommissionRow[]>([]);
-  const [tab, setTab] = useState<"agents" | "agent_comms" | "my_comms" | "partners">("agents");
+  const [partnerComms, setPartnerComms] = useState<PartnerManagerCommissionRow[]>([]);
+  const [tab, setTab] = useState<"agents" | "agent_comms" | "my_comms" | "partners" | "partner_comms">("agents");
   const [showCreate, setShowCreate] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState("");
@@ -200,12 +201,19 @@ function ManagerDashboard() {
     setPartners(Array.isArray((json as { partners?: Partner[] }).partners) ? (json as { partners: Partner[] }).partners : []);
   }, []);
 
+  const loadPartnerComms = useCallback(async () => {
+    const res = await fetch("/api/admin/contracts?view=partner_commissions", { cache: "no-store" });
+    const json = await res.json().catch(() => ({}));
+    setPartnerComms(Array.isArray((json as { partnerCommissions?: PartnerManagerCommissionRow[] }).partnerCommissions) ? (json as { partnerCommissions: PartnerManagerCommissionRow[] }).partnerCommissions : []);
+  }, []);
+
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
     if (tab === "agent_comms") void loadAgentComms();
     if (tab === "my_comms") void loadMgrComms();
     if (tab === "partners") void loadPartners();
-  }, [tab, loadAgentComms, loadMgrComms, loadPartners]);
+    if (tab === "partner_comms") void loadPartnerComms();
+  }, [tab, loadAgentComms, loadMgrComms, loadPartners, loadPartnerComms]);
 
   const handleCreate = async () => {
     if (!form.name.trim() || !form.email.trim() || !form.password.trim()) { setCreateError("الاسم والبريد وكلمة المرور مطلوبة."); return; }
@@ -251,6 +259,7 @@ function ManagerDashboard() {
         <div className="flex gap-2 flex-wrap">
           <PrintButton />
           <button onClick={() => setShowCreate(true)} className="rounded-xl bg-gradient-to-r from-pink-600 to-pink-500 px-5 py-2.5 text-sm font-black text-white hover:opacity-90">+ إضافة مندوب</button>
+          <button onClick={() => setShowCreatePartner(true)} className="rounded-xl bg-gray-700 px-5 py-2.5 text-sm font-black text-white hover:bg-gray-600">+ إضافة شريك</button>
         </div>
       </div>
 
@@ -269,7 +278,7 @@ function ManagerDashboard() {
       </div>
 
       <div className="flex gap-2 print-hidden flex-wrap">
-        {([["agents", "مناديبي"], ["agent_comms", "عمولات مناديبي"], ["my_comms", "عمولاتي"], ["partners", "الشركاء"]] as const).map(([key, label]) => (
+        {([["agents", "مناديبي"], ["agent_comms", "عمولات مناديبي"], ["my_comms", "عمولاتي"], ["partners", "الشركاء"], ["partner_comms", "عمولات الشركاء"]] as const).map(([key, label]) => (
           <button key={key} onClick={() => setTab(key)} className={`rounded-xl px-4 py-2 text-sm font-bold transition-colors ${tab === key ? "bg-pink-600 text-white" : "bg-gray-800 text-gray-400 hover:text-white"}`}>{label}</button>
         ))}
       </div>
@@ -365,37 +374,68 @@ function ManagerDashboard() {
 
       {/* Partners tab */}
       {tab === "partners" && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-base font-black text-white">الشركاء تحت إشرافي</h3>
-            <button onClick={() => setShowCreatePartner(true)} className="rounded-xl bg-pink-600 px-4 py-2 text-sm font-bold text-white hover:bg-pink-500">+ إضافة شريك</button>
-          </div>
-          {partners.length === 0 ? (
-            <div className="py-10 text-center text-sm text-gray-500">لا يوجد شركاء بعد.</div>
-          ) : (
-            <div className="space-y-3">
+        <div className={CARD + " space-y-4"}>
+          {partners.length === 0 ? <p className="text-sm text-[#d7aabd]">لا يوجد شركاء بعد. أضف أول شريك!</p> : (
+            <div className="space-y-4">
               {partners.map((p) => (
-                <div key={p.id} className={CARD + " space-y-2"}>
-                  <div className="flex items-center justify-between gap-2">
+                <div key={p.id} className="rounded-xl border border-gray-700 bg-gray-800/50 p-4 space-y-3">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
                     <div>
                       <p className="font-black text-white">{p.name}</p>
                       <p className="text-xs text-gray-400">{p.linkedUser?.email} · {p.category}</p>
                     </div>
-                    <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${p.isActive ? "bg-emerald-900/40 text-emerald-300" : "bg-gray-800 text-gray-500"}`}>
-                      {p.isActive ? "نشط" : "معطل"}
-                    </span>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={`text-xs rounded-full px-2 py-0.5 ${p.isActive ? "bg-emerald-900/30 text-emerald-400" : "bg-red-900/30 text-red-400"}`}>{p.isActive ? "نشط" : "موقوف"}</span>
+                      {p.referralToken && <code className="text-pink-300 text-xs bg-gray-900 px-2 py-0.5 rounded">{p.referralToken}</code>}
+                    </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-2 text-xs border-t border-gray-700 pt-2">
-                    <div><span className="text-gray-400">عمولة الشريك: </span><span className="font-bold text-white">{p.commissionRate}{p.commissionType === "percentage" ? "%" : " ج.م"}</span></div>
-                    <div><span className="text-gray-400">عمولتي: </span><span className="font-bold text-pink-300">{p.managerCommissionRate ?? 0}{p.managerCommissionType === "percentage_of_partner" ? "% من عمولته" : " ج.م ثابت"}</span></div>
-                    <div><span className="text-gray-400">معلق: </span><span className="font-bold text-yellow-300">{p.totalCommissionPending.toFixed(2)} ج.م</span></div>
-                    <div><span className="text-gray-400">محصّل: </span><span className="font-bold text-emerald-300">{p.totalCommissionPaid.toFixed(2)} ج.م</span></div>
+                  {p.referralToken ? (
+                    <ReferralLink code={p.referralToken} label={p.referralLinkLabel ?? "لينك الشريك"} token={p.referralToken} baseUrl="/?ref=" />
+                  ) : (
+                    <div className="rounded-lg bg-gray-900 px-3 py-2 text-xs text-yellow-300">لا يوجد لينك إحالة نشط لهذا الشريك.</div>
+                  )}
+                  <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                    <div className="rounded-lg bg-gray-900 py-1.5"><p className="font-bold text-white">{p.linksCount}</p><p className="text-gray-400">لينكات</p></div>
+                    <div className="rounded-lg bg-gray-900 py-1.5"><p className="font-bold text-yellow-400">{p.totalCommissionPending.toFixed(0)} ج.م</p><p className="text-gray-400">معلق</p></div>
+                    <div className="rounded-lg bg-gray-900 py-1.5"><p className="font-bold text-emerald-400">{p.totalCommissionPaid.toFixed(0)} ج.م</p><p className="text-gray-400">محصل</p></div>
                   </div>
-                  <div className="flex gap-2 pt-1">
-                    <ReferralLink label="لينك شريك" token={`partner-${p.id}`} baseUrl={`/register?ref=`} />
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="rounded-lg bg-gray-900 px-3 py-2"><span className="text-gray-400">عمولة الشريك: </span><span className="font-bold text-white">{p.commissionRate}{p.commissionType === "percentage" ? "%" : " ج.م"}</span></div>
+                    <div className="rounded-lg bg-gray-900 px-3 py-2"><span className="text-gray-400">عمولتي: </span><span className="font-bold text-pink-300">{p.managerCommissionRate ?? 0}{p.managerCommissionType === "percentage_of_partner" ? "% من عمولته" : " ج.م ثابت"}</span></div>
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Partner commissions tab */}
+      {tab === "partner_comms" && (
+        <div className={CARD + " space-y-4"}>
+          {partnerComms.length === 0 ? <p className="text-sm text-[#d7aabd]">لا توجد عمولات شركاء بعد.</p> : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-right">
+                <thead><tr className="border-b border-gray-700 text-xs text-gray-400">
+                  <th className="pb-2 font-bold">الشريك</th><th className="pb-2 font-bold">العميل</th>
+                  <th className="pb-2 font-bold">الباقة</th><th className="pb-2 font-bold">عمولتي</th>
+                  <th className="pb-2 font-bold">الحالة</th><th className="pb-2 font-bold">تاريخ التحصيل</th>
+                  <th className="pb-2 font-bold">التاريخ</th>
+                </tr></thead>
+                <tbody>
+                  {partnerComms.map((c) => (
+                    <tr key={c.id} className="border-b border-gray-800/50">
+                      <td className="py-2 text-white">{c.partnerName ?? "—"}</td>
+                      <td className="py-2"><p className="text-white">{c.customerName ?? "—"}</p><p className="text-xs text-gray-400">{c.customerEmail ?? "—"}</p></td>
+                      <td className="py-2 text-gray-300">{c.membershipName ?? "—"}</td>
+                      <td className="py-2 font-bold text-pink-300">{c.amount} ج.م</td>
+                      <td className="py-2"><StatusBadge status={c.status} /></td>
+                      <td className="py-2 text-gray-400">{c.settledAt ? new Date(c.settledAt).toLocaleDateString("ar-EG") : "—"}</td>
+                      <td className="py-2 text-gray-400">{new Date(c.createdAt).toLocaleDateString("ar-EG")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </div>

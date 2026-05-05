@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { randomBytes } from "crypto";
 import { requireAdminFeature } from "@/lib/admin-guard";
 import { db } from "@/lib/db";
 import { logAudit } from "@/lib/audit-context";
@@ -11,6 +12,10 @@ function generateReferralCode(): string {
   let code = "FZ-";
   for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
   return code;
+}
+
+function generatePartnerToken(): string {
+  return randomBytes(6).toString("base64url").toUpperCase().slice(0, 8);
 }
 
 async function checkAccess() {
@@ -98,12 +103,32 @@ export async function GET(req: Request) {
         where: { managerId: mid },
         include: {
           user: { select: { id: true, name: true, email: true } },
+          affiliateLinks: { select: { token: true, label: true }, where: { isActive: true }, orderBy: { createdAt: "desc" }, take: 1 },
           _count: { select: { codes: true, affiliateLinks: true } },
           commissions: { select: { amount: true, status: true } },
         },
         orderBy: { createdAt: "desc" },
       });
       return NextResponse.json({ partners: formatPartnerList(partners) });
+    }
+
+    if (view === "partner_commissions") {
+      const mid = await getManagerId(userId!);
+      if (!mid) return NextResponse.json({ partnerCommissions: [] });
+      const comms = await dbx.managerPartnerCommission.findMany({
+        where: { managerId: mid },
+        include: {
+          manager: { select: { id: true, name: true } },
+          partnerCommission: {
+            include: {
+              partner: { select: { name: true } },
+              userMembership: { include: { user: { select: { name: true, email: true } }, membership: { select: { name: true } } } },
+            },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+      return NextResponse.json({ partnerCommissions: comms.map(formatPartnerCommission) });
     }
 
     // Manager's own profile + their agents
@@ -262,6 +287,7 @@ export async function GET(req: Request) {
       include: {
         user: { select: { id: true, name: true, email: true } },
         manager: { select: { id: true, name: true } },
+        affiliateLinks: { select: { token: true, label: true }, where: { isActive: true }, orderBy: { createdAt: "desc" }, take: 1 },
         _count: { select: { codes: true, affiliateLinks: true } },
         commissions: { select: { amount: true, status: true } },
       },
@@ -283,18 +309,7 @@ export async function GET(req: Request) {
       },
       orderBy: { createdAt: "desc" },
     });
-    return NextResponse.json({
-      partnerCommissions: comms.map((c: any) => ({
-        id: c.id, managerId: c.managerId, managerName: c.manager.name,
-        partnerName: c.partnerCommission?.partner?.name ?? null,
-        customerName: c.partnerCommission?.userMembership?.user?.name ?? null,
-        customerEmail: c.partnerCommission?.userMembership?.user?.email ?? null,
-        membershipName: c.partnerCommission?.userMembership?.membership?.name ?? null,
-        amount: c.amount, status: c.status,
-        settledAt: c.settledAt?.toISOString() ?? null,
-        createdAt: c.createdAt.toISOString(),
-      })),
-    });
+    return NextResponse.json({ partnerCommissions: comms.map(formatPartnerCommission) });
   }
 
   // All agents list
@@ -400,6 +415,9 @@ export async function POST(req: Request) {
       resolvedManagerId = body.managerId;
     }
 
+    let linkToken = generatePartnerToken();
+    while (await dbx.partnerAffiliateLink.findUnique({ where: { token: linkToken } })) linkToken = generatePartnerToken();
+
     const partner = await dbx.partner.create({
       data: {
         userId: pUser.id, name: body.name.trim(),
@@ -413,10 +431,12 @@ export async function POST(req: Request) {
         managerId: resolvedManagerId,
         managerCommissionType: body.managerCommissionType ?? null,
         managerCommissionRate: body.managerCommissionRate != null ? Number(body.managerCommissionRate) : null,
+        affiliateLinks: { create: { token: linkToken, label: "لينك الشريك" } },
       },
       include: {
         user: { select: { id: true, name: true, email: true } },
         manager: { select: { id: true, name: true } },
+        affiliateLinks: { select: { token: true, label: true }, where: { isActive: true }, orderBy: { createdAt: "desc" }, take: 1 },
         _count: { select: { codes: true, affiliateLinks: true } },
         commissions: { select: { amount: true, status: true } },
       },
@@ -659,8 +679,23 @@ function formatPartnerList(partners: any[], includeManager = false) {
       managerName: includeManager ? (p.manager?.name ?? null) : undefined,
       managerCommissionType: p.managerCommissionType ?? null,
       managerCommissionRate: p.managerCommissionRate ?? null,
+      referralToken: p.affiliateLinks?.[0]?.token ?? null,
+      referralLinkLabel: p.affiliateLinks?.[0]?.label ?? null,
     };
   });
+}
+
+function formatPartnerCommission(c: any) {
+  return {
+    id: c.id, managerId: c.managerId, managerName: c.manager?.name ?? "",
+    partnerName: c.partnerCommission?.partner?.name ?? null,
+    customerName: c.partnerCommission?.userMembership?.user?.name ?? null,
+    customerEmail: c.partnerCommission?.userMembership?.user?.email ?? null,
+    membershipName: c.partnerCommission?.userMembership?.membership?.name ?? null,
+    amount: c.amount, status: c.status,
+    settledAt: c.settledAt?.toISOString() ?? null,
+    createdAt: c.createdAt.toISOString(),
+  };
 }
 
 function formatManagerCommission(c: any) {
