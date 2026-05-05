@@ -33,6 +33,7 @@ import Partners from "./sections/Partners";
 import Contracts from "./sections/Contracts";
 
 const PROTECTED_SECTIONS = ["payments", "database"] as const;
+const AFFILIATE_MARKETING_SECTIONS: Section[] = ["rewards", "partners", "contracts", "discounts"];
 
 const NAV: { id: Section; label: string; icon: string }[] = [
   { id: "settings", label: "الإعدادات والصلاحيات", icon: "⚙️" },
@@ -213,6 +214,7 @@ export default function AdminPanel() {
   const [status, setStatus] = useState<"loading" | "authenticated" | "unauthenticated">("loading");
   const [active, setActive] = useState<Section>("overview");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [affiliateOpen, setAffiliateOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [unlockedSections, setUnlockedSections] = useState<string[]>([]);
   const [loadingMasterAccess, setLoadingMasterAccess] = useState(true);
@@ -224,7 +226,10 @@ export default function AdminPanel() {
   const permissions = session?.user?.permissions;
   const defaultSection = getDefaultAdminSection(role, permissions);
   const allowedNav = NAV.filter((item) => canAccessAdminSection(role, permissions, item.id));
+  const affiliateNav = allowedNav.filter((item) => AFFILIATE_MARKETING_SECTIONS.includes(item.id));
+  const mainNav = allowedNav.filter((item) => !AFFILIATE_MARKETING_SECTIONS.includes(item.id));
   const safeActive = canAccessAdminSection(role, permissions, active) ? active : defaultSection;
+  const affiliateActive = AFFILIATE_MARKETING_SECTIONS.includes(safeActive);
   const ActiveSection = SECTIONS[safeActive];
   const protectedActive = isProtectedSection(safeActive);
   const isSafeActiveUnlocked = !protectedActive || unlockedSections.includes(safeActive);
@@ -315,6 +320,10 @@ export default function AdminPanel() {
     setActive(section);
     setSidebarOpen(false);
   };
+
+  useEffect(() => {
+    if (affiliateActive) setAffiliateOpen(true);
+  }, [affiliateActive]);
 
   const unlockProtectedSection = async () => {
     if (!isProtectedSection(safeActive)) return;
@@ -428,7 +437,7 @@ export default function AdminPanel() {
         </div>
 
         <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
-          {allowedNav.map((item) => (
+          {mainNav.map((item) => (
             <button
               key={item.id}
               onClick={() => navigate(item.id)}
@@ -444,6 +453,46 @@ export default function AdminPanel() {
               </span>
             </button>
           ))}
+
+          {affiliateNav.length > 0 && (
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={() => setAffiliateOpen((open) => !open)}
+                className={`w-full rounded-xl px-4 py-2.5 text-right text-sm font-medium transition-all ${
+                  affiliateActive
+                    ? "bg-[rgba(255,130,186,0.18)] text-white"
+                    : "text-[#d7aabd] hover:bg-[rgba(255,130,186,0.14)] hover:text-white"
+                }`}
+              >
+                <span className="flex items-center gap-3">
+                  <span className="text-base">📣</span>
+                  <span className="flex-1">التسويق بالعمولة</span>
+                  <span className={`text-xs transition-transform ${affiliateOpen ? "rotate-180" : ""}`}>⌄</span>
+                </span>
+              </button>
+              {affiliateOpen && (
+                <div className="mt-1 space-y-1 pr-4">
+                  {affiliateNav.map((item) => (
+                    <button
+                      key={item.id}
+                      onClick={() => navigate(item.id)}
+                      className={`w-full rounded-xl px-4 py-2 text-right text-sm font-medium transition-all ${
+                        safeActive === item.id
+                          ? "bg-gradient-to-r from-pink-600 to-pink-500 text-white shadow-[0_18px_40px_rgba(190,24,93,0.34)]"
+                          : "text-[#d7aabd] hover:bg-[rgba(255,130,186,0.14)] hover:text-white"
+                      }`}
+                    >
+                      <span className="flex items-center gap-3">
+                        <span className="text-base">{item.icon}</span>
+                        <span className="flex-1">{item.label}</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </nav>
 
         <div className="space-y-1 border-t border-[rgba(255,188,219,0.16)] px-3 py-4">
