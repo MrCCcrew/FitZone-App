@@ -170,6 +170,9 @@ export function canAccessAdminFeature(
 }
 
 export function canAccessAdminSection(role: string | undefined, permissions: string[] | undefined, section: Section) {
+  if (section === "settings") {
+    return canAccessAdminFeature(role, permissions, "settings") || canAccessAdminFeature(role, permissions, "referrals");
+  }
   return canAccessAdminFeature(role, permissions, SECTION_FEATURE_MAP[section]);
 }
 
@@ -180,7 +183,7 @@ export function getDefaultAdminSection(role: string | undefined, permissions?: s
   if (allowed.includes("overview")) return "overview";
   // Role-specific defaults
   if (role === "contracts_manager" || role === "agent") return "contracts";
-  if (role === "staff") return "referrals";
+  if (role === "staff" && (allowed.includes("settings") || allowed.includes("referrals"))) return "settings";
   if (role === "head_coach") return "trainers";
   return allowed[0] ?? "overview";
 }

@@ -565,11 +565,13 @@ export default function Contracts() {
   const [userRole, setUserRole] = useState<string | null>(null);
   const [roleLoaded, setRoleLoaded] = useState(false);
 
-  const [tab, setTab] = useState<"managers" | "agents" | "commissions" | "manager_commissions">("managers");
+  const [tab, setTab] = useState<"managers" | "agents" | "commissions" | "manager_commissions" | "partners" | "partner_commissions">("managers");
   const [managers, setManagers] = useState<ContractsManagerRow[]>([]);
   const [agents, setAgents] = useState<SalesAgentRow[]>([]);
   const [commissions, setCommissions] = useState<SalesAgentCommissionRow[]>([]);
   const [managerComms, setManagerComms] = useState<ManagerCommissionRow[]>([]);
+  const [partners, setPartners] = useState<Partner[]>([]);
+  const [partnerComms, setPartnerComms] = useState<PartnerManagerCommissionRow[]>([]);
   const [loading, setLoading] = useState(false);
 
   const [showCreateMgr, setShowCreateMgr] = useState(false);
@@ -641,13 +643,33 @@ export default function Contracts() {
     } finally { setLoading(false); }
   }, []);
 
+  const loadPartners = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/contracts?view=partners", { cache: "no-store" });
+      const json = await res.json().catch(() => ({}));
+      setPartners(Array.isArray((json as { partners?: Partner[] }).partners) ? (json as { partners: Partner[] }).partners : []);
+    } finally { setLoading(false); }
+  }, []);
+
+  const loadPartnerComms = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/contracts?view=partner_commissions", { cache: "no-store" });
+      const json = await res.json().catch(() => ({}));
+      setPartnerComms(Array.isArray((json as { partnerCommissions?: PartnerManagerCommissionRow[] }).partnerCommissions) ? (json as { partnerCommissions: PartnerManagerCommissionRow[] }).partnerCommissions : []);
+    } finally { setLoading(false); }
+  }, []);
+
   useEffect(() => {
     if (!roleLoaded || !userRole || userRole === "agent" || userRole === "contracts_manager") return;
     if (tab === "managers") void loadManagers();
     else if (tab === "agents") void loadAgents();
     else if (tab === "commissions") void loadComms();
     else if (tab === "manager_commissions") void loadMgrComms();
-  }, [roleLoaded, userRole, tab, loadManagers, loadAgents, loadComms, loadMgrComms]);
+    else if (tab === "partners") void loadPartners();
+    else if (tab === "partner_commissions") void loadPartnerComms();
+  }, [roleLoaded, userRole, tab, loadManagers, loadAgents, loadComms, loadMgrComms, loadPartners, loadPartnerComms]);
 
   if (!roleLoaded) return <p className="text-sm text-[#d7aabd] p-6">جاري التحميل...</p>;
   if (userRole === "agent") return <AgentDashboard />;
@@ -803,7 +825,7 @@ export default function Contracts() {
 
       {/* Tabs */}
       <div className="flex gap-2 print-hidden flex-wrap">
-        {([["managers", "المديرون"], ["agents", "المناديب"], ["commissions", "عمولات المناديب"], ["manager_commissions", "عمولات المديرين"]] as const).map(([key, label]) => (
+        {([["managers", "المديرون"], ["agents", "المناديب"], ["commissions", "عمولات المناديب"], ["manager_commissions", "عمولات المديرين"], ["partners", "الشركاء"], ["partner_commissions", "عمولات الشركاء"]] as const).map(([key, label]) => (
           <button key={key} onClick={() => setTab(key)} className={`rounded-xl px-4 py-2 text-sm font-bold transition-colors ${tab === key ? "bg-pink-600 text-white" : "bg-gray-800 text-gray-400 hover:text-white"}`}>{label}</button>
         ))}
       </div>
@@ -953,6 +975,70 @@ export default function Contracts() {
       )}
 
       {/* ── Create Manager Modal ── */}
+      {/* Partners tab */}
+      {tab === "partners" && (
+        <div className={CARD + " space-y-4"}>
+          {loading ? <p className="text-sm text-[#d7aabd]">جاري التحميل...</p> : partners.length === 0 ? <p className="text-sm text-[#d7aabd]">لا يوجد شركاء.</p> : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-right print-table">
+                <thead><tr className="border-b border-gray-700 text-xs text-gray-400">
+                  <th className="pb-3 font-bold">الشريك</th><th className="pb-3 font-bold">المدير</th>
+                  <th className="pb-3 font-bold">لينك الإحالة</th><th className="pb-3 font-bold">عمولة الشريك</th>
+                  <th className="pb-3 font-bold">عمولة المدير</th><th className="pb-3 font-bold">معلق</th>
+                  <th className="pb-3 font-bold">محصل</th><th className="pb-3 font-bold">الحالة</th>
+                </tr></thead>
+                <tbody>
+                  {partners.map((p) => (
+                    <tr key={p.id} className="border-b border-gray-800/50 hover:bg-white/5">
+                      <td className="py-3"><p className="font-bold text-white">{p.name}</p><p className="text-xs text-gray-400">{p.linkedUser?.email} · {p.category}</p></td>
+                      <td className="py-3 text-xs text-gray-400">{p.managerName ?? "—"}</td>
+                      <td className="py-3">{p.referralToken ? <code className="text-pink-300 text-xs bg-gray-900 px-2 py-0.5 rounded">{p.referralToken}</code> : <span className="text-xs text-gray-500">—</span>}</td>
+                      <td className="py-3 text-center text-gray-300">{p.commissionRate}{p.commissionType === "percentage" ? "%" : " ج.م"}</td>
+                      <td className="py-3 text-center text-pink-300">{p.managerCommissionRate ?? 0}{p.managerCommissionType === "percentage_of_partner" ? "%" : " ج.م"}</td>
+                      <td className="py-3 text-center text-yellow-400">{p.totalCommissionPending.toFixed(0)} ج.م</td>
+                      <td className="py-3 text-center text-emerald-400">{p.totalCommissionPaid.toFixed(0)} ج.م</td>
+                      <td className="py-3 text-center"><span className={`text-xs rounded-full px-2 py-0.5 ${p.isActive ? "bg-emerald-900/30 text-emerald-400" : "bg-red-900/30 text-red-400"}`}>{p.isActive ? "نشط" : "موقوف"}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Partner commissions tab */}
+      {tab === "partner_commissions" && (
+        <div className={CARD + " space-y-4"}>
+          {loading ? <p className="text-sm text-[#d7aabd]">جاري التحميل...</p> : partnerComms.length === 0 ? <p className="text-sm text-[#d7aabd]">لا توجد عمولات شركاء.</p> : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-right print-table">
+                <thead><tr className="border-b border-gray-700 text-xs text-gray-400">
+                  <th className="pb-3 font-bold">المدير</th><th className="pb-3 font-bold">الشريك</th>
+                  <th className="pb-3 font-bold">العميل</th><th className="pb-3 font-bold">الباقة</th>
+                  <th className="pb-3 font-bold">عمولة المدير</th><th className="pb-3 font-bold">الحالة</th>
+                  <th className="pb-3 font-bold">تاريخ التحصيل</th><th className="pb-3 font-bold">التاريخ</th>
+                </tr></thead>
+                <tbody>
+                  {partnerComms.map((c) => (
+                    <tr key={c.id} className="border-b border-gray-800/50">
+                      <td className="py-2 font-bold text-white">{c.managerName}</td>
+                      <td className="py-2 text-gray-300">{c.partnerName ?? "—"}</td>
+                      <td className="py-2"><p className="text-white">{c.customerName ?? "—"}</p><p className="text-xs text-gray-400">{c.customerEmail ?? "—"}</p></td>
+                      <td className="py-2 text-gray-300">{c.membershipName ?? "—"}</td>
+                      <td className="py-2 font-bold text-pink-300">{c.amount} ج.م</td>
+                      <td className="py-2"><StatusBadge status={c.status} /></td>
+                      <td className="py-2 text-gray-400">{c.settledAt ? new Date(c.settledAt).toLocaleDateString("ar-EG") : "—"}</td>
+                      <td className="py-2 text-gray-400">{new Date(c.createdAt).toLocaleDateString("ar-EG")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
       {showCreateMgr && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 print-hidden" onClick={() => setShowCreateMgr(false)}>
           <div className="w-full max-w-md rounded-2xl border border-gray-700 bg-gray-900 p-6 space-y-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
