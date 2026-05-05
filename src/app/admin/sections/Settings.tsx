@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { AdminEmployee, AuditLogEntry } from "../types";
 import { ADMIN_FEATURES, ROLE_FEATURE_TEMPLATES, type AdminRole } from "@/lib/admin-permissions";
+import Referrals from "./Referrals";
 
 const ROLE_OPTIONS: Array<{ value: AdminRole; label: string }> = [
   { value: "admin", label: "مدير النظام" },
@@ -187,8 +188,9 @@ function getRoleLabel(role: string) {
   return ROLE_OPTIONS.find((item) => item.value === role)?.label ?? role;
 }
 
-export default function Settings() {
-  const [activeTab, setActiveTab] = useState<"employees" | "audit">("employees");
+export default function Settings({ userRole = "staff", permissions = [] }: { userRole?: string; permissions?: string[] }) {
+  const canManageSettings = userRole === "admin" || permissions.includes("settings");
+  const [activeTab, setActiveTab] = useState<"employees" | "referrals" | "audit">(canManageSettings ? "employees" : "referrals");
   const [employees, setEmployees] = useState<AdminEmployee[]>([]);
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
   const [auditLoading, setAuditLoading] = useState(false);
@@ -204,6 +206,10 @@ export default function Settings() {
   });
 
   const loadEmployees = async () => {
+    if (!canManageSettings) {
+      setEmployees([]);
+      return;
+    }
     const response = await fetch("/api/admin/settings/staff", { cache: "no-store" });
     const payload = await response.json();
     if (!response.ok) {
@@ -215,6 +221,10 @@ export default function Settings() {
   const loadLogs = async (
     filters: { actorUserId: string; targetType: string; action: string; search: string } = auditFilters,
   ) => {
+    if (!canManageSettings) {
+      setLogs([]);
+      return;
+    }
     setAuditLoading(true);
     const params = new URLSearchParams({ limit: "120" });
     if (filters.actorUserId) params.set("actorUserId", filters.actorUserId);
@@ -241,7 +251,7 @@ export default function Settings() {
     let cancelled = false;
     (async () => {
       try {
-        await Promise.all([loadEmployees(), loadLogs()]);
+        await (canManageSettings ? Promise.all([loadEmployees(), loadLogs()]) : Promise.resolve());
       } catch (error) {
         if (!cancelled) {
           setMessage({ text: error instanceof Error ? error.message : "تعذر تحميل الإعدادات.", ok: false });
@@ -257,8 +267,9 @@ export default function Settings() {
 
   useEffect(() => {
     if (activeTab !== "audit") return;
+    if (!canManageSettings) return;
     void loadLogs();
-  }, [activeTab]);
+  }, [activeTab, canManageSettings]);
 
   const updateForm = <K extends keyof EmployeeForm>(key: K, value: EmployeeForm[K]) =>
     setForm((current) => ({ ...current, [key]: value }));
@@ -346,19 +357,30 @@ export default function Settings() {
     <div className="space-y-6">
       <div className="rounded-3xl border border-white/10 bg-black/20 p-5">
         <div className="mb-4 flex flex-wrap gap-3">
+          {canManageSettings && (
+            <button
+              type="button"
+              onClick={() => setActiveTab("employees")}
+              className={`rounded-xl px-4 py-2 text-sm font-bold ${activeTab === "employees" ? "bg-pink-600 text-white" : "bg-white/5 text-[#d7aabd]"}`}
+            >
+              حسابات الموظفين
+            </button>
+          )}
+          {canManageSettings && (
+            <button
+              type="button"
+              onClick={() => setActiveTab("audit")}
+              className={`rounded-xl px-4 py-2 text-sm font-bold ${activeTab === "audit" ? "bg-pink-600 text-white" : "bg-white/5 text-[#d7aabd]"}`}
+            >
+              سجل التغييرات
+            </button>
+          )}
           <button
             type="button"
-            onClick={() => setActiveTab("employees")}
-            className={`rounded-xl px-4 py-2 text-sm font-bold ${activeTab === "employees" ? "bg-pink-600 text-white" : "bg-white/5 text-[#d7aabd]"}`}
+            onClick={() => setActiveTab("referrals")}
+            className={`rounded-xl px-4 py-2 text-sm font-bold ${activeTab === "referrals" ? "bg-pink-600 text-white" : "bg-white/5 text-[#d7aabd]"}`}
           >
-            حسابات الموظفين
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab("audit")}
-            className={`rounded-xl px-4 py-2 text-sm font-bold ${activeTab === "audit" ? "bg-pink-600 text-white" : "bg-white/5 text-[#d7aabd]"}`}
-          >
-            سجل التغييرات
+            لينكات إحالة الاستاف
           </button>
         </div>
 
@@ -564,6 +586,8 @@ export default function Settings() {
               </table>
             </div>
           </div>
+        ) : activeTab === "referrals" ? (
+          <Referrals userRole={userRole} />
         ) : (
           <div className="space-y-4">
             <div className="rounded-2xl border border-white/10 bg-[#1b0d14] p-4 text-sm text-[#d7aabd]">

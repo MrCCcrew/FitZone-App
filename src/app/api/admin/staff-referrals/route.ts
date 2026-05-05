@@ -10,9 +10,15 @@ function generateToken() {
   return randomBytes(5).toString("hex").toUpperCase();
 }
 
+async function requireStaffReferralAccess() {
+  const referralAuth = await requireAdminFeature("referrals");
+  if (!("error" in referralAuth)) return referralAuth;
+  return requireAdminFeature("settings");
+}
+
 // GET /api/admin/staff-referrals?view=commissions&staffUserId=X
 export async function GET(req: NextRequest) {
-  const auth = await requireAdminFeature("referrals");
+  const auth = await requireStaffReferralAccess();
   if ("error" in auth) return auth.error;
 
   const { searchParams } = new URL(req.url);
@@ -96,7 +102,7 @@ export async function GET(req: NextRequest) {
 
 // POST /api/admin/staff-referrals  { label? }  — create link for self (staff) or { userId, label } (admin)
 export async function POST(req: NextRequest) {
-  const auth = await requireAdminFeature("referrals");
+  const auth = await requireStaffReferralAccess();
   if ("error" in auth) return auth.error;
 
   const body = await req.json();
@@ -123,7 +129,7 @@ export async function POST(req: NextRequest) {
 
 // PATCH /api/admin/staff-referrals  { id, label?, isActive?, action }
 export async function PATCH(req: NextRequest) {
-  const auth = await requireAdminFeature("referrals");
+  const auth = await requireStaffReferralAccess();
   if ("error" in auth) return auth.error;
 
   const body = await req.json();
@@ -160,7 +166,7 @@ export async function PATCH(req: NextRequest) {
 
 // DELETE /api/admin/staff-referrals?id=X
 export async function DELETE(req: NextRequest) {
-  const auth = await requireAdminFeature("referrals");
+  const auth = await requireStaffReferralAccess();
   if ("error" in auth) return auth.error;
 
   const id = new URL(req.url).searchParams.get("id");

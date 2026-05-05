@@ -31,7 +31,6 @@ import Settings from "./sections/Settings";
 import PushNotifications from "./sections/PushNotifications";
 import Partners from "./sections/Partners";
 import Contracts from "./sections/Contracts";
-import Referrals from "./sections/Referrals";
 
 const PROTECTED_SECTIONS = ["payments", "database"] as const;
 
@@ -60,7 +59,6 @@ const NAV: { id: Section; label: string; icon: string }[] = [
   { id: "rewards", label: "المكافآت والإحالة", icon: "🎁" },
   { id: "partners", label: "الشركاء والعمولات", icon: "🤝" },
   { id: "contracts", label: "التعاقدات والمناديب", icon: "📋" },
-  { id: "referrals", label: "لينكات الإحالة", icon: "🔗" },
   { id: "push",    label: "الإشعارات الفورية",  icon: "🔔" },
 ];
 
@@ -101,7 +99,6 @@ const TITLES: Record<string, string> = {
   rewards: "إعدادات المكافآت والإحالة",
   partners: "الشركاء والعمولات",
   contracts: "التعاقدات والمناديب",
-  referrals: "لينكات الإحالة والعمولات",
   database: "إدارة قاعدة البيانات",
   push:     "الإشعارات الفورية (Web Push)",
 };
@@ -501,8 +498,8 @@ export default function AdminPanel() {
             />
           ) : safeActive === "partners" ? (
             <Partners viewMode={role === "partner" ? "partner" : "admin"} />
-          ) : safeActive === "referrals" ? (
-            <Referrals userRole={role ?? "staff"} />
+          ) : safeActive === "settings" ? (
+            <Settings userRole={role ?? "staff"} permissions={permissions ?? []} />
           ) : (
             <ActiveSection />
           )}
