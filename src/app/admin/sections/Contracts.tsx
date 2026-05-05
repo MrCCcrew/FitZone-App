@@ -21,10 +21,12 @@ function StatusBadge({ status }: { status: string }) {
     : <span className="text-xs rounded-full px-2 py-0.5 bg-yellow-900/30 text-yellow-400">معلقة</span>;
 }
 
-function ReferralLink({ code }: { code: string }) {
-  const url = typeof window !== "undefined" ? `${window.location.origin}?agentRef=${code}` : `?agentRef=${code}`;
+function ReferralLink({ code, label, token, baseUrl }: { code?: string; label?: string; token?: string; baseUrl?: string }) {
+  const path = token ? `${baseUrl ?? ""}${token}` : `?agentRef=${code ?? ""}`;
+  const url = typeof window !== "undefined" ? `${window.location.origin}${path}` : path;
   return (
     <div className="flex items-center gap-2 flex-wrap">
+      {label && <span className="text-xs font-bold text-gray-400">{label}</span>}
       <code className="flex-1 min-w-0 rounded-lg bg-gray-900 px-3 py-1.5 text-xs text-pink-300 break-all">{url}</code>
       <button onClick={() => void navigator.clipboard.writeText(url)} className="shrink-0 rounded-lg bg-pink-700 px-3 py-1.5 text-xs font-bold text-white hover:bg-pink-600">نسخ</button>
     </div>
