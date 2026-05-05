@@ -102,6 +102,19 @@ export async function POST(req: Request) {
   let pointValueEGP = 0.1;
 
   if (walletDeductAmount > 0 || pointsDeductCount > 0) {
+    // Wallet/points cannot be used on trial classes without an active paid subscription
+    if (membershipId === "trial-class") {
+      const activePaidSub = await db.userMembership.findFirst({
+        where: { userId, status: "active", membership: { kind: { not: "trial" } } },
+      });
+      if (!activePaidSub) {
+        return NextResponse.json(
+          { error: "يجب أن يكون لديك اشتراك مدفوع فعال لاستخدام رصيد المحفظة أو النقاط على هذا الكلاس." },
+          { status: 400 },
+        );
+      }
+    }
+
     const [walletRow, pointsRow, rewardSettings] = await Promise.all([
       walletDeductAmount > 0 ? db.wallet.findUnique({ where: { userId }, select: { balance: true } }) : null,
       pointsDeductCount > 0 ? db.rewardPoints.findUnique({ where: { userId } }) : null,
@@ -723,7 +736,8 @@ export async function POST(req: Request) {
 
         // Validate that the chosen weekly frequency is enough to cover all sessions
         // within the plan duration. Example: 12 sessions / 30 days → need ≥ 3/week.
-        if (plan.sessionsCount && plan.duration) {
+        // Trial plans are single-session and exempt from this check.
+        if (plan.kind !== "trial" && plan.sessionsCount && plan.duration) {
           const minPerWeek = Math.ceil((plan.sessionsCount * 7) / plan.duration);
           // If the minimum required frequency exceeds the weekly cap, the plan itself
           // is incompatible with weekly scheduling — redirect the member to pick a different plan.

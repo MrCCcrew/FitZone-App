@@ -428,7 +428,9 @@ export async function PATCH(req: Request) {
     if (phone !== undefined) data.phone = phone;
     if (name !== undefined && name.length > 0) data.avatar = name[0].toUpperCase();
 
-    await db.user.update({ where: { id }, data });
+    if (Object.keys(data).length > 0) {
+      await db.user.update({ where: { id }, data });
+    }
     await applyWalletAndRewards(id, balance, points);
     await applyMembership(id, plan, status);
 
