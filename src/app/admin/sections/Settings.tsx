@@ -37,6 +37,8 @@ const FEATURE_LABELS: Record<string, string> = {
   accounting: "الحسابات والتقارير",
   push: "الإشعارات الفورية",
   partners: "الشركاء والعمولات",
+  contracts: "التعاقدات والمناديب",
+  referrals: "لينكات إحالة الاستاف",
 };
 
 type EmployeeForm = {

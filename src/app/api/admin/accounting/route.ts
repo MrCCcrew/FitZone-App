@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireAdminFeature } from "@/lib/admin-guard";
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const dbx = db as any;
+
 type BusinessUnit = "store" | "club";
 type FeeRuleCategory = "platform" | "external_service" | "other";
 
@@ -99,6 +102,10 @@ export async function GET(request: Request) {
     pointValueEGP,
     partnerCommissions,
     agentCommissions,
+    salesAgentCommissions,
+    managerCommissions,
+    managerPartnerCommissions,
+    contractsManagers,
   ] = await Promise.all([
     db.accountingFeeRule.findMany({
       orderBy: [{ isActive: "desc" }, { createdAt: "desc" }],
@@ -219,6 +226,71 @@ export async function GET(request: Request) {
         userMembership: inRangeFilter("startDate", from, to),
       },
       select: { amount: true, status: true },
+    }),
+    dbx.salesAgentCommission.findMany({
+      where: inRangeFilter("createdAt", from, to),
+      include: {
+        agent: { select: { id: true, name: true, managerId: true, manager: { select: { id: true, name: true } } } },
+        userMembership: {
+          include: { user: { select: { name: true, email: true } }, membership: { select: { name: true } } },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 300,
+    }),
+    dbx.managerCommission.findMany({
+      where: inRangeFilter("createdAt", from, to),
+      include: {
+        manager: { select: { id: true, name: true } },
+        agentCommission: {
+          include: {
+            agent: { select: { id: true, name: true } },
+            userMembership: {
+              include: { user: { select: { name: true, email: true } }, membership: { select: { name: true } } },
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 300,
+    }),
+    dbx.managerPartnerCommission.findMany({
+      where: inRangeFilter("createdAt", from, to),
+      include: {
+        manager: { select: { id: true, name: true } },
+        partnerCommission: {
+          include: {
+            partner: { select: { id: true, name: true } },
+            userMembership: {
+              include: { user: { select: { name: true, email: true } }, membership: { select: { name: true } } },
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 300,
+    }),
+    dbx.contractsManager.findMany({
+      include: {
+        user: { select: { id: true, name: true, email: true, phone: true } },
+        agents: {
+          include: {
+            user: { select: { id: true, name: true, email: true, phone: true } },
+            commissions: { select: { amount: true, status: true } },
+          },
+          orderBy: { createdAt: "desc" },
+        },
+        managedPartners: {
+          include: {
+            user: { select: { id: true, name: true, email: true, phone: true } },
+            commissions: { select: { amount: true, status: true } },
+          },
+          orderBy: { createdAt: "desc" },
+        },
+        commissions: { select: { amount: true, status: true } },
+        partnerCommissions: { select: { amount: true, status: true } },
+      },
+      orderBy: { createdAt: "desc" },
     }),
   ]);
 
@@ -399,6 +471,76 @@ export async function GET(request: Request) {
   const clubGrossProfit = round2(clubRevenue - walletBonusCost - redeemedPointsCost);
   const clubNetProfit = round2(clubGrossProfit - clubExpensesTotal - clubFeeTotal - partnerCommissionsTotal - agentCommissionsTotal);
 
+  const salesAgentCommissionRows = (salesAgentCommissions as any[]).map((c) => ({
+    id: c.id,
+    agentId: c.agentId,
+    agentName: c.agent?.name ?? "",
+    managerId: c.agent?.managerId ?? null,
+    managerName: c.agent?.manager?.name ?? null,
+    customerName: c.userMembership?.user?.name ?? "",
+    customerEmail: c.userMembership?.user?.email ?? "",
+    membershipName: c.userMembership?.membership?.name ?? "",
+    amount: c.amount,
+    status: c.status,
+    settledAt: c.settledAt?.toISOString() ?? null,
+    createdAt: c.createdAt.toISOString(),
+  }));
+  const managerCommissionRows = (managerCommissions as any[]).map((c) => ({
+    id: c.id,
+    managerId: c.managerId,
+    managerName: c.manager?.name ?? "",
+    agentName: c.agentCommission?.agent?.name ?? null,
+    customerName: c.agentCommission?.userMembership?.user?.name ?? null,
+    customerEmail: c.agentCommission?.userMembership?.user?.email ?? null,
+    membershipName: c.agentCommission?.userMembership?.membership?.name ?? null,
+    amount: c.amount,
+    status: c.status,
+    settledAt: c.settledAt?.toISOString() ?? null,
+    createdAt: c.createdAt.toISOString(),
+    source: "agent",
+  }));
+  const managerPartnerCommissionRows = (managerPartnerCommissions as any[]).map((c) => ({
+    id: c.id,
+    managerId: c.managerId,
+    managerName: c.manager?.name ?? "",
+    partnerName: c.partnerCommission?.partner?.name ?? null,
+    customerName: c.partnerCommission?.userMembership?.user?.name ?? null,
+    customerEmail: c.partnerCommission?.userMembership?.user?.email ?? null,
+    membershipName: c.partnerCommission?.userMembership?.membership?.name ?? null,
+    amount: c.amount,
+    status: c.status,
+    settledAt: c.settledAt?.toISOString() ?? null,
+    createdAt: c.createdAt.toISOString(),
+    source: "partner",
+  }));
+  const managerRows = (contractsManagers as any[]).map((m) => ({
+    id: m.id,
+    name: m.name,
+    email: m.user?.email ?? "",
+    phone: m.user?.phone ?? null,
+    agents: (m.agents ?? []).map((a: any) => ({
+      id: a.id,
+      name: a.name,
+      email: a.user?.email ?? "",
+      phone: a.user?.phone ?? null,
+      totalEarned: round2((a.commissions ?? []).reduce((s: number, c: any) => s + c.amount, 0)),
+      pendingCommission: round2((a.commissions ?? []).filter((c: any) => c.status === "earned").reduce((s: number, c: any) => s + c.amount, 0)),
+      settledCommission: round2((a.commissions ?? []).filter((c: any) => c.status === "settled").reduce((s: number, c: any) => s + c.amount, 0)),
+    })),
+    partners: (m.managedPartners ?? []).map((p: any) => ({
+      id: p.id,
+      name: p.name,
+      email: p.user?.email ?? "",
+      phone: p.user?.phone ?? p.contactPhone ?? null,
+      totalCommissionPending: round2((p.commissions ?? []).filter((c: any) => c.status === "pending").reduce((s: number, c: any) => s + c.amount, 0)),
+      totalCommissionPaid: round2((p.commissions ?? []).filter((c: any) => c.status === "withdrawn").reduce((s: number, c: any) => s + c.amount, 0)),
+    })),
+    pendingCommission: round2((m.commissions ?? []).filter((c: any) => c.status === "earned").reduce((s: number, c: any) => s + c.amount, 0)),
+    settledCommission: round2((m.commissions ?? []).filter((c: any) => c.status === "settled").reduce((s: number, c: any) => s + c.amount, 0)),
+    pendingPartnerCommission: round2((m.partnerCommissions ?? []).filter((c: any) => c.status === "earned").reduce((s: number, c: any) => s + c.amount, 0)),
+    settledPartnerCommission: round2((m.partnerCommissions ?? []).filter((c: any) => c.status === "settled").reduce((s: number, c: any) => s + c.amount, 0)),
+  }));
+
   const payload = {
     range: {
       from: from?.toISOString() ?? null,
@@ -515,6 +657,20 @@ export async function GET(request: Request) {
         redeemedPointsCost,
       },
       feeBreakdown: clubFeeEntries,
+    },
+    contracts: {
+      summary: {
+        salesAgentPending: round2(salesAgentCommissionRows.filter((c) => c.status === "earned").reduce((s, c) => s + c.amount, 0)),
+        salesAgentSettled: round2(salesAgentCommissionRows.filter((c) => c.status === "settled").reduce((s, c) => s + c.amount, 0)),
+        managerAgentPending: round2(managerCommissionRows.filter((c) => c.status === "earned").reduce((s, c) => s + c.amount, 0)),
+        managerAgentSettled: round2(managerCommissionRows.filter((c) => c.status === "settled").reduce((s, c) => s + c.amount, 0)),
+        managerPartnerPending: round2(managerPartnerCommissionRows.filter((c) => c.status === "earned").reduce((s, c) => s + c.amount, 0)),
+        managerPartnerSettled: round2(managerPartnerCommissionRows.filter((c) => c.status === "settled").reduce((s, c) => s + c.amount, 0)),
+      },
+      salesAgentCommissions: salesAgentCommissionRows,
+      managerCommissions: managerCommissionRows,
+      managerPartnerCommissions: managerPartnerCommissionRows,
+      managers: managerRows,
     },
   };
 

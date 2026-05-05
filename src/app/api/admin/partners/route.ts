@@ -6,7 +6,12 @@ import { logAudit } from "@/lib/audit-context";
 
 async function guard() {
   const g = await requireAdminFeature("partners");
-  return "error" in g ? { error: g.error, role: null } : { error: null, role: g.role };
+  return "error" in g ? { error: g.error, role: null, userId: null } : { error: null, role: g.role, userId: g.session.user.id };
+}
+
+async function getContractsManagerId(userId: string) {
+  const manager = await db.contractsManager.findFirst({ where: { userId }, select: { id: true } });
+  return manager?.id ?? null;
 }
 
 function formatPartner(p: {
@@ -70,12 +75,23 @@ const INCLUDE = {
 } as const;
 
 export async function GET() {
-  const { error, role } = await guard();
+  const { error, role, userId } = await guard();
   if (error) return error;
 
   // Partners can only see their own record
   if (role === "partner") {
     return NextResponse.json({ error: "Use /api/partner/dashboard" }, { status: 403 });
+  }
+
+  if (role === "contracts_manager") {
+    const managerId = await getContractsManagerId(userId!);
+    if (!managerId) return NextResponse.json([]);
+    const partners = await db.partner.findMany({
+      where: { managerId },
+      include: INCLUDE,
+      orderBy: { createdAt: "desc" },
+    });
+    return NextResponse.json(partners.map(formatPartner));
   }
 
   const partners = await db.partner.findMany({
