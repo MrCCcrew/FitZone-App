@@ -185,7 +185,7 @@ export interface Partner {
   showOnPublicPage: boolean;
   notes?: string | null;
   createdAt: string;
-  linkedUser: { id: string; name: string; email: string } | null;
+  linkedUser: { id: string; name: string; email: string; phone?: string | null } | null;
   codesCount: number;
   linksCount: number;
   totalCommissionPending: number;
