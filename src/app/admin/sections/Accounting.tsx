@@ -1145,7 +1145,7 @@ type AgentCommissionRow = {
 };
 type AgentCommissionsData = {
   commissions: AgentCommissionRow[];
-  agents: { id: string; name: string; role: string; commissionRate: number; commissionType: string }[];
+  agents: { id: string; name: string; email: string; role: string; commissionRate: number; commissionType: string }[];
   totals: { earned: number; settled: number };
 };
 
@@ -1239,6 +1239,45 @@ function AgentCommissionsAdminTab() {
           )}
         </div>
         {msg && <div className={`mt-3 rounded-xl px-4 py-2 text-sm ${msg.ok ? "bg-emerald-950/40 text-emerald-200" : "bg-red-950/40 text-red-200"}`}>{msg.text}</div>}
+      </AdminCard>
+
+      <AdminCard>
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <div className="text-base font-black text-white">الموظفون بنظام عمولة</div>
+            <div className="text-xs text-[#d7aabd]">كل موظف أو مدربة لها نسبة أو مبلغ عمولة محدد في الإعدادات.</div>
+          </div>
+          <div className="rounded-full bg-pink-500/15 px-3 py-1 text-xs font-bold text-pink-200">{data?.agents.length ?? 0} حساب</div>
+        </div>
+        {!data?.agents.length ? (
+          <div className="py-6 text-center text-sm text-[#d7aabd]">لا يوجد موظفون بنظام عمولة حاليًا.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-right text-sm">
+              <thead className="border-b border-white/10 text-xs text-[#d7aabd]">
+                <tr>
+                  <th className="px-3 py-2">الحساب</th>
+                  <th className="px-3 py-2">النوع</th>
+                  <th className="px-3 py-2">نظام العمولة</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.agents.map((a) => (
+                  <tr key={a.id} className="border-t border-white/10 text-white hover:bg-white/5">
+                    <td className="px-3 py-2.5">
+                      <div className="font-bold">{a.name}</div>
+                      <div className="text-xs text-[#d7aabd]">{a.email}</div>
+                    </td>
+                    <td className="px-3 py-2.5 text-[#d7aabd]">{a.role === "trainer" ? "مدربة" : "موظف"}</td>
+                    <td className="px-3 py-2.5 font-bold text-pink-300">
+                      {a.commissionType === "fixed" ? `${a.commissionRate} ج.م` : `${a.commissionRate}%`}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </AdminCard>
 
       {/* Table */}
