@@ -102,7 +102,7 @@ export async function GET(req: Request) {
       const partners = await dbx.partner.findMany({
         where: { managerId: mid },
         include: {
-          user: { select: { id: true, name: true, email: true } },
+          user: { select: { id: true, name: true, email: true, phone: true } },
           affiliateLinks: { select: { token: true, label: true }, where: { isActive: true }, orderBy: { createdAt: "desc" }, take: 1 },
           _count: { select: { codes: true, affiliateLinks: true } },
           commissions: { select: { amount: true, status: true } },
@@ -285,7 +285,7 @@ export async function GET(req: Request) {
   if (view === "partners") {
     const partners = await dbx.partner.findMany({
       include: {
-        user: { select: { id: true, name: true, email: true } },
+        user: { select: { id: true, name: true, email: true, phone: true } },
         manager: { select: { id: true, name: true } },
         affiliateLinks: { select: { token: true, label: true }, where: { isActive: true }, orderBy: { createdAt: "desc" }, take: 1 },
         _count: { select: { codes: true, affiliateLinks: true } },
@@ -434,7 +434,7 @@ export async function POST(req: Request) {
         affiliateLinks: { create: { token: linkToken, label: "لينك الشريك" } },
       },
       include: {
-        user: { select: { id: true, name: true, email: true } },
+        user: { select: { id: true, name: true, email: true, phone: true } },
         manager: { select: { id: true, name: true } },
         affiliateLinks: { select: { token: true, label: true }, where: { isActive: true }, orderBy: { createdAt: "desc" }, take: 1 },
         _count: { select: { codes: true, affiliateLinks: true } },
@@ -499,11 +499,29 @@ export async function PATCH(req: Request) {
   if (error) return error;
 
   const body = (await req.json()) as {
-    agentId?: string; managerId?: string; action?: string;
+    agentId?: string; managerId?: string; partnerId?: string; action?: string;
     commissionIds?: string[]; managerCommissionIds?: string[];
+    name?: string; email?: string; phone?: string; password?: string;
+    category?: string; logoUrl?: string | null; websiteUrl?: string | null; contactPhone?: string | null;
     commissionRate?: number; commissionType?: string;
     clientDiscountType?: string; clientDiscountValue?: number;
-    maxClientDiscount?: number | null; isActive?: boolean; notes?: string;
+    maxClientDiscount?: number | null; isActive?: boolean; showOnPublicPage?: boolean; notes?: string;
+    managerCommissionType?: string | null; managerCommissionRate?: number | null;
+  };
+
+  const buildUserUpdate = async () => {
+    const userUpd: Record<string, unknown> = {};
+    if (body.name !== undefined) userUpd.name = body.name.trim();
+    if (body.email !== undefined) userUpd.email = body.email.trim().toLowerCase();
+    if (body.phone !== undefined) userUpd.phone = body.phone.trim() || null;
+    if (body.password?.trim()) {
+      if (body.password.trim().length < 6) {
+        throw new Error("كلمة المرور يجب أن تكون 6 أحرف على الأقل.");
+      }
+      const { hashSync } = await import("bcryptjs");
+      userUpd.password = hashSync(body.password.trim(), 10);
+    }
+    return userUpd;
   };
 
   // Settle manager commissions
@@ -516,6 +534,41 @@ export async function PATCH(req: Request) {
       data: { status: "settled", settledAt: new Date() },
     });
     return NextResponse.json({ success: true });
+  }
+
+  // Update partner
+  if (body.partnerId) {
+    if (role !== "admin") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    const partner = await dbx.partner.findUnique({ where: { id: body.partnerId } });
+    if (!partner) return NextResponse.json({ error: "الشريك غير موجود." }, { status: 404 });
+
+    try {
+      const partnerUpd: Record<string, unknown> = {};
+      if (body.name !== undefined) partnerUpd.name = body.name.trim();
+      if (body.category !== undefined) partnerUpd.category = body.category.trim();
+      if (body.logoUrl !== undefined) partnerUpd.logoUrl = body.logoUrl?.trim() || null;
+      if (body.websiteUrl !== undefined) partnerUpd.websiteUrl = body.websiteUrl?.trim() || null;
+      if (body.contactPhone !== undefined) partnerUpd.contactPhone = body.contactPhone?.trim() || null;
+      if (body.commissionRate !== undefined) partnerUpd.commissionRate = Number(body.commissionRate);
+      if (body.commissionType !== undefined) partnerUpd.commissionType = body.commissionType === "fixed" ? "fixed" : "percentage";
+      if (body.managerCommissionType !== undefined) partnerUpd.managerCommissionType = body.managerCommissionType || null;
+      if (body.managerCommissionRate !== undefined) partnerUpd.managerCommissionRate = body.managerCommissionRate != null ? Number(body.managerCommissionRate) : null;
+      if (body.managerId !== undefined) partnerUpd.managerId = body.managerId || null;
+      if (body.isActive !== undefined) partnerUpd.isActive = Boolean(body.isActive);
+      if (body.showOnPublicPage !== undefined) partnerUpd.showOnPublicPage = Boolean(body.showOnPublicPage);
+      if (body.notes !== undefined) partnerUpd.notes = body.notes?.trim() || null;
+
+      const userUpd = await buildUserUpdate();
+      await db.$transaction([
+        ...(Object.keys(userUpd).length ? [db.user.update({ where: { id: partner.userId as string }, data: userUpd })] : []),
+        ...(Object.keys(partnerUpd).length ? [dbx.partner.update({ where: { id: partner.id }, data: partnerUpd })] : []),
+      ]);
+      return NextResponse.json({ success: true });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "تعذر تعديل الشريك.";
+      if (msg.includes("Unique constraint")) return NextResponse.json({ error: "البريد الإلكتروني مستخدم بالفعل." }, { status: 400 });
+      return NextResponse.json({ error: msg }, { status: 400 });
+    }
   }
 
   // Update/settle manager
@@ -533,12 +586,23 @@ export async function PATCH(req: Request) {
     }
 
     const upd: Record<string, unknown> = {};
+    if (body.name !== undefined) upd.name = body.name.trim();
     if (body.commissionRate !== undefined) upd.commissionRate = Number(body.commissionRate);
     if (body.commissionType !== undefined) upd.commissionType = body.commissionType;
     if (body.isActive !== undefined) upd.isActive = Boolean(body.isActive);
     if (body.notes !== undefined) upd.notes = body.notes?.trim() || null;
-    await dbx.contractsManager.update({ where: { id: manager.id }, data: upd });
-    return NextResponse.json({ success: true });
+    try {
+      const userUpd = await buildUserUpdate();
+      await db.$transaction([
+        ...(Object.keys(userUpd).length ? [db.user.update({ where: { id: manager.userId as string }, data: userUpd })] : []),
+        ...(Object.keys(upd).length ? [dbx.contractsManager.update({ where: { id: manager.id }, data: upd })] : []),
+      ]);
+      return NextResponse.json({ success: true });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "تعذر تعديل المدير.";
+      if (msg.includes("Unique constraint")) return NextResponse.json({ error: "البريد الإلكتروني مستخدم بالفعل." }, { status: 400 });
+      return NextResponse.json({ error: msg }, { status: 400 });
+    }
   }
 
   // Update/settle agent
@@ -557,15 +621,27 @@ export async function PATCH(req: Request) {
   }
 
   const upd: Record<string, unknown> = {};
+  if (body.name !== undefined) upd.name = body.name.trim();
   if (body.commissionRate !== undefined && role === "admin") upd.commissionRate = Number(body.commissionRate);
   if (body.commissionType !== undefined && role === "admin") upd.commissionType = body.commissionType;
   if (body.clientDiscountType !== undefined && role === "admin") upd.clientDiscountType = body.clientDiscountType;
   if (body.clientDiscountValue !== undefined && role === "admin") upd.clientDiscountValue = Number(body.clientDiscountValue);
   if (body.maxClientDiscount !== undefined && role === "admin") upd.maxClientDiscount = body.maxClientDiscount != null ? Number(body.maxClientDiscount) : null;
+  if (body.managerId !== undefined && role === "admin") upd.managerId = body.managerId || null;
   if (body.isActive !== undefined) upd.isActive = Boolean(body.isActive);
   if (body.notes !== undefined) upd.notes = body.notes?.trim() || null;
-  await dbx.salesAgent.update({ where: { id: agent.id }, data: upd });
-  return NextResponse.json({ success: true });
+  try {
+    const userUpd = await buildUserUpdate();
+    await db.$transaction([
+      ...(Object.keys(userUpd).length ? [db.user.update({ where: { id: agent.userId as string }, data: userUpd })] : []),
+      ...(Object.keys(upd).length ? [dbx.salesAgent.update({ where: { id: agent.id }, data: upd })] : []),
+    ]);
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "تعذر تعديل المندوب.";
+    if (msg.includes("Unique constraint")) return NextResponse.json({ error: "البريد الإلكتروني مستخدم بالفعل." }, { status: 400 });
+    return NextResponse.json({ error: msg }, { status: 400 });
+  }
 }
 
 // ─── DELETE ──────────────────────────────────────────────────────────────────
@@ -672,7 +748,7 @@ function formatPartnerList(partners: any[], includeManager = false) {
       contactPhone: p.contactPhone, commissionRate: p.commissionRate, commissionType: p.commissionType,
       isActive: p.isActive, showOnPublicPage: p.showOnPublicPage, notes: p.notes,
       createdAt: (p.createdAt as Date).toISOString(),
-      linkedUser: { id: p.user.id, name: p.user.name ?? "", email: p.user.email ?? "" },
+      linkedUser: { id: p.user.id, name: p.user.name ?? "", email: p.user.email ?? "", phone: p.user.phone ?? null },
       codesCount: p._count?.codes ?? 0, linksCount: p._count?.affiliateLinks ?? 0,
       totalCommissionPending: pending, totalCommissionPaid: paid,
       managerId: p.managerId ?? null,

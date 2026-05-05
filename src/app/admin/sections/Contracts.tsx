@@ -586,8 +586,10 @@ export default function Contracts() {
 
   const [editAgent, setEditAgent] = useState<SalesAgentRow | null>(null);
   const [editMgr, setEditMgr] = useState<ContractsManagerRow | null>(null);
-  const [editAgentForm, setEditAgentForm] = useState({ commissionRate: "", commissionType: "percentage", clientDiscountType: "percentage", clientDiscountValue: "", maxClientDiscount: "", isActive: true, notes: "" });
-  const [editMgrForm, setEditMgrForm] = useState({ commissionType: "percentage_of_agents", commissionRate: "", isActive: true, notes: "" });
+  const [editPartner, setEditPartner] = useState<Partner | null>(null);
+  const [editAgentForm, setEditAgentForm] = useState({ name: "", email: "", phone: "", password: "", managerId: "", commissionRate: "", commissionType: "percentage", clientDiscountType: "percentage", clientDiscountValue: "", maxClientDiscount: "", isActive: true, notes: "" });
+  const [editMgrForm, setEditMgrForm] = useState({ name: "", email: "", phone: "", password: "", commissionType: "percentage_of_agents", commissionRate: "", isActive: true, notes: "" });
+  const [editPartnerForm, setEditPartnerForm] = useState({ name: "", email: "", phone: "", password: "", category: "", managerId: "", commissionRate: "", commissionType: "percentage", managerCommissionType: "percentage_of_partner", managerCommissionRate: "", isActive: true, showOnPublicPage: true, notes: "" });
   const [editSaving, setEditSaving] = useState(false);
 
   const [selectedAgent, setSelectedAgent] = useState<SalesAgentRow | null>(null);
@@ -713,11 +715,15 @@ export default function Contracts() {
 
   const openEditAgent = (a: SalesAgentRow) => {
     setEditAgent(a);
-    setEditAgentForm({ commissionRate: String(a.commissionRate), commissionType: a.commissionType, clientDiscountType: a.clientDiscountType, clientDiscountValue: String(a.clientDiscountValue), maxClientDiscount: a.maxClientDiscount != null ? String(a.maxClientDiscount) : "", isActive: a.isActive, notes: a.notes ?? "" });
+    setEditAgentForm({ name: a.name, email: a.user.email ?? "", phone: a.user.phone ?? "", password: "", managerId: a.managerId ?? "", commissionRate: String(a.commissionRate), commissionType: a.commissionType, clientDiscountType: a.clientDiscountType, clientDiscountValue: String(a.clientDiscountValue), maxClientDiscount: a.maxClientDiscount != null ? String(a.maxClientDiscount) : "", isActive: a.isActive, notes: a.notes ?? "" });
   };
   const openEditMgr = (m: ContractsManagerRow) => {
     setEditMgr(m);
-    setEditMgrForm({ commissionType: m.commissionType, commissionRate: String(m.commissionRate), isActive: m.isActive, notes: m.notes ?? "" });
+    setEditMgrForm({ name: m.name, email: m.user.email ?? "", phone: m.user.phone ?? "", password: "", commissionType: m.commissionType, commissionRate: String(m.commissionRate), isActive: m.isActive, notes: m.notes ?? "" });
+  };
+  const openEditPartner = (p: Partner) => {
+    setEditPartner(p);
+    setEditPartnerForm({ name: p.name, email: p.linkedUser?.email ?? "", phone: p.linkedUser?.phone ?? p.contactPhone ?? "", password: "", category: p.category, managerId: p.managerId ?? "", commissionRate: String(p.commissionRate), commissionType: p.commissionType, managerCommissionType: p.managerCommissionType ?? "percentage_of_partner", managerCommissionRate: p.managerCommissionRate != null ? String(p.managerCommissionRate) : "", isActive: p.isActive, showOnPublicPage: p.showOnPublicPage, notes: p.notes ?? "" });
   };
 
   const handleEditAgent = async () => {
@@ -726,7 +732,7 @@ export default function Contracts() {
     try {
       const res = await fetch("/api/admin/contracts", {
         method: "PATCH", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agentId: editAgent.id, commissionRate: editAgentForm.commissionRate ? Number(editAgentForm.commissionRate) : undefined, commissionType: editAgentForm.commissionType, clientDiscountType: editAgentForm.clientDiscountType, clientDiscountValue: editAgentForm.clientDiscountValue ? Number(editAgentForm.clientDiscountValue) : undefined, maxClientDiscount: editAgentForm.maxClientDiscount ? Number(editAgentForm.maxClientDiscount) : null, isActive: editAgentForm.isActive, notes: editAgentForm.notes.trim() || undefined }),
+        body: JSON.stringify({ agentId: editAgent.id, name: editAgentForm.name.trim(), email: editAgentForm.email.trim(), phone: editAgentForm.phone.trim(), password: editAgentForm.password.trim() || undefined, managerId: editAgentForm.managerId || null, commissionRate: editAgentForm.commissionRate ? Number(editAgentForm.commissionRate) : undefined, commissionType: editAgentForm.commissionType, clientDiscountType: editAgentForm.clientDiscountType, clientDiscountValue: editAgentForm.clientDiscountValue ? Number(editAgentForm.clientDiscountValue) : undefined, maxClientDiscount: editAgentForm.maxClientDiscount ? Number(editAgentForm.maxClientDiscount) : null, isActive: editAgentForm.isActive, notes: editAgentForm.notes.trim() || undefined }),
       });
       if (res.ok) { setEditAgent(null); void loadAgents(); }
       else { const d = await res.json().catch(() => ({})); window.alert((d as { error?: string }).error ?? "حدث خطأ."); }
@@ -739,9 +745,38 @@ export default function Contracts() {
     try {
       const res = await fetch("/api/admin/contracts", {
         method: "PATCH", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ managerId: editMgr.id, commissionType: editMgrForm.commissionType, commissionRate: editMgrForm.commissionRate ? Number(editMgrForm.commissionRate) : undefined, isActive: editMgrForm.isActive, notes: editMgrForm.notes.trim() || undefined }),
+        body: JSON.stringify({ managerId: editMgr.id, name: editMgrForm.name.trim(), email: editMgrForm.email.trim(), phone: editMgrForm.phone.trim(), password: editMgrForm.password.trim() || undefined, commissionType: editMgrForm.commissionType, commissionRate: editMgrForm.commissionRate ? Number(editMgrForm.commissionRate) : undefined, isActive: editMgrForm.isActive, notes: editMgrForm.notes.trim() || undefined }),
       });
       if (res.ok) { setEditMgr(null); void loadManagers(); }
+      else { const d = await res.json().catch(() => ({})); window.alert((d as { error?: string }).error ?? "حدث خطأ."); }
+    } finally { setEditSaving(false); }
+  };
+
+  const handleEditPartner = async () => {
+    if (!editPartner) return;
+    setEditSaving(true);
+    try {
+      const res = await fetch("/api/admin/contracts", {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          partnerId: editPartner.id,
+          name: editPartnerForm.name.trim(),
+          email: editPartnerForm.email.trim(),
+          phone: editPartnerForm.phone.trim(),
+          password: editPartnerForm.password.trim() || undefined,
+          category: editPartnerForm.category.trim(),
+          contactPhone: editPartnerForm.phone.trim(),
+          managerId: editPartnerForm.managerId || null,
+          commissionRate: editPartnerForm.commissionRate ? Number(editPartnerForm.commissionRate) : 0,
+          commissionType: editPartnerForm.commissionType,
+          managerCommissionType: editPartnerForm.managerCommissionType || null,
+          managerCommissionRate: editPartnerForm.managerCommissionRate ? Number(editPartnerForm.managerCommissionRate) : null,
+          isActive: editPartnerForm.isActive,
+          showOnPublicPage: editPartnerForm.showOnPublicPage,
+          notes: editPartnerForm.notes.trim() || undefined,
+        }),
+      });
+      if (res.ok) { setEditPartner(null); void loadPartners(); }
       else { const d = await res.json().catch(() => ({})); window.alert((d as { error?: string }).error ?? "حدث خطأ."); }
     } finally { setEditSaving(false); }
   };
@@ -998,6 +1033,7 @@ export default function Contracts() {
                       <td className="py-3 text-center text-yellow-400">{p.totalCommissionPending.toFixed(0)} ج.م</td>
                       <td className="py-3 text-center text-emerald-400">{p.totalCommissionPaid.toFixed(0)} ج.م</td>
                       <td className="py-3 text-center"><span className={`text-xs rounded-full px-2 py-0.5 ${p.isActive ? "bg-emerald-900/30 text-emerald-400" : "bg-red-900/30 text-red-400"}`}>{p.isActive ? "نشط" : "موقوف"}</span></td>
+                      <td className="py-3 print-hidden"><button onClick={() => openEditPartner(p)} className="rounded-lg bg-gray-700 px-2 py-1 text-xs font-bold text-white hover:bg-gray-600">تعديل</button></td>
                     </tr>
                   ))}
                 </tbody>
@@ -1127,6 +1163,13 @@ export default function Contracts() {
               <div><label className="block text-xs font-bold text-gray-400 mb-1">حد أقصى للخصم</label><input type="number" value={editAgentForm.maxClientDiscount} onChange={(e) => setEditAgentForm({ ...editAgentForm, maxClientDiscount: e.target.value })} className={INPUT} /></div>
               <div><label className="block text-xs font-bold text-gray-400 mb-1">الحالة</label><select value={editAgentForm.isActive ? "1" : "0"} onChange={(e) => setEditAgentForm({ ...editAgentForm, isActive: e.target.value === "1" })} className={INPUT}><option value="1">نشط</option><option value="0">موقوف</option></select></div>
             </div>
+            <div className="grid grid-cols-2 gap-3 border-t border-gray-700 pt-3">
+              <div className="col-span-2"><label className="block text-xs font-bold text-gray-400 mb-1">الاسم</label><input value={editAgentForm.name} onChange={(e) => setEditAgentForm({ ...editAgentForm, name: e.target.value })} className={INPUT} /></div>
+              <div><label className="block text-xs font-bold text-gray-400 mb-1">البريد</label><input type="email" value={editAgentForm.email} onChange={(e) => setEditAgentForm({ ...editAgentForm, email: e.target.value })} className={INPUT} /></div>
+              <div><label className="block text-xs font-bold text-gray-400 mb-1">الهاتف</label><input value={editAgentForm.phone} onChange={(e) => setEditAgentForm({ ...editAgentForm, phone: e.target.value })} className={INPUT} /></div>
+              <div className="col-span-2"><label className="block text-xs font-bold text-gray-400 mb-1">كلمة مرور جديدة</label><input type="password" value={editAgentForm.password} onChange={(e) => setEditAgentForm({ ...editAgentForm, password: e.target.value })} className={INPUT} placeholder="اتركها فارغة بدون تغيير" /></div>
+              <div className="col-span-2"><label className="block text-xs font-bold text-gray-400 mb-1">المدير المسؤول</label><select value={editAgentForm.managerId} onChange={(e) => setEditAgentForm({ ...editAgentForm, managerId: e.target.value })} className={INPUT}><option value="">بدون مدير</option>{managers.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</select></div>
+            </div>
             <div><label className="block text-xs font-bold text-gray-400 mb-1">ملاحظات</label><textarea value={editAgentForm.notes} onChange={(e) => setEditAgentForm({ ...editAgentForm, notes: e.target.value })} rows={2} className={INPUT + " resize-none"} /></div>
             <div className="flex gap-2">
               <button onClick={() => void handleEditAgent()} disabled={editSaving} className="flex-1 rounded-xl bg-pink-600 py-2.5 font-black text-white disabled:opacity-50">{editSaving ? "جاري الحفظ..." : "حفظ التعديلات"}</button>
@@ -1151,6 +1194,10 @@ export default function Contracts() {
               </div>
               <div><label className="block text-xs font-bold text-gray-400 mb-1">{editMgrForm.commissionType === "fixed" ? "المبلغ (ج.م)" : "النسبة (%)"}</label><input type="number" value={editMgrForm.commissionRate} onChange={(e) => setEditMgrForm({ ...editMgrForm, commissionRate: e.target.value })} className={INPUT} /></div>
               <div><label className="block text-xs font-bold text-gray-400 mb-1">الحالة</label><select value={editMgrForm.isActive ? "1" : "0"} onChange={(e) => setEditMgrForm({ ...editMgrForm, isActive: e.target.value === "1" })} className={INPUT}><option value="1">نشط</option><option value="0">موقوف</option></select></div>
+              <div><label className="block text-xs font-bold text-gray-400 mb-1">الاسم</label><input value={editMgrForm.name} onChange={(e) => setEditMgrForm({ ...editMgrForm, name: e.target.value })} className={INPUT} /></div>
+              <div><label className="block text-xs font-bold text-gray-400 mb-1">البريد</label><input type="email" value={editMgrForm.email} onChange={(e) => setEditMgrForm({ ...editMgrForm, email: e.target.value })} className={INPUT} /></div>
+              <div><label className="block text-xs font-bold text-gray-400 mb-1">الهاتف</label><input value={editMgrForm.phone} onChange={(e) => setEditMgrForm({ ...editMgrForm, phone: e.target.value })} className={INPUT} /></div>
+              <div><label className="block text-xs font-bold text-gray-400 mb-1">كلمة مرور جديدة</label><input type="password" value={editMgrForm.password} onChange={(e) => setEditMgrForm({ ...editMgrForm, password: e.target.value })} className={INPUT} placeholder="اتركها فارغة بدون تغيير" /></div>
               <div><label className="block text-xs font-bold text-gray-400 mb-1">ملاحظات</label><textarea value={editMgrForm.notes} onChange={(e) => setEditMgrForm({ ...editMgrForm, notes: e.target.value })} rows={2} className={INPUT + " resize-none"} /></div>
             </div>
             <div className="flex gap-2">
@@ -1162,6 +1209,34 @@ export default function Contracts() {
       )}
 
       {/* ── Agent Detail Drawer ── */}
+      {/* Edit Partner Modal */}
+      {editPartner && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 print-hidden" onClick={() => setEditPartner(null)}>
+          <div className="w-full max-w-lg rounded-2xl border border-gray-700 bg-gray-900 p-6 space-y-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-black text-white">تعديل: {editPartner.name}</h3>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2"><label className="block text-xs font-bold text-gray-400 mb-1">الاسم</label><input value={editPartnerForm.name} onChange={(e) => setEditPartnerForm({ ...editPartnerForm, name: e.target.value })} className={INPUT} /></div>
+              <div><label className="block text-xs font-bold text-gray-400 mb-1">البريد</label><input type="email" value={editPartnerForm.email} onChange={(e) => setEditPartnerForm({ ...editPartnerForm, email: e.target.value })} className={INPUT} /></div>
+              <div><label className="block text-xs font-bold text-gray-400 mb-1">الهاتف</label><input value={editPartnerForm.phone} onChange={(e) => setEditPartnerForm({ ...editPartnerForm, phone: e.target.value })} className={INPUT} /></div>
+              <div className="col-span-2"><label className="block text-xs font-bold text-gray-400 mb-1">كلمة مرور جديدة</label><input type="password" value={editPartnerForm.password} onChange={(e) => setEditPartnerForm({ ...editPartnerForm, password: e.target.value })} className={INPUT} placeholder="اتركها فارغة بدون تغيير" /></div>
+              <div className="col-span-2"><label className="block text-xs font-bold text-gray-400 mb-1">الفئة</label><input value={editPartnerForm.category} onChange={(e) => setEditPartnerForm({ ...editPartnerForm, category: e.target.value })} className={INPUT} /></div>
+              <div className="col-span-2"><label className="block text-xs font-bold text-gray-400 mb-1">مدير التعاقدات</label><select value={editPartnerForm.managerId} onChange={(e) => setEditPartnerForm({ ...editPartnerForm, managerId: e.target.value })} className={INPUT}><option value="">بدون مدير</option>{managers.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</select></div>
+              <div><label className="block text-xs font-bold text-gray-400 mb-1">عمولة الشريك</label><input type="number" value={editPartnerForm.commissionRate} onChange={(e) => setEditPartnerForm({ ...editPartnerForm, commissionRate: e.target.value })} className={INPUT} /></div>
+              <div><label className="block text-xs font-bold text-gray-400 mb-1">نوعها</label><select value={editPartnerForm.commissionType} onChange={(e) => setEditPartnerForm({ ...editPartnerForm, commissionType: e.target.value })} className={INPUT}><option value="percentage">نسبة %</option><option value="fixed">ثابت ج.م</option></select></div>
+              <div><label className="block text-xs font-bold text-gray-400 mb-1">عمولة المدير</label><input type="number" value={editPartnerForm.managerCommissionRate} onChange={(e) => setEditPartnerForm({ ...editPartnerForm, managerCommissionRate: e.target.value })} className={INPUT} /></div>
+              <div><label className="block text-xs font-bold text-gray-400 mb-1">نوعها</label><select value={editPartnerForm.managerCommissionType} onChange={(e) => setEditPartnerForm({ ...editPartnerForm, managerCommissionType: e.target.value })} className={INPUT}><option value="percentage_of_partner">% من عمولة الشريك</option><option value="fixed">ثابت ج.م</option></select></div>
+              <div><label className="block text-xs font-bold text-gray-400 mb-1">الحالة</label><select value={editPartnerForm.isActive ? "1" : "0"} onChange={(e) => setEditPartnerForm({ ...editPartnerForm, isActive: e.target.value === "1" })} className={INPUT}><option value="1">نشط</option><option value="0">موقوف</option></select></div>
+              <div><label className="block text-xs font-bold text-gray-400 mb-1">ظهور عام</label><select value={editPartnerForm.showOnPublicPage ? "1" : "0"} onChange={(e) => setEditPartnerForm({ ...editPartnerForm, showOnPublicPage: e.target.value === "1" })} className={INPUT}><option value="1">ظاهر</option><option value="0">مخفي</option></select></div>
+            </div>
+            <div><label className="block text-xs font-bold text-gray-400 mb-1">ملاحظات</label><textarea value={editPartnerForm.notes} onChange={(e) => setEditPartnerForm({ ...editPartnerForm, notes: e.target.value })} rows={2} className={INPUT + " resize-none"} /></div>
+            <div className="flex gap-2">
+              <button onClick={() => void handleEditPartner()} disabled={editSaving} className="flex-1 rounded-xl bg-pink-600 py-2.5 font-black text-white disabled:opacity-50">{editSaving ? "جاري الحفظ..." : "حفظ التعديلات"}</button>
+              <button onClick={() => setEditPartner(null)} className="rounded-xl bg-gray-800 px-5 py-2.5 font-bold text-gray-300">إلغاء</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {selectedAgent && (
         <div className="fixed inset-0 z-50 flex items-center justify-end bg-black/60 p-4 print-hidden" onClick={() => { setSelectedAgent(null); setAgentDetail(null); }}>
           <div className="w-full max-w-lg h-full rounded-2xl border border-gray-700 bg-gray-900 overflow-y-auto" onClick={(e) => e.stopPropagation()}>
