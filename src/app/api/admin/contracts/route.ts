@@ -76,6 +76,35 @@ export async function GET(req: Request) {
       return NextResponse.json({ agent: formatAgentDetail(agent) });
     }
 
+    // Manager's agents commissions only
+    if (view === "commissions") {
+      const mid = await getManagerId(userId!);
+      if (!mid) return NextResponse.json({ commissions: [] });
+      const commissions = await dbx.salesAgentCommission.findMany({
+        where: { agent: { managerId: mid } },
+        include: {
+          agent: { select: { id: true, name: true } },
+          userMembership: {
+            include: { user: { select: { name: true, email: true } }, membership: { select: { name: true } } },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+      return NextResponse.json({
+        commissions: (commissions as {
+          id: string; agentId: string; agent: { name: string }; amount: number; status: string;
+          settledAt: Date | null; createdAt: Date; userMembershipId: string;
+          userMembership: { user: { name: string | null; email: string | null }; membership: { name: string } };
+        }[]).map((c) => ({
+          id: c.id, agentId: c.agentId, agentName: c.agent.name, amount: c.amount,
+          status: c.status, settledAt: c.settledAt?.toISOString() ?? null,
+          createdAt: c.createdAt.toISOString(), userMembershipId: c.userMembershipId,
+          customerName: c.userMembership.user.name ?? "", customerEmail: c.userMembership.user.email ?? "",
+          membershipName: c.userMembership.membership.name,
+        })),
+      });
+    }
+
     // Manager's own commissions
     if (view === "manager_commissions") {
       const mid = await getManagerId(userId!);
