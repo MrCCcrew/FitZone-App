@@ -78,6 +78,7 @@ model User {
   avatar        String?
   pendingPartnerRef String? // affiliate link token stored at registration, cleared after first paid subscription
   pendingAgentRef   String? // sales agent referral code stored at registration, cleared after first paid subscription
+  pendingStaffRef   String? // staff referral link token stored at registration, cleared after first paid subscription
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -118,6 +119,8 @@ model User {
   salesAgentReferral         SalesAgentReferral?
   contractsManager           ContractsManager?
   recordedAttendanceLogs     TrainerAttendanceLog[]      @relation("AttendanceRecorder")
+  staffReferralLinks         StaffReferralLink[]         @relation("StaffLinks")
+  staffCommissions           StaffCommission[]           @relation("StaffCommissions")
 }
 
 model AuditLog {
@@ -193,6 +196,7 @@ model UserMembership {
   partnerCodeId   String?
   affiliateLinkId String?
   salesAgentId    String?  // SalesAgent.id if subscribed via agent referral link
+  staffReferralLinkId String? // StaffReferralLink.id if subscribed via staff referral link
 
   user          User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
   membership    Membership            @relation(fields: [membershipId], references: [id])
@@ -202,12 +206,14 @@ model UserMembership {
   partnerCode   PartnerCode?          @relation(fields: [partnerCodeId], references: [id], onDelete: SetNull)
   affiliateLink PartnerAffiliateLink? @relation(fields: [affiliateLinkId], references: [id], onDelete: SetNull)
   refAgent      SalesAgent?           @relation(fields: [salesAgentId], references: [id], onDelete: SetNull)
+  staffReferralLink StaffReferralLink? @relation(fields: [staffReferralLinkId], references: [id], onDelete: SetNull)
   bookings      Booking[]
   attendancePass      AttendancePass?
   attendanceCheckIns  AttendanceCheckIn[]
   partnerCommission   PartnerCommission?
   agentCommission     AgentCommission?
   salesAgentCommission SalesAgentCommission?
+  staffCommission      StaffCommission?
 
   @@index([partnerId])
   @@index([salesAgentUserId])
@@ -1128,6 +1134,9 @@ model Partner {
   showOnPublicPage Boolean  @default(true)
   notes            String?  @db.Text
   createdAt        DateTime @default(now())
+  managerId             String?  // ContractsManager.id who manages this partner
+  managerCommissionType String?  // "percentage_of_partner" | "fixed"
+  managerCommissionRate Float?
 
   user               User                       @relation("PartnerAccount", fields: [userId], references: [id], onDelete: Cascade)
   codes              PartnerCode[]
@@ -1135,8 +1144,11 @@ model Partner {
   commissions        PartnerCommission[]
   userMemberships    UserMembership[]
   withdrawalRequests PartnerWithdrawalRequest[]
+  manager            ContractsManager?          @relation("ManagedPartners", fields: [managerId], references: [id], onDelete: SetNull)
+  managerCommissions ManagerPartnerCommission[]
 
   @@index([isActive])
+  @@index([managerId])
 }
 
 model PartnerCode {
@@ -1186,6 +1198,7 @@ model PartnerCommission {
 
   partner        Partner        @relation(fields: [partnerId], references: [id], onDelete: Cascade)
   userMembership UserMembership @relation(fields: [userMembershipId], references: [id], onDelete: Cascade)
+  managerCommission ManagerPartnerCommission?
 
   @@index([partnerId, status])
   @@index([createdAt])
@@ -1300,6 +1313,8 @@ model ContractsManager {
   user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   agents      SalesAgent[]        @relation("ManagedAgents")
   commissions ManagerCommission[]
+  managedPartners    Partner[]                  @relation("ManagedPartners")
+  partnerCommissions ManagerPartnerCommission[]
 
   @@index([userId])
 }
@@ -1316,6 +1331,60 @@ model ManagerCommission {
 
   manager         ContractsManager      @relation(fields: [managerId], references: [id], onDelete: Cascade)
   agentCommission SalesAgentCommission? @relation(fields: [agentCommissionId], references: [id], onDelete: SetNull)
+
+  @@index([managerId, status])
+  @@index([createdAt])
+}
+
+// ─── Staff Referral Links ─────────────────────────────────────────────────────
+
+model StaffReferralLink {
+  id         String   @id @default(cuid())
+  userId     String
+  token      String   @unique
+  label      String?
+  clickCount Int      @default(0)
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  user        User              @relation("StaffLinks", fields: [userId], references: [id], onDelete: Cascade)
+  memberships UserMembership[]
+  commissions StaffCommission[]
+
+  @@index([userId])
+}
+
+model StaffCommission {
+  id                  String    @id @default(cuid())
+  staffUserId         String
+  staffReferralLinkId String?
+  userMembershipId    String?   @unique
+  amount              Float
+  status              String    @default("earned") // earned | settled
+  settledAt           DateTime?
+  createdAt           DateTime  @default(now())
+
+  staffUser         User               @relation("StaffCommissions", fields: [staffUserId], references: [id], onDelete: Cascade)
+  staffReferralLink StaffReferralLink?  @relation(fields: [staffReferralLinkId], references: [id], onDelete: SetNull)
+
+  @@index([staffUserId, status])
+  @@index([createdAt])
+}
+
+// ─── Manager–Partner Commission ───────────────────────────────────────────────
+
+model ManagerPartnerCommission {
+  id                  String    @id @default(cuid())
+  managerId           String
+  partnerCommissionId String?   @unique
+  userMembershipId    String?
+  amount              Float
+  status              String    @default("earned") // earned | settled
+  settledAt           DateTime?
+  createdAt           DateTime  @default(now())
+
+  manager           ContractsManager   @relation(fields: [managerId], references: [id], onDelete: Cascade)
+  partnerCommission PartnerCommission? @relation(fields: [partnerCommissionId], references: [id], onDelete: SetNull)
 
   @@index([managerId, status])
   @@index([createdAt])
