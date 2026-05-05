@@ -90,6 +90,22 @@ export async function GET(req: Request) {
       return NextResponse.json({ managerCommissions: comms.map(formatManagerCommission) });
     }
 
+    // Manager's managed partners
+    if (view === "partners") {
+      const mid = await getManagerId(userId!);
+      if (!mid) return NextResponse.json({ partners: [] });
+      const partners = await dbx.partner.findMany({
+        where: { managerId: mid },
+        include: {
+          user: { select: { id: true, name: true, email: true } },
+          _count: { select: { codes: true, affiliateLinks: true } },
+          commissions: { select: { amount: true, status: true } },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+      return NextResponse.json({ partners: formatPartnerList(partners) });
+    }
+
     // Manager's own profile + their agents
     const manager = await dbx.contractsManager.findFirst({
       where: { userId },
@@ -241,6 +257,46 @@ export async function GET(req: Request) {
     return NextResponse.json({ managerCommissions: comms.map(formatManagerCommission) });
   }
 
+  if (view === "partners") {
+    const partners = await dbx.partner.findMany({
+      include: {
+        user: { select: { id: true, name: true, email: true } },
+        manager: { select: { id: true, name: true } },
+        _count: { select: { codes: true, affiliateLinks: true } },
+        commissions: { select: { amount: true, status: true } },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    return NextResponse.json({ partners: formatPartnerList(partners, true) });
+  }
+
+  if (view === "partner_commissions") {
+    const comms = await dbx.managerPartnerCommission.findMany({
+      include: {
+        manager: { select: { id: true, name: true } },
+        partnerCommission: {
+          include: {
+            partner: { select: { name: true } },
+            userMembership: { include: { user: { select: { name: true, email: true } }, membership: { select: { name: true } } } },
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    return NextResponse.json({
+      partnerCommissions: comms.map((c: any) => ({
+        id: c.id, managerId: c.managerId, managerName: c.manager.name,
+        partnerName: c.partnerCommission?.partner?.name ?? null,
+        customerName: c.partnerCommission?.userMembership?.user?.name ?? null,
+        customerEmail: c.partnerCommission?.userMembership?.user?.email ?? null,
+        membershipName: c.partnerCommission?.userMembership?.membership?.name ?? null,
+        amount: c.amount, status: c.status,
+        settledAt: c.settledAt?.toISOString() ?? null,
+        createdAt: c.createdAt.toISOString(),
+      })),
+    });
+  }
+
   // All agents list
   const agents = await dbx.salesAgent.findMany({
     include: {
@@ -271,11 +327,14 @@ export async function POST(req: Request) {
   if (error) return error;
 
   const body = (await req.json()) as {
-    type?: "manager" | "agent";
+    type?: "manager" | "agent" | "partner";
     name?: string; email?: string; phone?: string; password?: string;
     commissionRate?: number; commissionType?: string;
     clientDiscountType?: string; clientDiscountValue?: number;
     maxClientDiscount?: number | null; notes?: string; managerId?: string;
+    // partner-specific
+    category?: string; logoUrl?: string; websiteUrl?: string; contactPhone?: string;
+    managerCommissionType?: string; managerCommissionRate?: number;
   };
 
   // ── Create ContractsManager (admin only) ──
@@ -310,6 +369,61 @@ export async function POST(req: Request) {
 
     void logAudit({ action: "create_contracts_manager", targetType: "contracts_manager", targetId: manager.id as string, details: { name: manager.name, role } });
     return NextResponse.json({ success: true, manager }, { status: 201 });
+  }
+
+  // ── Create Partner (admin or contracts_manager) ──
+  if (body.type === "partner") {
+    if (role !== "admin" && role !== "contracts_manager") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    if (!body.name?.trim()) return NextResponse.json({ error: "الاسم مطلوب." }, { status: 400 });
+    if (!body.email?.trim()) return NextResponse.json({ error: "البريد الإلكتروني مطلوب." }, { status: 400 });
+    if (!body.category?.trim()) return NextResponse.json({ error: "الفئة مطلوبة." }, { status: 400 });
+
+    const existingP = await db.user.findUnique({ where: { email: body.email.trim().toLowerCase() } });
+    if (existingP) return NextResponse.json({ error: "البريد الإلكتروني مستخدم بالفعل." }, { status: 400 });
+
+    const { hashSync } = await import("bcryptjs");
+    const pw = body.password?.trim() || "FitZone@Partner!";
+    const pUser = await db.user.create({
+      data: {
+        name: body.name.trim(), email: body.email.trim().toLowerCase(),
+        phone: body.phone?.trim() || null, password: hashSync(pw, 10),
+        role: "partner", adminAccess: true, emailVerified: new Date(),
+        adminPermissions: JSON.stringify(["partners"]),
+      },
+    });
+
+    // Resolve managerId: contracts_manager uses their own, admin can pass one
+    let resolvedManagerId: string | null = null;
+    if (role === "contracts_manager") {
+      resolvedManagerId = await getManagerId(userId!);
+    } else if (body.managerId) {
+      resolvedManagerId = body.managerId;
+    }
+
+    const partner = await dbx.partner.create({
+      data: {
+        userId: pUser.id, name: body.name.trim(),
+        category: body.category.trim(),
+        logoUrl: body.logoUrl?.trim() || null,
+        websiteUrl: body.websiteUrl?.trim() || null,
+        contactPhone: body.contactPhone?.trim() || null,
+        commissionRate: Number(body.commissionRate ?? 10),
+        commissionType: body.commissionType === "fixed" ? "fixed" : "percentage",
+        isActive: true, showOnPublicPage: false, notes: body.notes?.trim() || null,
+        managerId: resolvedManagerId,
+        managerCommissionType: body.managerCommissionType ?? null,
+        managerCommissionRate: body.managerCommissionRate != null ? Number(body.managerCommissionRate) : null,
+      },
+      include: {
+        user: { select: { id: true, name: true, email: true } },
+        manager: { select: { id: true, name: true } },
+        _count: { select: { codes: true, affiliateLinks: true } },
+        commissions: { select: { amount: true, status: true } },
+      },
+    });
+
+    void logAudit({ action: "create_partner", targetType: "partner", targetId: partner.id as string, details: { name: partner.name } });
+    return NextResponse.json({ success: true, partner: formatPartnerList([partner], true)[0] }, { status: 201 });
   }
 
   // ── Create SalesAgent (admin or contracts_manager) ──
@@ -528,6 +642,27 @@ function formatAgentList(agents: {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
+function formatPartnerList(partners: any[], includeManager = false) {
+  return partners.map((p: any) => {
+    const pending = (p.commissions as { amount: number; status: string }[]).filter((c) => c.status === "pending").reduce((s, c) => s + c.amount, 0);
+    const paid = (p.commissions as { amount: number; status: string }[]).filter((c) => c.status === "withdrawn").reduce((s, c) => s + c.amount, 0);
+    return {
+      id: p.id, userId: p.userId, name: p.name, nameEn: p.nameEn,
+      category: p.category, logoUrl: p.logoUrl, websiteUrl: p.websiteUrl,
+      contactPhone: p.contactPhone, commissionRate: p.commissionRate, commissionType: p.commissionType,
+      isActive: p.isActive, showOnPublicPage: p.showOnPublicPage, notes: p.notes,
+      createdAt: (p.createdAt as Date).toISOString(),
+      linkedUser: { id: p.user.id, name: p.user.name ?? "", email: p.user.email ?? "" },
+      codesCount: p._count?.codes ?? 0, linksCount: p._count?.affiliateLinks ?? 0,
+      totalCommissionPending: pending, totalCommissionPaid: paid,
+      managerId: p.managerId ?? null,
+      managerName: includeManager ? (p.manager?.name ?? null) : undefined,
+      managerCommissionType: p.managerCommissionType ?? null,
+      managerCommissionRate: p.managerCommissionRate ?? null,
+    };
+  });
+}
+
 function formatManagerCommission(c: any) {
   return {
     id: c.id, managerId: c.managerId,

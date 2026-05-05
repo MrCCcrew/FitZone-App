@@ -82,10 +82,10 @@ export async function POST(req: Request) {
   const walletDeductAmount = Math.max(0, Number(walletDeduct ?? 0));
   const pointsDeductCount = Math.floor(Math.max(0, Number(pointsDeduct ?? 0)));
 
-  const userRecord = await db.user.findUnique({
+  const userRecord = await (db as any).user.findUnique({
     where: { id: userId },
-    select: { emailVerified: true, email: true, name: true, phone: true, pendingPartnerRef: true, pendingAgentRef: true },
-  });
+    select: { emailVerified: true, email: true, name: true, phone: true, pendingPartnerRef: true, pendingAgentRef: true, pendingStaffRef: true },
+  }) as { emailVerified: Date | null; email: string | null; name: string | null; phone: string | null; pendingPartnerRef: string | null; pendingAgentRef: string | null; pendingStaffRef: string | null } | null;
 
   if (!userRecord?.emailVerified) {
     return NextResponse.json(
@@ -252,6 +252,18 @@ export async function POST(req: Request) {
       select: { id: true, commissionRate: true, commissionType: true, clientDiscountType: true, clientDiscountValue: true, maxClientDiscount: true, isActive: true, managerId: true },
     });
     if (ag && ag.isActive) agentRecord = ag as AgentInfo;
+  }
+
+  // Resolve staff referral link (stored at registration only — one-time commission)
+  type StaffLinkInfo = { id: string; userId: string; commissionRate: number; commissionType: string };
+  let staffLinkRecord: StaffLinkInfo | null = null;
+  const pendingStaffToken = (userRecord?.pendingStaffRef ?? "").trim().toUpperCase();
+  if (pendingStaffToken) {
+    const sl = await dbx.staffReferralLink.findUnique({
+      where: { token: pendingStaffToken },
+      select: { id: true, userId: true, isActive: true, user: { select: { commissionRate: true, commissionType: true } } },
+    });
+    if (sl?.isActive) staffLinkRecord = { id: sl.id, userId: sl.userId, commissionRate: sl.user.commissionRate, commissionType: sl.user.commissionType };
   }
 
   const result = await db
@@ -496,6 +508,7 @@ export async function POST(req: Request) {
           partnerCodeId: resolvedPartnerCodeId,
           affiliateLinkId: resolvedAffiliateLinkId,
           ...(resolvedSalesAgentId ? { salesAgentId: resolvedSalesAgentId } : {}),
+          ...(staffLinkRecord ? { staffReferralLinkId: staffLinkRecord.id } : {}),
         },
       } as Parameters<typeof tx.userMembership.create>[0]);
 
@@ -603,6 +616,54 @@ export async function POST(req: Request) {
             where: { userId },
             data: { totalSpent: { increment: paidAmount } },
           });
+        }
+      }
+
+      // Staff referral commission (one-time, first paid subscription only)
+      if (!needsPaymentConfirmation && staffLinkRecord) {
+        const paidAmount = paymentAmount ?? 0;
+        const commission = staffLinkRecord.commissionType === "fixed"
+          ? staffLinkRecord.commissionRate
+          : Math.round((paidAmount * staffLinkRecord.commissionRate) / 100 * 100) / 100;
+        if (commission > 0) {
+          await dbx.staffCommission.create({
+            data: { staffUserId: staffLinkRecord.userId, staffReferralLinkId: staffLinkRecord.id, userMembershipId: subscription.id, amount: commission },
+          });
+          await dbx.staffReferralLink.update({
+            where: { id: staffLinkRecord.id },
+            data: { clickCount: { increment: 1 } },
+          });
+        }
+      }
+
+      // Manager–partner commission: triggered when partner earns commission
+      if (!needsPaymentConfirmation && resolvedPartnerId && (resolvedPartnerCodeId || resolvedAffiliateLinkId)) {
+        const partnerWithManager = await dbx.partner.findUnique({
+          where: { id: resolvedPartnerId },
+          select: { managerId: true, managerCommissionType: true, managerCommissionRate: true, commissionRate: true, commissionType: true },
+        });
+        if (partnerWithManager?.managerId && (partnerWithManager.managerCommissionRate ?? 0) > 0) {
+          const paidAmount = paymentAmount ?? 0;
+          const partnerComm = partnerWithManager.commissionType === "fixed"
+            ? partnerWithManager.commissionRate
+            : Math.round((paidAmount * partnerWithManager.commissionRate) / 100 * 100) / 100;
+          let mgrAmount = 0;
+          if (partnerWithManager.managerCommissionType === "percentage_of_partner") {
+            mgrAmount = Math.round((partnerComm * (partnerWithManager.managerCommissionRate ?? 0)) / 100 * 100) / 100;
+          } else {
+            mgrAmount = partnerWithManager.managerCommissionRate ?? 0;
+          }
+          if (mgrAmount > 0) {
+            const existingPartnerComm = await dbx.partnerCommission.findUnique({ where: { userMembershipId: subscription.id } });
+            await dbx.managerPartnerCommission.create({
+              data: {
+                managerId: partnerWithManager.managerId,
+                partnerCommissionId: existingPartnerComm?.id ?? null,
+                userMembershipId: subscription.id,
+                amount: mgrAmount,
+              },
+            });
+          }
         }
       }
 
@@ -917,6 +978,9 @@ export async function POST(req: Request) {
   }
   if (userRecord?.pendingAgentRef) {
     void db.user.update({ where: { id: userId }, data: { pendingAgentRef: null } as Record<string, unknown> }).catch(() => null);
+  }
+  if (userRecord?.pendingStaffRef) {
+    void (db as any).user.update({ where: { id: userId }, data: { pendingStaffRef: null } }).catch(() => null);
   }
 
   let checkoutUrl: string | null = null;

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { SalesAgentRow, SalesAgentCommissionRow, ContractsManagerRow, ManagerCommissionRow } from "../types";
+import type { SalesAgentRow, SalesAgentCommissionRow, ContractsManagerRow, ManagerCommissionRow, Partner } from "../types";
 
 const INPUT = "w-full rounded-xl border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-pink-500 focus:outline-none";
 const CARD = "rounded-2xl border border-[rgba(255,188,219,0.12)] bg-[rgba(56,18,34,0.6)] p-5";
@@ -157,13 +157,19 @@ function ManagerDashboard() {
   const [loading, setLoading] = useState(true);
   const [agentComms, setAgentComms] = useState<SalesAgentCommissionRow[]>([]);
   const [mgrComms, setMgrComms] = useState<ManagerCommissionRow[]>([]);
-  const [tab, setTab] = useState<"agents" | "agent_comms" | "my_comms">("agents");
+  const [tab, setTab] = useState<"agents" | "agent_comms" | "my_comms" | "partners">("agents");
   const [showCreate, setShowCreate] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState("");
   const [form, setForm] = useState({ name: "", email: "", phone: "", password: "", notes: "" });
   const [selectedAgent, setSelectedAgent] = useState<AgentDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  // Partners
+  const [partners, setPartners] = useState<Partner[]>([]);
+  const [showCreatePartner, setShowCreatePartner] = useState(false);
+  const [creatingPartner, setCreatingPartner] = useState(false);
+  const [partnerError, setPartnerError] = useState("");
+  const [partnerForm, setPartnerForm] = useState({ name: "", email: "", phone: "", password: "", category: "", commissionRate: "10", commissionType: "percentage", managerCommissionType: "percentage_of_partner", managerCommissionRate: "10", notes: "" });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -186,11 +192,18 @@ function ManagerDashboard() {
     setMgrComms(Array.isArray((json as { managerCommissions?: ManagerCommissionRow[] }).managerCommissions) ? (json as { managerCommissions: ManagerCommissionRow[] }).managerCommissions : []);
   }, []);
 
+  const loadPartners = useCallback(async () => {
+    const res = await fetch("/api/admin/contracts?view=partners", { cache: "no-store" });
+    const json = await res.json().catch(() => ({}));
+    setPartners(Array.isArray((json as { partners?: Partner[] }).partners) ? (json as { partners: Partner[] }).partners : []);
+  }, []);
+
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
     if (tab === "agent_comms") void loadAgentComms();
     if (tab === "my_comms") void loadMgrComms();
-  }, [tab, loadAgentComms, loadMgrComms]);
+    if (tab === "partners") void loadPartners();
+  }, [tab, loadAgentComms, loadMgrComms, loadPartners]);
 
   const handleCreate = async () => {
     if (!form.name.trim() || !form.email.trim() || !form.password.trim()) { setCreateError("الاسم والبريد وكلمة المرور مطلوبة."); return; }
@@ -254,7 +267,7 @@ function ManagerDashboard() {
       </div>
 
       <div className="flex gap-2 print-hidden flex-wrap">
-        {([["agents", "مناديبي"], ["agent_comms", "عمولات مناديبي"], ["my_comms", "عمولاتي"]] as const).map(([key, label]) => (
+        {([["agents", "مناديبي"], ["agent_comms", "عمولات مناديبي"], ["my_comms", "عمولاتي"], ["partners", "الشركاء"]] as const).map(([key, label]) => (
           <button key={key} onClick={() => setTab(key)} className={`rounded-xl px-4 py-2 text-sm font-bold transition-colors ${tab === key ? "bg-pink-600 text-white" : "bg-gray-800 text-gray-400 hover:text-white"}`}>{label}</button>
         ))}
       </div>
@@ -345,6 +358,98 @@ function ManagerDashboard() {
               </table>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Partners tab */}
+      {tab === "partners" && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-base font-black text-white">الشركاء تحت إشرافي</h3>
+            <button onClick={() => setShowCreatePartner(true)} className="rounded-xl bg-pink-600 px-4 py-2 text-sm font-bold text-white hover:bg-pink-500">+ إضافة شريك</button>
+          </div>
+          {partners.length === 0 ? (
+            <div className="py-10 text-center text-sm text-gray-500">لا يوجد شركاء بعد.</div>
+          ) : (
+            <div className="space-y-3">
+              {partners.map((p) => (
+                <div key={p.id} className={CARD + " space-y-2"}>
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <p className="font-black text-white">{p.name}</p>
+                      <p className="text-xs text-gray-400">{p.linkedUser?.email} · {p.category}</p>
+                    </div>
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${p.isActive ? "bg-emerald-900/40 text-emerald-300" : "bg-gray-800 text-gray-500"}`}>
+                      {p.isActive ? "نشط" : "معطل"}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs border-t border-gray-700 pt-2">
+                    <div><span className="text-gray-400">عمولة الشريك: </span><span className="font-bold text-white">{p.commissionRate}{p.commissionType === "percentage" ? "%" : " ج.م"}</span></div>
+                    <div><span className="text-gray-400">عمولتي: </span><span className="font-bold text-pink-300">{p.managerCommissionRate ?? 0}{p.managerCommissionType === "percentage_of_partner" ? "% من عمولته" : " ج.م ثابت"}</span></div>
+                    <div><span className="text-gray-400">معلق: </span><span className="font-bold text-yellow-300">{p.totalCommissionPending.toFixed(2)} ج.م</span></div>
+                    <div><span className="text-gray-400">محصّل: </span><span className="font-bold text-emerald-300">{p.totalCommissionPaid.toFixed(2)} ج.م</span></div>
+                  </div>
+                  <div className="flex gap-2 pt-1">
+                    <ReferralLink label="لينك شريك" token={`partner-${p.id}`} baseUrl={`/register?ref=`} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Create partner modal */}
+      {showCreatePartner && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 print-hidden" onClick={() => setShowCreatePartner(false)}>
+          <div className="w-full max-w-lg rounded-2xl border border-gray-700 bg-gray-900 p-6 space-y-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-black text-white">إضافة شريك جديد</h3>
+            {partnerError && <p className="text-sm text-red-400">{partnerError}</p>}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2"><label className="block text-xs font-bold text-gray-400 mb-1">الاسم *</label><input value={partnerForm.name} onChange={(e) => setPartnerForm({ ...partnerForm, name: e.target.value })} className={INPUT} /></div>
+              <div><label className="block text-xs font-bold text-gray-400 mb-1">البريد *</label><input type="email" value={partnerForm.email} onChange={(e) => setPartnerForm({ ...partnerForm, email: e.target.value })} className={INPUT} /></div>
+              <div><label className="block text-xs font-bold text-gray-400 mb-1">الهاتف</label><input value={partnerForm.phone} onChange={(e) => setPartnerForm({ ...partnerForm, phone: e.target.value })} className={INPUT} /></div>
+              <div className="col-span-2"><label className="block text-xs font-bold text-gray-400 mb-1">الفئة *</label><input value={partnerForm.category} onChange={(e) => setPartnerForm({ ...partnerForm, category: e.target.value })} className={INPUT} placeholder="مثال: جيم، مطعم، صيدلية" /></div>
+              <div className="col-span-2"><label className="block text-xs font-bold text-gray-400 mb-1">كلمة المرور</label><input type="password" value={partnerForm.password} onChange={(e) => setPartnerForm({ ...partnerForm, password: e.target.value })} className={INPUT} placeholder="اتركه فارغاً للافتراضي" /></div>
+              <div><label className="block text-xs font-bold text-gray-400 mb-1">عمولة الشريك</label><input type="number" value={partnerForm.commissionRate} onChange={(e) => setPartnerForm({ ...partnerForm, commissionRate: e.target.value })} className={INPUT} /></div>
+              <div><label className="block text-xs font-bold text-gray-400 mb-1">نوع عمولته</label>
+                <select value={partnerForm.commissionType} onChange={(e) => setPartnerForm({ ...partnerForm, commissionType: e.target.value })} className={INPUT}>
+                  <option value="percentage">نسبة %</option>
+                  <option value="fixed">مبلغ ثابت</option>
+                </select>
+              </div>
+              <div><label className="block text-xs font-bold text-gray-400 mb-1">عمولتي</label><input type="number" value={partnerForm.managerCommissionRate} onChange={(e) => setPartnerForm({ ...partnerForm, managerCommissionRate: e.target.value })} className={INPUT} /></div>
+              <div><label className="block text-xs font-bold text-gray-400 mb-1">نوع عمولتي</label>
+                <select value={partnerForm.managerCommissionType} onChange={(e) => setPartnerForm({ ...partnerForm, managerCommissionType: e.target.value })} className={INPUT}>
+                  <option value="percentage_of_partner">% من عمولة الشريك</option>
+                  <option value="fixed">مبلغ ثابت لكل اشتراك</option>
+                </select>
+              </div>
+            </div>
+            <div><label className="block text-xs font-bold text-gray-400 mb-1">ملاحظات</label><textarea value={partnerForm.notes} onChange={(e) => setPartnerForm({ ...partnerForm, notes: e.target.value })} rows={2} className={INPUT + " resize-none"} /></div>
+            <div className="flex gap-2">
+              <button
+                onClick={async () => {
+                  if (!partnerForm.name.trim() || !partnerForm.email.trim() || !partnerForm.category.trim()) { setPartnerError("الاسم والبريد والفئة مطلوبة."); return; }
+                  setCreatingPartner(true); setPartnerError("");
+                  try {
+                    const res = await fetch("/api/admin/contracts", {
+                      method: "POST", headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ type: "partner", name: partnerForm.name.trim(), email: partnerForm.email.trim(), phone: partnerForm.phone.trim() || undefined, password: partnerForm.password.trim() || undefined, category: partnerForm.category.trim(), commissionRate: Number(partnerForm.commissionRate), commissionType: partnerForm.commissionType, managerCommissionType: partnerForm.managerCommissionType, managerCommissionRate: Number(partnerForm.managerCommissionRate), notes: partnerForm.notes.trim() || undefined }),
+                    });
+                    const json = await res.json().catch(() => ({}));
+                    if (!res.ok) { setPartnerError((json as { error?: string }).error ?? "حدث خطأ."); return; }
+                    setShowCreatePartner(false);
+                    setPartnerForm({ name: "", email: "", phone: "", password: "", category: "", commissionRate: "10", commissionType: "percentage", managerCommissionType: "percentage_of_partner", managerCommissionRate: "10", notes: "" });
+                    void loadPartners();
+                  } finally { setCreatingPartner(false); }
+                }}
+                disabled={creatingPartner}
+                className="flex-1 rounded-xl bg-pink-600 py-2.5 font-black text-white disabled:opacity-50"
+              >{creatingPartner ? "جاري الإنشاء..." : "إنشاء حساب الشريك"}</button>
+              <button onClick={() => setShowCreatePartner(false)} className="rounded-xl bg-gray-800 px-5 py-2.5 font-bold text-gray-300">إلغاء</button>
+            </div>
+          </div>
         </div>
       )}
 

@@ -14,6 +14,7 @@ export type Section =
   | "trainers"
   | "partners"
   | "contracts"
+  | "referrals"
   | "products"
   | "inventory"
   | "reviews"
@@ -189,6 +190,10 @@ export interface Partner {
   linksCount: number;
   totalCommissionPending: number;
   totalCommissionPaid: number;
+  managerId?: string | null;
+  managerName?: string | null;
+  managerCommissionType?: string | null;
+  managerCommissionRate?: number | null;
 }
 
 export interface PartnerCode {
@@ -549,4 +554,32 @@ export interface Testimonial {
   adminNote?: string | null;
   createdAt: string;
   user: { id: string; name: string | null; email: string | null };
+}
+
+export interface StaffReferralLink {
+  id: string;
+  userId: string;
+  staffName: string;
+  staffEmail: string;
+  token: string;
+  label: string | null;
+  clickCount: number;
+  isActive: boolean;
+  createdAt: string;
+  totalEarned: number;
+  pendingCommission: number;
+  settledCommission: number;
+}
+
+export interface StaffCommissionRow {
+  id: string;
+  staffUserId: string;
+  staffName: string;
+  customerName: string | null;
+  customerEmail: string | null;
+  membershipName: string | null;
+  amount: number;
+  status: "earned" | "settled";
+  settledAt: string | null;
+  createdAt: string;
 }

@@ -34,7 +34,9 @@ export type AdminFeature =
   | "db-maintenance"
   | "push"
   | "partners"
-  | "contracts";
+  | "contracts"
+  | "referrals";
+
 
 export const ADMIN_FEATURES: AdminFeature[] = [
   "settings",
@@ -61,6 +63,7 @@ export const ADMIN_FEATURES: AdminFeature[] = [
   "push",
   "partners",
   "contracts",
+  "referrals",
 ];
 
 const STAFF_FEATURES: AdminFeature[] = [
@@ -75,12 +78,13 @@ const STAFF_FEATURES: AdminFeature[] = [
   "reviews",
   "chat",
   "complaints",
+  "referrals",
 ];
 
 const TRAINER_FEATURES: AdminFeature[] = ["classes", "trainers", "bookings", "customers"];
 const ACCOUNTANT_FEATURES: AdminFeature[] = ["overview", "accounting", "orders", "balance", "customers"];
 const PARTNER_FEATURES: AdminFeature[] = ["partners"];
-const CONTRACTS_MANAGER_FEATURES: AdminFeature[] = ["contracts", "customers"];
+const CONTRACTS_MANAGER_FEATURES: AdminFeature[] = ["contracts", "customers", "referrals"];
 const AGENT_FEATURES: AdminFeature[] = ["contracts"];
 const HEAD_COACH_FEATURES: AdminFeature[] = ["trainers", "classes", "bookings", "customers", "accounting", "discounts"];
 
@@ -123,6 +127,7 @@ export const SECTION_FEATURE_MAP: Record<Section, AdminFeature> = {
   push: "push",
   partners: "partners",
   contracts: "contracts",
+  referrals: "referrals",
 };
 
 export function isAdminRole(role?: string): role is AdminRole {
@@ -175,6 +180,7 @@ export function getDefaultAdminSection(role: string | undefined, permissions?: s
   if (allowed.includes("overview")) return "overview";
   // Role-specific defaults
   if (role === "contracts_manager" || role === "agent") return "contracts";
+  if (role === "staff") return "referrals";
   if (role === "head_coach") return "trainers";
   return allowed[0] ?? "overview";
 }
