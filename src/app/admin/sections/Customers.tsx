@@ -317,6 +317,8 @@ export default function Customers() {
   const [statusFilter, setStatusFilter] = useState("الكل");
   const [viewCustomer, setViewCustomer] = useState<Customer | null>(null);
   const [editCustomer, setEditCustomer] = useState<Customer | Omit<Customer, "id"> | null>(null);
+  const [wpEdit, setWpEdit] = useState<{ userId: string; balance: number; points: number } | null>(null);
+  const [savingWP, setSavingWP] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<Customer | null>(null);
 
   const loadCustomers = useCallback(async () => {
@@ -384,6 +386,27 @@ export default function Customers() {
     }
 
     await loadCustomers();
+  };
+
+  const saveWalletPoints = async () => {
+    if (!wpEdit) return;
+    setSavingWP(true);
+    try {
+      const response = await fetch("/api/admin/customers", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: wpEdit.userId, balance: wpEdit.balance, points: wpEdit.points }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        window.alert(payload.error ?? "تعذر تحديث الرصيد.");
+        return;
+      }
+      setWpEdit(null);
+      await loadCustomers();
+    } finally {
+      setSavingWP(false);
+    }
   };
 
   const deleteCustomer = async (id: string) => {
@@ -705,6 +728,50 @@ export default function Customers() {
                 </div>
               ))}
             </div>
+
+            {/* Quick wallet/points edit */}
+            {wpEdit && wpEdit.userId === viewCustomer.id ? (
+              <div className="rounded-2xl border border-[rgba(255,188,219,0.2)] bg-black/20 p-4 space-y-3">
+                <div className="text-sm font-bold text-[#fff4f8]">تعديل الرصيد والنقاط</div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-xs text-[#d7aabd]">الرصيد (ج.م)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={wpEdit.balance}
+                      onChange={(e) => setWpEdit({ ...wpEdit, balance: Math.max(0, Number(e.target.value)) })}
+                      className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs text-[#d7aabd]">النقاط</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={wpEdit.points}
+                      onChange={(e) => setWpEdit({ ...wpEdit, points: Math.max(0, Number(e.target.value)) })}
+                      className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white"
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => void saveWalletPoints()}
+                    disabled={savingWP}
+                    className="flex-1 rounded-xl bg-emerald-600 py-2 text-sm font-bold text-white hover:bg-emerald-500 disabled:opacity-50"
+                  >{savingWP ? "جارٍ الحفظ..." : "حفظ"}</button>
+                  <button onClick={() => setWpEdit(null)} className="flex-1 rounded-xl bg-white/5 py-2 text-sm text-gray-400 hover:bg-white/10">إلغاء</button>
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={() => setWpEdit({ userId: viewCustomer.id, balance: viewCustomer.balance, points: viewCustomer.points })}
+                className="w-full rounded-xl border border-[rgba(255,188,219,0.15)] bg-black/10 py-2 text-sm text-[#d7aabd] hover:bg-black/20"
+              >
+                تعديل الرصيد والنقاط
+              </button>
+            )}
 
             <div className="space-y-3">
               {[
