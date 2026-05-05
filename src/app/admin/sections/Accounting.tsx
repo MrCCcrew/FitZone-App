@@ -152,6 +152,72 @@ interface AccountingData {
     rewards: { pointValueEGP: number; currentPointsLiability: number; redeemedPointsCost: number };
     feeBreakdown: { label: string; amount: number }[];
   };
+  contracts: {
+    summary: {
+      salesAgentPending: number;
+      salesAgentSettled: number;
+      managerAgentPending: number;
+      managerAgentSettled: number;
+      managerPartnerPending: number;
+      managerPartnerSettled: number;
+    };
+    salesAgentCommissions: ContractAgentCommissionRow[];
+    managerCommissions: ContractManagerCommissionRow[];
+    managerPartnerCommissions: ContractManagerPartnerCommissionRow[];
+    managers: ContractManagerAccountingRow[];
+  };
+}
+
+interface ContractAgentCommissionRow {
+  id: string;
+  agentName: string;
+  managerName: string | null;
+  customerName: string;
+  customerEmail: string;
+  membershipName: string;
+  amount: number;
+  status: "earned" | "settled";
+  settledAt: string | null;
+  createdAt: string;
+}
+
+interface ContractManagerCommissionRow {
+  id: string;
+  managerName: string;
+  agentName: string | null;
+  customerName: string | null;
+  customerEmail: string | null;
+  membershipName: string | null;
+  amount: number;
+  status: "earned" | "settled";
+  settledAt: string | null;
+  createdAt: string;
+}
+
+interface ContractManagerPartnerCommissionRow {
+  id: string;
+  managerName: string;
+  partnerName: string | null;
+  customerName: string | null;
+  customerEmail: string | null;
+  membershipName: string | null;
+  amount: number;
+  status: "earned" | "settled";
+  settledAt: string | null;
+  createdAt: string;
+}
+
+interface ContractManagerAccountingRow {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  agents: { id: string; name: string; email: string; phone: string | null; totalEarned: number; pendingCommission: number; settledCommission: number }[];
+  partners: { id: string; name: string; email: string; phone: string | null; totalCommissionPending: number; totalCommissionPaid: number }[];
+  pendingCommission: number;
+  settledCommission: number;
+  pendingPartnerCommission: number;
+  settledPartnerCommission: number;
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
@@ -1339,7 +1405,126 @@ function AgentCommissionsAdminTab() {
   );
 }
 
-type MainTab = "store" | "club" | "fees" | "commissions" | "agentCommissions";
+function ContractsCommissionsTab({ data }: { data: AccountingData }) {
+  const c = data.contracts;
+  const managerTotal = c.summary.managerAgentPending + c.summary.managerAgentSettled + c.summary.managerPartnerPending + c.summary.managerPartnerSettled;
+  const agentTotal = c.summary.salesAgentPending + c.summary.salesAgentSettled;
+  const statusBadge = (status: string) => (
+    <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${status === "settled" ? "bg-emerald-900/40 text-emerald-300" : "bg-yellow-900/40 text-yellow-300"}`}>
+      {status === "settled" ? "مسواة" : "مستحقة"}
+    </span>
+  );
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+        <KpiCard label="عمولات المناديب" value={`${fmt(agentTotal)} ج`} sub={`${fmt(c.summary.salesAgentPending)} مستحق`} color="text-pink-300" />
+        <KpiCard label="عمولات المديرين" value={`${fmt(managerTotal)} ج`} sub={`${fmt(c.summary.managerAgentPending + c.summary.managerPartnerPending)} مستحق`} color="text-amber-300" />
+        <KpiCard label="عدد المديرين" value={`${c.managers.length}`} color="text-[#fff4f8]" />
+        <KpiCard label="مناديب وشركاء" value={`${c.managers.reduce((s, m) => s + m.agents.length + m.partners.length, 0)}`} color="text-[#d7aabd]" />
+      </div>
+
+      <AdminCard>
+        <SectionDivider title="المديرون ومناديبهم وشركاؤهم" />
+        {!c.managers.length ? (
+          <div className="py-8 text-center text-sm text-[#d7aabd]">لا توجد بيانات مديرين.</div>
+        ) : (
+          <div className="mt-4 space-y-4">
+            {c.managers.map((m) => (
+              <div key={m.id} className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+                <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="font-black text-white">{m.name}</div>
+                    <div className="text-xs text-[#d7aabd]">{m.email}{m.phone ? ` · ${m.phone}` : ""}</div>
+                  </div>
+                  <div className="text-xs text-[#d7aabd]">
+                    مناديب: <span className="font-bold text-white">{m.agents.length}</span> · شركاء: <span className="font-bold text-white">{m.partners.length}</span>
+                  </div>
+                </div>
+                <div className="grid gap-3 lg:grid-cols-2">
+                  <div>
+                    <div className="mb-2 text-xs font-black text-pink-200">المناديب</div>
+                    {!m.agents.length ? <div className="text-xs text-[#a07080]">لا يوجد مناديب.</div> : (
+                      <div className="space-y-2">
+                        {m.agents.map((a) => (
+                          <div key={a.id} className="rounded-lg bg-black/20 px-3 py-2 text-sm">
+                            <div className="font-bold text-white">{a.name}</div>
+                            <div className="text-xs text-[#d7aabd]">{a.email}</div>
+                            <div className="mt-1 text-xs text-[#a07080]">مستحق {fmt(a.pendingCommission)} ج · مسوى {fmt(a.settledCommission)} ج</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <div className="mb-2 text-xs font-black text-amber-200">الشركاء</div>
+                    {!m.partners.length ? <div className="text-xs text-[#a07080]">لا يوجد شركاء.</div> : (
+                      <div className="space-y-2">
+                        {m.partners.map((p) => (
+                          <div key={p.id} className="rounded-lg bg-black/20 px-3 py-2 text-sm">
+                            <div className="font-bold text-white">{p.name}</div>
+                            <div className="text-xs text-[#d7aabd]">{p.email}</div>
+                            <div className="mt-1 text-xs text-[#a07080]">معلق {fmt(p.totalCommissionPending)} ج · مدفوع {fmt(p.totalCommissionPaid)} ج</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </AdminCard>
+
+      <AdminCard>
+        <SectionDivider title="عمولات المناديب" />
+        {!c.salesAgentCommissions.length ? (
+          <div className="py-8 text-center text-sm text-[#d7aabd]">لا توجد عمولات مناديب في الفترة.</div>
+        ) : (
+          <div className="mt-4 overflow-x-auto">
+            <table className="min-w-full text-right text-sm">
+              <thead className="border-b border-white/10 text-xs text-[#d7aabd]"><tr><th className="px-3 py-2">المندوب</th><th className="px-3 py-2">المدير</th><th className="px-3 py-2">العميل</th><th className="px-3 py-2">الباقة</th><th className="px-3 py-2">العمولة</th><th className="px-3 py-2">الحالة</th><th className="px-3 py-2">التاريخ</th></tr></thead>
+              <tbody>{c.salesAgentCommissions.map((row) => (
+                <tr key={row.id} className="border-t border-white/10 text-white hover:bg-white/5">
+                  <td className="px-3 py-2.5 font-bold">{row.agentName}</td><td className="px-3 py-2.5 text-[#d7aabd]">{row.managerName ?? "بدون مدير"}</td>
+                  <td className="px-3 py-2.5"><div>{row.customerName}</div><div className="text-xs text-[#d7aabd]">{row.customerEmail}</div></td>
+                  <td className="px-3 py-2.5 text-[#d7aabd]">{row.membershipName}</td><td className="px-3 py-2.5 font-bold text-pink-300">{fmt(row.amount)} ج</td>
+                  <td className="px-3 py-2.5">{statusBadge(row.status)}</td><td className="px-3 py-2.5 text-xs text-[#d7aabd]">{fmtDate(row.createdAt)}</td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+        )}
+      </AdminCard>
+
+      <AdminCard>
+        <SectionDivider title="عمولات المديرين" />
+        {c.managerCommissions.length + c.managerPartnerCommissions.length === 0 ? (
+          <div className="py-8 text-center text-sm text-[#d7aabd]">لا توجد عمولات مديرين في الفترة.</div>
+        ) : (
+          <div className="mt-4 overflow-x-auto">
+            <table className="min-w-full text-right text-sm">
+              <thead className="border-b border-white/10 text-xs text-[#d7aabd]"><tr><th className="px-3 py-2">المدير</th><th className="px-3 py-2">المصدر</th><th className="px-3 py-2">العميل</th><th className="px-3 py-2">الباقة</th><th className="px-3 py-2">عمولة المدير</th><th className="px-3 py-2">الحالة</th><th className="px-3 py-2">التاريخ</th></tr></thead>
+              <tbody>
+                {[...c.managerCommissions.map((row) => ({ ...row, sourceName: row.agentName ?? "مندوب" })), ...c.managerPartnerCommissions.map((row) => ({ ...row, sourceName: row.partnerName ?? "شريك" }))].map((row) => (
+                  <tr key={row.id} className="border-t border-white/10 text-white hover:bg-white/5">
+                    <td className="px-3 py-2.5 font-bold">{row.managerName}</td><td className="px-3 py-2.5 text-[#d7aabd]">{row.sourceName}</td>
+                    <td className="px-3 py-2.5"><div>{row.customerName ?? "—"}</div><div className="text-xs text-[#d7aabd]">{row.customerEmail ?? ""}</div></td>
+                    <td className="px-3 py-2.5 text-[#d7aabd]">{row.membershipName ?? "—"}</td><td className="px-3 py-2.5 font-bold text-amber-300">{fmt(row.amount)} ج</td>
+                    <td className="px-3 py-2.5">{statusBadge(row.status)}</td><td className="px-3 py-2.5 text-xs text-[#d7aabd]">{fmtDate(row.createdAt)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </AdminCard>
+    </div>
+  );
+}
+
+type MainTab = "store" | "club" | "fees" | "commissions" | "agentCommissions" | "contractCommissions";
 
 const THIS_MONTH_START = new Date();
 THIS_MONTH_START.setDate(1);
@@ -1378,6 +1563,7 @@ export default function Accounting() {
     { id: "fees", label: "قواعد العمولات", icon: "⚙️" },
     { id: "commissions", label: "عمولات الشركاء", icon: "🤝" },
     { id: "agentCommissions", label: "عمولات الموظفين", icon: "👥" },
+    { id: "contractCommissions", label: "عمولات التعاقدات", icon: "📊" },
   ];
 
   return (
@@ -1436,6 +1622,7 @@ export default function Accounting() {
       {!loading && data && tab === "fees" && <FeeRulesTab data={data} onRefresh={fetchData} />}
       {tab === "commissions"      && <PartnerCommissionsTab from={from} to={to} />}
       {tab === "agentCommissions" && <AgentCommissionsAdminTab />}
+      {!loading && data && tab === "contractCommissions" && <ContractsCommissionsTab data={data} />}
     </AdminSectionShell>
   );
 }
