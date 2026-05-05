@@ -1145,7 +1145,6 @@ model Partner {
   userMemberships    UserMembership[]
   withdrawalRequests PartnerWithdrawalRequest[]
   manager            ContractsManager?          @relation("ManagedPartners", fields: [managerId], references: [id], onDelete: SetNull)
-  managerCommissions ManagerPartnerCommission[]
 
   @@index([isActive])
   @@index([managerId])
@@ -1366,6 +1365,7 @@ model StaffCommission {
 
   staffUser         User               @relation("StaffCommissions", fields: [staffUserId], references: [id], onDelete: Cascade)
   staffReferralLink StaffReferralLink?  @relation(fields: [staffReferralLinkId], references: [id], onDelete: SetNull)
+  userMembership    UserMembership?     @relation(fields: [userMembershipId], references: [id], onDelete: SetNull)
 
   @@index([staffUserId, status])
   @@index([createdAt])
