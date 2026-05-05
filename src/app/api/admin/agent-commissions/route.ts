@@ -35,9 +35,10 @@ export async function GET(req: Request) {
           { role: "staff" },
           { role: "trainer" },
         ],
-        agentCommissions: { some: {} },
+        commissionRate: { gt: 0 },
       },
-      select: { id: true, name: true, role: true, commissionRate: true, commissionType: true },
+      select: { id: true, name: true, email: true, role: true, commissionRate: true, commissionType: true },
+      orderBy: { name: "asc" },
     }),
   ]);
 

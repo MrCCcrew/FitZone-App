@@ -84,7 +84,7 @@ const STAFF_FEATURES: AdminFeature[] = [
 const TRAINER_FEATURES: AdminFeature[] = ["classes", "trainers", "bookings", "customers"];
 const ACCOUNTANT_FEATURES: AdminFeature[] = ["overview", "accounting", "orders", "balance", "customers"];
 const PARTNER_FEATURES: AdminFeature[] = ["partners"];
-const CONTRACTS_MANAGER_FEATURES: AdminFeature[] = ["contracts", "customers", "referrals"];
+const CONTRACTS_MANAGER_FEATURES: AdminFeature[] = ["contracts", "customers"];
 const AGENT_FEATURES: AdminFeature[] = ["contracts"];
 const HEAD_COACH_FEATURES: AdminFeature[] = ["trainers", "classes", "bookings", "customers", "accounting", "discounts"];
 
@@ -171,7 +171,7 @@ export function canAccessAdminFeature(
 
 export function canAccessAdminSection(role: string | undefined, permissions: string[] | undefined, section: Section) {
   if (section === "settings") {
-    return canAccessAdminFeature(role, permissions, "settings") || canAccessAdminFeature(role, permissions, "referrals");
+    return canAccessAdminFeature(role, permissions, "settings") || (role === "staff" && canAccessAdminFeature(role, permissions, "referrals"));
   }
   return canAccessAdminFeature(role, permissions, SECTION_FEATURE_MAP[section]);
 }

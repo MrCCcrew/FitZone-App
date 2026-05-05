@@ -294,6 +294,7 @@ function ManagerDashboard() {
                     <div>
                       <p className="font-black text-white">{a.name}</p>
                       <p className="text-xs text-gray-400">{a.user.email}</p>
+                      <p className="text-xs text-gray-500">{a.user.phone ?? "لا يوجد هاتف"}</p>
                     </div>
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className={`text-xs rounded-full px-2 py-0.5 ${a.isActive ? "bg-emerald-900/30 text-emerald-400" : "bg-red-900/30 text-red-400"}`}>{a.isActive ? "نشط" : "موقوف"}</span>
@@ -302,7 +303,7 @@ function ManagerDashboard() {
                     </div>
                   </div>
                   <ReferralLink code={a.referralCode} />
-                  <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                  <div className="grid grid-cols-4 gap-2 text-center text-xs">
                     <div className="rounded-lg bg-gray-900 py-1.5"><p className="font-bold text-white">{a.referralsCount}</p><p className="text-gray-400">عملاء</p></div>
                     <div className="rounded-lg bg-gray-900 py-1.5"><p className="font-bold text-yellow-400">{a.pendingCommission.toFixed(0)} ج.م</p><p className="text-gray-400">معلق</p></div>
                     <div className="rounded-lg bg-gray-900 py-1.5"><p className="font-bold text-emerald-400">{a.settledCommission.toFixed(0)} ج.م</p><p className="text-gray-400">محصّل</p></div>
