@@ -104,10 +104,13 @@ export async function POST(req: Request) {
   if (walletDeductAmount > 0 || pointsDeductCount > 0) {
     // Wallet/points cannot be used on trial classes without an active paid subscription
     if (membershipId === "trial-class") {
-      const activePaidSub = await db.userMembership.findFirst({
-        where: { userId, status: "active", membership: { kind: { not: "trial" } } },
+      const activeMem = await db.userMembership.findFirst({
+        where: { userId, status: "active" },
+        select: { membership: { select: { kind: true } } },
       });
-      if (!activePaidSub) {
+      const hasActivePaidSub =
+        activeMem?.membership?.kind === "subscription" || activeMem?.membership?.kind === "package";
+      if (!hasActivePaidSub) {
         return NextResponse.json(
           { error: "يجب أن يكون لديك اشتراك مدفوع فعال لاستخدام رصيد المحفظة أو النقاط على هذا الكلاس." },
           { status: 400 },
@@ -1072,38 +1075,44 @@ export async function POST(req: Request) {
   }
 
   if (userRecord.email && !result.needsPaymentConfirmation) {
-    const invoicePdf = await generateMembershipInvoicePdf(invoiceDetails);
-    let membershipCard = null;
+    // All post-transaction work is non-critical — a failure here must never
+    // surface as a 500 after the subscription and wallet deduction already committed.
     try {
-      const pass = await ensureMembershipAttendancePass(result.subscriptionId);
-      if (pass) {
-        membershipCard = await generateMembershipQrCard({
-          memberName: userRecord.name ?? "FitZone Member",
-          membershipName: result.planName,
-          membershipNameEn: result.planNameEn,
-          offerTitle: result.offerTitle ?? null,
-          endDate: result.endDate,
-          qrPayload: buildAttendancePayload(pass.code),
-          cardCode: pass.code,
-        });
+      const invoicePdf = await generateMembershipInvoicePdf(invoiceDetails);
+      let membershipCard = null;
+      try {
+        const pass = await ensureMembershipAttendancePass(result.subscriptionId);
+        if (pass) {
+          membershipCard = await generateMembershipQrCard({
+            memberName: userRecord.name ?? "FitZone Member",
+            membershipName: result.planName,
+            membershipNameEn: result.planNameEn,
+            offerTitle: result.offerTitle ?? null,
+            endDate: result.endDate,
+            qrPayload: buildAttendancePayload(pass.code),
+            cardCode: pass.code,
+          });
+        }
+      } catch (error) {
+        console.error("[SUBSCRIBE_MEMBERSHIP_CARD]", error);
       }
+      void sendSubscriptionEmail(
+        userRecord.email,
+        userRecord.name ?? "العضوة",
+        result.offerTitle ?? result.planName,
+        result.endDate,
+        result.walletBonus,
+        result.bookedSchedules ?? [],
+        {
+          details: invoiceDetails,
+          filename: `fitzone-membership-invoice-${invoiceDetails.invoiceNumber}.pdf`,
+          content: invoicePdf,
+        },
+        membershipCard,
+      ).catch((error) => console.error("[SUBSCRIBE_EMAIL]", error));
     } catch (error) {
-      console.error("[SUBSCRIBE_MEMBERSHIP_CARD]", error);
+      console.error("[SUBSCRIBE_POST_COMMIT]", error);
     }
-    void sendSubscriptionEmail(
-      userRecord.email,
-      userRecord.name ?? "العضوة",
-      result.offerTitle ?? result.planName,
-      result.endDate,
-      result.walletBonus,
-      result.bookedSchedules ?? [],
-      {
-        details: invoiceDetails,
-        filename: `fitzone-membership-invoice-${invoiceDetails.invoiceNumber}.pdf`,
-        content: invoicePdf,
-      },
-      membershipCard,
-    ).catch((error) => console.error("[SUBSCRIBE_EMAIL]", error));
   }
 
   return NextResponse.json({
