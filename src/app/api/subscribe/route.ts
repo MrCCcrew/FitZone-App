@@ -102,8 +102,18 @@ export async function POST(req: Request) {
   let pointValueEGP = 0.1;
 
   if (walletDeductAmount > 0 || pointsDeductCount > 0) {
-    // Wallet/points cannot be used on trial classes without an active paid subscription
-    if (membershipId === "trial-class") {
+    // Wallet/points cannot be used on trial classes without an active paid subscription.
+    // The frontend may send the literal "trial-class" string OR the actual trial membership UUID.
+    const resolvedKind =
+      membershipId === "trial-class"
+        ? "trial"
+        : membershipId && !offerId
+          ? await db.membership
+              .findUnique({ where: { id: membershipId }, select: { kind: true } })
+              .then((m) => m?.kind ?? null)
+              .catch(() => null)
+          : null;
+    if (resolvedKind === "trial") {
       const activeMem = await db.userMembership.findFirst({
         where: { userId, status: "active" },
         select: { membership: { select: { kind: true } } },
