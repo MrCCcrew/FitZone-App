@@ -170,8 +170,18 @@ function PaymentVerifyContent() {
               </div>
 
               {transaction.status === "pending" || transaction.status === "requires_action" ? (
-                <div className="rounded-2xl border border-[#ffbcdb]/15 bg-black/20 p-4 text-sm text-[#d7aabd]">
-                  إذا أكملت الدفع بالفعل فانتظر بضع ثوانٍ. سيتم تحديث الحالة تلقائيًا بعد وصول إشعار Paymob والتحقق منه على السيرفر.
+                <div className="space-y-3">
+                  {transaction.checkoutUrl ? (
+                    <a
+                      href={transaction.checkoutUrl}
+                      className="block w-full rounded-xl bg-pink-600 py-3 text-center text-sm font-bold text-white hover:bg-pink-500"
+                    >
+                      إتمام الدفع الآن
+                    </a>
+                  ) : null}
+                  <div className="rounded-2xl border border-[#ffbcdb]/15 bg-black/20 p-4 text-sm text-[#d7aabd]">
+                    إذا أكملت الدفع بالفعل فانتظر بضع ثوانٍ. سيتم تحديث الحالة تلقائيًا بعد وصول إشعار Paymob والتحقق منه على السيرفر.
+                  </div>
                 </div>
               ) : null}
 
