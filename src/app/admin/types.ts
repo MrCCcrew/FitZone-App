@@ -194,6 +194,8 @@ export interface Partner {
   managerName?: string | null;
   managerCommissionType?: string | null;
   managerCommissionRate?: number | null;
+  referralToken?: string | null;
+  referralLinkLabel?: string | null;
 }
 
 export interface PartnerCode {
@@ -485,6 +487,20 @@ export interface ManagerCommissionRow {
   managerName: string;
   agentName: string | null;
   customerName: string | null;
+  membershipName: string | null;
+  amount: number;
+  status: "earned" | "settled";
+  settledAt: string | null;
+  createdAt: string;
+}
+
+export interface PartnerManagerCommissionRow {
+  id: string;
+  managerId: string;
+  managerName: string;
+  partnerName: string | null;
+  customerName: string | null;
+  customerEmail: string | null;
   membershipName: string | null;
   amount: number;
   status: "earned" | "settled";
