@@ -361,6 +361,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "البريد الإلكتروني مسجل بالفعل" }, { status: 409 });
     }
 
+    const SIGNUP_BONUS = 20;
     const hashed = await bcryptjs.hash(password ?? "FitZone123!", 12);
     const user = await db.user.create({
       data: {
@@ -370,11 +371,12 @@ export async function POST(req: Request) {
         password: hashed,
         role: "member",
         avatar: (name[0] ?? "ع").toUpperCase(),
+        emailVerified: new Date(),
       },
     });
 
     await db.wallet.create({ data: { userId: user.id, balance: 0 } });
-    await db.rewardPoints.create({ data: { userId: user.id, points: 0, tier: "bronze" } });
+    const rewardRecord = await db.rewardPoints.create({ data: { userId: user.id, points: 0, tier: "bronze" } });
     await db.referral.create({
       data: {
         userId: user.id,
@@ -382,7 +384,26 @@ export async function POST(req: Request) {
       },
     });
 
-    await applyWalletAndRewards(user.id, balance ?? 0, points ?? 0);
+    // Give signup bonus as if user verified their email
+    const bonusPoints = SIGNUP_BONUS + (points ?? 0);
+    const bonusTier =
+      bonusPoints >= 5000 ? "platinum" :
+      bonusPoints >= 3000 ? "gold" :
+      bonusPoints >= 1000 ? "silver" :
+      "bronze";
+    await db.rewardPoints.update({
+      where: { id: rewardRecord.id },
+      data: { points: bonusPoints, tier: bonusTier },
+    });
+    await db.rewardHistory.create({
+      data: {
+        rewardId: rewardRecord.id,
+        points: SIGNUP_BONUS,
+        reason: "onboarding_email_verified",
+      },
+    });
+
+    await applyWalletAndRewards(user.id, balance ?? 0, undefined);
     await applyMembership(user.id, plan, status ?? "expired");
 
     await db.notification.create({
