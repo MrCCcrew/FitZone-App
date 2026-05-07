@@ -30,6 +30,8 @@ function formatTrainer(trainer: {
   sortOrder: number;
   canSendGifts: boolean;
   giftMonthlyLimit: number;
+  canAddClasses: boolean;
+  canAddBookings: boolean;
   _count: { classes: number };
   user: { id: string; name: string | null; email: string | null; discountType: string; discountValue: number; maxDiscount: number | null } | null;
 }) {
@@ -54,6 +56,8 @@ function formatTrainer(trainer: {
     sortOrder: trainer.sortOrder,
     canSendGifts: trainer.canSendGifts,
     giftMonthlyLimit: trainer.giftMonthlyLimit,
+    canAddClasses: trainer.canAddClasses,
+    canAddBookings: trainer.canAddBookings,
     linkedUser: trainer.user
       ? {
           id: trainer.user.id,
@@ -140,6 +144,8 @@ export async function POST(req: Request) {
         userId: body.userId?.trim() || null,
         canSendGifts: Boolean(body.canSendGifts ?? false),
         giftMonthlyLimit: Math.max(0, Number(body.giftMonthlyLimit ?? 4) || 4),
+        canAddClasses: Boolean(body.canAddClasses ?? false),
+        canAddBookings: Boolean(body.canAddBookings ?? false),
       },
       include: {
         _count: { select: { classes: true } },
@@ -200,6 +206,8 @@ export async function PATCH(req: Request) {
         ...(body.userId !== undefined ? { userId: body.userId ? String(body.userId).trim() || null : null } : {}),
         ...(body.canSendGifts !== undefined ? { canSendGifts: Boolean(body.canSendGifts) } : {}),
         ...(body.giftMonthlyLimit !== undefined ? { giftMonthlyLimit: Math.max(0, Number(body.giftMonthlyLimit) || 0) } : {}),
+        ...(body.canAddClasses !== undefined ? { canAddClasses: Boolean(body.canAddClasses) } : {}),
+        ...(body.canAddBookings !== undefined ? { canAddBookings: Boolean(body.canAddBookings) } : {}),
       },
       include: {
         _count: { select: { classes: true } },

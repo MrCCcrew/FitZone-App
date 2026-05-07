@@ -149,6 +149,8 @@ const EMPTY_TRAINER: EditableTrainer = {
   sortOrder: 0,
   canSendGifts: false,
   giftMonthlyLimit: 4,
+  canAddClasses: false,
+  canAddBookings: false,
 };
 
 function listToText(items: string[]) {
@@ -1381,8 +1383,9 @@ export default function Trainers() {
             </div>
 
             <div className="rounded-2xl border border-amber-500/20 bg-amber-950/20 p-4 space-y-3">
-              <div className="text-sm font-black text-amber-300">صلاحيات الكلاسات الهدية</div>
+              <div className="text-sm font-black text-amber-300">صلاحيات المدربة</div>
               <div className="grid gap-4 md:grid-cols-2">
+
                 <label className="rounded-xl border border-gray-700 bg-gray-800 p-3 text-sm text-white">
                   <div className="mb-2 font-bold">إرسال كلاسات هدية</div>
                   <select
@@ -1406,6 +1409,31 @@ export default function Trainers() {
                     />
                   </FieldHint>
                 )}
+
+                <label className="rounded-xl border border-gray-700 bg-gray-800 p-3 text-sm text-white">
+                  <div className="mb-2 font-bold">إضافة كلاسات جديدة</div>
+                  <select
+                    value={modal.canAddClasses ? "yes" : "no"}
+                    onChange={(event) => setModal({ ...modal, canAddClasses: event.target.value === "yes" })}
+                    className={INPUT}
+                  >
+                    <option value="no">غير مسموح</option>
+                    <option value="yes">مسموح</option>
+                  </select>
+                </label>
+
+                <label className="rounded-xl border border-gray-700 bg-gray-800 p-3 text-sm text-white">
+                  <div className="mb-2 font-bold">إضافة حجوزات</div>
+                  <select
+                    value={modal.canAddBookings ? "yes" : "no"}
+                    onChange={(event) => setModal({ ...modal, canAddBookings: event.target.value === "yes" })}
+                    className={INPUT}
+                  >
+                    <option value="no">غير مسموح</option>
+                    <option value="yes">مسموح</option>
+                  </select>
+                </label>
+
               </div>
             </div>
 

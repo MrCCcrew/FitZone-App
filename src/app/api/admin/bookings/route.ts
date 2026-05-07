@@ -118,9 +118,17 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const { error: err, role } = await checkAdmin();
+  const { error: err, role, userId } = await checkAdmin();
   if (err) return err;
-  if (role === "trainer") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (role === "trainer") {
+    const profile = await db.trainer.findFirst({
+      where: { userId: userId! },
+      select: { canAddBookings: true },
+    });
+    if (!profile?.canAddBookings) {
+      return NextResponse.json({ error: "ليس لديك صلاحية إضافة حجوزات." }, { status: 403 });
+    }
+  }
 
   try {
     const payload = (await req.json()) as {
