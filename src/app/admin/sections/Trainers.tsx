@@ -221,6 +221,8 @@ export default function Trainers() {
 
   // Applications
   const [userRole, setUserRole] = useState<string | null>(null);
+  const isTrainerRole = userRole === "trainer";
+  const isHeadCoachOrAbove = userRole === "admin" || userRole === "head_coach" || userRole === "staff";
   const [applications, setApplications] = useState<Application[]>([]);
   const [appStatusFilter, setAppStatusFilter] = useState("all");
   const [appLoading, setAppLoading] = useState(false);
@@ -582,8 +584,15 @@ export default function Trainers() {
     <div className="space-y-6">
       {/* Tab navigation */}
       <div className="flex gap-2 border-b border-gray-800 pb-1">
-        {([["trainers","المدربات"],["applications","طلبات البرايفيت"],["discounts","أكواد خصم المدربات"],["attendance","الحضور والغياب"]] as const).map(([key,label]) => (
-          <button key={key} onClick={() => setActiveTab(key)}
+        {(
+          [
+            ["trainers","المدربات"],
+            ...(!isTrainerRole ? [["applications","طلبات البرايفيت"]] as const : []),
+            ["discounts","أكواد خصم المدربات"],
+            ...(isHeadCoachOrAbove ? [["attendance","الحضور والغياب"]] as const : []),
+          ] as [string, string][]
+        ).map(([key,label]) => (
+          <button key={key} onClick={() => setActiveTab(key as typeof activeTab)}
             className={`rounded-t-lg px-4 py-2 text-sm font-bold transition-colors ${activeTab === key ? "bg-pink-600 text-white" : "text-gray-400 hover:text-white"}`}>
             {label}
           </button>
@@ -916,16 +925,18 @@ export default function Trainers() {
               placeholder="ابحثي عن مدربة..."
               className={`${INPUT} min-w-[240px]`}
             />
-            <button
-              onClick={() => {
-                setUploadError(null);
-                setLinkedUserDiscount(null);
-                setModal({ ...EMPTY_TRAINER, sortOrder: trainers.length });
-              }}
-              className="rounded-xl bg-pink-600 px-4 py-2 text-sm font-bold text-white"
-            >
-              + إضافة مدربة
-            </button>
+            {!isTrainerRole && (
+              <button
+                onClick={() => {
+                  setUploadError(null);
+                  setLinkedUserDiscount(null);
+                  setModal({ ...EMPTY_TRAINER, sortOrder: trainers.length });
+                }}
+                className="rounded-xl bg-pink-600 px-4 py-2 text-sm font-bold text-white"
+              >
+                + إضافة مدربة
+              </button>
+            )}
           </div>
         </div>
 
@@ -1056,12 +1067,14 @@ export default function Trainers() {
                 >
                   🎁 منح خصم
                 </button>
-                <button
-                  onClick={() => void removeTrainer(trainer.id)}
-                  className="rounded-lg bg-red-950/50 px-3 py-2 text-xs font-bold text-red-300"
-                >
-                  حذف
-                </button>
+                {!isTrainerRole && (
+                  <button
+                    onClick={() => void removeTrainer(trainer.id)}
+                    className="rounded-lg bg-red-950/50 px-3 py-2 text-xs font-bold text-red-300"
+                  >
+                    حذف
+                  </button>
+                )}
               </div>
             </div>
           ))}
@@ -1078,20 +1091,22 @@ export default function Trainers() {
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
-              <FieldHint title="ربط الحساب" hint="اختاري حساب المدربة حتى تتمكن من تعديل ملفها من داخل حسابها.">
-                <select
-                  value={modal.userId ?? ""}
-                  onChange={(event) => setModal({ ...modal, userId: event.target.value || null })}
-                  className={INPUT}
-                >
-                  <option value="">بدون ربط حاليًا</option>
-                  {linkedUserOptions.map((account) => (
-                    <option key={account.id} value={account.id}>
-                      {account.name} - {account.email}
-                    </option>
-                  ))}
-                </select>
-              </FieldHint>
+              {!isTrainerRole && (
+                <FieldHint title="ربط الحساب" hint="اختاري حساب المدربة حتى تتمكن من تعديل ملفها من داخل حسابها.">
+                  <select
+                    value={modal.userId ?? ""}
+                    onChange={(event) => setModal({ ...modal, userId: event.target.value || null })}
+                    className={INPUT}
+                  >
+                    <option value="">بدون ربط حاليًا</option>
+                    {linkedUserOptions.map((account) => (
+                      <option key={account.id} value={account.id}>
+                        {account.name} - {account.email}
+                      </option>
+                    ))}
+                  </select>
+                </FieldHint>
+              )}
               <FieldHint title="اسم المدربة" hint="الاسم الظاهر للعميلات داخل صفحة المدربات.">
                 <input
                   value={modal.name}
@@ -1151,40 +1166,44 @@ export default function Trainers() {
                 />
               </FieldHint>
 
-              <FieldHint title="ترتيب الظهور" hint="الأقل يظهر أولًا في الصفحة الرئيسية وصفحة المدربات.">
-                <input
-                  type="number"
-                  value={modal.sortOrder}
-                  onChange={(event) => setModal({ ...modal, sortOrder: Number(event.target.value) || 0 })}
-                  className={INPUT}
-                />
-              </FieldHint>
-
-              <div className="grid grid-cols-2 gap-3">
-                <label className="rounded-xl border border-gray-700 bg-gray-800 p-3 text-sm text-white">
-                  <div className="mb-2 font-bold">الحالة</div>
-                  <select
-                    value={modal.active ? "active" : "inactive"}
-                    onChange={(event) => setModal({ ...modal, active: event.target.value === "active" })}
+              {!isTrainerRole && (
+                <FieldHint title="ترتيب الظهور" hint="الأقل يظهر أولًا في الصفحة الرئيسية وصفحة المدربات.">
+                  <input
+                    type="number"
+                    value={modal.sortOrder}
+                    onChange={(event) => setModal({ ...modal, sortOrder: Number(event.target.value) || 0 })}
                     className={INPUT}
-                  >
-                    <option value="active">نشطة</option>
-                    <option value="inactive">مخفية</option>
-                  </select>
-                </label>
+                  />
+                </FieldHint>
+              )}
 
-                <label className="rounded-xl border border-gray-700 bg-gray-800 p-3 text-sm text-white">
-                  <div className="mb-2 font-bold">الصفحة الرئيسية</div>
-                  <select
-                    value={modal.showOnHome ? "show" : "hide"}
-                    onChange={(event) => setModal({ ...modal, showOnHome: event.target.value === "show" })}
-                    className={INPUT}
-                  >
-                    <option value="show">تظهر</option>
-                    <option value="hide">لا تظهر</option>
-                  </select>
-                </label>
-              </div>
+              {!isTrainerRole && (
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="rounded-xl border border-gray-700 bg-gray-800 p-3 text-sm text-white">
+                    <div className="mb-2 font-bold">الحالة</div>
+                    <select
+                      value={modal.active ? "active" : "inactive"}
+                      onChange={(event) => setModal({ ...modal, active: event.target.value === "active" })}
+                      className={INPUT}
+                    >
+                      <option value="active">نشطة</option>
+                      <option value="inactive">مخفية</option>
+                    </select>
+                  </label>
+
+                  <label className="rounded-xl border border-gray-700 bg-gray-800 p-3 text-sm text-white">
+                    <div className="mb-2 font-bold">الصفحة الرئيسية</div>
+                    <select
+                      value={modal.showOnHome ? "show" : "hide"}
+                      onChange={(event) => setModal({ ...modal, showOnHome: event.target.value === "show" })}
+                      className={INPUT}
+                    >
+                      <option value="show">تظهر</option>
+                      <option value="hide">لا تظهر</option>
+                    </select>
+                  </label>
+                </div>
+              )}
             </div>
 
             <FieldHint
