@@ -160,11 +160,27 @@ function resolveTypeColor(type: string) {
   return TYPE_COLOR_MAP[type.toLowerCase()] ?? "bg-white/10 text-white/75 border-white/15";
 }
 
-function createModalState(item?: GymClass) {
+function createModalState(item?: GymClass, allClasses: GymClass[] = []) {
   if (!item) return EMPTY_MODAL;
   const category = item.category ?? "";
   const presetList = CATEGORY_TYPE_MAP[category] ?? [];
-  const hasPreset = presetList.some((entry) => entry === item.type);
+  const dynamicTypes = Array.from(
+    new Set(allClasses.filter((c) => c.category === category).map((c) => c.type).filter(Boolean)),
+  );
+  const knownTypes = presetList.length > 0 ? presetList : dynamicTypes;
+  const hasPreset = knownTypes.some((entry) => entry === item.type);
+
+  const knownCategories = [
+    ...CATEGORY_OPTIONS,
+    ...Array.from(new Set(allClasses.map((c) => c.category ?? "").filter((c) => c && !CATEGORY_OPTIONS.includes(c)))),
+  ];
+  const categoryKnown = category && knownCategories.includes(category);
+
+  const dynamicSubTypes = Array.from(
+    new Set(allClasses.filter((c) => c.type === item.type && c.subType).map((c) => c.subType as string)),
+  );
+  const knownSubTypes = [...(TYPE_SUBTYPE_MAP[item.type] ?? []), ...dynamicSubTypes];
+  const subTypeKnown = item.subType && knownSubTypes.includes(item.subType);
 
   return {
     ...item,
@@ -172,10 +188,10 @@ function createModalState(item?: GymClass) {
     trainerId: "",
     selectedDays: [item.day],
     showTrainerName: item.showTrainerName ?? true,
-    category: item.category ?? "",
+    category,
     categoryEn: item.categoryEn ?? "",
-    categoryPreset: item.category && CATEGORY_OPTIONS.includes(item.category) ? item.category : "custom",
-    customCategory: item.category && CATEGORY_OPTIONS.includes(item.category) ? "" : item.category ?? "",
+    categoryPreset: categoryKnown ? category : "custom",
+    customCategory: categoryKnown ? "" : category,
     typePreset: hasPreset ? item.type : "custom",
     customType: hasPreset ? "" : item.type,
     subType: item.subType ?? "",
@@ -183,8 +199,8 @@ function createModalState(item?: GymClass) {
     typeEn: item.typeEn ?? "",
     description: item.description ?? "",
     descriptionEn: item.descriptionEn ?? "",
-    subTypePreset: item.subType ?? "",
-    customSubType: item.subType ?? "",
+    subTypePreset: subTypeKnown ? item.subType ?? "" : (item.subType ? "custom" : ""),
+    customSubType: subTypeKnown ? "" : item.subType ?? "",
   };
 }
 
@@ -278,6 +294,17 @@ export default function Classes() {
     return ["الكل", ...dynamic];
   }, [classes]);
 
+  const availableCategories = useMemo(() => {
+    const fromClasses = Array.from(
+      new Set(
+        classes
+          .map((item) => item.category ?? "")
+          .filter((cat) => cat && !CATEGORY_OPTIONS.includes(cat)),
+      ),
+    );
+    return [...CATEGORY_OPTIONS, ...fromClasses];
+  }, [classes]);
+
   const availableTypes = useMemo(() => {
     if (!modal) return [];
     const category =
@@ -285,8 +312,20 @@ export default function Classes() {
         ? modal.customCategory.trim()
         : modal.categoryPreset.trim();
     const mapped = CATEGORY_TYPE_MAP[category] ?? [];
-    if (mapped.length > 0) return mapped;
-    return Array.from(new Set(classes.map((item) => normalizeTypeLabel(item.type)).filter(Boolean)));
+    const fromClasses = Array.from(
+      new Set(
+        classes
+          .filter((item) => (category ? item.category === category : true))
+          .map((item) => item.type)
+          .filter(Boolean),
+      ),
+    );
+    if (mapped.length > 0) {
+      const extra = fromClasses.filter((t) => !mapped.includes(t));
+      return [...mapped, ...extra];
+    }
+    if (fromClasses.length > 0) return fromClasses;
+    return Array.from(new Set(classes.map((item) => item.type).filter(Boolean)));
   }, [modal?.categoryPreset, modal?.customCategory, classes]);
 
   const availableSubTypes = useMemo(() => {
@@ -295,8 +334,17 @@ export default function Classes() {
       modal.typePreset === "custom"
         ? modal.customType.trim()
         : modal.typePreset.trim();
-    return TYPE_SUBTYPE_MAP[typeLabel] ?? [];
-  }, [modal?.typePreset, modal?.customType]);
+    const mapped = TYPE_SUBTYPE_MAP[typeLabel] ?? [];
+    const fromClasses = Array.from(
+      new Set(
+        classes
+          .filter((item) => item.type === typeLabel && item.subType)
+          .map((item) => item.subType as string),
+      ),
+    );
+    const extra = fromClasses.filter((s) => !mapped.includes(s));
+    return [...mapped, ...extra];
+  }, [modal?.typePreset, modal?.customType, classes]);
 
   const displayedClasses = useMemo(() => {
     return classes.filter((item) => {
@@ -478,7 +526,7 @@ export default function Classes() {
         </div>
 
         <button
-          onClick={() => setModal(createModalState())}
+          onClick={() => setModal(createModalState(undefined, classes))}
           className="rounded-2xl bg-fuchsia-600 px-5 py-3 text-sm font-black text-white transition hover:bg-fuchsia-500"
         >
           + إضافة كلاس جديد
@@ -545,7 +593,7 @@ export default function Classes() {
                     return (
                       <button
                         key={item.id}
-                        onClick={() => setModal(createModalState(item))}
+                        onClick={() => setModal(createModalState(item, classes))}
                         className={`w-full rounded-2xl border p-3 text-right transition hover:scale-[1.01] ${
                           item.active ? "border-white/10 bg-black/15" : "border-white/5 bg-black/5 opacity-55"
                         }`}
@@ -628,7 +676,7 @@ export default function Classes() {
                     <td className="px-4 py-4">
                       <div className="flex flex-wrap gap-2">
                         <button
-                          onClick={() => setModal(createModalState(item))}
+                          onClick={() => setModal(createModalState(item, classes))}
                           className="rounded-xl border border-white/10 px-3 py-2 text-xs font-bold text-white/70 transition hover:border-fuchsia-400/40 hover:text-white"
                         >
                           تعديل
@@ -930,14 +978,23 @@ export default function Classes() {
                 onChange={(event) => {
                   const preset = event.target.value;
                   const nextCategory = preset === "custom" ? modal.customCategory : preset;
-                  const nextTypes = CATEGORY_TYPE_MAP[nextCategory] ?? [];
-                  const nextType = nextTypes[0] ?? "";
+                  const mappedTypes = CATEGORY_TYPE_MAP[nextCategory] ?? [];
+                  const classTypes = Array.from(
+                    new Set(
+                      classes
+                        .filter((item) => item.category === nextCategory)
+                        .map((item) => item.type)
+                        .filter(Boolean),
+                    ),
+                  );
+                  const allTypes = mappedTypes.length > 0 ? mappedTypes : classTypes;
+                  const nextType = allTypes[0] ?? "";
                   setModal({
                     ...modal,
                     categoryPreset: preset,
                     category: nextCategory,
                     name: nextCategory,
-                    typePreset: nextType ? nextType : "custom",
+                    typePreset: nextType || "custom",
                     type: nextType,
                     customType: nextType ? "" : modal.customType,
                     subTypePreset: "",
@@ -947,7 +1004,7 @@ export default function Classes() {
                 }}
                 className={INPUT}
               >
-                {CATEGORY_OPTIONS.map((cat) => (
+                {availableCategories.map((cat) => (
                   <option key={cat} value={cat} className="bg-[#2a0f1f]">
                     {cat}
                   </option>
