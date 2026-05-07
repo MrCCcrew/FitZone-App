@@ -608,6 +608,7 @@ export default function Classes() {
                         {item.category ? (
                           <div className="mt-1 text-[11px] text-white/55">{item.category}</div>
                         ) : null}
+                        <div className="mt-1 text-[11px] font-semibold text-fuchsia-300/80">{item.trainer}</div>
                         <div className="mt-1 text-xs text-white/45">{item.time}</div>
                         <div className={`mt-2 inline-flex rounded-full border px-2 py-1 text-[11px] font-bold ${resolveTypeColor(item.type)}`}>
                           {normalizeTypeLabel(item.type)}
