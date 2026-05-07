@@ -436,7 +436,8 @@ export default function Trainers() {
       const payload = await response.json().catch(() => ({}));
 
       if (!response.ok) {
-        window.alert(payload.error ?? "تعذر حفظ بيانات المدربة الآن.");
+        const detail = (payload as { detail?: string }).detail;
+        window.alert((payload.error ?? "تعذر حفظ بيانات المدربة الآن.") + (detail ? `\n\nالتفاصيل: ${detail}` : ""));
         return;
       }
 

@@ -212,7 +212,18 @@ export async function PATCH(req: Request) {
     return NextResponse.json(formatTrainer(trainer));
   } catch (error) {
     console.error("[ADMIN_TRAINERS_PATCH]", error);
-    return NextResponse.json({ error: "تعذر تحديث بيانات المدربة الآن." }, { status: 500 });
+    // Unique constraint on userId — another trainer already linked to this account
+    const msg = error instanceof Error ? error.message : "";
+    if (msg.includes("Unique constraint") || msg.includes("unique constraint") || msg.includes("P2002")) {
+      return NextResponse.json(
+        { error: "هذا الحساب مرتبط بمدربة أخرى بالفعل. يرجى اختيار حساب مختلف أو إلغاء الربط من المدربة الأخرى أولاً." },
+        { status: 409 },
+      );
+    }
+    return NextResponse.json(
+      { error: "تعذر تحديث بيانات المدربة الآن.", detail: msg || undefined },
+      { status: 500 },
+    );
   }
 }
 
