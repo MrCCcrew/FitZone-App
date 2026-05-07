@@ -93,6 +93,7 @@ type ClassModalState = {
   trainer: string;
   trainerId: string;
   day: string;
+  selectedDays: string[];
   time: string;
   duration: number;
   capacity: number;
@@ -121,6 +122,7 @@ const EMPTY_MODAL: ClassModalState = {
   trainer: "",
   trainerId: "",
   day: DAYS[0],
+  selectedDays: [DAYS[0]],
   time: "06:00",
   duration: 60,
   capacity: 15,
@@ -168,6 +170,7 @@ function createModalState(item?: GymClass) {
     ...item,
     nameEn: item.nameEn ?? "",
     trainerId: "",
+    selectedDays: [item.day],
     showTrainerName: item.showTrainerName ?? true,
     category: item.category ?? "",
     categoryEn: item.categoryEn ?? "",
@@ -352,42 +355,62 @@ export default function Classes() {
       return;
     }
 
+    const isEdit = Boolean(modal.id);
+
+    if (!isEdit && modal.selectedDays.length === 0) {
+      alert("اختَر يومًا واحدًا على الأقل.");
+      return;
+    }
+
     setSaving(true);
     try {
       const selectedTrainer = trainers.find((item) => item.id === modal.trainerId);
-      const isEdit = Boolean(modal.id);
-      const response = await fetch("/api/admin/classes", {
-        method: isEdit ? "PATCH" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...(modal.id ? { id: modal.id } : {}),
-          name: resolvedCategory,
-          nameEn: modal.nameEn.trim() || modal.categoryEn.trim() || null,
-          description: modal.description.trim() || null,
-          descriptionEn: modal.descriptionEn.trim() || null,
-          trainerId: modal.trainerId,
-          category: resolvedCategory,
-          categoryEn: modal.categoryEn.trim() || null,
-          type: resolvedType,
-          typeEn: modal.typeEn.trim() || null,
-          subType: resolvedSubType,
-          subTypeEn: modal.subTypeEn.trim() || null,
-          duration: Number(modal.duration) || 60,
-          intensity: "medium",
-          maxSpots: Number(modal.capacity) || 15,
-          price: 0,
-          active: modal.active,
-          showTrainerName: modal.showTrainerName,
-          day: modal.day,
-          time: modal.time,
-          trainer: selectedTrainer?.name ?? modal.trainer,
-        }),
-      });
+      const baseBody = {
+        name: resolvedCategory,
+        nameEn: modal.nameEn.trim() || modal.categoryEn.trim() || null,
+        description: modal.description.trim() || null,
+        descriptionEn: modal.descriptionEn.trim() || null,
+        trainerId: modal.trainerId,
+        category: resolvedCategory,
+        categoryEn: modal.categoryEn.trim() || null,
+        type: resolvedType,
+        typeEn: modal.typeEn.trim() || null,
+        subType: resolvedSubType,
+        subTypeEn: modal.subTypeEn.trim() || null,
+        duration: Number(modal.duration) || 60,
+        intensity: "medium",
+        maxSpots: Number(modal.capacity) || 15,
+        price: 0,
+        active: modal.active,
+        showTrainerName: modal.showTrainerName,
+        time: modal.time,
+        trainer: selectedTrainer?.name ?? modal.trainer,
+      };
 
-      const payload = (await response.json().catch(() => ({}))) as { error?: string };
-      if (!response.ok) {
-        alert(payload.error ?? "تعذر حفظ بيانات الكلاس الآن.");
-        return;
+      if (isEdit) {
+        const response = await fetch("/api/admin/classes", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...baseBody, id: modal.id, day: modal.day }),
+        });
+        const payload = (await response.json().catch(() => ({}))) as { error?: string };
+        if (!response.ok) {
+          alert(payload.error ?? "تعذر حفظ بيانات الكلاس الآن.");
+          return;
+        }
+      } else {
+        for (const day of modal.selectedDays) {
+          const response = await fetch("/api/admin/classes", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ...baseBody, day }),
+          });
+          const payload = (await response.json().catch(() => ({}))) as { error?: string };
+          if (!response.ok) {
+            alert(`تعذر حفظ كلاس ${day}: ${payload.error ?? "خطأ غير معروف"}`);
+            return;
+          }
+        }
       }
 
       await fetchAll();
@@ -786,19 +809,50 @@ export default function Classes() {
               </div>
             </Field>
 
-            <Field label="اليوم">
-              <select
-                value={modal.day}
-                onChange={(event) => setModal({ ...modal, day: event.target.value })}
-                className={INPUT}
-              >
-                {DAYS.map((day) => (
-                  <option key={day} value={day} className="bg-[#2a0f1f]">
-                    {day}
-                  </option>
-                ))}
-              </select>
-            </Field>
+            {modal.id ? (
+              <Field label="اليوم">
+                <select
+                  value={modal.day}
+                  onChange={(event) => setModal({ ...modal, day: event.target.value })}
+                  className={INPUT}
+                >
+                  {DAYS.map((day) => (
+                    <option key={day} value={day} className="bg-[#2a0f1f]">
+                      {day}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            ) : (
+              <div className="md:col-span-2">
+                <Field label="الأيام" hint="اختر يومًا أو أكثر — سيتم إنشاء كلاس منفصل لكل يوم">
+                  <div className="flex flex-wrap gap-2">
+                    {DAYS.map((day) => {
+                      const checked = modal.selectedDays.includes(day);
+                      return (
+                        <button
+                          key={day}
+                          type="button"
+                          onClick={() => {
+                            const next = checked
+                              ? modal.selectedDays.filter((d) => d !== day)
+                              : [...modal.selectedDays, day];
+                            setModal({ ...modal, selectedDays: next });
+                          }}
+                          className={`rounded-xl border px-4 py-2 text-sm font-bold transition ${
+                            checked
+                              ? "border-fuchsia-400/60 bg-fuchsia-600/30 text-fuchsia-200"
+                              : "border-white/10 bg-white/5 text-white/65 hover:bg-white/10"
+                          }`}
+                        >
+                          {day}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </Field>
+              </div>
+            )}
 
             <Field label="الوقت">
               <input
@@ -970,7 +1024,13 @@ export default function Classes() {
               disabled={saving}
               className="rounded-2xl bg-fuchsia-600 px-6 py-3 text-sm font-black text-white transition hover:bg-fuchsia-500 disabled:opacity-60"
             >
-              {saving ? "جارٍ حفظ الكلاس..." : "حفظ الكلاس"}
+              {saving
+                ? "جارٍ الحفظ..."
+                : modal.id
+                  ? "حفظ الكلاس"
+                  : modal.selectedDays.length > 1
+                    ? `إضافة ${modal.selectedDays.length} كلاسات`
+                    : "إضافة الكلاس"}
             </button>
           </div>
         </Modal>

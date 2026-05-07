@@ -197,7 +197,7 @@ export async function PATCH(req: Request) {
         ...(body.active !== undefined ? { isActive: Boolean(body.active) } : {}),
         ...(body.showOnHome !== undefined ? { showOnHome: Boolean(body.showOnHome) } : {}),
         ...(body.sortOrder !== undefined ? { sortOrder: Number(body.sortOrder) || 0 } : {}),
-        ...(body.userId !== undefined ? { userId: String(body.userId).trim() || null } : {}),
+        ...(body.userId !== undefined ? { userId: body.userId ? String(body.userId).trim() || null : null } : {}),
         ...(body.canSendGifts !== undefined ? { canSendGifts: Boolean(body.canSendGifts) } : {}),
         ...(body.giftMonthlyLimit !== undefined ? { giftMonthlyLimit: Math.max(0, Number(body.giftMonthlyLimit) || 0) } : {}),
       },
@@ -218,6 +218,12 @@ export async function PATCH(req: Request) {
       return NextResponse.json(
         { error: "هذا الحساب مرتبط بمدربة أخرى بالفعل. يرجى اختيار حساب مختلف أو إلغاء الربط من المدربة الأخرى أولاً." },
         { status: 409 },
+      );
+    }
+    if (msg.includes("Foreign key constraint") || msg.includes("foreign key constraint") || msg.includes("P2003")) {
+      return NextResponse.json(
+        { error: "الحساب المختار غير موجود في النظام. يرجى اختيار حساب صحيح أو ترك حقل الربط فارغًا." },
+        { status: 400 },
       );
     }
     return NextResponse.json(

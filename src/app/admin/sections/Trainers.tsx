@@ -119,7 +119,7 @@ type DiscountCode = {
 const INPUT =
   "w-full rounded-xl border border-gray-700 bg-gray-800 px-4 py-2.5 text-sm text-white outline-none transition-colors focus:border-pink-500";
 
-type EditableTrainer = Omit<Trainer, "id" | "classesCount"> & { id?: string };
+type EditableTrainer = Omit<Trainer, "id" | "classesCount"> & { id?: string; certificationsText: string; certificationsEnText: string };
 type TrainerAccountOption = {
   id: string;
   name: string;
@@ -136,6 +136,8 @@ const EMPTY_TRAINER: EditableTrainer = {
   bioEn: "",
   certifications: [],
   certificationsEn: [],
+  certificationsText: "",
+  certificationsEnText: "",
   certificateFiles: [],
   rating: 5,
   sessionsCount: 0,
@@ -433,7 +435,11 @@ export default function Trainers() {
       const response = await fetch("/api/admin/trainers", {
         method: modal.id ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(modal),
+        body: JSON.stringify({
+          ...modal,
+          certifications: textToList(modal.certificationsText),
+          certificationsEn: textToList(modal.certificationsEnText),
+        }),
       });
       const payload = await response.json().catch(() => ({}));
 
@@ -1048,7 +1054,7 @@ export default function Trainers() {
                       discountValue: trainer.linkedUser.discountValue,
                       maxDiscount: trainer.linkedUser.maxDiscount,
                     } : null);
-                    setModal({ ...trainer });
+                    setModal({ ...trainer, certificationsText: listToText(trainer.certifications), certificationsEnText: listToText(trainer.certificationsEn ?? []) });
                   }}
                   className="flex-1 rounded-lg bg-gray-800 px-3 py-2 text-xs font-bold text-white"
                 >
@@ -1239,8 +1245,8 @@ export default function Trainers() {
               hint="اكتبي كل شهادة في سطر منفصل، وستظهر على شكل شارات داخل صفحة المدربات."
             >
               <textarea
-                value={listToText(modal.certifications)}
-                onChange={(event) => setModal({ ...modal, certifications: textToList(event.target.value) })}
+                value={modal.certificationsText}
+                onChange={(event) => setModal({ ...modal, certificationsText: event.target.value })}
                 rows={4}
                 className={`${INPUT} resize-none`}
               />
@@ -1252,15 +1258,15 @@ export default function Trainers() {
             >
               <div className="space-y-1">
                 <textarea
-                  value={listToText(modal.certificationsEn ?? [])}
-                  onChange={(event) => setModal({ ...modal, certificationsEn: textToList(event.target.value) })}
+                  value={modal.certificationsEnText}
+                  onChange={(event) => setModal({ ...modal, certificationsEnText: event.target.value })}
                   rows={4}
                   className={`${INPUT} resize-none`}
                   dir="ltr"
                 />
                 <TranslateButton
-                  from={listToText(modal.certifications)}
-                  onTranslated={(t) => setModal({ ...modal, certificationsEn: textToList(t) })}
+                  from={modal.certificationsText}
+                  onTranslated={(t) => setModal({ ...modal, certificationsEnText: t })}
                 />
               </div>
             </FieldHint>
