@@ -216,7 +216,8 @@ export default function Bookings() {
   const [giftWorking, setGiftWorking] = useState(false);
   const [giftSuccess, setGiftSuccess] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
-  const [trainerPerms, setTrainerPerms] = useState({ canSendGifts: true, canAddBookings: true });
+  const [trainerPerms, setTrainerPerms] = useState({ canSendGifts: false, canAddBookings: false });
+  const [permsLoaded, setPermsLoaded] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
@@ -571,20 +572,21 @@ export default function Bookings() {
   useEffect(() => {
     void (async () => {
       const res = await fetch("/api/admin/session", { cache: "no-store" });
-      const data = await res.json().catch(() => ({})) as { role?: string; trainerId?: string };
-      if (!data.role) return;
-      setUserRole(data.role);
-      if (data.role === "trainer" && data.trainerId) {
+      const data = await res.json().catch(() => ({})) as { user?: { role?: string } };
+      const role = data.user?.role ?? null;
+      setUserRole(role);
+      if (role === "trainer") {
         const tRes = await fetch("/api/admin/trainers", { cache: "no-store" });
         const tData = await tRes.json().catch(() => []) as Array<{ canSendGifts?: boolean; canAddBookings?: boolean }>;
         const profile = Array.isArray(tData) ? tData[0] : null;
-        if (profile) {
-          setTrainerPerms({
-            canSendGifts: profile.canSendGifts ?? false,
-            canAddBookings: profile.canAddBookings ?? false,
-          });
-        }
+        setTrainerPerms({
+          canSendGifts: profile?.canSendGifts ?? false,
+          canAddBookings: profile?.canAddBookings ?? false,
+        });
+      } else {
+        setTrainerPerms({ canSendGifts: true, canAddBookings: true });
       }
+      setPermsLoaded(true);
     })();
   }, []);
 
@@ -795,7 +797,7 @@ export default function Bookings() {
           >
             تحديث
           </button>
-          {(userRole !== "trainer" || trainerPerms.canSendGifts) && (
+          {permsLoaded && (userRole !== "trainer" || trainerPerms.canSendGifts) && (
             <button
               onClick={() => {
                 setGiftSuccess(null);
@@ -811,7 +813,7 @@ export default function Bookings() {
               🎁 هدية تجريبية
             </button>
           )}
-          {(userRole !== "trainer" || trainerPerms.canAddBookings) && (
+          {permsLoaded && (userRole !== "trainer" || trainerPerms.canAddBookings) && (
             <button
               onClick={() => setAddModal(true)}
               className="rounded-xl bg-[#ff4f93] px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-[#ff2f7d]"
