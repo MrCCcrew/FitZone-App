@@ -185,7 +185,7 @@ function createModalState(item?: GymClass, allClasses: GymClass[] = []) {
   return {
     ...item,
     nameEn: item.nameEn ?? "",
-    trainerId: "",
+    trainerId: item.trainerId ?? "",
     selectedDays: [item.day],
     showTrainerName: item.showTrainerName ?? true,
     category,
