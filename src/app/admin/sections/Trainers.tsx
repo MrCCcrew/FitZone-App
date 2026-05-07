@@ -1382,7 +1382,7 @@ export default function Trainers() {
               ) : null}
             </div>
 
-            <div className="rounded-2xl border border-amber-500/20 bg-amber-950/20 p-4 space-y-3">
+            {!isTrainerRole && <div className="rounded-2xl border border-amber-500/20 bg-amber-950/20 p-4 space-y-3">
               <div className="text-sm font-black text-amber-300">صلاحيات المدربة</div>
               <div className="grid gap-4 md:grid-cols-2">
 
@@ -1435,7 +1435,7 @@ export default function Trainers() {
                 </label>
 
               </div>
-            </div>
+            </div>}
 
             {modal?.linkedUser && linkedUserDiscount && (
               <div className="rounded-2xl border border-emerald-500/20 bg-emerald-950/20 p-4 space-y-3">

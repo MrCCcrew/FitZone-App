@@ -179,6 +179,9 @@ export async function PATCH(req: Request) {
       if (body.id !== ownId) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
+    // Determine which fields are allowed based on role
+    const isTrainer = role === "trainer";
+
     const trainer = await db.trainer.update({
       where: { id: body.id },
       data: {
@@ -200,14 +203,14 @@ export async function PATCH(req: Request) {
         ...(body.rating !== undefined ? { rating: Number(body.rating) || 0 } : {}),
         ...(body.sessionsCount !== undefined ? { sessionsCount: Number(body.sessionsCount) || 0 } : {}),
         ...(body.image !== undefined ? { image: String(body.image).trim() || null } : {}),
-        ...(body.active !== undefined ? { isActive: Boolean(body.active) } : {}),
-        ...(body.showOnHome !== undefined ? { showOnHome: Boolean(body.showOnHome) } : {}),
-        ...(body.sortOrder !== undefined ? { sortOrder: Number(body.sortOrder) || 0 } : {}),
-        ...(body.userId !== undefined ? { userId: body.userId ? String(body.userId).trim() || null : null } : {}),
-        ...(body.canSendGifts !== undefined ? { canSendGifts: Boolean(body.canSendGifts) } : {}),
-        ...(body.giftMonthlyLimit !== undefined ? { giftMonthlyLimit: Math.max(0, Number(body.giftMonthlyLimit) || 0) } : {}),
-        ...(body.canAddClasses !== undefined ? { canAddClasses: Boolean(body.canAddClasses) } : {}),
-        ...(body.canAddBookings !== undefined ? { canAddBookings: Boolean(body.canAddBookings) } : {}),
+        ...(!isTrainer && body.active !== undefined ? { isActive: Boolean(body.active) } : {}),
+        ...(!isTrainer && body.showOnHome !== undefined ? { showOnHome: Boolean(body.showOnHome) } : {}),
+        ...(!isTrainer && body.sortOrder !== undefined ? { sortOrder: Number(body.sortOrder) || 0 } : {}),
+        ...(!isTrainer && body.userId !== undefined ? { userId: body.userId ? String(body.userId).trim() || null : null } : {}),
+        ...(!isTrainer && body.canSendGifts !== undefined ? { canSendGifts: Boolean(body.canSendGifts) } : {}),
+        ...(!isTrainer && body.giftMonthlyLimit !== undefined ? { giftMonthlyLimit: Math.max(0, Number(body.giftMonthlyLimit) || 0) } : {}),
+        ...(!isTrainer && body.canAddClasses !== undefined ? { canAddClasses: Boolean(body.canAddClasses) } : {}),
+        ...(!isTrainer && body.canAddBookings !== undefined ? { canAddBookings: Boolean(body.canAddBookings) } : {}),
       },
       include: {
         _count: { select: { classes: true } },
