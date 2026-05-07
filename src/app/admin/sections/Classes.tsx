@@ -252,6 +252,8 @@ export default function Classes() {
   const [filterDay, setFilterDay] = useState("الكل");
   const [filterType, setFilterType] = useState("الكل");
   const [modal, setModal] = useState<ClassModalState | null>(null);
+  const [userRole, setUserRole] = useState<string | null>(null);
+  const [canAddClasses, setCanAddClasses] = useState(true);
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -260,10 +262,14 @@ export default function Classes() {
       const payload = (await response.json()) as {
         classes?: GymClass[];
         trainers?: ApiTrainer[];
+        userRole?: string;
+        canAddClasses?: boolean;
       };
 
       setClasses(Array.isArray(payload.classes) ? payload.classes : []);
       setTrainers(Array.isArray(payload.trainers) ? payload.trainers : []);
+      if (payload.userRole) setUserRole(payload.userRole);
+      if (payload.canAddClasses !== undefined) setCanAddClasses(payload.canAddClasses);
     } finally {
       setLoading(false);
     }
@@ -525,12 +531,14 @@ export default function Classes() {
           </button>
         </div>
 
-        <button
-          onClick={() => setModal(createModalState(undefined, classes))}
-          className="rounded-2xl bg-fuchsia-600 px-5 py-3 text-sm font-black text-white transition hover:bg-fuchsia-500"
-        >
-          + إضافة كلاس جديد
-        </button>
+        {(userRole !== "trainer" || canAddClasses) && (
+          <button
+            onClick={() => setModal(createModalState(undefined, classes))}
+            className="rounded-2xl bg-fuchsia-600 px-5 py-3 text-sm font-black text-white transition hover:bg-fuchsia-500"
+          >
+            + إضافة كلاس جديد
+          </button>
+        )}
       </div>
 
       <div className="grid gap-3 md:grid-cols-4">

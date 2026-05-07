@@ -18,6 +18,14 @@ async function checkAdmin() {
   return "error" in guard ? guard.error : null;
 }
 
+async function checkCanAddClasses(userId: string): Promise<boolean> {
+  const profile = await db.trainer.findFirst({
+    where: { userId },
+    select: { canAddClasses: true },
+  });
+  return profile?.canAddClasses === true;
+}
+
 async function getTrainerProfileId(userId: string): Promise<string | null> {
   const t = await db.trainer.findFirst({ where: { userId }, select: { id: true } });
   return t?.id ?? null;
@@ -51,10 +59,15 @@ export async function GET() {
   if ("error" in guard) return guard.error;
 
   let trainerIdFilter: string | undefined;
+  let canAddClasses = true;
   if (guard.role === "trainer") {
-    const profileId = await getTrainerProfileId(guard.session.user.id);
-    if (!profileId) return NextResponse.json({ classes: [], trainers: [] });
-    trainerIdFilter = profileId;
+    const profile = await db.trainer.findFirst({
+      where: { userId: guard.session.user.id },
+      select: { id: true, canAddClasses: true },
+    });
+    if (!profile) return NextResponse.json({ classes: [], trainers: [], userRole: "trainer", canAddClasses: false });
+    trainerIdFilter = profile.id;
+    canAddClasses = profile.canAddClasses;
   }
 
   const [classes, trainers] = await Promise.all([
@@ -113,12 +126,19 @@ export async function GET() {
       specialty: trainer.specialty,
       specialtyEn: trainer.specialtyEn,
     })),
+    userRole: guard.role,
+    canAddClasses,
   });
 }
 
 export async function POST(request: Request) {
-  const error = await checkAdmin();
-  if (error) return error;
+  const guard = await requireAdminFeature("classes");
+  if ("error" in guard) return guard.error;
+
+  if (guard.role === "trainer") {
+    const allowed = await checkCanAddClasses(guard.session.user.id);
+    if (!allowed) return NextResponse.json({ error: "ليس لديك صلاحية إضافة كلاسات جديدة." }, { status: 403 });
+  }
 
   try {
     const body = (await request.json()) as {

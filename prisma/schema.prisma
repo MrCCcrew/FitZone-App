@@ -288,6 +288,8 @@ model Trainer {
   sortOrder         Int     @default(0)
   canSendGifts      Boolean @default(false)
   giftMonthlyLimit  Int     @default(4)
+  canAddClasses     Boolean @default(false)
+  canAddBookings    Boolean @default(false)
 
   user                  User?                      @relation("TrainerAccount", fields: [userId], references: [id], onDelete: SetNull)
   classes               Class[]

@@ -215,6 +215,8 @@ export default function Bookings() {
   const [giftNote, setGiftNote] = useState("");
   const [giftWorking, setGiftWorking] = useState(false);
   const [giftSuccess, setGiftSuccess] = useState<string | null>(null);
+  const [userRole, setUserRole] = useState<string | null>(null);
+  const [trainerPerms, setTrainerPerms] = useState({ canSendGifts: true, canAddBookings: true });
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
@@ -567,6 +569,26 @@ export default function Bookings() {
   }, [loadBookings]);
 
   useEffect(() => {
+    void (async () => {
+      const res = await fetch("/api/admin/session", { cache: "no-store" });
+      const data = await res.json().catch(() => ({})) as { role?: string; trainerId?: string };
+      if (!data.role) return;
+      setUserRole(data.role);
+      if (data.role === "trainer" && data.trainerId) {
+        const tRes = await fetch("/api/admin/trainers", { cache: "no-store" });
+        const tData = await tRes.json().catch(() => []) as Array<{ canSendGifts?: boolean; canAddBookings?: boolean }>;
+        const profile = Array.isArray(tData) ? tData[0] : null;
+        if (profile) {
+          setTrainerPerms({
+            canSendGifts: profile.canSendGifts ?? false,
+            canAddBookings: profile.canAddBookings ?? false,
+          });
+        }
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
     if (addModal) {
       void loadCustomers();
       void loadSchedules();
@@ -773,26 +795,30 @@ export default function Bookings() {
           >
             تحديث
           </button>
-          <button
-            onClick={() => {
-              setGiftSuccess(null);
-              setGiftCustomer("");
-              setGiftSchedule("");
-              setGiftNote("");
-              void loadSchedules();
-              void loadCustomers();
-              setGiftModal(true);
-            }}
-            className="rounded-xl bg-purple-600 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-purple-500"
-          >
-            🎁 هدية تجريبية
-          </button>
-          <button
-            onClick={() => setAddModal(true)}
-            className="rounded-xl bg-[#ff4f93] px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-[#ff2f7d]"
-          >
-            + إضافة حجز
-          </button>
+          {(userRole !== "trainer" || trainerPerms.canSendGifts) && (
+            <button
+              onClick={() => {
+                setGiftSuccess(null);
+                setGiftCustomer("");
+                setGiftSchedule("");
+                setGiftNote("");
+                void loadSchedules();
+                void loadCustomers();
+                setGiftModal(true);
+              }}
+              className="rounded-xl bg-purple-600 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-purple-500"
+            >
+              🎁 هدية تجريبية
+            </button>
+          )}
+          {(userRole !== "trainer" || trainerPerms.canAddBookings) && (
+            <button
+              onClick={() => setAddModal(true)}
+              className="rounded-xl bg-[#ff4f93] px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-[#ff2f7d]"
+            >
+              + إضافة حجز
+            </button>
+          )}
         </div>
       }
     >

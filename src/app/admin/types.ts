@@ -281,6 +281,8 @@ export interface Trainer {
   } | null;
   canSendGifts: boolean;
   giftMonthlyLimit: number;
+  canAddClasses: boolean;
+  canAddBookings: boolean;
 }
 
 export interface Product {
