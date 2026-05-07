@@ -437,7 +437,7 @@ export async function PATCH(req: Request) {
 
   try {
     const payload = (await req.json()) as CustomerPayload;
-    const { id, name, email, phone, status, plan, points, balance } = payload;
+    const { id, name, email, phone, password, status, plan, points, balance } = payload;
 
     if (!id) {
       return NextResponse.json({ error: "معرّف العميل مطلوب" }, { status: 400 });
@@ -448,6 +448,7 @@ export async function PATCH(req: Request) {
     if (email !== undefined) data.email = email;
     if (phone !== undefined) data.phone = phone;
     if (name !== undefined && name.length > 0) data.avatar = name[0].toUpperCase();
+    if (password?.trim()) data.password = await bcryptjs.hash(password.trim(), 12);
 
     if (Object.keys(data).length > 0) {
       await db.user.update({ where: { id }, data });

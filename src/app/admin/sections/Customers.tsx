@@ -319,7 +319,7 @@ export default function Customers() {
   const [planFilter, setPlanFilter] = useState("الكل");
   const [statusFilter, setStatusFilter] = useState("الكل");
   const [viewCustomer, setViewCustomer] = useState<Customer | null>(null);
-  const [editCustomer, setEditCustomer] = useState<Customer | NewCustomer | null>(null);
+  const [editCustomer, setEditCustomer] = useState<(Customer & { password?: string }) | NewCustomer | null>(null);
   const [wpEdit, setWpEdit] = useState<{ userId: string; balance: number; points: number } | null>(null);
   const [savingWP, setSavingWP] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<Customer | null>(null);
@@ -947,18 +947,15 @@ export default function Customers() {
               />
             </Field>
 
-            {"id" in editCustomer ? null : (
-              <Field label="كلمة المرور">
-                <input
-                  type="password"
-                  value={"password" in editCustomer ? (editCustomer.password ?? "") : ""}
-                  onChange={(event) => setEditCustomer({ ...editCustomer, password: event.target.value })}
-                  placeholder="اتركه فارغًا لاستخدام FitZone123! كافتراضي"
-                  className={INPUT}
-                  dir="ltr"
-                />
-              </Field>
-            )}
+            <Field label={"id" in editCustomer ? "كلمة المرور الجديدة (اتركها فارغة للإبقاء على الحالية)" : "كلمة المرور (اتركها فارغة لاستخدام FitZone123! كافتراضي)"}>
+              <input
+                type="password"
+                value={"password" in editCustomer ? (editCustomer.password ?? "") : ""}
+                onChange={(event) => setEditCustomer({ ...editCustomer, password: event.target.value })}
+                className={INPUT}
+                dir="ltr"
+              />
+            </Field>
 
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="الباقة">
