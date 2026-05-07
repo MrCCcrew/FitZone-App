@@ -280,18 +280,16 @@ export default function Classes() {
   }, [fetchAll]);
 
   useEffect(() => {
-    if (!modal || modal.trainerId || trainers.length === 0) return;
-    const firstTrainer = trainers[0];
-    setModal((current) =>
-      current
-        ? {
-            ...current,
-            trainerId: firstTrainer.id,
-            trainer: firstTrainer.name,
-          }
-        : current,
-    );
-  }, [modal, trainers]);
+    if (trainers.length === 0) return;
+    setModal((current) => {
+      if (!current || current.trainerId) return current;
+      return {
+        ...current,
+        trainerId: trainers[0].id,
+        trainer: trainers[0].name,
+      };
+    });
+  }, [trainers]);
 
   const typeOptions = useMemo(() => {
     const dynamic = Array.from(
