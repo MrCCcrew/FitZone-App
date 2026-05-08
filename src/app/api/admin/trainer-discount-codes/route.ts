@@ -87,13 +87,16 @@ export async function POST(req: Request) {
 
     const monthYear = new Date().toISOString().slice(0, 7);
 
-    const [trainer, targetUser, monthlyCount] = await Promise.all([
+    const [trainer, targetUser, monthlyCount, existingForClient] = await Promise.all([
       db.trainer.findUnique({ where: { id: body.trainerId }, select: { id: true } }),
       db.user.findUnique({ where: { id: body.targetUserId }, select: { id: true } }),
       db.trainerDiscountCode.count({ where: { trainerId: body.trainerId, monthYear } }),
+      db.trainerDiscountCode.findFirst({ where: { trainerId: body.trainerId, targetUserId: body.targetUserId, isUsed: false }, select: { id: true } }),
     ]);
     if (!trainer) return NextResponse.json({ error: "المدربة غير موجودة." }, { status: 404 });
     if (!targetUser) return NextResponse.json({ error: "العميل غير موجود." }, { status: 404 });
+    if (existingForClient)
+      return NextResponse.json({ error: "هذا العميل لديه بالفعل كود خصم نشط من هذه المدربة." }, { status: 422 });
     if (monthlyCount >= 4)
       return NextResponse.json({ error: "وصلت المدربة للحد الأقصى من أكواد الخصم لهذا الشهر (4 أكواد)." }, { status: 422 });
 
