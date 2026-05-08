@@ -599,8 +599,8 @@ export default function Classes() {
                     return (
                       <button
                         key={item.id}
-                        onClick={() => setModal(createModalState(item, classes))}
-                        className={`w-full rounded-2xl border p-3 text-right transition hover:scale-[1.01] ${
+                        onClick={() => (userRole !== "trainer" || canAddClasses) ? setModal(createModalState(item, classes)) : undefined}
+                        className={`w-full rounded-2xl border p-3 text-right transition ${(userRole !== "trainer" || canAddClasses) ? "hover:scale-[1.01] cursor-pointer" : "cursor-default"} ${
                           item.active ? "border-white/10 bg-black/15" : "border-white/5 bg-black/5 opacity-55"
                         }`}
                       >
@@ -681,20 +681,26 @@ export default function Classes() {
                       </button>
                     </td>
                     <td className="px-4 py-4">
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          onClick={() => setModal(createModalState(item, classes))}
-                          className="rounded-xl border border-white/10 px-3 py-2 text-xs font-bold text-white/70 transition hover:border-fuchsia-400/40 hover:text-white"
-                        >
-                          تعديل
-                        </button>
-                        <button
-                          onClick={() => void deleteClass(item.id)}
-                          className="rounded-xl border border-red-500/20 px-3 py-2 text-xs font-bold text-red-300 transition hover:bg-red-500/10"
-                        >
-                          حذف
-                        </button>
-                      </div>
+                      {(userRole !== "trainer" || canAddClasses) ? (
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            onClick={() => setModal(createModalState(item, classes))}
+                            className="rounded-xl border border-white/10 px-3 py-2 text-xs font-bold text-white/70 transition hover:border-fuchsia-400/40 hover:text-white"
+                          >
+                            تعديل
+                          </button>
+                          {userRole !== "trainer" && (
+                            <button
+                              onClick={() => void deleteClass(item.id)}
+                              className="rounded-xl border border-red-500/20 px-3 py-2 text-xs font-bold text-red-300 transition hover:bg-red-500/10"
+                            >
+                              حذف
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-white/35">عرض فقط</span>
+                      )}
                     </td>
                   </tr>
                 ))}
