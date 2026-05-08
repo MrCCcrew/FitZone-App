@@ -743,13 +743,15 @@ export default function Customers() {
                           >
                             عرض
                           </button>
-                          <button
-                            onClick={() => setEditCustomer(customer)}
-                            className="rounded-lg bg-white/5 px-3 py-2 text-xs text-[#ffd166] transition-colors hover:bg-white/10"
-                          >
-                            تعديل
-                          </button>
-                          {customer.status === "active" ? (
+                          {userRole !== "trainer" && (
+                            <button
+                              onClick={() => setEditCustomer(customer)}
+                              className="rounded-lg bg-white/5 px-3 py-2 text-xs text-[#ffd166] transition-colors hover:bg-white/10"
+                            >
+                              تعديل
+                            </button>
+                          )}
+                          {userRole !== "trainer" && (customer.status === "active" ? (
                             <button
                               onClick={() => void updateStatus(customer.id, "suspended", customer.plan)}
                               className="rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-300 transition-colors hover:bg-amber-500/20"
@@ -763,13 +765,15 @@ export default function Customers() {
                             >
                               تفعيل
                             </button>
-                          )}
+                          ))}
+                          {userRole !== "trainer" && (
                           <button
                             onClick={() => setConfirmDelete(customer)}
                             className="rounded-lg bg-rose-500/10 px-3 py-2 text-xs text-rose-300 transition-colors hover:bg-rose-500/20"
                           >
                             حذف
                           </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -1023,47 +1027,51 @@ export default function Customers() {
               )}
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2">
-              <button
-                onClick={() => {
-                  setEditCustomer(viewCustomer);
-                  setViewCustomer(null);
-                }}
-                className="rounded-xl bg-[#ff4f93] py-3 text-sm font-black text-white transition-colors hover:bg-[#ff2f7d]"
-              >
-                تعديل البيانات
-              </button>
-              <button
-                onClick={() => {
-                  setConfirmDelete(viewCustomer);
-                  setViewCustomer(null);
-                }}
-                className="rounded-xl bg-rose-500/15 py-3 text-sm font-bold text-rose-300 transition-colors hover:bg-rose-500/25"
-              >
-                حذف العميل
-              </button>
-            </div>
+            {userRole !== "trainer" && (
+              <>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <button
+                    onClick={() => {
+                      setEditCustomer(viewCustomer);
+                      setViewCustomer(null);
+                    }}
+                    className="rounded-xl bg-[#ff4f93] py-3 text-sm font-black text-white transition-colors hover:bg-[#ff2f7d]"
+                  >
+                    تعديل البيانات
+                  </button>
+                  <button
+                    onClick={() => {
+                      setConfirmDelete(viewCustomer);
+                      setViewCustomer(null);
+                    }}
+                    className="rounded-xl bg-rose-500/15 py-3 text-sm font-bold text-rose-300 transition-colors hover:bg-rose-500/25"
+                  >
+                    حذف العميل
+                  </button>
+                </div>
 
-            {viewCustomer.status === "active" ? (
-              <button
-                onClick={() => {
-                  void updateStatus(viewCustomer.id, "suspended", viewCustomer.plan);
-                  setViewCustomer(null);
-                }}
-                className="w-full rounded-xl bg-amber-500/12 py-3 text-sm font-bold text-amber-300 transition-colors hover:bg-amber-500/20"
-              >
-                إيقاف العضوية
-              </button>
-            ) : (
-              <button
-                onClick={() => {
-                  void updateStatus(viewCustomer.id, "active", viewCustomer.plan);
-                  setViewCustomer(null);
-                }}
-                className="w-full rounded-xl bg-emerald-500/12 py-3 text-sm font-bold text-emerald-300 transition-colors hover:bg-emerald-500/20"
-              >
-                تفعيل العضوية
-              </button>
+                {viewCustomer.status === "active" ? (
+                  <button
+                    onClick={() => {
+                      void updateStatus(viewCustomer.id, "suspended", viewCustomer.plan);
+                      setViewCustomer(null);
+                    }}
+                    className="w-full rounded-xl bg-amber-500/12 py-3 text-sm font-bold text-amber-300 transition-colors hover:bg-amber-500/20"
+                  >
+                    إيقاف العضوية
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => {
+                      void updateStatus(viewCustomer.id, "active", viewCustomer.plan);
+                      setViewCustomer(null);
+                    }}
+                    className="w-full rounded-xl bg-emerald-500/12 py-3 text-sm font-bold text-emerald-300 transition-colors hover:bg-emerald-500/20"
+                  >
+                    تفعيل العضوية
+                  </button>
+                )}
+              </>
             )}
           </div>
         </Modal>
