@@ -15,6 +15,7 @@ const EMPTY_QUESTION: Omit<HealthQuestion, "id"> = {
   prompt: "",
   promptEn: "",
   active: true,
+  allowReason: false,
   sortOrder: 0,
   restrictedClassTypes: [],
   restrictions: [],
@@ -453,6 +454,18 @@ export default function HealthQuestions() {
                 تفعيل السؤال
               </label>
             </div>
+
+            <label className="flex items-center gap-3 rounded-2xl border border-[rgba(255,188,219,0.12)] bg-black/15 px-4 py-3 text-sm text-[#fff4f8] cursor-pointer">
+              <input
+                type="checkbox"
+                checked={modal.allowReason ?? false}
+                onChange={(event) => setModal({ ...modal, allowReason: event.target.checked })}
+              />
+              <div>
+                <div className="font-bold">السماح بكتابة السبب عند الإجابة بـ "نعم"</div>
+                <div className="text-xs text-[#d7aabd] mt-0.5">سيظهر للعميل حقل نصي لكتابة التفاصيل عند الإجابة بنعم على هذا السؤال</div>
+              </div>
+            </label>
 
             <button
               onClick={() => void saveQuestion()}

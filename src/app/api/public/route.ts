@@ -613,6 +613,7 @@ export async function GET(request: Request) {
         title: lang === "en" ? (question.titleEn || question.title) : question.title,
         prompt: lang === "en" ? (question.promptEn || question.prompt) : question.prompt,
         sortOrder: question.sortOrder,
+        allowReason: question.allowReason,
         restrictedClassTypes: question.restrictions.map((item) => item.classType),
       })),
       deliveryOptions: deliveryOptions.map((option) => ({

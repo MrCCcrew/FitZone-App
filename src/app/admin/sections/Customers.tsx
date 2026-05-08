@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { Customer, CustomerMembershipReport } from "../types";
+import type { Customer, CustomerMembershipReport, HealthSurveyResponse } from "../types";
 import { AdminCard, AdminEmptyState, AdminSectionShell } from "./shared";
 
 const INPUT =
@@ -327,6 +327,8 @@ export default function Customers() {
   const [confirmDelete, setConfirmDelete] = useState<Customer | null>(null);
   const [approvingId, setApprovingId] = useState<string | null>(null);
   const [trainerLinks, setTrainerLinks] = useState<{ id: string; token: string; label: string | null }[]>([]);
+  const [surveyResponses, setSurveyResponses] = useState<HealthSurveyResponse[]>([]);
+  const [surveyLoading, setSurveyLoading] = useState(false);
 
   const loadCustomers = useCallback(async () => {
     setLoading(true);
@@ -434,6 +436,18 @@ export default function Customers() {
       await loadCustomers();
     } finally {
       setSavingWP(false);
+    }
+  };
+
+  const loadSurvey = async (userId: string) => {
+    setSurveyLoading(true);
+    setSurveyResponses([]);
+    try {
+      const res = await fetch(`/api/admin/health-survey?userId=${userId}`, { cache: "no-store" });
+      const data = await res.json().catch(() => ({ responses: [] }));
+      setSurveyResponses(Array.isArray(data.responses) ? data.responses : []);
+    } finally {
+      setSurveyLoading(false);
     }
   };
 
@@ -688,7 +702,7 @@ export default function Customers() {
                           </div>
                           <div>
                             <button
-                              onClick={() => setViewCustomer(customer)}
+                              onClick={() => { setViewCustomer(customer); void loadSurvey(customer.id); }}
                               className="font-bold text-[#fff4f8] transition-colors hover:text-[#ffd166]"
                             >
                               {customer.name}
@@ -724,7 +738,7 @@ export default function Customers() {
                       <td className="px-5 py-4">
                         <div className="flex flex-wrap gap-2">
                           <button
-                            onClick={() => setViewCustomer(customer)}
+                            onClick={() => { setViewCustomer(customer); void loadSurvey(customer.id); }}
                             className="rounded-lg bg-white/5 px-3 py-2 text-xs text-[#fff4f8] transition-colors hover:bg-white/10"
                           >
                             عرض
@@ -954,6 +968,57 @@ export default function Customers() {
                 <div className="flex items-center gap-2 rounded-xl border border-gray-700/50 bg-black/20 px-4 py-3">
                   <span className="h-2 w-2 rounded-full bg-gray-500" />
                   <span className="text-sm font-bold text-gray-400">غير مشترك</span>
+                </div>
+              )}
+            </div>
+
+            {/* Health Survey Results */}
+            <div className="rounded-2xl border border-[rgba(255,188,219,0.12)] bg-black/10 p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div className="text-sm font-bold text-[#fff4f8]">الاستبيان الصحي</div>
+                <button
+                  onClick={() => {
+                    const win = window.open("", "_blank");
+                    if (!win) return;
+                    const rows = surveyResponses.map((r) => `
+                      <div style="margin-bottom:16px;padding:14px;border:1px solid #e5e7eb;border-radius:10px">
+                        <div style="font-weight:700;margin-bottom:4px">${r.questionTitle}</div>
+                        <div style="color:${r.answer ? "#dc2626" : "#16a34a"};font-weight:600">${r.answer ? "نعم ✓" : "لا ✗"}</div>
+                        ${r.reason ? `<div style="margin-top:6px;color:#6b7280;font-size:13px">السبب: ${r.reason}</div>` : ""}
+                      </div>`).join("");
+                    win.document.write(`<!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8"><title>الاستبيان الصحي - ${viewCustomer.name}</title><style>body{font-family:Arial,sans-serif;padding:32px;direction:rtl}</style></head><body>
+                      <h2 style="margin-bottom:4px">الاستبيان الصحي</h2>
+                      <div style="color:#6b7280;margin-bottom:24px">العميل: ${viewCustomer.name} | ${viewCustomer.email}</div>
+                      ${rows || "<p>لا توجد إجابات مسجلة</p>"}
+                    </body></html>`);
+                    win.document.close();
+                    win.print();
+                  }}
+                  className="rounded-lg bg-white/5 px-3 py-1.5 text-xs font-bold text-[#d7aabd] hover:bg-white/10"
+                >
+                  🖨 طباعة
+                </button>
+              </div>
+              {surveyLoading ? (
+                <div className="py-4 text-center text-xs text-[#d7aabd]">جارٍ التحميل...</div>
+              ) : surveyResponses.length === 0 ? (
+                <div className="py-4 text-center text-xs text-[#d7aabd]">لم يُجب العميل على الاستبيان بعد</div>
+              ) : (
+                <div className="space-y-3">
+                  {surveyResponses.map((r) => (
+                    <div key={r.questionId} className="rounded-xl border border-[rgba(255,188,219,0.1)] bg-black/20 px-4 py-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="text-sm text-[#fff4f8]">{r.questionTitle}</div>
+                        <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-bold ${r.answer ? "bg-rose-500/15 text-rose-300" : "bg-emerald-500/15 text-emerald-300"}`}>
+                          {r.answer ? "نعم" : "لا"}
+                        </span>
+                      </div>
+                      {r.reason && (
+                        <div className="mt-2 text-xs text-[#d7aabd]">السبب: {r.reason}</div>
+                      )}
+                      <div className="mt-1 text-[11px] text-gray-600">{r.answeredAt.slice(0, 10)}</div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>

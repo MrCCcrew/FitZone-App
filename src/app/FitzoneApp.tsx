@@ -1375,8 +1375,11 @@ type PublicHealthQuestion = {
   title: string;
   prompt: string;
   sortOrder: number;
+  allowReason: boolean;
   restrictedClassTypes: string[];
 };
+
+type SurveyEntry = { answer: boolean | null; reason: string };
 
 type TrainerCertFile = { url: string; label: string };
 type PublicTrainer = {
@@ -3196,7 +3199,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
   const [discountResult, setDiscountResult] = useState<{ id: string; type: string; value: number; maxDiscount?: number | null; discountAmount: number | null; description?: string | null } | null>(null);
   const [discountError, setDiscountError] = useState<string | null>(null);
   const [surveyPlan, setSurveyPlan] = useState<PlanItem | null>(null);
-  const [surveyAnswers, setSurveyAnswers] = useState<Record<string, boolean | null>>({});
+  const [surveyAnswers, setSurveyAnswers] = useState<Record<string, SurveyEntry>>({});
   const [surveyError, setSurveyError] = useState<string | null>(null);
   const [schedulePlan, setSchedulePlan] = useState<PlanItem | null>(null);
   const [scheduleSelections, setScheduleSelections] = useState<string[]>([]);
@@ -3503,7 +3506,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
   const surveyBlockedTypes = useMemo(() => {
     const blocked = new Set<string>();
     healthQuestions.forEach((question) => {
-      if (surveyAnswers[question.id]) {
+      if (surveyAnswers[question.id]?.answer === true) {
         question.restrictedClassTypes.forEach((type) => {
           const key = normalizeClassTypeKey(type);
           if (key) blocked.add(key);
@@ -3674,9 +3677,9 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
       }
       return;
     }
-    const initialAnswers: Record<string, boolean | null> = {};
+    const initialAnswers: Record<string, SurveyEntry> = {};
     healthQuestions.forEach((question) => {
-      initialAnswers[question.id] = surveyAnswers[question.id] ?? null;
+      initialAnswers[question.id] = surveyAnswers[question.id] ?? { answer: null, reason: "" };
     });
     setSurveyAnswers(initialAnswers);
     setSurveyError(null);
@@ -3685,12 +3688,32 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
 
   const handleSurveyContinue = async () => {
     if (!surveyPlan) return;
-    const unanswered = healthQuestions.some((question) => surveyAnswers[question.id] == null);
+    const unanswered = healthQuestions.some((q) => surveyAnswers[q.id]?.answer == null);
     if (unanswered) {
       setSurveyError(t("يرجى الإجابة على جميع الأسئلة قبل المتابعة.", "Please answer all questions before continuing."));
       return;
     }
+    const missingReason = healthQuestions.find(
+      (q) => q.allowReason && surveyAnswers[q.id]?.answer === true && !surveyAnswers[q.id]?.reason?.trim()
+    );
+    if (missingReason) {
+      setSurveyError(t(`يرجى كتابة السبب للسؤال: "${missingReason.title}"`, `Please provide a reason for: "${missingReason.title}"`));
+      return;
+    }
     setSurveyError(null);
+
+    // Save answers to DB (fire-and-forget, don't block the flow)
+    const answersPayload = healthQuestions.map((q) => ({
+      questionId: q.id,
+      answer: surveyAnswers[q.id]!.answer as boolean,
+      reason: surveyAnswers[q.id]?.reason?.trim() || null,
+    }));
+    void fetch("/api/health-survey", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ answers: answersPayload }),
+    }).catch(() => null);
+
     const plan = surveyPlan;
     setSurveyPlan(null);
     if (scheduleChoices.length === 0) {
@@ -3955,14 +3978,15 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
 
             <div style={{ display: "grid", gap: 12 }}>
               {healthQuestions.map((question) => {
-                const answer = surveyAnswers[question.id];
+                const entry = surveyAnswers[question.id] ?? { answer: null, reason: "" };
+                const { answer, reason } = entry;
                 return (
                   <div key={question.id} className="card" style={{ padding: 16 }}>
                     <div style={{ fontWeight: 800, color: C.white, marginBottom: 6 }}>{question.title}</div>
                     <div style={{ color: C.gray, fontSize: 13, lineHeight: 1.7 }}>{question.prompt}</div>
                     <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
                       <button
-                        onClick={() => setSurveyAnswers((prev) => ({ ...prev, [question.id]: true }))}
+                        onClick={() => setSurveyAnswers((prev) => ({ ...prev, [question.id]: { answer: true, reason: prev[question.id]?.reason ?? "" } }))}
                         className="btn-outline"
                         style={{
                           padding: "9px 20px",
@@ -3977,7 +4001,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
                         {t("نعم", "Yes")}
                       </button>
                       <button
-                        onClick={() => setSurveyAnswers((prev) => ({ ...prev, [question.id]: false }))}
+                        onClick={() => setSurveyAnswers((prev) => ({ ...prev, [question.id]: { answer: false, reason: "" } }))}
                         className="btn-outline"
                         style={{
                           padding: "9px 20px",
@@ -3992,8 +4016,30 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
                         {t("لا", "No")}
                       </button>
                     </div>
+                    {answer === true && question.allowReason && (
+                      <div style={{ marginTop: 10 }}>
+                        <textarea
+                          placeholder={t("اكتبي السبب هنا...", "Write your reason here...")}
+                          value={reason}
+                          onChange={(e) => setSurveyAnswers((prev) => ({ ...prev, [question.id]: { answer: true, reason: e.target.value } }))}
+                          rows={2}
+                          style={{
+                            width: "100%",
+                            borderRadius: 10,
+                            border: `1px solid ${C.border}`,
+                            background: "rgba(255,255,255,0.04)",
+                            color: C.white,
+                            fontSize: 13,
+                            padding: "8px 12px",
+                            resize: "vertical",
+                            outline: "none",
+                            fontFamily: "inherit",
+                          }}
+                        />
+                      </div>
+                    )}
                     {answer === true && question.restrictedClassTypes.length > 0 ? (
-                      <div style={{ marginTop: 10, fontSize: 12, color: C.red }}>
+                      <div style={{ marginTop: 8, fontSize: 12, color: C.red }}>
                         {t("الكلاسات الممنوعة:", "Restricted classes:")} {question.restrictedClassTypes.map(formatClassType).join("، ")}
                       </div>
                     ) : null}

@@ -125,6 +125,7 @@ model User {
   staffCommissions           StaffCommission[]           @relation("StaffCommissions")
   trainerReferralLinks       TrainerReferralLink[]       @relation("TrainerLinks")
   trainerCommissions         TrainerCommission[]         @relation("TrainerCommissions")
+  healthResponses            HealthResponse[]            @relation("HealthResponses")
 }
 
 model AuditLog {
@@ -709,18 +710,36 @@ model MembershipGoal {
 }
 
 model HealthQuestion {
-  id          String   @id @default(cuid())
-  title       String
-  titleEn     String?
-  slug        String   @unique
-  prompt      String
-  promptEn    String?  @db.Text
-  isActive    Boolean  @default(true)
-  sortOrder   Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id           String   @id @default(cuid())
+  title        String
+  titleEn      String?
+  slug         String   @unique
+  prompt       String
+  promptEn     String?  @db.Text
+  isActive     Boolean  @default(true)
+  allowReason  Boolean  @default(false) // show reason text field when client answers Yes
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   restrictions HealthQuestionRestriction[]
+  responses    HealthResponse[]
+}
+
+model HealthResponse {
+  id         String   @id @default(cuid())
+  userId     String
+  questionId String
+  answer     Boolean  // true = yes, false = no
+  reason     String?  @db.Text
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user     User           @relation("HealthResponses", fields: [userId], references: [id], onDelete: Cascade)
+  question HealthQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, questionId])
+  @@index([userId])
 }
 
 model HealthQuestionRestriction {
