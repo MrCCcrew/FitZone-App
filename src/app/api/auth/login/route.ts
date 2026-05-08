@@ -39,6 +39,7 @@ export async function POST(req: Request) {
         role: true,
         emailVerified: true,
         isActive: true,
+        pendingApproval: true,
       },
     });
 
@@ -54,6 +55,13 @@ export async function POST(req: Request) {
       return NextResponse.json(
         { error: "ليس لديك حساب عميل. يرجى تسجيل الدخول من بوابة الإدارة." },
         { status: 401 },
+      );
+    }
+
+    if (user.pendingApproval) {
+      return NextResponse.json(
+        { error: "حسابك قيد المراجعة، في انتظار موافقة الإدارة. سيتم إشعارك عند التفعيل." },
+        { status: 403 },
       );
     }
 

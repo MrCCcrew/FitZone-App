@@ -313,6 +313,7 @@ function openPrintWindow(customers: Customer[]) {
 
 export default function Customers() {
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [userRole, setUserRole] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
@@ -323,13 +324,19 @@ export default function Customers() {
   const [wpEdit, setWpEdit] = useState<{ userId: string; balance: number; points: number } | null>(null);
   const [savingWP, setSavingWP] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<Customer | null>(null);
+  const [approvingId, setApprovingId] = useState<string | null>(null);
 
   const loadCustomers = useCallback(async () => {
     setLoading(true);
     try {
       const response = await fetch("/api/admin/customers", { cache: "no-store" });
       const payload = await response.json();
-      setCustomers(Array.isArray(payload) ? payload : []);
+      if (payload && typeof payload === "object" && "customers" in payload) {
+        setCustomers(Array.isArray(payload.customers) ? payload.customers : []);
+        if (payload.userRole) setUserRole(payload.userRole);
+      } else {
+        setCustomers(Array.isArray(payload) ? payload : []);
+      }
     } finally {
       setLoading(false);
     }
@@ -366,6 +373,11 @@ export default function Customers() {
         const payload = await response.json().catch(() => ({}));
         window.alert(payload.error ?? "تعذر حفظ بيانات العميل.");
         return;
+      }
+
+      // 202 = pending approval (trainer-created)
+      if (response.status === 202) {
+        window.alert("تم إرسال طلب إنشاء الحساب. في انتظار موافقة الإدارة.");
       }
 
       await loadCustomers();
@@ -428,6 +440,25 @@ export default function Customers() {
     setConfirmDelete(null);
     setViewCustomer(null);
     await loadCustomers();
+  };
+
+  const approveCustomer = async (id: string, action: "approve" | "reject") => {
+    setApprovingId(id);
+    try {
+      const response = await fetch("/api/admin/customers", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, action }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        window.alert(payload.error ?? "تعذر تنفيذ الإجراء.");
+        return;
+      }
+      await loadCustomers();
+    } finally {
+      setApprovingId(null);
+    }
   };
 
   const exportCsv = () => {
@@ -505,6 +536,45 @@ export default function Customers() {
         </div>
       }
     >
+      {/* Pending approvals — visible to admin and head_coach only */}
+      {(userRole === "admin" || userRole === "head_coach") && customers.some((c) => c.pendingApproval) && (
+        <AdminCard className="border border-amber-500/30 bg-amber-500/5">
+          <div className="mb-3 flex items-center gap-2">
+            <span className="h-2 w-2 animate-pulse rounded-full bg-amber-400" />
+            <span className="text-sm font-black text-amber-300">
+              طلبات بانتظار الموافقة ({customers.filter((c) => c.pendingApproval).length})
+            </span>
+          </div>
+          <div className="space-y-2">
+            {customers.filter((c) => c.pendingApproval).map((customer) => (
+              <div key={customer.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/20 bg-black/20 px-4 py-3">
+                <div>
+                  <div className="font-bold text-[#fff4f8]">{customer.name}</div>
+                  <div className="text-xs text-[#d7aabd]" dir="ltr">{customer.email}</div>
+                  <div className="text-xs text-[#d7aabd]" dir="ltr">{customer.phone}</div>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => void approveCustomer(customer.id, "approve")}
+                    disabled={approvingId === customer.id}
+                    className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-black text-white transition hover:bg-emerald-500 disabled:opacity-50"
+                  >
+                    {approvingId === customer.id ? "..." : "موافقة ✓"}
+                  </button>
+                  <button
+                    onClick={() => void approveCustomer(customer.id, "reject")}
+                    disabled={approvingId === customer.id}
+                    className="rounded-xl bg-rose-500/20 px-4 py-2 text-xs font-bold text-rose-300 transition hover:bg-rose-500/30 disabled:opacity-50"
+                  >
+                    رفض ✗
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </AdminCard>
+      )}
+
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {stats.map((stat) => (
           <AdminCard key={stat.label}>
@@ -610,6 +680,11 @@ export default function Customers() {
                             >
                               {customer.name}
                             </button>
+                            {customer.pendingApproval && (
+                              <span className="mt-1 inline-block rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-300">
+                                بانتظار الموافقة
+                              </span>
+                            )}
                             <div className="mt-1 text-xs text-[#d7aabd]">{customer.email}</div>
                           </div>
                         </div>
