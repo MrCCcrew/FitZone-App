@@ -29,6 +29,7 @@ type CustomerPayload = {
   status?: "active" | "suspended" | "expired";
   points?: number;
   balance?: number;
+  trainerRefToken?: string; // trainer referral link token to attach to this customer
 };
 
 function buildStatus(user: {
@@ -365,7 +366,7 @@ export async function POST(req: Request) {
 
   try {
     const payload = (await req.json()) as CustomerPayload;
-    const { name, email, phone, password, plan, status, points, balance } = payload;
+    const { name, email, phone, password, plan, status, points, balance, trainerRefToken } = payload;
 
     if (!email || !name) {
       return NextResponse.json({ error: "الاسم والبريد الإلكتروني مطلوبان" }, { status: 400 });
@@ -377,6 +378,21 @@ export async function POST(req: Request) {
     }
 
     const isTrainer = role === "trainer";
+
+    // Validate trainer referral token: must belong to this trainer's own links
+    let validatedTrainerRef: string | null = null;
+    if (isTrainer && trainerRefToken) {
+      const dbx = db as any;
+      const trainerUserId = guard.session.user.id;
+      const link = await dbx.trainerReferralLink.findUnique({
+        where: { token: trainerRefToken.trim().toUpperCase() },
+        select: { id: true, userId: true, isActive: true },
+      });
+      if (link?.isActive && link.userId === trainerUserId) {
+        validatedTrainerRef = trainerRefToken.trim().toUpperCase();
+      }
+    }
+
     const hashed = await bcryptjs.hash(password ?? "FitZone123!", 12);
     const user = await db.user.create({
       data: {
@@ -389,8 +405,9 @@ export async function POST(req: Request) {
         // Trainer-created accounts are pending until admin approves
         pendingApproval: isTrainer,
         emailVerified: isTrainer ? null : new Date(),
+        ...(validatedTrainerRef ? { pendingTrainerRef: validatedTrainerRef } : {}),
       },
-    });
+    } as Parameters<typeof db.user.create>[0]);
 
     await db.wallet.create({ data: { userId: user.id, balance: 0 } });
     const rewardRecord = await db.rewardPoints.create({ data: { userId: user.id, points: 0, tier: "bronze" } });

@@ -109,6 +109,11 @@ function RegisterForm() {
       setReferralCode(ref.toUpperCase());
       setReferralFromUrl(true);
     }
+    // Store staff/trainer referral tokens in sessionStorage for use on submit
+    const staffRef = searchParams.get("staffRef");
+    if (staffRef) sessionStorage.setItem("fitzone:staff-ref", staffRef.trim().toUpperCase());
+    const trainerRef = searchParams.get("trainerRef");
+    if (trainerRef) sessionStorage.setItem("fitzone:trainer-ref", trainerRef.trim().toUpperCase());
   }, [searchParams]);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -155,6 +160,8 @@ function RegisterForm() {
           password: form.password,
           referralCode: referralCode.trim().toUpperCase() || null,
           affiliateRef: sessionStorage.getItem("fitzone:affiliate-ref") || null,
+          staffRef: sessionStorage.getItem("fitzone:staff-ref") || null,
+          trainerRef: sessionStorage.getItem("fitzone:trainer-ref") || null,
         }),
       });
 

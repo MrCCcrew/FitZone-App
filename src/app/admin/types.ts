@@ -602,3 +602,34 @@ export interface StaffCommissionRow {
   settledAt: string | null;
   createdAt: string;
 }
+
+export interface TrainerReferralLink {
+  id: string;
+  userId: string;
+  trainerName: string;
+  trainerEmail: string;
+  token: string;
+  label: string | null;
+  clickCount: number;
+  isActive: boolean;
+  createdAt: string;
+  totalEarned: number;
+  pendingCommission: number;
+  settledCommission: number;
+}
+
+export interface TrainerCommissionRow {
+  id: string;
+  trainerUserId: string;
+  trainerName: string;
+  trainerEmail: string;
+  linkToken: string | null;
+  linkLabel: string | null;
+  customerName: string | null;
+  customerEmail: string | null;
+  membershipName: string | null;
+  amount: number;
+  status: "earned" | "settled";
+  settledAt: string | null;
+  createdAt: string;
+}

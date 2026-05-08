@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import type { AdminEmployee, AuditLogEntry } from "../types";
 import { ADMIN_FEATURES, ROLE_FEATURE_TEMPLATES, type AdminRole } from "@/lib/admin-permissions";
 import Referrals from "./Referrals";
+import TrainerReferrals from "./TrainerReferrals";
 
 const ROLE_OPTIONS: Array<{ value: AdminRole; label: string }> = [
   { value: "admin", label: "مدير النظام" },
@@ -192,7 +193,7 @@ function getRoleLabel(role: string) {
 
 export default function Settings({ userRole = "staff", permissions = [] }: { userRole?: string; permissions?: string[] }) {
   const canManageSettings = userRole === "admin" || permissions.includes("settings");
-  const [activeTab, setActiveTab] = useState<"employees" | "referrals" | "audit">(canManageSettings ? "employees" : "referrals");
+  const [activeTab, setActiveTab] = useState<"employees" | "referrals" | "trainer-referrals" | "audit">(canManageSettings ? "employees" : "referrals");
   const [employees, setEmployees] = useState<AdminEmployee[]>([]);
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
   const [auditLoading, setAuditLoading] = useState(false);
@@ -383,6 +384,13 @@ export default function Settings({ userRole = "staff", permissions = [] }: { use
             className={`rounded-xl px-4 py-2 text-sm font-bold ${activeTab === "referrals" ? "bg-pink-600 text-white" : "bg-white/5 text-[#d7aabd]"}`}
           >
             لينكات إحالة الاستاف
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("trainer-referrals")}
+            className={`rounded-xl px-4 py-2 text-sm font-bold ${activeTab === "trainer-referrals" ? "bg-pink-600 text-white" : "bg-white/5 text-[#d7aabd]"}`}
+          >
+            لينكات إحالة المدربات
           </button>
         </div>
 
@@ -590,6 +598,8 @@ export default function Settings({ userRole = "staff", permissions = [] }: { use
           </div>
         ) : activeTab === "referrals" ? (
           <Referrals userRole={userRole} />
+        ) : activeTab === "trainer-referrals" ? (
+          <TrainerReferrals userRole={userRole} />
         ) : (
           <div className="space-y-4">
             <div className="rounded-2xl border border-white/10 bg-[#1b0d14] p-4 text-sm text-[#d7aabd]">
