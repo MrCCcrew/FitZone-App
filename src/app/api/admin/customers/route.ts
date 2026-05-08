@@ -9,6 +9,10 @@ async function checkAdmin() {
   return "error" in guard ? guard.error : null;
 }
 
+function isApprover(role: string) {
+  return role === "admin" || role === "head_coach";
+}
+
 async function getTrainerProfileId(userId: string): Promise<string | null> {
   const t = await db.trainer.findFirst({ where: { userId }, select: { id: true } });
   return t?.id ?? null;
@@ -16,6 +20,7 @@ async function getTrainerProfileId(userId: string): Promise<string | null> {
 
 type CustomerPayload = {
   id?: string;
+  action?: "approve" | "reject";
   name?: string;
   email?: string;
   phone?: string;
@@ -58,6 +63,7 @@ type CustomerSummary = {
   email: string | null;
   phone: string | null;
   avatar: string | null;
+  pendingApproval: boolean;
   createdAt: Date;
   memberships: CustomerMembershipRow[];
   wallet: { balance: number } | null;
@@ -77,6 +83,7 @@ function mapCustomer(
     email: user.email ?? "—",
     phone: user.phone ?? "—",
     avatar: user.avatar ?? "ع",
+    pendingApproval: user.pendingApproval,
     plan: latestMembership?.membership.name ?? "بدون اشتراك",
     status: buildStatus(user),
     joinDate: user.createdAt.toISOString().slice(0, 10),
@@ -276,19 +283,22 @@ export async function GET() {
   const guard = await requireAdminFeature("customers");
   if ("error" in guard) return guard.error;
 
-  // Trainer sees only clients linked to their schedules/bookings
-  let trainerBookingFilter: { bookings: { some: { schedule: { class: { trainerId: string } } } } } | undefined;
-  if (guard.role === "trainer") {
+  const userRole = guard.role;
+
+  // Trainer sees only clients booked in their classes (never pending-approval accounts)
+  let extraFilter: Record<string, unknown> = {};
+  if (userRole === "trainer") {
     const trainerId = await getTrainerProfileId(guard.session.user.id);
-    if (!trainerId) return NextResponse.json([]);
-    trainerBookingFilter = {
+    if (!trainerId) return NextResponse.json({ customers: [], userRole });
+    extraFilter = {
+      pendingApproval: false,
       bookings: { some: { schedule: { class: { trainerId } } } },
     };
   }
 
   try {
     const users = await db.user.findMany({
-      where: { role: "member", ...trainerBookingFilter },
+      where: { role: "member", ...extraFilter },
       orderBy: { createdAt: "desc" },
       include: {
         memberships: {
@@ -337,16 +347,21 @@ export async function GET() {
       : [];
     const productNames = new Map(products.map((product) => [product.id, product.name]));
 
-    return NextResponse.json(users.map((user) => mapCustomer(user, bookingCounts, productNames)));
+    return NextResponse.json({
+      customers: users.map((user) => mapCustomer(user, bookingCounts, productNames)),
+      userRole,
+    });
   } catch (error) {
     console.error("[ADMIN_CUSTOMERS_GET]", error);
-    return NextResponse.json([], { status: 200 });
+    return NextResponse.json({ customers: [], userRole }, { status: 200 });
   }
 }
 
 export async function POST(req: Request) {
-  const err = await checkAdmin();
-  if (err) return err;
+  const guard = await requireAdminFeature("customers");
+  if ("error" in guard) return guard.error;
+
+  const { role } = guard;
 
   try {
     const payload = (await req.json()) as CustomerPayload;
@@ -361,7 +376,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "البريد الإلكتروني مسجل بالفعل" }, { status: 409 });
     }
 
-    const SIGNUP_BONUS = 20;
+    const isTrainer = role === "trainer";
     const hashed = await bcryptjs.hash(password ?? "FitZone123!", 12);
     const user = await db.user.create({
       data: {
@@ -371,49 +386,60 @@ export async function POST(req: Request) {
         password: hashed,
         role: "member",
         avatar: (name[0] ?? "ع").toUpperCase(),
-        emailVerified: new Date(),
+        // Trainer-created accounts are pending until admin approves
+        pendingApproval: isTrainer,
+        emailVerified: isTrainer ? null : new Date(),
       },
     });
 
     await db.wallet.create({ data: { userId: user.id, balance: 0 } });
     const rewardRecord = await db.rewardPoints.create({ data: { userId: user.id, points: 0, tier: "bronze" } });
     await db.referral.create({
-      data: {
-        userId: user.id,
-        code: `FZ-${user.id.slice(-6).toUpperCase()}`,
-      },
+      data: { userId: user.id, code: `FZ-${user.id.slice(-6).toUpperCase()}` },
     });
 
-    // Give signup bonus as if user verified their email
-    const bonusPoints = SIGNUP_BONUS + (points ?? 0);
-    const bonusTier =
-      bonusPoints >= 5000 ? "platinum" :
-      bonusPoints >= 3000 ? "gold" :
-      bonusPoints >= 1000 ? "silver" :
-      "bronze";
-    await db.rewardPoints.update({
-      where: { id: rewardRecord.id },
-      data: { points: bonusPoints, tier: bonusTier },
-    });
-    await db.rewardHistory.create({
-      data: {
-        rewardId: rewardRecord.id,
-        points: SIGNUP_BONUS,
-        reason: "onboarding_email_verified",
-      },
-    });
-
-    await applyWalletAndRewards(user.id, balance ?? 0, undefined);
-    await applyMembership(user.id, plan, status ?? "expired");
-
-    await db.notification.create({
-      data: {
-        userId: user.id,
-        title: "تم إنشاء حسابك",
-        body: "تم إنشاء حسابك من إدارة FitZone ويمكنك الآن تسجيل الدخول واستخدام خدمات الموقع.",
-        type: "success",
-      },
-    });
+    if (!isTrainer) {
+      // Admin/staff creation: give signup bonus immediately
+      const SIGNUP_BONUS = 20;
+      const bonusPoints = SIGNUP_BONUS + (points ?? 0);
+      const bonusTier =
+        bonusPoints >= 5000 ? "platinum" :
+        bonusPoints >= 3000 ? "gold" :
+        bonusPoints >= 1000 ? "silver" : "bronze";
+      await db.rewardPoints.update({
+        where: { id: rewardRecord.id },
+        data: { points: bonusPoints, tier: bonusTier },
+      });
+      await db.rewardHistory.create({
+        data: { rewardId: rewardRecord.id, points: SIGNUP_BONUS, reason: "onboarding_email_verified" },
+      });
+      await applyWalletAndRewards(user.id, balance ?? 0, undefined);
+      await applyMembership(user.id, plan, status ?? "expired");
+      await db.notification.create({
+        data: {
+          userId: user.id,
+          title: "تم إنشاء حسابك",
+          body: "تم إنشاء حسابك من إدارة FitZone ويمكنك الآن تسجيل الدخول واستخدام خدمات الموقع.",
+          type: "success",
+        },
+      });
+    } else {
+      // Trainer-created: notify all admins and head_coaches for approval
+      const approvers = await db.user.findMany({
+        where: { role: { in: ["admin", "head_coach"] }, isActive: true },
+        select: { id: true },
+      });
+      if (approvers.length > 0) {
+        await db.notification.createMany({
+          data: approvers.map((a) => ({
+            userId: a.id,
+            title: "طلب إنشاء حساب عميل جديد",
+            body: `المدربة طلبت إنشاء حساب لـ ${name} (${email}). يرجى المراجعة والموافقة من قسم العملاء.`,
+            type: "info",
+          })),
+        });
+      }
+    }
 
     const created = await db.user.findUnique({
       where: { id: user.id },
@@ -424,7 +450,10 @@ export async function POST(req: Request) {
       },
     });
 
-    return NextResponse.json(created ? mapCustomer(created, new Map(), new Map()) : null);
+    return NextResponse.json(
+      created ? mapCustomer(created, new Map(), new Map()) : null,
+      { status: isTrainer ? 202 : 200 },
+    );
   } catch (error) {
     console.error("[ADMIN_CUSTOMERS_POST]", error);
     return NextResponse.json({ error: "تعذر إنشاء العميل" }, { status: 500 });
@@ -432,15 +461,71 @@ export async function POST(req: Request) {
 }
 
 export async function PATCH(req: Request) {
-  const err = await checkAdmin();
-  if (err) return err;
+  const guard = await requireAdminFeature("customers");
+  if ("error" in guard) return guard.error;
+
+  const { role } = guard;
 
   try {
     const payload = (await req.json()) as CustomerPayload;
-    const { id, name, email, phone, password, status, plan, points, balance } = payload;
+    const { id, action, name, email, phone, password, status, plan, points, balance } = payload;
 
     if (!id) {
       return NextResponse.json({ error: "معرّف العميل مطلوب" }, { status: 400 });
+    }
+
+    // Approve / Reject — admin and head_coach only
+    if (action === "approve" || action === "reject") {
+      if (!isApprover(role)) {
+        return NextResponse.json({ error: "صلاحية الموافقة للأدمن وهيد كوتش فقط." }, { status: 403 });
+      }
+
+      if (action === "reject") {
+        await db.user.delete({ where: { id } });
+        void logAudit({ action: "delete", targetType: "customer", targetId: id, details: { reason: "rejected_by_approver" } });
+        return NextResponse.json({ success: true });
+      }
+
+      // Approve: activate account + give signup bonus
+      const SIGNUP_BONUS = 20;
+      const rewards = await db.rewardPoints.findFirst({ where: { userId: id } });
+      await db.user.update({
+        where: { id },
+        data: { pendingApproval: false, emailVerified: new Date() },
+      });
+      if (rewards) {
+        await db.rewardPoints.update({
+          where: { id: rewards.id },
+          data: { points: { increment: SIGNUP_BONUS }, tier: "bronze" },
+        });
+        await db.rewardHistory.create({
+          data: { rewardId: rewards.id, points: SIGNUP_BONUS, reason: "onboarding_email_verified" },
+        });
+      }
+      await db.notification.create({
+        data: {
+          userId: id,
+          title: "تم تفعيل حسابك ✅",
+          body: "تمت الموافقة على حسابك من الإدارة. يمكنك الآن تسجيل الدخول واستخدام خدمات الموقع.",
+          type: "success",
+        },
+      });
+      void logAudit({ action: "update", targetType: "customer", targetId: id, details: { action: "approved" } });
+
+      const approved = await db.user.findUnique({
+        where: { id },
+        include: {
+          memberships: { include: { membership: true }, orderBy: { startDate: "desc" } },
+          wallet: true,
+          rewardPoints: true,
+        },
+      });
+      return NextResponse.json(approved ? mapCustomer(approved, new Map(), new Map()) : null);
+    }
+
+    // Trainers cannot edit customer profiles
+    if (role === "trainer") {
+      return NextResponse.json({ error: "ليس لديك صلاحية تعديل بيانات العملاء." }, { status: 403 });
     }
 
     const data: Record<string, unknown> = {};

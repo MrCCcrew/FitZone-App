@@ -73,6 +73,7 @@ export interface Customer {
   points: number;
   balance: number;
   avatar: string;
+  pendingApproval?: boolean;
   memberships?: CustomerMembershipReport[];
 }
 
