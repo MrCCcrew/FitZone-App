@@ -45,7 +45,7 @@ const PAYMENT_LABELS: Record<string, string> = {
   manual_pending: "قيد الدفع",
 };
 
-type NewCustomer = Omit<Customer, "id"> & { password?: string };
+type NewCustomer = Omit<Customer, "id"> & { password?: string; trainerRefToken?: string };
 
 const EMPTY_CUSTOMER: NewCustomer = {
   name: "",
@@ -58,6 +58,7 @@ const EMPTY_CUSTOMER: NewCustomer = {
   points: 0,
   balance: 0,
   avatar: "ع",
+  trainerRefToken: "",
 };
 
 function formatDate(value?: string | null) {
@@ -325,6 +326,7 @@ export default function Customers() {
   const [savingWP, setSavingWP] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<Customer | null>(null);
   const [approvingId, setApprovingId] = useState<string | null>(null);
+  const [trainerLinks, setTrainerLinks] = useState<{ id: string; token: string; label: string | null }[]>([]);
 
   const loadCustomers = useCallback(async () => {
     setLoading(true);
@@ -345,6 +347,17 @@ export default function Customers() {
   useEffect(() => {
     void loadCustomers();
   }, [loadCustomers]);
+
+  useEffect(() => {
+    if (userRole !== "trainer") return;
+    fetch("/api/admin/trainer-referrals", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => {
+        const links = Array.isArray(d.links) ? d.links : [];
+        setTrainerLinks(links.filter((l: any) => l.isActive).map((l: any) => ({ id: l.id, token: l.token, label: l.label })));
+      })
+      .catch(() => null);
+  }, [userRole]);
 
   const planOptions = useMemo(() => Array.from(new Set(customers.map((customer) => customer.plan))), [customers]);
 
@@ -1031,6 +1044,30 @@ export default function Customers() {
                 dir="ltr"
               />
             </Field>
+
+            {/* Trainer referral link — only shown for new customers created by a trainer */}
+            {userRole === "trainer" && !("id" in editCustomer) && (
+              <Field label="ربط لينك الإحالة (اختياري — لتلقي عمولة عند اشتراك العميل)">
+                {trainerLinks.length === 0 ? (
+                  <div className="rounded-xl border border-gray-700 bg-gray-800 px-4 py-2.5 text-sm text-gray-400">
+                    لا توجد لينكات إحالة نشطة — أنشئ واحدًا من قسم الإعدادات أولاً
+                  </div>
+                ) : (
+                  <select
+                    value={"trainerRefToken" in editCustomer ? (editCustomer.trainerRefToken ?? "") : ""}
+                    onChange={(event) => setEditCustomer({ ...editCustomer, trainerRefToken: event.target.value })}
+                    className={INPUT}
+                  >
+                    <option value="">بدون ربط لينك إحالة</option>
+                    {trainerLinks.map((l) => (
+                      <option key={l.id} value={l.token}>
+                        {l.label ? `${l.label} — ${l.token}` : l.token}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </Field>
+            )}
 
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="الباقة">

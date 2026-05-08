@@ -84,8 +84,8 @@ export async function POST(req: Request) {
 
   const userRecord = await (db as any).user.findUnique({
     where: { id: userId },
-    select: { emailVerified: true, email: true, name: true, phone: true, pendingPartnerRef: true, pendingAgentRef: true, pendingStaffRef: true },
-  }) as { emailVerified: Date | null; email: string | null; name: string | null; phone: string | null; pendingPartnerRef: string | null; pendingAgentRef: string | null; pendingStaffRef: string | null } | null;
+    select: { emailVerified: true, email: true, name: true, phone: true, pendingPartnerRef: true, pendingAgentRef: true, pendingStaffRef: true, pendingTrainerRef: true },
+  }) as { emailVerified: Date | null; email: string | null; name: string | null; phone: string | null; pendingPartnerRef: string | null; pendingAgentRef: string | null; pendingStaffRef: string | null; pendingTrainerRef: string | null } | null;
 
   if (!userRecord?.emailVerified) {
     return NextResponse.json(
@@ -290,6 +290,18 @@ export async function POST(req: Request) {
       select: { id: true, userId: true, isActive: true, user: { select: { commissionRate: true, commissionType: true } } },
     });
     if (sl?.isActive) staffLinkRecord = { id: sl.id, userId: sl.userId, commissionRate: sl.user.commissionRate, commissionType: sl.user.commissionType };
+  }
+
+  // Resolve trainer referral link (stored at registration only — one-time commission)
+  type TrainerLinkInfo = { id: string; userId: string; commissionRate: number; commissionType: string };
+  let trainerLinkRecord: TrainerLinkInfo | null = null;
+  const pendingTrainerToken = (userRecord?.pendingTrainerRef ?? "").trim().toUpperCase();
+  if (pendingTrainerToken) {
+    const tl = await dbx.trainerReferralLink.findUnique({
+      where: { token: pendingTrainerToken },
+      select: { id: true, userId: true, isActive: true, user: { select: { commissionRate: true, commissionType: true } } },
+    });
+    if (tl?.isActive) trainerLinkRecord = { id: tl.id, userId: tl.userId, commissionRate: tl.user.commissionRate, commissionType: tl.user.commissionType };
   }
 
   const result = await db
@@ -535,6 +547,7 @@ export async function POST(req: Request) {
           affiliateLinkId: resolvedAffiliateLinkId,
           ...(resolvedSalesAgentId ? { salesAgentId: resolvedSalesAgentId } : {}),
           ...(staffLinkRecord ? { staffReferralLinkId: staffLinkRecord.id } : {}),
+          ...(trainerLinkRecord ? { trainerReferralLinkId: trainerLinkRecord.id } : {}),
         },
       } as Parameters<typeof tx.userMembership.create>[0]);
 
@@ -657,6 +670,23 @@ export async function POST(req: Request) {
           });
           await dbx.staffReferralLink.update({
             where: { id: staffLinkRecord.id },
+            data: { clickCount: { increment: 1 } },
+          });
+        }
+      }
+
+      // Trainer referral commission (one-time, first paid subscription only)
+      if (!needsPaymentConfirmation && trainerLinkRecord) {
+        const paidAmount = paymentAmount ?? 0;
+        const commission = trainerLinkRecord.commissionType === "fixed"
+          ? trainerLinkRecord.commissionRate
+          : Math.round((paidAmount * trainerLinkRecord.commissionRate) / 100 * 100) / 100;
+        if (commission > 0) {
+          await dbx.trainerCommission.create({
+            data: { trainerUserId: trainerLinkRecord.userId, trainerReferralLinkId: trainerLinkRecord.id, userMembershipId: subscription.id, amount: commission },
+          });
+          await dbx.trainerReferralLink.update({
+            where: { id: trainerLinkRecord.id },
             data: { clickCount: { increment: 1 } },
           });
         }
@@ -1008,6 +1038,9 @@ export async function POST(req: Request) {
   }
   if (userRecord?.pendingStaffRef) {
     void (db as any).user.update({ where: { id: userId }, data: { pendingStaffRef: null } }).catch(() => null);
+  }
+  if (userRecord?.pendingTrainerRef) {
+    void (db as any).user.update({ where: { id: userId }, data: { pendingTrainerRef: null } }).catch(() => null);
   }
 
   let checkoutUrl: string | null = null;

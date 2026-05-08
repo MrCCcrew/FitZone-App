@@ -79,7 +79,8 @@ model User {
   pendingApproval   Boolean   @default(false) // set true when trainer creates a customer pending admin/head_coach approval
   pendingPartnerRef String? // affiliate link token stored at registration, cleared after first paid subscription
   pendingAgentRef   String? // sales agent referral code stored at registration, cleared after first paid subscription
-  pendingStaffRef   String? // staff referral link token stored at registration, cleared after first paid subscription
+  pendingStaffRef    String? // staff referral link token stored at registration, cleared after first paid subscription
+  pendingTrainerRef  String? // trainer referral link token stored at registration, cleared after first paid subscription
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -122,6 +123,8 @@ model User {
   recordedAttendanceLogs     TrainerAttendanceLog[]      @relation("AttendanceRecorder")
   staffReferralLinks         StaffReferralLink[]         @relation("StaffLinks")
   staffCommissions           StaffCommission[]           @relation("StaffCommissions")
+  trainerReferralLinks       TrainerReferralLink[]       @relation("TrainerLinks")
+  trainerCommissions         TrainerCommission[]         @relation("TrainerCommissions")
 }
 
 model AuditLog {
@@ -197,7 +200,8 @@ model UserMembership {
   partnerCodeId   String?
   affiliateLinkId String?
   salesAgentId    String?  // SalesAgent.id if subscribed via agent referral link
-  staffReferralLinkId String? // StaffReferralLink.id if subscribed via staff referral link
+  staffReferralLinkId   String? // StaffReferralLink.id if subscribed via staff referral link
+  trainerReferralLinkId String? // TrainerReferralLink.id if subscribed via trainer referral link
 
   user          User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
   membership    Membership            @relation(fields: [membershipId], references: [id])
@@ -207,7 +211,8 @@ model UserMembership {
   partnerCode   PartnerCode?          @relation(fields: [partnerCodeId], references: [id], onDelete: SetNull)
   affiliateLink PartnerAffiliateLink? @relation(fields: [affiliateLinkId], references: [id], onDelete: SetNull)
   refAgent      SalesAgent?           @relation(fields: [salesAgentId], references: [id], onDelete: SetNull)
-  staffReferralLink StaffReferralLink? @relation(fields: [staffReferralLinkId], references: [id], onDelete: SetNull)
+  staffReferralLink   StaffReferralLink?   @relation(fields: [staffReferralLinkId], references: [id], onDelete: SetNull)
+  trainerReferralLink TrainerReferralLink? @relation(fields: [trainerReferralLinkId], references: [id], onDelete: SetNull)
   bookings      Booking[]
   attendancePass      AttendancePass?
   attendanceCheckIns  AttendanceCheckIn[]
@@ -215,6 +220,7 @@ model UserMembership {
   agentCommission     AgentCommission?
   salesAgentCommission SalesAgentCommission?
   staffCommission      StaffCommission?
+  trainerCommission    TrainerCommission?
 
   @@index([partnerId])
   @@index([salesAgentUserId])
@@ -1371,6 +1377,42 @@ model StaffCommission {
   userMembership    UserMembership?     @relation(fields: [userMembershipId], references: [id], onDelete: SetNull)
 
   @@index([staffUserId, status])
+  @@index([createdAt])
+}
+
+// ─── Trainer Referral Links & Commissions ─────────────────────────────────────
+
+model TrainerReferralLink {
+  id         String   @id @default(cuid())
+  userId     String   // trainer's user ID
+  token      String   @unique
+  label      String?
+  clickCount Int      @default(0)
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  user        User               @relation("TrainerLinks", fields: [userId], references: [id], onDelete: Cascade)
+  memberships UserMembership[]
+  commissions TrainerCommission[]
+
+  @@index([userId])
+}
+
+model TrainerCommission {
+  id                    String    @id @default(cuid())
+  trainerUserId         String
+  trainerReferralLinkId String?
+  userMembershipId      String?   @unique
+  amount                Float
+  status                String    @default("earned") // earned | settled
+  settledAt             DateTime?
+  createdAt             DateTime  @default(now())
+
+  trainerUser         User                @relation("TrainerCommissions", fields: [trainerUserId], references: [id], onDelete: Cascade)
+  trainerReferralLink TrainerReferralLink? @relation(fields: [trainerReferralLinkId], references: [id], onDelete: SetNull)
+  userMembership      UserMembership?     @relation(fields: [userMembershipId], references: [id], onDelete: SetNull)
+
+  @@index([trainerUserId, status])
   @@index([createdAt])
 }
 
