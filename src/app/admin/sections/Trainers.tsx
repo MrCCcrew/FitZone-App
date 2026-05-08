@@ -604,7 +604,7 @@ export default function Trainers() {
             ...(!isTrainerRole ? [["applications","طلبات البرايفيت"]] as const : []),
             ["discounts","أكواد خصم المدربات"],
             ...(isHeadCoachOrAbove ? [["attendance","الحضور والغياب"]] as const : []),
-            ...(isHeadCoachOrAbove ? [["referrals","لينكات الإحالة"]] as const : []),
+            ...((isHeadCoachOrAbove || isTrainerRole) ? [["referrals","لينكات الإحالة"]] as const : []),
           ] as [string, string][]
         ).map(([key,label]) => (
           <button key={key} onClick={() => setActiveTab(key as typeof activeTab)}
