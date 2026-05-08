@@ -328,8 +328,13 @@ export default function Trainers() {
 
   const loadMembers = useCallback(async () => {
     const res = await fetch("/api/admin/customers", { cache: "no-store" });
-    const data = (await res.json().catch(() => [])) as Array<{ id: string; name: string; email: string }>;
-    setMembers(Array.isArray(data) ? data.map((m) => ({ id: m.id, name: m.name, email: m.email })) : []);
+    const payload = await res.json().catch(() => ({}));
+    const list: Array<{ id: string; name: string; email: string }> = Array.isArray(payload)
+      ? payload
+      : Array.isArray(payload?.customers)
+        ? payload.customers
+        : [];
+    setMembers(list.map((m) => ({ id: m.id, name: m.name, email: m.email })));
   }, []);
 
   useEffect(() => { void load(); }, [load]);
