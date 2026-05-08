@@ -9,8 +9,10 @@ export async function GET() {
   const auth = await requireAdminFeature("trainers");
   if ("error" in auth) return auth.error;
 
+  // Admins and head_coaches see all codes; everyone else sees only their own (if linked to a trainer profile)
   let trainerIdFilter: string | undefined;
-  if (auth.role === "trainer") {
+  const canSeeAll = auth.role === "admin" || auth.role === "head_coach";
+  if (!canSeeAll) {
     const profile = await db.trainer.findFirst({
       where: { userId: auth.session.user.id },
       select: { id: true },
@@ -65,8 +67,8 @@ export async function POST(req: Request) {
 
     if (!body.trainerId) return NextResponse.json({ error: "المدربة مطلوبة." }, { status: 400 });
 
-    // Trainers can only create codes for themselves
-    if (auth.role === "trainer") {
+    // Non-admin/head_coach users can only create codes for themselves
+    if (auth.role !== "admin" && auth.role !== "head_coach") {
       const profile = await db.trainer.findFirst({
         where: { userId: auth.session.user.id },
         select: { id: true },
@@ -145,8 +147,8 @@ export async function DELETE(req: Request) {
     const id = searchParams.get("id");
     if (!id) return NextResponse.json({ error: "id مطلوب" }, { status: 400 });
 
-    // Trainers can only delete their own codes
-    if (auth.role === "trainer") {
+    // Non-admin/head_coach users can only delete their own codes
+    if (auth.role !== "admin" && auth.role !== "head_coach") {
       const profile = await db.trainer.findFirst({
         where: { userId: auth.session.user.id },
         select: { id: true },
