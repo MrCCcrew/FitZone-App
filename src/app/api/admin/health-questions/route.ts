@@ -11,6 +11,7 @@ function mapQuestion(question: {
   prompt: string;
   promptEn: string | null;
   isActive: boolean;
+  allowReason: boolean;
   sortOrder: number;
 }) {
   return {
@@ -21,6 +22,7 @@ function mapQuestion(question: {
     prompt: question.prompt,
     promptEn: question.promptEn,
     active: question.isActive,
+    allowReason: question.allowReason,
     sortOrder: question.sortOrder,
   };
 }
@@ -73,6 +75,7 @@ export async function POST(req: Request) {
       prompt?: string;
       promptEn?: string;
       active?: boolean;
+      allowReason?: boolean;
       sortOrder?: number;
       restrictions?: Array<{ classType: string; notes?: string | null }>;
     };
@@ -101,6 +104,7 @@ export async function POST(req: Request) {
         prompt,
         promptEn: body.promptEn?.trim() || null,
         isActive: body.active ?? true,
+        allowReason: body.allowReason ?? false,
         sortOrder: Number.isFinite(body.sortOrder) ? Number(body.sortOrder) : 0,
         restrictions: restrictions.length
           ? {
@@ -143,6 +147,7 @@ export async function PATCH(req: Request) {
       prompt?: string;
       promptEn?: string;
       active?: boolean;
+      allowReason?: boolean;
       sortOrder?: number;
       restrictions?: Array<{ classType: string; notes?: string | null }>;
     };
@@ -184,6 +189,7 @@ export async function PATCH(req: Request) {
           prompt: body.prompt?.trim() ?? undefined,
           promptEn: body.promptEn === undefined ? undefined : body.promptEn?.trim() || null,
           isActive: body.active,
+          allowReason: body.allowReason,
           sortOrder: body.sortOrder === undefined ? undefined : Number(body.sortOrder),
         },
       });

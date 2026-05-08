@@ -426,9 +426,18 @@ export interface HealthQuestion {
   prompt: string;
   promptEn?: string | null;
   active: boolean;
+  allowReason?: boolean;
   sortOrder: number;
   restrictedClassTypes?: string[];
   restrictions?: Array<{ id: string; classType: string; notes?: string | null }>;
+}
+
+export interface HealthSurveyResponse {
+  questionId: string;
+  questionTitle: string;
+  answer: boolean;
+  reason: string | null;
+  answeredAt: string;
 }
 
 export interface SalesAgentRow {
