@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Trainer } from "../types";
 import { TranslateButton } from "./TranslateButton";
+import TrainerReferrals from "./TrainerReferrals";
 
 type Application = {
   id: string;
@@ -221,7 +222,7 @@ export default function Trainers() {
   const [search, setSearch] = useState("");
   const [modal, setModal] = useState<EditableTrainer | null>(null);
   const [linkedUserDiscount, setLinkedUserDiscount] = useState<{ discountType: string; discountValue: number; maxDiscount: number | null } | null>(null);
-  const [activeTab, setActiveTab] = useState<"trainers" | "applications" | "discounts" | "attendance">("trainers");
+  const [activeTab, setActiveTab] = useState<"trainers" | "applications" | "discounts" | "attendance" | "referrals">("trainers");
 
   // Applications
   const [userRole, setUserRole] = useState<string | null>(null);
@@ -603,6 +604,7 @@ export default function Trainers() {
             ...(!isTrainerRole ? [["applications","طلبات البرايفيت"]] as const : []),
             ["discounts","أكواد خصم المدربات"],
             ...(isHeadCoachOrAbove ? [["attendance","الحضور والغياب"]] as const : []),
+            ...(isHeadCoachOrAbove ? [["referrals","لينكات الإحالة"]] as const : []),
           ] as [string, string][]
         ).map(([key,label]) => (
           <button key={key} onClick={() => setActiveTab(key as typeof activeTab)}
@@ -883,6 +885,11 @@ export default function Trainers() {
             </div>
           )}
         </section>
+      )}
+
+      {/* ── Referrals Tab ── */}
+      {activeTab === "referrals" && (
+        <TrainerReferrals userRole={userRole ?? undefined} />
       )}
 
       {/* ── Trainers Tab ── */}
