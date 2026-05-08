@@ -55,7 +55,7 @@ export default function TrainerReferrals({ userRole }: { userRole?: string }) {
     if (!isAdmin) return;
     fetch("/api/admin/trainers", { cache: "no-store" })
       .then((r) => r.json()).then((d) => {
-        const trainers = Array.isArray(d.trainers) ? d.trainers : [];
+        const trainers = Array.isArray(d) ? d : Array.isArray(d.trainers) ? d.trainers : [];
         const list = trainers
           .filter((t: any) => t.linkedUser?.id)
           .map((t: any) => ({ id: t.linkedUser.id, name: t.name, email: t.linkedUser.email }));
