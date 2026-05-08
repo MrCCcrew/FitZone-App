@@ -243,8 +243,20 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  const error = await checkAdmin();
-  if (error) return error;
+  const guard = await requireAdminFeature("classes");
+  if ("error" in guard) return guard.error;
+
+  let ownTrainerId: string | null = null;
+  if (guard.role === "trainer") {
+    const profile = await db.trainer.findFirst({
+      where: { userId: guard.session.user.id },
+      select: { id: true, canAddClasses: true },
+    });
+    if (!profile?.canAddClasses) {
+      return NextResponse.json({ error: "ليس لديك صلاحية تعديل الكلاسات." }, { status: 403 });
+    }
+    ownTrainerId = profile.id;
+  }
 
   try {
     const body = (await request.json()) as {
@@ -274,13 +286,21 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: "معرّف الكلاس مطلوب." }, { status: 400 });
     }
 
+    // Trainers can only edit their own classes
+    if (ownTrainerId) {
+      const cls = await db.class.findUnique({ where: { id: body.id }, select: { trainerId: true } });
+      if (!cls || cls.trainerId !== ownTrainerId) {
+        return NextResponse.json({ error: "لا يمكنك تعديل كلاس لا يخصك." }, { status: 403 });
+      }
+    }
+
     const data: Record<string, unknown> = {};
     if (body.active !== undefined) data.isActive = Boolean(body.active);
     if (body.name !== undefined) data.name = body.name.trim();
     if (body.nameEn !== undefined) data.nameEn = body.nameEn.trim() || null;
     if (body.description !== undefined) data.description = body.description?.trim() || null;
     if (body.descriptionEn !== undefined) data.descriptionEn = body.descriptionEn?.trim() || null;
-    if (body.trainerId !== undefined) data.trainerId = body.trainerId;
+    if (body.trainerId !== undefined && !ownTrainerId) data.trainerId = body.trainerId;
     if (body.category !== undefined) data.category = body.category?.trim() || null;
     if (body.categoryEn !== undefined) data.categoryEn = body.categoryEn?.trim() || null;
     if (body.type !== undefined) data.type = body.type.trim() || "strength";

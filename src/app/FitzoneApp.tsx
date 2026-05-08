@@ -4310,10 +4310,12 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
                 </div>
               ) : (
                 <>
-                  <div style={{ display: "flex", alignItems: "flex-start", gap: 8, background: "rgba(74,222,128,.07)", border: "1px solid rgba(74,222,128,.3)", borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 13, color: "#4ade80", fontWeight: 700, lineHeight: 1.6 }}>
-                    <span style={{ fontSize: 16, flexShrink: 0 }}>✅</span>
-                    <span>{t("يمكنكِ حجز أكثر من كلاس في نفس اليوم.", "You can book more than one class on the same day.")}</span>
-                  </div>
+                  {!schedulePlan.isTrial && (
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: 8, background: "rgba(74,222,128,.07)", border: "1px solid rgba(74,222,128,.3)", borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 13, color: "#4ade80", fontWeight: 700, lineHeight: 1.6 }}>
+                      <span style={{ fontSize: 16, flexShrink: 0 }}>✅</span>
+                      <span>{t("يمكنكِ حجز أكثر من كلاس في نفس اليوم.", "You can book more than one class on the same day.")}</span>
+                    </div>
+                  )}
                   {scheduleSplit.morning.length > 0 && (
                     <div className="schedule-block">
                       <div className="schedule-block-title">الجدول الصباحي</div>

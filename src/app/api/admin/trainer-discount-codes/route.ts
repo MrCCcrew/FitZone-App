@@ -9,7 +9,18 @@ export async function GET() {
   const auth = await requireAdminFeature("trainers");
   if ("error" in auth) return auth.error;
 
+  let trainerIdFilter: string | undefined;
+  if (auth.role === "trainer") {
+    const profile = await db.trainer.findFirst({
+      where: { userId: auth.session.user.id },
+      select: { id: true },
+    });
+    if (!profile) return NextResponse.json({ codes: [] });
+    trainerIdFilter = profile.id;
+  }
+
   const codes = await db.trainerDiscountCode.findMany({
+    where: trainerIdFilter ? { trainerId: trainerIdFilter } : undefined,
     orderBy: { createdAt: "desc" },
     include: {
       trainer: { select: { id: true, name: true } },
@@ -53,6 +64,17 @@ export async function POST(req: Request) {
     };
 
     if (!body.trainerId) return NextResponse.json({ error: "المدربة مطلوبة." }, { status: 400 });
+
+    // Trainers can only create codes for themselves
+    if (auth.role === "trainer") {
+      const profile = await db.trainer.findFirst({
+        where: { userId: auth.session.user.id },
+        select: { id: true },
+      });
+      if (!profile || profile.id !== body.trainerId) {
+        return NextResponse.json({ error: "لا يمكنك إنشاء كود باسم مدربة أخرى." }, { status: 403 });
+      }
+    }
     if (!body.targetUserId) return NextResponse.json({ error: "العميل مطلوب." }, { status: 400 });
     if (!body.discountValue || body.discountValue <= 0)
       return NextResponse.json({ error: "قيمة الخصم يجب أن تكون أكبر من صفر." }, { status: 400 });
@@ -122,6 +144,18 @@ export async function DELETE(req: Request) {
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
     if (!id) return NextResponse.json({ error: "id مطلوب" }, { status: 400 });
+
+    // Trainers can only delete their own codes
+    if (auth.role === "trainer") {
+      const profile = await db.trainer.findFirst({
+        where: { userId: auth.session.user.id },
+        select: { id: true },
+      });
+      const code = await db.trainerDiscountCode.findUnique({ where: { id }, select: { trainerId: true } });
+      if (!profile || !code || code.trainerId !== profile.id) {
+        return NextResponse.json({ error: "لا يمكنك حذف كود لا يخصك." }, { status: 403 });
+      }
+    }
 
     await db.trainerDiscountCode.delete({ where: { id } });
     return NextResponse.json({ success: true });
