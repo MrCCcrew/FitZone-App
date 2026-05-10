@@ -643,8 +643,8 @@ model Offer {
   discount           Float
   description        String?     @db.Text
   descriptionEn      String?     @db.Text
-  appliesTo          String?
-  appliesToEn        String?
+  appliesTo          String? @db.Text
+  appliesToEn        String? @db.Text
   expiresAt          DateTime
   isActive           Boolean     @default(true)
   membershipId       String?
