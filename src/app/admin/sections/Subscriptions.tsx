@@ -581,9 +581,21 @@ export default function Subscriptions() {
                       : "border-[rgba(255,188,219,0.08)] bg-black/10 opacity-65"
                   }`}
                 >
+                  {plan.image ? (
+                    <img
+                      src={plan.image}
+                      alt={plan.name}
+                      className="mb-3 h-28 w-full rounded-xl border border-[rgba(255,188,219,0.14)] object-cover"
+                    />
+                  ) : (
+                    <div className="mb-3 flex h-28 items-center justify-center rounded-xl border border-dashed border-[rgba(255,188,219,0.18)] text-xs text-[#d7aabd]">
+                      بدون صورة
+                    </div>
+                  )}
                   <div className="mb-3 flex items-start justify-between gap-2">
                     <div>
                       <div className="font-black text-[#fff4f8]">{plan.name}</div>
+                      {plan.nameEn ? <div className="mt-0.5 text-xs text-[#d7aabd]">{plan.nameEn}</div> : null}
                       <div className="mt-1 text-xs text-[#d7aabd]">
                         {plan.minMonths ?? 3} – {plan.maxMonths ?? 6} شهور
                       </div>
