@@ -708,62 +708,64 @@ export default function Subscriptions() {
                 </Field>
               </div>
             ) : (
-            <div className="grid gap-4 sm:grid-cols-3">
-              <Field label="السعر">
-                <input type="number" value={planModal.price} onChange={(event) => setPlanModal({ ...planModal, price: Number(event.target.value) })} className={INPUT} dir="ltr" />
-              </Field>
+              <>
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <Field label="السعر">
+                    <input type="number" value={planModal.price} onChange={(event) => setPlanModal({ ...planModal, price: Number(event.target.value) })} className={INPUT} dir="ltr" />
+                  </Field>
 
-              <Field label="الدورة">
-                <select value={planModal.cycle ?? "monthly"} onChange={(event) => setPlanModal({ ...planModal, cycle: event.target.value as Plan["cycle"] })} className={INPUT}>
-                  <option value="monthly">شهري</option>
-                  <option value="quarterly">ربع سنوي</option>
-                  <option value="semi_annual">نصف سنوي</option>
-                  <option value="annual">سنوي</option>
-                  <option value="custom">مخصص</option>
-                </select>
-              </Field>
+                  <Field label="الدورة">
+                    <select value={planModal.cycle ?? "monthly"} onChange={(event) => setPlanModal({ ...planModal, cycle: event.target.value as Plan["cycle"] })} className={INPUT}>
+                      <option value="monthly">شهري</option>
+                      <option value="quarterly">ربع سنوي</option>
+                      <option value="semi_annual">نصف سنوي</option>
+                      <option value="annual">سنوي</option>
+                      <option value="custom">مخصص</option>
+                    </select>
+                  </Field>
 
-              <Field label="ترتيب الظهور" hint="أرقام أصغر تظهر أولًا.">
-                <input
-                  type="number"
-                  value={planModal.sortOrder ?? 0}
-                  onChange={(event) =>
-                    setPlanModal({ ...planModal, sortOrder: Number(event.target.value) })
-                  }
-                  className={INPUT}
-                  dir="ltr"
-                />
-              </Field>
-            </div>
+                  <Field label="ترتيب الظهور" hint="أرقام أصغر تظهر أولًا.">
+                    <input
+                      type="number"
+                      value={planModal.sortOrder ?? 0}
+                      onChange={(event) =>
+                        setPlanModal({ ...planModal, sortOrder: Number(event.target.value) })
+                      }
+                      className={INPUT}
+                      dir="ltr"
+                    />
+                  </Field>
+                </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="نوع الخصم" hint="اختاري نسبة مئوية أو مبلغ ثابت.">
-                <select
-                  value={planModal.discountType ?? "percentage"}
-                  onChange={(event) =>
-                    setPlanModal({ ...planModal, discountType: event.target.value as "percentage" | "fixed" })
-                  }
-                  className={INPUT}
-                >
-                  <option value="percentage">نسبة مئوية</option>
-                  <option value="fixed">مبلغ ثابت</option>
-                </select>
-              </Field>
-              <Field label="قيمة الخصم" hint="اتركيها فارغة إذا لا يوجد خصم.">
-                <input
-                  type="number"
-                  value={planModal.discountValue ?? ""}
-                  onChange={(event) =>
-                    setPlanModal({
-                      ...planModal,
-                      discountValue: event.target.value === "" ? null : Number(event.target.value),
-                    })
-                  }
-                  className={INPUT}
-                  dir="ltr"
-                />
-              </Field>
-            </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="نوع الخصم" hint="اختاري نسبة مئوية أو مبلغ ثابت.">
+                    <select
+                      value={planModal.discountType ?? "percentage"}
+                      onChange={(event) =>
+                        setPlanModal({ ...planModal, discountType: event.target.value as "percentage" | "fixed" })
+                      }
+                      className={INPUT}
+                    >
+                      <option value="percentage">نسبة مئوية</option>
+                      <option value="fixed">مبلغ ثابت</option>
+                    </select>
+                  </Field>
+                  <Field label="قيمة الخصم" hint="اتركيها فارغة إذا لا يوجد خصم.">
+                    <input
+                      type="number"
+                      value={planModal.discountValue ?? ""}
+                      onChange={(event) =>
+                        setPlanModal({
+                          ...planModal,
+                          discountValue: event.target.value === "" ? null : Number(event.target.value),
+                        })
+                      }
+                      className={INPUT}
+                      dir="ltr"
+                    />
+                  </Field>
+                </div>
+              </>
             )}
 
             <Field label="صورة الاشتراك" hint="المقاس المثالي: 1020 × 720 بكسل بنسبة 1.4:1، وهو نفس مقاس صور العروض حتى تظهر الباقات بنفس التصميم والتناسق.">
