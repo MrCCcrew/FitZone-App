@@ -2448,7 +2448,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
       </section>
 
       {/* ─ HOME OFFERS GRID ─ */}
-      {homeOffers.length > 0 && (
+      {(homeOffers.length > 0 || homeCustomPlans.length > 0) && (
         <section className="section" style={{ paddingTop: 48, paddingBottom: 48 }}>
           <div className="container">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 32, flexWrap: "wrap", gap: 12 }}>
@@ -2458,7 +2458,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
               </div>
               <button className="btn-outline" onClick={() => navigate("offers")}>{t("مزيد من العروض", "More offers")}</button>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", homeOffers.length === 1 ? "1fr" : "1fr 1fr", `repeat(${Math.min(homeOffers.length, 3)}, 1fr)`), gap: 24 }}>
+            <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", `repeat(${Math.min(homeOffers.length + homeCustomPlans.length, 3)}, 1fr)`), gap: 24 }}>
               {homeOffers.map((offer) => {
                 const cd = getCountdownParts(offer.expiresAt);
                 const maxSubscribers = typeof offer.maxSubscribers === "number" ? offer.maxSubscribers : null;
@@ -2548,23 +2548,6 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                   </div>
                 );
               })}
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* ─ HOME CUSTOM PLANS ─ */}
-      {homeCustomPlans.length > 0 && (
-        <section className="section" style={{ paddingTop: 48, paddingBottom: 48 }}>
-          <div className="container">
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 32, flexWrap: "wrap", gap: 12 }}>
-              <div>
-                <h2 className="section-title">{t("عروض", "Flexible")} <span>{t("التخصيص", "Plans")}</span></h2>
-                <p style={{ color: C.gray, fontSize: 14, marginTop: 4 }}>{t("اختاري عدد الشهور اللي يناسبك وادفعي بسعر مخصوص", "Choose the duration that suits you at a special rate")}</p>
-              </div>
-              <button className="btn-outline" onClick={() => navigate("offers")}>{t("مزيد من العروض", "More offers")}</button>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", `repeat(${Math.min(homeCustomPlans.length, 3)}, 1fr)`), gap: 24 }}>
               {homeCustomPlans.map((plan) => {
                 const minM = plan.minMonths ?? 3;
                 const maxM = plan.maxMonths ?? 6;
