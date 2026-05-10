@@ -163,8 +163,8 @@ model Membership {
   duration    Int     // days
   cycle       String? // monthly | quarterly | semi_annual | annual | custom
   sessionsCount Int?  // عدد الحصص للاشتراك
-  features    String  // JSON array stored as string
-  featuresEn  String?
+  features    String  @db.Text // JSON array stored as string
+  featuresEn  String? @db.Text
   classSessions String? @db.LongText // JSON: class-specific sessions
   productRewards String? @db.LongText // JSON: product benefits for packages
   maxClasses  Int     @default(-1) // -1 = unlimited
