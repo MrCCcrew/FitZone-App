@@ -8562,7 +8562,7 @@ const ContactPage = () => {
                       {t("FitZone — بني سويف", "FitZone — Beni Suef")}
                     </div>
                     <div style={{ color: C.gray, fontSize: 12, lineHeight: 1.6 }}>
-                      {t("مقابل أمام بنك القاهرة بجوار شام للسياحة فوق كازيون", "Opposite Cairo Bank, next to Sham Tourism, above Cazino")}
+                      {t("مقبل أمام بنك القاهرة بجوار شام للسياحة فوق كازيون", "Opposite Cairo Bank, next to Sham Tourism, above Cazino")}
                     </div>
                   </div>
                 </div>
