@@ -151,7 +151,7 @@ export default function Subscriptions() {
       const offersPayload = await offersResponse.json();
       const goalsPayload = await goalsResponse.json();
       const productsPayload = await productsResponse.json().catch(() => []);
-      setPlans(Array.isArray(plansPayload) ? plansPayload.filter((p: Plan) => p.kind === "subscription" || p.kind === "custom") : []);
+      setPlans(Array.isArray(plansPayload) ? plansPayload.filter((p: Plan) => p.kind === "subscription") : []);
       setAllPlans(Array.isArray(allPlansPayload) ? allPlansPayload : []);
       setOffers(Array.isArray(offersPayload) ? offersPayload : []);
       setGoals(Array.isArray(goalsPayload) ? goalsPayload.filter((goal) => goal.active) : []);
@@ -547,6 +547,12 @@ export default function Subscriptions() {
           </div>
           <div className="flex flex-wrap gap-2">
             <button
+              onClick={() => setPlanModal({ ...EMPTY_PLAN, kind: "custom", minMonths: 3, maxMonths: 6, discountPct: 50 })}
+              className="rounded-xl bg-[#ff4f93] px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-[#ff2f7d]"
+            >
+              + إضافة عرض تخصيص
+            </button>
+            <button
               onClick={() => setOfferModal({ ...EMPTY_OFFER, type: "percentage", title: "", discount: 10, validUntil: "" })}
               className="rounded-xl bg-[#ffd166] px-4 py-2 text-sm font-bold text-black transition-colors hover:bg-[#ffcc55]"
             >
@@ -560,6 +566,65 @@ export default function Subscriptions() {
             </button>
           </div>
         </div>
+
+        {/* Custom plans (عروض التخصيص) */}
+        {allPlans.filter((p) => p.kind === "custom").length > 0 && (
+          <div className="mb-6">
+            <h4 className="mb-3 text-sm font-black text-[#ff97bf]">عروض التخصيص (اختيار الشهور)</h4>
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {allPlans.filter((p) => p.kind === "custom").map((plan) => (
+                <div
+                  key={plan.id}
+                  className={`rounded-[20px] border p-4 ${
+                    plan.active
+                      ? "border-[rgba(255,79,147,0.25)] bg-[rgba(255,79,147,0.06)]"
+                      : "border-[rgba(255,188,219,0.08)] bg-black/10 opacity-65"
+                  }`}
+                >
+                  <div className="mb-3 flex items-start justify-between gap-2">
+                    <div>
+                      <div className="font-black text-[#fff4f8]">{plan.name}</div>
+                      <div className="mt-1 text-xs text-[#d7aabd]">
+                        {plan.minMonths ?? 3} – {plan.maxMonths ?? 6} شهور
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => void togglePlan(plan.id, plan.active)}
+                      className={`relative h-5 w-10 shrink-0 rounded-full transition-colors ${plan.active ? "bg-[#ff4f93]" : "bg-white/15"}`}
+                    >
+                      <span
+                        className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${
+                          plan.active ? "right-0.5" : "left-0.5"
+                        }`}
+                      />
+                    </button>
+                  </div>
+                  <div className="text-xl font-black text-[#ffd166]">{plan.price.toLocaleString("ar-EG")}</div>
+                  <div className="text-xs text-[#d7aabd]">ج.م / شهر</div>
+                  {plan.discountPct ? (
+                    <div className="mt-1 text-xs text-[#4ade80]">خصم {plan.discountPct}%</div>
+                  ) : null}
+                  <div className="mt-1 text-xs text-[#d7aabd]">{plan.membersCount.toLocaleString("ar-EG")} مشتركة نشطة</div>
+                  <div className="mt-4 flex gap-2">
+                    <button
+                      onClick={() => setPlanModal(withDiscountDraft(plan))}
+                      className="flex-1 rounded-lg bg-white/5 px-3 py-2 text-xs font-bold text-[#fff4f8] transition-colors hover:bg-white/10"
+                    >
+                      تعديل
+                    </button>
+                    <button
+                      onClick={() => void deletePlan(plan.id)}
+                      className="rounded-lg bg-rose-500/10 px-3 py-2 text-xs font-bold text-rose-300 transition-colors hover:bg-rose-500/20"
+                    >
+                      حذف
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <hr className="mt-6 border-[rgba(255,188,219,0.12)]" />
+          </div>
+        )}
 
         {offers.length === 0 ? (
           <AdminEmptyState title="لا توجد عروض بعد" description="أضف عرضًا عاديًا أو عرضًا خاصًا مع صورة ومدة وعدد مشتركين ليظهر للعميل بشكل مميز." />
@@ -666,7 +731,14 @@ export default function Subscriptions() {
       </AdminCard>
 
       {planModal ? (
-        <Modal title={"id" in planModal && planModal.id ? "تعديل الاشتراك" : "إضافة اشتراك"} onClose={() => { setPlanModal(null); setFeatureInput(""); setFeatureInputEn(""); }}>
+        <Modal
+          title={
+            "id" in planModal && planModal.id
+              ? planModal.kind === "custom" ? "تعديل عرض التخصيص" : "تعديل الاشتراك"
+              : planModal.kind === "custom" ? "إضافة عرض تخصيص" : "إضافة اشتراك"
+          }
+          onClose={() => { setPlanModal(null); setFeatureInput(""); setFeatureInputEn(""); }}
+        >
           <div className="space-y-4">
             <Field label="اسم الاشتراك">
               <input value={planModal.name} onChange={(event) => setPlanModal({ ...planModal, name: event.target.value })} className={INPUT} />
