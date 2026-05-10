@@ -4023,16 +4023,16 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
                 const total = Math.round(customMonthsPlan.price * m * (1 - pct / 100));
                 const selected = selectedCustomMonths === m;
                 return (
-                  <button key={m} onClick={() => setSelectedCustomMonths(m)} style={{ flex: "1 1 calc(50% - 10px)", minWidth: 120, padding: "14px 10px", borderRadius: 14, border: `2px solid ${selected ? C.pink : "rgba(255,255,255,.15)"}`, background: selected ? "rgba(233,30,99,.18)" : "rgba(255,255,255,.04)", cursor: "pointer", textAlign: "center" }}>
+                  <button key={m} onClick={() => setSelectedCustomMonths(m)} style={{ flex: "1 1 calc(50% - 10px)", minWidth: 120, padding: "14px 10px", borderRadius: 14, border: `2px solid ${selected ? C.red : "rgba(255,255,255,.15)"}`, background: selected ? "rgba(233,30,99,.18)" : "rgba(255,255,255,.04)", cursor: "pointer", textAlign: "center" }}>
                     <div style={{ fontWeight: 900, fontSize: 18, color: "#fff" }}>{m} {t("شهور", "months")}</div>
                     <div style={{ fontSize: 11, color: "#bbb", marginTop: 2 }}>{customMonthsPlan.price} × {m} = <span style={{ color: "#f87" }}>{customMonthsPlan.price * m} ج.م</span></div>
-                    <div style={{ fontSize: 15, fontWeight: 800, color: C.pink, marginTop: 4 }}>{total} {t("ج.م", "EGP")}</div>
+                    <div style={{ fontSize: 15, fontWeight: 800, color: C.red, marginTop: 4 }}>{total} {t("ج.م", "EGP")}</div>
                     {pct > 0 && <div style={{ fontSize: 10, color: "#4ade80", marginTop: 2 }}>خصم {pct}%</div>}
                   </button>
                 );
               })}
             </div>
-            <button onClick={confirmCustomMonths} style={{ width: "100%", padding: "14px 0", borderRadius: 14, background: C.pink, border: "none", color: "#fff", fontWeight: 900, fontSize: 16, cursor: "pointer" }}>
+            <button onClick={confirmCustomMonths} style={{ width: "100%", padding: "14px 0", borderRadius: 14, background: C.red, border: "none", color: "#fff", fontWeight: 900, fontSize: 16, cursor: "pointer" }}>
               {t("متابعة →", "Continue →")}
             </button>
           </div>
