@@ -1519,6 +1519,11 @@ function formatClassType(value: string) {
   return CLASS_TYPE_LABELS[key] ?? value;
 }
 
+function isYogaType(type: string): boolean {
+  const key = normalizeClassTypeKey(type);
+  return key === "yoga" || key === "يوجا";
+}
+
 function readCart(): CartItem[] {
   if (typeof window === "undefined") return [];
   try {
@@ -3903,7 +3908,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
     // For trial class: determine price from selected slot type (yoga=100, other=50)
     if (plan.isTrial && selected.length > 0) {
       const slot = scheduleChoices.find((c) => c.id === selected[0]);
-      const isYoga = normalizeClassTypeKey(slot?.type ?? "") === "yoga";
+      const isYoga = isYogaType(slot?.type ?? "");
       plan = { ...plan, price: isYoga ? 100 : 50 };
     }
     setSchedulePlan(null);
@@ -4399,7 +4404,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
                                           const selected = scheduleSelections.includes(entry.id);
                                           const disabled = entry.availableSpots <= 0;
                                           const trialPrice = schedulePlan?.isTrial
-                                            ? (normalizeClassTypeKey(entry.type) === "yoga" ? 100 : 50)
+                                            ? (isYogaType(entry.type) ? 100 : 50)
                                             : null;
                                           return (
                                             <button
@@ -4472,7 +4477,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
                                           const selected = scheduleSelections.includes(entry.id);
                                           const disabled = entry.availableSpots <= 0;
                                           const trialPrice = schedulePlan?.isTrial
-                                            ? (normalizeClassTypeKey(entry.type) === "yoga" ? 100 : 50)
+                                            ? (isYogaType(entry.type) ? 100 : 50)
                                             : null;
                                           return (
                                             <button
