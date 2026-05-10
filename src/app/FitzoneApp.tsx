@@ -2043,6 +2043,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
   const [testimonials, setTestimonials] = useState<PublicTestimonial[]>([]);
   const [products, setProducts] = useState<StoreProduct[]>([]);
   const [homeOffers, setHomeOffers] = useState<PublicOffer[]>([]);
+  const [homeCustomPlans, setHomeCustomPlans] = useState<PublicMembership[]>([]);
   const [homeFeaturedPlan, setHomeFeaturedPlan] = useState<{ id: string; name: string; price: number; priceBefore: number | null; subtitle: string | null; features: string[]; durationDays: number } | null>(null);
   const [trialMembership, setTrialMembership] = useState<{ id: string; name: string; price: number; sessionsCount: number; features: string[]; durationDays: number } | null>(null);
   const [todayClasses, setTodayClasses] = useState<Array<{ id: string; time: string; name: string; trainer: string; spots: number; color: string; type: string }>>([]);
@@ -2086,8 +2087,10 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
         const featured = (d.memberships as PublicMembership[]).find((mb) => mb.isFeatured);
         setHomeFeaturedPlan(featured ? { id: featured.id, name: featured.name, price: featured.priceAfter ?? featured.price, priceBefore: featured.priceBefore ?? null, subtitle: featured.subtitle ?? null, features: featured.features.slice(0, 4), durationDays: featured.durationDays } : null);
         const packages = (d.memberships as PublicMembership[]).filter((mb) => mb.kind === "package");
-        const subscriptions = (d.memberships as PublicMembership[]).filter((mb) => mb.kind === "subscription" || mb.kind === "custom");
+        const subscriptions = (d.memberships as PublicMembership[]).filter((mb) => mb.kind === "subscription");
         const source = packages.length > 0 ? packages : subscriptions;
+        const homeCustom = (d.memberships as PublicMembership[]).filter((mb) => mb.kind === "custom");
+        setHomeCustomPlans(homeCustom.slice(0, 3));
         setMemberships(source.slice(0, 3).map((mb, i) => ({
           id: mb.id,
           name: mb.name,
@@ -2540,6 +2543,67 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                         {cd.expired
                           ? t("انتهى العرض", "Ended")
                           : t("اشتركي الآن", "Join now")}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ─ HOME CUSTOM PLANS ─ */}
+      {homeCustomPlans.length > 0 && (
+        <section className="section" style={{ paddingTop: 48, paddingBottom: 48 }}>
+          <div className="container">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 32, flexWrap: "wrap", gap: 12 }}>
+              <div>
+                <h2 className="section-title">{t("عروض", "Flexible")} <span>{t("التخصيص", "Plans")}</span></h2>
+                <p style={{ color: C.gray, fontSize: 14, marginTop: 4 }}>{t("اختاري عدد الشهور اللي يناسبك وادفعي بسعر مخصوص", "Choose the duration that suits you at a special rate")}</p>
+              </div>
+              <button className="btn-outline" onClick={() => navigate("offers")}>{t("مزيد من العروض", "More offers")}</button>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", `repeat(${Math.min(homeCustomPlans.length, 3)}, 1fr)`), gap: 24 }}>
+              {homeCustomPlans.map((plan) => {
+                const minM = plan.minMonths ?? 3;
+                const maxM = plan.maxMonths ?? 6;
+                const pct = plan.discountPct ?? 0;
+                return (
+                  <div key={plan.id} className="card card-hover" style={{ padding: 0, overflow: "hidden", border: `1px solid ${C.red}33`, boxShadow: "0 18px 45px rgba(233,30,99,.12)", display: "flex", flexDirection: "column", height: "100%" }}>
+                    <div style={{ height: 180, overflow: "hidden", position: "relative", flexShrink: 0 }}>
+                      {plan.image ? (
+                        <img src={plan.image} alt={plan.name} style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "center", display: "block" }} />
+                      ) : (
+                        <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, background: `linear-gradient(135deg, ${C.red}22, ${C.red}0D)` }}>
+                          <div style={{ fontSize: 42 }}>🎯</div>
+                          <div style={{ color: C.red, fontSize: 12, fontWeight: 800 }}>{t("عرض تخصيص", "Custom plan")}</div>
+                        </div>
+                      )}
+                      <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(10,5,8,.80) 0%, transparent 55%)" }} />
+                      {pct > 0 && (
+                        <span style={{ position: "absolute", top: 12, insetInlineStart: 12, background: C.gold, color: "#000", fontSize: 11, fontWeight: 800, padding: "3px 10px", borderRadius: 20 }}>
+                          {t(`خصم ${pct}%`, `${pct}% off`)}
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ padding: "20px 22px 22px", display: "flex", flexDirection: "column", flex: 1 }}>
+                      <div style={{ fontSize: 32, fontWeight: 900, color: C.red, lineHeight: 1, marginBottom: 2 }}>{plan.price.toLocaleString(lang === "en" ? "en-US" : "ar-EG")}</div>
+                      <div style={{ fontSize: 11, color: C.gray, marginBottom: 10 }}>{t("ج.م / شهر", "EGP / month")}</div>
+                      <h3 style={{ fontWeight: 800, fontSize: 16, color: C.white, marginBottom: 8 }}>{plan.name}</h3>
+                      <div style={{ display: "flex", gap: 10, color: C.gray, fontSize: 12, marginBottom: 14, flexWrap: "wrap" }}>
+                        <span>📅 {minM} – {maxM} {t("شهور", "months")}</span>
+                        {pct > 0 && <span style={{ color: "#4ade80" }}>✅ {t(`خصم ${pct}% على الإجمالي`, `${pct}% total discount`)}</span>}
+                      </div>
+                      <ul style={{ listStyle: "none", marginBottom: 20, flex: 1 }}>
+                        {(plan.features ?? []).slice(0, 4).map((item) => (
+                          <li key={`${plan.id}-${item}`} style={{ display: "flex", gap: 10, padding: "7px 0", fontSize: 13, color: C.grayLight, borderBottom: `1px solid ${C.border}` }}>
+                            <I n="check" s={14} c={C.red} /> {item}
+                          </li>
+                        ))}
+                      </ul>
+                      <button className="btn-primary" style={{ width: "100%", justifyContent: "center", fontSize: 14, marginTop: "auto" }} onClick={() => startMembershipFlow(plan.id)}>
+                        {t("اشتركي الآن", "Subscribe now")}
                       </button>
                     </div>
                   </div>
@@ -5328,6 +5392,7 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
   const { lang } = useLang();
   const [offers, setOffers] = useState(DEFAULT_OFFERS);
   const [packages, setPackages] = useState<PublicMembership[]>([]);
+  const [customPlans, setCustomPlans] = useState<PublicMembership[]>([]);
   const openSubscribeModal = (membershipId?: string | null, offerId?: string | null, offerSpecialPrice?: number | null) => {
     if (typeof window !== "undefined") {
       const pendingFlow: PendingMembershipFlow = {
@@ -5356,6 +5421,8 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
       if (Array.isArray(d.memberships)) {
         const pack = (d.memberships as PublicMembership[]).filter((mb) => mb.kind === "package");
         setPackages(pack);
+        const custom = (d.memberships as PublicMembership[]).filter((mb) => mb.kind === "custom");
+        setCustomPlans(custom);
       }
     }).catch(() => {});
   }, [lang]);
@@ -5491,6 +5558,60 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
               </div>
             )})}
           </div>
+
+          {customPlans.length > 0 && (
+            <>
+              <h2 className="section-title" style={{ marginTop: 64, marginBottom: 8 }}>{t("عروض", "Flexible")} <span>{t("التخصيص", "Plans")}</span></h2>
+              <p style={{ color: C.gray, fontSize: 14, marginBottom: 32 }}>{t("اختاري عدد الشهور اللي يناسبك وادفعي بسعر مخصوص", "Choose the duration that suits you at a special rate")}</p>
+              <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 24, marginBottom: 0 }}>
+                {customPlans.map((plan, i) => {
+                  const minM = plan.minMonths ?? 3;
+                  const maxM = plan.maxMonths ?? 6;
+                  const pct = plan.discountPct ?? 0;
+                  const planColor = PLAN_COLORS[i % PLAN_COLORS.length];
+                  return (
+                    <div key={plan.id} className="card card-hover" style={{ padding: 0, overflow: "hidden", border: `1px solid ${planColor}33`, boxShadow: "0 18px 45px rgba(233,30,99,.12)", display: "flex", flexDirection: "column", height: "100%" }}>
+                      <div style={{ height: 200, overflow: "hidden", position: "relative", flexShrink: 0 }}>
+                        {plan.image ? (
+                          <img src={plan.image} alt={plan.name} style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "center", display: "block" }} />
+                        ) : (
+                          <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, background: `linear-gradient(135deg, ${planColor}22, ${planColor}0D)` }}>
+                            <div style={{ fontSize: 42 }}>🎯</div>
+                            <div style={{ color: planColor, fontSize: 12, fontWeight: 800 }}>{t("عرض تخصيص", "Custom plan")}</div>
+                          </div>
+                        )}
+                        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(10,5,8,.80) 0%, transparent 55%)" }} />
+                        {pct > 0 && (
+                          <span style={{ position: "absolute", top: 12, insetInlineStart: 12, background: C.gold, color: "#000", fontSize: 11, fontWeight: 800, padding: "3px 10px", borderRadius: 20 }}>
+                            {t(`خصم ${pct}%`, `${pct}% off`)}
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ padding: "20px 22px 22px", display: "flex", flexDirection: "column", flex: 1 }}>
+                        <div style={{ fontSize: 32, fontWeight: 900, color: planColor, lineHeight: 1, marginBottom: 2 }}>{plan.price.toLocaleString(lang === "en" ? "en-US" : "ar-EG")}</div>
+                        <div style={{ fontSize: 11, color: C.gray, marginBottom: 10 }}>{t("ج.م / شهر", "EGP / month")}</div>
+                        <h3 style={{ fontWeight: 800, fontSize: 16, color: C.white, marginBottom: 8 }}>{plan.name}</h3>
+                        <div style={{ display: "flex", gap: 10, color: C.gray, fontSize: 12, marginBottom: 14, flexWrap: "wrap" }}>
+                          <span>📅 {minM} – {maxM} {t("شهور", "months")}</span>
+                          {pct > 0 && <span style={{ color: "#4ade80" }}>✅ {t(`خصم ${pct}% على الإجمالي`, `${pct}% total discount`)}</span>}
+                        </div>
+                        <ul style={{ listStyle: "none", marginBottom: 20, flex: 1 }}>
+                          {(plan.features ?? []).map((item) => (
+                            <li key={`${plan.id}-${item}`} style={{ display: "flex", gap: 10, padding: "7px 0", fontSize: 13, color: C.grayLight, borderBottom: `1px solid ${C.border}` }}>
+                              <I n="check" s={14} c={planColor} /> {item}
+                            </li>
+                          ))}
+                        </ul>
+                        <button className="btn-primary" style={{ width: "100%", justifyContent: "center", fontSize: 14, background: planColor, borderColor: planColor, marginTop: "auto" }} onClick={() => openSubscribeModal(plan.id)}>
+                          {t("اشتركي الآن", "Subscribe now")}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
 
           <h2 className="section-title" style={{ marginTop: 64, marginBottom: 32 }}>{t("الباقات", "Special")} <span>{t("الخاصة", "packages")}</span></h2>
           {packages.length === 0 ? (
