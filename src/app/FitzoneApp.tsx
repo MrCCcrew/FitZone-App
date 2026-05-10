@@ -2456,7 +2456,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                 <h2 className="section-title">{t("العروض", "Current")} <span>{t("الحالية", "Offers")}</span></h2>
                 <p style={{ color: C.gray, fontSize: 14, marginTop: 4 }}>{t("عروض لفترة محدودة — اشتركي قبل انتهاء الوقت", "Limited-time offers — subscribe before time runs out")}</p>
               </div>
-              <button className="btn-outline" onClick={() => navigate("offers")}>{t("مزيد من العروض", "More offers")}</button>
+              <button className="btn-outline" onClick={() => { sessionStorage.setItem("fitzone_offers_scroll", "offers-section"); navigate("offers"); }}>{t("مزيد من العروض", "More offers")}</button>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", `repeat(${Math.min(homeOffers.length + homeCustomPlans.length, 3)}, 1fr)`), gap: 24 }}>
               {homeOffers.map((offer) => {
@@ -2715,7 +2715,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
               <h2 className="section-title">{t("اختاري", "Choose")} <span>{t("الباقة", "the plan")}</span> {t("المناسبة", "that fits")}</h2>
               <p className="section-sub" style={{ marginTop: 6 }}>{t("باقات جيم مرنة تناسب أهداف السيدات والأطفال في بني سويف، بأسعار واضحة وخيارات متعددة.", "Flexible gym plans for women and kids in Beni Suef, with clear pricing and multiple options.")}</p>
             </div>
-            <button className="btn-outline" onClick={() => navigate("offers")}>{t("مزيد من الباقات", "More plans")}</button>
+            <button className="btn-outline" onClick={() => { sessionStorage.setItem("fitzone_offers_scroll", "packages-section"); navigate("offers"); }}>{t("مزيد من الباقات", "More plans")}</button>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 24, minHeight: memberships.length === 0 ? 400 : undefined }}>
             {memberships.map((m, i) => {
@@ -5376,6 +5376,13 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
   const [offers, setOffers] = useState(DEFAULT_OFFERS);
   const [packages, setPackages] = useState<PublicMembership[]>([]);
   const [customPlans, setCustomPlans] = useState<PublicMembership[]>([]);
+  useEffect(() => {
+    const target = sessionStorage.getItem("fitzone_offers_scroll");
+    if (!target) return;
+    sessionStorage.removeItem("fitzone_offers_scroll");
+    const el = document.getElementById(target);
+    if (el) setTimeout(() => el.scrollIntoView({ behavior: "smooth", block: "start" }), 120);
+  }, []);
   const openSubscribeModal = (membershipId?: string | null, offerId?: string | null, offerSpecialPrice?: number | null) => {
     if (typeof window !== "undefined") {
       const pendingFlow: PendingMembershipFlow = {
@@ -5421,7 +5428,7 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
         </div>
       </section>
 
-      <section className="section">
+      <section id="offers-section" className="section">
         <div className="container">
           <h2 className="section-title" style={{ marginBottom: 32 }}>{t("العروض", "Current")} <span>{t("الحالية", "offers")}</span></h2>
           <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 24 }}>
@@ -5596,7 +5603,7 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
             </>
           )}
 
-          <h2 className="section-title" style={{ marginTop: 64, marginBottom: 32 }}>{t("الباقات", "Special")} <span>{t("الخاصة", "packages")}</span></h2>
+          <h2 id="packages-section" className="section-title" style={{ marginTop: 64, marginBottom: 32 }}>{t("الباقات", "Special")} <span>{t("الخاصة", "packages")}</span></h2>
           {packages.length === 0 ? (
             <div className="card" style={{ padding: 20, textAlign: "center", color: C.gray }}>
               {t("لا توجد باقات متاحة حالياً.", "No packages available at the moment.")}
