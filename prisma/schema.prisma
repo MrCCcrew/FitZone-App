@@ -285,8 +285,8 @@ model Trainer {
   specialtyEn    String?
   bio            String?
   bioEn          String? @db.Text
-  certifications String? // JSON array
-  certificationsEn String? // JSON array
+  certifications String? @db.Text // JSON array
+  certificationsEn String? @db.Text // JSON array
   certificateFiles String? @db.LongText // JSON array of image URLs
   rating         Float   @default(5.0)
   sessionsCount  Int     @default(0)
@@ -890,7 +890,7 @@ model ChatSession {
   visitorPhone          String?
   status                String   @default("open") // open | live | resolved
   mode                  String   @default("bot") // bot | live
-  context               String?  // JSON string for questionnaire state
+  context               String?  @db.LongText // JSON string for questionnaire state
   assignedToId          String?
   recommendedMembershipId String?
   lastMessageAt         DateTime @default(now())
@@ -986,7 +986,7 @@ model CoachProfile {
   primaryGoal         String?   // weight-loss | muscle-gain | toning | general-fitness
   trainingLevel       String?   // beginner | intermediate | advanced
   preferredDays       Int?      // weekly sessions preference
-  preferredClassTypes String?   // JSON array of class type strings
+  preferredClassTypes String? @db.Text  // JSON array of class type strings
   injuries            String?   @db.Text
   nutritionStyle      String?   // poor | average | good
   targetWeight        Float?
