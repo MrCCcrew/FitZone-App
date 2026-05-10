@@ -416,6 +416,9 @@ export async function GET(request: Request) {
           kind: membership.kind,
           isFeatured: membership.isFeatured ?? false,
           goalIds: membership.goals.map((goal) => goal.goalId),
+          minMonths: (membership as any).minMonths ?? null,
+          maxMonths: (membership as any).maxMonths ?? null,
+          discountPct: (membership as any).discountPct ?? null,
         })),
       trialMembership: (() => {
         const trial = memberships.find((m) => m.kind === "trial");

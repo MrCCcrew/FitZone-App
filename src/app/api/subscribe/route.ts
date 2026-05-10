@@ -29,6 +29,7 @@ type SubscribePayload = {
   walletDeduct?: number | null;
   pointsDeduct?: number | null;
   trialPrice?: number | null;
+  selectedMonths?: number | null; // for custom kind memberships
   startDate?: string | null; // ISO date string "YYYY-MM-DD", for featured/open-time plans
   partnerCode?: string | null;   // legacy partner subscription discount code
   memberBenefitCode?: string | null; // external partner benefit code, no gym discount
@@ -69,6 +70,7 @@ export async function POST(req: Request) {
     walletDeduct,
     pointsDeduct,
     trialPrice,
+    selectedMonths,
     startDate,
     partnerCode,
     memberBenefitCode,
@@ -394,6 +396,20 @@ export async function POST(req: Request) {
 
       if (!plan) {
         throw new Error("الباقة غير موجودة.");
+      }
+
+      // For custom kind plans, validate selectedMonths and override price/duration
+      if (plan.kind === "custom") {
+        const minM = (plan as any).minMonths as number | null;
+        const maxM = (plan as any).maxMonths as number | null;
+        const dPct = (plan as any).discountPct as number | null;
+        const months = Math.floor(Number(selectedMonths ?? 0));
+        if (!months || (minM && months < minM) || (maxM && months > maxM)) {
+          throw new Error(`يرجى اختيار عدد شهور صالح (${minM ?? 1} - ${maxM ?? 12} شهور).`);
+        }
+        const discounted = plan.price * months * (1 - (dPct ?? 0) / 100);
+        (plan as any).price = Math.round(discounted * 100) / 100;
+        (plan as any).duration = months * 30;
       }
 
       walletBonus = plan.walletBonus ?? 0;

@@ -116,6 +116,9 @@ export interface Plan {
   subtitle?: string | null;
   giftEn?: string | null;
   isFeatured?: boolean;
+  minMonths?: number | null;
+  maxMonths?: number | null;
+  discountPct?: number | null;
 }
 
 export interface Offer {

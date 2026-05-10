@@ -33,6 +33,9 @@ const EMPTY_PLAN: Omit<PlanDraft, "id" | "membersCount"> = {
   subtitle: null,
   discountType: "percentage",
   discountValue: null,
+  minMonths: null,
+  maxMonths: null,
+  discountPct: null,
 };
 
 const EMPTY_OFFER: Omit<Offer, "id" | "usedCount" | "currentSubscribers"> = {
@@ -136,7 +139,7 @@ export default function Subscriptions() {
     setLoading(true);
     try {
       const [plansResponse, allPlansResponse, offersResponse, goalsResponse, productsResponse] = await Promise.all([
-        fetch("/api/admin/memberships?kind=subscription", { cache: "no-store" }),
+        fetch("/api/admin/memberships", { cache: "no-store" }),
         fetch("/api/admin/memberships", { cache: "no-store" }),
         fetch("/api/admin/offers", { cache: "no-store" }),
         fetch("/api/admin/goals", { cache: "no-store" }),
@@ -148,7 +151,7 @@ export default function Subscriptions() {
       const offersPayload = await offersResponse.json();
       const goalsPayload = await goalsResponse.json();
       const productsPayload = await productsResponse.json().catch(() => []);
-      setPlans(Array.isArray(plansPayload) ? plansPayload : []);
+      setPlans(Array.isArray(plansPayload) ? plansPayload.filter((p: Plan) => p.kind === "subscription" || p.kind === "custom") : []);
       setAllPlans(Array.isArray(allPlansPayload) ? allPlansPayload : []);
       setOffers(Array.isArray(offersPayload) ? offersPayload : []);
       setGoals(Array.isArray(goalsPayload) ? goalsPayload.filter((goal) => goal.active) : []);
@@ -258,7 +261,7 @@ export default function Subscriptions() {
       const response = await fetch("/api/admin/memberships", {
         method: isEdit ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ ...payload, kind: planModal.kind ?? "subscription" }),
       });
 
       if (!response.ok) {
@@ -682,6 +685,29 @@ export default function Subscriptions() {
               </div>
             </Field>
 
+            <Field label="نوع الاشتراك">
+              <select value={planModal.kind ?? "subscription"} onChange={(e) => setPlanModal({ ...planModal, kind: e.target.value as Plan["kind"] })} className={INPUT}>
+                <option value="subscription">اشتراك عادي</option>
+                <option value="custom">عرض تخصيص (اختيار الشهور)</option>
+              </select>
+            </Field>
+
+            {planModal.kind === "custom" ? (
+              <div className="grid gap-4 sm:grid-cols-3">
+                <Field label="سعر الشهر الواحد (ج.م)">
+                  <input type="number" value={planModal.price} onChange={(e) => setPlanModal({ ...planModal, price: Number(e.target.value) })} className={INPUT} dir="ltr" />
+                </Field>
+                <Field label="الحد الأدنى للشهور">
+                  <input type="number" min={1} value={planModal.minMonths ?? 3} onChange={(e) => setPlanModal({ ...planModal, minMonths: Number(e.target.value) })} className={INPUT} dir="ltr" />
+                </Field>
+                <Field label="الحد الأقصى للشهور">
+                  <input type="number" min={1} value={planModal.maxMonths ?? 6} onChange={(e) => setPlanModal({ ...planModal, maxMonths: Number(e.target.value) })} className={INPUT} dir="ltr" />
+                </Field>
+                <Field label="نسبة الخصم %" hint="مثال: 50 تعني خصم 50%">
+                  <input type="number" min={0} max={100} value={planModal.discountPct ?? 0} onChange={(e) => setPlanModal({ ...planModal, discountPct: Number(e.target.value) })} className={INPUT} dir="ltr" />
+                </Field>
+              </div>
+            ) : (
             <div className="grid gap-4 sm:grid-cols-3">
               <Field label="السعر">
                 <input type="number" value={planModal.price} onChange={(event) => setPlanModal({ ...planModal, price: Number(event.target.value) })} className={INPUT} dir="ltr" />
@@ -738,6 +764,7 @@ export default function Subscriptions() {
                 />
               </Field>
             </div>
+            )}
 
             <Field label="صورة الاشتراك" hint="المقاس المثالي: 1020 × 720 بكسل بنسبة 1.4:1، وهو نفس مقاس صور العروض حتى تظهر الباقات بنفس التصميم والتناسق.">
               <div className="flex flex-wrap gap-2">

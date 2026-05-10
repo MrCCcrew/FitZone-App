@@ -1368,6 +1368,9 @@ type PublicMembership = {
   kind: string;
   isFeatured: boolean;
   goalIds: string[];
+  minMonths?: number | null;
+  maxMonths?: number | null;
+  discountPct?: number | null;
 };
 
 type PublicHealthQuestion = {
@@ -2083,7 +2086,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
         const featured = (d.memberships as PublicMembership[]).find((mb) => mb.isFeatured);
         setHomeFeaturedPlan(featured ? { id: featured.id, name: featured.name, price: featured.priceAfter ?? featured.price, priceBefore: featured.priceBefore ?? null, subtitle: featured.subtitle ?? null, features: featured.features.slice(0, 4), durationDays: featured.durationDays } : null);
         const packages = (d.memberships as PublicMembership[]).filter((mb) => mb.kind === "package");
-        const subscriptions = (d.memberships as PublicMembership[]).filter((mb) => mb.kind === "subscription");
+        const subscriptions = (d.memberships as PublicMembership[]).filter((mb) => mb.kind === "subscription" || mb.kind === "custom");
         const source = packages.length > 0 ? packages : subscriptions;
         setMemberships(source.slice(0, 3).map((mb, i) => ({
           id: mb.id,
@@ -3132,6 +3135,10 @@ type PlanItem = {
   isTrial?: boolean;
   isFeatured?: boolean;
   offerId?: string | null;
+  minMonths?: number | null;
+  maxMonths?: number | null;
+  discountPct?: number | null;
+  selectedMonths?: number | null;
 };
 
 type MembershipCheckoutPreview = {
@@ -3164,6 +3171,9 @@ function mapMembershipToPlanItem(membership: PublicMembership, color: string, po
     goalIds: Array.isArray(membership.goalIds) ? membership.goalIds : [],
     subtitle: membership.subtitle ?? null,
     isFeatured: membership.isFeatured ?? false,
+    minMonths: membership.minMonths ?? null,
+    maxMonths: membership.maxMonths ?? null,
+    discountPct: membership.discountPct ?? null,
   };
 }
 
@@ -3203,6 +3213,8 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
   const [discountValidating, setDiscountValidating] = useState(false);
   const [discountResult, setDiscountResult] = useState<{ id: string; type: string; value: number; maxDiscount?: number | null; discountAmount: number | null; description?: string | null } | null>(null);
   const [discountError, setDiscountError] = useState<string | null>(null);
+  const [customMonthsPlan, setCustomMonthsPlan] = useState<PlanItem | null>(null);
+  const [selectedCustomMonths, setSelectedCustomMonths] = useState<number>(3);
   const [surveyPlan, setSurveyPlan] = useState<PlanItem | null>(null);
   const [surveyAnswers, setSurveyAnswers] = useState<Record<string, SurveyEntry>>({});
   const [surveyError, setSurveyError] = useState<string | null>(null);
@@ -3662,6 +3674,14 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
       return;
     }
     if (userSummary == null) return;
+
+    // Custom kind: show month picker before continuing (only if months not yet selected)
+    if (plan.minMonths && plan.maxMonths && !plan.selectedMonths) {
+      setSelectedCustomMonths(plan.minMonths);
+      setCustomMonthsPlan(plan);
+      return;
+    }
+
     if (plan.isFeatured) {
       setSchedulePlan(plan);
       setScheduleSelections([]);
@@ -3689,6 +3709,21 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
     setSurveyAnswers(initialAnswers);
     setSurveyError(null);
     setSurveyPlan(plan);
+  };
+
+  const confirmCustomMonths = () => {
+    if (!customMonthsPlan) return;
+    const months = selectedCustomMonths;
+    const pct = customMonthsPlan.discountPct ?? 0;
+    const finalPrice = Math.round(customMonthsPlan.price * months * (1 - pct / 100) * 100) / 100;
+    const modifiedPlan: PlanItem = {
+      ...customMonthsPlan,
+      price: finalPrice,
+      durationDays: months * 30,
+      selectedMonths: months,
+    };
+    setCustomMonthsPlan(null);
+    openSurvey(modifiedPlan);
   };
 
   const handleSurveyContinue = async () => {
@@ -3827,6 +3862,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
             pointsDeduct: fs.pointsToDeduct > 0 ? fs.pointsToDeduct : undefined,
             offerId: plan.offerId ?? undefined,
             trialPrice: plan.isTrial ? plan.price : undefined,
+            selectedMonths: plan.selectedMonths ?? undefined,
             startDate: plan.isFeatured && featuredStartDate ? featuredStartDate : undefined,
           };
         })()),
@@ -3970,6 +4006,39 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
 
   return (
     <div>
+      {/* ─ CUSTOM PLAN MONTH PICKER ─ */}
+      {customMonthsPlan && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 210, display: "flex", alignItems: "center", justifyContent: "center", padding: "10px 8px", overflowY: "auto", background: "rgba(20,0,40,.7)", backdropFilter: "blur(6px)" }}>
+          <div style={{ background: "#1a0a2e", borderRadius: 22, padding: 28, maxWidth: 460, width: "100%", boxShadow: "0 24px 60px rgba(233,30,99,.25)", border: "1px solid rgba(233,30,99,.25)" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+              <h2 style={{ fontWeight: 900, fontSize: 20, color: "#fff" }}>{t("اختاري عدد الشهور", "Select number of months")}</h2>
+              <button onClick={() => setCustomMonthsPlan(null)} style={{ border: "none", background: "none", fontSize: 22, cursor: "pointer", color: "#aaa" }}>×</button>
+            </div>
+            <p style={{ color: "#bbb", fontSize: 13, marginBottom: 22 }}>
+              {t(`سعر الشهر الواحد: ${customMonthsPlan.price} ج.م — خصم ${customMonthsPlan.discountPct ?? 0}%`, `Price per month: ${customMonthsPlan.price} EGP — ${customMonthsPlan.discountPct ?? 0}% discount`)}
+            </p>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 24 }}>
+              {Array.from({ length: (customMonthsPlan.maxMonths ?? 6) - (customMonthsPlan.minMonths ?? 3) + 1 }, (_, i) => (customMonthsPlan.minMonths ?? 3) + i).map((m) => {
+                const pct = customMonthsPlan.discountPct ?? 0;
+                const total = Math.round(customMonthsPlan.price * m * (1 - pct / 100));
+                const selected = selectedCustomMonths === m;
+                return (
+                  <button key={m} onClick={() => setSelectedCustomMonths(m)} style={{ flex: "1 1 calc(50% - 10px)", minWidth: 120, padding: "14px 10px", borderRadius: 14, border: `2px solid ${selected ? C.pink : "rgba(255,255,255,.15)"}`, background: selected ? "rgba(233,30,99,.18)" : "rgba(255,255,255,.04)", cursor: "pointer", textAlign: "center" }}>
+                    <div style={{ fontWeight: 900, fontSize: 18, color: "#fff" }}>{m} {t("شهور", "months")}</div>
+                    <div style={{ fontSize: 11, color: "#bbb", marginTop: 2 }}>{customMonthsPlan.price} × {m} = <span style={{ color: "#f87" }}>{customMonthsPlan.price * m} ج.م</span></div>
+                    <div style={{ fontSize: 15, fontWeight: 800, color: C.pink, marginTop: 4 }}>{total} {t("ج.م", "EGP")}</div>
+                    {pct > 0 && <div style={{ fontSize: 10, color: "#4ade80", marginTop: 2 }}>خصم {pct}%</div>}
+                  </button>
+                );
+              })}
+            </div>
+            <button onClick={confirmCustomMonths} style={{ width: "100%", padding: "14px 0", borderRadius: 14, background: C.pink, border: "none", color: "#fff", fontWeight: 900, fontSize: 16, cursor: "pointer" }}>
+              {t("متابعة →", "Continue →")}
+            </button>
+          </div>
+        </div>
+      )}
+
       {surveyPlan && (
         <div style={{ position: "fixed", inset: 0, zIndex: 210, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "10px 8px", overflowY: "auto", background: "rgba(233,30,99,.12)", backdropFilter: "blur(6px)" }}>
           <div style={{ background: "#fff", borderRadius: 18, padding: viewportWidth() < 640 ? 16 : 28, maxWidth: 680, width: "100%", boxShadow: "0 24px 60px rgba(233,30,99,.2)", border: `1px solid ${C.border}`, marginTop: "auto", marginBottom: "auto" }}>

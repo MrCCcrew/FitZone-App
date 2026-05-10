@@ -81,6 +81,9 @@ export async function GET(req: Request) {
         active: m.isActive,
         membersCount,
         goalIds: m.goals.map((goal) => goal.goalId),
+        minMonths: (m as any).minMonths ?? null,
+        maxMonths: (m as any).maxMonths ?? null,
+        discountPct: (m as any).discountPct ?? null,
       };
     }),
   );
@@ -115,6 +118,9 @@ export async function POST(req: Request) {
       giftEn,
       subtitle,
       isFeatured,
+      minMonths,
+      maxMonths,
+      discountPct,
     } = body;
     if (!name || price == null) return NextResponse.json({ error: "بيانات ناقصة" }, { status: 400 });
 
@@ -151,6 +157,9 @@ export async function POST(req: Request) {
         subtitle: subtitle == null || subtitle === "" ? null : String(subtitle),
         isFeatured: isFeatured === true,
         isActive: true,
+        ...(minMonths != null ? { minMonths: Number(minMonths) } : {}),
+        ...(maxMonths != null ? { maxMonths: Number(maxMonths) } : {}),
+        ...(discountPct != null ? { discountPct: Number(discountPct) } : {}),
         goals: goals.length
           ? {
               createMany: {
@@ -186,6 +195,9 @@ export async function POST(req: Request) {
       active: true,
       membersCount: 0,
       goalIds: goals,
+      minMonths: (m as any).minMonths ?? null,
+      maxMonths: (m as any).maxMonths ?? null,
+      discountPct: (m as any).discountPct ?? null,
     });
   } catch (error) {
     console.error("[ADMIN_MEMBERSHIPS_POST]", error);
@@ -222,6 +234,9 @@ export async function PATCH(req: Request) {
       giftEn,
       subtitle,
       isFeatured,
+      minMonths,
+      maxMonths,
+      discountPct,
     } = body;
     if (!id) return NextResponse.json({ error: "id مطلوب" }, { status: 400 });
 
@@ -249,6 +264,9 @@ export async function PATCH(req: Request) {
     if (subtitle !== undefined) data.subtitle = subtitle == null || subtitle === "" ? null : String(subtitle);
     if (isFeatured !== undefined) data.isFeatured = isFeatured === true;
     if (active !== undefined) data.isActive = active;
+    if (minMonths !== undefined) data.minMonths = minMonths == null ? null : Number(minMonths);
+    if (maxMonths !== undefined) data.maxMonths = maxMonths == null ? null : Number(maxMonths);
+    if (discountPct !== undefined) data.discountPct = discountPct == null ? null : Number(discountPct);
     if (Array.isArray(goalIds)) {
       data.goals = {
         deleteMany: {},
@@ -315,6 +333,9 @@ export async function PATCH(req: Request) {
       active: m.isActive,
       membersCount,
       goalIds: m.goals.map((goal) => goal.goalId),
+      minMonths: (m as any).minMonths ?? null,
+      maxMonths: (m as any).maxMonths ?? null,
+      discountPct: (m as any).discountPct ?? null,
     });
   } catch (error) {
     console.error("[ADMIN_MEMBERSHIPS_PATCH]", error);
