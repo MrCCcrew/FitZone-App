@@ -97,7 +97,7 @@ export interface Plan {
   id: string;
   name: string;
   nameEn?: string | null;
-  kind?: "subscription" | "package";
+  kind?: "subscription" | "package" | "custom";
   price: number;
   priceBefore?: number | null;
   priceAfter?: number | null;
