@@ -410,6 +410,11 @@ export async function POST(req: Request) {
         const discounted = plan.price * months * (1 - (dPct ?? 0) / 100);
         (plan as any).price = Math.round(discounted * 100) / 100;
         (plan as any).duration = months * 30;
+        // Scale sessions proportionally to chosen months
+        const baseSessions = plan.sessionsCount as number | null;
+        if (baseSessions && maxM) {
+          (plan as any).sessionsCount = Math.round(baseSessions / maxM * months);
+        }
       }
 
       walletBonus = plan.walletBonus ?? 0;
