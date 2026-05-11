@@ -53,6 +53,7 @@ type PublicPayload = {
     kind: string;
     isFeatured: boolean;
     goalIds: string[];
+    classSessions: Array<{ classId: string; sessions: number }>;
   }>;
   trialMembership: {
     id: string;
@@ -419,6 +420,7 @@ export async function GET(request: Request) {
           minMonths: (membership as any).minMonths ?? null,
           maxMonths: (membership as any).maxMonths ?? null,
           discountPct: (membership as any).discountPct ?? null,
+          classSessions: parseJsonArray(membership.classSessions),
         })),
       trialMembership: (() => {
         const trial = memberships.find((m) => m.kind === "trial");
