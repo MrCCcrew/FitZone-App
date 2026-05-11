@@ -1371,6 +1371,7 @@ type PublicMembership = {
   minMonths?: number | null;
   maxMonths?: number | null;
   discountPct?: number | null;
+  classSessions?: Array<{ classId: string; sessions: number }> | null;
 };
 
 type PublicHealthQuestion = {
@@ -3186,6 +3187,7 @@ type PlanItem = {
   maxMonths?: number | null;
   discountPct?: number | null;
   selectedMonths?: number | null;
+  classSessions?: Array<{ classId: string; sessions: number }> | null;
 };
 
 type MembershipCheckoutPreview = {
@@ -3221,6 +3223,7 @@ function mapMembershipToPlanItem(membership: PublicMembership, color: string, po
     minMonths: membership.minMonths ?? null,
     maxMonths: membership.maxMonths ?? null,
     discountPct: membership.discountPct ?? null,
+    classSessions: Array.isArray((membership as any).classSessions) ? (membership as any).classSessions : null,
   };
 }
 
