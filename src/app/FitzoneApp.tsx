@@ -105,7 +105,7 @@ const css = `
   .schedule-scroll::-webkit-scrollbar{height:5px;}
   .schedule-scroll::-webkit-scrollbar-track{background:rgba(255,255,255,.04);border-radius:99px;}
   .schedule-scroll::-webkit-scrollbar-thumb{background:rgba(245,197,66,.4);border-radius:99px;}
-  .schedule-outer{border-radius:14px;overflow:hidden;border:1.5px solid rgba(255,255,255,.12);}
+  .schedule-outer{border-radius:14px;overflow:hidden;border:1.5px solid rgba(255,255,255,.12);--schedule-col-min:130px;}
   .schedule-grid{display:grid;direction:ltr;background:#0d0a0c;width:100%;}
   .schedule-cell{border-right:1px solid rgba(255,255,255,.08);border-top:1px solid rgba(255,255,255,.08);padding:10px 8px;display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;text-align:center;gap:4px;}
   .schedule-cell.time{background:linear-gradient(180deg,#1d1619,#161114);font-weight:900;font-size:12px;color:#fff;letter-spacing:.2px;min-width:130px;padding:12px 8px;align-items:center;justify-content:center;}
@@ -152,6 +152,9 @@ const css = `
     .schedule-item-tag{font-size:8px;padding:2px 5px;}
     .schedule-slot-item{padding:6px 5px;gap:2px;}
     .schedule-block-title{font-size:13px;}
+    .schedule-outer{--schedule-col-min:max(120px,calc((100dvw - 84px) / 2));}
+    .schedule-scroll{scroll-snap-type:x mandatory;scroll-padding-inline-end:4px;}
+    .schedule-cell.time{scroll-snap-align:end;scroll-snap-stop:always;}
   }
   @media(max-width:640px){
     .today-class-card{flex-basis:220px;}
@@ -4280,7 +4283,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
                         <div className="schedule-block-title">الجدول الصباحي</div>
                         <div className="schedule-outer">
                         <div className="schedule-scroll" style={{ direction: "rtl" }}>
-                          <div className="schedule-grid" style={{ gridTemplateColumns: `${scheduleSplit.morning.map(() => "minmax(130px, 1fr)").join(" ")} 68px` }}>
+                          <div className="schedule-grid" style={{ gridTemplateColumns: `${scheduleSplit.morning.map(() => "minmax(var(--schedule-col-min,130px),1fr)").join(" ")} 68px` }}>
                             {[...scheduleSplit.morning].reverse().map((slot) => (
                               <div key={`vo-morning-head-${slot}`} className="schedule-cell time sticky">{formatScheduleTimeLabel(slot)}</div>
                             ))}
@@ -4319,7 +4322,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
                         <div className="schedule-block-title">الجدول المسائي</div>
                         <div className="schedule-outer">
                         <div className="schedule-scroll" style={{ direction: "rtl" }}>
-                          <div className="schedule-grid" style={{ gridTemplateColumns: `${scheduleSplit.evening.map(() => "minmax(130px, 1fr)").join(" ")} 68px` }}>
+                          <div className="schedule-grid" style={{ gridTemplateColumns: `${scheduleSplit.evening.map(() => "minmax(var(--schedule-col-min,130px),1fr)").join(" ")} 68px` }}>
                             {[...scheduleSplit.evening].reverse().map((slot) => (
                               <div key={`vo-evening-head-${slot}`} className="schedule-cell time sticky">{formatScheduleTimeLabel(slot)}</div>
                             ))}
@@ -4535,7 +4538,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
                           className="schedule-grid"
                           style={{
                             gridTemplateColumns: `${scheduleSplit.morning
-                              .map(() => "minmax(130px, 1fr)")
+                              .map(() => "minmax(var(--schedule-col-min,130px),1fr)")
                               .join(" ")} 68px`,
                           }}
                         >
@@ -4610,7 +4613,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
                           className="schedule-grid"
                           style={{
                             gridTemplateColumns: `${scheduleSplit.evening
-                              .map(() => "minmax(130px, 1fr)")
+                              .map(() => "minmax(var(--schedule-col-min,130px),1fr)")
                               .join(" ")} 68px`,
                           }}
                         >
@@ -6052,8 +6055,8 @@ const SchedulePage = () => {
     const isAr = lang === "ar";
     const orderedSlots = isAr ? [...slots].reverse() : [...slots];
     const colTemplate = isAr
-      ? `${slots.map(() => "minmax(130px, 1fr)").join(" ")} 88px`
-      : `88px ${slots.map(() => "minmax(130px, 1fr)").join(" ")}`;
+      ? `${slots.map(() => "minmax(var(--schedule-col-min,130px),1fr)").join(" ")} 88px`
+      : `88px ${slots.map(() => "minmax(var(--schedule-col-min,130px),1fr)").join(" ")}`;
     const dayHeadSt: React.CSSProperties = isAr
       ? { position: "sticky", right: 0, zIndex: 5, background: "#161214", color: "#9d8a96", fontWeight: 800, fontSize: 11, borderLeft: "1.5px solid rgba(255,255,255,.16)", borderTop: "none", textAlign: "center", padding: "10px 4px" }
       : { position: "sticky", left: 0, zIndex: 5, background: "#161214", color: "#9d8a96", fontWeight: 800, fontSize: 11, borderRight: "1.5px solid rgba(255,255,255,.16)", borderTop: "none", textAlign: "center", padding: "10px 4px" };
