@@ -105,7 +105,8 @@ const css = `
   .schedule-scroll::-webkit-scrollbar{height:5px;}
   .schedule-scroll::-webkit-scrollbar-track{background:rgba(255,255,255,.04);border-radius:99px;}
   .schedule-scroll::-webkit-scrollbar-thumb{background:rgba(245,197,66,.4);border-radius:99px;}
-  .schedule-grid{display:grid;border:1.5px solid rgba(255,255,255,.12);border-radius:14px;overflow:hidden;direction:ltr;background:#0d0a0c;width:100%;}
+  .schedule-outer{border-radius:14px;overflow:hidden;border:1.5px solid rgba(255,255,255,.12);}
+  .schedule-grid{display:grid;direction:ltr;background:#0d0a0c;width:100%;}
   .schedule-cell{border-right:1px solid rgba(255,255,255,.08);border-top:1px solid rgba(255,255,255,.08);padding:10px 8px;display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;text-align:center;gap:4px;}
   .schedule-cell.time{background:linear-gradient(180deg,#1d1619,#161114);font-weight:900;font-size:12px;color:#fff;letter-spacing:.2px;min-width:130px;padding:12px 8px;align-items:center;justify-content:center;}
   .schedule-cell.time span{font-size:11px;color:#9d8a96;font-weight:700;margin-top:2px;}
@@ -125,7 +126,7 @@ const css = `
   .schedule-slot-item.disabled{cursor:not-allowed;opacity:.3;border-color:rgba(255,255,255,.07);background:rgba(255,255,255,.02);}
   .schedule-item-title{color:#f5c542;font-weight:900;font-size:13px;line-height:1.35;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;}
   .schedule-slot-item.selected .schedule-item-title{color:#ff8fb5;}
-  .schedule-item-tag{display:inline-block;background:rgba(245,197,66,.12);color:#e8b840;font-size:11px;font-weight:800;padding:3px 8px;border-radius:6px;border:1px solid rgba(245,197,66,.2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;}
+  .schedule-item-tag{display:block;background:rgba(245,197,66,.12);color:#e8b840;font-size:11px;font-weight:800;padding:3px 8px;border-radius:6px;border:1px solid rgba(245,197,66,.2);word-break:break-word;max-width:100%;line-height:1.4;}
   .schedule-slot-item.selected .schedule-item-tag{background:rgba(233,30,99,.2);color:#ff8fb5;border-color:rgba(233,30,99,.3);}
   .schedule-empty{color:rgba(255,255,255,.15);font-size:18px;font-weight:300;text-align:center;}
   .today-classes-carousel{position:relative;overflow:hidden;padding:6px 0;}
@@ -4277,6 +4278,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
                     {scheduleSplit.morning.length > 0 && (
                       <div className="schedule-block">
                         <div className="schedule-block-title">الجدول الصباحي</div>
+                        <div className="schedule-outer">
                         <div className="schedule-scroll" style={{ direction: "rtl" }}>
                           <div className="schedule-grid" style={{ gridTemplateColumns: `${scheduleSplit.morning.map(() => "minmax(130px, 1fr)").join(" ")} 68px` }}>
                             {[...scheduleSplit.morning].reverse().map((slot) => (
@@ -4309,11 +4311,13 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
                             ))}
                           </div>
                         </div>
+                        </div>
                       </div>
                     )}
                     {scheduleSplit.evening.length > 0 && (
                       <div className="schedule-block">
                         <div className="schedule-block-title">الجدول المسائي</div>
+                        <div className="schedule-outer">
                         <div className="schedule-scroll" style={{ direction: "rtl" }}>
                           <div className="schedule-grid" style={{ gridTemplateColumns: `${scheduleSplit.evening.map(() => "minmax(130px, 1fr)").join(" ")} 68px` }}>
                             {[...scheduleSplit.evening].reverse().map((slot) => (
@@ -4345,6 +4349,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
                               </div>
                             ))}
                           </div>
+                        </div>
                         </div>
                       </div>
                     )}
@@ -4524,13 +4529,14 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
                   {scheduleSplit.morning.length > 0 && (
                     <div className="schedule-block">
                       <div className="schedule-block-title">الجدول الصباحي</div>
+                      <div className="schedule-outer">
                       <div className="schedule-scroll" style={{ direction: "rtl" }}>
                         <div
                           className="schedule-grid"
                           style={{
                             gridTemplateColumns: `${scheduleSplit.morning
-                              .map(() => "minmax(115px, 1fr)")
-                              .join(" ")} 52px`,
+                              .map(() => "minmax(130px, 1fr)")
+                              .join(" ")} 68px`,
                           }}
                         >
                           {[...scheduleSplit.morning].reverse().map((slot) => (
@@ -4591,19 +4597,21 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
                           ))}
                         </div>
                       </div>
+                      </div>
                     </div>
                   )}
 
                   {scheduleSplit.evening.length > 0 && (
                     <div className="schedule-block">
                       <div className="schedule-block-title">الجدول المسائي</div>
+                      <div className="schedule-outer">
                       <div className="schedule-scroll" style={{ direction: "rtl" }}>
                         <div
                           className="schedule-grid"
                           style={{
                             gridTemplateColumns: `${scheduleSplit.evening
-                              .map(() => "minmax(115px, 1fr)")
-                              .join(" ")} 52px`,
+                              .map(() => "minmax(130px, 1fr)")
+                              .join(" ")} 68px`,
                           }}
                         >
                           {[...scheduleSplit.evening].reverse().map((slot) => (
@@ -4663,6 +4671,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
                             </div>
                           ))}
                         </div>
+                      </div>
                       </div>
                     </div>
                   )}
