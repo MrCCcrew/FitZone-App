@@ -3782,11 +3782,17 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
     const months = selectedCustomMonths;
     const pct = customMonthsPlan.discountPct ?? 0;
     const finalPrice = Math.round(customMonthsPlan.price * months * (1 - pct / 100) * 100) / 100;
+    const maxM = customMonthsPlan.maxMonths ?? months;
+    const baseSessions = customMonthsPlan.sessionsCount ?? 0;
+    const sessionsCount = maxM > 0 && baseSessions > 0
+      ? Math.round(baseSessions / maxM * months)
+      : customMonthsPlan.sessionsCount;
     const modifiedPlan: PlanItem = {
       ...customMonthsPlan,
       price: finalPrice,
       durationDays: months * 30,
       selectedMonths: months,
+      sessionsCount,
     };
     setCustomMonthsPlan(null);
     openSurvey(modifiedPlan);
