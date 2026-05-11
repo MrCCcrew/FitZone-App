@@ -3580,6 +3580,21 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
     return Array.from(blocked);
   }, [healthQuestions, surveyAnswers]);
 
+  // Derive the class types linked to the current plan via classSessions.
+  // If populated, the schedule shows ONLY those types and the day options are limited accordingly.
+  const planAllowedClassTypes = useMemo((): Set<string> | null => {
+    if (!schedulePlan?.classSessions?.length) return null;
+    const linkedIds = new Set(schedulePlan.classSessions.map((cs) => cs.classId));
+    const types = new Set<string>();
+    publicClasses.forEach((c) => {
+      if (linkedIds.has(c.id)) {
+        const key = normalizeClassTypeKey(c.type);
+        if (key) types.add(key);
+      }
+    });
+    return types.size > 0 ? types : null;
+  }, [schedulePlan, publicClasses]);
+
   const scheduleChoices = useMemo(() => {
     const blocked = new Set(surveyBlockedTypes.map((t) => normalizeClassTypeKey(t)));
     const dayNames = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
@@ -3598,6 +3613,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
     publicClasses.forEach((c) => {
       const typeKey = normalizeClassTypeKey(c.type ?? "");
       if (typeKey && blocked.has(typeKey)) return;
+      if (planAllowedClassTypes && typeKey && !planAllowedClassTypes.has(typeKey)) return;
       (c.schedules || []).forEach((s) => {
         const date = new Date(s.date);
         if (Number.isNaN(date.getTime())) return;
@@ -3622,7 +3638,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
       return a.time.localeCompare(b.time);
     });
     return rows;
-  }, [publicClasses, surveyBlockedTypes]);
+  }, [publicClasses, surveyBlockedTypes, planAllowedClassTypes]);
 
   const parseScheduleTime = (value: string) => {
     const [h, m] = value.split(":").map((n) => Number(n));
@@ -4370,7 +4386,10 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
                   );
                 }
 
-                const maxDays = Math.min(6, schedulePlan.sessionsCount ?? 6);
+                const availableDays = new Set(scheduleChoices.map((c) => c.day)).size;
+                const maxDays = planAllowedClassTypes && availableDays > 0
+                  ? Math.min(availableDays, schedulePlan.sessionsCount ?? 6)
+                  : Math.min(6, schedulePlan.sessionsCount ?? 6);
                 const dayLabels: Record<number, string> = {
                   1: "يوم واحد / أسبوع",
                   2: "يومين / أسبوع",
@@ -4860,10 +4879,10 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
                           )}
                           {subMsg.action === "back_to_plan" && (
                             <button
-                              onClick={() => { setSubMsg(null); setCheckoutPreview(null); setSchedulePlan(null); setDaysPerWeek(null); setScheduleStep("frequency"); }}
+                              onClick={() => { setSubMsg(null); setScheduleSelections([]); setDaysPerWeek(null); setScheduleStep("frequency"); setSchedulePlan(checkoutPreview?.plan ?? null); setCheckoutPreview(null); }}
                               style={{ marginTop: 4, padding: "7px 18px", borderRadius: 8, border: "none", background: "#f43f5e", color: "#fff", fontWeight: 800, fontSize: 13, cursor: "pointer" }}
                             >
-                              ← اختاري باقة مختلفة
+                              ← عودة لاختيار الأيام
                             </button>
                           )}
                         </div>
@@ -5059,10 +5078,10 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
               )}
               {subMsg.action === "back_to_plan" && (
                 <button
-                  onClick={() => { setSubMsg(null); setCheckoutPreview(null); setSchedulePlan(null); setDaysPerWeek(null); setScheduleStep("frequency"); }}
+                  onClick={() => { setSubMsg(null); setScheduleSelections([]); setDaysPerWeek(null); setScheduleStep("frequency"); setSchedulePlan(checkoutPreview?.plan ?? null); setCheckoutPreview(null); }}
                   style={{ padding: "7px 18px", borderRadius: 8, border: "none", background: "#dc2626", color: "#fff", fontWeight: 800, fontSize: 13, cursor: "pointer" }}
                 >
-                  ← اختاري باقة مختلفة
+                  ← عودة لاختيار الأيام
                 </button>
               )}
             </div>
