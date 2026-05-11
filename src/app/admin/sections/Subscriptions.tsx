@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { Goal, Offer, Plan } from "../types";
+import type { GymClass, Goal, Offer, Plan } from "../types";
 import { AdminCard, AdminEmptyState, AdminSectionShell } from "./shared";
 import { TranslateButton } from "./TranslateButton";
 
@@ -68,6 +68,32 @@ const CYCLE_LABELS: Record<NonNullable<Plan["cycle"]>, string> = {
   custom: "مخصص",
 };
 
+function getLinkedClassTypes(
+  classSessions: Plan["classSessions"] | null | undefined,
+  classes: GymClass[],
+): Set<string> {
+  if (!classSessions?.length) return new Set();
+  const linkedIds = new Set(classSessions.map((cs) => cs.classId));
+  const types = new Set<string>();
+  classes.forEach((c) => {
+    if (linkedIds.has(c.id)) types.add(c.type);
+  });
+  return types;
+}
+
+function toggleClassType(
+  type: string,
+  classesOfType: GymClass[],
+  current: Plan["classSessions"] | null | undefined,
+): Array<{ classId: string; className?: string; sessions: number }> {
+  const existing = current ?? [];
+  const typeIds = new Set(classesOfType.map((c) => c.id));
+  const linkedIds = new Set(existing.map((cs) => cs.classId));
+  const isLinked = classesOfType.some((c) => linkedIds.has(c.id));
+  if (isLinked) return existing.filter((cs) => !typeIds.has(cs.classId));
+  return [...existing, ...classesOfType.map((c) => ({ classId: c.id, className: c.name, sessions: 1 }))];
+}
+
 function Modal({
   title,
   onClose,
@@ -122,6 +148,7 @@ export default function Subscriptions() {
   const [offers, setOffers] = useState<Offer[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
   const [products, setProducts] = useState<Array<{ id: string; name: string }>>([]);
+  const [gymClasses, setGymClasses] = useState<GymClass[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [featureInput, setFeatureInput] = useState("");
@@ -138,12 +165,13 @@ export default function Subscriptions() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [plansResponse, allPlansResponse, offersResponse, goalsResponse, productsResponse] = await Promise.all([
+      const [plansResponse, allPlansResponse, offersResponse, goalsResponse, productsResponse, classesResponse] = await Promise.all([
         fetch("/api/admin/memberships", { cache: "no-store" }),
         fetch("/api/admin/memberships", { cache: "no-store" }),
         fetch("/api/admin/offers", { cache: "no-store" }),
         fetch("/api/admin/goals", { cache: "no-store" }),
         fetch("/api/admin/products", { cache: "no-store" }),
+        fetch("/api/admin/classes", { cache: "no-store" }),
       ]);
 
       const plansPayload = await plansResponse.json();
@@ -151,6 +179,7 @@ export default function Subscriptions() {
       const offersPayload = await offersResponse.json();
       const goalsPayload = await goalsResponse.json();
       const productsPayload = await productsResponse.json().catch(() => []);
+      const classesPayload = await classesResponse.json().catch(() => ({ classes: [] }));
       setPlans(Array.isArray(plansPayload) ? plansPayload.filter((p: Plan) => p.kind === "subscription") : []);
       setAllPlans(Array.isArray(allPlansPayload) ? allPlansPayload : []);
       setOffers(Array.isArray(offersPayload) ? offersPayload : []);
@@ -162,6 +191,7 @@ export default function Subscriptions() {
               .map((item: { id: string; name: string }) => ({ id: item.id, name: item.name }))
           : [],
       );
+      setGymClasses(Array.isArray(classesPayload?.classes) ? classesPayload.classes : []);
     } finally {
       setLoading(false);
     }
@@ -181,6 +211,16 @@ export default function Subscriptions() {
   );
 
   const goalLookup = useMemo(() => new Map(goals.map((goal) => [goal.id, goal.name])), [goals]);
+
+  const uniqueClassTypes = useMemo(() => {
+    const typeMap = new Map<string, { type: string; classes: GymClass[] }>();
+    gymClasses.forEach((cls) => {
+      if (!cls.type) return;
+      if (!typeMap.has(cls.type)) typeMap.set(cls.type, { type: cls.type, classes: [] });
+      typeMap.get(cls.type)!.classes.push(cls);
+    });
+    return Array.from(typeMap.values());
+  }, [gymClasses]);
 
   const addFeature = () => {
     if (!planModal || !featureInput.trim()) return;
@@ -901,6 +941,54 @@ export default function Subscriptions() {
                 <input type="number" value={planModal.duration} onChange={(event) => setPlanModal({ ...planModal, duration: Number(event.target.value) })} className={INPUT} dir="ltr" />
               </Field>
             </div>
+
+            <Field
+              label="كلاسات مرتبطة بالجدول"
+              hint="اختر نوع الكلاس الذي يظهر في جدول اختيار الأيام عند الاشتراك. إذا لم تختر شيئًا ستظهر جميع الكلاسات."
+            >
+              {uniqueClassTypes.length === 0 ? (
+                <div className="text-xs text-[#d7aabd]">لا توجد كلاسات مضافة في النظام حتى الآن.</div>
+              ) : (
+                <>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {(() => {
+                      const linkedTypes = getLinkedClassTypes(planModal.classSessions, gymClasses);
+                      return uniqueClassTypes.map(({ type, classes: typeClasses }) => {
+                        const isActive = linkedTypes.has(type);
+                        return (
+                          <button
+                            key={type}
+                            type="button"
+                            onClick={() =>
+                              setPlanModal({
+                                ...planModal,
+                                classSessions: toggleClassType(type, typeClasses, planModal.classSessions),
+                              })
+                            }
+                            className={`flex items-center justify-between rounded-xl border px-4 py-3 text-xs font-bold transition-colors ${
+                              isActive
+                                ? "border-[#ff4f93] bg-[#ff4f93]/10 text-[#fff4f8]"
+                                : "border-[rgba(255,188,219,0.12)] bg-black/15 text-[#d7aabd]"
+                            }`}
+                          >
+                            <span>
+                              {type}
+                              <span className="mr-1 font-normal opacity-60">({typeClasses.length})</span>
+                            </span>
+                            {isActive ? <span className="text-[#ff4f93]">✓</span> : null}
+                          </button>
+                        );
+                      });
+                    })()}
+                  </div>
+                  {!(planModal.classSessions?.length) && (
+                    <div className="mt-2 rounded-xl border border-[rgba(255,188,219,0.1)] bg-black/20 px-4 py-2 text-xs text-[#d7aabd]">
+                      لا يوجد تحديد — جميع الكلاسات ستظهر في الجدول
+                    </div>
+                  )}
+                </>
+              )}
+            </Field>
 
             <Field label="الأهداف المرتبطة" hint="اختاري الأهداف التي يظهر معها هذا الاشتراك في رحلة الاختيار.">
               <div className="grid gap-2 sm:grid-cols-2">
