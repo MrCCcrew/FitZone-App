@@ -85,13 +85,13 @@ function toggleClassType(
   type: string,
   classesOfType: GymClass[],
   current: Plan["classSessions"] | null | undefined,
-): Array<{ classId: string; className?: string; sessions: number }> {
+): Array<{ classId: string; className?: string; classType?: string; sessions: number }> {
   const existing = current ?? [];
   const typeIds = new Set(classesOfType.map((c) => c.id));
   const linkedIds = new Set(existing.map((cs) => cs.classId));
   const isLinked = classesOfType.some((c) => linkedIds.has(c.id));
   if (isLinked) return existing.filter((cs) => !typeIds.has(cs.classId));
-  return [...existing, ...classesOfType.map((c) => ({ classId: c.id, className: c.name, sessions: 1 }))];
+  return [...existing, ...classesOfType.map((c) => ({ classId: c.id, className: c.name, classType: type, sessions: 1 }))];
 }
 
 function Modal({
@@ -191,7 +191,7 @@ export default function Subscriptions() {
               .map((item: { id: string; name: string }) => ({ id: item.id, name: item.name }))
           : [],
       );
-      setGymClasses(Array.isArray(classesPayload?.classes) ? classesPayload.classes : []);
+      setGymClasses(Array.isArray(classesPayload?.classes) ? classesPayload.classes.filter((c: GymClass) => c.active) : []);
     } finally {
       setLoading(false);
     }

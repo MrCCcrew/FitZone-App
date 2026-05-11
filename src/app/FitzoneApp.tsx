@@ -3587,14 +3587,24 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
   // If populated, the schedule shows ONLY those types and the day options are limited accordingly.
   const planAllowedClassTypes = useMemo((): Set<string> | null => {
     if (!schedulePlan?.classSessions?.length) return null;
-    const linkedIds = new Set(schedulePlan.classSessions.map((cs) => cs.classId));
     const types = new Set<string>();
-    publicClasses.forEach((c) => {
-      if (linkedIds.has(c.id)) {
-        const key = normalizeClassTypeKey(c.type);
+    (schedulePlan.classSessions as Array<{ classId: string; classType?: string; sessions: number }>).forEach((cs) => {
+      if (cs.classType) {
+        // Prefer the stored classType string (set by admin UI) — no publicClasses lookup needed.
+        const key = normalizeClassTypeKey(cs.classType);
         if (key) types.add(key);
       }
     });
+    if (types.size === 0) {
+      // Fallback: derive types from publicClasses by matching classId.
+      const linkedIds = new Set(schedulePlan.classSessions.map((cs) => cs.classId));
+      publicClasses.forEach((c) => {
+        if (linkedIds.has(c.id)) {
+          const key = normalizeClassTypeKey(c.type);
+          if (key) types.add(key);
+        }
+      });
+    }
     return types.size > 0 ? types : null;
   }, [schedulePlan, publicClasses]);
 
