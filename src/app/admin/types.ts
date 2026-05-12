@@ -106,7 +106,7 @@ export interface Plan {
   duration: number;
   cycle?: "monthly" | "quarterly" | "semi_annual" | "annual" | "custom";
   sessionsCount?: number | null;
-  classSessions?: Array<{ classId: string; className?: string; sessions: number }>;
+  classSessions?: Array<{ classId: string; className?: string; classType?: string; sessions: number }>;
   productRewards?: Array<{ productId: string; productName?: string; quantity: number }>;
   features: string[];
   featuresEn?: string[];
