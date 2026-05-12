@@ -1339,6 +1339,8 @@ type PublicOffer = {
   maxSubscribers: number | null;
   currentSubscribers: number;
   expiresAt: string;
+  durationDays?: number | null;
+  sessionsCount?: number | null;
 };
 
 type PublicGoal = {
@@ -3401,11 +3403,14 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
       const mb = allMemberships.find((m) => m.id === membershipId);
       if (mb) {
         const idx = allMemberships.findIndex((m) => m.id === membershipId);
+        const matchedOffer = offerId ? allOffers.find((o) => o.id === offerId) : null;
         const planItem: PlanItem = {
           ...mapMembershipToPlanItem(mb, PLAN_COLORS[idx % PLAN_COLORS.length]),
           offerId: offerId ?? null,
           priceAfter: offerSpecialPrice != null ? offerSpecialPrice : (mb.priceAfter ?? null),
           isFeatured: false, // always run normal checkout flow when explicitly clicked
+          ...(matchedOffer?.durationDays != null ? { durationDays: matchedOffer.durationDays } : {}),
+          ...(matchedOffer?.sessionsCount != null ? { sessionsCount: matchedOffer.sessionsCount } : {}),
         };
         openSurvey(planItem);
         resolved = true;
@@ -3428,9 +3433,9 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
           priceAfter: effectivePrice,
           image: offer.image ?? null,
           sortOrder: 0,
-          durationDays: 30,
+          durationDays: offer.durationDays ?? 30,
           cycle: "custom",
-          sessionsCount: null,
+          sessionsCount: offer.sessionsCount ?? null,
           features: [
             offer.description || t("اشتراك عرض خاص", "Special offer subscription"),
             offer.appliesTo ? `${t("ينطبق على", "Applies to")}: ${offer.appliesTo}` : t("صلاحية الاشتراك حسب العرض", "Subscription validity follows offer policy"),
