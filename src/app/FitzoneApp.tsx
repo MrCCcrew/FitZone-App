@@ -152,7 +152,7 @@ const css = `
     .schedule-slot-item{padding:6px 5px;gap:2px;}
     .schedule-block-title{font-size:13px;}
     .schedule-outer{--schedule-day-col:48px;--schedule-col-min:max(120px,calc((100dvw - var(--schedule-day-col) - 32px) / 2));}
-    .schedule-scroll{scroll-snap-type:x proximity;}
+    .schedule-scroll{scroll-snap-type:x mandatory;}
     .schedule-cell.time{scroll-snap-align:end;}
   }
   @media(max-width:640px){
