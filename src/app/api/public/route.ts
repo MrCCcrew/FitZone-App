@@ -79,6 +79,8 @@ type PublicPayload = {
     maxSubscribers: number | null;
     currentSubscribers: number;
     expiresAt: string;
+    durationDays: number | null;
+    sessionsCount: number | null;
   }>;
   classes: Array<{
     id: string;
@@ -452,6 +454,8 @@ export async function GET(request: Request) {
         maxSubscribers: offer.maxSubscribers,
         currentSubscribers: offer.currentSubscribers,
         expiresAt: offer.expiresAt.toISOString(),
+        durationDays: offer.durationDays ?? null,
+        sessionsCount: offer.sessionsCount ?? null,
       })),
       classes: classes.map((gymClass) => ({
         id: gymClass.id,
