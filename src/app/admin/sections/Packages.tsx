@@ -180,7 +180,7 @@ export default function Packages() {
     if (!planModal || !classSessionDraft.classType || classSessionDraft.sessions <= 0) return;
     const existing = planModal.classSessions ?? [];
     const next = existing.filter((item) => item.classId !== classSessionDraft.classType);
-    next.push({ classId: classSessionDraft.classType, sessions: classSessionDraft.sessions });
+    next.push({ classId: classSessionDraft.classType, classType: classSessionDraft.classType, sessions: classSessionDraft.sessions });
     setPlanModal({ ...planModal, classSessions: next });
     setClassSessionDraft({ classType: "", sessions: 1 });
   };

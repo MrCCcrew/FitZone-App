@@ -53,7 +53,7 @@ type PublicPayload = {
     kind: string;
     isFeatured: boolean;
     goalIds: string[];
-    classSessions: Array<{ classId: string; sessions: number }>;
+    classSessions: Array<{ classId: string; classType?: string; sessions: number }>;
   }>;
   trialMembership: {
     id: string;
