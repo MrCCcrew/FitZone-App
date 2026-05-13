@@ -2990,50 +2990,76 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
 
       {/* ─ NUTRITION DOCTOR ─ */}
       {nutritionist && (
-        <section className="section" style={{ background: "linear-gradient(135deg, rgba(20,80,50,.18) 0%, rgba(10,40,25,.12) 100%)", borderTop: "1px solid rgba(74,222,128,.1)", borderBottom: "1px solid rgba(74,222,128,.1)" }}>
+        <section className="section">
           <div className="container">
-            <div style={{ display: "flex", flexDirection: _w < 768 ? "column" : "row", gap: 40, alignItems: "center" }}>
-              {/* Left: info */}
-              <div style={{ flex: 1 }}>
-                <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "rgba(74,222,128,.12)", border: "1px solid rgba(74,222,128,.25)", borderRadius: 20, padding: "5px 14px", marginBottom: 16 }}>
-                  <span style={{ fontSize: 16 }}>🥗</span>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: "#4ade80", letterSpacing: ".5px" }}>{t("دكتورة التغذية", "Nutrition Doctor")}</span>
-                </div>
-                <h2 className="section-title" style={{ marginBottom: 8 }}>{nutritionist.name}</h2>
-                {nutritionist.bio && <p style={{ color: C.gray, lineHeight: 1.8, fontSize: 15, marginBottom: 24, maxWidth: 480 }}>{nutritionist.bio}</p>}
-                <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 28 }}>
-                  <div style={{ background: "rgba(74,222,128,.08)", border: "1px solid rgba(74,222,128,.2)", borderRadius: 12, padding: "12px 20px", textAlign: "center" }}>
-                    <div style={{ fontWeight: 900, fontSize: 18, color: "#4ade80" }}>{nutritionist.consultationFee} {t("ج.م", "EGP")}</div>
-                    <div style={{ fontSize: 11, color: C.gray, marginTop: 3 }}>{t("حجز كشف", "Consultation")}</div>
+            {/* Section header — same style as trainers */}
+            <div style={{ textAlign: "center", marginBottom: 40 }}>
+              <h2 className="section-title">
+                {t("دكتورة", "Our")} <span>{t("التغذية", "Nutritionist")}</span>
+              </h2>
+              <p className="section-sub" style={{ marginTop: 6 }}>
+                {t("استشارة تغذوية متخصصة مع خبيرة معتمدة لمساعدتك على الوصول لهدفك الصحي.", "Personalized nutrition consultation with a certified expert to help you reach your health goal.")}
+              </p>
+            </div>
+
+            {/* Doctor card — centered */}
+            <div style={{ display: "flex", justifyContent: "center" }}>
+              <div className="card card-hover" style={{ maxWidth: 460, width: "100%", padding: 0, overflow: "hidden", textAlign: "center" }}>
+                {/* Photo */}
+                {nutritionist.image ? (
+                  <div style={{ height: 280, position: "relative", overflow: "hidden" }}>
+                    <img src={nutritionist.image} alt={nutritionist.name} style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "top" }} />
+                    <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(10,5,8,.65) 0%, transparent 55%)" }} />
+                    <div style={{ position: "absolute", bottom: 16, insetInlineStart: 0, insetInlineEnd: 0 }}>
+                      <div style={{ fontWeight: 900, fontSize: 20, color: "#fff", textShadow: "0 2px 8px rgba(0,0,0,.6)" }}>{nutritionist.name}</div>
+                      <div style={{ fontSize: 12, color: "#4ade80", fontWeight: 700, marginTop: 3 }}>{t("دكتورة تغذية", "Nutrition Doctor")}</div>
+                    </div>
                   </div>
-                  <div style={{ background: "rgba(74,222,128,.08)", border: "1px solid rgba(74,222,128,.2)", borderRadius: 12, padding: "12px 20px", textAlign: "center" }}>
-                    <div style={{ fontWeight: 900, fontSize: 18, color: "#4ade80" }}>{nutritionist.followupFee} {t("ج.م", "EGP")}</div>
-                    <div style={{ fontSize: 11, color: C.gray, marginTop: 3 }}>{t("إعادة كشف", "Follow-up")}</div>
+                ) : (
+                  <div style={{ height: 120, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "rgba(74,222,128,.06)", borderBottom: `1px solid ${C.border}` }}>
+                    <div style={{ fontSize: 44, marginBottom: 8 }}>🥗</div>
+                    <div style={{ fontWeight: 900, fontSize: 18, color: C.white }}>{nutritionist.name}</div>
+                    <div style={{ fontSize: 12, color: "#4ade80", fontWeight: 700, marginTop: 3 }}>{t("دكتورة تغذية", "Nutrition Doctor")}</div>
                   </div>
+                )}
+
+                {/* Body */}
+                <div style={{ padding: "20px 22px 24px" }}>
+                  {nutritionist.bio && (
+                    <p style={{ color: C.gray, fontSize: 14, lineHeight: 1.8, marginBottom: 20 }}>{nutritionist.bio}</p>
+                  )}
+
+                  {/* Prices */}
+                  <div style={{ display: "flex", justifyContent: "center", gap: 0, marginBottom: 20, border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden" }}>
+                    <div style={{ flex: 1, padding: "12px 8px", borderInlineEnd: `1px solid ${C.border}` }}>
+                      <div style={{ fontWeight: 900, fontSize: 18, color: "#4ade80" }}>{nutritionist.consultationFee} {t("ج.م", "EGP")}</div>
+                      <div style={{ fontSize: 11, color: C.gray, marginTop: 3 }}>{t("حجز كشف", "Consultation")}</div>
+                    </div>
+                    <div style={{ flex: 1, padding: "12px 8px" }}>
+                      <div style={{ fontWeight: 900, fontSize: 18, color: "#4ade80" }}>{nutritionist.followupFee} {t("ج.م", "EGP")}</div>
+                      <div style={{ fontSize: 11, color: C.gray, marginTop: 3 }}>{t("إعادة كشف", "Follow-up")}</div>
+                    </div>
+                  </div>
+
+                  {/* CTA */}
+                  <button
+                    className="btn-primary"
+                    style={{ width: "100%", justifyContent: "center", fontSize: 15, padding: "13px", borderRadius: 12, touchAction: "manipulation" }}
+                    onClick={() => {
+                      if (!summary?.authenticated) { navigate("login"); return; }
+                      setNutritionStep(0);
+                      setNutritionType("consultation");
+                      setNutritionForm({});
+                      setNutritionSlot(null);
+                      setNutritionMsg(null);
+                      setNutritionDone(null);
+                      setNutritionModal(true);
+                    }}
+                  >
+                    🥗 {t("احجزي موعدك الآن", "Book your appointment")}
+                  </button>
                 </div>
-                <button
-                  className="btn-primary"
-                  style={{ background: "linear-gradient(135deg,#16a34a,#15803d)", fontSize: 15, padding: "14px 36px", borderRadius: 14, touchAction: "manipulation" }}
-                  onClick={() => {
-                    if (!summary?.authenticated) { navigate("login"); return; }
-                    setNutritionStep(0);
-                    setNutritionType("consultation");
-                    setNutritionForm({});
-                    setNutritionSlot(null);
-                    setNutritionMsg(null);
-                    setNutritionDone(null);
-                    setNutritionModal(true);
-                  }}
-                >
-                  🥗 {t("احجزي موعدك الآن", "Book your appointment")}
-                </button>
               </div>
-              {/* Right: image */}
-              {nutritionist.image && (
-                <div style={{ flexShrink: 0, width: _w < 768 ? "100%" : 280 }}>
-                  <img src={nutritionist.image} alt={nutritionist.name} style={{ width: "100%", height: 300, objectFit: "cover", objectPosition: "top", borderRadius: 20, border: "2px solid rgba(74,222,128,.2)" }} />
-                </div>
-              )}
             </div>
           </div>
         </section>
