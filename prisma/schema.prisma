@@ -128,6 +128,9 @@ model User {
   healthResponses            HealthResponse[]            @relation("HealthResponses")
   nutritionistProfile        NutritionistProfile?        @relation("NutritionistAccount")
   nutritionSessions          NutritionSession[]          @relation("NutritionSessionUser")
+  orderStatusHistory         OrderStatusHistory[]        @relation("OrderStatusPerformer")
+  inventoryMovementsPerformed InventoryMovement[]        @relation("InventoryMovementPerformer")
+  inventoryReceiptsPerformed  InventoryReceipt[]         @relation("InventoryReceiptPerformer")
 }
 
 model AuditLog {
@@ -402,26 +405,43 @@ model Product {
   category    String
   stock       Int     @default(0)
   sku         String? @unique
+  barcode     String?
   unitLabel   String?
   trackInventory   Boolean @default(true)
   averageCost      Float   @default(0)
   lastPurchaseCost Float   @default(0)
+  costPrice        Float?  // buying/purchase price — admin only, never sent to client
   reorderLevel     Int     @default(0)
   images      String? @db.Text // JSON array of URLs
-  sizes       String? @db.Text // JSON array
-  colors      String? @db.Text // JSON array
+  sizes       String? @db.Text // JSON array (legacy, kept for compatibility)
+  colors      String? @db.Text // JSON array (legacy, kept for compatibility)
   faqs            String? @db.Text // JSON: [{q,a}]
   whoShouldBuy    String? @db.Text // JSON: [{title,desc,suitable}]
   importantInfo   String? @db.Text
   disclaimer      String? @db.Text
   editorialReview String? @db.Text
-  isActive    Boolean @default(true)
-  vatEnabled  Boolean @default(false)
+  isActive        Boolean @default(true)
+  isFeatured      Boolean @default(false)
+  isNew           Boolean @default(false)
+  isBestSeller    Boolean @default(false)
+  isSpecialOffer  Boolean @default(false)
+  vatEnabled      Boolean @default(false)
+  // Supplier (admin-only — never exposed to customers)
+  supplierId      String?
+  deletedAt       DateTime? // soft delete
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  orderItems OrderItem[]
-  reviews    ProductReview[]
+  supplier     Supplier?              @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  orderItems   OrderItem[]
+  reviews      ProductReview[]
+  variants     ProductVariant[]
   stockMovements      InventoryMovement[]    @relation("InventoryProduct")
   receiptItems        InventoryReceiptItem[] @relation("InventoryReceiptProduct")
+
+  @@index([supplierId])
+  @@index([category, isActive])
+  @@index([deletedAt])
 }
 
 model ProductReview {
@@ -447,35 +467,59 @@ model Order {
   discountTotal Float    @default(0)
   shippingFee   Float    @default(0)
   total         Float
-  status        String   @default("pending") // pending | confirmed | delivered | cancelled
+  // pending | confirmed | preparing | ready_to_ship | shipped_to_courier | in_transit | delivered | cancelled | returned
+  status        String   @default("pending")
   deliveryOptionId String?
   deliveryLabel String?
   estimatedDeliveryDays Int?
   isClubPickup  Boolean  @default(false)
   recipientName String?
   recipientPhone String?
+  governorate   String?  // Egyptian governorate
+  city          String?
   address       String?
   notes         String?  @db.Text
+  adminNotes    String?  @db.Text // internal — never sent to customer
   paymentMethod String   @default("card")
+  // Delivery company link (replaces simple deliveryOption for full tracking)
+  deliveryCompanyId String?
+  trackingNumber    String?
+  inventoryDeducted Boolean  @default(false) // guard: stock deducted once only
+  cancelledAt   DateTime?
+  deliveredAt   DateTime?
   createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  user  User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   deliveryOption DeliveryOption? @relation(fields: [deliveryOptionId], references: [id], onDelete: SetNull)
-  items OrderItem[]
+  deliveryCompany DeliveryCompany? @relation("OrderDeliveryCompany", fields: [deliveryCompanyId], references: [id], onDelete: SetNull)
+  items          OrderItem[]
   paymentTransactions PaymentTransaction[]
+  statusHistory  OrderStatusHistory[]
+
+  @@index([status, createdAt])
+  @@index([userId, createdAt])
+  @@index([deliveryCompanyId])
 }
 
 model OrderItem {
   id        String  @id @default(cuid())
   orderId   String
   productId String
+  variantId String? // FK to ProductVariant if applicable
   quantity  Int
   price     Float
+  costPrice Float?  // snapshot of cost at time of order (admin only)
   vatAmount Float   @default(0)
   size      String?
+  color     String?
 
-  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product Product @relation(fields: [productId], references: [id])
+  order   Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product        @relation(fields: [productId], references: [id])
+  variant ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
+  @@index([productId])
 }
 
 model PaymentTransaction {
@@ -795,48 +839,73 @@ model DeliveryOption {
 model InventoryReceipt {
   id              String   @id @default(cuid())
   referenceNumber String?  @unique
-  supplierName    String?
+  invoiceNumber   String?  // supplier's invoice number
+  invoiceDate     DateTime? // date on the supplier's invoice
+  supplierId      String?  // FK to Supplier model (replaces free-text supplierName)
+  supplierName    String?  // kept for legacy / manual entry
   notes           String?  @db.Text
   receivedAt      DateTime @default(now())
   status          String   @default("posted") // draft | posted | cancelled
   totalCost       Float    @default(0)
+  performedByUserId String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  items InventoryReceiptItem[]
+  supplier    Supplier?              @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  performedBy User?                  @relation("InventoryReceiptPerformer", fields: [performedByUserId], references: [id], onDelete: SetNull)
+  items       InventoryReceiptItem[]
+
+  @@index([supplierId])
+  @@index([status, createdAt])
 }
 
 model InventoryReceiptItem {
   id         String   @id @default(cuid())
   receiptId  String
   productId  String
+  variantId  String?  // FK to ProductVariant if applicable
   quantity   Int
   unitCost   Float
   totalCost  Float
+  sellingPrice Float? // suggested selling price at time of purchase
+  sku        String?  // snapshot of SKU
+  notes      String?  @db.Text
   createdAt  DateTime @default(now())
 
   receipt InventoryReceipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
   product Product          @relation("InventoryReceiptProduct", fields: [productId], references: [id], onDelete: Cascade)
+  variant ProductVariant?  @relation("ReceiptItemVariant", fields: [variantId], references: [id], onDelete: SetNull)
+
+  @@index([receiptId])
+  @@index([productId])
 }
 
 model InventoryMovement {
   id                String   @id @default(cuid())
   productId         String
-  type              String   // purchase | sale | adjustment | package_consumption | return
-  quantityChange    Int
+  variantId         String?  // FK to ProductVariant (optional)
+  // purchase | sale | adjustment | return | damage | order_deduction | order_restore
+  type              String
+  quantityChange    Int      // positive = in, negative = out
   quantityBefore    Int
   quantityAfter     Int
   unitCost          Float?
   averageCostBefore Float?
   averageCostAfter  Float?
-  referenceType     String?
+  referenceType     String?  // Order | InventoryReceipt | manual
   referenceId       String?
+  reason            String?  @db.Text // mandatory for adjustment/damage
+  performedByUserId String?
   notes             String?  @db.Text
   createdAt         DateTime @default(now())
 
-  product Product @relation("InventoryProduct", fields: [productId], references: [id], onDelete: Cascade)
+  product     Product         @relation("InventoryProduct", fields: [productId], references: [id], onDelete: Cascade)
+  variant     ProductVariant? @relation("VariantMovement", fields: [variantId], references: [id], onDelete: SetNull)
+  performedBy User?           @relation("InventoryMovementPerformer", fields: [performedByUserId], references: [id], onDelete: SetNull)
 
   @@index([productId, createdAt])
+  @@index([variantId, createdAt])
+  @@index([type, createdAt])
 }
 
 // ─── Complaint ────────────────────────────────────────────────────────────────
@@ -1506,6 +1575,116 @@ model NutritionSession {
   @@index([userId])
   @@index([nutritionistId])
   @@index([status])
+}
+
+// ─── Supplier (Vendor) — admin-only, never exposed to customers ───────────────
+
+model Supplier {
+  id             String    @id @default(cuid())
+  name           String    // internal name — never shown to customers
+  phone          String?
+  address        String?   @db.Text
+  notes          String?   @db.Text
+  isActive       Boolean   @default(true)
+  commissionRate Float?    // optional: profit margin / commission rate
+  commissionType String?   // percentage | fixed
+  deletedAt      DateTime? // soft delete
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  products  Product[]
+  receipts  InventoryReceipt[]
+
+  @@index([isActive])
+  @@index([deletedAt])
+}
+
+// ─── Product Variants ─────────────────────────────────────────────────────────
+
+model ProductVariant {
+  id        String   @id @default(cuid())
+  productId String
+  size      String?
+  color     String?
+  sku       String?  @unique
+  barcode   String?
+  stock     Int      @default(0)
+  price     Float?   // override product base price (null = use product price)
+  costPrice Float?   // buying cost for this specific variant
+  image     String?  // variant-specific image URL
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  product      Product                @relation(fields: [productId], references: [id], onDelete: Cascade)
+  orderItems   OrderItem[]
+  receiptItems InventoryReceiptItem[] @relation("ReceiptItemVariant")
+  movements    InventoryMovement[]    @relation("VariantMovement")
+
+  @@index([productId, isActive])
+  @@index([sku])
+}
+
+// ─── Order Status History (Timeline) ─────────────────────────────────────────
+
+model OrderStatusHistory {
+  id                String   @id @default(cuid())
+  orderId           String
+  fromStatus        String?  // null on first entry
+  toStatus          String
+  notes             String?  @db.Text
+  performedByUserId String?
+  createdAt         DateTime @default(now())
+
+  order       Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  performedBy User? @relation("OrderStatusPerformer", fields: [performedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([orderId, createdAt])
+}
+
+// ─── Delivery Companies ───────────────────────────────────────────────────────
+
+model DeliveryCompany {
+  id              String    @id @default(cuid())
+  name            String
+  // courier | pickup | internal_courier
+  type            String    @default("courier")
+  phone           String?
+  contactPerson   String?
+  defaultFee      Float     @default(0)
+  estimatedDays   String?   // e.g. "2-3 أيام عمل"
+  supportsCOD     Boolean   @default(true)
+  codFeeType      String?   // percentage | fixed | null (no extra fee)
+  codFeeValue     Float?
+  collectsPayment Boolean   @default(true) // does company collect cash from customer?
+  isActive        Boolean   @default(true)
+  notes           String?   @db.Text
+  deletedAt       DateTime? // soft delete
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  zones  DeliveryZone[]
+  orders Order[]        @relation("OrderDeliveryCompany")
+
+  @@index([isActive])
+}
+
+// ─── Delivery Zones (price per governorate) ───────────────────────────────────
+
+model DeliveryZone {
+  id            String   @id @default(cuid())
+  companyId     String
+  governorate   String   // e.g. "القاهرة", "الجيزة", "الإسكندرية"
+  fee           Float
+  estimatedDays String?  // overrides company default for this zone
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  company DeliveryCompany @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, governorate])
+  @@index([companyId, isActive])
 }
 
 // ─── Manager–Partner Commission ───────────────────────────────────────────────

@@ -27,7 +27,10 @@ export type Section =
   | "rewards"
   | "database"
   | "push"
-  | "nutrition";
+  | "nutrition"
+  | "suppliers"
+  | "orders"
+  | "delivery-companies";
 
 export interface AdminEmployee {
   id: string;
