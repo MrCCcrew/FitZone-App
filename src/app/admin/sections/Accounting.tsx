@@ -250,6 +250,22 @@ function SectionDivider({ title }: { title: string }) {
   );
 }
 
+const PER_PAGE = 10;
+
+function PaginationBar({ page, total, onPage }: { page: number; total: number; onPage: (p: number) => void }) {
+  const totalPages = Math.max(1, Math.ceil(total / PER_PAGE));
+  if (totalPages <= 1) return null;
+  return (
+    <div className="flex items-center justify-between pt-2 text-sm text-[#d7aabd]">
+      <span>{total} سجل · صفحة {page} من {totalPages}</span>
+      <div className="flex gap-2">
+        <button className={BTN_GHOST} onClick={() => onPage(page - 1)} disabled={page <= 1}>السابق</button>
+        <button className={BTN_GHOST} onClick={() => onPage(page + 1)} disabled={page >= totalPages}>التالي</button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Modal ────────────────────────────────────────────────────────────────────
 
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
@@ -486,6 +502,10 @@ function StoreTab({ data, onRefresh, dateRange }: { data: AccountingData; onRefr
   const [showExpense, setShowExpense] = useState(false);
   const [showFeeRule, setShowFeeRule] = useState(false);
   const [expandedPurchase, setExpandedPurchase] = useState<string | null>(null);
+  const [pageSales, setPageSales] = useState(1);
+  const [pagePurchases, setPagePurchases] = useState(1);
+  const pagedSales = data.store.sales.slice((pageSales - 1) * PER_PAGE, pageSales * PER_PAGE);
+  const pagedPurchases = data.store.purchases.slice((pagePurchases - 1) * PER_PAGE, pagePurchases * PER_PAGE);
 
   const handlePrintReport = () => printStoreReport({
     summary: s,
@@ -554,7 +574,7 @@ function StoreTab({ data, onRefresh, dateRange }: { data: AccountingData; onRefr
                 </tr>
               </thead>
               <tbody>
-                {data.store.sales.map(row => (
+                {pagedSales.map(row => (
                   <tr key={row.id} className="border-b border-[rgba(255,188,219,0.07)] hover:bg-white/5">
                     <td className="py-2 text-[#d7aabd]">{fmtDate(row.date)}</td>
                     <td className="py-2 font-bold text-[#fff4f8]">{row.customerName}</td>
@@ -574,6 +594,7 @@ function StoreTab({ data, onRefresh, dateRange }: { data: AccountingData; onRefr
                 ))}
               </tbody>
             </table>
+            <PaginationBar page={pageSales} total={data.store.sales.length} onPage={setPageSales} />
           </div>
         )}
       </AdminCard>
@@ -633,7 +654,7 @@ function StoreTab({ data, onRefresh, dateRange }: { data: AccountingData; onRefr
                 </tr>
               </thead>
               <tbody>
-                {data.store.purchases.map(row => (
+                {pagedPurchases.map(row => (
                   <>
                     <tr key={row.id} className="border-b border-[rgba(255,188,219,0.07)] hover:bg-white/5">
                       <td className="py-2 text-[#d7aabd]">{fmtDate(row.date)}</td>
@@ -683,6 +704,7 @@ function StoreTab({ data, onRefresh, dateRange }: { data: AccountingData; onRefr
                 ))}
               </tbody>
             </table>
+            <PaginationBar page={pagePurchases} total={data.store.purchases.length} onPage={setPagePurchases} />
           </div>
         )}
       </AdminCard>
@@ -755,6 +777,10 @@ function ClubTab({ data, onRefresh, dateRange }: { data: AccountingData; onRefre
   const s = data.club.summary;
   const r = data.club.rewards;
   const [showExpense, setShowExpense] = useState(false);
+  const [pageMemberships, setPageMemberships] = useState(1);
+  const [pageBookings, setPageBookings] = useState(1);
+  const pagedMemberships = data.club.memberships.slice((pageMemberships - 1) * PER_PAGE, pageMemberships * PER_PAGE);
+  const pagedBookings = data.club.bookings.slice((pageBookings - 1) * PER_PAGE, pageBookings * PER_PAGE);
 
   const handlePrintReport = () => printClubReport({
     summary: s,
@@ -884,7 +910,7 @@ function ClubTab({ data, onRefresh, dateRange }: { data: AccountingData; onRefre
                 </tr>
               </thead>
               <tbody>
-                {data.club.memberships.map(row => (
+                {pagedMemberships.map(row => (
                   <tr key={row.id} className="border-b border-[rgba(255,188,219,0.07)] hover:bg-white/5">
                     <td className="py-2 text-[#d7aabd]">{fmtDate(row.date)}</td>
                     <td className="py-2 font-bold text-[#fff4f8]">{row.customerName}</td>
@@ -896,6 +922,7 @@ function ClubTab({ data, onRefresh, dateRange }: { data: AccountingData; onRefre
                 ))}
               </tbody>
             </table>
+            <PaginationBar page={pageMemberships} total={data.club.memberships.length} onPage={setPageMemberships} />
           </div>
         )}
       </AdminCard>
@@ -917,7 +944,7 @@ function ClubTab({ data, onRefresh, dateRange }: { data: AccountingData; onRefre
                   </tr>
                 </thead>
                 <tbody>
-                  {data.club.bookings.map(row => (
+                  {pagedBookings.map(row => (
                     <tr key={row.id} className="border-b border-[rgba(255,188,219,0.07)] hover:bg-white/5">
                       <td className="py-2 text-[#d7aabd]">{fmtDate(row.date)}</td>
                       <td className="py-2 font-bold text-[#fff4f8]">{row.customerName}</td>
@@ -928,6 +955,7 @@ function ClubTab({ data, onRefresh, dateRange }: { data: AccountingData; onRefre
                   ))}
                 </tbody>
               </table>
+              <PaginationBar page={pageBookings} total={data.club.bookings.length} onPage={setPageBookings} />
             </div>
           </AdminCard>
         </>
