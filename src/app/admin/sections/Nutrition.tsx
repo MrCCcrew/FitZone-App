@@ -98,7 +98,27 @@ function ProfileForm({ profile, staffUsers, onSave, onClose }: {
   const [newSlotDay, setNewSlotDay] = useState("الأحد");
   const [newSlotTime, setNewSlotTime] = useState("10:00");
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  async function uploadImage(file: File) {
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("folder", "nutritionists");
+      const res = await fetch("/api/admin/uploads", { method: "POST", body: fd });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok || !(payload as { url?: string }).url) throw new Error((payload as { error?: string }).error ?? "تعذر رفع الصورة");
+      setImage((payload as { url: string }).url);
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "تعذر رفع الصورة");
+    } finally {
+      setUploading(false);
+    }
+  }
 
   const days = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
 
@@ -148,9 +168,29 @@ function ProfileForm({ profile, staffUsers, onSave, onClose }: {
         <label style={{ fontSize: 11, color: "#9a8a90" }}>نبذة</label>
         <textarea value={bio} onChange={(e) => setBio(e.target.value)} rows={2} style={{ ...inputSt, marginTop: 4, resize: "vertical" }} />
       </div>
-      <div>
-        <label style={{ fontSize: 11, color: "#9a8a90" }}>رابط الصورة</label>
-        <input value={image} onChange={(e) => setImage(e.target.value)} style={{ ...inputSt, marginTop: 4 }} placeholder="https://..." />
+      <div style={{ display: "grid", gap: 8 }}>
+        <label style={{ fontSize: 11, color: "#9a8a90" }}>صورة الدكتورة</label>
+        <input
+          type="file"
+          accept="image/png,image/jpeg,image/webp,image/gif"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadImage(f); e.currentTarget.value = ""; }}
+          style={{ fontSize: 13, color: "#d7aabd" }}
+          disabled={uploading}
+        />
+        <input
+          value={image}
+          onChange={(e) => setImage(e.target.value)}
+          style={{ ...inputSt }}
+          placeholder="أو أدخلي رابط الصورة مباشرة"
+          dir="ltr"
+        />
+        {uploading && <div style={{ fontSize: 12, color: "#f59e0b" }}>جارٍ رفع الصورة...</div>}
+        {uploadError && <div style={{ fontSize: 12, color: "#f87171" }}>{uploadError}</div>}
+        {image && (
+          <div style={{ width: 100, height: 100, borderRadius: 12, overflow: "hidden", border: "1px solid rgba(255,255,255,.15)" }}>
+            <img src={image} alt="preview" style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "top" }} />
+          </div>
+        )}
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10 }}>
         {[
