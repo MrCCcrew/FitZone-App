@@ -99,6 +99,8 @@ const PAYMENT_LABELS: Record<string, string> = {
 const INPUT =
   "w-full rounded-xl border border-gray-700 bg-gray-800 px-4 py-2.5 text-sm text-white outline-none transition-colors focus:border-[#ff4f93]";
 
+const PER_PAGE = 10;
+
 function rotateCanvas(source: HTMLCanvasElement, angleDeg: number) {
   const angle = (angleDeg * Math.PI) / 180;
   const sin = Math.abs(Math.sin(angle));
@@ -215,6 +217,8 @@ export default function Bookings() {
   const [giftNote, setGiftNote] = useState("");
   const [giftWorking, setGiftWorking] = useState(false);
   const [giftSuccess, setGiftSuccess] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [userRole, setUserRole] = useState<string | null>(null);
   const [trainerPerms, setTrainerPerms] = useState({ canSendGifts: false, canAddBookings: false });
   const [permsLoaded, setPermsLoaded] = useState(false);
@@ -676,6 +680,28 @@ export default function Bookings() {
     }
   };
 
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    const confirmed = window.confirm(`هل تريد حذف ${selectedIds.size} حجز نهائياً؟ لا يمكن التراجع.`);
+    if (!confirmed) return;
+    setWorking(true);
+    try {
+      await Promise.all(
+        Array.from(selectedIds).map((id) =>
+          fetch("/api/admin/bookings", {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ bookingId: id }),
+          }),
+        ),
+      );
+      setSelectedIds(new Set());
+      await loadBookings();
+    } finally {
+      setWorking(false);
+    }
+  };
+
   const handleAction = async (bookingId: string, action: "attended" | "cancel" | "confirm") => {
     setWorking(true);
     try {
@@ -744,6 +770,38 @@ export default function Bookings() {
     } finally {
       setWorking(false);
     }
+  };
+
+  // Reset page and selection when bookings list refreshes
+  useEffect(() => {
+    setPage(1);
+    setSelectedIds(new Set());
+  }, [bookings]);
+
+  const totalPages = Math.max(1, Math.ceil(bookings.length / PER_PAGE));
+  const pagedBookings = bookings.slice((page - 1) * PER_PAGE, page * PER_PAGE);
+  const allPageSelected = pagedBookings.length > 0 && pagedBookings.every((b) => selectedIds.has(b.id));
+  const somePageSelected = !allPageSelected && pagedBookings.some((b) => selectedIds.has(b.id));
+
+  const toggleSelectAll = () => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allPageSelected) {
+        pagedBookings.forEach((b) => next.delete(b.id));
+      } else {
+        pagedBookings.forEach((b) => next.add(b.id));
+      }
+      return next;
+    });
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   };
 
   const scheduleOptions = useMemo(
@@ -1073,104 +1131,177 @@ export default function Bookings() {
             <AdminEmptyState title="لا توجد حجوزات" description="لا توجد حجوزات مطابقة للفلاتر الحالية." />
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[1000px] text-sm">
-              <thead>
-                <tr className="border-b border-[rgba(255,188,219,0.12)] text-right text-xs text-[#d7aabd]">
-                  {[
-                    "العميل",
-                    "الكلاس",
-                    "اليوم/الوقت",
-                    "الحالة",
-                    "الاشتراك",
-                    "الدفع",
-                    "إجراءات",
-                  ].map((header) => (
-                    <th key={header} className="px-5 py-4 font-medium">
-                      {header}
+          <>
+            {/* Bulk action bar */}
+            {selectedIds.size > 0 && (
+              <div className="flex items-center justify-between gap-3 border-b border-[rgba(255,188,219,0.12)] bg-rose-950/30 px-5 py-3">
+                <span className="text-sm font-bold text-[#fff4f8]">
+                  تم تحديد {selectedIds.size} حجز
+                </span>
+                <button
+                  onClick={() => void handleBulkDelete()}
+                  disabled={working}
+                  className="rounded-xl bg-rose-600 px-4 py-2 text-xs font-black text-white transition-colors hover:bg-rose-500 disabled:opacity-50"
+                >
+                  {working ? "جارٍ الحذف..." : `حذف المحدد (${selectedIds.size})`}
+                </button>
+              </div>
+            )}
+
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[1060px] text-sm">
+                <thead>
+                  <tr className="border-b border-[rgba(255,188,219,0.12)] text-right text-xs text-[#d7aabd]">
+                    <th className="px-4 py-4 w-10">
+                      <input
+                        type="checkbox"
+                        checked={allPageSelected}
+                        ref={(node) => { if (node) node.indeterminate = somePageSelected; }}
+                        onChange={toggleSelectAll}
+                        className="h-4 w-4 cursor-pointer accent-[#ff4f93]"
+                        title="تحديد الكل في الصفحة"
+                      />
                     </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {bookings.map((booking) => (
-                  <tr
-                    key={booking.id}
-                    className="border-b border-[rgba(255,188,219,0.08)] transition-colors hover:bg-white/[0.03]"
-                  >
-                    <td className="px-5 py-4">
-                      <div className="font-bold text-[#fff4f8]">{booking.user.name}</div>
-                      <div className="mt-1 text-xs text-[#d7aabd]">{booking.user.phone}</div>
-                    </td>
-                    <td className="px-5 py-4">
-                      <div className="font-bold text-[#fff4f8]">{booking.schedule.class.name}</div>
-                      <div className="mt-1 text-xs text-[#d7aabd]">المدربة: {booking.schedule.class.trainer}</div>
-                    </td>
-                    <td className="px-5 py-4 text-[#d7aabd]">
-                      <div>{formatDay(booking.schedule.date)}</div>
-                      <div className="mt-1 text-xs text-[#b98ea0]">{formatDate(booking.schedule.date)} • {booking.schedule.time}</div>
-                    </td>
-                    <td className="px-5 py-4">
-                      <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-bold ${STATUS_BADGE[booking.status] ?? "bg-white/10 text-white/70"}`}>
-                        {STATUS_LABELS[booking.status] ?? booking.status}
-                      </span>
-                    </td>
-                    <td className="px-5 py-4 text-[#d7aabd]">
-                      {booking.membership?.name ?? "بدون اشتراك"}
-                    </td>
-                    <td className="px-5 py-4">
-                      <div className="font-bold text-[#fff4f8]">{booking.paidAmount.toLocaleString("ar-EG")} ج.م</div>
-                      <div className="mt-1 text-xs text-[#d7aabd]">{formatPayment(booking.paymentMethod)}</div>
-                    </td>
-                    <td className="px-5 py-4">
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          onClick={() => setRescheduleModal(booking)}
-                          className="rounded-lg bg-white/5 px-3 py-2 text-xs text-[#fff4f8] transition-colors hover:bg-white/10"
-                        >
-                          تعديل الموعد
-                        </button>
-                        {booking.status !== "attended" && (
-                          <button
-                            onClick={() => handleAction(booking.id, "attended")}
-                            disabled={working}
-                            className="rounded-lg bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300 transition-colors hover:bg-emerald-500/20 disabled:opacity-50"
-                          >
-                            تسجيل حضور
-                          </button>
-                        )}
-                        {booking.status !== "cancelled" && (
-                          <button
-                            onClick={() => handleAction(booking.id, "cancel")}
-                            disabled={working}
-                            className="rounded-lg bg-rose-500/10 px-3 py-2 text-xs text-rose-300 transition-colors hover:bg-rose-500/20 disabled:opacity-50"
-                          >
-                            إلغاء
-                          </button>
-                        )}
-                        {booking.status === "cancelled" && (
-                          <button
-                            onClick={() => handleAction(booking.id, "confirm")}
-                            disabled={working}
-                            className="rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-300 transition-colors hover:bg-amber-500/20 disabled:opacity-50"
-                          >
-                            إعادة تفعيل
-                          </button>
-                        )}
-                        <button
-                          onClick={() => handleDelete(booking.id)}
-                          disabled={working}
-                          className="rounded-lg bg-rose-900/30 px-3 py-2 text-xs text-rose-400 transition-colors hover:bg-rose-900/50 disabled:opacity-50"
-                        >
-                          حذف
-                        </button>
-                      </div>
-                    </td>
+                    {["العميل", "الكلاس", "اليوم/الوقت", "الحالة", "الاشتراك", "الدفع", "إجراءات"].map((header) => (
+                      <th key={header} className="px-5 py-4 font-medium">{header}</th>
+                    ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {pagedBookings.map((booking) => (
+                    <tr
+                      key={booking.id}
+                      className={`border-b border-[rgba(255,188,219,0.08)] transition-colors hover:bg-white/[0.03] ${selectedIds.has(booking.id) ? "bg-rose-950/20" : ""}`}
+                    >
+                      <td className="px-4 py-4">
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(booking.id)}
+                          onChange={() => toggleSelect(booking.id)}
+                          className="h-4 w-4 cursor-pointer accent-[#ff4f93]"
+                        />
+                      </td>
+                      <td className="px-5 py-4">
+                        <div className="font-bold text-[#fff4f8]">{booking.user.name}</div>
+                        <div className="mt-1 text-xs text-[#d7aabd]">{booking.user.phone}</div>
+                      </td>
+                      <td className="px-5 py-4">
+                        <div className="font-bold text-[#fff4f8]">{booking.schedule.class.name}</div>
+                        <div className="mt-1 text-xs text-[#d7aabd]">المدربة: {booking.schedule.class.trainer}</div>
+                      </td>
+                      <td className="px-5 py-4 text-[#d7aabd]">
+                        <div>{formatDay(booking.schedule.date)}</div>
+                        <div className="mt-1 text-xs text-[#b98ea0]">{formatDate(booking.schedule.date)} • {booking.schedule.time}</div>
+                      </td>
+                      <td className="px-5 py-4">
+                        <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-bold ${STATUS_BADGE[booking.status] ?? "bg-white/10 text-white/70"}`}>
+                          {STATUS_LABELS[booking.status] ?? booking.status}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4 text-[#d7aabd]">
+                        {booking.membership?.name ?? "بدون اشتراك"}
+                      </td>
+                      <td className="px-5 py-4">
+                        <div className="font-bold text-[#fff4f8]">{booking.paidAmount.toLocaleString("ar-EG")} ج.م</div>
+                        <div className="mt-1 text-xs text-[#d7aabd]">{formatPayment(booking.paymentMethod)}</div>
+                      </td>
+                      <td className="px-5 py-4">
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            onClick={() => setRescheduleModal(booking)}
+                            className="rounded-lg bg-white/5 px-3 py-2 text-xs text-[#fff4f8] transition-colors hover:bg-white/10"
+                          >
+                            تعديل الموعد
+                          </button>
+                          {booking.status !== "attended" && (
+                            <button
+                              onClick={() => void handleAction(booking.id, "attended")}
+                              disabled={working}
+                              className="rounded-lg bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300 transition-colors hover:bg-emerald-500/20 disabled:opacity-50"
+                            >
+                              تسجيل حضور
+                            </button>
+                          )}
+                          {booking.status !== "cancelled" && (
+                            <button
+                              onClick={() => void handleAction(booking.id, "cancel")}
+                              disabled={working}
+                              className="rounded-lg bg-rose-500/10 px-3 py-2 text-xs text-rose-300 transition-colors hover:bg-rose-500/20 disabled:opacity-50"
+                            >
+                              إلغاء
+                            </button>
+                          )}
+                          {booking.status === "cancelled" && (
+                            <button
+                              onClick={() => void handleAction(booking.id, "confirm")}
+                              disabled={working}
+                              className="rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-300 transition-colors hover:bg-amber-500/20 disabled:opacity-50"
+                            >
+                              إعادة تفعيل
+                            </button>
+                          )}
+                          <button
+                            onClick={() => void handleDelete(booking.id)}
+                            disabled={working}
+                            className="rounded-lg bg-rose-900/30 px-3 py-2 text-xs text-rose-400 transition-colors hover:bg-rose-900/50 disabled:opacity-50"
+                          >
+                            حذف
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination */}
+            <div className="flex items-center justify-between gap-4 border-t border-[rgba(255,188,219,0.12)] px-5 py-4">
+              <span className="text-xs text-[#d7aabd]">
+                {bookings.length} حجز • صفحة {page} من {totalPages}
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                  className="rounded-xl bg-white/8 px-4 py-2 text-sm font-bold text-[#fff4f8] transition-colors hover:bg-white/15 disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  ← السابق
+                </button>
+                {Array.from({ length: totalPages }, (_, i) => i + 1)
+                  .filter((p) => p === 1 || p === totalPages || Math.abs(p - page) <= 2)
+                  .reduce<(number | "…")[]>((acc, p, idx, arr) => {
+                    if (idx > 0 && p - (arr[idx - 1] as number) > 1) acc.push("…");
+                    acc.push(p);
+                    return acc;
+                  }, [])
+                  .map((item, idx) =>
+                    item === "…" ? (
+                      <span key={`dots-${idx}`} className="px-1 text-[#d7aabd] text-xs">…</span>
+                    ) : (
+                      <button
+                        key={item}
+                        onClick={() => setPage(item as number)}
+                        className={`min-w-[34px] rounded-xl px-3 py-2 text-xs font-bold transition-colors ${
+                          page === item
+                            ? "bg-[#ff4f93] text-white shadow-[0_4px_14px_rgba(255,79,147,0.4)]"
+                            : "bg-white/8 text-[#d7aabd] hover:bg-white/15"
+                        }`}
+                      >
+                        {item}
+                      </button>
+                    ),
+                  )}
+                <button
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page === totalPages}
+                  className="rounded-xl bg-white/8 px-4 py-2 text-sm font-bold text-[#fff4f8] transition-colors hover:bg-white/15 disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  التالي →
+                </button>
+              </div>
+            </div>
+          </>
         )}
       </AdminCard>
 
