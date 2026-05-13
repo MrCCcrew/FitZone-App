@@ -775,6 +775,26 @@ export async function updatePaymentTransactionStatus(
         await ensurePrivateAttendancePass(privateSessionApplicationId);
       } catch {}
     }
+
+    // Mark nutrition session as paid
+    const nutritionSessionId =
+      typeof metadata?.nutritionSessionId === "string" ? metadata.nutritionSessionId : null;
+    if (nutritionSessionId) {
+      await db.nutritionSession.updateMany({
+        where: { id: nutritionSessionId, status: "approved" },
+        data: { status: "paid", paidAt: transaction.paidAt ?? new Date(), paymentTransactionId: transactionId },
+      });
+      if (existing?.userId) {
+        await db.notification.create({
+          data: {
+            userId: existing.userId,
+            title: "تم تأكيد حجز كشف دكتورة التغذية!",
+            body: "تم استلام دفعتك بنجاح. ستتواصل معك الدكتورة قريباً.",
+            type: "success",
+          },
+        }).catch(() => null);
+      }
+    }
   }
 
   return mapPaymentTransaction(transaction);

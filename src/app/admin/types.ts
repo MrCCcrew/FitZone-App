@@ -26,7 +26,8 @@ export type Section =
   | "discounts"
   | "rewards"
   | "database"
-  | "push";
+  | "push"
+  | "nutrition";
 
 export interface AdminEmployee {
   id: string;
@@ -644,4 +645,37 @@ export interface TrainerCommissionRow {
   status: "earned" | "settled";
   settledAt: string | null;
   createdAt: string;
+}
+
+export interface NutritionistProfileRow {
+  id: string;
+  userId: string;
+  name: string;
+  bio: string | null;
+  image: string | null;
+  isActive: boolean;
+  showOnHome: boolean;
+  slots: { label: string; day: string; time: string }[];
+  consultationFee: number;
+  consultationFeeMember: number;
+  followupFee: number;
+  followupFeeMember: number;
+  createdAt: string;
+  linkedUser: { id: string; name: string | null; email: string | null; phone: string | null } | null;
+}
+
+export interface NutritionSessionRow {
+  id: string;
+  type: "consultation" | "followup";
+  status: string;
+  isGymMember: boolean;
+  price: number;
+  formData: Record<string, unknown> | null;
+  selectedSlot: string | null;
+  proposedSlots: string[];
+  doctorNote: string | null;
+  paidAt: string | null;
+  createdAt: string;
+  user: { id: string; name: string | null; email: string | null; phone: string | null; avatar: string | null };
+  nutritionist: { id: string; name: string };
 }

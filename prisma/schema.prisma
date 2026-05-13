@@ -126,6 +126,8 @@ model User {
   trainerReferralLinks       TrainerReferralLink[]       @relation("TrainerLinks")
   trainerCommissions         TrainerCommission[]         @relation("TrainerCommissions")
   healthResponses            HealthResponse[]            @relation("HealthResponses")
+  nutritionistProfile        NutritionistProfile?        @relation("NutritionistAccount")
+  nutritionSessions          NutritionSession[]          @relation("NutritionSessionUser")
 }
 
 model AuditLog {
@@ -1436,6 +1438,74 @@ model TrainerCommission {
 
   @@index([trainerUserId, status])
   @@index([createdAt])
+}
+
+// ─── Nutrition Doctor ─────────────────────────────────────────────────────────
+
+model NutritionistProfile {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  name      String
+  bio       String?  @db.Text
+  image     String?
+  isActive  Boolean  @default(true)
+  showOnHome Boolean @default(true)
+
+  // Pre-set available slots (JSON: [{label:"الأحد 10 صباحاً", day:"الأحد", time:"10:00"}])
+  slotsJson String?  @db.Text
+
+  // Pricing (editable by admin)
+  consultationFee       Float @default(400) // كشف - non-member
+  consultationFeeMember Float @default(300) // كشف - gym member
+  followupFee           Float @default(100) // إعادة كشف - non-member
+  followupFeeMember     Float @default(50)  // إعادة كشف - gym member
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user     User               @relation("NutritionistAccount", fields: [userId], references: [id], onDelete: Cascade)
+  sessions NutritionSession[]
+
+  @@index([isActive])
+}
+
+model NutritionSession {
+  id             String  @id @default(cuid())
+  userId         String
+  nutritionistId String
+  // consultation | followup
+  type           String  @default("consultation")
+  // pending | awaiting_slot | approved | paid | completed | rejected | cancelled
+  status         String  @default("pending")
+
+  isGymMember Boolean @default(false)
+  price       Float
+
+  // Full form data (JSON)
+  formJson String? @db.LongText
+
+  // Scheduling
+  // Flow A: client picks from doctor's pre-set slots on submission
+  // Flow B: doctor proposes slots after reviewing the request → client picks
+  selectedSlot  String?          // client-chosen slot label
+  proposedSlots String? @db.Text // JSON array: doctor proposes after review
+
+  // Doctor response
+  doctorNote String? @db.Text
+
+  // Payment
+  paymentTransactionId String?
+  paidAt               DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user         User                @relation("NutritionSessionUser", fields: [userId], references: [id], onDelete: Cascade)
+  nutritionist NutritionistProfile @relation(fields: [nutritionistId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([nutritionistId])
+  @@index([status])
 }
 
 // ─── Manager–Partner Commission ───────────────────────────────────────────────

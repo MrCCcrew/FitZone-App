@@ -1409,6 +1409,18 @@ type PublicTrainer = {
   classesCount: number;
 };
 
+type PublicNutritionist = {
+  id: string;
+  name: string;
+  bio: string | null;
+  image: string | null;
+  slots: { label: string; day: string; time: string }[];
+  consultationFee: number;
+  consultationFeeMember: number;
+  followupFee: number;
+  followupFeeMember: number;
+};
+
 type PublicContact = {
   phone: string;
   whatsapp: string;
@@ -2045,6 +2057,15 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
   const [trainers, setTrainers] = useState<PublicTrainer[]>([]);
   const [trainerDetailModal, setTrainerDetailModal] = useState<PublicTrainer | null>(null);
   const [privateBookingModal, setPrivateBookingModal] = useState<{ trainer: PublicTrainer; type: "private" | "mini_private" } | null>(null);
+  const [nutritionist, setNutritionist] = useState<PublicNutritionist | null>(null);
+  const [nutritionModal, setNutritionModal] = useState(false);
+  const [nutritionStep, setNutritionStep] = useState(0);
+  const [nutritionType, setNutritionType] = useState<"consultation" | "followup">("consultation");
+  const [nutritionForm, setNutritionForm] = useState<Record<string, unknown>>({});
+  const [nutritionSlot, setNutritionSlot] = useState<string | null>(null);
+  const [nutritionSubmitting, setNutritionSubmitting] = useState(false);
+  const [nutritionMsg, setNutritionMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [nutritionDone, setNutritionDone] = useState<{ sessionId: string; status: string } | null>(null);
   const [testimonials, setTestimonials] = useState<PublicTestimonial[]>([]);
   const [products, setProducts] = useState<StoreProduct[]>([]);
   const [homeOffers, setHomeOffers] = useState<PublicOffer[]>([]);
@@ -2116,6 +2137,9 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
             .sort((a, b) => a.sortOrder - b.sortOrder)
             .slice(0, 3),
         );
+      }
+      if (d.nutritionist && typeof d.nutritionist === "object") {
+        setNutritionist(d.nutritionist as PublicNutritionist);
       }
       if (Array.isArray(d.testimonials) && d.testimonials.length > 0) {
         setTestimonials(d.testimonials.slice(0, 6));
@@ -2964,6 +2988,57 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
         </div>
       </section>
 
+      {/* ─ NUTRITION DOCTOR ─ */}
+      {nutritionist && (
+        <section className="section" style={{ background: "linear-gradient(135deg, rgba(20,80,50,.18) 0%, rgba(10,40,25,.12) 100%)", borderTop: "1px solid rgba(74,222,128,.1)", borderBottom: "1px solid rgba(74,222,128,.1)" }}>
+          <div className="container">
+            <div style={{ display: "flex", flexDirection: _w < 768 ? "column" : "row", gap: 40, alignItems: "center" }}>
+              {/* Left: info */}
+              <div style={{ flex: 1 }}>
+                <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "rgba(74,222,128,.12)", border: "1px solid rgba(74,222,128,.25)", borderRadius: 20, padding: "5px 14px", marginBottom: 16 }}>
+                  <span style={{ fontSize: 16 }}>🥗</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: "#4ade80", letterSpacing: ".5px" }}>{t("دكتورة التغذية", "Nutrition Doctor")}</span>
+                </div>
+                <h2 className="section-title" style={{ marginBottom: 8 }}>{nutritionist.name}</h2>
+                {nutritionist.bio && <p style={{ color: C.gray, lineHeight: 1.8, fontSize: 15, marginBottom: 24, maxWidth: 480 }}>{nutritionist.bio}</p>}
+                <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 28 }}>
+                  <div style={{ background: "rgba(74,222,128,.08)", border: "1px solid rgba(74,222,128,.2)", borderRadius: 12, padding: "12px 20px", textAlign: "center" }}>
+                    <div style={{ fontWeight: 900, fontSize: 18, color: "#4ade80" }}>{nutritionist.consultationFee} {t("ج.م", "EGP")}</div>
+                    <div style={{ fontSize: 11, color: C.gray, marginTop: 3 }}>{t("حجز كشف", "Consultation")}</div>
+                  </div>
+                  <div style={{ background: "rgba(74,222,128,.08)", border: "1px solid rgba(74,222,128,.2)", borderRadius: 12, padding: "12px 20px", textAlign: "center" }}>
+                    <div style={{ fontWeight: 900, fontSize: 18, color: "#4ade80" }}>{nutritionist.followupFee} {t("ج.م", "EGP")}</div>
+                    <div style={{ fontSize: 11, color: C.gray, marginTop: 3 }}>{t("إعادة كشف", "Follow-up")}</div>
+                  </div>
+                </div>
+                <button
+                  className="btn-primary"
+                  style={{ background: "linear-gradient(135deg,#16a34a,#15803d)", fontSize: 15, padding: "14px 36px", borderRadius: 14, touchAction: "manipulation" }}
+                  onClick={() => {
+                    if (!summary?.authenticated) { navigate("login"); return; }
+                    setNutritionStep(0);
+                    setNutritionType("consultation");
+                    setNutritionForm({});
+                    setNutritionSlot(null);
+                    setNutritionMsg(null);
+                    setNutritionDone(null);
+                    setNutritionModal(true);
+                  }}
+                >
+                  🥗 {t("احجزي موعدك الآن", "Book your appointment")}
+                </button>
+              </div>
+              {/* Right: image */}
+              {nutritionist.image && (
+                <div style={{ flexShrink: 0, width: _w < 768 ? "100%" : 280 }}>
+                  <img src={nutritionist.image} alt={nutritionist.name} style={{ width: "100%", height: 300, objectFit: "cover", objectPosition: "top", borderRadius: 20, border: "2px solid rgba(74,222,128,.2)" }} />
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* ─ TRAINERS ─ */}
       <section className="section">
         <div className="container">
@@ -3162,6 +3237,299 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
           onClose={() => setPrivateBookingModal(null)}
         />
       )}
+
+      {/* ─ NUTRITION BOOKING MODAL ─ */}
+      {nutritionModal && nutritionist && (() => {
+        const nf = (key: string, value: unknown) => setNutritionForm((prev) => ({ ...prev, [key]: value }));
+        const nfArr = (key: string, val: string, checked: boolean) => {
+          const prev = (nutritionForm[key] as string[] | undefined) ?? [];
+          setNutritionForm((f) => ({ ...f, [key]: checked ? [...prev, val] : prev.filter((v) => v !== val) }));
+        };
+        const isGymMember = summary?.membership?.status === "active";
+        const consultationPrice = isGymMember ? nutritionist.consultationFeeMember : nutritionist.consultationFee;
+        const followupPrice = isGymMember ? nutritionist.followupFeeMember : nutritionist.followupFee;
+        const price = nutritionType === "consultation" ? consultationPrice : followupPrice;
+        const totalSteps = nutritionist.slots.length > 0 ? 5 : 4;
+
+        const closeModal = () => { setNutritionModal(false); setNutritionDone(null); setNutritionMsg(null); };
+
+        const submitBooking = async () => {
+          setNutritionSubmitting(true);
+          setNutritionMsg(null);
+          try {
+            const res = await fetch("/api/me/nutrition", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                nutritionistId: nutritionist.id,
+                type: nutritionType,
+                formData: nutritionForm,
+                selectedSlot: nutritionSlot ?? undefined,
+              }),
+            });
+            const data = await res.json() as { session?: { id: string; status: string }; error?: string };
+            if (!res.ok) { setNutritionMsg({ ok: false, text: data.error ?? "حدث خطأ" }); return; }
+            setNutritionDone({ sessionId: data.session!.id, status: data.session!.status });
+          } catch { setNutritionMsg({ ok: false, text: "تعذر إرسال الطلب" }); }
+          finally { setNutritionSubmitting(false); }
+        };
+
+        const startPayment = async (sessionId: string) => {
+          setNutritionSubmitting(true);
+          try {
+            const res = await fetch("/api/payments/nutrition-intent", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ sessionId, returnUrl: `${window.location.origin}/account?tab=nutrition`, cancelUrl: window.location.href }),
+            });
+            const data = await res.json() as { checkoutUrl?: string; error?: string };
+            if (data.checkoutUrl) { window.location.href = data.checkoutUrl; }
+            else { setNutritionMsg({ ok: false, text: data.error ?? "تعذر بدء الدفع" }); }
+          } catch { setNutritionMsg({ ok: false, text: "تعذر بدء الدفع" }); }
+          finally { setNutritionSubmitting(false); }
+        };
+
+        const goals = ["خسارة الوزن", "اكتساب العضلات", "التحكم في نسبة السكر", "التحكم في ضغط الدم", "تغذية سليمة عامة", "تغذية الحامل والمرضع"];
+        const medHistory = ["ضغط الدم", "السكري", "أمراض الكلى", "أمراض القلب", "الغدة الدرقية", "حساسية غذائية", "حالياً حامل", "حالياً مرضع", "لا توجد حالات طبية"];
+
+        const stepTitles = ["نوع الحجز", "معلومات أساسية", "الهدف", "التاريخ الطبي", "القياسات", "اختاري الموعد"];
+
+        return (
+          <div style={{ position: "fixed", inset: 0, zIndex: 500, background: "rgba(0,0,0,.85)", backdropFilter: "blur(12px)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: _w < 640 ? 0 : "16px 12px", overflowY: "auto" }}>
+            <div style={{ background: "#0f1a12", border: "1px solid rgba(74,222,128,.2)", borderRadius: _w < 640 ? "0 0 24px 24px" : 20, maxWidth: 560, width: "100%", boxShadow: "0 24px 80px rgba(0,0,0,.8)", marginBottom: 24 }}>
+              {/* Header */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 20px 14px", borderBottom: "1px solid rgba(74,222,128,.12)" }}>
+                <div>
+                  <div style={{ fontWeight: 900, fontSize: 16, color: "#fff" }}>🥗 {t("حجز موعد", "Book Appointment")}</div>
+                  <div style={{ fontSize: 12, color: "#6ee7a0", marginTop: 3 }}>{nutritionist.name}</div>
+                </div>
+                <button onClick={closeModal} style={{ width: 34, height: 34, borderRadius: "50%", border: "none", background: "rgba(255,255,255,.08)", color: "#fff", fontSize: 20, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
+              </div>
+
+              {/* Progress (show only when not done) */}
+              {!nutritionDone && (
+                <div style={{ padding: "12px 20px 0" }}>
+                  <div style={{ display: "flex", gap: 4 }}>
+                    {Array.from({ length: totalSteps + 1 }, (_, i) => (
+                      <div key={i} style={{ flex: 1, height: 3, borderRadius: 2, background: i <= nutritionStep ? "#4ade80" : "rgba(255,255,255,.12)", transition: "background .2s" }} />
+                    ))}
+                  </div>
+                  <div style={{ fontSize: 11, color: "#6ee7a0", marginTop: 6 }}>{t("خطوة", "Step")} {nutritionStep + 1} {t("من", "of")} {totalSteps + 1}: {stepTitles[nutritionStep]}</div>
+                </div>
+              )}
+
+              <div style={{ padding: "18px 20px 22px" }}>
+                {/* ── DONE STATE ── */}
+                {nutritionDone ? (
+                  <div style={{ textAlign: "center", padding: "20px 0" }}>
+                    {nutritionDone.status === "approved" ? (
+                      <>
+                        <div style={{ fontSize: 48, marginBottom: 12 }}>✅</div>
+                        <div style={{ fontWeight: 900, fontSize: 18, color: "#4ade80", marginBottom: 8 }}>{t("تم تأكيد موعدك!", "Appointment confirmed!")}</div>
+                        <div style={{ color: C.gray, fontSize: 14, marginBottom: 24, lineHeight: 1.7 }}>{t(`موعدك مع دكتورة ${nutritionist.name} تم تأكيده. أكملي الدفع لتثبيت الحجز.`, `Your appointment with Dr. ${nutritionist.name} is confirmed. Complete payment to secure your booking.`)}</div>
+                        <div style={{ background: "rgba(74,222,128,.1)", border: "1px solid rgba(74,222,128,.25)", borderRadius: 12, padding: "14px 20px", marginBottom: 20 }}>
+                          <div style={{ fontWeight: 700, fontSize: 18, color: "#4ade80" }}>{price} {t("ج.م", "EGP")}</div>
+                          <div style={{ fontSize: 12, color: C.gray, marginTop: 3 }}>{nutritionType === "consultation" ? t("حجز كشف", "Consultation") : t("إعادة كشف", "Follow-up")}</div>
+                        </div>
+                        {nutritionMsg && <div style={{ background: "rgba(233,30,99,.1)", border: "1px solid rgba(233,30,99,.3)", borderRadius: 10, padding: "10px 14px", fontSize: 13, color: "#ffb7d0", marginBottom: 14 }}>{nutritionMsg.text}</div>}
+                        <button className="btn-primary" style={{ background: "linear-gradient(135deg,#16a34a,#15803d)", width: "100%", justifyContent: "center", fontSize: 15, padding: "14px", borderRadius: 12 }} onClick={() => void startPayment(nutritionDone.sessionId)} disabled={nutritionSubmitting}>
+                          {nutritionSubmitting ? t("جارٍ التحويل...", "Redirecting...") : `💳 ${t("أكملي الدفع", "Complete Payment")} — ${price} ${t("ج.م", "EGP")}`}
+                        </button>
+                        <button onClick={closeModal} style={{ marginTop: 10, width: "100%", background: "none", border: "none", color: C.gray, fontSize: 13, cursor: "pointer", padding: "8px" }}>{t("لاحقاً من حسابي", "Later from my account")}</button>
+                      </>
+                    ) : (
+                      <>
+                        <div style={{ fontSize: 48, marginBottom: 12 }}>📩</div>
+                        <div style={{ fontWeight: 900, fontSize: 18, color: "#4ade80", marginBottom: 8 }}>{t("تم إرسال طلبك!", "Request sent!")}</div>
+                        <div style={{ color: C.gray, fontSize: 14, marginBottom: 20, lineHeight: 1.7 }}>{t(`تم استلام طلب حجزك مع دكتورة ${nutritionist.name}. سنتواصل معك قريباً لتأكيد الموعد.`, `Your booking request with Dr. ${nutritionist.name} has been received. We'll contact you soon to confirm your appointment.`)}</div>
+                        <button className="btn-primary" style={{ background: "linear-gradient(135deg,#16a34a,#15803d)", width: "100%", justifyContent: "center", fontSize: 15, padding: "14px", borderRadius: 12 }} onClick={closeModal}>{t("حسناً", "OK")}</button>
+                      </>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    {/* ── STEP 0: Type ── */}
+                    {nutritionStep === 0 && (
+                      <div>
+                        <div style={{ marginBottom: 16, fontSize: 14, color: C.gray }}>{t("اختاري نوع الجلسة:", "Choose session type:")}</div>
+                        {[
+                          { type: "consultation" as const, label: t("حجز كشف", "Consultation"), price: consultationPrice, icon: "🩺", desc: t("أول زيارة لتقييم حالتك الصحية ووضع خطة غذائية مخصصة", "First visit to assess your health and create a personalized nutrition plan") },
+                          { type: "followup" as const, label: t("إعادة كشف", "Follow-up"), price: followupPrice, icon: "🔄", desc: t("متابعة التقدم وتعديل الخطة الغذائية", "Progress check and nutrition plan adjustment") },
+                        ].map(({ type, label, price: p, icon, desc }) => (
+                          <button key={type} onClick={() => setNutritionType(type)} style={{ width: "100%", marginBottom: 12, padding: "16px 18px", borderRadius: 14, border: `2px solid ${nutritionType === type ? "#4ade80" : "rgba(255,255,255,.1)"}`, background: nutritionType === type ? "rgba(74,222,128,.1)" : "rgba(255,255,255,.03)", cursor: "pointer", textAlign: "start", transition: "border-color .2s,background .2s" }}>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                                <span style={{ fontSize: 22 }}>{icon}</span>
+                                <div>
+                                  <div style={{ fontWeight: 700, fontSize: 15, color: "#fff" }}>{label}</div>
+                                  <div style={{ fontSize: 12, color: C.gray, marginTop: 2 }}>{desc}</div>
+                                </div>
+                              </div>
+                              <div style={{ textAlign: "end", flexShrink: 0 }}>
+                                <div style={{ fontWeight: 900, fontSize: 17, color: "#4ade80" }}>{p}</div>
+                                <div style={{ fontSize: 11, color: C.gray }}>{t("ج.م", "EGP")}</div>
+                              </div>
+                            </div>
+                          </button>
+                        ))}
+                        {isGymMember && <div style={{ fontSize: 12, color: "#4ade80", background: "rgba(74,222,128,.08)", border: "1px solid rgba(74,222,128,.2)", borderRadius: 8, padding: "8px 12px", marginBottom: 12 }}>✅ {t("أنتِ عضوة في الجيم — تم تطبيق السعر المميز", "You're a gym member — member price applied")}</div>}
+                      </div>
+                    )}
+
+                    {/* ── STEP 1: Basic info ── */}
+                    {nutritionStep === 1 && (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                        {[
+                          { key: "fullName", label: t("الاسم الكامل", "Full name"), type: "text", placeholder: t("اكتبي اسمك الكامل", "Your full name"), required: true },
+                          { key: "phone", label: t("رقم الهاتف", "Phone number"), type: "tel", placeholder: "01xxxxxxxxx", required: true },
+                          { key: "age", label: t("العمر", "Age"), type: "number", placeholder: t("سنة", "years"), required: false },
+                          { key: "weight", label: t("الوزن الحالي (كجم)", "Current weight (kg)"), type: "number", placeholder: "kg", required: false },
+                          { key: "height", label: t("الطول (سم)", "Height (cm)"), type: "number", placeholder: "cm", required: false },
+                        ].map(({ key, label, type, placeholder }) => (
+                          <div key={key}>
+                            <label style={{ fontSize: 12, fontWeight: 700, color: "#6ee7a0", display: "block", marginBottom: 5 }}>{label}</label>
+                            <input type={type} value={(nutritionForm[key] as string) ?? ""} onChange={(e) => nf(key, e.target.value)} placeholder={placeholder} style={{ width: "100%", background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.12)", borderRadius: 10, padding: "10px 13px", color: "#fff", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* ── STEP 2: Goals ── */}
+                    {nutritionStep === 2 && (
+                      <div>
+                        <div style={{ fontSize: 14, color: C.gray, marginBottom: 14 }}>{t("اختاري هدفك من الاستشارة الغذائية (يمكن اختيار أكثر من هدف):", "Choose your nutrition goal(s):")}</div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                          {goals.map((goal) => {
+                            const checked = ((nutritionForm.goals as string[]) ?? []).includes(goal);
+                            return (
+                              <label key={goal} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 10, border: `1px solid ${checked ? "#4ade80" : "rgba(255,255,255,.1)"}`, background: checked ? "rgba(74,222,128,.08)" : "rgba(255,255,255,.03)", cursor: "pointer", transition: "border-color .2s" }}>
+                                <input type="checkbox" checked={checked} onChange={(e) => nfArr("goals", goal, e.target.checked)} style={{ accentColor: "#4ade80" }} />
+                                <span style={{ fontSize: 14, color: "#fff" }}>{goal}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                        <div style={{ marginTop: 14 }}>
+                          <label style={{ fontSize: 12, fontWeight: 700, color: "#6ee7a0", display: "block", marginBottom: 5 }}>{t("أخرى (اكتبي هنا):", "Other:")}</label>
+                          <input type="text" value={(nutritionForm.goalsOther as string) ?? ""} onChange={(e) => nf("goalsOther", e.target.value)} placeholder={t("أي هدف آخر...", "Any other goal...")} style={{ width: "100%", background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.12)", borderRadius: 10, padding: "10px 13px", color: "#fff", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ── STEP 3: Medical history ── */}
+                    {nutritionStep === 3 && (
+                      <div>
+                        <div style={{ fontSize: 14, color: C.gray, marginBottom: 14 }}>{t("هل لديكِ أي من الحالات الطبية التالية؟", "Do you have any of the following medical conditions?")}</div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                          {medHistory.map((condition) => {
+                            const checked = ((nutritionForm.medHistory as string[]) ?? []).includes(condition);
+                            return (
+                              <label key={condition} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 10, border: `1px solid ${checked ? "#4ade80" : "rgba(255,255,255,.1)"}`, background: checked ? "rgba(74,222,128,.08)" : "rgba(255,255,255,.03)", cursor: "pointer" }}>
+                                <input type="checkbox" checked={checked} onChange={(e) => nfArr("medHistory", condition, e.target.checked)} style={{ accentColor: "#4ade80" }} />
+                                <span style={{ fontSize: 14, color: "#fff" }}>{condition}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                        {((nutritionForm.medHistory as string[]) ?? []).includes("حساسية غذائية") && (
+                          <div style={{ marginTop: 10 }}>
+                            <label style={{ fontSize: 12, fontWeight: 700, color: "#6ee7a0", display: "block", marginBottom: 5 }}>{t("حدديها:", "Specify allergies:")}</label>
+                            <input type="text" value={(nutritionForm.allergyDetails as string) ?? ""} onChange={(e) => nf("allergyDetails", e.target.value)} placeholder={t("مثال: حساسية من الفول السوداني، اللاكتوز...", "e.g. peanuts, lactose...")} style={{ width: "100%", background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.12)", borderRadius: 10, padding: "10px 13px", color: "#fff", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+                          </div>
+                        )}
+                        <div style={{ marginTop: 14 }}>
+                          <label style={{ fontSize: 12, fontWeight: 700, color: "#6ee7a0", display: "block", marginBottom: 5 }}>{t("أدوية حالية (اختياري):", "Current medications (optional):")}</label>
+                          <input type="text" value={(nutritionForm.medications as string) ?? ""} onChange={(e) => nf("medications", e.target.value)} placeholder={t("اكتبي أي أدوية تتناولينها حالياً...", "Any current medications...")} style={{ width: "100%", background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.12)", borderRadius: 10, padding: "10px 13px", color: "#fff", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ── STEP 4: Measurements (optional) ── */}
+                    {nutritionStep === 4 && (
+                      <div>
+                        <div style={{ fontSize: 14, color: C.gray, marginBottom: 14 }}>{t("القياسات (اختياري — تساعد الدكتورة على وضع خطة أدق):", "Measurements (optional — helps create a more accurate plan):")}</div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                          {[
+                            { key: "waist", label: t("محيط الخصر (سم)", "Waist circumference (cm)") },
+                            { key: "hips", label: t("محيط الأرداف (سم)", "Hip circumference (cm)") },
+                            { key: "arm", label: t("محيط العضد (سم)", "Arm circumference (cm)") },
+                          ].map(({ key, label }) => (
+                            <div key={key}>
+                              <label style={{ fontSize: 12, fontWeight: 700, color: "#6ee7a0", display: "block", marginBottom: 5 }}>{label}</label>
+                              <input type="number" value={(nutritionForm[key] as string) ?? ""} onChange={(e) => nf(key, e.target.value)} placeholder="cm" style={{ width: "100%", background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.12)", borderRadius: 10, padding: "10px 13px", color: "#fff", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+                            </div>
+                          ))}
+                          <div>
+                            <label style={{ fontSize: 12, fontWeight: 700, color: "#6ee7a0", display: "block", marginBottom: 5 }}>{t("ملاحظات إضافية (اختياري):", "Additional notes (optional):")}</label>
+                            <textarea value={(nutritionForm.notes as string) ?? ""} onChange={(e) => nf("notes", e.target.value)} rows={3} placeholder={t("أي معلومات إضافية تودين مشاركتها...", "Any additional information...")} style={{ width: "100%", background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.12)", borderRadius: 10, padding: "10px 13px", color: "#fff", fontSize: 14, outline: "none", boxSizing: "border-box", resize: "vertical" }} />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ── STEP 5: Slot picker (only if slots exist) ── */}
+                    {nutritionStep === 5 && nutritionist.slots.length > 0 && (
+                      <div>
+                        <div style={{ fontSize: 14, color: C.gray, marginBottom: 14 }}>{t("اختاري موعداً مناسباً (اختياري):", "Choose an available appointment (optional):")}</div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                          {nutritionist.slots.map((slot) => {
+                            const slotKey = `${slot.day}|${slot.time}`;
+                            const selected = nutritionSlot === slotKey;
+                            return (
+                              <button key={slotKey} onClick={() => setNutritionSlot(selected ? null : slotKey)} style={{ padding: "12px 16px", borderRadius: 12, border: `2px solid ${selected ? "#4ade80" : "rgba(255,255,255,.12)"}`, background: selected ? "rgba(74,222,128,.1)" : "rgba(255,255,255,.04)", cursor: "pointer", textAlign: "start", transition: "border-color .2s" }}>
+                                <div style={{ fontWeight: 700, fontSize: 14, color: "#fff" }}>{slot.label}</div>
+                                <div style={{ fontSize: 12, color: C.gray, marginTop: 2 }}>{slot.day} — {slot.time}</div>
+                              </button>
+                            );
+                          })}
+                          <button onClick={() => setNutritionSlot(null)} style={{ padding: "10px 16px", borderRadius: 12, border: `1px solid ${nutritionSlot === null ? "#4ade80" : "rgba(255,255,255,.1)"}`, background: nutritionSlot === null ? "rgba(74,222,128,.08)" : "transparent", cursor: "pointer", fontSize: 13, color: nutritionSlot === null ? "#4ade80" : C.gray }}>
+                            {t("أرسلي الطلب بدون تحديد موعد (سنتواصل معكِ)", "Send request without a slot (we'll contact you)")}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Error message */}
+                    {nutritionMsg && <div style={{ background: "rgba(233,30,99,.1)", border: "1px solid rgba(233,30,99,.3)", borderRadius: 10, padding: "10px 14px", fontSize: 13, color: "#ffb7d0", marginTop: 14 }}>{nutritionMsg.text}</div>}
+
+                    {/* Navigation buttons */}
+                    <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
+                      {nutritionStep > 0 && (
+                        <button onClick={() => setNutritionStep((s) => s - 1)} style={{ flex: 1, padding: "12px", borderRadius: 12, border: "1px solid rgba(255,255,255,.15)", background: "rgba(255,255,255,.05)", color: "#fff", fontSize: 14, cursor: "pointer", fontWeight: 600 }}>
+                          {t("← السابق", "← Back")}
+                        </button>
+                      )}
+                      {nutritionStep < totalSteps ? (
+                        <button
+                          onClick={() => {
+                            if (nutritionStep === 1 && !((nutritionForm.fullName as string) ?? "").trim()) {
+                              setNutritionMsg({ ok: false, text: t("الاسم الكامل مطلوب", "Full name is required") });
+                              return;
+                            }
+                            setNutritionMsg(null);
+                            setNutritionStep((s) => s + 1);
+                          }}
+                          style={{ flex: 1, padding: "12px", borderRadius: 12, border: "none", background: "linear-gradient(135deg,#16a34a,#15803d)", color: "#fff", fontSize: 14, cursor: "pointer", fontWeight: 700 }}
+                        >
+                          {t("التالي ←", "Next →")}
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => void submitBooking()}
+                          disabled={nutritionSubmitting}
+                          style={{ flex: 1, padding: "12px", borderRadius: 12, border: "none", background: "linear-gradient(135deg,#16a34a,#15803d)", color: "#fff", fontSize: 14, cursor: "pointer", fontWeight: 700, opacity: nutritionSubmitting ? .6 : 1 }}
+                        >
+                          {nutritionSubmitting ? t("جارٍ الإرسال...", "Sending...") : `📩 ${t("إرسال الطلب", "Submit")}`}
+                        </button>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
     </div>
   );

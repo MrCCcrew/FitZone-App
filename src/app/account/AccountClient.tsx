@@ -225,6 +225,7 @@ const TABS = [
   { id: "myPrivateSessions", label: "My Privates", icon: "📋" },
   { id: "membership", label: "Membership", icon: "M" },
   { id: "bookings", label: "Bookings", icon: "B" },
+  { id: "nutrition", label: "Nutrition", icon: "🥗" },
   { id: "orders", label: "Orders", icon: "O" },
   { id: "wallet", label: "Wallet", icon: "W" },
   { id: "reviews", label: "Reviews", icon: "R" },
@@ -241,6 +242,7 @@ type TabId =
   | "myPrivateSessions"
   | "membership"
   | "bookings"
+  | "nutrition"
   | "orders"
   | "wallet"
   | "reviews"
@@ -301,6 +303,7 @@ function getTabLabel(tabId: TabId, lang: "ar" | "en") {
     myPrivateSessions: { ar: "طلباتي", en: "My applications" },
     membership: { ar: "الاشتراك", en: "Membership" },
     bookings: { ar: "الحجوزات", en: "Bookings" },
+    nutrition: { ar: "دكتورة التغذية", en: "Nutrition Doctor" },
     orders: { ar: "الطلبات", en: "Orders" },
     wallet: { ar: "المحفظة", en: "Wallet" },
     reviews: { ar: "آرائي", en: "My reviews" },
@@ -4019,6 +4022,187 @@ function AgentCommissionsTab() {
   );
 }
 
+// ─── Tab: Nutrition ───────────────────────────────────────────────────────────
+type NutritionSessionItem = {
+  id: string;
+  type: "consultation" | "followup";
+  status: string;
+  isGymMember: boolean;
+  price: number;
+  selectedSlot: string | null;
+  proposedSlots: string[];
+  doctorNote: string | null;
+  paidAt: string | null;
+  createdAt: string;
+  nutritionist: { id: string; name: string; image: string | null };
+};
+
+function NutritionTab() {
+  const { lang } = useLang();
+  const t = (arText: string, enText: string) => (lang === "ar" ? arText : enText);
+  const [sessions, setSessions] = useState<NutritionSessionItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [payingId, setPayingId] = useState<string | null>(null);
+  const [selectingSlot, setSelectingSlot] = useState<{ sessionId: string; slots: string[] } | null>(null);
+  const [chosenSlot, setChosenSlot] = useState<string | null>(null);
+  const [slotSaving, setSlotSaving] = useState(false);
+  const [actionMsg, setActionMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/me/nutrition", { cache: "no-store" });
+      const data = await res.json() as { sessions?: NutritionSessionItem[]; error?: string };
+      if (res.ok) setSessions(data.sessions ?? []);
+      else setError(data.error ?? t("حدث خطأ", "An error occurred"));
+    } catch { setError(t("تعذر تحميل البيانات", "Failed to load")); }
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => { void load(); }, []);
+
+  const startPayment = async (sessionId: string) => {
+    setPayingId(sessionId);
+    setActionMsg(null);
+    try {
+      const res = await fetch("/api/payments/nutrition-intent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, returnUrl: `${window.location.origin}/account?tab=nutrition`, cancelUrl: `${window.location.origin}/account?tab=nutrition` }),
+      });
+      const data = await res.json() as { checkoutUrl?: string; error?: string };
+      if (data.checkoutUrl) { window.location.href = data.checkoutUrl; }
+      else { setActionMsg({ ok: false, text: data.error ?? t("تعذر بدء الدفع", "Payment failed") }); }
+    } catch { setActionMsg({ ok: false, text: t("تعذر بدء الدفع", "Payment failed") }); }
+    finally { setPayingId(null); }
+  };
+
+  const confirmSlot = async () => {
+    if (!selectingSlot || !chosenSlot) return;
+    setSlotSaving(true);
+    setActionMsg(null);
+    try {
+      const res = await fetch("/api/me/nutrition", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: selectingSlot.sessionId, selectedSlot: chosenSlot }),
+      });
+      const data = await res.json() as { error?: string };
+      if (res.ok) { setSelectingSlot(null); setChosenSlot(null); await load(); }
+      else { setActionMsg({ ok: false, text: data.error ?? t("حدث خطأ", "An error occurred") }); }
+    } catch { setActionMsg({ ok: false, text: t("حدث خطأ", "An error occurred") }); }
+    finally { setSlotSaving(false); }
+  };
+
+  const statusLabel: Record<string, { ar: string; en: string; color: string }> = {
+    pending: { ar: "في انتظار التأكيد", en: "Pending confirmation", color: "#f59e0b" },
+    awaiting_slot: { ar: "اختاري موعدك", en: "Choose your slot", color: "#3b82f6" },
+    approved: { ar: "مؤكد — في انتظار الدفع", en: "Confirmed — awaiting payment", color: "#10b981" },
+    paid: { ar: "مدفوع ✅", en: "Paid ✅", color: "#4ade80" },
+    completed: { ar: "مكتمل", en: "Completed", color: "#6ee7b7" },
+    rejected: { ar: "مرفوض", en: "Rejected", color: "#f87171" },
+    cancelled: { ar: "ملغي", en: "Cancelled", color: "#9ca3af" },
+  };
+
+  if (loading) return <div className="py-10 text-center text-[#d7aabd]">{t("جارٍ التحميل...", "Loading...")}</div>;
+  if (error) return <div className="py-10 text-center text-red-400">{error}</div>;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-black text-[#fff7fb]">🥗 {t("جلسات دكتورة التغذية", "Nutrition Doctor Sessions")}</h2>
+      </div>
+
+      {actionMsg && (
+        <div className={`rounded-xl border px-4 py-3 text-sm ${actionMsg.ok ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-300" : "border-rose-400/30 bg-rose-500/10 text-rose-300"}`}>
+          {actionMsg.text}
+        </div>
+      )}
+
+      {sessions.length === 0 ? (
+        <div className={`${CARD} text-center py-10`}>
+          <div className="text-4xl mb-3">🥗</div>
+          <div className="text-[#d7aabd] text-sm">{t("لا توجد جلسات بعد. يمكنك حجز موعد من الصفحة الرئيسية.", "No sessions yet. Book from the home page.")}</div>
+        </div>
+      ) : (
+        sessions.map((session) => {
+          const status = statusLabel[session.status] ?? { ar: session.status, en: session.status, color: "#9ca3af" };
+          const typeLabel = session.type === "consultation" ? t("حجز كشف", "Consultation") : t("إعادة كشف", "Follow-up");
+          return (
+            <div key={session.id} className={CARD}>
+              <div className="flex items-start justify-between gap-3 mb-3">
+                <div>
+                  <div className="font-bold text-[#fff7fb] text-sm">{typeLabel}</div>
+                  <div className="text-xs text-[#d7aabd] mt-0.5">{t("مع دكتورة", "with Dr.")} {session.nutritionist.name}</div>
+                  <div className="text-xs text-[#9a7a88] mt-0.5">{new Date(session.createdAt).toLocaleDateString(lang === "ar" ? "ar-EG" : "en-US")}</div>
+                </div>
+                <div style={{ color: status.color }} className="text-xs font-bold bg-black/20 rounded-lg px-2.5 py-1 text-right shrink-0">
+                  {lang === "ar" ? status.ar : status.en}
+                </div>
+              </div>
+
+              {session.selectedSlot && (
+                <div className="text-xs text-[#d7aabd] mb-2">📅 {t("الموعد:", "Appointment:")} {session.selectedSlot.replace("|", " — ")}</div>
+              )}
+              {session.doctorNote && (
+                <div className="rounded-xl border border-[#ffbcdb]/20 bg-[#3f1426]/60 px-3 py-2 text-xs text-[#d7aabd] mb-3">
+                  <span className="font-bold text-pink-300">{t("ملاحظة الدكتورة: ", "Doctor note: ")}</span>{session.doctorNote}
+                </div>
+              )}
+
+              <div className="flex items-center justify-between gap-3 mt-3 pt-3 border-t border-[#ffbcdb]/10">
+                <div className="font-black text-pink-200 text-base">{session.price} {t("ج.م", "EGP")}</div>
+                <div className="flex gap-2">
+                  {session.status === "awaiting_slot" && session.proposedSlots.length > 0 && (
+                    <button
+                      onClick={() => { setSelectingSlot({ sessionId: session.id, slots: session.proposedSlots }); setChosenSlot(null); }}
+                      className="rounded-xl bg-blue-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-blue-500"
+                    >
+                      {t("اختاري موعدك", "Choose slot")}
+                    </button>
+                  )}
+                  {session.status === "approved" && !session.paidAt && (
+                    <button
+                      onClick={() => void startPayment(session.id)}
+                      disabled={payingId === session.id}
+                      className="rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-500 disabled:opacity-50"
+                    >
+                      {payingId === session.id ? t("جارٍ...", "...") : `💳 ${t("ادفعي الآن", "Pay now")}`}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })
+      )}
+
+      {/* Slot selection overlay */}
+      {selectingSlot && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-lg p-4">
+          <div className="w-full max-w-sm rounded-2xl border border-[#ffbcdb]/20 bg-[#2a0f1b] p-5 shadow-2xl">
+            <div className="mb-4 font-black text-[#fff7fb]">{t("اختاري الموعد المناسب", "Choose your appointment")}</div>
+            <div className="space-y-2 mb-4">
+              {selectingSlot.slots.map((slot) => (
+                <button key={slot} onClick={() => setChosenSlot(slot)} className={`w-full rounded-xl border px-4 py-2.5 text-sm text-right font-medium transition-colors ${chosenSlot === slot ? "border-emerald-400 bg-emerald-500/15 text-emerald-300" : "border-[#ffbcdb]/20 text-[#d7aabd] hover:bg-[#3f1426]"}`}>
+                  {slot.replace("|", " — ")}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setSelectingSlot(null)} className="flex-1 rounded-xl border border-[#ffbcdb]/20 py-2 text-sm text-[#d7aabd]">{t("إلغاء", "Cancel")}</button>
+              <button onClick={() => void confirmSlot()} disabled={!chosenSlot || slotSaving} className="flex-1 rounded-xl bg-emerald-600 py-2 text-sm font-bold text-white hover:bg-emerald-500 disabled:opacity-50">
+                {slotSaving ? t("جارٍ...", "...") : t("تأكيد", "Confirm")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Component ────────────────────────────────────────────────────────────
 export default function AccountClient({ data }: { data: AccountData }) {
   const { lang } = useLang();
@@ -4195,6 +4379,7 @@ export default function AccountClient({ data }: { data: AccountData }) {
             {activeTab === "myPrivateSessions"    && <MyPrivateSessionsTab />}
             {activeTab === "membership"           && <AccountMembershipTab membership={data.membership} membershipHistory={data.membershipHistory} privateApplications={data.privateApplications} pendingPayment={data.pendingPayment} />}
             {activeTab === "bookings"      && <BookingsTab      bookings={data.bookings} />}
+            {activeTab === "nutrition"     && <NutritionTab />}
             {activeTab === "orders"        && <AccountOrdersTab orders={data.orders} />}
             {activeTab === "wallet"        && <WalletTab        wallet={data.wallet} rewards={data.rewards} referral={data.referral} />}
             {activeTab === "reviews"       && <ReviewsTab      user={data.user} />}

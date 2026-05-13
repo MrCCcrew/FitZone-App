@@ -16,6 +16,7 @@ import HealthQuestions from "./sections/HealthQuestions";
 import Payments from "./sections/Payments";
 import Classes from "./sections/Classes";
 import Trainers from "./sections/Trainers";
+import Nutrition from "./sections/Nutrition";
 import Bookings from "./sections/Bookings";
 import Products from "./sections/Products";
 import Inventory from "./sections/Inventory";
@@ -63,15 +64,16 @@ const NAV: { id: Section; label: string; icon: string }[] = [
   { id: "push",    label: "الإشعارات الفورية",  icon: "🔔" },
 ];
 
+const NUTRITION_NAV_ITEM = { id: "nutrition", label: "دكتورة التغذية", icon: "🥗" } as const;
 const BOOKINGS_NAV_ITEM = { id: "bookings", label: "الحجوزات", icon: "📆" } as const;
 if (!NAV.find((item) => item.id === "database")) {
   NAV.push({ id: "database", label: "إدارة قاعدة البيانات", icon: "🧰" });
 }
-const bookingsInsertAt = NAV.findIndex((item) => item.id === "trainers");
-if (bookingsInsertAt >= 0) {
-  NAV.splice(bookingsInsertAt + 1, 0, BOOKINGS_NAV_ITEM);
+const trainersInsertAt = NAV.findIndex((item) => item.id === "trainers");
+if (trainersInsertAt >= 0) {
+  NAV.splice(trainersInsertAt + 1, 0, NUTRITION_NAV_ITEM, BOOKINGS_NAV_ITEM);
 } else {
-  NAV.push(BOOKINGS_NAV_ITEM);
+  NAV.push(NUTRITION_NAV_ITEM, BOOKINGS_NAV_ITEM);
 }
 
 const TITLES: Record<string, string> = {
@@ -88,6 +90,7 @@ const TITLES: Record<string, string> = {
   payments: "المدفوعات",
   classes: "إدارة الكلاسات والجدول",
   trainers: "إدارة المدربات",
+  nutrition: "إدارة دكتورة التغذية",
   bookings: "إدارة الحجوزات",
   products: "إدارة المنتجات والطلبات",
   inventory: "إدارة المخزون والمشتريات",
@@ -118,6 +121,7 @@ const SECTIONS: Record<string, ComponentType> = {
   payments: Payments,
   classes: Classes,
   trainers: Trainers,
+  nutrition: Nutrition,
   bookings: Bookings,
   products: Products,
   inventory: Inventory,
