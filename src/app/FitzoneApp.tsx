@@ -2990,9 +2990,9 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
 
       {/* ─ NUTRITION DOCTOR ─ */}
       {nutritionist && (
-        <section className="section">
+        <section className="section" style={{ background: C.bgCard2 }}>
           <div className="container">
-            {/* Section header — same style as trainers */}
+            {/* Section header */}
             <div style={{ textAlign: "center", marginBottom: 40 }}>
               <h2 className="section-title">
                 {t("دكتورة", "Our")} <span>{t("التغذية", "Nutritionist")}</span>
@@ -3004,39 +3004,39 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
 
             {/* Doctor card — centered */}
             <div style={{ display: "flex", justifyContent: "center" }}>
-              <div className="card card-hover" style={{ maxWidth: 460, width: "100%", padding: 0, overflow: "hidden", textAlign: "center" }}>
+              <div className="card card-hover" style={{ maxWidth: 420, width: "100%", padding: 0, overflow: "hidden", textAlign: "center" }}>
                 {/* Photo */}
                 {nutritionist.image ? (
                   <div style={{ height: 280, position: "relative", overflow: "hidden" }}>
                     <img src={nutritionist.image} alt={nutritionist.name} style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "top" }} />
-                    <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(10,5,8,.65) 0%, transparent 55%)" }} />
+                    <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(26,8,18,.72) 0%, transparent 55%)" }} />
                     <div style={{ position: "absolute", bottom: 16, insetInlineStart: 0, insetInlineEnd: 0 }}>
-                      <div style={{ fontWeight: 900, fontSize: 20, color: "#fff", textShadow: "0 2px 8px rgba(0,0,0,.6)" }}>{nutritionist.name}</div>
-                      <div style={{ fontSize: 12, color: "#4ade80", fontWeight: 700, marginTop: 3 }}>{t("دكتورة تغذية", "Nutrition Doctor")}</div>
+                      <div style={{ fontWeight: 900, fontSize: 20, color: "#fff", textShadow: "0 2px 8px rgba(0,0,0,.5)" }}>{nutritionist.name}</div>
+                      <div style={{ fontSize: 12, color: C.redLight, fontWeight: 700, marginTop: 3 }}>{t("دكتورة تغذية", "Nutrition Doctor")}</div>
                     </div>
                   </div>
                 ) : (
-                  <div style={{ height: 120, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "rgba(74,222,128,.06)", borderBottom: `1px solid ${C.border}` }}>
-                    <div style={{ fontSize: 44, marginBottom: 8 }}>🥗</div>
+                  <div style={{ padding: "28px 0 20px", borderBottom: `1px solid ${C.border}`, background: C.bgCard }}>
+                    <div style={{ fontSize: 48, marginBottom: 10 }}>🥗</div>
                     <div style={{ fontWeight: 900, fontSize: 18, color: C.white }}>{nutritionist.name}</div>
-                    <div style={{ fontSize: 12, color: "#4ade80", fontWeight: 700, marginTop: 3 }}>{t("دكتورة تغذية", "Nutrition Doctor")}</div>
+                    <div style={{ fontSize: 12, color: C.red, fontWeight: 700, marginTop: 4 }}>{t("دكتورة تغذية", "Nutrition Doctor")}</div>
                   </div>
                 )}
 
                 {/* Body */}
-                <div style={{ padding: "20px 22px 24px" }}>
+                <div style={{ padding: "18px 22px 22px", background: C.bgCard }}>
                   {nutritionist.bio && (
-                    <p style={{ color: C.gray, fontSize: 14, lineHeight: 1.8, marginBottom: 20 }}>{nutritionist.bio}</p>
+                    <p style={{ color: C.gray, fontSize: 14, lineHeight: 1.8, marginBottom: 18 }}>{nutritionist.bio}</p>
                   )}
 
                   {/* Prices */}
-                  <div style={{ display: "flex", justifyContent: "center", gap: 0, marginBottom: 20, border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden" }}>
-                    <div style={{ flex: 1, padding: "12px 8px", borderInlineEnd: `1px solid ${C.border}` }}>
-                      <div style={{ fontWeight: 900, fontSize: 18, color: "#4ade80" }}>{nutritionist.consultationFee} {t("ج.م", "EGP")}</div>
+                  <div style={{ display: "flex", gap: 0, marginBottom: 18, border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
+                    <div style={{ flex: 1, padding: "11px 8px", borderInlineEnd: `1px solid ${C.border}`, background: C.bgCard2 }}>
+                      <div style={{ fontWeight: 900, fontSize: 17, color: C.redDark }}>{nutritionist.consultationFee} {t("ج.م", "EGP")}</div>
                       <div style={{ fontSize: 11, color: C.gray, marginTop: 3 }}>{t("حجز كشف", "Consultation")}</div>
                     </div>
-                    <div style={{ flex: 1, padding: "12px 8px" }}>
-                      <div style={{ fontWeight: 900, fontSize: 18, color: "#4ade80" }}>{nutritionist.followupFee} {t("ج.م", "EGP")}</div>
+                    <div style={{ flex: 1, padding: "11px 8px", background: C.bgCard2 }}>
+                      <div style={{ fontWeight: 900, fontSize: 17, color: C.redDark }}>{nutritionist.followupFee} {t("ج.م", "EGP")}</div>
                       <div style={{ fontSize: 11, color: C.gray, marginTop: 3 }}>{t("إعادة كشف", "Follow-up")}</div>
                     </div>
                   </div>
@@ -3044,7 +3044,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                   {/* CTA */}
                   <button
                     className="btn-primary"
-                    style={{ width: "100%", justifyContent: "center", fontSize: 15, padding: "13px", borderRadius: 12, touchAction: "manipulation" }}
+                    style={{ width: "100%", justifyContent: "center", fontSize: 15, padding: "13px", borderRadius: 8, touchAction: "manipulation" }}
                     onClick={() => {
                       if (!summary?.authenticated) { navigate("login"); return; }
                       setNutritionStep(0);
@@ -3320,27 +3320,30 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
 
         const stepTitles = ["نوع الحجز", "معلومات أساسية", "الهدف", "التاريخ الطبي", "القياسات", "اختاري الموعد"];
 
+        const mdBorder = "rgba(255,255,255,.1)";
+        const mdInputSt: React.CSSProperties = { width: "100%", background: "rgba(255,255,255,.06)", border: `1px solid ${mdBorder}`, borderRadius: 10, padding: "10px 13px", color: "#fff", fontSize: 14, outline: "none", boxSizing: "border-box" };
+
         return (
-          <div style={{ position: "fixed", inset: 0, zIndex: 500, background: "rgba(0,0,0,.85)", backdropFilter: "blur(12px)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: _w < 640 ? 0 : "16px 12px", overflowY: "auto" }}>
-            <div style={{ background: "#0f1a12", border: "1px solid rgba(74,222,128,.2)", borderRadius: _w < 640 ? "0 0 24px 24px" : 20, maxWidth: 560, width: "100%", boxShadow: "0 24px 80px rgba(0,0,0,.8)", marginBottom: 24 }}>
+          <div style={{ position: "fixed", inset: 0, zIndex: 500, background: "rgba(0,0,0,.82)", backdropFilter: "blur(10px)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: _w < 640 ? 0 : "20px 12px", overflowY: "auto" }}>
+            <div style={{ background: "#111", border: `1px solid ${mdBorder}`, borderRadius: _w < 640 ? "0 0 24px 24px" : 20, maxWidth: 560, width: "100%", boxShadow: "0 24px 60px rgba(0,0,0,.7)", marginBottom: _w < 640 ? 24 : 0 }}>
               {/* Header */}
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 20px 14px", borderBottom: "1px solid rgba(74,222,128,.12)" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 20px 14px", borderBottom: `1px solid ${mdBorder}` }}>
                 <div>
                   <div style={{ fontWeight: 900, fontSize: 16, color: "#fff" }}>🥗 {t("حجز موعد", "Book Appointment")}</div>
-                  <div style={{ fontSize: 12, color: "#6ee7a0", marginTop: 3 }}>{nutritionist.name}</div>
+                  <div style={{ fontSize: 12, color: "#ffb7d0", marginTop: 3 }}>{nutritionist.name}</div>
                 </div>
-                <button onClick={closeModal} style={{ width: 34, height: 34, borderRadius: "50%", border: "none", background: "rgba(255,255,255,.08)", color: "#fff", fontSize: 20, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
+                <button onClick={closeModal} style={{ width: 34, height: 34, borderRadius: "50%", border: "none", background: "rgba(0,0,0,.55)", color: "#fff", fontSize: 22, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(4px)" }}>×</button>
               </div>
 
-              {/* Progress (show only when not done) */}
+              {/* Progress */}
               {!nutritionDone && (
                 <div style={{ padding: "12px 20px 0" }}>
                   <div style={{ display: "flex", gap: 4 }}>
                     {Array.from({ length: totalSteps + 1 }, (_, i) => (
-                      <div key={i} style={{ flex: 1, height: 3, borderRadius: 2, background: i <= nutritionStep ? "#4ade80" : "rgba(255,255,255,.12)", transition: "background .2s" }} />
+                      <div key={i} style={{ flex: 1, height: 3, borderRadius: 2, background: i <= nutritionStep ? C.red : "rgba(255,255,255,.12)", transition: "background .2s" }} />
                     ))}
                   </div>
-                  <div style={{ fontSize: 11, color: "#6ee7a0", marginTop: 6 }}>{t("خطوة", "Step")} {nutritionStep + 1} {t("من", "of")} {totalSteps + 1}: {stepTitles[nutritionStep]}</div>
+                  <div style={{ fontSize: 11, color: "#ffb7d0", marginTop: 6 }}>{t("خطوة", "Step")} {nutritionStep + 1} {t("من", "of")} {totalSteps + 1}: {stepTitles[nutritionStep]}</div>
                 </div>
               )}
 
@@ -3351,24 +3354,24 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                     {nutritionDone.status === "approved" ? (
                       <>
                         <div style={{ fontSize: 48, marginBottom: 12 }}>✅</div>
-                        <div style={{ fontWeight: 900, fontSize: 18, color: "#4ade80", marginBottom: 8 }}>{t("تم تأكيد موعدك!", "Appointment confirmed!")}</div>
-                        <div style={{ color: C.gray, fontSize: 14, marginBottom: 24, lineHeight: 1.7 }}>{t(`موعدك مع دكتورة ${nutritionist.name} تم تأكيده. أكملي الدفع لتثبيت الحجز.`, `Your appointment with Dr. ${nutritionist.name} is confirmed. Complete payment to secure your booking.`)}</div>
-                        <div style={{ background: "rgba(74,222,128,.1)", border: "1px solid rgba(74,222,128,.25)", borderRadius: 12, padding: "14px 20px", marginBottom: 20 }}>
-                          <div style={{ fontWeight: 700, fontSize: 18, color: "#4ade80" }}>{price} {t("ج.م", "EGP")}</div>
-                          <div style={{ fontSize: 12, color: C.gray, marginTop: 3 }}>{nutritionType === "consultation" ? t("حجز كشف", "Consultation") : t("إعادة كشف", "Follow-up")}</div>
+                        <div style={{ fontWeight: 900, fontSize: 18, color: "#fff", marginBottom: 8 }}>{t("تم تأكيد موعدك!", "Appointment confirmed!")}</div>
+                        <div style={{ color: "#ffb7d0", fontSize: 14, marginBottom: 24, lineHeight: 1.7 }}>{t(`موعدك مع دكتورة ${nutritionist.name} تم تأكيده. أكملي الدفع لتثبيت الحجز.`, `Your appointment with Dr. ${nutritionist.name} is confirmed. Complete payment to secure your booking.`)}</div>
+                        <div style={{ background: "rgba(233,30,99,.12)", border: `1px solid rgba(233,30,99,.3)`, borderRadius: 12, padding: "14px 20px", marginBottom: 20 }}>
+                          <div style={{ fontWeight: 700, fontSize: 18, color: C.redLight }}>{price} {t("ج.م", "EGP")}</div>
+                          <div style={{ fontSize: 12, color: "#ffb7d0", marginTop: 3 }}>{nutritionType === "consultation" ? t("حجز كشف", "Consultation") : t("إعادة كشف", "Follow-up")}</div>
                         </div>
                         {nutritionMsg && <div style={{ background: "rgba(233,30,99,.1)", border: "1px solid rgba(233,30,99,.3)", borderRadius: 10, padding: "10px 14px", fontSize: 13, color: "#ffb7d0", marginBottom: 14 }}>{nutritionMsg.text}</div>}
-                        <button className="btn-primary" style={{ background: "linear-gradient(135deg,#16a34a,#15803d)", width: "100%", justifyContent: "center", fontSize: 15, padding: "14px", borderRadius: 12 }} onClick={() => void startPayment(nutritionDone.sessionId)} disabled={nutritionSubmitting}>
+                        <button className="btn-primary" style={{ width: "100%", justifyContent: "center", fontSize: 15, padding: "14px", borderRadius: 8 }} onClick={() => void startPayment(nutritionDone.sessionId)} disabled={nutritionSubmitting}>
                           {nutritionSubmitting ? t("جارٍ التحويل...", "Redirecting...") : `💳 ${t("أكملي الدفع", "Complete Payment")} — ${price} ${t("ج.م", "EGP")}`}
                         </button>
-                        <button onClick={closeModal} style={{ marginTop: 10, width: "100%", background: "none", border: "none", color: C.gray, fontSize: 13, cursor: "pointer", padding: "8px" }}>{t("لاحقاً من حسابي", "Later from my account")}</button>
+                        <button onClick={closeModal} style={{ marginTop: 10, width: "100%", background: "none", border: "none", color: "#ffb7d0", fontSize: 13, cursor: "pointer", padding: "8px" }}>{t("لاحقاً من حسابي", "Later from my account")}</button>
                       </>
                     ) : (
                       <>
                         <div style={{ fontSize: 48, marginBottom: 12 }}>📩</div>
-                        <div style={{ fontWeight: 900, fontSize: 18, color: "#4ade80", marginBottom: 8 }}>{t("تم إرسال طلبك!", "Request sent!")}</div>
-                        <div style={{ color: C.gray, fontSize: 14, marginBottom: 20, lineHeight: 1.7 }}>{t(`تم استلام طلب حجزك مع دكتورة ${nutritionist.name}. سنتواصل معك قريباً لتأكيد الموعد.`, `Your booking request with Dr. ${nutritionist.name} has been received. We'll contact you soon to confirm your appointment.`)}</div>
-                        <button className="btn-primary" style={{ background: "linear-gradient(135deg,#16a34a,#15803d)", width: "100%", justifyContent: "center", fontSize: 15, padding: "14px", borderRadius: 12 }} onClick={closeModal}>{t("حسناً", "OK")}</button>
+                        <div style={{ fontWeight: 900, fontSize: 18, color: "#fff", marginBottom: 8 }}>{t("تم إرسال طلبك!", "Request sent!")}</div>
+                        <div style={{ color: "#ffb7d0", fontSize: 14, marginBottom: 20, lineHeight: 1.7 }}>{t(`تم استلام طلب حجزك مع دكتورة ${nutritionist.name}. سنتواصل معك قريباً لتأكيد الموعد.`, `Your booking request with Dr. ${nutritionist.name} has been received. We'll contact you soon to confirm your appointment.`)}</div>
+                        <button className="btn-primary" style={{ width: "100%", justifyContent: "center", fontSize: 15, padding: "14px", borderRadius: 8 }} onClick={closeModal}>{t("حسناً", "OK")}</button>
                       </>
                     )}
                   </div>
@@ -3377,28 +3380,28 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                     {/* ── STEP 0: Type ── */}
                     {nutritionStep === 0 && (
                       <div>
-                        <div style={{ marginBottom: 16, fontSize: 14, color: C.gray }}>{t("اختاري نوع الجلسة:", "Choose session type:")}</div>
+                        <div style={{ marginBottom: 16, fontSize: 14, color: "#ffb7d0" }}>{t("اختاري نوع الجلسة:", "Choose session type:")}</div>
                         {[
                           { type: "consultation" as const, label: t("حجز كشف", "Consultation"), price: consultationPrice, icon: "🩺", desc: t("أول زيارة لتقييم حالتك الصحية ووضع خطة غذائية مخصصة", "First visit to assess your health and create a personalized nutrition plan") },
                           { type: "followup" as const, label: t("إعادة كشف", "Follow-up"), price: followupPrice, icon: "🔄", desc: t("متابعة التقدم وتعديل الخطة الغذائية", "Progress check and nutrition plan adjustment") },
                         ].map(({ type, label, price: p, icon, desc }) => (
-                          <button key={type} onClick={() => setNutritionType(type)} style={{ width: "100%", marginBottom: 12, padding: "16px 18px", borderRadius: 14, border: `2px solid ${nutritionType === type ? "#4ade80" : "rgba(255,255,255,.1)"}`, background: nutritionType === type ? "rgba(74,222,128,.1)" : "rgba(255,255,255,.03)", cursor: "pointer", textAlign: "start", transition: "border-color .2s,background .2s" }}>
+                          <button key={type} onClick={() => setNutritionType(type)} style={{ width: "100%", marginBottom: 12, padding: "16px 18px", borderRadius: 12, border: `2px solid ${nutritionType === type ? C.red : mdBorder}`, background: nutritionType === type ? "rgba(233,30,99,.1)" : "rgba(255,255,255,.03)", cursor: "pointer", textAlign: "start", transition: "border-color .2s,background .2s" }}>
                             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                                 <span style={{ fontSize: 22 }}>{icon}</span>
                                 <div>
                                   <div style={{ fontWeight: 700, fontSize: 15, color: "#fff" }}>{label}</div>
-                                  <div style={{ fontSize: 12, color: C.gray, marginTop: 2 }}>{desc}</div>
+                                  <div style={{ fontSize: 12, color: "#ffb7d0", marginTop: 2 }}>{desc}</div>
                                 </div>
                               </div>
                               <div style={{ textAlign: "end", flexShrink: 0 }}>
-                                <div style={{ fontWeight: 900, fontSize: 17, color: "#4ade80" }}>{p}</div>
-                                <div style={{ fontSize: 11, color: C.gray }}>{t("ج.م", "EGP")}</div>
+                                <div style={{ fontWeight: 900, fontSize: 17, color: C.redLight }}>{p}</div>
+                                <div style={{ fontSize: 11, color: "#ffb7d0" }}>{t("ج.م", "EGP")}</div>
                               </div>
                             </div>
                           </button>
                         ))}
-                        {isGymMember && <div style={{ fontSize: 12, color: "#4ade80", background: "rgba(74,222,128,.08)", border: "1px solid rgba(74,222,128,.2)", borderRadius: 8, padding: "8px 12px", marginBottom: 12 }}>✅ {t("أنتِ عضوة في الجيم — تم تطبيق السعر المميز", "You're a gym member — member price applied")}</div>}
+                        {isGymMember && <div style={{ fontSize: 12, color: "#ffb7d0", background: "rgba(233,30,99,.1)", border: `1px solid rgba(233,30,99,.3)`, borderRadius: 8, padding: "8px 12px", marginBottom: 12 }}>✅ {t("أنتِ عضوة في الجيم — تم تطبيق السعر المميز", "You're a gym member — member price applied")}</div>}
                       </div>
                     )}
 
@@ -3406,15 +3409,15 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                     {nutritionStep === 1 && (
                       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                         {[
-                          { key: "fullName", label: t("الاسم الكامل", "Full name"), type: "text", placeholder: t("اكتبي اسمك الكامل", "Your full name"), required: true },
-                          { key: "phone", label: t("رقم الهاتف", "Phone number"), type: "tel", placeholder: "01xxxxxxxxx", required: true },
-                          { key: "age", label: t("العمر", "Age"), type: "number", placeholder: t("سنة", "years"), required: false },
-                          { key: "weight", label: t("الوزن الحالي (كجم)", "Current weight (kg)"), type: "number", placeholder: "kg", required: false },
-                          { key: "height", label: t("الطول (سم)", "Height (cm)"), type: "number", placeholder: "cm", required: false },
+                          { key: "fullName", label: t("الاسم الكامل", "Full name"), type: "text", placeholder: t("اكتبي اسمك الكامل", "Your full name") },
+                          { key: "phone", label: t("رقم الهاتف", "Phone number"), type: "tel", placeholder: "01xxxxxxxxx" },
+                          { key: "age", label: t("العمر", "Age"), type: "number", placeholder: t("سنة", "years") },
+                          { key: "weight", label: t("الوزن الحالي (كجم)", "Current weight (kg)"), type: "number", placeholder: "kg" },
+                          { key: "height", label: t("الطول (سم)", "Height (cm)"), type: "number", placeholder: "cm" },
                         ].map(({ key, label, type, placeholder }) => (
                           <div key={key}>
-                            <label style={{ fontSize: 12, fontWeight: 700, color: "#6ee7a0", display: "block", marginBottom: 5 }}>{label}</label>
-                            <input type={type} value={(nutritionForm[key] as string) ?? ""} onChange={(e) => nf(key, e.target.value)} placeholder={placeholder} style={{ width: "100%", background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.12)", borderRadius: 10, padding: "10px 13px", color: "#fff", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+                            <label style={{ fontSize: 12, fontWeight: 700, color: "#ffb7d0", display: "block", marginBottom: 5 }}>{label}</label>
+                            <input type={type} value={(nutritionForm[key] as string) ?? ""} onChange={(e) => nf(key, e.target.value)} placeholder={placeholder} style={mdInputSt} />
                           </div>
                         ))}
                       </div>
@@ -3423,21 +3426,21 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                     {/* ── STEP 2: Goals ── */}
                     {nutritionStep === 2 && (
                       <div>
-                        <div style={{ fontSize: 14, color: C.gray, marginBottom: 14 }}>{t("اختاري هدفك من الاستشارة الغذائية (يمكن اختيار أكثر من هدف):", "Choose your nutrition goal(s):")}</div>
+                        <div style={{ fontSize: 14, color: "#ffb7d0", marginBottom: 14 }}>{t("اختاري هدفك من الاستشارة الغذائية (يمكن اختيار أكثر من هدف):", "Choose your nutrition goal(s):")}</div>
                         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                           {goals.map((goal) => {
                             const checked = ((nutritionForm.goals as string[]) ?? []).includes(goal);
                             return (
-                              <label key={goal} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 10, border: `1px solid ${checked ? "#4ade80" : "rgba(255,255,255,.1)"}`, background: checked ? "rgba(74,222,128,.08)" : "rgba(255,255,255,.03)", cursor: "pointer", transition: "border-color .2s" }}>
-                                <input type="checkbox" checked={checked} onChange={(e) => nfArr("goals", goal, e.target.checked)} style={{ accentColor: "#4ade80" }} />
+                              <label key={goal} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 10, border: `1px solid ${checked ? C.red : mdBorder}`, background: checked ? "rgba(233,30,99,.1)" : "rgba(255,255,255,.03)", cursor: "pointer", transition: "border-color .2s" }}>
+                                <input type="checkbox" checked={checked} onChange={(e) => nfArr("goals", goal, e.target.checked)} style={{ accentColor: C.red }} />
                                 <span style={{ fontSize: 14, color: "#fff" }}>{goal}</span>
                               </label>
                             );
                           })}
                         </div>
                         <div style={{ marginTop: 14 }}>
-                          <label style={{ fontSize: 12, fontWeight: 700, color: "#6ee7a0", display: "block", marginBottom: 5 }}>{t("أخرى (اكتبي هنا):", "Other:")}</label>
-                          <input type="text" value={(nutritionForm.goalsOther as string) ?? ""} onChange={(e) => nf("goalsOther", e.target.value)} placeholder={t("أي هدف آخر...", "Any other goal...")} style={{ width: "100%", background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.12)", borderRadius: 10, padding: "10px 13px", color: "#fff", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+                          <label style={{ fontSize: 12, fontWeight: 700, color: "#ffb7d0", display: "block", marginBottom: 5 }}>{t("أخرى (اكتبي هنا):", "Other:")}</label>
+                          <input type="text" value={(nutritionForm.goalsOther as string) ?? ""} onChange={(e) => nf("goalsOther", e.target.value)} placeholder={t("أي هدف آخر...", "Any other goal...")} style={mdInputSt} />
                         </div>
                       </div>
                     )}
@@ -3445,13 +3448,13 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                     {/* ── STEP 3: Medical history ── */}
                     {nutritionStep === 3 && (
                       <div>
-                        <div style={{ fontSize: 14, color: C.gray, marginBottom: 14 }}>{t("هل لديكِ أي من الحالات الطبية التالية؟", "Do you have any of the following medical conditions?")}</div>
+                        <div style={{ fontSize: 14, color: "#ffb7d0", marginBottom: 14 }}>{t("هل لديكِ أي من الحالات الطبية التالية؟", "Do you have any of the following medical conditions?")}</div>
                         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                           {medHistory.map((condition) => {
                             const checked = ((nutritionForm.medHistory as string[]) ?? []).includes(condition);
                             return (
-                              <label key={condition} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 10, border: `1px solid ${checked ? "#4ade80" : "rgba(255,255,255,.1)"}`, background: checked ? "rgba(74,222,128,.08)" : "rgba(255,255,255,.03)", cursor: "pointer" }}>
-                                <input type="checkbox" checked={checked} onChange={(e) => nfArr("medHistory", condition, e.target.checked)} style={{ accentColor: "#4ade80" }} />
+                              <label key={condition} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 10, border: `1px solid ${checked ? C.red : mdBorder}`, background: checked ? "rgba(233,30,99,.1)" : "rgba(255,255,255,.03)", cursor: "pointer" }}>
+                                <input type="checkbox" checked={checked} onChange={(e) => nfArr("medHistory", condition, e.target.checked)} style={{ accentColor: C.red }} />
                                 <span style={{ fontSize: 14, color: "#fff" }}>{condition}</span>
                               </label>
                             );
@@ -3459,13 +3462,13 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                         </div>
                         {((nutritionForm.medHistory as string[]) ?? []).includes("حساسية غذائية") && (
                           <div style={{ marginTop: 10 }}>
-                            <label style={{ fontSize: 12, fontWeight: 700, color: "#6ee7a0", display: "block", marginBottom: 5 }}>{t("حدديها:", "Specify allergies:")}</label>
-                            <input type="text" value={(nutritionForm.allergyDetails as string) ?? ""} onChange={(e) => nf("allergyDetails", e.target.value)} placeholder={t("مثال: حساسية من الفول السوداني، اللاكتوز...", "e.g. peanuts, lactose...")} style={{ width: "100%", background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.12)", borderRadius: 10, padding: "10px 13px", color: "#fff", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+                            <label style={{ fontSize: 12, fontWeight: 700, color: "#ffb7d0", display: "block", marginBottom: 5 }}>{t("حدديها:", "Specify allergies:")}</label>
+                            <input type="text" value={(nutritionForm.allergyDetails as string) ?? ""} onChange={(e) => nf("allergyDetails", e.target.value)} placeholder={t("مثال: حساسية من الفول السوداني، اللاكتوز...", "e.g. peanuts, lactose...")} style={mdInputSt} />
                           </div>
                         )}
                         <div style={{ marginTop: 14 }}>
-                          <label style={{ fontSize: 12, fontWeight: 700, color: "#6ee7a0", display: "block", marginBottom: 5 }}>{t("أدوية حالية (اختياري):", "Current medications (optional):")}</label>
-                          <input type="text" value={(nutritionForm.medications as string) ?? ""} onChange={(e) => nf("medications", e.target.value)} placeholder={t("اكتبي أي أدوية تتناولينها حالياً...", "Any current medications...")} style={{ width: "100%", background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.12)", borderRadius: 10, padding: "10px 13px", color: "#fff", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+                          <label style={{ fontSize: 12, fontWeight: 700, color: "#ffb7d0", display: "block", marginBottom: 5 }}>{t("أدوية حالية (اختياري):", "Current medications (optional):")}</label>
+                          <input type="text" value={(nutritionForm.medications as string) ?? ""} onChange={(e) => nf("medications", e.target.value)} placeholder={t("اكتبي أي أدوية تتناولينها حالياً...", "Any current medications...")} style={mdInputSt} />
                         </div>
                       </div>
                     )}
@@ -3473,7 +3476,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                     {/* ── STEP 4: Measurements (optional) ── */}
                     {nutritionStep === 4 && (
                       <div>
-                        <div style={{ fontSize: 14, color: C.gray, marginBottom: 14 }}>{t("القياسات (اختياري — تساعد الدكتورة على وضع خطة أدق):", "Measurements (optional — helps create a more accurate plan):")}</div>
+                        <div style={{ fontSize: 14, color: "#ffb7d0", marginBottom: 14 }}>{t("القياسات (اختياري — تساعد الدكتورة على وضع خطة أدق):", "Measurements (optional — helps create a more accurate plan):")}</div>
                         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                           {[
                             { key: "waist", label: t("محيط الخصر (سم)", "Waist circumference (cm)") },
@@ -3481,47 +3484,47 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                             { key: "arm", label: t("محيط العضد (سم)", "Arm circumference (cm)") },
                           ].map(({ key, label }) => (
                             <div key={key}>
-                              <label style={{ fontSize: 12, fontWeight: 700, color: "#6ee7a0", display: "block", marginBottom: 5 }}>{label}</label>
-                              <input type="number" value={(nutritionForm[key] as string) ?? ""} onChange={(e) => nf(key, e.target.value)} placeholder="cm" style={{ width: "100%", background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.12)", borderRadius: 10, padding: "10px 13px", color: "#fff", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+                              <label style={{ fontSize: 12, fontWeight: 700, color: "#ffb7d0", display: "block", marginBottom: 5 }}>{label}</label>
+                              <input type="number" value={(nutritionForm[key] as string) ?? ""} onChange={(e) => nf(key, e.target.value)} placeholder="cm" style={mdInputSt} />
                             </div>
                           ))}
                           <div>
-                            <label style={{ fontSize: 12, fontWeight: 700, color: "#6ee7a0", display: "block", marginBottom: 5 }}>{t("ملاحظات إضافية (اختياري):", "Additional notes (optional):")}</label>
-                            <textarea value={(nutritionForm.notes as string) ?? ""} onChange={(e) => nf("notes", e.target.value)} rows={3} placeholder={t("أي معلومات إضافية تودين مشاركتها...", "Any additional information...")} style={{ width: "100%", background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.12)", borderRadius: 10, padding: "10px 13px", color: "#fff", fontSize: 14, outline: "none", boxSizing: "border-box", resize: "vertical" }} />
+                            <label style={{ fontSize: 12, fontWeight: 700, color: "#ffb7d0", display: "block", marginBottom: 5 }}>{t("ملاحظات إضافية (اختياري):", "Additional notes (optional):")}</label>
+                            <textarea value={(nutritionForm.notes as string) ?? ""} onChange={(e) => nf("notes", e.target.value)} rows={3} placeholder={t("أي معلومات إضافية تودين مشاركتها...", "Any additional information...")} style={{ ...mdInputSt, resize: "vertical" }} />
                           </div>
                         </div>
                       </div>
                     )}
 
-                    {/* ── STEP 5: Slot picker (only if slots exist) ── */}
+                    {/* ── STEP 5: Slot picker ── */}
                     {nutritionStep === 5 && nutritionist.slots.length > 0 && (
                       <div>
-                        <div style={{ fontSize: 14, color: C.gray, marginBottom: 14 }}>{t("اختاري موعداً مناسباً (اختياري):", "Choose an available appointment (optional):")}</div>
+                        <div style={{ fontSize: 14, color: "#ffb7d0", marginBottom: 14 }}>{t("اختاري موعداً مناسباً (اختياري):", "Choose an available appointment (optional):")}</div>
                         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                           {nutritionist.slots.map((slot) => {
                             const slotKey = `${slot.day}|${slot.time}`;
                             const selected = nutritionSlot === slotKey;
                             return (
-                              <button key={slotKey} onClick={() => setNutritionSlot(selected ? null : slotKey)} style={{ padding: "12px 16px", borderRadius: 12, border: `2px solid ${selected ? "#4ade80" : "rgba(255,255,255,.12)"}`, background: selected ? "rgba(74,222,128,.1)" : "rgba(255,255,255,.04)", cursor: "pointer", textAlign: "start", transition: "border-color .2s" }}>
+                              <button key={slotKey} onClick={() => setNutritionSlot(selected ? null : slotKey)} style={{ padding: "12px 16px", borderRadius: 12, border: `2px solid ${selected ? C.red : mdBorder}`, background: selected ? "rgba(233,30,99,.1)" : "rgba(255,255,255,.04)", cursor: "pointer", textAlign: "start", transition: "border-color .2s" }}>
                                 <div style={{ fontWeight: 700, fontSize: 14, color: "#fff" }}>{slot.label}</div>
-                                <div style={{ fontSize: 12, color: C.gray, marginTop: 2 }}>{slot.day} — {slot.time}</div>
+                                <div style={{ fontSize: 12, color: "#ffb7d0", marginTop: 2 }}>{slot.day} — {slot.time}</div>
                               </button>
                             );
                           })}
-                          <button onClick={() => setNutritionSlot(null)} style={{ padding: "10px 16px", borderRadius: 12, border: `1px solid ${nutritionSlot === null ? "#4ade80" : "rgba(255,255,255,.1)"}`, background: nutritionSlot === null ? "rgba(74,222,128,.08)" : "transparent", cursor: "pointer", fontSize: 13, color: nutritionSlot === null ? "#4ade80" : C.gray }}>
+                          <button onClick={() => setNutritionSlot(null)} style={{ padding: "10px 16px", borderRadius: 12, border: `1px solid ${nutritionSlot === null ? C.red : mdBorder}`, background: nutritionSlot === null ? "rgba(233,30,99,.08)" : "transparent", cursor: "pointer", fontSize: 13, color: nutritionSlot === null ? C.redLight : "#ffb7d0" }}>
                             {t("أرسلي الطلب بدون تحديد موعد (سنتواصل معكِ)", "Send request without a slot (we'll contact you)")}
                           </button>
                         </div>
                       </div>
                     )}
 
-                    {/* Error message */}
+                    {/* Error */}
                     {nutritionMsg && <div style={{ background: "rgba(233,30,99,.1)", border: "1px solid rgba(233,30,99,.3)", borderRadius: 10, padding: "10px 14px", fontSize: 13, color: "#ffb7d0", marginTop: 14 }}>{nutritionMsg.text}</div>}
 
-                    {/* Navigation buttons */}
+                    {/* Navigation */}
                     <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
                       {nutritionStep > 0 && (
-                        <button onClick={() => setNutritionStep((s) => s - 1)} style={{ flex: 1, padding: "12px", borderRadius: 12, border: "1px solid rgba(255,255,255,.15)", background: "rgba(255,255,255,.05)", color: "#fff", fontSize: 14, cursor: "pointer", fontWeight: 600 }}>
+                        <button onClick={() => setNutritionStep((s) => s - 1)} style={{ flex: 1, padding: "12px", borderRadius: 8, border: `1px solid ${mdBorder}`, background: "rgba(255,255,255,.05)", color: "#fff", fontSize: 14, cursor: "pointer", fontWeight: 600 }}>
                           {t("← السابق", "← Back")}
                         </button>
                       )}
@@ -3535,15 +3538,17 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                             setNutritionMsg(null);
                             setNutritionStep((s) => s + 1);
                           }}
-                          style={{ flex: 1, padding: "12px", borderRadius: 12, border: "none", background: "linear-gradient(135deg,#16a34a,#15803d)", color: "#fff", fontSize: 14, cursor: "pointer", fontWeight: 700 }}
+                          className="btn-primary"
+                          style={{ flex: 1, padding: "12px", borderRadius: 8, fontSize: 14, justifyContent: "center" }}
                         >
-                          {t("التالي ←", "Next →")}
+                          {t("التالي →", "Next →")}
                         </button>
                       ) : (
                         <button
                           onClick={() => void submitBooking()}
                           disabled={nutritionSubmitting}
-                          style={{ flex: 1, padding: "12px", borderRadius: 12, border: "none", background: "linear-gradient(135deg,#16a34a,#15803d)", color: "#fff", fontSize: 14, cursor: "pointer", fontWeight: 700, opacity: nutritionSubmitting ? .6 : 1 }}
+                          className="btn-primary"
+                          style={{ flex: 1, padding: "12px", borderRadius: 8, fontSize: 14, justifyContent: "center", opacity: nutritionSubmitting ? .6 : 1 }}
                         >
                           {nutritionSubmitting ? t("جارٍ الإرسال...", "Sending...") : `📩 ${t("إرسال الطلب", "Submit")}`}
                         </button>
