@@ -3733,19 +3733,12 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
         return prev;
       }
 
-      // Max total per week = daysPerWeek × 2, further capped by sessions budget
-      // (sessionsCount / weeks) so a 66-session/300-day plan can't schedule 80 sessions.
-      const weeksInPlan = schedulePlan?.durationDays ? schedulePlan.durationDays / 7 : null;
-      const budgetPerWeek = (schedulePlan?.sessionsCount != null && weeksInPlan != null && weeksInPlan > 1)
-        ? Math.max(1, Math.floor(schedulePlan.sessionsCount / weeksInPlan))
-        : null;
-      const maxSessions = daysPerWeek
-        ? Math.min(daysPerWeek * 2, budgetPerWeek ?? (daysPerWeek * 2))
-        : (budgetPerWeek ?? Math.min(12, schedulePlan?.sessionsCount ?? 12));
+      // Max total = daysPerWeek × 2 (cap at 12 for plans without a frequency step)
+      const maxSessions = daysPerWeek ? daysPerWeek * 2 : Math.min(12, schedulePlan?.sessionsCount ?? 12);
       if (cleaned.length >= maxSessions) {
         setScheduleError(
           daysPerWeek
-            ? `وصلتِ للحد الأقصى: ${maxSessions} حصة في الأسبوع بناءً على إجمالي حصص الباقة.`
+            ? `وصلتِ للحد الأقصى: ${daysPerWeek} أيام × 2 حصة = ${maxSessions} حصة في الأسبوع.`
             : `يمكنكِ اختيار ${maxSessions} موعد كحد أقصى لهذه الباقة.`
         );
         return prev;
@@ -4439,14 +4432,9 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
                 }
 
                 const availableDays = new Set(scheduleChoices.map((c) => c.day)).size;
-                const freqWeeksInPlan = schedulePlan.durationDays / 7;
-                const freqBudgetPerWeek = (schedulePlan.sessionsCount != null && freqWeeksInPlan > 1)
-                  ? Math.max(1, Math.floor(schedulePlan.sessionsCount / freqWeeksInPlan))
-                  : null;
-                const budgetedMaxDays = freqBudgetPerWeek != null ? Math.min(6, freqBudgetPerWeek) : 6;
                 const maxDays = planAllowedClassTypes && availableDays > 0
-                  ? Math.min(availableDays, budgetedMaxDays)
-                  : Math.min(6, budgetedMaxDays);
+                  ? Math.min(availableDays, schedulePlan.sessionsCount ?? 6)
+                  : Math.min(6, schedulePlan.sessionsCount ?? 6);
                 const dayLabels: Record<number, string> = {
                   1: "يوم واحد / أسبوع",
                   2: "يومين / أسبوع",
@@ -4478,17 +4466,14 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
                           <div style={{ fontSize: 28, marginBottom: 6 }}>{["1️⃣","2️⃣","3️⃣","4️⃣","5️⃣","6️⃣"][n - 1]}</div>
                           {dayLabels[n]}
                           <div style={{ fontSize: 11, color: daysPerWeek === n ? "#ffb7d0" : "#9a8a90", marginTop: 4 }}>
-                            {n}–{freqBudgetPerWeek != null ? Math.min(n * 2, freqBudgetPerWeek) : n * 2} حصة/أسبوع
+                            {n}–{n * 2} حصة/أسبوع
                           </div>
                         </button>
                       ))}
                     </div>
                     {daysPerWeek && (
                       <div style={{ background: "rgba(245,197,66,.08)", border: "1px solid rgba(245,197,66,.25)", borderRadius: 10, padding: 12, color: "#f5c542", fontSize: 13, marginBottom: 20 }}>
-                        {(() => {
-                          const bannerMax = freqBudgetPerWeek != null ? Math.min(daysPerWeek * 2, freqBudgetPerWeek) : daysPerWeek * 2;
-                          return t(`ستختارين ${daysPerWeek} أيام — إجمالي من ${daysPerWeek} إلى ${bannerMax} حصة/أسبوع`, `You will select ${daysPerWeek} days — ${daysPerWeek} to ${bannerMax} sessions/week total`);
-                        })()}
+                        {t(`ستختارين ${daysPerWeek} أيام بحد أقصى حصتين لكل يوم — إجمالي من ${daysPerWeek} إلى ${daysPerWeek * 2} حصة/أسبوع`, `You will select ${daysPerWeek} days with max 2 sessions per day — ${daysPerWeek} to ${daysPerWeek * 2} sessions/week total`)}
                       </div>
                     )}
                     <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
