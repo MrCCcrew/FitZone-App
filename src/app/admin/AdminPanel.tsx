@@ -38,6 +38,7 @@ import DeliveryCompanies from "./sections/DeliveryCompanies";
 
 const PROTECTED_SECTIONS = ["payments", "database"] as const;
 const AFFILIATE_MARKETING_SECTIONS: Section[] = ["rewards", "partners", "contracts", "discounts"];
+const STORE_SECTIONS: Section[] = ["products", "orders", "inventory", "suppliers", "delivery-companies", "delivery"];
 
 const NAV: { id: Section; label: string; icon: string }[] = [
   { id: "settings", label: "الإعدادات والصلاحيات", icon: "⚙️" },
@@ -48,7 +49,7 @@ const NAV: { id: Section; label: string; icon: string }[] = [
   { id: "subscriptions", label: "الاشتراكات والعروض", icon: "🎟️" },
   { id: "packages", label: "الباقات", icon: "🎁" },
   { id: "goals", label: "الأهداف", icon: "🎯" },
-  { id: "delivery", label: "شركات التوصيل", icon: "🚚" },
+  { id: "delivery", label: "خيارات التوصيل", icon: "🔧" },
   { id: "health", label: "استبيان الإصابات", icon: "🩺" },
   { id: "payments", label: "المدفوعات", icon: "💳" },
   { id: "classes", label: "الكلاسات والجدول", icon: "🏋️" },
@@ -57,7 +58,7 @@ const NAV: { id: Section; label: string; icon: string }[] = [
   { id: "orders", label: "الطلبات", icon: "📋" },
   { id: "inventory", label: "المخزون والمشتريات", icon: "📦" },
   { id: "suppliers", label: "الموردين", icon: "🏪" },
-  { id: "delivery-companies", label: "شركات التوصيل", icon: "🚚" },
+  { id: "delivery-companies", label: "شركات التوصيل", icon: "🚚" }, // store group
   { id: "reviews", label: "آراء العملاء", icon: "⭐" },
   { id: "balance", label: "الرصيد والنقاط", icon: "💰" },
   { id: "chat", label: "الدردشة المباشرة", icon: "💬" },
@@ -231,6 +232,7 @@ export default function AdminPanel() {
   const [active, setActive] = useState<Section>("overview");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [affiliateOpen, setAffiliateOpen] = useState(false);
+  const [storeOpen, setStoreOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [unlockedSections, setUnlockedSections] = useState<string[]>([]);
   const [loadingMasterAccess, setLoadingMasterAccess] = useState(true);
@@ -243,9 +245,13 @@ export default function AdminPanel() {
   const defaultSection = getDefaultAdminSection(role, permissions);
   const allowedNav = NAV.filter((item) => canAccessAdminSection(role, permissions, item.id));
   const affiliateNav = allowedNav.filter((item) => AFFILIATE_MARKETING_SECTIONS.includes(item.id));
-  const mainNav = allowedNav.filter((item) => !AFFILIATE_MARKETING_SECTIONS.includes(item.id));
+  const storeNav = allowedNav.filter((item) => STORE_SECTIONS.includes(item.id));
+  const mainNav = allowedNav.filter(
+    (item) => !AFFILIATE_MARKETING_SECTIONS.includes(item.id) && !STORE_SECTIONS.includes(item.id),
+  );
   const safeActive = canAccessAdminSection(role, permissions, active) ? active : defaultSection;
   const affiliateActive = AFFILIATE_MARKETING_SECTIONS.includes(safeActive);
+  const storeActive = STORE_SECTIONS.includes(safeActive);
   const ActiveSection = SECTIONS[safeActive];
   const protectedActive = isProtectedSection(safeActive);
   const isSafeActiveUnlocked = !protectedActive || unlockedSections.includes(safeActive);
@@ -340,6 +346,10 @@ export default function AdminPanel() {
   useEffect(() => {
     if (affiliateActive) setAffiliateOpen(true);
   }, [affiliateActive]);
+
+  useEffect(() => {
+    if (storeActive) setStoreOpen(true);
+  }, [storeActive]);
 
   const unlockProtectedSection = async () => {
     if (!isProtectedSection(safeActive)) return;
@@ -469,6 +479,46 @@ export default function AdminPanel() {
               </span>
             </button>
           ))}
+
+          {storeNav.length > 0 && (
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={() => setStoreOpen((open) => !open)}
+                className={`w-full rounded-xl px-4 py-2.5 text-right text-sm font-medium transition-all ${
+                  storeActive
+                    ? "bg-[rgba(255,130,186,0.18)] text-white"
+                    : "text-[#d7aabd] hover:bg-[rgba(255,130,186,0.14)] hover:text-white"
+                }`}
+              >
+                <span className="flex items-center gap-3">
+                  <span className="text-base">🛒</span>
+                  <span className="flex-1">المتجر</span>
+                  <span className={`text-xs transition-transform ${storeOpen ? "rotate-180" : ""}`}>⌄</span>
+                </span>
+              </button>
+              {storeOpen && (
+                <div className="mt-1 space-y-1 pr-4">
+                  {storeNav.map((item) => (
+                    <button
+                      key={item.id}
+                      onClick={() => navigate(item.id)}
+                      className={`w-full rounded-xl px-4 py-2 text-right text-sm font-medium transition-all ${
+                        safeActive === item.id
+                          ? "bg-gradient-to-r from-pink-600 to-pink-500 text-white shadow-[0_18px_40px_rgba(190,24,93,0.34)]"
+                          : "text-[#d7aabd] hover:bg-[rgba(255,130,186,0.14)] hover:text-white"
+                      }`}
+                    >
+                      <span className="flex items-center gap-3">
+                        <span className="text-base">{item.icon}</span>
+                        <span className="flex-1">{item.label}</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {affiliateNav.length > 0 && (
             <div className="pt-1">
