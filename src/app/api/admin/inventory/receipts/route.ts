@@ -19,11 +19,8 @@ export async function GET() {
 
   const receipts = await db.inventoryReceipt.findMany({
     include: {
-      items: {
-        include: {
-          product: true,
-        },
-      },
+      items: { include: { product: true } },
+      supplier: true,
     },
     orderBy: { receivedAt: "desc" },
     take: 100,
@@ -33,7 +30,9 @@ export async function GET() {
     receipts.map((receipt) => ({
       id: receipt.id,
       referenceNumber: receipt.referenceNumber,
-      supplierName: receipt.supplierName,
+      supplierId: receipt.supplierId ?? null,
+      supplierName: receipt.supplier?.name ?? receipt.supplierName ?? null,
+      invoiceDate: receipt.invoiceDate?.toISOString() ?? null,
       notes: receipt.notes,
       receivedAt: receipt.receivedAt.toISOString(),
       totalCost: receipt.totalCost,
@@ -77,7 +76,9 @@ export async function POST(req: Request) {
     const receipt = await tx.inventoryReceipt.create({
       data: {
         referenceNumber: body.referenceNumber ? String(body.referenceNumber) : null,
+        supplierId: body.supplierId ? String(body.supplierId) : null,
         supplierName: body.supplierName ? String(body.supplierName) : null,
+        invoiceDate: body.invoiceDate ? new Date(body.invoiceDate) : null,
         notes: body.notes ? String(body.notes) : null,
         status: "posted",
         totalCost: 0,
@@ -88,9 +89,7 @@ export async function POST(req: Request) {
 
     for (const item of sanitizedItems) {
       const product = await tx.product.findUnique({ where: { id: item.productId } });
-      if (!product) {
-        throw new Error("منتج غير موجود في المخزون.");
-      }
+      if (!product) throw new Error("منتج غير موجود في المخزون.");
 
       const lineTotal = item.unitCost * item.quantity;
       totalCost += lineTotal;
@@ -139,11 +138,7 @@ export async function POST(req: Request) {
       });
     }
 
-    await tx.inventoryReceipt.update({
-      where: { id: receipt.id },
-      data: { totalCost },
-    });
-
+    await tx.inventoryReceipt.update({ where: { id: receipt.id }, data: { totalCost } });
     return receipt.id;
   }).catch((error: unknown) => {
     const message = error instanceof Error ? error.message : "تعذر تسجيل المشتريات.";

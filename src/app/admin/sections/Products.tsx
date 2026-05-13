@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Order, Product, ProductCategory } from "../types";
 import { TranslateButton } from "./TranslateButton";
 
+type Supplier = { id: string; name: string; isActive: boolean };
+
 const INPUT = "w-full rounded-xl border border-gray-700 bg-gray-800 px-4 py-2.5 text-sm text-white outline-none";
 const CLOTHING = ["XS", "S", "M", "L", "XL", "XXL"];
 const SHOES = Array.from({ length: 27 }, (_, i) => String(i + 20));
@@ -52,6 +54,13 @@ const EMPTY_PRODUCT: EditableProduct = {
   importantInfo: "",
   disclaimer: "",
   editorialReview: "",
+  supplierId: null,
+  costPrice: null,
+  barcode: "",
+  isFeatured: false,
+  isNew: false,
+  isBestSeller: false,
+  isSpecialOffer: false,
 };
 
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
@@ -97,6 +106,7 @@ export default function Products() {
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [categories, setCategories] = useState<ProductCategory[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<"products" | "orders">("products");
   const [search, setSearch] = useState("");
@@ -111,14 +121,16 @@ export default function Products() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [p, o, c] = await Promise.all([
+      const [p, o, c, s] = await Promise.all([
         fetch("/api/admin/products", { cache: "no-store" }).then((r) => r.json()),
         fetch("/api/admin/orders", { cache: "no-store" }).then((r) => r.json()),
         fetch("/api/admin/product-categories", { cache: "no-store" }).then((r) => r.json()),
+        fetch("/api/admin/suppliers", { cache: "no-store" }).then((r) => r.json()),
       ]);
       setProducts(Array.isArray(p) ? p : []);
       setOrders(Array.isArray(o) ? o : []);
       setCategories(Array.isArray(c) ? c : []);
+      setSuppliers(Array.isArray(s?.suppliers) ? s.suppliers : []);
     } finally {
       setLoading(false);
     }
@@ -406,7 +418,7 @@ export default function Products() {
                   <div key={idx} className="rounded-lg border border-gray-700 bg-gray-900 p-3 space-y-2">
                     <div className="flex gap-2">
                       <button type="button" onClick={() => setProductModal({ ...productModal, whoShouldBuy: (productModal.whoShouldBuy ?? []).map((x, i) => i === idx ? { ...x, suitable: true } : x) })} className={`flex-1 rounded-lg py-1.5 text-xs font-bold border ${item.suitable ? "bg-green-600 border-green-600 text-white" : "bg-gray-800 border-gray-600 text-gray-400"}`}>✓ مناسب</button>
-                      <button type="button" onClick={() => setProductModal({ ...productModal, whoShouldBuy: (productModal.whoShouldBuy ?? []).map((x, i) => i === idx ? { ...x, suitable: false } : x) })} className={`flex-1 rounded-lg py-1.5 text-xs font-bold border ${!item.suitable ? "bg-red-600 border-red-600 text-white" : "bg-gray-800 border-gray-600 text-gray-400"}`}>✗ غير مناسب</button>
+                      <button type="button" onClick={() => setProductModal({ ...productModal, whoShouldBuy: (productModal.whoShouldBuy ?? []).map((x, i) => i === idx ? { ...x, suitable: false } : x) })} className={`flex-1 rounded-lg py-1.5 text-xs font-bold border ${item.suitable ? "bg-gray-800 border-gray-600 text-gray-400" : "bg-red-600 border-red-600 text-white"}`}>✗ غير مناسب</button>
                       <button type="button" onClick={() => setProductModal({ ...productModal, whoShouldBuy: (productModal.whoShouldBuy ?? []).filter((_, i) => i !== idx) })} className="rounded-lg px-3 py-1.5 text-xs text-red-400 border border-gray-700">حذف</button>
                     </div>
                     <input value={item.title} onChange={(e) => setProductModal({ ...productModal, whoShouldBuy: (productModal.whoShouldBuy ?? []).map((x, i) => i === idx ? { ...x, title: e.target.value } : x) })} placeholder="العنوان (مثال: المتحمسين لصحة القلب)" className={INPUT} />
@@ -432,6 +444,88 @@ export default function Products() {
                   </div>
                 ))}
                 <button type="button" onClick={() => setProductModal({ ...productModal, faqs: [...(productModal.faqs ?? []), { q: "", a: "" }] })} className="w-full rounded-lg border border-dashed border-gray-600 py-2 text-xs text-gray-400 hover:border-pink-500 hover:text-pink-400">+ إضافة سؤال</button>
+              </div>
+            </div>
+
+            {/* ── معلومات داخلية — لا تظهر للعملاء ── */}
+            <div className="rounded-xl border border-yellow-700/40 bg-yellow-950/20 p-4 space-y-4">
+              <div>
+                <div className="text-sm font-black text-yellow-400">معلومات داخلية — لا تظهر للعملاء</div>
+                <div className="text-xs text-gray-500 mt-0.5">بيانات التكلفة والمورد للاستخدام الداخلي فقط.</div>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <FieldHint title="المورد" hint="المورد الذي يُشترى منه هذا المنتج. للاستخدام الداخلي فقط.">
+                  <select
+                    value={productModal.supplierId ?? ""}
+                    onChange={(e) => setProductModal({ ...productModal, supplierId: e.target.value || null })}
+                    className={INPUT}
+                  >
+                    <option value="">-- بدون مورد --</option>
+                    {suppliers.map((s) => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </FieldHint>
+                <FieldHint title="سعر التكلفة (ج.م)" hint="سعر شراء المنتج من المورد. لا يظهر للعميل أبداً.">
+                  <input
+                    type="number" min={0} step={0.01}
+                    value={productModal.costPrice ?? ""}
+                    onChange={(e) => setProductModal({ ...productModal, costPrice: e.target.value ? Number(e.target.value) : null })}
+                    placeholder="مثال: 150"
+                    className={INPUT}
+                    dir="ltr"
+                  />
+                </FieldHint>
+                <FieldHint title="الباركود" hint="رقم الباركود أو SKU الداخلي للمنتج.">
+                  <input
+                    value={productModal.barcode ?? ""}
+                    onChange={(e) => setProductModal({ ...productModal, barcode: e.target.value || null })}
+                    placeholder="مثال: 6224009246793"
+                    className={INPUT}
+                    dir="ltr"
+                  />
+                </FieldHint>
+                {productModal.costPrice != null && productModal.price > 0 && (
+                  <div className="flex items-end pb-1">
+                    <div className="w-full rounded-lg bg-black/30 px-4 py-3 text-xs">
+                      <div className="text-gray-400">هامش الربح</div>
+                      <div className="text-yellow-400 font-black text-base mt-1">
+                        {productModal.costPrice > 0
+                          ? `${Math.round(((productModal.price - productModal.costPrice) / productModal.costPrice) * 100)}%`
+                          : "—"}
+                        <span className="text-gray-500 text-xs font-normal mr-2">
+                          ({(productModal.price - productModal.costPrice).toLocaleString("ar-EG")} ج.م)
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div>
+                <div className="text-xs font-bold text-gray-400 mb-2">تصنيفات العرض</div>
+                <div className="flex flex-wrap gap-2">
+                  {(
+                    [
+                      { key: "isFeatured", label: "مميز" },
+                      { key: "isNew", label: "جديد" },
+                      { key: "isBestSeller", label: "الأكثر مبيعاً" },
+                      { key: "isSpecialOffer", label: "عرض خاص" },
+                    ] as const
+                  ).map(({ key, label }) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setProductModal({ ...productModal, [key]: !productModal[key] })}
+                      className={`rounded-lg border px-3 py-1.5 text-xs font-bold transition-colors ${
+                        productModal[key]
+                          ? "border-pink-500 bg-pink-600 text-white"
+                          : "border-gray-700 bg-gray-800 text-gray-400"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
 

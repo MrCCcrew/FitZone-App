@@ -33,7 +33,11 @@ export async function GET() {
   await ensureDefaultProductCategories();
 
   const [products, categories] = await Promise.all([
-    db.product.findMany({ orderBy: { name: "asc" } }),
+    db.product.findMany({
+      where: { deletedAt: null },
+      include: { supplier: { select: { id: true, name: true } } },
+      orderBy: { name: "asc" },
+    }),
     db.productCategory.findMany(),
   ]);
 
@@ -73,6 +77,15 @@ export async function GET() {
         importantInfo: product.importantInfo ?? "",
         disclaimer: product.disclaimer ?? "",
         editorialReview: product.editorialReview ?? "",
+        // Admin-only internal fields
+        supplierId: product.supplierId ?? null,
+        supplierName: product.supplier?.name ?? null,
+        costPrice: product.costPrice ?? null,
+        barcode: product.barcode ?? null,
+        isFeatured: product.isFeatured ?? false,
+        isNew: product.isNew ?? false,
+        isBestSeller: product.isBestSeller ?? false,
+        isSpecialOffer: product.isSpecialOffer ?? false,
       };
     }),
   );
@@ -87,7 +100,12 @@ export async function POST(req: Request) {
   await ensureDefaultProductCategories();
 
   const body = await req.json();
-  const { name, nameEn, category, price, oldPrice, vatEnabled, stock, description, descriptionEn, images, sizes, colors, faqs, whoShouldBuy, importantInfo, disclaimer, editorialReview } = body;
+  const {
+    name, nameEn, category, price, oldPrice, vatEnabled, stock,
+    description, descriptionEn, images, sizes, colors, faqs,
+    whoShouldBuy, importantInfo, disclaimer, editorialReview,
+    supplierId, costPrice, barcode, isFeatured, isNew, isBestSeller, isSpecialOffer,
+  } = body;
 
   if (!name || price == null) {
     return NextResponse.json({ error: "بيانات المنتج ناقصة." }, { status: 400 });
@@ -117,11 +135,20 @@ export async function POST(req: Request) {
       disclaimer: disclaimer ? String(disclaimer) : null,
       editorialReview: editorialReview ? String(editorialReview) : null,
       isActive: true,
+      supplierId: supplierId ? String(supplierId) : null,
+      costPrice: costPrice != null ? Number(costPrice) : null,
+      barcode: barcode ? String(barcode) : null,
+      isFeatured: Boolean(isFeatured ?? false),
+      isNew: Boolean(isNew ?? false),
+      isBestSeller: Boolean(isBestSeller ?? false),
+      isSpecialOffer: Boolean(isSpecialOffer ?? false),
     },
+    include: { supplier: { select: { name: true } } },
   });
-  void logAudit({ action: "create", targetType: "product", targetId: product.id, details: { name: product.name, price: product.price } });
 
+  void logAudit({ action: "create", targetType: "product", targetId: product.id, details: { name: product.name, price: product.price } });
   clearPublicApiCache();
+
   return NextResponse.json({
     id: product.id,
     name: product.name,
@@ -147,6 +174,14 @@ export async function POST(req: Request) {
     importantInfo: importantInfo ?? "",
     disclaimer: disclaimer ?? "",
     editorialReview: editorialReview ?? "",
+    supplierId: product.supplierId ?? null,
+    supplierName: product.supplier?.name ?? null,
+    costPrice: product.costPrice ?? null,
+    barcode: product.barcode ?? null,
+    isFeatured: product.isFeatured,
+    isNew: product.isNew,
+    isBestSeller: product.isBestSeller,
+    isSpecialOffer: product.isSpecialOffer,
   });
 }
 
@@ -179,6 +214,14 @@ export async function PATCH(req: Request) {
   if (rest.importantInfo !== undefined) data.importantInfo = rest.importantInfo ? String(rest.importantInfo) : null;
   if (rest.disclaimer !== undefined) data.disclaimer = rest.disclaimer ? String(rest.disclaimer) : null;
   if (rest.editorialReview !== undefined) data.editorialReview = rest.editorialReview ? String(rest.editorialReview) : null;
+  // Admin-only internal fields
+  if (rest.supplierId !== undefined) data.supplierId = rest.supplierId ? String(rest.supplierId) : null;
+  if (rest.costPrice !== undefined) data.costPrice = rest.costPrice != null ? Number(rest.costPrice) : null;
+  if (rest.barcode !== undefined) data.barcode = rest.barcode ? String(rest.barcode) : null;
+  if (rest.isFeatured !== undefined) data.isFeatured = Boolean(rest.isFeatured);
+  if (rest.isNew !== undefined) data.isNew = Boolean(rest.isNew);
+  if (rest.isBestSeller !== undefined) data.isBestSeller = Boolean(rest.isBestSeller);
+  if (rest.isSpecialOffer !== undefined) data.isSpecialOffer = Boolean(rest.isSpecialOffer);
 
   if (rest.category !== undefined) {
     const categoryRecord = await db.productCategory.findFirst({
@@ -208,7 +251,11 @@ export async function DELETE(req: Request) {
   }
 
   const p = await db.product.findUnique({ where: { id: String(id) }, select: { name: true } });
-  await db.product.delete({ where: { id: String(id) } });
+  // Soft delete — preserves order history and inventory records
+  await db.product.update({
+    where: { id: String(id) },
+    data: { deletedAt: new Date(), isActive: false },
+  });
   void logAudit({ action: "delete", targetType: "product", targetId: String(id), details: { name: p?.name } });
   clearPublicApiCache();
   return NextResponse.json({ success: true });
