@@ -32,6 +32,9 @@ import Settings from "./sections/Settings";
 import PushNotifications from "./sections/PushNotifications";
 import Partners from "./sections/Partners";
 import Contracts from "./sections/Contracts";
+import Suppliers from "./sections/Suppliers";
+import Orders from "./sections/Orders";
+import DeliveryCompanies from "./sections/DeliveryCompanies";
 
 const PROTECTED_SECTIONS = ["payments", "database"] as const;
 const AFFILIATE_MARKETING_SECTIONS: Section[] = ["rewards", "partners", "contracts", "discounts"];
@@ -50,8 +53,11 @@ const NAV: { id: Section; label: string; icon: string }[] = [
   { id: "payments", label: "المدفوعات", icon: "💳" },
   { id: "classes", label: "الكلاسات والجدول", icon: "🏋️" },
   { id: "trainers", label: "المدربات", icon: "👩‍🏫" },
-  { id: "products", label: "المنتجات والطلبات", icon: "🛍️" },
+  { id: "products", label: "المنتجات", icon: "🛍️" },
+  { id: "orders", label: "الطلبات", icon: "📋" },
   { id: "inventory", label: "المخزون والمشتريات", icon: "📦" },
+  { id: "suppliers", label: "الموردين", icon: "🏪" },
+  { id: "delivery-companies", label: "شركات التوصيل", icon: "🚚" },
   { id: "reviews", label: "آراء العملاء", icon: "⭐" },
   { id: "balance", label: "الرصيد والنقاط", icon: "💰" },
   { id: "chat", label: "الدردشة المباشرة", icon: "💬" },
@@ -92,8 +98,11 @@ const TITLES: Record<string, string> = {
   trainers: "إدارة المدربات",
   nutrition: "إدارة دكتورة التغذية",
   bookings: "إدارة الحجوزات",
-  products: "إدارة المنتجات والطلبات",
+  products: "إدارة المنتجات",
+  orders: "إدارة الطلبات",
   inventory: "إدارة المخزون والمشتريات",
+  suppliers: "إدارة الموردين",
+  "delivery-companies": "شركات التوصيل",
   reviews: "إدارة آراء العملاء",
   balance: "إدارة الرصيد والنقاط",
   chat: "الدردشة المباشرة",
@@ -125,6 +134,9 @@ const SECTIONS: Record<string, ComponentType> = {
   bookings: Bookings,
   products: Products,
   inventory: Inventory,
+  orders: Orders,
+  suppliers: Suppliers,
+  "delivery-companies": DeliveryCompanies,
   reviews: Testimonials,
   balance: Balance,
   chat: LiveChat,
