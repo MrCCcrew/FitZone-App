@@ -39,6 +39,7 @@ import DeliveryCompanies from "./sections/DeliveryCompanies";
 const PROTECTED_SECTIONS = ["payments", "database"] as const;
 const AFFILIATE_MARKETING_SECTIONS: Section[] = ["rewards", "partners", "contracts", "discounts"];
 const STORE_SECTIONS: Section[] = ["products", "orders", "inventory", "suppliers", "delivery-companies", "delivery"];
+const GYM_SECTIONS: Section[] = ["subscriptions", "packages", "goals", "health", "classes", "trainers", "bookings"];
 
 const NAV: { id: Section; label: string; icon: string }[] = [
   { id: "settings", label: "الإعدادات والصلاحيات", icon: "⚙️" },
@@ -233,6 +234,7 @@ export default function AdminPanel() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [affiliateOpen, setAffiliateOpen] = useState(false);
   const [storeOpen, setStoreOpen] = useState(false);
+  const [gymOpen, setGymOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [unlockedSections, setUnlockedSections] = useState<string[]>([]);
   const [loadingMasterAccess, setLoadingMasterAccess] = useState(true);
@@ -246,12 +248,17 @@ export default function AdminPanel() {
   const allowedNav = NAV.filter((item) => canAccessAdminSection(role, permissions, item.id));
   const affiliateNav = allowedNav.filter((item) => AFFILIATE_MARKETING_SECTIONS.includes(item.id));
   const storeNav = allowedNav.filter((item) => STORE_SECTIONS.includes(item.id));
+  const gymNav = allowedNav.filter((item) => GYM_SECTIONS.includes(item.id));
   const mainNav = allowedNav.filter(
-    (item) => !AFFILIATE_MARKETING_SECTIONS.includes(item.id) && !STORE_SECTIONS.includes(item.id),
+    (item) =>
+      !AFFILIATE_MARKETING_SECTIONS.includes(item.id) &&
+      !STORE_SECTIONS.includes(item.id) &&
+      !GYM_SECTIONS.includes(item.id),
   );
   const safeActive = canAccessAdminSection(role, permissions, active) ? active : defaultSection;
   const affiliateActive = AFFILIATE_MARKETING_SECTIONS.includes(safeActive);
   const storeActive = STORE_SECTIONS.includes(safeActive);
+  const gymActive = GYM_SECTIONS.includes(safeActive);
   const ActiveSection = SECTIONS[safeActive];
   const protectedActive = isProtectedSection(safeActive);
   const isSafeActiveUnlocked = !protectedActive || unlockedSections.includes(safeActive);
@@ -259,7 +266,7 @@ export default function AdminPanel() {
   useEffect(() => {
     let cancelled = false;
 
-    async function loadSession() {
+    const loadSession = async () => {
       try {
         const response = await fetch("/api/admin/session", { cache: "no-store" });
         if (!response.ok) {
@@ -294,7 +301,7 @@ export default function AdminPanel() {
 
     let cancelled = false;
 
-    async function loadMasterAccess() {
+    const loadMasterAccess = async () => {
       setLoadingMasterAccess(true);
       try {
         const response = await fetch("/api/admin/master-access", { cache: "no-store" });
@@ -350,6 +357,10 @@ export default function AdminPanel() {
   useEffect(() => {
     if (storeActive) setStoreOpen(true);
   }, [storeActive]);
+
+  useEffect(() => {
+    if (gymActive) setGymOpen(true);
+  }, [gymActive]);
 
   const unlockProtectedSection = async () => {
     if (!isProtectedSection(safeActive)) return;
@@ -479,6 +490,46 @@ export default function AdminPanel() {
               </span>
             </button>
           ))}
+
+          {gymNav.length > 0 && (
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={() => setGymOpen((open) => !open)}
+                className={`w-full rounded-xl px-4 py-2.5 text-right text-sm font-medium transition-all ${
+                  gymActive
+                    ? "bg-[rgba(255,130,186,0.18)] text-white"
+                    : "text-[#d7aabd] hover:bg-[rgba(255,130,186,0.14)] hover:text-white"
+                }`}
+              >
+                <span className="flex items-center gap-3">
+                  <span className="text-base">🏋️</span>
+                  <span className="flex-1">إدارة الجيم</span>
+                  <span className={`text-xs transition-transform ${gymOpen ? "rotate-180" : ""}`}>⌄</span>
+                </span>
+              </button>
+              {gymOpen && (
+                <div className="mt-1 space-y-1 pr-4">
+                  {gymNav.map((item) => (
+                    <button
+                      key={item.id}
+                      onClick={() => navigate(item.id)}
+                      className={`w-full rounded-xl px-4 py-2 text-right text-sm font-medium transition-all ${
+                        safeActive === item.id
+                          ? "bg-gradient-to-r from-pink-600 to-pink-500 text-white shadow-[0_18px_40px_rgba(190,24,93,0.34)]"
+                          : "text-[#d7aabd] hover:bg-[rgba(255,130,186,0.14)] hover:text-white"
+                      }`}
+                    >
+                      <span className="flex items-center gap-3">
+                        <span className="text-base">{item.icon}</span>
+                        <span className="flex-1">{item.label}</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {storeNav.length > 0 && (
             <div className="pt-1">
