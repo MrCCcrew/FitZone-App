@@ -8,7 +8,8 @@ export type AdminRole =
   | "partner"
   | "contracts_manager"
   | "agent"
-  | "head_coach";
+  | "head_coach"
+  | "nutritionist";
 
 export type AdminFeature =
   | "settings"
@@ -35,7 +36,8 @@ export type AdminFeature =
   | "push"
   | "partners"
   | "contracts"
-  | "referrals";
+  | "referrals"
+  | "nutrition";
 
 
 export const ADMIN_FEATURES: AdminFeature[] = [
@@ -64,6 +66,7 @@ export const ADMIN_FEATURES: AdminFeature[] = [
   "partners",
   "contracts",
   "referrals",
+  "nutrition",
 ];
 
 const STAFF_FEATURES: AdminFeature[] = [
@@ -87,6 +90,7 @@ const PARTNER_FEATURES: AdminFeature[] = ["partners"];
 const CONTRACTS_MANAGER_FEATURES: AdminFeature[] = ["contracts", "customers"];
 const AGENT_FEATURES: AdminFeature[] = ["contracts"];
 const HEAD_COACH_FEATURES: AdminFeature[] = ["trainers", "classes", "bookings", "customers", "accounting", "discounts"];
+const NUTRITIONIST_FEATURES: AdminFeature[] = ["nutrition"];
 
 export const ROLE_FEATURE_TEMPLATES: Record<AdminRole, AdminFeature[]> = {
   admin: ADMIN_FEATURES,
@@ -97,6 +101,7 @@ export const ROLE_FEATURE_TEMPLATES: Record<AdminRole, AdminFeature[]> = {
   contracts_manager: CONTRACTS_MANAGER_FEATURES,
   agent: AGENT_FEATURES,
   head_coach: HEAD_COACH_FEATURES,
+  nutritionist: NUTRITIONIST_FEATURES,
 };
 
 export const SECTION_FEATURE_MAP: Record<Section, AdminFeature> = {
@@ -128,6 +133,7 @@ export const SECTION_FEATURE_MAP: Record<Section, AdminFeature> = {
   partners: "partners",
   contracts: "contracts",
   referrals: "referrals",
+  nutrition: "nutrition",
 };
 
 export function isAdminRole(role?: string): role is AdminRole {
@@ -139,7 +145,8 @@ export function isAdminRole(role?: string): role is AdminRole {
     role === "partner" ||
     role === "contracts_manager" ||
     role === "agent" ||
-    role === "head_coach"
+    role === "head_coach" ||
+    role === "nutritionist"
   );
 }
 

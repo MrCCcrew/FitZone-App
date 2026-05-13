@@ -195,6 +195,17 @@ type PublicPayload = {
     cashOnDeliveryEnabled?: boolean;
     cashOnDeliveryLabel?: string;
   };
+  nutritionist: {
+    id: string;
+    name: string;
+    bio: string | null;
+    image: string | null;
+    slots: { label: string; day: string; time: string }[];
+    consultationFee: number;
+    consultationFeeMember: number;
+    followupFee: number;
+    followupFeeMember: number;
+  } | null;
 };
 
 const EMPTY_PAYLOAD: PublicPayload = {
@@ -230,6 +241,7 @@ const EMPTY_PAYLOAD: PublicPayload = {
     cashOnDeliveryEnabled: true,
     cashOnDeliveryLabel: "الدفع عند الاستلام",
   },
+  nutritionist: null,
 };
 
 const RESPONSE_HEADERS = {
@@ -288,7 +300,7 @@ export async function GET(request: Request) {
     scheduleTo.setDate(scheduleTo.getDate() + 6);
     scheduleTo.setHours(23, 59, 59, 999);
 
-    const [categories, goals, memberships, offers, classes, trainers, siteContent, products, testimonials, healthQuestions, deliveryOptions, paymobSettings] =
+    const [categories, goals, memberships, offers, classes, trainers, siteContent, products, testimonials, healthQuestions, deliveryOptions, paymobSettings, nutritionistRow] =
       await Promise.all([
         db.productCategory.findMany({
           where: { isActive: true },
@@ -359,6 +371,10 @@ export async function GET(request: Request) {
           orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
         }),
         getPaymentSettings(),
+        db.nutritionistProfile.findFirst({
+          where: { isActive: true, showOnHome: true },
+          orderBy: { createdAt: "asc" },
+        }),
       ]);
 
     const categoryMeta = new Map(
@@ -658,6 +674,21 @@ export async function GET(request: Request) {
         cashOnDeliveryEnabled: paymobSettings.enableCod && paymobSettings.cashOnDeliveryEnabled,
         cashOnDeliveryLabel: lang === "en" ? paymobSettings.cashOnDeliveryLabelEn : paymobSettings.cashOnDeliveryLabelAr,
       },
+      nutritionist: nutritionistRow
+        ? {
+            id: nutritionistRow.id,
+            name: nutritionistRow.name,
+            bio: nutritionistRow.bio,
+            image: nutritionistRow.image,
+            slots: nutritionistRow.slotsJson
+              ? (JSON.parse(nutritionistRow.slotsJson) as { label: string; day: string; time: string }[])
+              : [],
+            consultationFee: nutritionistRow.consultationFee,
+            consultationFeeMember: nutritionistRow.consultationFeeMember,
+            followupFee: nutritionistRow.followupFee,
+            followupFeeMember: nutritionistRow.followupFeeMember,
+          }
+        : null,
     };
 
     setPublicApiCache(lang, {
