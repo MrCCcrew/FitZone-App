@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { AdminSectionShell, AdminCard, AdminEmptyState } from "./shared";
 import {
   printStoreReport, printClubReport,
@@ -507,6 +507,39 @@ function StoreTab({ data, onRefresh, dateRange }: { data: AccountingData; onRefr
   const pagedSales = data.store.sales.slice((pageSales - 1) * PER_PAGE, pageSales * PER_PAGE);
   const pagedPurchases = data.store.purchases.slice((pagePurchases - 1) * PER_PAGE, pagePurchases * PER_PAGE);
 
+  const [selSales, setSelSales] = useState<Set<string>>(new Set());
+  const [selPurchases, setSelPurchases] = useState<Set<string>>(new Set());
+  const [working, setWorking] = useState(false);
+  useEffect(() => setSelSales(new Set()), [pageSales]);
+  useEffect(() => setSelPurchases(new Set()), [pagePurchases]);
+
+  const allSalesSelected = pagedSales.length > 0 && pagedSales.every(r => selSales.has(r.id));
+  const someSalesSelected = !allSalesSelected && pagedSales.some(r => selSales.has(r.id));
+  const toggleAllSales = () => setSelSales(prev => { const n = new Set(prev); if (allSalesSelected) pagedSales.forEach(r => n.delete(r.id)); else pagedSales.forEach(r => n.add(r.id)); return n; });
+  const toggleSale = (id: string) => setSelSales(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const deleteSales = async () => {
+    if (!selSales.size || !confirm(`حذف ${selSales.size} فاتورة مبيعات نهائياً؟`)) return;
+    setWorking(true);
+    await Promise.all(Array.from(selSales).map(id => fetch("/api/admin/orders", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) })));
+    setSelSales(new Set()); onRefresh(); setWorking(false);
+  };
+
+  const allPurchasesSelected = pagedPurchases.length > 0 && pagedPurchases.every(r => selPurchases.has(r.id));
+  const somePurchasesSelected = !allPurchasesSelected && pagedPurchases.some(r => selPurchases.has(r.id));
+  const toggleAllPurchases = () => setSelPurchases(prev => { const n = new Set(prev); if (allPurchasesSelected) pagedPurchases.forEach(r => n.delete(r.id)); else pagedPurchases.forEach(r => n.add(r.id)); return n; });
+  const togglePurchase = (id: string) => setSelPurchases(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const deletePurchases = async () => {
+    if (!selPurchases.size || !confirm(`حذف ${selPurchases.size} فاتورة مشتريات نهائياً؟`)) return;
+    setWorking(true);
+    await Promise.all(Array.from(selPurchases).map(id => fetch("/api/admin/inventory/receipts", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) })));
+    setSelPurchases(new Set()); onRefresh(); setWorking(false);
+  };
+
+  const salesAllRef = useRef<HTMLInputElement>(null);
+  const purchasesAllRef = useRef<HTMLInputElement>(null);
+  useEffect(() => { if (salesAllRef.current) salesAllRef.current.indeterminate = someSalesSelected; }, [someSalesSelected]);
+  useEffect(() => { if (purchasesAllRef.current) purchasesAllRef.current.indeterminate = somePurchasesSelected; }, [somePurchasesSelected]);
+
   const handlePrintReport = () => printStoreReport({
     summary: s,
     sales: data.store.sales,
@@ -558,6 +591,12 @@ function StoreTab({ data, onRefresh, dateRange }: { data: AccountingData; onRefr
 
       {/* Sales */}
       <SectionDivider title="فواتير المبيعات" />
+      {selSales.size > 0 && (
+        <div className="flex items-center justify-between rounded-xl bg-red-950/40 border border-red-500/30 px-4 py-2 text-sm">
+          <span className="text-red-300">تم تحديد {selSales.size} سجل</span>
+          <button className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-red-700 disabled:opacity-50" onClick={deleteSales} disabled={working}>حذف المحدد</button>
+        </div>
+      )}
       <AdminCard>
         {data.store.sales.length === 0 ? <AdminEmptyState title="لا توجد مبيعات" description="لا توجد طلبات مؤكدة في هذه الفترة" /> : (
           <div className="overflow-x-auto">
@@ -571,11 +610,12 @@ function StoreTab({ data, onRefresh, dateRange }: { data: AccountingData; onRefr
                   <th className="py-2 text-right font-bold">ضريبة</th>
                   <th className="py-2 text-right font-bold">الإجمالي</th>
                   <th className="py-2 text-right font-bold">فاتورة</th>
+                  <th className="py-2 text-center w-8"><input ref={salesAllRef} type="checkbox" checked={allSalesSelected} onChange={toggleAllSales} className="accent-[#E91E63] cursor-pointer" /></th>
                 </tr>
               </thead>
               <tbody>
                 {pagedSales.map(row => (
-                  <tr key={row.id} className="border-b border-[rgba(255,188,219,0.07)] hover:bg-white/5">
+                  <tr key={row.id} className={`border-b border-[rgba(255,188,219,0.07)] hover:bg-white/5 ${selSales.has(row.id) ? "bg-rose-950/20" : ""}`}>
                     <td className="py-2 text-[#d7aabd]">{fmtDate(row.date)}</td>
                     <td className="py-2 font-bold text-[#fff4f8]">{row.customerName}</td>
                     <td className="py-2 text-[#d7aabd] max-w-[160px] truncate">{row.items}</td>
@@ -590,6 +630,7 @@ function StoreTab({ data, onRefresh, dateRange }: { data: AccountingData; onRefr
                         items: row.items.split("، ").map(name => ({ productName: name, total: 0 })),
                       })}>🖨️</button>
                     </td>
+                    <td className="py-2 text-center"><input type="checkbox" checked={selSales.has(row.id)} onChange={() => toggleSale(row.id)} className="accent-[#E91E63] cursor-pointer" /></td>
                   </tr>
                 ))}
               </tbody>
@@ -640,6 +681,12 @@ function StoreTab({ data, onRefresh, dateRange }: { data: AccountingData; onRefr
 
       {/* Purchases */}
       <SectionDivider title="فواتير المشتريات" />
+      {selPurchases.size > 0 && (
+        <div className="flex items-center justify-between rounded-xl bg-red-950/40 border border-red-500/30 px-4 py-2 text-sm">
+          <span className="text-red-300">تم تحديد {selPurchases.size} سجل</span>
+          <button className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-red-700 disabled:opacity-50" onClick={deletePurchases} disabled={working}>حذف المحدد</button>
+        </div>
+      )}
       <AdminCard>
         {data.store.purchases.length === 0 ? <AdminEmptyState title="لا توجد مشتريات" description="لا توجد فواتير شراء في هذه الفترة" /> : (
           <div className="overflow-x-auto">
@@ -651,12 +698,13 @@ function StoreTab({ data, onRefresh, dateRange }: { data: AccountingData; onRefr
                   <th className="py-2 text-right font-bold">المرجع</th>
                   <th className="py-2 text-right font-bold">الإجمالي</th>
                   <th className="py-2 text-right font-bold">التفاصيل</th>
+                  <th className="py-2 text-center w-8"><input ref={purchasesAllRef} type="checkbox" checked={allPurchasesSelected} onChange={toggleAllPurchases} className="accent-[#E91E63] cursor-pointer" /></th>
                 </tr>
               </thead>
               <tbody>
                 {pagedPurchases.map(row => (
                   <>
-                    <tr key={row.id} className="border-b border-[rgba(255,188,219,0.07)] hover:bg-white/5">
+                    <tr key={row.id} className={`border-b border-[rgba(255,188,219,0.07)] hover:bg-white/5 ${selPurchases.has(row.id) ? "bg-rose-950/20" : ""}`}>
                       <td className="py-2 text-[#d7aabd]">{fmtDate(row.date)}</td>
                       <td className="py-2 font-bold text-[#fff4f8]">{row.supplierName ?? "—"}</td>
                       <td className="py-2 text-[#d7aabd]">{row.referenceNumber ?? "—"}</td>
@@ -673,10 +721,11 @@ function StoreTab({ data, onRefresh, dateRange }: { data: AccountingData; onRefr
                           })}>🖨️</button>
                         </div>
                       </td>
+                      <td className="py-2 text-center"><input type="checkbox" checked={selPurchases.has(row.id)} onChange={() => togglePurchase(row.id)} className="accent-[#E91E63] cursor-pointer" /></td>
                     </tr>
                     {expandedPurchase === row.id && (
                       <tr key={`${row.id}-details`}>
-                        <td colSpan={5} className="bg-white/5 px-4 pb-3 pt-2">
+                        <td colSpan={6} className="bg-white/5 px-4 pb-3 pt-2">
                           <table className="w-full text-xs">
                             <thead>
                               <tr className="text-[#a07080]">
@@ -781,6 +830,39 @@ function ClubTab({ data, onRefresh, dateRange }: { data: AccountingData; onRefre
   const [pageBookings, setPageBookings] = useState(1);
   const pagedMemberships = data.club.memberships.slice((pageMemberships - 1) * PER_PAGE, pageMemberships * PER_PAGE);
   const pagedBookings = data.club.bookings.slice((pageBookings - 1) * PER_PAGE, pageBookings * PER_PAGE);
+
+  const [selMemberships, setSelMemberships] = useState<Set<string>>(new Set());
+  const [selBookings, setSelBookings] = useState<Set<string>>(new Set());
+  const [working, setWorking] = useState(false);
+  useEffect(() => setSelMemberships(new Set()), [pageMemberships]);
+  useEffect(() => setSelBookings(new Set()), [pageBookings]);
+
+  const allMembershipsSelected = pagedMemberships.length > 0 && pagedMemberships.every(r => selMemberships.has(r.id));
+  const someMembershipsSelected = !allMembershipsSelected && pagedMemberships.some(r => selMemberships.has(r.id));
+  const toggleAllMemberships = () => setSelMemberships(prev => { const n = new Set(prev); if (allMembershipsSelected) pagedMemberships.forEach(r => n.delete(r.id)); else pagedMemberships.forEach(r => n.add(r.id)); return n; });
+  const toggleMembership = (id: string) => setSelMemberships(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const deleteMemberships = async () => {
+    if (!selMemberships.size || !confirm(`حذف ${selMemberships.size} فاتورة اشتراك نهائياً؟`)) return;
+    setWorking(true);
+    await Promise.all(Array.from(selMemberships).map(id => fetch("/api/admin/accounting", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ entityType: "userMembership", id }) })));
+    setSelMemberships(new Set()); onRefresh(); setWorking(false);
+  };
+
+  const allBookingsSelected = pagedBookings.length > 0 && pagedBookings.every(r => selBookings.has(r.id));
+  const someBookingsSelected = !allBookingsSelected && pagedBookings.some(r => selBookings.has(r.id));
+  const toggleAllBookings = () => setSelBookings(prev => { const n = new Set(prev); if (allBookingsSelected) pagedBookings.forEach(r => n.delete(r.id)); else pagedBookings.forEach(r => n.add(r.id)); return n; });
+  const toggleBooking = (id: string) => setSelBookings(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const deleteBookings = async () => {
+    if (!selBookings.size || !confirm(`حذف ${selBookings.size} حجز نهائياً؟`)) return;
+    setWorking(true);
+    await Promise.all(Array.from(selBookings).map(id => fetch("/api/admin/bookings", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ bookingId: id }) })));
+    setSelBookings(new Set()); onRefresh(); setWorking(false);
+  };
+
+  const membershipsAllRef = useRef<HTMLInputElement>(null);
+  const bookingsAllRef = useRef<HTMLInputElement>(null);
+  useEffect(() => { if (membershipsAllRef.current) membershipsAllRef.current.indeterminate = someMembershipsSelected; }, [someMembershipsSelected]);
+  useEffect(() => { if (bookingsAllRef.current) bookingsAllRef.current.indeterminate = someBookingsSelected; }, [someBookingsSelected]);
 
   const handlePrintReport = () => printClubReport({
     summary: s,
@@ -895,6 +977,12 @@ function ClubTab({ data, onRefresh, dateRange }: { data: AccountingData; onRefre
 
       {/* Memberships */}
       <SectionDivider title="فواتير الاشتراكات" />
+      {selMemberships.size > 0 && (
+        <div className="flex items-center justify-between rounded-xl bg-red-950/40 border border-red-500/30 px-4 py-2 text-sm">
+          <span className="text-red-300">تم تحديد {selMemberships.size} سجل</span>
+          <button className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-red-700 disabled:opacity-50" onClick={deleteMemberships} disabled={working}>حذف المحدد</button>
+        </div>
+      )}
       <AdminCard>
         {data.club.memberships.length === 0 ? <AdminEmptyState title="لا توجد اشتراكات" description="لا توجد اشتراكات في هذه الفترة" /> : (
           <div className="overflow-x-auto">
@@ -907,17 +995,19 @@ function ClubTab({ data, onRefresh, dateRange }: { data: AccountingData; onRefre
                   <th className="py-2 text-right font-bold">الدفع</th>
                   <th className="py-2 text-right font-bold">المبلغ</th>
                   <th className="py-2 text-right font-bold">مكافأة المحفظة</th>
+                  <th className="py-2 text-center w-8"><input ref={membershipsAllRef} type="checkbox" checked={allMembershipsSelected} onChange={toggleAllMemberships} className="accent-[#E91E63] cursor-pointer" /></th>
                 </tr>
               </thead>
               <tbody>
                 {pagedMemberships.map(row => (
-                  <tr key={row.id} className="border-b border-[rgba(255,188,219,0.07)] hover:bg-white/5">
+                  <tr key={row.id} className={`border-b border-[rgba(255,188,219,0.07)] hover:bg-white/5 ${selMemberships.has(row.id) ? "bg-rose-950/20" : ""}`}>
                     <td className="py-2 text-[#d7aabd]">{fmtDate(row.date)}</td>
                     <td className="py-2 font-bold text-[#fff4f8]">{row.customerName}</td>
                     <td className="py-2 text-[#d7aabd]">{row.offerTitle ?? row.membershipName}</td>
                     <td className="py-2 text-[#d7aabd]">{row.paymentMethod}</td>
                     <td className="py-2 font-bold text-emerald-400">{fmt(row.paymentAmount)} ج</td>
                     <td className="py-2 text-yellow-400">{row.walletBonus > 0 ? `+${fmt(row.walletBonus)} ج` : "—"}</td>
+                    <td className="py-2 text-center"><input type="checkbox" checked={selMemberships.has(row.id)} onChange={() => toggleMembership(row.id)} className="accent-[#E91E63] cursor-pointer" /></td>
                   </tr>
                 ))}
               </tbody>
@@ -931,6 +1021,12 @@ function ClubTab({ data, onRefresh, dateRange }: { data: AccountingData; onRefre
       {data.club.bookings.length > 0 && (
         <>
           <SectionDivider title="فواتير الحجوزات" />
+          {selBookings.size > 0 && (
+            <div className="flex items-center justify-between rounded-xl bg-red-950/40 border border-red-500/30 px-4 py-2 text-sm">
+              <span className="text-red-300">تم تحديد {selBookings.size} سجل</span>
+              <button className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-red-700 disabled:opacity-50" onClick={deleteBookings} disabled={working}>حذف المحدد</button>
+            </div>
+          )}
           <AdminCard>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -941,16 +1037,18 @@ function ClubTab({ data, onRefresh, dateRange }: { data: AccountingData; onRefre
                     <th className="py-2 text-right font-bold">الكلاس</th>
                     <th className="py-2 text-right font-bold">الدفع</th>
                     <th className="py-2 text-right font-bold">المبلغ</th>
+                    <th className="py-2 text-center w-8"><input ref={bookingsAllRef} type="checkbox" checked={allBookingsSelected} onChange={toggleAllBookings} className="accent-[#E91E63] cursor-pointer" /></th>
                   </tr>
                 </thead>
                 <tbody>
                   {pagedBookings.map(row => (
-                    <tr key={row.id} className="border-b border-[rgba(255,188,219,0.07)] hover:bg-white/5">
+                    <tr key={row.id} className={`border-b border-[rgba(255,188,219,0.07)] hover:bg-white/5 ${selBookings.has(row.id) ? "bg-rose-950/20" : ""}`}>
                       <td className="py-2 text-[#d7aabd]">{fmtDate(row.date)}</td>
                       <td className="py-2 font-bold text-[#fff4f8]">{row.customerName}</td>
                       <td className="py-2 text-[#d7aabd]">{row.className}</td>
                       <td className="py-2 text-[#d7aabd]">{row.paymentMethod}</td>
                       <td className="py-2 font-bold text-emerald-400">{fmt(row.paidAmount)} ج</td>
+                      <td className="py-2 text-center"><input type="checkbox" checked={selBookings.has(row.id)} onChange={() => toggleBooking(row.id)} className="accent-[#E91E63] cursor-pointer" /></td>
                     </tr>
                   ))}
                 </tbody>

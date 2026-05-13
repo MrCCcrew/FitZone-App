@@ -151,3 +151,12 @@ export async function POST(req: Request) {
 
   return NextResponse.json({ success: true, id: result });
 }
+
+export async function DELETE(req: Request) {
+  const err = await checkAdmin();
+  if (err) return err;
+  const { id } = await req.json() as { id?: string };
+  if (!id) return NextResponse.json({ error: "id مطلوب" }, { status: 400 });
+  await db.inventoryReceipt.delete({ where: { id } });
+  return NextResponse.json({ success: true });
+}

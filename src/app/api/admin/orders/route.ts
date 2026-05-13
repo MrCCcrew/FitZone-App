@@ -347,3 +347,15 @@ export async function PATCH(req: Request) {
 
   return NextResponse.json({ order: fmtOrder(updated) });
 }
+
+export async function DELETE(req: Request) {
+  const { error } = await checkAdmin();
+  if (error) return error;
+  const { id } = await req.json() as { id?: string };
+  if (!id) return NextResponse.json({ error: "id مطلوب" }, { status: 400 });
+  const o = await db.order.findUnique({ where: { id }, select: { id: true } });
+  if (!o) return NextResponse.json({ error: "الطلب غير موجود." }, { status: 404 });
+  await db.order.update({ where: { id }, data: { status: "cancelled", cancelledAt: new Date() } });
+  void logAudit({ action: "delete", targetType: "Order", targetId: id, details: {} });
+  return NextResponse.json({ success: true });
+}

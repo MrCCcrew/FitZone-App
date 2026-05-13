@@ -791,3 +791,19 @@ export async function PATCH(request: Request) {
 
   return NextResponse.json({ error: "نوع العملية غير مدعوم." }, { status: 400 });
 }
+
+export async function DELETE(request: Request) {
+  const guard = await requireAdminFeature("accounting");
+  if ("error" in guard) return guard.error;
+  const body = (await request.json()) as { entityType?: string; id?: string };
+  if (!body.id) return NextResponse.json({ error: "المعرف مطلوب." }, { status: 400 });
+  if (body.entityType === "expense") {
+    await db.accountingExpense.delete({ where: { id: body.id } });
+    return NextResponse.json({ success: true });
+  }
+  if (body.entityType === "userMembership") {
+    await db.userMembership.delete({ where: { id: body.id } });
+    return NextResponse.json({ success: true });
+  }
+  return NextResponse.json({ error: "نوع العملية غير مدعوم." }, { status: 400 });
+}
