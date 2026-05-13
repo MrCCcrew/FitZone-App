@@ -308,6 +308,15 @@ export interface Product {
   sold: number;
   averageCost?: number;
   lastPurchaseCost?: number;
+  // Admin-only internal fields
+  supplierId?: string | null;
+  supplierName?: string | null;
+  costPrice?: number | null;
+  barcode?: string | null;
+  isFeatured?: boolean;
+  isNew?: boolean;
+  isBestSeller?: boolean;
+  isSpecialOffer?: boolean;
   active: boolean;
   emoji: string;
   description?: string;
