@@ -3,22 +3,20 @@
 import { useCallback, useEffect, useState } from "react";
 import type { NutritionistProfileRow, NutritionSessionRow } from "../types";
 
-// ── Form field labels for the nutrition session ────────────────────────────────
-const FORM_LABELS: Record<string, Record<string, string>> = {
-  basicInfo: {
-    fullName: "الاسم بالكامل", age: "السن", gender: "النوع", phone: "رقم الموبايل",
-    profession: "المهنة", height: "الطول", currentWeight: "الوزن الحالي",
-    targetWeight: "الوزن المستهدف", birthDate: "تاريخ الميلاد", maritalStatus: "الحالة الاجتماعية",
-  },
-  goals: { selected: "الهدف من الاشتراك" },
-  medicalHistory: {
-    conditions: "الأمراض", medications: "أدوية حالية", supplements: "مكملات غذائية",
-    hasRecentTests: "يوجد تحاليل حديثة", testImages: "صور التحاليل",
-  },
-  measurements: {
-    weight: "الوزن", waist: "محيط الخصر", hips: "محيط الأرداف", fatPercentage: "نسبة الدهون",
-  },
-};
+// Flat keys stored by the booking form → display label
+const FLAT_LABELS: { key: string; label: string }[] = [
+  { key: "fullName",      label: "الاسم الكامل" },
+  { key: "phone",         label: "رقم الهاتف" },
+  { key: "age",           label: "العمر" },
+  { key: "weight",        label: "الوزن الحالي (كجم)" },
+  { key: "height",        label: "الطول (سم)" },
+  { key: "waist",         label: "محيط الخصر (سم)" },
+  { key: "hips",          label: "محيط الأرداف (سم)" },
+  { key: "arm",           label: "محيط العضد (سم)" },
+  { key: "medications",   label: "أدوية حالية" },
+  { key: "allergyDetails",label: "تفاصيل الحساسية" },
+  { key: "notes",         label: "ملاحظات إضافية" },
+];
 
 const STATUS_LABELS: Record<string, string> = {
   pending: "بانتظار المراجعة",
@@ -48,28 +46,54 @@ function fmtVal(val: unknown): string {
 }
 
 function NutritionFormDetails({ formData }: { formData: Record<string, unknown> }) {
+  const goals = formData.goals as string[] | undefined;
+  const goalsOther = formData.goalsOther as string | undefined;
+  const allGoals = [...(goals ?? []), ...(goalsOther?.trim() ? [goalsOther.trim()] : [])];
+
+  const medHistory = formData.medHistory as string[] | undefined;
+
   return (
-    <div style={{ display: "grid", gap: 14 }}>
-      {Object.entries(FORM_LABELS).map(([section, fields]) => {
-        const sectionData = formData[section] as Record<string, unknown> | undefined;
-        if (!sectionData) return null;
-        const sectionTitles: Record<string, string> = {
-          basicInfo: "البيانات الأساسية", goals: "الهدف", medicalHistory: "التاريخ المرضي", measurements: "القياسات",
-        };
-        return (
-          <div key={section} style={{ background: "rgba(255,255,255,.04)", borderRadius: 10, padding: "12px 14px" }}>
-            <div style={{ fontWeight: 700, color: "#f5c542", marginBottom: 8, fontSize: 13 }}>{sectionTitles[section] ?? section}</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 16px" }}>
-              {Object.entries(fields).map(([key, label]) => (
-                <div key={key} style={{ fontSize: 12 }}>
-                  <span style={{ color: "#9a8a90" }}>{label}: </span>
-                  <span style={{ color: "#fff" }}>{fmtVal(sectionData[key])}</span>
-                </div>
-              ))}
-            </div>
+    <div style={{ display: "grid", gap: 12 }}>
+      {/* Basic Info + Measurements */}
+      <div style={{ background: "rgba(255,255,255,.04)", borderRadius: 10, padding: "12px 14px" }}>
+        <div style={{ fontWeight: 700, color: "#f5c542", marginBottom: 8, fontSize: 13 }}>البيانات الأساسية والقياسات</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 16px" }}>
+          {FLAT_LABELS.map(({ key, label }) => {
+            const val = formData[key];
+            if (val === null || val === undefined || val === "") return null;
+            return (
+              <div key={key} style={{ fontSize: 12 }}>
+                <span style={{ color: "#9a8a90" }}>{label}: </span>
+                <span style={{ color: "#fff" }}>{fmtVal(val)}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Goals */}
+      {allGoals.length > 0 && (
+        <div style={{ background: "rgba(255,255,255,.04)", borderRadius: 10, padding: "12px 14px" }}>
+          <div style={{ fontWeight: 700, color: "#f5c542", marginBottom: 8, fontSize: 13 }}>الهدف من الاستشارة</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {allGoals.map((g) => (
+              <span key={g} style={{ background: "rgba(233,30,99,.15)", border: "1px solid rgba(233,30,99,.3)", borderRadius: 20, padding: "3px 10px", fontSize: 12, color: "#ffb7d0" }}>{g}</span>
+            ))}
           </div>
-        );
-      })}
+        </div>
+      )}
+
+      {/* Medical History */}
+      {(medHistory?.length ?? 0) > 0 && (
+        <div style={{ background: "rgba(255,255,255,.04)", borderRadius: 10, padding: "12px 14px" }}>
+          <div style={{ fontWeight: 700, color: "#f5c542", marginBottom: 8, fontSize: 13 }}>التاريخ المرضي</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {medHistory!.map((c) => (
+              <span key={c} style={{ background: "rgba(245,197,66,.1)", border: "1px solid rgba(245,197,66,.25)", borderRadius: 20, padding: "3px 10px", fontSize: 12, color: "#f5c542" }}>{c}</span>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
