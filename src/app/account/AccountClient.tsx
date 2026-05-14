@@ -4147,7 +4147,7 @@ function NutritionTab() {
                   <span className="text-base">📅</span>
                   <div>
                     <div className="text-xs font-bold text-[#ffb7d0]">{t("الموعد المحجوز", "Booked Appointment")}</div>
-                    <div className="text-xs text-[#d7aabd] mt-0.5">{session.selectedSlot.replace("|", " — ")}</div>
+                    <div className="text-xs text-[#d7aabd] mt-0.5">{session.selectedSlot.includes("|") ? session.selectedSlot.replace("|", " — ") : session.selectedSlot}</div>
                   </div>
                 </div>
               )}
