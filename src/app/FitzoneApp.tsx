@@ -3524,11 +3524,10 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                       <div>
                         <div style={{ fontSize: 14, color: "#ffb7d0", marginBottom: 14 }}>{t("اختاري موعداً متاحاً:", "Choose an available appointment:")}</div>
                         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                          {nutritionist.slots.map((slot) => {
-                            const slotKey = `${slot.day}|${slot.time}`;
-                            const selected = nutritionSlot === slotKey;
+                          {nutritionist.slots.map((slot, i) => {
+                            const selected = nutritionSlot === slot.label;
                             return (
-                              <button key={slotKey} onClick={() => setNutritionSlot(selected ? null : slotKey)} style={{ padding: "12px 16px", borderRadius: 12, border: `2px solid ${selected ? C.red : mdBorder}`, background: selected ? "rgba(233,30,99,.1)" : "rgba(255,255,255,.04)", cursor: "pointer", textAlign: "start", transition: "border-color .2s,background .2s" }}>
+                              <button key={i} onClick={() => setNutritionSlot(selected ? null : slot.label)} style={{ padding: "12px 16px", borderRadius: 12, border: `2px solid ${selected ? C.red : mdBorder}`, background: selected ? "rgba(233,30,99,.1)" : "rgba(255,255,255,.04)", cursor: "pointer", textAlign: "start", transition: "border-color .2s,background .2s" }}>
                                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                                   <div>
                                     <div style={{ fontWeight: 700, fontSize: 14, color: "#fff" }}>{slot.label}</div>
@@ -3553,7 +3552,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                             </div>
                             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                               <div style={{ fontSize: 12, color: "#d7aabd" }}>
-                                📅 {nutritionSlot.replace("|", " — ")}
+                                📅 {nutritionSlot}
                               </div>
                               <div style={{ fontWeight: 900, fontSize: 18, color: "#4ade80" }}>{price} {t("ج.م", "EGP")}</div>
                             </div>
