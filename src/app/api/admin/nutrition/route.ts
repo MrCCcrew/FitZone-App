@@ -218,14 +218,22 @@ export async function PATCH(req: Request) {
   return NextResponse.json({ session: formatSession(updated) });
 }
 
-// DELETE /api/admin/nutrition — delete profile
+// DELETE /api/admin/nutrition — delete profile or session
 export async function DELETE(req: Request) {
   const { error, userId } = await checkAdmin();
   if (error) return error;
 
   const { searchParams } = new URL(req.url);
+  const sessionId = searchParams.get("sessionId");
   const profileId = searchParams.get("profileId");
-  if (!profileId) return NextResponse.json({ error: "profileId مطلوب" }, { status: 400 });
+
+  if (sessionId) {
+    await db.nutritionSession.delete({ where: { id: sessionId } });
+    await logAudit({ action: "delete_nutrition_session", targetType: "NutritionSession", targetId: sessionId });
+    return NextResponse.json({ ok: true });
+  }
+
+  if (!profileId) return NextResponse.json({ error: "profileId أو sessionId مطلوب" }, { status: 400 });
 
   await db.nutritionistProfile.delete({ where: { id: profileId } });
   await logAudit({ action: "delete_nutritionist_profile", targetType: "NutritionistProfile", targetId: profileId });

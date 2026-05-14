@@ -284,7 +284,7 @@ function ProfileForm({ profile, staffUsers, onSave, onClose }: {
 }
 
 // ── Session Card ───────────────────────────────────────────────────────────────
-function SessionCard({ session, onAction }: { session: NutritionSessionRow; onAction: () => void }) {
+function SessionCard({ session, onAction, onDelete }: { session: NutritionSessionRow; onAction: () => void; onDelete: (id: string) => void }) {
   const [open, setOpen] = useState(false);
   const [proposedInput, setProposedInput] = useState("");
   const [doctorNote, setDoctorNote] = useState(session.doctorNote ?? "");
@@ -323,6 +323,11 @@ function SessionCard({ session, onAction }: { session: NutritionSessionRow; onAc
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           {session.selectedSlot && <span style={{ color: "#c9a227", fontSize: 12 }}>📅 {session.selectedSlot}</span>}
           <span style={{ color: "#9a8a90", fontSize: 11 }}>{new Date(session.createdAt).toLocaleDateString("ar-EG")}</span>
+          <button
+            onClick={(e) => { e.stopPropagation(); if (confirm("هل أنت متأكد من حذف هذا الطلب؟")) onDelete(session.id); }}
+            style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: 16, padding: "0 4px", lineHeight: 1 }}
+            title="حذف الطلب"
+          >🗑️</button>
           <span style={{ color: "#9a8a90" }}>{open ? "▲" : "▼"}</span>
         </div>
       </div>
@@ -470,7 +475,17 @@ export default function Nutrition() {
             <div style={{ color: "#9a8a90", textAlign: "center", padding: 40 }}>لا توجد طلبات</div>
           ) : (
             <div style={{ display: "grid", gap: 10 }}>
-              {sessions.map((s) => <SessionCard key={s.id} session={s} onAction={load} />)}
+              {sessions.map((s) => (
+                <SessionCard
+                  key={s.id}
+                  session={s}
+                  onAction={load}
+                  onDelete={async (id) => {
+                    await fetch(`/api/admin/nutrition?sessionId=${id}`, { method: "DELETE" });
+                    load();
+                  }}
+                />
+              ))}
             </div>
           )}
         </>
