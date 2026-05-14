@@ -59,6 +59,7 @@ const DEFAULT_REMINDER: ReminderSettings = {
 export default function PushNotifications() {
   const [stats, setStats]   = useState<StatsData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [deleting, setDeleting] = useState<string | null>(null);
 
   // Reminder template state
   const [reminder, setReminder]           = useState<ReminderSettings>(DEFAULT_REMINDER);
@@ -181,6 +182,33 @@ export default function PushNotifications() {
     } finally {
       setSending(false);
     }
+  }
+
+  async function deleteCampaign(id: string) {
+    setDeleting(id);
+    try {
+      await fetch("/api/push/campaigns", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      loadStats();
+    } catch { /* ignore */ }
+    finally { setDeleting(null); }
+  }
+
+  async function clearAllCampaigns() {
+    if (!confirm("هل تريد مسح جميع سجلات الحملات؟")) return;
+    setDeleting("all");
+    try {
+      await fetch("/api/push/campaigns", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ all: true }),
+      });
+      loadStats();
+    } catch { /* ignore */ }
+    finally { setDeleting(null); }
   }
 
   const filteredSubscribers = subscribers.filter(
@@ -409,43 +437,64 @@ export default function PushNotifications() {
             لم يتم إرسال أي حملة بعد.
           </div>
         ) : (
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-              <thead>
-                <tr style={{ borderBottom: "1px solid rgba(255,255,255,.1)" }}>
-                  {["العنوان", "الجمهور", "وصل", "فشل", "الحالة", "أُرسل في", "بواسطة"].map((h) => (
-                    <th key={h} style={{ textAlign: "right", padding: "8px 12px", color: "#9ca3af", fontWeight: 600, whiteSpace: "nowrap" }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {stats.campaigns.map((c) => {
-                  const st = STATUS_STYLE[c.status] ?? STATUS_STYLE.done;
-                  return (
-                    <tr key={c.id} style={{ borderBottom: "1px solid rgba(255,255,255,.05)" }}>
-                      <td style={{ padding: "10px 12px" }}>
-                        <div style={{ color: "#fff", fontWeight: 600 }}>{c.title}</div>
-                        <div style={{ color: "#6b7280", fontSize: 11, marginTop: 2 }}>{c.body.slice(0, 60)}{c.body.length > 60 ? "…" : ""}</div>
-                        {c.url && c.url !== "/" && (
-                          <div style={{ color: "#60a5fa", fontSize: 10, marginTop: 2 }}>{c.url}</div>
-                        )}
-                      </td>
-                      <td style={{ padding: "10px 12px", color: "#d4b8c8", whiteSpace: "nowrap" }}>{AUDIENCE_LABELS[c.audience] ?? c.audience}</td>
-                      <td style={{ padding: "10px 12px", color: "#4ade80", fontWeight: 700 }}>{c.sentCount}</td>
-                      <td style={{ padding: "10px 12px", color: c.failedCount > 0 ? "#f87171" : "#6b7280", fontWeight: 700 }}>{c.failedCount}</td>
-                      <td style={{ padding: "10px 12px" }}>
-                        <span style={{ padding: "3px 10px", borderRadius: 20, background: st.bg, color: st.color, fontWeight: 700, fontSize: 11 }}>
-                          {st.label}
-                        </span>
-                      </td>
-                      <td style={{ padding: "10px 12px", color: "#9ca3af", fontSize: 12, whiteSpace: "nowrap" }}>{fmt(c.createdAt)}</td>
-                      <td style={{ padding: "10px 12px", color: "#9ca3af", fontSize: 12 }}>{c.createdBy}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <>
+            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+              <button
+                onClick={() => void clearAllCampaigns()}
+                disabled={deleting !== null}
+                style={{ ...btnStyle, padding: "7px 16px", fontSize: 13, background: "rgba(239,68,68,.12)", borderColor: "rgba(239,68,68,.35)", color: "#f87171" }}
+              >
+                {deleting === "all" ? "⏳ جاري المسح..." : "🗑️ مسح السجل"}
+              </button>
+            </div>
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                <thead>
+                  <tr style={{ borderBottom: "1px solid rgba(255,255,255,.1)" }}>
+                    {["العنوان", "الجمهور", "وصل", "فشل", "الحالة", "أُرسل في", "بواسطة", ""].map((h, i) => (
+                      <th key={i} style={{ textAlign: "right", padding: "8px 12px", color: "#9ca3af", fontWeight: 600, whiteSpace: "nowrap" }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {stats.campaigns.map((c) => {
+                    const st = STATUS_STYLE[c.status] ?? STATUS_STYLE.done;
+                    return (
+                      <tr key={c.id} style={{ borderBottom: "1px solid rgba(255,255,255,.05)" }}>
+                        <td style={{ padding: "10px 12px" }}>
+                          <div style={{ color: "#fff", fontWeight: 600 }}>{c.title}</div>
+                          <div style={{ color: "#6b7280", fontSize: 11, marginTop: 2 }}>{c.body.slice(0, 60)}{c.body.length > 60 ? "…" : ""}</div>
+                          {c.url && c.url !== "/" && (
+                            <div style={{ color: "#60a5fa", fontSize: 10, marginTop: 2 }}>{c.url}</div>
+                          )}
+                        </td>
+                        <td style={{ padding: "10px 12px", color: "#d4b8c8", whiteSpace: "nowrap" }}>{AUDIENCE_LABELS[c.audience] ?? c.audience}</td>
+                        <td style={{ padding: "10px 12px", color: "#4ade80", fontWeight: 700 }}>{c.sentCount}</td>
+                        <td style={{ padding: "10px 12px", color: c.failedCount > 0 ? "#f87171" : "#6b7280", fontWeight: 700 }}>{c.failedCount}</td>
+                        <td style={{ padding: "10px 12px" }}>
+                          <span style={{ padding: "3px 10px", borderRadius: 20, background: st.bg, color: st.color, fontWeight: 700, fontSize: 11 }}>
+                            {st.label}
+                          </span>
+                        </td>
+                        <td style={{ padding: "10px 12px", color: "#9ca3af", fontSize: 12, whiteSpace: "nowrap" }}>{fmt(c.createdAt)}</td>
+                        <td style={{ padding: "10px 12px", color: "#9ca3af", fontSize: 12 }}>{c.createdBy}</td>
+                        <td style={{ padding: "10px 12px" }}>
+                          <button
+                            onClick={() => void deleteCampaign(c.id)}
+                            disabled={deleting !== null}
+                            title="حذف"
+                            style={{ background: "none", border: "none", cursor: deleting !== null ? "default" : "pointer", color: "#f87171", fontSize: 16, opacity: deleting === c.id ? 0.4 : 1 }}
+                          >
+                            🗑️
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </Section>
     </div>

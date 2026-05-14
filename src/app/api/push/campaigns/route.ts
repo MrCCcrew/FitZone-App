@@ -31,3 +31,19 @@ export async function GET() {
     })),
   });
 }
+
+export async function DELETE(req: Request) {
+  const guard = await requireAdminFeature("push");
+  if ("error" in guard) return guard.error;
+
+  const body = await req.json() as { id?: string; all?: boolean };
+
+  if (body.all) {
+    await db.pushCampaign.deleteMany({});
+    return NextResponse.json({ success: true });
+  }
+
+  if (!body.id) return NextResponse.json({ error: "id مطلوب" }, { status: 400 });
+  await db.pushCampaign.delete({ where: { id: body.id } });
+  return NextResponse.json({ success: true });
+}
