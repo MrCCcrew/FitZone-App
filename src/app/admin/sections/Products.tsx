@@ -114,6 +114,9 @@ export default function Products() {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<{ success: boolean; msg: string } | null>(null);
   const [uploadingCategoryIcon, setUploadingCategoryIcon] = useState(false);
   const [productModal, setProductModal] = useState<EditableProduct | null>(null);
   const [categoryModal, setCategoryModal] = useState<EditableCategory | null>(null);
@@ -154,6 +157,46 @@ export default function Products() {
     const filterOk = filter === "all" || product.category === filter;
     return searchOk && filterOk;
   });
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const res = await fetch("/api/admin/products/export");
+      if (!res.ok) { alert("فشل التصدير"); return; }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `fitzone-products-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleImport = async (file: File) => {
+    setImporting(true);
+    setImportResult(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/admin/products/import", { method: "POST", body: fd });
+      const data = await res.json() as { success?: boolean; error?: string; results?: { categories: { created: number; updated: number }; products: { created: number; updated: number }; variants: { created: number; updated: number }; errors: string[] } };
+      if (data.success && data.results) {
+        const r = data.results;
+        const msg = `✅ أقسام: +${r.categories.created} / =${r.categories.updated} | منتجات: +${r.products.created} / =${r.products.updated} | متغيرات: +${r.variants.created} / =${r.variants.updated}${r.errors.length ? `\n⚠️ ${r.errors.slice(0, 3).join(" | ")}` : ""}`;
+        setImportResult({ success: true, msg });
+        void load();
+      } else {
+        setImportResult({ success: false, msg: data.error ?? "حدث خطأ أثناء الاستيراد" });
+      }
+    } catch {
+      setImportResult({ success: false, msg: "تعذّر الاتصال بالخادم" });
+    } finally {
+      setImporting(false);
+    }
+  };
 
   const saveProduct = async () => {
     if (!productModal) return;
@@ -290,6 +333,34 @@ export default function Products() {
                 ))}
               </div>
               <button onClick={() => { setUploadError(null); setProductModal({ ...EMPTY_PRODUCT, category: categories[0]?.key ?? "supplement" }); }} className="mt-4 w-full rounded-xl bg-red-600 px-4 py-2.5 text-sm font-bold text-white">+ منتج جديد</button>
+
+              {/* Excel export / import */}
+              <div className="mt-2 flex gap-2">
+                <button
+                  onClick={() => void handleExport()}
+                  disabled={exporting}
+                  className="flex-1 rounded-xl border border-emerald-700 bg-emerald-900/30 px-3 py-2 text-xs font-bold text-emerald-400 disabled:opacity-50"
+                >
+                  {exporting ? "⏳ جارٍ التصدير..." : "📥 تصدير Excel"}
+                </button>
+                <label className={`flex-1 cursor-pointer rounded-xl border border-blue-700 bg-blue-900/30 px-3 py-2 text-center text-xs font-bold text-blue-400 ${importing ? "opacity-50 pointer-events-none" : ""}`}>
+                  {importing ? "⏳ جارٍ الاستيراد..." : "📤 استيراد Excel"}
+                  <input
+                    type="file"
+                    accept=".xlsx,.xls"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) { void handleImport(f); e.target.value = ""; }
+                    }}
+                  />
+                </label>
+              </div>
+              {importResult && (
+                <div className={`mt-2 rounded-xl px-3 py-2 text-xs font-bold whitespace-pre-line ${importResult.success ? "bg-emerald-900/30 text-emerald-400" : "bg-red-900/30 text-red-400"}`}>
+                  {importResult.msg}
+                </div>
+              )}
             </div>
           </div>
 
