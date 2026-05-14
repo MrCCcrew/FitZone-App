@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import * as XLSX from "xlsx";
 import { requireAdminFeature } from "@/lib/admin-guard";
 import { db } from "@/lib/db";
+import type * as XLSXType from "xlsx";
 
 function parseJson(v: string | null): unknown[] {
   try { return v ? (JSON.parse(v) as unknown[]) : []; } catch { return []; }
@@ -11,6 +11,9 @@ function bool(v: boolean) { return v ? "نعم" : "لا"; }
 export async function GET() {
   const guard = await requireAdminFeature("products");
   if ("error" in guard) return guard.error;
+
+  // Dynamic import keeps Turbopack from trying to bundle this CJS package
+  const XLSX = await import("xlsx");
 
   const [products, categories, variants] = await Promise.all([
     db.product.findMany({
@@ -138,6 +141,6 @@ export async function GET() {
   });
 }
 
-function styleHeader(ws: XLSX.WorkSheet, headers: string[]) {
+function styleHeader(ws: XLSXType.WorkSheet, headers: string[]) {
   ws["!cols"] = headers.map((h) => ({ wch: Math.max(h.length + 4, 18) }));
 }

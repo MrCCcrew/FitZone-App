@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAdminFeature } from "@/lib/admin-guard";
 import { db } from "@/lib/db";
 import { clearPublicApiCache } from "@/lib/public-cache";
-import * as XLSX from "xlsx";
+import type * as XLSXType from "xlsx";
 
 // ── Value helpers ──────────────────────────────────────────────────────────────
 function yn(v: unknown): boolean {
@@ -25,7 +25,7 @@ function nullable(v: unknown): string | null {
 function splitComma(v: unknown): string[] {
   return str(v).split(",").map((x) => x.trim()).filter(Boolean);
 }
-function sheetRows(wb: XLSX.WorkBook, name: string): Record<string, unknown>[] {
+function sheetRows(XLSX: typeof XLSXType, wb: XLSXType.WorkBook, name: string): Record<string, unknown>[] {
   const ws = wb.Sheets[name];
   if (!ws) return [];
   return (XLSX.utils.sheet_to_json(ws) as Record<string, unknown>[]).filter(
@@ -49,6 +49,9 @@ export async function POST(req: Request) {
   const guard = await requireAdminFeature("products");
   if ("error" in guard) return guard.error;
 
+  // Dynamic import keeps Turbopack from trying to bundle this CJS package
+  const XLSX = await import("xlsx");
+
   // ── Parse multipart form ────────────────────────────────────────────────────
   let formData: FormData;
   try { formData = await req.formData(); }
@@ -62,7 +65,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "الملف يجب أن يكون بصيغة Excel (.xlsx أو .xls)." }, { status: 400 });
 
   const buffer = Buffer.from(await file.arrayBuffer());
-  let wb: XLSX.WorkBook;
+  let wb: XLSXType.WorkBook;
   try { wb = XLSX.read(buffer, { type: "buffer" }); }
   catch { return NextResponse.json({ error: "تعذّر قراءة ملف Excel — تأكد أن الملف غير تالف." }, { status: 400 }); }
 
@@ -84,7 +87,7 @@ export async function POST(req: Request) {
   const skuToDbId = new Map(existingSkuRows.filter((p) => p.sku).map((p) => [p.sku!, p.id]));
 
   // ── Phase 2 — Validate & upsert Categories ─────────────────────────────────
-  const catRows = sheetRows(wb, "الأقسام");
+  const catRows = sheetRows(XLSX, wb, "الأقسام");
   const seenCatKeys = new Set<string>();
 
   for (let i = 0; i < catRows.length; i++) {
@@ -135,7 +138,7 @@ export async function POST(req: Request) {
   }
 
   // ── Phase 3 — Validate & upsert Products ───────────────────────────────────
-  const productRows = sheetRows(wb, "المنتجات");
+  const productRows = sheetRows(XLSX, wb, "المنتجات");
   const seenSkus    = new Set<string>(); // SKUs seen in this import batch
   const importedIds = new Map<string, string>(); // rowId → db id
 
@@ -265,7 +268,7 @@ export async function POST(req: Request) {
   }
 
   // ── Phase 4 — Validate & upsert Variants ───────────────────────────────────
-  const variantRows = sheetRows(wb, "المتغيرات");
+  const variantRows = sheetRows(XLSX, wb, "المتغيرات");
 
   for (let i = 0; i < variantRows.length; i++) {
     const row      = variantRows[i]!;
