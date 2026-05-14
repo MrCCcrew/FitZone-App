@@ -4143,7 +4143,16 @@ function NutritionTab() {
               </div>
 
               {session.selectedSlot && (
-                <div className="text-xs text-[#d7aabd] mb-2">📅 {t("الموعد:", "Appointment:")} {session.selectedSlot.replace("|", " — ")}</div>
+                <div className="flex items-center gap-2 mb-2 rounded-lg bg-black/20 px-3 py-2">
+                  <span className="text-base">📅</span>
+                  <div>
+                    <div className="text-xs font-bold text-[#ffb7d0]">{t("الموعد المحجوز", "Booked Appointment")}</div>
+                    <div className="text-xs text-[#d7aabd] mt-0.5">{session.selectedSlot.replace("|", " — ")}</div>
+                  </div>
+                </div>
+              )}
+              {session.paidAt && (
+                <div className="text-xs text-emerald-400 mb-2">✅ {t("تم الدفع في", "Paid on")} {new Date(session.paidAt).toLocaleDateString(lang === "ar" ? "ar-EG" : "en-US")}</div>
               )}
               {session.doctorNote && (
                 <div className="rounded-xl border border-[#ffbcdb]/20 bg-[#3f1426]/60 px-3 py-2 text-xs text-[#d7aabd] mb-3">

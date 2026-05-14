@@ -3315,6 +3315,29 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
           finally { setNutritionSubmitting(false); }
         };
 
+        const submitAndPay = async () => {
+          setNutritionSubmitting(true);
+          setNutritionMsg(null);
+          try {
+            const submitRes = await fetch("/api/me/nutrition", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ nutritionistId: nutritionist.id, type: nutritionType, formData: nutritionForm, selectedSlot: nutritionSlot ?? undefined }),
+            });
+            const submitData = await submitRes.json() as { session?: { id: string }; error?: string };
+            if (!submitRes.ok) { setNutritionMsg({ ok: false, text: submitData.error ?? "حدث خطأ" }); setNutritionSubmitting(false); return; }
+            const payRes = await fetch("/api/payments/nutrition-intent", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ sessionId: submitData.session!.id, returnUrl: `${window.location.origin}/account?tab=nutrition`, cancelUrl: window.location.href }),
+            });
+            const payData = await payRes.json() as { checkoutUrl?: string; error?: string };
+            if (payData.checkoutUrl) { window.location.href = payData.checkoutUrl; }
+            else { setNutritionMsg({ ok: false, text: payData.error ?? "تعذر بدء الدفع" }); }
+          } catch { setNutritionMsg({ ok: false, text: "تعذر إرسال الطلب" }); }
+          finally { setNutritionSubmitting(false); }
+        };
+
         const goals = ["خسارة الوزن", "اكتساب العضلات", "التحكم في نسبة السكر", "التحكم في ضغط الدم", "تغذية سليمة عامة", "تغذية الحامل والمرضع"];
         const medHistory = ["ضغط الدم", "السكري", "أمراض الكلى", "أمراض القلب", "الغدة الدرقية", "حساسية غذائية", "حالياً حامل", "حالياً مرضع", "لا توجد حالات طبية"];
 
@@ -3499,22 +3522,43 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                     {/* ── STEP 5: Slot picker ── */}
                     {nutritionStep === 5 && nutritionist.slots.length > 0 && (
                       <div>
-                        <div style={{ fontSize: 14, color: "#ffb7d0", marginBottom: 14 }}>{t("اختاري موعداً مناسباً (اختياري):", "Choose an available appointment (optional):")}</div>
+                        <div style={{ fontSize: 14, color: "#ffb7d0", marginBottom: 14 }}>{t("اختاري موعداً متاحاً:", "Choose an available appointment:")}</div>
                         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                           {nutritionist.slots.map((slot) => {
                             const slotKey = `${slot.day}|${slot.time}`;
                             const selected = nutritionSlot === slotKey;
                             return (
-                              <button key={slotKey} onClick={() => setNutritionSlot(selected ? null : slotKey)} style={{ padding: "12px 16px", borderRadius: 12, border: `2px solid ${selected ? C.red : mdBorder}`, background: selected ? "rgba(233,30,99,.1)" : "rgba(255,255,255,.04)", cursor: "pointer", textAlign: "start", transition: "border-color .2s" }}>
-                                <div style={{ fontWeight: 700, fontSize: 14, color: "#fff" }}>{slot.label}</div>
-                                <div style={{ fontSize: 12, color: "#ffb7d0", marginTop: 2 }}>{slot.day} — {slot.time}</div>
+                              <button key={slotKey} onClick={() => setNutritionSlot(selected ? null : slotKey)} style={{ padding: "12px 16px", borderRadius: 12, border: `2px solid ${selected ? C.red : mdBorder}`, background: selected ? "rgba(233,30,99,.1)" : "rgba(255,255,255,.04)", cursor: "pointer", textAlign: "start", transition: "border-color .2s,background .2s" }}>
+                                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                                  <div>
+                                    <div style={{ fontWeight: 700, fontSize: 14, color: "#fff" }}>{slot.label}</div>
+                                    <div style={{ fontSize: 12, color: "#ffb7d0", marginTop: 2 }}>{slot.day} — {slot.time}</div>
+                                  </div>
+                                  {selected && <span style={{ fontSize: 18 }}>✅</span>}
+                                </div>
                               </button>
                             );
                           })}
-                          <button onClick={() => setNutritionSlot(null)} style={{ padding: "10px 16px", borderRadius: 12, border: `1px solid ${nutritionSlot === null ? C.red : mdBorder}`, background: nutritionSlot === null ? "rgba(233,30,99,.08)" : "transparent", cursor: "pointer", fontSize: 13, color: nutritionSlot === null ? C.redLight : "#ffb7d0" }}>
-                            {t("أرسلي الطلب بدون تحديد موعد (سنتواصل معكِ)", "Send request without a slot (we'll contact you)")}
+                          <button onClick={() => setNutritionSlot(null)} style={{ padding: "10px 16px", borderRadius: 12, border: `1px solid ${nutritionSlot === null ? C.red : mdBorder}`, background: nutritionSlot === null ? "rgba(233,30,99,.08)" : "transparent", cursor: "pointer", fontSize: 13, color: nutritionSlot === null ? C.redLight : "#a07080", textAlign: "start" }}>
+                            {t("⏭ إرسال الطلب بدون تحديد موعد (سنتواصل معكِ)", "⏭ Send request without a slot (we'll contact you)")}
                           </button>
                         </div>
+
+                        {/* Payment preview — shown only when a slot is selected */}
+                        {nutritionSlot && (
+                          <div style={{ marginTop: 16, padding: "14px 16px", borderRadius: 14, border: "1px solid rgba(74,222,128,.35)", background: "rgba(74,222,128,.06)" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                              <span style={{ fontSize: 20 }}>💳</span>
+                              <div style={{ fontWeight: 800, fontSize: 14, color: "#4ade80" }}>{t("موعدك محجوز — أكملي الدفع لتثبيته", "Slot reserved — complete payment to confirm")}</div>
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                              <div style={{ fontSize: 12, color: "#d7aabd" }}>
+                                📅 {nutritionSlot.replace("|", " — ")}
+                              </div>
+                              <div style={{ fontWeight: 900, fontSize: 18, color: "#4ade80" }}>{price} {t("ج.م", "EGP")}</div>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -3543,14 +3587,25 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                         >
                           {t("التالي →", "Next →")}
                         </button>
+                      ) : nutritionSlot ? (
+                        /* Slot selected → direct to payment */
+                        <button
+                          onClick={() => void submitAndPay()}
+                          disabled={nutritionSubmitting}
+                          className="btn-primary"
+                          style={{ flex: 1, padding: "12px", borderRadius: 8, fontSize: 15, justifyContent: "center", background: "linear-gradient(135deg,#16a34a,#15803d)", opacity: nutritionSubmitting ? .6 : 1 }}
+                        >
+                          {nutritionSubmitting ? t("جارٍ التحويل للدفع...", "Redirecting to payment...") : `💳 ${t("ادفعي الآن", "Pay now")} — ${price} ${t("ج.م", "EGP")}`}
+                        </button>
                       ) : (
+                        /* No slot → send request */
                         <button
                           onClick={() => void submitBooking()}
                           disabled={nutritionSubmitting}
                           className="btn-primary"
                           style={{ flex: 1, padding: "12px", borderRadius: 8, fontSize: 14, justifyContent: "center", opacity: nutritionSubmitting ? .6 : 1 }}
                         >
-                          {nutritionSubmitting ? t("جارٍ الإرسال...", "Sending...") : `📩 ${t("إرسال الطلب", "Submit")}`}
+                          {nutritionSubmitting ? t("جارٍ الإرسال...", "Sending...") : `📩 ${t("إرسال الطلب", "Send request")}`}
                         </button>
                       )}
                     </div>
