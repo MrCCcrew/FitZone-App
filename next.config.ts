@@ -18,7 +18,6 @@ const contentSecurityPolicy = [
 ].join("; ");
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ["xlsx"],
   experimental: {
     cpus: 2,
     workerThreads: false,
