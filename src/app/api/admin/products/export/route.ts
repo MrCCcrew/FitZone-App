@@ -172,8 +172,8 @@ export async function GET() {
   const date = new Date().toISOString().slice(0, 10);
   return new NextResponse(xml, {
     headers: {
-      "Content-Type": "application/vnd.ms-excel; charset=UTF-8",
-      "Content-Disposition": `attachment; filename="fitzone-products-${date}.xls"`,
+      "Content-Type": "text/xml; charset=UTF-8",
+      "Content-Disposition": `attachment; filename="fitzone-products-${date}.xml"`,
     },
   });
 }
