@@ -167,7 +167,7 @@ export default function Products() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `fitzone-products-${new Date().toISOString().slice(0, 10)}.xml`;
+      a.download = `fitzone-products-${new Date().toISOString().slice(0, 10)}.xlsx`;
       a.click();
       URL.revokeObjectURL(url);
     } finally {
