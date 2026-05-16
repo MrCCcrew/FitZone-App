@@ -200,6 +200,7 @@ export default function Settings({ userRole = "staff", permissions = [] }: { use
   const [form, setForm] = useState<EmployeeForm>(EMPTY_FORM);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
   const [message, setMessage] = useState<{ text: string; ok: boolean } | null>(null);
   const [auditFilters, setAuditFilters] = useState({
     actorUserId: "",
@@ -322,6 +323,17 @@ export default function Settings({ userRole = "staff", permissions = [] }: { use
       adminPermissions: [...ROLE_FEATURE_TEMPLATES[role]],
       adminAccess: true,
     }));
+  };
+
+  const toggleActive = async (employee: AdminEmployee) => {
+    setTogglingId(employee.id);
+    await fetch("/api/admin/settings/staff", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: employee.id, isActive: !employee.isActive }),
+    });
+    await loadEmployees();
+    setTogglingId(null);
   };
 
   const submit = async () => {
@@ -586,9 +598,19 @@ export default function Settings({ userRole = "staff", permissions = [] }: { use
                         </div>
                       </td>
                       <td className="px-4 py-3">
-                        <button type="button" onClick={() => editEmployee(employee)} className="rounded-lg bg-pink-600 px-3 py-2 text-xs font-bold text-white">
-                          تعديل
-                        </button>
+                        <div className="flex gap-2">
+                          <button type="button" onClick={() => editEmployee(employee)} className="rounded-lg bg-pink-600 px-3 py-2 text-xs font-bold text-white">
+                            تعديل
+                          </button>
+                          <button
+                            type="button"
+                            disabled={togglingId === employee.id}
+                            onClick={() => void toggleActive(employee)}
+                            className={`rounded-lg px-3 py-2 text-xs font-bold text-white disabled:opacity-50 ${employee.isActive ? "bg-red-700 hover:bg-red-600" : "bg-emerald-700 hover:bg-emerald-600"}`}
+                          >
+                            {togglingId === employee.id ? "..." : employee.isActive ? "تعطيل" : "تفعيل"}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
