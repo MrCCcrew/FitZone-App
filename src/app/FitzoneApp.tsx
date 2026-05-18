@@ -2251,12 +2251,21 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
   useEffect(() => {
     const measure = () => {
       const track = todayTrackRef.current;
+      const carousel = todayCarouselRef.current;
       if (!track || animatedTodayClasses.length === 0) return;
       const sw = track.scrollWidth / 3;
       if (sw <= 0) return;
+      const containerW = carousel?.offsetWidth ?? window.innerWidth;
       todaySegmentWidthRef.current = sw;
-      todayOffsetRef.current = -sw;
-      track.style.transform = `translate3d(${-sw}px, 0, 0)`;
+      if (sw >= containerW) {
+        // enough content to fill viewport — start at middle copy
+        todayOffsetRef.current = -sw;
+        track.style.transform = `translate3d(${-sw}px, 0, 0)`;
+      } else {
+        // content narrower than viewport — show from start, no translate needed
+        todayOffsetRef.current = 0;
+        track.style.transform = `translate3d(0px, 0, 0)`;
+      }
     };
 
     // useEffect runs after DOM paint — measure is ready immediately
@@ -2266,7 +2275,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
   }, [animatedTodayClasses.length]);
 
   useEffect(() => {
-    if (animatedTodayClasses.length <= 1) return;
+    if (animatedTodayClasses.length === 0) return;
     let frameId = 0;
     let lastTime = performance.now();
 
@@ -2276,11 +2285,17 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
       lastTime = now;
       if (todaySegmentWidthRef.current <= 0 && todayTrackRef.current) {
         const sw = todayTrackRef.current.scrollWidth / 3;
-        if (sw > 0) { todaySegmentWidthRef.current = sw; todayOffsetRef.current = -sw; }
+        if (sw > 0) {
+          const containerW = todayCarouselRef.current?.offsetWidth ?? window.innerWidth;
+          todaySegmentWidthRef.current = sw;
+          if (sw >= containerW) todayOffsetRef.current = -sw;
+        }
       }
-      if (!todayPausedRef.current && todaySegmentWidthRef.current > 0) {
+      const containerW = todayCarouselRef.current?.offsetWidth ?? window.innerWidth;
+      const shouldScroll = todaySegmentWidthRef.current >= containerW;
+      if (!todayPausedRef.current && shouldScroll) {
         todayOffsetRef.current = wrapCarouselOffset(
-          todayOffsetRef.current + 70 * elapsed,
+          todayOffsetRef.current - 70 * elapsed,
           todaySegmentWidthRef.current,
         );
         if (todayTrackRef.current) {
@@ -2299,8 +2314,8 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
     const step = todaySegmentWidthRef.current / animatedTodayClasses.length;
     const delta =
       direction === "next"
-        ? step
-        : -step;
+        ? -step
+        : step;
     todayOffsetRef.current = wrapCarouselOffset(todayOffsetRef.current + delta, todaySegmentWidthRef.current);
     if (todayTrackRef.current) {
       todayTrackRef.current.style.transform = `translate3d(${todayOffsetRef.current}px, 0, 0)`;
@@ -2864,7 +2879,6 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
               <div
                 ref={todayCarouselRef}
                 className="today-classes-carousel"
-                style={{ transform: lang === "ar" ? "scaleX(-1)" : "none" }}
                 onMouseEnter={() => { todayPausedRef.current = true; }}
                 onMouseLeave={() => { todayPausedRef.current = false; }}
               >
@@ -2875,7 +2889,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                       key={`${s.id}-${copyIndex}-${index}`}
                       dir={lang === "ar" ? "rtl" : "ltr"}
                       className="card today-class-card"
-                      style={{ padding: 20, borderRight: `3px solid ${s.color}`, transform: lang === "ar" ? "scaleX(-1)" : "none" }}
+                      style={{ padding: 20, borderRight: `3px solid ${s.color}` }}
                     >
                       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
                         <span style={{ background: `${s.color}22`, color: s.color, padding: "4px 12px", borderRadius: 4, fontSize: 13, fontWeight: 700 }}>{s.time}</span>
