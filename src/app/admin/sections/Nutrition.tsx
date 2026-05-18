@@ -434,7 +434,8 @@ function SessionCard({ session, onAction, onDelete }: { session: NutritionSessio
 
 // ── Main Component ─────────────────────────────────────────────────────────────
 export default function Nutrition({ adminRole = "admin" }: { adminRole?: string }) {
-  const isNutritionist = adminRole === "nutritionist";
+  void adminRole;
+  const [isOwnProfile, setIsOwnProfile] = useState(false);
   const [tab, setTab] = useState<"sessions" | "profiles">("sessions");
   const [sessions, setSessions] = useState<NutritionSessionRow[]>([]);
   const [profiles, setProfiles] = useState<NutritionistProfileRow[]>([]);
@@ -447,9 +448,12 @@ export default function Nutrition({ adminRole = "admin" }: { adminRole?: string 
   const load = useCallback(async () => {
     setLoading(true);
     if (tab === "sessions") {
-      const url = `/api/admin/nutrition?view=sessions&status=${statusFilter}${isNutritionist ? "&ownOnly=true" : ""}`;
-      const res = await fetch(url);
-      if (res.ok) { const d = await res.json() as { sessions: NutritionSessionRow[] }; setSessions(d.sessions); }
+      const res = await fetch(`/api/admin/nutrition?view=sessions&status=${statusFilter}`);
+      if (res.ok) {
+        const d = await res.json() as { sessions: NutritionSessionRow[]; hasOwnProfile?: boolean };
+        setSessions(d.sessions);
+        if (typeof d.hasOwnProfile === "boolean") setIsOwnProfile(d.hasOwnProfile);
+      }
     } else {
       const [profilesRes, staffRes] = await Promise.all([
         fetch("/api/admin/nutrition?view=profiles"),
@@ -475,7 +479,7 @@ export default function Nutrition({ adminRole = "admin" }: { adminRole?: string 
       {/* Tabs */}
       <div style={{ display: "flex", gap: 10 }}>
         <button style={btnSt(tab === "sessions")} onClick={() => setTab("sessions")}>الطلبات</button>
-        {!isNutritionist && (
+        {!isOwnProfile && (
           <button style={btnSt(tab === "profiles")} onClick={() => setTab("profiles")}>إدارة الدكتورة</button>
         )}
       </div>
@@ -514,7 +518,7 @@ export default function Nutrition({ adminRole = "admin" }: { adminRole?: string 
       )}
 
       {/* Profiles Tab — admin only */}
-      {tab === "profiles" && !isNutritionist && (
+      {tab === "profiles" && !isOwnProfile && (
         <>
           <button
             onClick={() => { setEditingProfile(null); setShowProfileForm(true); }}

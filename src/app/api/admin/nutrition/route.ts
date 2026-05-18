@@ -112,11 +112,14 @@ export async function GET(req: Request) {
     return NextResponse.json({ commissions });
   }
 
+  // Check if current admin has their own linked NutritionistProfile
+  const ownProfile = await (db as any).nutritionistProfile.findFirst({ where: { userId }, select: { id: true } });
+  const hasOwnProfile = !!ownProfile;
+
   const where: Record<string, unknown> = {};
   if (status !== "all") where.status = status;
-  if (ownOnly) {
-    const ownProfile = await (db as any).nutritionistProfile.findFirst({ where: { userId }, select: { id: true } });
-    if (!ownProfile) return NextResponse.json({ sessions: [] });
+  // If admin has own profile (is themselves a nutritionist), filter to their sessions only
+  if (hasOwnProfile) {
     where.nutritionistId = ownProfile.id;
   }
 
@@ -129,7 +132,7 @@ export async function GET(req: Request) {
     orderBy: { createdAt: "desc" },
   });
 
-  return NextResponse.json({ sessions: sessions.map(formatSession) });
+  return NextResponse.json({ sessions: sessions.map(formatSession), hasOwnProfile });
 }
 
 // POST /api/admin/nutrition — create/update nutritionist profile
