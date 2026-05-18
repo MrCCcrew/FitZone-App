@@ -1311,6 +1311,7 @@ type PublicClass = {
   name: string;
   description: string;
   trainer: string;
+  trainerImage?: string | null;
   trainerSpecialty?: string;
   duration: string;
   intensity: string;
