@@ -19,6 +19,7 @@ type CardState    = { index: number; revealed: boolean; labelAr?: string; type?:
 type Product      = { id: string; name: string; price: number; images: string | null; category?: string | null };
 
 type GameState = {
+  gameEnabled?: boolean;
   step: number;
   spinDone: boolean;
   spinResult: { type: string; value: number; labelAr: string } | null;
@@ -55,6 +56,10 @@ export function StoreFreeGiftsGame() {
       const res = await fetch("/api/store/free-gifts/game");
       if (!res.ok) throw new Error("failed");
       const data = await res.json() as GameState;
+      if (data.gameEnabled === false) {
+        setError("لعبة الهدايا غير مفعّلة حالياً.");
+        return;
+      }
       setGame(data);
     } catch {
       setError("تعذّر تحميل بيانات اللعبة.");
