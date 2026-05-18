@@ -5,6 +5,7 @@ import { StoreGiftCampaignCard } from "@/components/store/StoreGiftCampaignCard"
 import { StoreGiftToast, dispatchGiftToast } from "@/components/store/StoreGiftToast";
 import { StoreGiftBadge } from "@/components/store/StoreGiftBadge";
 import { useStoreGiftCampaign } from "@/components/store/useStoreGiftCampaign";
+import { StoreGiftGameEntryPopup } from "@/components/store/game/StoreGiftGameEntryPopup";
 
 // ─── FIT ZONE BRAND COLORS ─────────────────────────────────────────────────
 const C = {
@@ -7064,6 +7065,7 @@ const ShopPage = ({ navigate }: { navigate: (p: string) => void }) => {
 
   return (
     <div>
+      <StoreGiftGameEntryPopup />
       <section style={{ background: `linear-gradient(135deg, #FFE0EC, ${C.bg})`, padding: "48px 0" }}>
         <div className="container">
           <h1 style={{ fontSize: viewportWidth() < 768 ? 30 : 40, fontWeight: 900, color: C.white, marginBottom: 8 }}>{t("المتجر الرياضي", "Sports shop")}</h1>
