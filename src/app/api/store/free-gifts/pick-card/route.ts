@@ -13,7 +13,8 @@ export async function POST(req: Request) {
   const token = cookieStore.get(COOKIE)?.value;
   if (!token) return NextResponse.json({ error: "no_session" }, { status: 400 });
 
-  const { cardIndex } = await req.json() as { cardIndex: number };
+  const body = await req.json() as { index?: number; cardIndex?: number };
+  const cardIndex = body.index ?? body.cardIndex;
   if (typeof cardIndex !== "number") return NextResponse.json({ error: "invalid" }, { status: 400 });
 
   const dbx = db as any;
