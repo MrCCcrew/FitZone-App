@@ -2255,9 +2255,10 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
       applyTransform();
     };
 
-    measure();
+    // Defer to next frame so the browser has computed card widths
+    const rafId = requestAnimationFrame(measure);
     window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
+    return () => { cancelAnimationFrame(rafId); window.removeEventListener("resize", measure); };
   }, [animatedTodayClasses.length]);
 
   useEffect(() => {
@@ -2268,7 +2269,12 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
     const tick = (now: number) => {
       const elapsed = (now - lastTime) / 1000;
       lastTime = now;
-      if (!todayPausedRef.current) {
+      // Fallback: measure if RAF-deferred measure hadn't run yet
+      if (todaySegmentWidthRef.current <= 0 && todayTrackRef.current) {
+        const sw = todayTrackRef.current.scrollWidth / 3;
+        if (sw > 0) { todaySegmentWidthRef.current = sw; todayOffsetRef.current = -sw; }
+      }
+      if (!todayPausedRef.current && todaySegmentWidthRef.current > 0) {
         todayOffsetRef.current = wrapCarouselOffset(
           todayOffsetRef.current + 24 * elapsed,
           todaySegmentWidthRef.current,
@@ -2821,8 +2827,8 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
             <div style={{ position: "relative" }}>
               <button
                 className="btn-outline"
-                aria-label={t("السابق", "Previous")}
-                onClick={() => moveTodayCarousel("prev")}
+                aria-label={t("التالي", "Next")}
+                onClick={() => moveTodayCarousel("next")}
                 style={{
                   position: "absolute",
                   left: -12,
@@ -2837,8 +2843,8 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
               </button>
               <button
                 className="btn-outline"
-                aria-label={t("التالي", "Next")}
-                onClick={() => moveTodayCarousel("next")}
+                aria-label={t("السابق", "Previous")}
+                onClick={() => moveTodayCarousel("prev")}
                 style={{
                   position: "absolute",
                   right: -12,
@@ -2862,7 +2868,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                   {[0, 1, 2].flatMap((copyIndex) =>
                     animatedTodayClasses.map((s, index) => (
                     <div
-                      key={`${s.id}-${copyIndex}-${index}-${todayIndex}`}
+                      key={`${s.id}-${copyIndex}-${index}`}
                       dir={lang === "ar" ? "rtl" : "ltr"}
                       className="card today-class-card"
                       style={{ padding: 20, borderRight: `3px solid ${s.color}`, transform: lang === "ar" ? "scaleX(-1)" : "none" }}
