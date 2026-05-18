@@ -128,12 +128,12 @@ const css = `
   .schedule-item-tag{display:block;background:rgba(245,197,66,.12);color:#e8b840;font-size:11px;font-weight:800;padding:3px 8px;border-radius:6px;border:1px solid rgba(245,197,66,.2);word-break:break-word;max-width:100%;line-height:1.4;}
   .schedule-slot-item.selected .schedule-item-tag{background:rgba(233,30,99,.2);color:#ff8fb5;border-color:rgba(233,30,99,.3);}
   .schedule-empty{color:rgba(255,255,255,.15);font-size:18px;font-weight:300;text-align:center;}
-  .today-classes-carousel{position:relative;overflow:hidden;padding:6px 0;}
+  .today-classes-carousel{position:relative;overflow:hidden;padding:6px 0;direction:ltr;}
   .today-classes-carousel::before,.today-classes-carousel::after{content:'';position:absolute;top:0;bottom:0;width:72px;z-index:2;pointer-events:none;}
   .today-classes-carousel::before{left:0;background:linear-gradient(to right,${C.bg},rgba(255,245,248,0));}
   .today-classes-carousel::after{right:0;background:linear-gradient(to left,${C.bg},rgba(255,245,248,0));}
-  .today-classes-track{display:flex;gap:16px;width:max-content;will-change:transform;}
-  .today-class-card{flex:0 0 280px;}
+  .today-classes-track{display:flex;gap:20px;width:max-content;will-change:transform;}
+  .today-class-card{flex:0 0 320px;}
   @media(max-width:900px){
     .schedule-title h2{font-size:26px;}
     .schedule-shell{padding:22px 18px;}
@@ -2907,10 +2907,10 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                               src={s.trainerImage}
                               alt={s.trainer}
                               loading="lazy"
-                              style={{ width: 28, height: 28, borderRadius: "50%", objectFit: "cover", objectPosition: "top", flexShrink: 0, border: `1px solid ${s.color}55` }}
+                              style={{ width: 40, height: 40, borderRadius: "50%", objectFit: "cover", objectPosition: "top", flexShrink: 0, border: `2px solid ${s.color}88` }}
                             />
                           ) : (
-                            <div style={{ width: 28, height: 28, borderRadius: "50%", background: `${s.color}22`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, flexShrink: 0 }}>
+                            <div style={{ width: 40, height: 40, borderRadius: "50%", background: `${s.color}22`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>
                               👩
                             </div>
                           )}
