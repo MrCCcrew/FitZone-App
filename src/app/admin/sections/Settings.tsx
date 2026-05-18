@@ -43,6 +43,7 @@ const FEATURE_LABELS: Record<string, string> = {
   nutrition: "التغذية",
   suppliers: "الموردون",
   "delivery-companies": "شركات التوصيل",
+  "store-campaigns": "حملة هدايا المتجر",
 };
 
 type EmployeeForm = {

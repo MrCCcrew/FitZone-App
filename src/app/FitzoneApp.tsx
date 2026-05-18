@@ -7608,6 +7608,13 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
   const [orderMsg, setOrderMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [createdOrderId, setCreatedOrderId] = useState<string | null>(null);
   const [pendingPaymentUrl, setPendingPaymentUrl] = useState<string | null>(null);
+  const [giftCampaign, setGiftCampaign] = useState<{
+    active: boolean;
+    titleAr: string; minSubtotal: number; requiredReferrals: number;
+    rewardType: string; rewardWalletAmount: number; rewardPoints: number; discountAmount: number;
+    referralProgress: number; referralCode: string | null; alreadyClaimed: boolean; authenticated: boolean;
+    endsAt: string | null;
+  } | null>(null);
   const [deliveryOptions, setDeliveryOptions] = useState<PublicDeliveryOption[]>([]);
   const [selectedDeliveryId, setSelectedDeliveryId] = useState<string | null>(null);
   const [paymentSettings, setPaymentSettings] = useState<PublicPaymentSettings>({
@@ -7632,6 +7639,15 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
     sync();
     window.addEventListener("fitzone-cart-updated", sync);
     return () => window.removeEventListener("fitzone-cart-updated", sync);
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/store/gift-campaign", { cache: "no-store" })
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => {
+        if (d && d.active) setGiftCampaign({ ...d.settings, ...d, active: true });
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -7944,6 +7960,73 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                     <span style={{ fontWeight: 900, color: C.red, minWidth: 80, textAlign: "center", fontSize: 14 }}>{formatCurrency(item.price * item.qty)}</span>
                   </div>
                 ))}
+                {/* ── Store Gift Campaign Banner ── */}
+                {giftCampaign && !giftCampaign.alreadyClaimed && cartItems.length > 0 && (() => {
+                  const cartSubtotal = cartItems.reduce((s, i) => s + i.price * i.qty, 0);
+                  const pct = Math.min(100, Math.round((cartSubtotal / giftCampaign.minSubtotal) * 100));
+                  const remaining = Math.max(0, giftCampaign.minSubtotal - cartSubtotal);
+                  const unlocked = cartSubtotal >= giftCampaign.minSubtotal;
+                  const referralUnlocked = giftCampaign.referralProgress >= giftCampaign.requiredReferrals;
+                  const rewardLabel =
+                    giftCampaign.rewardType === "wallet" ? `${giftCampaign.rewardWalletAmount} ج.م رصيد`
+                    : giftCampaign.rewardType === "points" ? `${giftCampaign.rewardPoints} نقطة`
+                    : giftCampaign.rewardType === "discount" ? `خصم ${giftCampaign.discountAmount} ج.م`
+                    : giftCampaign.rewardType === "free_shipping" ? "شحن مجاني"
+                    : "منتج مجاني";
+                  const referralLink = giftCampaign.referralCode
+                    ? `${typeof window !== "undefined" ? window.location.origin : ""}/r/${giftCampaign.referralCode}`
+                    : null;
+                  return (
+                    <div style={{ marginTop: 16, borderRadius: 16, border: unlocked ? "1.5px solid #22c55e55" : "1.5px solid #e11d4844", background: unlocked ? "rgba(34,197,94,.06)" : "rgba(225,29,72,.04)", padding: 18 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                        <span style={{ fontSize: 22 }}>🎁</span>
+                        <div>
+                          <div style={{ fontWeight: 800, fontSize: 14, color: unlocked ? "#22c55e" : C.white }}>{unlocked ? "تم فتح هدية المتجر ✅" : giftCampaign.titleAr}</div>
+                          {!unlocked && <div style={{ fontSize: 12, color: C.gray, marginTop: 2 }}>الهدية: {rewardLabel}</div>}
+                        </div>
+                        {giftCampaign.endsAt && (
+                          <span style={{ marginRight: "auto", fontSize: 11, color: "#f59e0b", fontWeight: 700 }}>
+                            ⏰ {t("تنتهي", "Ends")} {new Date(giftCampaign.endsAt).toLocaleDateString("ar-EG")}
+                          </span>
+                        )}
+                      </div>
+                      {!unlocked && (
+                        <>
+                          <div style={{ height: 6, background: "rgba(255,255,255,.1)", borderRadius: 99, overflow: "hidden", marginBottom: 6 }}>
+                            <div style={{ height: "100%", width: `${pct}%`, background: "linear-gradient(90deg,#e11d48,#f43f5e)", borderRadius: 99, transition: "width .4s" }} />
+                          </div>
+                          <div style={{ fontSize: 12, color: C.gray, marginBottom: 10 }}>
+                            {remaining > 0
+                              ? `باقي ${formatCurrency(remaining)} من منتجات المتجر وتاخدي الهدية`
+                              : "وصلتِ للحد الأدنى!"}
+                          </div>
+                          {giftCampaign.requiredReferrals > 0 && giftCampaign.authenticated && (
+                            <div style={{ fontSize: 12, color: C.gray, marginBottom: 8 }}>
+                              أو ادعي {giftCampaign.requiredReferrals} صديقة ({giftCampaign.referralProgress}/{giftCampaign.requiredReferrals} حتى الآن)
+                              {referralUnlocked && " ✅"}
+                            </div>
+                          )}
+                          {referralLink && (
+                            <button
+                              onClick={() => { navigator.clipboard.writeText(referralLink).catch(() => {}); }}
+                              style={{ fontSize: 12, color: C.red, fontWeight: 700, background: "none", border: "none", cursor: "pointer", padding: 0, marginBottom: 8 }}
+                            >
+                              📋 انسخي رابط دعوتك
+                            </button>
+                          )}
+                        </>
+                      )}
+                      {unlocked && (
+                        <p style={{ fontSize: 12, color: "#86efac", marginBottom: 8 }}>
+                          الهدية ({rewardLabel}) تُفعَّل تلقائياً بعد تأكيد طلب المتجر.
+                        </p>
+                      )}
+                      <p style={{ fontSize: 11, color: C.gray }}>
+                        {unlocked ? "يمكنك إكمال الطلب بدون أي إجراء إضافي." : "يمكنك إكمال طلب المتجر بدون الهدية في أي وقت."}
+                      </p>
+                    </div>
+                  );
+                })()}
                 <button className="btn-primary" disabled={cartItems.length === 0} style={{ width: "100%", justifyContent: "center", padding: "13px", fontSize: 15, marginTop: 14, opacity: cartItems.length === 0 ? 0.5 : 1 }} onClick={() => setStep("address")}>
                   {lang === "ar" ? "التالي: العنوان ←" : "Next: Address →"}
                 </button>

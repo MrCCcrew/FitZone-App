@@ -35,10 +35,11 @@ import Contracts from "./sections/Contracts";
 import Suppliers from "./sections/Suppliers";
 import Orders from "./sections/Orders";
 import DeliveryCompanies from "./sections/DeliveryCompanies";
+import StoreGiftCampaign from "./sections/StoreGiftCampaign";
 
 const PROTECTED_SECTIONS = ["payments", "database"] as const;
 const AFFILIATE_MARKETING_SECTIONS: Section[] = ["rewards", "partners", "contracts", "discounts"];
-const STORE_SECTIONS: Section[] = ["products", "orders", "inventory", "suppliers", "delivery-companies", "delivery"];
+const STORE_SECTIONS: Section[] = ["products", "orders", "inventory", "suppliers", "delivery-companies", "delivery", "store-campaigns"];
 const GYM_SECTIONS: Section[] = ["subscriptions", "packages", "goals", "health", "classes", "trainers", "bookings"];
 
 const NAV: { id: Section; label: string; icon: string }[] = [
@@ -60,6 +61,7 @@ const NAV: { id: Section; label: string; icon: string }[] = [
   { id: "inventory", label: "المخزون والمشتريات", icon: "📦" },
   { id: "suppliers", label: "الموردين", icon: "🏪" },
   { id: "delivery-companies", label: "شركات التوصيل", icon: "🚚" }, // store group
+  { id: "store-campaigns", label: "حملة هدايا المتجر", icon: "🎁" },
   { id: "reviews", label: "آراء العملاء", icon: "⭐" },
   { id: "balance", label: "الرصيد والنقاط", icon: "💰" },
   { id: "chat", label: "الدردشة المباشرة", icon: "💬" },
@@ -105,6 +107,7 @@ const TITLES: Record<string, string> = {
   inventory: "إدارة المخزون والمشتريات",
   suppliers: "إدارة الموردين",
   "delivery-companies": "شركات التوصيل",
+  "store-campaigns": "حملة هدايا المتجر",
   reviews: "إدارة آراء العملاء",
   balance: "إدارة الرصيد والنقاط",
   chat: "الدردشة المباشرة",
@@ -139,6 +142,7 @@ const SECTIONS: Record<string, ComponentType> = {
   orders: Orders,
   suppliers: Suppliers,
   "delivery-companies": DeliveryCompanies,
+  "store-campaigns": StoreGiftCampaign,
   reviews: Testimonials,
   balance: Balance,
   chat: LiveChat,

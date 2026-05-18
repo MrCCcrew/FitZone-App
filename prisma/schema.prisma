@@ -134,6 +134,7 @@ model User {
   orderStatusHistory         OrderStatusHistory[]        @relation("OrderStatusPerformer")
   inventoryMovementsPerformed InventoryMovement[]        @relation("InventoryMovementPerformer")
   inventoryReceiptsPerformed  InventoryReceipt[]         @relation("InventoryReceiptPerformer")
+  storeCampaignClaims        StoreGiftCampaignClaim[]
 }
 
 model AuditLog {
@@ -502,6 +503,7 @@ model Order {
   items          OrderItem[]
   paymentTransactions PaymentTransaction[]
   statusHistory  OrderStatusHistory[]
+  storeCampaignClaims StoreGiftCampaignClaim[] @relation("OrderGiftClaims")
 
   @@index([status, createdAt])
   @@index([userId, createdAt])
@@ -672,6 +674,30 @@ model DiscountCodeUsage {
   createdAt      DateTime @default(now())
 
   discountCode DiscountCode @relation(fields: [discountCodeId], references: [id], onDelete: Cascade)
+}
+
+// ─── Store Gift Campaign ──────────────────────────────────────────────────────
+
+model StoreGiftCampaignClaim {
+  id              String    @id @default(cuid())
+  userId          String
+  storeOrderId    String?
+  campaignKey     String    @default("default")
+  rewardType      String    // wallet | points | discount | free_product | free_shipping
+  rewardValue     Float?
+  rewardProductId String?
+  // pending | earned | claimed | cancelled
+  status          String    @default("pending")
+  // store_cart_threshold | store_referral | store_order
+  source          String    @default("store_cart_threshold")
+  createdAt       DateTime  @default(now())
+  claimedAt       DateTime?
+
+  user       User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  storeOrder Order? @relation("OrderGiftClaims", fields: [storeOrderId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([storeOrderId])
 }
 
 // ─── Notification ─────────────────────────────────────────────────────────────
