@@ -12,11 +12,11 @@ type RewardPoolItem = {
 };
 
 type Settings = {
-  enabled: boolean;
-  giftSlotsCount: number;
+  gameEnabled: boolean;
+  freeGiftSlotsCount: number;
   maxCardPicksPerUser: number;
-  referralGoal: number;
-  sessionExpiryHours: number;
+  requiredInvites: number;
+  sessionDurationMinutes: number;
   rewardsPool: RewardPoolItem[];
 };
 
@@ -26,11 +26,11 @@ const REWARD_TYPE_ICONS: Record<string, string> = {
 };
 
 const DEFAULT_SETTINGS: Settings = {
-  enabled: false,
-  giftSlotsCount: 3,
+  gameEnabled: false,
+  freeGiftSlotsCount: 3,
   maxCardPicksPerUser: 1,
-  referralGoal: 3,
-  sessionExpiryHours: 24,
+  requiredInvites: 3,
+  sessionDurationMinutes: 1440,
   rewardsPool: [],
 };
 
@@ -108,14 +108,14 @@ export function StoreFreeGiftsGameSection() {
           <p style={{ margin: "2px 0 0", fontSize: 12, color: "rgba(255,255,255,.5)" }}>إظهار اللعبة للمستخدمين في صفحة المتجر</p>
         </div>
         <button
-          onClick={() => setSettings(p => ({ ...p, enabled: !p.enabled }))}
+          onClick={() => setSettings(p => ({ ...p, gameEnabled: !p.gameEnabled }))}
           style={{
             padding: "7px 20px", borderRadius: 8, border: "none",
-            background: settings.enabled ? "#10b981" : "rgba(255,255,255,.1)",
-            color: settings.enabled ? "#fff" : "rgba(255,255,255,.5)",
+            background: settings.gameEnabled ? "#10b981" : "rgba(255,255,255,.1)",
+            color: settings.gameEnabled ? "#fff" : "rgba(255,255,255,.5)",
             fontWeight: 700, cursor: "pointer", fontSize: 13, transition: "all .2s",
           }}
-        >{settings.enabled ? "مفعّل" : "معطّل"}</button>
+        >{settings.gameEnabled ? "مفعّل" : "معطّل"}</button>
       </div>
 
       {/* General settings */}
@@ -123,10 +123,10 @@ export function StoreFreeGiftsGameSection() {
         <h3 style={{ margin: "0 0 16px", fontSize: 14, fontWeight: 800, color: "#fbbf24" }}>الإعدادات العامة</h3>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
           {[
-            { label: "عدد فتحات الهدايا", key: "giftSlotsCount" as const, min: 1, max: 10 },
+            { label: "عدد فتحات الهدايا", key: "freeGiftSlotsCount" as const, min: 1, max: 10 },
             { label: "عدد اختيارات الكرت", key: "maxCardPicksPerUser" as const, min: 1, max: 3 },
-            { label: "هدف الدعوة (أصدقاء)", key: "referralGoal" as const, min: 0, max: 20 },
-            { label: "صلاحية الجلسة (ساعات)", key: "sessionExpiryHours" as const, min: 1, max: 72 },
+            { label: "هدف الدعوة (أصدقاء)", key: "requiredInvites" as const, min: 0, max: 20 },
+            { label: "صلاحية الجلسة (دقائق)", key: "sessionDurationMinutes" as const, min: 30, max: 10080 },
           ].map(f => (
             <div key={f.key}>
               <label style={{ display: "block", fontSize: 12, color: "rgba(255,255,255,.6)", marginBottom: 6 }}>{f.label}</label>
