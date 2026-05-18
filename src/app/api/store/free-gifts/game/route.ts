@@ -73,30 +73,33 @@ export async function GET(req: NextRequest) {
 
   const selectedProductIds: string[] = (() => { try { return JSON.parse(session.selectedProductIds); } catch { return []; } })();
 
+  const wheelSegments = settings.rewardsPool.filter(r => r.active).map(r => ({
+    id: r.id, labelAr: r.labelAr, type: r.type,
+  }));
+
+  const referralLink = referralCode
+    ? `${process.env.NEXT_PUBLIC_BASE_URL ?? ""}/store?ref=${referralCode}`
+    : null;
+
   const res = NextResponse.json({
     gameEnabled: true,
     token: session.token,
     step: session.step,
     spinDone: session.spinsDone > 0,
-    spinResult: session.spinsDone > 0 ? { labelAr: session.spinLabelAr, type: session.spinRewardType, slotIndex: session.spinSlotIndex } : null,
+    spinResult: session.spinsDone > 0
+      ? { labelAr: session.spinLabelAr, type: session.spinRewardType, value: session.spinRewardValue ?? 0 }
+      : null,
     cardsDone: session.cardsDone,
+    maxCardPicks: settings.maxCardPicksPerUser,
     cards: cardsForClient,
     selectedProductIds,
     giftSlotsCount: session.giftSlotsCount,
-    status: session.status,
     expiresAt: session.expiresAt?.toISOString() ?? null,
     eligibleProducts,
+    wheelSegments,
     referralProgress,
-    referralCode,
-    requiredInvites: settings.requiredInvites,
-    showCountdown: settings.showCountdown,
-    maxCardPicks: settings.maxCardPicksPerUser,
-    authenticated: !!userId,
-    settings: {
-      rewardsPool: settings.rewardsPool.filter(r => r.active).map(r => ({ id: r.id, labelAr: r.labelAr, labelEn: r.labelEn, type: r.type })),
-      freeGiftSlotsCount: settings.freeGiftSlotsCount,
-      allowBonusChest: settings.allowBonusChest,
-    },
+    referralGoal: settings.requiredInvites,
+    referralLink,
   });
   res.cookies.set(COOKIE, session.token, { httpOnly: true, sameSite: "lax", maxAge: 60 * 60 * 24, path: "/" });
   return res;
