@@ -49,7 +49,7 @@ export function StoreGiftGameHeader({ expiresAt, onRulesClick }: Props) {
           📋 القواعد
         </button>
         <a
-          href="/store"
+          href="/?page=shop"
           style={{
             padding: "5px 12px",
             borderRadius: 8,
