@@ -56,7 +56,13 @@ const DEFAULT: StoreFreeGiftsGameSettings = {
 export async function getGameSettings(): Promise<StoreFreeGiftsGameSettings> {
   const row = await db.siteContent.findUnique({ where: { section: SECTION } });
   if (!row?.content) return DEFAULT;
-  try { return { ...DEFAULT, ...(JSON.parse(row.content) as Partial<StoreFreeGiftsGameSettings>) }; }
+  try {
+    const raw = JSON.parse(row.content) as Partial<StoreFreeGiftsGameSettings> & { enabled?: boolean };
+    // backward compat: old saves used `enabled` instead of `gameEnabled`
+    const merged = { ...DEFAULT, ...raw };
+    if (!merged.gameEnabled && raw.enabled) merged.gameEnabled = true;
+    return merged;
+  }
   catch { return DEFAULT; }
 }
 
