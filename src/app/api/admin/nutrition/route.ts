@@ -24,6 +24,8 @@ function formatProfile(p: {
   consultationFeeMember: number;
   followupFee: number;
   followupFeeMember: number;
+  commissionRate?: number;
+  commissionType?: string;
   createdAt: Date;
   user: { id: string; name: string | null; email: string | null; phone: string | null } | null;
 }) {
@@ -40,6 +42,8 @@ function formatProfile(p: {
     consultationFeeMember: p.consultationFeeMember,
     followupFee: p.followupFee,
     followupFeeMember: p.followupFeeMember,
+    commissionRate: p.commissionRate ?? 0,
+    commissionType: p.commissionType ?? "percentage",
     createdAt: p.createdAt.toISOString(),
     linkedUser: p.user,
   };
@@ -87,11 +91,24 @@ export async function GET(req: Request) {
   const status = searchParams.get("status") || "all";
 
   if (view === "profiles") {
-    const profiles = await db.nutritionistProfile.findMany({
+    const profiles = await (db as any).nutritionistProfile.findMany({
       include: { user: { select: { id: true, name: true, email: true, phone: true } } },
       orderBy: { createdAt: "desc" },
     });
     return NextResponse.json({ profiles: profiles.map(formatProfile) });
+  }
+
+  if (view === "commissions") {
+    const commissions = await (db as any).nutritionCommission.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 200,
+      include: {
+        nutritionistUser: { select: { id: true, name: true, email: true } },
+        nutritionReferralLink: { select: { token: true, label: true } },
+        userMembership: { select: { id: true, membership: { select: { name: true } }, user: { select: { name: true, email: true } } } },
+      },
+    });
+    return NextResponse.json({ commissions });
   }
 
   const where: Record<string, unknown> = {};
@@ -127,6 +144,8 @@ export async function POST(req: Request) {
     consultationFeeMember?: number;
     followupFee?: number;
     followupFeeMember?: number;
+    commissionRate?: number;
+    commissionType?: string;
   };
 
   if (!body.userId || !body.name) {
@@ -145,18 +164,21 @@ export async function POST(req: Request) {
     consultationFeeMember: body.consultationFeeMember ?? 300,
     followupFee: body.followupFee ?? 100,
     followupFeeMember: body.followupFeeMember ?? 50,
-  };
+    commissionRate: body.commissionRate ?? 0,
+    commissionType: body.commissionType === "fixed" ? "fixed" : "percentage",
+  } as any;
 
+  const dbx = db as any;
   let profile;
   if (body.profileId) {
-    profile = await db.nutritionistProfile.update({
+    profile = await dbx.nutritionistProfile.update({
       where: { id: body.profileId },
       data,
       include: { user: { select: { id: true, name: true, email: true, phone: true } } },
     });
     await logAudit({ action: "update_nutritionist_profile", targetType: "NutritionistProfile", targetId: profile.id });
   } else {
-    profile = await db.nutritionistProfile.create({
+    profile = await dbx.nutritionistProfile.create({
       data,
       include: { user: { select: { id: true, name: true, email: true, phone: true } } },
     });

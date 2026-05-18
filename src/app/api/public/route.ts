@@ -683,6 +683,9 @@ export async function GET(request: Request) {
             slots: nutritionistRow.slotsJson
               ? (JSON.parse(nutritionistRow.slotsJson) as { label: string; day: string; time: string }[])
               : [],
+            questions: (nutritionistRow as any).questionsJson
+              ? JSON.parse((nutritionistRow as any).questionsJson)
+              : [],
             consultationFee: nutritionistRow.consultationFee,
             consultationFeeMember: nutritionistRow.consultationFeeMember,
             followupFee: nutritionistRow.followupFee,

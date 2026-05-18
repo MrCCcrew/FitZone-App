@@ -86,8 +86,8 @@ export async function POST(req: Request) {
 
   const userRecord = await (db as any).user.findUnique({
     where: { id: userId },
-    select: { emailVerified: true, email: true, name: true, phone: true, pendingPartnerRef: true, pendingAgentRef: true, pendingStaffRef: true, pendingTrainerRef: true },
-  }) as { emailVerified: Date | null; email: string | null; name: string | null; phone: string | null; pendingPartnerRef: string | null; pendingAgentRef: string | null; pendingStaffRef: string | null; pendingTrainerRef: string | null } | null;
+    select: { emailVerified: true, email: true, name: true, phone: true, pendingPartnerRef: true, pendingAgentRef: true, pendingStaffRef: true, pendingTrainerRef: true, pendingNutritionRef: true },
+  }) as { emailVerified: Date | null; email: string | null; name: string | null; phone: string | null; pendingPartnerRef: string | null; pendingAgentRef: string | null; pendingStaffRef: string | null; pendingTrainerRef: string | null; pendingNutritionRef: string | null } | null;
 
   if (!userRecord?.emailVerified) {
     return NextResponse.json(
@@ -304,6 +304,25 @@ export async function POST(req: Request) {
       select: { id: true, userId: true, isActive: true, user: { select: { commissionRate: true, commissionType: true } } },
     });
     if (tl?.isActive) trainerLinkRecord = { id: tl.id, userId: tl.userId, commissionRate: tl.user.commissionRate, commissionType: tl.user.commissionType };
+  }
+
+  // Resolve nutritionist referral link (stored at registration only — one-time commission)
+  type NutritionLinkInfo = { id: string; userId: string; commissionRate: number; commissionType: string };
+  let nutritionLinkRecord: NutritionLinkInfo | null = null;
+  const pendingNutritionToken = (userRecord?.pendingNutritionRef ?? "").trim().toUpperCase();
+  if (pendingNutritionToken) {
+    const nl = await dbx.nutritionReferralLink.findUnique({
+      where: { token: pendingNutritionToken },
+      select: { id: true, userId: true, isActive: true, user: { select: { nutritionistProfile: { select: { commissionRate: true, commissionType: true } } } } },
+    });
+    if (nl?.isActive && nl.user?.nutritionistProfile) {
+      nutritionLinkRecord = {
+        id: nl.id,
+        userId: nl.userId,
+        commissionRate: nl.user.nutritionistProfile.commissionRate,
+        commissionType: nl.user.nutritionistProfile.commissionType,
+      };
+    }
   }
 
   const result = await db
@@ -569,6 +588,7 @@ export async function POST(req: Request) {
           ...(resolvedSalesAgentId ? { salesAgentId: resolvedSalesAgentId } : {}),
           ...(staffLinkRecord ? { staffReferralLinkId: staffLinkRecord.id } : {}),
           ...(trainerLinkRecord ? { trainerReferralLinkId: trainerLinkRecord.id } : {}),
+          ...(nutritionLinkRecord ? { nutritionReferralLinkId: nutritionLinkRecord.id } : {}),
         },
       } as Parameters<typeof tx.userMembership.create>[0]);
 
@@ -691,6 +711,23 @@ export async function POST(req: Request) {
           });
           await dbx.staffReferralLink.update({
             where: { id: staffLinkRecord.id },
+            data: { clickCount: { increment: 1 } },
+          });
+        }
+      }
+
+      // Nutritionist referral commission (one-time, first paid subscription only)
+      if (!needsPaymentConfirmation && nutritionLinkRecord) {
+        const paidAmount = paymentAmount ?? 0;
+        const commission = nutritionLinkRecord.commissionType === "fixed"
+          ? nutritionLinkRecord.commissionRate
+          : Math.round((paidAmount * nutritionLinkRecord.commissionRate) / 100 * 100) / 100;
+        if (commission > 0) {
+          await dbx.nutritionCommission.create({
+            data: { nutritionistUserId: nutritionLinkRecord.userId, nutritionReferralLinkId: nutritionLinkRecord.id, userMembershipId: subscription.id, amount: commission },
+          });
+          await dbx.nutritionReferralLink.update({
+            where: { id: nutritionLinkRecord.id },
             data: { clickCount: { increment: 1 } },
           });
         }
@@ -1062,6 +1099,9 @@ export async function POST(req: Request) {
   }
   if (userRecord?.pendingTrainerRef) {
     void (db as any).user.update({ where: { id: userId }, data: { pendingTrainerRef: null } }).catch(() => null);
+  }
+  if (userRecord?.pendingNutritionRef) {
+    void (db as any).user.update({ where: { id: userId }, data: { pendingNutritionRef: null } }).catch(() => null);
   }
 
   let checkoutUrl: string | null = null;

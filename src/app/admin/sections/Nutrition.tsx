@@ -118,6 +118,8 @@ function ProfileForm({ profile, staffUsers, onSave, onClose }: {
   const [consMemFee, setConsMemFee] = useState(profile?.consultationFeeMember ?? 300);
   const [followFee, setFollowFee] = useState(profile?.followupFee ?? 100);
   const [followMemFee, setFollowMemFee] = useState(profile?.followupFeeMember ?? 50);
+  const [commissionRate, setCommissionRate] = useState(profile?.commissionRate ?? 0);
+  const [commissionType, setCommissionType] = useState(profile?.commissionType ?? "percentage");
   const [newSlotLabel, setNewSlotLabel] = useState("");
   const [newSlotDay, setNewSlotDay] = useState("الأحد");
   const [newSlotTime, setNewSlotTime] = useState("10:00");
@@ -158,6 +160,7 @@ function ProfileForm({ profile, staffUsers, onSave, onClose }: {
         isActive, showOnHome, slots,
         consultationFee: consFee, consultationFeeMember: consMemFee,
         followupFee: followFee, followupFeeMember: followMemFee,
+        commissionRate, commissionType,
       }),
     });
     setSaving(false);
@@ -229,6 +232,21 @@ function ProfileForm({ profile, staffUsers, onSave, onClose }: {
           </div>
         ))}
       </div>
+      {/* Commission settings */}
+      <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: 10, alignItems: "end" }}>
+        <div>
+          <label style={{ fontSize: 11, color: "#9a8a90" }}>نسبة/قيمة عمولة الإحالة</label>
+          <input type="number" min="0" step="0.1" value={commissionRate} onChange={(e) => setCommissionRate(Number(e.target.value))} style={{ ...inputSt, marginTop: 4, width: 140 }} />
+        </div>
+        <div>
+          <label style={{ fontSize: 11, color: "#9a8a90" }}>نوع العمولة</label>
+          <select value={commissionType} onChange={(e) => setCommissionType(e.target.value)} style={{ ...inputSt, marginTop: 4 }}>
+            <option value="percentage">نسبة مئوية (%)</option>
+            <option value="fixed">مبلغ ثابت (ج.م)</option>
+          </select>
+        </div>
+      </div>
+
       <div style={{ display: "flex", gap: 16 }}>
         <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer" }}>
           <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} /> نشط
@@ -531,7 +549,7 @@ export default function Nutrition() {
                       <div style={{ fontSize: 12, color: "#f5c542", marginTop: 4 }}>
                         كشف: {p.consultationFee} ج.م (عضو: {p.consultationFeeMember}) | إعادة: {p.followupFee} ج.م (عضو: {p.followupFeeMember})
                       </div>
-                      <div style={{ fontSize: 12, color: "#9a8a90", marginTop: 2 }}>{p.slots.length} موعد متاح</div>
+                      <div style={{ fontSize: 12, color: "#9a8a90", marginTop: 2 }}>{p.slots.length} موعد | عمولة: {p.commissionRate}{p.commissionType === "fixed" ? " ج.م" : "%"}</div>
                     </div>
                   </div>
                   <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
