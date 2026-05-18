@@ -36,10 +36,11 @@ import Suppliers from "./sections/Suppliers";
 import Orders from "./sections/Orders";
 import DeliveryCompanies from "./sections/DeliveryCompanies";
 import StoreGiftCampaign from "./sections/StoreGiftCampaign";
+import { StoreFreeGiftsGameSection } from "./sections/StoreFreeGiftsGame";
 
 const PROTECTED_SECTIONS = ["payments", "database"] as const;
 const AFFILIATE_MARKETING_SECTIONS: Section[] = ["rewards", "partners", "contracts", "discounts"];
-const STORE_SECTIONS: Section[] = ["products", "orders", "inventory", "suppliers", "delivery-companies", "delivery", "store-campaigns"];
+const STORE_SECTIONS: Section[] = ["products", "orders", "inventory", "suppliers", "delivery-companies", "delivery", "store-campaigns", "store-free-gifts"];
 const GYM_SECTIONS: Section[] = ["subscriptions", "packages", "goals", "health", "classes", "trainers", "bookings"];
 
 const NAV: { id: Section; label: string; icon: string }[] = [
@@ -62,6 +63,7 @@ const NAV: { id: Section; label: string; icon: string }[] = [
   { id: "suppliers", label: "الموردين", icon: "🏪" },
   { id: "delivery-companies", label: "شركات التوصيل", icon: "🚚" }, // store group
   { id: "store-campaigns", label: "حملة هدايا المتجر", icon: "🎁" },
+  { id: "store-free-gifts", label: "لعبة الهدايا المجانية", icon: "🎰" },
   { id: "reviews", label: "آراء العملاء", icon: "⭐" },
   { id: "balance", label: "الرصيد والنقاط", icon: "💰" },
   { id: "chat", label: "الدردشة المباشرة", icon: "💬" },
@@ -108,6 +110,7 @@ const TITLES: Record<string, string> = {
   suppliers: "إدارة الموردين",
   "delivery-companies": "شركات التوصيل",
   "store-campaigns": "حملة هدايا المتجر",
+  "store-free-gifts": "لعبة الهدايا المجانية",
   reviews: "إدارة آراء العملاء",
   balance: "إدارة الرصيد والنقاط",
   chat: "الدردشة المباشرة",
@@ -143,6 +146,7 @@ const SECTIONS: Record<string, ComponentType> = {
   suppliers: Suppliers,
   "delivery-companies": DeliveryCompanies,
   "store-campaigns": StoreGiftCampaign,
+  "store-free-gifts": StoreFreeGiftsGameSection,
   reviews: Testimonials,
   balance: Balance,
   chat: LiveChat,

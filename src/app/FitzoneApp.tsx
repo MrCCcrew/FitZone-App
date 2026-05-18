@@ -7999,6 +7999,25 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                 ))}
                 {/* ── Store Gift Campaign Banner ── */}
                 <StoreGiftCampaignCard giftCampaign={giftCampaign} cartItems={cartItems} />
+                {/* ── Free Gifts Game CTA ── */}
+                <a href="/store/free-gifts" style={{
+                  display: "flex", alignItems: "center", gap: 12,
+                  background: "linear-gradient(135deg,rgba(139,92,246,.18),rgba(249,115,22,.14))",
+                  border: "1.5px solid rgba(249,115,22,.35)",
+                  borderRadius: 14, padding: "13px 16px", marginTop: 10,
+                  textDecoration: "none",
+                }}>
+                  <span style={{ fontSize: 28 }}>🎁</span>
+                  <div style={{ flex: 1 }}>
+                    <p style={{ margin: 0, fontSize: 14, fontWeight: 900, color: "#fbbf24", fontFamily: "Cairo,Tajawal,sans-serif" }}>
+                      عندك هدايا مجانية في انتظارك!
+                    </p>
+                    <p style={{ margin: "2px 0 0", fontSize: 12, color: "rgba(255,255,255,.55)", fontFamily: "Cairo,Tajawal,sans-serif" }}>
+                      العبي اللعبة واختاري منتجات مجانية مع طلبك
+                    </p>
+                  </div>
+                  <span style={{ fontSize: 18, color: "rgba(255,255,255,.5)" }}>←</span>
+                </a>
                 <button className="btn-primary" disabled={cartItems.length === 0} style={{ width: "100%", justifyContent: "center", padding: "13px", fontSize: 15, marginTop: 14, opacity: cartItems.length === 0 ? 0.5 : 1 }} onClick={() => setStep("address")}>
                   {lang === "ar" ? "التالي: العنوان ←" : "Next: Address →"}
                 </button>
