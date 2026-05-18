@@ -201,6 +201,7 @@ type PublicPayload = {
     bio: string | null;
     image: string | null;
     slots: { label: string; day: string; time: string }[];
+    questions: { id: string; label: string; type: string; required: boolean; options?: string[] }[];
     consultationFee: number;
     consultationFeeMember: number;
     followupFee: number;
