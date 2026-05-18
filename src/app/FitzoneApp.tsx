@@ -2249,25 +2249,20 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
   }, [homeOffers.length]);
   const animatedTodayClasses = useMemo(() => todayClasses, [todayClasses]);
   useEffect(() => {
-    const applyTransform = () => {
-      if (todayTrackRef.current) {
-        todayTrackRef.current.style.transform = `translate3d(${todayOffsetRef.current}px, 0, 0)`;
-      }
-    };
-
     const measure = () => {
       const track = todayTrackRef.current;
       if (!track || animatedTodayClasses.length === 0) return;
-      const segmentWidth = track.scrollWidth / 3;
-      todaySegmentWidthRef.current = segmentWidth;
-      todayOffsetRef.current = -segmentWidth;
-      applyTransform();
+      const sw = track.scrollWidth / 3;
+      if (sw <= 0) return;
+      todaySegmentWidthRef.current = sw;
+      todayOffsetRef.current = -sw;
+      track.style.transform = `translate3d(${-sw}px, 0, 0)`;
     };
 
-    // Defer to next frame so the browser has computed card widths
-    const rafId = requestAnimationFrame(measure);
+    // useEffect runs after DOM paint — measure is ready immediately
+    measure();
     window.addEventListener("resize", measure);
-    return () => { cancelAnimationFrame(rafId); window.removeEventListener("resize", measure); };
+    return () => window.removeEventListener("resize", measure);
   }, [animatedTodayClasses.length]);
 
   useEffect(() => {
@@ -2276,9 +2271,9 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
     let lastTime = performance.now();
 
     const tick = (now: number) => {
-      const elapsed = (now - lastTime) / 1000;
+      // cap elapsed to 50ms to prevent jump when tab regains focus
+      const elapsed = Math.min((now - lastTime) / 1000, 0.05);
       lastTime = now;
-      // Fallback: measure if RAF-deferred measure hadn't run yet
       if (todaySegmentWidthRef.current <= 0 && todayTrackRef.current) {
         const sw = todayTrackRef.current.scrollWidth / 3;
         if (sw > 0) { todaySegmentWidthRef.current = sw; todayOffsetRef.current = -sw; }
