@@ -2078,6 +2078,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
   const todayTrackRef = useRef<HTMLDivElement | null>(null);
   const todayOffsetRef = useRef(0);
   const todaySegmentWidthRef = useRef(0);
+  const todayPausedRef = useRef(false);
     const [heroContent, setHeroContent] = useState<HomeHeroContent>({
       badge: "نادي لياقة للسيدات والأطفال في بني سويف",
       badgeEn: "First women & kids gym in Beni Suef",
@@ -2267,13 +2268,14 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
     const tick = (now: number) => {
       const elapsed = (now - lastTime) / 1000;
       lastTime = now;
-      const direction = 1;
-      todayOffsetRef.current = wrapCarouselOffset(
-        todayOffsetRef.current + direction * 24 * elapsed,
-        todaySegmentWidthRef.current,
-      );
-      if (todayTrackRef.current) {
-        todayTrackRef.current.style.transform = `translate3d(${todayOffsetRef.current}px, 0, 0)`;
+      if (!todayPausedRef.current) {
+        todayOffsetRef.current = wrapCarouselOffset(
+          todayOffsetRef.current + 24 * elapsed,
+          todaySegmentWidthRef.current,
+        );
+        if (todayTrackRef.current) {
+          todayTrackRef.current.style.transform = `translate3d(${todayOffsetRef.current}px, 0, 0)`;
+        }
       }
       frameId = requestAnimationFrame(tick);
     };
@@ -2853,6 +2855,8 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                 ref={todayCarouselRef}
                 className="today-classes-carousel"
                 style={{ transform: lang === "ar" ? "scaleX(-1)" : "none" }}
+                onMouseEnter={() => { todayPausedRef.current = true; }}
+                onMouseLeave={() => { todayPausedRef.current = false; }}
               >
                 <div ref={todayTrackRef} className="today-classes-track" style={{ direction: "ltr" }}>
                   {[0, 1, 2].flatMap((copyIndex) =>
