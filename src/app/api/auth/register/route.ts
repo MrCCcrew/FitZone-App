@@ -15,7 +15,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const { name, email, phone, password, referralCode, affiliateRef, agentRef, staffRef, trainerRef } = await req.json();
+    const { name, email, phone, password, referralCode, affiliateRef, agentRef, staffRef, trainerRef, nutritionRef } = await req.json();
 
     const normalizedName = String(name ?? "").trim();
     const normalizedEmail = String(email ?? "").trim().toLowerCase();
@@ -106,6 +106,14 @@ export async function POST(req: Request) {
       if (tl?.isActive) pendingTrainerRef = normalizedTrainerRef;
     }
 
+    // Validate nutritionist referral link token
+    const normalizedNutritionRef = nutritionRef ? String(nutritionRef).trim().toUpperCase() : null;
+    let pendingNutritionRef: string | null = null;
+    if (normalizedNutritionRef) {
+      const nl = await dbx.nutritionReferralLink.findUnique({ where: { token: normalizedNutritionRef }, select: { id: true, isActive: true } });
+      if (nl?.isActive) pendingNutritionRef = normalizedNutritionRef;
+    }
+
     // Validate referral code before creating user
     let referralRecord: { id: string; userId: string; referredCount: number; subscriptionActivatedCount: number } | null = null;
     if (normalizedReferralCode) {
@@ -140,6 +148,7 @@ export async function POST(req: Request) {
           pendingAgentRef: pendingAgentRef || null,
           pendingStaffRef: pendingStaffRef || null,
           pendingTrainerRef: pendingTrainerRef || null,
+          pendingNutritionRef: pendingNutritionRef || null,
         },
       });
 

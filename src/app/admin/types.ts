@@ -672,6 +672,8 @@ export interface NutritionistProfileRow {
   consultationFeeMember: number;
   followupFee: number;
   followupFeeMember: number;
+  commissionRate: number;
+  commissionType: string;
   createdAt: string;
   linkedUser: { id: string; name: string | null; email: string | null; phone: string | null } | null;
 }

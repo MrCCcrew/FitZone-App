@@ -81,6 +81,7 @@ model User {
   pendingAgentRef   String? // sales agent referral code stored at registration, cleared after first paid subscription
   pendingStaffRef    String? // staff referral link token stored at registration, cleared after first paid subscription
   pendingTrainerRef  String? // trainer referral link token stored at registration, cleared after first paid subscription
+  pendingNutritionRef String? // nutritionist referral link token stored at registration, cleared after first paid subscription
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -125,6 +126,8 @@ model User {
   staffCommissions           StaffCommission[]           @relation("StaffCommissions")
   trainerReferralLinks       TrainerReferralLink[]       @relation("TrainerLinks")
   trainerCommissions         TrainerCommission[]         @relation("TrainerCommissions")
+  nutritionReferralLinks     NutritionReferralLink[]     @relation("NutritionLinks")
+  nutritionCommissions       NutritionCommission[]       @relation("NutritionCommissions")
   healthResponses            HealthResponse[]            @relation("HealthResponses")
   nutritionistProfile        NutritionistProfile?        @relation("NutritionistAccount")
   nutritionSessions          NutritionSession[]          @relation("NutritionSessionUser")
@@ -209,8 +212,9 @@ model UserMembership {
   partnerCodeId   String?
   affiliateLinkId String?
   salesAgentId    String?  // SalesAgent.id if subscribed via agent referral link
-  staffReferralLinkId   String? // StaffReferralLink.id if subscribed via staff referral link
-  trainerReferralLinkId String? // TrainerReferralLink.id if subscribed via trainer referral link
+  staffReferralLinkId      String? // StaffReferralLink.id if subscribed via staff referral link
+  trainerReferralLinkId    String? // TrainerReferralLink.id if subscribed via trainer referral link
+  nutritionReferralLinkId  String? // NutritionReferralLink.id if subscribed via nutritionist referral link
 
   user          User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
   membership    Membership            @relation(fields: [membershipId], references: [id])
@@ -220,8 +224,9 @@ model UserMembership {
   partnerCode   PartnerCode?          @relation(fields: [partnerCodeId], references: [id], onDelete: SetNull)
   affiliateLink PartnerAffiliateLink? @relation(fields: [affiliateLinkId], references: [id], onDelete: SetNull)
   refAgent      SalesAgent?           @relation(fields: [salesAgentId], references: [id], onDelete: SetNull)
-  staffReferralLink   StaffReferralLink?   @relation(fields: [staffReferralLinkId], references: [id], onDelete: SetNull)
-  trainerReferralLink TrainerReferralLink? @relation(fields: [trainerReferralLinkId], references: [id], onDelete: SetNull)
+  staffReferralLink      StaffReferralLink?      @relation(fields: [staffReferralLinkId], references: [id], onDelete: SetNull)
+  trainerReferralLink    TrainerReferralLink?    @relation(fields: [trainerReferralLinkId], references: [id], onDelete: SetNull)
+  nutritionReferralLink  NutritionReferralLink?  @relation(fields: [nutritionReferralLinkId], references: [id], onDelete: SetNull)
   bookings      Booking[]
   attendancePass      AttendancePass?
   attendanceCheckIns  AttendanceCheckIn[]
@@ -230,6 +235,7 @@ model UserMembership {
   salesAgentCommission SalesAgentCommission?
   staffCommission      StaffCommission?
   trainerCommission    TrainerCommission?
+  nutritionCommission  NutritionCommission?
 
   @@index([partnerId])
   @@index([salesAgentUserId])
@@ -1509,6 +1515,42 @@ model TrainerCommission {
   @@index([createdAt])
 }
 
+// ─── Nutritionist Referral Links & Commissions ───────────────────────────────
+
+model NutritionReferralLink {
+  id         String   @id @default(cuid())
+  userId     String   // nutritionist's user ID
+  token      String   @unique
+  label      String?
+  clickCount Int      @default(0)
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  user        User                  @relation("NutritionLinks", fields: [userId], references: [id], onDelete: Cascade)
+  memberships UserMembership[]
+  commissions NutritionCommission[]
+
+  @@index([userId])
+}
+
+model NutritionCommission {
+  id                      String    @id @default(cuid())
+  nutritionistUserId      String
+  nutritionReferralLinkId String?
+  userMembershipId        String?   @unique
+  amount                  Float
+  status                  String    @default("earned") // earned | settled
+  settledAt               DateTime?
+  createdAt               DateTime  @default(now())
+
+  nutritionistUser      User                   @relation("NutritionCommissions", fields: [nutritionistUserId], references: [id], onDelete: Cascade)
+  nutritionReferralLink NutritionReferralLink?  @relation(fields: [nutritionReferralLinkId], references: [id], onDelete: SetNull)
+  userMembership        UserMembership?         @relation(fields: [userMembershipId], references: [id], onDelete: SetNull)
+
+  @@index([nutritionistUserId, status])
+  @@index([createdAt])
+}
+
 // ─── Nutrition Doctor ─────────────────────────────────────────────────────────
 
 model NutritionistProfile {
@@ -1523,17 +1565,24 @@ model NutritionistProfile {
   // Pre-set available slots (JSON: [{label:"الأحد 10 صباحاً", day:"الأحد", time:"10:00"}])
   slotsJson String?  @db.Text
 
+  // Booking form questions (JSON: [{id, label, type, required, options?}])
+  questionsJson String? @db.Text
+
   // Pricing (editable by admin)
   consultationFee       Float @default(400) // كشف - non-member
   consultationFeeMember Float @default(300) // كشف - gym member
   followupFee           Float @default(100) // إعادة كشف - non-member
   followupFeeMember     Float @default(50)  // إعادة كشف - gym member
 
+  // Referral commission settings (editable by admin)
+  commissionRate Float @default(0)
+  commissionType String @default("percentage") // percentage | fixed
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user     User               @relation("NutritionistAccount", fields: [userId], references: [id], onDelete: Cascade)
-  sessions NutritionSession[]
+  user                  User               @relation("NutritionistAccount", fields: [userId], references: [id], onDelete: Cascade)
+  sessions              NutritionSession[]
 
   @@index([isActive])
 }

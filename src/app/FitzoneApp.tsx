@@ -1409,12 +1409,21 @@ type PublicTrainer = {
   classesCount: number;
 };
 
+type NutritionQuestion = {
+  id: string;
+  label: string;
+  type: "text" | "textarea" | "select" | "radio" | "checkbox";
+  required: boolean;
+  options?: string[];
+};
+
 type PublicNutritionist = {
   id: string;
   name: string;
   bio: string | null;
   image: string | null;
   slots: { label: string; day: string; time: string }[];
+  questions: NutritionQuestion[];
   consultationFee: number;
   consultationFeeMember: number;
   followupFee: number;
@@ -3285,7 +3294,6 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
         const consultationPrice = isGymMember ? nutritionist.consultationFeeMember : nutritionist.consultationFee;
         const followupPrice = isGymMember ? nutritionist.followupFeeMember : nutritionist.followupFee;
         const price = nutritionType === "consultation" ? consultationPrice : followupPrice;
-        const totalSteps = nutritionist.slots.length > 0 ? 5 : 4;
 
         const closeModal = () => { setNutritionModal(false); setNutritionDone(null); setNutritionMsg(null); };
 
@@ -3351,7 +3359,15 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
         const goals = ["خسارة الوزن", "اكتساب العضلات", "التحكم في نسبة السكر", "التحكم في ضغط الدم", "تغذية سليمة عامة", "تغذية الحامل والمرضع"];
         const medHistory = ["ضغط الدم", "السكري", "أمراض الكلى", "أمراض القلب", "الغدة الدرقية", "حساسية غذائية", "حالياً حامل", "حالياً مرضع", "لا توجد حالات طبية"];
 
-        const stepTitles = ["نوع الحجز", "معلومات أساسية", "الهدف", "التاريخ الطبي", "القياسات", "اختاري الموعد"];
+        const hasCustomQuestions = nutritionist.questions.length > 0;
+        const hasSlots = nutritionist.slots.length > 0;
+        const customQStep = hasCustomQuestions ? 5 : -1;
+        const slotStep = hasSlots ? (hasCustomQuestions ? 6 : 5) : -1;
+        const totalSteps = 4 + (hasCustomQuestions ? 1 : 0) + (hasSlots ? 1 : 0);
+
+        const stepTitles: string[] = ["نوع الحجز", "معلومات أساسية", "الهدف", "التاريخ الطبي", "القياسات"];
+        if (hasCustomQuestions) stepTitles.push("أسئلة إضافية");
+        if (hasSlots) stepTitles.push("اختاري الموعد");
 
         const mdBorder = "rgba(255,255,255,.1)";
         const mdInputSt: React.CSSProperties = { width: "100%", background: "rgba(255,255,255,.06)", border: `1px solid ${mdBorder}`, borderRadius: 10, padding: "10px 13px", color: "#fff", fontSize: 14, outline: "none", boxSizing: "border-box" };
@@ -3529,8 +3545,70 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                       </div>
                     )}
 
-                    {/* ── STEP 5: Slot picker ── */}
-                    {nutritionStep === 5 && nutritionist.slots.length > 0 && (
+                    {/* ── STEP 5 (if custom questions): Extra questions ── */}
+                    {nutritionStep === customQStep && hasCustomQuestions && (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+                        <div style={{ fontSize: 14, color: "#ffb7d0", marginBottom: 4 }}>{t("أسئلة إضافية من الدكتورة:", "Additional questions from the doctor:")}</div>
+                        {nutritionist.questions.map((q) => {
+                          const val = nutritionForm[`cq_${q.id}`];
+                          if (q.type === "text") return (
+                            <div key={q.id}>
+                              <div style={{ fontSize: 13, color: "#ffb7d0", marginBottom: 6 }}>{q.label}{q.required && <span style={{ color: C.red }}> *</span>}</div>
+                              <input style={mdInputSt} value={(val as string) ?? ""} onChange={(e) => nf(`cq_${q.id}`, e.target.value)} placeholder={q.label} />
+                            </div>
+                          );
+                          if (q.type === "textarea") return (
+                            <div key={q.id}>
+                              <div style={{ fontSize: 13, color: "#ffb7d0", marginBottom: 6 }}>{q.label}{q.required && <span style={{ color: C.red }}> *</span>}</div>
+                              <textarea style={{ ...mdInputSt, minHeight: 80, resize: "vertical" }} value={(val as string) ?? ""} onChange={(e) => nf(`cq_${q.id}`, e.target.value)} placeholder={q.label} />
+                            </div>
+                          );
+                          if (q.type === "select") return (
+                            <div key={q.id}>
+                              <div style={{ fontSize: 13, color: "#ffb7d0", marginBottom: 6 }}>{q.label}{q.required && <span style={{ color: C.red }}> *</span>}</div>
+                              <select style={{ ...mdInputSt }} value={(val as string) ?? ""} onChange={(e) => nf(`cq_${q.id}`, e.target.value)}>
+                                <option value="">{t("-- اختاري --", "-- Select --")}</option>
+                                {(q.options ?? []).map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+                              </select>
+                            </div>
+                          );
+                          if (q.type === "radio") return (
+                            <div key={q.id}>
+                              <div style={{ fontSize: 13, color: "#ffb7d0", marginBottom: 8 }}>{q.label}{q.required && <span style={{ color: C.red }}> *</span>}</div>
+                              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                                {(q.options ?? []).map((opt) => (
+                                  <label key={opt} style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", padding: "8px 12px", borderRadius: 10, border: `1px solid ${val === opt ? C.red : "rgba(255,255,255,.1)"}`, background: val === opt ? "rgba(233,30,99,.08)" : "rgba(255,255,255,.03)" }}>
+                                    <input type="radio" checked={val === opt} onChange={() => nf(`cq_${q.id}`, opt)} style={{ accentColor: C.red }} />
+                                    <span style={{ fontSize: 13, color: "#fff" }}>{opt}</span>
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                          if (q.type === "checkbox") return (
+                            <div key={q.id}>
+                              <div style={{ fontSize: 13, color: "#ffb7d0", marginBottom: 8 }}>{q.label}{q.required && <span style={{ color: C.red }}> *</span>}</div>
+                              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                                {(q.options ?? []).map((opt) => {
+                                  const arr = (val as string[]) ?? [];
+                                  const checked = arr.includes(opt);
+                                  return (
+                                    <label key={opt} style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", padding: "8px 12px", borderRadius: 10, border: `1px solid ${checked ? C.red : "rgba(255,255,255,.1)"}`, background: checked ? "rgba(233,30,99,.08)" : "rgba(255,255,255,.03)" }}>
+                                      <input type="checkbox" checked={checked} onChange={(e) => nfArr(`cq_${q.id}`, opt, e.target.checked)} style={{ accentColor: C.red }} />
+                                      <span style={{ fontSize: 13, color: "#fff" }}>{opt}</span>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                          return null;
+                        })}
+                      </div>
+                    )}
+
+                    {/* ── STEP 5/6: Slot picker ── */}
+                    {nutritionStep === slotStep && hasSlots && (
                       <div>
                         <div style={{ fontSize: 14, color: "#ffb7d0", marginBottom: 14 }}>{t("اختاري موعداً متاحاً:", "Choose an available appointment:")}</div>
                         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -3587,6 +3665,18 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                             if (nutritionStep === 1 && !((nutritionForm.fullName as string) ?? "").trim()) {
                               setNutritionMsg({ ok: false, text: t("الاسم الكامل مطلوب", "Full name is required") });
                               return;
+                            }
+                            if (nutritionStep === customQStep && hasCustomQuestions) {
+                              const missing = nutritionist.questions.filter((q) => {
+                                if (!q.required) return false;
+                                const v = nutritionForm[`cq_${q.id}`];
+                                if (q.type === "checkbox") return !Array.isArray(v) || v.length === 0;
+                                return !v || (typeof v === "string" && !v.trim());
+                              });
+                              if (missing.length > 0) {
+                                setNutritionMsg({ ok: false, text: t(`يرجى الإجابة على: ${missing.map((q) => q.label).join("، ")}`, `Please answer: ${missing.map((q) => q.label).join(", ")}`) });
+                                return;
+                              }
                             }
                             setNutritionMsg(null);
                             setNutritionStep((s) => s + 1);

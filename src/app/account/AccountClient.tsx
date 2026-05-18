@@ -21,6 +21,7 @@ interface AccountData {
     governorate: string;
     address: string;
     role: string;
+    adminPermissions: string[];
     createdAt: string;
     emailVerified: string | null;
     hasPassword: boolean;
@@ -218,6 +219,7 @@ const NOTIF_ICONS: Record<string, string> = {
 const TABS = [
   { id: "profile", label: "Profile", icon: "P" },
   { id: "trainerProfile", label: "Trainer Profile", icon: "T" },
+  { id: "nutritionistProfile", label: "Nutrition Profile", icon: "🥗" },
   { id: "trainerDiscountCodes", label: "Trainer Codes", icon: "🎟" },
   { id: "staffDiscountCodes", label: "Staff Codes", icon: "🎟" },
   { id: "agentCommissions", label: "Commissions", icon: "💰" },
@@ -235,6 +237,7 @@ const TABS = [
 type TabId =
   | "profile"
   | "trainerProfile"
+  | "nutritionistProfile"
   | "trainerDiscountCodes"
   | "staffDiscountCodes"
   | "agentCommissions"
@@ -296,6 +299,7 @@ function getTabLabel(tabId: TabId, lang: "ar" | "en") {
   const labels: Record<TabId, { ar: string; en: string }> = {
     profile: { ar: "الملف الشخصي", en: "Profile" },
     trainerProfile: { ar: "ملف المدربة", en: "Trainer profile" },
+    nutritionistProfile: { ar: "ملف الدكتورة", en: "Doctor profile" },
     trainerDiscountCodes: { ar: "أكواد الخصم", en: "Discount codes" },
     staffDiscountCodes: { ar: "أكواد الخصم", en: "Discount codes" },
     agentCommissions: { ar: "عمولاتي", en: "My commissions" },
@@ -4037,6 +4041,311 @@ type NutritionSessionItem = {
   nutritionist: { id: string; name: string; image: string | null };
 };
 
+// ─── NutritionistProfileTab ───────────────────────────────────────────────────
+
+type NutritionQuestion = { id: string; label: string; type: string; required: boolean; options?: string[] };
+type NutritionReferralLink = { id: string; token: string; label: string | null; clickCount: number; isActive: boolean; createdAt: string };
+type NutritionCommissionItem = { id: string; amount: number; status: string; createdAt: string; userMembership?: { user?: { name?: string } } };
+
+function NutritionistProfileTab() {
+  const { lang } = useLang();
+  const t = (arText: string, enText: string) => (lang === "ar" ? arText : enText);
+  const [loading, setLoading] = useState(true);
+  const [section, setSection] = useState<"slots" | "questions" | "links">("slots");
+
+  // Slots
+  const [slots, setSlots] = useState<{ label: string; day: string; time: string }[]>([]);
+  const [slotsMsg, setSlotsMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [slotsSaving, setSlotsSaving] = useState(false);
+  const [newSlotLabel, setNewSlotLabel] = useState("");
+  const [newSlotDay, setNewSlotDay] = useState("الأحد");
+  const [newSlotTime, setNewSlotTime] = useState("10:00");
+
+  // Questions
+  const [questions, setQuestions] = useState<NutritionQuestion[]>([]);
+  const [questionsMsg, setQuestionsMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [questionsSaving, setQuestionsSaving] = useState(false);
+  const [newQLabel, setNewQLabel] = useState("");
+  const [newQType, setNewQType] = useState("text");
+  const [newQRequired, setNewQRequired] = useState(false);
+  const [newQOptions, setNewQOptions] = useState("");
+
+  // Links
+  const [links, setLinks] = useState<NutritionReferralLink[]>([]);
+  const [commissions, setCommissions] = useState<NutritionCommissionItem[]>([]);
+  const [commissionSummary, setCommissionSummary] = useState({ totalEarned: 0, pendingEarned: 0 });
+  const [commissionRate, setCommissionRate] = useState(0);
+  const [commissionType, setCommissionType] = useState("percentage");
+  const [linksMsg, setLinksMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [linkCreating, setLinkCreating] = useState(false);
+  const [newLinkLabel, setNewLinkLabel] = useState("");
+
+  const loadAll = async () => {
+    setLoading(true);
+    try {
+      const [slotsRes, linksRes] = await Promise.all([
+        fetch("/api/nutritionist/slots", { cache: "no-store" }),
+        fetch("/api/nutritionist/links", { cache: "no-store" }),
+      ]);
+      const slotsData = await slotsRes.json().catch(() => ({}));
+      const linksData = await linksRes.json().catch(() => ({}));
+      if (slotsData.profile) {
+        setSlots(slotsData.profile.slots ?? []);
+        setQuestions(slotsData.profile.questions ?? []);
+        setCommissionRate(slotsData.profile.commissionRate ?? 0);
+        setCommissionType(slotsData.profile.commissionType ?? "percentage");
+      }
+      if (linksData.links) {
+        setLinks(linksData.links);
+        setCommissions(linksData.commissions ?? []);
+        setCommissionSummary(linksData.summary ?? { totalEarned: 0, pendingEarned: 0 });
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { void loadAll(); }, []);
+
+  const saveSlots = async () => {
+    setSlotsSaving(true); setSlotsMsg(null);
+    const res = await fetch("/api/nutritionist/slots", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ slots }) });
+    const d = await res.json().catch(() => ({}));
+    setSlotsMsg(res.ok ? { ok: true, text: t("تم حفظ المواعيد", "Slots saved") } : { ok: false, text: d.error ?? t("خطأ", "Error") });
+    setSlotsSaving(false);
+  };
+
+  const addSlot = () => {
+    if (!newSlotLabel.trim()) return;
+    setSlots((prev) => [...prev, { label: newSlotLabel.trim(), day: newSlotDay, time: newSlotTime }]);
+    setNewSlotLabel("");
+  };
+
+  const removeSlot = (i: number) => setSlots((prev) => prev.filter((_, idx) => idx !== i));
+
+  const saveQuestions = async () => {
+    setQuestionsSaving(true); setQuestionsMsg(null);
+    const res = await fetch("/api/nutritionist/slots", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ questions }) });
+    const d = await res.json().catch(() => ({}));
+    setQuestionsMsg(res.ok ? { ok: true, text: t("تم حفظ الأسئلة", "Questions saved") } : { ok: false, text: d.error ?? t("خطأ", "Error") });
+    setQuestionsSaving(false);
+  };
+
+  const addQuestion = () => {
+    if (!newQLabel.trim()) return;
+    const opts = newQOptions.split(",").map((s) => s.trim()).filter(Boolean);
+    setQuestions((prev) => [...prev, { id: Date.now().toString(), label: newQLabel.trim(), type: newQType, required: newQRequired, options: opts.length ? opts : undefined }]);
+    setNewQLabel(""); setNewQOptions(""); setNewQRequired(false);
+  };
+
+  const removeQuestion = (i: number) => setQuestions((prev) => prev.filter((_, idx) => idx !== i));
+
+  const createLink = async () => {
+    setLinkCreating(true); setLinksMsg(null);
+    const res = await fetch("/api/nutritionist/links", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ label: newLinkLabel.trim() || null }) });
+    const d = await res.json().catch(() => ({}));
+    if (res.ok) { setLinks((prev) => [d.link, ...prev]); setNewLinkLabel(""); }
+    else setLinksMsg({ ok: false, text: d.error ?? t("خطأ", "Error") });
+    setLinkCreating(false);
+  };
+
+  const toggleLink = async (link: NutritionReferralLink) => {
+    const res = await fetch("/api/nutritionist/links", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: link.id, isActive: !link.isActive }) });
+    if (res.ok) setLinks((prev) => prev.map((l) => l.id === link.id ? { ...l, isActive: !l.isActive } : l));
+  };
+
+  const deleteLink = async (id: string) => {
+    if (!confirm(t("هل أنت متأكد من حذف هذا الرابط؟", "Delete this link?"))) return;
+    const res = await fetch(`/api/nutritionist/links?id=${id}`, { method: "DELETE" });
+    if (res.ok) setLinks((prev) => prev.filter((l) => l.id !== id));
+  };
+
+  const inp: React.CSSProperties = { width: "100%", background: "transparent", border: "1px solid #e5e7eb", borderRadius: 8, padding: "8px 12px", fontSize: 14, outline: "none", boxSizing: "border-box" };
+
+  if (loading) return <div className="p-6 text-gray-500">{t("جارٍ التحميل...", "Loading...")}</div>;
+
+  return (
+    <div className="space-y-5">
+      <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-5">
+        <div className="font-black text-lg mb-4">🥗 {t("ملف دكتورة التغذية", "Nutritionist Profile")}</div>
+
+        {/* Section nav */}
+        <div className="flex gap-2 mb-5 flex-wrap">
+          {(["slots", "questions", "links"] as const).map((s) => (
+            <button key={s} onClick={() => setSection(s)}
+              className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors ${section === s ? "bg-red-600 text-white" : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200"}`}
+            >
+              {s === "slots" ? t("📅 المواعيد المتاحة", "📅 Available Slots") : s === "questions" ? t("❓ أسئلة الحجز", "❓ Booking Questions") : t("🔗 روابط الإحالة", "🔗 Referral Links")}
+            </button>
+          ))}
+        </div>
+
+        {/* SLOTS */}
+        {section === "slots" && (
+          <div className="space-y-4">
+            <div className="text-sm text-gray-500 mb-3">{t("حددي المواعيد المتاحة للعملاء للحجز.", "Set your available appointment slots for clients.")}</div>
+            {slots.length === 0 && <div className="text-gray-400 text-sm">{t("لا توجد مواعيد حالياً", "No slots yet")}</div>}
+            <div className="space-y-2">
+              {slots.map((slot, i) => (
+                <div key={i} className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 dark:border-gray-700">
+                  <div className="flex-1">
+                    <div className="font-bold text-sm">{slot.label}</div>
+                    <div className="text-xs text-gray-400">{slot.day} — {slot.time}</div>
+                  </div>
+                  <button onClick={() => removeSlot(i)} className="text-red-500 hover:text-red-600 text-sm px-2">🗑</button>
+                </div>
+              ))}
+            </div>
+            <div className="border-t border-gray-100 dark:border-gray-800 pt-4 space-y-2">
+              <div className="text-sm font-bold text-gray-600 dark:text-gray-300">{t("إضافة موعد جديد", "Add new slot")}</div>
+              <input style={inp} placeholder={t("تسمية الموعد (مثال: الأحد 10 صباحاً)", "Slot label (e.g. Sunday 10 AM)")} value={newSlotLabel} onChange={(e) => setNewSlotLabel(e.target.value)} />
+              <div className="flex gap-2">
+                <select style={{ ...inp, flex: 1 }} value={newSlotDay} onChange={(e) => setNewSlotDay(e.target.value)}>
+                  {["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"].map((d) => <option key={d} value={d}>{d}</option>)}
+                </select>
+                <input style={{ ...inp, flex: 1 }} type="time" value={newSlotTime} onChange={(e) => setNewSlotTime(e.target.value)} />
+              </div>
+              <button onClick={addSlot} className="bg-gray-900 dark:bg-gray-700 text-white rounded-lg px-4 py-2 text-sm font-bold hover:bg-gray-700 dark:hover:bg-gray-600">+ {t("إضافة", "Add")}</button>
+            </div>
+            {slotsMsg && <div className={`text-sm p-3 rounded-lg ${slotsMsg.ok ? "bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-300" : "bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300"}`}>{slotsMsg.text}</div>}
+            <button onClick={() => void saveSlots()} disabled={slotsSaving} className="w-full bg-red-600 hover:bg-red-500 text-white font-bold py-2.5 rounded-xl text-sm disabled:opacity-60">
+              {slotsSaving ? t("جارٍ الحفظ...", "Saving...") : t("💾 حفظ المواعيد", "💾 Save slots")}
+            </button>
+          </div>
+        )}
+
+        {/* QUESTIONS */}
+        {section === "questions" && (
+          <div className="space-y-4">
+            <div className="text-sm text-gray-500 mb-3">{t("أضيفي أسئلة مخصصة تظهر للعملاء أثناء الحجز.", "Add custom questions shown to clients during booking.")}</div>
+            {questions.length === 0 && <div className="text-gray-400 text-sm">{t("لا توجد أسئلة حالياً", "No questions yet")}</div>}
+            <div className="space-y-2">
+              {questions.map((q, i) => (
+                <div key={q.id} className="flex items-start gap-3 p-3 rounded-lg border border-gray-200 dark:border-gray-700">
+                  <div className="flex-1">
+                    <div className="font-bold text-sm">{q.label}</div>
+                    <div className="text-xs text-gray-400">{q.type} {q.required ? "— " + t("مطلوب", "required") : ""} {q.options?.length ? `— [${q.options.join(", ")}]` : ""}</div>
+                  </div>
+                  <button onClick={() => removeQuestion(i)} className="text-red-500 hover:text-red-600 text-sm px-2">🗑</button>
+                </div>
+              ))}
+            </div>
+            <div className="border-t border-gray-100 dark:border-gray-800 pt-4 space-y-2">
+              <div className="text-sm font-bold text-gray-600 dark:text-gray-300">{t("إضافة سؤال جديد", "Add new question")}</div>
+              <input style={inp} placeholder={t("نص السؤال", "Question text")} value={newQLabel} onChange={(e) => setNewQLabel(e.target.value)} />
+              <div className="flex gap-2">
+                <select style={{ ...inp, flex: 1 }} value={newQType} onChange={(e) => setNewQType(e.target.value)}>
+                  <option value="text">{t("نص قصير", "Short text")}</option>
+                  <option value="textarea">{t("نص طويل", "Long text")}</option>
+                  <option value="select">{t("قائمة منسدلة", "Dropdown")}</option>
+                  <option value="radio">{t("اختيار واحد", "Single choice")}</option>
+                  <option value="checkbox">{t("اختيار متعدد", "Multi choice")}</option>
+                </select>
+                <label className="flex items-center gap-2 text-sm whitespace-nowrap">
+                  <input type="checkbox" checked={newQRequired} onChange={(e) => setNewQRequired(e.target.checked)} />
+                  {t("مطلوب", "Required")}
+                </label>
+              </div>
+              {["select", "radio", "checkbox"].includes(newQType) && (
+                <input style={inp} placeholder={t("الخيارات مفصولة بفاصلة (مثال: نعم، لا، أحياناً)", "Options comma-separated")} value={newQOptions} onChange={(e) => setNewQOptions(e.target.value)} />
+              )}
+              <button onClick={addQuestion} className="bg-gray-900 dark:bg-gray-700 text-white rounded-lg px-4 py-2 text-sm font-bold hover:bg-gray-700 dark:hover:bg-gray-600">+ {t("إضافة سؤال", "Add question")}</button>
+            </div>
+            {questionsMsg && <div className={`text-sm p-3 rounded-lg ${questionsMsg.ok ? "bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-300" : "bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300"}`}>{questionsMsg.text}</div>}
+            <button onClick={() => void saveQuestions()} disabled={questionsSaving} className="w-full bg-red-600 hover:bg-red-500 text-white font-bold py-2.5 rounded-xl text-sm disabled:opacity-60">
+              {questionsSaving ? t("جارٍ الحفظ...", "Saving...") : t("💾 حفظ الأسئلة", "💾 Save questions")}
+            </button>
+          </div>
+        )}
+
+        {/* REFERRAL LINKS */}
+        {section === "links" && (
+          <div className="space-y-5">
+            {/* Commission summary */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-xl border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20 p-4">
+                <div className="text-xs text-green-600 dark:text-green-400 mb-1">{t("إجمالي العمولات", "Total commissions")}</div>
+                <div className="text-xl font-black text-green-700 dark:text-green-300">{commissionSummary.totalEarned.toFixed(2)} {t("ج.م", "EGP")}</div>
+              </div>
+              <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-4">
+                <div className="text-xs text-amber-600 dark:text-amber-400 mb-1">{t("في الانتظار", "Pending")}</div>
+                <div className="text-xl font-black text-amber-700 dark:text-amber-300">{commissionSummary.pendingEarned.toFixed(2)} {t("ج.م", "EGP")}</div>
+              </div>
+            </div>
+            <div className="text-xs text-gray-400 bg-gray-50 dark:bg-gray-800 rounded-lg p-3">
+              {t(`نسبة عمولتك: ${commissionRate}${commissionType === "percentage" ? "%" : " ج.م"} لكل اشتراك عبر رابطك (يحددها الإدارة).`, `Your commission rate: ${commissionRate}${commissionType === "percentage" ? "%" : " EGP"} per subscription via your link (set by admin).`)}
+            </div>
+
+            {/* Create new link */}
+            <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-4 space-y-3">
+              <div className="font-bold text-sm">{t("إنشاء رابط إحالة جديد", "Create new referral link")}</div>
+              <input style={inp} placeholder={t("تسمية اختيارية (للمرجعية)", "Optional label")} value={newLinkLabel} onChange={(e) => setNewLinkLabel(e.target.value)} />
+              <button onClick={() => void createLink()} disabled={linkCreating} className="bg-red-600 hover:bg-red-500 text-white font-bold py-2 px-4 rounded-lg text-sm disabled:opacity-60">
+                {linkCreating ? t("جارٍ الإنشاء...", "Creating...") : t("+ إنشاء رابط", "+ Create link")}
+              </button>
+            </div>
+
+            {linksMsg && <div className={`text-sm p-3 rounded-lg ${linksMsg.ok ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>{linksMsg.text}</div>}
+
+            {/* Links list */}
+            {links.length === 0 ? (
+              <div className="text-gray-400 text-sm">{t("لا توجد روابط حالياً", "No links yet")}</div>
+            ) : (
+              <div className="space-y-3">
+                {links.map((link) => {
+                  const url = typeof window !== "undefined" ? `${window.location.origin}/register?nutritionRef=${link.token}` : `https://fitzone.app/register?nutritionRef=${link.token}`;
+                  return (
+                    <div key={link.id} className="border border-gray-200 dark:border-gray-700 rounded-xl p-4 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="font-bold text-sm">{link.label ?? link.token}</div>
+                          <div className="text-xs text-gray-400">{link.token} — {link.clickCount} {t("اشتراك", "subscriptions")}</div>
+                        </div>
+                        <div className="flex gap-2">
+                          <button onClick={() => void toggleLink(link)} className={`text-xs px-3 py-1.5 rounded-lg font-bold ${link.isActive ? "bg-red-100 text-red-600 hover:bg-red-200" : "bg-green-100 text-green-700 hover:bg-green-200"}`}>
+                            {link.isActive ? t("تعطيل", "Disable") : t("تفعيل", "Enable")}
+                          </button>
+                          <button onClick={() => void deleteLink(link.id)} className="text-xs px-2 py-1.5 rounded-lg bg-gray-100 dark:bg-gray-800 text-red-500 hover:text-red-600">🗑</button>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 bg-gray-50 dark:bg-gray-800 rounded-lg p-2 text-xs">
+                        <span className="text-gray-400 truncate flex-1">{url}</span>
+                        <button onClick={() => void navigator.clipboard.writeText(url).then(() => setLinksMsg({ ok: true, text: t("تم النسخ!", "Copied!") }))} className="text-blue-500 hover:text-blue-600 font-bold shrink-0">📋 {t("نسخ", "Copy")}</button>
+                      </div>
+                      {!link.isActive && <div className="text-xs text-amber-500">{t("⚠ هذا الرابط معطل — لن يُسجَّل العملاء الجدد به", "⚠ Disabled — new signups won't be tracked")}</div>}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Commission history */}
+            {commissions.length > 0 && (
+              <div className="mt-4">
+                <div className="font-bold text-sm mb-3">{t("سجل العمولات", "Commission history")}</div>
+                <div className="space-y-2">
+                  {commissions.slice(0, 20).map((c) => (
+                    <div key={c.id} className="flex items-center justify-between p-3 rounded-lg border border-gray-100 dark:border-gray-800">
+                      <div>
+                        <div className="text-sm font-bold">{c.userMembership?.user?.name ?? "—"}</div>
+                        <div className="text-xs text-gray-400">{new Date(c.createdAt).toLocaleDateString(lang === "ar" ? "ar-EG" : "en-US")}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-bold text-green-600">{c.amount.toFixed(2)} {t("ج.م", "EGP")}</div>
+                        <div className={`text-xs ${c.status === "settled" ? "text-gray-400" : "text-amber-500"}`}>{c.status === "settled" ? t("مسدد", "Settled") : t("في الانتظار", "Pending")}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function NutritionTab() {
   const { lang } = useLang();
   const t = (arText: string, enText: string) => (lang === "ar" ? arText : enText);
@@ -4220,14 +4529,18 @@ export default function AccountClient({ data }: { data: AccountData }) {
   const requestedTab = searchParams.get("tab");
   const availableTabs = useMemo(() => {
     const role = data.user.role;
+    const isNutritionist = !!(data.user.adminPermissions as string[] | undefined)?.includes("nutrition");
     if (role === "admin") return TABS;
+    // nutritionist (staff with nutrition permission): only sees nutritionistProfile among special tabs
+    if (isNutritionist)
+      return TABS.filter((tab) => !["trainerProfile", "trainerDiscountCodes", "privateSessions", "staffDiscountCodes", "agentCommissions"].includes(tab.id));
     // trainer: sees trainer-specific tabs + agentCommissions, NOT staff-specific
-    if (role === "trainer") return TABS.filter((tab) => tab.id !== "staffDiscountCodes");
+    if (role === "trainer") return TABS.filter((tab) => !["staffDiscountCodes", "nutritionistProfile"].includes(tab.id));
     // staff: sees staff-specific tabs + agentCommissions, NOT trainer-specific
-    if (role === "staff") return TABS.filter((tab) => !["trainerProfile", "trainerDiscountCodes", "privateSessions"].includes(tab.id));
+    if (role === "staff") return TABS.filter((tab) => !["trainerProfile", "trainerDiscountCodes", "privateSessions", "nutritionistProfile"].includes(tab.id));
     // member / other: hide all staff and trainer specific tabs
-    return TABS.filter((tab) => !["trainerProfile", "trainerDiscountCodes", "privateSessions", "staffDiscountCodes", "agentCommissions"].includes(tab.id));
-  }, [data.user.role]);
+    return TABS.filter((tab) => !["trainerProfile", "nutritionistProfile", "trainerDiscountCodes", "privateSessions", "staffDiscountCodes", "agentCommissions"].includes(tab.id));
+  }, [data.user.role, data.user.adminPermissions]);
   const resolveTab = (value: string | null): TabId => (availableTabs.some((tab) => tab.id === value) ? (value as TabId) : "profile");
   const [activeTab, setActiveTab]     = useState<TabId>(resolveTab(requestedTab));
   const [loggingOut, setLoggingOut]   = useState(false);
@@ -4381,6 +4694,7 @@ export default function AccountClient({ data }: { data: AccountData }) {
           <main className="flex-1 min-w-0">
             {activeTab === "profile"              && <ProfileTab              user={data.user} />}
             {activeTab === "trainerProfile"       && <TrainerProfileTab />}
+            {activeTab === "nutritionistProfile"  && <NutritionistProfileTab />}
             {activeTab === "trainerDiscountCodes" && <TrainerDiscountCodesTab />}
             {activeTab === "staffDiscountCodes"   && <StaffDiscountCodesTab />}
             {activeTab === "agentCommissions"     && <AgentCommissionsTab />}

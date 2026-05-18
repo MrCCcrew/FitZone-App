@@ -117,6 +117,7 @@ async function getAccountData(userId: string) {
         governorate: user.governorate ?? "",
         address: user.address ?? "",
         role: user.role,
+        adminPermissions: (() => { try { return user.adminPermissions ? JSON.parse(user.adminPermissions) : []; } catch { return []; } })(),
         createdAt: user.createdAt.toISOString(),
         emailVerified: user.emailVerified ? user.emailVerified.toISOString() : null,
         hasPassword: !!user.password,
