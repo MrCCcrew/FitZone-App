@@ -201,6 +201,18 @@ const AUDIT_DETAIL_LABELS: Record<string, string> = {
   userId: "معرف المستخدم",
   trainerId: "معرف المدربة",
   membershipId: "معرف الباقة",
+  changes: "التغييرات",
+  action: "الإجراء",
+  deletedMemberships: "اشتراكات محذوفة",
+  deletedBookings: "حجوزات محذوفة",
+  deletedOffers: "عروض محذوفة",
+  deletedProducts: "منتجات محذوفة",
+  deletedOrders: "طلبات محذوفة",
+  deletedSessions: "جلسات محذوفة",
+  className: "الكلاس",
+  token: "الرمز",
+  sessionId: "معرف الجلسة",
+  nutritionistId: "معرف الدكتورة",
 };
 
 function fmtDetailVal(val: unknown): string {
