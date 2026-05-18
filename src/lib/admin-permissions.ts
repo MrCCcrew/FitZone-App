@@ -40,7 +40,8 @@ export type AdminFeature =
   | "nutrition"
   | "suppliers"
   | "delivery-companies"
-  | "store-campaigns";
+  | "store-campaigns"
+  | "store-free-gifts";
 
 
 export const ADMIN_FEATURES: AdminFeature[] = [
@@ -73,6 +74,7 @@ export const ADMIN_FEATURES: AdminFeature[] = [
   "suppliers",
   "delivery-companies",
   "store-campaigns",
+  "store-free-gifts",
 ];
 
 const STAFF_FEATURES: AdminFeature[] = [
@@ -144,6 +146,7 @@ export const SECTION_FEATURE_MAP: Record<Section, AdminFeature> = {
   orders: "orders",
   "delivery-companies": "delivery-companies",
   "store-campaigns": "store-campaigns",
+  "store-free-gifts": "store-free-gifts",
 };
 
 export function isAdminRole(role?: string): role is AdminRole {

@@ -44,6 +44,7 @@ const FEATURE_LABELS: Record<string, string> = {
   suppliers: "الموردون",
   "delivery-companies": "شركات التوصيل",
   "store-campaigns": "حملة هدايا المتجر",
+  "store-free-gifts": "لعبة الهدايا المجانية",
 };
 
 type EmployeeForm = {

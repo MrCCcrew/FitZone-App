@@ -135,6 +135,7 @@ model User {
   inventoryMovementsPerformed InventoryMovement[]        @relation("InventoryMovementPerformer")
   inventoryReceiptsPerformed  InventoryReceipt[]         @relation("InventoryReceiptPerformer")
   storeCampaignClaims        StoreGiftCampaignClaim[]
+  freeGiftsSessions          StoreFreeGiftsSession[]
 }
 
 model AuditLog {
@@ -504,6 +505,7 @@ model Order {
   paymentTransactions PaymentTransaction[]
   statusHistory  OrderStatusHistory[]
   storeCampaignClaims StoreGiftCampaignClaim[] @relation("OrderGiftClaims")
+  freeGiftsSession    StoreFreeGiftsSession?   @relation("OrderFreeGiftsSession")
 
   @@index([status, createdAt])
   @@index([userId, createdAt])
@@ -698,6 +700,36 @@ model StoreGiftCampaignClaim {
 
   @@index([userId])
   @@index([storeOrderId])
+}
+
+// ─── Store Free Gifts Game Session ────────────────────────────────────────────
+
+model StoreFreeGiftsSession {
+  id               String    @id @default(cuid())
+  token            String    @unique @default(cuid())
+  userId           String?
+  step             Int       @default(1) // 1=spin 2=cards 3=products
+  spinsDone        Int       @default(0)
+  spinRewardType   String?
+  spinRewardValue  Float?
+  spinSlotIndex    Int?
+  spinLabelAr      String?
+  cardsDone        Int       @default(0)
+  cardsData        String    @default("[]") @db.Text // JSON: [{type,value,labelAr,revealed}]
+  selectedProductIds String  @default("[]") @db.Text // JSON string[]
+  giftSlotsCount   Int       @default(3)
+  status           String    @default("active") // active | confirmed | expired
+  expiresAt        DateTime?
+  confirmedAt      DateTime?
+  storeOrderId     String?   @unique
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  user       User?  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  storeOrder Order? @relation("OrderFreeGiftsSession", fields: [storeOrderId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([token])
 }
 
 // ─── Notification ─────────────────────────────────────────────────────────────
