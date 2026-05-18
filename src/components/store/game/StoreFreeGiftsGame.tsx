@@ -170,7 +170,7 @@ export function StoreFreeGiftsGame() {
         <p style={{ color: "rgba(255,255,255,.6)", fontSize: 14, maxWidth: 300, margin: "0 auto 24px" }}>
           هداياك المجانية سيتم إضافتها لطلبك عند إتمام عملية الشراء
         </p>
-        <a href="/store" style={{ display: "inline-block", padding: "13px 36px", borderRadius: 12, background: "linear-gradient(135deg,#f59e0b,#f97316)", color: "#fff", fontSize: 15, fontWeight: 900, textDecoration: "none" }}>
+        <a href="/?page=shop" style={{ display: "inline-block", padding: "13px 36px", borderRadius: 12, background: "linear-gradient(135deg,#e91e63,#c2185b)", color: "#fff", fontSize: 15, fontWeight: 900, textDecoration: "none" }}>
           عودي للمتجر ←
         </a>
       </div>
