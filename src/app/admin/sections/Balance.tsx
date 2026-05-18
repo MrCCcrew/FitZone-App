@@ -6,6 +6,26 @@ import type { Transaction, Customer } from "../types";
 interface BalanceCustomer extends Customer { tier?: string; }
 interface BalanceData { customers: BalanceCustomer[]; transactions: Transaction[]; }
 
+const REASON_LABELS: Record<string, string> = {
+  onboarding_email_verified: "التحقق من البريد الإلكتروني",
+  onboarding_profile_complete: "استكمال الملف الشخصي",
+  onboarding_first_booking: "أول حجز",
+  referral_bonus: "مكافأة إحالة",
+  referral_signup: "تسجيل عبر رابط إحالة",
+  membership_purchase: "شراء اشتراك",
+  first_purchase: "أول شراء",
+  birthday_bonus: "مكافأة عيد الميلاد",
+  manual_add: "إضافة يدوية",
+  manual_deduct: "خصم يدوي",
+  redeem: "استبدال نقاط",
+  topup: "شحن رصيد",
+};
+
+function translateReason(reason: string | null | undefined): string {
+  if (!reason) return "—";
+  return REASON_LABELS[reason] ?? reason;
+}
+
 const TYPE_CONFIG: Record<Transaction["type"], { label: string; color: string; sign: string }> = {
   earn:   { label: "اكتساب نقاط",  color: "text-green-400",  sign: "+" },
   redeem: { label: "استبدال نقاط", color: "text-yellow-400", sign: "-" },
@@ -246,7 +266,7 @@ export default function Balance() {
                       <td className={`py-3 px-4 font-black ${tx.amount !== 0 ? cfg.color : "text-gray-700"}`}>
                         {tx.amount !== 0 ? `${cfg.sign}${Math.abs(tx.amount)} ج.م` : "—"}
                       </td>
-                      <td className="py-3 px-4 text-gray-400">{tx.reason}</td>
+                      <td className="py-3 px-4 text-gray-400">{translateReason(tx.reason)}</td>
                       <td className="py-3 px-4 text-gray-500 text-xs">{tx.date}</td>
                     </tr>
                   );

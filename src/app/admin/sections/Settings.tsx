@@ -40,6 +40,9 @@ const FEATURE_LABELS: Record<string, string> = {
   partners: "الشركاء والعمولات",
   contracts: "التعاقدات والمناديب",
   referrals: "لينكات إحالة الاستاف",
+  nutrition: "التغذية",
+  suppliers: "الموردون",
+  "delivery-companies": "شركات التوصيل",
 };
 
 type EmployeeForm = {
