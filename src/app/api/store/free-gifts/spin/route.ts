@@ -5,15 +5,24 @@ import { getGameSettings, type RewardPoolItem } from "@/app/api/admin/store-free
 
 const COOKIE = "fitzone-game-token";
 
+const FALLBACK_POOL: RewardPoolItem[] = [
+  { id: "f1", labelAr: "هدية مجانية", labelEn: "Free Gift", type: "free_product", value: 0, weight: 30, active: true },
+  { id: "f2", labelAr: "50 نقطة", labelEn: "50 Points", type: "points", value: 50, weight: 25, active: true },
+  { id: "f3", labelAr: "شحن مجاني", labelEn: "Free Shipping", type: "free_shipping", value: 0, weight: 20, active: true },
+  { id: "f4", labelAr: "خصم 10%", labelEn: "10% Discount", type: "discount", value: 10, weight: 15, active: true },
+  { id: "f5", labelAr: "100 نقطة", labelEn: "100 Points", type: "points", value: 100, weight: 10, active: true },
+];
+
 function pickByWeight(pool: RewardPoolItem[]): { item: RewardPoolItem; index: number } {
   const active = pool.filter(r => r.active);
-  const total = active.reduce((s, r) => s + r.weight, 0);
+  const src = active.length > 0 ? active : FALLBACK_POOL;
+  const total = src.reduce((s, r) => s + r.weight, 0);
   let rand = Math.random() * total;
-  for (let i = 0; i < active.length; i++) {
-    rand -= active[i].weight;
-    if (rand <= 0) return { item: active[i], index: i };
+  for (let i = 0; i < src.length; i++) {
+    rand -= src[i].weight;
+    if (rand <= 0) return { item: src[i], index: i };
   }
-  return { item: active[active.length - 1], index: active.length - 1 };
+  return { item: src[src.length - 1], index: src.length - 1 };
 }
 
 export async function POST() {
@@ -31,12 +40,11 @@ export async function POST() {
 
   const { item, index } = pickByWeight(settings.rewardsPool);
 
-  // Generate card data for step 2 while we're here
-  const activePool = settings.rewardsPool.filter(r => r.active);
-  const cardsData = Array.from({ length: settings.maxCardPicksPerUser * 2 + 1 }, () => {
-    const { item: c } = pickByWeight(activePool.length > 0 ? settings.rewardsPool : settings.rewardsPool);
+  // Generate 3 card options for step 2
+  const cardsData = Array.from({ length: 3 }, () => {
+    const { item: c } = pickByWeight(settings.rewardsPool);
     return { type: c.type, value: c.value, labelAr: c.labelAr, revealed: false };
-  }).slice(0, 3);
+  });
 
   await dbx.storeFreeGiftsSession.update({
     where: { id: session.id },

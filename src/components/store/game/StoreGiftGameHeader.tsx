@@ -30,7 +30,7 @@ export function StoreGiftGameHeader({ expiresAt, onRulesClick }: Props) {
       </div>
 
       {/* Right side */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <StoreGiftCountdown expiresAt={expiresAt} />
         <button
           onClick={onRulesClick}
@@ -48,6 +48,25 @@ export function StoreGiftGameHeader({ expiresAt, onRulesClick }: Props) {
         >
           📋 القواعد
         </button>
+        <a
+          href="/store"
+          style={{
+            padding: "5px 12px",
+            borderRadius: 8,
+            border: "1px solid rgba(255,255,255,.15)",
+            background: "rgba(255,255,255,.06)",
+            color: "rgba(255,255,255,.6)",
+            fontSize: 12,
+            fontWeight: 700,
+            textDecoration: "none",
+            fontFamily: "Cairo,Tajawal,sans-serif",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+          }}
+        >
+          ← المتجر
+        </a>
       </div>
     </div>
   );
