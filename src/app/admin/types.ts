@@ -30,7 +30,8 @@ export type Section =
   | "nutrition"
   | "suppliers"
   | "orders"
-  | "delivery-companies";
+  | "delivery-companies"
+  | "store-campaigns";
 
 export interface AdminEmployee {
   id: string;
