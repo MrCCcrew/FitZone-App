@@ -61,8 +61,8 @@ export async function getGameSettings(): Promise<StoreFreeGiftsGameSettings> {
 }
 
 export async function GET() {
-  const err = await requireAdminFeature("store-free-gifts");
-  if (err) return err;
+  const { error } = await requireAdminFeature("store-free-gifts");
+  if (error) return error;
   const settings = await getGameSettings();
   const dbx = db as any;
   const totalSessions = await dbx.storeFreeGiftsSession.count().catch(() => 0);
@@ -71,8 +71,8 @@ export async function GET() {
 }
 
 export async function PUT(req: Request) {
-  const err = await requireAdminFeature("store-free-gifts");
-  if (err) return err;
+  const { error } = await requireAdminFeature("store-free-gifts");
+  if (error) return error;
   const body = await req.json() as StoreFreeGiftsGameSettings;
   await db.siteContent.upsert({
     where: { section: SECTION },
