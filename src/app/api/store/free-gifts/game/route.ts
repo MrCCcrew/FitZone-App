@@ -77,8 +77,9 @@ export async function GET(req: NextRequest) {
     id: r.id, labelAr: r.labelAr, type: r.type,
   }));
 
+  const baseUrl = (process.env.NEXTAUTH_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "https://fitzoneland.com").replace(/\/$/, "");
   const referralLink = referralCode
-    ? `${process.env.NEXT_PUBLIC_BASE_URL ?? ""}/store?ref=${referralCode}`
+    ? `${baseUrl}/r/${referralCode}`
     : null;
 
   const res = NextResponse.json({
