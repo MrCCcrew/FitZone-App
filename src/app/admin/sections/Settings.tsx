@@ -209,7 +209,6 @@ const AUDIT_DETAIL_LABELS: Record<string, string> = {
   deletedProducts: "منتجات محذوفة",
   deletedOrders: "طلبات محذوفة",
   deletedSessions: "جلسات محذوفة",
-  className: "الكلاس",
   token: "الرمز",
   sessionId: "معرف الجلسة",
   nutritionistId: "معرف الدكتورة",
