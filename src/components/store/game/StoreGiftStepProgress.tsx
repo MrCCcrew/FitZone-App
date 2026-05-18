@@ -17,15 +17,15 @@ export function StoreGiftStepProgress({ step }: { step: number }) {
               display: "flex", alignItems: "center", justifyContent: "center",
               fontSize: 20,
               background: step > s.n ? "linear-gradient(135deg,#10b981,#059669)"
-                : step === s.n ? "linear-gradient(135deg,#f59e0b,#f97316)"
+                : step === s.n ? "linear-gradient(135deg,#e91e63,#c2185b)"
                 : "rgba(255,255,255,.1)",
-              border: step === s.n ? "2px solid #fbbf24" : "2px solid transparent",
-              boxShadow: step === s.n ? "0 0 16px rgba(251,191,36,.5)" : "none",
+              border: step === s.n ? "2px solid #f06292" : "2px solid transparent",
+              boxShadow: step === s.n ? "0 0 16px rgba(233,30,99,.5)" : "none",
               transition: "all .3s",
             }}>
               {step > s.n ? "✓" : s.icon}
             </div>
-            <span style={{ fontSize: 11, fontWeight: 700, color: step === s.n ? "#fbbf24" : step > s.n ? "#10b981" : "rgba(255,255,255,.4)" }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: step === s.n ? "#f06292" : step > s.n ? "#10b981" : "rgba(255,255,255,.4)" }}>
               {s.label}
             </span>
           </div>

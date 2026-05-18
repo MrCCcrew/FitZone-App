@@ -73,7 +73,7 @@ export function StoreGiftGameEntryPopup() {
           style={{
             width: "100%", maxWidth: 420,
             background: "linear-gradient(145deg,#1a0030,#0d001a)",
-            border: "1.5px solid rgba(249,115,22,.4)",
+            border: "1.5px solid rgba(233,30,99,.4)",
             borderRadius: "24px 24px 20px 20px",
             padding: "28px 24px 24px",
             animation: "sgep-in .45s cubic-bezier(.4,0,.2,1) both",
@@ -84,7 +84,7 @@ export function StoreGiftGameEntryPopup() {
           {/* Shimmer strip */}
           <div style={{
             position: "absolute", top: 0, left: 0, right: 0, height: 3,
-            background: "linear-gradient(90deg,#f59e0b,#f97316,#fbbf24,#f59e0b)",
+            background: "linear-gradient(90deg,#e91e63,#c2185b,#f06292,#e91e63)",
             backgroundSize: "200% auto",
             animation: "sgep-shine 2s linear infinite",
           }} />
@@ -120,10 +120,10 @@ export function StoreGiftGameEntryPopup() {
             style={{
               width: "100%", padding: "14px",
               borderRadius: 14, border: "none",
-              background: "linear-gradient(135deg,#f59e0b,#f97316)",
+              background: "linear-gradient(135deg,#e91e63,#c2185b)",
               color: "#fff", fontSize: 16, fontWeight: 900,
               cursor: "pointer", fontFamily: "Cairo,Tajawal,sans-serif",
-              boxShadow: "0 6px 24px rgba(249,115,22,.45)",
+              boxShadow: "0 6px 24px rgba(233,30,99,.45)",
               marginBottom: 10,
             }}
           >
