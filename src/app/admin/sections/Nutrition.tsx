@@ -433,7 +433,8 @@ function SessionCard({ session, onAction, onDelete }: { session: NutritionSessio
 }
 
 // ── Main Component ─────────────────────────────────────────────────────────────
-export default function Nutrition() {
+export default function Nutrition({ adminRole = "admin" }: { adminRole?: string }) {
+  const isNutritionist = adminRole === "nutritionist";
   const [tab, setTab] = useState<"sessions" | "profiles">("sessions");
   const [sessions, setSessions] = useState<NutritionSessionRow[]>([]);
   const [profiles, setProfiles] = useState<NutritionistProfileRow[]>([]);
@@ -446,7 +447,8 @@ export default function Nutrition() {
   const load = useCallback(async () => {
     setLoading(true);
     if (tab === "sessions") {
-      const res = await fetch(`/api/admin/nutrition?view=sessions&status=${statusFilter}`);
+      const url = `/api/admin/nutrition?view=sessions&status=${statusFilter}${isNutritionist ? "&ownOnly=true" : ""}`;
+      const res = await fetch(url);
       if (res.ok) { const d = await res.json() as { sessions: NutritionSessionRow[] }; setSessions(d.sessions); }
     } else {
       const [profilesRes, staffRes] = await Promise.all([
@@ -473,7 +475,9 @@ export default function Nutrition() {
       {/* Tabs */}
       <div style={{ display: "flex", gap: 10 }}>
         <button style={btnSt(tab === "sessions")} onClick={() => setTab("sessions")}>الطلبات</button>
-        <button style={btnSt(tab === "profiles")} onClick={() => setTab("profiles")}>إدارة الدكتورة</button>
+        {!isNutritionist && (
+          <button style={btnSt(tab === "profiles")} onClick={() => setTab("profiles")}>إدارة الدكتورة</button>
+        )}
       </div>
 
       {/* Sessions Tab */}
@@ -509,8 +513,8 @@ export default function Nutrition() {
         </>
       )}
 
-      {/* Profiles Tab */}
-      {tab === "profiles" && (
+      {/* Profiles Tab — admin only */}
+      {tab === "profiles" && !isNutritionist && (
         <>
           <button
             onClick={() => { setEditingProfile(null); setShowProfileForm(true); }}
