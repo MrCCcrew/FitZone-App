@@ -2285,7 +2285,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
       }
       if (!todayPausedRef.current && todaySegmentWidthRef.current > 0) {
         todayOffsetRef.current = wrapCarouselOffset(
-          todayOffsetRef.current + 24 * elapsed,
+          todayOffsetRef.current + 70 * elapsed,
           todaySegmentWidthRef.current,
         );
         if (todayTrackRef.current) {
