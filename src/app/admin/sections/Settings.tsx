@@ -98,6 +98,41 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   settle: "تسوية",
   reset: "إعادة تعيين",
   patch: "تحديث",
+  // nutrition
+  create_nutritionist_profile: "إنشاء ملف دكتورة التغذية",
+  update_nutritionist_profile: "تعديل ملف دكتورة التغذية",
+  delete_nutritionist_profile: "حذف ملف دكتورة التغذية",
+  delete_nutrition_session: "حذف جلسة تغذية",
+  nutrition_approve: "قبول جلسة تغذية",
+  nutrition_reject: "رفض جلسة تغذية",
+  nutrition_propose_slots: "اقتراح مواعيد",
+  nutrition_complete: "إتمام جلسة تغذية",
+  nutrition_cancel: "إلغاء جلسة تغذية",
+  nutritionist_approve: "قبول جلسة (دكتورة)",
+  nutritionist_reject: "رفض جلسة (دكتورة)",
+  nutritionist_propose_slots: "اقتراح مواعيد (دكتورة)",
+  nutritionist_complete: "إتمام جلسة (دكتورة)",
+  nutritionist_cancel: "إلغاء جلسة (دكتورة)",
+  // suppliers
+  create_supplier: "إضافة مورد",
+  update_supplier: "تعديل مورد",
+  delete_supplier: "حذف مورد",
+  activate_supplier: "تفعيل مورد",
+  deactivate_supplier: "تعطيل مورد",
+  // delivery companies
+  create_delivery_company: "إضافة شركة توصيل",
+  update_delivery_company: "تعديل شركة توصيل",
+  delete_delivery_company: "حذف شركة توصيل",
+  activate_delivery_company: "تفعيل شركة توصيل",
+  deactivate_delivery_company: "تعطيل شركة توصيل",
+  // contracts & partners
+  create_partner: "إضافة شريك",
+  create_agent: "إضافة مندوب",
+  create_contracts_manager: "إضافة مدير عقود",
+  settle_commissions: "تسوية عمولات",
+  settle_manager_commissions: "تسوية عمولات المدير",
+  // orders
+  update_order: "تعديل طلب",
 };
 
 const AUDIT_TARGET_LABELS: Record<string, string> = {
@@ -107,16 +142,26 @@ const AUDIT_TARGET_LABELS: Record<string, string> = {
   agentCommission: "عمولة موظف",
   booking: "حجز",
   user: "مستخدم",
+  customer: "عميل",
   order: "طلب",
+  Order: "طلب",
   product: "منتج",
   discount: "كود خصم",
+  discount_code: "كود خصم",
   trainer: "مدربة",
   expense: "مصروف",
   feeRule: "قاعدة عمولة",
   membership: "باقة اشتراك",
+  offer: "عرض",
   privateSession: "جلسة خاصة",
   complaint: "شكوى",
   notification: "إشعار",
+  NutritionSession: "جلسة تغذية",
+  NutritionistProfile: "دكتورة التغذية",
+  Supplier: "مورد",
+  DeliveryCompany: "شركة توصيل",
+  contracts_manager: "مدير عقود",
+  sales_agent: "مندوب مبيعات",
 };
 
 const AUDIT_DETAIL_LABELS: Record<string, string> = {
