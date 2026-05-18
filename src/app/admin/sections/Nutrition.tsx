@@ -436,7 +436,7 @@ function SessionCard({ session, onAction, onDelete }: { session: NutritionSessio
 export default function Nutrition({ adminRole = "admin" }: { adminRole?: string }) {
   void adminRole;
   const [isOwnProfile, setIsOwnProfile] = useState(false);
-  const [tab, setTab] = useState<"sessions" | "profiles">("sessions");
+  const [tab, setTab] = useState<"sessions" | "profiles" | "my">("sessions");
   const [sessions, setSessions] = useState<NutritionSessionRow[]>([]);
   const [profiles, setProfiles] = useState<NutritionistProfileRow[]>([]);
   const [staffUsers, setStaffUsers] = useState<{ id: string; name: string; email: string }[]>([]);
@@ -447,7 +447,7 @@ export default function Nutrition({ adminRole = "admin" }: { adminRole?: string 
 
   const load = useCallback(async () => {
     setLoading(true);
-    if (tab === "sessions") {
+    if (tab === "sessions" || tab === "my") {
       const res = await fetch(`/api/admin/nutrition?view=sessions&status=${statusFilter}`);
       if (res.ok) {
         const d = await res.json() as { sessions: NutritionSessionRow[]; hasOwnProfile?: boolean };
@@ -467,6 +467,92 @@ export default function Nutrition({ adminRole = "admin" }: { adminRole?: string 
 
   useEffect(() => { load(); }, [load]);
 
+  // ── My Settings state ──────────────────────────────────────────────────────
+  const [mySection, setMySection] = useState<"slots" | "questions" | "links">("slots");
+  const [myLoading, setMyLoading] = useState(false);
+  const [mySlots, setMySlots] = useState<{ label: string; day: string; time: string }[]>([]);
+  const [myQuestions, setMyQuestions] = useState<{ id: string; label: string; type: string; required: boolean; options?: string[] }[]>([]);
+  const [myLinks, setMyLinks] = useState<{ id: string; token: string; label: string | null; clickCount: number; isActive: boolean }[]>([]);
+  const [myCommissions, setMyCommissions] = useState<{ id: string; amount: number; status: string; createdAt: string; userMembership?: { user?: { name?: string } } }[]>([]);
+  const [myCommissionSummary, setMyCommissionSummary] = useState({ totalEarned: 0, pendingEarned: 0 });
+  const [myCommissionRate, setMyCommissionRate] = useState(0);
+  const [myCommissionType, setMyCommissionType] = useState("percentage");
+  const [newSlotLabel, setNewSlotLabel] = useState("");
+  const [newSlotDay, setNewSlotDay] = useState("الأحد");
+  const [newSlotTime, setNewSlotTime] = useState("10:00");
+  const [slotsSaving, setSlotsSaving] = useState(false);
+  const [slotsMsg, setSlotsMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [newQLabel, setNewQLabel] = useState("");
+  const [newQType, setNewQType] = useState("text");
+  const [newQRequired, setNewQRequired] = useState(false);
+  const [newQOptions, setNewQOptions] = useState("");
+  const [questionsSaving, setQuestionsSaving] = useState(false);
+  const [questionsMsg, setQuestionsMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [newLinkLabel, setNewLinkLabel] = useState("");
+  const [linkCreating, setLinkCreating] = useState(false);
+  const [linksMsg, setLinksMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const loadMy = useCallback(async () => {
+    setMyLoading(true);
+    const [sRes, lRes] = await Promise.all([
+      fetch("/api/nutritionist/slots", { cache: "no-store" }),
+      fetch("/api/nutritionist/links", { cache: "no-store" }),
+    ]);
+    const sData = await sRes.json().catch(() => ({})) as { profile?: { slots?: typeof mySlots; questions?: typeof myQuestions; commissionRate?: number; commissionType?: string } };
+    const lData = await lRes.json().catch(() => ({})) as { links?: typeof myLinks; commissions?: typeof myCommissions; summary?: typeof myCommissionSummary };
+    if (sData.profile) {
+      setMySlots(sData.profile.slots ?? []);
+      setMyQuestions(sData.profile.questions ?? []);
+      setMyCommissionRate(sData.profile.commissionRate ?? 0);
+      setMyCommissionType(sData.profile.commissionType ?? "percentage");
+    }
+    if (lData.links) {
+      setMyLinks(lData.links);
+      setMyCommissions(lData.commissions ?? []);
+      setMyCommissionSummary(lData.summary ?? { totalEarned: 0, pendingEarned: 0 });
+    }
+    setMyLoading(false);
+  }, []);
+
+  useEffect(() => { if (tab === "my") void loadMy(); }, [tab, loadMy]);
+
+  const saveSlots = async () => {
+    setSlotsSaving(true); setSlotsMsg(null);
+    const res = await fetch("/api/nutritionist/slots", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ slots: mySlots }) });
+    setSlotsMsg(res.ok ? { ok: true, text: "تم حفظ المواعيد ✓" } : { ok: false, text: "خطأ في الحفظ" });
+    setSlotsSaving(false);
+  };
+
+  const saveQuestions = async () => {
+    setQuestionsSaving(true); setQuestionsMsg(null);
+    const res = await fetch("/api/nutritionist/slots", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ questions: myQuestions }) });
+    setQuestionsMsg(res.ok ? { ok: true, text: "تم حفظ الأسئلة ✓" } : { ok: false, text: "خطأ في الحفظ" });
+    setQuestionsSaving(false);
+  };
+
+  const createLink = async () => {
+    setLinkCreating(true); setLinksMsg(null);
+    const res = await fetch("/api/nutritionist/links", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ label: newLinkLabel.trim() || null }) });
+    const d = await res.json().catch(() => ({})) as { link?: (typeof myLinks)[0] };
+    if (res.ok && d.link) { setMyLinks((prev) => [d.link!, ...prev]); setNewLinkLabel(""); }
+    else setLinksMsg({ ok: false, text: "خطأ في الإنشاء" });
+    setLinkCreating(false);
+  };
+
+  const toggleLink = async (link: (typeof myLinks)[0]) => {
+    const res = await fetch("/api/nutritionist/links", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: link.id, isActive: !link.isActive }) });
+    if (res.ok) setMyLinks((prev) => prev.map((l) => l.id === link.id ? { ...l, isActive: !l.isActive } : l));
+  };
+
+  const deleteLink = async (id: string) => {
+    if (!confirm("حذف هذا الرابط؟")) return;
+    const res = await fetch(`/api/nutritionist/links?id=${id}`, { method: "DELETE" });
+    if (res.ok) setMyLinks((prev) => prev.filter((l) => l.id !== id));
+  };
+
+  // ── helpers ─────────────────────────────────────────────────────────────────
+  const inp: React.CSSProperties = { background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.12)", borderRadius: 8, padding: "8px 12px", fontSize: 13, color: "#fff", outline: "none", width: "100%", boxSizing: "border-box" };
+
   const statuses = ["all", "pending", "awaiting_slot", "approved", "paid", "completed", "rejected", "cancelled"];
 
   const btnSt = (active: boolean): React.CSSProperties => ({
@@ -479,6 +565,9 @@ export default function Nutrition({ adminRole = "admin" }: { adminRole?: string 
       {/* Tabs */}
       <div style={{ display: "flex", gap: 10 }}>
         <button style={btnSt(tab === "sessions")} onClick={() => setTab("sessions")}>الطلبات</button>
+        {isOwnProfile && (
+          <button style={btnSt(tab === "my")} onClick={() => setTab("my")}>⚙️ إعداداتي</button>
+        )}
         {!isOwnProfile && (
           <button style={btnSt(tab === "profiles")} onClick={() => setTab("profiles")}>إدارة الدكتورة</button>
         )}
@@ -515,6 +604,170 @@ export default function Nutrition({ adminRole = "admin" }: { adminRole?: string 
             </div>
           )}
         </>
+      )}
+
+      {/* My Settings Tab */}
+      {tab === "my" && isOwnProfile && (
+        <div style={{ display: "grid", gap: 16 }}>
+          {/* Sub-tabs */}
+          <div style={{ display: "flex", gap: 8 }}>
+            {(["slots", "questions", "links"] as const).map((s) => (
+              <button key={s} style={{ ...btnSt(mySection === s), borderRadius: 8, padding: "6px 14px", fontSize: 12 }} onClick={() => setMySection(s)}>
+                {s === "slots" ? "📅 المواعيد" : s === "questions" ? "❓ أسئلة الحجز" : "🔗 روابط الإحالة"}
+              </button>
+            ))}
+          </div>
+
+          {myLoading && <div style={{ color: "#9a8a90", padding: 20, textAlign: "center" }}>جارٍ التحميل...</div>}
+
+          {/* SLOTS */}
+          {!myLoading && mySection === "slots" && (
+            <div style={{ display: "grid", gap: 12 }}>
+              <div style={{ fontSize: 12, color: "#9a8a90" }}>المواعيد المتاحة للعملاء عند الحجز</div>
+              {mySlots.length === 0 && <div style={{ color: "#9a8a90", fontSize: 13 }}>لا توجد مواعيد بعد</div>}
+              {mySlots.map((slot, i) => (
+                <div key={i} style={{ background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 10, padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 13, color: "#fff" }}>{slot.label}</div>
+                    <div style={{ fontSize: 12, color: "#9a8a90" }}>{slot.day} — {slot.time}</div>
+                  </div>
+                  <button onClick={() => setMySlots((p) => p.filter((_, idx) => idx !== i))} style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: 16 }}>🗑</button>
+                </div>
+              ))}
+              <div style={{ background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 10, padding: 14, display: "grid", gap: 8 }}>
+                <div style={{ fontWeight: 700, fontSize: 13, color: "#c9b9c1" }}>إضافة موعد جديد</div>
+                <input style={inp} placeholder="وصف الموعد (مثال: الأحد 10 صباحاً)" value={newSlotLabel} onChange={(e) => setNewSlotLabel(e.target.value)} />
+                <div style={{ display: "flex", gap: 8 }}>
+                  <select style={{ ...inp, flex: 1 }} value={newSlotDay} onChange={(e) => setNewSlotDay(e.target.value)}>
+                    {["الأحد","الاثنين","الثلاثاء","الأربعاء","الخميس","الجمعة","السبت"].map((d) => <option key={d} value={d}>{d}</option>)}
+                  </select>
+                  <input style={{ ...inp, flex: 1 }} type="time" value={newSlotTime} onChange={(e) => setNewSlotTime(e.target.value)} />
+                </div>
+                <button onClick={() => { if (newSlotLabel.trim()) { setMySlots((p) => [...p, { label: newSlotLabel.trim(), day: newSlotDay, time: newSlotTime }]); setNewSlotLabel(""); } }} style={{ padding: "8px 16px", background: "#e91e63", border: "none", borderRadius: 8, color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>+ إضافة</button>
+              </div>
+              {slotsMsg && <div style={{ padding: "8px 12px", borderRadius: 8, background: slotsMsg.ok ? "rgba(34,197,94,.15)" : "rgba(239,68,68,.15)", color: slotsMsg.ok ? "#22c55e" : "#ef4444", fontSize: 13 }}>{slotsMsg.text}</div>}
+              <button onClick={() => void saveSlots()} disabled={slotsSaving} style={{ padding: "10px 20px", background: "#e91e63", border: "none", borderRadius: 10, color: "#fff", fontWeight: 700, cursor: "pointer", opacity: slotsSaving ? 0.6 : 1 }}>
+                {slotsSaving ? "جارٍ الحفظ..." : "💾 حفظ المواعيد"}
+              </button>
+            </div>
+          )}
+
+          {/* QUESTIONS */}
+          {!myLoading && mySection === "questions" && (
+            <div style={{ display: "grid", gap: 12 }}>
+              <div style={{ fontSize: 12, color: "#9a8a90" }}>أسئلة إضافية تظهر للعميل عند الحجز</div>
+              {myQuestions.length === 0 && <div style={{ color: "#9a8a90", fontSize: 13 }}>لا توجد أسئلة بعد</div>}
+              {myQuestions.map((q, i) => (
+                <div key={q.id} style={{ background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 10, padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 13, color: "#fff" }}>{q.label}</div>
+                    <div style={{ fontSize: 12, color: "#9a8a90" }}>{q.type}{q.required ? " — مطلوب" : ""}{q.options?.length ? ` — [${q.options.join(", ")}]` : ""}</div>
+                  </div>
+                  <button onClick={() => setMyQuestions((p) => p.filter((_, idx) => idx !== i))} style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: 16 }}>🗑</button>
+                </div>
+              ))}
+              <div style={{ background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 10, padding: 14, display: "grid", gap: 8 }}>
+                <div style={{ fontWeight: 700, fontSize: 13, color: "#c9b9c1" }}>إضافة سؤال جديد</div>
+                <input style={inp} placeholder="نص السؤال" value={newQLabel} onChange={(e) => setNewQLabel(e.target.value)} />
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <select style={{ ...inp, flex: 1 }} value={newQType} onChange={(e) => setNewQType(e.target.value)}>
+                    <option value="text">نص قصير</option>
+                    <option value="textarea">نص طويل</option>
+                    <option value="select">قائمة منسدلة</option>
+                    <option value="radio">اختيار واحد</option>
+                    <option value="checkbox">اختيار متعدد</option>
+                  </select>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "#c9b9c1", whiteSpace: "nowrap" }}>
+                    <input type="checkbox" checked={newQRequired} onChange={(e) => setNewQRequired(e.target.checked)} />
+                    مطلوب
+                  </label>
+                </div>
+                {["select","radio","checkbox"].includes(newQType) && (
+                  <input style={inp} placeholder="الخيارات مفصولة بفاصلة" value={newQOptions} onChange={(e) => setNewQOptions(e.target.value)} />
+                )}
+                <button onClick={() => { if (!newQLabel.trim()) return; const opts = newQOptions.split(",").map((s) => s.trim()).filter(Boolean); setMyQuestions((p) => [...p, { id: Date.now().toString(), label: newQLabel.trim(), type: newQType, required: newQRequired, options: opts.length ? opts : undefined }]); setNewQLabel(""); setNewQOptions(""); setNewQRequired(false); }} style={{ padding: "8px 16px", background: "#e91e63", border: "none", borderRadius: 8, color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>+ إضافة سؤال</button>
+              </div>
+              {questionsMsg && <div style={{ padding: "8px 12px", borderRadius: 8, background: questionsMsg.ok ? "rgba(34,197,94,.15)" : "rgba(239,68,68,.15)", color: questionsMsg.ok ? "#22c55e" : "#ef4444", fontSize: 13 }}>{questionsMsg.text}</div>}
+              <button onClick={() => void saveQuestions()} disabled={questionsSaving} style={{ padding: "10px 20px", background: "#e91e63", border: "none", borderRadius: 10, color: "#fff", fontWeight: 700, cursor: "pointer", opacity: questionsSaving ? 0.6 : 1 }}>
+                {questionsSaving ? "جارٍ الحفظ..." : "💾 حفظ الأسئلة"}
+              </button>
+            </div>
+          )}
+
+          {/* REFERRAL LINKS */}
+          {!myLoading && mySection === "links" && (
+            <div style={{ display: "grid", gap: 14 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <div style={{ background: "rgba(34,197,94,.1)", border: "1px solid rgba(34,197,94,.2)", borderRadius: 12, padding: 14 }}>
+                  <div style={{ fontSize: 11, color: "#9a8a90", marginBottom: 4 }}>إجمالي العمولات</div>
+                  <div style={{ fontWeight: 800, fontSize: 20, color: "#22c55e" }}>{myCommissionSummary.totalEarned.toFixed(2)} ج.م</div>
+                </div>
+                <div style={{ background: "rgba(245,197,66,.1)", border: "1px solid rgba(245,197,66,.2)", borderRadius: 12, padding: 14 }}>
+                  <div style={{ fontSize: 11, color: "#9a8a90", marginBottom: 4 }}>في الانتظار</div>
+                  <div style={{ fontWeight: 800, fontSize: 20, color: "#f5c542" }}>{myCommissionSummary.pendingEarned.toFixed(2)} ج.م</div>
+                </div>
+              </div>
+              <div style={{ fontSize: 12, color: "#9a8a90", background: "rgba(255,255,255,.04)", borderRadius: 8, padding: "8px 12px" }}>
+                نسبة عمولتك: {myCommissionRate}{myCommissionType === "percentage" ? "%" : " ج.م"} لكل اشتراك عبر رابطك
+              </div>
+              <div style={{ background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 12, padding: 14, display: "grid", gap: 10 }}>
+                <div style={{ fontWeight: 700, fontSize: 13, color: "#fff" }}>إنشاء رابط إحالة جديد</div>
+                <input style={inp} placeholder="تسمية اختيارية للرابط" value={newLinkLabel} onChange={(e) => setNewLinkLabel(e.target.value)} />
+                <button onClick={() => void createLink()} disabled={linkCreating} style={{ padding: "8px 16px", background: "#e91e63", border: "none", borderRadius: 8, color: "#fff", fontWeight: 700, cursor: "pointer", opacity: linkCreating ? 0.6 : 1, fontSize: 13 }}>
+                  {linkCreating ? "جارٍ الإنشاء..." : "+ إنشاء رابط"}
+                </button>
+              </div>
+              {linksMsg && <div style={{ padding: "8px 12px", borderRadius: 8, background: linksMsg.ok ? "rgba(34,197,94,.15)" : "rgba(239,68,68,.15)", color: linksMsg.ok ? "#22c55e" : "#ef4444", fontSize: 13 }}>{linksMsg.text}</div>}
+              {myLinks.length === 0 ? (
+                <div style={{ color: "#9a8a90", fontSize: 13 }}>لا توجد روابط بعد</div>
+              ) : (
+                myLinks.map((link) => {
+                  const url = `https://fitzoneland.com/register?nutritionRef=${link.token}`;
+                  return (
+                    <div key={link.id} style={{ background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 12, padding: 14, display: "grid", gap: 8 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <div>
+                          <div style={{ fontWeight: 700, fontSize: 13, color: "#fff" }}>{link.label ?? link.token}</div>
+                          <div style={{ fontSize: 12, color: "#9a8a90" }}>{link.token} — {link.clickCount} اشتراك</div>
+                        </div>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <button onClick={() => void toggleLink(link)} style={{ padding: "5px 12px", borderRadius: 8, border: "none", cursor: "pointer", fontWeight: 700, fontSize: 12, background: link.isActive ? "rgba(239,68,68,.15)" : "rgba(34,197,94,.15)", color: link.isActive ? "#ef4444" : "#22c55e" }}>
+                            {link.isActive ? "تعطيل" : "تفعيل"}
+                          </button>
+                          <button onClick={() => void deleteLink(link.id)} style={{ padding: "5px 10px", borderRadius: 8, border: "none", cursor: "pointer", background: "rgba(255,255,255,.07)", color: "#ef4444", fontSize: 13 }}>🗑</button>
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(0,0,0,.2)", borderRadius: 8, padding: "6px 10px" }}>
+                        <span style={{ fontSize: 12, color: "#9a8a90", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{url}</span>
+                        <button onClick={() => { void navigator.clipboard.writeText(url); setLinksMsg({ ok: true, text: "تم النسخ!" }); }} style={{ background: "none", border: "none", color: "#3b82f6", cursor: "pointer", fontWeight: 700, fontSize: 12, whiteSpace: "nowrap" }}>📋 نسخ</button>
+                      </div>
+                      {!link.isActive && <div style={{ fontSize: 12, color: "#f5c542" }}>⚠ هذا الرابط معطل</div>}
+                    </div>
+                  );
+                })
+              )}
+              {myCommissions.length > 0 && (
+                <div style={{ marginTop: 8 }}>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: "#fff", marginBottom: 8 }}>سجل العمولات</div>
+                  <div style={{ display: "grid", gap: 8 }}>
+                    {myCommissions.slice(0, 20).map((c) => (
+                      <div key={c.id} style={{ background: "rgba(255,255,255,.04)", borderRadius: 10, padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <div>
+                          <div style={{ fontWeight: 600, fontSize: 13, color: "#fff" }}>{c.userMembership?.user?.name ?? "—"}</div>
+                          <div style={{ fontSize: 12, color: "#9a8a90" }}>{new Date(c.createdAt).toLocaleDateString("ar-EG")}</div>
+                        </div>
+                        <div style={{ textAlign: "left" }}>
+                          <div style={{ fontWeight: 800, color: "#22c55e", fontSize: 14 }}>{c.amount.toFixed(2)} ج.م</div>
+                          <div style={{ fontSize: 12, color: c.status === "settled" ? "#9a8a90" : "#f5c542" }}>{c.status === "settled" ? "مسدد" : "في الانتظار"}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       )}
 
       {/* Profiles Tab — admin only */}
