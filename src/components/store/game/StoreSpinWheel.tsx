@@ -163,13 +163,13 @@ export function StoreSpinWheel({ segments, onSpin, disabled }: Props) {
             border: "none",
             background: spinning || disabled
               ? "rgba(255,255,255,.1)"
-              : "linear-gradient(135deg,#f59e0b,#f97316)",
+              : "linear-gradient(135deg,#e91e63,#c2185b)",
             color: spinning || disabled ? "rgba(255,255,255,.4)" : "#fff",
             fontSize: 18,
             fontWeight: 900,
             cursor: spinning || disabled ? "not-allowed" : "pointer",
             fontFamily: "Cairo,Tajawal,sans-serif",
-            boxShadow: spinning || disabled ? "none" : "0 6px 24px rgba(249,115,22,.45)",
+            boxShadow: spinning || disabled ? "none" : "0 6px 24px rgba(233,30,99,.45)",
             animation: !spinning && !disabled ? "ssw-btn-pulse 2s ease-in-out infinite" : "none",
             transition: "all .25s",
           }}

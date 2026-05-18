@@ -7,8 +7,8 @@ const CSS = `
   100%{transform:scale(1);opacity:1}
 }
 @keyframes sgsb-confirm-glow {
-  0%,100%{box-shadow:0 0 0 0 rgba(249,115,22,0)}
-  50%{box-shadow:0 0 0 8px rgba(249,115,22,.25)}
+  0%,100%{box-shadow:0 0 0 0 rgba(233,30,99,0)}
+  50%{box-shadow:0 0 0 8px rgba(233,30,99,.25)}
 }
 @media(prefers-reduced-motion:reduce){
   .sgsb-slot{animation:none!important}
@@ -44,7 +44,7 @@ export function StoreGiftSlotsBar({ slots, selected, products, onConfirm, confir
         bottom: 0,
         left: 0,
         right: 0,
-        background: "linear-gradient(180deg,transparent,rgba(8,0,18,.95) 20%,rgba(8,0,18,1))",
+        background: "linear-gradient(180deg,transparent,rgba(26,0,12,.95) 20%,rgba(26,0,12,1))",
         padding: "16px 16px 20px",
         zIndex: 100,
         backdropFilter: "blur(12px)",
@@ -62,8 +62,8 @@ export function StoreGiftSlotsBar({ slots, selected, products, onConfirm, confir
                 className={filled ? "sgsb-slot" : ""}
                 style={{
                   width: 52, height: 52, borderRadius: 10,
-                  border: filled ? "2px solid #f97316" : "2px dashed rgba(255,255,255,.2)",
-                  background: filled ? "rgba(249,115,22,.12)" : "rgba(255,255,255,.04)",
+                  border: filled ? "2px solid #e91e63" : "2px dashed rgba(255,255,255,.2)",
+                  background: filled ? "rgba(233,30,99,.12)" : "rgba(255,255,255,.04)",
                   display: "flex", alignItems: "center", justifyContent: "center",
                   overflow: "hidden", flexShrink: 0,
                   animation: filled ? "sgsb-slot-pop .4s ease-out both" : "none",
@@ -94,12 +94,12 @@ export function StoreGiftSlotsBar({ slots, selected, products, onConfirm, confir
             width: "100%", maxWidth: 400, display: "block", margin: "0 auto",
             padding: "14px", borderRadius: 14, border: "none",
             background: ready && !confirming
-              ? "linear-gradient(135deg,#f59e0b,#f97316)"
+              ? "linear-gradient(135deg,#e91e63,#c2185b)"
               : "rgba(255,255,255,.08)",
             color: ready && !confirming ? "#fff" : "rgba(255,255,255,.3)",
             fontSize: 16, fontWeight: 900, cursor: ready && !confirming ? "pointer" : "not-allowed",
             fontFamily: "Cairo,Tajawal,sans-serif",
-            boxShadow: ready ? "0 6px 24px rgba(249,115,22,.4)" : "none",
+            boxShadow: ready ? "0 6px 24px rgba(233,30,99,.4)" : "none",
             animation: ready && !confirming ? "sgsb-confirm-glow 2s ease-in-out infinite" : "none",
             transition: "all .25s",
           }}

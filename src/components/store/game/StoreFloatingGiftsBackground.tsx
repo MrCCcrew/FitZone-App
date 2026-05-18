@@ -9,7 +9,7 @@ const CSS = `
 @media(prefers-reduced-motion:reduce){.sfg-item{animation:none!important}}
 `;
 
-const ITEMS = ["🎁","🎀","✨","🎊","🎉","⭐","🏆","💫"];
+const ITEMS = ["🎁","💪","✨","🏋️","🎉","⭐","🏆","🎀"];
 
 export function StoreFloatingGiftsBackground() {
   const positions = [

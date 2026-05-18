@@ -178,7 +178,7 @@ export function StoreFreeGiftsGame() {
   );
 
   return (
-    <div style={{ position: "relative", minHeight: "100vh", overflow: "hidden", background: "linear-gradient(180deg,#0d0020 0%,#080012 100%)" }}>
+    <div style={{ position: "relative", minHeight: "100vh", overflow: "hidden", background: "linear-gradient(160deg,#1a0010 0%,#2d0520 40%,#1a000c 100%)" }}>
       <StoreFloatingGiftsBackground />
       <StoreConfettiLayer active={showConfetti} />
       {showRules && <StoreGiftRulesModal onClose={() => setShowRules(false)} />}
