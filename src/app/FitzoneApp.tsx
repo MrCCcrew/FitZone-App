@@ -1,6 +1,10 @@
 ﻿'use client';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useLang } from "@/lib/language";
+import { StoreGiftCampaignCard } from "@/components/store/StoreGiftCampaignCard";
+import { StoreGiftToast, dispatchGiftToast } from "@/components/store/StoreGiftToast";
+import { StoreGiftBadge } from "@/components/store/StoreGiftBadge";
+import { useStoreGiftCampaign } from "@/components/store/useStoreGiftCampaign";
 
 // ─── FIT ZONE BRAND COLORS ─────────────────────────────────────────────────
 const C = {
@@ -6841,13 +6845,16 @@ const useWishlist = () => {
 
 // ─── PRODUCT MINI CARD ────────────────────────────────────────────────────────
 const ProductMiniCard = ({
-  product, navigate, wishlist, lang, t,
+  product, navigate, wishlist, lang, t, giftCampaignActive, giftCampaignMin, giftRewardLabel,
 }: {
   product: StoreProduct;
   navigate: (p: string) => void;
   wishlist: ReturnType<typeof useWishlist>;
   lang: string;
   t: (ar: string, en: string) => string;
+  giftCampaignActive?: boolean;
+  giftCampaignMin?: number;
+  giftRewardLabel?: string;
 }) => {
   const outOfStock = typeof product.stock === "number" && product.stock <= 0;
   const cardId = product.id ?? product.name;
@@ -6894,6 +6901,12 @@ const ProductMiniCard = ({
             {product.badge}
           </span>
         )}
+        {/* Gift campaign badge */}
+        {giftCampaignActive && !outOfStock && (
+          <div style={{ position: "absolute", bottom: 8, left: 8, zIndex: 2 }}>
+            <StoreGiftBadge active />
+          </div>
+        )}
         {/* Out of stock overlay */}
         {outOfStock && (
           <div style={{ position: "absolute", inset: 0, zIndex: 3, background: "rgba(0,0,0,.45)", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -6923,7 +6936,21 @@ const ProductMiniCard = ({
         <button
           style={{ width: "100%", padding: "10px", borderRadius: 10, border: "none", background: outOfStock ? "#e5e7eb" : `linear-gradient(135deg,${C.red},#c2185b)`, color: outOfStock ? "#9ca3af" : "#fff", fontWeight: 800, fontSize: 13, cursor: outOfStock ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontFamily: "inherit", boxShadow: outOfStock ? "none" : "0 4px 14px rgba(233,30,99,.3)" }}
           disabled={outOfStock}
-          onClick={e => { e.stopPropagation(); if (outOfStock) return; addToCart({ productId: product.id ?? product.name, name: product.name, price: product.vatEnabled ? applyVat(product.price) : product.price, vatEnabled: product.vatEnabled ?? false, qty: 1, size: product.sizeType === "none" ? null : product.sizes?.[0] ?? null, type: product.type }); navigate("cart"); }}
+          onClick={e => {
+            e.stopPropagation();
+            if (outOfStock) return;
+            const price = product.vatEnabled ? applyVat(product.price) : product.price;
+            addToCart({ productId: product.id ?? product.name, name: product.name, price, vatEnabled: product.vatEnabled ?? false, qty: 1, size: product.sizeType === "none" ? null : product.sizes?.[0] ?? null, type: product.type });
+            if (giftCampaignMin && giftCampaignMin > 0) {
+              const newTotal = readCart().reduce((s, i) => s + i.price * i.qty, 0);
+              if (newTotal >= giftCampaignMin) {
+                dispatchGiftToast({ type: "unlocked", rewardLabel: giftRewardLabel ?? "هدية" });
+              } else {
+                dispatchGiftToast({ type: "progress", remaining: Math.max(0, giftCampaignMin - newTotal) });
+              }
+            }
+            navigate("cart");
+          }}
         >
           <I n="cart" s={14} c={outOfStock ? "#9ca3af" : "#fff"} />
           {outOfStock ? t("نفذت الكمية", "Out of stock") : t("أضيفي للسلة", "Add to cart")}
@@ -6950,10 +6977,20 @@ const getProductRecommendationScore = (product: StoreProduct, searchTerm: string
   return score;
 };
 
+function giftCampaignRewardLabel(c: { rewardType: string; rewardWalletAmount: number; rewardPoints: number; discountAmount: number } | null | undefined): string {
+  if (!c) return "";
+  if (c.rewardType === "wallet") return `${c.rewardWalletAmount} ج.م رصيد`;
+  if (c.rewardType === "points") return `${c.rewardPoints} نقطة`;
+  if (c.rewardType === "discount") return `خصم ${c.discountAmount} ج.م`;
+  if (c.rewardType === "free_shipping") return "شحن مجاني";
+  return "منتج مجاني";
+}
+
 const ShopPage = ({ navigate }: { navigate: (p: string) => void }) => {
   const t = useT();
   const { lang } = useLang();
   const wishlist = useWishlist();
+  const giftCampaign = useStoreGiftCampaign();
   const allLabel = t("الكل", "All");
   const [cat, setCat] = useState("الكل");
   const [search, setSearch] = useState("");
@@ -7064,14 +7101,14 @@ const ShopPage = ({ navigate }: { navigate: (p: string) => void }) => {
                 <h2 style={{ fontSize: 22, fontWeight: 900, color: C.white, margin: 0 }}>{t("الأكثر طلباً", "Best Sellers")}</h2>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 20 }}>
-                {bestSellers.map(p => <ProductMiniCard key={`bs-${p.id ?? p.name}`} product={p} navigate={navigate} wishlist={wishlist} lang={lang} t={t} />)}
+                {bestSellers.map(p => <ProductMiniCard key={`bs-${p.id ?? p.name}`} product={p} navigate={navigate} wishlist={wishlist} lang={lang} t={t} giftCampaignActive={giftCampaign?.active} giftCampaignMin={giftCampaign?.minSubtotal} giftRewardLabel={giftCampaignRewardLabel(giftCampaign)} />)}
               </div>
             </div>
           )}
 
           {/* ── All Products ── */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 20 }}>
-            {filtered.map(p => <ProductMiniCard key={p.id ?? p.name} product={p} navigate={navigate} wishlist={wishlist} lang={lang} t={t} />)}
+            {filtered.map(p => <ProductMiniCard key={p.id ?? p.name} product={p} navigate={navigate} wishlist={wishlist} lang={lang} t={t} giftCampaignActive={giftCampaign?.active} giftCampaignMin={giftCampaign?.minSubtotal} giftRewardLabel={giftCampaignRewardLabel(giftCampaign)} />)}
           </div>
 
           {/* ── Recommended (search) ── */}
@@ -7079,7 +7116,7 @@ const ShopPage = ({ navigate }: { navigate: (p: string) => void }) => {
             <div style={{ marginTop: 48 }}>
               <h2 style={{ fontSize: 22, fontWeight: 900, color: C.white, marginBottom: 16 }}>{t("قد يعجبك أيضاً", "You may also like")}</h2>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 20 }}>
-                {recommended.map(p => <ProductMiniCard key={`rec-${p.id ?? p.name}`} product={p} navigate={navigate} wishlist={wishlist} lang={lang} t={t} />)}
+                {recommended.map(p => <ProductMiniCard key={`rec-${p.id ?? p.name}`} product={p} navigate={navigate} wishlist={wishlist} lang={lang} t={t} giftCampaignActive={giftCampaign?.active} giftCampaignMin={giftCampaign?.minSubtotal} giftRewardLabel={giftCampaignRewardLabel(giftCampaign)} />)}
               </div>
             </div>
           )}
@@ -7961,72 +7998,7 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                   </div>
                 ))}
                 {/* ── Store Gift Campaign Banner ── */}
-                {giftCampaign && !giftCampaign.alreadyClaimed && cartItems.length > 0 && (() => {
-                  const cartSubtotal = cartItems.reduce((s, i) => s + i.price * i.qty, 0);
-                  const pct = Math.min(100, Math.round((cartSubtotal / giftCampaign.minSubtotal) * 100));
-                  const remaining = Math.max(0, giftCampaign.minSubtotal - cartSubtotal);
-                  const unlocked = cartSubtotal >= giftCampaign.minSubtotal;
-                  const referralUnlocked = giftCampaign.referralProgress >= giftCampaign.requiredReferrals;
-                  const rewardLabel =
-                    giftCampaign.rewardType === "wallet" ? `${giftCampaign.rewardWalletAmount} ج.م رصيد`
-                    : giftCampaign.rewardType === "points" ? `${giftCampaign.rewardPoints} نقطة`
-                    : giftCampaign.rewardType === "discount" ? `خصم ${giftCampaign.discountAmount} ج.م`
-                    : giftCampaign.rewardType === "free_shipping" ? "شحن مجاني"
-                    : "منتج مجاني";
-                  const referralLink = giftCampaign.referralCode
-                    ? `${typeof window !== "undefined" ? window.location.origin : ""}/r/${giftCampaign.referralCode}`
-                    : null;
-                  return (
-                    <div style={{ marginTop: 16, borderRadius: 16, border: unlocked ? "1.5px solid #22c55e55" : "1.5px solid #e11d4844", background: unlocked ? "rgba(34,197,94,.06)" : "rgba(225,29,72,.04)", padding: 18 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-                        <span style={{ fontSize: 22 }}>🎁</span>
-                        <div>
-                          <div style={{ fontWeight: 800, fontSize: 14, color: unlocked ? "#22c55e" : C.white }}>{unlocked ? "تم فتح هدية المتجر ✅" : giftCampaign.titleAr}</div>
-                          {!unlocked && <div style={{ fontSize: 12, color: C.gray, marginTop: 2 }}>الهدية: {rewardLabel}</div>}
-                        </div>
-                        {giftCampaign.endsAt && (
-                          <span style={{ marginRight: "auto", fontSize: 11, color: "#f59e0b", fontWeight: 700 }}>
-                            ⏰ {t("تنتهي", "Ends")} {new Date(giftCampaign.endsAt).toLocaleDateString("ar-EG")}
-                          </span>
-                        )}
-                      </div>
-                      {!unlocked && (
-                        <>
-                          <div style={{ height: 6, background: "rgba(255,255,255,.1)", borderRadius: 99, overflow: "hidden", marginBottom: 6 }}>
-                            <div style={{ height: "100%", width: `${pct}%`, background: "linear-gradient(90deg,#e11d48,#f43f5e)", borderRadius: 99, transition: "width .4s" }} />
-                          </div>
-                          <div style={{ fontSize: 12, color: C.gray, marginBottom: 10 }}>
-                            {remaining > 0
-                              ? `باقي ${formatCurrency(remaining)} من منتجات المتجر وتاخدي الهدية`
-                              : "وصلتِ للحد الأدنى!"}
-                          </div>
-                          {giftCampaign.requiredReferrals > 0 && giftCampaign.authenticated && (
-                            <div style={{ fontSize: 12, color: C.gray, marginBottom: 8 }}>
-                              أو ادعي {giftCampaign.requiredReferrals} صديقة ({giftCampaign.referralProgress}/{giftCampaign.requiredReferrals} حتى الآن)
-                              {referralUnlocked && " ✅"}
-                            </div>
-                          )}
-                          {referralLink && (
-                            <button
-                              onClick={() => { navigator.clipboard.writeText(referralLink).catch(() => {}); }}
-                              style={{ fontSize: 12, color: C.red, fontWeight: 700, background: "none", border: "none", cursor: "pointer", padding: 0, marginBottom: 8 }}
-                            >
-                              📋 انسخي رابط دعوتك
-                            </button>
-                          )}
-                        </>
-                      )}
-                      {unlocked && (
-                        <p style={{ fontSize: 12, color: "#86efac", marginBottom: 8 }}>
-                          الهدية ({rewardLabel}) تُفعَّل تلقائياً بعد تأكيد طلب المتجر.
-                        </p>
-                      )}
-                      <p style={{ fontSize: 11, color: C.gray }}>
-                        {unlocked ? "يمكنك إكمال الطلب بدون أي إجراء إضافي." : "يمكنك إكمال طلب المتجر بدون الهدية في أي وقت."}
-                      </p>
-                    </div>
-                  );
-                })()}
+                <StoreGiftCampaignCard giftCampaign={giftCampaign} cartItems={cartItems} />
                 <button className="btn-primary" disabled={cartItems.length === 0} style={{ width: "100%", justifyContent: "center", padding: "13px", fontSize: 15, marginTop: 14, opacity: cartItems.length === 0 ? 0.5 : 1 }} onClick={() => setStep("address")}>
                   {lang === "ar" ? "التالي: العنوان ←" : "Next: Address →"}
                 </button>
@@ -9699,6 +9671,7 @@ export default function App() {
       </main>
       <Footer navigate={navigate} />
       <BottomNav currentPage={page} navigate={navigate} cartCount={cartCount} />
+      <StoreGiftToast />
     </div>
   );
 }
