@@ -87,6 +87,7 @@ type PublicPayload = {
     name: string;
     description: string;
     trainer: string;
+    trainerImage: string | null;
     trainerSpecialty: string;
     duration: string;
     intensity: string;
@@ -484,6 +485,10 @@ export async function GET(request: Request) {
             : lang === "en"
               ? (gymClass.trainer.nameEn || gymClass.trainer.name)
               : gymClass.trainer.name,
+        trainerImage:
+          gymClass.showTrainerName === false || !gymClass.trainer
+            ? null
+            : gymClass.trainer.image ?? null,
         trainerSpecialty:
           gymClass.showTrainerName === false || !gymClass.trainer
             ? ""

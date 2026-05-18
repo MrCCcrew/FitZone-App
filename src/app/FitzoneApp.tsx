@@ -2081,7 +2081,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
   const [homeCustomPlans, setHomeCustomPlans] = useState<PublicMembership[]>([]);
   const [homeFeaturedPlan, setHomeFeaturedPlan] = useState<{ id: string; name: string; price: number; priceBefore: number | null; subtitle: string | null; features: string[]; durationDays: number } | null>(null);
   const [trialMembership, setTrialMembership] = useState<{ id: string; name: string; price: number; sessionsCount: number; features: string[]; durationDays: number } | null>(null);
-  const [todayClasses, setTodayClasses] = useState<Array<{ id: string; time: string; name: string; trainer: string; spots: number; color: string; type: string }>>([]);
+  const [todayClasses, setTodayClasses] = useState<Array<{ id: string; time: string; name: string; trainer: string; trainerImage: string | null; spots: number; color: string; type: string }>>([]);
   const [todayIndex, setTodayIndex] = useState(0);
   const todayCarouselRef = useRef<HTMLDivElement | null>(null);
   const todayTrackRef = useRef<HTMLDivElement | null>(null);
@@ -2200,6 +2200,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
               time: schedule.time,
               name: cls.name,
               trainer: cls.trainer,
+              trainerImage: cls.trainerImage ?? null,
               spots: schedule.availableSpots,
               color: typeColor(cls.type),
               type: cls.type,
@@ -2898,7 +2899,23 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                         </span>
                       </div>
                       <div style={{ fontWeight: 700, fontSize: 16, color: C.white, marginBottom: 4 }}>{s.name}</div>
-                      {s.trainer ? <div style={{ color: C.gray, fontSize: 13, marginBottom: 16 }}>{t("مع", "With")} {s.trainer}</div> : <div style={{ marginBottom: 16 }} />}
+                      {s.trainer ? (
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+                          {s.trainerImage ? (
+                            <img
+                              src={s.trainerImage}
+                              alt={s.trainer}
+                              loading="lazy"
+                              style={{ width: 28, height: 28, borderRadius: "50%", objectFit: "cover", objectPosition: "top", flexShrink: 0, border: `1px solid ${s.color}55` }}
+                            />
+                          ) : (
+                            <div style={{ width: 28, height: 28, borderRadius: "50%", background: `${s.color}22`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, flexShrink: 0 }}>
+                              👩
+                            </div>
+                          )}
+                          <span style={{ color: C.gray, fontSize: 13 }}>{t("مع", "With")} {s.trainer}</span>
+                        </div>
+                      ) : <div style={{ marginBottom: 16 }} />}
                       <button className="btn-primary" style={{ width: "100%", justifyContent: "center", padding: "8px", fontSize: 13, opacity: s.spots === 0 ? .5 : 1 }} disabled={s.spots === 0} onClick={() => {
                         window.dispatchEvent(new CustomEvent("fitzone:trial-booking", { detail: { scheduleId: s.id } }));
                       }}>
