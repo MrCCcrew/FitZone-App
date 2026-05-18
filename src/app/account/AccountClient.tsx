@@ -4529,9 +4529,9 @@ export default function AccountClient({ data }: { data: AccountData }) {
   const requestedTab = searchParams.get("tab");
   const availableTabs = useMemo(() => {
     const role = data.user.role;
-    const isNutritionist = !!(data.user.adminPermissions as string[] | undefined)?.includes("nutrition");
+    const isNutritionist = role === "nutritionist" || !!(data.user.adminPermissions as string[] | undefined)?.includes("nutrition");
     if (role === "admin") return TABS;
-    // nutritionist (staff with nutrition permission): only sees nutritionistProfile among special tabs
+    // nutritionist role or staff with nutrition permission: only sees nutritionistProfile among special tabs
     if (isNutritionist)
       return TABS.filter((tab) => !["trainerProfile", "trainerDiscountCodes", "privateSessions", "staffDiscountCodes", "agentCommissions"].includes(tab.id));
     // trainer: sees trainer-specific tabs + agentCommissions, NOT staff-specific

@@ -83,12 +83,13 @@ function formatSession(s: {
 
 // GET /api/admin/nutrition — list profiles or sessions
 export async function GET(req: Request) {
-  const { error } = await checkAdmin();
+  const { error, role, userId } = await checkAdmin();
   if (error) return error;
 
   const { searchParams } = new URL(req.url);
   const view = searchParams.get("view") || "sessions"; // profiles | sessions
   const status = searchParams.get("status") || "all";
+  const ownOnly = searchParams.get("ownOnly") === "true" || role === "nutritionist";
 
   if (view === "profiles") {
     const profiles = await (db as any).nutritionistProfile.findMany({
@@ -113,6 +114,11 @@ export async function GET(req: Request) {
 
   const where: Record<string, unknown> = {};
   if (status !== "all") where.status = status;
+  if (ownOnly) {
+    const ownProfile = await (db as any).nutritionistProfile.findFirst({ where: { userId }, select: { id: true } });
+    if (!ownProfile) return NextResponse.json({ sessions: [] });
+    where.nutritionistId = ownProfile.id;
+  }
 
   const sessions = await db.nutritionSession.findMany({
     where,
