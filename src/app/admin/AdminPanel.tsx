@@ -666,8 +666,6 @@ export default function AdminPanel() {
             <Partners viewMode={role === "partner" ? "partner" : "admin"} />
           ) : safeActive === "settings" ? (
             <Settings userRole={role ?? "staff"} permissions={permissions ?? []} />
-          ) : safeActive === "nutrition" ? (
-            <Nutrition adminRole={role ?? "admin"} />
           ) : (
             <ActiveSection />
           )}
