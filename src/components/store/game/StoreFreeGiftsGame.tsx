@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useLang } from "@/lib/language";
 import { StoreGiftGameHeader } from "./StoreGiftGameHeader";
 import { StoreGiftStepProgress } from "./StoreGiftStepProgress";
 import { StoreFloatingGiftsBackground } from "./StoreFloatingGiftsBackground";
@@ -15,15 +16,15 @@ import { StoreGiftRulesModal } from "./StoreGiftRulesModal";
 import { FitZoneBearMascot, type MascotState } from "./FitZoneBearMascot";
 
 // ── Types ──────────────────────────────────────────────────────────────────
-type WheelSegment = { id: string; labelAr: string; type: string; icon?: string };
-type CardState    = { index: number; revealed: boolean; labelAr?: string; type?: string; icon?: string };
+type WheelSegment = { id: string; labelAr: string; labelEn?: string; type: string; icon?: string };
+type CardState    = { index: number; revealed: boolean; labelAr?: string; labelEn?: string; type?: string; icon?: string };
 type Product      = { id: string; name: string; price: number; images: string | null; category?: string | null };
 
 type GameState = {
   gameEnabled?: boolean;
   step: number;
   spinDone: boolean;
-  spinResult: { type: string; value: number; labelAr: string } | null;
+  spinResult: { type: string; value: number; labelAr: string; labelEn?: string } | null;
   cards: CardState[];
   maxCardPicks: number;
   cardsDone: number;
@@ -43,15 +44,17 @@ export function StoreFreeGiftsGame() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [spinReward, setSpinReward] = useState<{ type: string; value: number; labelAr: string } | null>(null);
+  const [spinReward, setSpinReward] = useState<{ type: string; value: number; labelAr: string; labelEn?: string } | null>(null);
   const [showBonusChest, setShowBonusChest] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [showRules, setShowRules] = useState(false);
   const [mascotState, setMascotState] = useState<MascotState>("idle_chubby");
+  const { lang } = useLang();
+  const t = (ar: string, en: string) => lang === "ar" ? ar : en;
   const confettiShownRef  = useRef(false);
-  const pendingRewardRef  = useRef<{ type: string; value: number; labelAr: string } | null>(null);
+  const pendingRewardRef  = useRef<{ type: string; value: number; labelAr: string; labelEn?: string } | null>(null);
 
   // ── Load game state ──
   const loadGame = useCallback(async () => {
@@ -60,12 +63,12 @@ export function StoreFreeGiftsGame() {
       if (!res.ok) throw new Error("failed");
       const data = await res.json() as GameState;
       if (data.gameEnabled === false) {
-        setError("لعبة الهدايا غير مفعّلة حالياً.");
+        setError(t("لعبة الهدايا غير مفعّلة حالياً.", "The gift game is not active right now."));
         return;
       }
       setGame(data);
     } catch {
-      setError("تعذّر تحميل بيانات اللعبة.");
+      setError(t("تعذّر تحميل بيانات اللعبة.", "Failed to load game data."));
     } finally {
       setLoading(false);
     }
@@ -108,14 +111,14 @@ export function StoreFreeGiftsGame() {
   };
 
   // ── Card pick handler — returns card data; loadGame() called after animation ──
-  const handlePickCard = async (index: number): Promise<{ card: { type: string; icon?: string; labelAr: string }; advanceToStep3: boolean }> => {
+  const handlePickCard = async (index: number): Promise<{ card: { type: string; icon?: string; labelAr: string; labelEn?: string }; advanceToStep3: boolean }> => {
     const res = await fetch("/api/store/free-gifts/pick-card", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ index }),
     });
     if (!res.ok) throw new Error("pick failed");
-    return res.json() as Promise<{ card: { type: string; icon?: string; labelAr: string }; advanceToStep3: boolean }>;
+    return res.json() as Promise<{ card: { type: string; icon?: string; labelAr: string; labelEn?: string }; advanceToStep3: boolean }>;
   };
 
   const handlePickComplete = async () => {
@@ -160,7 +163,7 @@ export function StoreFreeGiftsGame() {
     <div style={{ minHeight: "60vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
       <div style={{ textAlign: "center", color: "rgba(255,255,255,.5)", fontFamily: "Cairo,Tajawal,sans-serif" }}>
         <div style={{ fontSize: 36, marginBottom: 12 }}>⏳</div>
-        <p>جارٍ تحميل الهدايا...</p>
+        <p>{t("جارٍ تحميل الهدايا...", "Loading gifts...")}</p>
       </div>
     </div>
   );
@@ -171,7 +174,7 @@ export function StoreFreeGiftsGame() {
         <div style={{ fontSize: 36, marginBottom: 12 }}>⚠️</div>
         <p>{error}</p>
         <button onClick={() => { setError(null); setLoading(true); void loadGame(); }} style={{ marginTop: 16, padding: "10px 24px", borderRadius: 10, border: "none", background: "#f97316", color: "#fff", fontWeight: 800, cursor: "pointer", fontFamily: "Cairo,Tajawal,sans-serif" }}>
-          أعيدي المحاولة
+          {t("أعيدي المحاولة", "Try again")}
         </button>
       </div>
     </div>
@@ -185,12 +188,12 @@ export function StoreFreeGiftsGame() {
       <StoreConfettiLayer active={showConfetti} />
       <div style={{ textAlign: "center", fontFamily: "Cairo,Tajawal,sans-serif" }}>
         <div style={{ fontSize: 72, marginBottom: 16 }}>🎉</div>
-        <h2 style={{ fontSize: 22, fontWeight: 900, color: "#fbbf24", marginBottom: 8 }}>تم تأكيد هداياك!</h2>
+        <h2 style={{ fontSize: 22, fontWeight: 900, color: "#fbbf24", marginBottom: 8 }}>{t("تم تأكيد هداياك!", "Your gifts are confirmed!")}</h2>
         <p style={{ color: "rgba(255,255,255,.6)", fontSize: 14, maxWidth: 300, margin: "0 auto 24px" }}>
-          هداياك المجانية سيتم إضافتها لطلبك عند إتمام عملية الشراء
+          {t("هداياك المجانية سيتم إضافتها لطلبك عند إتمام عملية الشراء", "Your free gifts will be added to your order when you complete your purchase")}
         </p>
         <a href="/?page=shop" style={{ display: "inline-block", padding: "13px 36px", borderRadius: 12, background: "linear-gradient(135deg,#e91e63,#c2185b)", color: "#fff", fontSize: 15, fontWeight: 900, textDecoration: "none" }}>
-          عودي للمتجر ←
+          {t("عودي للمتجر ←", "Back to Store →")}
         </a>
       </div>
     </div>
@@ -263,6 +266,7 @@ export function StoreFreeGiftsGame() {
           {showBonusChest && game.spinResult?.type === "bonus_chest" && (
             <StoreBonusChest
               labelAr={game.spinResult.labelAr}
+              labelEn={game.spinResult.labelEn}
               onDone={() => void handleBonusChestDone()}
             />
           )}
@@ -280,7 +284,7 @@ export function StoreFreeGiftsGame() {
                 }}>
                   <span style={{ fontSize: 20 }}>🏆</span>
                   <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#fde68a", fontFamily: "Cairo,Tajawal,sans-serif" }}>
-                    مكافأتك: {game.spinResult.labelAr}
+                    {t("مكافأتك:", "Your reward:")} {lang === "en" && game.spinResult.labelEn ? game.spinResult.labelEn : game.spinResult.labelAr}
                   </p>
                 </div>
               )}

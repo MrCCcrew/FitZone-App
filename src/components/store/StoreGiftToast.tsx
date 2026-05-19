@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useLang } from "@/lib/language";
 
 const CSS = `
 @keyframes sgb-toast-in {
@@ -35,6 +36,9 @@ export function dispatchGiftToast(payload: GiftToastPayload) {
 type ToastState = { payload: GiftToastPayload; id: number; leaving: boolean };
 
 export function StoreGiftToast() {
+  const { lang } = useLang();
+  const t = (ar: string, en: string) => lang === "ar" ? ar : en;
+
   const [toast, setToast] = useState<ToastState | null>(null);
   const dismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const removeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -70,7 +74,7 @@ export function StoreGiftToast() {
       <div
         role="status"
         aria-live="polite"
-        aria-label={isUnlocked ? "تم فتح هدية المتجر" : "اقتربتِ من الهدية"}
+        aria-label={isUnlocked ? t("تم فتح هدية المتجر", "Store gift unlocked") : t("اقتربتِ من الهدية", "Getting closer to your gift")}
         className={leaving ? "sgb-toast-leave" : "sgb-toast-enter"}
         style={{
           position: "fixed",
@@ -103,23 +107,35 @@ export function StoreGiftToast() {
             {isUnlocked ? (
               <>
                 <div style={{ fontWeight: 900, fontSize: 13, color: "#4ade80" }}>
-                  مبروك! هدية المتجر اتفتحت 🎉
+                  {t("مبروك! هدية المتجر اتفتحت 🎉", "Congrats! Your store gift is unlocked 🎉")}
                 </div>
                 <div style={{ fontSize: 12, color: "#86efac", marginTop: 2 }}>
-                  {payload.rewardLabel} سيُضاف تلقائياً مع الطلب
+                  {(payload as { type: "unlocked"; rewardLabel: string }).rewardLabel}{" "}
+                  {t("سيُضاف تلقائياً مع الطلب", "will be added automatically to your order")}
                 </div>
               </>
             ) : (
               <>
                 <div style={{ fontWeight: 900, fontSize: 13, color: "#be123c" }}>
-                  اتقربتِ من الهدية 🎁
+                  {t("اتقربتِ من الهدية 🎁", "Getting closer to your gift 🎁")}
                 </div>
                 <div style={{ fontSize: 12, color: "#9ca3af", marginTop: 2 }}>
-                  باقي{" "}
-                  <span style={{ color: "#e91e63", fontWeight: 700 }}>
-                    {payload.remaining.toLocaleString("ar-EG")} ج.م
-                  </span>{" "}
-                  وتفتحي هدية المتجر
+                  {lang === "ar" ? (
+                    <>
+                      باقي{" "}
+                      <span style={{ color: "#e91e63", fontWeight: 700 }}>
+                        {(payload as { type: "progress"; remaining: number }).remaining.toLocaleString("ar-EG")} ج.م
+                      </span>{" "}
+                      وتفتحي هدية المتجر
+                    </>
+                  ) : (
+                    <>
+                      <span style={{ color: "#e91e63", fontWeight: 700 }}>
+                        {(payload as { type: "progress"; remaining: number }).remaining.toLocaleString("en-US")} EGP
+                      </span>{" "}
+                      more to unlock your store gift
+                    </>
+                  )}
                 </div>
               </>
             )}

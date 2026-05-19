@@ -1,4 +1,5 @@
 "use client";
+import { useLang } from "@/lib/language";
 
 const CSS = `
 @keyframes sgrm-in {
@@ -7,16 +8,29 @@ const CSS = `
 }
 `;
 
-const RULES = [
+const RULES_AR = [
   { icon: "🎰", text: "الفي العجلة واحصلي على مكافأة عشوائية من بنك الهدايا." },
   { icon: "🃏", text: "اختاري كارت واحد لتكشفي مكافأة إضافية." },
   { icon: "🎁", text: "اختاري منتجات مجانية من المتجر بحسب عدد الهدايا المتاحة لك." },
   { icon: "✅", text: "تُضاف الهدايا تلقائياً لطلبك عند التأكيد." },
-  { icon: "⏱", text: "جلسة الهدايا صالحة لمدة 24 ساعة فقط." },
+  { icon: "⏱",  text: "جلسة الهدايا صالحة لمدة 24 ساعة فقط." },
   { icon: "📦", text: "الهدايا مرتبطة بطلب متجر واحد فقط وغير قابلة للتحويل." },
 ];
 
+const RULES_EN = [
+  { icon: "🎰", text: "Spin the wheel to get a random reward from the gift bank." },
+  { icon: "🃏", text: "Pick one card to reveal an extra reward." },
+  { icon: "🎁", text: "Choose free products from the store based on your available gift slots." },
+  { icon: "✅", text: "Gifts are automatically added to your order on confirmation." },
+  { icon: "⏱",  text: "Your gift session is valid for 24 hours only." },
+  { icon: "📦", text: "Gifts are tied to one store order and are non-transferable." },
+];
+
 export function StoreGiftRulesModal({ onClose }: { onClose: () => void }) {
+  const { lang } = useLang();
+  const t = (ar: string, en: string) => lang === "ar" ? ar : en;
+  const RULES = lang === "ar" ? RULES_AR : RULES_EN;
+
   return (
     <>
       <style>{CSS}</style>
@@ -43,7 +57,7 @@ export function StoreGiftRulesModal({ onClose }: { onClose: () => void }) {
           }}
         >
           <h2 style={{ textAlign: "center", fontSize: 20, fontWeight: 900, color: "#fbbf24", marginBottom: 20, fontFamily: "Cairo,Tajawal,sans-serif" }}>
-            📋 قواعد لعبة الهدايا
+            📋 {t("قواعد لعبة الهدايا", "Gift Game Rules")}
           </h2>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 24 }}>
@@ -72,7 +86,7 @@ export function StoreGiftRulesModal({ onClose }: { onClose: () => void }) {
               fontFamily: "Cairo,Tajawal,sans-serif",
             }}
           >
-            فهمت ✓
+            {t("فهمت ✓", "Got it ✓")}
           </button>
         </div>
       </div>

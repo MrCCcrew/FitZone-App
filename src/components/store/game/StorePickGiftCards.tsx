@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { useLang } from "@/lib/language";
 
 const CSS = `
 @keyframes spgc-hover {
@@ -57,22 +58,23 @@ const SPARKS = [
   { sx:"0px",   sy:"-110px"}, { sx:"0px",   sy:"110px" },
 ];
 
-type CardState = { index: number; revealed: boolean; labelAr?: string; type?: string; icon?: string };
+type CardState = { index: number; revealed: boolean; labelAr?: string; labelEn?: string; type?: string; icon?: string };
 
 type Props = {
   cards: CardState[];
   maxPicks: number;
   picksDone: number;
-  onPick: (index: number) => Promise<{ card: { type: string; icon?: string; labelAr: string }; advanceToStep3: boolean }>;
+  onPick: (index: number) => Promise<{ card: { type: string; icon?: string; labelAr: string; labelEn?: string }; advanceToStep3: boolean }>;
   onPickComplete: () => Promise<void>;
 };
 
 export function StorePickGiftCards({ cards, maxPicks, picksDone, onPick, onPickComplete }: Props) {
+  const { lang } = useLang();
+  const t = (ar: string, en: string) => lang === "ar" ? ar : en;
+
   const [picking, setPicking]     = useState<number | null>(null);
-  // Local flip state (optimistic before API)
   const [flipped, setFlipped]     = useState<Record<number, boolean>>({});
-  // Winner overlay
-  const [winner, setWinner]       = useState<{ type: string; icon?: string; labelAr: string } | null>(null);
+  const [winner, setWinner]       = useState<{ type: string; icon?: string; labelAr: string; labelEn?: string } | null>(null);
   const [winnerOut, setWinnerOut] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -81,26 +83,22 @@ export function StorePickGiftCards({ cards, maxPicks, picksDone, onPick, onPickC
   const handle = async (idx: number) => {
     if (!canPick || picking !== null || cards[idx]?.revealed || flipped[idx]) return;
     setPicking(idx);
-    // Flip immediately (optimistic)
     setFlipped(prev => ({ ...prev, [idx]: true }));
 
-    let result: { card: { type: string; icon?: string; labelAr: string }; advanceToStep3: boolean } | null = null;
+    let result: { card: { type: string; icon?: string; labelAr: string; labelEn?: string }; advanceToStep3: boolean } | null = null;
     try {
       result = await onPick(idx);
     } catch {
-      // Revert flip on error
       setFlipped(prev => { const n = { ...prev }; delete n[idx]; return n; });
       setPicking(null);
       return;
     }
     setPicking(null);
 
-    // Brief pause so flip animation is visible, then show winner overlay
     timerRef.current = setTimeout(() => {
-      setWinner({ type: result!.card.type, icon: result!.card.icon, labelAr: result!.card.labelAr });
+      setWinner({ type: result!.card.type, icon: result!.card.icon, labelAr: result!.card.labelAr, labelEn: result!.card.labelEn });
       setWinnerOut(false);
 
-      // After 2.2s, fade out then advance
       timerRef.current = setTimeout(() => {
         setWinnerOut(true);
         timerRef.current = setTimeout(() => {
@@ -116,11 +114,13 @@ export function StorePickGiftCards({ cards, maxPicks, picksDone, onPick, onPickC
 
   const isFlipped = (i: number) => cards[i]?.revealed || flipped[i];
 
+  const getLabel = (w: { labelAr: string; labelEn?: string }) =>
+    lang === "en" && w.labelEn ? w.labelEn : w.labelAr;
+
   return (
     <>
       <style>{CSS}</style>
 
-      {/* ── Winner overlay ── */}
       {winner && (
         <div style={{
           position: "fixed", inset: 0, zIndex: 200,
@@ -128,7 +128,6 @@ export function StorePickGiftCards({ cards, maxPicks, picksDone, onPick, onPickC
           background: "rgba(10,0,18,0.82)",
           backdropFilter: "blur(6px)",
         }}>
-          {/* Rotating star ring */}
           <div
             className="spgc-stars"
             style={{
@@ -155,7 +154,6 @@ export function StorePickGiftCards({ cards, maxPicks, picksDone, onPick, onPickC
             })}
           </div>
 
-          {/* Spark particles */}
           {SPARKS.map((s, i) => (
             <div
               key={i}
@@ -172,7 +170,6 @@ export function StorePickGiftCards({ cards, maxPicks, picksDone, onPick, onPickC
             />
           ))}
 
-          {/* The winner card */}
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 20 }}>
             <div
               className="spgc-winner-card"
@@ -188,7 +185,6 @@ export function StorePickGiftCards({ cards, maxPicks, picksDone, onPick, onPickC
                   : "spgc-winner-in 0.7s cubic-bezier(.34,1.56,.64,1) both, spgc-glow-pulse 1.4s ease-in-out 0.7s infinite",
               }}
             >
-              {/* Shimmer on winner card */}
               <div style={{
                 position: "absolute", inset: 0, borderRadius: 22,
                 background: "linear-gradient(135deg,rgba(255,255,255,0.12) 0%,transparent 60%)",
@@ -196,11 +192,10 @@ export function StorePickGiftCards({ cards, maxPicks, picksDone, onPick, onPickC
               }} />
               <div style={{ fontSize: 56 }}>{winner.icon || REWARD_ICONS[winner.type] || "🎁"}</div>
               <div style={{ fontSize: 13, color: "#d1fae5", fontWeight: 800, fontFamily: "Cairo,Tajawal,sans-serif", textAlign: "center", padding: "0 12px", lineHeight: 1.5 }}>
-                {winner.labelAr}
+                {getLabel(winner)}
               </div>
             </div>
 
-            {/* Label below */}
             <div
               className="spgc-label-pop"
               style={{
@@ -209,23 +204,22 @@ export function StorePickGiftCards({ cards, maxPicks, picksDone, onPick, onPickC
               }}
             >
               <div style={{ fontSize: 22, fontWeight: 900, color: "#fbbf24", fontFamily: "Cairo,Tajawal,sans-serif", marginBottom: 4 }}>
-                🎉 مبروك!
+                {t("🎉 مبروك!", "🎉 Congrats!")}
               </div>
               <div style={{ fontSize: 14, color: "rgba(255,255,255,0.65)", fontFamily: "Cairo,Tajawal,sans-serif" }}>
-                فزتِ بـ {winner.labelAr}
+                {t("فزتِ بـ", "You won")} {getLabel(winner)}
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* ── Cards grid ── */}
       <div style={{ textAlign: "center" }}>
         <h2 style={{ fontSize: 22, fontWeight: 900, color: "#fbbf24", marginBottom: 8, fontFamily: "Cairo,Tajawal,sans-serif" }}>
-          🃏 اختاري كارت واحد
+          🃏 {t("اختاري كارت واحد", "Pick One Card")}
         </h2>
         <p style={{ fontSize: 14, color: "rgba(255,255,255,.6)", marginBottom: 32, fontFamily: "Cairo,Tajawal,sans-serif" }}>
-          {canPick ? "اضغطي على كارت لتكشفي مكافأتك" : "تم اختيار الكارت…"}
+          {canPick ? t("اضغطي على كارت لتكشفي مكافأتك", "Tap a card to reveal your reward") : t("تم اختيار الكارت…", "Card selected…")}
         </p>
 
         <div style={{ display: "flex", gap: 16, justifyContent: "center", flexWrap: "wrap" }}>
@@ -234,6 +228,7 @@ export function StorePickGiftCards({ cards, maxPicks, picksDone, onPick, onPickC
             const flippd  = isFlipped(i);
             const loading = picking === i;
             const color   = CARD_COLORS[i % CARD_COLORS.length];
+            const cardLabel = card ? getLabel({ labelAr: card.labelAr ?? "", labelEn: card.labelEn }) : "";
 
             return (
               <div
@@ -241,7 +236,7 @@ export function StorePickGiftCards({ cards, maxPicks, picksDone, onPick, onPickC
                 onClick={() => void handle(i)}
                 style={{
                   width: 100, height: 150,
-                  perspective: "600px",   // perspective على الأب فقط
+                  perspective: "600px",
                   cursor: flippd || !canPick || loading ? "default" : "pointer",
                   flexShrink: 0,
                   opacity: flippd && !isFlipped(i) ? 0.4 : 1,
@@ -254,7 +249,6 @@ export function StorePickGiftCards({ cards, maxPicks, picksDone, onPick, onPickC
                     position: "relative",
                     transformStyle: "preserve-3d",
                     transition: "transform .65s cubic-bezier(.4,0,.2,1)",
-                    // بدون perspective هنا — بيسبب عكس النص لو اتحط على نفس العنصر
                     transform: flippd ? "rotateY(180deg)" : "rotateY(0deg)",
                   }}
                 >
@@ -283,7 +277,7 @@ export function StorePickGiftCards({ cards, maxPicks, picksDone, onPick, onPickC
                     }} />
                     <div style={{ fontSize: 36, zIndex: 1 }}>❓</div>
                     <div style={{ fontSize: 11, color: "rgba(255,255,255,.6)", fontWeight: 700, fontFamily: "Cairo,Tajawal,sans-serif", zIndex: 1 }}>
-                      {loading ? "..." : "اكشفي"}
+                      {loading ? "..." : t("اكشفي", "Reveal")}
                     </div>
                     <div style={{ position: "absolute", top: 8, right: 8, fontSize: 10, opacity: .5 }}>✨</div>
                     <div style={{ position: "absolute", bottom: 8, left: 8, fontSize: 10, opacity: .5 }}>✨</div>
@@ -303,7 +297,7 @@ export function StorePickGiftCards({ cards, maxPicks, picksDone, onPick, onPickC
                   }}>
                     <div style={{ fontSize: 30 }}>{card?.icon || REWARD_ICONS[card?.type ?? ""] || "🎁"}</div>
                     <div style={{ fontSize: 11, color: "#fff", fontWeight: 800, textAlign: "center", fontFamily: "Cairo,Tajawal,sans-serif", lineHeight: 1.4 }}>
-                      {card?.labelAr ?? ""}
+                      {cardLabel}
                     </div>
                   </div>
                 </div>

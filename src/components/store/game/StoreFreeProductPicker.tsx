@@ -1,4 +1,5 @@
 "use client";
+import { useLang } from "@/lib/language";
 
 const CSS = `
 @keyframes sfpp-card-in {
@@ -31,6 +32,8 @@ type Props = {
 };
 
 export function StoreFreeProductPicker({ products, selected, slots, onToggle }: Props) {
+  const { lang } = useLang();
+  const t = (ar: string, en: string) => lang === "ar" ? ar : en;
   const remaining = slots - selected.length;
 
   const getImg = (p: Product) => {
@@ -41,23 +44,25 @@ export function StoreFreeProductPicker({ products, selected, slots, onToggle }: 
     } catch { return null; }
   };
 
+  const statusText = remaining > 0
+    ? lang === "ar"
+      ? `تبقى لك ${remaining} ${remaining === 1 ? "هدية" : "هدايا"} — اختاري من المنتجات أدناه`
+      : `${remaining} ${remaining === 1 ? "gift" : "gifts"} left — pick from the products below`
+    : t("اختياراتك مكتملة — اضغطي تأكيد", "Selections complete — press confirm");
+
   return (
     <>
       <style>{CSS}</style>
       <div>
-        {/* Header */}
         <div style={{ textAlign: "center", marginBottom: 20 }}>
           <h2 style={{ fontSize: 20, fontWeight: 900, color: "#fbbf24", marginBottom: 6, fontFamily: "Cairo,Tajawal,sans-serif" }}>
-            🎁 اختاري هداياك المجانية
+            🎁 {t("اختاري هداياك المجانية", "Choose Your Free Gifts")}
           </h2>
           <p style={{ fontSize: 14, color: "rgba(255,255,255,.6)", fontFamily: "Cairo,Tajawal,sans-serif" }}>
-            {remaining > 0
-              ? `تبقى لك ${remaining} ${remaining === 1 ? "هدية" : "هدايا"} — اختاري من المنتجات أدناه`
-              : "اختياراتك مكتملة — اضغطي تأكيد"}
+            {statusText}
           </p>
         </div>
 
-        {/* Product grid */}
         <div style={{
           display: "grid",
           gridTemplateColumns: "repeat(auto-fill,minmax(150px,1fr))",
@@ -89,14 +94,12 @@ export function StoreFreeProductPicker({ products, selected, slots, onToggle }: 
                   position: "relative",
                 }}
               >
-                {/* Image */}
                 <div style={{ width: "100%", aspectRatio: "1/1", background: "rgba(255,255,255,.06)", overflow: "hidden" }}>
                   {img
                     ? <img src={img} alt={p.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                     : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 32 }}>🎁</div>
                   }
                 </div>
-                {/* Info */}
                 <div style={{ padding: "8px 10px 10px" }}>
                   <p style={{
                     fontSize: 12, fontWeight: 700, color: "#fff",
@@ -107,10 +110,9 @@ export function StoreFreeProductPicker({ products, selected, slots, onToggle }: 
                     {p.name}
                   </p>
                   <p style={{ fontSize: 11, color: "rgba(249,115,22,.8)", margin: "4px 0 0", fontWeight: 800, fontFamily: "Cairo,Tajawal,sans-serif" }}>
-                    مجاناً 🎁
+                    {t("مجاناً 🎁", "Free 🎁")}
                   </p>
                 </div>
-                {/* Selected badge */}
                 {isSelected && (
                   <div style={{
                     position: "absolute", top: 8, right: 8,
@@ -128,7 +130,7 @@ export function StoreFreeProductPicker({ products, selected, slots, onToggle }: 
 
         {products.length === 0 && (
           <div style={{ textAlign: "center", padding: "40px 20px", color: "rgba(255,255,255,.4)", fontFamily: "Cairo,Tajawal,sans-serif" }}>
-            لا توجد منتجات متاحة حالياً
+            {t("لا توجد منتجات متاحة حالياً", "No products available right now")}
           </div>
         )}
       </div>

@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { useLang } from "@/lib/language";
 
 const CSS = `
 @keyframes sifp-dot-pop {
@@ -24,6 +25,8 @@ type Props = {
 };
 
 export function StoreInviteFriendsPanel({ referralProgress, referralGoal, referralLink }: Props) {
+  const { lang } = useLang();
+  const t = (ar: string, en: string) => lang === "ar" ? ar : en;
   const [copied, setCopied] = useState(false);
   const done = Math.min(referralProgress, referralGoal);
   const pct = referralGoal > 0 ? done / referralGoal : 0;
@@ -35,6 +38,10 @@ export function StoreInviteFriendsPanel({ referralProgress, referralGoal, referr
       setTimeout(() => setCopied(false), 2000);
     });
   };
+
+  const progressText = lang === "ar"
+    ? `${done} من ${referralGoal} صديقة وافقت`
+    : `${done} of ${referralGoal} friends joined`;
 
   return (
     <>
@@ -50,15 +57,14 @@ export function StoreInviteFriendsPanel({ referralProgress, referralGoal, referr
           <span style={{ fontSize: 24 }}>👯‍♀️</span>
           <div>
             <h3 style={{ margin: 0, fontSize: 15, fontWeight: 900, color: "#c4b5fd", fontFamily: "Cairo,Tajawal,sans-serif" }}>
-              ادعي صديقاتك واحصلي على هدايا أكثر
+              {t("ادعي صديقاتك واحصلي على هدايا أكثر", "Invite friends and earn more gifts")}
             </h3>
             <p style={{ margin: 0, fontSize: 12, color: "rgba(255,255,255,.5)", fontFamily: "Cairo,Tajawal,sans-serif" }}>
-              {done} من {referralGoal} صديقة وافقت
+              {progressText}
             </p>
           </div>
         </div>
 
-        {/* Progress dots */}
         <div style={{ display: "flex", gap: 8, justifyContent: "center", marginBottom: 16 }}>
           {Array.from({ length: referralGoal }, (_, i) => (
             <div
@@ -81,7 +87,6 @@ export function StoreInviteFriendsPanel({ referralProgress, referralGoal, referr
           ))}
         </div>
 
-        {/* Progress bar */}
         <div style={{ background: "rgba(255,255,255,.08)", borderRadius: 6, height: 6, overflow: "hidden", marginBottom: 16 }}>
           <div style={{
             height: "100%",
@@ -92,7 +97,6 @@ export function StoreInviteFriendsPanel({ referralProgress, referralGoal, referr
           }} />
         </div>
 
-        {/* Copy link */}
         {referralLink && (
           <button
             onClick={handleCopy}
@@ -111,13 +115,13 @@ export function StoreInviteFriendsPanel({ referralProgress, referralGoal, referr
               transition: "color .2s",
             }}
           >
-            {copied ? "✅ تم النسخ!" : "📋 انسخي رابط الدعوة"}
+            {copied ? t("✅ تم النسخ!", "✅ Copied!") : t("📋 انسخي رابط الدعوة", "📋 Copy invite link")}
           </button>
         )}
 
         {pct >= 1 && (
           <p style={{ textAlign: "center", fontSize: 12, color: "#6ee7b7", marginTop: 10, fontWeight: 700, fontFamily: "Cairo,Tajawal,sans-serif" }}>
-            🎉 أكملت هدف الدعوة — مكافأتك جاهزة!
+            {t("🎉 أكملت هدف الدعوة — مكافأتك جاهزة!", "🎉 Invite goal complete — your reward is ready!")}
           </p>
         )}
       </div>

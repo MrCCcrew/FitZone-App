@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useLang } from "@/lib/language";
 
 const STORAGE_KEY = "fitzone_push_prompted";
 
@@ -13,7 +14,6 @@ function urlBase64ToUint8Array(b64: string): Uint8Array<ArrayBuffer> {
   return output;
 }
 
-// Resolves navigator.serviceWorker.ready with a timeout fallback
 async function swReady(ms = 8000): Promise<ServiceWorkerRegistration> {
   return Promise.race([
     navigator.serviceWorker.ready,
@@ -24,6 +24,9 @@ async function swReady(ms = 8000): Promise<ServiceWorkerRegistration> {
 }
 
 export default function PushPromptModal() {
+  const { lang } = useLang();
+  const t = (ar: string, en: string) => lang === "ar" ? ar : en;
+
   const [visible, setVisible]   = useState(false);
   const [animIn, setAnimIn]     = useState(false);
   const [loading, setLoading]   = useState(false);
@@ -32,24 +35,19 @@ export default function PushPromptModal() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-
-    // Don't show if:  already prompted / permission already decided / no SW support
     if (localStorage.getItem(STORAGE_KEY)) return;
     if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
     if (Notification.permission !== "default") return;
 
-    // Register SW early so it's ready before the user taps the button
     if (!navigator.serviceWorker.controller) {
       navigator.serviceWorker.register("/sw.js").catch(() => {});
     }
 
-    // Pre-fetch VAPID key in the background
     fetch("/api/push/subscribe")
       .then((r) => r.json())
       .then((d: { vapidPublicKey?: string }) => { if (d.vapidPublicKey) setVapidKey(d.vapidPublicKey); })
       .catch(() => {});
 
-    // Show after 3 s delay; only skip if we confirm an active subscription
     let timer: ReturnType<typeof setTimeout>;
     swReady(5000)
       .then((reg) => reg.pushManager.getSubscription())
@@ -61,7 +59,6 @@ export default function PushPromptModal() {
         }, 3000);
       })
       .catch(() => {
-        // SW not ready or check failed — show the prompt anyway
         timer = setTimeout(() => {
           setVisible(true);
           requestAnimationFrame(() => setAnimIn(true));
@@ -79,10 +76,8 @@ export default function PushPromptModal() {
 
   async function enable() {
     setLoading(true);
-    // Emergency dismiss after 20s total (covers slow permission dialogs in Edge)
     const killTimer = setTimeout(dismiss, 20000);
     try {
-      // Get VAPID key with 5s timeout
       let key = vapidKey;
       if (!key) {
         const ac = new AbortController();
@@ -96,10 +91,8 @@ export default function PushPromptModal() {
       const perm = await Notification.requestPermission();
       if (perm !== "granted") { dismiss(); return; }
 
-      // Wait for SW with 6s timeout
       const reg = await swReady(6000);
 
-      // Subscribe with its own 8s timeout
       const sub = await Promise.race([
         reg.pushManager.subscribe({
           userVisibleOnly: true,
@@ -110,7 +103,6 @@ export default function PushPromptModal() {
         ),
       ]);
 
-      // POST subscription with 5s timeout
       const postAc = new AbortController();
       setTimeout(() => postAc.abort(), 5000);
       await fetch("/api/push/subscribe", {
@@ -134,9 +126,12 @@ export default function PushPromptModal() {
 
   if (!visible) return null;
 
+  const benefits = lang === "ar"
+    ? [["🎁", "عروض حصرية"], ["📅", "مواعيد الكلاسات"], ["⚡", "أخبار فورية"]]
+    : [["🎁", "Exclusive Deals"], ["📅", "Class Schedules"], ["⚡", "Instant News"]];
+
   return (
     <>
-      {/* Backdrop — subtle, doesn't block the whole page */}
       <div
         onClick={dismiss}
         style={{
@@ -149,7 +144,6 @@ export default function PushPromptModal() {
         }}
       />
 
-      {/* Card — slides up from bottom */}
       <div
         style={{
           position: "fixed",
@@ -177,20 +171,17 @@ export default function PushPromptModal() {
         }}>
 
           {done ? (
-            /* ── Success state ── */
             <div style={{ padding: "8px 0" }}>
               <div style={{ fontSize: 48, marginBottom: 10 }}>🎉</div>
               <div style={{ color: "#fff", fontWeight: 900, fontSize: 18 }}>
-                تم تفعيل الإشعارات!
+                {t("تم تفعيل الإشعارات!", "Notifications enabled!")}
               </div>
               <div style={{ color: "#c9b8c2", fontSize: 14, marginTop: 6 }}>
-                هتوصلك أول بأول كل العروض والمواعيد 🔔
+                {t("هتوصلك أول بأول كل العروض والمواعيد 🔔", "You'll get all deals and schedules instantly 🔔")}
               </div>
             </div>
           ) : (
-            /* ── Prompt state ── */
             <>
-              {/* Icon with glow */}
               <div style={{
                 width: 66,
                 height: 66,
@@ -208,16 +199,18 @@ export default function PushPromptModal() {
               </div>
 
               <h3 style={{ color: "#fff", fontWeight: 900, fontSize: 19, marginBottom: 8, lineHeight: 1.3 }}>
-                فعّلي إشعارات FitZone
+                {t("فعّلي إشعارات FitZone", "Enable FitZone Notifications")}
               </h3>
               <p style={{ color: "#c9b8c2", fontSize: 14, lineHeight: 1.7, marginBottom: 22 }}>
-                اعرفي أول بأول بـ<strong style={{ color: "#f5c542" }}> العروض الحصرية</strong>،
-                مواعيد الكلاسات، وآخر الأخبار — مباشرة على جهازك.
+                {lang === "ar" ? (
+                  <>اعرفي أول بأول بـ<strong style={{ color: "#f5c542" }}> العروض الحصرية</strong>، مواعيد الكلاسات، وآخر الأخبار — مباشرة على جهازك.</>
+                ) : (
+                  <>Be the first to know about <strong style={{ color: "#f5c542" }}>exclusive deals</strong>, class schedules, and the latest news — straight to your device.</>
+                )}
               </p>
 
-              {/* Benefits row */}
               <div style={{ display: "flex", justifyContent: "center", gap: 20, marginBottom: 24 }}>
-                {[["🎁", "عروض حصرية"], ["📅", "مواعيد الكلاسات"], ["⚡", "أخبار فورية"]].map(([icon, label]) => (
+                {benefits.map(([icon, label]) => (
                   <div key={label} style={{ textAlign: "center" }}>
                     <div style={{ fontSize: 20 }}>{icon}</div>
                     <div style={{ color: "#9ca3af", fontSize: 11, marginTop: 3, fontWeight: 600 }}>{label}</div>
@@ -225,7 +218,6 @@ export default function PushPromptModal() {
                 ))}
               </div>
 
-              {/* Buttons */}
               <button
                 onClick={enable}
                 disabled={loading}
@@ -246,7 +238,7 @@ export default function PushPromptModal() {
                   transition: "opacity .2s",
                 }}
               >
-                {loading ? "⏳ جاري التفعيل..." : "🔔 فعّلي الإشعارات"}
+                {loading ? t("⏳ جاري التفعيل...", "⏳ Enabling...") : t("🔔 فعّلي الإشعارات", "🔔 Enable Notifications")}
               </button>
 
               <button
@@ -265,7 +257,7 @@ export default function PushPromptModal() {
                   fontFamily: "inherit",
                 }}
               >
-                ربما لاحقاً
+                {t("ربما لاحقاً", "Maybe later")}
               </button>
             </>
           )}

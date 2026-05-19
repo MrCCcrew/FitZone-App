@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
+import { useLang } from "@/lib/language";
 
 export type MascotState =
   | "idle_chubby"
@@ -15,12 +16,20 @@ type Props = {
 };
 
 // ── Speech bubble text per state ────────────────────────────────────────────
-const SPEECH: Record<MascotState, string> = {
+const SPEECH_AR: Record<MascotState, string> = {
   idle_chubby:        "جاهزة نبدأ تحدي الهدايا؟ 🎁",
   spinning_excited:   "يلاااا! العجلة بتلف! 🎰",
   reward_happy:       "مبروك! قربتي من الهدية! 🎉",
   workout_transition: "كل خطوة بتقربك للمكافأة! 💪",
   fit_success:        "بطلة! هدايا المتجر اتفتحت! 🏆",
+};
+
+const SPEECH_EN: Record<MascotState, string> = {
+  idle_chubby:        "Ready to start the gift challenge? 🎁",
+  spinning_excited:   "Let's go! The wheel is spinning! 🎰",
+  reward_happy:       "Congrats! Getting closer to your gift! 🎉",
+  workout_transition: "Every step gets you closer to the reward! 💪",
+  fit_success:        "Champion! Store gifts are unlocked! 🏆",
 };
 
 // ── Animatable bear params ────────────────────────────────────────────────────
@@ -317,6 +326,8 @@ function drawBear(
 
 // ── Component ─────────────────────────────────────────────────────────────────
 export function FitZoneBearMascot({ state, reducedMotion = false, size = "md" }: Props) {
+  const { lang } = useLang();
+  const SPEECH = lang === "ar" ? SPEECH_AR : SPEECH_EN;
   const canvasRef  = useRef<HTMLCanvasElement>(null);
   const rafRef     = useRef<number>(0);
   const rmRef      = useRef(reducedMotion);

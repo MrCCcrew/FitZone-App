@@ -1,4 +1,5 @@
 "use client";
+import { useLang } from "@/lib/language";
 
 const CSS = `
 @keyframes srm-in {
@@ -19,7 +20,7 @@ const CSS = `
 }
 `;
 
-type Reward = { type: string; value: number; labelAr: string };
+type Reward = { type: string; value: number; labelAr: string; labelEn?: string };
 
 const REWARD_ICONS: Record<string, string> = {
   wallet: "💳", points: "⭐", discount: "🏷️",
@@ -32,11 +33,15 @@ export function StoreRewardResultModal({
   reward: Reward | null;
   onNext: () => void;
 }) {
+  const { lang } = useLang();
+  const t = (ar: string, en: string) => lang === "ar" ? ar : en;
+
   if (!reward) return null;
+  const label = lang === "en" && reward.labelEn ? reward.labelEn : reward.labelAr;
+
   return (
     <>
       <style>{CSS}</style>
-      {/* Overlay */}
       <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.75)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
         <div
           className="srm-card"
@@ -51,18 +56,15 @@ export function StoreRewardResultModal({
             animation: "srm-in .5s cubic-bezier(.4,0,.2,1) both, srm-glow 2s ease-in-out 0.5s infinite",
           }}
         >
-          {/* Crown */}
           <div className="srm-crown" style={{ fontSize: 48, marginBottom: 8, animation: "srm-crown 2s ease-in-out infinite" }}>
             {REWARD_ICONS[reward.type] ?? "🎁"}
           </div>
-          {/* Stars */}
           <div style={{ fontSize: 18, letterSpacing: 6, color: "#fbbf24", marginBottom: 16 }}>★ ★ ★</div>
-          {/* Title */}
           <h2 style={{ fontSize: 22, fontWeight: 900, color: "#fbbf24", marginBottom: 8, fontFamily: "Cairo,Tajawal,sans-serif" }}>
-            مبروك! 🎉
+            {t("مبروك! 🎉", "Congrats! 🎉")}
           </h2>
           <p style={{ fontSize: 16, color: "#fff", fontWeight: 700, marginBottom: 6, fontFamily: "Cairo,Tajawal,sans-serif" }}>
-            حصلتِ على:
+            {t("حصلتِ على:", "You won:")}
           </p>
           <div style={{
             background: "rgba(251,191,36,.12)",
@@ -75,7 +77,7 @@ export function StoreRewardResultModal({
             color: "#fde68a",
             fontFamily: "Cairo,Tajawal,sans-serif",
           }}>
-            {reward.labelAr}
+            {label}
           </div>
           <button
             onClick={onNext}
@@ -87,7 +89,7 @@ export function StoreRewardResultModal({
               boxShadow: "0 6px 24px rgba(249,115,22,.45)",
             }}
           >
-            كمّلي للخطوة التالية ←
+            {t("كمّلي للخطوة التالية ←", "Continue to next step →")}
           </button>
         </div>
       </div>
