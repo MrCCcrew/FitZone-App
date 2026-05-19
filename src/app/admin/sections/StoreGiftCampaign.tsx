@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import type { StoreGiftCampaignSettings } from "@/app/api/admin/store-gift-campaign/route";
+import { TranslateButton } from "./TranslateButton";
 
 const REWARD_LABELS: Record<string, string> = {
   wallet: "💳 رصيد محفظة",
@@ -146,7 +147,10 @@ export default function StoreGiftCampaign() {
           </div>
           <div>
             <label className={LABEL}>Campaign title (English)</label>
-            <input className={INPUT} value={settings.campaignTitleEn} onChange={(e) => set("campaignTitleEn", e.target.value)} dir="ltr" />
+            <div className="flex gap-2">
+              <input className={INPUT} value={settings.campaignTitleEn} onChange={(e) => set("campaignTitleEn", e.target.value)} dir="ltr" />
+              <TranslateButton from={settings.campaignTitleAr} onTranslated={(text) => set("campaignTitleEn", text)} />
+            </div>
           </div>
           <div>
             <label className={LABEL}>وصف الحملة (عربي)</label>
@@ -154,7 +158,10 @@ export default function StoreGiftCampaign() {
           </div>
           <div>
             <label className={LABEL}>Campaign subtitle (English)</label>
-            <input className={INPUT} value={settings.campaignSubtitleEn} onChange={(e) => set("campaignSubtitleEn", e.target.value)} dir="ltr" />
+            <div className="flex gap-2">
+              <input className={INPUT} value={settings.campaignSubtitleEn} onChange={(e) => set("campaignSubtitleEn", e.target.value)} dir="ltr" />
+              <TranslateButton from={settings.campaignSubtitleAr} onTranslated={(text) => set("campaignSubtitleEn", text)} />
+            </div>
           </div>
         </div>
 
