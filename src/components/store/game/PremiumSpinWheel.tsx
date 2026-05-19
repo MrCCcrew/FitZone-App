@@ -32,7 +32,7 @@ const TYPE_ICON: Record<string, string> = {
 };
 
 function easeOut4(t: number) {
-  return 1 - Math.pow(1 - t, 4);
+  return 1 - Math.pow(1 - t, 2);
 }
 
 export function PremiumSpinWheel({ segments, onSpin, onSpinComplete, disabled }: Props) {
@@ -290,9 +290,9 @@ export function PremiumSpinWheel({ segments, onSpin, onSpinComplete, disabled }:
     const desired  = ((N - winIdx) * degPerSeg) % 360;
     const curMod   = ((start % 360) + 360) % 360;
     const diff     = ((desired - curMod) + 360) % 360;
-    const spins    = rmRef.current ? 1 : 5;
+    const spins    = rmRef.current ? 1 : 6;
     const target   = start + spins * 360 + diff;
-    const duration = rmRef.current ? 700 : 4500;
+    const duration = rmRef.current ? 700 : 5500;
     const t0       = performance.now();
 
     const animate = (now: number) => {
