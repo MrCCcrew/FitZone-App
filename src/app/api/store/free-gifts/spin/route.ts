@@ -2,8 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { db } from "@/lib/db";
 import { getGameSettings, type RewardPoolItem } from "@/app/api/admin/store-free-gifts-game/route";
-
-const COOKIE = "fitzone-game-token";
+import { FREE_GIFTS_COOKIE, freeGiftsError, getFreeGiftsEligibility, isFreeGiftsSessionExpired } from "@/lib/store-free-gifts";
 
 const FALLBACK_POOL: RewardPoolItem[] = [
   { id: "f1", labelAr: "هدية مجانية", labelEn: "Free Gift",      type: "free_product",  icon: "🎁", value: 0,   weight: 30, active: true },
@@ -27,16 +26,32 @@ function pickByWeight(pool: RewardPoolItem[]): { item: RewardPoolItem; index: nu
 
 export async function POST() {
   const settings = await getGameSettings();
-  if (!settings.gameEnabled) return NextResponse.json({ error: "game_disabled" }, { status: 403 });
+  if (!settings.gameEnabled) {
+    return freeGiftsError("game_disabled", 403, "لعبة الهدايا المجانية غير مفعلة حالياً.", "The free gifts game is not active right now.");
+  }
 
   const cookieStore = await cookies();
-  const token = cookieStore.get(COOKIE)?.value;
-  if (!token) return NextResponse.json({ error: "no_session" }, { status: 400 });
+  const token = cookieStore.get(FREE_GIFTS_COOKIE)?.value;
+  if (!token) {
+    return freeGiftsError("no_session", 400, "لا توجد جلسة لعب نشطة. أعيدي فتح اللعبة من البداية.", "There is no active game session. Please reopen the game and start again.");
+  }
 
   const dbx = db as any;
   const session = await dbx.storeFreeGiftsSession.findUnique({ where: { token } }).catch(() => null);
-  if (!session || session.status !== "active") return NextResponse.json({ error: "invalid_session" }, { status: 400 });
-  if (session.spinsDone >= settings.maxSpinsPerUser) return NextResponse.json({ error: "spin_limit_reached" }, { status: 429 });
+  if (!session || session.status !== "active") {
+    return freeGiftsError("invalid_session", 400, "هذه الجلسة لم تعد صالحة. ابدئي لعبة جديدة للمحاولة مرة أخرى.", "This session is no longer valid. Start a new game to try again.");
+  }
+  if (isFreeGiftsSessionExpired(session)) {
+    await dbx.storeFreeGiftsSession.update({ where: { id: session.id }, data: { status: "expired" } }).catch(() => {});
+    return freeGiftsError("session_expired", 410, "انتهت مهلة اللعبة قبل إكمال اللفة. ابدئي من جديد.", "The game session expired before completing the spin. Please start again.");
+  }
+  const eligibility = await getFreeGiftsEligibility(session.userId ?? null);
+  if (!eligibility.eligible) {
+    return freeGiftsError(eligibility.code, 403, eligibility.messageAr, eligibility.messageEn);
+  }
+  if (session.spinsDone >= settings.maxSpinsPerUser) {
+    return freeGiftsError("spin_limit_reached", 429, "لقد استخدمتِ جميع فرص اللف المتاحة في هذه اللعبة.", "You have already used all available spins for this game.");
+  }
 
   const { item, index } = pickByWeight(settings.rewardsPool);
 

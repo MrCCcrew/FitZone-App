@@ -38,6 +38,12 @@ type GameState = {
   expiresAt: string | null;
 };
 
+type ApiErrorPayload = {
+  error?: string;
+  messageAr?: string;
+  messageEn?: string;
+};
+
 // ── Main Component ──────────────────────────────────────────────────────────
 export function StoreFreeGiftsGame() {
   const [game, setGame] = useState<GameState | null>(null);
@@ -55,24 +61,35 @@ export function StoreFreeGiftsGame() {
   const t = (ar: string, en: string) => lang === "ar" ? ar : en;
   const confettiShownRef  = useRef(false);
   const pendingRewardRef  = useRef<{ type: string; value: number; labelAr: string; labelEn?: string } | null>(null);
+  const apiErrorMessage = useCallback(async (res: Response, fallbackAr: string, fallbackEn: string) => {
+    try {
+      const data = await res.json() as ApiErrorPayload;
+      return lang === "ar" ? (data.messageAr || fallbackAr) : (data.messageEn || fallbackEn);
+    } catch {
+      return lang === "ar" ? fallbackAr : fallbackEn;
+    }
+  }, [lang]);
 
   // ── Load game state ──
   const loadGame = useCallback(async () => {
     try {
       const res = await fetch("/api/store/free-gifts/game");
-      if (!res.ok) throw new Error("failed");
+      if (!res.ok) {
+        const message = await apiErrorMessage(res, "تعذّر تحميل لعبة الهدايا حالياً.", "Failed to load the gift game right now.");
+        throw new Error(message);
+      }
       const data = await res.json() as GameState;
       if (data.gameEnabled === false) {
         setError(t("لعبة الهدايا غير مفعّلة حالياً.", "The gift game is not active right now."));
         return;
       }
       setGame(data);
-    } catch {
-      setError(t("تعذّر تحميل بيانات اللعبة.", "Failed to load game data."));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("تعذّر تحميل بيانات اللعبة.", "Failed to load game data."));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [apiErrorMessage, t]);
 
   useEffect(() => { void loadGame(); }, [loadGame]);
 
@@ -80,7 +97,12 @@ export function StoreFreeGiftsGame() {
   const handleSpin = async (): Promise<{ slotIndex: number }> => {
     setMascotState("spinning_excited");
     const res = await fetch("/api/store/free-gifts/spin", { method: "POST" });
-    if (!res.ok) throw new Error("spin failed");
+    if (!res.ok) {
+      setMascotState("idle_chubby");
+      const message = await apiErrorMessage(res, "تعذر تنفيذ اللفة الحالية.", "The current spin could not be completed.");
+      setError(message);
+      throw new Error(message);
+    }
     const data = await res.json() as { reward: { type: string; value: number; labelAr: string }; slotIndex: number };
     pendingRewardRef.current = data.reward;
     return { slotIndex: data.slotIndex };
@@ -117,7 +139,11 @@ export function StoreFreeGiftsGame() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ index }),
     });
-    if (!res.ok) throw new Error("pick failed");
+    if (!res.ok) {
+      const message = await apiErrorMessage(res, "تعذر فتح الكارت الحالي.", "The selected card could not be revealed.");
+      setError(message);
+      throw new Error(message);
+    }
     return res.json() as Promise<{ card: { type: string; icon?: string; labelAr: string; labelEn?: string }; advanceToStep3: boolean }>;
   };
 
@@ -135,7 +161,11 @@ export function StoreFreeGiftsGame() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ productId, action: isSelected ? "remove" : "add" }),
     });
-    if (!res.ok) return;
+    if (!res.ok) {
+      const message = await apiErrorMessage(res, "تعذر تحديث اختيار الهدية.", "The gift selection could not be updated.");
+      setError(message);
+      return;
+    }
     const data = await res.json() as { selectedProductIds: string[] };
     setGame(prev => prev ? { ...prev, selectedProductIds: data.selectedProductIds } : prev);
   };
@@ -146,7 +176,11 @@ export function StoreFreeGiftsGame() {
     setConfirming(true);
     try {
       const res = await fetch("/api/store/free-gifts/confirm", { method: "POST" });
-      if (!res.ok) throw new Error("confirm failed");
+      if (!res.ok) {
+        const message = await apiErrorMessage(res, "تعذر تأكيد الهدايا الحالية.", "Your gifts could not be confirmed.");
+        setError(message);
+        throw new Error(message);
+      }
       if (!confettiShownRef.current) {
         confettiShownRef.current = true;
         setShowConfetti(true);
@@ -173,6 +207,9 @@ export function StoreFreeGiftsGame() {
       <div style={{ textAlign: "center", color: "#fca5a5", fontFamily: "Cairo,Tajawal,sans-serif" }}>
         <div style={{ fontSize: 36, marginBottom: 12 }}>⚠️</div>
         <p>{error}</p>
+        <p style={{ marginTop: 8, fontSize: 13, color: "rgba(255,255,255,.55)", maxWidth: 380 }}>
+          {t("لو كانت المشاركة متوقفة بسبب استفادة سابقة أو انتهاء الجلسة أو مخالفة الشروط، سيتم توضيح السبب هنا.", "If play stopped because of a previous claim, an expired session, or unmet rules, the reason will be shown here.")}
+        </p>
         <button onClick={() => { setError(null); setLoading(true); void loadGame(); }} style={{ marginTop: 16, padding: "10px 24px", borderRadius: 10, border: "none", background: "#f97316", color: "#fff", fontWeight: 800, cursor: "pointer", fontFamily: "Cairo,Tajawal,sans-serif" }}>
           {t("أعيدي المحاولة", "Try again")}
         </button>
