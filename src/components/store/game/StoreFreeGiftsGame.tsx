@@ -14,6 +14,7 @@ import { StoreGiftSlotsBar } from "./StoreGiftSlotsBar";
 import { StoreInviteFriendsPanel } from "./StoreInviteFriendsPanel";
 import { StoreGiftRulesModal } from "./StoreGiftRulesModal";
 import { FitZoneBearMascot, type MascotState } from "./FitZoneBearMascot";
+import { StoreGiftGuideMascot, type StoreGiftGuideMascotProps } from "@/components/store/free-gifts/StoreGiftGuideMascot";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 type WheelSegment = { id: string; labelAr: string; labelEn?: string; type: string; icon?: string };
@@ -69,6 +70,8 @@ export function StoreFreeGiftsGame() {
       return lang === "ar" ? fallbackAr : fallbackEn;
     }
   }, [lang]);
+  const guideVariant: StoreGiftGuideMascotProps["variant"] =
+    confirmed ? "success" : !game ? "welcome" : game.step === 1 ? "spin" : game.step === 2 ? "cards" : "gifts";
 
   // ── Load game state ──
   const loadGame = useCallback(async () => {
@@ -223,7 +226,8 @@ export function StoreFreeGiftsGame() {
   if (confirmed) return (
     <div style={{ minHeight: "60vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
       <StoreConfettiLayer active={showConfetti} />
-      <div style={{ textAlign: "center", fontFamily: "Cairo,Tajawal,sans-serif" }}>
+      <div style={{ width: "100%", maxWidth: 560, textAlign: "center", fontFamily: "Cairo,Tajawal,sans-serif" }}>
+        <StoreGiftGuideMascot variant={guideVariant} />
         <div style={{ fontSize: 72, marginBottom: 16 }}>🎉</div>
         <h2 style={{ fontSize: 22, fontWeight: 900, color: "#fbbf24", marginBottom: 8 }}>{t("تم تأكيد هداياك!", "Your gifts are confirmed!")}</h2>
         <p style={{ color: "rgba(255,255,255,.6)", fontSize: 14, maxWidth: 300, margin: "0 auto 24px" }}>
@@ -246,6 +250,7 @@ export function StoreFreeGiftsGame() {
       <div style={{ position: "relative", zIndex: 1, maxWidth: 540, margin: "0 auto" }}>
         {/* Header */}
         <StoreGiftGameHeader expiresAt={game.expiresAt} onRulesClick={() => setShowRules(true)} />
+        <StoreGiftGuideMascot variant={guideVariant} />
 
         {/* Step progress */}
         <StoreGiftStepProgress step={game.step} />
