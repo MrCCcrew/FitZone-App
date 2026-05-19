@@ -74,7 +74,7 @@ export async function GET(req: NextRequest) {
   const selectedProductIds: string[] = (() => { try { return JSON.parse(session.selectedProductIds); } catch { return []; } })();
 
   const wheelSegments = settings.rewardsPool.filter(r => r.active).map(r => ({
-    id: r.id, labelAr: r.labelAr, type: r.type,
+    id: r.id, labelAr: r.labelAr, type: r.type, icon: r.icon ?? "",
   }));
 
   const baseUrl = (process.env.NEXTAUTH_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "https://fitzoneland.com").replace(/\/$/, "");

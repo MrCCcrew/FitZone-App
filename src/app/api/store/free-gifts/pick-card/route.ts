@@ -23,7 +23,7 @@ export async function POST(req: Request) {
   if (session.step < 2) return NextResponse.json({ error: "wrong_step" }, { status: 400 });
   if (session.cardsDone >= settings.maxCardPicksPerUser) return NextResponse.json({ error: "picks_exhausted" }, { status: 429 });
 
-  let cardsData: { type: string; value: number; labelAr: string; revealed: boolean }[] = [];
+  let cardsData: { type: string; icon?: string; value: number; labelAr: string; revealed: boolean }[] = [];
   try { cardsData = JSON.parse(session.cardsData); } catch { return NextResponse.json({ error: "cards_error" }, { status: 500 }); }
 
   if (cardIndex < 0 || cardIndex >= cardsData.length) return NextResponse.json({ error: "invalid_index" }, { status: 400 });
@@ -45,7 +45,7 @@ export async function POST(req: Request) {
 
   return NextResponse.json({
     ok: true,
-    card: { type: picked.type, value: picked.value, labelAr: picked.labelAr },
+    card: { type: picked.type, icon: picked.icon ?? "", value: picked.value, labelAr: picked.labelAr },
     advanceToStep3: advance,
     allCards: cardsData.map((c, i) => ({ index: i, revealed: c.revealed, ...(c.revealed ? { labelAr: c.labelAr, type: c.type } : {}) })),
   });

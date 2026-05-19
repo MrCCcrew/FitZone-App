@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
-type WheelSegment = { id: string; labelAr: string; type: string };
+type WheelSegment = { id: string; labelAr: string; type: string; icon?: string };
 
 type Props = {
   segments: WheelSegment[];
@@ -147,7 +147,8 @@ export function PremiumSpinWheel({ segments, onSpin, onSpinComplete, disabled }:
       ctx.font          = `${iconSz}px serif`;
       ctx.textAlign     = "center";
       ctx.textBaseline  = "middle";
-      ctx.fillText(TYPE_ICON[segs[i].type] ?? TYPE_ICON.default, 0, -iconSz * 0.88);
+      const segIcon = segs[i].icon || TYPE_ICON[segs[i].type] || TYPE_ICON.default;
+      ctx.fillText(segIcon, 0, -iconSz * 0.88);
 
       const labelSz = Math.max(9, innerR * 0.073);
       ctx.font         = `900 ${labelSz}px Cairo,Tajawal,sans-serif`;

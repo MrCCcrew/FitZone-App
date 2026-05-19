@@ -6,11 +6,11 @@ import { getGameSettings, type RewardPoolItem } from "@/app/api/admin/store-free
 const COOKIE = "fitzone-game-token";
 
 const FALLBACK_POOL: RewardPoolItem[] = [
-  { id: "f1", labelAr: "هدية مجانية", labelEn: "Free Gift", type: "free_product", value: 0, weight: 30, active: true },
-  { id: "f2", labelAr: "50 نقطة", labelEn: "50 Points", type: "points", value: 50, weight: 25, active: true },
-  { id: "f3", labelAr: "شحن مجاني", labelEn: "Free Shipping", type: "free_shipping", value: 0, weight: 20, active: true },
-  { id: "f4", labelAr: "خصم 10%", labelEn: "10% Discount", type: "discount", value: 10, weight: 15, active: true },
-  { id: "f5", labelAr: "100 نقطة", labelEn: "100 Points", type: "points", value: 100, weight: 10, active: true },
+  { id: "f1", labelAr: "هدية مجانية", labelEn: "Free Gift",      type: "free_product",  icon: "🎁", value: 0,   weight: 30, active: true },
+  { id: "f2", labelAr: "50 نقطة",      labelEn: "50 Points",      type: "points",        icon: "⭐", value: 50,  weight: 25, active: true },
+  { id: "f3", labelAr: "شحن مجاني",   labelEn: "Free Shipping",  type: "free_shipping", icon: "🚚", value: 0,   weight: 20, active: true },
+  { id: "f4", labelAr: "خصم 10%",     labelEn: "10% Discount",   type: "discount",      icon: "🪙", value: 10,  weight: 15, active: true },
+  { id: "f5", labelAr: "100 نقطة",     labelEn: "100 Points",     type: "points",        icon: "🏆", value: 100, weight: 10, active: true },
 ];
 
 function pickByWeight(pool: RewardPoolItem[]): { item: RewardPoolItem; index: number } {
@@ -43,7 +43,7 @@ export async function POST() {
   // Generate 3 card options for step 2
   const cardsData = Array.from({ length: 3 }, () => {
     const { item: c } = pickByWeight(settings.rewardsPool);
-    return { type: c.type, value: c.value, labelAr: c.labelAr, revealed: false };
+    return { type: c.type, icon: c.icon ?? "", value: c.value, labelAr: c.labelAr, revealed: false };
   });
 
   await dbx.storeFreeGiftsSession.update({

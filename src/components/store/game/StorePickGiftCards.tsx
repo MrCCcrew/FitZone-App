@@ -57,13 +57,13 @@ const SPARKS = [
   { sx:"0px",   sy:"-110px"}, { sx:"0px",   sy:"110px" },
 ];
 
-type CardState = { index: number; revealed: boolean; labelAr?: string; type?: string };
+type CardState = { index: number; revealed: boolean; labelAr?: string; type?: string; icon?: string };
 
 type Props = {
   cards: CardState[];
   maxPicks: number;
   picksDone: number;
-  onPick: (index: number) => Promise<{ card: { type: string; labelAr: string }; advanceToStep3: boolean }>;
+  onPick: (index: number) => Promise<{ card: { type: string; icon?: string; labelAr: string }; advanceToStep3: boolean }>;
   onPickComplete: () => Promise<void>;
 };
 
@@ -72,7 +72,7 @@ export function StorePickGiftCards({ cards, maxPicks, picksDone, onPick, onPickC
   // Local flip state (optimistic before API)
   const [flipped, setFlipped]     = useState<Record<number, boolean>>({});
   // Winner overlay
-  const [winner, setWinner]       = useState<{ type: string; labelAr: string } | null>(null);
+  const [winner, setWinner]       = useState<{ type: string; icon?: string; labelAr: string } | null>(null);
   const [winnerOut, setWinnerOut] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -84,7 +84,7 @@ export function StorePickGiftCards({ cards, maxPicks, picksDone, onPick, onPickC
     // Flip immediately (optimistic)
     setFlipped(prev => ({ ...prev, [idx]: true }));
 
-    let result: { card: { type: string; labelAr: string }; advanceToStep3: boolean } | null = null;
+    let result: { card: { type: string; icon?: string; labelAr: string }; advanceToStep3: boolean } | null = null;
     try {
       result = await onPick(idx);
     } catch {
@@ -97,7 +97,7 @@ export function StorePickGiftCards({ cards, maxPicks, picksDone, onPick, onPickC
 
     // Brief pause so flip animation is visible, then show winner overlay
     timerRef.current = setTimeout(() => {
-      setWinner({ type: result!.card.type, labelAr: result!.card.labelAr });
+      setWinner({ type: result!.card.type, icon: result!.card.icon, labelAr: result!.card.labelAr });
       setWinnerOut(false);
 
       // After 2.2s, fade out then advance
@@ -194,7 +194,7 @@ export function StorePickGiftCards({ cards, maxPicks, picksDone, onPick, onPickC
                 background: "linear-gradient(135deg,rgba(255,255,255,0.12) 0%,transparent 60%)",
                 pointerEvents: "none",
               }} />
-              <div style={{ fontSize: 56 }}>{REWARD_ICONS[winner.type] ?? "🎁"}</div>
+              <div style={{ fontSize: 56 }}>{winner.icon || REWARD_ICONS[winner.type] || "🎁"}</div>
               <div style={{ fontSize: 13, color: "#d1fae5", fontWeight: 800, fontFamily: "Cairo,Tajawal,sans-serif", textAlign: "center", padding: "0 12px", lineHeight: 1.5 }}>
                 {winner.labelAr}
               </div>
@@ -241,7 +241,7 @@ export function StorePickGiftCards({ cards, maxPicks, picksDone, onPick, onPickC
                 onClick={() => void handle(i)}
                 style={{
                   width: 100, height: 150,
-                  perspective: 600,
+                  perspective: "600px",   // perspective على الأب فقط
                   cursor: flippd || !canPick || loading ? "default" : "pointer",
                   flexShrink: 0,
                   opacity: flippd && !isFlipped(i) ? 0.4 : 1,
@@ -254,9 +254,8 @@ export function StorePickGiftCards({ cards, maxPicks, picksDone, onPick, onPickC
                     position: "relative",
                     transformStyle: "preserve-3d",
                     transition: "transform .65s cubic-bezier(.4,0,.2,1)",
-                    transform: flippd
-                      ? "perspective(600px) rotateY(180deg)"
-                      : "perspective(600px) rotateY(0deg)",
+                    // بدون perspective هنا — بيسبب عكس النص لو اتحط على نفس العنصر
+                    transform: flippd ? "rotateY(180deg)" : "rotateY(0deg)",
                   }}
                 >
                   {/* Front — mystery */}
@@ -302,7 +301,7 @@ export function StorePickGiftCards({ cards, maxPicks, picksDone, onPick, onPickC
                     boxShadow: "0 8px 24px rgba(16,185,129,.3)",
                     padding: 8,
                   }}>
-                    <div style={{ fontSize: 30 }}>{REWARD_ICONS[card?.type ?? ""] ?? "🎁"}</div>
+                    <div style={{ fontSize: 30 }}>{card?.icon || REWARD_ICONS[card?.type ?? ""] || "🎁"}</div>
                     <div style={{ fontSize: 11, color: "#fff", fontWeight: 800, textAlign: "center", fontFamily: "Cairo,Tajawal,sans-serif", lineHeight: 1.4 }}>
                       {card?.labelAr ?? ""}
                     </div>
