@@ -43,7 +43,7 @@ export async function POST() {
   // Generate 3 card options for step 2
   const cardsData = Array.from({ length: 3 }, () => {
     const { item: c } = pickByWeight(settings.rewardsPool);
-    return { type: c.type, icon: c.icon ?? "", value: c.value, labelAr: c.labelAr, revealed: false };
+    return { type: c.type, icon: c.icon ?? "", value: c.value, labelAr: c.labelAr, labelEn: c.labelEn ?? "", revealed: false };
   });
 
   await dbx.storeFreeGiftsSession.update({

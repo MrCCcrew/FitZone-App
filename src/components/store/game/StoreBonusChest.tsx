@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { useLang } from "@/lib/language";
 
 const CSS = `
 @keyframes sbc-shake {
@@ -36,9 +37,13 @@ const SPARKLE_POSITIONS = [
   { tx: "50px", ty: "10px" }, { tx: "0px", ty: "-50px" },
 ];
 
-type Props = { labelAr: string; onDone: () => void };
+type Props = { labelAr: string; labelEn?: string; onDone: () => void };
 
-export function StoreBonusChest({ labelAr, onDone }: Props) {
+export function StoreBonusChest({ labelAr, labelEn, onDone }: Props) {
+  const { lang } = useLang();
+  const t = (ar: string, en: string) => lang === "ar" ? ar : en;
+  const label = lang === "en" && labelEn ? labelEn : labelAr;
+
   const [phase, setPhase] = useState<"shake" | "open" | "done">("shake");
 
   useEffect(() => {
@@ -52,12 +57,10 @@ export function StoreBonusChest({ labelAr, onDone }: Props) {
       <style>{CSS}</style>
       <div style={{ textAlign: "center", padding: "32px 0" }}>
         <p style={{ fontSize: 14, color: "rgba(255,255,255,.6)", marginBottom: 24, fontFamily: "Cairo,Tajawal,sans-serif" }}>
-          📦 عندك صندوق مكافآت إضافي!
+          {t("📦 عندك صندوق مكافآت إضافي!", "📦 You have a bonus rewards chest!")}
         </p>
 
-        {/* Chest wrapper */}
         <div style={{ position: "relative", display: "inline-block" }}>
-          {/* Sparkles */}
           {phase === "open" && SPARKLE_POSITIONS.map((sp, i) => (
             <div
               key={i}
@@ -76,7 +79,6 @@ export function StoreBonusChest({ labelAr, onDone }: Props) {
             />
           ))}
 
-          {/* Chest emoji — big */}
           <div
             className="sbc-chest"
             style={{
@@ -94,7 +96,6 @@ export function StoreBonusChest({ labelAr, onDone }: Props) {
           </div>
         </div>
 
-        {/* Label */}
         {phase === "done" && (
           <div style={{ marginTop: 24 }}>
             <div style={{
@@ -109,7 +110,7 @@ export function StoreBonusChest({ labelAr, onDone }: Props) {
               fontFamily: "Cairo,Tajawal,sans-serif",
               marginBottom: 20,
             }}>
-              {labelAr}
+              {label}
             </div>
             <br />
             <button
@@ -127,7 +128,7 @@ export function StoreBonusChest({ labelAr, onDone }: Props) {
                 boxShadow: "0 4px 16px rgba(249,115,22,.4)",
               }}
             >
-              تقدمي للأمام ←
+              {t("تقدمي للأمام ←", "Proceed →")}
             </button>
           </div>
         )}

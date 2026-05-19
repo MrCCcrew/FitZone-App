@@ -1,12 +1,16 @@
 "use client";
-
-const STEPS = [
-  { n: 1, icon: "🎰", label: "اللفة" },
-  { n: 2, icon: "🃏", label: "الكروت" },
-  { n: 3, icon: "🎁", label: "الهدايا" },
-];
+import { useLang } from "@/lib/language";
 
 export function StoreGiftStepProgress({ step }: { step: number }) {
+  const { lang } = useLang();
+  const t = (ar: string, en: string) => lang === "ar" ? ar : en;
+
+  const STEPS = [
+    { n: 1, icon: "🎰", label: t("اللفة", "Spin") },
+    { n: 2, icon: "🃏", label: t("الكروت", "Cards") },
+    { n: 3, icon: "🎁", label: t("الهدايا", "Gifts") },
+  ];
+
   return (
     <>
       <style>{`
@@ -61,7 +65,6 @@ export function StoreGiftStepProgress({ step }: { step: number }) {
                     overflow: "hidden",
                   }}
                 >
-                  {/* Highlight shimmer */}
                   {(active || done) && (
                     <div style={{
                       position: "absolute",

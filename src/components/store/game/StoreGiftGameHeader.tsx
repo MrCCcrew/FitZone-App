@@ -1,4 +1,5 @@
 "use client";
+import { useLang } from "@/lib/language";
 import { StoreGiftCountdown } from "./StoreGiftCountdown";
 
 type Props = {
@@ -7,6 +8,9 @@ type Props = {
 };
 
 export function StoreGiftGameHeader({ expiresAt, onRulesClick }: Props) {
+  const { lang } = useLang();
+  const t = (ar: string, en: string) => lang === "ar" ? ar : en;
+
   return (
     <div style={{
       display: "flex",
@@ -24,7 +28,7 @@ export function StoreGiftGameHeader({ expiresAt, onRulesClick }: Props) {
             FitZone Store
           </p>
           <p style={{ margin: 0, fontSize: 11, color: "rgba(255,255,255,.4)", fontFamily: "Cairo,Tajawal,sans-serif" }}>
-            هدايا مجانية
+            {t("هدايا مجانية", "Free Gifts")}
           </p>
         </div>
       </div>
@@ -46,7 +50,7 @@ export function StoreGiftGameHeader({ expiresAt, onRulesClick }: Props) {
             fontFamily: "Cairo,Tajawal,sans-serif",
           }}
         >
-          📋 القواعد
+          📋 {t("القواعد", "Rules")}
         </button>
         <a
           href="/?page=shop"
@@ -65,7 +69,7 @@ export function StoreGiftGameHeader({ expiresAt, onRulesClick }: Props) {
             gap: 4,
           }}
         >
-          ← المتجر
+          {t("← المتجر", "Store →")}
         </a>
       </div>
     </div>

@@ -1,4 +1,5 @@
 "use client";
+import { useLang } from "@/lib/language";
 
 const CSS = `
 @keyframes sgsb-slot-pop {
@@ -27,6 +28,8 @@ type Props = {
 };
 
 export function StoreGiftSlotsBar({ slots, selected, products, onConfirm, confirming }: Props) {
+  const { lang } = useLang();
+  const t = (ar: string, en: string) => lang === "ar" ? ar : en;
   const ready = selected.length >= slots;
   const remaining = slots - selected.length;
 
@@ -35,6 +38,14 @@ export function StoreGiftSlotsBar({ slots, selected, products, onConfirm, confir
     if (!p?.images) return null;
     try { const imgs = JSON.parse(p.images); return Array.isArray(imgs) ? imgs[0] : null; } catch { return null; }
   };
+
+  const btnLabel = confirming
+    ? t("⏳ جارٍ التأكيد...", "⏳ Confirming...")
+    : ready
+    ? `✅ ${t(`تأكيد ${slots} هدايا`, `Confirm ${slots} ${slots === 1 ? "Gift" : "Gifts"}`)}`
+    : lang === "ar"
+      ? `اختاري ${remaining} ${remaining === 1 ? "هدية" : "هدايا"} أخرى`
+      : `Pick ${remaining} more ${remaining === 1 ? "gift" : "gifts"}`;
 
   return (
     <>
@@ -50,7 +61,6 @@ export function StoreGiftSlotsBar({ slots, selected, products, onConfirm, confir
         backdropFilter: "blur(12px)",
         borderTop: "1px solid rgba(255,255,255,.08)",
       }}>
-        {/* Slots row */}
         <div style={{ display: "flex", gap: 8, justifyContent: "center", marginBottom: 14, flexWrap: "wrap" }}>
           {Array.from({ length: slots }, (_, i) => {
             const pid = selected[i];
@@ -85,7 +95,6 @@ export function StoreGiftSlotsBar({ slots, selected, products, onConfirm, confir
           })}
         </div>
 
-        {/* Confirm button */}
         <button
           onClick={onConfirm}
           disabled={!ready || confirming}
@@ -104,12 +113,10 @@ export function StoreGiftSlotsBar({ slots, selected, products, onConfirm, confir
             transition: "all .25s",
           }}
         >
-          {confirming ? "⏳ جارٍ التأكيد..."
-            : ready ? `✅ تأكيد ${slots} هدايا`
-            : `اختاري ${remaining} ${remaining === 1 ? "هدية" : "هدايا"} أخرى`}
+          {btnLabel}
         </button>
         <p style={{ textAlign: "center", fontSize: 11, color: "rgba(255,255,255,.3)", marginTop: 8, fontFamily: "Cairo,Tajawal,sans-serif" }}>
-          يمكنك إكمال طلب المتجر بدون المشاركة في الهدايا
+          {t("يمكنك إكمال طلب المتجر بدون المشاركة في الهدايا", "You can complete your order without participating in gifts")}
         </p>
       </div>
     </>

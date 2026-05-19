@@ -61,20 +61,23 @@ export async function GET(req: NextRequest) {
   }
 
   // Parse stored cards (don't reveal unrevealed contents to client)
-  let cardsForClient: { index: number; revealed: boolean; labelAr?: string; type?: string }[] = [];
+  let cardsForClient: { index: number; revealed: boolean; labelAr?: string; labelEn?: string; type?: string; icon?: string }[] = [];
   try {
-    const cardsData = JSON.parse(session.cardsData) as { type: string; value: number; labelAr: string; revealed: boolean }[];
-    cardsForClient = cardsData.map((c, i) => ({
-      index: i,
-      revealed: c.revealed,
-      ...(c.revealed ? { labelAr: c.labelAr, type: c.type } : {}),
-    }));
+    const cardsData = JSON.parse(session.cardsData) as { type: string; icon?: string; value: number; labelAr: string; labelEn?: string; revealed: boolean }[];
+    cardsForClient = cardsData.map((c, i) => {
+      const poolItem = settings.rewardsPool.find(r => r.type === c.type && r.labelAr === c.labelAr);
+      return {
+        index: i,
+        revealed: c.revealed,
+        ...(c.revealed ? { labelAr: c.labelAr, labelEn: c.labelEn ?? poolItem?.labelEn ?? c.labelAr, type: c.type, icon: c.icon ?? poolItem?.icon ?? "" } : {}),
+      };
+    });
   } catch { cardsForClient = []; }
 
   const selectedProductIds: string[] = (() => { try { return JSON.parse(session.selectedProductIds); } catch { return []; } })();
 
   const wheelSegments = settings.rewardsPool.filter(r => r.active).map(r => ({
-    id: r.id, labelAr: r.labelAr, type: r.type, icon: r.icon ?? "",
+    id: r.id, labelAr: r.labelAr, labelEn: r.labelEn ?? "", type: r.type, icon: r.icon ?? "",
   }));
 
   const baseUrl = (process.env.NEXTAUTH_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "https://fitzoneland.com").replace(/\/$/, "");
@@ -87,9 +90,10 @@ export async function GET(req: NextRequest) {
     token: session.token,
     step: session.step,
     spinDone: session.spinsDone > 0,
-    spinResult: session.spinsDone > 0
-      ? { labelAr: session.spinLabelAr, type: session.spinRewardType, value: session.spinRewardValue ?? 0 }
-      : null,
+    spinResult: session.spinsDone > 0 ? (() => {
+      const poolItem = settings.rewardsPool.find(r => r.type === session.spinRewardType && r.labelAr === session.spinLabelAr);
+      return { labelAr: session.spinLabelAr, labelEn: poolItem?.labelEn ?? session.spinLabelAr ?? "", type: session.spinRewardType, value: session.spinRewardValue ?? 0 };
+    })() : null,
     cardsDone: session.cardsDone,
     maxCardPicks: settings.maxCardPicksPerUser,
     cards: cardsForClient,
