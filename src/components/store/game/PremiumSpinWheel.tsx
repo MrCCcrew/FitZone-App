@@ -38,9 +38,10 @@ function easeOut4(t: number) {
 export function PremiumSpinWheel({ segments, onSpin, onSpinComplete, disabled }: Props) {
   const { lang } = useLang();
   const canvasRef    = useRef<HTMLCanvasElement>(null);
-  const rafRef       = useRef<number>(0);
-  const rotRef       = useRef(0);
-  const rmRef        = useRef(false);
+  const rafRef          = useRef<number>(0);
+  const safetyTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const spinDoneRef     = useRef(false);
+  const rotRef          = useRef(0);
   const [spinning, setSpinning] = useState(false);
 
   const N = Math.max(4, Math.min(8, segments.length || 6));
@@ -49,9 +50,6 @@ export function PremiumSpinWheel({ segments, onSpin, onSpinComplete, disabled }:
     { id: `x${i}`, labelAr: "هدية", labelEn: "Gift", type: "free_product" }
   );
 
-  useEffect(() => {
-    rmRef.current = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  }, []);
 
   // ── Draw ────────────────────────────────────────────────────────────────────
   const draw = useCallback((angleDeg: number) => {
@@ -270,6 +268,7 @@ export function PremiumSpinWheel({ segments, onSpin, onSpinComplete, disabled }:
   const handleSpin = async () => {
     if (spinning || disabled) return;
     setSpinning(true);
+    spinDoneRef.current = false;
 
     let winIdx = 0;
     try {
@@ -282,18 +281,24 @@ export function PremiumSpinWheel({ segments, onSpin, onSpinComplete, disabled }:
 
     const degPerSeg = 360 / N;
     const start     = rotRef.current;
+    const desired   = ((N - winIdx) * degPerSeg) % 360;
+    const curMod    = ((start % 360) + 360) % 360;
+    const diff      = ((desired - curMod) + 360) % 360;
+    const spins     = 6;
+    const target    = start + spins * 360 + diff;
+    const duration  = 5500;
+    const t0        = performance.now();
 
-    // Compute rotation so pointer (at top, 0° wheel-local) lands on winIdx
-    // After rotation R, top points to wheel-local angle (360 - R%360)%360
-    // We want that = winIdx * degPerSeg
-    // => R = (N - winIdx) * degPerSeg + n*360
-    const desired  = ((N - winIdx) * degPerSeg) % 360;
-    const curMod   = ((start % 360) + 360) % 360;
-    const diff     = ((desired - curMod) + 360) % 360;
-    const spins    = rmRef.current ? 1 : 6;
-    const target   = start + spins * 360 + diff;
-    const duration = rmRef.current ? 700 : 5500;
-    const t0       = performance.now();
+    const finalizeSpin = () => {
+      if (spinDoneRef.current) return;
+      spinDoneRef.current = true;
+      if (safetyTimerRef.current) { clearTimeout(safetyTimerRef.current); safetyTimerRef.current = null; }
+      draw(target);
+      setSpinning(false);
+      onSpinComplete?.();
+    };
+
+    safetyTimerRef.current = setTimeout(finalizeSpin, duration + 1000);
 
     const animate = (now: number) => {
       const prog  = Math.min((now - t0) / duration, 1);
@@ -307,12 +312,6 @@ export function PremiumSpinWheel({ segments, onSpin, onSpinComplete, disabled }:
       }
 
       rotRef.current = target;
-      if (rmRef.current) {
-        draw(target);
-        setSpinning(false);
-        onSpinComplete?.();
-        return;
-      }
 
       // Bounce animation
       const bT0  = performance.now();
@@ -322,7 +321,7 @@ export function PremiumSpinWheel({ segments, onSpin, onSpinComplete, disabled }:
         const bt = Math.min((bnow - bT0) / bDur, 1);
         draw(target + Math.sin(bt * Math.PI * 2.5) * bMag * (1 - bt));
         if (bt < 1) rafRef.current = requestAnimationFrame(bounce);
-        else { draw(target); setSpinning(false); onSpinComplete?.(); }
+        else finalizeSpin();
       };
       rafRef.current = requestAnimationFrame(bounce);
     };
@@ -330,7 +329,10 @@ export function PremiumSpinWheel({ segments, onSpin, onSpinComplete, disabled }:
     rafRef.current = requestAnimationFrame(animate);
   };
 
-  useEffect(() => () => cancelAnimationFrame(rafRef.current), []);
+  useEffect(() => () => {
+    cancelAnimationFrame(rafRef.current);
+    if (safetyTimerRef.current) clearTimeout(safetyTimerRef.current);
+  }, []);
 
   return (
     <>
