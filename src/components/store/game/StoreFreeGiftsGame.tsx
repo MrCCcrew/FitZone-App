@@ -15,8 +15,8 @@ import { StoreGiftRulesModal } from "./StoreGiftRulesModal";
 import { FitZoneBearMascot, type MascotState } from "./FitZoneBearMascot";
 
 // ── Types ──────────────────────────────────────────────────────────────────
-type WheelSegment = { id: string; labelAr: string; type: string };
-type CardState    = { index: number; revealed: boolean; labelAr?: string; type?: string };
+type WheelSegment = { id: string; labelAr: string; type: string; icon?: string };
+type CardState    = { index: number; revealed: boolean; labelAr?: string; type?: string; icon?: string };
 type Product      = { id: string; name: string; price: number; images: string | null; category?: string | null };
 
 type GameState = {
@@ -108,14 +108,14 @@ export function StoreFreeGiftsGame() {
   };
 
   // ── Card pick handler — returns card data; loadGame() called after animation ──
-  const handlePickCard = async (index: number): Promise<{ card: { type: string; labelAr: string }; advanceToStep3: boolean }> => {
+  const handlePickCard = async (index: number): Promise<{ card: { type: string; icon?: string; labelAr: string }; advanceToStep3: boolean }> => {
     const res = await fetch("/api/store/free-gifts/pick-card", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ index }),
     });
     if (!res.ok) throw new Error("pick failed");
-    return res.json() as Promise<{ card: { type: string; labelAr: string }; advanceToStep3: boolean }>;
+    return res.json() as Promise<{ card: { type: string; icon?: string; labelAr: string }; advanceToStep3: boolean }>;
   };
 
   const handlePickComplete = async () => {
