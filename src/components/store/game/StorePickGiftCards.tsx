@@ -109,9 +109,9 @@ export function StorePickGiftCards({ cards, maxPicks, picksDone, onPick, onPickC
           setWinner(null);
           setWinnerOut(false);
           void onPickComplete();
-        }, 380);
-      }, 2200);
-    }, 550);
+        }, 600);
+      }, 3200);
+    }, 1100);
   };
 
   useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
@@ -254,7 +254,7 @@ export function StorePickGiftCards({ cards, maxPicks, picksDone, onPick, onPickC
                     width: "100%", height: "100%",
                     position: "relative",
                     transformStyle: "preserve-3d",
-                    transition: "transform .65s cubic-bezier(.4,0,.2,1)",
+                    transition: "transform 1.1s cubic-bezier(.4,0,.2,1)",
                     transform: flippd ? "rotateY(180deg)" : "rotateY(0deg)",
                   }}
                 >
@@ -309,7 +309,7 @@ export function StorePickGiftCards({ cards, maxPicks, picksDone, onPick, onPickC
                     gap: 6, padding: 8,
                     pointerEvents: "none", zIndex: 2,
                     animation: flipped[i] && !cards[i]?.revealed
-                      ? "spgc-text-reveal .25s ease .7s both"
+                      ? "spgc-text-reveal .4s ease 1.15s both"
                       : "none",
                   }}>
                     <div style={{ fontSize: 30 }}>{card?.icon || REWARD_ICONS[card?.type ?? ""] || "🎁"}</div>

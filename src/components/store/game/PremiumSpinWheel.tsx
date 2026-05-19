@@ -290,9 +290,9 @@ export function PremiumSpinWheel({ segments, onSpin, onSpinComplete, disabled }:
     const desired  = ((N - winIdx) * degPerSeg) % 360;
     const curMod   = ((start % 360) + 360) % 360;
     const diff     = ((desired - curMod) + 360) % 360;
-    const spins    = rmRef.current ? 1 : 5;
+    const spins    = rmRef.current ? 1 : 7;
     const target   = start + spins * 360 + diff;
-    const duration = rmRef.current ? 700 : 4500;
+    const duration = rmRef.current ? 900 : 7000;
     const t0       = performance.now();
 
     const animate = (now: number) => {
@@ -316,7 +316,7 @@ export function PremiumSpinWheel({ segments, onSpin, onSpinComplete, disabled }:
 
       // Bounce animation
       const bT0  = performance.now();
-      const bDur = 380;
+      const bDur = 600;
       const bMag = degPerSeg * 0.055;
       const bounce = (bnow: number) => {
         const bt = Math.min((bnow - bT0) / bDur, 1);

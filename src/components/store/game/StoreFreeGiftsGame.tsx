@@ -247,7 +247,7 @@ export function StoreFreeGiftsGame() {
       {showRules && <StoreGiftRulesModal onClose={() => setShowRules(false)} />}
       {spinReward && <StoreRewardResultModal reward={spinReward} onNext={() => void handleSpinRewardNext()} />}
 
-      <div style={{ position: "relative", zIndex: 1, maxWidth: game.step === 1 ? 880 : 540, margin: "0 auto" }}>
+      <div style={{ position: "relative", zIndex: 1, maxWidth: game.step === 1 ? 1020 : 540, margin: "0 auto" }}>
         {/* Header */}
         <StoreGiftGameHeader expiresAt={game.expiresAt} onRulesClick={() => setShowRules(true)} />
         {game.step !== 1 && <StoreGiftGuideMascot variant={guideVariant} />}
@@ -258,24 +258,30 @@ export function StoreFreeGiftsGame() {
         {/* Content */}
         <div style={{ padding: "16px 16px 0" }}>
 
-          {/* ─── STEP 1: Spin — wheel centred, guide compact sidebar on right ─── */}
+          {/* ─── STEP 1: Bear (left) | Wheel (center) | Guide with figure (right) ─── */}
           {game.step === 1 && (
             <>
               <style>{`
-                @media (min-width: 640px) {
-                  .fzgs-step1 { flex-direction: row !important; align-items: flex-start !important; gap: 20px !important; }
-                  .fzgs-wheel-col { flex: 1; min-width: 0; }
-                  .fzgs-guide-col { display: flex !important; width: 256px !important; flex-shrink: 0 !important; }
+                @media (min-width: 700px) {
+                  .fzgs-step1      { flex-direction: row !important; align-items: center !important; gap: 12px !important; }
+                  .fzgs-bear-col   { display: flex !important; flex-shrink: 0 !important; }
+                  .fzgs-wheel-col  { flex: 1; min-width: 0; }
+                  .fzgs-guide-col  { display: flex !important; width: 310px !important; flex-shrink: 0 !important; }
                 }
-                @media (max-width: 639px) {
+                @media (max-width: 699px) {
+                  .fzgs-bear-col  { display: none !important; }
                   .fzgs-guide-col { display: none !important; }
                 }
               `}</style>
               <div className="fzgs-step1" style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:12 }}>
 
-                {/* Wheel + bear — main centered column */}
-                <div className="fzgs-wheel-col" style={{ width:"100%", display:"flex", flexDirection:"column", alignItems:"center", gap:10 }}>
+                {/* Bear — left column (desktop), hidden on mobile */}
+                <div className="fzgs-bear-col" style={{ display:"none", flexDirection:"column", alignItems:"center" }}>
                   <FitZoneBearMascot state={mascotState} size="md" />
+                </div>
+
+                {/* Wheel — center */}
+                <div className="fzgs-wheel-col" style={{ width:"100%" }}>
                   <PremiumSpinWheel
                     segments={game.wheelSegments}
                     onSpin={handleSpin}
@@ -284,11 +290,15 @@ export function StoreFreeGiftsGame() {
                   />
                 </div>
 
-                {/* Guide — compact right sidebar (desktop only) */}
+                {/* Guide with figure — right column (desktop only) */}
                 <div className="fzgs-guide-col" style={{ display:"none", flexDirection:"column" }}>
-                  <StoreGiftGuideMascot variant={guideVariant} compact />
+                  <StoreGiftGuideMascot variant={guideVariant} noMargin />
                 </div>
               </div>
+
+              {/* Bear visible on mobile only — above wheel in column flow */}
+              <style>{`.fzgs-bear-mobile { display:flex; justify-content:center; margin-bottom:8px; }
+                @media (min-width: 700px) { .fzgs-bear-mobile { display:none !important; } }`}</style>
             </>
           )}
 
