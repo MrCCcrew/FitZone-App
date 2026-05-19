@@ -4,7 +4,7 @@ import { StoreGiftGameHeader } from "./StoreGiftGameHeader";
 import { StoreGiftStepProgress } from "./StoreGiftStepProgress";
 import { StoreFloatingGiftsBackground } from "./StoreFloatingGiftsBackground";
 import { StoreConfettiLayer } from "./StoreConfettiLayer";
-import { StoreSpinWheel } from "./StoreSpinWheel";
+import { PremiumSpinWheel } from "./PremiumSpinWheel";
 import { StoreRewardResultModal } from "./StoreRewardResultModal";
 import { StorePickGiftCards } from "./StorePickGiftCards";
 import { StoreBonusChest } from "./StoreBonusChest";
@@ -196,7 +196,7 @@ export function StoreFreeGiftsGame() {
 
           {/* ─── STEP 1: Spin ─── */}
           {game.step === 1 && (
-            <StoreSpinWheel
+            <PremiumSpinWheel
               segments={game.wheelSegments}
               onSpin={handleSpin}
               disabled={game.spinDone}
