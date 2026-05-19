@@ -12,6 +12,7 @@ import { StoreFreeProductPicker } from "./StoreFreeProductPicker";
 import { StoreGiftSlotsBar } from "./StoreGiftSlotsBar";
 import { StoreInviteFriendsPanel } from "./StoreInviteFriendsPanel";
 import { StoreGiftRulesModal } from "./StoreGiftRulesModal";
+import { FitZoneBearMascot, type MascotState } from "./FitZoneBearMascot";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 type WheelSegment = { id: string; labelAr: string; type: string };
@@ -48,6 +49,7 @@ export function StoreFreeGiftsGame() {
   const [confirming, setConfirming] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [showRules, setShowRules] = useState(false);
+  const [mascotState, setMascotState] = useState<MascotState>("idle_chubby");
   const confettiShownRef  = useRef(false);
   const pendingRewardRef  = useRef<{ type: string; value: number; labelAr: string } | null>(null);
 
@@ -73,16 +75,17 @@ export function StoreFreeGiftsGame() {
 
   // ── Spin handler ──
   const handleSpin = async (): Promise<{ slotIndex: number }> => {
+    setMascotState("spinning_excited");
     const res = await fetch("/api/store/free-gifts/spin", { method: "POST" });
     if (!res.ok) throw new Error("spin failed");
     const data = await res.json() as { reward: { type: string; value: number; labelAr: string }; slotIndex: number };
-    // Store reward but don't show modal yet — wait for wheel animation to finish
     pendingRewardRef.current = data.reward;
     return { slotIndex: data.slotIndex };
   };
 
   // Called by PremiumSpinWheel after animation + bounce complete
   const handleSpinAnimDone = () => {
+    setMascotState("reward_happy");
     if (pendingRewardRef.current) {
       setSpinReward(pendingRewardRef.current);
       pendingRewardRef.current = null;
@@ -91,6 +94,7 @@ export function StoreFreeGiftsGame() {
 
   const handleSpinRewardNext = async () => {
     setSpinReward(null);
+    setMascotState("workout_transition");
     if (spinReward?.type === "bonus_chest") {
       setShowBonusChest(true);
       return;
@@ -115,6 +119,7 @@ export function StoreFreeGiftsGame() {
   };
 
   const handlePickComplete = async () => {
+    setMascotState("fit_success");
     await loadGame();
   };
 
@@ -208,14 +213,39 @@ export function StoreFreeGiftsGame() {
         {/* Content */}
         <div style={{ padding: "16px 16px 0" }}>
 
-          {/* ─── STEP 1: Spin ─── */}
+          {/* ─── STEP 1: Spin — Game Stage (wheel + mascot) ─── */}
           {game.step === 1 && (
-            <PremiumSpinWheel
-              segments={game.wheelSegments}
-              onSpin={handleSpin}
-              onSpinComplete={handleSpinAnimDone}
-              disabled={game.spinDone}
-            />
+            <>
+              <style>{`
+                @media (min-width: 640px) {
+                  .fzgs-stage { flex-direction: row !important; align-items: center !important; }
+                  .fzgs-bear  { order: 2; }
+                  .fzgs-wheel { order: 1; flex: 1; }
+                }
+              `}</style>
+              <div className="fzgs-stage" style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:12 }}>
+                {/* Mascot — mobile: above wheel; desktop: right of wheel */}
+                <div className="fzgs-bear" style={{ flexShrink:0 }}>
+                  <FitZoneBearMascot state={mascotState} size="md" />
+                </div>
+                {/* Wheel */}
+                <div className="fzgs-wheel" style={{ width:"100%" }}>
+                  <PremiumSpinWheel
+                    segments={game.wheelSegments}
+                    onSpin={handleSpin}
+                    onSpinComplete={handleSpinAnimDone}
+                    disabled={game.spinDone}
+                  />
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Mascot mini — steps 2 & 3 */}
+          {game.step >= 2 && !showBonusChest && (
+            <div style={{ display:"flex", justifyContent:"center", marginBottom: 4 }}>
+              <FitZoneBearMascot state={mascotState} size="sm" />
+            </div>
           )}
 
           {/* ─── STEP 2: Cards ─── */}
