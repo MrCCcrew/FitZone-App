@@ -247,7 +247,7 @@ export function StoreFreeGiftsGame() {
       {showRules && <StoreGiftRulesModal onClose={() => setShowRules(false)} />}
       {spinReward && <StoreRewardResultModal reward={spinReward} onNext={() => void handleSpinRewardNext()} />}
 
-      <div style={{ position: "relative", zIndex: 1, maxWidth: game.step === 1 ? 1080 : 540, margin: "0 auto" }}>
+      <div style={{ position: "relative", zIndex: 1, maxWidth: game.step === 1 ? 880 : 540, margin: "0 auto" }}>
         {/* Header */}
         <StoreGiftGameHeader expiresAt={game.expiresAt} onRulesClick={() => setShowRules(true)} />
         {game.step !== 1 && <StoreGiftGuideMascot variant={guideVariant} />}
@@ -258,38 +258,35 @@ export function StoreFreeGiftsGame() {
         {/* Content */}
         <div style={{ padding: "16px 16px 0" }}>
 
-          {/* ─── STEP 1: Spin — Game Stage (wheel + mascot) ─── */}
+          {/* ─── STEP 1: Spin — wheel centred, guide compact sidebar on right ─── */}
           {game.step === 1 && (
             <>
               <style>{`
                 @media (min-width: 640px) {
-                  .fzgs-stage { flex-direction: row !important; align-items: flex-start !important; gap: 18px !important; }
-                  .fzgs-stage-main { order: 1; flex: 1; min-width: 0; }
-                  .fzgs-side { order: 2; width: min(360px, 34vw); display: flex !important; flex-direction: column !important; align-items: stretch !important; gap: 8px !important; flex-shrink: 0; }
-                  .fzgs-bear  { order: 2; align-self: center; }
-                  .fzgs-guide { order: 1; width: 100%; }
-                  .fzgs-wheel { width: 100% !important; }
+                  .fzgs-step1 { flex-direction: row !important; align-items: flex-start !important; gap: 20px !important; }
+                  .fzgs-wheel-col { flex: 1; min-width: 0; }
+                  .fzgs-guide-col { display: flex !important; width: 256px !important; flex-shrink: 0 !important; }
+                }
+                @media (max-width: 639px) {
+                  .fzgs-guide-col { display: none !important; }
                 }
               `}</style>
-              <div className="fzgs-stage" style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:12, width:"100%" }}>
-                {/* Mascot — mobile: above wheel; desktop: right of wheel */}
-                <div className="fzgs-stage-main" style={{ width:"100%" }}>
-                  <div className="fzgs-wheel" style={{ width:"100%" }}>
-                    <PremiumSpinWheel
-                      segments={game.wheelSegments}
-                      onSpin={handleSpin}
-                      onSpinComplete={handleSpinAnimDone}
-                      disabled={game.spinDone}
-                    />
-                  </div>
+              <div className="fzgs-step1" style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:12 }}>
+
+                {/* Wheel + bear — main centered column */}
+                <div className="fzgs-wheel-col" style={{ width:"100%", display:"flex", flexDirection:"column", alignItems:"center", gap:10 }}>
+                  <FitZoneBearMascot state={mascotState} size="md" />
+                  <PremiumSpinWheel
+                    segments={game.wheelSegments}
+                    onSpin={handleSpin}
+                    onSpinComplete={handleSpinAnimDone}
+                    disabled={game.spinDone}
+                  />
                 </div>
-                <div className="fzgs-side" style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:8, width:"100%" }}>
-                  <div className="fzgs-guide" style={{ width:"100%" }}>
-                    <StoreGiftGuideMascot variant={guideVariant} />
-                  </div>
-                  <div className="fzgs-bear" style={{ flexShrink:0 }}>
-                    <FitZoneBearMascot state={mascotState} size="md" />
-                  </div>
+
+                {/* Guide — compact right sidebar (desktop only) */}
+                <div className="fzgs-guide-col" style={{ display:"none", flexDirection:"column" }}>
+                  <StoreGiftGuideMascot variant={guideVariant} compact />
                 </div>
               </div>
             </>
