@@ -3,17 +3,14 @@ import { cookies } from "next/headers";
 import { db } from "@/lib/db";
 import { getCurrentAppUser } from "@/lib/app-session";
 import { getGameSettings } from "@/app/api/admin/store-free-gifts-game/route";
-import { FREE_GIFTS_COOKIE, freeGiftsError, getFreeGiftsEligibility, isFreeGiftsSessionExpired } from "@/lib/store-free-gifts";
+
+const COOKIE = "fitzone-game-token";
 
 async function getOrCreateSession(token: string | null, userId: string | null) {
   const dbx = db as any;
   if (token) {
     const s = await dbx.storeFreeGiftsSession.findUnique({ where: { token } }).catch(() => null);
     if (s && s.status === "active") {
-      if (isFreeGiftsSessionExpired(s)) {
-        await dbx.storeFreeGiftsSession.update({ where: { id: s.id }, data: { status: "expired" } }).catch(() => {});
-        return null;
-      }
       if (!s.userId && userId) await dbx.storeFreeGiftsSession.update({ where: { id: s.id }, data: { userId } }).catch(() => {});
       return s;
     }
@@ -30,34 +27,15 @@ async function getOrCreateSession(token: string | null, userId: string | null) {
 
 export async function GET(req: NextRequest) {
   const settings = await getGameSettings();
-  if (!settings.gameEnabled) {
-    return freeGiftsError(
-      "game_disabled",
-      403,
-      "لعبة الهدايا المجانية غير مفعلة حالياً.",
-      "The free gifts game is not active right now.",
-    );
-  }
+  if (!settings.gameEnabled) return NextResponse.json({ gameEnabled: false });
 
   const cookieStore = await cookies();
-  const token = cookieStore.get(FREE_GIFTS_COOKIE)?.value ?? null;
+  const token = cookieStore.get(COOKIE)?.value ?? null;
   const user = await getCurrentAppUser();
   const userId = user?.id ?? null;
-  const eligibility = await getFreeGiftsEligibility(userId);
-  if (!eligibility.eligible) {
-    return freeGiftsError(eligibility.code, 403, eligibility.messageAr, eligibility.messageEn);
-  }
 
   const dbx = db as any;
   const session = await getOrCreateSession(token, userId);
-  if (!session) {
-    return freeGiftsError(
-      "session_expired",
-      410,
-      "انتهت جلسة اللعبة بسبب مرور الوقت. ابدئي لعبة جديدة للمحاولة مرة أخرى.",
-      "Your game session expired. Start a new game to try again.",
-    );
-  }
 
   // Eligible products (never send cost/price from admin-only fields)
   let eligibleProducts: { id: string; name: string; images: string | null; price: number; category: string }[] = [];
@@ -128,6 +106,6 @@ export async function GET(req: NextRequest) {
     referralGoal: settings.requiredInvites,
     referralLink,
   });
-  res.cookies.set(FREE_GIFTS_COOKIE, session.token, { httpOnly: true, sameSite: "lax", maxAge: 60 * 60 * 24, path: "/" });
+  res.cookies.set(COOKIE, session.token, { httpOnly: true, sameSite: "lax", maxAge: 60 * 60 * 24, path: "/" });
   return res;
 }
