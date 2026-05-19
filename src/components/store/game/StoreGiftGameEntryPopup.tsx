@@ -34,8 +34,8 @@ export function StoreGiftGameEntryPopup() {
     const check = async () => {
       try {
         const res = await fetch("/api/store/free-gifts/check");
-        const { enabled, eligible } = await res.json() as { enabled: boolean; eligible?: boolean };
-        if (enabled && eligible !== false) setTimeout(() => setShow(true), 1500);
+        const { enabled } = await res.json() as { enabled: boolean };
+        if (enabled) setTimeout(() => setShow(true), 1500);
       } catch { /* ignore */ }
     };
 

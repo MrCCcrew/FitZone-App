@@ -5,6 +5,7 @@ import { StoreGiftGameHeader } from "./StoreGiftGameHeader";
 import { StoreGiftStepProgress } from "./StoreGiftStepProgress";
 import { StoreFloatingGiftsBackground } from "./StoreFloatingGiftsBackground";
 import { StoreConfettiLayer } from "./StoreConfettiLayer";
+import { PremiumSpinWheel } from "./PremiumSpinWheel";
 import { StoreRewardResultModal } from "./StoreRewardResultModal";
 import { StorePickGiftCards } from "./StorePickGiftCards";
 import { StoreBonusChest } from "./StoreBonusChest";
@@ -13,8 +14,6 @@ import { StoreGiftSlotsBar } from "./StoreGiftSlotsBar";
 import { StoreInviteFriendsPanel } from "./StoreInviteFriendsPanel";
 import { StoreGiftRulesModal } from "./StoreGiftRulesModal";
 import { FitZoneBearMascot, type MascotState } from "./FitZoneBearMascot";
-import { StoreGameStage } from "./StoreGameStage";
-import { StoreGiftGuideMascot, type StoreGiftGuideMascotProps } from "@/components/store/free-gifts/StoreGiftGuideMascot";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 type WheelSegment = { id: string; labelAr: string; labelEn?: string; type: string; icon?: string };
@@ -39,12 +38,6 @@ type GameState = {
   expiresAt: string | null;
 };
 
-type ApiErrorPayload = {
-  error?: string;
-  messageAr?: string;
-  messageEn?: string;
-};
-
 // ── Main Component ──────────────────────────────────────────────────────────
 export function StoreFreeGiftsGame() {
   const [game, setGame] = useState<GameState | null>(null);
@@ -62,37 +55,24 @@ export function StoreFreeGiftsGame() {
   const t = (ar: string, en: string) => lang === "ar" ? ar : en;
   const confettiShownRef  = useRef(false);
   const pendingRewardRef  = useRef<{ type: string; value: number; labelAr: string; labelEn?: string } | null>(null);
-  const apiErrorMessage = useCallback(async (res: Response, fallbackAr: string, fallbackEn: string) => {
-    try {
-      const data = await res.json() as ApiErrorPayload;
-      return lang === "ar" ? (data.messageAr || fallbackAr) : (data.messageEn || fallbackEn);
-    } catch {
-      return lang === "ar" ? fallbackAr : fallbackEn;
-    }
-  }, [lang]);
-  const guideVariant: StoreGiftGuideMascotProps["variant"] =
-    confirmed ? "success" : !game ? "welcome" : game.step === 1 ? "spin" : game.step === 2 ? "cards" : "gifts";
 
   // ── Load game state ──
   const loadGame = useCallback(async () => {
     try {
       const res = await fetch("/api/store/free-gifts/game");
-      if (!res.ok) {
-        const message = await apiErrorMessage(res, "تعذّر تحميل لعبة الهدايا حالياً.", "Failed to load the gift game right now.");
-        throw new Error(message);
-      }
+      if (!res.ok) throw new Error("failed");
       const data = await res.json() as GameState;
       if (data.gameEnabled === false) {
         setError(t("لعبة الهدايا غير مفعّلة حالياً.", "The gift game is not active right now."));
         return;
       }
       setGame(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t("تعذّر تحميل بيانات اللعبة.", "Failed to load game data."));
+    } catch {
+      setError(t("تعذّر تحميل بيانات اللعبة.", "Failed to load game data."));
     } finally {
       setLoading(false);
     }
-  }, [apiErrorMessage, t]);
+  }, []);
 
   useEffect(() => { void loadGame(); }, [loadGame]);
 
@@ -100,12 +80,7 @@ export function StoreFreeGiftsGame() {
   const handleSpin = async (): Promise<{ slotIndex: number }> => {
     setMascotState("spinning_excited");
     const res = await fetch("/api/store/free-gifts/spin", { method: "POST" });
-    if (!res.ok) {
-      setMascotState("idle_chubby");
-      const message = await apiErrorMessage(res, "تعذر تنفيذ اللفة الحالية.", "The current spin could not be completed.");
-      setError(message);
-      throw new Error(message);
-    }
+    if (!res.ok) throw new Error("spin failed");
     const data = await res.json() as { reward: { type: string; value: number; labelAr: string }; slotIndex: number };
     pendingRewardRef.current = data.reward;
     return { slotIndex: data.slotIndex };
@@ -142,11 +117,7 @@ export function StoreFreeGiftsGame() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ index }),
     });
-    if (!res.ok) {
-      const message = await apiErrorMessage(res, "تعذر فتح الكارت الحالي.", "The selected card could not be revealed.");
-      setError(message);
-      throw new Error(message);
-    }
+    if (!res.ok) throw new Error("pick failed");
     return res.json() as Promise<{ card: { type: string; icon?: string; labelAr: string; labelEn?: string }; advanceToStep3: boolean }>;
   };
 
@@ -164,11 +135,7 @@ export function StoreFreeGiftsGame() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ productId, action: isSelected ? "remove" : "add" }),
     });
-    if (!res.ok) {
-      const message = await apiErrorMessage(res, "تعذر تحديث اختيار الهدية.", "The gift selection could not be updated.");
-      setError(message);
-      return;
-    }
+    if (!res.ok) return;
     const data = await res.json() as { selectedProductIds: string[] };
     setGame(prev => prev ? { ...prev, selectedProductIds: data.selectedProductIds } : prev);
   };
@@ -179,11 +146,7 @@ export function StoreFreeGiftsGame() {
     setConfirming(true);
     try {
       const res = await fetch("/api/store/free-gifts/confirm", { method: "POST" });
-      if (!res.ok) {
-        const message = await apiErrorMessage(res, "تعذر تأكيد الهدايا الحالية.", "Your gifts could not be confirmed.");
-        setError(message);
-        throw new Error(message);
-      }
+      if (!res.ok) throw new Error("confirm failed");
       if (!confettiShownRef.current) {
         confettiShownRef.current = true;
         setShowConfetti(true);
@@ -210,9 +173,6 @@ export function StoreFreeGiftsGame() {
       <div style={{ textAlign: "center", color: "#fca5a5", fontFamily: "Cairo,Tajawal,sans-serif" }}>
         <div style={{ fontSize: 36, marginBottom: 12 }}>⚠️</div>
         <p>{error}</p>
-        <p style={{ marginTop: 8, fontSize: 13, color: "rgba(255,255,255,.55)", maxWidth: 380 }}>
-          {t("لو كانت المشاركة متوقفة بسبب استفادة سابقة أو انتهاء الجلسة أو مخالفة الشروط، سيتم توضيح السبب هنا.", "If play stopped because of a previous claim, an expired session, or unmet rules, the reason will be shown here.")}
-        </p>
         <button onClick={() => { setError(null); setLoading(true); void loadGame(); }} style={{ marginTop: 16, padding: "10px 24px", borderRadius: 10, border: "none", background: "#f97316", color: "#fff", fontWeight: 800, cursor: "pointer", fontFamily: "Cairo,Tajawal,sans-serif" }}>
           {t("أعيدي المحاولة", "Try again")}
         </button>
@@ -226,8 +186,7 @@ export function StoreFreeGiftsGame() {
   if (confirmed) return (
     <div style={{ minHeight: "60vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
       <StoreConfettiLayer active={showConfetti} />
-      <div style={{ width: "100%", maxWidth: 560, textAlign: "center", fontFamily: "Cairo,Tajawal,sans-serif" }}>
-        <StoreGiftGuideMascot variant={guideVariant} />
+      <div style={{ textAlign: "center", fontFamily: "Cairo,Tajawal,sans-serif" }}>
         <div style={{ fontSize: 72, marginBottom: 16 }}>🎉</div>
         <h2 style={{ fontSize: 22, fontWeight: 900, color: "#fbbf24", marginBottom: 8 }}>{t("تم تأكيد هداياك!", "Your gifts are confirmed!")}</h2>
         <p style={{ color: "rgba(255,255,255,.6)", fontSize: 14, maxWidth: 300, margin: "0 auto 24px" }}>
@@ -247,10 +206,9 @@ export function StoreFreeGiftsGame() {
       {showRules && <StoreGiftRulesModal onClose={() => setShowRules(false)} />}
       {spinReward && <StoreRewardResultModal reward={spinReward} onNext={() => void handleSpinRewardNext()} />}
 
-      <div style={{ position: "relative", zIndex: 1, maxWidth: game.step === 1 ? 900 : 540, margin: "0 auto" }}>
+      <div style={{ position: "relative", zIndex: 1, maxWidth: 540, margin: "0 auto" }}>
         {/* Header */}
         <StoreGiftGameHeader expiresAt={game.expiresAt} onRulesClick={() => setShowRules(true)} />
-        {game.step !== 1 && <StoreGiftGuideMascot variant={guideVariant} />}
 
         {/* Step progress */}
         <StoreGiftStepProgress step={game.step} />
@@ -258,15 +216,32 @@ export function StoreFreeGiftsGame() {
         {/* Content */}
         <div style={{ padding: "16px 16px 0" }}>
 
-          {/* ─── STEP 1: Game Stage (bear + wheel in unified arena) ─── */}
+          {/* ─── STEP 1: Spin — Game Stage (wheel + mascot) ─── */}
           {game.step === 1 && (
-            <StoreGameStage
-              segments={game.wheelSegments}
-              mascotState={mascotState}
-              onSpin={handleSpin}
-              onSpinComplete={handleSpinAnimDone}
-              spinDone={game.spinDone}
-            />
+            <>
+              <style>{`
+                @media (min-width: 640px) {
+                  .fzgs-stage { flex-direction: row !important; align-items: center !important; }
+                  .fzgs-bear  { order: 2; }
+                  .fzgs-wheel { order: 1; flex: 1; }
+                }
+              `}</style>
+              <div className="fzgs-stage" style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:12 }}>
+                {/* Mascot — mobile: above wheel; desktop: right of wheel */}
+                <div className="fzgs-bear" style={{ flexShrink:0 }}>
+                  <FitZoneBearMascot state={mascotState} size="md" />
+                </div>
+                {/* Wheel */}
+                <div className="fzgs-wheel" style={{ width:"100%" }}>
+                  <PremiumSpinWheel
+                    segments={game.wheelSegments}
+                    onSpin={handleSpin}
+                    onSpinComplete={handleSpinAnimDone}
+                    disabled={game.spinDone}
+                  />
+                </div>
+              </div>
+            </>
           )}
 
           {/* Mascot mini — steps 2 & 3 */}

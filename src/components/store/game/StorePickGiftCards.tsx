@@ -37,10 +37,6 @@ const CSS = `
   70% { transform:scale(1.08); }
   100%{ transform:scale(1);   opacity:1; }
 }
-@keyframes spgc-text-reveal {
-  from { opacity:0; transform:scale(0.82); }
-  to   { opacity:1; transform:scale(1); }
-}
 @media(prefers-reduced-motion:reduce){
   .spgc-hover-anim  { animation:none!important; }
   .spgc-winner-card { animation:spgc-winner-in 0.3s ease both!important; }
@@ -241,14 +237,12 @@ export function StorePickGiftCards({ cards, maxPicks, picksDone, onPick, onPickC
                 style={{
                   width: 100, height: 150,
                   perspective: "600px",
-                  position: "relative",
                   cursor: flippd || !canPick || loading ? "default" : "pointer",
                   flexShrink: 0,
                   opacity: flippd && !isFlipped(i) ? 0.4 : 1,
                   transition: "opacity .3s",
                 }}
               >
-                {/* 3-D flip inner — NO text lives here */}
                 <div
                   style={{
                     width: "100%", height: "100%",
@@ -289,35 +283,24 @@ export function StorePickGiftCards({ cards, maxPicks, picksDone, onPick, onPickC
                     <div style={{ position: "absolute", bottom: 8, left: 8, fontSize: 10, opacity: .5 }}>✨</div>
                   </div>
 
-                  {/* Back — green shell only, no text (text lives in 2-D overlay below) */}
+                  {/* Back — reward */}
                   <div style={{
                     position: "absolute", inset: 0, borderRadius: 16,
                     backfaceVisibility: "hidden",
                     transform: "rotateY(180deg)",
                     background: "linear-gradient(145deg,#10b981,#065f46)",
                     border: "1.5px solid rgba(16,185,129,.4)",
-                    boxShadow: "0 8px 24px rgba(16,185,129,.3)",
-                  }} />
-                </div>
-
-                {/* 2-D text overlay — outside preserve-3d, so text is never mirrored */}
-                {flippd && (
-                  <div style={{
-                    position: "absolute", inset: 0, borderRadius: 16,
                     display: "flex", flexDirection: "column",
-                    alignItems: "center", justifyContent: "center",
-                    gap: 6, padding: 8,
-                    pointerEvents: "none", zIndex: 2,
-                    animation: flipped[i] && !cards[i]?.revealed
-                      ? "spgc-text-reveal .25s ease .7s both"
-                      : "none",
+                    alignItems: "center", justifyContent: "center", gap: 6,
+                    boxShadow: "0 8px 24px rgba(16,185,129,.3)",
+                    padding: 8,
                   }}>
                     <div style={{ fontSize: 30 }}>{card?.icon || REWARD_ICONS[card?.type ?? ""] || "🎁"}</div>
                     <div style={{ fontSize: 11, color: "#fff", fontWeight: 800, textAlign: "center", fontFamily: "Cairo,Tajawal,sans-serif", lineHeight: 1.4 }}>
                       {cardLabel}
                     </div>
                   </div>
-                )}
+                </div>
               </div>
             );
           })}
