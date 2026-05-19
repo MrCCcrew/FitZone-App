@@ -1,6 +1,5 @@
 "use client";
 import { useEffect, useState } from "react";
-import { TranslateButton } from "./TranslateButton";
 
 type RewardPoolItem = {
   id: string;
@@ -33,16 +32,6 @@ const DEFAULT_SETTINGS: Settings = {
 
 const QUICK_ICONS = ["🎁","⭐","🚚","🪙","💎","🏆","🎀","💳","🎉","🛍️","💝","🎊","🏅","🌟","🎯","🎲"];
 
-const REWARD_TYPES = [
-  { value: "free_product",  label: "🎁 منتج مجاني" },
-  { value: "points",        label: "⭐ نقاط مكافآت" },
-  { value: "free_shipping", label: "🚚 شحن مجاني" },
-  { value: "discount",      label: "🏷️ خصم" },
-  { value: "wallet",        label: "💳 رصيد محفظة" },
-  { value: "bonus_chest",   label: "💎 صندوق مكافآت" },
-];
-const KNOWN_TYPES = REWARD_TYPES.map(t => t.value);
-
 function uid() { return Math.random().toString(36).slice(2, 10); }
 
 export function StoreFreeGiftsGameSection() {
@@ -53,7 +42,7 @@ export function StoreFreeGiftsGameSection() {
   const [stats, setStats]       = useState<{ totalSessions: number; confirmedSessions: number } | null>(null);
   const [addOpen, setAddOpen]   = useState(false);
   const [newItem, setNewItem]   = useState<Omit<RewardPoolItem, "id">>({
-    type: "free_product", icon: "🎁", labelAr: "", labelEn: "", value: 0, weight: 10, active: true,
+    type: "", icon: "🎁", labelAr: "", labelEn: "", value: 0, weight: 10, active: true,
   });
 
   useEffect(() => {
@@ -94,7 +83,7 @@ export function StoreFreeGiftsGameSection() {
       ...prev,
       rewardsPool: [...prev.rewardsPool, { id: uid(), ...newItem }],
     }));
-    setNewItem({ type: "free_product", icon: "🎁", labelAr: "", labelEn: "", value: 0, weight: 10, active: true });
+    setNewItem({ type: "", icon: "🎁", labelAr: "", labelEn: "", value: 0, weight: 10, active: true });
     setAddOpen(false);
   };
 
@@ -119,12 +108,9 @@ export function StoreFreeGiftsGameSection() {
     color: "#fff", fontSize: 13,
     fontFamily: "inherit", width: "100%", boxSizing: "border-box",
   };
-  const sel: React.CSSProperties = { ...inp, cursor: "pointer" };
   const label12: React.CSSProperties = { display: "block", fontSize: 11, color: "rgba(255,255,255,.45)", marginBottom: 4 };
 
   if (loading) return <div style={{ padding: 24, color: "rgba(255,255,255,.5)" }}>جارٍ التحميل...</div>;
-
-  const newTypeIsCustom = !KNOWN_TYPES.includes(newItem.type);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 22, padding: "4px 0" }}>
@@ -217,32 +203,19 @@ export function StoreFreeGiftsGameSection() {
               </div>
               <div>
                 <label style={label12}>الاسم بالإنجليزي</label>
-                <div style={{ display: "flex", gap: 6 }}>
-                  <input value={newItem.labelEn} onChange={e => setNewItem(p => ({ ...p, labelEn: e.target.value }))} placeholder="Free Gift" style={inp} />
-                  <TranslateButton from={newItem.labelAr} onTranslated={text => setNewItem(p => ({ ...p, labelEn: text }))} />
-                </div>
+                <input value={newItem.labelEn} onChange={e => setNewItem(p => ({ ...p, labelEn: e.target.value }))} placeholder="Free Gift" style={inp} />
               </div>
               <div>
-                <label style={label12}>نوع المكافأة *</label>
-                <select
-                  value={newTypeIsCustom ? "custom" : newItem.type}
-                  onChange={e => setNewItem(p => ({ ...p, type: e.target.value === "custom" ? "" : e.target.value }))}
-                  style={sel}
-                >
-                  {REWARD_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-                  <option value="custom">✏️ مخصص (custom)</option>
-                </select>
-                {newTypeIsCustom && (
-                  <input value={newItem.type} onChange={e => setNewItem(p => ({ ...p, type: e.target.value.trim().replace(/\s/g,"_") }))}
-                    placeholder="custom_reward_code" style={{ ...inp, marginTop: 6 }} />
-                )}
+                <label style={label12}>نوع المكافأة (كود) *</label>
+                <input value={newItem.type} onChange={e => setNewItem(p => ({ ...p, type: e.target.value.trim().replace(/\s/g,"_") }))} placeholder="free_product" style={inp} />
+                <p style={{ margin: "3px 0 0", fontSize: 10, color: "rgba(255,255,255,.3)" }}>مثال: free_product, points, discount, custom_gift</p>
               </div>
               <div>
                 <label style={label12}>القيمة (أو 0)</label>
                 <input type="number" min={0} value={newItem.value} onChange={e => setNewItem(p => ({ ...p, value: Number(e.target.value) }))} style={inp} />
               </div>
               <div>
-                <label style={label12}>الوزن — كلما زاد كلما ظهر أكثر</label>
+                <label style={label12}>الوزن (1-100) — كلما زاد كلما ظهر أكثر</label>
                 <input type="number" min={1} max={100} value={newItem.weight} onChange={e => setNewItem(p => ({ ...p, weight: Math.max(1, Math.min(100, Number(e.target.value))) }))} style={inp} />
               </div>
             </div>
@@ -256,99 +229,79 @@ export function StoreFreeGiftsGameSection() {
 
         {/* Rewards list */}
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {settings.rewardsPool.map((r, idx) => {
-            const typeIsCustom = !KNOWN_TYPES.includes(r.type);
-            return (
-              <div key={r.id} style={{
-                background: r.active ? "rgba(255,255,255,.05)" : "rgba(255,255,255,.01)",
-                border: `1px solid ${r.active ? "rgba(255,255,255,.12)" : "rgba(255,255,255,.04)"}`,
-                borderRadius: 11, padding: "12px 14px",
-                opacity: r.active ? 1 : 0.5, transition: "all .2s",
-              }}>
-                {/* Row 1: icon + labels + controls */}
-                <div style={{ display: "flex", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
-                  {/* Icon */}
-                  <input value={r.icon} onChange={e => updateReward(r.id, "icon", e.target.value.slice(-2))}
-                    style={{ ...inp, width: 44, textAlign: "center", fontSize: 22, padding: "4px", flexShrink: 0 }} />
+          {settings.rewardsPool.map((r, idx) => (
+            <div key={r.id} style={{
+              background: r.active ? "rgba(255,255,255,.05)" : "rgba(255,255,255,.01)",
+              border: `1px solid ${r.active ? "rgba(255,255,255,.12)" : "rgba(255,255,255,.04)"}`,
+              borderRadius: 11, padding: "12px 14px",
+              opacity: r.active ? 1 : 0.5, transition: "all .2s",
+            }}>
+              {/* Row 1: icon + labels + toggle + delete */}
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
+                {/* Icon */}
+                <input value={r.icon} onChange={e => updateReward(r.id, "icon", e.target.value.slice(-2))}
+                  style={{ ...inp, width: 44, textAlign: "center", fontSize: 22, padding: "4px", flexShrink: 0 }} />
 
-                  {/* Label Ar */}
-                  <div style={{ flex: 2, minWidth: 110 }}>
-                    <label style={label12}>الاسم العربي</label>
-                    <input value={r.labelAr} onChange={e => updateReward(r.id, "labelAr", e.target.value)} style={inp} />
-                  </div>
-
-                  {/* Label En */}
-                  <div style={{ flex: 2, minWidth: 120 }}>
-                    <label style={label12}>الاسم الإنجليزي</label>
-                    <div style={{ display: "flex", gap: 6 }}>
-                      <input value={r.labelEn} onChange={e => updateReward(r.id, "labelEn", e.target.value)} style={inp} />
-                      <TranslateButton from={r.labelAr} onTranslated={text => updateReward(r.id, "labelEn", text)} />
-                    </div>
-                  </div>
-
-                  {/* Type dropdown */}
-                  <div style={{ flex: 2, minWidth: 140 }}>
-                    <label style={label12}>النوع</label>
-                    <select
-                      value={typeIsCustom ? "custom" : r.type}
-                      onChange={e => {
-                        if (e.target.value !== "custom") updateReward(r.id, "type", e.target.value);
-                        else updateReward(r.id, "type", "");
-                      }}
-                      style={sel}
-                    >
-                      {REWARD_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-                      <option value="custom">✏️ مخصص (custom)</option>
-                    </select>
-                    {typeIsCustom && (
-                      <input value={r.type} onChange={e => updateReward(r.id, "type", e.target.value.trim().replace(/\s/g,"_"))}
-                        placeholder="custom_reward_code" style={{ ...inp, marginTop: 6 }} />
-                    )}
-                  </div>
-
-                  {/* Value */}
-                  <div style={{ width: 70 }}>
-                    <label style={label12}>القيمة</label>
-                    <input type="number" min={0} value={r.value} onChange={e => updateReward(r.id, "value", Number(e.target.value))} style={{ ...inp, padding: "7px 8px" }} />
-                  </div>
-
-                  {/* Weight */}
-                  <div style={{ width: 70 }}>
-                    <label style={label12}>الوزن</label>
-                    <input type="number" min={1} max={100} value={r.weight} onChange={e => updateReward(r.id, "weight", Math.max(1, Number(e.target.value)))} style={{ ...inp, padding: "7px 8px" }} />
-                  </div>
-
-                  {/* Controls */}
-                  <div style={{ display: "flex", flexDirection: "column", gap: 5, flexShrink: 0 }}>
-                    <button onClick={() => updateReward(r.id, "active", !r.active)}
-                      style={{ padding: "5px 12px", borderRadius: 7, border: "none", background: r.active ? "#10b981" : "rgba(255,255,255,.08)", color: r.active ? "#fff" : "rgba(255,255,255,.4)", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
-                      {r.active ? "✓ نشط" : "○ معطّل"}
-                    </button>
-                    <div style={{ display: "flex", gap: 4 }}>
-                      <button onClick={() => moveReward(r.id, -1)} disabled={idx === 0}
-                        style={{ flex: 1, padding: "3px 0", borderRadius: 6, border: "1px solid rgba(255,255,255,.12)", background: "transparent", color: "rgba(255,255,255,.5)", fontSize: 12, cursor: "pointer" }}>↑</button>
-                      <button onClick={() => moveReward(r.id, 1)} disabled={idx === settings.rewardsPool.length - 1}
-                        style={{ flex: 1, padding: "3px 0", borderRadius: 6, border: "1px solid rgba(255,255,255,.12)", background: "transparent", color: "rgba(255,255,255,.5)", fontSize: 12, cursor: "pointer" }}>↓</button>
-                      <button onClick={() => deleteReward(r.id)}
-                        style={{ flex: 1, padding: "3px 6px", borderRadius: 6, border: "1px solid rgba(239,68,68,.3)", background: "rgba(239,68,68,.08)", color: "#ef4444", fontSize: 11, cursor: "pointer", fontWeight: 700 }}>✕</button>
-                    </div>
-                  </div>
+                {/* Label Ar */}
+                <div style={{ flex: 2, minWidth: 110 }}>
+                  <label style={label12}>الاسم العربي</label>
+                  <input value={r.labelAr} onChange={e => updateReward(r.id, "labelAr", e.target.value)} style={inp} />
                 </div>
 
-                {/* Probability bar */}
-                {totalWeight > 0 && r.active && (
-                  <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8 }}>
-                    <div style={{ flex: 1, height: 4, borderRadius: 4, background: "rgba(255,255,255,.08)", overflow: "hidden" }}>
-                      <div style={{ width: `${(r.weight / totalWeight * 100).toFixed(1)}%`, height: "100%", background: "linear-gradient(90deg,#fbbf24,#f59e0b)", borderRadius: 4 }} />
-                    </div>
-                    <span style={{ fontSize: 10, color: "rgba(255,255,255,.4)", whiteSpace: "nowrap" }}>
-                      {(r.weight / totalWeight * 100).toFixed(1)}%
-                    </span>
+                {/* Label En */}
+                <div style={{ flex: 2, minWidth: 100 }}>
+                  <label style={label12}>الاسم الإنجليزي</label>
+                  <input value={r.labelEn} onChange={e => updateReward(r.id, "labelEn", e.target.value)} style={inp} />
+                </div>
+
+                {/* Type */}
+                <div style={{ flex: 2, minWidth: 120 }}>
+                  <label style={label12}>النوع (كود)</label>
+                  <input value={r.type} onChange={e => updateReward(r.id, "type", e.target.value.trim().replace(/\s/g,"_"))} style={inp} />
+                </div>
+
+                {/* Value */}
+                <div style={{ width: 70 }}>
+                  <label style={label12}>القيمة</label>
+                  <input type="number" min={0} value={r.value} onChange={e => updateReward(r.id, "value", Number(e.target.value))} style={{ ...inp, padding: "7px 8px" }} />
+                </div>
+
+                {/* Weight */}
+                <div style={{ width: 70 }}>
+                  <label style={label12}>الوزن</label>
+                  <input type="number" min={1} max={100} value={r.weight} onChange={e => updateReward(r.id, "weight", Math.max(1, Number(e.target.value)))} style={{ ...inp, padding: "7px 8px" }} />
+                </div>
+
+                {/* Controls */}
+                <div style={{ display: "flex", flexDirection: "column", gap: 5, flexShrink: 0 }}>
+                  <button onClick={() => updateReward(r.id, "active", !r.active)}
+                    style={{ padding: "5px 12px", borderRadius: 7, border: "none", background: r.active ? "#10b981" : "rgba(255,255,255,.08)", color: r.active ? "#fff" : "rgba(255,255,255,.4)", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+                    {r.active ? "✓ نشط" : "○ معطّل"}
+                  </button>
+                  <div style={{ display: "flex", gap: 4 }}>
+                    <button onClick={() => moveReward(r.id, -1)} disabled={idx === 0}
+                      style={{ flex: 1, padding: "3px 0", borderRadius: 6, border: "1px solid rgba(255,255,255,.12)", background: "transparent", color: "rgba(255,255,255,.5)", fontSize: 12, cursor: "pointer" }}>↑</button>
+                    <button onClick={() => moveReward(r.id, 1)} disabled={idx === settings.rewardsPool.length - 1}
+                      style={{ flex: 1, padding: "3px 0", borderRadius: 6, border: "1px solid rgba(255,255,255,.12)", background: "transparent", color: "rgba(255,255,255,.5)", fontSize: 12, cursor: "pointer" }}>↓</button>
+                    <button onClick={() => deleteReward(r.id)}
+                      style={{ flex: 1, padding: "3px 6px", borderRadius: 6, border: "1px solid rgba(239,68,68,.3)", background: "rgba(239,68,68,.08)", color: "#ef4444", fontSize: 11, cursor: "pointer", fontWeight: 700 }}>✕</button>
                   </div>
-                )}
+                </div>
               </div>
-            );
-          })}
+
+              {/* Probability bar */}
+              {totalWeight > 0 && r.active && (
+                <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ flex: 1, height: 4, borderRadius: 4, background: "rgba(255,255,255,.08)", overflow: "hidden" }}>
+                    <div style={{ width: `${(r.weight / totalWeight * 100).toFixed(1)}%`, height: "100%", background: "linear-gradient(90deg,#fbbf24,#f59e0b)", borderRadius: 4 }} />
+                  </div>
+                  <span style={{ fontSize: 10, color: "rgba(255,255,255,.4)", whiteSpace: "nowrap" }}>
+                    {(r.weight / totalWeight * 100).toFixed(1)}%
+                  </span>
+                </div>
+              )}
+            </div>
+          ))}
 
           {settings.rewardsPool.length === 0 && (
             <p style={{ color: "rgba(255,255,255,.3)", fontSize: 13, textAlign: "center", padding: 16 }}>
