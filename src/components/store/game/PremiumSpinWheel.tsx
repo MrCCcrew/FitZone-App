@@ -39,8 +39,6 @@ export function PremiumSpinWheel({ segments, onSpin, onSpinComplete, disabled }:
   const { lang } = useLang();
   const canvasRef    = useRef<HTMLCanvasElement>(null);
   const rafRef       = useRef<number>(0);
-  const finalizeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const spinDoneRef  = useRef(false);
   const rotRef       = useRef(0);
   const rmRef        = useRef(false);
   const [spinning, setSpinning] = useState(false);
@@ -272,7 +270,6 @@ export function PremiumSpinWheel({ segments, onSpin, onSpinComplete, disabled }:
   const handleSpin = async () => {
     if (spinning || disabled) return;
     setSpinning(true);
-    spinDoneRef.current = false;
 
     let winIdx = 0;
     try {
@@ -297,23 +294,6 @@ export function PremiumSpinWheel({ segments, onSpin, onSpinComplete, disabled }:
     const target   = start + spins * 360 + diff;
     const duration = rmRef.current ? 700 : 4500;
     const t0       = performance.now();
-    const finalizeSpin = () => {
-      if (spinDoneRef.current) return;
-      spinDoneRef.current = true;
-      if (finalizeTimerRef.current) {
-        clearTimeout(finalizeTimerRef.current);
-        finalizeTimerRef.current = null;
-      }
-      cancelAnimationFrame(rafRef.current);
-      draw(target);
-      rotRef.current = target;
-      setSpinning(false);
-      onSpinComplete?.();
-    };
-
-    if (finalizeTimerRef.current) clearTimeout(finalizeTimerRef.current);
-    // Safety net: if the final animation callback is dropped, still finish the spin.
-    finalizeTimerRef.current = setTimeout(finalizeSpin, duration + (rmRef.current ? 250 : 1200));
 
     const animate = (now: number) => {
       const prog  = Math.min((now - t0) / duration, 1);
@@ -328,7 +308,9 @@ export function PremiumSpinWheel({ segments, onSpin, onSpinComplete, disabled }:
 
       rotRef.current = target;
       if (rmRef.current) {
-        finalizeSpin();
+        draw(target);
+        setSpinning(false);
+        onSpinComplete?.();
         return;
       }
 
@@ -340,7 +322,7 @@ export function PremiumSpinWheel({ segments, onSpin, onSpinComplete, disabled }:
         const bt = Math.min((bnow - bT0) / bDur, 1);
         draw(target + Math.sin(bt * Math.PI * 2.5) * bMag * (1 - bt));
         if (bt < 1) rafRef.current = requestAnimationFrame(bounce);
-        else finalizeSpin();
+        else { draw(target); setSpinning(false); onSpinComplete?.(); }
       };
       rafRef.current = requestAnimationFrame(bounce);
     };
@@ -348,10 +330,7 @@ export function PremiumSpinWheel({ segments, onSpin, onSpinComplete, disabled }:
     rafRef.current = requestAnimationFrame(animate);
   };
 
-  useEffect(() => () => {
-    cancelAnimationFrame(rafRef.current);
-    if (finalizeTimerRef.current) clearTimeout(finalizeTimerRef.current);
-  }, []);
+  useEffect(() => () => cancelAnimationFrame(rafRef.current), []);
 
   return (
     <>
