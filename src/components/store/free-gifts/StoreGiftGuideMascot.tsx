@@ -7,6 +7,7 @@ export type StoreGiftGuideMascotProps = {
   reducedMotion?: boolean;
   className?: string;
   compact?: boolean;
+  noMargin?: boolean;
 };
 
 const COPY = {
@@ -132,6 +133,7 @@ export function StoreGiftGuideMascot({
   reducedMotion,
   className,
   compact = false,
+  noMargin = false,
 }: StoreGiftGuideMascotProps) {
   const { lang } = useLang();
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(Boolean(reducedMotion));
@@ -166,7 +168,7 @@ export function StoreGiftGuideMascot({
         className={className}
         style={{
           position: "relative",
-          margin: compact ? "0" : "10px 16px 14px",
+          margin: (compact || noMargin) ? "0" : "10px 16px 14px",
           borderRadius: 22,
           overflow: "hidden",
           animation: "guideEntrance .55s cubic-bezier(.22,1,.36,1) both",
@@ -177,10 +179,10 @@ export function StoreGiftGuideMascot({
           style={{
             position: "relative",
             display: "grid",
-            gridTemplateColumns: compact ? "1fr" : "minmax(0,1.15fr) minmax(148px,188px)",
+            gridTemplateColumns: compact ? "1fr" : noMargin ? "minmax(0,1fr) minmax(130px,148px)" : "minmax(0,1.15fr) minmax(148px,188px)",
             alignItems: "center",
-            gap: compact ? 8 : 14,
-            padding: compact ? "14px 14px 14px 16px" : "18px 18px 18px 20px",
+            gap: compact ? 8 : noMargin ? 10 : 14,
+            padding: compact ? "14px 14px 14px 16px" : noMargin ? "14px 12px 14px 14px" : "18px 18px 18px 20px",
             borderRadius: 28,
             background: "linear-gradient(145deg, rgba(31,6,26,.88), rgba(59,9,41,.72))",
             border: "1px solid rgba(255,255,255,.12)",
@@ -233,7 +235,7 @@ export function StoreGiftGuideMascot({
             <h2 style={{
               margin: 0,
               color: "#fff7de",
-              fontSize: compact ? 15 : 22,
+              fontSize: compact ? 15 : noMargin ? 16 : 22,
               lineHeight: 1.4,
               fontWeight: 900,
               textWrap: "balance",
@@ -243,20 +245,20 @@ export function StoreGiftGuideMascot({
             </h2>
 
             <p style={{
-              margin: compact ? "6px 0 5px" : "10px 0 8px",
+              margin: (compact || noMargin) ? "6px 0 5px" : "10px 0 8px",
               color: "rgba(255,255,255,.82)",
-              fontSize: compact ? 12 : 14,
+              fontSize: compact ? 12 : noMargin ? 12 : 14,
               lineHeight: 1.7,
-              maxWidth: compact ? undefined : 420,
+              maxWidth: (compact || noMargin) ? undefined : 420,
               fontFamily: "Cairo,Tajawal,sans-serif",
             }}>
               {copy.description}
             </p>
 
             <p style={{
-              margin: compact ? "0 0 10px" : "0 0 14px",
+              margin: (compact || noMargin) ? "0 0 10px" : "0 0 14px",
               color: "#ffc8df",
-              fontSize: compact ? 11 : 12,
+              fontSize: 11,
               fontWeight: 700,
               fontFamily: "Cairo,Tajawal,sans-serif",
             }}>
@@ -289,7 +291,7 @@ export function StoreGiftGuideMascot({
               position: "relative",
               zIndex: 2,
               width: "100%",
-              minHeight: compact ? 0 : 190,
+              minHeight: compact ? 0 : noMargin ? 150 : 190,
               display: compact ? "none" : "flex",
               alignItems: "center",
               justifyContent: "center",
