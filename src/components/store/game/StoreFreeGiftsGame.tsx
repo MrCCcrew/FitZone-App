@@ -103,14 +103,18 @@ export function StoreFreeGiftsGame() {
     await loadGame();
   };
 
-  // ── Card pick handler ──
-  const handlePickCard = async (index: number) => {
+  // ── Card pick handler — returns card data; loadGame() called after animation ──
+  const handlePickCard = async (index: number): Promise<{ card: { type: string; labelAr: string }; advanceToStep3: boolean }> => {
     const res = await fetch("/api/store/free-gifts/pick-card", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ index }),
     });
     if (!res.ok) throw new Error("pick failed");
+    return res.json() as Promise<{ card: { type: string; labelAr: string }; advanceToStep3: boolean }>;
+  };
+
+  const handlePickComplete = async () => {
     await loadGame();
   };
 
@@ -221,6 +225,7 @@ export function StoreFreeGiftsGame() {
               maxPicks={game.maxCardPicks}
               picksDone={game.cardsDone}
               onPick={handlePickCard}
+              onPickComplete={handlePickComplete}
             />
           )}
 
