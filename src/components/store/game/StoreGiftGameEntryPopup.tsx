@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { useLang } from "@/lib/language";
 
 const SESSION_KEY = "fitzone-gift-game-popup-dismissed";
 
@@ -23,6 +24,8 @@ const CSS = `
 `;
 
 export function StoreGiftGameEntryPopup() {
+  const { lang } = useLang();
+  const t = (ar: string, en: string) => lang === "ar" ? ar : en;
   const [show, setShow] = useState(false);
 
   useEffect(() => {
@@ -54,7 +57,6 @@ export function StoreGiftGameEntryPopup() {
   return (
     <>
       <style>{CSS}</style>
-      {/* Overlay */}
       <div
         onClick={dismiss}
         style={{
@@ -66,7 +68,6 @@ export function StoreGiftGameEntryPopup() {
           padding: "0 0 24px",
         }}
       >
-        {/* Card */}
         <div
           className="sgep-card"
           onClick={e => e.stopPropagation()}
@@ -89,7 +90,6 @@ export function StoreGiftGameEntryPopup() {
             animation: "sgep-shine 2s linear infinite",
           }} />
 
-          {/* Emoji */}
           <div className="sgep-gift" style={{
             fontSize: 62, textAlign: "center", marginBottom: 12,
             animation: "sgep-gift-bounce 2s ease-in-out infinite",
@@ -98,23 +98,21 @@ export function StoreGiftGameEntryPopup() {
             🎁
           </div>
 
-          {/* Text */}
           <h2 style={{
             textAlign: "center", fontSize: 20, fontWeight: 900,
             color: "#fbbf24", margin: "0 0 8px",
             fontFamily: "Cairo,Tajawal,sans-serif",
           }}>
-            عندك هدايا مجانية في انتظارك!
+            {t("عندك هدايا مجانية في انتظارك!", "You have free gifts waiting for you!")}
           </h2>
           <p style={{
             textAlign: "center", fontSize: 14,
             color: "rgba(255,255,255,.65)", margin: "0 0 24px",
             fontFamily: "Cairo,Tajawal,sans-serif", lineHeight: 1.7,
           }}>
-            العبي عجلة الحظ، اختاري كارت، وخدي منتجات مجانية مع طلبك 🎰
+            {t("العبي عجلة الحظ، اختاري كارت، وخدي منتجات مجانية مع طلبك 🎰", "Spin the wheel, pick a card, and get free products with your order 🎰")}
           </p>
 
-          {/* CTA button */}
           <button
             onClick={goPlay}
             style={{
@@ -127,10 +125,9 @@ export function StoreGiftGameEntryPopup() {
               marginBottom: 10,
             }}
           >
-            🎰 ابدئي اللعبة الآن
+            🎰 {t("ابدئي اللعبة الآن", "Play Now")}
           </button>
 
-          {/* Dismiss */}
           <button
             onClick={dismiss}
             style={{
@@ -141,7 +138,7 @@ export function StoreGiftGameEntryPopup() {
               cursor: "pointer", fontFamily: "Cairo,Tajawal,sans-serif",
             }}
           >
-            لاحقاً
+            {t("لاحقاً", "Maybe later")}
           </button>
         </div>
       </div>

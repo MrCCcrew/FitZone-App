@@ -8012,10 +8012,10 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                   <span style={{ fontSize: 28 }}>🎁</span>
                   <div style={{ flex: 1 }}>
                     <p style={{ margin: 0, fontSize: 14, fontWeight: 900, color: "#C2185B", fontFamily: "Cairo,Tajawal,sans-serif" }}>
-                      عندك هدايا مجانية في انتظارك!
+                      {t("عندك هدايا مجانية في انتظارك!", "You have free gifts waiting for you!")}
                     </p>
                     <p style={{ margin: "2px 0 0", fontSize: 12, color: "#7A5B68", fontFamily: "Cairo,Tajawal,sans-serif" }}>
-                      العبي اللعبة واختاري منتجات مجانية مع طلبك
+                      {t("العبي اللعبة واختاري منتجات مجانية مع طلبك", "Play the game and pick free products with your order")}
                     </p>
                   </div>
                   <span style={{ fontSize: 18, color: "#C2185B" }}>←</span>

@@ -1,7 +1,8 @@
 "use client";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useLang } from "@/lib/language";
 
-type WheelSegment = { id: string; labelAr: string; type: string; icon?: string };
+type WheelSegment = { id: string; labelAr: string; labelEn?: string; type: string; icon?: string };
 
 type Props = {
   segments: WheelSegment[];
@@ -35,6 +36,7 @@ function easeOut4(t: number) {
 }
 
 export function PremiumSpinWheel({ segments, onSpin, onSpinComplete, disabled }: Props) {
+  const { lang } = useLang();
   const canvasRef    = useRef<HTMLCanvasElement>(null);
   const rafRef       = useRef<number>(0);
   const rotRef       = useRef(0);
@@ -44,7 +46,7 @@ export function PremiumSpinWheel({ segments, onSpin, onSpinComplete, disabled }:
   const N = Math.max(4, Math.min(8, segments.length || 6));
   const segs: WheelSegment[] = Array.from({ length: N }, (_, i) =>
     segments[i % Math.max(1, segments.length)] ??
-    { id: `x${i}`, labelAr: "هدية", type: "free_product" }
+    { id: `x${i}`, labelAr: "هدية", labelEn: "Gift", type: "free_product" }
   );
 
   useEffect(() => {
@@ -155,8 +157,8 @@ export function PremiumSpinWheel({ segments, onSpin, onSpinComplete, disabled }:
       ctx.fillStyle    = "#fff";
       ctx.shadowColor  = "rgba(0,0,0,0.95)";
       ctx.shadowBlur   = 4;
-      const raw   = segs[i].labelAr;
-      const label = raw.length > 9 ? raw.slice(0, 9) : raw;
+      const rawFull = lang === "en" && segs[i].labelEn ? segs[i].labelEn! : segs[i].labelAr;
+      const label   = rawFull.length > 9 ? rawFull.slice(0, 9) : rawFull;
       ctx.fillText(label, 0, iconSz * 0.76);
       ctx.shadowBlur = 0;
       ctx.restore();
@@ -240,7 +242,7 @@ export function PremiumSpinWheel({ segments, onSpin, onSpinComplete, disabled }:
     ctx.textBaseline  = "middle";
     ctx.fillText("GO", cx, cy);
 
-  }, [segs, N]);
+  }, [segs, N, lang]);
 
   // ── Canvas sizing ────────────────────────────────────────────────────────────
   const setSize = useCallback(() => {
@@ -431,7 +433,9 @@ export function PremiumSpinWheel({ segments, onSpin, onSpinComplete, disabled }:
           onMouseEnter={e => { if (!spinning && !disabled) (e.currentTarget as HTMLElement).style.transform = "scale(1.05)"; }}
           onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = "scale(1)"; }}
         >
-          {spinning ? "⏳ جارٍ اللفة..." : "🎰 لفّي العجلة"}
+          {spinning
+            ? (lang === "ar" ? "⏳ جارٍ اللفة..." : "⏳ Spinning...")
+            : (lang === "ar" ? "🎰 لفّي العجلة" : "🎰 Spin the Wheel")}
         </button>
       </div>
     </>
