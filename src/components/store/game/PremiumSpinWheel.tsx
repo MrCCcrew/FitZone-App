@@ -6,6 +6,7 @@ type WheelSegment = { id: string; labelAr: string; type: string };
 type Props = {
   segments: WheelSegment[];
   onSpin: () => Promise<{ slotIndex: number }>;
+  onSpinComplete?: () => void;
   disabled?: boolean;
 };
 
@@ -33,7 +34,7 @@ function easeOut4(t: number) {
   return 1 - Math.pow(1 - t, 4);
 }
 
-export function PremiumSpinWheel({ segments, onSpin, disabled }: Props) {
+export function PremiumSpinWheel({ segments, onSpin, onSpinComplete, disabled }: Props) {
   const canvasRef    = useRef<HTMLCanvasElement>(null);
   const rafRef       = useRef<number>(0);
   const rotRef       = useRef(0);
@@ -303,7 +304,12 @@ export function PremiumSpinWheel({ segments, onSpin, disabled }: Props) {
       }
 
       rotRef.current = target;
-      if (rmRef.current) { draw(target); setSpinning(false); return; }
+      if (rmRef.current) {
+        draw(target);
+        setSpinning(false);
+        onSpinComplete?.();
+        return;
+      }
 
       // Bounce animation
       const bT0  = performance.now();
@@ -313,7 +319,7 @@ export function PremiumSpinWheel({ segments, onSpin, disabled }: Props) {
         const bt = Math.min((bnow - bT0) / bDur, 1);
         draw(target + Math.sin(bt * Math.PI * 2.5) * bMag * (1 - bt));
         if (bt < 1) rafRef.current = requestAnimationFrame(bounce);
-        else { draw(target); setSpinning(false); }
+        else { draw(target); setSpinning(false); onSpinComplete?.(); }
       };
       rafRef.current = requestAnimationFrame(bounce);
     };

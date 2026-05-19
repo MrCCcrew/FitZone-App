@@ -48,7 +48,8 @@ export function StoreFreeGiftsGame() {
   const [confirming, setConfirming] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [showRules, setShowRules] = useState(false);
-  const confettiShownRef = useRef(false);
+  const confettiShownRef  = useRef(false);
+  const pendingRewardRef  = useRef<{ type: string; value: number; labelAr: string } | null>(null);
 
   // ── Load game state ──
   const loadGame = useCallback(async () => {
@@ -75,8 +76,17 @@ export function StoreFreeGiftsGame() {
     const res = await fetch("/api/store/free-gifts/spin", { method: "POST" });
     if (!res.ok) throw new Error("spin failed");
     const data = await res.json() as { reward: { type: string; value: number; labelAr: string }; slotIndex: number };
-    setSpinReward(data.reward);
+    // Store reward but don't show modal yet — wait for wheel animation to finish
+    pendingRewardRef.current = data.reward;
     return { slotIndex: data.slotIndex };
+  };
+
+  // Called by PremiumSpinWheel after animation + bounce complete
+  const handleSpinAnimDone = () => {
+    if (pendingRewardRef.current) {
+      setSpinReward(pendingRewardRef.current);
+      pendingRewardRef.current = null;
+    }
   };
 
   const handleSpinRewardNext = async () => {
@@ -199,6 +209,7 @@ export function StoreFreeGiftsGame() {
             <PremiumSpinWheel
               segments={game.wheelSegments}
               onSpin={handleSpin}
+              onSpinComplete={handleSpinAnimDone}
               disabled={game.spinDone}
             />
           )}
