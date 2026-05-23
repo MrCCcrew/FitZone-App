@@ -608,7 +608,7 @@ function StatCard({
 }
 
 // ─── Tab: Profile ─────────────────────────────────────────────────────────────
-function ProfileTab({ user }: { user: AccountData["user"] }) {
+function ProfileTab({ user, profileComplete }: { user: AccountData["user"]; profileComplete: boolean }) {
   const { lang } = useLang();
   const t = (arText: string, enText: string) => (lang === "ar" ? arText : enText);
   const [form, setForm] = useState({
@@ -787,7 +787,23 @@ function ProfileTab({ user }: { user: AccountData["user"] }) {
       </div>
 
       {/* Edit form */}
-      <div className={CARD}>
+      <div
+        id="profile-edit-form"
+        className={CARD + (!profileComplete ? " ring-2 ring-pink-500/50 ring-offset-2 ring-offset-[#2a0f1b]" : "")}
+      >
+        {!profileComplete && (
+          <div className="mb-4 flex items-start gap-3 rounded-xl border border-pink-500/35 bg-pink-500/10 px-4 py-3">
+            <span className="mt-0.5 shrink-0 text-xl">🎁</span>
+            <div>
+              <div className="text-sm font-black text-pink-300">
+                {t("اكملي بياناتك واحصلي على 50 نقطة!", "Complete your profile and earn 50 points!")}
+              </div>
+              <div className="mt-0.5 text-xs text-[#c896aa]">
+                {t("أضيفي رقم هاتفك، تاريخ ميلادك، ومحافظتك لتفعيل المكافأة", "Add your phone number, birth date, and governorate to unlock the reward")}
+              </div>
+            </div>
+          </div>
+        )}
         <h3 className="text-white font-black mb-4">{t("تعديل البيانات الشخصية", "Edit personal information")}</h3>
         <form onSubmit={save} className="space-y-4">
           <div className="grid sm:grid-cols-2 gap-4">
@@ -4545,6 +4561,15 @@ export default function AccountClient({ data }: { data: AccountData }) {
   const [activeTab, setActiveTab]     = useState<TabId>(resolveTab(requestedTab));
   const [loggingOut, setLoggingOut]   = useState(false);
   const [congratsMsg, setCongratsMsg] = useState<string | null>(null);
+  const [ctaDismissed, setCtaDismissed] = useState(false);
+
+  const scrollToProfileForm = () => {
+    setCtaDismissed(true);
+    setActiveTab("profile");
+    setTimeout(() => {
+      document.getElementById("profile-edit-form")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 160);
+  };
 
   useEffect(() => {
     setActiveTab(resolveTab(searchParams.get("tab")));
@@ -4658,6 +4683,37 @@ export default function AccountClient({ data }: { data: AccountData }) {
         </>
       )}
 
+      {/* ── Floating profile-complete CTA (mobile + desktop) ── */}
+      {!data.onboarding.profileComplete && !ctaDismissed && (
+        <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 max-w-[92vw]" style={{ animation: "pcta-pulse 2.4s ease-in-out infinite" }}>
+          <style>{`
+            @keyframes pcta-pulse {
+              0%,100% { box-shadow: 0 8px 32px rgba(190,24,93,0.55); }
+              50%      { box-shadow: 0 12px 52px rgba(190,24,93,0.82); }
+            }
+            @media (prefers-reduced-motion: reduce) {
+              .pcta-wrap { animation: none !important; }
+            }
+          `}</style>
+          <div className="pcta-wrap flex items-center gap-3 rounded-2xl bg-gradient-to-r from-pink-600 to-fuchsia-600 px-5 py-3.5 shadow-[0_8px_32px_rgba(190,24,93,0.55)]">
+            <span className="shrink-0 text-xl">👤</span>
+            <button
+              onClick={scrollToProfileForm}
+              className="flex-1 text-start text-sm font-black text-white"
+            >
+              {t("اكملي بياناتك واحصلي على 50 نقطة ↓", "Complete your profile & earn 50 pts ↓")}
+            </button>
+            <button
+              onClick={() => setCtaDismissed(true)}
+              aria-label="إغلاق"
+              className="shrink-0 rounded-lg px-1.5 py-1 text-xs text-white/60 transition-colors hover:text-white"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ── Body ── */}
       <div className="max-w-7xl mx-auto px-4 py-6 w-full">
         {/* Onboarding card — shown above tabs */}
@@ -4692,7 +4748,7 @@ export default function AccountClient({ data }: { data: AccountData }) {
 
           {/* Content */}
           <main className="flex-1 min-w-0">
-            {activeTab === "profile"              && <ProfileTab              user={data.user} />}
+            {activeTab === "profile"              && <ProfileTab              user={data.user} profileComplete={data.onboarding.profileComplete} />}
             {activeTab === "trainerProfile"       && <TrainerProfileTab />}
             {activeTab === "nutritionistProfile"  && <NutritionistProfileTab />}
             {activeTab === "trainerDiscountCodes" && <TrainerDiscountCodesTab />}
