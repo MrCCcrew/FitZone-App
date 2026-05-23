@@ -3038,7 +3038,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
         <div className="container" style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center" }}>
           <div style={{ fontSize: 52, marginBottom: 16 }}>🎁</div>
           <h2 style={{ fontSize: 32, fontWeight: 900, color: C.white, marginBottom: 12 }}>{t("ادعي صحبتك", "Invite a friend")} <span style={{ color: C.red }}>{t("واكسبي 50 ج فورا!", "and earn 50 EGP instantly!")}</span></h2>
-          <p style={{ color: C.gray, fontSize: 16, marginBottom: 28, maxWidth: 480 }}>{t("فلوس تتضاف على محفظتك فور ما صديقتك تشتركي بدعوتك.", "Cash added to your wallet the moment your friend joins through your invite.")}</p>
+          <p style={{ color: C.gray, fontSize: 16, marginBottom: 28, maxWidth: 480 }}>{t("فلوس تتضاف على محفظتك فور ما صديقتك تشترك بدعوتك.", "Cash added to your wallet the moment your friend joins through your invite.")}</p>
           <button className="btn-primary" onClick={() => navigate("referral")} style={{ fontSize: 15, padding: "14px 40px" }}>
             <I n="share" s={16} c="#fff" /> {t("اشتركي في برنامج الإحالة", "Join referral program")}
           </button>
@@ -8467,7 +8467,7 @@ const ReferralPage = () => {
         <div className="container">
           <div style={{ fontSize: viewportWidth() < 768 ? 44 : 60, marginBottom: 14 }}>🎁</div>
           <h1 style={{ fontSize: viewportWidth() < 768 ? 32 : 44, fontWeight: 900, color: C.white, marginBottom: 12 }}>{t("ادعي صحبتك", "Invite a friend")} <span style={{ color: C.red }}>{t("واكسبي 50 ج فورا!", "and earn 50 EGP instantly!")}</span></h1>
-          <p style={{ color: C.gray, fontSize: 17, maxWidth: 460, margin: "0 auto" }}>{t("فلوس تتضاف على محفظتك فور ما صديقتك تشتركي بدعوتك.", "Cash added to your wallet the moment your friend joins through your invite.")}</p>
+          <p style={{ color: C.gray, fontSize: 17, maxWidth: 460, margin: "0 auto" }}>{t("فلوس تتضاف على محفظتك فور ما صديقتك تشترك بدعوتك.", "Cash added to your wallet the moment your friend joins through your invite.")}</p>
         </div>
       </section>
       <section className="section">
