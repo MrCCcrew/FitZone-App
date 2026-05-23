@@ -2110,7 +2110,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
       ctaPrimaryEn: "Subscribe now",
       ctaSecondary: "احجزي كلاس تجريبي",
       ctaSecondaryEn: "Book a trial class",
-      slides: DEFAULT_HERO_SLIDES,
+      slides: [],
       stats: [
         { value: "500+", label: "عضوة نشطة" },
         { value: "50+", label: "كلاس أسبوعيًا" },
@@ -2243,7 +2243,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
       .catch(() => {});
   }, []);
   useEffect(() => {
-    const slides = heroContent.slides?.length ? heroContent.slides : DEFAULT_HERO_SLIDES;
+    const slides = heroContent.slides ?? [];
     if (slides.length <= 1) return;
     const timer = setInterval(() => {
       setHeroSlideIndex((current) => (current + 1) % slides.length);
@@ -2347,7 +2347,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
     ["🎁", summary?.authenticated ? `${summary?.referralEarned ?? 0} ${lang === "en" ? "EGP" : "ج.م"}` : "20%", summary?.authenticated ? t("مكافآت الإحالة", "Referral rewards") : t("خصم الإحالة", "Referral discount")],
     ["📦", summary?.membership?.name ?? getTierLabel(summary?.rewardTier), summary?.membership ? t("الاشتراك النشط", "Active plan") : t("مستوى العضوية", "Membership tier")],
   ];
-    const heroSlides = heroContent.slides?.length ? heroContent.slides : DEFAULT_HERO_SLIDES;
+    const heroSlides = heroContent.slides ?? [];
     const heroBadge = lang === "en" ? heroContent.badgeEn ?? heroContent.badge : heroContent.badge;
     const heroHeadline1 = lang === "en" ? heroContent.headline1En ?? heroContent.headline1 : heroContent.headline1;
     const heroHeadline2 = lang === "en" ? heroContent.headline2En ?? heroContent.headline2 : heroContent.headline2;
@@ -2436,7 +2436,15 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                     {/* Spacer: 16:9 landscape ratio — same shape as original */}
                     <div style={{ width: "100%", aspectRatio: "16/9", visibility: "hidden" }} />
 
-                    {heroSlides.map((slide, index) => (
+                    {heroSlides.length === 0 ? (
+                      /* Loading placeholder — shown until API returns real slides */
+                      <div style={{
+                        position: "absolute",
+                        inset: 10,
+                        borderRadius: 14,
+                        background: "linear-gradient(135deg, rgba(30,5,20,.9), rgba(10,2,8,.95))",
+                      }} />
+                    ) : heroSlides.map((slide, index) => (
                       <div
                         key={`${slide}-${index}`}
                         style={{
@@ -2477,7 +2485,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                       </div>
                     ))}
                   </div>
-                  <div style={{ position: "absolute", right: 18, bottom: 18, display: "flex", gap: 8 }}>
+                  <div style={{ position: "absolute", right: 18, bottom: 18, display: heroSlides.length > 0 ? "flex" : "none", gap: 8 }}>
                     {heroSlides.map((_, index) => (
                       <button
                         key={index}
