@@ -2621,6 +2621,8 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                 const minM = plan.minMonths ?? 3;
                 const maxM = plan.maxMonths ?? 6;
                 const pct = plan.discountPct ?? 0;
+                const discountedPrice = plan.priceAfter != null ? plan.priceAfter : (pct > 0 ? Math.round(plan.price * (1 - pct / 100)) : plan.price);
+                const hasDiscount = pct > 0 && discountedPrice < plan.price;
                 return (
                   <div key={plan.id} className="card card-hover" style={{ padding: 0, overflow: "hidden", border: `1px solid ${C.red}33`, boxShadow: "0 18px 45px rgba(233,30,99,.12)", display: "flex", flexDirection: "column", height: "100%" }}>
                     <div style={{ height: 180, overflow: "hidden", position: "relative", flexShrink: 0 }}>
@@ -2640,7 +2642,10 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                       )}
                     </div>
                     <div style={{ padding: "20px 22px 22px", display: "flex", flexDirection: "column", flex: 1 }}>
-                      <div style={{ fontSize: 32, fontWeight: 900, color: C.red, lineHeight: 1, marginBottom: 2 }}>{plan.price.toLocaleString(lang === "en" ? "en-US" : "ar-EG")}</div>
+                      {hasDiscount && (
+                        <div style={{ fontSize: 15, color: C.gray, textDecoration: "line-through", lineHeight: 1, marginBottom: 2 }}>{plan.price.toLocaleString(lang === "en" ? "en-US" : "ar-EG")}</div>
+                      )}
+                      <div style={{ fontSize: 32, fontWeight: 900, color: C.red, lineHeight: 1, marginBottom: 2 }}>{discountedPrice.toLocaleString(lang === "en" ? "en-US" : "ar-EG")}</div>
                       <div style={{ fontSize: 11, color: C.gray, marginBottom: 10 }}>{t("ج.م / شهر", "EGP / month")}</div>
                       <h3 style={{ fontWeight: 800, fontSize: 16, color: C.white, marginBottom: 8 }}>{plan.name}</h3>
                       <div style={{ display: "flex", gap: 10, color: C.gray, fontSize: 12, marginBottom: 14, flexWrap: "wrap" }}>
@@ -6174,6 +6179,8 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
                   const maxM = plan.maxMonths ?? 6;
                   const pct = plan.discountPct ?? 0;
                   const planColor = PLAN_COLORS[i % PLAN_COLORS.length];
+                  const discountedPrice = plan.priceAfter != null ? plan.priceAfter : (pct > 0 ? Math.round(plan.price * (1 - pct / 100)) : plan.price);
+                  const hasDiscount = pct > 0 && discountedPrice < plan.price;
                   return (
                     <div key={plan.id} className="card card-hover" style={{ padding: 0, overflow: "hidden", border: `1px solid ${planColor}33`, boxShadow: "0 18px 45px rgba(233,30,99,.12)", display: "flex", flexDirection: "column", height: "100%" }}>
                       <div style={{ height: 200, overflow: "hidden", position: "relative", flexShrink: 0 }}>
@@ -6193,7 +6200,10 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
                         )}
                       </div>
                       <div style={{ padding: "20px 22px 22px", display: "flex", flexDirection: "column", flex: 1 }}>
-                        <div style={{ fontSize: 32, fontWeight: 900, color: planColor, lineHeight: 1, marginBottom: 2 }}>{plan.price.toLocaleString(lang === "en" ? "en-US" : "ar-EG")}</div>
+                        {hasDiscount && (
+                          <div style={{ fontSize: 15, color: C.gray, textDecoration: "line-through", lineHeight: 1, marginBottom: 2 }}>{plan.price.toLocaleString(lang === "en" ? "en-US" : "ar-EG")}</div>
+                        )}
+                        <div style={{ fontSize: 32, fontWeight: 900, color: planColor, lineHeight: 1, marginBottom: 2 }}>{discountedPrice.toLocaleString(lang === "en" ? "en-US" : "ar-EG")}</div>
                         <div style={{ fontSize: 11, color: C.gray, marginBottom: 10 }}>{t("ج.م / شهر", "EGP / month")}</div>
                         <h3 style={{ fontWeight: 800, fontSize: 16, color: C.white, marginBottom: 8 }}>{plan.name}</h3>
                         <div style={{ display: "flex", gap: 10, color: C.gray, fontSize: 12, marginBottom: 14, flexWrap: "wrap" }}>
