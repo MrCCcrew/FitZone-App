@@ -41,6 +41,7 @@ function mapOffer(
     showCurrentSubscribers: boolean;
     sessionsCount?: number | null;
     durationDays?: number | null;
+    priceBefore?: number | null;
     membership?: { name: string } | null;
   },
 ) {
@@ -67,6 +68,7 @@ function mapOffer(
     showCurrentSubscribers: offer.showCurrentSubscribers,
     sessionsCount: offer.sessionsCount ?? null,
     durationDays: offer.durationDays ?? null,
+    priceBefore: offer.priceBefore ?? null,
   };
 }
 
@@ -122,6 +124,7 @@ export async function POST(req: Request) {
         showCurrentSubscribers: body.showCurrentSubscribers !== false,
         sessionsCount: body.sessionsCount != null && body.sessionsCount !== "" ? Number(body.sessionsCount) : null,
         durationDays: body.durationDays != null && body.durationDays !== "" ? Number(body.durationDays) : null,
+        priceBefore: body.priceBefore != null && body.priceBefore !== "" ? Number(body.priceBefore) : null,
       },
       include: { membership: { select: { name: true } } },
     });
@@ -175,6 +178,9 @@ export async function PATCH(req: Request) {
     }
     if (body.durationDays !== undefined) {
       data.durationDays = body.durationDays != null && body.durationDays !== "" ? Number(body.durationDays) : null;
+    }
+    if (body.priceBefore !== undefined) {
+      data.priceBefore = body.priceBefore != null && body.priceBefore !== "" ? Number(body.priceBefore) : null;
     }
 
     const updated = await db.offer.update({

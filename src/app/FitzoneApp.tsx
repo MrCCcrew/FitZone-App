@@ -1335,6 +1335,7 @@ type PublicOffer = {
   type: "percentage" | "fixed" | "special";
   discount: number;
   specialPrice: number | null;
+  priceBefore: number | null;
   description: string;
   appliesTo: string;
   membershipId: string | null;
@@ -2550,6 +2551,11 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                         </span>
                       )}
                       {/* Price */}
+                      {isSpecial && offer.priceBefore != null && offer.priceBefore > 0 && (
+                        <div style={{ fontSize: 15, color: C.gray, textDecoration: "line-through", marginBottom: 2 }}>
+                          {formatCurrency(offer.priceBefore)}
+                        </div>
+                      )}
                       <div style={{ fontSize: 32, fontWeight: 900, color: accentColor, lineHeight: 1, marginBottom: 4 }}>
                         {isSpecial ? formatCurrency(offer.specialPrice ?? 0) : offer.type === "percentage" ? `${offer.discount}%` : `${offer.discount} ${t("ج.م","EGP")}`}
                       </div>
@@ -6082,6 +6088,11 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 10 }}>
                     <h3 style={{ fontWeight: 900, fontSize: 20, color: C.white }}>{o.title}</h3>
                     <div style={{ flexShrink: 0, textAlign: "left" }}>
+                      {o.type === "special" && o.priceBefore != null && o.priceBefore > 0 && (
+                        <div style={{ fontSize: 16, color: C.gray, textDecoration: "line-through", lineHeight: 1, marginBottom: 2 }}>
+                          {formatCurrency(o.priceBefore)}
+                        </div>
+                      )}
                       <div style={{ fontSize: 34, fontWeight: 900, color: o.color, lineHeight: 1 }}>
                         {o.type === "special" ? formatCurrency(o.specialPrice ?? 0) : o.type === "percentage" ? `${o.discount}%` : `${o.discount} ${t("ج.م", "EGP")}`}
                       </div>

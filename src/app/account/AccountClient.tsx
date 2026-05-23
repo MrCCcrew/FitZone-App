@@ -2772,9 +2772,9 @@ function WalletTab({
             <div className="text-gray-400">{lang === "en" ? "EGP" : "جنيه مصري"}</div>
           </div>
 
-          {/* Quick top-up */}
+          {/* Top-up card — quick amounts + custom input + pay button */}
           <div className={CARD}>
-            <h4 className="text-white font-black mb-3">{t("شحن سريع", "Quick top-up")}</h4>
+            <h4 className="text-white font-black mb-3">{t("شحن المحفظة", "Top up wallet")}</h4>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
               {TOPUP_AMOUNTS.map((v) => (
                 <button
@@ -2791,39 +2791,27 @@ function WalletTab({
                 </button>
               ))}
             </div>
-            <div className="flex gap-2">
-              <input type="number" placeholder={t("مبلغ مخصص...", "Custom amount...")} className={INPUT} dir="ltr" />
-              <button className="bg-blue-600 hover:bg-blue-700 text-white font-black px-5 rounded-xl transition-colors text-sm whitespace-nowrap">{t("شحن", "Top up")}</button>
-            </div>
-          </div>
-
-          <div className={CARD}>
-            <h4 className="text-white font-black mb-3">{t("الدفع لشحن المحفظة", "Pay to top up wallet")}</h4>
-            <div className="flex flex-wrap gap-2">
-              <input
-                type="number"
-                placeholder={t("مبلغ مخصص...", "Custom amount...")}
-                className={INPUT}
-                dir="ltr"
-                value={customAmount}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setCustomAmount(val);
-                  setSelectedAmount(val ? Number(val) : null);
-                  setLastTx(null);
-                  setPayError(null);
-                }}
-              />
-            </div>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button
-                onClick={() => startTopup()}
-                disabled={paying}
-                className="flex-1 min-h-[44px] bg-pink-600 hover:bg-pink-700 disabled:opacity-60 text-white font-black px-4 py-3 rounded-xl text-sm"
-              >
-                {t("الدفع عبر Paymob", "Pay with Paymob")}
-              </button>
-            </div>
+            <input
+              type="number"
+              placeholder={t("مبلغ مخصص...", "Custom amount...")}
+              className={`${INPUT} mb-3`}
+              dir="ltr"
+              value={customAmount}
+              onChange={(e) => {
+                const val = e.target.value;
+                setCustomAmount(val);
+                setSelectedAmount(val ? Number(val) : null);
+                setLastTx(null);
+                setPayError(null);
+              }}
+            />
+            <button
+              onClick={() => startTopup()}
+              disabled={paying}
+              className="w-full min-h-[44px] bg-pink-600 hover:bg-pink-700 disabled:opacity-60 text-white font-black px-4 py-3 rounded-xl text-sm"
+            >
+              {t("الدفع عبر Paymob", "Pay with Paymob")}
+            </button>
             {payError && <div className="mt-2 text-xs text-red-400">{payError}</div>}
             {lastTx?.id && (
               <div className="mt-2 text-xs text-gray-400">
