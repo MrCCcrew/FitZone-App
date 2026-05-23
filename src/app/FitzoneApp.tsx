@@ -2467,6 +2467,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                         />
                         <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, transparent, rgba(26,8,18,.18))", pointerEvents: "none" }} />
                         <div
+                          dir="ltr"
                           style={{
                             position: "absolute",
                             top: 12,
@@ -2480,7 +2481,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                             fontWeight: 700,
                           }}
                         >
-                          {index + 1} من {heroSlides.length}
+                          {index + 1} {t("من", "of")} {heroSlides.length}
                         </div>
                       </div>
                     ))}
