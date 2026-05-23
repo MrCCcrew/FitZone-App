@@ -150,6 +150,7 @@ export interface Offer {
   showCurrentSubscribers?: boolean;
   sessionsCount?: number | null;
   durationDays?: number | null;
+  priceBefore?: number | null;
 }
 
 export interface GymClass {

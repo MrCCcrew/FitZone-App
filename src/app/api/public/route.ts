@@ -474,6 +474,7 @@ export async function GET(request: Request) {
         expiresAt: offer.expiresAt.toISOString(),
         durationDays: offer.durationDays ?? null,
         sessionsCount: offer.sessionsCount ?? null,
+        priceBefore: offer.priceBefore ?? null,
       })),
       classes: classes.map((gymClass) => ({
         id: gymClass.id,

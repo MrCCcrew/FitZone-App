@@ -770,6 +770,7 @@ model Offer {
   showCurrentSubscribers  Boolean     @default(true)
   sessionsCount           Int?
   durationDays            Int?
+  priceBefore             Float?
 
   membership Membership? @relation(fields: [membershipId], references: [id])
   userMemberships UserMembership[]

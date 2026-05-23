@@ -58,6 +58,7 @@ const EMPTY_OFFER: Omit<Offer, "id" | "usedCount" | "currentSubscribers"> = {
   showCurrentSubscribers: true,
   sessionsCount: null,
   durationDays: null,
+  priceBefore: null,
 };
 
 const CYCLE_LABELS: Record<NonNullable<Plan["cycle"]>, string> = {
@@ -1250,13 +1251,16 @@ export default function Subscriptions() {
                 </Field>
 
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <Field label="قيمة الاشتراك الخاصة">
+                  <Field label="السعر الأصلي (قبل الخصم)" hint="اختياري — يظهر مشطوبًا بجانب سعر العرض">
+                    <input type="number" value={offerModal.priceBefore ?? ""} onChange={(event) => setOfferModal({ ...offerModal, priceBefore: event.target.value ? Number(event.target.value) : null })} className={INPUT} dir="ltr" placeholder="مثال: 500" />
+                  </Field>
+                  <Field label="سعر العرض الخاص (بعد الخصم)">
                     <input type="number" value={offerModal.specialPrice ?? 0} onChange={(event) => setOfferModal({ ...offerModal, specialPrice: Number(event.target.value) })} className={INPUT} dir="ltr" />
                   </Field>
-                  <Field label="الحد الأقصى للمشتركات">
-                    <input type="number" value={offerModal.maxSubscribers ?? 0} onChange={(event) => setOfferModal({ ...offerModal, maxSubscribers: Number(event.target.value) })} className={INPUT} dir="ltr" />
-                  </Field>
                 </div>
+                <Field label="الحد الأقصى للمشتركات">
+                  <input type="number" value={offerModal.maxSubscribers ?? 0} onChange={(event) => setOfferModal({ ...offerModal, maxSubscribers: Number(event.target.value) })} className={INPUT} dir="ltr" />
+                </Field>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Field label="عدد الحصص" hint="اتركيه فارغًا إذا كان العرض بدون حصص محددة">
                     <input type="number" value={offerModal.sessionsCount ?? ""} onChange={(event) => setOfferModal({ ...offerModal, sessionsCount: event.target.value ? Number(event.target.value) : null })} className={INPUT} dir="ltr" placeholder="مثال: 12" />
@@ -1283,20 +1287,30 @@ export default function Subscriptions() {
                 </label>
               </>
             ) : (
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="قيمة الخصم">
-                  <input type="number" value={offerModal.discount} onChange={(event) => setOfferModal({ ...offerModal, discount: Number(event.target.value) })} className={INPUT} dir="ltr" />
-                </Field>
-                <Field label="ينطبق على (عربي)">
-                  <input value={offerModal.appliesTo} onChange={(event) => setOfferModal({ ...offerModal, appliesTo: event.target.value })} className={INPUT} placeholder="مثال: جميع الاشتراكات أو فئة محددة" />
-                </Field>
-                <Field label="ينطبق على (إنجليزي — Applies To EN)">
-                  <div className="flex gap-2">
-                    <input value={offerModal.appliesToEn ?? ""} onChange={(event) => setOfferModal({ ...offerModal, appliesToEn: event.target.value })} className={`${INPUT} flex-1`} placeholder="e.g. All memberships" dir="ltr" />
-                    <TranslateButton from={offerModal.appliesTo} onTranslated={(t) => setOfferModal((prev) => prev ? { ...prev, appliesToEn: t } : prev)} />
-                  </div>
-                </Field>
-              </div>
+              <>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="قيمة الخصم">
+                    <input type="number" value={offerModal.discount} onChange={(event) => setOfferModal({ ...offerModal, discount: Number(event.target.value) })} className={INPUT} dir="ltr" />
+                  </Field>
+                  <Field label="ينطبق على (عربي)">
+                    <input value={offerModal.appliesTo} onChange={(event) => setOfferModal({ ...offerModal, appliesTo: event.target.value })} className={INPUT} placeholder="مثال: جميع الاشتراكات أو فئة محددة" />
+                  </Field>
+                  <Field label="ينطبق على (إنجليزي — Applies To EN)">
+                    <div className="flex gap-2">
+                      <input value={offerModal.appliesToEn ?? ""} onChange={(event) => setOfferModal({ ...offerModal, appliesToEn: event.target.value })} className={`${INPUT} flex-1`} placeholder="e.g. All memberships" dir="ltr" />
+                      <TranslateButton from={offerModal.appliesTo} onTranslated={(t) => setOfferModal((prev) => prev ? { ...prev, appliesToEn: t } : prev)} />
+                    </div>
+                  </Field>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="عدد الحصص" hint="اتركيه فارغًا إذا كان العرض بدون حصص محددة">
+                    <input type="number" value={offerModal.sessionsCount ?? ""} onChange={(event) => setOfferModal({ ...offerModal, sessionsCount: event.target.value ? Number(event.target.value) : null })} className={INPUT} dir="ltr" placeholder="مثال: 12" />
+                  </Field>
+                  <Field label="مدة العرض (بالأيام)" hint="اتركيه فارغًا لاستخدام القيمة الافتراضية">
+                    <input type="number" value={offerModal.durationDays ?? ""} onChange={(event) => setOfferModal({ ...offerModal, durationDays: event.target.value ? Number(event.target.value) : null })} className={INPUT} dir="ltr" placeholder="مثال: 30" />
+                  </Field>
+                </div>
+              </>
             )}
 
             <Field label="ينتهي العرض في">
