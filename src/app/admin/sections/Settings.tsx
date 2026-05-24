@@ -7,11 +7,15 @@ import Referrals from "./Referrals";
 import TrainerReferrals from "./TrainerReferrals";
 
 const ROLE_OPTIONS: Array<{ value: AdminRole; label: string }> = [
-  { value: "admin", label: "مدير النظام" },
-  { value: "staff", label: "استاف" },
-  { value: "trainer", label: "مدربة" },
-  { value: "accountant", label: "محاسب" },
-  { value: "head_coach", label: "هيد كوتش" },
+  { value: "admin",             label: "مدير النظام"   },
+  { value: "staff",             label: "استاف"         },
+  { value: "trainer",           label: "مدربة"         },
+  { value: "accountant",        label: "محاسب"         },
+  { value: "head_coach",        label: "هيد كوتش"     },
+  { value: "nutritionist",      label: "دكتورة التغذية"},
+  { value: "contracts_manager", label: "مدير عقود"    },
+  { value: "agent",             label: "مندوب مبيعات" },
+  { value: "partner",           label: "شريك"          },
 ];
 
 const FEATURE_LABELS: Record<string, string> = {
