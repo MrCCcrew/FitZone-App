@@ -771,6 +771,8 @@ model Offer {
   sessionsCount           Int?
   durationDays            Int?
   priceBefore             Float?
+  features                String?     @db.Text // JSON array of feature strings (Arabic)
+  featuresEn              String?     @db.Text // JSON array of feature strings (English)
 
   membership Membership? @relation(fields: [membershipId], references: [id])
   userMemberships UserMembership[]

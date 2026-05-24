@@ -42,9 +42,15 @@ function mapOffer(
     sessionsCount?: number | null;
     durationDays?: number | null;
     priceBefore?: number | null;
+    features?: string | null;
+    featuresEn?: string | null;
     membership?: { name: string } | null;
   },
 ) {
+  const parseFeatures = (raw: string | null | undefined): string[] => {
+    if (!raw) return [];
+    try { return JSON.parse(raw) as string[]; } catch { return []; }
+  };
   return {
     id: offer.id,
     title: offer.title,
@@ -69,6 +75,8 @@ function mapOffer(
     sessionsCount: offer.sessionsCount ?? null,
     durationDays: offer.durationDays ?? null,
     priceBefore: offer.priceBefore ?? null,
+    features: parseFeatures(offer.features),
+    featuresEn: parseFeatures(offer.featuresEn),
   };
 }
 
@@ -125,6 +133,8 @@ export async function POST(req: Request) {
         sessionsCount: body.sessionsCount != null && body.sessionsCount !== "" ? Number(body.sessionsCount) : null,
         durationDays: body.durationDays != null && body.durationDays !== "" ? Number(body.durationDays) : null,
         priceBefore: body.priceBefore != null && body.priceBefore !== "" ? Number(body.priceBefore) : null,
+        features: Array.isArray(body.features) && body.features.length > 0 ? JSON.stringify(body.features) : null,
+        featuresEn: Array.isArray(body.featuresEn) && body.featuresEn.length > 0 ? JSON.stringify(body.featuresEn) : null,
       },
       include: { membership: { select: { name: true } } },
     });
@@ -181,6 +191,12 @@ export async function PATCH(req: Request) {
     }
     if (body.priceBefore !== undefined) {
       data.priceBefore = body.priceBefore != null && body.priceBefore !== "" ? Number(body.priceBefore) : null;
+    }
+    if (body.features !== undefined) {
+      data.features = Array.isArray(body.features) && body.features.length > 0 ? JSON.stringify(body.features) : null;
+    }
+    if (body.featuresEn !== undefined) {
+      data.featuresEn = Array.isArray(body.featuresEn) && body.featuresEn.length > 0 ? JSON.stringify(body.featuresEn) : null;
     }
 
     const updated = await db.offer.update({

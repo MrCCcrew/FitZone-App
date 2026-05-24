@@ -151,6 +151,8 @@ export interface Offer {
   sessionsCount?: number | null;
   durationDays?: number | null;
   priceBefore?: number | null;
+  features?: string[];
+  featuresEn?: string[];
 }
 
 export interface GymClass {
