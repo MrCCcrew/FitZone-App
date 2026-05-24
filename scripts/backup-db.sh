@@ -1,4 +1,5 @@
 #!/bin/bash
+set -o pipefail   # خلي exit code بتاع الـ pipe يعكس أول أمر فشل
 # FitZone - Auto Database Backup Script
 # Runs daily via cron, keeps last 14 backups
 
