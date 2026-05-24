@@ -4550,6 +4550,14 @@ export default function AccountClient({ data }: { data: AccountData }) {
   const [loggingOut, setLoggingOut]   = useState(false);
   const [congratsMsg, setCongratsMsg] = useState<string | null>(null);
   const [ctaDismissed, setCtaDismissed] = useState(false);
+  const [pointValueEGP, setPointValueEGP] = useState<number | null>(null);
+
+  useEffect(() => {
+    fetch("/api/me/checkout-options", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d: { pointValueEGP: number }) => setPointValueEGP(d.pointValueEGP))
+      .catch(() => {});
+  }, []);
 
   const scrollToProfileForm = () => {
     setCtaDismissed(true);
@@ -4649,7 +4657,15 @@ export default function AccountClient({ data }: { data: AccountData }) {
           {/* Quick stats */}
           <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
             <StatCard icon="💳" label={t("رصيد المحفظة", "Wallet balance")} value={`${formatMoney(data.wallet.balance, lang)} ${lang === "en" ? "EGP" : "ج.م"}`} color="text-blue-400" />
-            <StatCard icon="🏅" label={t("نقاط الولاء", "Reward points")} value={formatMoney(data.rewards.points, lang)} color="text-yellow-400" />
+            <StatCard
+              icon="🏅"
+              label={t("نقاط الولاء", "Reward points")}
+              value={formatMoney(data.rewards.points, lang)}
+              color="text-yellow-400"
+              sub={pointValueEGP != null && data.rewards.points > 0
+                ? t(`تساوي ${formatMoney(Math.round(data.rewards.points * pointValueEGP * 100) / 100, lang)} ج.م`, `≈ ${formatMoney(Math.round(data.rewards.points * pointValueEGP * 100) / 100, lang)} EGP`)
+                : undefined}
+            />
             <StatCard
               icon="📅"
               label={t("أيام الاشتراك", "Membership days")}
