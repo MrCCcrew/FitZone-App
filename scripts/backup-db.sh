@@ -22,8 +22,8 @@ fi
 
 DB_USER=$(echo "$DATABASE_URL" | sed 's|.*://\([^:]*\):.*|\1|')
 DB_PASS=$(echo "$DATABASE_URL" | sed 's|.*://[^:]*:\([^@]*\)@.*|\1|')
-# URL-decode the password (e.g. %40 → @, %21 → !, %23 → #)
-DB_PASS=$(python3 -c "import sys, urllib.parse; print(urllib.parse.unquote(sys.stdin.read().strip()))" <<< "$DB_PASS")
+# URL-decode the password (handles %40→@ %21→! %23→# %24→$ %25→% %2F→/)
+DB_PASS=$(printf '%b' "$(echo "$DB_PASS" | sed 's/%/\\x/g')")
 DB_HOST=$(echo "$DATABASE_URL" | sed 's|.*@\([^:/]*\)[:/].*|\1|')
 DB_PORT=$(echo "$DATABASE_URL" | sed 's|.*@[^:]*:\([0-9]*\)/.*|\1|')
 DB_NAME=$(echo "$DATABASE_URL" | sed 's|.*/\([^?]*\).*|\1|')
