@@ -59,6 +59,8 @@ const EMPTY_OFFER: Omit<Offer, "id" | "usedCount" | "currentSubscribers"> = {
   sessionsCount: null,
   durationDays: null,
   priceBefore: null,
+  features: [],
+  featuresEn: [],
 };
 
 const CYCLE_LABELS: Record<NonNullable<Plan["cycle"]>, string> = {
@@ -154,6 +156,8 @@ export default function Subscriptions() {
   const [saving, setSaving] = useState(false);
   const [featureInput, setFeatureInput] = useState("");
   const [featureInputEn, setFeatureInputEn] = useState("");
+  const [offerFeatureInput, setOfferFeatureInput] = useState("");
+  const [offerFeatureInputEn, setOfferFeatureInputEn] = useState("");
   const [productRewardDraft, setProductRewardDraft] = useState<{ productId: string; quantity: number }>({
     productId: "",
     quantity: 1,
@@ -233,6 +237,18 @@ export default function Subscriptions() {
     if (!planModal || !featureInputEn.trim()) return;
     setPlanModal({ ...planModal, featuresEn: [...(planModal.featuresEn ?? []), featureInputEn.trim()] });
     setFeatureInputEn("");
+  };
+
+  const addOfferFeature = () => {
+    if (!offerModal || !offerFeatureInput.trim()) return;
+    setOfferModal({ ...offerModal, features: [...(offerModal.features ?? []), offerFeatureInput.trim()] });
+    setOfferFeatureInput("");
+  };
+
+  const addOfferFeatureEn = () => {
+    if (!offerModal || !offerFeatureInputEn.trim()) return;
+    setOfferModal({ ...offerModal, featuresEn: [...(offerModal.featuresEn ?? []), offerFeatureInputEn.trim()] });
+    setOfferFeatureInputEn("");
   };
 
   const addProductReward = () => {
@@ -1073,35 +1089,6 @@ export default function Subscriptions() {
               </div>
             </Field>
 
-            <Field label="مميزات الاشتراك بالإنجليزية" hint="اختياري، تُعرض للعميل عند اختيار اللغة الإنجليزية.">
-              <div className="mb-2 flex gap-2">
-                <TranslateButton
-                  from={(planModal.features ?? []).join("\n")}
-                  onTranslated={(t) => setPlanModal({ ...planModal, featuresEn: t.split("\n").map((s) => s.trim()).filter(Boolean) })}
-                />
-              </div>
-              <div className="mb-3 flex gap-2">
-                <input
-                  value={featureInputEn}
-                  onChange={(event) => setFeatureInputEn(event.target.value)}
-                  onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addFeatureEn(); } }}
-                  placeholder="Example: Monthly follow-up with trainer"
-                  className={INPUT}
-                  dir="ltr"
-                />
-                <button type="button" onClick={addFeatureEn} className="rounded-lg bg-[#ff4f93] px-4 text-sm font-black text-white transition-colors hover:bg-[#ff2f7d]">+</button>
-              </div>
-              <div className="space-y-2">
-                {(planModal.featuresEn ?? []).map((feature, index) => (
-                  <div key={`en-${index}`} className="flex items-center gap-2 rounded-xl border border-[rgba(255,188,219,0.12)] bg-black/15 px-4 py-3">
-                    <span className="text-[#ff97bf]">✓</span>
-                    <span className="flex-1 text-sm text-[#fff4f8]" dir="ltr">{feature}</span>
-                    <button type="button" onClick={() => setPlanModal({ ...planModal, featuresEn: (planModal.featuresEn ?? []).filter((_, i) => i !== index) })} className="text-[#d7aabd] transition-colors hover:text-rose-300">×</button>
-                  </div>
-                ))}
-              </div>
-            </Field>
-
             <Field
               label="منتجات مميزة داخل الاشتراك"
               hint="اختاري منتج من المتجر وحددي الكمية التي تخصم من المخزون بعد شراء الاشتراك."
@@ -1194,7 +1181,7 @@ export default function Subscriptions() {
       ) : null}
 
       {offerModal ? (
-        <Modal title={"id" in offerModal && offerModal.id ? "تعديل العرض" : offerModal.type === "special" ? "إضافة عرض خاص" : "إضافة عرض عادي"} onClose={() => setOfferModal(null)}>
+        <Modal title={"id" in offerModal && offerModal.id ? "تعديل العرض" : offerModal.type === "special" ? "إضافة عرض خاص" : "إضافة عرض عادي"} onClose={() => { setOfferModal(null); setOfferFeatureInput(""); setOfferFeatureInputEn(""); }}>
           <div className="space-y-4">
             <Field label="نوع العرض">
               <select value={offerModal.type} onChange={(event) => setOfferModal({ ...offerModal, type: event.target.value as Offer["type"] })} className={INPUT}>
@@ -1285,6 +1272,65 @@ export default function Subscriptions() {
                   />
                   إظهار عدد المشتركات الحاليات داخل الموقع
                 </label>
+
+                <Field label="مميزات العرض" hint="أضف كل ميزة ثم اضغط زر الإضافة لتظهر ضمن قائمة العرض الخاص.">
+                  <div className="mb-3 flex gap-2">
+                    <input
+                      value={offerFeatureInput}
+                      onChange={(event) => setOfferFeatureInput(event.target.value)}
+                      onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addOfferFeature(); } }}
+                      placeholder="مثال: دخول غير محدود لجميع الكلاسات"
+                      className={INPUT}
+                    />
+                    <button type="button" onClick={addOfferFeature} className="rounded-lg bg-[#ff4f93] px-4 text-sm font-black text-white transition-colors hover:bg-[#ff2f7d]">
+                      +
+                    </button>
+                  </div>
+                  <div className="space-y-2">
+                    {(offerModal.features ?? []).map((feature, index) => (
+                      <div key={`${feature}-${index}`} className="flex items-center gap-2 rounded-xl border border-[rgba(255,188,219,0.12)] bg-black/15 px-4 py-3">
+                        <span className="text-[#ff97bf]">✓</span>
+                        <span className="flex-1 text-sm text-[#fff4f8]">{feature}</span>
+                        <button
+                          type="button"
+                          onClick={() => setOfferModal({ ...offerModal, features: (offerModal.features ?? []).filter((_, i) => i !== index) })}
+                          className="text-[#d7aabd] transition-colors hover:text-rose-300"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </Field>
+
+                <Field label="مميزات العرض بالإنجليزية" hint="اختياري، تُعرض للعميل عند اختيار اللغة الإنجليزية.">
+                  <div className="mb-2 flex gap-2">
+                    <TranslateButton
+                      from={(offerModal.features ?? []).join("\n")}
+                      onTranslated={(t) => setOfferModal({ ...offerModal, featuresEn: t.split("\n").map((s) => s.trim()).filter(Boolean) })}
+                    />
+                  </div>
+                  <div className="mb-3 flex gap-2">
+                    <input
+                      value={offerFeatureInputEn}
+                      onChange={(event) => setOfferFeatureInputEn(event.target.value)}
+                      onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addOfferFeatureEn(); } }}
+                      placeholder="Example: Unlimited access to all classes"
+                      className={INPUT}
+                      dir="ltr"
+                    />
+                    <button type="button" onClick={addOfferFeatureEn} className="rounded-lg bg-[#ff4f93] px-4 text-sm font-black text-white transition-colors hover:bg-[#ff2f7d]">+</button>
+                  </div>
+                  <div className="space-y-2">
+                    {(offerModal.featuresEn ?? []).map((feature, index) => (
+                      <div key={`en-${index}`} className="flex items-center gap-2 rounded-xl border border-[rgba(255,188,219,0.12)] bg-black/15 px-4 py-3">
+                        <span className="text-[#ff97bf]">✓</span>
+                        <span className="flex-1 text-sm text-[#fff4f8]" dir="ltr">{feature}</span>
+                        <button type="button" onClick={() => setOfferModal({ ...offerModal, featuresEn: (offerModal.featuresEn ?? []).filter((_, i) => i !== index) })} className="text-[#d7aabd] transition-colors hover:text-rose-300">×</button>
+                      </div>
+                    ))}
+                  </div>
+                </Field>
               </>
             ) : (
               <>
