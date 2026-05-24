@@ -5859,7 +5859,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
               لا توجد اشتراكات مرتبطة بالأهداف المختارة حالياً.
             </div>
           ) : (
-            <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr 1fr", "repeat(4, 1fr)", "repeat(4, 1fr)"), gap: 24 }}>
+            <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr 1fr", "repeat(3, 1fr)", "repeat(4, 1fr)"), gap: 16 }}>
               {filteredPlans.map((p) => {
                 const before = p.priceBefore ?? null;
                 const after = p.priceAfter ?? p.price;
@@ -5873,76 +5873,97 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
                       padding: 0,
                       position: "relative",
                       border: p.popular ? `2px solid ${C.red}` : `1px solid ${C.border}`,
-                      boxShadow: "0 18px 45px rgba(233,30,99,.12)",
+                      boxShadow: p.popular ? `0 8px 28px rgba(233,30,99,.22)` : "0 4px 16px rgba(0,0,0,.18)",
                       overflow: "hidden",
+                      display: "flex",
+                      flexDirection: "column",
+                      borderRadius: 18,
                     }}
                   >
-                    <div
-                      style={{
-                        padding: "28px 24px 18px",
-                        background: `linear-gradient(135deg, rgba(233,30,99,.12), rgba(255,255,255,.6))`,
-                        borderBottom: `1px solid ${C.border}`,
-                        position: "relative",
-                      }}
-                    >
-                      {p.popular && (
-                        <div style={{ position: "absolute", top: 16, left: 16, background: C.red, color: "#fff", padding: "4px 14px", borderRadius: 999, fontSize: 11, fontWeight: 800 }}>
-                          {t("الأكثر شعبية", "Most popular")}
+                    {/* Accent bar */}
+                    <div style={{ height: 4, background: p.color, flexShrink: 0 }} />
+
+                    {/* Image — only when present */}
+                    {p.image && (
+                      <div style={{ height: 110, overflow: "hidden", flexShrink: 0 }}>
+                        <img src={p.image} alt={p.name} style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "center", display: "block" }} />
+                      </div>
+                    )}
+
+                    {/* Header */}
+                    <div style={{ padding: "14px 16px 12px", background: `${p.color}12`, borderBottom: `1px solid ${C.border}` }}>
+                      {/* Badges row */}
+                      {(p.popular || (hasDiscount && discountPercent != null)) && (
+                        <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
+                          {p.popular && (
+                            <span style={{ background: C.red, color: "#fff", padding: "2px 9px", borderRadius: 999, fontSize: 10, fontWeight: 800 }}>
+                              ⭐ {t("الأكثر شعبية", "Popular")}
+                            </span>
+                          )}
+                          {hasDiscount && discountPercent != null && (
+                            <span style={{ background: C.gold, color: "#000", padding: "2px 9px", borderRadius: 999, fontSize: 10, fontWeight: 800 }}>
+                              {t(`خصم ${discountPercent}%`, `${discountPercent}% off`)}
+                            </span>
+                          )}
                         </div>
                       )}
-                      {hasDiscount && discountPercent != null ? (
-                        <div style={{ position: "absolute", top: 10, right: 16, background: C.gold, color: "#000", padding: "3px 10px", borderRadius: 999, fontSize: 10, fontWeight: 800 }}>
-                          {t(`خصم ${discountPercent}%`, `${discountPercent}% off`)}
-                        </div>
-                      ) : null}
-                      {p.image ? (
-                        <div style={{ marginBottom: 14, borderRadius: 14, overflow: "hidden" }}>
-                          <img src={p.image} alt={p.name} style={{ width: "100%", height: 140, objectFit: "cover", display: "block" }} />
-                        </div>
-                      ) : null}
-                      <h3 style={{ fontWeight: 900, fontSize: 20, color: C.white, marginBottom: 10 }}>{p.name}</h3>
-                      <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-                        <span style={{ fontSize: 38, fontWeight: 900, color: p.color }}>{formatCurrency(after)}</span>
-                        <span style={{ color: C.gray, fontSize: 12 }}>{cycleLabel(p.cycle, p.durationDays)}</span>
+
+                      {/* Plan name */}
+                      <h3 style={{ fontWeight: 800, fontSize: 14, color: C.white, marginBottom: 10, lineHeight: 1.4 }}>{p.name}</h3>
+
+                      {/* Price row */}
+                      <div style={{ display: "flex", alignItems: "baseline", gap: 4, flexWrap: "wrap" }}>
+                        <span style={{ fontSize: 26, fontWeight: 900, color: p.color, lineHeight: 1 }}>{formatCurrency(after)}</span>
+                        <span style={{ color: C.gray, fontSize: 11 }}>{t("ج.م", "EGP")}</span>
+                        <span style={{ color: C.gray, fontSize: 11 }}>/ {cycleLabel(p.cycle, p.durationDays)}</span>
                       </div>
-                      {hasDiscount ? (
-                        <div style={{ marginTop: 6, color: C.gray, fontSize: 12, textDecoration: "line-through" }}>
+                      {hasDiscount && before != null && (
+                        <div style={{ fontSize: 11, color: C.gray, textDecoration: "line-through", marginTop: 3 }}>
                           {formatCurrency(before)} {t("ج.م", "EGP")}
                         </div>
-                      ) : null}
+                      )}
+
+                      {/* Meta: sessions + duration */}
+                      <div style={{ display: "flex", gap: 10, marginTop: 8, flexWrap: "wrap" }}>
+                        {p.sessionsCount ? (
+                          <span style={{ fontSize: 11, color: C.gray, background: `${p.color}18`, padding: "2px 8px", borderRadius: 6 }}>
+                            🎯 {p.sessionsCount} {t("حصة", "sessions")}
+                          </span>
+                        ) : null}
+                        <span style={{ fontSize: 11, color: C.gray, background: `${C.border}`, padding: "2px 8px", borderRadius: 6 }}>
+                          📅 {p.durationDays} {t("يوم", "days")}
+                        </span>
+                      </div>
                     </div>
 
-                    <div style={{ padding: "18px 24px 22px" }}>
-                      <div style={{ display: "flex", gap: 12, color: C.gray, fontSize: 12, marginBottom: 12, flexWrap: "wrap" }}>
-                        {p.sessionsCount ? <span>{t("عدد الحصص:", "Sessions:")} {p.sessionsCount}</span> : null}
-                        <span>{t("المدة:", "Duration:")} {p.durationDays} {t("يوم", "days")}</span>
+                    {/* Features */}
+                    <div style={{ padding: "12px 16px 16px", flex: 1, display: "flex", flexDirection: "column" }}>
+                      <div style={{ flex: 1 }}>
+                        {p.features.map((feat, fi) => (
+                          <div key={fi} style={{ display: "flex", alignItems: "flex-start", gap: 7, padding: "5px 0", borderBottom: `1px solid ${C.border}`, fontSize: 12 }}>
+                            <span style={{ color: p.color, fontWeight: 900, fontSize: 13, flexShrink: 0, marginTop: 1 }}>✓</span>
+                            <span style={{ color: C.grayLight, lineHeight: 1.5 }}>{feat}</span>
+                          </div>
+                        ))}
                       </div>
-                      {p.features.map((feat, fi) => (
-                        <div key={fi} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0", borderBottom: `1px dashed ${C.border}`, fontSize: 12 }}>
-                          <span style={{ color: p.color, fontWeight: 900, fontSize: 14 }}>✓</span>
-                          <span style={{ color: C.grayLight }}>{feat}</span>
-                        </div>
-                      ))}
                       <button
                         onClick={() => openSurvey(p)}
                         disabled={p.id !== null && subscribing === p.id}
-                        className="btn-primary"
                         style={{
                           width: "100%",
-                          justifyContent: "center",
-                          marginTop: 18,
-                          background: p.popular ? C.red : "transparent",
-                          border: `2px solid ${p.color}`,
-                          color: p.popular ? "#fff" : p.color,
-                          fontFamily: "'Cairo', sans-serif",
-                          padding: "10px",
+                          marginTop: 14,
+                          padding: "10px 12px",
                           borderRadius: 10,
+                          border: `2px solid ${p.color}`,
+                          background: p.popular ? p.color : "transparent",
+                          color: p.popular ? "#fff" : p.color,
                           fontSize: 13,
                           fontWeight: 800,
                           cursor: (p.id !== null && subscribing === p.id) ? "not-allowed" : "pointer",
                           transition: "all .2s",
                           opacity: (p.id !== null && subscribing === p.id) ? 0.7 : 1,
-                          boxShadow: p.popular ? "0 10px 25px rgba(233,30,99,.25)" : "none",
+                          boxShadow: p.popular ? `0 6px 18px ${p.color}44` : "none",
+                          fontFamily: "'Cairo','Tajawal',sans-serif",
                         }}
                       >
                         {(p.id !== null && subscribing === p.id) ? t("جارٍ الاشتراك...", "Processing...") : t("اشتركي الآن", "Subscribe now")}
