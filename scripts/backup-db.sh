@@ -26,6 +26,7 @@ echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting backup..." >> "$LOG_FILE"
 mysqldump \
   --defaults-file="$MY_CNF" \
   --single-transaction \
+  --no-tablespaces \
   --routines \
   --triggers \
   "$DB_NAME" | gzip > "$FILEPATH"
