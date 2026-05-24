@@ -17,12 +17,16 @@ export default function PushNotificationToggle() {
   const [loading, setLoading]       = useState(false);
   const [vapidKey, setVapidKey]     = useState("");
   const [denied, setDenied]         = useState(false);
+  const [error, setError]           = useState<string | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
     setSupported(true);
     setDenied(Notification.permission === "denied");
+
+    // Register SW immediately so .ready resolves when user clicks
+    navigator.serviceWorker.register("/sw.js").catch(() => {});
 
     // Fetch VAPID public key
     fetch("/api/push/subscribe")
@@ -40,33 +44,48 @@ export default function PushNotificationToggle() {
   if (!supported || denied) return null;
 
   async function subscribe() {
-    if (!vapidKey) return;
+    setError(null);
+    if (!vapidKey) {
+      // Key not loaded yet — retry fetch then proceed
+      try {
+        const d = await fetch("/api/push/subscribe").then((r) => r.json()) as { vapidPublicKey?: string };
+        if (!d.vapidPublicKey) { setError("تعذّر تحميل مفتاح الإشعارات"); return; }
+        setVapidKey(d.vapidPublicKey);
+      } catch { setError("تعذّر الاتصال بالخادم"); return; }
+    }
+
     setLoading(true);
     try {
       const perm = await Notification.requestPermission();
       if (perm !== "granted") { setDenied(true); return; }
 
+      // Ensure SW is registered before calling .ready
+      await navigator.serviceWorker.register("/sw.js").catch(() => {});
       const reg = await navigator.serviceWorker.ready;
+
       const sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(vapidKey),
       });
 
       const json = sub.toJSON() as { endpoint: string; keys: { p256dh: string; auth: string } };
-      await fetch("/api/push/subscribe", {
+      const res = await fetch("/api/push/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(json),
       });
+      if (!res.ok) throw new Error("server error");
       setSubscribed(true);
     } catch (err) {
       console.error("[push] subscribe error:", err);
+      setError("حدث خطأ أثناء تفعيل الإشعارات");
     } finally {
       setLoading(false);
     }
   }
 
   async function unsubscribe() {
+    setError(null);
     setLoading(true);
     try {
       const reg = await navigator.serviceWorker.ready;
@@ -81,35 +100,41 @@ export default function PushNotificationToggle() {
       setSubscribed(false);
     } catch (err) {
       console.error("[push] unsubscribe error:", err);
+      setError("حدث خطأ أثناء إلغاء الإشعارات");
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <button
-      onClick={subscribed ? unsubscribe : subscribe}
-      disabled={loading}
-      aria-label={subscribed ? "إلغاء الإشعارات" : "تفعيل إشعارات FitZone"}
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 6,
-        background: subscribed ? "rgba(233,30,99,.15)" : "rgba(255,255,255,.07)",
-        border: `1px solid ${subscribed ? "rgba(233,30,99,.45)" : "rgba(255,255,255,.18)"}`,
-        borderRadius: 9,
-        padding: "7px 14px",
-        fontSize: 13,
-        fontWeight: 700,
-        color: subscribed ? "#e91e63" : "#d7aabd",
-        cursor: loading ? "wait" : "pointer",
-        opacity: loading ? 0.65 : 1,
-        transition: "all .2s",
-        whiteSpace: "nowrap",
-      }}
-    >
-      <span style={{ fontSize: 15 }}>{subscribed ? "🔔" : "🔕"}</span>
-      {loading ? "..." : subscribed ? "إشعارات مفعّلة" : "فعّلي الإشعارات"}
-    </button>
+    <div style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-start", gap: 4 }}>
+      <button
+        onClick={subscribed ? unsubscribe : subscribe}
+        disabled={loading}
+        aria-label={subscribed ? "إلغاء الإشعارات" : "تفعيل إشعارات FitZone"}
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+          background: subscribed ? "rgba(233,30,99,.15)" : "rgba(255,255,255,.07)",
+          border: `1px solid ${subscribed ? "rgba(233,30,99,.45)" : "rgba(255,255,255,.18)"}`,
+          borderRadius: 9,
+          padding: "7px 14px",
+          fontSize: 13,
+          fontWeight: 700,
+          color: subscribed ? "#e91e63" : "#d7aabd",
+          cursor: loading ? "wait" : "pointer",
+          opacity: loading ? 0.65 : 1,
+          transition: "all .2s",
+          whiteSpace: "nowrap",
+        }}
+      >
+        <span style={{ fontSize: 15 }}>{subscribed ? "🔔" : "🔕"}</span>
+        {loading ? "..." : subscribed ? "إشعارات مفعّلة" : "فعّلي الإشعارات"}
+      </button>
+      {error && (
+        <span style={{ fontSize: 11, color: "#f87171", paddingInlineStart: 4 }}>{error}</span>
+      )}
+    </div>
   );
 }
