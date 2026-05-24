@@ -1,32 +1,20 @@
 #!/bin/bash
-set -o pipefail   # خلي exit code بتاع الـ pipe يعكس أول أمر فشل
+set -o pipefail
 # FitZone - Auto Database Backup Script
 # Runs daily via cron, keeps last 14 backups
+# Credentials are read from /home/fitzone/.my.cnf (not from command line)
 
 BACKUP_DIR="/var/www/fitzone/backups"
 KEEP_DAYS=14
 LOG_FILE="/var/www/fitzone/backups/backup.log"
+MY_CNF="/home/fitzone/.my.cnf"
+DB_NAME="fitzone_prod"
 
-# Read credentials from .env (never hardcode them here)
-ENV_FILE="/var/www/fitzone/.env"
-if [ ! -f "$ENV_FILE" ]; then
-  echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: .env not found at $ENV_FILE" >> "$LOG_FILE"
+# تأكد إن ملف الـ credentials موجود
+if [ ! -f "$MY_CNF" ]; then
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: $MY_CNF not found" >> "$LOG_FILE"
   exit 1
 fi
-
-DATABASE_URL=$(grep '^DATABASE_URL=' "$ENV_FILE" | head -1 | cut -d'=' -f2- | tr -d '"' | tr -d "'")
-if [ -z "$DATABASE_URL" ]; then
-  echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: DATABASE_URL not set in .env" >> "$LOG_FILE"
-  exit 1
-fi
-
-DB_USER=$(echo "$DATABASE_URL" | sed 's|.*://\([^:]*\):.*|\1|')
-DB_PASS=$(echo "$DATABASE_URL" | sed 's|.*://[^:]*:\([^@]*\)@.*|\1|')
-# URL-decode the password (handles %40→@ %21→! %23→# %24→$ %25→% %2F→/)
-DB_PASS=$(printf '%b' "$(echo "$DB_PASS" | sed 's/%/\\x/g')")
-DB_HOST=$(echo "$DATABASE_URL" | sed 's|.*@\([^:/]*\)[:/].*|\1|')
-DB_PORT=$(echo "$DATABASE_URL" | sed 's|.*@[^:]*:\([0-9]*\)/.*|\1|')
-DB_NAME=$(echo "$DATABASE_URL" | sed 's|.*/\([^?]*\).*|\1|')
 
 mkdir -p "$BACKUP_DIR"
 
@@ -36,10 +24,7 @@ FILEPATH="$BACKUP_DIR/$FILENAME"
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting backup..." >> "$LOG_FILE"
 
 mysqldump \
-  -h "$DB_HOST" \
-  -P "$DB_PORT" \
-  -u "$DB_USER" \
-  -p"$DB_PASS" \
+  --defaults-file="$MY_CNF" \
   --single-transaction \
   --routines \
   --triggers \
