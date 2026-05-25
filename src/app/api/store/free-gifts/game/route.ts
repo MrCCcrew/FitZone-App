@@ -20,7 +20,13 @@ async function getOrCreateSession(token: string | null, userId: string | null) {
   const expiresAt = settings.sessionDurationMinutes > 0
     ? new Date(Date.now() + settings.sessionDurationMinutes * 60_000) : null;
   const session = await dbx.storeFreeGiftsSession.create({
-    data: { userId, giftSlotsCount: settings.freeGiftSlotsCount, expiresAt },
+    data: {
+      userId,
+      giftSlotsCount: settings.freeGiftSlotsCount,
+      expiresAt,
+      cardsData: "[]",
+      selectedProductIds: "[]",
+    },
   });
   return session;
 }
