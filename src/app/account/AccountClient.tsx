@@ -46,6 +46,8 @@ interface AccountData {
     amount: number;
     transactionId: string | null;
     checkoutUrl: string | null;
+    startDate: string;
+    hoursRemaining: number;
   } | null;
   membershipHistory: {
     id: string;
@@ -1173,30 +1175,52 @@ function MembershipTab({ membership, pendingPayment }: { membership: AccountData
   const t = (arText: string, enText: string) => (lang === "ar" ? arText : enText);
 
   const pendingBanner = pendingPayment ? (
-    <div className="mb-4 rounded-2xl border border-amber-500/40 bg-amber-500/10 p-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <div className="text-xs font-bold text-amber-300 mb-1">{t("⏳ بانتظار إتمام الدفع", "⏳ Payment pending")}</div>
+    <div className="mb-4 rounded-2xl border-2 border-amber-400/60 bg-gradient-to-br from-amber-950/60 to-orange-950/50 p-5 shadow-lg shadow-amber-900/20">
+      {/* Header */}
+      <div className="flex items-center gap-2 mb-3">
+        <span className="text-xl animate-pulse">⚠️</span>
+        <span className="text-amber-300 font-black text-base">
+          {t("اشتراكك في انتظار إتمام الدفع", "Your subscription is awaiting payment")}
+        </span>
+      </div>
+      {/* Plan & amount */}
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="space-y-1">
           <div className="text-white font-black text-lg">{pendingPayment.plan}</div>
-          <div className="text-amber-200 text-sm mt-0.5">
+          <div className="text-amber-200 text-sm">
             {t(`المبلغ المطلوب: ${pendingPayment.amount.toLocaleString("ar-EG")} ج.م`, `Amount due: ${pendingPayment.amount.toLocaleString("en-US")} EGP`)}
           </div>
+          {/* Countdown */}
+          <div className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 mt-1 text-xs font-black ${pendingPayment.hoursRemaining <= 3 ? "bg-red-500/20 text-red-300 border border-red-500/40" : "bg-amber-500/15 text-amber-300 border border-amber-500/30"}`}>
+            <span>⏱</span>
+            <span>
+              {pendingPayment.hoursRemaining <= 3
+                ? t(`تبقّى أقل من ${pendingPayment.hoursRemaining} ساعة فقط!`, `Less than ${pendingPayment.hoursRemaining}h left!`)
+                : t(`ينتهي خلال ${pendingPayment.hoursRemaining} ساعة`, `Expires in ${pendingPayment.hoursRemaining}h`)}
+            </span>
+          </div>
         </div>
-        <div className="flex flex-col gap-2">
-          {pendingPayment.transactionId && (
-            <a
-              href={`/payment/verify?transactionId=${encodeURIComponent(pendingPayment.transactionId)}`}
-              className="rounded-xl bg-amber-500 px-5 py-2.5 text-sm font-black text-black text-center"
-            >
-              {t("متابعة الدفع", "Complete payment")}
+        {/* CTA */}
+        <div className="flex flex-col gap-2 shrink-0">
+          {pendingPayment.transactionId ? (
+            <a href={`/payment/verify?transactionId=${encodeURIComponent(pendingPayment.transactionId)}`}
+               className="rounded-xl bg-amber-500 hover:bg-amber-400 transition-colors px-5 py-2.5 text-sm font-black text-black text-center">
+              ⚡ {t("إتمام الدفع الآن", "Pay now")}
             </a>
-          )}
-          {!pendingPayment.transactionId && pendingPayment.checkoutUrl && (
-            <a href={pendingPayment.checkoutUrl} className="rounded-xl bg-amber-500 px-5 py-2.5 text-sm font-black text-black text-center">
-              {t("إكمال الدفع", "Complete payment")}
+          ) : pendingPayment.checkoutUrl ? (
+            <a href={pendingPayment.checkoutUrl}
+               className="rounded-xl bg-amber-500 hover:bg-amber-400 transition-colors px-5 py-2.5 text-sm font-black text-black text-center">
+              ⚡ {t("إتمام الدفع الآن", "Pay now")}
             </a>
-          )}
+          ) : null}
         </div>
+      </div>
+      {/* Warning note */}
+      <div className="mt-3 rounded-xl bg-black/30 border border-amber-500/20 px-4 py-2.5 text-xs text-amber-200/80 leading-relaxed">
+        {t(
+          "⚠️ إذا لم يتم إتمام الدفع خلال 24 ساعة من وقت الاشتراك، سيتم إلغاء الاشتراك تلقائيًا وسيختفي من صفحتك، مع إلغاء أي حجوزات مرتبطة به.",
+          "⚠️ If payment is not completed within 24 hours of subscribing, the subscription and any linked bookings will be automatically cancelled and removed from your page.",
+        )}
       </div>
     </div>
   ) : null;
@@ -1498,22 +1522,46 @@ function AccountMembershipTab({
   const currentMembership = membershipHistory.find((item) => item.id === membership?.id) ?? null;
 
   const pendingBanner = pendingPayment ? (
-    <div className="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <div className="text-xs font-bold text-amber-300 mb-1">{t("⏳ بانتظار إتمام الدفع", "⏳ Payment pending")}</div>
+    <div className="rounded-2xl border-2 border-amber-400/60 bg-gradient-to-br from-amber-950/60 to-orange-950/50 p-5 shadow-lg shadow-amber-900/20">
+      <div className="flex items-center gap-2 mb-3">
+        <span className="text-xl animate-pulse">⚠️</span>
+        <span className="text-amber-300 font-black text-base">
+          {t("اشتراكك في انتظار إتمام الدفع", "Your subscription is awaiting payment")}
+        </span>
+      </div>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="space-y-1">
           <div className="text-white font-black text-lg">{pendingPayment.plan}</div>
-          <div className="text-amber-200 text-sm mt-0.5">
+          <div className="text-amber-200 text-sm">
             {t(`المبلغ المطلوب: ${pendingPayment.amount.toLocaleString("ar-EG")} ج.م`, `Amount due: ${pendingPayment.amount.toLocaleString("en-US")} EGP`)}
           </div>
+          <div className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 mt-1 text-xs font-black ${pendingPayment.hoursRemaining <= 3 ? "bg-red-500/20 text-red-300 border border-red-500/40" : "bg-amber-500/15 text-amber-300 border border-amber-500/30"}`}>
+            <span>⏱</span>
+            <span>
+              {pendingPayment.hoursRemaining <= 3
+                ? t(`تبقّى أقل من ${pendingPayment.hoursRemaining} ساعة فقط!`, `Less than ${pendingPayment.hoursRemaining}h left!`)
+                : t(`ينتهي خلال ${pendingPayment.hoursRemaining} ساعة`, `Expires in ${pendingPayment.hoursRemaining}h`)}
+            </span>
+          </div>
         </div>
-        {pendingPayment.transactionId && (
-          <a
-            href={`/payment/verify?transactionId=${encodeURIComponent(pendingPayment.transactionId)}`}
-            className="rounded-xl bg-amber-500 px-5 py-2.5 text-sm font-black text-black"
-          >
-            {t("متابعة الدفع", "Complete payment")}
-          </a>
+        <div className="flex flex-col gap-2 shrink-0">
+          {pendingPayment.transactionId ? (
+            <a href={`/payment/verify?transactionId=${encodeURIComponent(pendingPayment.transactionId)}`}
+               className="rounded-xl bg-amber-500 hover:bg-amber-400 transition-colors px-5 py-2.5 text-sm font-black text-black text-center">
+              ⚡ {t("إتمام الدفع الآن", "Pay now")}
+            </a>
+          ) : pendingPayment.checkoutUrl ? (
+            <a href={pendingPayment.checkoutUrl}
+               className="rounded-xl bg-amber-500 hover:bg-amber-400 transition-colors px-5 py-2.5 text-sm font-black text-black text-center">
+              ⚡ {t("إتمام الدفع الآن", "Pay now")}
+            </a>
+          ) : null}
+        </div>
+      </div>
+      <div className="mt-3 rounded-xl bg-black/30 border border-amber-500/20 px-4 py-2.5 text-xs text-amber-200/80 leading-relaxed">
+        {t(
+          "⚠️ إذا لم يتم إتمام الدفع خلال 24 ساعة من وقت الاشتراك، سيتم إلغاء الاشتراك تلقائيًا وسيختفي من صفحتك، مع إلغاء أي حجوزات مرتبطة به.",
+          "⚠️ If payment is not completed within 24 hours of subscribing, the subscription and any linked bookings will be automatically cancelled and removed from your page.",
         )}
       </div>
     </div>

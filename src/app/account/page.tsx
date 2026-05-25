@@ -73,10 +73,39 @@ async function getAccountData(userId: string) {
 
     if (!user) return null;
 
-    const activeMembership = user.memberships.find((membership) => membership.status === "active") ?? null;
-
     const PENDING_EXPIRE_MS = 24 * 60 * 60 * 1000; // 24 h
     const now24 = new Date();
+
+    // ── Auto-cancel expired pending memberships (fallback in case cron hasn't run) ──
+    const expiredPendingIds = new Set(
+      user.memberships
+        .filter(
+          (m) =>
+            m.status === "pending_payment" &&
+            now24.getTime() - new Date(m.startDate).getTime() >= PENDING_EXPIRE_MS,
+        )
+        .map((m) => m.id),
+    );
+
+    if (expiredPendingIds.size > 0) {
+      // Fire-and-forget — don't block page render
+      Promise.all([
+        db.userMembership.updateMany({
+          where: { id: { in: [...expiredPendingIds] }, status: "pending_payment" },
+          data: { status: "cancelled" },
+        }),
+        db.booking.updateMany({
+          where: {
+            userMembershipId: { in: [...expiredPendingIds] },
+            status: { in: ["confirmed", "pending"] },
+          },
+          data: { status: "cancelled" },
+        }),
+      ]).catch((err) => console.error("[AUTO_CANCEL_EXPIRED_PENDING]", err));
+    }
+
+    const activeMembership = user.memberships.find((membership) => membership.status === "active") ?? null;
+
     // Only treat pending_payment as "live" if it was created within the last 24 h
     const pendingPaymentMembership = user.memberships.find(
       (membership) =>
@@ -171,7 +200,11 @@ async function getAccountData(userId: string) {
             ),
           }
         : null,
-      membershipHistory: user.memberships.map((membership) => {
+      membershipHistory: user.memberships
+        // Hide memberships that are still pending_payment but past the 24 h window —
+        // they are being auto-cancelled in the background and are meaningless to the customer.
+        .filter((membership) => !expiredPendingIds.has(membership.id))
+        .map((membership) => {
         const features = parseFeatures(membership.membership.features);
         const attendedCount = membership.bookings.filter((booking) => booking.status === "attended").length;
         const totalSessions = membership.totalSessions ?? membership.membership.sessionsCount ?? membership.membership.maxClasses;
@@ -233,6 +266,15 @@ async function getAccountData(userId: string) {
             amount: pendingPaymentMembership.paymentAmount,
             transactionId: pendingPaymentTx?.id ?? null,
             checkoutUrl: pendingPaymentTx?.checkoutUrl ?? null,
+            startDate: pendingPaymentMembership.startDate.toISOString(),
+            // How many hours remain before auto-cancellation (always >= 1 here since we filtered <24h above)
+            hoursRemaining: Math.max(
+              1,
+              Math.ceil(
+                (PENDING_EXPIRE_MS - (now24.getTime() - new Date(pendingPaymentMembership.startDate).getTime())) /
+                  (60 * 60 * 1000),
+              ),
+            ),
           }
         : null,
       wallet: {
@@ -273,18 +315,21 @@ async function getAccountData(userId: string) {
           (h) => h.reason === "onboarding_email_verified"
         ) ?? false,
       },
-      bookings: user.bookings.map((booking) => ({
-        id: booking.id,
-        scheduleId: booking.scheduleId,
-        classId: booking.schedule.classId,
-        className: booking.schedule.class.name,
-        trainerName: booking.schedule.class.trainer.name,
-        date: booking.schedule.date.toISOString(),
-        time: booking.schedule.time,
-        status: booking.status,
-        type: booking.schedule.class.type,
-        userMembershipId: booking.userMembershipId ?? null,
-      })),
+      bookings: user.bookings
+        // Hide bookings tied to expired-pending memberships
+        .filter((booking) => !booking.userMembershipId || !expiredPendingIds.has(booking.userMembershipId))
+        .map((booking) => ({
+          id: booking.id,
+          scheduleId: booking.scheduleId,
+          classId: booking.schedule.classId,
+          className: booking.schedule.class.name,
+          trainerName: booking.schedule.class.trainer.name,
+          date: booking.schedule.date.toISOString(),
+          time: booking.schedule.time,
+          status: booking.status,
+          type: booking.schedule.class.type,
+          userMembershipId: booking.userMembershipId ?? null,
+        })),
       orders: user.orders.map((order) => ({
         id: order.id,
         subtotal: order.subtotal,
