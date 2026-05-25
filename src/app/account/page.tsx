@@ -76,71 +76,91 @@ async function getAccountData(userId: string) {
     const PENDING_EXPIRE_MS = 24 * 60 * 60 * 1000; // 24 h
     const now24 = new Date();
 
-    // ── Auto-cancel expired pending memberships (fallback in case cron hasn't run) ──
-    const expiredPendingIds = new Set(
-      user.memberships
-        .filter(
-          (m) =>
-            m.status === "pending_payment" &&
-            now24.getTime() - new Date(m.startDate).getTime() >= PENDING_EXPIRE_MS,
-        )
-        .map((m) => m.id),
-    );
-
-    if (expiredPendingIds.size > 0) {
-      // Fire-and-forget — don't block page render
-      Promise.all([
-        db.userMembership.updateMany({
-          where: { id: { in: [...expiredPendingIds] }, status: "pending_payment" },
-          data: { status: "cancelled" },
-        }),
-        db.booking.updateMany({
-          where: {
-            userMembershipId: { in: [...expiredPendingIds] },
-            status: { in: ["confirmed", "pending"] },
-          },
-          data: { status: "cancelled" },
-        }),
-      ]).catch((err) => console.error("[AUTO_CANCEL_EXPIRED_PENDING]", err));
-    }
-
-    const activeMembership = user.memberships.find((membership) => membership.status === "active") ?? null;
-
-    // Only treat pending_payment as "live" if it was created within the last 24 h
-    const pendingPaymentMembership = user.memberships.find(
-      (membership) =>
-        membership.status === "pending_payment" &&
-        now24.getTime() - new Date(membership.startDate).getTime() < PENDING_EXPIRE_MS,
-    ) ?? null;
-    const pendingPaymentTx = pendingPaymentMembership
-      ? await db.paymentTransaction.findFirst({
-          where: { membershipId: pendingPaymentMembership.id, status: { in: ["pending", "requires_action"] } },
-          select: { id: true, checkoutUrl: true },
-          orderBy: { createdAt: "desc" },
-        })
-      : null;
-
-    // Fetch payment transactions for ALL pending_payment memberships (for the history list)
+    // ── Step 1: Fetch payment transactions for ALL pending_payment memberships ──
+    // We use TX.createdAt (when payment was initiated) — NOT startDate which can be a future membership date.
     const pendingMembershipIds = user.memberships
       .filter((m) => m.status === "pending_payment")
       .map((m) => m.id);
+
     const pendingTxList = pendingMembershipIds.length
       ? await db.paymentTransaction.findMany({
           where: {
             membershipId: { in: pendingMembershipIds },
             status: { in: ["pending", "requires_action"] },
           },
-          select: { membershipId: true, id: true, checkoutUrl: true },
-          orderBy: { createdAt: "desc" },
+          select: { membershipId: true, id: true, checkoutUrl: true, createdAt: true },
+          orderBy: { createdAt: "desc" }, // newest first
         })
       : [];
-    // Keep only the latest tx per membershipId
+
+    // Build two maps from one pass (ordered DESC):
+    //   pendingTxMap         → latest tx per membership (for checkout URL)
+    //   pendingTxCreatedAtMap → oldest tx per membership (= when payment was first initiated)
     const pendingTxMap = new Map<string, { transactionId: string; checkoutUrl: string | null }>();
+    const pendingTxCreatedAtMap = new Map<string, Date>();
     for (const tx of pendingTxList) {
-      if (tx.membershipId && !pendingTxMap.has(tx.membershipId)) {
+      if (!tx.membershipId) continue;
+      // latest checkout URL (only first hit since we iterate DESC)
+      if (!pendingTxMap.has(tx.membershipId)) {
         pendingTxMap.set(tx.membershipId, { transactionId: tx.id, checkoutUrl: tx.checkoutUrl ?? null });
       }
+      // oldest createdAt (always overwrite — last write in DESC iteration = oldest record)
+      pendingTxCreatedAtMap.set(tx.membershipId, tx.createdAt);
     }
+
+    // ── Step 2: Determine expired pending memberships ──
+    // A pending_payment membership is "expired" when >= 24 h have passed since payment was initiated.
+    // We use the TX createdAt as the reference; fall back to startDate only if no TX exists.
+    const expiredPendingIds = new Set(
+      user.memberships
+        .filter((m) => {
+          if (m.status !== "pending_payment") return false;
+          const refTime = pendingTxCreatedAtMap.get(m.id) ?? new Date(m.startDate);
+          return now24.getTime() - refTime.getTime() >= PENDING_EXPIRE_MS;
+        })
+        .map((m) => m.id),
+    );
+
+    // ── Step 3: Fire-and-forget DELETION of expired pending memberships ──
+    if (expiredPendingIds.size > 0) {
+      const expiredList = [...expiredPendingIds];
+      // Cancel the payment transactions first (they reference membershipId as a plain string — no FK cascade)
+      Promise.all([
+        db.paymentTransaction.updateMany({
+          where: { membershipId: { in: expiredList }, status: { in: ["pending", "requires_action"] } },
+          data: { status: "cancelled" },
+        }),
+        // Delete all bookings tied to these memberships
+        db.booking.deleteMany({
+          where: { userMembershipId: { in: expiredList } },
+        }),
+      ])
+        .then(() =>
+          // Finally delete the memberships themselves (cascades commissions)
+          db.userMembership.deleteMany({
+            where: { id: { in: expiredList }, status: "pending_payment" },
+          }),
+        )
+        .catch((err) => console.error("[AUTO_DELETE_EXPIRED_PENDING]", err));
+    }
+
+    const activeMembership = user.memberships.find((membership) => membership.status === "active") ?? null;
+
+    // Only treat pending_payment as "live" if < 24 h have passed since payment initiation
+    const pendingPaymentMembership =
+      user.memberships.find((m) => {
+        if (m.status !== "pending_payment") return false;
+        const refTime = pendingTxCreatedAtMap.get(m.id) ?? new Date(m.startDate);
+        return now24.getTime() - refTime.getTime() < PENDING_EXPIRE_MS;
+      }) ?? null;
+
+    // Reuse from pendingTxMap (already fetched above)
+    const pendingPaymentTx = pendingPaymentMembership
+      ? (pendingTxMap.get(pendingPaymentMembership.id) ?? null)
+      : null;
+    const pendingPaymentRefTime = pendingPaymentMembership
+      ? (pendingTxCreatedAtMap.get(pendingPaymentMembership.id) ?? new Date(pendingPaymentMembership.startDate))
+      : null;
     const classesUsed = user.bookings.filter(
       (booking) =>
         booking.status === "attended" &&
@@ -220,10 +240,11 @@ async function getAccountData(userId: string) {
           ? pendingTxMap.get(membership.id) ?? null
           : null;
 
-        // If a pending_payment membership is older than 24 h, hide the payment CTA
+        // If a pending_payment membership is older than 24 h from payment initiation, hide the payment CTA
+        const membershipRefTime = pendingTxCreatedAtMap.get(membership.id) ?? new Date(membership.startDate);
         const isExpiredPending =
           membership.status === "pending_payment" &&
-          now24.getTime() - new Date(membership.startDate).getTime() >= PENDING_EXPIRE_MS;
+          now24.getTime() - membershipRefTime.getTime() >= PENDING_EXPIRE_MS;
 
         return {
           id: membership.id,
@@ -264,14 +285,14 @@ async function getAccountData(userId: string) {
         ? {
             plan: pendingPaymentMembership.membership.name,
             amount: pendingPaymentMembership.paymentAmount,
-            transactionId: pendingPaymentTx?.id ?? null,
+            transactionId: pendingPaymentTx?.transactionId ?? null,
             checkoutUrl: pendingPaymentTx?.checkoutUrl ?? null,
             startDate: pendingPaymentMembership.startDate.toISOString(),
-            // How many hours remain before auto-cancellation (always >= 1 here since we filtered <24h above)
+            // Use TX.createdAt (when payment was initiated) for the countdown — NOT startDate
             hoursRemaining: Math.max(
               1,
               Math.ceil(
-                (PENDING_EXPIRE_MS - (now24.getTime() - new Date(pendingPaymentMembership.startDate).getTime())) /
+                (PENDING_EXPIRE_MS - (now24.getTime() - (pendingPaymentRefTime?.getTime() ?? now24.getTime()))) /
                   (60 * 60 * 1000),
               ),
             ),
