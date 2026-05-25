@@ -158,6 +158,9 @@ async function getAccountData(userId: string) {
             paymentAmount: activeMembership.paymentAmount,
             paymentMethod: activeMembership.paymentMethod ?? "",
             offerTitle: activeMembership.offerTitle ?? null,
+            classSessions: parseJsonArray<{ classId: string; classType?: string; className?: string; sessions: number }>(
+              activeMembership.membership.classSessions,
+            ),
           }
         : null,
       membershipHistory: user.memberships.map((membership) => {

@@ -39,6 +39,7 @@ interface AccountData {
     paymentAmount: number;
     paymentMethod: string;
     offerTitle: string | null;
+    classSessions: Array<{ classId: string; classType?: string; className?: string; sessions: number }>;
   } | null;
   pendingPayment: {
     plan: string;
@@ -1874,7 +1875,10 @@ function BookingsTabLegacy({ bookings }: { bookings: AccountData["bookings"] }) 
 }
 
 // ─── Tab: Orders ──────────────────────────────────────────────────────────────
-function BookingsTab({ bookings }: { bookings: AccountData["bookings"] }) {
+function BookingsTab({ bookings, classSessions }: {
+  bookings: AccountData["bookings"];
+  classSessions: Array<{ classId: string; classType?: string; className?: string; sessions: number }>;
+}) {
   const { lang } = useLang();
   const t = (arText: string, enText: string) => (lang === "ar" ? arText : enText);
   const [items, setItems] = useState(bookings);
@@ -1968,10 +1972,29 @@ function BookingsTab({ bookings }: { bookings: AccountData["bookings"] }) {
     return `${String(displayHour).padStart(2, "0")}.${String(minute).padStart(2, "0")} ${period}`;
   };
 
+  // ── Filter schedule entries based on membership's allowed class restrictions ──
+  const allowedScheduleEntries = useMemo(() => {
+    if (!classSessions?.length) return scheduleEntries;
+    const allowedClassIds = new Set(classSessions.map((cs) => cs.classId).filter(Boolean));
+    const allowedTypes = new Set(
+      classSessions
+        .map((cs) => cs.classType?.trim().toLowerCase())
+        .filter((t): t is string => !!t),
+    );
+    return scheduleEntries.filter((entry) => {
+      if (allowedClassIds.has(entry.classId)) return true;
+      const entryType = (entry.type ?? "").trim().toLowerCase();
+      if (entryType && allowedTypes.has(entryType)) return true;
+      // Fallback: classId stored as type name (packages)
+      if (entryType && allowedClassIds.has(entryType)) return true;
+      return false;
+    });
+  }, [scheduleEntries, classSessions]);
+
   const scheduleSlots = useMemo(() => {
-    const times = Array.from(new Set(scheduleEntries.map((item) => item.time)));
+    const times = Array.from(new Set(allowedScheduleEntries.map((item) => item.time)));
     return times.sort((a, b) => parseScheduleTime(a) - parseScheduleTime(b));
-  }, [scheduleEntries]);
+  }, [allowedScheduleEntries]);
 
   const scheduleSplit = useMemo(() => {
     const cutoff = 15 * 60;
@@ -1981,10 +2004,10 @@ function BookingsTab({ bookings }: { bookings: AccountData["bookings"] }) {
   }, [scheduleSlots]);
 
   const scheduleDays = useMemo(() => {
-    const daySet = new Set(scheduleEntries.map((item) => item.day));
+    const daySet = new Set(allowedScheduleEntries.map((item) => item.day));
     const order = lang === "en" ? ["Saturday", "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday"] : ["السبت", "الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة"];
     return order.filter((day) => daySet.has(day));
-  }, [scheduleEntries, lang]);
+  }, [allowedScheduleEntries, lang]);
 
   const toScheduleDateTime = (dateIso: string, time: string) => {
     const date = new Date(dateIso);
@@ -2180,10 +2203,20 @@ function BookingsTab({ bookings }: { bookings: AccountData["bookings"] }) {
 
         {scheduleLoading ? (
           <div className="text-center text-gray-400 py-10">{t("جاري تحميل الجدول...", "Loading schedule...")}</div>
-        ) : scheduleEntries.length === 0 ? (
-          <div className="text-center text-gray-400 py-10">{t("لا توجد مواعيد متاحة حاليًا.", "No schedule slots available right now.")}</div>
+        ) : allowedScheduleEntries.length === 0 ? (
+          <div className="text-center text-gray-400 py-10">
+            {classSessions?.length
+              ? t("لا توجد مواعيد متاحة لكلاسات اشتراكك حاليًا.", "No schedule slots available for your plan's classes right now.")
+              : t("لا توجد مواعيد متاحة حاليًا.", "No schedule slots available right now.")}
+          </div>
         ) : (
           <>
+            {classSessions?.length > 0 && (
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 8, background: "rgba(139,92,246,.08)", border: "1px solid rgba(139,92,246,.3)", borderRadius: 10, padding: "10px 14px", marginBottom: 12, fontSize: 13, color: "#c4b5fd", fontWeight: 700, lineHeight: 1.6 }}>
+                <span style={{ fontSize: 16, flexShrink: 0 }}>🔒</span>
+                <span>{t("يظهر هنا فقط الكلاسات المتاحة ضمن اشتراكك الحالي.", "Only classes included in your current plan are shown here.")}</span>
+              </div>
+            )}
             <div style={{ display: "flex", alignItems: "flex-start", gap: 8, background: "rgba(245,197,66,.07)", border: "1px solid rgba(245,197,66,.25)", borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 13, color: "#f5c542", fontWeight: 700, lineHeight: 1.6 }}>
               <span style={{ fontSize: 16, flexShrink: 0 }}>⚠️</span>
               <span>{t("لا يمكن حجز أكثر من كلاس واحد في نفس التوقيت ونفس اليوم.", "You cannot book more than one class at the same time on the same day.")}</span>
@@ -2209,7 +2242,7 @@ function BookingsTab({ bookings }: { bookings: AccountData["bookings"] }) {
                     {scheduleDays.map((day) => (
                       <div key={`morning-row-${day}`} style={{ display: "contents" }}>
                         {scheduleSplit.morning.map((slot) => {
-                          const cellEntries = scheduleEntries.filter(
+                          const cellEntries = allowedScheduleEntries.filter(
                             (entry) => entry.day === day && entry.time === slot,
                           );
                           return (
@@ -2279,7 +2312,7 @@ function BookingsTab({ bookings }: { bookings: AccountData["bookings"] }) {
                     {scheduleDays.map((day) => (
                       <div key={`evening-row-${day}`} style={{ display: "contents" }}>
                         {scheduleSplit.evening.map((slot) => {
-                          const cellEntries = scheduleEntries.filter(
+                          const cellEntries = allowedScheduleEntries.filter(
                             (entry) => entry.day === day && entry.time === slot,
                           );
                           return (
@@ -4799,7 +4832,7 @@ export default function AccountClient({ data }: { data: AccountData }) {
             {activeTab === "privateSessions"      && <PrivateSessionsTab />}
             {activeTab === "myPrivateSessions"    && <MyPrivateSessionsTab />}
             {activeTab === "membership"           && <AccountMembershipTab membership={data.membership} membershipHistory={data.membershipHistory} privateApplications={data.privateApplications} pendingPayment={data.pendingPayment} />}
-            {activeTab === "bookings"      && <BookingsTab      bookings={data.bookings} />}
+            {activeTab === "bookings"      && <BookingsTab      bookings={data.bookings} classSessions={data.membership?.classSessions ?? []} />}
             {activeTab === "nutrition"     && <NutritionTab />}
             {activeTab === "orders"        && <AccountOrdersTab orders={data.orders} />}
             {activeTab === "wallet"        && <WalletTab        wallet={data.wallet} rewards={data.rewards} referral={data.referral} />}

@@ -151,6 +151,44 @@ export async function PATCH(req: Request) {
         return NextResponse.json({ error: "لا توجد أماكن متاحة لهذا الموعد" }, { status: 400 });
       }
 
+      // ── Validate class restrictions from active membership plan ───────────
+      if (booking.userMembershipId) {
+        const activeMem = await db.userMembership.findUnique({
+          where: { id: booking.userMembershipId },
+          include: { membership: { select: { classSessions: true } } },
+        });
+        const rawClassSessions = activeMem?.membership?.classSessions;
+        if (rawClassSessions) {
+          try {
+            const classSessions = JSON.parse(rawClassSessions) as Array<{
+              classId: string;
+              classType?: string;
+            }>;
+            if (classSessions.length > 0) {
+              const allowedClassIds = new Set(classSessions.map((cs) => cs.classId));
+              const allowedTypes = new Set(
+                classSessions
+                  .map((cs) => cs.classType?.trim().toLowerCase())
+                  .filter((t): t is string => !!t),
+              );
+              const classType = (newSchedule.class.type ?? "").trim().toLowerCase();
+              const allowed =
+                allowedClassIds.has(newSchedule.classId) ||
+                (classType && allowedTypes.has(classType)) ||
+                allowedClassIds.has(classType); // fallback: classId stored as type name
+              if (!allowed) {
+                return NextResponse.json(
+                  { error: "هذا الكلاس غير متاح ضمن اشتراكك الحالي" },
+                  { status: 400 },
+                );
+              }
+            }
+          } catch {
+            /* ignore invalid JSON — no restriction applied */
+          }
+        }
+      }
+
       await db.$transaction([
         db.booking.update({
           where: { id: bookingId },
