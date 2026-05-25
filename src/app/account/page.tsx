@@ -82,6 +82,28 @@ async function getAccountData(userId: string) {
           orderBy: { createdAt: "desc" },
         })
       : null;
+
+    // Fetch payment transactions for ALL pending_payment memberships (for the history list)
+    const pendingMembershipIds = user.memberships
+      .filter((m) => m.status === "pending_payment")
+      .map((m) => m.id);
+    const pendingTxList = pendingMembershipIds.length
+      ? await db.paymentTransaction.findMany({
+          where: {
+            membershipId: { in: pendingMembershipIds },
+            status: { in: ["pending", "requires_action"] },
+          },
+          select: { membershipId: true, id: true, checkoutUrl: true },
+          orderBy: { createdAt: "desc" },
+        })
+      : [];
+    // Keep only the latest tx per membershipId
+    const pendingTxMap = new Map<string, { transactionId: string; checkoutUrl: string | null }>();
+    for (const tx of pendingTxList) {
+      if (tx.membershipId && !pendingTxMap.has(tx.membershipId)) {
+        pendingTxMap.set(tx.membershipId, { transactionId: tx.id, checkoutUrl: tx.checkoutUrl ?? null });
+      }
+    }
     const classesUsed = user.bookings.filter(
       (booking) =>
         booking.status === "attended" &&
@@ -150,6 +172,10 @@ async function getAccountData(userId: string) {
           name: reward.productId ? rewardProductMap.get(reward.productId)?.name ?? reward.productId : "",
         }));
 
+        const pendingTx = membership.status === "pending_payment"
+          ? pendingTxMap.get(membership.id) ?? null
+          : null;
+
         return {
           id: membership.id,
           plan: membership.membership.name,
@@ -168,6 +194,8 @@ async function getAccountData(userId: string) {
           classesUsed: attendedCount,
           sessionsRemaining,
           bookedCount: membership.bookings.length,
+          checkoutUrl: pendingTx?.checkoutUrl ?? null,
+          transactionId: pendingTx?.transactionId ?? null,
           bookings: membership.bookings.map((booking) => ({
             id: booking.id,
             className: booking.schedule.class.name,

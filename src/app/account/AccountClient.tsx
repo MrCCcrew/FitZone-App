@@ -64,6 +64,8 @@ interface AccountData {
     classesUsed: number;
     sessionsRemaining: number | null;
     bookedCount: number;
+    checkoutUrl: string | null;
+    transactionId: string | null;
     bookings: {
       id: string;
       className: string;
@@ -1585,7 +1587,30 @@ function AccountMembershipTab({
         ) : (
           <div className="space-y-4">
             {membershipHistory.map((item) => (
-              <div key={item.id} className="rounded-2xl border border-[#ffbcdb]/15 bg-white/5 p-4 space-y-4">
+              <div key={item.id} className={`rounded-2xl border p-4 space-y-4 ${item.status === "pending_payment" ? "border-amber-500/40 bg-amber-950/20" : "border-[#ffbcdb]/15 bg-white/5"}`}>
+                {/* Pending payment notice */}
+                {item.status === "pending_payment" && (
+                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3">
+                    <div>
+                      <div className="text-xs font-bold text-amber-300">
+                        ⏳ {t("لم يكتمل الدفع بعد", "Payment not completed yet")}
+                      </div>
+                      <div className="text-sm text-amber-200 mt-0.5">
+                        {t(`المبلغ المطلوب: ${item.paymentAmount.toLocaleString("ar-EG")} ج.م`, `Amount due: ${item.paymentAmount.toLocaleString("en-US")} EGP`)}
+                      </div>
+                    </div>
+                    <a
+                      href={
+                        item.transactionId
+                          ? `/payment/verify?transactionId=${encodeURIComponent(item.transactionId)}`
+                          : item.checkoutUrl ?? "/#plans"
+                      }
+                      className="rounded-xl bg-amber-500 px-5 py-2.5 text-sm font-black text-black hover:bg-amber-400 transition-colors whitespace-nowrap"
+                    >
+                      {t("⚡ متابعة الدفع", "⚡ Complete payment")}
+                    </a>
+                  </div>
+                )}
                 <div className="flex items-start justify-between gap-4 flex-wrap">
                   <div className="flex items-start gap-3">
                     {item.image ? (
@@ -1613,9 +1638,22 @@ function AccountMembershipTab({
                       </div>
                     </div>
                   </div>
-                  <span className={`text-xs px-3 py-1.5 rounded-full font-black ${STATUS_MAP[item.status]?.color ?? "text-white bg-gray-700"}`}>
-                    {STATUS_MAP[item.status]?.label ?? item.status}
-                  </span>
+                  {item.status === "pending_payment" ? (
+                    <a
+                      href={
+                        item.transactionId
+                          ? `/payment/verify?transactionId=${encodeURIComponent(item.transactionId)}`
+                          : item.checkoutUrl ?? "/#plans"
+                      }
+                      className="shrink-0 rounded-xl bg-amber-500 px-4 py-2 text-xs font-black text-black text-center hover:bg-amber-400 transition-colors"
+                    >
+                      {t("⚡ متابعة الدفع", "⚡ Complete payment")}
+                    </a>
+                  ) : (
+                    <span className={`text-xs px-3 py-1.5 rounded-full font-black ${STATUS_MAP[item.status]?.color ?? "text-white bg-gray-700"}`}>
+                      {STATUS_MAP[item.status]?.label ?? item.status}
+                    </span>
+                  )}
                 </div>
 
                 <div className="grid gap-3 md:grid-cols-3">
