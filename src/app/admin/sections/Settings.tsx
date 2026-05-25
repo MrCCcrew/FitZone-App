@@ -260,6 +260,7 @@ export default function Settings({ userRole = "staff", permissions = [] }: { use
   const canManageSettings = userRole === "admin" || permissions.includes("settings");
   const [activeTab, setActiveTab] = useState<"employees" | "referrals" | "trainer-referrals" | "audit">(canManageSettings ? "employees" : "referrals");
   const [employees, setEmployees] = useState<AdminEmployee[]>([]);
+  const [employeeSearch, setEmployeeSearch] = useState("");
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
   const [auditLoading, setAuditLoading] = useState(false);
   const [form, setForm] = useState<EmployeeForm>(EMPTY_FORM);
@@ -618,6 +619,17 @@ export default function Settings({ userRole = "staff", permissions = [] }: { use
               </div>
             </div>
 
+            {/* بحث الموظفين */}
+            <div className="mb-3">
+              <input
+                type="text"
+                placeholder="🔍 ابحث بالاسم أو الإيميل أو الدور..."
+                value={employeeSearch}
+                onChange={(e) => setEmployeeSearch(e.target.value)}
+                className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-right text-sm text-white placeholder-[#d7aabd] focus:outline-none focus:ring-1 focus:ring-pink-500"
+              />
+            </div>
+
             <div className="overflow-hidden rounded-2xl border border-white/10">
               <table className="min-w-full bg-black/20 text-right">
                 <thead className="bg-white/5 text-xs text-[#d7aabd]">
@@ -632,7 +644,18 @@ export default function Settings({ userRole = "staff", permissions = [] }: { use
                   </tr>
                 </thead>
                 <tbody>
-                  {employees.map((employee) => (
+                  {employees
+                    .filter((e) => {
+                      const q = employeeSearch.toLowerCase();
+                      if (!q) return true;
+                      return (
+                        e.name?.toLowerCase().includes(q) ||
+                        e.email?.toLowerCase().includes(q) ||
+                        getRoleLabel(e.role).includes(q) ||
+                        e.jobTitle?.toLowerCase().includes(q)
+                      );
+                    })
+                    .map((employee) => (
                     <tr key={employee.id} className="border-t border-white/10 text-sm text-white">
                       <td className="px-4 py-3">
                         <div className="font-bold">{employee.name || "بدون اسم"}</div>
