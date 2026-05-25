@@ -223,7 +223,13 @@ async function getAccountData(userId: string) {
       membershipHistory: user.memberships
         // Hide memberships that are still pending_payment but past the 24 h window —
         // they are being auto-cancelled in the background and are meaningless to the customer.
-        .filter((membership) => !expiredPendingIds.has(membership.id))
+        // Also hide admin-cancelled memberships that were never paid (paymentMethod is empty).
+        .filter((membership) => {
+          if (expiredPendingIds.has(membership.id)) return false;
+          // Admin cancelled a never-paid membership → remove from customer view entirely
+          if (membership.status === "cancelled" && !membership.paymentMethod) return false;
+          return true;
+        })
         .map((membership) => {
         const features = parseFeatures(membership.membership.features);
         const attendedCount = membership.bookings.filter((booking) => booking.status === "attended").length;

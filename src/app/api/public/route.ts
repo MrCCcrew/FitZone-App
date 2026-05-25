@@ -298,8 +298,10 @@ export async function GET(request: Request) {
 
     const scheduleFrom = new Date();
     scheduleFrom.setHours(0, 0, 0, 0);
-    const scheduleTo = new Date(scheduleFrom);
-    scheduleTo.setDate(scheduleTo.getDate() + 6);
+    // Go back 6 h so classes stored as local-midnight in Egypt (UTC+2) aren't cut off by the UTC window
+    scheduleFrom.setTime(scheduleFrom.getTime() - 6 * 60 * 60 * 1000);
+    const scheduleTo = new Date();
+    scheduleTo.setDate(scheduleTo.getDate() + 14); // 14-day window: guarantees every day of the week appears at least twice
     scheduleTo.setHours(23, 59, 59, 999);
 
     const [categories, goals, memberships, offers, classes, trainers, siteContent, products, testimonials, healthQuestions, deliveryOptions, paymobSettings, nutritionistRow] =

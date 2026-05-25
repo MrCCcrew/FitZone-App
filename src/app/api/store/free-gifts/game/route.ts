@@ -26,6 +26,7 @@ async function getOrCreateSession(token: string | null, userId: string | null) {
 }
 
 export async function GET(req: NextRequest) {
+  try {
   const settings = await getGameSettings();
   if (!settings.gameEnabled) return NextResponse.json({ gameEnabled: false });
 
@@ -35,7 +36,13 @@ export async function GET(req: NextRequest) {
   const userId = user?.id ?? null;
 
   const dbx = db as any;
-  const session = await getOrCreateSession(token, userId);
+  let session: Awaited<ReturnType<typeof getOrCreateSession>>;
+  try {
+    session = await getOrCreateSession(token, userId);
+  } catch (sessionErr) {
+    console.error("[FREE_GIFTS_GAME] session error:", sessionErr);
+    return NextResponse.json({ error: "session_error" }, { status: 500 });
+  }
 
   // Eligible products (never send cost/price from admin-only fields)
   let eligibleProducts: { id: string; name: string; images: string | null; price: number; category: string }[] = [];
@@ -108,4 +115,8 @@ export async function GET(req: NextRequest) {
   });
   res.cookies.set(COOKIE, session.token, { httpOnly: true, sameSite: "lax", maxAge: 60 * 60 * 24, path: "/" });
   return res;
+  } catch (err) {
+    console.error("[FREE_GIFTS_GAME]", err);
+    return NextResponse.json({ error: "server_error" }, { status: 500 });
+  }
 }
