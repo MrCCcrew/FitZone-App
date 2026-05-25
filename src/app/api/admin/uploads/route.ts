@@ -11,6 +11,7 @@ const ALLOWED_TYPES = new Set([
   "image/jpeg",
   "image/png",
   "image/webp",
+  "image/avif",
   "image/gif",
   "video/mp4",
   "video/webm",
@@ -21,6 +22,7 @@ const ALLOWED_EXTENSIONS_BY_TYPE: Record<string, string[]> = {
   "image/jpeg": [".jpg", ".jpeg"],
   "image/png": [".png"],
   "image/webp": [".webp"],
+  "image/avif": [".avif"],
   "image/gif": [".gif"],
   "video/mp4": [".mp4"],
   "video/webm": [".webm"],
@@ -44,6 +46,7 @@ function getExtension(fileName: string, mimeType: string) {
   if (mimeType === "image/jpeg") return ".jpg";
   if (mimeType === "image/png") return ".png";
   if (mimeType === "image/webp") return ".webp";
+  if (mimeType === "image/avif") return ".avif";
   if (mimeType === "image/gif") return ".gif";
   if (mimeType === "video/mp4") return ".mp4";
   if (mimeType === "video/webm") return ".webm";
@@ -101,7 +104,7 @@ export async function POST(req: Request) {
 
     if (!ALLOWED_TYPES.has(file.type)) {
       return NextResponse.json(
-        { error: "نوع الملف غير مدعوم. ارفعي JPG أو PNG أو WEBP أو GIF أو MP4 أو WEBM أو MOV." },
+        { error: "نوع الملف غير مدعوم. ارفعي JPG أو PNG أو WEBP أو AVIF أو GIF أو MP4 أو WEBM أو MOV." },
         { status: 400 },
       );
     }
