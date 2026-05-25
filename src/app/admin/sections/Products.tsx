@@ -5,6 +5,11 @@ import type { Order, Product, ProductCategory } from "../types";
 import { TranslateButton } from "./TranslateButton";
 
 type Supplier = { id: string; name: string; isActive: boolean };
+type ProductImportResults = {
+  products: { created: number; updated: number };
+  skipped: number;
+  errors: string[];
+};
 
 const INPUT = "w-full rounded-xl border border-gray-700 bg-gray-800 px-4 py-2.5 text-sm text-white outline-none";
 const CLOTHING = ["XS", "S", "M", "L", "XL", "XXL"];
@@ -182,17 +187,28 @@ export default function Products() {
       const fd = new FormData();
       fd.append("file", file);
       const res = await fetch("/api/admin/products/import", { method: "POST", body: fd });
-      const data = await res.json() as { success?: boolean; error?: string; results?: { categories: { created: number; updated: number }; products: { created: number; updated: number }; variants: { created: number; updated: number }; errors: string[] } };
-      if (data.success && data.results) {
+      let data: { success?: boolean; error?: string; results?: ProductImportResults } | null = null;
+      try {
+        data = await res.json() as { success?: boolean; error?: string; results?: ProductImportResults };
+      } catch {
+        setImportResult({
+          success: false,
+          msg: res.status === 413
+            ? "حجم الملف كبير جداً. قسّم الملف أو ارفعه بصيغة CSV أخف."
+            : `فشل الاستيراد من الخادم (HTTP ${res.status}).`,
+        });
+        return;
+      }
+      if (res.ok && data.success && data.results) {
         const r = data.results;
-        const msg = `✅ أقسام: +${r.categories.created} / =${r.categories.updated} | منتجات: +${r.products.created} / =${r.products.updated} | متغيرات: +${r.variants.created} / =${r.variants.updated}${r.errors.length ? `\n⚠️ ${r.errors.slice(0, 3).join(" | ")}` : ""}`;
+        const msg = `✅ منتجات: +${r.products.created} / =${r.products.updated} | تم التخطي: ${r.skipped}${r.errors.length ? `\n⚠️ ${r.errors.slice(0, 3).join(" | ")}` : ""}`;
         setImportResult({ success: true, msg });
         void load();
       } else {
         setImportResult({ success: false, msg: data.error ?? "حدث خطأ أثناء الاستيراد" });
       }
-    } catch {
-      setImportResult({ success: false, msg: "تعذّر الاتصال بالخادم" });
+    } catch (error) {
+      setImportResult({ success: false, msg: error instanceof Error ? error.message : "تعذّر الاتصال بالخادم" });
     } finally {
       setImporting(false);
     }
