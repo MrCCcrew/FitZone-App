@@ -1969,11 +1969,15 @@ function CustomerStatementTab() {
                                                 ? "bg-emerald-900/40 text-emerald-300"
                                                 : m.status === "expired"
                                                 ? "bg-red-900/30 text-red-300"
+                                                : m.status === "pending_payment" || m.status === "pending"
+                                                ? "bg-amber-900/40 text-amber-300"
                                                 : "bg-white/10 text-[#d7aabd]"
                                             }`}>
-                                              {m.status === "active" ? "نشط" :
-                                               m.status === "expired" ? "منتهي" :
-                                               m.status === "cancelled" ? "ملغي" : m.status}
+                                              {m.status === "active"          ? "نشط" :
+                                               m.status === "expired"         ? "منتهي" :
+                                               m.status === "cancelled"       ? "ملغي" :
+                                               m.status === "pending_payment" ? "بانتظار الدفع" :
+                                               m.status === "pending"         ? "معلق" : m.status}
                                             </span>
                                           </td>
                                         </tr>
