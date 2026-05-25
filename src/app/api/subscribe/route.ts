@@ -1219,6 +1219,23 @@ export async function POST(req: Request) {
     }
   }
 
+  // ── Immediate notification for pending_payment subscriptions ─────────────
+  // Tell the user they have 24 hours to pay or the subscription will be cancelled
+  if (result.paymentAmount > 0 && checkoutUrl) {
+    try {
+      await db.notification.create({
+        data: {
+          userId,
+          title: "⏳ أكملي الدفع لتفعيل اشتراكك",
+          body: `اشتراكك في "${result.planName}" في انتظار إتمام الدفع. لديكِ 24 ساعة فقط — إذا لم يتم الدفع سيُلغى الاشتراك تلقائيًا.`,
+          type: "warning",
+        },
+      });
+    } catch (err) {
+      console.error("[SUBSCRIBE_PENDING_NOTIF]", err);
+    }
+  }
+
   return NextResponse.json({
     success: true,
     subscriptionId: result.subscriptionId,
