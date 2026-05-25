@@ -7704,39 +7704,42 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
 
         {relatedProducts.length > 0 && (
           <div style={{ marginTop: 56 }}>
-            <h2 style={{ fontSize: 22, fontWeight: 900, color: C.white, marginBottom: 20 }}>🛍️ {t("منتجات مشابهة", "Similar products")}</h2>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 16 }}>
-              {relatedProducts.map((item) => {
-                const relWishlist = { ids: [] as string[], toggle: () => {}, has: () => false };
-                return (
-                  <div
-                    key={`related-${item.id ?? item.name}`}
-                    onClick={() => { if (typeof window !== "undefined") window.sessionStorage.setItem(PRODUCT_STORAGE_KEY, JSON.stringify(item)); setProduct(item); setSelectedImage(0); setSelectedSize(item.sizeType === "none" ? null : item.sizes?.[0] ?? null); setReviewMessage(null); window.scrollTo({ top: 0, behavior: "smooth" }); }}
-                    style={{ background: "#fff", borderRadius: 16, overflow: "hidden", cursor: "pointer", boxShadow: "0 2px 12px rgba(0,0,0,.07)", border: "1px solid #f0e6ea", display: "flex", flexDirection: "column", transition: "box-shadow .2s, transform .2s" }}
-                    onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = "0 8px 32px rgba(233,30,99,.18)"; (e.currentTarget as HTMLDivElement).style.transform = "translateY(-3px)"; }}
-                    onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = "0 2px 12px rgba(0,0,0,.07)"; (e.currentTarget as HTMLDivElement).style.transform = "translateY(0)"; }}
-                  >
-                    <div style={{ aspectRatio: "1/1", overflow: "hidden", background: "#f8f3f5" }}>
-                      <ProductVisual product={item} h={260} />
-                    </div>
-                    <div style={{ padding: "12px 14px 14px", display: "flex", flexDirection: "column", flex: 1 }}>
-                      <h3 style={{ fontWeight: 700, fontSize: 13, color: "#1a0c14", marginBottom: 6, lineHeight: 1.4, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{item.name}</h3>
-                      {item.rating > 0 && <div style={{ display: "flex", gap: 2, marginBottom: 6 }}>{[1,2,3,4,5].map(s => <span key={s} style={{ fontSize: 11, color: s <= Math.round(item.rating) ? "#f59e0b" : "#e5e7eb" }}>★</span>)}</div>}
-                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10, marginTop: "auto" }}>
-                        <span style={{ fontWeight: 900, color: C.red, fontSize: 17 }}>{formatCurrency(item.price)} <span style={{ fontSize: 11 }}>ج.م</span></span>
-                        {item.oldPrice && <span style={{ textDecoration: "line-through", color: C.gray, fontSize: 12 }}>{formatCurrency(item.oldPrice)}</span>}
-                      </div>
-                      <button
-                        style={{ width: "100%", padding: "8px", borderRadius: 9, border: "none", background: `linear-gradient(135deg,${C.red},#c2185b)`, color: "#fff", fontWeight: 800, fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, fontFamily: "inherit", boxShadow: "0 3px 10px rgba(233,30,99,.25)" }}
-                        onClick={e => { e.stopPropagation(); addToCart({ productId: item.id ?? item.name, name: item.name, price: item.price, qty: 1, size: item.sizeType === "none" ? null : item.sizes?.[0] ?? null, type: item.type }); navigate("cart"); }}
+            {(() => {
+              const relMobile = viewportWidth() < 768;
+              return (
+                <>
+                  <h2 style={{ fontSize: relMobile ? 18 : 22, fontWeight: 900, color: C.white, marginBottom: 20 }}>🛍️ {t("منتجات مشابهة", "Similar products")}</h2>
+                  <div style={{ display: "grid", gridTemplateColumns: relMobile ? "1fr 1fr" : "repeat(auto-fill, minmax(200px, 1fr))", gap: relMobile ? 12 : 16 }}>
+                    {relatedProducts.map((item) => (
+                      <div
+                        key={`related-${item.id ?? item.name}`}
+                        onClick={() => { if (typeof window !== "undefined") window.sessionStorage.setItem(PRODUCT_STORAGE_KEY, JSON.stringify(item)); setProduct(item); setSelectedImage(0); setSelectedSize(item.sizeType === "none" ? null : item.sizes?.[0] ?? null); setReviewMessage(null); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+                        style={{ background: "#fff", borderRadius: relMobile ? 12 : 16, overflow: "hidden", cursor: "pointer", boxShadow: "0 2px 12px rgba(0,0,0,.07)", border: "1px solid #f0e6ea", display: "flex", flexDirection: "column", transition: "box-shadow .2s, transform .2s" }}
+                        onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = "0 8px 32px rgba(233,30,99,.18)"; (e.currentTarget as HTMLDivElement).style.transform = "translateY(-3px)"; }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = "0 2px 12px rgba(0,0,0,.07)"; (e.currentTarget as HTMLDivElement).style.transform = "translateY(0)"; }}
                       >
-                        <I n="cart" s={12} c="#fff" /> {t("أضيفي للسلة", "Add to cart")}
-                      </button>
-                    </div>
+                        <div style={{ aspectRatio: "1/1", overflow: "hidden", background: "#f8f3f5" }}>
+                          <ProductVisual product={item} h={relMobile ? 160 : 260} />
+                        </div>
+                        <div style={{ padding: relMobile ? "10px 10px 12px" : "12px 14px 14px", display: "flex", flexDirection: "column", flex: 1 }}>
+                          <h3 style={{ fontWeight: 700, fontSize: relMobile ? 12 : 13, color: "#1a0c14", marginBottom: 6, lineHeight: 1.4, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{item.name}</h3>
+                          <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: relMobile ? 8 : 10, marginTop: "auto", flexWrap: "wrap" }}>
+                            <span style={{ fontWeight: 900, color: C.red, fontSize: relMobile ? 14 : 17 }}>{formatCurrency(item.price)} <span style={{ fontSize: relMobile ? 10 : 11 }}>ج.م</span></span>
+                            {item.oldPrice && <span style={{ textDecoration: "line-through", color: C.gray, fontSize: relMobile ? 11 : 12 }}>{formatCurrency(item.oldPrice)}</span>}
+                          </div>
+                          <button
+                            style={{ width: "100%", padding: relMobile ? "7px 5px" : "8px", borderRadius: 9, border: "none", background: `linear-gradient(135deg,${C.red},#c2185b)`, color: "#fff", fontWeight: 800, fontSize: relMobile ? 11 : 12, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, fontFamily: "inherit", boxShadow: "0 3px 10px rgba(233,30,99,.25)" }}
+                            onClick={e => { e.stopPropagation(); addToCart({ productId: item.id ?? item.name, name: item.name, price: item.price, qty: 1, size: item.sizeType === "none" ? null : item.sizes?.[0] ?? null, type: item.type }); navigate("cart"); }}
+                          >
+                            <I n="cart" s={relMobile ? 11 : 12} c="#fff" /> {t("أضيفي للسلة", "Add to cart")}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                );
-              })}
-            </div>
+                </>
+              );
+            })()}
           </div>
         )}
       </div>
