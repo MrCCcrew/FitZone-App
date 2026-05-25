@@ -6921,7 +6921,7 @@ const useWishlist = () => {
 
 // ─── PRODUCT MINI CARD ────────────────────────────────────────────────────────
 const ProductMiniCard = ({
-  product, navigate, wishlist, lang, t, giftCampaignActive, giftCampaignMin, giftRewardLabel,
+  product, navigate, wishlist, lang, t, giftCampaignActive, giftCampaignMin, giftRewardLabel, compact,
 }: {
   product: StoreProduct;
   navigate: (p: string) => void;
@@ -6931,6 +6931,7 @@ const ProductMiniCard = ({
   giftCampaignActive?: boolean;
   giftCampaignMin?: number;
   giftRewardLabel?: string;
+  compact?: boolean;
 }) => {
   const outOfStock = typeof product.stock === "number" && product.stock <= 0;
   const cardId = product.id ?? product.name;
@@ -6943,7 +6944,7 @@ const ProductMiniCard = ({
     <div
       onClick={goDetail}
       style={{
-        background: "#fff", borderRadius: 16, overflow: "hidden", cursor: "pointer",
+        background: "#fff", borderRadius: compact ? 12 : 16, overflow: "hidden", cursor: "pointer",
         boxShadow: "0 2px 12px rgba(0,0,0,.07)", border: "1px solid #f0e6ea",
         display: "flex", flexDirection: "column",
         transition: "box-shadow .2s, transform .2s",
@@ -6953,14 +6954,14 @@ const ProductMiniCard = ({
     >
       {/* Image */}
       <div style={{ position: "relative", aspectRatio: "1/1", overflow: "hidden", background: "#f8f3f5" }}>
-        <ProductVisual product={product} h={300} />
+        <ProductVisual product={product} h={compact ? 160 : 300} />
         {/* Wishlist heart */}
         <button
           onClick={e => { e.stopPropagation(); wishlist.toggle(cardId); }}
           aria-label={isWished ? t("إزالة من المفضلة", "Remove from wishlist") : t("إضافة إلى المفضلة", "Add to wishlist")}
           style={{
             position: "absolute", top: 8, left: 8, zIndex: 3,
-            width: 32, height: 32, borderRadius: "50%",
+            width: compact ? 28 : 32, height: compact ? 28 : 32, borderRadius: "50%",
             background: "rgba(255,255,255,.92)", border: "none", cursor: "pointer",
             display: "flex", alignItems: "center", justifyContent: "center",
             boxShadow: "0 2px 8px rgba(0,0,0,.12)",
@@ -6969,11 +6970,11 @@ const ProductMiniCard = ({
           onMouseEnter={e => (e.currentTarget.style.transform = "scale(1.15)")}
           onMouseLeave={e => (e.currentTarget.style.transform = "scale(1)")}
         >
-          <span style={{ fontSize: 16, color: isWished ? C.red : "#ccc", lineHeight: 1 }}>{isWished ? "♥" : "♡"}</span>
+          <span style={{ fontSize: compact ? 14 : 16, color: isWished ? C.red : "#ccc", lineHeight: 1 }}>{isWished ? "♥" : "♡"}</span>
         </button>
         {/* Discount badge */}
         {product.badge && (
-          <span style={{ position: "absolute", top: 10, right: 10, zIndex: 2, background: C.red, color: "#fff", fontSize: 11, fontWeight: 800, padding: "3px 10px", borderRadius: 99 }}>
+          <span style={{ position: "absolute", top: 8, right: 8, zIndex: 2, background: C.red, color: "#fff", fontSize: compact ? 9 : 11, fontWeight: 800, padding: compact ? "2px 7px" : "3px 10px", borderRadius: 99 }}>
             {product.badge}
           </span>
         )}
@@ -6986,31 +6987,31 @@ const ProductMiniCard = ({
         {/* Out of stock overlay */}
         {outOfStock && (
           <div style={{ position: "absolute", inset: 0, zIndex: 3, background: "rgba(0,0,0,.45)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <span style={{ color: "#ffd166", fontWeight: 900, fontSize: 14 }}>{t("نفذت الكمية", "Out of stock")}</span>
+            <span style={{ color: "#ffd166", fontWeight: 900, fontSize: compact ? 12 : 14 }}>{t("نفذت الكمية", "Out of stock")}</span>
           </div>
         )}
       </div>
       {/* Info */}
-      <div style={{ padding: "14px 16px 16px", display: "flex", flexDirection: "column", flex: 1 }}>
-        <h3 style={{ fontWeight: 700, fontSize: 14, color: "#1a0c14", marginBottom: 6, lineHeight: 1.5, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{product.name}</h3>
-        {product.rating > 0 && (
+      <div style={{ padding: compact ? "10px 10px 12px" : "14px 16px 16px", display: "flex", flexDirection: "column", flex: 1 }}>
+        <h3 style={{ fontWeight: 700, fontSize: compact ? 12 : 14, color: "#1a0c14", marginBottom: 6, lineHeight: 1.4, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{product.name}</h3>
+        {!compact && product.rating > 0 && (
           <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 6 }}>
             {[1,2,3,4,5].map(s => <span key={s} style={{ fontSize: 12, color: s <= Math.round(product.rating) ? "#f59e0b" : "#e5e7eb" }}>★</span>)}
             <span style={{ fontSize: 11, color: C.gray }}>({product.reviewCount ?? 0})</span>
           </div>
         )}
-        {product.sizeType !== "none" && product.sizes && product.sizes.length > 0 && (
+        {!compact && product.sizeType !== "none" && product.sizes && product.sizes.length > 0 && (
           <div style={{ color: C.gray, fontSize: 11, marginBottom: 6 }}>{t("المقاسات", "Sizes")}: {product.sizes.slice(0, 4).join(" - ")}</div>
         )}
-        <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 12, marginTop: "auto" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontWeight: 900, color: C.red, fontSize: 20 }}>{formatCurrency(product.vatEnabled ? applyVat(product.price) : product.price)} <span style={{ fontSize: 12, fontWeight: 600 }}>{lang === "en" ? "EGP" : "ج.م"}</span></span>
-            {product.oldPrice && <span style={{ textDecoration: "line-through", color: C.gray, fontSize: 13 }}>{formatCurrency(product.oldPrice)}</span>}
+        <div style={{ display: "flex", flexDirection: "column", gap: 3, marginBottom: compact ? 10 : 12, marginTop: "auto" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: compact ? 5 : 8, flexWrap: "wrap" }}>
+            <span style={{ fontWeight: 900, color: C.red, fontSize: compact ? 15 : 20 }}>{formatCurrency(product.vatEnabled ? applyVat(product.price) : product.price)} <span style={{ fontSize: compact ? 10 : 12, fontWeight: 600 }}>{lang === "en" ? "EGP" : "ج.م"}</span></span>
+            {product.oldPrice && <span style={{ textDecoration: "line-through", color: C.gray, fontSize: compact ? 11 : 13 }}>{formatCurrency(product.oldPrice)}</span>}
           </div>
-          {product.vatEnabled && <span style={{ fontSize: 10, color: "#10b981", background: "rgba(16,185,129,0.12)", borderRadius: 4, padding: "2px 6px", alignSelf: "flex-start" }}>{lang === "en" ? "Incl. 14% VAT" : "شامل ضريبة 14%"}</span>}
+          {product.vatEnabled && <span style={{ fontSize: 9, color: "#10b981", background: "rgba(16,185,129,0.12)", borderRadius: 4, padding: "2px 5px", alignSelf: "flex-start" }}>{lang === "en" ? "Incl. 14% VAT" : "شامل ضريبة 14%"}</span>}
         </div>
         <button
-          style={{ width: "100%", padding: "10px", borderRadius: 10, border: "none", background: outOfStock ? "#e5e7eb" : `linear-gradient(135deg,${C.red},#c2185b)`, color: outOfStock ? "#9ca3af" : "#fff", fontWeight: 800, fontSize: 13, cursor: outOfStock ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontFamily: "inherit", boxShadow: outOfStock ? "none" : "0 4px 14px rgba(233,30,99,.3)" }}
+          style={{ width: "100%", padding: compact ? "8px 6px" : "10px", borderRadius: 10, border: "none", background: outOfStock ? "#e5e7eb" : `linear-gradient(135deg,${C.red},#c2185b)`, color: outOfStock ? "#9ca3af" : "#fff", fontWeight: 800, fontSize: compact ? 11 : 13, cursor: outOfStock ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: compact ? 5 : 6, fontFamily: "inherit", boxShadow: outOfStock ? "none" : "0 4px 14px rgba(233,30,99,.3)" }}
           disabled={outOfStock}
           onClick={e => {
             e.stopPropagation();
@@ -7028,7 +7029,7 @@ const ProductMiniCard = ({
             navigate("cart");
           }}
         >
-          <I n="cart" s={14} c={outOfStock ? "#9ca3af" : "#fff"} />
+          <I n="cart" s={compact ? 12 : 14} c={outOfStock ? "#9ca3af" : "#fff"} />
           {outOfStock ? t("نفذت الكمية", "Out of stock") : t("أضيفي للسلة", "Add to cart")}
         </button>
       </div>
@@ -7070,6 +7071,7 @@ const ShopPage = ({ navigate }: { navigate: (p: string) => void }) => {
   const allLabel = t("الكل", "All");
   const [cat, setCat] = useState("الكل");
   const [search, setSearch] = useState("");
+  const [showAllShopProducts, setShowAllShopProducts] = useState(false);
   const [categories, setCategories] = useState<StoreCategory[]>(DEFAULT_STORE_CATEGORIES);
   const [products, setProducts] = useState<StoreProduct[]>(DEFAULT_PRODUCTS);
 
@@ -7110,6 +7112,14 @@ const ShopPage = ({ navigate }: { navigate: (p: string) => void }) => {
   useEffect(() => {
     setCat(allLabel);
   }, [allLabel]);
+
+  // Reset "show all" when category or search changes
+  useEffect(() => { setShowAllShopProducts(false); }, [cat, search]);
+
+  const isMobile = viewportWidth() < 768;
+  const SHOP_INITIAL = isMobile ? 8 : 12;
+  const shopGridCols = isMobile ? "1fr 1fr" : "repeat(auto-fill, minmax(220px, 1fr))";
+  const shopGap = isMobile ? 12 : 20;
 
   const categoryButtons = [allLabel, ...categories.map((item) => item.label)];
   const filtered = products.filter((p) => {
@@ -7175,25 +7185,51 @@ const ShopPage = ({ navigate }: { navigate: (p: string) => void }) => {
             <div style={{ marginBottom: 48 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
                 <span style={{ fontSize: 24 }}>🏆</span>
-                <h2 style={{ fontSize: 22, fontWeight: 900, color: C.white, margin: 0 }}>{t("الأكثر طلباً", "Best Sellers")}</h2>
+                <h2 style={{ fontSize: isMobile ? 18 : 22, fontWeight: 900, color: C.white, margin: 0 }}>{t("الأكثر طلباً", "Best Sellers")}</h2>
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 20 }}>
-                {bestSellers.map(p => <ProductMiniCard key={`bs-${p.id ?? p.name}`} product={p} navigate={navigate} wishlist={wishlist} lang={lang} t={t} giftCampaignActive={giftCampaign?.active} giftCampaignMin={giftCampaign?.minSubtotal} giftRewardLabel={giftCampaignRewardLabel(giftCampaign)} />)}
+              <div style={{ display: "grid", gridTemplateColumns: shopGridCols, gap: shopGap }}>
+                {bestSellers.map(p => <ProductMiniCard key={`bs-${p.id ?? p.name}`} product={p} navigate={navigate} wishlist={wishlist} lang={lang} t={t} giftCampaignActive={giftCampaign?.active} giftCampaignMin={giftCampaign?.minSubtotal} giftRewardLabel={giftCampaignRewardLabel(giftCampaign)} compact={isMobile} />)}
               </div>
             </div>
           )}
 
           {/* ── All Products ── */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 20 }}>
-            {filtered.map(p => <ProductMiniCard key={p.id ?? p.name} product={p} navigate={navigate} wishlist={wishlist} lang={lang} t={t} giftCampaignActive={giftCampaign?.active} giftCampaignMin={giftCampaign?.minSubtotal} giftRewardLabel={giftCampaignRewardLabel(giftCampaign)} />)}
-          </div>
+          {(() => {
+            const shownFiltered = showAllShopProducts ? filtered : filtered.slice(0, SHOP_INITIAL);
+            const hasMoreShop = filtered.length > SHOP_INITIAL && !showAllShopProducts;
+            return (
+              <>
+                <div style={{ display: "grid", gridTemplateColumns: shopGridCols, gap: shopGap }}>
+                  {shownFiltered.map(p => <ProductMiniCard key={p.id ?? p.name} product={p} navigate={navigate} wishlist={wishlist} lang={lang} t={t} giftCampaignActive={giftCampaign?.active} giftCampaignMin={giftCampaign?.minSubtotal} giftRewardLabel={giftCampaignRewardLabel(giftCampaign)} compact={isMobile} />)}
+                </div>
+                {hasMoreShop && (
+                  <div style={{ textAlign: "center", marginTop: 28 }}>
+                    <button
+                      onClick={() => setShowAllShopProducts(true)}
+                      style={{ padding: "12px 36px", borderRadius: 12, border: `2px solid ${C.red}`, background: "transparent", color: C.red, fontWeight: 800, fontSize: 14, cursor: "pointer", fontFamily: "inherit", transition: "all .2s" }}
+                      onMouseEnter={e => { const b = e.currentTarget as HTMLButtonElement; b.style.background = C.red; b.style.color = "#fff"; }}
+                      onMouseLeave={e => { const b = e.currentTarget as HTMLButtonElement; b.style.background = "transparent"; b.style.color = C.red; }}
+                    >
+                      {t(`عرض المزيد (${filtered.length - SHOP_INITIAL}+)`, `Show more (${filtered.length - SHOP_INITIAL}+)`)}
+                    </button>
+                  </div>
+                )}
+                {filtered.length === 0 && (
+                  <div style={{ textAlign: "center", padding: "48px 0", color: C.gray }}>
+                    <div style={{ fontSize: 40, marginBottom: 12 }}>🔍</div>
+                    <p style={{ fontSize: 16 }}>{t("لا توجد منتجات مطابقة", "No matching products")}</p>
+                  </div>
+                )}
+              </>
+            );
+          })()}
 
           {/* ── Recommended (search) ── */}
           {search.trim() && recommended.length > 0 && (
             <div style={{ marginTop: 48 }}>
-              <h2 style={{ fontSize: 22, fontWeight: 900, color: C.white, marginBottom: 16 }}>{t("قد يعجبك أيضاً", "You may also like")}</h2>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 20 }}>
-                {recommended.map(p => <ProductMiniCard key={`rec-${p.id ?? p.name}`} product={p} navigate={navigate} wishlist={wishlist} lang={lang} t={t} giftCampaignActive={giftCampaign?.active} giftCampaignMin={giftCampaign?.minSubtotal} giftRewardLabel={giftCampaignRewardLabel(giftCampaign)} />)}
+              <h2 style={{ fontSize: isMobile ? 18 : 22, fontWeight: 900, color: C.white, marginBottom: 16 }}>{t("قد يعجبك أيضاً", "You may also like")}</h2>
+              <div style={{ display: "grid", gridTemplateColumns: shopGridCols, gap: shopGap }}>
+                {recommended.map(p => <ProductMiniCard key={`rec-${p.id ?? p.name}`} product={p} navigate={navigate} wishlist={wishlist} lang={lang} t={t} giftCampaignActive={giftCampaign?.active} giftCampaignMin={giftCampaign?.minSubtotal} giftRewardLabel={giftCampaignRewardLabel(giftCampaign)} compact={isMobile} />)}
               </div>
             </div>
           )}

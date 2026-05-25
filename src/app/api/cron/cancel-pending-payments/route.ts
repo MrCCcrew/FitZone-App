@@ -5,10 +5,10 @@ import { sendOnePush } from "@/lib/push";
 // ─── Called by cron every 30 min ─────────────────────────────────────────────
 // */30 * * * * curl -s "https://fitzoneland.com/api/cron/cancel-pending-payments?secret=YOUR_SECRET" >> /var/log/fitzone-cron.log
 //
-// Logic:
+// Logic (age = time since PaymentTransaction.createdAt, i.e. when the user pressed "Pay"):
 //   - pending_payment memberships  30min–2h  old → send first warning push + in-app notification
-//   - pending_payment memberships  22h–24h   old → send urgent "will be cancelled soon" push
-//   - pending_payment memberships  ≥ 24h     old → cancel membership + its bookings + notify user
+//   - pending_payment memberships  22h–24h   old → send urgent "will be deleted soon" push
+//   - pending_payment memberships  ≥ 24h     old → DELETE membership + its bookings + cancel TX + notify user
 
 export async function GET(req: Request) {
   const secret = process.env.CRON_SECRET;
@@ -18,17 +18,13 @@ export async function GET(req: Request) {
   if (provided !== secret) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const now = new Date();
+  const ago24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
-  // Time boundaries
-  const ago30min = new Date(now.getTime() - 30 * 60 * 1000);
-  const ago24h   = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-
-  // ── 1. Fetch all relevant pending_payment memberships ──────────────────────
+  // ── 1. Fetch ALL pending_payment memberships ──────────────────────────────
+  // We don't filter by startDate here — startDate can be a future membership date,
+  // which is NOT the time the customer initiated payment.
   const pending = await db.userMembership.findMany({
-    where: {
-      status: "pending_payment",
-      startDate: { lte: ago30min }, // at least 30 min old
-    },
+    where: { status: "pending_payment" },
     include: {
       user: { select: { id: true, name: true } },
       membership: { select: { name: true } },
@@ -36,12 +32,38 @@ export async function GET(req: Request) {
     },
   });
 
-  let warned1 = 0;   // first warning (30min–2h)
-  let warned2 = 0;   // urgent warning (22h–24h)
-  let cancelled = 0; // auto-cancelled (≥24h)
+  if (pending.length === 0) {
+    return NextResponse.json({ ok: true, warned1: 0, warned2: 0, deleted: 0 });
+  }
+
+  // ── 2. Fetch payment transactions for all pending memberships ──────────────
+  // TX.createdAt = when the user first pressed "Pay" → the real 24 h timer start
+  const membershipIds = pending.map((m) => m.id);
+  const txList = await db.paymentTransaction.findMany({
+    where: {
+      membershipId: { in: membershipIds },
+      status: { in: ["pending", "requires_action"] },
+    },
+    select: { membershipId: true, id: true, createdAt: true },
+    orderBy: { createdAt: "asc" }, // oldest first → get the initial payment attempt
+  });
+
+  // Build map: membershipId → oldest TX createdAt (when payment was first initiated)
+  const txCreatedAtMap = new Map<string, Date>();
+  for (const tx of txList) {
+    if (tx.membershipId && !txCreatedAtMap.has(tx.membershipId)) {
+      txCreatedAtMap.set(tx.membershipId, tx.createdAt);
+    }
+  }
+
+  let warned1 = 0;
+  let warned2 = 0;
+  let deleted = 0;
 
   for (const m of pending) {
-    const age = now.getTime() - new Date(m.startDate).getTime();
+    // Use TX.createdAt as the reference; fall back to startDate only if no TX found
+    const refTime = txCreatedAtMap.get(m.id) ?? new Date(m.startDate);
+    const age = now.getTime() - refTime.getTime();
     const userId = m.user.id;
     const planName = m.membership.name;
 
@@ -63,39 +85,42 @@ export async function GET(req: Request) {
     const notify = (title: string, body: string, type: "warning" | "error" | "info" = "warning") =>
       db.notification.create({ data: { userId, title, body, type } });
 
-    // ── A. Auto-cancel (≥ 24h) ────────────────────────────────────────────
+    // ── A. Auto-delete (≥ 24h) ────────────────────────────────────────────
     if (age >= 24 * 60 * 60 * 1000) {
-      // Cancel the membership
-      await db.userMembership.update({
-        where: { id: m.id },
-        data: { status: "cancelled" },
-      });
-
-      // Cancel all related confirmed bookings
-      if (m.bookings.length > 0) {
-        await db.booking.updateMany({
-          where: {
-            userMembershipId: m.id,
-            status: { in: ["confirmed", "pending"] },
-          },
+      try {
+        // 1. Cancel pending payment transactions
+        await db.paymentTransaction.updateMany({
+          where: { membershipId: m.id, status: { in: ["pending", "requires_action"] } },
           data: { status: "cancelled" },
         });
+
+        // 2. Delete all bookings tied to this membership
+        await db.booking.deleteMany({
+          where: { userMembershipId: m.id },
+        });
+
+        // 3. Delete the membership itself (cascades commission records)
+        await db.userMembership.delete({
+          where: { id: m.id },
+        });
+
+        // In-app notification
+        await notify(
+          "❌ تم إلغاء اشتراكك تلقائيًا",
+          `تم إلغاء اشتراك "${planName}" لعدم إتمام الدفع خلال 24 ساعة. يمكنك الاشتراك مرة أخرى في أي وقت.`,
+          "error",
+        );
+
+        // Push notification
+        await pushUser(
+          "❌ تم إلغاء اشتراكك",
+          `"${planName}" — لم يتم الدفع خلال 24 ساعة، تم الإلغاء تلقائيًا.`,
+        );
+
+        deleted++;
+      } catch (err) {
+        console.error(`[CANCEL-PENDING] Failed to delete membership ${m.id}:`, err);
       }
-
-      // In-app notification
-      await notify(
-        "❌ تم إلغاء اشتراكك تلقائيًا",
-        `تم إلغاء اشتراك "${planName}" لعدم إتمام الدفع خلال 24 ساعة. يمكنك الاشتراك مرة أخرى في أي وقت.`,
-        "error",
-      );
-
-      // Push notification
-      await pushUser(
-        "❌ تم إلغاء اشتراكك",
-        `"${planName}" — لم يتم الدفع خلال 24 ساعة، تم الإلغاء تلقائيًا.`,
-      );
-
-      cancelled++;
       continue;
     }
 
@@ -124,8 +149,8 @@ export async function GET(req: Request) {
       continue;
     }
 
-    // ── C. First warning (30min–22h) ─────────────────────────────────────
-    if (age >= 30 * 60 * 1000 && age < 22 * 60 * 60 * 1000) {
+    // ── C. First warning (30min–22h) ──────────────────────────────────────
+    if (age >= 30 * 60 * 1000) {
       // Only send once — check if we already sent a first warning
       const alreadySent = await db.notification.findFirst({
         where: {
@@ -150,6 +175,6 @@ export async function GET(req: Request) {
     }
   }
 
-  console.log(`[CANCEL-PENDING] warned1=${warned1} warned2=${warned2} cancelled=${cancelled}`);
-  return NextResponse.json({ ok: true, warned1, warned2, cancelled });
+  console.log(`[CANCEL-PENDING] warned1=${warned1} warned2=${warned2} deleted=${deleted}`);
+  return NextResponse.json({ ok: true, warned1, warned2, deleted });
 }
