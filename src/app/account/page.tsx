@@ -74,7 +74,15 @@ async function getAccountData(userId: string) {
     if (!user) return null;
 
     const activeMembership = user.memberships.find((membership) => membership.status === "active") ?? null;
-    const pendingPaymentMembership = user.memberships.find((membership) => membership.status === "pending_payment") ?? null;
+
+    const PENDING_EXPIRE_MS = 24 * 60 * 60 * 1000; // 24 h
+    const now24 = new Date();
+    // Only treat pending_payment as "live" if it was created within the last 24 h
+    const pendingPaymentMembership = user.memberships.find(
+      (membership) =>
+        membership.status === "pending_payment" &&
+        now24.getTime() - new Date(membership.startDate).getTime() < PENDING_EXPIRE_MS,
+    ) ?? null;
     const pendingPaymentTx = pendingPaymentMembership
       ? await db.paymentTransaction.findFirst({
           where: { membershipId: pendingPaymentMembership.id, status: { in: ["pending", "requires_action"] } },
@@ -179,6 +187,11 @@ async function getAccountData(userId: string) {
           ? pendingTxMap.get(membership.id) ?? null
           : null;
 
+        // If a pending_payment membership is older than 24 h, hide the payment CTA
+        const isExpiredPending =
+          membership.status === "pending_payment" &&
+          now24.getTime() - new Date(membership.startDate).getTime() >= PENDING_EXPIRE_MS;
+
         return {
           id: membership.id,
           plan: membership.membership.name,
@@ -186,7 +199,8 @@ async function getAccountData(userId: string) {
           image: membership.membership.image ?? null,
           startDate: membership.startDate.toISOString(),
           endDate: membership.endDate.toISOString(),
-          status: membership.status,
+          // expose as "cancelled" so the UI never shows a "متابعة الدفع" button for stale pending rows
+          status: isExpiredPending ? "cancelled" : membership.status,
           paymentAmount: membership.paymentAmount,
           paymentMethod: membership.paymentMethod ?? "",
           offerTitle: membership.offerTitle ?? membership.offer?.title ?? null,
@@ -197,8 +211,11 @@ async function getAccountData(userId: string) {
           classesUsed: attendedCount,
           sessionsRemaining,
           bookedCount: membership.bookings.length,
-          checkoutUrl: pendingTx?.checkoutUrl ?? null,
-          transactionId: pendingTx?.transactionId ?? null,
+          checkoutUrl: isExpiredPending ? null : (pendingTx?.checkoutUrl ?? null),
+          transactionId: isExpiredPending ? null : (pendingTx?.transactionId ?? null),
+          classSessions: parseJsonArray<{ classId: string; classType?: string; className?: string; sessions: number }>(
+            membership.membership.classSessions,
+          ),
           bookings: membership.bookings.map((booking) => ({
             id: booking.id,
             className: booking.schedule.class.name,
@@ -266,6 +283,7 @@ async function getAccountData(userId: string) {
         time: booking.schedule.time,
         status: booking.status,
         type: booking.schedule.class.type,
+        userMembershipId: booking.userMembershipId ?? null,
       })),
       orders: user.orders.map((order) => ({
         id: order.id,

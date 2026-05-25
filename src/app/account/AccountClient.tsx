@@ -67,6 +67,7 @@ interface AccountData {
     bookedCount: number;
     checkoutUrl: string | null;
     transactionId: string | null;
+    classSessions: Array<{ classId: string; classType?: string; className?: string; sessions: number }>;
     bookings: {
       id: string;
       className: string;
@@ -108,6 +109,7 @@ interface AccountData {
     time: string;
     status: string;
     type: string;
+    userMembershipId: string | null;
   }[];
   orders: {
     id: string;
@@ -1875,9 +1877,10 @@ function BookingsTabLegacy({ bookings }: { bookings: AccountData["bookings"] }) 
 }
 
 // ─── Tab: Orders ──────────────────────────────────────────────────────────────
-function BookingsTab({ bookings, classSessions }: {
+function BookingsTab({ bookings, classSessions, membershipHistory }: {
   bookings: AccountData["bookings"];
   classSessions: Array<{ classId: string; classType?: string; className?: string; sessions: number }>;
+  membershipHistory: AccountData["membershipHistory"];
 }) {
   const { lang } = useLang();
   const t = (arText: string, enText: string) => (lang === "ar" ? arText : enText);
@@ -1972,24 +1975,46 @@ function BookingsTab({ bookings, classSessions }: {
     return `${String(displayHour).padStart(2, "0")}.${String(minute).padStart(2, "0")} ${period}`;
   };
 
-  // ── Filter schedule entries based on membership's allowed class restrictions ──
+  // ── Effective class restrictions for the booking being edited ─────────────
+  // Priority: booking's own membership classSessions → active membership classSessions
+  // → fallback: filter by the booking's own class type
+  const effectiveClassSessions = useMemo(() => {
+    if (editingBooking?.userMembershipId) {
+      const mem = membershipHistory.find((m) => m.id === editingBooking.userMembershipId);
+      if (mem?.classSessions?.length) return mem.classSessions;
+    }
+    if (classSessions?.length) return classSessions;
+    return null; // null = use type-based fallback
+  }, [editingBooking, membershipHistory, classSessions]);
+
+  // ── Filter schedule entries based on the effective class restrictions ──────
   const allowedScheduleEntries = useMemo(() => {
-    if (!classSessions?.length) return scheduleEntries;
-    const allowedClassIds = new Set(classSessions.map((cs) => cs.classId).filter(Boolean));
-    const allowedTypes = new Set(
-      classSessions
-        .map((cs) => cs.classType?.trim().toLowerCase())
-        .filter((t): t is string => !!t),
-    );
-    return scheduleEntries.filter((entry) => {
-      if (allowedClassIds.has(entry.classId)) return true;
-      const entryType = (entry.type ?? "").trim().toLowerCase();
-      if (entryType && allowedTypes.has(entryType)) return true;
-      // Fallback: classId stored as type name (packages)
-      if (entryType && allowedClassIds.has(entryType)) return true;
-      return false;
-    });
-  }, [scheduleEntries, classSessions]);
+    if (effectiveClassSessions && effectiveClassSessions.length > 0) {
+      // classSessions-based filtering
+      const allowedClassIds = new Set(effectiveClassSessions.map((cs) => cs.classId).filter(Boolean));
+      const allowedTypes = new Set(
+        effectiveClassSessions
+          .map((cs) => cs.classType?.trim().toLowerCase())
+          .filter((t): t is string => !!t),
+      );
+      return scheduleEntries.filter((entry) => {
+        if (allowedClassIds.has(entry.classId)) return true;
+        const entryType = (entry.type ?? "").trim().toLowerCase();
+        if (entryType && allowedTypes.has(entryType)) return true;
+        // Fallback: packages store type name as classId
+        if (entryType && allowedClassIds.has(entryType)) return true;
+        return false;
+      });
+    }
+    // Type-based fallback: only show classes of the same type as the booking
+    if (editingBooking?.type) {
+      const bookingType = editingBooking.type.trim().toLowerCase();
+      return scheduleEntries.filter(
+        (entry) => (entry.type ?? "").trim().toLowerCase() === bookingType,
+      );
+    }
+    return scheduleEntries;
+  }, [scheduleEntries, effectiveClassSessions, editingBooking]);
 
   const scheduleSlots = useMemo(() => {
     const times = Array.from(new Set(allowedScheduleEntries.map((item) => item.time)));
@@ -2205,13 +2230,13 @@ function BookingsTab({ bookings, classSessions }: {
           <div className="text-center text-gray-400 py-10">{t("جاري تحميل الجدول...", "Loading schedule...")}</div>
         ) : allowedScheduleEntries.length === 0 ? (
           <div className="text-center text-gray-400 py-10">
-            {classSessions?.length
+            {(effectiveClassSessions?.length || editingBooking?.type)
               ? t("لا توجد مواعيد متاحة لكلاسات اشتراكك حاليًا.", "No schedule slots available for your plan's classes right now.")
               : t("لا توجد مواعيد متاحة حاليًا.", "No schedule slots available right now.")}
           </div>
         ) : (
           <>
-            {classSessions?.length > 0 && (
+            {(effectiveClassSessions?.length || editingBooking?.type) && (
               <div style={{ display: "flex", alignItems: "flex-start", gap: 8, background: "rgba(139,92,246,.08)", border: "1px solid rgba(139,92,246,.3)", borderRadius: 10, padding: "10px 14px", marginBottom: 12, fontSize: 13, color: "#c4b5fd", fontWeight: 700, lineHeight: 1.6 }}>
                 <span style={{ fontSize: 16, flexShrink: 0 }}>🔒</span>
                 <span>{t("يظهر هنا فقط الكلاسات المتاحة ضمن اشتراكك الحالي.", "Only classes included in your current plan are shown here.")}</span>
@@ -4832,7 +4857,7 @@ export default function AccountClient({ data }: { data: AccountData }) {
             {activeTab === "privateSessions"      && <PrivateSessionsTab />}
             {activeTab === "myPrivateSessions"    && <MyPrivateSessionsTab />}
             {activeTab === "membership"           && <AccountMembershipTab membership={data.membership} membershipHistory={data.membershipHistory} privateApplications={data.privateApplications} pendingPayment={data.pendingPayment} />}
-            {activeTab === "bookings"      && <BookingsTab      bookings={data.bookings} classSessions={data.membership?.classSessions ?? []} />}
+            {activeTab === "bookings"      && <BookingsTab      bookings={data.bookings} classSessions={data.membership?.classSessions ?? []} membershipHistory={data.membershipHistory} />}
             {activeTab === "nutrition"     && <NutritionTab />}
             {activeTab === "orders"        && <AccountOrdersTab orders={data.orders} />}
             {activeTab === "wallet"        && <WalletTab        wallet={data.wallet} rewards={data.rewards} referral={data.referral} />}
