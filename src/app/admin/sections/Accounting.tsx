@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, Fragment } from "react";
 import { AdminSectionShell, AdminCard, AdminEmptyState } from "./shared";
 import {
   printStoreReport, printClubReport,
@@ -1650,7 +1650,394 @@ function ContractsCommissionsTab({ data }: { data: AccountingData }) {
   );
 }
 
-type MainTab = "store" | "club" | "fees" | "commissions" | "agentCommissions" | "contractCommissions";
+type MainTab = "store" | "club" | "fees" | "commissions" | "agentCommissions" | "contractCommissions" | "customerStatement";
+
+// ─── Customer Statement Tab ───────────────────────────────────────────────────
+
+type CustomerRow = {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  isActive: boolean;
+  joinedAt: string;
+  walletBalance: number;
+  rewardPoints: number;
+  rewardTier: string;
+  totalPaid: number;
+  totalMembershipPaid: number;
+  totalBookingPaid: number;
+  totalDiscounts: number;
+  membershipsCount: number;
+  activeMembership: {
+    membershipName: string;
+    endDate: string;
+    remainingDays: number;
+    totalSessions: number | null;
+    usedSessions: number;
+    remainSessions: number | null;
+  } | null;
+  memberships: {
+    id: string;
+    membershipName: string;
+    kind: string;
+    startDate: string;
+    endDate: string;
+    status: string;
+    paymentAmount: number;
+    paymentMethod: string;
+    remainingDays: number;
+    totalSessions: number | null;
+    usedSessions: number;
+    remainSessions: number | null;
+    bookingsCount: number;
+  }[];
+  discounts: { code: string; amount: number; source: string }[];
+};
+
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  cash: "كاش", card: "كارت", wallet: "محفظة",
+  instapay: "انستاباي", free: "مجاني", offer: "عرض",
+};
+
+function CustomerStatementTab() {
+  const [rows, setRows] = useState<CustomerRow[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const limit = 30;
+
+  const load = useCallback(async (pg = 1, q = search, st = statusFilter) => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({ search: q, status: st, page: String(pg), limit: String(limit) });
+      const res = await fetch(`/api/admin/accounting/customers-report?${params}`);
+      if (!res.ok) return;
+      const json = await res.json() as { rows: CustomerRow[]; total: number; totalPages: number };
+      setRows(json.rows);
+      setTotal(json.total);
+      setTotalPages(json.totalPages ?? 1);
+      setPage(pg);
+    } finally {
+      setLoading(false);
+    }
+  }, [search, statusFilter]);
+
+  useEffect(() => { void load(1, search, statusFilter); }, [statusFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Debounce search
+  useEffect(() => {
+    const t = setTimeout(() => { void load(1, search, statusFilter); }, 400);
+    return () => clearTimeout(t);
+  }, [search]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <div className="space-y-4">
+      {/* Header + filters */}
+      <AdminCard>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="text-base font-black text-white">📋 كشف حساب العملاء</div>
+            <div className="text-xs text-[#d7aabd]">
+              {loading ? "جارٍ التحميل..." : `${total} عميل`}
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <select
+              value={statusFilter}
+              onChange={e => setStatusFilter(e.target.value)}
+              className={INPUT}
+              style={{ maxWidth: 160 }}
+            >
+              <option value="all">كل العملاء</option>
+              <option value="active">اشتراك نشط</option>
+              <option value="expired">منتهي / بدون</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Search */}
+        <input
+          type="text"
+          placeholder="🔍 ابحث بالاسم أو الإيميل أو التليفون..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-right text-sm text-white placeholder-[#d7aabd] focus:outline-none focus:ring-1 focus:ring-pink-500"
+        />
+      </AdminCard>
+
+      {/* Table */}
+      {loading ? (
+        <AdminCard>
+          <div className="py-16 text-center text-sm text-[#d7aabd]">جارٍ تحميل البيانات...</div>
+        </AdminCard>
+      ) : rows.length === 0 ? (
+        <AdminCard>
+          <AdminEmptyState title="لا توجد نتائج" description="جرّب تغيير كلمة البحث أو الفلتر." />
+        </AdminCard>
+      ) : (
+        <AdminCard>
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-right text-sm">
+              <thead className="border-b border-white/10 text-xs text-[#d7aabd]">
+                <tr>
+                  <th className="px-3 py-2">العميل</th>
+                  <th className="px-3 py-2">الاشتراك الحالي</th>
+                  <th className="px-3 py-2">المتبقي</th>
+                  <th className="px-3 py-2">إجمالي الدفع</th>
+                  <th className="px-3 py-2">الخصومات</th>
+                  <th className="px-3 py-2">المحفظة</th>
+                  <th className="px-3 py-2">الحالة</th>
+                  <th className="px-3 py-2"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row) => (
+                  <Fragment key={row.id}>
+                    <tr
+                      className="border-t border-white/10 text-white hover:bg-white/5 cursor-pointer"
+                      onClick={() => setExpanded(expanded === row.id ? null : row.id)}
+                    >
+                      {/* العميل */}
+                      <td className="px-3 py-3">
+                        <div className="font-bold text-white">{row.name}</div>
+                        <div className="text-xs text-[#d7aabd]">{row.email}</div>
+                        {row.phone && <div className="text-xs text-[#a07080]">{row.phone}</div>}
+                        <div className="text-xs text-[#a07080]">
+                          انضم: {new Date(row.joinedAt).toLocaleDateString("ar-EG")}
+                        </div>
+                      </td>
+
+                      {/* الاشتراك الحالي */}
+                      <td className="px-3 py-3">
+                        {row.activeMembership ? (
+                          <div>
+                            <div className="font-bold text-pink-200">{row.activeMembership.membershipName}</div>
+                            <div className="text-xs text-[#d7aabd]">
+                              ينتهي: {new Date(row.activeMembership.endDate).toLocaleDateString("ar-EG")}
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-[#a07080]">لا يوجد اشتراك نشط</span>
+                        )}
+                      </td>
+
+                      {/* المتبقي */}
+                      <td className="px-3 py-3">
+                        {row.activeMembership ? (
+                          <div className="space-y-1">
+                            <div className={`text-sm font-bold ${
+                              (row.activeMembership.remainingDays ?? 0) <= 7 ? "text-red-300" :
+                              (row.activeMembership.remainingDays ?? 0) <= 15 ? "text-amber-300" : "text-emerald-300"
+                            }`}>
+                              {row.activeMembership.remainingDays} يوم
+                            </div>
+                            {row.activeMembership.totalSessions !== null && (
+                              <div className="text-xs text-[#d7aabd]">
+                                {row.activeMembership.remainSessions} حصة متبقية
+                                <span className="text-[#a07080]"> / {row.activeMembership.totalSessions}</span>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-[#a07080]">—</span>
+                        )}
+                      </td>
+
+                      {/* إجمالي الدفع */}
+                      <td className="px-3 py-3">
+                        <div className="font-black text-white">{row.totalPaid.toFixed(0)} ج</div>
+                        <div className="text-xs text-[#d7aabd]">{row.membershipsCount} اشتراك</div>
+                      </td>
+
+                      {/* الخصومات */}
+                      <td className="px-3 py-3">
+                        {row.totalDiscounts > 0 ? (
+                          <div className="font-bold text-amber-300">{row.totalDiscounts.toFixed(0)} ج</div>
+                        ) : (
+                          <span className="text-xs text-[#a07080]">—</span>
+                        )}
+                      </td>
+
+                      {/* المحفظة */}
+                      <td className="px-3 py-3">
+                        <div className={`font-bold ${row.walletBalance > 0 ? "text-emerald-300" : "text-[#a07080]"}`}>
+                          {row.walletBalance.toFixed(0)} ج
+                        </div>
+                      </td>
+
+                      {/* الحالة */}
+                      <td className="px-3 py-3">
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${
+                          row.activeMembership
+                            ? "bg-emerald-900/40 text-emerald-300"
+                            : "bg-[#3a1a2a] text-[#d7aabd]"
+                        }`}>
+                          {row.activeMembership ? "نشط" : "منتهي"}
+                        </span>
+                      </td>
+
+                      {/* Toggle */}
+                      <td className="px-3 py-3 text-[#d7aabd] text-center">
+                        {expanded === row.id ? "▲" : "▼"}
+                      </td>
+                    </tr>
+
+                    {/* Expanded detail row */}
+                    {expanded === row.id && (
+                      <tr className="bg-white/[0.02]">
+                        <td colSpan={8} className="px-4 py-4">
+                          <div className="space-y-4">
+
+                            {/* Financial summary cards */}
+                            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                              {[
+                                { label: "اشتراكات", value: `${row.totalMembershipPaid.toFixed(0)} ج`, color: "text-pink-300" },
+                                { label: "حجوزات", value: `${row.totalBookingPaid.toFixed(0)} ج`, color: "text-blue-300" },
+                                { label: "خصومات", value: `${row.totalDiscounts.toFixed(0)} ج`, color: "text-amber-300" },
+                                { label: "رصيد المحفظة", value: `${row.walletBalance.toFixed(0)} ج`, color: "text-emerald-300" },
+                              ].map(card => (
+                                <div key={card.label} className="rounded-xl border border-white/10 bg-black/20 p-3 text-center">
+                                  <div className={`text-lg font-black ${card.color}`}>{card.value}</div>
+                                  <div className="text-xs text-[#d7aabd] mt-1">{card.label}</div>
+                                </div>
+                              ))}
+                            </div>
+
+                            {/* Memberships history */}
+                            {row.memberships.length > 0 && (
+                              <div>
+                                <div className="mb-2 text-xs font-black text-pink-200">سجل الاشتراكات</div>
+                                <div className="overflow-x-auto">
+                                  <table className="min-w-full text-right text-xs">
+                                    <thead className="border-b border-white/10 text-[#a07080]">
+                                      <tr>
+                                        <th className="px-2 py-1.5">الباقة</th>
+                                        <th className="px-2 py-1.5">من</th>
+                                        <th className="px-2 py-1.5">إلى</th>
+                                        <th className="px-2 py-1.5">المدفوع</th>
+                                        <th className="px-2 py-1.5">طريقة الدفع</th>
+                                        <th className="px-2 py-1.5">الحصص</th>
+                                        <th className="px-2 py-1.5">المتبقي</th>
+                                        <th className="px-2 py-1.5">الحالة</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {row.memberships.map((m) => (
+                                        <tr key={m.id} className="border-t border-white/5 text-white">
+                                          <td className="px-2 py-2">
+                                            <div className="font-bold">{m.membershipName}</div>
+                                            <div className="text-[#a07080]">{m.kind === "package" ? "باقة" : "اشتراك"}</div>
+                                          </td>
+                                          <td className="px-2 py-2 text-[#d7aabd]">
+                                            {new Date(m.startDate).toLocaleDateString("ar-EG")}
+                                          </td>
+                                          <td className="px-2 py-2 text-[#d7aabd]">
+                                            {new Date(m.endDate).toLocaleDateString("ar-EG")}
+                                          </td>
+                                          <td className="px-2 py-2 font-bold text-pink-300">
+                                            {m.paymentAmount.toFixed(0)} ج
+                                          </td>
+                                          <td className="px-2 py-2 text-[#d7aabd]">
+                                            {PAYMENT_METHOD_LABELS[m.paymentMethod] ?? m.paymentMethod}
+                                          </td>
+                                          <td className="px-2 py-2 text-[#d7aabd]">
+                                            {m.totalSessions !== null
+                                              ? `${m.usedSessions} / ${m.totalSessions}`
+                                              : "غير محدود"}
+                                          </td>
+                                          <td className="px-2 py-2">
+                                            {m.status === "active" ? (
+                                              <span className={`font-bold ${
+                                                m.remainingDays <= 7 ? "text-red-300" :
+                                                m.remainingDays <= 15 ? "text-amber-300" : "text-emerald-300"
+                                              }`}>
+                                                {m.remainingDays} يوم
+                                                {m.remainSessions !== null && ` · ${m.remainSessions} حصة`}
+                                              </span>
+                                            ) : (
+                                              <span className="text-[#a07080]">—</span>
+                                            )}
+                                          </td>
+                                          <td className="px-2 py-2">
+                                            <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${
+                                              m.status === "active"
+                                                ? "bg-emerald-900/40 text-emerald-300"
+                                                : m.status === "expired"
+                                                ? "bg-red-900/30 text-red-300"
+                                                : "bg-white/10 text-[#d7aabd]"
+                                            }`}>
+                                              {m.status === "active" ? "نشط" :
+                                               m.status === "expired" ? "منتهي" :
+                                               m.status === "cancelled" ? "ملغي" : m.status}
+                                            </span>
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Discount codes */}
+                            {row.discounts.length > 0 && (
+                              <div>
+                                <div className="mb-2 text-xs font-black text-amber-200">أكواد الخصم المستخدمة</div>
+                                <div className="flex flex-wrap gap-2">
+                                  {row.discounts.map((d, i) => (
+                                    <span
+                                      key={i}
+                                      className="rounded-full bg-amber-900/30 px-3 py-1 text-xs text-amber-200"
+                                    >
+                                      {d.code} — {d.source}
+                                      {d.amount > 0 && ` (${d.amount.toFixed(0)} ج)`}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="mt-4 flex items-center justify-center gap-3">
+              <button
+                className={BTN_GHOST}
+                disabled={page <= 1}
+                onClick={() => void load(page - 1)}
+              >
+                ← السابق
+              </button>
+              <span className="text-sm text-[#d7aabd]">
+                صفحة {page} من {totalPages}
+              </span>
+              <button
+                className={BTN_GHOST}
+                disabled={page >= totalPages}
+                onClick={() => void load(page + 1)}
+              >
+                التالي →
+              </button>
+            </div>
+          )}
+        </AdminCard>
+      )}
+    </div>
+  );
+}
 
 const THIS_MONTH_START = new Date();
 THIS_MONTH_START.setDate(1);
@@ -1690,6 +2077,7 @@ export default function Accounting() {
     { id: "commissions", label: "عمولات الشركاء", icon: "🤝" },
     { id: "agentCommissions", label: "عمولات الموظفين", icon: "👥" },
     { id: "contractCommissions", label: "عمولات التعاقدات", icon: "📊" },
+    { id: "customerStatement", label: "كشف حساب العملاء", icon: "📋" },
   ];
 
   return (
@@ -1746,9 +2134,10 @@ export default function Accounting() {
       {!loading && data && tab === "store" && <StoreTab data={data} onRefresh={fetchData} dateRange={from && to ? `${from} — ${to}` : "كل الفترات"} />}
       {!loading && data && tab === "club" && <ClubTab data={data} onRefresh={fetchData} dateRange={from && to ? `${from} — ${to}` : "كل الفترات"} />}
       {!loading && data && tab === "fees" && <FeeRulesTab data={data} onRefresh={fetchData} />}
-      {tab === "commissions"      && <PartnerCommissionsTab from={from} to={to} />}
-      {tab === "agentCommissions" && <AgentCommissionsAdminTab />}
+      {tab === "commissions"       && <PartnerCommissionsTab from={from} to={to} />}
+      {tab === "agentCommissions"  && <AgentCommissionsAdminTab />}
       {!loading && data && tab === "contractCommissions" && <ContractsCommissionsTab data={data} />}
+      {tab === "customerStatement" && <CustomerStatementTab />}
     </AdminSectionShell>
   );
 }
