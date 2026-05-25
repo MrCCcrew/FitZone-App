@@ -2084,6 +2084,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
   const [nutritionDone, setNutritionDone] = useState<{ sessionId: string; status: string } | null>(null);
   const [testimonials, setTestimonials] = useState<PublicTestimonial[]>([]);
   const [products, setProducts] = useState<StoreProduct[]>([]);
+  const [showAllHomeProducts, setShowAllHomeProducts] = useState(false);
   const [homeOffers, setHomeOffers] = useState<PublicOffer[]>([]);
   const [homeCustomPlans, setHomeCustomPlans] = useState<PublicMembership[]>([]);
   const [homeFeaturedPlan, setHomeFeaturedPlan] = useState<{ id: string; name: string; price: number; priceBefore: number | null; subtitle: string | null; features: string[]; durationDays: number } | null>(null);
@@ -2162,7 +2163,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
         setTestimonials(d.testimonials.slice(0, 6));
       }
       if (Array.isArray(d.products) && d.products.length > 0) {
-        setProducts(d.products.slice(0, 3).map((p: { id?: string; name: string; price: number; oldPrice: number | null; vatEnabled?: boolean; category: string; categoryLabel?: string; sizeType?: "none" | "clothing" | "shoes"; images?: string[]; sizes?: string[]; colors?: string[] }, i: number) => ({
+        setProducts(d.products.map((p: { id?: string; name: string; price: number; oldPrice: number | null; vatEnabled?: boolean; category: string; categoryLabel?: string; sizeType?: "none" | "clothing" | "shoes"; images?: string[]; sizes?: string[]; colors?: string[] }, i: number) => ({
           id: p.id,
           name: p.name,
           price: p.price,
@@ -3002,48 +3003,71 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
               {t("تسوقي الآن", "Shop now")}
             </button>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr 1fr", "repeat(3, 1fr)", "repeat(3, 1fr)"), gap: 20 }}>
-            {products.map(p => {
-              const outOfStock = typeof p.stock === "number" && p.stock <= 0;
-              return (
-                <div
-                  key={p.id ?? p.name}
-                  onClick={() => { if (typeof window !== "undefined") { window.sessionStorage.setItem(PRODUCT_STORAGE_KEY, JSON.stringify(p)); } navigate("productDetail"); }}
-                  style={{
-                    background: "#fff", borderRadius: 16, overflow: "hidden", cursor: "pointer",
-                    boxShadow: "0 2px 12px rgba(0,0,0,.07)", border: "1px solid #f0e6ea",
-                    display: "flex", flexDirection: "column",
-                    transition: "box-shadow .2s, transform .2s",
-                  }}
-                  onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = "0 8px 32px rgba(233,30,99,.18)"; (e.currentTarget as HTMLDivElement).style.transform = "translateY(-3px)"; }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = "0 2px 12px rgba(0,0,0,.07)"; (e.currentTarget as HTMLDivElement).style.transform = "translateY(0)"; }}
-                >
-                  <div style={{ position: "relative", aspectRatio: "1/1", overflow: "hidden", background: "#f8f3f5" }}>
-                    <ProductVisual product={p} h={300} />
-                    {p.badge && <span style={{ position: "absolute", top: 10, right: 10, zIndex: 2, background: C.redDark, color: "#fff", fontSize: 11, fontWeight: 800, padding: "3px 10px", borderRadius: 99 }}>{p.badge}</span>}
-                    {outOfStock && <div style={{ position: "absolute", inset: 0, zIndex: 3, background: "rgba(0,0,0,.45)", display: "flex", alignItems: "center", justifyContent: "center" }}><span style={{ color: "#ffd166", fontWeight: 900, fontSize: 14 }}>{t("نفذت الكمية", "Out of stock")}</span></div>}
-                  </div>
-                  <div style={{ padding: "14px 16px 16px", display: "flex", flexDirection: "column", flex: 1 }}>
-                    <h3 style={{ fontWeight: 700, fontSize: 14, color: "#1a0c14", marginBottom: 8, lineHeight: 1.5, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{p.name}</h3>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 14, marginTop: "auto" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <span style={{ fontWeight: 900, color: C.redDark, fontSize: 20 }}>{p.vatEnabled ? applyVat(p.price) : p.price} <span style={{ fontSize: 12 }}>{lang === "en" ? "EGP" : "ج.م"}</span></span>
-                        {p.oldPrice && <span style={{ textDecoration: "line-through", color: C.gray, fontSize: 13 }}>{p.oldPrice}</span>}
+          {(() => {
+            // Mobile: 4 initially (2×2), Desktop: 6 initially (2×3)
+            const isMobile = _w < 768;
+            const INITIAL = isMobile ? 4 : 6;
+            const shown = showAllHomeProducts ? products : products.slice(0, INITIAL);
+            const hasMore = products.length > INITIAL && !showAllHomeProducts;
+            return (
+              <>
+                <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr 1fr", "repeat(3, 1fr)", "repeat(3, 1fr)"), gap: isMobile ? 12 : 20 }}>
+                  {shown.map(p => {
+                    const outOfStock = typeof p.stock === "number" && p.stock <= 0;
+                    return (
+                      <div
+                        key={p.id ?? p.name}
+                        onClick={() => { if (typeof window !== "undefined") { window.sessionStorage.setItem(PRODUCT_STORAGE_KEY, JSON.stringify(p)); } navigate("productDetail"); }}
+                        style={{
+                          background: "#fff", borderRadius: isMobile ? 12 : 16, overflow: "hidden", cursor: "pointer",
+                          boxShadow: "0 2px 12px rgba(0,0,0,.07)", border: "1px solid #f0e6ea",
+                          display: "flex", flexDirection: "column",
+                          transition: "box-shadow .2s, transform .2s",
+                        }}
+                        onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = "0 8px 32px rgba(233,30,99,.18)"; (e.currentTarget as HTMLDivElement).style.transform = "translateY(-3px)"; }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = "0 2px 12px rgba(0,0,0,.07)"; (e.currentTarget as HTMLDivElement).style.transform = "translateY(0)"; }}
+                      >
+                        <div style={{ position: "relative", aspectRatio: "1/1", overflow: "hidden", background: "#f8f3f5" }}>
+                          <ProductVisual product={p} h={isMobile ? 160 : 300} />
+                          {p.badge && <span style={{ position: "absolute", top: 8, right: 8, zIndex: 2, background: C.redDark, color: "#fff", fontSize: isMobile ? 9 : 11, fontWeight: 800, padding: isMobile ? "2px 7px" : "3px 10px", borderRadius: 99 }}>{p.badge}</span>}
+                          {outOfStock && <div style={{ position: "absolute", inset: 0, zIndex: 3, background: "rgba(0,0,0,.45)", display: "flex", alignItems: "center", justifyContent: "center" }}><span style={{ color: "#ffd166", fontWeight: 900, fontSize: 13 }}>{t("نفذت الكمية", "Out of stock")}</span></div>}
+                        </div>
+                        <div style={{ padding: isMobile ? "10px 10px 12px" : "14px 16px 16px", display: "flex", flexDirection: "column", flex: 1 }}>
+                          <h3 style={{ fontWeight: 700, fontSize: isMobile ? 12 : 14, color: "#1a0c14", marginBottom: isMobile ? 6 : 8, lineHeight: 1.4, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{p.name}</h3>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 3, marginBottom: isMobile ? 10 : 14, marginTop: "auto" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
+                              <span style={{ fontWeight: 900, color: C.redDark, fontSize: isMobile ? 15 : 20 }}>{p.vatEnabled ? applyVat(p.price) : p.price} <span style={{ fontSize: isMobile ? 10 : 12 }}>{lang === "en" ? "EGP" : "ج.م"}</span></span>
+                              {p.oldPrice && <span style={{ textDecoration: "line-through", color: C.gray, fontSize: isMobile ? 11 : 13 }}>{p.oldPrice}</span>}
+                            </div>
+                            {p.vatEnabled && <span style={{ fontSize: 9, color: "#10b981", background: "rgba(16,185,129,0.12)", borderRadius: 4, padding: "2px 5px", alignSelf: "flex-start" }}>{lang === "en" ? "Incl. 14% VAT" : "شامل ضريبة 14%"}</span>}
+                          </div>
+                          <button
+                            style={{ width: "100%", padding: isMobile ? "8px 6px" : "10px", borderRadius: 10, border: "none", background: outOfStock ? "#e5e7eb" : `linear-gradient(135deg,${C.red},#c2185b)`, color: outOfStock ? "#9ca3af" : "#fff", fontWeight: 800, fontSize: isMobile ? 11 : 13, cursor: outOfStock ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, fontFamily: "inherit", boxShadow: outOfStock ? "none" : "0 4px 14px rgba(233,30,99,.3)" }}
+                            disabled={outOfStock}
+                            onClick={e => { e.stopPropagation(); if (outOfStock) return; addToCart({ productId: p.id ?? p.name, name: p.name, price: p.vatEnabled ? applyVat(p.price) : p.price, vatEnabled: p.vatEnabled ?? false, qty: 1, size: p.sizeType === "none" ? null : p.sizes?.[0] ?? null, type: p.type }); navigate("cart"); }}
+                          >
+                            <I n="cart" s={isMobile ? 12 : 14} c={outOfStock ? "#9ca3af" : "#fff"} /> {outOfStock ? t("نفذت الكمية", "Out of stock") : t("أضيفي للسلة", "Add to cart")}
+                          </button>
+                        </div>
                       </div>
-                      {p.vatEnabled && <span style={{ fontSize: 10, color: "#10b981", background: "rgba(16,185,129,0.12)", borderRadius: 4, padding: "2px 6px", alignSelf: "flex-start" }}>{lang === "en" ? "Incl. 14% VAT" : "شامل ضريبة 14%"}</span>}
-                    </div>
+                    );
+                  })}
+                </div>
+                {hasMore && (
+                  <div style={{ textAlign: "center", marginTop: 28 }}>
                     <button
-                      style={{ width: "100%", padding: "10px", borderRadius: 10, border: "none", background: outOfStock ? "#e5e7eb" : `linear-gradient(135deg,${C.red},#c2185b)`, color: outOfStock ? "#9ca3af" : "#fff", fontWeight: 800, fontSize: 13, cursor: outOfStock ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontFamily: "inherit", boxShadow: outOfStock ? "none" : "0 4px 14px rgba(233,30,99,.3)" }}
-                      disabled={outOfStock}
-                      onClick={e => { e.stopPropagation(); if (outOfStock) return; addToCart({ productId: p.id ?? p.name, name: p.name, price: p.vatEnabled ? applyVat(p.price) : p.price, vatEnabled: p.vatEnabled ?? false, qty: 1, size: p.sizeType === "none" ? null : p.sizes?.[0] ?? null, type: p.type }); navigate("cart"); }}
+                      onClick={() => setShowAllHomeProducts(true)}
+                      style={{ padding: "12px 36px", borderRadius: 12, border: `2px solid ${C.red}`, background: "transparent", color: C.red, fontWeight: 800, fontSize: 14, cursor: "pointer", fontFamily: "inherit", transition: "all .2s" }}
+                      onMouseEnter={e => { const b = e.currentTarget as HTMLButtonElement; b.style.background = C.red; b.style.color = "#fff"; }}
+                      onMouseLeave={e => { const b = e.currentTarget as HTMLButtonElement; b.style.background = "transparent"; b.style.color = C.red; }}
                     >
-                      <I n="cart" s={14} c={outOfStock ? "#9ca3af" : "#fff"} /> {outOfStock ? t("نفذت الكمية", "Out of stock") : t("أضيفي للسلة", "Add to cart")}
+                      {t(`عرض المزيد (${products.length - INITIAL}+)`, `Show more (${products.length - INITIAL}+)`)}
                     </button>
                   </div>
-                </div>
-              );
-            })}
-          </div>
+                )}
+              </>
+            );
+          })()}
         </div>
       </section>
 
