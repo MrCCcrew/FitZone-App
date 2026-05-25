@@ -378,10 +378,16 @@ export default function Customers() {
     setSaving(true);
     try {
       const isEdit = "id" in editCustomer;
+      // When editing an existing customer, never send points/balance in this request.
+      // Those fields are managed exclusively by the dedicated wallet/points editor to
+      // prevent stale form data from silently overwriting earned reward points.
+      const payload = isEdit
+        ? { ...editCustomer, points: undefined, balance: undefined }
+        : editCustomer;
       const response = await fetch("/api/admin/customers", {
         method: isEdit ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(editCustomer),
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
@@ -1168,24 +1174,32 @@ export default function Customers() {
                   <option value="expired">منتهي</option>
                 </select>
               </Field>
-              <Field label="النقاط">
-                <input
-                  type="number"
-                  value={editCustomer.points}
-                  onChange={(event) => setEditCustomer({ ...editCustomer, points: Number(event.target.value) })}
-                  className={INPUT}
-                  dir="ltr"
-                />
-              </Field>
-              <Field label="الرصيد">
-                <input
-                  type="number"
-                  value={editCustomer.balance}
-                  onChange={(event) => setEditCustomer({ ...editCustomer, balance: Number(event.target.value) })}
-                  className={INPUT}
-                  dir="ltr"
-                />
-              </Field>
+              {/* Points & balance: only editable for NEW customers here.
+                  For existing customers, use the dedicated wallet/points editor
+                  (the ✏️ button in the customer view) to avoid accidentally
+                  overwriting earned points with stale form data. */}
+              {!("id" in editCustomer) && (
+                <>
+                  <Field label="النقاط الابتدائية">
+                    <input
+                      type="number"
+                      value={editCustomer.points}
+                      onChange={(event) => setEditCustomer({ ...editCustomer, points: Number(event.target.value) })}
+                      className={INPUT}
+                      dir="ltr"
+                    />
+                  </Field>
+                  <Field label="الرصيد الابتدائي">
+                    <input
+                      type="number"
+                      value={editCustomer.balance}
+                      onChange={(event) => setEditCustomer({ ...editCustomer, balance: Number(event.target.value) })}
+                      className={INPUT}
+                      dir="ltr"
+                    />
+                  </Field>
+                </>
+              )}
             </div>
 
             <button
