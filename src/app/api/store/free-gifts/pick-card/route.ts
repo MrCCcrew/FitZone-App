@@ -34,14 +34,19 @@ export async function POST(req: Request) {
   const newPicksDone = session.cardsDone + 1;
   const advance = newPicksDone >= settings.maxCardPicksPerUser;
 
-  await dbx.storeFreeGiftsSession.update({
-    where: { id: session.id },
-    data: {
-      cardsDone: newPicksDone,
-      cardsData: JSON.stringify(cardsData),
-      ...(advance ? { step: 3 } : {}),
-    },
-  });
+  try {
+    await dbx.storeFreeGiftsSession.update({
+      where: { id: session.id },
+      data: {
+        cardsDone: newPicksDone,
+        cardsData: JSON.stringify(cardsData),
+        ...(advance ? { step: 3 } : {}),
+      },
+    });
+  } catch (dbErr) {
+    console.error("[PICK_CARD] DB update error:", dbErr);
+    return NextResponse.json({ error: "db_error" }, { status: 500 });
+  }
 
   return NextResponse.json({
     ok: true,
