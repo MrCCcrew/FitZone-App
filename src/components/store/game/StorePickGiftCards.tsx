@@ -76,6 +76,7 @@ export function StorePickGiftCards({ cards, maxPicks, picksDone, onPick, onPickC
   const [flipped, setFlipped]     = useState<Record<number, boolean>>({});
   const [winner, setWinner]       = useState<{ type: string; icon?: string; labelAr: string; labelEn?: string } | null>(null);
   const [winnerOut, setWinnerOut] = useState(false);
+  const [pickError, setPickError] = useState<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const canPick = picksDone < maxPicks;
@@ -85,12 +86,14 @@ export function StorePickGiftCards({ cards, maxPicks, picksDone, onPick, onPickC
     setPicking(idx);
     setFlipped(prev => ({ ...prev, [idx]: true }));
 
+    setPickError(null);
     let result: { card: { type: string; icon?: string; labelAr: string; labelEn?: string }; advanceToStep3: boolean } | null = null;
     try {
       result = await onPick(idx);
     } catch {
       setFlipped(prev => { const n = { ...prev }; delete n[idx]; return n; });
       setPicking(null);
+      setPickError(t("حدث خطأ، حاولي مرة أخرى", "Something went wrong, please try again"));
       return;
     }
     setPicking(null);
@@ -218,9 +221,24 @@ export function StorePickGiftCards({ cards, maxPicks, picksDone, onPick, onPickC
         <h2 style={{ fontSize: 22, fontWeight: 900, color: "#fbbf24", marginBottom: 8, fontFamily: "Cairo,Tajawal,sans-serif" }}>
           🃏 {t("اختاري كارت واحد", "Pick One Card")}
         </h2>
-        <p style={{ fontSize: 14, color: "rgba(255,255,255,.6)", marginBottom: 32, fontFamily: "Cairo,Tajawal,sans-serif" }}>
+        <p style={{ fontSize: 14, color: "rgba(255,255,255,.6)", marginBottom: pickError ? 12 : 32, fontFamily: "Cairo,Tajawal,sans-serif" }}>
           {canPick ? t("اضغطي على كارت لتكشفي مكافأتك", "Tap a card to reveal your reward") : t("تم اختيار الكارت…", "Card selected…")}
         </p>
+        {pickError && (
+          <div style={{
+            marginBottom: 20,
+            padding: "10px 16px",
+            borderRadius: 10,
+            background: "rgba(239,68,68,.15)",
+            border: "1px solid rgba(239,68,68,.35)",
+            color: "#fca5a5",
+            fontSize: 13,
+            fontFamily: "Cairo,Tajawal,sans-serif",
+            fontWeight: 700,
+          }}>
+            ⚠️ {pickError}
+          </div>
+        )}
 
         <div style={{ display: "flex", gap: 16, justifyContent: "center", flexWrap: "wrap" }}>
           {Array.from({ length: Math.max(3, cards.length) }, (_, i) => {

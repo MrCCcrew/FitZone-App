@@ -57,10 +57,17 @@
     font-family: var(--font-cairo), var(--font-tajawal), var(--font-geist-sans), system-ui, sans-serif;
   }
 
-  html,
-  body {
+  html {
     max-width: 100%;
     overflow-x: hidden;
+  }
+
+  body {
+    max-width: 100%;
+    /* Do NOT set overflow-x: hidden on body — on iOS Safari it makes body the
+       scroll container, which causes position:fixed elements (bottom nav) to
+       scroll with the page instead of staying fixed to the viewport. */
+    overflow-x: clip; /* clips without creating a scroll container (iOS-safe) */
     /* Prevent iOS Safari auto-zoom when focusing inputs with small font */
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;

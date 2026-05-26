@@ -46,18 +46,23 @@ export async function POST() {
     return { type: c.type, icon: c.icon ?? "", value: c.value, labelAr: c.labelAr, labelEn: c.labelEn ?? "", revealed: false };
   });
 
-  await dbx.storeFreeGiftsSession.update({
-    where: { id: session.id },
-    data: {
-      spinsDone: { increment: 1 },
-      spinRewardType: item.type,
-      spinRewardValue: item.value,
-      spinSlotIndex: index,
-      spinLabelAr: item.labelAr,
-      step: 2,
-      cardsData: JSON.stringify(cardsData),
-    },
-  });
+  try {
+    await dbx.storeFreeGiftsSession.update({
+      where: { id: session.id },
+      data: {
+        spinsDone: { increment: 1 },
+        spinRewardType: item.type,
+        spinRewardValue: item.value,
+        spinSlotIndex: index,
+        spinLabelAr: item.labelAr,
+        step: 2,
+        cardsData: JSON.stringify(cardsData),
+      },
+    });
+  } catch (dbErr) {
+    console.error("[SPIN] DB update error:", dbErr);
+    return NextResponse.json({ error: "db_error" }, { status: 500 });
+  }
 
   return NextResponse.json({
     ok: true,
