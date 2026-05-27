@@ -20,6 +20,8 @@ type PublicPayload = {
     facebook: string;
     instagram: string;
     mapEmbed: string;
+    whatsappChannel?: string;
+    whatsappChannelEnabled?: boolean;
   };
   categories: Array<{
     key: string;

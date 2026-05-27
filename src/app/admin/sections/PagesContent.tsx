@@ -39,6 +39,8 @@ type ContactData = {
   facebook: string;
   instagram: string;
   mapEmbed: string;
+  whatsappChannel?: string;
+  whatsappChannelEnabled?: boolean;
 };
 
 type TrainersPageData = {
@@ -125,6 +127,8 @@ const DEFAULTS: Record<Tab, unknown> = {
     facebook: "",
     instagram: "",
     mapEmbed: "",
+    whatsappChannel: "",
+    whatsappChannelEnabled: false,
   } satisfies ContactData,
   trainersPage: {
     badge: "فريقنا",
@@ -445,6 +449,33 @@ function ContactTab({ data, onChange }: { data: ContactData; onChange: (d: Conta
       <Field label="رابط الخريطة">
         <TInput value={data.mapEmbed} onChange={(v) => update("mapEmbed", v)} />
       </Field>
+
+      {/* WhatsApp Channel */}
+      <div className="col-span-full mt-2 rounded-2xl border border-green-500/20 bg-green-950/10 p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-xl">📢</span>
+            <span className="font-bold text-green-300 text-sm">قناة واتساب — Follow Channel</span>
+          </div>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <span className="text-xs text-gray-400">تفعيل البانر</span>
+            <input
+              type="checkbox"
+              checked={data.whatsappChannelEnabled ?? false}
+              onChange={(e) => update("whatsappChannelEnabled", e.target.checked)}
+              className="w-4 h-4 accent-green-500"
+            />
+          </label>
+        </div>
+        <Field label="رابط القناة (whatsapp.com/channel/...)">
+          <TInput
+            value={data.whatsappChannel ?? ""}
+            onChange={(v) => update("whatsappChannel", v)}
+            placeholder="https://whatsapp.com/channel/..."
+          />
+        </Field>
+        <p className="text-xs text-gray-500">لما يكون مفعّل، بيظهر بانر في صفحة المدونة يدعو العملاء لمتابعة القناة.</p>
+      </div>
     </div>
   );
 }
