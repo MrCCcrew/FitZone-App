@@ -83,6 +83,8 @@ type PublicPayload = {
     expiresAt: string;
     durationDays: number | null;
     sessionsCount: number | null;
+    features: string[];
+    priceBefore: number | null;
   }>;
   classes: Array<{
     id: string;
@@ -479,6 +481,7 @@ export async function GET(request: Request) {
         durationDays: offer.durationDays ?? null,
         sessionsCount: offer.sessionsCount ?? null,
         priceBefore: offer.priceBefore ?? null,
+        features: lang === "en" ? parseJsonArray(offer.featuresEn) : parseJsonArray(offer.features),
       })),
       classes: classes.map((gymClass) => ({
         id: gymClass.id,
