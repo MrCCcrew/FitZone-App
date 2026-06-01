@@ -1393,6 +1393,7 @@ type PublicOffer = {
   expiresAt: string;
   durationDays?: number | null;
   sessionsCount?: number | null;
+  features?: string[];
 };
 
 type PublicGoal = {
@@ -2622,7 +2623,18 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                         {isSpecial ? t("سعر العرض", "Offer price") : t("قيمة الخصم", "Discount value")}
                       </div>
                       <h3 style={{ fontWeight: 800, fontSize: 15, color: C.white, marginBottom: 6 }}>{offer.title}</h3>
-                      {offer.description ? <p style={{ color: C.gray, fontSize: 12, lineHeight: 1.7, marginBottom: 12 }}>{offer.description}</p> : null}
+                      {offer.description ? <p style={{ color: C.gray, fontSize: 12, lineHeight: 1.7, marginBottom: 10 }}>{offer.description}</p> : null}
+                      {/* Features */}
+                      {(offer.features ?? []).length > 0 && (
+                        <ul style={{ listStyle: "none", marginBottom: 12 }}>
+                          {(offer.features ?? []).map((f, i) => (
+                            <li key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "5px 0", fontSize: 12, color: C.grayLight, borderBottom: `1px solid ${C.border}` }}>
+                              <I n="check" s={13} c={accentColor} />
+                              <span>{f}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                       {/* Stats row */}
                       {(offer.showCurrentSubscribers !== false || remaining != null) && (
                         <div style={{ display: "flex", gap: 16, marginBottom: 14, flexWrap: "wrap" }}>
@@ -6212,6 +6224,17 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
                   {o.description ? <p style={{ color: C.gray, fontSize: 13, lineHeight: 1.8 }}>{o.description}</p> : null}
                 </div>
                 <div style={{ padding: "18px 24px 22px", display: "flex", flexDirection: "column", flex: 1 }}>
+                  {/* Features */}
+                  {(o.features ?? []).length > 0 && (
+                    <ul style={{ listStyle: "none", marginBottom: 14 }}>
+                      {(o.features ?? []).map((f, i) => (
+                        <li key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "6px 0", fontSize: 13, color: C.grayLight, borderBottom: `1px solid ${C.border}` }}>
+                          <I n="check" s={14} c={o.color} />
+                          <span>{f}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                   {/* Countdown */}
                   <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
                     {[
