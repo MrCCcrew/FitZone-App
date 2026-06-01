@@ -715,8 +715,8 @@ model StoreFreeGiftsSession {
   spinSlotIndex    Int?
   spinLabelAr      String?
   cardsDone        Int       @default(0)
-  cardsData        String    @default("[]") @db.Text // JSON: [{type,value,labelAr,revealed}]
-  selectedProductIds String  @default("[]") @db.Text // JSON string[]
+  cardsData        String    @db.Text // JSON: [{type,value,labelAr,revealed}]
+  selectedProductIds String  @db.Text // JSON string[]
   giftSlotsCount   Int       @default(3)
   status           String    @default("active") // active | confirmed | expired
   expiresAt        DateTime?
