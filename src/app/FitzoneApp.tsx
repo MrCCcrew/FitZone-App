@@ -106,19 +106,19 @@ const css = `
   .schedule-title{display:flex;flex-direction:column;align-items:center;gap:8px;margin-bottom:28px;text-align:center;}
   .schedule-title h2{font-size:34px;font-weight:900;color:#fff;letter-spacing:.3px;line-height:1.15;}
   .schedule-title span{background:rgba(245,197,66,.1);color:#f5c542;border-radius:999px;padding:5px 20px;font-size:15px;font-weight:800;border:1px solid rgba(245,197,66,.3);letter-spacing:.2px;}
-  .schedule-scroll{overflow-x:auto;max-width:100%;scrollbar-width:thin;scrollbar-color:rgba(245,197,66,.4) rgba(255,255,255,.06);scroll-padding-inline-start:var(--schedule-day-col,68px);}
-  .schedule-scroll::-webkit-scrollbar{height:5px;}
+  .schedule-scroll{overflow-x:auto;overflow-y:auto;max-height:min(520px,65dvh);max-width:100%;scrollbar-width:thin;scrollbar-color:rgba(245,197,66,.4) rgba(255,255,255,.06);scroll-padding-inline-start:var(--schedule-day-col,68px);}
+  .schedule-scroll::-webkit-scrollbar{height:5px;width:5px;}
   .schedule-scroll::-webkit-scrollbar-track{background:rgba(255,255,255,.04);border-radius:99px;}
   .schedule-scroll::-webkit-scrollbar-thumb{background:rgba(245,197,66,.4);border-radius:99px;}
-  .schedule-outer{border-radius:14px;overflow:hidden;overflow:clip;border:1.5px solid rgba(255,255,255,.12);--schedule-col-min:130px;--schedule-day-col:68px;}
+  .schedule-outer{border-radius:14px;overflow:hidden;border:1.5px solid rgba(255,255,255,.12);--schedule-col-min:130px;--schedule-day-col:68px;}
   .schedule-table{border-collapse:collapse;background:#0d0a0c;min-width:100%;}
   .schedule-table th,.schedule-table td{display:table-cell;vertical-align:top;}
   .schedule-cell{border-right:1px solid rgba(255,255,255,.08);border-top:1px solid rgba(255,255,255,.08);padding:10px 8px;text-align:center;}
-  .schedule-cell.time{background:linear-gradient(180deg,#1d1619,#161114);font-weight:900;font-size:12px;color:#fff;letter-spacing:.2px;min-width:var(--schedule-col-min,130px);padding:12px 8px;vertical-align:middle;}
+  .schedule-cell.time{background:linear-gradient(180deg,#1d1619,#161114);font-weight:900;font-size:12px;color:#fff;letter-spacing:.2px;min-width:var(--schedule-col-min,130px);padding:12px 8px;vertical-align:middle;position:sticky;top:0;z-index:4;}
   .schedule-cell.time span{font-size:11px;color:#9d8a96;font-weight:700;display:block;margin-top:2px;}
   .schedule-cell.day{background:linear-gradient(90deg,#1d1619,#161114);color:#fff;font-weight:900;font-size:13px;position:sticky;right:0;z-index:3;width:var(--schedule-day-col,68px);min-width:var(--schedule-day-col,68px);max-width:var(--schedule-day-col,68px);box-shadow:-1.5px 0 0 rgba(255,255,255,.16);padding:10px 4px;vertical-align:middle;text-align:center;}
   @media(min-width:768px){.schedule-outer{--schedule-day-col:76px;}.schedule-cell.time{font-size:14px;}.schedule-cell.day{font-size:14px;}.schedule-cell.day-head{}}
-  .schedule-cell.day-head{background:#161214;color:#9d8a96;font-weight:800;font-size:12px;position:sticky;right:0;z-index:5;width:var(--schedule-day-col,68px);min-width:var(--schedule-day-col,68px);max-width:var(--schedule-day-col,68px);box-shadow:-1.5px 0 0 rgba(255,255,255,.16);vertical-align:middle;}
+  .schedule-cell.day-head{background:#161214;color:#9d8a96;font-weight:800;font-size:12px;position:sticky;top:0;right:0;z-index:7;width:var(--schedule-day-col,68px);min-width:var(--schedule-day-col,68px);max-width:var(--schedule-day-col,68px);box-shadow:-1.5px 0 0 rgba(255,255,255,.16);vertical-align:middle;}
   .schedule-block{margin-top:20px;}
   .schedule-block:first-child{margin-top:0;}
   .schedule-block-title{display:inline-flex;align-items:center;gap:8px;color:#f5c542;font-weight:900;font-size:15px;margin-bottom:12px;padding:4px 14px 4px 0;border-bottom:2px solid rgba(245,197,66,.22);}
@@ -156,7 +156,7 @@ const css = `
     .schedule-slot-item{padding:6px 5px;gap:2px;}
     .schedule-block-title{font-size:13px;}
     .schedule-outer{--schedule-day-col:48px;--schedule-col-min:max(120px,calc((100dvw - var(--schedule-day-col) - 32px) / 2));}
-    .schedule-scroll{scroll-snap-type:x mandatory;}
+    .schedule-scroll{scroll-snap-type:x mandatory;max-height:min(420px,62dvh);}
     .schedule-cell.time{scroll-snap-align:end;}
   }
   @media(max-width:640px){
