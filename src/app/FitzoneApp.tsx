@@ -704,6 +704,7 @@ const Header = ({
   const { lang, toggleLang } = useLang();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [announcements, setAnnouncements] = useState<string[]>([]);
+  const [storeEnabled, setStoreEnabled] = useState(true);
   const [annIndex, setAnnIndex] = useState(0);
   const t = (ar: string, en: string) => (lang === "ar" ? ar : en);
   useEffect(() => {
@@ -718,6 +719,11 @@ const Header = ({
       .catch(() => {});
   }, []);
   useEffect(() => {
+    loadPublicApi().then(d => {
+      if (typeof d.storeEnabled === "boolean") setStoreEnabled(d.storeEnabled);
+    }).catch(() => {});
+  }, [lang]);
+  useEffect(() => {
     if (announcements.length <= 1) return;
     const t = setInterval(() => setAnnIndex(i => (i + 1) % announcements.length), 4000);
     return () => clearInterval(t);
@@ -728,7 +734,7 @@ const Header = ({
     { id: "memberships", label: t("الاشتراكات", "Memberships") },
     ...(SHOW_CLASSES_PAGE ? [{ id: "classes", label: t("الكلاسات", "Classes") }] : []),
     { id: "schedule", label: t("الجدول", "Schedule") },
-    { id: "shop", label: t("المتجر", "Shop") },
+    ...(storeEnabled ? [{ id: "shop", label: t("المتجر", "Shop") }] : []),
     { id: "offers", label: t("العروض", "Offers") },
     { id: "trainers", label: t("المدربات", "Trainers") },
     { id: "partners", label: t("الشركاء", "Partners") },
@@ -2135,6 +2141,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
   const [testimonials, setTestimonials] = useState<PublicTestimonial[]>([]);
   const [products, setProducts] = useState<StoreProduct[]>([]);
   const [showAllHomeProducts, setShowAllHomeProducts] = useState(false);
+  const [storeEnabled, setStoreEnabled] = useState(true);
   const [homeOffers, setHomeOffers] = useState<PublicOffer[]>([]);
   const [homeCustomPlans, setHomeCustomPlans] = useState<PublicMembership[]>([]);
   const [homeFeaturedPlan, setHomeFeaturedPlan] = useState<{ id: string; name: string; price: number; priceBefore: number | null; subtitle: string | null; features: string[]; durationDays: number } | null>(null);
@@ -2211,6 +2218,9 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
       }
       if (Array.isArray(d.testimonials) && d.testimonials.length > 0) {
         setTestimonials(d.testimonials.slice(0, 6));
+      }
+      if (typeof d.storeEnabled === "boolean") {
+        setStoreEnabled(d.storeEnabled);
       }
       if (Array.isArray(d.products) && d.products.length > 0) {
         setProducts(d.products.map((p: { id?: string; name: string; price: number; oldPrice: number | null; vatEnabled?: boolean; category: string; categoryLabel?: string; sizeType?: "none" | "clothing" | "shoes"; images?: string[]; sizes?: string[]; colors?: string[] }, i: number) => ({
@@ -2812,7 +2822,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
               { icon: "gift", label: t("الباقات", "Packages"), page: "offers", sub: t("عروض خاصة", "Special deals") },
               { icon: "tag", label: t("العروض", "Offers"), page: "offers", sub: t("خصومات حصرية", "Exclusive discounts") },
               { icon: "calendar", label: t("الجدول الأسبوعي", "Weekly schedule"), page: "schedule", sub: t("احجزي مقعدك", "Book your spot") },
-              { icon: "box", label: t("المتجر", "Shop"), page: "shop", sub: t("منتجات رياضية", "Sports products") },
+              ...(storeEnabled ? [{ icon: "box", label: t("المتجر", "Shop"), page: "shop", sub: t("منتجات رياضية", "Sports products") }] : []),
               { icon: "wallet", label: t("شحن المحفظة", "Top up wallet"), page: "wallet", sub: t("بونص حتى 15%", "Bonus up to 15%") },
             ].map(({ icon, label, page, sub }) => (
               <button key={page} onClick={() => navigate(page)} style={{ background: "none", border: "none", borderLeft: `1px solid ${C.border}`, padding: "20px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: 14, fontFamily: "'Cairo', sans-serif", transition: "background .2s" }}>
@@ -3045,7 +3055,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
       </section>
 
       {/* ─ PRODUCTS ─ */}
-      <section className="section">
+      {storeEnabled && <section className="section">
         <div className="container">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 32 }}>
             <div>
@@ -3130,7 +3140,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
             );
           })()}
         </div>
-      </section>
+      </section>}
 
       {/* ─ REFERRAL ─ */}
       <section style={{ background: C.bgCard, borderTop: `1px solid ${C.border}`, padding: "56px 0" }}>
@@ -7153,7 +7163,9 @@ const ShopPage = ({ navigate }: { navigate: (p: string) => void }) => {
         if (Array.isArray(d.categories) && d.categories.length > 0) {
           setCategories(d.categories.map((item: { key: string; label: string; sizeType: "none" | "clothing" | "shoes"; icon?: string | null }) => ({ key: item.key, label: item.label, sizeType: item.sizeType, icon: item.icon ?? null })));
         }
-        if (Array.isArray(d.products) && d.products.length > 0) {
+        if (d.storeEnabled === false) {
+          setProducts([]);
+        } else if (Array.isArray(d.products) && d.products.length > 0) {
           setProducts(
             d.products.map(
               (
