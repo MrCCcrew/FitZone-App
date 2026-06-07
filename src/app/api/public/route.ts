@@ -212,6 +212,7 @@ type PublicPayload = {
     followupFee: number;
     followupFeeMember: number;
   } | null;
+  storeEnabled: boolean;
 };
 
 const EMPTY_PAYLOAD: PublicPayload = {
@@ -248,6 +249,7 @@ const EMPTY_PAYLOAD: PublicPayload = {
     cashOnDeliveryLabel: "الدفع عند الاستلام",
   },
   nutritionist: null,
+  storeEnabled: true,
 };
 
 const RESPONSE_HEADERS = {
@@ -350,7 +352,7 @@ export async function GET(request: Request) {
           orderBy: [{ showOnHome: "desc" }, { sortOrder: "asc" }, { name: "asc" }],
         }),
         db.siteContent.findMany({
-          where: { section: { in: ["trainersPage", "contact", "blog", "paymentSettings", "trial_class_settings"] } },
+          where: { section: { in: ["trainersPage", "contact", "blog", "paymentSettings", "trial_class_settings", "store_settings"] } },
         }),
         db.product.findMany({
           where: { isActive: true },
@@ -396,6 +398,9 @@ export async function GET(request: Request) {
       addressEn?: string;
       hoursEn?: string;
     };
+
+    const storeSettings = parseSiteContentRecord(siteContent, "store_settings", { enabled: true }) as { enabled?: boolean };
+    const storeEnabled = storeSettings.enabled !== false;
 
     const payload: PublicPayload = {
       contact:
@@ -602,7 +607,8 @@ export async function GET(request: Request) {
           posts: Array.isArray(typed.postsEn) ? typed.postsEn : localizedPosts,
         };
       })(),
-      products: products.map((product) => {
+      products: storeEnabled
+        ? products.map((product) => {
         const category = categoryMeta.get(product.category);
         const reviewCount = product.reviews.length;
         const rating =
@@ -632,7 +638,8 @@ export async function GET(request: Request) {
           reviewCount,
           stock: product.stock,
         };
-      }),
+      })
+        : [],
       testimonials: testimonials.map((testimonial) => {
         const name = testimonial.displayName || testimonial.user.name || (lang === "en" ? "Fit Zone client" : "عميلة فيت زون");
 
@@ -706,6 +713,7 @@ export async function GET(request: Request) {
             followupFeeMember: nutritionistRow.followupFeeMember,
           }
         : null,
+      storeEnabled,
     };
 
     setPublicApiCache(lang, {

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { TranslateButton } from "./TranslateButton";
 
-type Tab = "hero" | "contact" | "trainersPage" | "announcements" | "about" | "blog" | "policy" | "privacy" | "refund";
+type Tab = "hero" | "contact" | "trainersPage" | "announcements" | "about" | "blog" | "policy" | "privacy" | "refund" | "store";
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: "hero", label: "الصفحة الرئيسية", icon: "🏠" },
@@ -15,6 +15,7 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: "policy", label: "سياسة الاستخدام", icon: "📄" },
   { id: "privacy", label: "سياسة الخصوصية", icon: "🔒" },
   { id: "refund", label: "سياسة الاسترجاع", icon: "↩️" },
+  { id: "store", label: "إعدادات المتجر", icon: "🛍️" },
 ];
 
 type HeroStat = { value: string; label: string };
@@ -101,6 +102,8 @@ type LegalData = {
   contentEn?: string;
 };
 
+type StoreData = { enabled: boolean };
+
 const DEFAULTS: Record<Tab, unknown> = {
   hero: {
     badge: "أول نادي للسيدات في بني سويف",
@@ -172,6 +175,7 @@ const DEFAULTS: Record<Tab, unknown> = {
     content:
       "نسعى لتقديم أفضل تجربة. توضح هذه السياسة آلية الاسترجاع والإلغاء.\n\n1) الاشتراكات: قد تكون غير قابلة للاسترداد بعد التفعيل، إلا إذا نصّت العروض على غير ذلك.\n2) الباقات/العروض: تُطبق شروط الاسترجاع الخاصة بكل عرض كما تظهر عند الشراء.\n3) الحجوزات: يمكن تعديل المواعيد وفق الشروط الموضحة داخل الحساب.\n4) المنتجات: يمكن استرجاع المنتجات وفق حالة المنتج وسياسة المتجر (إن وجدت).\n5) التواصل: للاستفسارات أو طلب استرجاع، يرجى التواصل مع فريق الدعم.",
   } satisfies LegalData,
+  store: { enabled: true } satisfies StoreData,
 };
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
@@ -981,6 +985,7 @@ export default function PagesContent() {
   const [policy, setPolicy] = useState<LegalData>(DEFAULTS.policy as LegalData);
   const [privacy, setPrivacy] = useState<LegalData>(DEFAULTS.privacy as LegalData);
   const [refund, setRefund] = useState<LegalData>(DEFAULTS.refund as LegalData);
+  const [store, setStore] = useState<StoreData>(DEFAULTS.store as StoreData);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ text: string; ok: boolean } | null>(null);
@@ -991,7 +996,7 @@ export default function PagesContent() {
     async function loadContent() {
       try {
         const response = await fetch(
-          "/api/site-content?sections=hero,contact,trainersPage,announcements,about,blog,policy,privacy,refund",
+          "/api/site-content?sections=hero,contact,trainersPage,announcements,about,blog,policy,privacy,refund,store_settings",
           { cache: "no-store" },
         );
         const payload = await response.json();
@@ -1027,6 +1032,9 @@ export default function PagesContent() {
         if (payload.refund && typeof payload.refund === "object") {
           setRefund({ ...(DEFAULTS.refund as LegalData), ...(payload.refund as Partial<LegalData>) });
         }
+        if (payload.store_settings && typeof payload.store_settings === "object") {
+          setStore({ ...(DEFAULTS.store as StoreData), ...(payload.store_settings as Partial<StoreData>) });
+        }
       } catch {
         setMessage({ text: "تعذر تحميل محتوى الصفحات الآن.", ok: false });
       } finally {
@@ -1060,8 +1068,10 @@ export default function PagesContent() {
         return { section: "privacy", content: privacy };
       case "refund":
         return { section: "refund", content: refund };
+      case "store":
+        return { section: "store_settings", content: store };
     }
-  }, [about, activeTab, announcements, blog, contact, hero, trainersPage, policy, privacy, refund]);
+  }, [about, activeTab, announcements, blog, contact, hero, trainersPage, policy, privacy, refund, store]);
 
   const saveCurrentTab = useCallback(async () => {
     setSaving(true);
@@ -1115,6 +1125,9 @@ export default function PagesContent() {
         break;
       case "refund":
         setRefund(DEFAULTS.refund as LegalData);
+        break;
+      case "store":
+        setStore(DEFAULTS.store as StoreData);
         break;
     }
   };
@@ -1198,6 +1211,52 @@ export default function PagesContent() {
         {!loading && activeTab === "policy" ? <LegalTab data={policy} onChange={setPolicy} /> : null}
         {!loading && activeTab === "privacy" ? <LegalTab data={privacy} onChange={setPrivacy} /> : null}
         {!loading && activeTab === "refund" ? <LegalTab data={refund} onChange={setRefund} /> : null}
+        {!loading && activeTab === "store" ? <StoreTab data={store} onChange={setStore} /> : null}
+      </div>
+    </div>
+  );
+}
+
+function StoreTab({ data, onChange }: { data: StoreData; onChange: (d: StoreData) => void }) {
+  return (
+    <div className="space-y-5">
+      <div className="rounded-2xl border border-pink-500/20 bg-pink-950/10 p-5 space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">🛍️</span>
+            <div>
+              <div className="font-black text-white text-base">إظهار المتجر للعملاء</div>
+              <div className="text-xs text-gray-400 mt-0.5">يتحكم في ظهور المتجر في الناف والصفحة الرئيسية وصفحة المتجر الكاملة</div>
+            </div>
+          </div>
+          <label className="flex items-center gap-3 cursor-pointer select-none">
+            <span className="text-sm font-bold" style={{ color: data.enabled ? "#10b981" : "#ef4444" }}>
+              {data.enabled ? "مفعّل" : "مخفي"}
+            </span>
+            <button
+              type="button"
+              onClick={() => onChange({ ...data, enabled: !data.enabled })}
+              className="relative inline-flex h-7 w-12 items-center rounded-full transition-colors focus:outline-none"
+              style={{ background: data.enabled ? "#10b981" : "#374151" }}
+            >
+              <span
+                className="inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform"
+                style={{ transform: data.enabled ? "translateX(24px)" : "translateX(4px)" }}
+              />
+            </button>
+          </label>
+        </div>
+
+        <div className="rounded-xl border border-gray-700 bg-gray-900/50 p-4 space-y-2">
+          <div className="text-xs font-bold text-gray-300">لما المتجر مخفي:</div>
+          <ul className="text-xs text-gray-500 space-y-1 list-none">
+            <li>• زر "المتجر" يختفي من شريط التنقل</li>
+            <li>• بطاقة المتجر تختفي من الوصول السريع في الهوم</li>
+            <li>• سيكشن المنتجات يختفي من الصفحة الرئيسية</li>
+            <li>• صفحة المتجر تُصبح فارغة (المنتجات لا تُعرض)</li>
+          </ul>
+          <div className="text-xs text-gray-600 mt-2">المنتجات والبيانات تظل محفوظة في قاعدة البيانات ويمكن تفعيل المتجر في أي وقت.</div>
+        </div>
       </div>
     </div>
   );
