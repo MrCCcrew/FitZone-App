@@ -429,6 +429,22 @@ async function verifyTransaction(transaction: {
         },
       };
     }
+
+    // v1 API call failed — fall back to webhook payload already stored in DB
+    const storedPayload = readStoredPayload(transaction.providerPayload);
+    if (storedPayload?.success === true && storedPayload?.pending === false) {
+      console.info("[PAYMOB] v1 API unavailable — trusting stored webhook payload", {
+        transactionId: transaction.id,
+        externalReference: transaction.externalReference,
+      });
+      return {
+        status: "paid",
+        message: "Payment confirmed via stored webhook payload (v1 API unavailable).",
+        providerReference: transaction.providerReference ?? null,
+        externalReference: transaction.externalReference ?? null,
+        payload: storedPayload,
+      };
+    }
   }
 
   return {
