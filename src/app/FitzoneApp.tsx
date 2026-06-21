@@ -2825,7 +2825,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
               ...(storeEnabled ? [{ icon: "box", label: t("المتجر", "Shop"), page: "shop", sub: t("منتجات رياضية", "Sports products") }] : []),
               { icon: "wallet", label: t("شحن المحفظة", "Top up wallet"), page: "wallet", sub: t("بونص حتى 15%", "Bonus up to 15%") },
             ].map(({ icon, label, page, sub }) => (
-              <button key={page} onClick={() => navigate(page)} style={{ background: "none", border: "none", borderLeft: `1px solid ${C.border}`, padding: "20px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: 14, fontFamily: "'Cairo', sans-serif", transition: "background .2s" }}>
+              <button key={icon} onClick={() => navigate(page)} style={{ background: "none", border: "none", borderLeft: `1px solid ${C.border}`, padding: "20px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: 14, fontFamily: "'Cairo', sans-serif", transition: "background .2s" }}>
                 <div style={{ width: 44, height: 44, background: "rgba(233,30,99,.12)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                   <I n={icon} s={20} c={C.red} />
                 </div>
