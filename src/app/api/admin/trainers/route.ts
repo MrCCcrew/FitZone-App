@@ -10,6 +10,8 @@ import {
   serializeTrainerFileLinks,
 } from "@/lib/trainer-profile";
 
+const MAX_TRAINER_BIO_LENGTH = 191;
+
 function formatTrainer(trainer: {
   id: string;
   userId: string | null;
@@ -124,6 +126,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "اسم المدربة والتخصص مطلوبان." }, { status: 400 });
     }
 
+    if (body.bio && String(body.bio).trim().length > MAX_TRAINER_BIO_LENGTH) {
+      return NextResponse.json(
+        { error: `نبذة المدربة طويلة جداً (الحد الأقصى ${MAX_TRAINER_BIO_LENGTH} حرفاً). يُرجى تقصير النص والمحاولة مجدداً.` },
+        { status: 400 },
+      );
+    }
+
     const trainer = await db.trainer.create({
       data: {
         name: body.name.trim(),
@@ -171,6 +180,13 @@ export async function PATCH(req: Request) {
 
     if (!body.id) {
       return NextResponse.json({ error: "معرّف المدربة مطلوب." }, { status: 400 });
+    }
+
+    if (body.bio && String(body.bio).trim().length > MAX_TRAINER_BIO_LENGTH) {
+      return NextResponse.json(
+        { error: `نبذة المدربة طويلة جداً (الحد الأقصى ${MAX_TRAINER_BIO_LENGTH} حرفاً). يُرجى تقصير النص والمحاولة مجدداً.` },
+        { status: 400 },
+      );
     }
 
     // Trainers can only edit their own profile
@@ -234,6 +250,12 @@ export async function PATCH(req: Request) {
     if (msg.includes("Foreign key constraint") || msg.includes("foreign key constraint") || msg.includes("P2003")) {
       return NextResponse.json(
         { error: "الحساب المختار غير موجود في النظام. يرجى اختيار حساب صحيح أو ترك حقل الربط فارغًا." },
+        { status: 400 },
+      );
+    }
+    if (msg.includes("P2000") || msg.includes("Value too long") || msg.includes("value too long")) {
+      return NextResponse.json(
+        { error: "نبذة المدربة طويلة جداً. يُرجى تقصيرها والمحاولة مجدداً." },
         { status: 400 },
       );
     }
