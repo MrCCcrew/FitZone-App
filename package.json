@@ -15,7 +15,18 @@
     "db:seed": "npx tsx prisma/seed.ts",
     "db:seed-admin": "npx tsx prisma/seed-admin.ts",
     "cleanup:test-data": "node scripts/cleanup-test-data.mjs --dry-run",
-    "cleanup:test-data:confirm": "node scripts/cleanup-test-data.mjs --confirm"
+    "cleanup:test-data:confirm": "node scripts/cleanup-test-data.mjs --confirm",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:report": "playwright show-report",
+    "test:load": "node tests/load/homepage.mjs && node tests/load/public-api.mjs && node tests/load/store.mjs",
+    "test:load:home": "node tests/load/homepage.mjs",
+    "test:load:public": "node tests/load/public-api.mjs",
+    "test:load:store": "node tests/load/store.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1018.0",
@@ -58,7 +69,11 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@types/web-push": "^3.6.4"
+    "@playwright/test": "^1.61.0",
+    "@types/web-push": "^3.6.4",
+    "@vitest/coverage-v8": "^4.1.9",
+    "autocannon": "^8.0.0",
+    "vitest": "^4.1.9"
   },
   "browserslist": {
     "production": [

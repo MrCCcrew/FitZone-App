@@ -457,6 +457,10 @@ async function verifyTransaction(transaction: {
 }
 
 async function handleWebhook(payload: unknown): Promise<PaymentWebhookResult> {
+  if (!payload || typeof payload !== "object") {
+    return { ok: false, message: "invalid_payload" };
+  }
+
   const body = payload as PaymobWebhookBody;
 
   if (body.type !== "TRANSACTION" || !body.obj) {
