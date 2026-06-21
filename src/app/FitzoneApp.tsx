@@ -694,17 +694,18 @@ const Header = ({
   cartCount = 0,
   walletBalance = "0",
   summary,
+  storeEnabled,
 }: {
   currentPage: string;
   navigate: (p: string) => void;
   cartCount?: number;
   walletBalance?: string;
   summary?: UserSummary | null;
+  storeEnabled: boolean;
 }) => {
   const { lang, toggleLang } = useLang();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [announcements, setAnnouncements] = useState<string[]>([]);
-  const [storeEnabled, setStoreEnabled] = useState(false);
   const [annIndex, setAnnIndex] = useState(0);
   const t = (ar: string, en: string) => (lang === "ar" ? ar : en);
   useEffect(() => {
@@ -718,11 +719,6 @@ const Header = ({
       })
       .catch(() => {});
   }, []);
-  useEffect(() => {
-    loadPublicApi().then(d => {
-      if (typeof d.storeEnabled === "boolean") setStoreEnabled(d.storeEnabled);
-    }).catch(() => {});
-  }, [lang]);
   useEffect(() => {
     if (announcements.length <= 1) return;
     const t = setInterval(() => setAnnIndex(i => (i + 1) % announcements.length), 4000);
@@ -872,9 +868,8 @@ const Header = ({
 };
 
 // ─── FOOTER ─────────────────────────────────────────────────────────────────
-const Footer = ({ navigate }: { navigate: (p: string) => void }) => {
+const Footer = ({ navigate, storeEnabled }: { navigate: (p: string) => void; storeEnabled: boolean }) => {
   const [contact, setContact] = useState<PublicContact>(DEFAULT_CONTACT);
-  const [storeEnabled, setStoreEnabled] = useState(false);
   const t = useT();
 
   useEffect(() => {
@@ -883,7 +878,6 @@ const Footer = ({ navigate }: { navigate: (p: string) => void }) => {
         if (data.contact && typeof data.contact === "object") {
           setContact((current) => ({ ...current, ...(data.contact as Partial<PublicContact>) }));
         }
-        if (typeof data.storeEnabled === "boolean") setStoreEnabled(data.storeEnabled);
       })
       .catch(() => {});
   }, []);
@@ -2100,7 +2094,7 @@ const PrivateBookingModal = ({ trainer, type, onClose }: { trainer: PublicTraine
   );
 };
 
-const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summary: UserSummary | null }) => {
+const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string) => void; summary: UserSummary | null; storeEnabled: boolean }) => {
   const _w = useWindowWidth();
   const { lang } = useLang();
   const t = useT();
@@ -2145,7 +2139,6 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
   const [testimonials, setTestimonials] = useState<PublicTestimonial[]>([]);
   const [products, setProducts] = useState<StoreProduct[]>([]);
   const [showAllHomeProducts, setShowAllHomeProducts] = useState(false);
-  const [storeEnabled, setStoreEnabled] = useState(false);
   const [homeOffers, setHomeOffers] = useState<PublicOffer[]>([]);
   const [homeCustomPlans, setHomeCustomPlans] = useState<PublicMembership[]>([]);
   const [homeFeaturedPlan, setHomeFeaturedPlan] = useState<{ id: string; name: string; price: number; priceBefore: number | null; subtitle: string | null; features: string[]; durationDays: number } | null>(null);
@@ -2222,9 +2215,6 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
       }
       if (Array.isArray(d.testimonials) && d.testimonials.length > 0) {
         setTestimonials(d.testimonials.slice(0, 6));
-      }
-      if (typeof d.storeEnabled === "boolean") {
-        setStoreEnabled(d.storeEnabled);
       }
       if (Array.isArray(d.products) && d.products.length > 0) {
         setProducts(d.products.map((p: { id?: string; name: string; price: number; oldPrice: number | null; vatEnabled?: boolean; category: string; categoryLabel?: string; sizeType?: "none" | "clothing" | "shoes"; images?: string[]; sizes?: string[]; colors?: string[] }, i: number) => ({
@@ -9904,16 +9894,16 @@ export default function App() {
   };
 
   const pages = {
-    home: <HomePage navigate={navigate} summary={summary} />,
+    home: <HomePage navigate={navigate} summary={summary} storeEnabled={storeEnabled} />,
     about: <AboutPage />,
     classes: <ClassesPage navigate={navigate} />,
     classDetail: <ClassDetailPage navigate={navigate} />,
     schedule: <SchedulePage />,
     offers: <OffersPage navigate={navigate} />,
-    shop: storeEnabled ? <ShopPage navigate={navigate} /> : <HomePage navigate={navigate} summary={summary} />,
-    productDetail: storeEnabled ? <ProductDetailPage navigate={navigate} walletBalance={summary?.walletBalance ?? 0} /> : <HomePage navigate={navigate} summary={summary} />,
-    cart: storeEnabled ? <CartPage navigate={navigate} summary={summary} /> : <HomePage navigate={navigate} summary={summary} />,
-    checkout: storeEnabled ? <CartPage navigate={navigate} summary={summary} /> : <HomePage navigate={navigate} summary={summary} />,
+    shop: storeEnabled ? <ShopPage navigate={navigate} /> : <HomePage navigate={navigate} summary={summary} storeEnabled={storeEnabled} />,
+    productDetail: storeEnabled ? <ProductDetailPage navigate={navigate} walletBalance={summary?.walletBalance ?? 0} /> : <HomePage navigate={navigate} summary={summary} storeEnabled={storeEnabled} />,
+    cart: storeEnabled ? <CartPage navigate={navigate} summary={summary} /> : <HomePage navigate={navigate} summary={summary} storeEnabled={storeEnabled} />,
+    checkout: storeEnabled ? <CartPage navigate={navigate} summary={summary} /> : <HomePage navigate={navigate} summary={summary} storeEnabled={storeEnabled} />,
     wallet: <RedirectToAccountTab tab="wallet" />,
     rewards: <RedirectToAccountTab tab="wallet" />,
     referral: <RedirectToAccountTab tab="wallet" />,
@@ -9933,6 +9923,7 @@ export default function App() {
         cartCount={cartCount}
         walletBalance={(summary?.walletBalance ?? 0).toLocaleString(lang === "ar" ? "ar-EG" : "en-US")}
         summary={summary}
+        storeEnabled={storeEnabled}
       />
       <main>
         {/* MembershipsPage is always mounted so subscription modals work from any page.
@@ -9943,7 +9934,7 @@ export default function App() {
         </div>
         {page !== "memberships" && (pages[page as keyof typeof pages] || pages.home)}
       </main>
-      <Footer navigate={navigate} />
+      <Footer navigate={navigate} storeEnabled={storeEnabled} />
       <BottomNav currentPage={page} navigate={navigate} cartCount={cartCount} storeEnabled={storeEnabled} />
       <StoreGiftToast />
     </div>
