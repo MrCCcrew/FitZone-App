@@ -704,7 +704,7 @@ const Header = ({
   const { lang, toggleLang } = useLang();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [announcements, setAnnouncements] = useState<string[]>([]);
-  const [storeEnabled, setStoreEnabled] = useState(true);
+  const [storeEnabled, setStoreEnabled] = useState(false);
   const [annIndex, setAnnIndex] = useState(0);
   const t = (ar: string, en: string) => (lang === "ar" ? ar : en);
   useEffect(() => {
@@ -820,10 +820,12 @@ const Header = ({
                 : t("شحن المحفظة", "Top up wallet")}
             </span>
           </button>
-          <button onClick={() => navigate("cart")} aria-label={t("عربة التسوق", "Shopping cart")} style={{ position: "relative", background: "none", border: "none", cursor: "pointer", padding: 8 }}>
-            <I n="cart" s={20} c={C.gray} />
-            {cartCount > 0 && <span style={{ position: "absolute", top: 2, left: 2, width: 16, height: 16, background: C.red, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: "#fff", fontWeight: 700 }}>{cartCount}</span>}
-          </button>
+          {storeEnabled && (
+            <button onClick={() => navigate("cart")} aria-label={t("عربة التسوق", "Shopping cart")} style={{ position: "relative", background: "none", border: "none", cursor: "pointer", padding: 8 }}>
+              <I n="cart" s={20} c={C.gray} />
+              {cartCount > 0 && <span style={{ position: "absolute", top: 2, left: 2, width: 16, height: 16, background: C.red, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: "#fff", fontWeight: 700 }}>{cartCount}</span>}
+            </button>
+          )}
           <button
             onClick={() => navigate("account")}
             aria-label={summary?.authenticated ? (summary.user?.name || t("حسابي", "My account")) : t("تسجيل الدخول", "Login")}
@@ -872,6 +874,7 @@ const Header = ({
 // ─── FOOTER ─────────────────────────────────────────────────────────────────
 const Footer = ({ navigate }: { navigate: (p: string) => void }) => {
   const [contact, setContact] = useState<PublicContact>(DEFAULT_CONTACT);
+  const [storeEnabled, setStoreEnabled] = useState(false);
   const t = useT();
 
   useEffect(() => {
@@ -880,6 +883,7 @@ const Footer = ({ navigate }: { navigate: (p: string) => void }) => {
         if (data.contact && typeof data.contact === "object") {
           setContact((current) => ({ ...current, ...(data.contact as Partial<PublicContact>) }));
         }
+        if (typeof data.storeEnabled === "boolean") setStoreEnabled(data.storeEnabled);
       })
       .catch(() => {});
   }, []);
@@ -986,7 +990,7 @@ const Footer = ({ navigate }: { navigate: (p: string) => void }) => {
               ["memberships", t("الاشتراكات", "Memberships")],
               ...(SHOW_CLASSES_PAGE ? [["classes", t("الكلاسات", "Classes")]] : []),
               ["schedule", t("الجدول الأسبوعي", "Weekly schedule")],
-              ["shop", t("المتجر", "Shop")],
+              ...(storeEnabled ? [["shop", t("المتجر", "Shop")]] : []),
               ["offers", t("العروض", "Offers")],
             ],
           },
@@ -2141,7 +2145,7 @@ const HomePage = ({ navigate, summary }: { navigate: (p: string) => void; summar
   const [testimonials, setTestimonials] = useState<PublicTestimonial[]>([]);
   const [products, setProducts] = useState<StoreProduct[]>([]);
   const [showAllHomeProducts, setShowAllHomeProducts] = useState(false);
-  const [storeEnabled, setStoreEnabled] = useState(true);
+  const [storeEnabled, setStoreEnabled] = useState(false);
   const [homeOffers, setHomeOffers] = useState<PublicOffer[]>([]);
   const [homeCustomPlans, setHomeCustomPlans] = useState<PublicMembership[]>([]);
   const [homeFeaturedPlan, setHomeFeaturedPlan] = useState<{ id: string; name: string; price: number; priceBefore: number | null; subtitle: string | null; features: string[]; durationDays: number } | null>(null);
@@ -9697,10 +9701,12 @@ const BottomNav = ({
   currentPage,
   navigate,
   cartCount,
+  storeEnabled,
 }: {
   currentPage: string;
   navigate: (p: string) => void;
   cartCount: number;
+  storeEnabled: boolean;
 }) => {
   const { lang } = useLang();
   const t = (ar: string, en: string) => (lang === "ar" ? ar : en);
@@ -9709,7 +9715,7 @@ const BottomNav = ({
     { id: "memberships", label: t("اشتراكات", "Plans"),    icon: "star"     },
     { id: "offers",      label: t("العروض",   "Offers"),   icon: "gift"     },
     { id: "schedule",    label: t("الجدول",   "Schedule"), icon: "calendar" },
-    { id: "shop",        label: t("المتجر",   "Shop"),     icon: "cart"     },
+    ...(storeEnabled ? [{ id: "shop", label: t("المتجر", "Shop"), icon: "cart" }] : []),
     { id: "partners",    label: t("الشركاء",  "Partners"), icon: "handshake" },
     { id: "account",     label: t("حسابي",    "Account"),  icon: "user"     },
   ];
@@ -9764,19 +9770,19 @@ function RedirectToAccountTab({ tab }: { tab: string }) {
 
 export default function App() {
   const { lang } = useLang();
-  const [page, setPage] = useState("home");
+  const [page, setPage] = useState(() => {
+    if (typeof window === "undefined") return "home";
+    return new URL(window.location.href).searchParams.get("page") || "home";
+  });
   const [summary, setSummary] = useState<UserSummary | null>(null);
   const [cartCount, setCartCount] = useState(0);
+  const [storeEnabled, setStoreEnabled] = useState(false);
   const navigating = useRef(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-
-    const url = new URL(window.location.href);
-    const pageFromUrl = url.searchParams.get("page");
-    if (pageFromUrl) setPage(pageFromUrl);
-
     // Capture affiliate referral token and persist across navigation
+    const url = new URL(window.location.href);
     const refFromUrl = url.searchParams.get("ref");
     if (refFromUrl) {
       localStorage.setItem("fitzone:affiliate-ref", refFromUrl.trim().toUpperCase());
@@ -9788,8 +9794,16 @@ export default function App() {
 
   useEffect(() => {
     resetPublicApiCache();
-    void loadPublicApi(true);
+    loadPublicApi(true).then(d => {
+      if (typeof d.storeEnabled === "boolean") setStoreEnabled(d.storeEnabled);
+    }).catch(() => {});
   }, [lang]);
+
+  useEffect(() => {
+    if (!storeEnabled && ["shop", "cart", "checkout", "productDetail"].includes(page)) {
+      setPage("home");
+    }
+  }, [storeEnabled, page]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -9896,10 +9910,10 @@ export default function App() {
     classDetail: <ClassDetailPage navigate={navigate} />,
     schedule: <SchedulePage />,
     offers: <OffersPage navigate={navigate} />,
-    shop: <ShopPage navigate={navigate} />,
-    productDetail: <ProductDetailPage navigate={navigate} walletBalance={summary?.walletBalance ?? 0} />,
-    cart: <CartPage navigate={navigate} summary={summary} />,
-    checkout: <CartPage navigate={navigate} summary={summary} />,
+    shop: storeEnabled ? <ShopPage navigate={navigate} /> : <HomePage navigate={navigate} summary={summary} />,
+    productDetail: storeEnabled ? <ProductDetailPage navigate={navigate} walletBalance={summary?.walletBalance ?? 0} /> : <HomePage navigate={navigate} summary={summary} />,
+    cart: storeEnabled ? <CartPage navigate={navigate} summary={summary} /> : <HomePage navigate={navigate} summary={summary} />,
+    checkout: storeEnabled ? <CartPage navigate={navigate} summary={summary} /> : <HomePage navigate={navigate} summary={summary} />,
     wallet: <RedirectToAccountTab tab="wallet" />,
     rewards: <RedirectToAccountTab tab="wallet" />,
     referral: <RedirectToAccountTab tab="wallet" />,
@@ -9930,7 +9944,7 @@ export default function App() {
         {page !== "memberships" && (pages[page as keyof typeof pages] || pages.home)}
       </main>
       <Footer navigate={navigate} />
-      <BottomNav currentPage={page} navigate={navigate} cartCount={cartCount} />
+      <BottomNav currentPage={page} navigate={navigate} cartCount={cartCount} storeEnabled={storeEnabled} />
       <StoreGiftToast />
     </div>
   );
