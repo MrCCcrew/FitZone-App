@@ -61,11 +61,25 @@ export async function GET() {
 
   // Referral conversions = commissions that came via an affiliate link (paid subscriptions only)
   const referralCustomers = commissions.filter((c) => c.userMembership.affiliateLinkId !== null);
+  // Paid customers via affiliate links (unique)
+  const paidViaLinkUserIds = new Set(referralCustomers.map((c) => c.userMembership.userId));
+  const paidCustomersCount = paidViaLinkUserIds.size;
   // Total unique customers (code + referral, deduped by userId via Set on userMembershipId)
   const totalCustomers = new Set([
     ...codeCustomers.map((u) => u.userId),
-    ...referralCustomers.map((c) => c.userMembership.userId),
+    ...paidViaLinkUserIds,
   ]).size;
+
+  // Registrations = users who registered via this partner's links but haven't subscribed yet
+  // (pendingPartnerRef still set) + users who already subscribed via affiliate link
+  const linkTokens = links.map((l) => l.token);
+  const registeredNotSubscribed = linkTokens.length > 0
+    ? await (db as any).user.count({ where: { pendingPartnerRef: { in: linkTokens } } })
+    : 0;
+  const registrationsCount = registeredNotSubscribed + paidCustomersCount;
+
+  // Total clicks across all links
+  const totalClicks = links.reduce((sum, l) => sum + l.clickCount, 0);
 
   return NextResponse.json({
     partner: {
@@ -87,6 +101,9 @@ export async function GET() {
       totalCodes: codes.length,
       activeCodes: codes.filter((c) => c.isActive).length,
       totalLinks: links.length,
+      totalClicks,
+      registrationsCount,
+      paidCustomersCount,
       totalCustomers,
       totalCommissionPending: totalPending,
       totalCommissionPaid: totalWithdrawn,

@@ -495,14 +495,28 @@ export async function POST(req: Request) {
         }
         paymentAmount = Math.max(0, paymentAmount - discountApplied);
       } else if (affiliateLinkRecord && paymentAmount) {
-        const partnerDiscountConfig = await tx.partner.findUnique({
-          where: { id: affiliateLinkRecord.partnerId },
-          select: { referralDiscountRate: true },
-        });
-        const rate = partnerDiscountConfig?.referralDiscountRate ?? 0;
-        if (rate > 0) {
-          discountApplied = Math.round((paymentAmount * rate) / 100 * 100) / 100;
-          paymentAmount = Math.max(0, paymentAmount - discountApplied);
+        // Affiliate discount: one-time total per customer across ALL eligible operations.
+        // Eligible: regular subscriptions (not offers, not packages). Store checkout is deferred.
+        // "Used" means payment confirmed — pending_payment memberships do NOT count.
+        const isEligibleForAffilDiscount = !offerId && plan.kind !== "package";
+        if (isEligibleForAffilDiscount) {
+          // "Discount used" = subscription reached active/expired/cancelled (payment confirmed).
+          // Known edge case: pending_payment→expired (payment failure) also counts as "used"
+          // because we cannot distinguish it from natural expiry without a schema change.
+          const prevAffilSubs = await tx.userMembership.count({
+            where: { userId, affiliateLinkId: { not: null }, status: { in: ["active", "expired", "cancelled"] } },
+          });
+          if (prevAffilSubs === 0) {
+            const partnerDiscountConfig = await tx.partner.findUnique({
+              where: { id: affiliateLinkRecord.partnerId },
+              select: { referralDiscountRate: true },
+            });
+            const rate = partnerDiscountConfig?.referralDiscountRate ?? 0;
+            if (rate > 0) {
+              discountApplied = Math.round((paymentAmount * rate) / 100 * 100) / 100;
+              paymentAmount = Math.max(0, paymentAmount - discountApplied);
+            }
+          }
         }
       } else if (agentRecord && paymentAmount) {
         // Agent referral discount for the client

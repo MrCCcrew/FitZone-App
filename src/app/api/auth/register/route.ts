@@ -15,7 +15,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const { name, email, phone, password, referralCode, affiliateRef, agentRef, staffRef, trainerRef, nutritionRef } = await req.json();
+    const { name, email, phone, password, referralCode, affiliateRef, partnerRef, agentRef, staffRef, trainerRef, nutritionRef } = await req.json();
 
     const normalizedName = String(name ?? "").trim();
     const normalizedEmail = String(email ?? "").trim().toLowerCase();
@@ -71,13 +71,15 @@ export async function POST(req: Request) {
 
     // Validate partner affiliate ref — store on user so commission fires even if they subscribe later
     const normalizedAffiliateRef = affiliateRef ? String(affiliateRef).trim().toUpperCase() : null;
+    const normalizedPartnerRef = partnerRef ? String(partnerRef).trim().toUpperCase() : null;
     let pendingPartnerRef: string | null = null;
-    if (normalizedAffiliateRef) {
+    const partnerToken = normalizedAffiliateRef ?? normalizedPartnerRef;
+    if (partnerToken) {
       const al = await db.partnerAffiliateLink.findUnique({
-        where: { token: normalizedAffiliateRef },
+        where: { token: partnerToken },
         select: { id: true, isActive: true },
       });
-      if (al?.isActive) pendingPartnerRef = normalizedAffiliateRef;
+      if (al?.isActive) pendingPartnerRef = partnerToken;
     }
 
     // Validate sales agent referral code — store on user for later subscription attribution

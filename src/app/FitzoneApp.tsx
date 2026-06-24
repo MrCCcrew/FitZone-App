@@ -3847,6 +3847,7 @@ type PlanItem = {
   discountPct?: number | null;
   selectedMonths?: number | null;
   classSessions?: Array<{ classId: string; classType?: string; sessions: number }> | null;
+  kind?: string | null;
 };
 
 type MembershipCheckoutPreview = {
@@ -3883,6 +3884,7 @@ function mapMembershipToPlanItem(membership: PublicMembership, color: string, po
     maxMonths: membership.maxMonths ?? null,
     discountPct: membership.discountPct ?? null,
     classSessions: Array.isArray((membership as any).classSessions) ? (membership as any).classSessions : null,
+    kind: membership.kind ?? null,
   };
 }
 
@@ -3909,7 +3911,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
   const [pendingPaymentUrl, setPendingPaymentUrl] = useState<string | null>(null);
   const [verifyModal, setVerifyModal] = useState<{ plan: PlanItem; scheduleIds: string[] } | null>(null);
   const [checkoutPreview, setCheckoutPreview] = useState<MembershipCheckoutPreview | null>(null);
-  const [subCheckoutOptions, setSubCheckoutOptions] = useState<{ walletBalance: number; rewardPoints: number; pointValueEGP: number; rewardPointsEGP: number } | null>(null);
+  const [subCheckoutOptions, setSubCheckoutOptions] = useState<{ walletBalance: number; rewardPoints: number; pointValueEGP: number; rewardPointsEGP: number; affiliateDiscountRate?: number; affiliateDiscountEligible?: boolean } | null>(null);
   const [subUseWallet, setSubUseWallet] = useState(false);
   const [subUseRewards, setSubUseRewards] = useState(false);
   const [verifyCode, setVerifyCode] = useState("");
@@ -4556,13 +4558,19 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
       promoDiscount = Math.max(0, promoDiscount);
     }
     const afterPromo = Math.max(0, membershipPrice - promoDiscount);
+    const isEligibleForAffiliateDiscount = !plan.offerId && plan.kind !== "package";
+    const affiliateRate = isEligibleForAffiliateDiscount && subCheckoutOptions?.affiliateDiscountEligible
+      ? (subCheckoutOptions.affiliateDiscountRate ?? 0) : 0;
+    const affiliateDiscount = affiliateRate > 0
+      ? Math.round(afterPromo * affiliateRate / 100 * 100) / 100 : 0;
+    const afterAffiliate = Math.max(0, afterPromo - affiliateDiscount);
     const subRewardsEGP = subCheckoutOptions?.rewardPointsEGP ?? 0;
     const subWalletBal = subCheckoutOptions?.walletBalance ?? 0;
-    const rewardsDiscount = subUseRewards ? Math.min(subRewardsEGP, afterPromo) : 0;
-    const walletDiscount = subUseWallet ? Math.min(subWalletBal, Math.max(0, afterPromo - rewardsDiscount)) : 0;
-    const finalAmount = Math.max(0, afterPromo - rewardsDiscount - walletDiscount);
+    const rewardsDiscount = subUseRewards ? Math.min(subRewardsEGP, afterAffiliate) : 0;
+    const walletDiscount = subUseWallet ? Math.min(subWalletBal, Math.max(0, afterAffiliate - rewardsDiscount)) : 0;
+    const finalAmount = Math.max(0, afterAffiliate - rewardsDiscount - walletDiscount);
     const pointsToDeduct = subUseRewards && subCheckoutOptions ? Math.ceil(rewardsDiscount / subCheckoutOptions.pointValueEGP) : 0;
-    return { originalPrice, membershipPrice, membershipDiscount, promoDiscount, rewardsDiscount, walletDiscount, finalAmount, pointsToDeduct };
+    return { originalPrice, membershipPrice, membershipDiscount, promoDiscount, affiliateDiscount, rewardsDiscount, walletDiscount, finalAmount, pointsToDeduct };
   };
 
   const openCheckoutPreview = (plan: PlanItem, scheduleIds: string[] = []) => {
@@ -4576,7 +4584,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
     }
     fetch("/api/me/checkout-options", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
-      .then((d: { walletBalance: number; rewardPoints: number; pointValueEGP: number; rewardPointsEGP: number } | null) => {
+      .then((d: { walletBalance: number; rewardPoints: number; pointValueEGP: number; rewardPointsEGP: number; affiliateDiscountRate?: number; affiliateDiscountEligible?: boolean } | null) => {
         if (d) setSubCheckoutOptions(d);
       })
       .catch(() => {});
@@ -5441,6 +5449,16 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
                         <div style={{ display: "flex", justifyContent: "space-between", color: C.gray }}>
                           <span>{discountResult?.description ? `${t("كود الخصم", "Promo code")} (${discountCode.trim().toUpperCase()})` : t("خصم الكود", "Promo discount")}</span>
                           <strong style={{ color: C.success }}>- {formatCurrency(summary.promoDiscount)}</strong>
+                        </div>
+                      ) : null}
+                      {summary.affiliateDiscount > 0 ? (
+                        <div style={{ display: "flex", justifyContent: "space-between", color: C.gray }}>
+                          <span>{t("خصم الشريك", "Partner discount")}</span>
+                          <strong style={{ color: C.success }}>- {formatCurrency(summary.affiliateDiscount)}</strong>
+                        </div>
+                      ) : subCheckoutOptions?.affiliateDiscountEligible && (checkoutPreview.plan.offerId || checkoutPreview.plan.kind === "package") ? (
+                        <div style={{ fontSize: 11, color: C.gray, fontStyle: "italic", paddingTop: 2 }}>
+                          {t("خصم الشريك لا ينطبق على العروض أو الباقات", "Partner discount does not apply to offers or packages")}
                         </div>
                       ) : null}
                       {summary.rewardsDiscount > 0 ? (
@@ -9214,12 +9232,18 @@ const PartnersPage = ({ navigate, summary }: { navigate: (p: string) => void; su
                                 {partner.code.code}
                               </span>
                             </div>
+                            <div style={{ fontSize: 11, color: C.gray, textAlign: "center", lineHeight: 1.5 }}>
+                              {t(
+                                "قدّمي هذا الكود عند زيارة الشريك — لا يُستخدم داخل FitZone",
+                                "Show this code at the partner's location — not valid inside FitZone",
+                              )}
+                            </div>
                             <button
-                              onClick={() => applyCode(partner.code!.code)}
+                              onClick={() => void navigator.clipboard.writeText(partner.code!.code)}
                               className="btn-primary"
                               style={{ width: "100%", justifyContent: "center", fontSize: 13, padding: "10px" }}
                             >
-                              {t("اختيار الكود لاستخدامه عند الشريك", "Choose code for partner benefit")}
+                              {t("📋 نسخ الكود", "📋 Copy code")}
                             </button>
                           </div>
                         ) : (

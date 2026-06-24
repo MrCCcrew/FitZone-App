@@ -57,7 +57,7 @@ type VerifyResult = {
 };
 type DashboardData = {
   partner: DashboardPartner;
-  stats: { totalCodes: number; activeCodes: number; totalLinks: number; totalCustomers: number; totalCommissionPending: number; totalCommissionPaid: number };
+  stats: { totalCodes: number; activeCodes: number; totalLinks: number; totalClicks: number; registrationsCount: number; paidCustomersCount: number; totalCustomers: number; totalCommissionPending: number; totalCommissionPaid: number };
   links: PartnerAffiliateLink[];
   recentCommissions: Array<{ id: string; amount: number; status: string; createdAt: string; customerName: string; membershipName: string; source: "code" | "link" }>;
   codeCustomers: CodeCustomer[];
@@ -305,7 +305,7 @@ export default function Partners({ viewMode = "admin" }: { viewMode?: ViewMode }
   };
 
   const copyLink = (token: string) => {
-    void navigator.clipboard.writeText(`${window.location.origin}/?ref=${token}`);
+    void navigator.clipboard.writeText(`${window.location.origin}/register?partnerRef=${token}`);
     window.alert("تم نسخ الرابط!");
   };
 
@@ -341,9 +341,12 @@ export default function Partners({ viewMode = "admin" }: { viewMode?: ViewMode }
         {/* Stats */}
         <div className="grid gap-4 sm:grid-cols-3">
           {[
-            { label: "عملاء منضمون", value: stats.totalCustomers, color: "text-emerald-300" },
+            { label: "إجمالي النقرات", value: stats.totalClicks ?? 0, color: "text-sky-300" },
+            { label: "التسجيلات", value: stats.registrationsCount ?? 0, color: "text-violet-300" },
+            { label: "عملاء دفعوا فعلاً", value: stats.paidCustomersCount ?? stats.totalCustomers, color: "text-emerald-300" },
             { label: "عمولة معلقة", value: `${stats.totalCommissionPending.toFixed(0)} ج.م`, color: "text-yellow-300" },
             { label: "عمولة مسحوبة", value: `${stats.totalCommissionPaid.toFixed(0)} ج.م`, color: "text-pink-300" },
+            { label: "إجمالي العملاء", value: stats.totalCustomers, color: "text-gray-300" },
           ].map((s) => (
             <div key={s.label} className="rounded-2xl border border-gray-800 bg-gray-900/60 p-5">
               <div className="text-sm text-gray-400">{s.label}</div>
@@ -406,7 +409,7 @@ export default function Partners({ viewMode = "admin" }: { viewMode?: ViewMode }
                     </div>
                   </div>
                   <div dir="ltr" className="rounded-lg bg-black/30 px-3 py-2 text-xs font-mono text-gray-400 break-all">
-                    {origin}/?ref={l.token}
+                    {origin}/register?partnerRef={l.token}
                   </div>
                 </div>
               ))}

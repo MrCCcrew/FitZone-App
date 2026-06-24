@@ -11,15 +11,18 @@ export async function GET() {
       return NextResponse.json({ error: "يجب تسجيل الدخول أولًا." }, { status: 401 });
     }
 
-    const [dbUser, rewardSettings] = await Promise.all([
+    const [dbUser, rewardSettings, affiliateUsageCount] = await Promise.all([
       db.user.findUnique({
         where: { id: user.id },
         select: {
           wallet: { select: { balance: true } },
           rewardPoints: { select: { points: true } },
+          pendingPartnerRef: true,
         },
       }),
       db.siteContent.findUnique({ where: { section: "reward_settings" } }),
+      // Mirrors subscribe/route.ts: "used" = active | expired | cancelled (payment confirmed)
+      db.userMembership.count({ where: { userId: user.id, affiliateLinkId: { not: null }, status: { in: ["active", "expired", "cancelled"] } } }),
     ]);
 
     let pointValueEGP = 0.1;
@@ -33,11 +36,32 @@ export async function GET() {
     const walletBalance = dbUser?.wallet?.balance ?? 0;
     const rewardPoints = dbUser?.rewardPoints?.points ?? 0;
 
+    let affiliateDiscountRate = 0;
+    let affiliateDiscountEligible = false;
+    if (dbUser?.pendingPartnerRef && affiliateUsageCount === 0) {
+      const link = await db.partnerAffiliateLink.findUnique({
+        where: { token: dbUser.pendingPartnerRef },
+        select: { isActive: true, partnerId: true },
+      });
+      if (link?.isActive) {
+        const partner = await db.partner.findUnique({
+          where: { id: link.partnerId },
+          select: { referralDiscountRate: true },
+        });
+        if ((partner?.referralDiscountRate ?? 0) > 0) {
+          affiliateDiscountRate = partner!.referralDiscountRate!;
+          affiliateDiscountEligible = true;
+        }
+      }
+    }
+
     return NextResponse.json({
       walletBalance,
       rewardPoints,
       pointValueEGP,
       rewardPointsEGP: Math.floor(rewardPoints * pointValueEGP * 100) / 100,
+      affiliateDiscountRate,
+      affiliateDiscountEligible,
     });
   } catch (error) {
     console.error("[CHECKOUT_OPTIONS_GET]", error);
