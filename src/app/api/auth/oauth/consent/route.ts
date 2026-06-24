@@ -7,6 +7,7 @@ const CLEAR_COOKIES = (res: NextResponse) => {
   res.cookies.set("oauth_pending_profile", "", { httpOnly: true, maxAge: 0, path: "/" });
   res.cookies.set("oauth_pending_session", "", { httpOnly: true, maxAge: 0, path: "/" });
   res.cookies.set("oauth_ref_code", "", { httpOnly: true, maxAge: 0, path: "/" });
+  res.cookies.set("oauth_partner_ref", "", { httpOnly: true, maxAge: 0, path: "/" });
   return res;
 };
 
@@ -22,6 +23,7 @@ export async function POST(req: NextRequest) {
   }
 
   const refCode = req.cookies.get("oauth_ref_code")?.value?.trim().toUpperCase() || null;
+  const partnerRefToken = req.cookies.get("oauth_partner_ref")?.value?.trim().toUpperCase() || null;
 
   const result = await findOrCreateOAuthUser({
     provider: pending.provider,
@@ -104,6 +106,24 @@ export async function POST(req: NextRequest) {
       }
     } catch {
       // Referral error must not block account creation
+    }
+  }
+
+  // Apply partner affiliate ref for new users (separate from member referral)
+  if (result.isNew && partnerRefToken) {
+    try {
+      const al = await db.partnerAffiliateLink.findUnique({
+        where: { token: partnerRefToken },
+        select: { isActive: true },
+      });
+      if (al?.isActive) {
+        await db.user.update({
+          where: { id: result.user.id },
+          data: { pendingPartnerRef: partnerRefToken },
+        });
+      }
+    } catch {
+      // Non-blocking — partner ref failure must not block account creation
     }
   }
 

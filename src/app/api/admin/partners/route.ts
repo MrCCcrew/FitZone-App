@@ -235,6 +235,9 @@ export async function PATCH(req: Request) {
     if (body.notes !== undefined) data.notes = String(body.notes).trim() || null;
 
     const partner = await db.partner.update({ where: { id: body.id }, data, include: INCLUDE });
+    if (body.name !== undefined) {
+      await db.user.update({ where: { id: partner.userId }, data: { name: String(body.name).trim() } }).catch(() => null);
+    }
     void logAudit({ action: "update", targetType: "partner", targetId: partner.id, details: { name: partner.name } });
     return NextResponse.json(formatPartner(partner));
   } catch (err) {

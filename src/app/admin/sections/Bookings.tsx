@@ -212,6 +212,7 @@ export default function Bookings() {
   const [cameraBusy, setCameraBusy] = useState(false);
   const [imageScanBusy, setImageScanBusy] = useState(false);
   const [giftModal, setGiftModal] = useState(false);
+  const [customerSearch, setCustomerSearch] = useState("");
   const [giftCustomer, setGiftCustomer] = useState("");
   const [giftSchedule, setGiftSchedule] = useState("");
   const [giftNote, setGiftNote] = useState("");
@@ -249,17 +250,22 @@ export default function Bookings() {
 
   const loadCustomers = useCallback(async () => {
     const response = await fetch("/api/admin/customers", { cache: "no-store" });
-    const payload = await response.json();
-    if (Array.isArray(payload)) {
-      setCustomers(
-        payload.map((item) => ({
-          id: item.id,
-          name: item.name,
-          email: item.email,
-          phone: item.phone,
-        })),
-      );
-    }
+    const payload = await response.json().catch(() => ({}));
+    const list = Array.isArray(payload)
+      ? payload
+      : Array.isArray(payload?.customers)
+      ? payload.customers
+      : Array.isArray(payload?.users)
+      ? payload.users
+      : [];
+    setCustomers(
+      list.map((item: CustomerOption) => ({
+        id: item.id,
+        name: item.name,
+        email: item.email,
+        phone: item.phone,
+      })),
+    );
   }, []);
 
   const loadSchedules = useCallback(async (classId?: string) => {
@@ -862,6 +868,7 @@ export default function Bookings() {
                 setGiftCustomer("");
                 setGiftSchedule("");
                 setGiftNote("");
+                setCustomerSearch("");
                 void loadSchedules();
                 void loadCustomers();
                 setGiftModal(true);
@@ -873,7 +880,14 @@ export default function Bookings() {
           )}
           {permsLoaded && (userRole !== "trainer" || trainerPerms.canAddBookings) && (
             <button
-              onClick={() => setAddModal(true)}
+              onClick={() => {
+                setSelectedCustomer("");
+                setSelectedSchedule("");
+                setCustomerSearch("");
+                void loadSchedules();
+                void loadCustomers();
+                setAddModal(true);
+              }}
               className="rounded-xl bg-[#ff4f93] px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-[#ff2f7d]"
             >
               + إضافة حجز
@@ -1310,17 +1324,30 @@ export default function Bookings() {
           <div className="space-y-4">
             <div>
               <label className="mb-2 block text-xs text-[#d7aabd]">اختيار العميل</label>
+              <input
+                value={customerSearch}
+                onChange={(e) => setCustomerSearch(e.target.value)}
+                placeholder="ابحث بالاسم أو الهاتف..."
+                className={`${INPUT} mb-2`}
+              />
               <select
                 value={selectedCustomer}
                 onChange={(event) => setSelectedCustomer(event.target.value)}
                 className={INPUT}
               >
-                <option value="">اختاري عميلة</option>
-                {customers.map((customer) => (
-                  <option key={customer.id} value={customer.id}>
-                    {customer.name} • {customer.phone}
-                  </option>
-                ))}
+                <option value="">
+                  {customers.length === 0 ? "لا يوجد عملاء" : "اختاري عميلة"}
+                </option>
+                {customers
+                  .filter((c) => {
+                    const q = customerSearch.toLowerCase();
+                    return !q || c.name.toLowerCase().includes(q) || c.phone.includes(q);
+                  })
+                  .map((customer) => (
+                    <option key={customer.id} value={customer.id}>
+                      {customer.name} • {customer.phone}
+                    </option>
+                  ))}
               </select>
             </div>
 
@@ -1404,17 +1431,30 @@ export default function Bookings() {
 
             <div>
               <label className="mb-2 block text-xs text-[#d7aabd]">العميلة</label>
+              <input
+                value={customerSearch}
+                onChange={(e) => setCustomerSearch(e.target.value)}
+                placeholder="ابحث بالاسم أو الهاتف..."
+                className={`${INPUT} mb-2`}
+              />
               <select
                 value={giftCustomer}
                 onChange={(e) => setGiftCustomer(e.target.value)}
                 className={INPUT}
               >
-                <option value="">اختاري العميلة</option>
-                {customers.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} — {c.phone}
-                  </option>
-                ))}
+                <option value="">
+                  {customers.length === 0 ? "لا يوجد عملاء" : "اختاري العميلة"}
+                </option>
+                {customers
+                  .filter((c) => {
+                    const q = customerSearch.toLowerCase();
+                    return !q || c.name.toLowerCase().includes(q) || c.phone.includes(q);
+                  })
+                  .map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} — {c.phone}
+                    </option>
+                  ))}
               </select>
             </div>
 

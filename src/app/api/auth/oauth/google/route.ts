@@ -7,6 +7,7 @@ export async function GET(req: NextRequest) {
   if (!clientId) return NextResponse.json({ error: "Google OAuth not configured." }, { status: 503 });
 
   const refCode = req.nextUrl.searchParams.get("ref")?.trim().toUpperCase() ?? "";
+  const partnerRef = req.nextUrl.searchParams.get("partnerRef")?.trim().toUpperCase() ?? "";
 
   const state = randomBytes(16).toString("hex");
   const params = new URLSearchParams({
@@ -23,6 +24,9 @@ export async function GET(req: NextRequest) {
   res.cookies.set("oauth_state", state, { httpOnly: true, maxAge: 600, path: "/", sameSite: "lax" });
   if (refCode) {
     res.cookies.set("oauth_ref_code", refCode, { httpOnly: true, maxAge: 600, path: "/", sameSite: "lax" });
+  }
+  if (partnerRef) {
+    res.cookies.set("oauth_partner_ref", partnerRef, { httpOnly: true, maxAge: 600, path: "/", sameSite: "lax" });
   }
   return res;
 }

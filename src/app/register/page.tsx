@@ -32,10 +32,16 @@ function AppleIcon() {
   );
 }
 
-function SocialButtons({ lang, acceptedTerms, referralCode }: { lang: string; acceptedTerms: boolean; referralCode?: string }) {
+function SocialButtons({ lang, acceptedTerms, referralCode, partnerRef }: { lang: string; acceptedTerms: boolean; referralCode?: string; partnerRef?: string }) {
   const t = (ar: string, en: string) => (lang === "ar" ? ar : en);
   const googleHref = acceptedTerms
-    ? `/api/auth/oauth/google${referralCode ? `?ref=${encodeURIComponent(referralCode)}` : ""}`
+    ? (() => {
+        const params = new URLSearchParams();
+        if (referralCode) params.set("ref", referralCode);
+        if (partnerRef) params.set("partnerRef", partnerRef);
+        const qs = params.toString();
+        return `/api/auth/oauth/google${qs ? `?${qs}` : ""}`;
+      })()
     : undefined;
   return (
     <div className="space-y-3">
@@ -96,6 +102,7 @@ function RegisterForm() {
   const [form, setForm] = useState({ name: "", email: "", phone: "", password: "", confirm: "" });
   const [referralCode, setReferralCode] = useState("");
   const [referralFromUrl, setReferralFromUrl] = useState(false);
+  const [partnerRef, setPartnerRef] = useState("");
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
@@ -108,6 +115,21 @@ function RegisterForm() {
     if (ref) {
       setReferralCode(ref.toUpperCase());
       setReferralFromUrl(true);
+    }
+    const pRef = searchParams.get("partnerRef");
+    if (pRef) {
+      const normalized = pRef.trim().toUpperCase();
+      setPartnerRef(normalized);
+      const countedKey = `fitzone:partner-click-counted:${normalized}`;
+      if (!sessionStorage.getItem(countedKey)) {
+        fetch("/api/public/partner-link-click", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: normalized }),
+        }).then(() => {
+          sessionStorage.setItem(countedKey, "1");
+        }).catch(() => {});
+      }
     }
     // Store staff/trainer/nutrition referral tokens in sessionStorage for use on submit
     const staffRef = searchParams.get("staffRef");
@@ -161,7 +183,7 @@ function RegisterForm() {
           phone: form.phone,
           password: form.password,
           referralCode: referralCode.trim().toUpperCase() || null,
-          affiliateRef: sessionStorage.getItem("fitzone:affiliate-ref") || null,
+          partnerRef: partnerRef || null,
           staffRef: sessionStorage.getItem("fitzone:staff-ref") || null,
           trainerRef: sessionStorage.getItem("fitzone:trainer-ref") || null,
           nutritionRef: sessionStorage.getItem("fitzone:nutrition-ref") || null,
@@ -228,6 +250,12 @@ function RegisterForm() {
         <div className="rounded-3xl border border-white/10 bg-white/5 p-8 shadow-[0_30px_80px_rgba(0,0,0,0.45)] backdrop-blur-xl">
           <h1 className="mb-2 text-2xl font-black text-white">{t("إنشاء حساب جديد", "Create a new account")}</h1>
           <p className="mb-6 text-sm text-gray-400">{t("انضمي لعائلة فيت زون اليوم", "Join the Fit Zone family today")}</p>
+
+          {partnerRef && (
+            <div className="mb-5 rounded-xl border border-sky-500/30 bg-sky-950/30 px-4 py-3 text-sm text-sky-300">
+              {t("✅ تم تطبيق رابط الشريك تلقائياً.", "✅ Partner referral link applied automatically.")}
+            </div>
+          )}
 
           {error ? (
             <div className="mb-5 rounded-xl border border-red-500/30 bg-red-950/40 px-4 py-3 text-sm text-red-300">{error}</div>
@@ -425,7 +453,7 @@ function RegisterForm() {
             </button>
           </form>
 
-          <SocialButtons lang={lang} acceptedTerms={acceptedTerms} referralCode={referralCode || undefined} />
+          <SocialButtons lang={lang} acceptedTerms={acceptedTerms} referralCode={referralCode || undefined} partnerRef={partnerRef || undefined} />
 
           <div className="mt-6 text-center text-sm">
             <span className="text-gray-400">{t("لديك حساب بالفعل؟", "Already have an account?")} </span>
