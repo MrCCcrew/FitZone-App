@@ -37,9 +37,9 @@ const INPUT = "w-full bg-gray-800 border border-gray-700 focus:border-red-500 ro
 
 function Modal({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
-      <div className="relative bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+      <div className="relative bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-md">
         <div className="flex items-center justify-between mb-5">
           <h3 className="text-white font-black text-lg">{title}</h3>
           <button onClick={onClose} className="text-gray-500 hover:text-white text-2xl leading-none">×</button>

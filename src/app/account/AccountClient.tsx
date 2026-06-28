@@ -339,7 +339,7 @@ function CongratsPopup({ msg, onClose }: { msg: string; onClose: () => void }) {
     return () => clearTimeout(t);
   }, [onClose]);
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
       <div
         className="relative max-w-sm w-full rounded-3xl border border-pink-400/40 bg-gradient-to-br from-[#3a0f22] to-[#5c1535] p-8 text-center shadow-[0_30px_80px_rgba(200,20,100,0.45)] animate-[fadeInScale_0.35s_ease]"
         onClick={(e) => e.stopPropagation()}

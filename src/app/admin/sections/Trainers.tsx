@@ -175,10 +175,9 @@ function Modal({
   onClose: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
       <div
         className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-gray-700 bg-gray-900 p-5"
-        onClick={(event) => event.stopPropagation()}
       >
         <div className="mb-5 flex items-center justify-between">
           <h3 className="text-lg font-black text-white">{title}</h3>
@@ -1513,8 +1512,8 @@ export default function Trainers() {
         const closeApproveModal = () => { setApproveModal(null); setApprovePrice(""); setApproveNote(""); setApproveSessionsCount(""); setApproveDurationDays(""); setApproveSlots([]); setApproveSlotInput(""); setApproveTrainerId(""); };
         const isAdmin = userRole !== "trainer";
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={closeApproveModal}>
-            <div className="w-full max-w-md rounded-2xl border border-gray-700 bg-gray-900 p-6 space-y-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+            <div className="w-full max-w-md rounded-2xl border border-gray-700 bg-gray-900 p-6 space-y-4 max-h-[90vh] overflow-y-auto">
               <h3 className="text-lg font-black text-white">✅ الموافقة على الطلب</h3>
               <div className="text-sm text-gray-400">
                 العميل: <span className="text-white">{approveModal.user.name}</span> — {approveModal.type === "private" ? "برايفيت" : "ميني برايفيت"}
@@ -1619,8 +1618,8 @@ export default function Trainers() {
 
       {/* ── Reject Modal ── */}
       {rejectModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => setRejectModal(null)}>
-          <div className="w-full max-w-md rounded-2xl border border-gray-700 bg-gray-900 p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-gray-700 bg-gray-900 p-6 space-y-4">
             <h3 className="text-lg font-black text-white">✕ رفض الطلب</h3>
             <div className="text-sm text-gray-400">
               العميل: <span className="text-white">{rejectModal.user.name}</span> — {rejectModal.type === "private" ? "برايفيت" : "ميني برايفيت"} مع <span className="text-pink-300">{rejectModal.trainer.name}</span>
@@ -1642,8 +1641,8 @@ export default function Trainers() {
 
       {/* ── Discount Modal ── */}
       {discountModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => setDiscountModal(null)}>
-          <div className="w-full max-w-md rounded-2xl border border-gray-700 bg-gray-900 p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-gray-700 bg-gray-900 p-6 space-y-4">
             <h3 className="text-lg font-black text-white">🎁 منح خصم — {discountModal.name}</h3>
             <div>
               <label className="block text-xs font-bold text-gray-400 mb-1">العميل *</label>

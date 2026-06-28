@@ -226,10 +226,9 @@ function Modal({
   onClose: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-sm">
       <div
         className="w-full max-w-3xl rounded-3xl border border-white/10 bg-[#2a0f1f] p-6 shadow-2xl max-h-[88vh] overflow-y-auto"
-        onClick={(event) => event.stopPropagation()}
       >
         <div className="mb-6 flex items-center justify-between">
           <h3 className="text-xl font-black text-white">{title}</h3>

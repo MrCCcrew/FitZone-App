@@ -35,7 +35,6 @@ export function StoreGiftRulesModal({ onClose }: { onClose: () => void }) {
     <>
       <style>{CSS}</style>
       <div
-        onClick={onClose}
         style={{
           position: "fixed", inset: 0,
           background: "rgba(0,0,0,.75)",
