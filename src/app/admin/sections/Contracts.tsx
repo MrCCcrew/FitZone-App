@@ -444,8 +444,8 @@ function ManagerDashboard() {
 
       {/* Create partner modal */}
       {showCreatePartner && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 print-hidden" onClick={() => setShowCreatePartner(false)}>
-          <div className="w-full max-w-lg rounded-2xl border border-gray-700 bg-gray-900 p-6 space-y-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 print-hidden">
+          <div className="w-full max-w-lg rounded-2xl border border-gray-700 bg-gray-900 p-6 space-y-4 max-h-[90vh] overflow-y-auto">
             <h3 className="text-lg font-black text-white">إضافة شريك جديد</h3>
             {partnerError && <p className="text-sm text-red-400">{partnerError}</p>}
             <div className="grid grid-cols-2 gap-3">
@@ -498,8 +498,8 @@ function ManagerDashboard() {
 
       {/* Create agent modal */}
       {showCreate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 print-hidden" onClick={() => setShowCreate(false)}>
-          <div className="w-full max-w-md rounded-2xl border border-gray-700 bg-gray-900 p-6 space-y-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 print-hidden">
+          <div className="w-full max-w-md rounded-2xl border border-gray-700 bg-gray-900 p-6 space-y-4 max-h-[90vh] overflow-y-auto">
             <h3 className="text-lg font-black text-white">إضافة مندوب جديد</h3>
             {createError && <p className="text-sm text-red-400">{createError}</p>}
             <div className="grid grid-cols-2 gap-3">
@@ -520,8 +520,8 @@ function ManagerDashboard() {
 
       {/* Agent detail drawer */}
       {(selectedAgent || detailLoading) && (
-        <div className="fixed inset-0 z-50 flex items-center justify-end bg-black/60 p-4 print-hidden" onClick={() => setSelectedAgent(null)}>
-          <div className="w-full max-w-lg h-full rounded-2xl border border-gray-700 bg-gray-900 overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-end bg-black/60 p-4 print-hidden">
+          <div className="w-full max-w-lg h-full rounded-2xl border border-gray-700 bg-gray-900 overflow-y-auto">
             <div className="p-5 space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-black text-white">{selectedAgent?.name ?? "جاري التحميل..."}</h3>
@@ -1077,8 +1077,8 @@ export default function Contracts() {
       )}
 
       {showCreateMgr && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 print-hidden" onClick={() => setShowCreateMgr(false)}>
-          <div className="w-full max-w-md rounded-2xl border border-gray-700 bg-gray-900 p-6 space-y-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 print-hidden">
+          <div className="w-full max-w-md rounded-2xl border border-gray-700 bg-gray-900 p-6 space-y-4 max-h-[90vh] overflow-y-auto">
             <h3 className="text-lg font-black text-white">إضافة مدير تعاقدات</h3>
             {createError && <p className="text-sm text-red-400">{createError}</p>}
             <div className="grid grid-cols-2 gap-3">
@@ -1115,8 +1115,8 @@ export default function Contracts() {
 
       {/* ── Create Agent Modal ── */}
       {showCreateAgent && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 print-hidden" onClick={() => setShowCreateAgent(false)}>
-          <div className="w-full max-w-lg rounded-2xl border border-gray-700 bg-gray-900 p-6 space-y-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 print-hidden">
+          <div className="w-full max-w-lg rounded-2xl border border-gray-700 bg-gray-900 p-6 space-y-4 max-h-[90vh] overflow-y-auto">
             <h3 className="text-lg font-black text-white">إضافة مندوب جديد</h3>
             {createError && <p className="text-sm text-red-400">{createError}</p>}
             <div className="grid grid-cols-2 gap-3">
@@ -1153,8 +1153,8 @@ export default function Contracts() {
 
       {/* ── Edit Agent Modal ── */}
       {editAgent && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 print-hidden" onClick={() => setEditAgent(null)}>
-          <div className="w-full max-w-md rounded-2xl border border-gray-700 bg-gray-900 p-6 space-y-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 print-hidden">
+          <div className="w-full max-w-md rounded-2xl border border-gray-700 bg-gray-900 p-6 space-y-4 max-h-[90vh] overflow-y-auto">
             <h3 className="text-lg font-black text-white">تعديل: {editAgent.name}</h3>
             <div className="grid grid-cols-2 gap-3">
               <div><label className="block text-xs font-bold text-gray-400 mb-1">عمولة المندوب</label><input type="number" value={editAgentForm.commissionRate} onChange={(e) => setEditAgentForm({ ...editAgentForm, commissionRate: e.target.value })} className={INPUT} /></div>
@@ -1182,8 +1182,8 @@ export default function Contracts() {
 
       {/* ── Edit Manager Modal ── */}
       {editMgr && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 print-hidden" onClick={() => setEditMgr(null)}>
-          <div className="w-full max-w-sm rounded-2xl border border-gray-700 bg-gray-900 p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 print-hidden">
+          <div className="w-full max-w-sm rounded-2xl border border-gray-700 bg-gray-900 p-6 space-y-4">
             <h3 className="text-lg font-black text-white">تعديل: {editMgr.name}</h3>
             <div className="space-y-3">
               <div><label className="block text-xs font-bold text-gray-400 mb-1">نوع عمولته</label>
@@ -1212,8 +1212,8 @@ export default function Contracts() {
       {/* ── Agent Detail Drawer ── */}
       {/* Edit Partner Modal */}
       {editPartner && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 print-hidden" onClick={() => setEditPartner(null)}>
-          <div className="w-full max-w-lg rounded-2xl border border-gray-700 bg-gray-900 p-6 space-y-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 print-hidden">
+          <div className="w-full max-w-lg rounded-2xl border border-gray-700 bg-gray-900 p-6 space-y-4 max-h-[90vh] overflow-y-auto">
             <h3 className="text-lg font-black text-white">تعديل: {editPartner.name}</h3>
             <div className="grid grid-cols-2 gap-3">
               <div className="col-span-2"><label className="block text-xs font-bold text-gray-400 mb-1">الاسم</label><input value={editPartnerForm.name} onChange={(e) => setEditPartnerForm({ ...editPartnerForm, name: e.target.value })} className={INPUT} /></div>
@@ -1239,8 +1239,8 @@ export default function Contracts() {
       )}
 
       {selectedAgent && (
-        <div className="fixed inset-0 z-50 flex items-center justify-end bg-black/60 p-4 print-hidden" onClick={() => { setSelectedAgent(null); setAgentDetail(null); }}>
-          <div className="w-full max-w-lg h-full rounded-2xl border border-gray-700 bg-gray-900 overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-end bg-black/60 p-4 print-hidden">
+          <div className="w-full max-w-lg h-full rounded-2xl border border-gray-700 bg-gray-900 overflow-y-auto">
             <div className="p-5 space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-black text-white">{selectedAgent.name}</h3>
@@ -1280,8 +1280,8 @@ export default function Contracts() {
 
       {/* ── Manager Detail Drawer ── */}
       {selectedMgr && (
-        <div className="fixed inset-0 z-50 flex items-center justify-end bg-black/60 p-4 print-hidden" onClick={() => { setSelectedMgr(null); setMgrDetail(null); }}>
-          <div className="w-full max-w-lg h-full rounded-2xl border border-gray-700 bg-gray-900 overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-end bg-black/60 p-4 print-hidden">
+          <div className="w-full max-w-lg h-full rounded-2xl border border-gray-700 bg-gray-900 overflow-y-auto">
             <div className="p-5 space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-black text-white">{selectedMgr.name}</h3>

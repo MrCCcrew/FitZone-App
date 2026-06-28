@@ -270,9 +270,9 @@ function PaginationBar({ page, total, onPage }: { page: number; total: number; o
 
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
-      <div className="relative w-full max-w-lg rounded-2xl border border-[rgba(255,188,219,0.2)] bg-[rgba(40,10,22,0.97)] p-6 shadow-2xl overflow-y-auto max-h-[90vh]" onClick={e => e.stopPropagation()}>
+      <div className="relative w-full max-w-lg rounded-2xl border border-[rgba(255,188,219,0.2)] bg-[rgba(40,10,22,0.97)] p-6 shadow-2xl overflow-y-auto max-h-[90vh]">
         <div className="mb-5 flex items-center justify-between">
           <h3 className="text-lg font-black text-[#fff4f8]">{title}</h3>
           <button onClick={onClose} className="text-2xl leading-none text-[#a07080] hover:text-white">×</button>

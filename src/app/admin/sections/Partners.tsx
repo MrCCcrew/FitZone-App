@@ -978,9 +978,8 @@ export default function Partners({ viewMode = "admin" }: { viewMode?: ViewMode }
 
       {/* ── Add/Edit Modal ── */}
       {modal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => setModal(null)}>
-          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-gray-700 bg-gray-900 p-6 space-y-5"
-            onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-gray-700 bg-gray-900 p-6 space-y-5">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-black text-white">{isNew ? "إضافة شريك جديد" : "تعديل بيانات الشريك"}</h3>
               <button onClick={() => setModal(null)} className="text-2xl leading-none text-gray-500 hover:text-white">×</button>
