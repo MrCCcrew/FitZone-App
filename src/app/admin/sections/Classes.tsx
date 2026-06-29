@@ -257,6 +257,9 @@ export default function Classes() {
   const [transferFrom, setTransferFrom] = useState("");
   const [transferTo, setTransferTo] = useState("");
   const [transferring, setTransferring] = useState(false);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -528,6 +531,27 @@ export default function Classes() {
     }
   }
 
+  const toggleSelect = (id: string) =>
+    setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+
+  const bulkDelete = async () => {
+    if (!selected.size) return;
+    if (!confirm(`هل تريد حذف ${selected.size} كلاس؟ لا يمكن التراجع.`)) return;
+    setBulkDeleting(true);
+    try {
+      await Promise.all(
+        Array.from(selected).map(id =>
+          fetch("/api/admin/classes", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) })
+        )
+      );
+      setSelected(new Set());
+      setSelectMode(false);
+      await fetchAll();
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex h-56 items-center justify-center rounded-3xl border border-white/10 bg-white/5 text-sm text-white/60">
@@ -567,6 +591,14 @@ export default function Classes() {
               ⇄ نقل كلاسات مدربة
             </button>
           ) : null}
+          {userRole !== "trainer" && (
+            <button
+              onClick={() => { setSelectMode(s => !s); setSelected(new Set()); }}
+              className={`rounded-2xl border px-4 py-3 text-sm font-bold transition ${selectMode ? "bg-yellow-400 text-black border-yellow-400" : "border-white/20 text-white/70 hover:border-white/40"}`}
+            >
+              {selectMode ? "✕ إلغاء التحديد" : "☑ تحديد"}
+            </button>
+          )}
           {(userRole !== "trainer" || canAddClasses) && (
             <button
               onClick={() => setModal(createModalState(undefined, classes))}
@@ -619,6 +651,34 @@ export default function Classes() {
         </div>
       </div>
 
+      {/* Bulk action bar */}
+      {selectMode && (
+        <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-yellow-500/40 bg-yellow-950/30 px-4 py-3">
+          <span className="text-sm font-bold text-yellow-300">
+            {selected.size > 0 ? `${selected.size} كلاس محدد` : "لم تحدد شيئاً بعد"}
+          </span>
+          <button
+            onClick={() => setSelected(new Set(displayedClasses.map(c => c.id)))}
+            className="rounded-lg border border-white/15 px-3 py-1.5 text-xs text-white/70 hover:border-white/30"
+          >
+            تحديد الكل ({displayedClasses.length})
+          </button>
+          <button
+            onClick={() => setSelected(new Set())}
+            className="rounded-lg border border-white/15 px-3 py-1.5 text-xs text-white/70 hover:border-white/30"
+          >
+            إلغاء التحديد
+          </button>
+          <button
+            onClick={() => void bulkDelete()}
+            disabled={selected.size === 0 || bulkDeleting}
+            className="mr-auto rounded-lg bg-red-600 px-4 py-1.5 text-xs font-bold text-white disabled:opacity-40 hover:bg-red-700"
+          >
+            {bulkDeleting ? "جارٍ الحذف..." : `🗑 حذف المحدد (${selected.size})`}
+          </button>
+        </div>
+      )}
+
       {view === "schedule" ? (
         <div className="overflow-hidden rounded-3xl border border-white/10 bg-white/5">
           <div className="grid grid-cols-7 border-b border-white/10 text-center">
@@ -635,14 +695,26 @@ export default function Classes() {
                   .filter((item) => item.day === day)
                   .map((item) => {
                     const occupancy = item.capacity > 0 ? Math.min(100, Math.round((item.enrolled / item.capacity) * 100)) : 0;
+                    const isSelected = selected.has(item.id);
                     return (
-                      <button
+                      <div
                         key={item.id}
-                        onClick={() => (userRole !== "trainer" || canAddClasses) ? setModal(createModalState(item, classes)) : undefined}
-                        className={`w-full rounded-2xl border p-3 text-right transition ${(userRole !== "trainer" || canAddClasses) ? "hover:scale-[1.01] cursor-pointer" : "cursor-default"} ${
-                          item.active ? "border-white/10 bg-black/15" : "border-white/5 bg-black/5 opacity-55"
+                        onClick={() =>
+                          selectMode
+                            ? toggleSelect(item.id)
+                            : (userRole !== "trainer" || canAddClasses) ? setModal(createModalState(item, classes)) : undefined
+                        }
+                        className={`relative w-full rounded-2xl border p-3 text-right transition cursor-pointer ${
+                          selectMode
+                            ? isSelected ? "border-yellow-400 bg-yellow-950/30" : "border-white/10 bg-black/15 hover:border-white/20"
+                            : item.active ? "border-white/10 bg-black/15 hover:scale-[1.01]" : "border-white/5 bg-black/5 opacity-55"
                         }`}
                       >
+                        {selectMode && (
+                          <div className={`absolute left-2 top-2 flex h-4 w-4 items-center justify-center rounded border text-[10px] font-black ${isSelected ? "border-yellow-400 bg-yellow-400 text-black" : "border-white/30 bg-black/30"}`}>
+                            {isSelected && "✓"}
+                          </div>
+                        )}
                         <div className="text-sm font-black text-white">{item.name}</div>
                         {item.category ? (
                           <div className="mt-1 text-[11px] text-white/55">{item.category}</div>
@@ -661,7 +733,7 @@ export default function Classes() {
                         <div className="mt-1 text-[10px] text-white/45">
                           {item.enrolled}/{item.capacity}
                         </div>
-                      </button>
+                      </div>
                     );
                   })}
               </div>
@@ -674,6 +746,24 @@ export default function Classes() {
             <table className="w-full min-w-[950px] text-sm">
               <thead>
                 <tr className="border-b border-white/10 text-right text-xs text-white/45">
+                  {selectMode && (
+                    <th className="px-4 py-4">
+                      <button
+                        onClick={() =>
+                          selected.size === displayedClasses.length
+                            ? setSelected(new Set())
+                            : setSelected(new Set(displayedClasses.map(c => c.id)))
+                        }
+                        className={`flex h-5 w-5 items-center justify-center rounded border text-[10px] font-black transition ${
+                          selected.size === displayedClasses.length && displayedClasses.length > 0
+                            ? "border-yellow-400 bg-yellow-400 text-black"
+                            : "border-white/30 bg-white/5"
+                        }`}
+                      >
+                        {selected.size === displayedClasses.length && displayedClasses.length > 0 ? "✓" : ""}
+                      </button>
+                    </th>
+                  )}
                   {["الكلاس", "المدربة", "اليوم", "الوقت", "المدة", "الإشغال", "النوع", "الحالة", "إجراءات"].map((head) => (
                     <th key={head} className="px-4 py-4 font-medium">
                       {head}
@@ -682,67 +772,81 @@ export default function Classes() {
                 </tr>
               </thead>
               <tbody>
-                {displayedClasses.map((item) => (
-                  <tr key={item.id} className="border-b border-white/10 last:border-b-0">
-                    <td className="px-4 py-4 font-bold text-white">{item.name}</td>
-                    <td className="px-4 py-4 text-white/70">{item.trainer}</td>
-                    <td className="px-4 py-4 text-white/70">{item.day}</td>
-                    <td className="px-4 py-4 text-white/70" dir="ltr">
-                      {item.time}
-                    </td>
-                    <td className="px-4 py-4 text-white/70">{item.duration} دقيقة</td>
-                    <td className="px-4 py-4 text-white/70">
-                      {item.enrolled}/{item.capacity}
-                    </td>
-                    <td className="px-4 py-4">
-                      {item.category ? (
-                        <div className="mb-1 text-[11px] font-semibold text-white/60">{item.category}</div>
-                      ) : null}
-                      <span className={`inline-flex rounded-full border px-2 py-1 text-xs font-bold ${resolveTypeColor(item.type)}`}>
-                        {normalizeTypeLabel(item.type)}
-                      </span>
-                      {item.subType ? (
-                        <div className="mt-1 text-[11px] text-white/55">{item.subType}</div>
-                      ) : null}
-                    </td>
-                    <td className="px-4 py-4">
-                      <button
-                        onClick={() => void toggleClass(item)}
-                        className={`relative h-6 w-12 rounded-full transition ${
-                          item.active ? "bg-emerald-500/70" : "bg-white/15"
-                        }`}
-                      >
-                        <span
-                          className={`absolute top-1 h-4 w-4 rounded-full bg-white transition ${
-                            item.active ? "right-1" : "left-1"
-                          }`}
-                        />
-                      </button>
-                    </td>
-                    <td className="px-4 py-4">
-                      {(userRole !== "trainer" || canAddClasses) ? (
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            onClick={() => setModal(createModalState(item, classes))}
-                            className="rounded-xl border border-white/10 px-3 py-2 text-xs font-bold text-white/70 transition hover:border-fuchsia-400/40 hover:text-white"
-                          >
-                            تعديل
-                          </button>
-                          {userRole !== "trainer" && (
-                            <button
-                              onClick={() => void deleteClass(item.id)}
-                              className="rounded-xl border border-red-500/20 px-3 py-2 text-xs font-bold text-red-300 transition hover:bg-red-500/10"
-                            >
-                              حذف
-                            </button>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="text-xs text-white/35">عرض فقط</span>
+                {displayedClasses.map((item) => {
+                  const isSelected = selected.has(item.id);
+                  return (
+                    <tr
+                      key={item.id}
+                      onClick={selectMode ? () => toggleSelect(item.id) : undefined}
+                      className={`border-b border-white/10 last:border-b-0 transition-colors ${selectMode ? "cursor-pointer" : ""} ${isSelected ? "bg-yellow-950/20" : ""}`}
+                    >
+                      {selectMode && (
+                        <td className="px-4 py-4">
+                          <div className={`flex h-5 w-5 items-center justify-center rounded border text-[10px] font-black ${isSelected ? "border-yellow-400 bg-yellow-400 text-black" : "border-white/30 bg-white/5"}`}>
+                            {isSelected && "✓"}
+                          </div>
+                        </td>
                       )}
-                    </td>
-                  </tr>
-                ))}
+                      <td className="px-4 py-4 font-bold text-white">{item.name}</td>
+                      <td className="px-4 py-4 text-white/70">{item.trainer}</td>
+                      <td className="px-4 py-4 text-white/70">{item.day}</td>
+                      <td className="px-4 py-4 text-white/70" dir="ltr">
+                        {item.time}
+                      </td>
+                      <td className="px-4 py-4 text-white/70">{item.duration} دقيقة</td>
+                      <td className="px-4 py-4 text-white/70">
+                        {item.enrolled}/{item.capacity}
+                      </td>
+                      <td className="px-4 py-4">
+                        {item.category ? (
+                          <div className="mb-1 text-[11px] font-semibold text-white/60">{item.category}</div>
+                        ) : null}
+                        <span className={`inline-flex rounded-full border px-2 py-1 text-xs font-bold ${resolveTypeColor(item.type)}`}>
+                          {normalizeTypeLabel(item.type)}
+                        </span>
+                        {item.subType ? (
+                          <div className="mt-1 text-[11px] text-white/55">{item.subType}</div>
+                        ) : null}
+                      </td>
+                      <td className="px-4 py-4" onClick={e => e.stopPropagation()}>
+                        <button
+                          onClick={() => void toggleClass(item)}
+                          className={`relative h-6 w-12 rounded-full transition ${
+                            item.active ? "bg-emerald-500/70" : "bg-white/15"
+                          }`}
+                        >
+                          <span
+                            className={`absolute top-1 h-4 w-4 rounded-full bg-white transition ${
+                              item.active ? "right-1" : "left-1"
+                            }`}
+                          />
+                        </button>
+                      </td>
+                      <td className="px-4 py-4" onClick={e => e.stopPropagation()}>
+                        {!selectMode && (userRole !== "trainer" || canAddClasses) ? (
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              onClick={() => setModal(createModalState(item, classes))}
+                              className="rounded-xl border border-white/10 px-3 py-2 text-xs font-bold text-white/70 transition hover:border-fuchsia-400/40 hover:text-white"
+                            >
+                              تعديل
+                            </button>
+                            {userRole !== "trainer" && (
+                              <button
+                                onClick={() => void deleteClass(item.id)}
+                                className="rounded-xl border border-red-500/20 px-3 py-2 text-xs font-bold text-red-300 transition hover:bg-red-500/10"
+                              >
+                                حذف
+                              </button>
+                            )}
+                          </div>
+                        ) : !selectMode ? (
+                          <span className="text-xs text-white/35">عرض فقط</span>
+                        ) : null}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
