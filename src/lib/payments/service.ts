@@ -566,7 +566,12 @@ export async function updatePaymentTransactionStatus(
         try {
           const mem = await db.userMembership.findUnique({
             where: { id: existing.membershipId },
-            select: { partnerId: true, partnerCodeId: true, affiliateLinkId: true, paymentAmount: true },
+            select: {
+              partnerId: true, partnerCodeId: true, affiliateLinkId: true, paymentAmount: true,
+              // Fetch membership listed price so commission base is not reduced by
+              // per-customer discounts (affiliate link, wallet, reward points).
+              membership: { select: { price: true, priceAfter: true } },
+            },
           });
           if (mem?.partnerId && (mem.partnerCodeId || mem.affiliateLinkId)) {
             const partner = await db.partner.findUnique({
@@ -574,7 +579,12 @@ export async function updatePaymentTransactionStatus(
               select: { commissionRate: true, commissionType: true },
             });
             if (partner) {
-              const base = mem.paymentAmount ?? 0;
+              // Use listed membership price as commission base (not what customer paid).
+              // priceAfter = sale/discounted membership price; price = original list price.
+              const listedPrice = (mem.membership?.priceAfter && mem.membership.priceAfter > 0
+                ? mem.membership.priceAfter
+                : mem.membership?.price) ?? 0;
+              const base = listedPrice > 0 ? listedPrice : (mem.paymentAmount ?? 0);
               const commission = partner.commissionType === "fixed"
                 ? partner.commissionRate
                 : Math.round((base * partner.commissionRate) / 100 * 100) / 100;
