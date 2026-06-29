@@ -52,11 +52,165 @@ const EMPTY_FORM = {
   expiresAt: "", isActive: true,
 };
 
+// ─── Profit Margin Calculator ──────────────────────────────────────────────────
+interface ProfitCalcState {
+  open: boolean;
+  price: string;
+  hasPartner: boolean;
+  partnerDiscount: string;
+  partnerCommission: string;
+  minMargin: string;
+}
+const EMPTY_CALC: ProfitCalcState = {
+  open: false, price: "", hasPartner: false,
+  partnerDiscount: "", partnerCommission: "", minMargin: "60",
+};
+
+function CalcRow({ label, amount, color, divider }: { label: string; amount: number; color: string; divider?: boolean }) {
+  const abs = Math.abs(amount).toFixed(2);
+  return (
+    <div className={`flex justify-between text-sm ${color} ${divider ? "pb-2 mb-1 border-b border-white/10" : ""}`}>
+      <span>{label}</span>
+      <span dir="ltr">{amount < 0 ? `− ${abs}` : abs} ج.م</span>
+    </div>
+  );
+}
+
+function ProfitCalculator({ discountType, discountValue, calc, setCalc }: {
+  discountType: "percentage" | "fixed";
+  discountValue: string;
+  calc: ProfitCalcState;
+  setCalc: React.Dispatch<React.SetStateAction<ProfitCalcState>>;
+}) {
+  const listed = parseFloat(calc.price) || 0;
+  const discVal = parseFloat(discountValue) || 0;
+  const affiliateDisc = parseFloat(calc.partnerDiscount) || 0;
+  const commRate = parseFloat(calc.partnerCommission) || 0;
+  const minMargin = parseFloat(calc.minMargin) || 0;
+
+  const result = (() => {
+    if (listed <= 0) return null;
+    const codeAmt = discountType === "fixed"
+      ? Math.min(discVal, listed)
+      : listed * (discVal / 100);
+    const afterCode = listed - codeAmt;
+    const affiliateAmt = calc.hasPartner ? afterCode * (affiliateDisc / 100) : 0;
+    const customerPays = afterCode - affiliateAmt;
+    const commAmt = calc.hasPartner ? listed * (commRate / 100) : 0;
+    const net = customerPays - commAmt;
+    const margin = (net / listed) * 100;
+    return { codeAmt, afterCode, affiliateAmt, customerPays, commAmt, net, margin };
+  })();
+
+  const status = result
+    ? result.margin >= minMargin ? "ok"
+      : result.margin >= minMargin * 0.75 ? "warn" : "danger"
+    : null;
+
+  const fc = (key: keyof ProfitCalcState) =>
+    (e: React.ChangeEvent<HTMLInputElement>) => setCalc(p => ({ ...p, [key]: e.target.value }));
+
+  return (
+    <div className="rounded-xl border border-[rgba(255,188,219,0.18)] overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setCalc(p => ({ ...p, open: !p.open }))}
+        className="w-full flex items-center justify-between px-4 py-3 bg-white/5 hover:bg-white/[0.08] transition-colors text-sm font-bold text-[#d7aabd]"
+      >
+        <span>📊 حاسبة هامش الربح</span>
+        <span className="text-xs opacity-60">{calc.open ? "▲ إخفاء" : "▼ إظهار"}</span>
+      </button>
+
+      {calc.open && (
+        <div className="p-4 space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={LABEL}>سعر الاشتراك المدرج (ج.م)</label>
+              <input className={INPUT} type="number" min="0" value={calc.price} onChange={fc("price")} placeholder="500" />
+            </div>
+            <div>
+              <label className={LABEL}>هامش الربح الأدنى المطلوب (%)</label>
+              <input className={INPUT} type="number" min="0" max="100" value={calc.minMargin} onChange={fc("minMargin")} placeholder="60" />
+            </div>
+          </div>
+
+          <label className="flex items-center gap-3 cursor-pointer select-none">
+            <input type="checkbox" checked={calc.hasPartner}
+              onChange={e => setCalc(p => ({ ...p, hasPartner: e.target.checked }))}
+              className="h-4 w-4 accent-pink-500" />
+            <span className="text-sm text-[#d7aabd]">سيستخدم العميل رابط شريك (أفلييت)</span>
+          </label>
+
+          {calc.hasPartner && (
+            <div className="grid grid-cols-2 gap-3 border-r-2 border-pink-500/30 pr-3">
+              <div>
+                <label className={LABEL}>خصم الشريك للعميل (%)</label>
+                <input className={INPUT} type="number" min="0" max="100" value={calc.partnerDiscount} onChange={fc("partnerDiscount")} placeholder="1" />
+              </div>
+              <div>
+                <label className={LABEL}>عمولة الشريك (%)</label>
+                <input className={INPUT} type="number" min="0" max="100" value={calc.partnerCommission} onChange={fc("partnerCommission")} placeholder="10" />
+              </div>
+            </div>
+          )}
+
+          {listed > 0 && result ? (
+            <div className="rounded-xl bg-black/40 p-4 space-y-1.5 font-mono text-xs" dir="rtl">
+              <CalcRow label="السعر المدرج" amount={listed} color="text-[#fff4f8]" />
+              {discVal > 0 && (
+                <CalcRow
+                  label={discountType === "percentage" ? `كود الخصم (${discVal}%)` : "كود الخصم (مبلغ ثابت)"}
+                  amount={-result.codeAmt} color="text-red-300"
+                />
+              )}
+              <CalcRow label="بعد كود الخصم" amount={result.afterCode} color="text-[#d7aabd]" divider />
+
+              {calc.hasPartner && affiliateDisc > 0 && (
+                <CalcRow label={`خصم الشريك للعميل (${affiliateDisc}%)`} amount={-result.affiliateAmt} color="text-orange-300" />
+              )}
+              {calc.hasPartner && (
+                <CalcRow label="العميل يدفع" amount={result.customerPays} color="text-[#d7aabd]" divider />
+              )}
+              {calc.hasPartner && commRate > 0 && (
+                <CalcRow
+                  label={`عمولة الشريك (${commRate}% × ${listed.toFixed(0)} السعر المدرج)`}
+                  amount={-result.commAmt} color="text-yellow-300"
+                />
+              )}
+
+              <div className={`flex justify-between font-black pt-2 border-t border-white/20 text-sm ${
+                status === "ok" ? "text-emerald-400" : status === "warn" ? "text-yellow-400" : "text-red-400"
+              }`}>
+                <span>صافي الجيم</span>
+                <span dir="ltr">{result.net.toFixed(2)} ج.م</span>
+              </div>
+
+              <div className={`mt-2 rounded-xl px-3 py-2.5 text-center font-bold text-xs ${
+                status === "ok"
+                  ? "bg-emerald-950/60 border border-emerald-500/30 text-emerald-300"
+                  : status === "warn"
+                    ? "bg-yellow-950/60 border border-yellow-500/30 text-yellow-300"
+                    : "bg-red-950/60 border border-red-500/30 text-red-300"
+              }`}>
+                {status === "ok"   && `✅ الهامش ${result.margin.toFixed(1)}% — مقبول (الأدنى المطلوب: ${minMargin}%)`}
+                {status === "warn" && `⚠️ الهامش ${result.margin.toFixed(1)}% — منخفض نسبياً (الأدنى المطلوب: ${minMargin}%)`}
+                {status === "danger" && `❌ الهامش ${result.margin.toFixed(1)}% — ضعيف جداً! (الأدنى المطلوب: ${minMargin}%)`}
+              </div>
+            </div>
+          ) : listed <= 0 ? (
+            <p className="text-xs text-[#a07080] text-center py-1">أدخل سعر الاشتراك للبدء في الحساب</p>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
-      <div className="relative w-full max-w-lg rounded-2xl border border-[rgba(255,188,219,0.2)] bg-[rgba(40,10,22,0.97)] p-6 shadow-2xl">
+      <div className="relative w-full max-w-lg rounded-2xl border border-[rgba(255,188,219,0.2)] bg-[rgba(40,10,22,0.97)] p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
         <div className="mb-5 flex items-center justify-between">
           <h3 className="text-lg font-black text-[#fff4f8]">{title}</h3>
           <button onClick={onClose} className="text-2xl leading-none text-[#a07080] hover:text-white">×</button>
@@ -216,6 +370,7 @@ export default function DiscountCodes() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({ ...EMPTY_FORM });
+  const [calc, setCalc] = useState<ProfitCalcState>({ ...EMPTY_CALC });
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
   const fetchCodes = useCallback(async () => {
@@ -232,7 +387,7 @@ export default function DiscountCodes() {
 
   useEffect(() => { fetchCodes(); }, [fetchCodes]);
 
-  const openCreate = () => { setEditingId(null); setForm({ ...EMPTY_FORM }); setMsg(null); setShowForm(true); };
+  const openCreate = () => { setEditingId(null); setForm({ ...EMPTY_FORM }); setCalc({ ...EMPTY_CALC }); setMsg(null); setShowForm(true); };
   const openEdit = (c: DiscountCode) => {
     setEditingId(c.id);
     setForm({
@@ -243,6 +398,7 @@ export default function DiscountCodes() {
       expiresAt: c.expiresAt ? c.expiresAt.slice(0, 10) : "",
       isActive: c.isActive,
     });
+    setCalc({ ...EMPTY_CALC });
     setMsg(null);
     setShowForm(true);
   };
@@ -465,6 +621,13 @@ export default function DiscountCodes() {
                 className="h-4 w-4 accent-pink-500" />
               <span className="text-sm text-[#d7aabd]">فعّال (Active)</span>
             </label>
+
+            <ProfitCalculator
+              discountType={form.type}
+              discountValue={form.value}
+              calc={calc}
+              setCalc={setCalc}
+            />
 
             <div className="flex gap-3 pt-2">
               <button className={BTN_PRIMARY} onClick={handleSave} disabled={saving}>
