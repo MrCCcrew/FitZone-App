@@ -367,3 +367,36 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: "تعذر حذف الكلاس الآن." }, { status: 500 });
   }
 }
+
+// Bulk transfer all classes from one trainer to another
+export async function PUT(request: Request) {
+  const error = await checkAdmin();
+  if (error) return error;
+
+  try {
+    const body = (await request.json()) as { fromTrainerId?: string; toTrainerId?: string };
+    if (!body.fromTrainerId || !body.toTrainerId) {
+      return NextResponse.json({ error: "fromTrainerId و toTrainerId مطلوبان." }, { status: 400 });
+    }
+    if (body.fromTrainerId === body.toTrainerId) {
+      return NextResponse.json({ error: "المدربة المصدر والهدف نفسها." }, { status: 400 });
+    }
+
+    const [fromTrainer, toTrainer] = await Promise.all([
+      db.trainer.findUnique({ where: { id: body.fromTrainerId }, select: { id: true } }),
+      db.trainer.findUnique({ where: { id: body.toTrainerId }, select: { id: true } }),
+    ]);
+    if (!fromTrainer) return NextResponse.json({ error: "المدربة المصدر غير موجودة." }, { status: 404 });
+    if (!toTrainer) return NextResponse.json({ error: "المدربة الهدف غير موجودة." }, { status: 404 });
+
+    const result = await db.class.updateMany({
+      where: { trainerId: body.fromTrainerId },
+      data: { trainerId: body.toTrainerId },
+    });
+
+    clearPublicApiCache();
+    return NextResponse.json({ success: true, transferred: result.count });
+  } catch {
+    return NextResponse.json({ error: "تعذر نقل الكلاسات الآن." }, { status: 500 });
+  }
+}

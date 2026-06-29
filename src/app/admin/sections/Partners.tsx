@@ -96,7 +96,7 @@ export default function Partners({ viewMode = "admin" }: { viewMode?: ViewMode }
 
   // ── Partner Portal State ───────────────────────────────────────────────────
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
-  const [portalTab, setPortalTab] = useState<"links" | "codeCustomers" | "referralCustomers" | "commissions" | "withdrawal" | "verifyMember">("links");
+  const [portalTab, setPortalTab] = useState<"links" | "referralCustomers" | "commissions" | "withdrawal" | "verifyMember">("links");
   const [linkForm, setLinkForm] = useState({ label: "" });
   const [linkSaving, setLinkSaving] = useState(false);
   const [linkError, setLinkError] = useState("");
@@ -359,7 +359,6 @@ export default function Partners({ viewMode = "admin" }: { viewMode?: ViewMode }
         <div className="flex flex-wrap gap-2 border-b border-gray-800 pb-1">
           {([
             ["links", "روابط الإحالة"],
-            ["codeCustomers", `عملاء الكود${codeCustomers.length > 0 ? ` (${codeCustomers.length})` : ""}`],
             ["referralCustomers", `عملاء الإحالة${referralCustomers.length > 0 ? ` (${referralCustomers.length})` : ""}`],
             ["commissions", "العمولات"],
             ["withdrawal", "طلبات السحب"],
@@ -414,30 +413,6 @@ export default function Partners({ viewMode = "admin" }: { viewMode?: ViewMode }
                 </div>
               ))}
             </div>
-          </div>
-        )}
-
-        {/* ── Code Customers Tab ── */}
-        {portalTab === "codeCustomers" && (
-          <div className="space-y-3">
-            {codeCustomers.length === 0 && (
-              <div className="py-8 text-center text-sm text-gray-500">لا يوجد عملاء استخدموا كود الخصم بعد.</div>
-            )}
-            {codeCustomers.map((c) => (
-              <div key={c.id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gray-800 bg-gray-900/60 p-4">
-                <div className="space-y-1">
-                  <div className="font-bold text-white">{c.customerName}</div>
-                  <div className="text-xs text-gray-400">{c.membershipName} · {c.createdAt.slice(0, 10)}</div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-xs font-black text-pink-300">{c.codeName}</span>
-                    <span className="text-xs text-gray-500">
-                      {c.discountType === "percentage" ? `${c.discountValue}% خصم` : `${c.discountValue} ج.م خصم`}
-                    </span>
-                  </div>
-                </div>
-                <div className="text-lg font-black text-white">{c.paymentAmount.toFixed(0)} ج.م</div>
-              </div>
-            ))}
           </div>
         )}
 
@@ -1023,7 +998,7 @@ export default function Partners({ viewMode = "admin" }: { viewMode?: ViewMode }
               )}
 
               <label className="block space-y-1">
-                <span className="text-xs font-bold text-gray-400">نسبة / قيمة العمولة للجيم</span>
+                <span className="text-xs font-bold text-gray-400">العمولة للشريك</span>
                 <input type="number" value={modal.commissionRate ?? 10}
                   onChange={(e) => setModal({ ...modal, commissionRate: Number(e.target.value) })} className={INPUT} />
               </label>
