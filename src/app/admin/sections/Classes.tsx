@@ -253,6 +253,10 @@ export default function Classes() {
   const [modal, setModal] = useState<ClassModalState | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
   const [canAddClasses, setCanAddClasses] = useState(true);
+  const [transferModal, setTransferModal] = useState(false);
+  const [transferFrom, setTransferFrom] = useState("");
+  const [transferTo, setTransferTo] = useState("");
+  const [transferring, setTransferring] = useState(false);
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -498,6 +502,32 @@ export default function Classes() {
     await fetchAll();
   }
 
+  async function transferClasses() {
+    if (!transferFrom || !transferTo) { alert("اختر المدربة المصدر والمدربة الهدف."); return; }
+    const fromName = trainers.find((t) => t.id === transferFrom)?.name ?? transferFrom;
+    const toName = trainers.find((t) => t.id === transferTo)?.name ?? transferTo;
+    const count = classes.filter((c) => c.trainerId === transferFrom).length;
+    if (count === 0) { alert("لا توجد كلاسات مسجلة لهذه المدربة."); return; }
+    if (!confirm(`سيتم نقل ${count} كلاس من "${fromName}" إلى "${toName}". هل تريد المتابعة؟`)) return;
+    setTransferring(true);
+    try {
+      const res = await fetch("/api/admin/classes", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fromTrainerId: transferFrom, toTrainerId: transferTo }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { success?: boolean; transferred?: number; error?: string };
+      if (!res.ok) { alert(data.error ?? "تعذر نقل الكلاسات."); return; }
+      alert(`تم نقل ${data.transferred ?? count} كلاس بنجاح إلى "${toName}".`);
+      setTransferModal(false);
+      setTransferFrom("");
+      setTransferTo("");
+      await fetchAll();
+    } finally {
+      setTransferring(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex h-56 items-center justify-center rounded-3xl border border-white/10 bg-white/5 text-sm text-white/60">
@@ -528,14 +558,24 @@ export default function Classes() {
           </button>
         </div>
 
-        {(userRole !== "trainer" || canAddClasses) && (
-          <button
-            onClick={() => setModal(createModalState(undefined, classes))}
-            className="rounded-2xl bg-fuchsia-600 px-5 py-3 text-sm font-black text-white transition hover:bg-fuchsia-500"
-          >
-            + إضافة كلاس جديد
-          </button>
-        )}
+        <div className="flex gap-2">
+          {userRole === "admin" || userRole === "staff" ? (
+            <button
+              onClick={() => { setTransferFrom(""); setTransferTo(""); setTransferModal(true); }}
+              className="rounded-2xl bg-amber-500/20 border border-amber-500/40 px-4 py-3 text-sm font-bold text-amber-300 transition hover:bg-amber-500/30"
+            >
+              ⇄ نقل كلاسات مدربة
+            </button>
+          ) : null}
+          {(userRole !== "trainer" || canAddClasses) && (
+            <button
+              onClick={() => setModal(createModalState(undefined, classes))}
+              className="rounded-2xl bg-fuchsia-600 px-5 py-3 text-sm font-black text-white transition hover:bg-fuchsia-500"
+            >
+              + إضافة كلاس جديد
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="grid gap-3 md:grid-cols-4">
@@ -707,6 +747,54 @@ export default function Classes() {
             </table>
           </div>
         </div>
+      )}
+
+      {transferModal && (
+        <Modal title="نقل كلاسات مدربة إلى أخرى" onClose={() => setTransferModal(false)}>
+          <div className="space-y-5">
+            <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+              سيتم نقل <strong>جميع</strong> الكلاسات المسجلة للمدربة المختارة إلى المدربة الأخرى دفعة واحدة.
+            </div>
+            <Field label="المدربة المصدر (التي ستغادر)">
+              <select value={transferFrom} onChange={(e) => setTransferFrom(e.target.value)} className={INPUT}>
+                <option value="" className="bg-[#2a0f1f]">اختر المدربة</option>
+                {trainers.map((t) => {
+                  const count = classes.filter((c) => c.trainerId === t.id).length;
+                  return (
+                    <option key={t.id} value={t.id} className="bg-[#2a0f1f]">
+                      {t.name} — {count} كلاس
+                    </option>
+                  );
+                })}
+              </select>
+            </Field>
+            <Field label="المدربة الهدف (التي ستستلم الكلاسات)">
+              <select value={transferTo} onChange={(e) => setTransferTo(e.target.value)} className={INPUT}>
+                <option value="" className="bg-[#2a0f1f]">اختر المدربة</option>
+                {trainers.filter((t) => t.id !== transferFrom).map((t) => (
+                  <option key={t.id} value={t.id} className="bg-[#2a0f1f]">
+                    {t.name} — {t.specialty}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            {transferFrom && (
+              <div className="rounded-xl bg-white/5 px-4 py-3 text-sm text-white/70">
+                عدد الكلاسات التي سيتم نقلها: <strong className="text-white">{classes.filter((c) => c.trainerId === transferFrom).length}</strong>
+              </div>
+            )}
+            <div className="flex justify-end gap-3">
+              <button onClick={() => setTransferModal(false)} className="rounded-2xl border border-white/10 px-5 py-3 text-sm font-bold text-white/70 hover:text-white">إلغاء</button>
+              <button
+                onClick={() => void transferClasses()}
+                disabled={transferring || !transferFrom || !transferTo}
+                className="rounded-2xl bg-amber-500 px-6 py-3 text-sm font-black text-black transition hover:bg-amber-400 disabled:opacity-50"
+              >
+                {transferring ? "جارٍ النقل..." : "نقل الكلاسات"}
+              </button>
+            </div>
+          </div>
+        </Modal>
       )}
 
       {modal ? (
