@@ -622,10 +622,12 @@ export async function POST(req: Request) {
           select: { commissionRate: true, commissionType: true },
         });
         if (partner) {
-          const paidAmount = paymentAmount ?? 0;
+          // Use membership listed price (priceAfterMembershipDiscount) as commission base,
+          // so affiliate/wallet/rewards discounts don't reduce what the partner earns.
+          const commissionBase = priceAfterMembershipDiscount > 0 ? priceAfterMembershipDiscount : (paymentAmount ?? 0);
           const commission = partner.commissionType === "fixed"
             ? partner.commissionRate
-            : Math.round((paidAmount * partner.commissionRate) / 100 * 100) / 100;
+            : Math.round((commissionBase * partner.commissionRate) / 100 * 100) / 100;
           if (commission > 0) {
             await tx.partnerCommission.create({
               data: { partnerId: resolvedPartnerId, userMembershipId: subscription.id, amount: commission },
