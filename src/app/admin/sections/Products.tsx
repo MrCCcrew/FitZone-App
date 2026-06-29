@@ -125,6 +125,9 @@ export default function Products() {
   const [uploadingCategoryIcon, setUploadingCategoryIcon] = useState(false);
   const [productModal, setProductModal] = useState<EditableProduct | null>(null);
   const [categoryModal, setCategoryModal] = useState<EditableCategory | null>(null);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -297,6 +300,27 @@ export default function Products() {
     }
   };
 
+  const toggleSelect = (id: string) =>
+    setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+
+  const bulkDelete = async () => {
+    if (!selected.size) return;
+    if (!window.confirm(`هل تريد حذف ${selected.size} منتج؟ لا يمكن التراجع.`)) return;
+    setBulkDeleting(true);
+    try {
+      await Promise.all(
+        Array.from(selected).map(id =>
+          fetch("/api/admin/products", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) })
+        )
+      );
+      setSelected(new Set());
+      setSelectMode(false);
+      await load();
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
+
   if (loading) return <div className="flex h-64 items-center justify-center text-sm text-gray-500">جارٍ تحميل بيانات المنتجات...</div>;
 
   return (
@@ -348,7 +372,15 @@ export default function Products() {
                   <button key={category.id} onClick={() => setFilter(category.key)} className={`rounded-xl px-3 py-2 text-xs font-bold ${filter === category.key ? "bg-yellow-500 text-black" : "bg-gray-800 text-gray-400"}`}>{category.label}</button>
                 ))}
               </div>
-              <button onClick={() => { setUploadError(null); setProductModal({ ...EMPTY_PRODUCT, category: categories[0]?.key ?? "supplement" }); }} className="mt-4 w-full rounded-xl bg-red-600 px-4 py-2.5 text-sm font-bold text-white">+ منتج جديد</button>
+              <div className="mt-4 flex gap-2">
+                <button onClick={() => { setUploadError(null); setProductModal({ ...EMPTY_PRODUCT, category: categories[0]?.key ?? "supplement" }); }} className="flex-1 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-bold text-white">+ منتج جديد</button>
+                <button
+                  onClick={() => { setSelectMode(s => !s); setSelected(new Set()); }}
+                  className={`rounded-xl px-4 py-2.5 text-sm font-bold border transition-colors ${selectMode ? "bg-yellow-500 text-black border-yellow-500" : "border-gray-600 text-gray-300 hover:border-gray-400"}`}
+                >
+                  {selectMode ? "✕ إلغاء" : "☑ تحديد"}
+                </button>
+              </div>
 
               {/* Excel export / import */}
               <div className="mt-2 flex gap-2">
@@ -380,30 +412,80 @@ export default function Products() {
             </div>
           </div>
 
+          {/* Bulk action bar */}
+          {selectMode && (
+            <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-yellow-600/40 bg-yellow-950/30 px-4 py-3">
+              <span className="text-sm font-bold text-yellow-300">
+                {selected.size > 0 ? `${selected.size} منتج محدد` : "لم تحدد شيئاً بعد"}
+              </span>
+              <button
+                onClick={() => setSelected(new Set(filteredProducts.map(p => p.id)))}
+                className="rounded-lg border border-gray-600 px-3 py-1.5 text-xs text-gray-300 hover:border-gray-400"
+              >
+                تحديد الكل ({filteredProducts.length})
+              </button>
+              <button
+                onClick={() => setSelected(new Set())}
+                className="rounded-lg border border-gray-600 px-3 py-1.5 text-xs text-gray-300 hover:border-gray-400"
+              >
+                إلغاء التحديد
+              </button>
+              <button
+                onClick={() => void bulkDelete()}
+                disabled={selected.size === 0 || bulkDeleting}
+                className="mr-auto rounded-lg bg-red-600 px-4 py-1.5 text-xs font-bold text-white disabled:opacity-40 hover:bg-red-700"
+              >
+                {bulkDeleting ? "جارٍ الحذف..." : `🗑 حذف المحدد (${selected.size})`}
+              </button>
+            </div>
+          )}
+
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {filteredProducts.map((product) => (
-              <div key={product.id} className="rounded-2xl border border-gray-800 bg-gray-900/60 p-5">
-                <div className="mb-3 flex items-start justify-between">
-                  <span className="text-4xl">{product.emoji}</span>
-                  <span className="rounded-full bg-pink-500/20 px-2 py-1 text-xs text-pink-300">{product.categoryLabel ?? categoryMap.get(product.category)?.label ?? product.category}</span>
+            {filteredProducts.map((product) => {
+              const isSelected = selected.has(product.id);
+              return (
+                <div
+                  key={product.id}
+                  onClick={selectMode ? () => toggleSelect(product.id) : undefined}
+                  className={`relative rounded-2xl border bg-gray-900/60 p-5 transition-colors ${
+                    selectMode ? "cursor-pointer select-none" : ""
+                  } ${isSelected ? "border-yellow-500 bg-yellow-950/20" : "border-gray-800"}`}
+                >
+                  {/* Checkbox overlay in select mode */}
+                  {selectMode && (
+                    <div className={`absolute left-3 top-3 flex h-5 w-5 items-center justify-center rounded border-2 text-xs font-black transition-colors ${
+                      isSelected ? "border-yellow-400 bg-yellow-400 text-black" : "border-gray-500 bg-gray-800"
+                    }`}>
+                      {isSelected && "✓"}
+                    </div>
+                  )}
+
+                  <div className="mb-3 flex items-start justify-between">
+                    <span className="text-4xl">{product.emoji}</span>
+                    <span className="rounded-full bg-pink-500/20 px-2 py-1 text-xs text-pink-300">{product.categoryLabel ?? categoryMap.get(product.category)?.label ?? product.category}</span>
+                  </div>
+                  <h4 className="font-black text-white">{product.name}</h4>
+                  {product.nameEn ? <div className="mt-1 text-xs text-gray-500">{product.nameEn}</div> : null}
+                  <div className="mt-1 flex items-center gap-2">
+                    <span className="text-sm text-yellow-400">{product.price.toLocaleString("ar-EG")} ج.م</span>
+                    {product.vatEnabled && <span className="rounded bg-emerald-900/60 px-1.5 py-0.5 text-[10px] font-bold text-emerald-400">+14% VAT</span>}
+                  </div>
+                  <div className="mt-2 text-xs text-gray-500">صور: {product.images?.length ?? 0} | مقاسات: {product.sizes?.length ?? 0}</div>
+
+                  {!selectMode && (
+                    <div className="mt-3 flex gap-2">
+                      <button onClick={() => { setUploadError(null); setProductModal({ ...product }); }} className="flex-1 rounded-lg bg-gray-800 px-3 py-2 text-xs text-white">تعديل</button>
+                      <button onClick={async (e) => {
+                        e.stopPropagation();
+                        if (!window.confirm("هل تريد حذف هذا المنتج؟")) return;
+                        await fetch("/api/admin/products", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: product.id }) });
+                        await load();
+                      }} className="rounded-lg bg-red-950/50 px-3 py-2 text-xs text-red-300">حذف</button>
+                    </div>
+                  )}
                 </div>
-                <h4 className="font-black text-white">{product.name}</h4>
-                {product.nameEn ? <div className="mt-1 text-xs text-gray-500">{product.nameEn}</div> : null}
-                <div className="mt-1 flex items-center gap-2">
-                  <span className="text-sm text-yellow-400">{product.price.toLocaleString("ar-EG")} ج.م</span>
-                  {product.vatEnabled && <span className="rounded bg-emerald-900/60 px-1.5 py-0.5 text-[10px] font-bold text-emerald-400">+14% VAT</span>}
-                </div>
-                <div className="mt-2 text-xs text-gray-500">صور: {product.images?.length ?? 0} | مقاسات: {product.sizes?.length ?? 0}</div>
-                <div className="mt-3 flex gap-2">
-                  <button onClick={() => { setUploadError(null); setProductModal({ ...product }); }} className="flex-1 rounded-lg bg-gray-800 px-3 py-2 text-xs text-white">تعديل</button>
-                  <button onClick={async () => {
-                    if (!window.confirm("هل تريد حذف هذا المنتج؟")) return;
-                    await fetch("/api/admin/products", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: product.id }) });
-                    await load();
-                  }} className="rounded-lg bg-red-950/50 px-3 py-2 text-xs text-red-300">حذف</button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </>
       )}
