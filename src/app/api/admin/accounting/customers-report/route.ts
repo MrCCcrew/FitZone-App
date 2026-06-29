@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { requireAdminFeature } from "@/lib/admin-guard";
 
 // GET /api/admin/accounting/customers-report
-// Query params: search, status (all|active|expired), page, limit
+// Query params: search, status (all|active|expired), page, limit, from, to
 export async function GET(req: Request) {
   const guard = await requireAdminFeature("accounting");
   if ("error" in guard) return guard.error;
@@ -13,6 +13,12 @@ export async function GET(req: Request) {
   const status = searchParams.get("status") ?? "all"; // all | active | expired
   const page   = Math.max(1, parseInt(searchParams.get("page") ?? "1", 10));
   const limit  = Math.min(100, Math.max(5, parseInt(searchParams.get("limit") ?? "30", 10)));
+
+  const rawFrom = searchParams.get("from");
+  const rawTo   = searchParams.get("to");
+  const dateFrom = rawFrom ? (() => { const d = new Date(rawFrom); d.setHours(0,0,0,0); return isNaN(d.getTime()) ? null : d; })() : null;
+  const dateTo   = rawTo   ? (() => { const d = new Date(rawTo);   d.setHours(23,59,59,999); return isNaN(d.getTime()) ? null : d; })() : null;
+  const hasDateFilter = !!(dateFrom || dateTo);
 
   const now = new Date();
 
@@ -114,7 +120,20 @@ export async function GET(req: Request) {
 
   const allRows = allUsers
     .map(u => {
-      const memberships = u.memberships.map(m => {
+      // Filter memberships to date range when a filter is active
+      const filteredMemberships = hasDateFilter
+        ? u.memberships.filter(m => {
+            const start = new Date(m.startDate);
+            if (dateFrom && start < dateFrom) return false;
+            if (dateTo   && start > dateTo)   return false;
+            return true;
+          })
+        : u.memberships;
+
+      // Exclude users with no memberships in the period when filtering
+      if (hasDateFilter && filteredMemberships.length === 0) return null;
+
+      const memberships = filteredMemberships.map(m => {
         const endDate        = new Date(m.endDate);
         const isActive       = m.status === "active" && endDate >= now;
         const remainingDays  = isActive ? Math.max(0, Math.ceil((endDate.getTime() - now.getTime()) / 86400000)) : 0;
@@ -157,12 +176,42 @@ export async function GET(req: Request) {
       const totalMembershipPaid = memberships.reduce((s, m) => s + m.paymentAmount, 0);
       const totalBookingPaid    =
         directBookings.reduce((s, b) => s + b.paidAmount, 0) +
-        u.memberships.flatMap(m => m.bookings).reduce((s, b) => s + b.paidAmount, 0);
+        filteredMemberships.flatMap(m => m.bookings).reduce((s, b) => s + b.paidAmount, 0);
 
       const discounts    = discountMap.get(u.id) ?? [];
       const totalDiscounts = discounts.reduce((s, d) => s + d.amount, 0);
 
-      const activeMembership = memberships.find(m => m.status === "active") ?? null;
+      // activeMembership reflects current live status, not limited by date filter
+      const activeMembership = (() => {
+        // Prefer an active one from the filtered set
+        const fromFiltered = memberships.find(m => m.status === "active");
+        if (fromFiltered) return fromFiltered;
+        // Fall back to any currently-active membership across all user memberships
+        const currentActive = u.memberships.find(m => m.status === "active" && new Date(m.endDate) >= now);
+        if (!currentActive) return null;
+        // Build a minimal representation matching the mapped shape
+        const endDate = new Date(currentActive.endDate);
+        const remainingDays = Math.max(0, Math.ceil((endDate.getTime() - now.getTime()) / 86400000));
+        const usedSessions = currentActive.attendanceCheckIns.length;
+        const totalSess = currentActive.totalSessions ?? currentActive.membership.sessionsCount ?? null;
+        return {
+          id: currentActive.id,
+          membershipName: currentActive.offerTitle
+            ? `${currentActive.membership.name} (${currentActive.offerTitle})`
+            : currentActive.membership.name,
+          kind: currentActive.membership.kind,
+          startDate: currentActive.startDate.toISOString(),
+          endDate: currentActive.endDate.toISOString(),
+          status: "active" as const,
+          paymentAmount: currentActive.paymentAmount,
+          paymentMethod: currentActive.paymentMethod ?? "—",
+          remainingDays,
+          totalSessions: totalSess,
+          usedSessions,
+          remainSessions: totalSess !== null ? Math.max(0, totalSess - usedSessions) : null,
+          bookingsCount: currentActive.bookings.filter(b => b.status !== "cancelled").length,
+        };
+      })();
 
       return {
         id: u.id,
