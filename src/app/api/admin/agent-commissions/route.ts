@@ -10,9 +10,20 @@ export async function GET(req: Request) {
   const agentUserId = searchParams.get("agentUserId") || undefined;
   const status = searchParams.get("status") || "all";
 
+  const rawFrom = searchParams.get("from");
+  const rawTo   = searchParams.get("to");
+  const dateFrom = rawFrom ? (() => { const d = new Date(rawFrom); d.setHours(0,0,0,0); return isNaN(d.getTime()) ? null : d; })() : null;
+  const dateTo   = rawTo   ? (() => { const d = new Date(rawTo);   d.setHours(23,59,59,999); return isNaN(d.getTime()) ? null : d; })() : null;
+
   const where: Record<string, unknown> = {};
   if (agentUserId) where.agentUserId = agentUserId;
   if (status !== "all") where.status = status;
+  if (dateFrom || dateTo) {
+    where.createdAt = {
+      ...(dateFrom ? { gte: dateFrom } : {}),
+      ...(dateTo   ? { lte: dateTo }   : {}),
+    };
+  }
 
   const [commissions, agents] = await Promise.all([
     db.agentCommission.findMany({
@@ -27,7 +38,7 @@ export async function GET(req: Request) {
         },
       },
       orderBy: { createdAt: "desc" },
-      take: 200,
+      take: 500,
     }),
     db.user.findMany({
       where: {

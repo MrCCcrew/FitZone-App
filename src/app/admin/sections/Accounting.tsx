@@ -1341,7 +1341,7 @@ type AgentCommissionsData = {
   totals: { earned: number; settled: number };
 };
 
-function AgentCommissionsAdminTab() {
+function AgentCommissionsAdminTab({ from, to }: { from: string; to: string }) {
   const [data, setData] = useState<AgentCommissionsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [agentFilter, setAgentFilter] = useState("");
@@ -1355,13 +1355,15 @@ function AgentCommissionsAdminTab() {
     const params = new URLSearchParams();
     if (agentFilter) params.set("agentUserId", agentFilter);
     if (statusFilter !== "all") params.set("status", statusFilter);
+    if (from) params.set("from", from);
+    if (to)   params.set("to", to);
     try {
       const res = await fetch(`/api/admin/agent-commissions?${params}`);
       if (res.ok) setData(await res.json() as AgentCommissionsData);
     } finally {
       setLoading(false);
     }
-  }, [agentFilter, statusFilter]);
+  }, [agentFilter, statusFilter, from, to]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -1700,7 +1702,7 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
   instapay: "انستاباي", free: "مجاني", offer: "عرض",
 };
 
-function CustomerStatementTab() {
+function CustomerStatementTab({ from, to }: { from: string; to: string }) {
   const [rows, setRows] = useState<CustomerRow[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -1715,6 +1717,8 @@ function CustomerStatementTab() {
     setLoading(true);
     try {
       const params = new URLSearchParams({ search: q, status: st, page: String(pg), limit: String(limit) });
+      if (from) params.set("from", from);
+      if (to)   params.set("to", to);
       const res = await fetch(`/api/admin/accounting/customers-report?${params}`);
       if (!res.ok) return;
       const json = await res.json() as { rows: CustomerRow[]; total: number; totalPages: number };
@@ -1725,9 +1729,9 @@ function CustomerStatementTab() {
     } finally {
       setLoading(false);
     }
-  }, [search, statusFilter]);
+  }, [search, statusFilter, from, to]);
 
-  useEffect(() => { void load(1, search, statusFilter); }, [statusFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { void load(1, search, statusFilter); }, [statusFilter, from, to]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Debounce search
   useEffect(() => {
@@ -2139,9 +2143,9 @@ export default function Accounting() {
       {!loading && data && tab === "club" && <ClubTab data={data} onRefresh={fetchData} dateRange={from && to ? `${from} — ${to}` : "كل الفترات"} />}
       {!loading && data && tab === "fees" && <FeeRulesTab data={data} onRefresh={fetchData} />}
       {tab === "commissions"       && <PartnerCommissionsTab from={from} to={to} />}
-      {tab === "agentCommissions"  && <AgentCommissionsAdminTab />}
+      {tab === "agentCommissions"  && <AgentCommissionsAdminTab from={from} to={to} />}
       {!loading && data && tab === "contractCommissions" && <ContractsCommissionsTab data={data} />}
-      {tab === "customerStatement" && <CustomerStatementTab />}
+      {tab === "customerStatement" && <CustomerStatementTab from={from} to={to} />}
     </AdminSectionShell>
   );
 }
