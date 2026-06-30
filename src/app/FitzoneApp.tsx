@@ -2991,12 +2991,12 @@ const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string) =
                         </span>
                       </div>
                       <div style={{ fontWeight: 700, fontSize: 16, color: C.white, marginBottom: 4 }}>{s.name}</div>
-                      {s.trainer ? (
+                      {(s.trainer || s.trainerImage) ? (
                         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
                           {s.trainerImage ? (
                             <img
                               src={s.trainerImage}
-                              alt={s.trainer}
+                              alt={s.trainer || ""}
                               loading="lazy"
                               style={{ width: 40, height: 40, borderRadius: "50%", objectFit: "cover", objectPosition: "top", flexShrink: 0, border: `2px solid ${s.color}88` }}
                             />
@@ -3005,7 +3005,7 @@ const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string) =
                               👩
                             </div>
                           )}
-                          <span style={{ color: C.gray, fontSize: 13 }}>{t("مع", "With")} {s.trainer}</span>
+                          {s.trainer && <span style={{ color: C.gray, fontSize: 13 }}>{t("مع", "With")} {s.trainer}</span>}
                         </div>
                       ) : <div style={{ marginBottom: 16 }} />}
                       <button className="btn-primary" style={{ width: "100%", justifyContent: "center", padding: "8px", fontSize: 13, opacity: s.spots === 0 ? .5 : 1 }} disabled={s.spots === 0} onClick={() => {
