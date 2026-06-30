@@ -499,7 +499,7 @@ export async function GET(request: Request) {
               ? (gymClass.trainer.nameEn || gymClass.trainer.name)
               : gymClass.trainer.name,
         trainerImage:
-          gymClass.showTrainerName === false || !gymClass.trainer
+          !gymClass.trainer
             ? null
             : gymClass.trainer.image ?? null,
         trainerSpecialty:
