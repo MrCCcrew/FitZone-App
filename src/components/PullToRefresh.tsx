@@ -10,6 +10,18 @@ const DAMPING       = 0.48; // visual resistance factor (smaller = harder to pul
 const MAX_VISUAL    = 80;   // max visual pull distance in px
 const INDICATOR_TOP = 34;   // px: how far to translate so circle becomes visible at threshold
 
+// Returns true when any full-screen modal overlay is currently open
+const isModalOpen = (): boolean => {
+  const els = document.querySelectorAll<HTMLElement>("[style]");
+  for (const el of els) {
+    const s = el.style;
+    const zIdx = parseInt(s.zIndex || "0", 10);
+    const isFullScreen = s.inset === "0px" || (s.top === "0px" && s.left === "0px" && s.right === "0px" && s.bottom === "0px");
+    if (s.position === "fixed" && isFullScreen && zIdx > 100) return true;
+  }
+  return false;
+};
+
 export default function PullToRefresh() {
   const [pull, setPull]           = useState(0);   // visual pull distance (px)
   const [refreshing, setRefreshing] = useState(false);
@@ -23,6 +35,7 @@ export default function PullToRefresh() {
   useEffect(() => {
     const onStart = (e: TouchEvent) => {
       if (window.scrollY > 4) return;
+      if (isModalOpen()) return;          // disable PTR when any overlay is open
       startY.current    = e.touches[0].clientY;
       startX.current    = e.touches[0].clientX;
       active.current    = true;
@@ -31,7 +44,7 @@ export default function PullToRefresh() {
 
     const onMove = (e: TouchEvent) => {
       if (!active.current) return;
-      if (window.scrollY > 4) { active.current = false; setPull(0); return; }
+      if (window.scrollY > 4 || isModalOpen()) { active.current = false; setPull(0); return; }
 
       const rawY = e.touches[0].clientY - startY.current;
       const rawX = e.touches[0].clientX - startX.current;
