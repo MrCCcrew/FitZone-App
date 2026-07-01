@@ -4321,7 +4321,14 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
       if (dateA !== dateB) return dateA - dateB;
       return a.time.localeCompare(b.time);
     });
-    return rows;
+    // Keep only the nearest upcoming occurrence per (day, time, className)
+    const seen = new Set<string>();
+    return rows.filter((r) => {
+      const key = `${r.day}|${r.time}|${r.className}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
   }, [publicClasses, surveyBlockedTypes, planAllowedClassTypes]);
 
   const parseScheduleTime = (value: string) => {
