@@ -120,6 +120,7 @@ export async function GET(req: NextRequest) {
     referralLink,
   });
   res.cookies.set(COOKIE, session.token, { httpOnly: true, sameSite: "lax", maxAge: 60 * 60 * 24, path: "/" });
+  res.headers.set("Cache-Control", "no-store");
   return res;
   } catch (err) {
     console.error("[FREE_GIFTS_GAME]", err);
