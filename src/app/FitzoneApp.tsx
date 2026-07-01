@@ -6701,14 +6701,19 @@ const SchedulePage = () => {
       .then((data) => {
         if (!Array.isArray(data.classes)) return;
         const rows: { dayIndex: number; time: string; title: string; sub: string; tag: string }[] = [];
+        const seen = new Set<string>();
         (data.classes as PublicClass[]).forEach((c) => {
           (c.schedules || []).forEach((s) => {
             const date = new Date(s.date);
             if (Number.isNaN(date.getTime())) return;
+            const dayIndex = date.getDay();
             const typeLabel = getClassTypeLabel(c.type, lang);
             const tag = [typeLabel, c.subType].filter(Boolean).join(" - ");
+            const key = `${dayIndex}|${s.time}|${c.name}`;
+            if (seen.has(key)) return;
+            seen.add(key);
             rows.push({
-              dayIndex: date.getDay(),
+              dayIndex,
               time: s.time,
               title: c.name,
               sub: c.trainer ? c.trainer : "",

@@ -250,6 +250,7 @@ export default function Classes() {
   const [view, setView] = useState<"schedule" | "list">("schedule");
   const [filterDay, setFilterDay] = useState("الكل");
   const [filterType, setFilterType] = useState("الكل");
+  const [filterTrainer, setFilterTrainer] = useState("الكل");
   const [modal, setModal] = useState<ClassModalState | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
   const [canAddClasses, setCanAddClasses] = useState(true);
@@ -356,14 +357,23 @@ export default function Classes() {
     return [...mapped, ...extra];
   }, [modal?.typePreset, modal?.customType, classes]);
 
+  const trainerOptions = useMemo(() => {
+    const names = Array.from(
+      new Set(classes.map((c) => c.trainer).filter(Boolean))
+    ).sort();
+    return ["الكل", ...names];
+  }, [classes]);
+
   const displayedClasses = useMemo(() => {
     return classes.filter((item) => {
       const matchesDay = filterDay === "الكل" || item.day === filterDay;
       const matchesType =
         filterType === "الكل" || normalizeTypeLabel(item.type) === filterType;
-      return matchesDay && matchesType;
+      const matchesTrainer =
+        filterTrainer === "الكل" || item.trainer === filterTrainer;
+      return matchesDay && matchesType && matchesTrainer;
     });
-  }, [classes, filterDay, filterType]);
+  }, [classes, filterDay, filterType, filterTrainer]);
 
   const stats = useMemo(() => {
     const totalCapacity = classes.reduce((sum, item) => sum + item.capacity, 0);
@@ -642,6 +652,18 @@ export default function Classes() {
           {typeOptions.map((type) => (
             <option key={type} value={type} className="bg-[#2a0f1f]">
               {type}
+            </option>
+          ))}
+        </select>
+
+        <select
+          value={filterTrainer}
+          onChange={(event) => setFilterTrainer(event.target.value)}
+          className={`${INPUT} min-w-[160px]`}
+        >
+          {trainerOptions.map((name) => (
+            <option key={name} value={name} className="bg-[#2a0f1f]">
+              {name === "الكل" ? "كل المدربات" : name}
             </option>
           ))}
         </select>
