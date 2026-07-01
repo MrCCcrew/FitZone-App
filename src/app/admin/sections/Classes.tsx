@@ -12,6 +12,14 @@ type ApiTrainer = {
   specialtyEn?: string | null;
 };
 
+const formatTime12 = (time: string) => {
+  const [h, m] = time.split(":").map(Number);
+  if (isNaN(h) || isNaN(m)) return time;
+  const period = h < 12 ? "ص" : "م";
+  const hour = h % 12 === 0 ? 12 : h % 12;
+  return `${String(hour).padStart(2, "0")}:${String(m).padStart(2, "0")} ${period}`;
+};
+
 const DAYS = [
   "السبت",
   "الأحد",
@@ -742,7 +750,7 @@ export default function Classes() {
                           <div className="mt-1 text-[11px] text-white/55">{item.category}</div>
                         ) : null}
                         <div className="mt-1 text-[11px] font-semibold text-fuchsia-300/80">{item.trainer}</div>
-                        <div className="mt-1 text-xs text-white/45">{item.time}</div>
+                        <div className="mt-1 text-xs text-white/45">{formatTime12(item.time)}</div>
                         <div className={`mt-2 inline-flex rounded-full border px-2 py-1 text-[11px] font-bold ${resolveTypeColor(item.type)}`}>
                           {normalizeTypeLabel(item.type)}
                         </div>
@@ -812,8 +820,8 @@ export default function Classes() {
                       <td className="px-4 py-4 font-bold text-white">{item.name}</td>
                       <td className="px-4 py-4 text-white/70">{item.trainer}</td>
                       <td className="px-4 py-4 text-white/70">{item.day}</td>
-                      <td className="px-4 py-4 text-white/70" dir="ltr">
-                        {item.time}
+                      <td className="px-4 py-4 text-white/70">
+                        {formatTime12(item.time)}
                       </td>
                       <td className="px-4 py-4 text-white/70">{item.duration} دقيقة</td>
                       <td className="px-4 py-4 text-white/70">
