@@ -2240,9 +2240,7 @@ const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string) =
       }
       if (Array.isArray(d.classes)) {
         const now = new Date();
-        // TODO(timezone): "today classes" currently depends on client-local weekday labels here in FitzoneApp.tsx.
-        // Revisit with a single explicit club timezone shared by client/server (likely Africa/Cairo) before changing behavior.
-        const todayLabel = now.toLocaleDateString("ar-EG", { weekday: "long" });
+        const todayDateStr = now.toLocaleDateString("en-CA"); // YYYY-MM-DD in local time
         const timeToMinutes = (value: string) => {
           const [h, m] = value.split(":").map(Number);
           return (h || 0) * 60 + (m || 0);
@@ -2255,23 +2253,20 @@ const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string) =
           return "#6B7280";
         };
         const entries = (d.classes as PublicClass[]).flatMap((cls) =>
-          cls.schedules.map((schedule) => {
-            const day = new Date(schedule.date).toLocaleDateString("ar-EG", { weekday: "long" });
-            return {
-              id: schedule.id,
-              time: schedule.time,
-              name: cls.name,
-              trainer: cls.trainer,
-              trainerImage: cls.trainerImage ?? null,
-              spots: schedule.availableSpots,
-              color: typeColor(cls.type),
-              type: cls.type,
-              day,
-            };
-          }),
+          cls.schedules.map((schedule) => ({
+            id: schedule.id,
+            time: schedule.time,
+            name: cls.name,
+            trainer: cls.trainer,
+            trainerImage: cls.trainerImage ?? null,
+            spots: schedule.availableSpots,
+            color: typeColor(cls.type),
+            type: cls.type,
+            dateStr: new Date(schedule.date).toLocaleDateString("en-CA"),
+          })),
         );
         const todayEntries = entries
-          .filter((entry) => entry.day === todayLabel)
+          .filter((entry) => entry.dateStr === todayDateStr)
           .sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
         setTodayClasses(todayEntries);
         setTodayIndex(0);
