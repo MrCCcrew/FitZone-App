@@ -2019,8 +2019,16 @@ function BookingsTab({ bookings, classSessions, membershipHistory }: {
             day: format(new Date(s.date), "EEEE", { locale: lang === "en" ? enUS : ar }),
             availableSpots: s.availableSpots,
           })),
-        );
-        setScheduleEntries(entries);
+        ).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        // Keep only the nearest upcoming slot per (day, time, className)
+        const seen = new Set<string>();
+        const deduped = entries.filter((r) => {
+          const key = `${r.day}|${r.time}|${r.className}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+        setScheduleEntries(deduped);
       } catch {
         if (mounted) setScheduleEntries([]);
       } finally {
