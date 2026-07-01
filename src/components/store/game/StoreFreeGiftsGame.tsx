@@ -59,7 +59,7 @@ export function StoreFreeGiftsGame() {
   // ── Load game state ──
   const loadGame = useCallback(async () => {
     try {
-      const res = await fetch("/api/store/free-gifts/game");
+      const res = await fetch("/api/store/free-gifts/game", { cache: "no-store" });
       if (!res.ok) throw new Error("failed");
       const data = await res.json() as GameState;
       if (data.gameEnabled === false) {
@@ -87,13 +87,16 @@ export function StoreFreeGiftsGame() {
   };
 
   // Called by PremiumSpinWheel after animation + bounce complete
-  const handleSpinAnimDone = () => {
+  const handleSpinAnimDone = useCallback(() => {
     setMascotState("reward_happy");
     if (pendingRewardRef.current) {
       setSpinReward(pendingRewardRef.current);
       pendingRewardRef.current = null;
+    } else {
+      // Spin completed but reward wasn't captured (edge case) — reload to advance step
+      void loadGame();
     }
-  };
+  }, [loadGame]);
 
   const handleSpinRewardNext = async () => {
     setSpinReward(null);
