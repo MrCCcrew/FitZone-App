@@ -32,6 +32,20 @@ export default function PullToRefresh() {
   const active       = useRef(false);
   const direction    = useRef<"v" | "h" | null>(null); // lock swipe direction
 
+  // Android Chrome: native PTR ignores JS touch events — must use CSS overscroll-behavior
+  useEffect(() => {
+    const syncOverscroll = () => {
+      document.body.style.overscrollBehaviorY = isModalOpen() ? "none" : "";
+    };
+    const observer = new MutationObserver(syncOverscroll);
+    observer.observe(document.body, { childList: true, subtree: true });
+    syncOverscroll();
+    return () => {
+      observer.disconnect();
+      document.body.style.overscrollBehaviorY = "";
+    };
+  }, []);
+
   useEffect(() => {
     const onStart = (e: TouchEvent) => {
       if (window.scrollY > 4) return;
