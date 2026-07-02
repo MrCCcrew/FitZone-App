@@ -36,7 +36,7 @@ export default function RewardSettings() {
     referralRewardType: "wallet",
     referralRewardValue: 50,
     tierThresholds: { silver: 500, gold: 1500, platinum: 5000 },
-    onboardingProfilePoints: 50,
+    onboardingProfilePoints: 80,
     onboardingEmailPoints: 20,
   });
   const [referrals, setReferrals] = useState<ReferralRow[]>([]);
