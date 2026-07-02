@@ -3,6 +3,7 @@ import bcryptjs from "bcryptjs";
 import { requireAdminFeature } from "@/lib/admin-guard";
 import { db } from "@/lib/db";
 import { logAudit } from "@/lib/audit-context";
+import { getRewardSettings, calcTier } from "@/lib/reward-settings";
 
 async function checkAdmin() {
   const guard = await requireAdminFeature("customers");
@@ -257,11 +258,8 @@ async function applyWalletAndRewards(userId: string, nextBalance?: number, nextP
     });
 
     const delta = Number(nextPoints) - rewards.points;
-    const tier =
-      nextPoints >= 5000 ? "platinum" :
-      nextPoints >= 3000 ? "gold" :
-      nextPoints >= 1000 ? "silver" :
-      "bronze";
+    const rewardCfg = await getRewardSettings();
+    const tier = calcTier(Number(nextPoints), rewardCfg.tierThresholds);
 
     await db.rewardPoints.update({
       where: { id: rewards.id },
@@ -505,15 +503,19 @@ export async function PATCH(req: Request) {
 
       // Approve: activate account + give signup bonus
       const SIGNUP_BONUS = 20;
-      const rewards = await db.rewardPoints.findFirst({ where: { userId: id } });
+      const [rewards, approveRewardCfg] = await Promise.all([
+        db.rewardPoints.findFirst({ where: { userId: id } }),
+        getRewardSettings(),
+      ]);
       await db.user.update({
         where: { id },
         data: { pendingApproval: false, emailVerified: new Date() },
       });
       if (rewards) {
+        const newBonusPts = rewards.points + SIGNUP_BONUS;
         await db.rewardPoints.update({
           where: { id: rewards.id },
-          data: { points: { increment: SIGNUP_BONUS }, tier: "bronze" },
+          data: { points: { increment: SIGNUP_BONUS }, tier: calcTier(newBonusPts, approveRewardCfg.tierThresholds) },
         });
         await db.rewardHistory.create({
           data: { rewardId: rewards.id, points: SIGNUP_BONUS, reason: "onboarding_email_verified" },

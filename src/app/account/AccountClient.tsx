@@ -98,11 +98,11 @@ interface AccountData {
     profileComplete: boolean;
     emailVerified: boolean;
     hasReferral: boolean;
+    hasPendingReferral: boolean;
     profileRewardClaimed: boolean;
     emailRewardClaimed: boolean;
     profilePoints: number;
     emailPoints: number;
-    referralRewardDisplay: string;
   };
   bookings: {
     id: string;
@@ -399,11 +399,13 @@ function OnboardingCard({
   const firstName = data.user.name.split(" ")[0];
 
   const ob = data.onboarding;
+  // Email + profile together = 95%, referral (friend subscribed) = last 5% → 100%
+  const twoStepProgress = ((ob.emailVerified ? 1 : 0) + (ob.profileComplete ? 1 : 0)) / 2 * 95;
+  const progress = ob.hasReferral ? 100 : Math.round(twoStepProgress);
   const completedCount =
     (ob.profileComplete ? 1 : 0) +
     (ob.emailVerified ? 1 : 0) +
     (ob.hasReferral ? 1 : 0);
-  const progress = Math.round((completedCount / 3) * 100);
 
   const claimReward = async (reward: "profile_complete" | "email_verified") => {
     setClaiming(reward);
@@ -473,10 +475,13 @@ function OnboardingCard({
       key: "referral" as const,
       icon: "🤝",
       label: t("اعزمي صاحبة", "Invite a friend"),
-      desc: t("شاركي كودك وخدي مكافأة", "Share your code and earn"),
+      desc: ob.hasPendingReferral && !ob.hasReferral
+        ? t("صديقتك سجّلت — المكافأة تُفعَّل عند اشتراكها", "Friend registered — reward activates when she subscribes")
+        : t("شاركي كودك — المكافأة تظهر عند اشتراك صديقتك", "Share your code — reward appears when your friend subscribes"),
       done: ob.hasReferral,
+      pending: ob.hasPendingReferral && !ob.hasReferral,
       claimed: ob.hasReferral,
-      reward: ob.referralRewardDisplay,
+      reward: t("مكافأة مالية", "Cash reward"),
       canClaim: false,
     },
   ];
@@ -524,13 +529,15 @@ function OnboardingCard({
             className={`flex items-center gap-3 rounded-xl px-4 py-3 transition-colors ${
               task.done
                 ? "border border-green-500/20 bg-green-500/10"
-                : "border border-white/10 bg-white/5"
+                : "pending" in task && task.pending
+                  ? "border border-amber-500/25 bg-amber-500/10"
+                  : "border border-white/10 bg-white/5"
             }`}
           >
             <div className="text-xl shrink-0">{task.icon}</div>
             <div className="flex-1 min-w-0">
-              <div className={`text-sm font-bold ${task.done ? "text-green-300" : "text-[#fff4f8]"}`}>
-                {task.done && "✔️ "}
+              <div className={`text-sm font-bold ${task.done ? "text-green-300" : "pending" in task && task.pending ? "text-amber-300" : "text-[#fff4f8]"}`}>
+                {task.done ? "✔️ " : "pending" in task && task.pending ? "⏳ " : ""}
                 {task.label}
               </div>
               <div className="text-xs text-[#c896aa]">{task.desc}</div>
@@ -550,6 +557,10 @@ function OnboardingCard({
                     ? "..."
                     : t(`خدي ${task.reward}`, `Claim ${task.reward}`)}
                 </button>
+              ) : "pending" in task && task.pending ? (
+                <span className="text-xs font-bold text-amber-400">
+                  {t("في الانتظار", "Pending")}
+                </span>
               ) : (
                 <span className={`text-xs font-bold ${task.done ? "text-green-400" : "text-[#c896aa]"}`}>
                   {t(`+${task.reward}`, `+${task.reward}`)}
@@ -566,7 +577,7 @@ function OnboardingCard({
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div>
               <div className="text-xs font-bold text-[#d7aabd] mb-0.5">
-                {t("كود الإحالة — شاركيه وخدي 50 ج.م عن كل تسجيل", "Referral code — share & earn 50 EGP per signup")}
+                {t("كود الإحالة — اعزمي صاحبتك وحصّلي مكافأة مالية عند اشتراكها", "Referral code — invite a friend and earn a cash reward when she subscribes")}
               </div>
               <div className="text-xl font-black tracking-widest text-pink-300" dir="ltr">
                 {data.referral.code}
@@ -3115,7 +3126,7 @@ function WalletTab({
           {referral && (
             <div className="bg-yellow-950/20 border border-yellow-500/30 rounded-2xl p-5">
               <h4 className="text-white font-black mb-2">{t("🎁 كود الإحالة الخاص بك", "🎁 Your referral code")}</h4>
-              <p className="text-gray-400 text-sm mb-4">{t("شارك كودك مع أصدقائك واحصل على 50 جنيه لكل عضو جديد", "Share your code with friends and get 50 EGP for each new member")}</p>
+              <p className="text-gray-400 text-sm mb-4">{t("شارك كودك مع صديقاتك واحصلي على مكافأة مالية عند اشتراك كل عضوة جديدة", "Share your code with friends and earn a cash reward when each new member subscribes")}</p>
               <div className="flex gap-2 flex-wrap">
                 <div className="flex-1 min-w-[120px] bg-black border border-yellow-500/30 rounded-xl px-4 py-2.5 text-yellow-400 font-black text-center tracking-widest" dir="ltr">
                   {referral.code}

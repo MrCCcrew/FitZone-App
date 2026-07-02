@@ -19,6 +19,7 @@ import {
   restorePaymentBalanceAdjustments,
   unlockPendingReferralReward,
 } from "@/lib/payments/service";
+import { getRewardSettings, calcTier } from "@/lib/reward-settings";
 
 type SubscribePayload = {
   membershipId?: string | null;
@@ -98,10 +99,12 @@ export async function POST(req: Request) {
 
   const resolvedPaymentMethod = sanitizeMethod(paymentMethod);
 
+  const rewardCfg = await getRewardSettings();
+
   // Validate wallet & points before transaction
   let validatedWalletDeduct = 0;
   let validatedPointsDeduct = 0;
-  let pointValueEGP = 0.1;
+  let pointValueEGP = rewardCfg.pointValueEGP;
 
   if (walletDeductAmount > 0 || pointsDeductCount > 0) {
     // Wallet/points cannot be used on trial classes without an active paid subscription.
@@ -130,18 +133,10 @@ export async function POST(req: Request) {
       }
     }
 
-    const [walletRow, pointsRow, rewardSettings] = await Promise.all([
+    const [walletRow, pointsRow] = await Promise.all([
       walletDeductAmount > 0 ? db.wallet.findUnique({ where: { userId }, select: { balance: true } }) : null,
       pointsDeductCount > 0 ? db.rewardPoints.findUnique({ where: { userId } }) : null,
-      db.siteContent.findUnique({ where: { section: "reward_settings" } }),
     ]);
-
-    if (rewardSettings?.content) {
-      try {
-        const s = JSON.parse(rewardSettings.content) as { pointValueEGP?: number };
-        if (typeof s.pointValueEGP === "number") pointValueEGP = s.pointValueEGP;
-      } catch {}
-    }
 
     if (walletDeductAmount > 0) {
       const balance = walletRow?.balance ?? 0;
@@ -1043,6 +1038,21 @@ export async function POST(req: Request) {
               : `مكافأة الاشتراك في باقة ${plan.name}`,
           },
         });
+      }
+
+      // Grant subscription points immediately for non-pending-payment subscriptions
+      if (!needsPaymentConfirmation && rewardCfg.pointsPerSubscription > 0) {
+        const rp = await tx.rewardPoints.findUnique({ where: { userId } });
+        if (rp) {
+          const newPts = rp.points + rewardCfg.pointsPerSubscription;
+          await tx.rewardPoints.update({
+            where: { id: rp.id },
+            data: { points: { increment: rewardCfg.pointsPerSubscription }, tier: calcTier(newPts, rewardCfg.tierThresholds) },
+          });
+          await tx.rewardHistory.create({
+            data: { rewardId: rp.id, points: rewardCfg.pointsPerSubscription, reason: "membership_purchase" },
+          });
+        }
       }
 
       await tx.notification.create({

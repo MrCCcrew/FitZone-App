@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAdminFeature } from "@/lib/admin-guard";
 import { db } from "@/lib/db";
+import { getRewardSettings, calcTier } from "@/lib/reward-settings";
 
 async function checkAdmin() {
   const guard = await requireAdminFeature("balance");
@@ -98,8 +99,8 @@ export async function POST(req: Request) {
       },
     });
     // Update tier
-    const p = rp.points;
-    const tier = p >= 5000 ? "platinum" : p >= 3000 ? "gold" : p >= 1000 ? "silver" : "bronze";
+    const balanceCfg = await getRewardSettings();
+    const tier = calcTier(rp.points, balanceCfg.tierThresholds);
     await db.rewardPoints.update({ where: { id: rp.id }, data: { tier } });
     return NextResponse.json({ success: true, points: rp.points });
   }

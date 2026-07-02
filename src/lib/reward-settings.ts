@@ -9,7 +9,7 @@ export const DEFAULT_REWARD_SETTINGS = {
   referralRewardType: "wallet" as "points" | "wallet",
   referralRewardValue: 50,
   tierThresholds: { silver: 500, gold: 1500, platinum: 5000 },
-  onboardingProfilePoints: 50,
+  onboardingProfilePoints: 80,
   onboardingEmailPoints: 20,
 };
 
@@ -23,4 +23,11 @@ export async function getRewardSettings(): Promise<RewardSettings> {
   } catch {
     return DEFAULT_REWARD_SETTINGS;
   }
+}
+
+export function calcTier(points: number, thresholds: RewardSettings["tierThresholds"]): string {
+  if (points >= thresholds.platinum) return "platinum";
+  if (points >= thresholds.gold) return "gold";
+  if (points >= thresholds.silver) return "silver";
+  return "bronze";
 }

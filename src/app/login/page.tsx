@@ -128,7 +128,7 @@ function LoginForm() {
 
       if (!res.ok) {
         if (data?.requiresVerification && data?.email) {
-          router.push(`/verify-email?email=${encodeURIComponent(data.email)}&callbackUrl=${encodeURIComponent(callbackUrl)}`);
+          router.push(`/verify-email?email=${encodeURIComponent(data.email)}`);
           return;
         }
 
