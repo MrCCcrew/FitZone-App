@@ -25,6 +25,7 @@ type SubscriberUser = {
   id: string;
   name: string | null;
   email: string | null;
+  phone?: string | null;
   subscriptionCount: number;
 };
 
@@ -325,6 +326,7 @@ export default function PushNotifications() {
                         cursor: "pointer",
                         background: selectedIds.includes(u.id) ? "rgba(233,30,99,.12)" : "rgba(255,255,255,.04)",
                         border: `1px solid ${selectedIds.includes(u.id) ? "rgba(233,30,99,.35)" : "rgba(255,255,255,.1)"}`,
+                        opacity: u.subscriptionCount === 0 ? 0.55 : 1,
                       }}
                     >
                       <input
@@ -333,12 +335,12 @@ export default function PushNotifications() {
                         onChange={() => toggleUser(u.id)}
                         style={{ accentColor: "#e91e63" }}
                       />
-                      <div>
+                      <div style={{ flex: 1 }}>
                         <div style={{ color: "#fff", fontSize: 13, fontWeight: 600 }}>{u.name ?? "—"}</div>
-                        <div style={{ color: "#9ca3af", fontSize: 11 }}>{u.email}</div>
+                        <div style={{ color: "#9ca3af", fontSize: 11 }}>{u.email ?? u.phone ?? "—"}</div>
                       </div>
-                      <span style={{ marginRight: "auto", fontSize: 11, color: "#6b7280" }}>
-                        {u.subscriptionCount} جهاز
+                      <span style={{ fontSize: 11, color: u.subscriptionCount > 0 ? "#4ade80" : "#6b7280", whiteSpace: "nowrap" }}>
+                        {u.subscriptionCount > 0 ? `🔔 ${u.subscriptionCount} جهاز` : "🔕 بدون إشعارات"}
                       </span>
                     </label>
                   ))}

@@ -2,35 +2,36 @@ import { NextResponse } from "next/server";
 import { requireAdminFeature } from "@/lib/admin-guard";
 import { db } from "@/lib/db";
 
-// Returns users who have at least one push subscription (for "selected" audience picker)
+// Returns all members with their push subscription count (0 = no push enabled)
 export async function GET() {
   const guard = await requireAdminFeature("push");
   if ("error" in guard) return guard.error;
 
-  const subs = await db.pushSubscription.findMany({
-    where: { userId: { not: null } },
-    select: {
-      userId: true,
-      user: { select: { id: true, name: true, email: true } },
-    },
-  });
+  const [members, subs] = await Promise.all([
+    db.user.findMany({
+      where: { role: "member" },
+      select: { id: true, name: true, email: true, phone: true },
+      orderBy: { name: "asc" },
+    }),
+    db.pushSubscription.groupBy({
+      by: ["userId"],
+      where: { userId: { not: null } },
+      _count: { id: true },
+    }),
+  ]);
 
-  // Group by user, count subscriptions per user
-  const map = new Map<string, { id: string; name: string | null; email: string | null; subscriptionCount: number }>();
-  for (const sub of subs) {
-    if (!sub.userId || !sub.user) continue;
-    const existing = map.get(sub.userId);
-    if (existing) {
-      existing.subscriptionCount++;
-    } else {
-      map.set(sub.userId, {
-        id: sub.user.id,
-        name: sub.user.name,
-        email: sub.user.email,
-        subscriptionCount: 1,
-      });
-    }
+  const subCountMap = new Map<string, number>();
+  for (const s of subs) {
+    if (s.userId) subCountMap.set(s.userId, s._count.id);
   }
 
-  return NextResponse.json({ users: Array.from(map.values()) });
+  const users = members.map((m) => ({
+    id: m.id,
+    name: m.name,
+    email: m.email,
+    phone: m.phone,
+    subscriptionCount: subCountMap.get(m.id) ?? 0,
+  }));
+
+  return NextResponse.json({ users });
 }
