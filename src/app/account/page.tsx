@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getCurrentAppUser } from "@/lib/app-session";
 import { db } from "@/lib/db";
 import AccountClient from "./AccountClient";
+import { getRewardSettings } from "@/lib/reward-settings";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +27,8 @@ function parseJsonArray<T>(value: string | null | undefined) {
 
 async function getAccountData(userId: string) {
   try {
-    const user = await db.user.findUnique({
+    const [user, rewardSettings] = await Promise.all([
+    db.user.findUnique({
       where: { id: userId },
       include: {
         memberships: {
@@ -69,7 +71,9 @@ async function getAccountData(userId: string) {
         },
         notifications: { orderBy: { createdAt: "desc" }, take: 30 },
       },
-    });
+    }),
+    getRewardSettings(),
+    ]);
 
     if (!user) return null;
 
@@ -341,6 +345,12 @@ async function getAccountData(userId: string) {
         emailRewardClaimed: user.rewardPoints?.history.some(
           (h) => h.reason === "onboarding_email_verified"
         ) ?? false,
+        profilePoints: rewardSettings.onboardingProfilePoints,
+        emailPoints: rewardSettings.onboardingEmailPoints,
+        referralRewardDisplay:
+          rewardSettings.referralRewardType === "wallet"
+            ? `${rewardSettings.referralRewardValue} ج.م`
+            : `${rewardSettings.referralRewardValue} نقطة`,
       },
       bookings: user.bookings
         // Hide bookings tied to expired-pending memberships

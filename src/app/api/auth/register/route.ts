@@ -3,6 +3,7 @@ import bcryptjs from "bcryptjs";
 import { db } from "@/lib/db";
 import { sendVerificationEmail } from "@/lib/email";
 import { applySensitiveRateLimit, getClientIp } from "@/lib/rate-limit";
+import { getRewardSettings } from "@/lib/reward-settings";
 
 export async function POST(req: Request) {
   try {
@@ -136,6 +137,8 @@ export async function POST(req: Request) {
       }
     }
 
+    const rewardSettings = await getRewardSettings();
+
     const user = await db.$transaction(async (tx) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const txUser = (tx.user as any);
@@ -155,7 +158,7 @@ export async function POST(req: Request) {
       });
 
       await tx.wallet.create({ data: { userId: createdUser.id, balance: 0 } });
-      await tx.rewardPoints.create({ data: { userId: createdUser.id, points: 0, tier: "bronze" } });
+      const newUserRewardPoints = await tx.rewardPoints.create({ data: { userId: createdUser.id, points: 0, tier: "bronze" } });
       await tx.referral.create({
         data: { userId: createdUser.id, code: `FZ-${createdUser.id.slice(-6).toUpperCase()}` },
       });
@@ -168,45 +171,66 @@ export async function POST(req: Request) {
         if (alreadyReferred) referralRecord = null;
       }
       if (referralRecord) {
-        const REFERRAL_REWARD_EGP = 50;
+        const rType  = rewardSettings.referralRewardType;
+        const rValue = rewardSettings.referralRewardValue;
         const eligible = referralRecord.subscriptionActivatedCount >= referralRecord.referredCount;
 
         if (eligible) {
-          // Reward the referrer immediately
-          const referrerWallet = await tx.wallet.upsert({
-            where: { userId: referralRecord.userId },
-            update: {},
-            create: { userId: referralRecord.userId, balance: 0 },
-          });
-
-          await tx.wallet.update({
-            where: { id: referrerWallet.id },
-            data: { balance: { increment: REFERRAL_REWARD_EGP } },
-          });
-
-          await tx.walletTransaction.create({
-            data: {
-              walletId: referrerWallet.id,
-              amount: REFERRAL_REWARD_EGP,
-              type: "credit",
-              description: `مكافأة إحالة — انضمت ${normalizedName}`,
-            },
-          });
+          if (rType === "wallet") {
+            const referrerWallet = await tx.wallet.upsert({
+              where: { userId: referralRecord.userId },
+              update: {},
+              create: { userId: referralRecord.userId, balance: 0 },
+            });
+            await tx.wallet.update({
+              where: { id: referrerWallet.id },
+              data: { balance: { increment: rValue } },
+            });
+            await tx.walletTransaction.create({
+              data: {
+                walletId: referrerWallet.id,
+                amount: rValue,
+                type: "credit",
+                description: `مكافأة إحالة — انضمت ${normalizedName}`,
+              },
+            });
+            await tx.notification.create({
+              data: {
+                userId: referralRecord.userId,
+                title: "🎉 مكافأة إحالة!",
+                body: `انضمت ${normalizedName} بكودك وحصلتِ على ${rValue} ج.م في محفظتك!`,
+                type: "success",
+              },
+            });
+          } else {
+            // points reward for referrer
+            const referrerRewards = await tx.rewardPoints.findUnique({ where: { userId: referralRecord.userId } });
+            if (referrerRewards) {
+              const newPts = referrerRewards.points + rValue;
+              const tier = newPts >= 5000 ? "platinum" : newPts >= 3000 ? "gold" : newPts >= 1000 ? "silver" : "bronze";
+              await tx.rewardPoints.update({
+                where: { id: referrerRewards.id },
+                data: { points: { increment: rValue }, tier },
+              });
+              await tx.rewardHistory.create({
+                data: { rewardId: referrerRewards.id, points: rValue, reason: "referral_bonus" },
+              });
+            }
+            await tx.notification.create({
+              data: {
+                userId: referralRecord.userId,
+                title: "🎉 مكافأة إحالة!",
+                body: `انضمت ${normalizedName} بكودك وحصلتِ على ${rValue} نقطة في رصيد مكافآتك!`,
+                type: "success",
+              },
+            });
+          }
 
           await tx.referral.update({
             where: { id: referralRecord.id },
             data: {
               referredCount: { increment: 1 },
-              totalEarned: { increment: REFERRAL_REWARD_EGP },
-            },
-          });
-
-          await tx.notification.create({
-            data: {
-              userId: referralRecord.userId,
-              title: "🎉 مكافأة إحالة!",
-              body: `انضمت ${normalizedName} بكودك وحصلتِ على ${REFERRAL_REWARD_EGP} ج.م في محفظتك!`,
-              type: "success",
+              totalEarned: { increment: rValue },
             },
           });
         } else {
@@ -222,10 +246,23 @@ export async function POST(req: Request) {
             referralId: referralRecord.id,
             referredUserId: createdUser.id,
             rewardGiven: eligible,
-            rewardType: eligible ? "wallet" : null,
-            rewardValue: eligible ? REFERRAL_REWARD_EGP : null,
+            rewardType: eligible ? rType : null,
+            rewardValue: eligible ? rValue : null,
           },
         });
+
+        // Give the new user points for registering with a referral code (immediate, not tied to eligibility)
+        if (rewardSettings.pointsPerReferral > 0) {
+          const pts = rewardSettings.pointsPerReferral;
+          const tier = pts >= 5000 ? "platinum" : pts >= 3000 ? "gold" : pts >= 1000 ? "silver" : "bronze";
+          await tx.rewardPoints.update({
+            where: { id: newUserRewardPoints.id },
+            data: { points: pts, tier },
+          });
+          await tx.rewardHistory.create({
+            data: { rewardId: newUserRewardPoints.id, points: pts, reason: "referral_signup" },
+          });
+        }
       }
 
       return createdUser;
