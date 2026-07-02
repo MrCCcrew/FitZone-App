@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/app-session";
 import { db } from "@/lib/db";
-import { getRewardSettings } from "@/lib/reward-settings";
+import { getRewardSettings, calcTier } from "@/lib/reward-settings";
 
 type RewardKey = "profile_complete" | "email_verified";
 
@@ -69,10 +69,7 @@ export async function POST(req: Request) {
   await db.$transaction(async (tx) => {
     const currentPoints = user.rewardPoints?.points ?? 0;
     const newPoints = currentPoints + points;
-    const tier =
-      newPoints >= 3000 ? "platinum" :
-      newPoints >= 2000 ? "gold" :
-      newPoints >= 1000 ? "silver" : "bronze";
+    const tier = calcTier(newPoints, settings.tierThresholds);
 
     if (user.rewardPoints) {
       await tx.rewardPoints.update({

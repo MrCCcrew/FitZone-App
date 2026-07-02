@@ -45,7 +45,7 @@ async function getAccountData(userId: string) {
         },
         wallet: { include: { transactions: { orderBy: { createdAt: "desc" }, take: 10 } } },
         rewardPoints: { include: { history: { orderBy: { createdAt: "desc" }, take: 20 } } },
-        referral: { include: { usages: { select: { id: true } } } },
+        referral: { include: { usages: { select: { id: true, rewardGiven: true } } } },
         bookings: {
           include: { schedule: { include: { class: { include: { trainer: true } } } } },
           orderBy: { createdAt: "desc" },
@@ -338,7 +338,8 @@ async function getAccountData(userId: string) {
       onboarding: {
         profileComplete: !!(user.phone && user.gender && user.birthDate && user.governorate),
         emailVerified: !!user.emailVerified,
-        hasReferral: (user.referral?.usages.length ?? 0) > 0,
+        hasReferral: (user.referral?.usages ?? []).some((u) => u.rewardGiven),
+        hasPendingReferral: (user.referral?.usages ?? []).some((u) => !u.rewardGiven),
         profileRewardClaimed: user.rewardPoints?.history.some(
           (h) => h.reason === "onboarding_profile_complete"
         ) ?? false,
@@ -347,10 +348,6 @@ async function getAccountData(userId: string) {
         ) ?? false,
         profilePoints: rewardSettings.onboardingProfilePoints,
         emailPoints: rewardSettings.onboardingEmailPoints,
-        referralRewardDisplay:
-          rewardSettings.referralRewardType === "wallet"
-            ? `${rewardSettings.referralRewardValue} ج.م`
-            : `${rewardSettings.referralRewardValue} نقطة`,
       },
       bookings: user.bookings
         // Hide bookings tied to expired-pending memberships

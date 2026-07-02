@@ -32,13 +32,17 @@ function AppleIcon() {
   );
 }
 
-function SocialButtons({ lang, acceptedTerms, referralCode, partnerRef }: { lang: string; acceptedTerms: boolean; referralCode?: string; partnerRef?: string }) {
+function SocialButtons({ lang, acceptedTerms, referralCode, partnerRef, staffRef, trainerRef, nutritionRef, agentRef }: { lang: string; acceptedTerms: boolean; referralCode?: string; partnerRef?: string; staffRef?: string; trainerRef?: string; nutritionRef?: string; agentRef?: string }) {
   const t = (ar: string, en: string) => (lang === "ar" ? ar : en);
   const googleHref = acceptedTerms
     ? (() => {
         const params = new URLSearchParams();
         if (referralCode) params.set("ref", referralCode);
         if (partnerRef) params.set("partnerRef", partnerRef);
+        if (staffRef) params.set("staffRef", staffRef);
+        if (trainerRef) params.set("trainerRef", trainerRef);
+        if (nutritionRef) params.set("nutritionRef", nutritionRef);
+        if (agentRef) params.set("agentRef", agentRef);
         const qs = params.toString();
         return `/api/auth/oauth/google${qs ? `?${qs}` : ""}`;
       })()
@@ -103,13 +107,16 @@ function RegisterForm() {
   const [referralCode, setReferralCode] = useState("");
   const [referralFromUrl, setReferralFromUrl] = useState(false);
   const [partnerRef, setPartnerRef] = useState("");
+  const [staffRef, setStaffRef] = useState("");
+  const [trainerRef, setTrainerRef] = useState("");
+  const [nutritionRef, setNutritionRef] = useState("");
+  const [agentRef, setAgentRef] = useState("");
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-
   useEffect(() => {
     const ref = searchParams.get("ref");
     if (ref) {
@@ -131,13 +138,14 @@ function RegisterForm() {
         }).catch(() => {});
       }
     }
-    // Store staff/trainer/nutrition referral tokens in sessionStorage for use on submit
-    const staffRef = searchParams.get("staffRef");
-    if (staffRef) sessionStorage.setItem("fitzone:staff-ref", staffRef.trim().toUpperCase());
-    const trainerRef = searchParams.get("trainerRef");
-    if (trainerRef) sessionStorage.setItem("fitzone:trainer-ref", trainerRef.trim().toUpperCase());
-    const nutritionRef = searchParams.get("nutritionRef");
-    if (nutritionRef) sessionStorage.setItem("fitzone:nutrition-ref", nutritionRef.trim().toUpperCase());
+    const sRef = searchParams.get("staffRef");
+    if (sRef) { const n = sRef.trim().toUpperCase(); setStaffRef(n); sessionStorage.setItem("fitzone:staff-ref", n); }
+    const tRef = searchParams.get("trainerRef");
+    if (tRef) { const n = tRef.trim().toUpperCase(); setTrainerRef(n); sessionStorage.setItem("fitzone:trainer-ref", n); }
+    const nRef = searchParams.get("nutritionRef");
+    if (nRef) { const n = nRef.trim().toUpperCase(); setNutritionRef(n); sessionStorage.setItem("fitzone:nutrition-ref", n); }
+    const aRef = searchParams.get("agentRef");
+    if (aRef) { setAgentRef(aRef.trim().toUpperCase()); }
   }, [searchParams]);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -184,9 +192,10 @@ function RegisterForm() {
           password: form.password,
           referralCode: referralCode.trim().toUpperCase() || null,
           partnerRef: partnerRef || null,
-          staffRef: sessionStorage.getItem("fitzone:staff-ref") || null,
-          trainerRef: sessionStorage.getItem("fitzone:trainer-ref") || null,
-          nutritionRef: sessionStorage.getItem("fitzone:nutrition-ref") || null,
+          staffRef: staffRef || sessionStorage.getItem("fitzone:staff-ref") || null,
+          trainerRef: trainerRef || sessionStorage.getItem("fitzone:trainer-ref") || null,
+          nutritionRef: nutritionRef || sessionStorage.getItem("fitzone:nutrition-ref") || null,
+          agentRef: agentRef || null,
         }),
       });
 
@@ -391,7 +400,7 @@ function RegisterForm() {
                 <div>
                   <p className="mb-1 font-bold text-white">🎉 {t("نقاط الترحيب", "Welcome Points")}</p>
                   <ul className="space-y-1 ps-1">
-                    <li>• {t("بمجرد إنشاء الحساب، هيتم إضافة 100 نقطة هدية في حسابك ترحيبًا بيكي 🎁", "As soon as you create your account, 100 gift points will be added as a welcome bonus 🎁")}</li>
+                    <li>• {t("بمجرد إنشاء الحساب، هيتم إضافة 100 نقطة هدية ترحيبًا بيكِ 🎁 بعد اكمال خطوات التسجيل بالكامل", "Upon completing all registration steps, 100 gift points will be added to your account as a welcome bonus 🎁")}</li>
                   </ul>
                 </div>
 
@@ -399,10 +408,9 @@ function RegisterForm() {
                 <div>
                   <p className="mb-1 font-bold text-white">👥 {t("نظام الإحالة (Referral)", "Referral System")}</p>
                   <ul className="space-y-1 ps-1">
-                    <li>• {t("هتلاقي كود الإحالة الخاص بيكي داخل حسابك الشخصي بعد التسجيل.", "You'll find your personal referral code inside your profile after registration.")}</li>
-                    <li>• {t("تقدري تشاركيه مع أصحابك.", "You can share it with your friends.")}</li>
-                    <li>• {t("لما حد يسجل باستخدام كودك ويشترك في أي باقة مدفوعة، هينزل في حسابك 50 جنيه رصيد صافي 💰", "When someone registers with your code and subscribes to any paid plan, 50 EGP net balance will be credited to your account 💰")}</li>
-                    <li>• {t("المكافأة بتتحسب لكل عضو جديد بيشترك بنجاح — مش مجرد التسجيل.", "The reward is credited for each new member who successfully subscribes — not just registers.")}</li>
+                    <li>• {t("ستجدين كود الإحالة الخاص بكِ داخل حسابك الشخصي بعد التسجيل.", "You'll find your personal referral code inside your account after registration.")}</li>
+                    <li>• {t("شاركيه مع صديقاتك — لما أي عضو تشترك في أي اشتراك أو باقة مدفوعة باستخدام كودك، هتاخدي مكافأة مالية في محفظتك 💰", "Share it with your friends — when anyone subscribes to any paid plan using your code, you'll receive a cash reward in your wallet 💰")}</li>
+                    <li>• {t("المكافأة تُضاف فور تأكيد اشتراك صديقتك بنجاح — مش بمجرد التسجيل.", "The reward is added as soon as your friend's subscription is confirmed — not just upon registration.")}</li>
                   </ul>
                 </div>
 
@@ -453,7 +461,7 @@ function RegisterForm() {
             </button>
           </form>
 
-          <SocialButtons lang={lang} acceptedTerms={acceptedTerms} referralCode={referralCode || undefined} partnerRef={partnerRef || undefined} />
+          <SocialButtons lang={lang} acceptedTerms={acceptedTerms} referralCode={referralCode || undefined} partnerRef={partnerRef || undefined} staffRef={staffRef || undefined} trainerRef={trainerRef || undefined} nutritionRef={nutritionRef || undefined} agentRef={agentRef || undefined} />
 
           <div className="mt-6 text-center text-sm">
             <span className="text-gray-400">{t("لديك حساب بالفعل؟", "Already have an account?")} </span>

@@ -3,7 +3,7 @@ import bcryptjs from "bcryptjs";
 import { db } from "@/lib/db";
 import { sendVerificationEmail } from "@/lib/email";
 import { applySensitiveRateLimit, getClientIp } from "@/lib/rate-limit";
-import { getRewardSettings } from "@/lib/reward-settings";
+import { getRewardSettings, calcTier } from "@/lib/reward-settings";
 
 export async function POST(req: Request) {
   try {
@@ -118,11 +118,11 @@ export async function POST(req: Request) {
     }
 
     // Validate referral code before creating user
-    let referralRecord: { id: string; userId: string; referredCount: number; subscriptionActivatedCount: number } | null = null;
+    let referralRecord: { id: string; userId: string } | null = null;
     if (normalizedReferralCode) {
       const found = await db.referral.findUnique({
         where: { code: normalizedReferralCode },
-        select: { id: true, userId: true, referredCount: true, subscriptionActivatedCount: true },
+        select: { id: true, userId: true },
       });
       // Silently ignore invalid codes — don't block registration
       if (found) {
@@ -163,7 +163,7 @@ export async function POST(req: Request) {
         data: { userId: createdUser.id, code: `FZ-${createdUser.id.slice(-6).toUpperCase()}` },
       });
 
-      // Record referral usage — reward only if subscriptionActivatedCount >= referredCount
+      // Record referral usage — reward is NEVER given at registration, always held until subscription/purchase
       if (referralRecord) {
         const alreadyReferred = await tx.referralUsage.findUnique({
           where: { referredUserId: createdUser.id },
@@ -171,90 +171,26 @@ export async function POST(req: Request) {
         if (alreadyReferred) referralRecord = null;
       }
       if (referralRecord) {
-        const rType  = rewardSettings.referralRewardType;
-        const rValue = rewardSettings.referralRewardValue;
-        const eligible = referralRecord.subscriptionActivatedCount >= referralRecord.referredCount;
-
-        if (eligible) {
-          if (rType === "wallet") {
-            const referrerWallet = await tx.wallet.upsert({
-              where: { userId: referralRecord.userId },
-              update: {},
-              create: { userId: referralRecord.userId, balance: 0 },
-            });
-            await tx.wallet.update({
-              where: { id: referrerWallet.id },
-              data: { balance: { increment: rValue } },
-            });
-            await tx.walletTransaction.create({
-              data: {
-                walletId: referrerWallet.id,
-                amount: rValue,
-                type: "credit",
-                description: `مكافأة إحالة — انضمت ${normalizedName}`,
-              },
-            });
-            await tx.notification.create({
-              data: {
-                userId: referralRecord.userId,
-                title: "🎉 مكافأة إحالة!",
-                body: `انضمت ${normalizedName} بكودك وحصلتِ على ${rValue} ج.م في محفظتك!`,
-                type: "success",
-              },
-            });
-          } else {
-            // points reward for referrer
-            const referrerRewards = await tx.rewardPoints.findUnique({ where: { userId: referralRecord.userId } });
-            if (referrerRewards) {
-              const newPts = referrerRewards.points + rValue;
-              const tier = newPts >= 5000 ? "platinum" : newPts >= 3000 ? "gold" : newPts >= 1000 ? "silver" : "bronze";
-              await tx.rewardPoints.update({
-                where: { id: referrerRewards.id },
-                data: { points: { increment: rValue }, tier },
-              });
-              await tx.rewardHistory.create({
-                data: { rewardId: referrerRewards.id, points: rValue, reason: "referral_bonus" },
-              });
-            }
-            await tx.notification.create({
-              data: {
-                userId: referralRecord.userId,
-                title: "🎉 مكافأة إحالة!",
-                body: `انضمت ${normalizedName} بكودك وحصلتِ على ${rValue} نقطة في رصيد مكافآتك!`,
-                type: "success",
-              },
-            });
-          }
-
-          await tx.referral.update({
-            where: { id: referralRecord.id },
-            data: {
-              referredCount: { increment: 1 },
-              totalEarned: { increment: rValue },
-            },
-          });
-        } else {
-          // Track the referral but hold the reward until a subscription is activated
-          await tx.referral.update({
-            where: { id: referralRecord.id },
-            data: { referredCount: { increment: 1 } },
-          });
-        }
+        // Track the referral — hold reward until the referred user subscribes or purchases
+        await tx.referral.update({
+          where: { id: referralRecord.id },
+          data: { referredCount: { increment: 1 } },
+        });
 
         await tx.referralUsage.create({
           data: {
             referralId: referralRecord.id,
             referredUserId: createdUser.id,
-            rewardGiven: eligible,
-            rewardType: eligible ? rType : null,
-            rewardValue: eligible ? rValue : null,
+            rewardGiven: false,
+            rewardType: null,
+            rewardValue: null,
           },
         });
 
         // Give the new user points for registering with a referral code (immediate, not tied to eligibility)
         if (rewardSettings.pointsPerReferral > 0) {
           const pts = rewardSettings.pointsPerReferral;
-          const tier = pts >= 5000 ? "platinum" : pts >= 3000 ? "gold" : pts >= 1000 ? "silver" : "bronze";
+          const tier = calcTier(pts, rewardSettings.tierThresholds);
           await tx.rewardPoints.update({
             where: { id: newUserRewardPoints.id },
             data: { points: pts, tier },

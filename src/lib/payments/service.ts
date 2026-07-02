@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { buildAttendancePayload, ensureMembershipAttendancePass, ensurePrivateAttendancePass } from "@/lib/attendance";
 import { sendSubscriptionEmail } from "@/lib/email";
+import { getRewardSettings, calcTier } from "@/lib/reward-settings";
 import { generateMembershipQrCard } from "@/lib/membership-card";
 import { generateMembershipInvoicePdf, type MembershipInvoiceDetails } from "@/lib/membership-invoice";
 import { getDefaultPaymentProvider, getPaymentProvider, listPaymentProviders } from "@/lib/payments/registry";
@@ -599,6 +600,205 @@ export async function updatePaymentTransactionStatus(
           }
         } catch {}
 
+        // Deferred commissions for Paymob-confirmed subscriptions.
+        // Mirrors the !needsPaymentConfirmation blocks in subscribe/route.ts.
+        // All operations use upsert / existence checks to be idempotent.
+        try {
+          const dbx = db as any;
+          const fullMem = await dbx.userMembership.findUnique({
+            where: { id: existing.membershipId },
+            select: {
+              salesAgentUserId:      true,
+              salesAgentId:          true,
+              staffReferralLinkId:   true,
+              trainerReferralLinkId: true,
+              nutritionReferralLinkId: true,
+              paymentAmount:         true,
+              partnerId:             true,
+              partnerCodeId:         true,
+              affiliateLinkId:       true,
+              staffReferralLink:   { select: { userId: true, user: { select: { commissionRate: true, commissionType: true } } } },
+              trainerReferralLink: { select: { userId: true, user: { select: { commissionRate: true, commissionType: true } } } },
+              nutritionReferralLink: { select: { userId: true, user: { select: { nutritionistProfile: { select: { commissionRate: true, commissionType: true } } } } } },
+            },
+          }) as {
+            salesAgentUserId: string | null;
+            salesAgentId: string | null;
+            staffReferralLinkId: string | null;
+            trainerReferralLinkId: string | null;
+            nutritionReferralLinkId: string | null;
+            paymentAmount: number | null;
+            partnerId: string | null;
+            partnerCodeId: string | null;
+            affiliateLinkId: string | null;
+            staffReferralLink:   { userId: string; user: { commissionRate: number; commissionType: string } } | null;
+            trainerReferralLink: { userId: string; user: { commissionRate: number; commissionType: string } } | null;
+            nutritionReferralLink: { userId: string; user: { nutritionistProfile: { commissionRate: number; commissionType: string } | null } } | null;
+          } | null;
+
+          if (fullMem) {
+            const paidAmount = fullMem.paymentAmount ?? 0;
+
+            // ── Manager–partner commission ──────────────────────────────────
+            if (fullMem.partnerId && (fullMem.partnerCodeId || fullMem.affiliateLinkId)) {
+              const partnerWithMgr = await dbx.partner.findUnique({
+                where: { id: fullMem.partnerId },
+                select: { managerId: true, managerCommissionType: true, managerCommissionRate: true, commissionRate: true, commissionType: true },
+              }) as { managerId: string | null; managerCommissionType: string | null; managerCommissionRate: number | null; commissionRate: number; commissionType: string } | null;
+              if (partnerWithMgr?.managerId && (partnerWithMgr.managerCommissionRate ?? 0) > 0) {
+                const existingPComm = await dbx.partnerCommission.findUnique({ where: { userMembershipId: existing.membershipId } });
+                if (existingPComm) {
+                  const existingMgrPComm = await dbx.managerPartnerCommission.findUnique({ where: { partnerCommissionId: existingPComm.id } });
+                  if (!existingMgrPComm) {
+                    const partnerComm = partnerWithMgr.commissionType === "fixed"
+                      ? partnerWithMgr.commissionRate
+                      : Math.round((paidAmount * partnerWithMgr.commissionRate) / 100 * 100) / 100;
+                    let mgrAmount = 0;
+                    if (partnerWithMgr.managerCommissionType === "percentage_of_partner") {
+                      mgrAmount = Math.round((partnerComm * (partnerWithMgr.managerCommissionRate ?? 0)) / 100 * 100) / 100;
+                    } else {
+                      mgrAmount = partnerWithMgr.managerCommissionRate ?? 0;
+                    }
+                    if (mgrAmount > 0) {
+                      await dbx.managerPartnerCommission.create({
+                        data: { managerId: partnerWithMgr.managerId, partnerCommissionId: existingPComm.id, userMembershipId: existing.membershipId, amount: mgrAmount },
+                      });
+                    }
+                  }
+                }
+              }
+            }
+
+            // ── Agent commission (from staff/trainer discount code) ─────────
+            if (fullMem.salesAgentUserId) {
+              const agentUser = await dbx.user.findUnique({
+                where: { id: fullMem.salesAgentUserId },
+                select: { commissionRate: true, commissionType: true },
+              }) as { commissionRate: number | null; commissionType: string | null } | null;
+              if (agentUser) {
+                const rate = agentUser.commissionRate ?? 0;
+                const commission = agentUser.commissionType === "fixed"
+                  ? rate
+                  : Math.round((paidAmount * rate) / 100 * 100) / 100;
+                if (commission > 0) {
+                  await dbx.agentCommission.upsert({
+                    where: { userMembershipId: existing.membershipId },
+                    update: {},
+                    create: { agentUserId: fullMem.salesAgentUserId, userMembershipId: existing.membershipId, amount: commission },
+                  });
+                }
+              }
+            }
+
+            // ── Sales agent referral commission + manager + conversion ───────
+            if (fullMem.salesAgentId) {
+              const sa = await dbx.salesAgent.findUnique({
+                where: { id: fullMem.salesAgentId },
+                select: { commissionRate: true, commissionType: true, managerId: true },
+              }) as { commissionRate: number; commissionType: string; managerId: string | null } | null;
+              if (sa) {
+                const commission = sa.commissionType === "fixed"
+                  ? sa.commissionRate
+                  : Math.round((paidAmount * sa.commissionRate) / 100 * 100) / 100;
+                if (commission > 0) {
+                  const saComm = await dbx.salesAgentCommission.upsert({
+                    where: { userMembershipId: existing.membershipId },
+                    update: {},
+                    create: { agentId: fullMem.salesAgentId, userMembershipId: existing.membershipId, amount: commission },
+                  }) as { id: string };
+                  if (sa.managerId) {
+                    const mgr = await dbx.contractsManager.findUnique({
+                      where: { id: sa.managerId },
+                      select: { id: true, commissionType: true, commissionRate: true, isActive: true },
+                    }) as { id: string; commissionType: string; commissionRate: number; isActive: boolean } | null;
+                    if (mgr?.isActive && mgr.commissionRate > 0) {
+                      const existingMgrComm = await dbx.managerCommission.findUnique({ where: { agentCommissionId: saComm.id } });
+                      if (!existingMgrComm) {
+                        let mgrAmount = 0;
+                        if (mgr.commissionType === "percentage_of_agents") {
+                          mgrAmount = Math.round((commission * mgr.commissionRate) / 100 * 100) / 100;
+                        } else if (mgr.commissionType === "percentage_of_revenue") {
+                          mgrAmount = Math.round((paidAmount * mgr.commissionRate) / 100 * 100) / 100;
+                        } else {
+                          mgrAmount = mgr.commissionRate;
+                        }
+                        if (mgrAmount > 0) {
+                          await dbx.managerCommission.create({
+                            data: { managerId: mgr.id, agentCommissionId: saComm.id, userMembershipId: existing.membershipId, amount: mgrAmount },
+                          });
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+              // Mark referral as converted (idempotent)
+              if (existing.userId) {
+                const ref = await dbx.salesAgentReferral.findUnique({ where: { userId: existing.userId } });
+                if (ref && !ref.convertedAt) {
+                  await dbx.salesAgentReferral.update({
+                    where: { userId: existing.userId },
+                    data: { convertedAt: new Date(), totalSpent: { increment: paidAmount } },
+                  });
+                } else if (ref?.convertedAt) {
+                  await dbx.salesAgentReferral.update({
+                    where: { userId: existing.userId },
+                    data: { totalSpent: { increment: paidAmount } },
+                  });
+                }
+              }
+            }
+
+            // ── Staff referral commission ────────────────────────────────────
+            if (fullMem.staffReferralLink) {
+              const { userId: staffUserId, user } = fullMem.staffReferralLink;
+              const commission = user.commissionType === "fixed"
+                ? user.commissionRate
+                : Math.round((paidAmount * user.commissionRate) / 100 * 100) / 100;
+              if (commission > 0) {
+                await dbx.staffCommission.upsert({
+                  where: { userMembershipId: existing.membershipId },
+                  update: {},
+                  create: { staffUserId, staffReferralLinkId: fullMem.staffReferralLinkId, userMembershipId: existing.membershipId, amount: commission },
+                });
+              }
+            }
+
+            // ── Trainer referral commission ──────────────────────────────────
+            if (fullMem.trainerReferralLink) {
+              const { userId: trainerUserId, user } = fullMem.trainerReferralLink;
+              const commission = user.commissionType === "fixed"
+                ? user.commissionRate
+                : Math.round((paidAmount * user.commissionRate) / 100 * 100) / 100;
+              if (commission > 0) {
+                await dbx.trainerCommission.upsert({
+                  where: { userMembershipId: existing.membershipId },
+                  update: {},
+                  create: { trainerUserId, trainerReferralLinkId: fullMem.trainerReferralLinkId, userMembershipId: existing.membershipId, amount: commission },
+                });
+              }
+            }
+
+            // ── Nutrition referral commission ────────────────────────────────
+            if (fullMem.nutritionReferralLink) {
+              const { userId: nutritionistUserId, user } = fullMem.nutritionReferralLink;
+              const profile = user.nutritionistProfile;
+              if (profile) {
+                const commission = profile.commissionType === "fixed"
+                  ? profile.commissionRate
+                  : Math.round((paidAmount * profile.commissionRate) / 100 * 100) / 100;
+                if (commission > 0) {
+                  await dbx.nutritionCommission.upsert({
+                    where: { userMembershipId: existing.membershipId },
+                    update: {},
+                    create: { nutritionistUserId, nutritionReferralLinkId: fullMem.nutritionReferralLinkId, userMembershipId: existing.membershipId, amount: commission },
+                  });
+                }
+              }
+            }
+          }
+        } catch {}
+
         try {
           await ensureMembershipAttendancePass(existing.membershipId);
         } catch {}
@@ -619,6 +819,26 @@ export async function updatePaymentTransactionStatus(
               description: `مكافأة الاشتراك في باقة ${membership.membership?.name ?? ""}`,
             },
           });
+        }
+
+        // Grant subscription points for Paymob-confirmed subscriptions
+        if (existing.userId) {
+          try {
+            const rewardCfg = await getRewardSettings();
+            if (rewardCfg.pointsPerSubscription > 0) {
+              const rp = await db.rewardPoints.findUnique({ where: { userId: existing.userId } });
+              if (rp) {
+                const newPts = rp.points + rewardCfg.pointsPerSubscription;
+                await db.rewardPoints.update({
+                  where: { id: rp.id },
+                  data: { points: { increment: rewardCfg.pointsPerSubscription }, tier: calcTier(newPts, rewardCfg.tierThresholds) },
+                });
+                await db.rewardHistory.create({
+                  data: { rewardId: rp.id, points: rewardCfg.pointsPerSubscription, reason: "membership_purchase" },
+                });
+              }
+            }
+          } catch {}
         }
 
         // Deduct product rewards from inventory
@@ -750,6 +970,12 @@ export async function updatePaymentTransactionStatus(
           where: { id: existing.orderId },
           data: { status: "confirmed" },
         });
+        // Unlock pending referral reward for Paymob-confirmed store orders
+        if (existing.userId) {
+          try {
+            await unlockPendingReferralReward(existing.userId);
+          } catch {}
+        }
       }
     }
 
@@ -926,46 +1152,62 @@ export async function unlockPendingReferralReward(subscribedUserId: string) {
     data: { subscriptionActivatedCount: { increment: 1 } },
   });
 
-  // If the reward was not yet given at registration time, give it now
+  // If the reward was not yet given, give it now using admin-configured settings
   if (!usage.rewardGiven) {
-    const REWARD = 50;
+    const cfg = await getRewardSettings();
+    const rType  = cfg.referralRewardType;
+    const rValue = cfg.referralRewardValue;
     const referrerUserId = usage.referral.userId;
 
-    const referrerWallet = await db.wallet.upsert({
-      where: { userId: referrerUserId },
-      update: {},
-      create: { userId: referrerUserId, balance: 0 },
-    });
-
-    await db.wallet.update({
-      where: { id: referrerWallet.id },
-      data: { balance: { increment: REWARD } },
-    });
-
-    await db.walletTransaction.create({
-      data: {
-        walletId: referrerWallet.id,
-        amount: REWARD,
-        type: "credit",
-        description: "مكافأة إحالة — اشترك العضو المُحال بنجاح",
-      },
-    });
+    if (rType === "wallet") {
+      const referrerWallet = await db.wallet.upsert({
+        where: { userId: referrerUserId },
+        update: {},
+        create: { userId: referrerUserId, balance: 0 },
+      });
+      await db.wallet.update({
+        where: { id: referrerWallet.id },
+        data: { balance: { increment: rValue } },
+      });
+      await db.walletTransaction.create({
+        data: {
+          walletId: referrerWallet.id,
+          amount: rValue,
+          type: "credit",
+          description: "مكافأة إحالة — اشترك العضو المُحال بنجاح",
+        },
+      });
+    } else {
+      const rp = await db.rewardPoints.findUnique({ where: { userId: referrerUserId } });
+      if (rp) {
+        const newPts = rp.points + rValue;
+        await db.rewardPoints.update({
+          where: { id: rp.id },
+          data: { points: { increment: rValue }, tier: calcTier(newPts, cfg.tierThresholds) },
+        });
+        await db.rewardHistory.create({
+          data: { rewardId: rp.id, points: rValue, reason: "referral_bonus" },
+        });
+      }
+    }
 
     await db.referralUsage.update({
       where: { id: usage.id },
-      data: { rewardGiven: true, rewardType: "wallet", rewardValue: REWARD },
+      data: { rewardGiven: true, rewardType: rType, rewardValue: rValue },
     });
 
     await db.referral.update({
       where: { id: usage.referral.id },
-      data: { totalEarned: { increment: REWARD } },
+      data: { totalEarned: { increment: rValue } },
     });
 
     await db.notification.create({
       data: {
         userId: referrerUserId,
         title: "🎉 مكافأة إحالة!",
-        body: `اشترك أحد أعضائك المُحالين بنجاح وحصلتِ على ${REWARD} ج.م في محفظتك!`,
+        body: rType === "wallet"
+          ? `اشترك أحد أعضائك المُحالين بنجاح وحصلتِ على ${rValue} ج.م في محفظتك!`
+          : `اشترك أحد أعضائك المُحالين بنجاح وحصلتِ على ${rValue} نقطة في رصيد مكافآتك!`,
         type: "success",
       },
     });

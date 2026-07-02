@@ -6,8 +6,12 @@ import { db } from "@/lib/db";
 const CLEAR_COOKIES = (res: NextResponse) => {
   res.cookies.set("oauth_pending_profile", "", { httpOnly: true, maxAge: 0, path: "/" });
   res.cookies.set("oauth_pending_session", "", { httpOnly: true, maxAge: 0, path: "/" });
-  res.cookies.set("oauth_ref_code", "", { httpOnly: true, maxAge: 0, path: "/" });
-  res.cookies.set("oauth_partner_ref", "", { httpOnly: true, maxAge: 0, path: "/" });
+  res.cookies.set("oauth_ref_code",        "", { httpOnly: true, maxAge: 0, path: "/" });
+  res.cookies.set("oauth_partner_ref",     "", { httpOnly: true, maxAge: 0, path: "/" });
+  res.cookies.set("oauth_staff_ref",       "", { httpOnly: true, maxAge: 0, path: "/" });
+  res.cookies.set("oauth_trainer_ref",     "", { httpOnly: true, maxAge: 0, path: "/" });
+  res.cookies.set("oauth_nutrition_ref",   "", { httpOnly: true, maxAge: 0, path: "/" });
+  res.cookies.set("oauth_agent_ref",       "", { httpOnly: true, maxAge: 0, path: "/" });
   return res;
 };
 
@@ -22,8 +26,12 @@ export async function POST(req: NextRequest) {
     return CLEAR_COOKIES(NextResponse.json({ error: "يجب الموافقة على الشروط للمتابعة." }, { status: 400 }));
   }
 
-  const refCode = req.cookies.get("oauth_ref_code")?.value?.trim().toUpperCase() || null;
-  const partnerRefToken = req.cookies.get("oauth_partner_ref")?.value?.trim().toUpperCase() || null;
+  const refCode        = req.cookies.get("oauth_ref_code")?.value?.trim().toUpperCase()      || null;
+  const partnerRefToken  = req.cookies.get("oauth_partner_ref")?.value?.trim().toUpperCase()  || null;
+  const staffRefToken    = req.cookies.get("oauth_staff_ref")?.value?.trim().toUpperCase()    || null;
+  const trainerRefToken  = req.cookies.get("oauth_trainer_ref")?.value?.trim().toUpperCase()  || null;
+  const nutritionRefToken = req.cookies.get("oauth_nutrition_ref")?.value?.trim().toUpperCase() || null;
+  const agentRefToken    = req.cookies.get("oauth_agent_ref")?.value?.trim().toUpperCase()    || null;
 
   const result = await findOrCreateOAuthUser({
     provider: pending.provider,
@@ -41,7 +49,7 @@ export async function POST(req: NextRequest) {
     try {
       const referralRecord = await db.referral.findUnique({
         where: { code: refCode },
-        select: { id: true, userId: true, referredCount: true, subscriptionActivatedCount: true },
+        select: { id: true, userId: true },
       });
 
       const isOwnCode = referralRecord?.userId === result.user.id;
@@ -50,56 +58,20 @@ export async function POST(req: NextRequest) {
         : false;
 
       if (referralRecord && !isOwnCode && !alreadyUsed) {
-        const REWARD = 50;
-        const eligible = referralRecord.subscriptionActivatedCount >= referralRecord.referredCount;
-        const displayName = result.user.name ?? result.user.email;
-
+        // Track referral — reward is held until the referred user subscribes or purchases
         await db.$transaction(async (tx) => {
-          if (eligible) {
-            const referrerWallet = await tx.wallet.upsert({
-              where: { userId: referralRecord.userId },
-              update: {},
-              create: { userId: referralRecord.userId, balance: 0 },
-            });
-            await tx.wallet.update({
-              where: { id: referrerWallet.id },
-              data: { balance: { increment: REWARD } },
-            });
-            await tx.walletTransaction.create({
-              data: {
-                walletId: referrerWallet.id,
-                amount: REWARD,
-                type: "credit",
-                description: `مكافأة إحالة — انضمت ${displayName} (Google)`,
-              },
-            });
-            await tx.referral.update({
-              where: { id: referralRecord.id },
-              data: { referredCount: { increment: 1 }, totalEarned: { increment: REWARD } },
-            });
-            await tx.notification.create({
-              data: {
-                userId: referralRecord.userId,
-                title: "🎉 مكافأة إحالة!",
-                body: `انضمت ${displayName} بكودك وحصلتِ على ${REWARD} ج.م في محفظتك!`,
-                type: "success",
-              },
-            });
-          } else {
-            // Track referral but hold reward until a subscription is activated
-            await tx.referral.update({
-              where: { id: referralRecord.id },
-              data: { referredCount: { increment: 1 } },
-            });
-          }
+          await tx.referral.update({
+            where: { id: referralRecord.id },
+            data: { referredCount: { increment: 1 } },
+          });
 
           await tx.referralUsage.create({
             data: {
               referralId: referralRecord.id,
               referredUserId: result.user.id,
-              rewardGiven: eligible,
-              rewardType: eligible ? "wallet" : null,
-              rewardValue: eligible ? REWARD : null,
+              rewardGiven: false,
+              rewardType: null,
+              rewardValue: null,
             },
           });
         });
@@ -124,6 +96,37 @@ export async function POST(req: NextRequest) {
       }
     } catch {
       // Non-blocking — partner ref failure must not block account creation
+    }
+  }
+
+  // Apply staff / trainer / nutrition / agent pending refs for new OAuth users
+  if (result.isNew && (staffRefToken || trainerRefToken || nutritionRefToken || agentRefToken)) {
+    try {
+      const dbx = db as any;
+      const updates: Record<string, string | null> = {};
+
+      if (staffRefToken) {
+        const sl = await dbx.staffReferralLink.findUnique({ where: { token: staffRefToken }, select: { isActive: true } });
+        if (sl?.isActive) updates.pendingStaffRef = staffRefToken;
+      }
+      if (trainerRefToken) {
+        const tl = await dbx.trainerReferralLink.findUnique({ where: { token: trainerRefToken }, select: { isActive: true } });
+        if (tl?.isActive) updates.pendingTrainerRef = trainerRefToken;
+      }
+      if (nutritionRefToken) {
+        const nl = await dbx.nutritionReferralLink.findUnique({ where: { token: nutritionRefToken }, select: { isActive: true } });
+        if (nl?.isActive) updates.pendingNutritionRef = nutritionRefToken;
+      }
+      if (agentRefToken) {
+        const ag = await dbx.salesAgent.findUnique({ where: { referralCode: agentRefToken }, select: { isActive: true } });
+        if (ag?.isActive) updates.pendingAgentRef = agentRefToken;
+      }
+
+      if (Object.keys(updates).length > 0) {
+        await dbx.user.update({ where: { id: result.user.id }, data: updates });
+      }
+    } catch {
+      // Non-blocking — ref failures must not block account creation
     }
   }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useMemo, useState, type ReactNode } from "react";
+import { Suspense, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useLang } from "@/lib/language";
@@ -11,7 +11,6 @@ function VerifyEmailForm() {
   const router = useRouter();
   const params = useSearchParams();
   const defaultEmail = params.get("email") ?? "";
-  const callbackUrl = params.get("callbackUrl") ?? "/";
   const sentFlag = params.get("sent");
   const [email, setEmail] = useState(defaultEmail);
   const [code, setCode] = useState("");
@@ -27,11 +26,6 @@ function VerifyEmailForm() {
   );
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);
-
-  const redirectTarget = useMemo(
-    () => `/login?verified=1&email=${encodeURIComponent(email || defaultEmail)}&callbackUrl=${encodeURIComponent(callbackUrl)}`,
-    [callbackUrl, defaultEmail, email],
-  );
 
   const handleVerify = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,7 +46,8 @@ function VerifyEmailForm() {
         return;
       }
 
-      router.push(redirectTarget);
+      // Server sets session cookie — redirect directly to account
+      router.push(data?.redirectTo ?? "/account");
     } catch {
       setError(t("تعذر تفعيل البريد الإلكتروني حاليًا. حاول مرة أخرى.", "Unable to verify your email right now. Please try again."));
     } finally {

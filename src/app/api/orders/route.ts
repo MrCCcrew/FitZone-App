@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/app-session";
 import { db } from "@/lib/db";
-import { createPaymentTransaction, restorePaymentBalanceAdjustments } from "@/lib/payments/service";
+import { createPaymentTransaction, restorePaymentBalanceAdjustments, unlockPendingReferralReward } from "@/lib/payments/service";
 import { getStoreCampaignSettings } from "@/app/api/admin/store-gift-campaign/route";
 
 type OrderItemInput = {
@@ -349,6 +349,11 @@ export async function POST(req: Request) {
       await db.order.update({ where: { id: order.id }, data: { status: "confirmed" } });
     } else if (total <= 0) {
       await db.order.update({ where: { id: order.id }, data: { status: "confirmed" } });
+    }
+
+    // Unlock pending referral reward for confirmed/free orders (fire-and-forget)
+    if (total <= 0 || paymentMethod === "cod") {
+      void unlockPendingReferralReward(userId).catch(() => {});
     }
 
     // Auto-apply store gift campaign (fire-and-forget, never blocks order)

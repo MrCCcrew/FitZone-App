@@ -3135,8 +3135,8 @@ const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string) =
       <section style={{ background: C.bgCard, borderTop: `1px solid ${C.border}`, padding: "56px 0" }}>
         <div className="container" style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center" }}>
           <div style={{ fontSize: 52, marginBottom: 16 }}>🎁</div>
-          <h2 style={{ fontSize: 32, fontWeight: 900, color: C.white, marginBottom: 12 }}>{t("ادعي صحبتك", "Invite a friend")} <span style={{ color: C.red }}>{t("واكسبي 50 ج فورا!", "and earn 50 EGP instantly!")}</span></h2>
-          <p style={{ color: C.gray, fontSize: 16, marginBottom: 28, maxWidth: 480 }}>{t("فلوس تتضاف على محفظتك فور ما صديقتك تشترك بدعوتك.", "Cash added to your wallet the moment your friend joins through your invite.")}</p>
+          <h2 style={{ fontSize: 32, fontWeight: 900, color: C.white, marginBottom: 12 }}>{t("ادعي صحبتك", "Invite a friend")} <span style={{ color: C.red }}>{t("واكسبي مكافأة مالية!", "and earn a cash reward!")}</span></h2>
+          <p style={{ color: C.gray, fontSize: 16, marginBottom: 28, maxWidth: 480 }}>{t("مكافأة تتضاف على محفظتك بمجرد اشتراك صديقتك بدعوتك.", "A reward is added to your wallet as soon as your friend subscribes through your invite.")}</p>
           <button className="btn-primary" onClick={() => navigate("referral")} style={{ fontSize: 15, padding: "14px 40px" }}>
             <I n="share" s={16} c="#fff" /> {t("اشتركي في برنامج الإحالة", "Join referral program")}
           </button>
@@ -8672,8 +8672,8 @@ const ReferralPage = () => {
       <section style={{ background: `linear-gradient(135deg, #FFE0EC, ${C.bg})`, padding: "64px 0", textAlign: "center" }}>
         <div className="container">
           <div style={{ fontSize: viewportWidth() < 768 ? 44 : 60, marginBottom: 14 }}>🎁</div>
-          <h1 style={{ fontSize: viewportWidth() < 768 ? 32 : 44, fontWeight: 900, color: C.white, marginBottom: 12 }}>{t("ادعي صحبتك", "Invite a friend")} <span style={{ color: C.red }}>{t("واكسبي 50 ج فورا!", "and earn 50 EGP instantly!")}</span></h1>
-          <p style={{ color: C.gray, fontSize: 17, maxWidth: 460, margin: "0 auto" }}>{t("فلوس تتضاف على محفظتك فور ما صديقتك تشترك بدعوتك.", "Cash added to your wallet the moment your friend joins through your invite.")}</p>
+          <h1 style={{ fontSize: viewportWidth() < 768 ? 32 : 44, fontWeight: 900, color: C.white, marginBottom: 12 }}>{t("ادعي صحبتك", "Invite a friend")} <span style={{ color: C.red }}>{t("واكسبي مكافأة مالية!", "and earn a cash reward!")}</span></h1>
+          <p style={{ color: C.gray, fontSize: 17, maxWidth: 460, margin: "0 auto" }}>{t("مكافأة تتضاف على محفظتك بمجرد اشتراك صديقتك بدعوتك.", "A reward is added to your wallet as soon as your friend subscribes through your invite.")}</p>
         </div>
       </section>
       <section className="section">
