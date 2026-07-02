@@ -7,7 +7,7 @@ type SendBody = {
   title: string;
   body: string;
   url?: string;
-  audience: "all" | "active" | "inactive" | "selected";
+  audience: "all" | "active" | "inactive" | "suspended" | "expired" | "expiring_soon" | "all_members" | "selected";
   selectedUserIds?: string[];
   /** Send test push to the admin's own subscription */
   test?: boolean;
@@ -74,6 +74,39 @@ export async function POST(req: Request) {
       select: { id: true },
     });
     targetUserIds = allMembers.map((u) => u.id).filter((id) => !activeIds.includes(id));
+
+  } else if (audience === "suspended") {
+    const rows = await db.userMembership.findMany({
+      where: { status: "cancelled" },
+      select: { userId: true },
+      distinct: ["userId"],
+    });
+    targetUserIds = rows.map((r) => r.userId);
+
+  } else if (audience === "expired") {
+    const rows = await db.userMembership.findMany({
+      where: { OR: [{ status: "expired" }, { status: "active", endDate: { lt: new Date() } }] },
+      select: { userId: true },
+      distinct: ["userId"],
+    });
+    targetUserIds = rows.map((r) => r.userId);
+
+  } else if (audience === "expiring_soon") {
+    const now = new Date();
+    const in7Days = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    const rows = await db.userMembership.findMany({
+      where: { status: "active", endDate: { gt: now, lt: in7Days } },
+      select: { userId: true },
+      distinct: ["userId"],
+    });
+    targetUserIds = rows.map((r) => r.userId);
+
+  } else if (audience === "all_members") {
+    const rows = await db.user.findMany({
+      where: { role: "member" },
+      select: { id: true },
+    });
+    targetUserIds = rows.map((r) => r.id);
 
   } else if (audience === "selected") {
     targetUserIds = Array.isArray(selectedUserIds) ? selectedUserIds : [];

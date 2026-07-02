@@ -30,10 +30,14 @@ type SubscriberUser = {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const AUDIENCE_LABELS: Record<string, string> = {
-  all:      "جميع المشتركين",
-  active:   "الأعضاء النشطين",
-  inactive: "الأعضاء غير النشطين",
-  selected: "مستخدمون محددون",
+  all:           "جميع المشتركين",
+  active:        "الأعضاء النشطين",
+  inactive:      "الأعضاء غير النشطين",
+  suspended:     "الموقوفون",
+  expired:       "منتهي اشتراكاتهم",
+  expiring_soon: "ينتهي اشتراكهم قريباً",
+  all_members:   "كل الأعضاء",
+  selected:      "مستخدمون محددون",
 };
 
 const STATUS_STYLE: Record<string, { bg: string; color: string; label: string }> = {
@@ -71,7 +75,7 @@ export default function PushNotifications() {
   const [title, setTitle]         = useState("");
   const [body, setBody]           = useState("");
   const [url, setUrl]             = useState("");
-  const [audience, setAudience]   = useState<"all" | "active" | "inactive" | "selected">("all");
+  const [audience, setAudience]   = useState<"all" | "active" | "inactive" | "suspended" | "expired" | "expiring_soon" | "all_members" | "selected">("all");
   const [sending, setSending]     = useState(false);
   const [sendResult, setSendResult] = useState<{ ok: boolean; sent?: number; failed?: number; cleaned?: number; error?: string } | null>(null);
   const [testResult, setTestResult] = useState<{ ok: boolean; error?: string } | null>(null);
@@ -272,7 +276,7 @@ export default function PushNotifications() {
           {/* Audience */}
           <Field label="الجمهور المستهدف">
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {(["all", "active", "inactive", "selected"] as const).map((a) => (
+              {(["all", "active", "inactive", "suspended", "expired", "expiring_soon", "all_members", "selected"] as const).map((a) => (
                 <button
                   key={a}
                   onClick={() => setAudience(a)}

@@ -202,18 +202,37 @@ const TIER_CONFIG = {
 };
 
 const STATUS_MAP: Record<string, { label: string; color: string }> = {
-  confirmed: { label: "مؤكد",         color: "bg-blue-500/20 text-blue-400" },
-  attended:  { label: "حضرت",         color: "bg-green-500/20 text-green-400" },
-  cancelled: { label: "ملغي",         color: "bg-red-500/20 text-red-400" },
-  noshow:    { label: "لم تحضر",      color: "bg-gray-500/20 text-gray-400" },
-  pending:   { label: "معلق",         color: "bg-yellow-500/20 text-yellow-400" },
-  pending_payment: { label: "بانتظار الدفع", color: "bg-amber-500/20 text-amber-300" },
-  approved:  { label: "مقبول",        color: "bg-emerald-500/20 text-emerald-400" },
-  rejected:  { label: "مرفوض",        color: "bg-red-500/20 text-red-400" },
-  paid:      { label: "مدفوع",        color: "bg-blue-500/20 text-blue-400" },
-  delivered: { label: "تم التسليم",   color: "bg-green-500/20 text-green-400" },
-  active:    { label: "نشط",          color: "bg-green-500/20 text-green-400" },
-  expired:   { label: "منتهي",        color: "bg-red-500/20 text-red-400" },
+  confirmed:        { label: "مؤكد",             color: "bg-blue-500/20 text-blue-400" },
+  attended:         { label: "حضرت",             color: "bg-green-500/20 text-green-400" },
+  cancelled:        { label: "ملغي",             color: "bg-red-500/20 text-red-400" },
+  noshow:           { label: "لم تحضر",          color: "bg-gray-500/20 text-gray-400" },
+  pending:          { label: "معلق",             color: "bg-yellow-500/20 text-yellow-400" },
+  pending_payment:  { label: "بانتظار الدفع",    color: "bg-amber-500/20 text-amber-300" },
+  approved:         { label: "مقبول",            color: "bg-emerald-500/20 text-emerald-400" },
+  rejected:         { label: "مرفوض",            color: "bg-red-500/20 text-red-400" },
+  paid:             { label: "مدفوع",            color: "bg-blue-500/20 text-blue-400" },
+  in_transit:       { label: "قيد الشحن",        color: "bg-purple-500/20 text-purple-400" },
+  delivered:        { label: "تم التسليم",       color: "bg-green-500/20 text-green-400" },
+  active:           { label: "نشط",              color: "bg-green-500/20 text-green-400" },
+  expired:          { label: "منتهي",            color: "bg-red-500/20 text-red-400" },
+  requires_action:  { label: "تتطلب إجراء",      color: "bg-orange-500/20 text-orange-400" },
+  failed:           { label: "فشل الدفع",        color: "bg-red-500/20 text-red-400" },
+};
+
+const REASON_LABELS: Record<string, string> = {
+  onboarding_email_verified:   "التحقق من البريد الإلكتروني",
+  onboarding_profile_complete: "لاكتمال الملف الشخصي",
+  onboarding_first_booking:    "أول حجز",
+  referral_bonus:              "مكافأة إحالة",
+  referral_signup:             "تسجيل عبر رابط إحالة",
+  membership_purchase:         "شراء اشتراك",
+  first_purchase:              "أول شراء",
+  birthday_bonus:              "مكافأة عيد الميلاد",
+  manual_add:                  "إضافة يدوية",
+  manual_deduct:               "خصم يدوي",
+  redeem:                      "استبدال نقاط",
+  topup:                       "شحن رصيد",
+  conversion_to_balance:       "تحويل نقاط إلى رصيد",
 };
 
 const NOTIF_ICONS: Record<string, string> = {
@@ -2552,11 +2571,12 @@ function OrdersTab({ orders }: { orders: AccountData["orders"] }) {
                 <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${STATUS_MAP[o.status]?.color ?? "bg-gray-700 text-gray-300"}`}>
                   {lang === "en"
                     ? ({
-                        pending: "Pending",
-                        confirmed: "Confirmed",
-                        delivered: "Delivered",
-                        cancelled: "Cancelled",
-                        active: "Active",
+                        pending:    "Pending",
+                        confirmed:  "Confirmed",
+                        in_transit: "Shipped",
+                        delivered:  "Delivered",
+                        cancelled:  "Cancelled",
+                        active:     "Active",
                       } as Record<string, string>)[o.status] ?? o.status
                     : STATUS_MAP[o.status]?.label ?? o.status}
                 </span>
@@ -3077,7 +3097,7 @@ function WalletTab({
                     {h.points >= 0 ? "+" : ""}
                   </div>
                   <div className="flex-1">
-                    <div className="text-gray-300 text-sm">{h.reason}</div>
+                    <div className="text-gray-300 text-sm">{REASON_LABELS[h.reason] ?? h.reason}</div>
                     <div className="text-gray-600 text-xs">{format(new Date(h.createdAt), "d MMM yyyy", { locale: lang === "en" ? enUS : ar })}</div>
                   </div>
                   <span className={`font-black text-sm ${h.points >= 0 ? "text-yellow-400" : "text-gray-500"}`}>

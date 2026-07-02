@@ -62,6 +62,8 @@ export default function Balance() {
   const [adjustReason, setAdjustReason] = useState("");
   const [topupModal, setTopupModal] = useState<BalanceCustomer | null>(null);
   const [topupAmount, setTopupAmount] = useState(0);
+  const [topupReason, setTopupReason] = useState("");
+  const [search, setSearch] = useState("");
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -94,17 +96,24 @@ export default function Balance() {
     await fetch("/api/admin/balance", {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ userId: topupModal.id, type: "topup", amount: topupAmount, reason: "شحن رصيد من الإدارة" }),
+      body:    JSON.stringify({ userId: topupModal.id, type: "topup", amount: topupAmount, reason: topupReason.trim() || "شحن رصيد من الإدارة" }),
     });
     await fetchAll();
-    setTopupModal(null); setTopupAmount(0); setSaving(false);
+    setTopupModal(null); setTopupAmount(0); setTopupReason(""); setSaving(false);
   };
 
   if (loading) return <div className="flex items-center justify-center h-64"><div className="text-gray-500 text-sm">جارٍ تحميل بيانات الرصيد...</div></div>;
 
-  const sortedByPoints = [...customers].sort((a, b) => b.points - a.points);
-  const sortedByBalance = [...customers].sort((a, b) => b.balance - a.balance);
-  const totalPoints = customers.reduce((s, c) => s + c.points, 0);
+  const q = search.trim().toLowerCase();
+  const filteredCustomers = q
+    ? customers.filter((c) => c.name?.toLowerCase().includes(q) || c.phone?.includes(q) || c.email?.toLowerCase().includes(q))
+    : customers;
+  const sortedByPoints  = [...filteredCustomers].sort((a, b) => b.points - a.points);
+  const sortedByBalance = [...filteredCustomers].sort((a, b) => b.balance - a.balance);
+  const filteredTx = q
+    ? transactions.filter((tx) => tx.customerName?.toLowerCase().includes(q))
+    : transactions;
+  const totalPoints  = customers.reduce((s, c) => s + c.points, 0);
   const totalBalance = customers.reduce((s, c) => s + c.balance, 0);
 
   return (
@@ -131,6 +140,14 @@ export default function Balance() {
           </button>
         ))}
       </div>
+
+      {/* Search */}
+      <input
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        placeholder="ابحث باسم العميل أو الهاتف أو البريد..."
+        className={INPUT}
+      />
 
       {/* Points tab */}
       {tab === "points" && (
@@ -252,7 +269,7 @@ export default function Balance() {
                 </tr>
               </thead>
               <tbody>
-                {transactions.map((tx) => {
+                {filteredTx.map((tx) => {
                   const cfg = TYPE_CONFIG[tx.type];
                   return (
                     <tr key={tx.id} className="border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors">
@@ -328,6 +345,10 @@ export default function Balance() {
                 ))}
               </div>
               <input type="number" value={topupAmount} onChange={(e) => setTopupAmount(+e.target.value)} className={INPUT} dir="ltr" min={0} />
+            </div>
+            <div>
+              <label className="block text-gray-500 text-xs mb-1.5">السبب (اختياري)</label>
+              <input value={topupReason} onChange={(e) => setTopupReason(e.target.value)} placeholder="مثال: استرداد مبلغ، هدية، تعويض..." className={INPUT} />
             </div>
             <button onClick={doTopup} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-3 rounded-xl transition-colors">💳 شحن الرصيد</button>
           </div>
