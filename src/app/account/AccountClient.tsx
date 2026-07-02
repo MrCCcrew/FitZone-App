@@ -648,7 +648,7 @@ function StatCard({
 }
 
 // ─── Tab: Profile ─────────────────────────────────────────────────────────────
-function ProfileTab({ user, profileComplete }: { user: AccountData["user"]; profileComplete: boolean }) {
+function ProfileTab({ user, profileComplete, profilePoints }: { user: AccountData["user"]; profileComplete: boolean; profilePoints: number }) {
   const { lang } = useLang();
   const t = (arText: string, enText: string) => (lang === "ar" ? arText : enText);
   const [form, setForm] = useState({
@@ -836,7 +836,7 @@ function ProfileTab({ user, profileComplete }: { user: AccountData["user"]; prof
             <span className="mt-0.5 shrink-0 text-xl">🎁</span>
             <div>
               <div className="text-sm font-black text-pink-300">
-                {t("اكملي بياناتك واحصلي على 50 نقطة!", "Complete your profile and earn 50 points!")}
+                {t(`اكملي بياناتك واحصلي على ${profilePoints} نقطة!`, `Complete your profile and earn ${profilePoints} points!`)}
               </div>
               <div className="mt-0.5 text-xs text-[#c896aa]">
                 {t("أضيفي رقم هاتفك، تاريخ ميلادك، ومحافظتك لتفعيل المكافأة", "Add your phone number, birth date, and governorate to unlock the reward")}
@@ -4915,7 +4915,7 @@ export default function AccountClient({ data }: { data: AccountData }) {
               onClick={scrollToProfileForm}
               className="flex-1 text-start text-sm font-black text-white"
             >
-              {t("اكملي بياناتك واحصلي على 50 نقطة ↓", "Complete your profile & earn 50 pts ↓")}
+              {t(`اكملي بياناتك واحصلي على ${data.onboarding.profilePoints} نقطة ↓`, `Complete your profile & earn ${data.onboarding.profilePoints} pts ↓`)}
             </button>
             <button
               onClick={() => setCtaDismissed(true)}
@@ -4962,7 +4962,7 @@ export default function AccountClient({ data }: { data: AccountData }) {
 
           {/* Content */}
           <main className="flex-1 min-w-0">
-            {activeTab === "profile"              && <ProfileTab              user={data.user} profileComplete={data.onboarding.profileComplete} />}
+            {activeTab === "profile"              && <ProfileTab              user={data.user} profileComplete={data.onboarding.profileComplete} profilePoints={data.onboarding.profilePoints} />}
             {activeTab === "trainerProfile"       && <TrainerProfileTab />}
             {activeTab === "nutritionistProfile"  && <NutritionistProfileTab />}
             {activeTab === "trainerDiscountCodes" && <TrainerDiscountCodesTab />}
