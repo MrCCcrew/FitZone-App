@@ -10,6 +10,8 @@ interface Settings {
   referralRewardType: "points" | "wallet";
   referralRewardValue: number;
   tierThresholds: { silver: number; gold: number; platinum: number };
+  onboardingProfilePoints: number;
+  onboardingEmailPoints: number;
 }
 
 interface ReferralRow {
@@ -31,9 +33,11 @@ export default function RewardSettings() {
     pointsPerSubscription: 100,
     pointsPerReferral: 50,
     pointValueEGP: 0.1,
-    referralRewardType: "points",
+    referralRewardType: "wallet",
     referralRewardValue: 50,
     tierThresholds: { silver: 500, gold: 1500, platinum: 5000 },
+    onboardingProfilePoints: 50,
+    onboardingEmailPoints: 20,
   });
   const [referrals, setReferrals] = useState<ReferralRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -111,6 +115,25 @@ export default function RewardSettings() {
             </div>
           )}
           <div className="space-y-6">
+            {/* Onboarding Rewards */}
+            <div>
+              <h3 className="mb-3 text-base font-black text-[#fff4f8]">🎁 نقاط ترحيب العضو الجديد</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className={LABEL}>نقاط إكمال البيانات الشخصية</label>
+                  <input className={INPUT} type="number" min="0" value={settings.onboardingProfilePoints}
+                    onChange={set("onboardingProfilePoints")} />
+                </div>
+                <div>
+                  <label className={LABEL}>نقاط تفعيل البريد الإلكتروني</label>
+                  <input className={INPUT} type="number" min="0" value={settings.onboardingEmailPoints}
+                    onChange={set("onboardingEmailPoints")} />
+                </div>
+              </div>
+            </div>
+
+            <div className="h-px bg-[rgba(255,188,219,0.12)]" />
+
             {/* Subscription Points */}
             <div>
               <h3 className="mb-3 text-base font-black text-[#fff4f8]">🎯 نقاط الاشتراك</h3>

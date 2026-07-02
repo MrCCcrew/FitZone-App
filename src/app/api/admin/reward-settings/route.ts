@@ -1,32 +1,14 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireAdminFeature } from "@/lib/admin-guard";
+import { getRewardSettings } from "@/lib/reward-settings";
 
 const SECTION = "reward_settings";
 
-const DEFAULT_SETTINGS = {
-  pointsPerSubscription: 100,
-  pointsPerReferral: 50,
-  pointValueEGP: 0.1,
-  referralRewardType: "points", // points | wallet
-  referralRewardValue: 50,
-  tierThresholds: { silver: 500, gold: 1500, platinum: 5000 },
-};
-
-async function getSettings() {
-  const row = await db.siteContent.findUnique({ where: { section: SECTION } });
-  if (!row) return DEFAULT_SETTINGS;
-  try {
-    return { ...DEFAULT_SETTINGS, ...(JSON.parse(row.content) as object) };
-  } catch {
-    return DEFAULT_SETTINGS;
-  }
-}
-
-export async function GET(req: Request) {
+export async function GET() {
   const auth = await requireAdminFeature("rewards");
   if ("error" in auth) return auth.error;
-  return NextResponse.json(await getSettings());
+  return NextResponse.json(await getRewardSettings());
 }
 
 export async function PUT(req: Request) {
@@ -35,7 +17,7 @@ export async function PUT(req: Request) {
 
   try {
     const body = await req.json() as Record<string, unknown>;
-    const current = await getSettings();
+    const current = await getRewardSettings();
     const merged = { ...current, ...body };
 
     await db.siteContent.upsert({

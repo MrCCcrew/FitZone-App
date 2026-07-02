@@ -100,6 +100,9 @@ interface AccountData {
     hasReferral: boolean;
     profileRewardClaimed: boolean;
     emailRewardClaimed: boolean;
+    profilePoints: number;
+    emailPoints: number;
+    referralRewardDisplay: string;
   };
   bookings: {
     id: string;
@@ -453,7 +456,7 @@ function OnboardingCard({
       desc: t("أضيفي هاتفك، حالتك الاجتماعية، تاريخ ميلادك، ومحافظتك", "Add phone, marital status, birth date & governorate"),
       done: ob.profileComplete,
       claimed: ob.profileRewardClaimed,
-      reward: t("50 نقطة", "50 pts"),
+      reward: t(`${ob.profilePoints} نقطة`, `${ob.profilePoints} pts`),
       canClaim: ob.profileComplete && !ob.profileRewardClaimed,
     },
     {
@@ -463,7 +466,7 @@ function OnboardingCard({
       desc: t("تحقق من بريدك الإلكتروني", "Check your inbox for the code"),
       done: ob.emailVerified,
       claimed: ob.emailRewardClaimed,
-      reward: t("20 نقطة", "20 pts"),
+      reward: t(`${ob.emailPoints} نقطة`, `${ob.emailPoints} pts`),
       canClaim: ob.emailVerified && !ob.emailRewardClaimed,
     },
     {
@@ -473,7 +476,7 @@ function OnboardingCard({
       desc: t("شاركي كودك وخدي مكافأة", "Share your code and earn"),
       done: ob.hasReferral,
       claimed: ob.hasReferral,
-      reward: t("50 ج.م", "50 EGP"),
+      reward: ob.referralRewardDisplay,
       canClaim: false,
     },
   ];
