@@ -176,6 +176,8 @@ export interface GymClass {
   active: boolean;
   showTrainerName?: boolean;
   trainerId?: string;
+  trialEnabled?: boolean;
+  trialPrice?: number;
 }
 
 export interface Partner {

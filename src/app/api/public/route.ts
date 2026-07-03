@@ -65,6 +65,7 @@ type PublicPayload = {
     features: string[];
     durationDays: number;
   } | null;
+  trialClassesConfig: Record<string, { trialEnabled: boolean; trialPrice: number }>;
   offers: Array<{
     id: string;
     title: string;
@@ -229,6 +230,7 @@ const EMPTY_PAYLOAD: PublicPayload = {
   goals: [],
   memberships: [],
   trialMembership: null,
+  trialClassesConfig: {},
   offers: [],
   classes: [],
   trainers: [],
@@ -352,7 +354,7 @@ export async function GET(request: Request) {
           orderBy: [{ showOnHome: "desc" }, { sortOrder: "asc" }, { name: "asc" }],
         }),
         db.siteContent.findMany({
-          where: { section: { in: ["trainersPage", "contact", "blog", "paymentSettings", "trial_class_settings", "store_settings"] } },
+          where: { section: { in: ["trainersPage", "contact", "blog", "paymentSettings", "trial_class_settings", "store_settings", "trial_classes_config"] } },
         }),
         db.product.findMany({
           where: { isActive: true },
@@ -466,6 +468,11 @@ export async function GET(request: Request) {
           features: lang === "en" ? parseJsonArray(trial.featuresEn) : parseJsonArray(trial.features),
           durationDays: trial.duration,
         };
+      })(),
+      trialClassesConfig: (() => {
+        const record = siteContent.find((r) => r.section === "trial_classes_config");
+        if (!record) return {};
+        try { return JSON.parse(record.content) as Record<string, { trialEnabled: boolean; trialPrice: number }>; } catch { return {}; }
       })(),
       offers: offers.map((offer) => ({
         id: offer.id,

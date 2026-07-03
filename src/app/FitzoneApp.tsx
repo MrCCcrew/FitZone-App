@@ -3899,6 +3899,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
   const [allMemberships, setAllMemberships] = useState<PublicMembership[]>([]);
   const [goals, setGoals] = useState<PublicGoal[]>([]);
   const [publicClasses, setPublicClasses] = useState<PublicClass[]>([]);
+  const [trialClassesConfig, setTrialClassesConfig] = useState<Record<string, { trialEnabled: boolean; trialPrice: number }>>({});
   const [healthQuestions, setHealthQuestions] = useState<PublicHealthQuestion[]>([]);
   const [selectedGoals, setSelectedGoals] = useState<string[]>([]);
   const [goalViewParentId, setGoalViewParentId] = useState<string | null>(null);
@@ -4152,6 +4153,9 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
           isTrial: true,
         };
         if (Array.isArray(d.classes)) setPublicClasses(d.classes as PublicClass[]);
+        if (d.trialClassesConfig && typeof d.trialClassesConfig === "object") {
+          setTrialClassesConfig(d.trialClassesConfig as Record<string, { trialEnabled: boolean; trialPrice: number }>);
+        }
         setScheduleError(null);
         setDaysPerWeek(null);
         setScheduleStep("slots");
@@ -4279,9 +4283,11 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
 
   const scheduleChoices = useMemo(() => {
     const blocked = new Set(surveyBlockedTypes.map((t) => normalizeClassTypeKey(t)));
+    const isTrial = schedulePlan?.isTrial ?? false;
     const dayNames = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
     const rows: {
       id: string;
+      classId: string;
       className: string;
       trainer: string;
       showTrainerName: boolean;
@@ -4296,11 +4302,17 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
       const typeKey = normalizeClassTypeKey(c.type ?? "");
       if (typeKey && blocked.has(typeKey)) return;
       if (planAllowedClassTypes && typeKey && !planAllowedClassTypes.has(typeKey)) return;
+      // For trial modal: exclude classes explicitly disabled in trialClassesConfig
+      if (isTrial) {
+        const cfg = trialClassesConfig[c.id];
+        if (cfg && cfg.trialEnabled === false) return;
+      }
       (c.schedules || []).forEach((s) => {
         const date = new Date(s.date);
         if (Number.isNaN(date.getTime())) return;
         rows.push({
           id: s.id,
+          classId: c.id,
           className: c.name,
           trainer: c.trainer,
           showTrainerName: c.showTrainerName !== false,
@@ -4327,7 +4339,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
       seen.add(key);
       return true;
     });
-  }, [publicClasses, surveyBlockedTypes, planAllowedClassTypes]);
+  }, [publicClasses, surveyBlockedTypes, planAllowedClassTypes, schedulePlan, trialClassesConfig]);
 
   const parseScheduleTime = (value: string) => {
     const [h, m] = value.split(":").map((n) => Number(n));
@@ -4705,11 +4717,12 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
       setScheduleError("الموعد المختار لم يعد متاحًا. يرجى اختيار موعد آخر.");
       return;
     }
-    // For trial class: determine price from selected slot type (yoga=100, other=50)
+    // For trial class: price comes from trialClassesConfig, fallback to isYogaType
     if (plan.isTrial && selected.length > 0) {
       const slot = scheduleChoices.find((c) => c.id === selected[0]);
-      const isYoga = isYogaType(slot?.type ?? "");
-      plan = { ...plan, price: isYoga ? 100 : 50 };
+      const cfg = slot ? trialClassesConfig[slot.classId] : undefined;
+      const price = cfg?.trialPrice !== undefined ? cfg.trialPrice : (isYogaType(slot?.type ?? "") ? 100 : 50);
+      plan = { ...plan, price };
     }
     setSchedulePlan(null);
     setScheduleError(null);
@@ -5193,12 +5206,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
               <div style={{ display: "flex", alignItems: "flex-start", gap: 8, background: "rgba(155,89,182,.1)", border: "1px solid rgba(155,89,182,.4)", borderRadius: 10, padding: "10px 14px", marginBottom: 14, fontSize: 13, color: "#c9aaff", lineHeight: 1.7 }}>
                 <span style={{ fontSize: 15, flexShrink: 0 }}>💡</span>
                 <span>
-                  {t("سعر الكلاس التجريبي:", "Trial class price:")}
-                  {" "}<strong style={{ color: "#9B59B6" }}>{t("كلاس اليوجا = 100 ج.م", "Yoga class = 100 EGP")}</strong>
-                  {" · "}
-                  <strong style={{ color: "#c9aaff" }}>{t("أي كلاس آخر = 50 ج.م", "Any other class = 50 EGP")}</strong>
-                  <br />
-                  {t("السعر يتحدد تلقائياً بعد اختيار الموعد.", "Price updates automatically after selecting your slot.")}
+                  {t("السعر يظهر على كل كلاس — اختاري الموعد المناسب.", "The price is shown on each class card — pick your preferred slot.")}
                 </span>
               </div>
             )}
@@ -5248,7 +5256,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
                                             const selected = scheduleSelections.includes(entry.id);
                                             const disabled = entry.availableSpots <= 0;
                                             const trialPrice = schedulePlan?.isTrial
-                                              ? (isYogaType(entry.type) ? 100 : 50)
+                                              ? (() => { const cfg = trialClassesConfig[entry.classId]; return cfg?.trialPrice !== undefined ? cfg.trialPrice : (isYogaType(entry.type) ? 100 : 50); })()
                                               : null;
                                             return (
                                               <button
@@ -5264,7 +5272,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
                                                   {entry.subType ? ` - ${entry.subType}` : ""}
                                                 </div>
                                                 {trialPrice !== null && (
-                                                  <div style={{ fontSize: 10, fontWeight: 800, color: trialPrice === 100 ? "#9B59B6" : "#4ade80", marginTop: 2 }}>
+                                                  <div style={{ fontSize: 10, fontWeight: 800, color: trialPrice > 50 ? "#9B59B6" : "#4ade80", marginTop: 2 }}>
                                                     {trialPrice} {t("ج.م", "EGP")}
                                                   </div>
                                                 )}
@@ -5318,7 +5326,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
                                             const selected = scheduleSelections.includes(entry.id);
                                             const disabled = entry.availableSpots <= 0;
                                             const trialPrice = schedulePlan?.isTrial
-                                              ? (isYogaType(entry.type) ? 100 : 50)
+                                              ? (() => { const cfg = trialClassesConfig[entry.classId]; return cfg?.trialPrice !== undefined ? cfg.trialPrice : (isYogaType(entry.type) ? 100 : 50); })()
                                               : null;
                                             return (
                                               <button
@@ -5334,7 +5342,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
                                                   {entry.subType ? ` - ${entry.subType}` : ""}
                                                 </div>
                                                 {trialPrice !== null && (
-                                                  <div style={{ fontSize: 10, fontWeight: 800, color: trialPrice === 100 ? "#9B59B6" : "#4ade80", marginTop: 2 }}>
+                                                  <div style={{ fontSize: 10, fontWeight: 800, color: trialPrice > 50 ? "#9B59B6" : "#4ade80", marginTop: 2 }}>
                                                     {trialPrice} {t("ج.م", "EGP")}
                                                   </div>
                                                 )}
