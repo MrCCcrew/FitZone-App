@@ -557,7 +557,41 @@ export default function Products() {
               {uploadError && <div className="rounded-xl border border-red-500/30 bg-red-950/30 px-4 py-3 text-xs leading-6 text-red-200">{uploadError}</div>}
               {!!productModal.images?.length && <div className="text-xs text-emerald-300">تم تجهيز {productModal.images.length} صورة لهذا المنتج.</div>}
               <FieldHint title="روابط الصور اليدوية" hint="إذا كانت الصور مرفوعة مسبقًا في مكان آخر، ضع رابطًا واحدًا في كل سطر."><textarea value={fromList(productModal.images)} onChange={(e) => setProductModal({ ...productModal, images: toList(e.target.value) })} rows={4} className={`${INPUT} resize-none`} placeholder="https://example.com/product-image-1.jpg" /></FieldHint>
-              {!!productModal.images?.length && <div className="grid gap-3 sm:grid-cols-2">{productModal.images.map((image, index) => <div key={`${image}-${index}`} className="rounded-xl border border-gray-700 bg-gray-800 p-2"><img src={image} alt={`product-${index + 1}`} className="mb-2 h-28 w-full rounded-lg object-cover" /><button type="button" onClick={() => setProductModal({ ...productModal, images: productModal.images?.filter((_, i) => i !== index) ?? [] })} className="w-full text-xs text-red-400">حذف الصورة</button></div>)}</div>}
+              {!!productModal.images?.length && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {productModal.images.map((image, index) => (
+                    <div key={`${image}-${index}`} className={`rounded-xl border p-2 ${index === 0 ? "border-yellow-500 bg-yellow-950/30" : "border-gray-700 bg-gray-800"}`}>
+                      <div className="relative mb-2">
+                        <img src={image} alt={`product-${index + 1}`} className="h-28 w-full rounded-lg object-contain" />
+                        {index === 0 && (
+                          <span className="absolute right-1 top-1 rounded-full bg-yellow-500 px-2 py-0.5 text-[10px] font-black text-black">★ الكارت</span>
+                        )}
+                      </div>
+                      <div className="flex gap-1">
+                        {index !== 0 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const imgs = productModal.images ?? [];
+                              setProductModal({ ...productModal, images: [imgs[index], ...imgs.filter((_, i) => i !== index)] });
+                            }}
+                            className="flex-1 rounded-lg bg-yellow-600/20 py-1 text-xs font-bold text-yellow-400 hover:bg-yellow-600/40"
+                          >
+                            تعيين كصورة الكارت
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setProductModal({ ...productModal, images: productModal.images?.filter((_, i) => i !== index) ?? [] })}
+                          className="flex-1 rounded-lg py-1 text-xs text-red-400 hover:text-red-300"
+                        >
+                          حذف الصورة
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
             {sizeType !== "none" && <FieldHint title="المقاسات" hint={sizeType === "shoes" ? "اختر مقاسات الأحذية المتوفرة لهذا المنتج." : "اختر مقاسات الملابس المتوفرة لهذا المنتج."}><div className="flex flex-wrap gap-2">{(sizeType === "shoes" ? SHOES : CLOTHING).map((size) => <button key={size} type="button" onClick={() => setProductModal({ ...productModal, sizes: toggle(productModal.sizes, size) })} className={`rounded-lg border px-3 py-1.5 text-xs font-bold ${productModal.sizes?.includes(size) ? "border-red-600 bg-red-600 text-white" : "border-gray-700 bg-gray-800 text-gray-400"}`}>{size}</button>)}</div></FieldHint>}
             <FieldHint title="الألوان" hint="اختياري. اختر الألوان المتاحة حتى تظهر للعميل داخل صفحة المنتج."><div className="flex flex-wrap gap-2">{["#111111", "#FFFFFF", "#6B7280", "#EF4444", "#3B82F6", "#22C55E", "#EC4899", "#D4A574"].map((color) => <button key={color} type="button" onClick={() => setProductModal({ ...productModal, colors: toggle(productModal.colors, color) })} className={`h-8 w-8 rounded-full border-2 ${productModal.colors?.includes(color) ? "border-red-500" : "border-gray-600"}`} style={{ backgroundColor: color }} />)}</div></FieldHint>
