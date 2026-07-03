@@ -1609,7 +1609,10 @@ function formatClassType(value: string) {
 
 function isYogaType(type: string): boolean {
   const key = normalizeClassTypeKey(type);
-  return key === "yoga" || key === "يوجا";
+  if (key === "yoga") return true;
+  // Also catch custom types like "يوجا علاجية", "يوجا و بيلاتس", etc.
+  const lower = type.trim().toLowerCase();
+  return lower.includes("yoga") || type.includes("يوجا");
 }
 
 function readCart(): CartItem[] {
