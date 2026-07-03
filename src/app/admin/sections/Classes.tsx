@@ -122,6 +122,8 @@ type ClassModalState = {
   customType: string;
   subTypePreset: string;
   customSubType: string;
+  trialEnabled: boolean;
+  trialPrice: number;
 };
 
 const EMPTY_MODAL: ClassModalState = {
@@ -151,6 +153,8 @@ const EMPTY_MODAL: ClassModalState = {
   customType: "",
   subTypePreset: "",
   customSubType: "",
+  trialEnabled: true,
+  trialPrice: 50,
 };
 
 function normalizeTypeLabel(type: string) {
@@ -209,6 +213,8 @@ function createModalState(item?: GymClass, allClasses: GymClass[] = []) {
     descriptionEn: item.descriptionEn ?? "",
     subTypePreset: subTypeKnown ? item.subType ?? "" : (item.subType ? "custom" : ""),
     customSubType: subTypeKnown ? "" : item.subType ?? "",
+    trialEnabled: item.trialEnabled ?? true,
+    trialPrice: item.trialPrice ?? 50,
   };
 }
 
@@ -461,6 +467,8 @@ export default function Classes() {
         showTrainerName: modal.showTrainerName,
         time: modal.time,
         trainer: selectedTrainer?.name ?? modal.trainer,
+        trialEnabled: modal.trialEnabled,
+        trialPrice: Number(modal.trialPrice) || 50,
       };
 
       if (isEdit) {
@@ -1203,6 +1211,41 @@ export default function Classes() {
                 }`}
               />
             </button>
+          </div>
+
+          {/* Trial class settings */}
+          <div className="mt-3 rounded-2xl border border-amber-500/25 bg-amber-950/20 px-4 py-3 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-sm font-bold text-amber-300">الكلاس التجريبي</div>
+                <div className="text-xs text-white/45">هل يظهر هذا الكلاس ضمن خيارات الكلاس التجريبي؟</div>
+              </div>
+              <button
+                onClick={() => setModal({ ...modal, trialEnabled: !modal.trialEnabled })}
+                className={`relative h-7 w-14 rounded-full transition ${
+                  modal.trialEnabled ? "bg-amber-500/70" : "bg-white/15"
+                }`}
+              >
+                <span
+                  className={`absolute top-1.5 h-4 w-4 rounded-full bg-white transition ${
+                    modal.trialEnabled ? "right-1.5" : "left-1.5"
+                  }`}
+                />
+              </button>
+            </div>
+            {modal.trialEnabled && (
+              <div className="flex items-center gap-3">
+                <label className="text-sm text-white/70 shrink-0">سعر الكلاس التجريبي (ج.م)</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="10"
+                  value={modal.trialPrice}
+                  onChange={(e) => setModal({ ...modal, trialPrice: Number(e.target.value) || 50 })}
+                  className={INPUT + " max-w-[120px]"}
+                />
+              </div>
+            )}
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">

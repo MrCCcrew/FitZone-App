@@ -54,6 +54,26 @@ function getNextOccurrences(dayName: string, time: string, maxSpots: number, cou
   });
 }
 
+async function upsertTrialConfig(classId: string, trialEnabled: boolean, trialPrice: number) {
+  const existing = await db.siteContent.findUnique({ where: { section: "trial_classes_config" } });
+  let cfg: Record<string, { trialEnabled: boolean; trialPrice: number }> = {};
+  if (existing) {
+    try { cfg = JSON.parse(existing.content) as typeof cfg; } catch { /* ignore */ }
+  }
+  cfg[classId] = { trialEnabled, trialPrice };
+  await db.siteContent.upsert({
+    where: { section: "trial_classes_config" },
+    update: { content: JSON.stringify(cfg) },
+    create: { section: "trial_classes_config", content: JSON.stringify(cfg) },
+  });
+}
+
+function parseTrialConfig(records: Array<{ section: string; content: string }>): Record<string, { trialEnabled: boolean; trialPrice: number }> {
+  const record = records.find((r) => r.section === "trial_classes_config");
+  if (!record) return {};
+  try { return JSON.parse(record.content) as Record<string, { trialEnabled: boolean; trialPrice: number }>; } catch { return {}; }
+}
+
 export async function GET() {
   const guard = await requireAdminFeature("classes");
   if ("error" in guard) return guard.error;
@@ -70,7 +90,7 @@ export async function GET() {
     canAddClasses = profile.canAddClasses;
   }
 
-  const [classes, trainers] = await Promise.all([
+  const [classes, trainers, trialConfigRecords] = await Promise.all([
     db.class.findMany({
       where: trainerIdFilter ? { trainerId: trainerIdFilter } : undefined,
       include: {
@@ -80,7 +100,10 @@ export async function GET() {
       orderBy: { name: "asc" },
     }),
     db.trainer.findMany({ orderBy: { name: "asc" } }),
+    db.siteContent.findMany({ where: { section: "trial_classes_config" } }),
   ]);
+
+  const trialConfig = parseTrialConfig(trialConfigRecords);
 
   const payload = classes.map((item) => {
     const firstSchedule = item.schedules[0];
@@ -90,6 +113,7 @@ export async function GET() {
       item.schedules.length > 0
         ? item.maxSpots - Math.min(...item.schedules.map((schedule) => schedule.availableSpots))
         : 0;
+    const cfg = trialConfig[item.id];
 
     return {
       id: item.id,
@@ -114,6 +138,8 @@ export async function GET() {
       price: item.price,
       showTrainerName: item.showTrainerName ?? true,
       active: item.isActive,
+      trialEnabled: cfg?.trialEnabled ?? true,
+      trialPrice: cfg?.trialPrice ?? 50,
     };
   });
 
@@ -161,6 +187,8 @@ export async function POST(request: Request) {
       day?: string;
       time?: string;
       showTrainerName?: boolean;
+      trialEnabled?: boolean;
+      trialPrice?: number;
     };
 
     const name = body.name?.trim();
@@ -212,6 +240,9 @@ export async function POST(request: Request) {
       }
     }
 
+    // Persist trial settings in siteContent
+    await upsertTrialConfig(created.id, body.trialEnabled ?? true, Number(body.trialPrice ?? 50));
+
     clearPublicApiCache();
     return NextResponse.json({
       id: created.id,
@@ -236,6 +267,8 @@ export async function POST(request: Request) {
       price: created.price,
       showTrainerName: created.showTrainerName ?? true,
       active: created.isActive,
+      trialEnabled: body.trialEnabled ?? true,
+      trialPrice: Number(body.trialPrice ?? 50),
     });
   } catch {
     return NextResponse.json({ error: "تعذر حفظ الكلاس الآن." }, { status: 500 });
@@ -280,6 +313,8 @@ export async function PATCH(request: Request) {
       day?: string;
       time?: string;
       showTrainerName?: boolean;
+      trialEnabled?: boolean;
+      trialPrice?: number;
     };
 
     if (!body.id) {
@@ -315,6 +350,23 @@ export async function PATCH(request: Request) {
 
     if (Object.keys(data).length > 0) {
       await db.class.update({ where: { id: body.id }, data });
+    }
+
+    // Persist trial settings when provided
+    if (body.trialEnabled !== undefined || body.trialPrice !== undefined) {
+      const existing = await db.siteContent.findUnique({ where: { section: "trial_classes_config" } });
+      let cfg: Record<string, { trialEnabled: boolean; trialPrice: number }> = {};
+      if (existing) { try { cfg = JSON.parse(existing.content) as typeof cfg; } catch { /* ignore */ } }
+      const prev = cfg[body.id] ?? { trialEnabled: true, trialPrice: 50 };
+      cfg[body.id] = {
+        trialEnabled: body.trialEnabled ?? prev.trialEnabled,
+        trialPrice: body.trialPrice !== undefined ? Number(body.trialPrice) : prev.trialPrice,
+      };
+      await db.siteContent.upsert({
+        where: { section: "trial_classes_config" },
+        update: { content: JSON.stringify(cfg) },
+        create: { section: "trial_classes_config", content: JSON.stringify(cfg) },
+      });
     }
 
     if (body.day && body.time) {
