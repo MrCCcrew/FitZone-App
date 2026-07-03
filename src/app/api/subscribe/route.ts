@@ -434,10 +434,13 @@ export async function POST(req: Request) {
       walletBonus = plan.walletBonus ?? 0;
       const productRewards = parseJsonArray<{ productId: string; quantity: number }>(plan.productRewards ?? null);
 
-      await tx.userMembership.updateMany({
-        where: { userId, status: "active" },
-        data: { status: "expired" },
-      });
+      // Trial classes run alongside existing subscriptions — never expire them.
+      if (plan.kind !== "trial") {
+        await tx.userMembership.updateMany({
+          where: { userId, status: "active" },
+          data: { status: "expired" },
+        });
+      }
 
       const resolvedStart = (() => {
         if (startDate) {
