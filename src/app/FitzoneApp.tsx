@@ -7011,7 +7011,7 @@ const ProductVisual = ({ product, h = 200 }: { product: StoreProduct; h?: number
   const firstImage = product.images?.[0];
 
   if (firstImage) {
-    return <img src={firstImage} alt={product.name} style={{ width: "100%", height: h, objectFit: "cover", display: "block" }} />;
+    return <img src={firstImage} alt={product.name} style={{ width: "100%", height: h, objectFit: "contain", display: "block" }} />;
   }
 
   return <GymImg type={product.type} w="100%" h={h} />;
@@ -7537,7 +7537,7 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
                   style={{
                     width: "100%",
                     height: viewportWidth() < 768 ? 300 : 380,
-                    objectFit: "cover",
+                    objectFit: "contain",
                     display: "block",
                     background: C.bgCard2,
                     transform: imageZoomed ? "scale(1.9)" : "scale(1)",
@@ -7572,7 +7572,7 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
               {gallery.map((item, i) => (
                 <div key={`${product.id ?? product.name}-${i}`} onClick={() => setSelectedImage(i)} style={{ borderRadius: 8, overflow: "hidden", border: i === selectedImage ? `2px solid ${C.red}` : `1px solid ${C.border}`, cursor: "pointer" }}>
                   {product.images && product.images.length > 0 ? (
-                    <img src={String(item)} alt={`${product.name}-${i + 1}`} style={{ width: "100%", height: 70, objectFit: "cover", display: "block", background: C.bgCard2 }} />
+                    <img src={String(item)} alt={`${product.name}-${i + 1}`} style={{ width: "100%", height: 70, objectFit: "contain", display: "block", background: C.bgCard2 }} />
                   ) : (
                     <GymImg type={String(item)} w="100%" h={70} />
                   )}
