@@ -176,7 +176,7 @@ export async function POST(req: Request) {
     if (rawColors.length > colors.length)
       results.errors.push(`${rowLabel} "${name}" تحذير: ${rawColors.length - colors.length} لون تم تجاهله (يجب بصيغة #rrggbb)`);
 
-    const data = {
+    const baseData = {
       name,
       nameEn:          nullable(row["Product Name"]),
       category:        rawCat,
@@ -200,8 +200,19 @@ export async function POST(req: Request) {
       importantInfo:   nullable(row["معلومات مهمة"]),
       disclaimer:      nullable(row["إخلاء المسؤولية"]),
       editorialReview: nullable(row["مراجعة تحريرية"]),
-      images:          images.length ? JSON.stringify(images) : null,
-      colors:          colors.length ? JSON.stringify(colors) : null,
+    };
+
+    // For new products: store null if no images. For updates: only overwrite if CSV has images/colors
+    // (empty CSV cell must not wipe existing stored images)
+    const createData = {
+      ...baseData,
+      images: images.length ? JSON.stringify(images) : null,
+      colors: colors.length ? JSON.stringify(colors) : null,
+    };
+    const updateData = {
+      ...baseData,
+      ...(images.length ? { images: JSON.stringify(images) } : {}),
+      ...(colors.length ? { colors: JSON.stringify(colors) } : {}),
     };
 
     try {
@@ -219,10 +230,10 @@ export async function POST(req: Request) {
       }
 
       if (existing) {
-        await db.product.update({ where: { id: existing.id }, data });
+        await db.product.update({ where: { id: existing.id }, data: updateData });
         results.products.updated++;
       } else {
-        const created = await db.product.create({ data });
+        const created = await db.product.create({ data: createData });
         if (rowSku) skuToDbId.set(rowSku, created.id);
         results.products.created++;
       }
