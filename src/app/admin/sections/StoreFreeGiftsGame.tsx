@@ -13,11 +13,11 @@ type RewardPoolItem = {
   productId?: string;
 };
 
-type AdminProduct = { id: string; name: string; images?: string | null };
+type AdminProduct = { id: string; name: string; images?: string[] | null };
 
-function getThumb(images: string | null | undefined): string | null {
-  if (!images) return null;
-  try { return (JSON.parse(images) as string[])[0] ?? null; } catch { return null; }
+function getThumb(images: string[] | null | undefined): string | null {
+  if (!images || images.length === 0) return null;
+  return images[0] ?? null;
 }
 
 const PICKER_BASE: React.CSSProperties = {
