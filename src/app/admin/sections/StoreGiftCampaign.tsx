@@ -17,22 +17,34 @@ function ProductPicker({ products, value, onChange }: {
 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
-  const ref = useRef<HTMLDivElement>(null);
+  const [rect, setRect] = useState<DOMRect | null>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
   const selected = products.find(p => p.id === value);
   const filtered = q ? products.filter(p => p.name.includes(q)) : products;
 
+  const handleOpen = () => {
+    if (btnRef.current) setRect(btnRef.current.getBoundingClientRect());
+    setOpen(v => !v);
+  };
+
   useEffect(() => {
     if (!open) return;
-    const h = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    const close = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
     };
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
+    const onScroll = () => setOpen(false);
+    document.addEventListener("mousedown", close);
+    window.addEventListener("scroll", onScroll, true);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      window.removeEventListener("scroll", onScroll, true);
+    };
   }, [open]);
 
   return (
-    <div ref={ref} className="relative w-full">
-      <button type="button" onClick={() => setOpen(v => !v)}
+    <div ref={wrapRef} className="relative w-full">
+      <button ref={btnRef} type="button" onClick={handleOpen}
         className="w-full bg-gray-900 border border-gray-700 hover:border-pink-500/60 rounded-xl px-3 py-2.5 text-sm text-white outline-none transition-colors flex items-center gap-2 text-right">
         {selected ? (
           <>
@@ -46,8 +58,9 @@ function ProductPicker({ products, value, onChange }: {
         <span className="text-gray-500 text-xs flex-shrink-0">▾</span>
       </button>
 
-      {open && (
-        <div className="absolute top-full mt-1 left-0 right-0 z-50 bg-gray-950 border border-gray-700 rounded-xl shadow-2xl max-h-60 overflow-y-auto">
+      {open && rect && (
+        <div style={{ position: "fixed", top: rect.bottom + 4, left: rect.left, width: rect.width, zIndex: 9999 }}
+          className="bg-gray-950 border border-gray-700 rounded-xl shadow-2xl max-h-60 overflow-y-auto">
           <div className="sticky top-0 bg-gray-950 p-2 border-b border-gray-800">
             <input value={q} onChange={e => setQ(e.target.value)} placeholder="بحث..."
               className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-white outline-none"
