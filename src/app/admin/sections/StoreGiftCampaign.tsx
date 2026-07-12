@@ -1,7 +1,84 @@
 ﻿"use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import type { StoreGiftCampaignSettings } from "@/app/api/admin/store-gift-campaign/route";
+
+type AdminProduct = { id: string; name: string; images?: string | null };
+
+function getThumb(images: string | null | undefined): string | null {
+  if (!images) return null;
+  try { return (JSON.parse(images) as string[])[0] ?? null; } catch { return null; }
+}
+
+function ProductPicker({ products, value, onChange }: {
+  products: AdminProduct[];
+  value: string | null;
+  onChange: (id: string | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+  const selected = products.find(p => p.id === value);
+  const filtered = q ? products.filter(p => p.name.includes(q)) : products;
+
+  useEffect(() => {
+    if (!open) return;
+    const h = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative w-full">
+      <button type="button" onClick={() => setOpen(v => !v)}
+        className="w-full bg-gray-900 border border-gray-700 hover:border-pink-500/60 rounded-xl px-3 py-2.5 text-sm text-white outline-none transition-colors flex items-center gap-2 text-right">
+        {selected ? (
+          <>
+            {getThumb(selected.images)
+              ? <img src={getThumb(selected.images)!} className="w-7 h-7 rounded-md object-cover flex-shrink-0" />
+              : <span className="w-7 h-7 rounded-md bg-white/10 flex items-center justify-center text-sm flex-shrink-0">🛍️</span>
+            }
+            <span className="flex-1 truncate text-right">{selected.name}</span>
+          </>
+        ) : <span className="flex-1 text-gray-500">— اختر منتجًا —</span>}
+        <span className="text-gray-500 text-xs flex-shrink-0">▾</span>
+      </button>
+
+      {open && (
+        <div className="absolute top-full mt-1 left-0 right-0 z-50 bg-gray-950 border border-gray-700 rounded-xl shadow-2xl max-h-60 overflow-y-auto">
+          <div className="sticky top-0 bg-gray-950 p-2 border-b border-gray-800">
+            <input value={q} onChange={e => setQ(e.target.value)} placeholder="بحث..."
+              className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-white outline-none"
+              onClick={e => e.stopPropagation()} autoFocus />
+          </div>
+          <div onClick={() => { onChange(null); setOpen(false); setQ(""); }}
+            className="px-3 py-2 text-xs text-gray-500 cursor-pointer hover:bg-white/5 border-b border-gray-800">
+            — بدون منتج محدد —
+          </div>
+          {filtered.map(p => {
+            const thumb = getThumb(p.images);
+            return (
+              <div key={p.id} onClick={() => { onChange(p.id); setOpen(false); setQ(""); }}
+                className={`flex items-center gap-3 px-3 py-2 cursor-pointer border-b border-gray-800/50 hover:bg-white/5 transition-colors ${value === p.id ? "bg-pink-500/10" : ""}`}>
+                {thumb
+                  ? <img src={thumb} className="w-10 h-10 rounded-lg object-cover flex-shrink-0" />
+                  : <div className="w-10 h-10 rounded-lg bg-white/10 flex items-center justify-center text-base flex-shrink-0">🛍️</div>
+                }
+                <span className="flex-1 text-sm text-white leading-tight">{p.name}</span>
+                {value === p.id && <span className="text-pink-400 text-sm flex-shrink-0">✓</span>}
+              </div>
+            );
+          })}
+          {filtered.length === 0 && (
+            <div className="py-4 text-center text-xs text-gray-500">لا توجد نتائج</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 const REWARD_LABELS: Record<string, string> = {
   wallet: "💳 رصيد محفظة",
@@ -43,6 +120,7 @@ export default function StoreGiftCampaign() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [products, setProducts] = useState<AdminProduct[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -55,7 +133,12 @@ export default function StoreGiftCampaign() {
     setLoading(false);
   }, []);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    void load();
+    void fetch("/api/admin/products")
+      .then(r => r.json())
+      .then((d: unknown) => { if (Array.isArray(d)) setProducts(d as AdminProduct[]); });
+  }, [load]);
 
   const set = <K extends keyof StoreGiftCampaignSettings>(k: K, v: StoreGiftCampaignSettings[K]) =>
     setSettings((prev) => ({ ...prev, [k]: v }));
@@ -217,8 +300,8 @@ export default function StoreGiftCampaign() {
         )}
         {settings.rewardType === "free_product" && (
           <div>
-            <label className={LABEL}>معرف المنتج المجاني (Product ID)</label>
-            <input className={INPUT} value={settings.rewardProductId ?? ""} onChange={(e) => set("rewardProductId", e.target.value || null)} placeholder="اتركه فارغاً إذا لم يتحدد بعد" dir="ltr" />
+            <label className={LABEL}>المنتج المجاني</label>
+            <ProductPicker products={products} value={settings.rewardProductId} onChange={id => set("rewardProductId", id)} />
           </div>
         )}
 

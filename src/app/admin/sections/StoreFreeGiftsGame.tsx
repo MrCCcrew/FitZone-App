@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type RewardPoolItem = {
   id: string;
@@ -13,7 +13,99 @@ type RewardPoolItem = {
   productId?: string;
 };
 
-type AdminProduct = { id: string; name: string };
+type AdminProduct = { id: string; name: string; images?: string | null };
+
+function getThumb(images: string | null | undefined): string | null {
+  if (!images) return null;
+  try { return (JSON.parse(images) as string[])[0] ?? null; } catch { return null; }
+}
+
+const PICKER_BASE: React.CSSProperties = {
+  padding: "7px 10px", borderRadius: 8,
+  border: "1px solid rgba(255,255,255,.12)",
+  background: "rgba(255,255,255,.05)",
+  color: "#fff", fontSize: 13,
+  fontFamily: "inherit", width: "100%", boxSizing: "border-box",
+};
+
+function ProductPicker({ products, value, onChange }: {
+  products: AdminProduct[];
+  value: string;
+  onChange: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+  const selected = products.find(p => p.id === value);
+  const filtered = q ? products.filter(p => p.name.includes(q)) : products;
+
+  useEffect(() => {
+    if (!open) return;
+    const h = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [open]);
+
+  return (
+    <div ref={ref} style={{ position: "relative", width: "100%" }}>
+      <button type="button" onClick={() => setOpen(v => !v)}
+        style={{ ...PICKER_BASE, display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+        {selected ? (
+          <>
+            {getThumb(selected.images)
+              ? <img src={getThumb(selected.images)!} style={{ width: 26, height: 26, borderRadius: 5, objectFit: "cover", flexShrink: 0 }} />
+              : <span style={{ width: 26, height: 26, borderRadius: 5, background: "rgba(255,255,255,.08)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, flexShrink: 0 }}>🛍️</span>
+            }
+            <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12 }}>{selected.name}</span>
+          </>
+        ) : <span style={{ flex: 1, color: "rgba(255,255,255,.3)" }}>— اختر منتجًا —</span>}
+        <span style={{ color: "rgba(255,255,255,.4)", fontSize: 10, flexShrink: 0 }}>▾</span>
+      </button>
+
+      {open && (
+        <div style={{
+          position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0,
+          background: "#1e0015", border: "1px solid rgba(255,255,255,.15)",
+          borderRadius: 10, zIndex: 300, maxHeight: 240, overflowY: "auto",
+          boxShadow: "0 8px 24px rgba(0,0,0,.7)",
+        }}>
+          <div style={{ padding: "6px 8px", borderBottom: "1px solid rgba(255,255,255,.08)", position: "sticky", top: 0, background: "#1e0015" }}>
+            <input value={q} onChange={e => setQ(e.target.value)} placeholder="بحث..."
+              style={{ ...PICKER_BASE, padding: "5px 8px", fontSize: 12 }}
+              onClick={e => e.stopPropagation()} autoFocus />
+          </div>
+          <div onClick={() => { onChange(""); setOpen(false); setQ(""); }}
+            style={{ padding: "8px 12px", cursor: "pointer", color: "rgba(255,255,255,.35)", fontSize: 11, borderBottom: "1px solid rgba(255,255,255,.06)" }}>
+            — بدون منتج محدد —
+          </div>
+          {filtered.map(p => {
+            const thumb = getThumb(p.images);
+            return (
+              <div key={p.id} onClick={() => { onChange(p.id); setOpen(false); setQ(""); }}
+                style={{
+                  display: "flex", alignItems: "center", gap: 10, padding: "7px 12px",
+                  cursor: "pointer", borderBottom: "1px solid rgba(255,255,255,.04)",
+                  background: value === p.id ? "rgba(251,191,36,.1)" : "transparent",
+                }}>
+                {thumb
+                  ? <img src={thumb} style={{ width: 38, height: 38, borderRadius: 7, objectFit: "cover", flexShrink: 0 }} />
+                  : <div style={{ width: 38, height: 38, borderRadius: 7, background: "rgba(255,255,255,.08)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, flexShrink: 0 }}>🛍️</div>
+                }
+                <span style={{ flex: 1, fontSize: 12, color: "#fff", lineHeight: 1.3 }}>{p.name}</span>
+                {value === p.id && <span style={{ color: "#fbbf24", fontSize: 13, flexShrink: 0 }}>✓</span>}
+              </div>
+            );
+          })}
+          {filtered.length === 0 && (
+            <div style={{ padding: 14, textAlign: "center", color: "rgba(255,255,255,.3)", fontSize: 12 }}>لا توجد نتائج</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 const REWARD_TYPES = [
   { value: "free_product",  label: "منتج مجاني" },
@@ -233,11 +325,7 @@ export function StoreFreeGiftsGameSection() {
               {newItem.type === "free_product" && (
                 <div>
                   <label style={label12}>المنتج المجاني</label>
-                  <select value={newItem.productId ?? ""} onChange={e => setNewItem(p => ({ ...p, productId: e.target.value }))}
-                    style={{ ...inp, appearance: "auto" }}>
-                    <option value="">— اختر منتجًا —</option>
-                    {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                  </select>
+                  <ProductPicker products={products} value={newItem.productId ?? ""} onChange={id => setNewItem(p => ({ ...p, productId: id }))} />
                 </div>
               )}
               <div>
@@ -293,11 +381,9 @@ export function StoreFreeGiftsGameSection() {
                     {REWARD_TYPES.map(rt => <option key={rt.value} value={rt.value}>{rt.label}</option>)}
                   </select>
                   {r.type === "free_product" && (
-                    <select value={r.productId ?? ""} onChange={e => updateReward(r.id, "productId", e.target.value)}
-                      style={{ ...inp, appearance: "auto", marginTop: 4 }}>
-                      <option value="">— اختر منتجًا —</option>
-                      {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                    </select>
+                    <div style={{ marginTop: 4 }}>
+                      <ProductPicker products={products} value={r.productId ?? ""} onChange={id => updateReward(r.id, "productId", id)} />
+                    </div>
                   )}
                 </div>
 
