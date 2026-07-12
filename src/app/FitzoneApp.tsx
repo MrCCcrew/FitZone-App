@@ -8306,7 +8306,12 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                   </div>
                 )}
                 {cartItems.map((item) => (
-                  <div key={`${item.productId}-${item.size ?? ""}`} className="card" style={{ padding: 18, marginBottom: 12, display: "flex", gap: 14, alignItems: "center" }}>
+                  <div key={`${item.productId}-${item.size ?? ""}`} className="card" style={{ padding: 18, marginBottom: 12, display: "flex", gap: 14, alignItems: "center", position: "relative", ...(item.type === "gift" ? { border: "1.5px solid rgba(233,30,99,.35)", background: "rgba(233,30,99,.04)" } : {}) }}>
+                    {item.type === "gift" && (
+                      <div style={{ position: "absolute", top: -10, right: 14, background: "linear-gradient(135deg,#e91e63,#c2185b)", color: "#fff", fontSize: 10, fontWeight: 900, padding: "2px 8px", borderRadius: 20, fontFamily: "'Cairo','Tajawal',sans-serif", display: "flex", alignItems: "center", gap: 4 }}>
+                        🎁 {t("هدية مجانية", "Free Gift")}
+                      </div>
+                    )}
                     <div style={{ width: 70, height: 70, borderRadius: 10, overflow: "hidden", flexShrink: 0, background: "rgba(255,255,255,0.05)", display: "flex", alignItems: "center", justifyContent: "center" }}>
                       {cartProducts.find((p) => p.id === item.productId)?.images?.[0]
                         ? <img src={cartProducts.find((p) => p.id === item.productId)!.images[0]} alt={item.name} style={{ width: "100%", height: "100%", objectFit: "contain" }} />
@@ -8321,7 +8326,9 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                       <span style={{ width: 30, textAlign: "center", fontSize: 13, fontWeight: 700, color: C.white }}>{item.qty}</span>
                       <button onClick={() => updateQty(item.productId, item.size, 1)} style={{ width: 36, height: 36, background: C.bgCard2, border: "none", cursor: "pointer", color: C.white, fontSize: 16 }}>+</button>
                     </div>
-                    <span style={{ fontWeight: 900, color: C.red, minWidth: 80, textAlign: "center", fontSize: 14 }}>{formatCurrency(item.price * item.qty)}</span>
+                    {item.type === "gift"
+                      ? <span style={{ fontWeight: 900, color: "#22c55e", minWidth: 80, textAlign: "center", fontSize: 14 }}>{t("مجاني 🎁", "Free 🎁")}</span>
+                      : <span style={{ fontWeight: 900, color: C.red, minWidth: 80, textAlign: "center", fontSize: 14 }}>{formatCurrency(item.price * item.qty)}</span>}
                   </div>
                 ))}
                 {/* ── Store Gift Campaign Banner ── */}
