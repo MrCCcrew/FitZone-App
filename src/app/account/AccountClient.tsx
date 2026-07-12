@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
@@ -233,9 +233,9 @@ const REASON_LABELS: Record<string, string> = {
   birthday_bonus:              "مكافأة عيد الميلاد",
   manual_add:                  "إضافة يدوية",
   manual_deduct:               "خصم يدوي",
-  redeem:                      "استبدال نقاط",
+  redeem:                      "استبدال فيتزونات",
   topup:                       "شحن رصيد",
-  conversion_to_balance:       "تحويل نقاط إلى رصيد",
+  conversion_to_balance:       "تحويل فيتزونات إلى رصيد",
 };
 
 const NOTIF_ICONS: Record<string, string> = {
@@ -420,8 +420,8 @@ function OnboardingCard({
         const pts = json.points as number;
         onRewardClaimed(
           reward === "profile_complete"
-            ? t(`حصلتِ على ${pts} نقطة لإكمال بياناتك! 🎊`, `You earned ${pts} points for completing your profile! 🎊`)
-            : t(`حصلتِ على ${pts} نقطة لتفعيل بريدك الإلكتروني! ✉️`, `You earned ${pts} points for verifying your email! ✉️`),
+            ? t(`حصلتِ على ${pts} فيتزونة لإكمال بياناتك! 🎊`, `You earned ${pts} points for completing your profile! 🎊`)
+            : t(`حصلتِ على ${pts} فيتزونة لتفعيل بريدك الإلكتروني! ✉️`, `You earned ${pts} points for verifying your email! ✉️`),
         );
         // Soft-refresh the page to update reward state
         setTimeout(() => window.location.reload(), 1800);
@@ -458,7 +458,7 @@ function OnboardingCard({
       desc: t("أضيفي هاتفك، حالتك الاجتماعية، تاريخ ميلادك، ومحافظتك", "Add phone, marital status, birth date & governorate"),
       done: ob.profileComplete,
       claimed: ob.profileRewardClaimed,
-      reward: t(`${ob.profilePoints} نقطة`, `${ob.profilePoints} pts`),
+      reward: t(`${ob.profilePoints} فيتزونة`, `${ob.profilePoints} pts`),
       canClaim: ob.profileComplete && !ob.profileRewardClaimed,
     },
     {
@@ -468,7 +468,7 @@ function OnboardingCard({
       desc: t("تحقق من بريدك الإلكتروني", "Check your inbox for the code"),
       done: ob.emailVerified,
       claimed: ob.emailRewardClaimed,
-      reward: t(`${ob.emailPoints} نقطة`, `${ob.emailPoints} pts`),
+      reward: t(`${ob.emailPoints} فيتزونة`, `${ob.emailPoints} pts`),
       canClaim: ob.emailVerified && !ob.emailRewardClaimed,
     },
     {
@@ -836,7 +836,7 @@ function ProfileTab({ user, profileComplete, profilePoints }: { user: AccountDat
             <span className="mt-0.5 shrink-0 text-xl">🎁</span>
             <div>
               <div className="text-sm font-black text-pink-300">
-                {t(`اكملي بياناتك واحصلي على ${profilePoints} نقطة!`, `Complete your profile and earn ${profilePoints} points!`)}
+                {t(`اكملي بياناتك واحصلي على ${profilePoints} فيتزونة!`, `Complete your profile and earn ${profilePoints} points!`)}
               </div>
               <div className="mt-0.5 text-xs text-[#c896aa]">
                 {t("أضيفي رقم هاتفك، تاريخ ميلادك، ومحافظتك لتفعيل المكافأة", "Add your phone number, birth date, and governorate to unlock the reward")}
@@ -2841,7 +2841,7 @@ function ConvertPointsCard({ points, lang }: { points: number; lang: "ar" | "en"
       });
       const data = await res.json() as { success?: boolean; egpAmount?: number; error?: string };
       if (res.ok && data.success) {
-        setMsg({ ok: true, text: t(`تم تحويل ${pointsToConvert} نقطة إلى ${data.egpAmount} ج.م في محفظتك`, `Converted ${pointsToConvert} pts to ${data.egpAmount} EGP in your wallet`) });
+        setMsg({ ok: true, text: t(`تم تحويل ${pointsToConvert} فيتزونة إلى ${data.egpAmount} ج.م في محفظتك`, `Converted ${pointsToConvert} pts to ${data.egpAmount} EGP in your wallet`) });
         setInput("");
         setTimeout(() => window.location.reload(), 1500);
       } else {
@@ -2858,9 +2858,9 @@ function ConvertPointsCard({ points, lang }: { points: number; lang: "ar" | "en"
 
   return (
     <div className="bg-yellow-950/20 border border-yellow-500/30 rounded-2xl p-5 space-y-3">
-      <h4 className="text-white font-black">{t("💱 تحويل النقاط إلى رصيد محفظة", "💱 Convert Points to Wallet Balance")}</h4>
+      <h4 className="text-white font-black">{t("💱 تحويل الفيتزونات إلى رصيد محفظة", "💱 Convert Points to Wallet Balance")}</h4>
       <p className="text-gray-400 text-sm">
-        {t(`كل نقطة = ${pointValueEGP} ج.م — لديك ${points.toLocaleString("ar-EG")} نقطة`,
+        {t(`كل فيتزونة = ${pointValueEGP} ج.م — لديك ${points.toLocaleString("ar-EG")} فيتزونة`,
            `Each point = ${pointValueEGP} EGP — you have ${points.toLocaleString("en-US")} pts`)}
       </p>
       <div className="flex gap-2">
@@ -2871,7 +2871,7 @@ function ConvertPointsCard({ points, lang }: { points: number; lang: "ar" | "en"
           step={1}
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder={t("عدد النقاط المراد تحويلها", "Points to convert")}
+          placeholder={t("عدد الفيتزونات المراد تحويلها", "FitZonas to convert")}
           className="flex-1 rounded-xl border border-yellow-500/30 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-yellow-400"
         />
         <button
@@ -2884,7 +2884,7 @@ function ConvertPointsCard({ points, lang }: { points: number; lang: "ar" | "en"
       </div>
       {pointsToConvert > 0 && egpPreview > 0 && (
         <p className="text-xs text-yellow-400">
-          {t(`${pointsToConvert.toLocaleString("ar-EG")} نقطة = ${egpPreview} ج.م`, `${pointsToConvert} pts = ${egpPreview} EGP`)}
+          {t(`${pointsToConvert.toLocaleString("ar-EG")} فيتزونة = ${egpPreview} ج.م`, `${pointsToConvert} pts = ${egpPreview} EGP`)}
         </p>
       )}
       {msg && (
@@ -2973,7 +2973,7 @@ function WalletTab({
     <div className="space-y-5">
       {/* Toggle */}
       <div className="flex gap-2">
-        {[["wallet", t("💳 المحفظة", "💳 Wallet")], ["points", t("🏅 النقاط", "🏅 Points")]].map(([v, l]) => (
+        {[["wallet", t("💳 المحفظة", "💳 Wallet")], ["points", t("🏅 الفيتزونات", "🏅 Points")]].map(([v, l]) => (
           <button key={v} onClick={() => setActiveSection(v as typeof activeSection)} className={`px-5 py-2 rounded-xl text-sm font-bold transition-colors ${activeSection === v ? "bg-red-600 text-white" : "bg-gray-800 text-gray-400 hover:bg-gray-700"}`}>
             {l}
           </button>
@@ -3081,7 +3081,7 @@ function WalletTab({
               </div>
               <div className="text-center">
                 <div className="text-3xl font-black text-white">{rewards.points.toLocaleString("ar-EG")}</div>
-                <div className="text-gray-400 text-xs">{t("نقطة", "points")}</div>
+                <div className="text-gray-400 text-xs">{t("فيتزونة", "FitZonas")}</div>
               </div>
             </div>
 
@@ -3089,7 +3089,7 @@ function WalletTab({
               <>
                 <div className="flex justify-between text-xs text-gray-400 mb-1">
                   <span>{t("تقدمك للمستوى التالي", "Progress to next tier")}</span>
-                  <span>{formatMoney(tier.next - rewards.points, lang)} {t("نقطة متبقية", "points left")}</span>
+                  <span>{formatMoney(tier.next - rewards.points, lang)} {t("فيتزونة متبقية", "FitZonas left")}</span>
                 </div>
                 <div className="h-2 bg-black/40 rounded-full overflow-hidden">
                   <div className={`h-full rounded-full ${tier.color.replace("text-", "bg-")}`} style={{ width: `${Math.min(100, (rewards.points / tier.next) * 100)}%` }} />
@@ -3098,7 +3098,7 @@ function WalletTab({
             )}
 
             <div className="mt-4 pt-4 border-t border-white/10 text-center">
-              <div className="text-gray-400 text-xs">{t("قيمة نقاطك", "Points value")}</div>
+              <div className="text-gray-400 text-xs">{t("قيمة فيتزوناتك", "FitZonas value")}</div>
               <div className="text-yellow-400 font-black text-xl">{formatMoney(Math.round(rewards.points * pointValueEGP * 100) / 100, lang)} {lang === "en" ? "EGP" : "ج.م"}</div>
             </div>
           </div>
@@ -3110,7 +3110,7 @@ function WalletTab({
 
           {/* Points history */}
           <div className={CARD}>
-            <h4 className="text-white font-black mb-4">{t("تاريخ النقاط", "Points history")}</h4>
+            <h4 className="text-white font-black mb-4">{t("تاريخ الفيتزونات", "FitZonas history")}</h4>
             <div className="space-y-3">
               {rewards.history.map((h) => (
                 <div key={h.id} className="flex items-center gap-3 py-2 border-b border-gray-800/60 last:border-0">
@@ -4876,7 +4876,7 @@ export default function AccountClient({ data }: { data: AccountData }) {
             <StatCard icon="💳" label={t("رصيد المحفظة", "Wallet balance")} value={`${formatMoney(data.wallet.balance, lang)} ${lang === "en" ? "EGP" : "ج.م"}`} color="text-blue-400" />
             <StatCard
               icon="🏅"
-              label={t("نقاط الولاء", "Reward points")}
+              label={t("فيتزونات الولاء", "FitZonas")}
               value={formatMoney(data.rewards.points, lang)}
               color="text-yellow-400"
               sub={pointValueEGP != null && data.rewards.points > 0
@@ -4922,7 +4922,7 @@ export default function AccountClient({ data }: { data: AccountData }) {
               onClick={scrollToProfileForm}
               className="flex-1 text-start text-sm font-black text-white"
             >
-              {t(`اكملي بياناتك واحصلي على ${data.onboarding.profilePoints} نقطة ↓`, `Complete your profile & earn ${data.onboarding.profilePoints} pts ↓`)}
+              {t(`اكملي بياناتك واحصلي على ${data.onboarding.profilePoints} فيتزونة ↓`, `Complete your profile & earn ${data.onboarding.profilePoints} pts ↓`)}
             </button>
             <button
               onClick={() => setCtaDismissed(true)}

@@ -993,7 +993,7 @@ const Footer = ({ navigate, storeEnabled }: { navigate: (p: string) => void; sto
             links: [
               ["account", t("ملفي الشخصي", "My profile")],
               ["wallet", t("المحفظة", "Wallet")],
-              ["rewards", t("نقاط المكافآت", "Rewards")],
+              ["rewards", t("فيتزونات", "FitZonas")],
               ["referral", t("الإحالات", "Referrals")],
             ],
           },
@@ -2390,13 +2390,13 @@ const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string) =
     const heroStats = summary?.authenticated
       ? [
           [formatCurrency(summary.walletBalance), t("رصيدك الحالي", "Current balance")],
-          [(summary.rewardPoints ?? 0).toLocaleString(lang === "en" ? "en-US" : "ar-EG"), t("نقاطك الحالية", "Your points")],
+          [(summary.rewardPoints ?? 0).toLocaleString(lang === "en" ? "en-US" : "ar-EG"), t("فيتزوناتك الحالية", "Your points")],
           [summary.membership?.name ?? t("بدون اشتراك", "No membership"), t("الباقة النشطة", "Active plan")],
         ]
       : (lang === "en" ? heroContent.statsEn ?? heroContent.stats : heroContent.stats).map((s) => [s.value, s.label]);
   const walletHighlights = [
     ["💳", formatCurrency(summary?.walletBalance), t("رصيد المحفظة", "Wallet balance")],
-    ["🏅", (summary?.rewardPoints ?? 0).toLocaleString(lang === "en" ? "en-US" : "ar-EG"), t("نقاط المكافآت", "Reward points")],
+    ["🏅", (summary?.rewardPoints ?? 0).toLocaleString(lang === "en" ? "en-US" : "ar-EG"), t("فيتزونات", "FitZonas")],
     ["🎁", summary?.authenticated ? `${summary?.referralEarned ?? 0} ${lang === "en" ? "EGP" : "ج.م"}` : "20%", summary?.authenticated ? t("مكافآت الإحالة", "Referral rewards") : t("خصم الإحالة", "Referral discount")],
     ["📦", summary?.membership?.name ?? getTierLabel(summary?.rewardTier), summary?.membership ? t("الاشتراك النشط", "Active plan") : t("مستوى العضوية", "Membership tier")],
   ];
@@ -3026,12 +3026,12 @@ const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string) =
           <div>
             <span className="tag" style={{ marginBottom: 16, display: "inline-flex" }}>💳 {t("نظام المحفظة والمكافآت", "Wallet & rewards system")}</span>
             <h2 style={{ fontSize: 36, fontWeight: 900, color: C.white, marginBottom: 16, lineHeight: 1.2 }}>{t("اشحني محفظتك", "Top up your wallet")}<br /><span style={{ color: C.red }}>{t("واكسبي أكثر", "and earn more")}</span></h2>
-            <p style={{ color: C.gray, fontSize: 15, lineHeight: 1.8, marginBottom: 28 }}>{t("بونص إضافي مع كل شحن! اشحني بـ 200 ج.م واحصلي على 20 ج.م إضافية. اكسبي نقاط مع كل عملية واستبديليها بخصومات حصرية.", "Extra bonus with every top-up! Add 200 EGP and get +20 EGP. Earn points with every purchase and redeem exclusive discounts.")}</p>
+            <p style={{ color: C.gray, fontSize: 15, lineHeight: 1.8, marginBottom: 28 }}>{t("بونص إضافي مع كل شحن! اشحني بـ 200 ج.م واحصلي على 20 ج.م إضافية. اكسبي فيتزونات مع كل عملية واستبديليها بخصومات حصرية.", "Extra bonus with every top-up! Add 200 EGP and get +20 EGP. Earn points with every purchase and redeem exclusive discounts.")}</p>
             <div style={{ display: "flex", gap: 12 }}>
               <button className="btn-primary" onClick={() => navigate("wallet")} style={{ fontSize: 14, padding: "11px 24px" }}>
                 <I n="wallet" s={16} c="#fff" /> {t("اشحني الآن", "Top up now")}
               </button>
-              <button className="btn-ghost" onClick={() => navigate("rewards")} style={{ fontSize: 14 }}>{t("نقاطي", "My points")}</button>
+              <button className="btn-ghost" onClick={() => navigate("rewards")} style={{ fontSize: 14 }}>{t("فيتزوناتي", "My FitZonas")}</button>
             </div>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr", "1fr 1fr"), gap: 16 }}>
@@ -5476,7 +5476,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
                       ) : null}
                       {summary.rewardsDiscount > 0 ? (
                         <div style={{ display: "flex", justifyContent: "space-between", color: C.gray }}>
-                          <span>{t("خصم نقاط المكافآت", "Rewards discount")}</span>
+                          <span>{t("خصم فيتزونات", "FitZonas discount")}</span>
                           <strong style={{ color: C.gold }}>- {formatCurrency(summary.rewardsDiscount)}</strong>
                         </div>
                       ) : null}
@@ -5504,8 +5504,8 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
                             {subUseRewards && <I n="check" s={11} c="#fff" />}
                           </div>
                           <span style={{ fontSize: 13, color: C.grayLight }}>
-                            {t("استخدام نقاط المكافآت", "Use reward points")}
-                            {" "}<strong style={{ color: C.gold }}>({subCheckoutOptions.rewardPoints.toLocaleString(lang === "ar" ? "ar-EG" : "en-US")} {t("نقطة", "pts")} = {formatCurrency(subCheckoutOptions.rewardPointsEGP)})</strong>
+                            {t("استخدام فيتزونات", "Use FitZonas")}
+                            {" "}<strong style={{ color: C.gold }}>({subCheckoutOptions.rewardPoints.toLocaleString(lang === "ar" ? "ar-EG" : "en-US")} {t("فيتزونة", "FZs")} = {formatCurrency(subCheckoutOptions.rewardPointsEGP)})</strong>
                           </span>
                         </div>
                       )}
@@ -7172,7 +7172,7 @@ const getProductRecommendationScore = (product: StoreProduct, searchTerm: string
 function giftCampaignRewardLabel(c: { rewardType: string; rewardWalletAmount: number; rewardPoints: number; discountAmount: number } | null | undefined): string {
   if (!c) return "";
   if (c.rewardType === "wallet") return `${c.rewardWalletAmount} ج.م رصيد`;
-  if (c.rewardType === "points") return `${c.rewardPoints} نقطة`;
+  if (c.rewardType === "FitZonas") return `${c.rewardPoints} فيتزونة`;
   if (c.rewardType === "discount") return `خصم ${c.discountAmount} ج.م`;
   if (c.rewardType === "free_shipping") return "شحن مجاني";
   return "منتج مجاني";
@@ -8434,7 +8434,7 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                         <div style={{ width: 18, height: 18, borderRadius: 4, border: `2px solid ${useRewards ? C.red : C.border}`, background: useRewards ? C.red : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                           {useRewards && <I n="check" s={11} c="#fff" />}
                         </div>
-                        <span style={{ fontSize: 13, color: C.grayLight }}>{t("استخدام نقاط الولاء", "Use reward points")} <strong style={{ color: C.gold }}>({(summary?.rewardPoints ?? 0).toLocaleString(lang === "ar" ? "ar-EG" : "en-US")} {t("نقطة", "pts")} = {formatCurrency(rewardsValue)})</strong></span>
+                        <span style={{ fontSize: 13, color: C.grayLight }}>{t("استخدام فيتزونات الولاء", "Use FitZonas")} <strong style={{ color: C.gold }}>({(summary?.rewardPoints ?? 0).toLocaleString(lang === "ar" ? "ar-EG" : "en-US")} {t("فيتزونة", "FZs")} = {formatCurrency(rewardsValue)})</strong></span>
                       </div>
                     )}
                     {walletBalance > 0 && (
@@ -8484,7 +8484,7 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
             <div className="divider" />
             <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 13 }}><span style={{ color: C.gray }}>{t("الإجمالي الفرعي", "Subtotal")}</span><span style={{ color: C.white }}>{formatCurrency(subtotal)}</span></div>
             {vatTotal > 0 && <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 12 }}><span style={{ color: "#10b981" }}>{t("منها ضريبة القيمة المضافة 14%", "Incl. 14% VAT")}</span><span style={{ color: "#10b981" }}>{formatCurrency(vatTotal)}</span></div>}
-            {rewardsDiscount > 0 && <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 13 }}><span style={{ color: C.gray }}>{t("خصم النقاط", "Points discount")}</span><span style={{ color: C.gold }}>- {formatCurrency(rewardsDiscount)}</span></div>}
+            {rewardsDiscount > 0 && <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 13 }}><span style={{ color: C.gray }}>{t("خصم الفيتزونات", "FitZonas discount")}</span><span style={{ color: C.gold }}>- {formatCurrency(rewardsDiscount)}</span></div>}
             {walletDiscount > 0 && <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 13 }}><span style={{ color: C.gray }}>{t("خصم المحفظة", "Wallet discount")}</span><span style={{ color: "#4ade80" }}>- {formatCurrency(walletDiscount)}</span></div>}
             <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 13 }}>
               <span style={{ color: C.gray }}>{t("رسوم الشحن", "Shipping fee")}</span>
@@ -8626,12 +8626,12 @@ const RewardsPage = () => {
     { name: t("بلاتيني", "Platinum"), min: 5000, max: null, icon: "💎", color: "#A855F7" },
   ];
   const earnMethods = [
-    { icon: "🏋️", label: t("حجز كلاس", "Book a class"), pts: t("+10 نقاط", "+10 points") },
-    { icon: "🛍️", label: t("كل 10 ج.م شراء", "Every 10 EGP purchase"), pts: t("+1 نقطة", "+1 point") },
-    { icon: "👥", label: t("دعوة صديقة", "Invite a friend"), pts: t("+200 نقطة", "+200 points") },
-    { icon: "⭐", label: t("تقييم كلاس", "Review a class"), pts: t("+20 نقطة", "+20 points") },
-    { icon: "🎂", label: t("عيد ميلادك", "Your birthday"), pts: t("+100 نقطة", "+100 points") },
-    { icon: "📱", label: t("تسجيل يومي", "Daily check-in"), pts: t("+5 نقاط", "+5 points") },
+    { icon: "🏋️", label: t("حجز كلاس", "Book a class"), pts: t("+10 فيتزونات", "+10 FitZonas") },
+    { icon: "🛍️", label: t("كل 10 ج.م شراء", "Every 10 EGP purchase"), pts: t("+1 فيتزونة", "+1 FitZona") },
+    { icon: "👥", label: t("دعوة صديقة", "Invite a friend"), pts: t("+200 فيتزونة", "+200 FitZonas") },
+    { icon: "⭐", label: t("تقييم كلاس", "Review a class"), pts: t("+20 فيتزونة", "+20 FitZonas") },
+    { icon: "🎂", label: t("عيد ميلادك", "Your birthday"), pts: t("+100 فيتزونة", "+100 FitZonas") },
+    { icon: "📱", label: t("تسجيل يومي", "Daily check-in"), pts: t("+5 فيتزونات", "+5 FitZonas") },
   ];
 
   return (
@@ -8639,9 +8639,9 @@ const RewardsPage = () => {
       <section style={{ background: `linear-gradient(135deg, #FFECF0, ${C.bg})`, padding: "60px 0", textAlign: "center" }}>
         <div className="container">
           <div style={{ fontSize: viewportWidth() < 768 ? 40 : 52, marginBottom: 12 }}>⭐</div>
-          <h1 style={{ fontSize: viewportWidth() < 768 ? 32 : 42, fontWeight: 900, color: C.white, marginBottom: 8 }}>{t("نقاط", "Reward")} <span style={{ color: C.gold }}>{t("المكافآت", "points")}</span></h1>
+          <h1 style={{ fontSize: viewportWidth() < 768 ? 32 : 42, fontWeight: 900, color: C.white, marginBottom: 8 }}>{t("فيتزونات", "Reward")} <span style={{ color: C.gold }}>{t("المكافآت", "FitZonas")}</span></h1>
           <div style={{ fontSize: viewportWidth() < 768 ? 48 : 68, fontWeight: 900, color: C.gold, margin: "12px 0" }}>2,400</div>
-          <p style={{ color: C.gray }}>{t("نقطة", "1 point")} = <strong style={{ color: C.red }}>{formatCurrency(24)}</strong> {t("رصيد قابل للاستبدال", "redeemable balance")}</p>
+          <p style={{ color: C.gray }}>{t("فيتزونة", "1 point")} = <strong style={{ color: C.red }}>{formatCurrency(24)}</strong> {t("رصيد قابل للاستبدال", "redeemable balance")}</p>
         </div>
       </section>
       <section className="section">
@@ -8653,13 +8653,13 @@ const RewardsPage = () => {
                 {t.current && <div style={{ position: "absolute", top: -12, left: "50%", transform: "translateX(-50%)", background: C.gold, color: "#000", padding: "2px 12px", borderRadius: 4, fontSize: 10, fontWeight: 700, whiteSpace: "nowrap" }}>{lang === "en" ? "Your current tier" : "مستواك الحالي"}</div>}
                 <div style={{ fontSize: viewportWidth() < 768 ? 34 : 44, marginBottom: 10 }}>{t.icon}</div>
                 <h3 style={{ fontWeight: 800, color: t.color }}>{t.name}</h3>
-                <p style={{ fontSize: 11, color: C.gray, marginTop: 6 }}>{t.min.toLocaleString(lang === "en" ? "en-US" : "ar-EG")}+ {lang === "en" ? "points" : "نقطة"}</p>
+                <p style={{ fontSize: 11, color: C.gray, marginTop: 6 }}>{t.min.toLocaleString(lang === "en" ? "en-US" : "ar-EG")}+ {lang === "en" ? "FitZonas" : "فيتزونة"}</p>
               </div>
             ))}
           </div>
           <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr", "1fr 1fr"), gap: 40 }}>
             <div>
-              <h2 className="section-title" style={{ marginBottom: 20 }}>{t("كيف", "How to")} <span>{t("تكسبين", "earn")}</span> {t("النقاط", "points")}</h2>
+              <h2 className="section-title" style={{ marginBottom: 20 }}>{t("كيف", "How to")} <span>{t("تكسبين", "earn")}</span> {t("الفيتزونات", "FitZonas")}</h2>
               <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr", "1fr 1fr"), gap: 10 }}>
                 {earnMethods.map(m => (
                   <div key={m.label} className="card" style={{ padding: 14 }}>
@@ -8674,11 +8674,11 @@ const RewardsPage = () => {
               <h2 className="section-title" style={{ marginBottom: 20 }}>{t("كيف", "How to")} <span>{t("تستبدلين", "redeem")}</span></h2>
               <div className="card" style={{ padding: 20 }}>
                 {[
-                  [t("100 نقطة", "100 points"), t("= 1 ج.م رصيد محفظة", "= 1 EGP wallet credit")],
-                  [t("500 نقطة", "500 points"), t("= خصم 5%", "= 5% discount")],
-                  [t("1000 نقطة", "1000 points"), t("= كلاس مجاني", "= Free class")],
-                  [t("3000 نقطة", "3000 points"), t("= شهر اشتراك مجاني", "= Free membership month")],
-                  [t("5000 نقطة", "5000 points"), t("= منتج هدية", "= Gift product")],
+                  [t("100 فيتزونة", "100 FitZonas"), t("= 1 ج.م رصيد محفظة", "= 1 EGP wallet credit")],
+                  [t("500 فيتزونة", "500 FitZonas"), t("= خصم 5%", "= 5% discount")],
+                  [t("1000 فيتزونة", "1000 FitZonas"), t("= كلاس مجاني", "= Free class")],
+                  [t("3000 فيتزونة", "3000 FitZonas"), t("= شهر اشتراك مجاني", "= Free membership month")],
+                  [t("5000 فيتزونة", "5000 FitZonas"), t("= منتج هدية", "= Gift product")],
                 ].map(([pts, val]) => (
                   <div key={pts} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${C.border}` }}>
                     <span style={{ fontWeight: 700, color: C.gold, fontSize: 14 }}>{pts}</span>
@@ -8751,7 +8751,7 @@ const ReferralPage = () => {
               {[
                 [t("شاركي كودك", "Share your code"), t("أرسلي الكود لصديقاتك على واتساب أو الإنستجرام", "Send your code to friends on WhatsApp or Instagram"), C.red],
                 [t("صديقتك تشتركي", "Your friend joins"), t("لما تشتركي بالكود بتاعك كلتيكما هتاخدوا خصم 20%", "When she joins using your code, you both get 20% off"), C.gold],
-                [t("اكسبي المكافأة", "Earn the reward"), t("يضافلك 200 نقطة فور إتمام صديقتك الاشتراك", "You get 200 points once she completes the membership"), C.success],
+                [t("اكسبي المكافأة", "Earn the reward"), t("يضافلك 200 فيتزونة فور إتمام صديقتك الاشتراك", "You get 200 points once she completes the membership"), C.success],
               ].map(([title, desc, col], i) => (
                 <div key={title} style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
                   <div style={{ width: 36, height: 36, borderRadius: "50%", background: col, color: "#000", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 16, flexShrink: 0 }}>{i+1}</div>
@@ -8781,7 +8781,7 @@ const AccountPage = ({ navigate }: { navigate: (p: string) => void }) => {
     { id: "bookings", label: t("حجوزاتي", "My bookings"), icon: "calendar" },
     { id: "orders", label: t("طلباتي", "My orders"), icon: "box" },
     { id: "wallet", label: t("المحفظة", "Wallet"), icon: "wallet" },
-    { id: "rewards", label: t("النقاط", "Rewards"), icon: "star" },
+    { id: "rewards", label: t("الفيتزونات", "FitZonas"), icon: "star" },
     { id: "referrals", label: t("الإحالات", "Referrals"), icon: "share" },
   ];
   const bookings = lang === "en"
@@ -8838,7 +8838,7 @@ const AccountPage = ({ navigate }: { navigate: (p: string) => void }) => {
               <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 14, marginBottom: 28 }}>
                 {[
                   ["💳", lang === "en" ? "150 EGP" : "150 ج.م", t("رصيد المحفظة", "Wallet balance")],
-                  ["⭐", "2,400", t("نقاط المكافآت", "Reward points")],
+                  ["⭐", "2,400", t("فيتزونات", "FitZonas")],
                   ["👑", "Pro", t("الاشتراك النشط", "Active plan")],
                   ["📅", lang === "en" ? "Jan 15" : "١٥ يناير", t("الحجز القادم", "Next booking")],
                 ].map(([icon,val,lbl]) => (
@@ -8921,7 +8921,7 @@ const AccountPage = ({ navigate }: { navigate: (p: string) => void }) => {
             <div style={{ textAlign: "center", padding: 60 }}>
               <div style={{ fontSize: 52, marginBottom: 18 }}>{activeTab === "wallet" ? "💳" : activeTab === "rewards" ? "🎁" : activeTab === "referrals" ? "🤝" : "⭐"}</div>
               <h3 style={{ fontWeight: 800, fontSize: 22, color: C.white, marginBottom: 10 }}>
-                {activeTab === "wallet" ? t("المحفظة", "Wallet") : activeTab === "rewards" ? t("نقاط المكافآت", "Rewards") : activeTab === "referrals" ? t("برنامج الإحالة", "Referral program") : t("الاشتراكات", "Memberships")}
+                {activeTab === "wallet" ? t("المحفظة", "Wallet") : activeTab === "rewards" ? t("فيتزونات", "FitZonas") : activeTab === "referrals" ? t("برنامج الإحالة", "Referral program") : t("الاشتراكات", "Memberships")}
               </h3>
               <p style={{ color: C.gray, marginBottom: 20, fontSize: 14 }}>{t("روحي للصفحة المخصصة لكل التفاصيل", "Go to the dedicated page for full details")}</p>
               <button className="btn-primary">{t("عرض الصفحة الكاملة", "View full page")}</button>

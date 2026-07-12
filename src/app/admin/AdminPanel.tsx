@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState, type ComponentType } from "react";
 import { useRouter } from "next/navigation";
@@ -65,7 +65,7 @@ const NAV: { id: Section; label: string; icon: string }[] = [
   { id: "store-campaigns", label: "حملة هدايا المتجر", icon: "🎁" },
   { id: "store-free-gifts", label: "لعبة الهدايا المجانية", icon: "🎰" },
   { id: "reviews", label: "آراء العملاء", icon: "⭐" },
-  { id: "balance", label: "الرصيد والنقاط", icon: "💰" },
+  { id: "balance", label: "الرصيد والفيتزونات", icon: "💰" },
   { id: "chat", label: "الدردشة المباشرة", icon: "💬" },
   { id: "customers", label: "العملاء", icon: "👥" },
   { id: "complaints", label: "الشكاوى", icon: "📝" },
@@ -112,7 +112,7 @@ const TITLES: Record<string, string> = {
   "store-campaigns": "حملة هدايا المتجر",
   "store-free-gifts": "لعبة الهدايا المجانية",
   reviews: "إدارة آراء العملاء",
-  balance: "إدارة الرصيد والنقاط",
+  balance: "إدارة الرصيد والفيتزونات",
   chat: "الدردشة المباشرة",
   customers: "إدارة العملاء",
   complaints: "إدارة الشكاوى",

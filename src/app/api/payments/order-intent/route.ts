@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/app-session";
 import { db } from "@/lib/db";
 import { createPaymentTransaction, restorePaymentBalanceAdjustments } from "@/lib/payments/service";
@@ -100,7 +100,7 @@ export async function POST(req: Request) {
 
       if (pointsDeductCount > 0) {
         if (pointsDeductCount > (pointsRow?.points ?? 0)) {
-          return NextResponse.json({ error: "رصيد النقاط غير كافٍ." }, { status: 400 });
+          return NextResponse.json({ error: "رصيد الفيتزونات غير كافٍ." }, { status: 400 });
         }
         pointsEGP = Math.round(pointsDeductCount * pointValueEGP * 100) / 100;
         validatedPointsDeduct = pointsDeductCount;
@@ -158,7 +158,7 @@ export async function POST(req: Request) {
           data: {
             rewardId: pointsRecord.id,
             points: -validatedPointsDeduct,
-            reason: `استخدام نقاط لسداد طلب رقم ${createdOrder.id}`,
+            reason: `استخدام فيتزونات لسداد طلب رقم ${createdOrder.id}`,
           },
         });
       }

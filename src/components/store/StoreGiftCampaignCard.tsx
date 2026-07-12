@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 import type { GiftCampaignData } from "./useStoreGiftCampaign";
 import { StoreGiftBoxAnimation } from "./StoreGiftBoxAnimation";
 import { StoreGiftProgressBar } from "./StoreGiftProgressBar";
@@ -35,7 +35,7 @@ export function StoreGiftCampaignCard({ giftCampaign, cartItems }: Props) {
 
   const rewardLabel =
     giftCampaign.rewardType === "wallet" ? `${giftCampaign.rewardWalletAmount} ج.م رصيد`
-    : giftCampaign.rewardType === "points" ? `${giftCampaign.rewardPoints} نقطة`
+    : giftCampaign.rewardType === "points" ? `${giftCampaign.rewardPoints} فيتزونة`
     : giftCampaign.rewardType === "discount" ? `خصم ${giftCampaign.discountAmount} ج.م`
     : giftCampaign.rewardType === "free_shipping" ? "شحن مجاني"
     : "منتج مجاني";

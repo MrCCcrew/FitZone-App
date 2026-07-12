@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/app-session";
 import { db } from "@/lib/db";
 import { getRewardSettings, calcTier } from "@/lib/reward-settings";
@@ -92,7 +92,7 @@ export async function POST(req: Request) {
       data: {
         userId: user.id,
         title: "🎉 مكافأة جديدة!",
-        body: `حصلتِ على ${points} نقطة — ${meta.label}`,
+        body: `حصلتِ على ${points} فيتزونة — ${meta.label}`,
         type: "success",
       },
     });

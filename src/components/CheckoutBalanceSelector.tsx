@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState, useCallback } from "react";
 
@@ -148,8 +148,8 @@ export default function CheckoutBalanceSelector({ total, onChange, lang = "ar" }
               className="accent-pink-500 w-4 h-4"
             />
             <span className="text-sm text-[#fff4f8]">
-              {t("نقاط المكافآت", "Reward Points")}
-              <span className="mx-2 text-yellow-400 font-bold">{options.rewardPoints.toLocaleString("ar-EG")} {t("نقطة", "pts")}</span>
+              {t("فيتزونات", "Reward Points")}
+              <span className="mx-2 text-yellow-400 font-bold">{options.rewardPoints.toLocaleString("ar-EG")} {t("فيتزونة", "FZs")}</span>
               <span className="text-[#caa0b0] text-xs">= {fmt(options.rewardPointsEGP)} {t("ج.م", "EGP")}</span>
             </span>
           </label>
@@ -162,13 +162,13 @@ export default function CheckoutBalanceSelector({ total, onChange, lang = "ar" }
                 step={1}
                 value={pointsInput}
                 onChange={(e) => setPointsInput(e.target.value)}
-                placeholder={t("اتركه فارغاً لاستخدام كل النقاط", "Leave empty to use all points")}
+                placeholder={t("اتركه فارغاً لاستخدام كل الفيتزونات", "Leave empty to use all points")}
                 className="w-full rounded-xl border border-[#ffbcdb]/20 bg-[#3f1426] px-3 py-2 text-sm text-white outline-none focus:border-pink-400"
               />
               {pointsDeductPreview > 0 && (
                 <p className="mt-1 text-xs text-yellow-400">
                   {t(
-                    `سيُستخدم ${pointsDeductPreview.toLocaleString("ar-EG")} نقطة = ${fmt(pointsEGP)} ج.م`,
+                    `سيُستخدم ${pointsDeductPreview.toLocaleString("ar-EG")} فيتزونة = ${fmt(pointsEGP)} ج.م`,
                     `${pointsDeductPreview} pts = ${fmt(pointsEGP)} EGP`,
                   )}
                 </p>
@@ -188,7 +188,7 @@ export default function CheckoutBalanceSelector({ total, onChange, lang = "ar" }
           )}
           {pointsDeductPreview > 0 && (
             <div className="flex justify-between text-[#fff4f8]">
-              <span>{t("خصم النقاط", "Points discount")}</span>
+              <span>{t("خصم الفيتزونات", "FitZonas discount")}</span>
               <span className="text-yellow-400">- {fmt(pointsEGP)} {t("ج.م", "EGP")}</span>
             </div>
           )}

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
@@ -388,19 +388,19 @@ function RegisterForm() {
 
                 {/* Loyalty */}
                 <div>
-                  <p className="mb-1 font-bold text-white">🎁 {t("نقاط الولاء (Loyalty Points)", "Loyalty Points")}</p>
+                  <p className="mb-1 font-bold text-white">🎁 {t("فيتزونات الولاء (Loyalty Points)", "Loyalty Points")}</p>
                   <ul className="space-y-1 ps-1">
-                    <li>• {t("كل 1 جنيه بتدفعه على الموقع (متجر أو اشتراك جيم) = بيتحول لنقاط في حسابك.", "Every 1 EGP you spend on the site (store or gym subscription) = converted to points in your account.")}</li>
-                    <li>• {t("تقدر تستخدم النقاط في أي وقت على أي خدمة أو منتج داخل الموقع.", "You can use your points at any time on any service or product on the site.")}</li>
-                    <li>• {t("صلاحية استخدام النقاط 6 شهور فقط من تاريخ إضافتها وبعدها بتنتهي تلقائيًا.", "Points are valid for 6 months from the date they were added, after which they expire automatically.")}</li>
+                    <li>• {t("كل 1 جنيه بتدفعه على الموقع (متجر أو اشتراك جيم) = بيتحول لفيتزونات في حسابك.", "Every 1 EGP you spend on the site (store or gym subscription) = converted to points in your account.")}</li>
+                    <li>• {t("تقدر تستخدم الفيتزونات في أي وقت على أي خدمة أو منتج داخل الموقع.", "You can use your points at any time on any service or product on the site.")}</li>
+                    <li>• {t("صلاحية استخدام الفيتزونات 6 شهور فقط من تاريخ إضافتها وبعدها بتنتهي تلقائيًا.", "Points are valid for 6 months from the date they were added, after which they expire automatically.")}</li>
                   </ul>
                 </div>
 
                 {/* Welcome points */}
                 <div>
-                  <p className="mb-1 font-bold text-white">🎉 {t("نقاط الترحيب", "Welcome Points")}</p>
+                  <p className="mb-1 font-bold text-white">🎉 {t("فيتزونات الترحيب", "Welcome Points")}</p>
                   <ul className="space-y-1 ps-1">
-                    <li>• {t("بمجرد إنشاء الحساب، هيتم إضافة 100 نقطة هدية ترحيبًا بيكِ 🎁 بعد اكمال خطوات التسجيل بالكامل", "Upon completing all registration steps, 100 gift points will be added to your account as a welcome bonus 🎁")}</li>
+                    <li>• {t("بمجرد إنشاء الحساب، هيتم إضافة 100 فيتزونة هدية ترحيبًا بيكِ 🎁 بعد اكمال خطوات التسجيل بالكامل", "Upon completing all registration steps, 100 gift points will be added to your account as a welcome bonus 🎁")}</li>
                   </ul>
                 </div>
 
@@ -443,7 +443,7 @@ function RegisterForm() {
                 {/* Footer highlights */}
                 <div className="border-t border-white/10 pt-3 space-y-1 text-pink-300 font-medium">
                   <p>✔️ {t("التسجيل سهل وسريع (أقل من 30 ثانية)", "Registration is easy and fast (less than 30 seconds)")}</p>
-                  <p>✔️ {t("ابدأي دلوقتي واستفيدي من النقاط والهدايا 🎁", "Start now and benefit from points and gifts 🎁")}</p>
+                  <p>✔️ {t("ابدأي دلوقتي واستفيدي من الفيتزونات والهدايا 🎁", "Start now and benefit from points and gifts 🎁")}</p>
                 </div>
               </div>
 

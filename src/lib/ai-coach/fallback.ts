@@ -1,4 +1,4 @@
-import { QUESTION_TEXT } from "@/lib/ai-coach/context";
+﻿import { QUESTION_TEXT } from "@/lib/ai-coach/context";
 import { buildSafetyNote } from "@/lib/ai-coach/guards";
 import type {
   CoachCheckInData,
@@ -142,7 +142,7 @@ export function buildAccountReply(
   if (!account.authenticated)
     return lang === "en"
       ? "Please log in first so I can show your membership, bookings, wallet, and rewards."
-      : "لازم تسجلي الدخول أولًا حتى أقدر أعرض اشتراكك وحجوزاتك ومحفظتك ونقاطك.";
+      : "لازم تسجلي الدخول أولًا حتى أقدر أعرض اشتراكك وحجوزاتك ومحفظتك وفيتزوناتك.";
 
   const goalLabels: Record<string, { ar: string; en: string }> = {
     "weight-loss": { ar: "خسارة الوزن", en: "weight loss" },
@@ -165,7 +165,7 @@ export function buildAccountReply(
           "هذا ملخص حسابك الحالي:",
           `- الاشتراك: ${account.membership?.name ?? "لا يوجد اشتراك نشط"}`,
           `- المحفظة: ${account.walletBalance ?? 0} ج.م`,
-          `- النقاط: ${account.rewardPoints ?? 0}`,
+          `- الفيتزونات: ${account.rewardPoints ?? 0}`,
           `- المستوى: ${account.rewardTier ?? "bronze"}`,
           `- الحجز القادم: ${account.upcomingBookingDate ? new Date(account.upcomingBookingDate).toLocaleDateString("ar-EG") : "لا يوجد"}`,
         ];

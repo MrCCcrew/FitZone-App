@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { requireAdminFeature } from "@/lib/admin-guard";
 import { db } from "@/lib/db";
 import { getRewardSettings, calcTier } from "@/lib/reward-settings";
@@ -95,7 +95,7 @@ export async function POST(req: Request) {
       data: {
         rewardId: rp.id,
         points:   type === "earn" ? Number(points) : -Number(points),
-        reason:   reason ?? (type === "earn" ? "منح نقاط" : "استبدال نقاط"),
+        reason:   reason ?? (type === "earn" ? "منح فيتزونات" : "استبدال فيتزونات"),
       },
     });
     // Update tier

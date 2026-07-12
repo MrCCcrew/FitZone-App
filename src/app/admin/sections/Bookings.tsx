@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import jsQR from "jsqr";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -1043,7 +1043,7 @@ export default function Bookings() {
                     <div>
                       <div className="font-medium mb-1">② أو من إعدادات Chrome مباشرة:</div>
                       <ol className="list-decimal list-inside space-y-0.5 pr-1">
-                        <li>Chrome ← النقاط الثلاث ⋮ ← <strong>الإعدادات</strong></li>
+                        <li>Chrome ← الفيتزونات الثلاث ⋮ ← <strong>الإعدادات</strong></li>
                         <li><strong>إعدادات المواقع</strong> ← <strong>الكاميرا</strong></li>
                         <li>ابحث عن رابط الموقع تحت "محظور" وغيّره لـ <strong>سماح</strong></li>
                         <li>ارجع لتطبيق FitZone واضغط "فتح الكاميرا"</li>

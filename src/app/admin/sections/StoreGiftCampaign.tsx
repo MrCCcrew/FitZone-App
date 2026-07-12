@@ -1,11 +1,11 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect, useCallback } from "react";
 import type { StoreGiftCampaignSettings } from "@/app/api/admin/store-gift-campaign/route";
 
 const REWARD_LABELS: Record<string, string> = {
   wallet: "💳 رصيد محفظة",
-  points: "🏅 نقاط مكافآت",
+  points: "🏅 فيتزونات",
   discount: "🏷️ خصم على الإجمالي",
   free_shipping: "🚚 شحن مجاني",
   free_product: "🎁 منتج مجاني",
@@ -78,7 +78,7 @@ export default function StoreGiftCampaign() {
   const previewText = settings.campaignEnabled
     ? `باقي ${settings.minStoreCartSubtotal} ج.م من منتجات المتجر وتاخدي ${
         settings.rewardType === "wallet" ? `${settings.rewardWalletAmount} ج.م رصيد`
-        : settings.rewardType === "points" ? `${settings.rewardPoints} نقطة`
+        : settings.rewardType === "points" ? `${settings.rewardPoints} فيتزونة`
         : settings.rewardType === "discount" ? `خصم ${settings.discountAmount} ج.م`
         : settings.rewardType === "free_shipping" ? "شحن مجاني"
         : "منتج مجاني"
@@ -205,7 +205,7 @@ export default function StoreGiftCampaign() {
         )}
         {settings.rewardType === "points" && (
           <div>
-            <label className={LABEL}>عدد النقاط المُضافة</label>
+            <label className={LABEL}>عدد الفيتزونات المُضافة</label>
             <input className={INPUT} type="number" min={0} value={settings.rewardPoints} onChange={(e) => set("rewardPoints", Number(e.target.value))} />
           </div>
         )}

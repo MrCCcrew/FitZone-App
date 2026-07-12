@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect, useCallback } from "react";
 import type { Transaction, Customer } from "../types";
@@ -17,7 +17,7 @@ const REASON_LABELS: Record<string, string> = {
   birthday_bonus: "مكافأة عيد الميلاد",
   manual_add: "إضافة يدوية",
   manual_deduct: "خصم يدوي",
-  redeem: "استبدال نقاط",
+  redeem: "استبدال فيتزونات",
   topup: "شحن رصيد",
 };
 
@@ -27,10 +27,10 @@ function translateReason(reason: string | null | undefined): string {
 }
 
 const TYPE_CONFIG: Record<Transaction["type"], { label: string; color: string; sign: string }> = {
-  earn:   { label: "اكتساب نقاط",  color: "text-green-400",  sign: "+" },
-  redeem: { label: "استبدال نقاط", color: "text-yellow-400", sign: "-" },
+  earn:   { label: "اكتساب فيتزونات",  color: "text-green-400",  sign: "+" },
+  redeem: { label: "استبدال فيتزونات", color: "text-yellow-400", sign: "-" },
   topup:  { label: "شحن رصيد",    color: "text-blue-400",   sign: "+" },
-  deduct: { label: "خصم نقاط",    color: "text-red-400",    sign: "-" },
+  deduct: { label: "خصم فيتزونات",    color: "text-red-400",    sign: "-" },
 };
 
 const INPUT = "w-full bg-gray-800 border border-gray-700 focus:border-red-500 rounded-xl px-4 py-2.5 text-white text-sm outline-none transition-colors";
@@ -126,7 +126,7 @@ export default function Balance() {
       {/* Summary cards */}
       <div className="grid grid-cols-3 gap-4">
         {[
-          ["🏅 إجمالي النقاط", totalPoints.toLocaleString("ar-EG") + " نقطة", "text-yellow-400", "border-yellow-500/20 bg-yellow-500/5"],
+          ["🏅 إجمالي الفيتزونات", totalPoints.toLocaleString("ar-EG") + " فيتزونة", "text-yellow-400", "border-yellow-500/20 bg-yellow-500/5"],
           ["💳 إجمالي الأرصدة", totalBalance.toLocaleString("ar-EG") + " ج.م", "text-blue-400", "border-blue-500/20 bg-blue-500/5"],
           ["🔄 إجمالي العمليات", transactions.length.toString(), "text-green-400", "border-green-500/20 bg-green-500/5"],
         ].map(([label, val, color, border]) => (
@@ -139,7 +139,7 @@ export default function Balance() {
 
       {/* Tabs */}
       <div className="flex gap-2">
-        {[["points", "🏅 النقاط"], ["balance", "💳 الرصيد"], ["history", "📜 السجل"]].map(([v, l]) => (
+        {[["FitZonas", "🏅 الفيتزونات"], ["balance", "💳 الرصيد"], ["history", "📜 السجل"]].map(([v, l]) => (
           <button key={v} onClick={() => setTab(v as typeof tab)} className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-colors ${tab === v ? "bg-red-600 text-white" : "bg-gray-800 text-gray-400 hover:bg-gray-700"}`}>
             {l}
           </button>
@@ -158,14 +158,14 @@ export default function Balance() {
       {tab === "points" && (
         <div className="bg-gray-900/60 border border-gray-800 rounded-2xl overflow-hidden">
           <div className="p-4 border-b border-gray-800">
-            <h3 className="text-white font-black">جدول النقاط</h3>
-            <p className="text-gray-500 text-sm">نقاط الولاء لكل عضو</p>
+            <h3 className="text-white font-black">جدول الفيتزونات</h3>
+            <p className="text-gray-500 text-sm">فيتزونات الولاء لكل عضو</p>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-800 text-gray-500 text-xs">
-                  {["#", "العضو", "الباقة", "النقاط", "قيمة النقاط", ""].map((h) => (
+                  {["#", "العضو", "الباقة", "الفيتزونات", "قيمة الفيتزونات", ""].map((h) => (
                     <th key={h} className="text-right py-3 px-4 font-medium">{h}</th>
                   ))}
                 </tr>
@@ -198,7 +198,7 @@ export default function Balance() {
                     </td>
                     <td className="py-3 px-4 text-gray-400 text-xs">{Math.round(c.points * pointValueEGP * 100) / 100} ج.م</td>
                     <td className="py-3 px-4">
-                      <button onClick={() => { setAdjustModal({ customer: c, mode: "points" }); setAdjustValue(0); }} className="text-yellow-500 hover:text-yellow-400 text-xs font-bold transition-colors">تعديل النقاط</button>
+                      <button onClick={() => { setAdjustModal({ customer: c, mode: "points" }); setAdjustValue(0); }} className="text-yellow-500 hover:text-yellow-400 text-xs font-bold transition-colors">تعديل الفيتزونات</button>
                     </td>
                   </tr>
                 ))}
@@ -268,7 +268,7 @@ export default function Balance() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-800 text-gray-500 text-xs">
-                  {["العضو", "النوع", "النقاط", "المبلغ", "السبب", "التاريخ"].map((h) => (
+                  {["العضو", "النوع", "الفيتزونات", "المبلغ", "السبب", "التاريخ"].map((h) => (
                     <th key={h} className="text-right py-3 px-4 font-medium">{h}</th>
                   ))}
                 </tr>
@@ -301,12 +301,12 @@ export default function Balance() {
 
       {/* Adjust modal */}
       {adjustModal && (
-        <Modal title={`تعديل ${adjustModal.mode === "points" ? "النقاط" : "الرصيد"} — ${adjustModal.customer.name}`} onClose={() => setAdjustModal(null)}>
+        <Modal title={`تعديل ${adjustModal.mode === "points" ? "الفيتزونات" : "الرصيد"} — ${adjustModal.customer.name}`} onClose={() => setAdjustModal(null)}>
           <div className="space-y-4">
             <div className="bg-gray-800 rounded-xl p-3 text-center">
-              <div className="text-gray-400 text-xs mb-1">{adjustModal.mode === "points" ? "النقاط الحالية" : "الرصيد الحالي"}</div>
+              <div className="text-gray-400 text-xs mb-1">{adjustModal.mode === "points" ? "الفيتزونات الحالية" : "الرصيد الحالي"}</div>
               <div className="text-yellow-400 font-black text-2xl">
-                {adjustModal.mode === "points" ? adjustModal.customer.points.toLocaleString("ar-EG") + " نقطة" : adjustModal.customer.balance.toLocaleString("ar-EG") + " ج.م"}
+                {adjustModal.mode === "points" ? adjustModal.customer.points.toLocaleString("ar-EG") + " فيتزونة" : adjustModal.customer.balance.toLocaleString("ar-EG") + " ج.م"}
               </div>
             </div>
             <div>

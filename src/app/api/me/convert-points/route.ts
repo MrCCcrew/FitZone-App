@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/app-session";
 import { db } from "@/lib/db";
 
@@ -24,7 +24,7 @@ export async function POST(req: Request) {
     const pointsToConvert = Math.floor(Number(body.points ?? 0));
 
     if (!Number.isFinite(pointsToConvert) || pointsToConvert <= 0) {
-      return NextResponse.json({ error: "عدد النقاط غير صحيح." }, { status: 400 });
+      return NextResponse.json({ error: "عدد الفيتزونات غير صحيح." }, { status: 400 });
     }
 
     const [pointsRow, pointValueEGP] = await Promise.all([
@@ -34,12 +34,12 @@ export async function POST(req: Request) {
 
     const currentPoints = pointsRow?.points ?? 0;
     if (pointsToConvert > currentPoints) {
-      return NextResponse.json({ error: "رصيد النقاط غير كافٍ." }, { status: 400 });
+      return NextResponse.json({ error: "رصيد الفيتزونات غير كافٍ." }, { status: 400 });
     }
 
     const egpAmount = Math.round(pointsToConvert * pointValueEGP * 100) / 100;
     if (egpAmount <= 0) {
-      return NextResponse.json({ error: "قيمة النقاط لا تكفي للتحويل." }, { status: 400 });
+      return NextResponse.json({ error: "قيمة الفيتزونات لا تكفي للتحويل." }, { status: 400 });
     }
 
     await db.$transaction(async (tx) => {
@@ -52,7 +52,7 @@ export async function POST(req: Request) {
         data: {
           rewardId: pointsRow!.id,
           points: -pointsToConvert,
-          reason: `تحويل ${pointsToConvert} نقطة إلى رصيد المحفظة`,
+          reason: `تحويل ${pointsToConvert} فيتزونة إلى رصيد المحفظة`,
         },
       });
 
@@ -67,7 +67,7 @@ export async function POST(req: Request) {
           walletId: wallet.id,
           amount: egpAmount,
           type: "credit",
-          description: `تحويل ${pointsToConvert} نقطة (${egpAmount} ج.م)`,
+          description: `تحويل ${pointsToConvert} فيتزونة (${egpAmount} ج.م)`,
         },
       });
     });
@@ -75,6 +75,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true, convertedPoints: pointsToConvert, egpAmount });
   } catch (error) {
     console.error("[CONVERT_POINTS]", error);
-    return NextResponse.json({ error: "تعذر تحويل النقاط الآن." }, { status: 500 });
+    return NextResponse.json({ error: "تعذر تحويل الفيتزونات الآن." }, { status: 500 });
   }
 }
