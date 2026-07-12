@@ -7226,12 +7226,21 @@ const ShopPage = ({ navigate }: { navigate: (p: string) => void }) => {
       .catch(() => {});
   }, [lang]);
 
+  const [shopGameEnabled, setShopGameEnabled] = useState(false);
+
   useEffect(() => {
     setCat(allLabel);
   }, [allLabel]);
 
   // Reset "show all" when category or search changes
   useEffect(() => { setShowAllShopProducts(false); }, [cat, search]);
+
+  useEffect(() => {
+    fetch("/api/store/free-gifts/check", { cache: "no-store" })
+      .then((r) => r.ok ? r.json() : null)
+      .then((d: { enabled?: boolean } | null) => { if (d?.enabled) setShopGameEnabled(true); })
+      .catch(() => {});
+  }, []);
 
   const isMobile = viewportWidth() < 768;
   const SHOP_INITIAL = isMobile ? 8 : 12;
@@ -7306,6 +7315,48 @@ const ShopPage = ({ navigate }: { navigate: (p: string) => void }) => {
               <span style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)" }}><I n="search" s={18} c={C.gray} /></span>
             </div>
           </div>
+          {/* ── Gift Campaign / Game Banner ── */}
+          {(giftCampaign?.active || shopGameEnabled) && (
+            <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 10, marginBottom: 28 }}>
+              {giftCampaign?.active && (
+                <div style={{
+                  flex: 1, display: "flex", alignItems: "center", gap: 12,
+                  background: "linear-gradient(135deg,rgba(233,30,99,.08),rgba(194,24,91,.04))",
+                  border: "1.5px solid rgba(233,30,99,.3)", borderRadius: 14, padding: "13px 16px",
+                }}>
+                  <span style={{ fontSize: 26 }}>🎁</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ margin: 0, fontSize: 13, fontWeight: 900, color: C.red, fontFamily: "'Cairo','Tajawal',sans-serif" }}>
+                      {giftCampaign.titleAr || t("حملة الهدايا نشطة", "Gift Campaign Active")}
+                    </p>
+                    <p style={{ margin: "2px 0 0", fontSize: 12, color: C.gray, fontFamily: "'Cairo','Tajawal',sans-serif" }}>
+                      {t(`تسوقي بـ ${giftCampaign.minSubtotal.toLocaleString("ar-EG")} ج.م واحصلي على هدية`, `Shop for ${giftCampaign.minSubtotal.toLocaleString()} EGP and get a gift`)}
+                    </p>
+                  </div>
+                </div>
+              )}
+              {shopGameEnabled && (
+                <a href="/store/free-gifts" style={{
+                  flex: 1, display: "flex", alignItems: "center", gap: 12,
+                  background: "linear-gradient(135deg,rgba(233,30,99,.08),rgba(194,24,91,.04))",
+                  border: "1.5px solid rgba(233,30,99,.3)", borderRadius: 14, padding: "13px 16px",
+                  textDecoration: "none",
+                }}>
+                  <span style={{ fontSize: 26 }}>🎰</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ margin: 0, fontSize: 13, fontWeight: 900, color: C.red, fontFamily: "'Cairo','Tajawal',sans-serif" }}>
+                      {t("عندك هدايا مجانية في انتظارك!", "You have free gifts waiting!")}
+                    </p>
+                    <p style={{ margin: "2px 0 0", fontSize: 12, color: C.gray, fontFamily: "'Cairo','Tajawal',sans-serif" }}>
+                      {t("العبي اللعبة واختاري منتجات مجانية", "Play the game and pick free products")}
+                    </p>
+                  </div>
+                  <span style={{ fontSize: 18, color: C.red }}>←</span>
+                </a>
+              )}
+            </div>
+          )}
+
           {/* ── Best Sellers ── */}
           {bestSellers.length > 0 && !search.trim() && (
             <div style={{ marginBottom: 48 }}>
