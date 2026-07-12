@@ -3,12 +3,14 @@ import { getCurrentAppUser } from "@/lib/app-session";
 import { db } from "@/lib/db";
 import { getStoreCampaignSettings } from "@/app/api/admin/store-gift-campaign/route";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   const settings = await getStoreCampaignSettings();
 
   // Campaign not active — return nothing so UI shows no banner
   if (!settings.isActive) {
-    return NextResponse.json({ active: false });
+    return NextResponse.json({ active: false }, { headers: { "Cache-Control": "no-store" } });
   }
 
   // Check date range
