@@ -6,6 +6,31 @@ import type { SalesAgentRow, SalesAgentCommissionRow, ContractsManagerRow, Manag
 const INPUT = "w-full rounded-xl border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-pink-500 focus:outline-none";
 const CARD = "rounded-2xl border border-[rgba(255,188,219,0.12)] bg-[rgba(56,18,34,0.6)] p-5";
 
+const CATEGORY_LABELS: Record<string, string> = {
+  beauty_center: "سنتر تجميل",
+  salon: "كوافير",
+  pharmacy: "صيدلية",
+  clinic: "عيادة",
+  physiotherapy: "علاج طبيعي",
+  nutrition: "دكتور تغذية",
+  nursery: "حضانة",
+  education: "مركز تعليم أطفال",
+  clothing: "محل ملابس نسائية",
+  spa: "سبا وعافية",
+  restaurant: "مطعم صحي",
+  sports: "مركز رياضي",
+  supplement: "مكملات غذائية",
+  services: "خدمات أخرى",
+  other: "خدمات نسائية أخرى",
+};
+
+function generatePartnerBenefitCode() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let body = "";
+  for (let i = 0; i < 8; i++) body += alphabet[Math.floor(Math.random() * alphabet.length)];
+  return `FZ-${body}`;
+}
+
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 function PrintButton({ label = "طباعة / PDF" }: { label?: string }) {
   return (
@@ -172,7 +197,7 @@ function ManagerDashboard() {
   const [showCreatePartner, setShowCreatePartner] = useState(false);
   const [creatingPartner, setCreatingPartner] = useState(false);
   const [partnerError, setPartnerError] = useState("");
-  const [partnerForm, setPartnerForm] = useState({ name: "", email: "", phone: "", password: "", category: "", commissionRate: "10", commissionType: "percentage", managerCommissionType: "percentage_of_partner", managerCommissionRate: "10", notes: "" });
+  const [partnerForm, setPartnerForm] = useState({ name: "", nameEn: "", email: "", phone: "", password: "", category: "", logoUrl: "", websiteUrl: "", contactPhone: "", contractStartDate: "", contractEndDate: "", referralDiscountRate: "", memberBenefitRate: "", memberBenefitCode: "", commissionRate: "10", commissionType: "percentage", managerCommissionType: "percentage_of_partner", managerCommissionRate: "10", notes: "" });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -445,31 +470,126 @@ function ManagerDashboard() {
       {/* Create partner modal */}
       {showCreatePartner && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 print-hidden">
-          <div className="w-full max-w-lg rounded-2xl border border-gray-700 bg-gray-900 p-6 space-y-4 max-h-[90vh] overflow-y-auto">
-            <h3 className="text-lg font-black text-white">إضافة شريك جديد</h3>
+          <div className="w-full max-w-2xl rounded-2xl border border-gray-700 bg-gray-900 p-6 space-y-5 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-black text-white">إضافة شريك جديد</h3>
+              <button onClick={() => setShowCreatePartner(false)} className="text-2xl leading-none text-gray-500 hover:text-white">×</button>
+            </div>
+
+            <div className="rounded-xl border border-yellow-500/30 bg-yellow-950/20 px-4 py-3 text-xs text-yellow-300">
+              ⏳ سيتم إرسال طلب للأدمن للمراجعة والموافقة — لن يظهر الشريك في الموقع حتى تتم الموافقة.
+            </div>
+
             {partnerError && <p className="text-sm text-red-400">{partnerError}</p>}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="col-span-2"><label className="block text-xs font-bold text-gray-400 mb-1">الاسم *</label><input value={partnerForm.name} onChange={(e) => setPartnerForm({ ...partnerForm, name: e.target.value })} className={INPUT} /></div>
-              <div><label className="block text-xs font-bold text-gray-400 mb-1">البريد *</label><input type="email" value={partnerForm.email} onChange={(e) => setPartnerForm({ ...partnerForm, email: e.target.value })} className={INPUT} /></div>
-              <div><label className="block text-xs font-bold text-gray-400 mb-1">الهاتف</label><input value={partnerForm.phone} onChange={(e) => setPartnerForm({ ...partnerForm, phone: e.target.value })} className={INPUT} /></div>
-              <div className="col-span-2"><label className="block text-xs font-bold text-gray-400 mb-1">الفئة *</label><input value={partnerForm.category} onChange={(e) => setPartnerForm({ ...partnerForm, category: e.target.value })} className={INPUT} placeholder="مثال: جيم، مطعم، صيدلية" /></div>
-              <div className="col-span-2"><label className="block text-xs font-bold text-gray-400 mb-1">كلمة المرور</label><input type="password" value={partnerForm.password} onChange={(e) => setPartnerForm({ ...partnerForm, password: e.target.value })} className={INPUT} placeholder="اتركه فارغاً للافتراضي" /></div>
-              <div><label className="block text-xs font-bold text-gray-400 mb-1">عمولة الشريك</label><input type="number" value={partnerForm.commissionRate} onChange={(e) => setPartnerForm({ ...partnerForm, commissionRate: e.target.value })} className={INPUT} /></div>
-              <div><label className="block text-xs font-bold text-gray-400 mb-1">نوع عمولته</label>
-                <select value={partnerForm.commissionType} onChange={(e) => setPartnerForm({ ...partnerForm, commissionType: e.target.value })} className={INPUT}>
-                  <option value="percentage">نسبة %</option>
-                  <option value="fixed">مبلغ ثابت</option>
+
+            <div className="grid grid-cols-2 gap-4">
+              {/* Name */}
+              <div className="space-y-1">
+                <label className="block text-xs font-bold text-gray-400">اسم الشريك *</label>
+                <input value={partnerForm.name} onChange={(e) => setPartnerForm({ ...partnerForm, name: e.target.value })} className={INPUT} />
+              </div>
+              {/* Name EN */}
+              <div className="space-y-1">
+                <label className="block text-xs font-bold text-gray-400">الاسم بالإنجليزية</label>
+                <input value={partnerForm.nameEn} onChange={(e) => setPartnerForm({ ...partnerForm, nameEn: e.target.value })} className={INPUT} placeholder="Partner name in English" dir="ltr" />
+              </div>
+              {/* Category */}
+              <div className="space-y-1">
+                <label className="block text-xs font-bold text-gray-400">الفئة *</label>
+                <select value={partnerForm.category} onChange={(e) => setPartnerForm({ ...partnerForm, category: e.target.value })} className={INPUT}>
+                  <option value="">اختر الفئة...</option>
+                  {Object.entries(CATEGORY_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                 </select>
               </div>
-              <div><label className="block text-xs font-bold text-gray-400 mb-1">عمولتي</label><input type="number" value={partnerForm.managerCommissionRate} onChange={(e) => setPartnerForm({ ...partnerForm, managerCommissionRate: e.target.value })} className={INPUT} /></div>
-              <div><label className="block text-xs font-bold text-gray-400 mb-1">نوع عمولتي</label>
+              {/* Contact Phone */}
+              <div className="space-y-1">
+                <label className="block text-xs font-bold text-gray-400">رقم التواصل</label>
+                <input value={partnerForm.contactPhone} onChange={(e) => setPartnerForm({ ...partnerForm, contactPhone: e.target.value })} className={INPUT} placeholder="01xxxxxxxxx" />
+              </div>
+              {/* Email */}
+              <div className="space-y-1">
+                <label className="block text-xs font-bold text-gray-400">البريد الإلكتروني *</label>
+                <input type="email" value={partnerForm.email} onChange={(e) => setPartnerForm({ ...partnerForm, email: e.target.value })} className={INPUT} dir="ltr" />
+              </div>
+              {/* Phone */}
+              <div className="space-y-1">
+                <label className="block text-xs font-bold text-gray-400">هاتف الحساب</label>
+                <input value={partnerForm.phone} onChange={(e) => setPartnerForm({ ...partnerForm, phone: e.target.value })} className={INPUT} placeholder="01xxxxxxxxx" />
+              </div>
+              {/* Password */}
+              <div className="col-span-2 space-y-1">
+                <label className="block text-xs font-bold text-gray-400">كلمة المرور</label>
+                <input type="text" value={partnerForm.password} onChange={(e) => setPartnerForm({ ...partnerForm, password: e.target.value })} className={INPUT} placeholder="FitZone@Partner!" dir="ltr" />
+              </div>
+              {/* Commission */}
+              <div className="space-y-1">
+                <label className="block text-xs font-bold text-gray-400">عمولة الشريك</label>
+                <input type="number" value={partnerForm.commissionRate} onChange={(e) => setPartnerForm({ ...partnerForm, commissionRate: e.target.value })} className={INPUT} />
+              </div>
+              <div className="space-y-1">
+                <label className="block text-xs font-bold text-gray-400">نوع العمولة</label>
+                <select value={partnerForm.commissionType} onChange={(e) => setPartnerForm({ ...partnerForm, commissionType: e.target.value })} className={INPUT}>
+                  <option value="percentage">نسبة مئوية %</option>
+                  <option value="fixed">مبلغ ثابت ج.م</option>
+                </select>
+              </div>
+              {/* Manager Commission */}
+              <div className="space-y-1">
+                <label className="block text-xs font-bold text-gray-400">عمولتي</label>
+                <input type="number" value={partnerForm.managerCommissionRate} onChange={(e) => setPartnerForm({ ...partnerForm, managerCommissionRate: e.target.value })} className={INPUT} />
+              </div>
+              <div className="space-y-1">
+                <label className="block text-xs font-bold text-gray-400">نوع عمولتي</label>
                 <select value={partnerForm.managerCommissionType} onChange={(e) => setPartnerForm({ ...partnerForm, managerCommissionType: e.target.value })} className={INPUT}>
                   <option value="percentage_of_partner">% من عمولة الشريك</option>
                   <option value="fixed">مبلغ ثابت لكل اشتراك</option>
                 </select>
               </div>
+              {/* Contract dates */}
+              <div className="space-y-1">
+                <label className="block text-xs font-bold text-gray-400">تاريخ بداية التعاقد</label>
+                <input type="date" value={partnerForm.contractStartDate} onChange={(e) => setPartnerForm({ ...partnerForm, contractStartDate: e.target.value })} className={INPUT} />
+              </div>
+              <div className="space-y-1">
+                <label className="block text-xs font-bold text-gray-400">تاريخ نهاية التعاقد</label>
+                <input type="date" value={partnerForm.contractEndDate} onChange={(e) => setPartnerForm({ ...partnerForm, contractEndDate: e.target.value })} className={INPUT} />
+              </div>
+              {/* Referral & member benefit */}
+              <div className="space-y-1">
+                <label className="block text-xs font-bold text-gray-400">خصم رابط الإحالة % <span className="font-normal text-gray-500">(خصم على الجيم للعميل)</span></label>
+                <input type="number" min="0" max="100" value={partnerForm.referralDiscountRate} onChange={(e) => setPartnerForm({ ...partnerForm, referralDiscountRate: e.target.value })} className={INPUT} placeholder="مثال: 10" />
+              </div>
+              <div className="space-y-1">
+                <label className="block text-xs font-bold text-gray-400">خصم ميزة الأعضاء % <span className="font-normal text-gray-500">(عند الشريك)</span></label>
+                <input type="number" min="0" max="100" value={partnerForm.memberBenefitRate} onChange={(e) => setPartnerForm({ ...partnerForm, memberBenefitRate: e.target.value })} className={INPUT} placeholder="مثال: 15" />
+              </div>
+              <div className="col-span-2 space-y-1">
+                <label className="block text-xs font-bold text-gray-400">كود ميزة الأعضاء</label>
+                <div className="flex gap-2">
+                  <input value={partnerForm.memberBenefitCode} onChange={(e) => setPartnerForm({ ...partnerForm, memberBenefitCode: e.target.value.toUpperCase() })} className={`${INPUT} flex-1`} placeholder="مثال: FITZONE-PARTNER" dir="ltr" />
+                  <button type="button" onClick={() => setPartnerForm({ ...partnerForm, memberBenefitCode: generatePartnerBenefitCode() })}
+                    className="rounded-xl border border-pink-500/40 bg-pink-600/20 px-3 text-xs font-black text-pink-200 hover:bg-pink-600/30 whitespace-nowrap">
+                    إنشاء تلقائي
+                  </button>
+                </div>
+              </div>
+              {/* Logo & Website */}
+              <div className="space-y-1">
+                <label className="block text-xs font-bold text-gray-400">رابط الشعار (logo)</label>
+                <input value={partnerForm.logoUrl} onChange={(e) => setPartnerForm({ ...partnerForm, logoUrl: e.target.value })} className={INPUT} placeholder="https://..." dir="ltr" />
+                {partnerForm.logoUrl && <img src={partnerForm.logoUrl} alt="معاينة" className="h-12 w-12 mt-1 rounded-xl border border-white/10 object-contain bg-white p-1" />}
+              </div>
+              <div className="space-y-1">
+                <label className="block text-xs font-bold text-gray-400">الموقع الإلكتروني</label>
+                <input value={partnerForm.websiteUrl} onChange={(e) => setPartnerForm({ ...partnerForm, websiteUrl: e.target.value })} className={INPUT} placeholder="https://..." dir="ltr" />
+              </div>
+              {/* Notes */}
+              <div className="col-span-2 space-y-1">
+                <label className="block text-xs font-bold text-gray-400">ملاحظات</label>
+                <textarea value={partnerForm.notes} onChange={(e) => setPartnerForm({ ...partnerForm, notes: e.target.value })} rows={2} className={INPUT + " resize-none"} />
+              </div>
             </div>
-            <div><label className="block text-xs font-bold text-gray-400 mb-1">ملاحظات</label><textarea value={partnerForm.notes} onChange={(e) => setPartnerForm({ ...partnerForm, notes: e.target.value })} rows={2} className={INPUT + " resize-none"} /></div>
+
             <div className="flex gap-2">
               <button
                 onClick={async () => {
@@ -478,18 +598,35 @@ function ManagerDashboard() {
                   try {
                     const res = await fetch("/api/admin/contracts", {
                       method: "POST", headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ type: "partner", name: partnerForm.name.trim(), email: partnerForm.email.trim(), phone: partnerForm.phone.trim() || undefined, password: partnerForm.password.trim() || undefined, category: partnerForm.category.trim(), commissionRate: Number(partnerForm.commissionRate), commissionType: partnerForm.commissionType, managerCommissionType: partnerForm.managerCommissionType, managerCommissionRate: Number(partnerForm.managerCommissionRate), notes: partnerForm.notes.trim() || undefined }),
+                      body: JSON.stringify({
+                        type: "partner",
+                        name: partnerForm.name.trim(), nameEn: partnerForm.nameEn.trim() || undefined,
+                        email: partnerForm.email.trim(), phone: partnerForm.phone.trim() || undefined,
+                        password: partnerForm.password.trim() || undefined,
+                        category: partnerForm.category.trim(),
+                        logoUrl: partnerForm.logoUrl.trim() || undefined,
+                        websiteUrl: partnerForm.websiteUrl.trim() || undefined,
+                        contactPhone: partnerForm.contactPhone.trim() || undefined,
+                        contractStartDate: partnerForm.contractStartDate || undefined,
+                        contractEndDate: partnerForm.contractEndDate || undefined,
+                        referralDiscountRate: partnerForm.referralDiscountRate !== "" ? Number(partnerForm.referralDiscountRate) : undefined,
+                        memberBenefitRate: partnerForm.memberBenefitRate !== "" ? Number(partnerForm.memberBenefitRate) : undefined,
+                        memberBenefitCode: partnerForm.memberBenefitCode.trim() || undefined,
+                        commissionRate: Number(partnerForm.commissionRate), commissionType: partnerForm.commissionType,
+                        managerCommissionType: partnerForm.managerCommissionType, managerCommissionRate: Number(partnerForm.managerCommissionRate),
+                        notes: partnerForm.notes.trim() || undefined,
+                      }),
                     });
                     const json = await res.json().catch(() => ({}));
                     if (!res.ok) { setPartnerError((json as { error?: string }).error ?? "حدث خطأ."); return; }
                     setShowCreatePartner(false);
-                    setPartnerForm({ name: "", email: "", phone: "", password: "", category: "", commissionRate: "10", commissionType: "percentage", managerCommissionType: "percentage_of_partner", managerCommissionRate: "10", notes: "" });
+                    setPartnerForm({ name: "", nameEn: "", email: "", phone: "", password: "", category: "", logoUrl: "", websiteUrl: "", contactPhone: "", contractStartDate: "", contractEndDate: "", referralDiscountRate: "", memberBenefitRate: "", memberBenefitCode: "", commissionRate: "10", commissionType: "percentage", managerCommissionType: "percentage_of_partner", managerCommissionRate: "10", notes: "" });
                     void loadPartners();
                   } finally { setCreatingPartner(false); }
                 }}
                 disabled={creatingPartner}
                 className="flex-1 rounded-xl bg-pink-600 py-2.5 font-black text-white disabled:opacity-50"
-              >{creatingPartner ? "جاري الإنشاء..." : "إنشاء حساب الشريك"}</button>
+              >{creatingPartner ? "جاري الإرسال..." : "إرسال للمراجعة والموافقة"}</button>
               <button onClick={() => setShowCreatePartner(false)} className="rounded-xl bg-gray-800 px-5 py-2.5 font-bold text-gray-300">إلغاء</button>
             </div>
           </div>

@@ -377,7 +377,9 @@ export async function POST(req: Request) {
     clientDiscountType?: string; clientDiscountValue?: number;
     maxClientDiscount?: number | null; notes?: string; managerId?: string;
     // partner-specific
-    category?: string; logoUrl?: string; websiteUrl?: string; contactPhone?: string;
+    category?: string; nameEn?: string; logoUrl?: string; websiteUrl?: string; contactPhone?: string;
+    contractStartDate?: string; contractEndDate?: string;
+    referralDiscountRate?: number | null | string; memberBenefitCode?: string; memberBenefitRate?: number | null | string;
     managerCommissionType?: string; managerCommissionRate?: number;
   };
 
@@ -447,16 +449,28 @@ export async function POST(req: Request) {
     let linkToken = generatePartnerToken();
     while (await dbx.partnerAffiliateLink.findUnique({ where: { token: linkToken } })) linkToken = generatePartnerToken();
 
+    const isPendingApproval = role === "contracts_manager";
+    const rawNotes = body.notes?.trim() || null;
+    const notesValue = isPendingApproval
+      ? "[PENDING_APPROVAL]" + (rawNotes ? " " + rawNotes : "")
+      : rawNotes;
+
     const partner = await dbx.partner.create({
       data: {
         userId: pUser.id, name: body.name.trim(),
+        nameEn: body.nameEn?.trim() || null,
         category: body.category.trim(),
         logoUrl: body.logoUrl?.trim() || null,
         websiteUrl: body.websiteUrl?.trim() || null,
         contactPhone: body.contactPhone?.trim() || null,
         commissionRate: Number(body.commissionRate ?? 10),
         commissionType: body.commissionType === "fixed" ? "fixed" : "percentage",
-        isActive: true, showOnPublicPage: false, notes: body.notes?.trim() || null,
+        contractStartDate: body.contractStartDate ? new Date(body.contractStartDate) : null,
+        contractEndDate: body.contractEndDate ? new Date(body.contractEndDate) : null,
+        referralDiscountRate: body.referralDiscountRate != null && body.referralDiscountRate !== "" ? Number(body.referralDiscountRate) : null,
+        memberBenefitCode: body.memberBenefitCode?.trim() || null,
+        memberBenefitRate: body.memberBenefitRate != null && body.memberBenefitRate !== "" ? Number(body.memberBenefitRate) : null,
+        isActive: !isPendingApproval, showOnPublicPage: false, notes: notesValue,
         managerId: resolvedManagerId,
         managerCommissionType: body.managerCommissionType ?? null,
         managerCommissionRate: body.managerCommissionRate != null ? Number(body.managerCommissionRate) : null,
