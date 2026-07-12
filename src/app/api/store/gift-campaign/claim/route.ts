@@ -13,7 +13,7 @@ export async function POST(req: Request) {
   const body = await req.json() as { orderId?: string };
 
   const settings = await getStoreCampaignSettings();
-  if (!settings.isActive || !settings.campaignEnabled) {
+  if (!settings.isActive) {
     return NextResponse.json({ error: "الحملة غير مفعلة حالياً." }, { status: 400 });
   }
 

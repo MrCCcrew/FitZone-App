@@ -36,7 +36,7 @@ async function tryGrantStoreGiftCampaign(
   if (order.businessUnit !== "store") return;
   try {
     const settings = await getStoreCampaignSettings();
-    if (!settings.isActive || !settings.campaignEnabled) return;
+    if (!settings.isActive) return;
     const now = new Date();
     if (settings.startsAt && new Date(settings.startsAt) > now) return;
     if (settings.endsAt && new Date(settings.endsAt) < now) return;

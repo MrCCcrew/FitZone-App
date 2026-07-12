@@ -211,19 +211,20 @@ export default function StoreGiftCampaign() {
         <h3 className="text-white font-black text-lg">⚙️ إعدادات حملة هدايا المتجر</h3>
         <p className="text-xs text-gray-500">هذه الحملة تطبق على منتجات المتجر فقط — لا تؤثر على الاشتراكات أو الجيم.</p>
 
-        {/* Toggle active */}
+        {/* Toggle active — single switch controls both isActive + campaignEnabled */}
         <div className="flex items-center gap-4">
           <label className="flex items-center gap-3 cursor-pointer">
             <div
-              onClick={() => set("isActive", !settings.isActive)}
+              onClick={() => { const v = !settings.isActive; set("isActive", v); set("campaignEnabled", v); }}
               className={`w-12 h-6 rounded-full transition-colors cursor-pointer ${settings.isActive ? "bg-pink-600" : "bg-gray-700"}`}
               style={{ position: "relative" }}
             >
               <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${settings.isActive ? "right-1" : "right-7"}`} />
             </div>
-            <span className="text-white font-bold text-sm">تفعيل الحملة</span>
+            <span className="text-white font-bold text-sm">تفعيل الحملة وعرضها للعملاء</span>
           </label>
-          <label className="flex items-center gap-3 cursor-pointer">
+          {/* removed separate campaignEnabled toggle — it always mirrors isActive */}
+          <label className="flex items-center gap-3 cursor-pointer" style={{ display: "none" }}>
             <div
               onClick={() => set("campaignEnabled", !settings.campaignEnabled)}
               className={`w-12 h-6 rounded-full transition-colors cursor-pointer ${settings.campaignEnabled ? "bg-green-600" : "bg-gray-700"}`}
