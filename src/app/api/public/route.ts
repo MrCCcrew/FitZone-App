@@ -354,7 +354,7 @@ export async function GET(request: Request) {
           orderBy: [{ showOnHome: "desc" }, { sortOrder: "asc" }, { name: "asc" }],
         }),
         db.siteContent.findMany({
-          where: { section: { in: ["trainersPage", "contact", "blog", "paymentSettings", "trial_class_settings", "store_settings", "trial_classes_config"] } },
+          where: { section: { in: ["trainersPage", "contact", "blog", "paymentSettings", "trial_class_settings", "store_settings", "trial_classes_config", "gift_only_products"] } },
         }),
         db.product.findMany({
           where: { isActive: true },
@@ -403,6 +403,9 @@ export async function GET(request: Request) {
 
     const storeSettings = parseSiteContentRecord(siteContent, "store_settings", { enabled: true }) as { enabled?: boolean };
     const storeEnabled = storeSettings.enabled !== false;
+
+    const giftOnlyRecord = parseSiteContentRecord(siteContent, "gift_only_products", { ids: [] }) as { ids?: string[] };
+    const giftOnlyIds = new Set(Array.isArray(giftOnlyRecord.ids) ? giftOnlyRecord.ids : []);
 
     const payload: PublicPayload = {
       contact:
@@ -615,7 +618,7 @@ export async function GET(request: Request) {
         };
       })(),
       products: storeEnabled
-        ? products.map((product) => {
+        ? products.filter((product) => !giftOnlyIds.has(product.id)).map((product) => {
         const category = categoryMeta.get(product.category);
         const reviewCount = product.reviews.length;
         const rating =
