@@ -112,6 +112,8 @@ export function StoreFreeGiftsGame() {
 
   const handleBonusChestDone = async () => {
     setShowBonusChest(false);
+    // Tell the server to increment giftSlotsCount by spinRewardValue
+    await fetch("/api/store/free-gifts/open-chest", { method: "POST" }).catch(() => {});
     await loadGame();
   };
 

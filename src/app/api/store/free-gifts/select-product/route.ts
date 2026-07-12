@@ -29,8 +29,17 @@ export async function POST(req: Request) {
     if (selected.length >= session.giftSlotsCount) return NextResponse.json({ error: "slots_full" }, { status: 400 });
     if (selected.includes(productId)) return NextResponse.json({ ok: true, selectedProductIds: selected });
 
-    // Verify product is valid (active, in stock, eligible)
-    const whereIds = settings.eligibleGiftProductIds.length > 0 ? { id: { in: settings.eligibleGiftProductIds } } : {};
+    // Verify product is valid (active, in stock, eligible — includes gift-only products)
+    let giftOnlyIds: string[] = [];
+    const giftOnlyRecord = await db.siteContent.findUnique({ where: { section: "gift_only_products" } });
+    if (giftOnlyRecord) {
+      try {
+        const parsed = JSON.parse(giftOnlyRecord.content) as { ids?: unknown };
+        giftOnlyIds = Array.isArray(parsed.ids) ? (parsed.ids as string[]).filter((x) => typeof x === "string") : [];
+      } catch { giftOnlyIds = []; }
+    }
+    const allEligibleIds = [...new Set([...settings.eligibleGiftProductIds, ...giftOnlyIds])];
+    const whereIds = allEligibleIds.length > 0 ? { id: { in: allEligibleIds } } : {};
     const product = await db.product.findFirst({
       where: { id: productId, isActive: true, stock: { gt: 0 }, deletedAt: null, ...whereIds },
       select: { id: true },

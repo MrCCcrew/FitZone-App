@@ -3,6 +3,9 @@ import { getCurrentAppUser } from "@/lib/app-session";
 import { db } from "@/lib/db";
 import { createPaymentTransaction, restorePaymentBalanceAdjustments, unlockPendingReferralReward } from "@/lib/payments/service";
 import { getStoreCampaignSettings } from "@/app/api/admin/store-gift-campaign/route";
+import { cookies } from "next/headers";
+
+const GAME_COOKIE = "fitzone-game-token";
 
 type OrderItemInput = {
   productId: string;
@@ -143,12 +146,51 @@ export async function POST(req: Request) {
       }
     }
 
+    // ── Free-gifts game session: resolve gift products, discount, shipping ──────
+    const cookieStore = await cookies();
+    const gameToken = cookieStore.get(GAME_COOKIE)?.value ?? null;
+    const dbx = db as any;
+
+    let giftProductIds = new Set<string>();
+    let gameDiscount = 0;
+    let gameFreeShipping = false;
+    let gameSessionId: string | null = null;
+
+    if (gameToken) {
+      const gameSession = await dbx.storeFreeGiftsSession
+        .findUnique({ where: { token: gameToken } })
+        .catch(() => null) as { id: string; status: string; spinRewardType: string | null; spinRewardValue: number | null; selectedProductIds: string } | null;
+
+      if (gameSession?.status === "confirmed") {
+        try {
+          const wonIds: string[] = JSON.parse(gameSession.selectedProductIds);
+          giftProductIds = new Set(wonIds);
+          gameSessionId = gameSession.id;
+        } catch { /* ignore parse error */ }
+
+        const rType = gameSession.spinRewardType ?? "";
+        const rValue = Number(gameSession.spinRewardValue ?? 0);
+        if (rType === "free_shipping") gameFreeShipping = true;
+        if (rType === "discount" && rValue > 0) {
+          // % discount applied after gift items (already 0)
+          // will be computed from non-gift subtotal below
+          gameDiscount = rValue; // store percent, apply after subtotal
+        }
+      }
+    }
+
     const VAT_RATE = 0.14;
     const subtotal = items.reduce((sum, item) => {
       const product = products.find((entry) => entry.id === item.productId)!;
+      if (giftProductIds.has(product.id)) return sum; // gift item → free
       const itemPrice = product.vatEnabled ? Math.round(product.price * (1 + VAT_RATE) * 100) / 100 : product.price;
       return sum + itemPrice * item.quantity;
     }, 0);
+
+    // Resolve game discount (% off non-gift subtotal)
+    const gameDiscountAmount = gameDiscount > 0
+      ? Math.round(subtotal * (gameDiscount / 100) * 100) / 100
+      : 0;
 
     const paymentMethod = sanitizeMethod(body.paymentMethod);
 
@@ -168,8 +210,8 @@ export async function POST(req: Request) {
     }
 
     const isClubPickup = deliveryOption?.type === "pickup" ? true : Boolean(body.isClubPickup);
-    const shippingFee = deliveryOption?.type === "pickup" ? 0 : deliveryOption?.fee ?? 0;
-    const baseTotal = Math.max(0, subtotal + shippingFee);
+    const shippingFee = (deliveryOption?.type === "pickup" || gameFreeShipping) ? 0 : deliveryOption?.fee ?? 0;
+    const baseTotal = Math.max(0, subtotal - gameDiscountAmount + shippingFee);
 
     const walletDeductReq = Math.max(0, Number(body.walletDeduct ?? 0));
     const pointsDeductReq = Math.floor(Math.max(0, Number(body.pointsDeduct ?? 0)));
@@ -231,6 +273,9 @@ export async function POST(req: Request) {
         items: {
           create: items.map((item) => {
             const product = products.find((entry) => entry.id === item.productId)!;
+            if (giftProductIds.has(product.id)) {
+              return { productId: product.id, quantity: item.quantity, price: 0, vatAmount: 0, size: item.size ?? null };
+            }
             const itemPrice = product.vatEnabled ? Math.round(product.price * (1 + VAT_RATE) * 100) / 100 : product.price;
             const vatAmount = product.vatEnabled ? Math.round(product.price * VAT_RATE * 100) / 100 : 0;
             return {
@@ -358,6 +403,14 @@ export async function POST(req: Request) {
 
     // Auto-apply store gift campaign (fire-and-forget, never blocks order)
     void tryGrantStoreGiftCampaign(userId, { id: order.id, subtotal, businessUnit: "store" });
+
+    // Link confirmed game session to this order — prevents double-claiming
+    if (gameSessionId) {
+      void dbx.storeFreeGiftsSession.update({
+        where: { id: gameSessionId },
+        data: { storeOrderId: order.id },
+      }).catch((e: unknown) => console.error("[FREE_GIFTS_LINK]", e));
+    }
 
     await Promise.all([
       ...inventoryJobs,
