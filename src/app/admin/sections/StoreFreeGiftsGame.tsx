@@ -10,7 +10,20 @@ type RewardPoolItem = {
   value: number;
   weight: number;
   active: boolean;
+  productId?: string;
 };
+
+type AdminProduct = { id: string; name: string };
+
+const REWARD_TYPES = [
+  { value: "free_product",  label: "منتج مجاني" },
+  { value: "points",        label: "فيتزونات" },
+  { value: "discount",      label: "خصم" },
+  { value: "free_shipping", label: "شحن مجاني" },
+  { value: "bonus_chest",   label: "صندوق بونص" },
+  { value: "wallet",        label: "رصيد محفظة" },
+  { value: "custom_gift",   label: "هدية مخصصة" },
+];
 
 type Settings = {
   gameEnabled: boolean;
@@ -42,8 +55,9 @@ export function StoreFreeGiftsGameSection() {
   const [stats, setStats]       = useState<{ totalSessions: number; confirmedSessions: number } | null>(null);
   const [addOpen, setAddOpen]   = useState(false);
   const [newItem, setNewItem]   = useState<Omit<RewardPoolItem, "id">>({
-    type: "", icon: "🎁", labelAr: "", labelEn: "", value: 0, weight: 10, active: true,
+    type: "", icon: "🎁", labelAr: "", labelEn: "", value: 0, weight: 10, active: true, productId: "",
   });
+  const [products, setProducts] = useState<AdminProduct[]>([]);
 
   useEffect(() => {
     void fetch("/api/admin/store-free-gifts-game")
@@ -53,6 +67,9 @@ export function StoreFreeGiftsGameSection() {
         setStats(d.stats ?? null);
       })
       .finally(() => setLoading(false));
+    void fetch("/api/admin/products")
+      .then(r => r.json())
+      .then((d: unknown) => { if (Array.isArray(d)) setProducts(d as AdminProduct[]); });
   }, []);
 
   const save = async () => {
@@ -83,7 +100,7 @@ export function StoreFreeGiftsGameSection() {
       ...prev,
       rewardsPool: [...prev.rewardsPool, { id: uid(), ...newItem }],
     }));
-    setNewItem({ type: "", icon: "🎁", labelAr: "", labelEn: "", value: 0, weight: 10, active: true });
+    setNewItem({ type: "", icon: "🎁", labelAr: "", labelEn: "", value: 0, weight: 10, active: true, productId: "" });
     setAddOpen(false);
   };
 
@@ -206,10 +223,23 @@ export function StoreFreeGiftsGameSection() {
                 <input value={newItem.labelEn} onChange={e => setNewItem(p => ({ ...p, labelEn: e.target.value }))} placeholder="Free Gift" style={inp} />
               </div>
               <div>
-                <label style={label12}>نوع المكافأة (كود) *</label>
-                <input value={newItem.type} onChange={e => setNewItem(p => ({ ...p, type: e.target.value.trim().replace(/\s/g,"_") }))} placeholder="free_product" style={inp} />
-                <p style={{ margin: "3px 0 0", fontSize: 10, color: "rgba(255,255,255,.3)" }}>مثال: free_product, points, discount, custom_gift</p>
+                <label style={label12}>نوع المكافأة *</label>
+                <select value={newItem.type} onChange={e => setNewItem(p => ({ ...p, type: e.target.value, productId: "" }))}
+                  style={{ ...inp, appearance: "auto" }}>
+                  <option value="">— اختر النوع —</option>
+                  {REWARD_TYPES.map(rt => <option key={rt.value} value={rt.value}>{rt.label}</option>)}
+                </select>
               </div>
+              {newItem.type === "free_product" && (
+                <div>
+                  <label style={label12}>المنتج المجاني</label>
+                  <select value={newItem.productId ?? ""} onChange={e => setNewItem(p => ({ ...p, productId: e.target.value }))}
+                    style={{ ...inp, appearance: "auto" }}>
+                    <option value="">— اختر منتجًا —</option>
+                    {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                </div>
+              )}
               <div>
                 <label style={label12}>القيمة (أو 0)</label>
                 <input type="number" min={0} value={newItem.value} onChange={e => setNewItem(p => ({ ...p, value: Number(e.target.value) }))} style={inp} />
@@ -255,9 +285,20 @@ export function StoreFreeGiftsGameSection() {
                 </div>
 
                 {/* Type */}
-                <div style={{ flex: 2, minWidth: 120 }}>
-                  <label style={label12}>النوع (كود)</label>
-                  <input value={r.type} onChange={e => updateReward(r.id, "type", e.target.value.trim().replace(/\s/g,"_"))} style={inp} />
+                <div style={{ flex: 2, minWidth: 130 }}>
+                  <label style={label12}>النوع</label>
+                  <select value={r.type} onChange={e => { updateReward(r.id, "type", e.target.value); updateReward(r.id, "productId", ""); }}
+                    style={{ ...inp, appearance: "auto" }}>
+                    <option value="">— اختر —</option>
+                    {REWARD_TYPES.map(rt => <option key={rt.value} value={rt.value}>{rt.label}</option>)}
+                  </select>
+                  {r.type === "free_product" && (
+                    <select value={r.productId ?? ""} onChange={e => updateReward(r.id, "productId", e.target.value)}
+                      style={{ ...inp, appearance: "auto", marginTop: 4 }}>
+                      <option value="">— اختر منتجًا —</option>
+                      {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select>
+                  )}
                 </div>
 
                 {/* Value */}

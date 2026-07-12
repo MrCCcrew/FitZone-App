@@ -150,6 +150,35 @@ export function StoreFreeGiftsGame() {
     try {
       const res = await fetch("/api/store/free-gifts/confirm", { method: "POST" });
       if (!res.ok) throw new Error("confirm failed");
+      const data = await res.json() as { ok: boolean; selectedProductIds: string[] };
+
+      // Add won products to localStorage cart at price 0 (or discounted)
+      const wonIds: string[] = data.selectedProductIds ?? game.selectedProductIds;
+      const wonProducts = game.eligibleProducts.filter(p => wonIds.includes(p.id));
+      if (wonProducts.length > 0 && typeof window !== "undefined") {
+        const CART_KEY = "fitzone:cart";
+        let cart: Array<{ productId: string; name: string; price: number; qty: number; size: string | null; type: string }> = [];
+        try { cart = JSON.parse(localStorage.getItem(CART_KEY) ?? "[]") as typeof cart; } catch { cart = []; }
+
+        const spinType = game.spinResult?.type ?? "free_product";
+        const spinValue = game.spinResult?.value ?? 0;
+
+        for (const p of wonProducts) {
+          let price = 0;
+          if (spinType === "discount" && spinValue > 0) {
+            price = Math.max(0, Math.round(p.price * (1 - spinValue / 100) * 100) / 100);
+          }
+          const existing = cart.find(c => c.productId === p.id);
+          if (existing) {
+            existing.qty += 1;
+          } else {
+            cart.push({ productId: p.id, name: p.name, price, qty: 1, size: null, type: p.category ?? "gift" });
+          }
+        }
+        localStorage.setItem(CART_KEY, JSON.stringify(cart));
+        try { window.dispatchEvent(new Event("fitzone-cart-updated")); } catch { /* noop */ }
+      }
+
       if (!confettiShownRef.current) {
         confettiShownRef.current = true;
         setShowConfetti(true);
@@ -193,10 +222,14 @@ export function StoreFreeGiftsGame() {
         <div style={{ fontSize: 72, marginBottom: 16 }}>🎉</div>
         <h2 style={{ fontSize: 22, fontWeight: 900, color: "#fbbf24", marginBottom: 8 }}>{t("تم تأكيد هداياك!", "Your gifts are confirmed!")}</h2>
         <p style={{ color: "rgba(255,255,255,.6)", fontSize: 14, maxWidth: 300, margin: "0 auto 24px" }}>
-          {t("هداياك المجانية سيتم إضافتها لطلبك عند إتمام عملية الشراء", "Your free gifts will be added to your order when you complete your purchase")}
+          {t("تمت إضافة هداياك لسلة التسوق — اضغطي لاستكمال طلبك", "Your gifts have been added to your cart — tap to complete your order")}
         </p>
-        <a href="/?page=shop" style={{ display: "inline-block", padding: "13px 36px", borderRadius: 12, background: "linear-gradient(135deg,#e91e63,#c2185b)", color: "#fff", fontSize: 15, fontWeight: 900, textDecoration: "none" }}>
-          {t("عودي للمتجر ←", "Back to Store →")}
+        <a href="/?page=cart" style={{ display: "inline-block", padding: "13px 36px", borderRadius: 12, background: "linear-gradient(135deg,#e91e63,#c2185b)", color: "#fff", fontSize: 15, fontWeight: 900, textDecoration: "none", marginBottom: 12 }}>
+          {t("عرض السلة 🛒", "View Cart 🛒")}
+        </a>
+        <br />
+        <a href="/?page=shop" style={{ display: "inline-block", padding: "10px 28px", borderRadius: 10, background: "rgba(255,255,255,.08)", border: "1px solid rgba(255,255,255,.15)", color: "rgba(255,255,255,.7)", fontSize: 13, fontWeight: 700, textDecoration: "none" }}>
+          {t("متابعة التسوق", "Continue Shopping")}
         </a>
       </div>
     </div>

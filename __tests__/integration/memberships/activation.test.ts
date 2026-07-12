@@ -121,7 +121,7 @@ describe("membership activation — happy path", () => {
     const call = vi.mocked(db.userMembership.updateMany).mock.calls[0][0];
     expect(call.data.startDate).toBeInstanceOf(Date);
     expect(call.data.endDate).toBeInstanceOf(Date);
-    expect(call.data.endDate.getTime()).toBeGreaterThan(call.data.startDate.getTime());
+    expect((call.data.endDate as Date).getTime()).toBeGreaterThan((call.data.startDate as Date).getTime());
   });
 });
 

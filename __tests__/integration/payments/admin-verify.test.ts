@@ -56,13 +56,13 @@ describe("POST /admin/payments/verify — authorization", () => {
 
   it("returns 401 when unauthenticated", async () => {
     vi.mocked(requireAdminFeature).mockResolvedValue(UNAUTHORIZED);
-    const res = await POST(postReq({ transactionId: "t1" }));
+    const res = (await POST(postReq({ transactionId: "t1" })))!;
     expect(res.status).toBe(401);
   });
 
   it("returns 403 when authenticated but lacks 'settings' feature", async () => {
     vi.mocked(requireAdminFeature).mockResolvedValue(FORBIDDEN);
-    const res = await POST(postReq({ transactionId: "t1" }));
+    const res = (await POST(postReq({ transactionId: "t1" })))!;
     expect(res.status).toBe(403);
   });
 });
@@ -76,7 +76,7 @@ describe("POST /admin/payments/verify — validation", () => {
   });
 
   it("returns 400 when transactionId is absent", async () => {
-    const res = await POST(postReq({}));
+    const res = (await POST(postReq({})))!;
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.error).toContain("transactionId");
@@ -84,7 +84,7 @@ describe("POST /admin/payments/verify — validation", () => {
 
   it("returns 404 when transaction does not exist", async () => {
     vi.mocked(db.paymentTransaction.findUnique).mockResolvedValue(null);
-    const res = await POST(postReq({ transactionId: "missing" }));
+    const res = (await POST(postReq({ transactionId: "missing" })))!;
     expect(res.status).toBe(404);
   });
 });
@@ -102,7 +102,7 @@ describe("POST /admin/payments/verify — verify vs force-activate", () => {
 
   it("calls verifyPaymentTransaction (not update) when forceActivate is absent", async () => {
     vi.mocked(verifyPaymentTransaction).mockResolvedValue({ id: "t1", status: "paid" } as never);
-    const res = await POST(postReq({ transactionId: "t1" }));
+    const res = (await POST(postReq({ transactionId: "t1" })))!;
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.method).toBe("verify");
@@ -112,7 +112,7 @@ describe("POST /admin/payments/verify — verify vs force-activate", () => {
 
   it("calls updatePaymentTransactionStatus with 'paid' when forceActivate=true", async () => {
     vi.mocked(updatePaymentTransactionStatus).mockResolvedValue({ id: "t1", status: "paid" } as never);
-    const res = await POST(postReq({ transactionId: "t1", forceActivate: true }));
+    const res = (await POST(postReq({ transactionId: "t1", forceActivate: true })))!;
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.method).toBe("force");
@@ -128,7 +128,7 @@ describe("GET /admin/payments/verify — authorization", () => {
 
   it("returns 401 when unauthenticated", async () => {
     vi.mocked(requireAdminFeature).mockResolvedValue(UNAUTHORIZED);
-    const res = await GET(getReq("u1"));
+    const res = (await GET(getReq("u1")))!;
     expect(res.status).toBe(401);
   });
 });
@@ -142,14 +142,14 @@ describe("GET /admin/payments/verify — listing", () => {
   });
 
   it("returns 400 when userId query param is absent", async () => {
-    const res = await GET(getReq());
+    const res = (await GET(getReq()))!;
     expect(res.status).toBe(400);
   });
 
   it("returns transactions array for a valid userId", async () => {
     const rows = [{ id: "t1", status: "paid", amount: 1000, purpose: "subscription", provider: "paymob", externalReference: null, createdAt: new Date() }];
     vi.mocked(db.paymentTransaction.findMany).mockResolvedValue(rows as never);
-    const res = await GET(getReq("u1"));
+    const res = (await GET(getReq("u1")))!;
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.transactions).toHaveLength(1);
@@ -161,7 +161,7 @@ describe("GET /admin/payments/verify — listing", () => {
 
   it("returns empty array when user has no transactions", async () => {
     vi.mocked(db.paymentTransaction.findMany).mockResolvedValue([]);
-    const res = await GET(getReq("u99"));
+    const res = (await GET(getReq("u99")))!;
     const body = await res.json();
     expect(body.transactions).toEqual([]);
   });
