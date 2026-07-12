@@ -397,7 +397,7 @@ export default function Products() {
                   {importing ? "⏳ جارٍ الاستيراد..." : "📤 استيراد CSV"}
                   <input
                     type="file"
-                    accept=".csv"
+                    accept=".csv,.xlsx"
                     className="hidden"
                     onChange={(e) => {
                       const f = e.target.files?.[0];
