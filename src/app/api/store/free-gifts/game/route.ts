@@ -50,16 +50,15 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "session_error" }, { status: 500 });
   }
 
-  // Eligible products (never send cost/price from admin-only fields)
+  // Eligible products — only show products explicitly chosen by admin
   let eligibleProducts: { id: string; name: string; images: string | null; price: number; category: string }[] = [];
   try {
-    const whereIds = settings.eligibleGiftProductIds.length > 0
-      ? { id: { in: settings.eligibleGiftProductIds } } : {};
-    eligibleProducts = await db.product.findMany({
-      where: { isActive: true, stock: { gt: 0 }, deletedAt: null, ...whereIds },
-      select: { id: true, name: true, images: true, price: true, category: true },
-      take: 20,
-    });
+    if (settings.eligibleGiftProductIds.length > 0) {
+      eligibleProducts = await db.product.findMany({
+        where: { id: { in: settings.eligibleGiftProductIds }, isActive: true, deletedAt: null },
+        select: { id: true, name: true, images: true, price: true, category: true },
+      });
+    }
   } catch { eligibleProducts = []; }
 
   // Referral progress for invite panel
