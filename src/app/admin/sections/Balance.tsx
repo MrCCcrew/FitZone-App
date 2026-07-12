@@ -139,7 +139,7 @@ export default function Balance() {
 
       {/* Tabs */}
       <div className="flex gap-2">
-        {[["FitZonas", "🏅 الفيتزونات"], ["balance", "💳 الرصيد"], ["history", "📜 السجل"]].map(([v, l]) => (
+        {[["points", "🏅 الفيتزونات"], ["balance", "💳 الرصيد"], ["history", "📜 السجل"]].map(([v, l]) => (
           <button key={v} onClick={() => setTab(v as typeof tab)} className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-colors ${tab === v ? "bg-red-600 text-white" : "bg-gray-800 text-gray-400 hover:bg-gray-700"}`}>
             {l}
           </button>
