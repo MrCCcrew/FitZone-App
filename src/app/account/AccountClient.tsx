@@ -819,7 +819,7 @@ function ProfileTab({ user, profileComplete, profilePoints }: { user: AccountDat
           </div>
           <div className="flex items-center gap-3 mt-2">
             <span className="text-xs bg-red-600/20 text-red-400 border border-red-600/30 px-2 py-0.5 rounded-full font-bold">
-              {user.role === "admin" ? t("مدير", "Admin") : user.role === "staff" ? t("إدارة", "Staff") : user.role === "trainer" ? t("مدرب", "Trainer") : t("عضو", "Member")}
+              {user.role === "admin" ? t("مدير", "Admin") : user.role === "staff" ? t("إدارة", "Staff") : user.role === "trainer" ? t("مدرب", "Trainer") : user.role === "contracts_manager" ? t("مدير عقود", "Contracts Manager") : user.role === "head_coach" ? t("كبير المدربين", "Head Coach") : user.role === "accountant" ? t("محاسب", "Accountant") : user.role === "nutritionist" ? t("أخصائية تغذية", "Nutritionist") : t("عضو", "Member")}
             </span>
             <span className="text-gray-600 text-xs">{t("عضو منذ", "Member since")} {joined}</span>
           </div>

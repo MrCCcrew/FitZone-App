@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   const user = await getCurrentAppUser();
   if (!user?.id) return NextResponse.json({ error: "يجب تسجيل الدخول أولاً." }, { status: 401 });
-  if (!["trainer", "admin", "staff"].includes(user.role ?? ""))
+  if (!user.role || user.role === "member")
     return NextResponse.json({ error: "غير مصرح." }, { status: 403 });
 
   const { searchParams } = new URL(req.url);
