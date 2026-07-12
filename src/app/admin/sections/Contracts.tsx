@@ -1357,7 +1357,12 @@ export default function Contracts() {
               <div><label className="block text-xs font-bold text-gray-400 mb-1">البريد</label><input type="email" value={editPartnerForm.email} onChange={(e) => setEditPartnerForm({ ...editPartnerForm, email: e.target.value })} className={INPUT} /></div>
               <div><label className="block text-xs font-bold text-gray-400 mb-1">الهاتف</label><input value={editPartnerForm.phone} onChange={(e) => setEditPartnerForm({ ...editPartnerForm, phone: e.target.value })} className={INPUT} /></div>
               <div className="col-span-2"><label className="block text-xs font-bold text-gray-400 mb-1">كلمة مرور جديدة</label><input type="password" value={editPartnerForm.password} onChange={(e) => setEditPartnerForm({ ...editPartnerForm, password: e.target.value })} className={INPUT} placeholder="اتركها فارغة بدون تغيير" /></div>
-              <div className="col-span-2"><label className="block text-xs font-bold text-gray-400 mb-1">الفئة</label><input value={editPartnerForm.category} onChange={(e) => setEditPartnerForm({ ...editPartnerForm, category: e.target.value })} className={INPUT} /></div>
+              <div className="col-span-2"><label className="block text-xs font-bold text-gray-400 mb-1">الفئة</label>
+                <select value={editPartnerForm.category} onChange={(e) => setEditPartnerForm({ ...editPartnerForm, category: e.target.value })} className={INPUT}>
+                  <option value="">اختر الفئة...</option>
+                  {Object.entries(CATEGORY_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                </select>
+              </div>
               <div className="col-span-2"><label className="block text-xs font-bold text-gray-400 mb-1">مدير التعاقدات</label><select value={editPartnerForm.managerId} onChange={(e) => setEditPartnerForm({ ...editPartnerForm, managerId: e.target.value })} className={INPUT}><option value="">بدون مدير</option>{managers.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</select></div>
               <div><label className="block text-xs font-bold text-gray-400 mb-1">عمولة الشريك</label><input type="number" value={editPartnerForm.commissionRate} onChange={(e) => setEditPartnerForm({ ...editPartnerForm, commissionRate: e.target.value })} className={INPUT} /></div>
               <div><label className="block text-xs font-bold text-gray-400 mb-1">نوعها</label><select value={editPartnerForm.commissionType} onChange={(e) => setEditPartnerForm({ ...editPartnerForm, commissionType: e.target.value })} className={INPUT}><option value="percentage">نسبة %</option><option value="fixed">ثابت ج.م</option></select></div>
