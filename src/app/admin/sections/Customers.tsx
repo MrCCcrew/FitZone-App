@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Customer, CustomerMembershipReport, HealthSurveyResponse } from "../types";
@@ -544,7 +544,7 @@ export default function Customers() {
   return (
     <AdminSectionShell
       title="العملاء"
-      subtitle="راجع البيانات الأساسية والاشتراك والرصيد والنقاط لكل عميل."
+      subtitle="راجع البيانات الأساسية والاشتراك والرصيد والفيتزونات لكل عميل."
       actions={
         <div className="flex flex-wrap gap-2">
           <button
@@ -681,7 +681,7 @@ export default function Customers() {
                     "الباقة",
                     "الحالة",
                     "تاريخ الانضمام",
-                    "النقاط",
+                    "الفيتزونات",
                     "الرصيد",
                     "الإجراءات",
                   ].map((header) => (
@@ -832,7 +832,7 @@ export default function Customers() {
 
             <div className="grid gap-3 sm:grid-cols-3">
               {[
-                { label: "النقاط", value: viewCustomer.points.toLocaleString("ar-EG"), accent: "text-[#ffd166]" },
+                { label: "الفيتزونات", value: viewCustomer.points.toLocaleString("ar-EG"), accent: "text-[#ffd166]" },
                 { label: "الرصيد", value: `${viewCustomer.balance.toLocaleString("ar-EG")} ج.م`, accent: "text-[#8bc5ff]" },
                 { label: "الانضمام", value: viewCustomer.joinDate, accent: "text-[#fff4f8]" },
               ].map((item) => (
@@ -846,7 +846,7 @@ export default function Customers() {
             {/* Quick wallet/points edit */}
             {wpEdit && wpEdit.userId === viewCustomer.id ? (
               <div className="rounded-2xl border border-[rgba(255,188,219,0.2)] bg-black/20 p-4 space-y-3">
-                <div className="text-sm font-bold text-[#fff4f8]">تعديل الرصيد والنقاط</div>
+                <div className="text-sm font-bold text-[#fff4f8]">تعديل الرصيد والفيتزونات</div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div>
                     <label className="mb-1 block text-xs text-[#d7aabd]">الرصيد (ج.م)</label>
@@ -859,7 +859,7 @@ export default function Customers() {
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-xs text-[#d7aabd]">النقاط</label>
+                    <label className="mb-1 block text-xs text-[#d7aabd]">الفيتزونات</label>
                     <input
                       type="number"
                       min={0}
@@ -883,7 +883,7 @@ export default function Customers() {
                 onClick={() => setWpEdit({ userId: viewCustomer.id, balance: viewCustomer.balance, points: viewCustomer.points })}
                 className="w-full rounded-xl border border-[rgba(255,188,219,0.15)] bg-black/10 py-2 text-sm text-[#d7aabd] hover:bg-black/20"
               >
-                تعديل الرصيد والنقاط
+                تعديل الرصيد والفيتزونات
               </button>
             )}
 
@@ -1179,7 +1179,7 @@ export default function Customers() {
                   overwriting earned points with stale form data. */}
               {!("id" in editCustomer) && (
                 <>
-                  <Field label="النقاط الابتدائية">
+                  <Field label="الفيتزونات الابتدائية">
                     <input
                       type="number"
                       value={editCustomer.points}

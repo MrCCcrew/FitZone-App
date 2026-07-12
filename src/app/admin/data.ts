@@ -1,4 +1,4 @@
-import type {
+﻿import type {
   Customer, Plan, Offer, GymClass,
   Product, Order, Transaction, PageSection,
 } from "./types";
@@ -58,7 +58,7 @@ export const MOCK_ORDERS: Order[] = [
 
 export const MOCK_TRANSACTIONS: Transaction[] = [
   { id: "t1", customerId: "c1", customerName: "محمد الشرقاوي", type: "earn", points: 200, amount: 0, reason: "تجديد اشتراك VIP", date: "2025-03-01" },
-  { id: "t2", customerId: "c5", customerName: "ياسمين علي", type: "redeem", points: -500, amount: 50, reason: "استبدال نقاط بخصم", date: "2025-03-05" },
+  { id: "t2", customerId: "c5", customerName: "ياسمين علي", type: "redeem", points: -500, amount: 50, reason: "استبدال فيتزونات بخصم", date: "2025-03-05" },
   { id: "t3", customerId: "c2", customerName: "مريم السيد", type: "topup", points: 0, amount: 300, reason: "شحن رصيد", date: "2025-03-07" },
   { id: "t4", customerId: "c8", customerName: "عمر طارق", type: "earn", points: 150, amount: 0, reason: "شراء منتج", date: "2025-03-09" },
   { id: "t5", customerId: "c4", customerName: "أحمد فاروق", type: "deduct", points: -100, amount: 0, reason: "انتهاك قواعد النادي", date: "2025-03-10" },

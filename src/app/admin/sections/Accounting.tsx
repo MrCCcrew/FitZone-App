@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect, useCallback, useRef, Fragment } from "react";
 import { AdminSectionShell, AdminCard, AdminEmptyState } from "./shared";
@@ -900,8 +900,8 @@ function ClubTab({ data, onRefresh, dateRange }: { data: AccountingData; onRefre
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <KpiCard label="نقاط مستردة (تكلفة)" value={`${fmt(s.redeemedPointsCost)} ج`} color="text-orange-400" sub={`سعر النقطة: ${r.pointValueEGP} ج`} />
-        <KpiCard label="التزامات النقاط الحالية" value={`${fmt(r.currentPointsLiability)} ج`} color="text-yellow-300" />
+        <KpiCard label="فيتزونات مستردة (تكلفة)" value={`${fmt(s.redeemedPointsCost)} ج`} color="text-orange-400" sub={`سعر الفيتزونة: ${r.pointValueEGP} ج`} />
+        <KpiCard label="التزامات الفيتزونات الحالية" value={`${fmt(r.currentPointsLiability)} ج`} color="text-yellow-300" />
         <KpiCard label="المصاريف" value={`${fmt(s.expenseTotal)} ج`} color="text-red-400" />
         <KpiCard label="رسوم المنصات" value={`${fmt(s.feeTotal)} ج`} color="text-orange-300" />
       </div>
@@ -957,7 +957,7 @@ function ClubTab({ data, onRefresh, dateRange }: { data: AccountingData; onRefre
         <div className="rounded-2xl border border-[rgba(255,188,219,0.2)] bg-[rgba(255,255,255,.04)] p-5">
           <p className="mb-1 text-sm text-[#d7aabd]">إجمالي الربح</p>
           <p className={`text-2xl font-black ${s.grossProfit >= 0 ? "text-emerald-400" : "text-red-400"}`}>{fmt(s.grossProfit)} ج</p>
-          <p className="mt-1 text-xs text-[#a07080]">= الإيرادات − مكافآت المحفظة − النقاط المستردة</p>
+          <p className="mt-1 text-xs text-[#a07080]">= الإيرادات − مكافآت المحفظة − الفيتزونات المستردة</p>
         </div>
         <div className="rounded-2xl border-2 border-[rgba(255,188,219,0.25)] bg-[rgba(255,255,255,.04)] p-5">
           <p className="mb-1 text-sm text-[#d7aabd]">صافي الربح</p>

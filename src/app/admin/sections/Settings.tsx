@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import type { AdminEmployee, AuditLogEntry } from "../types";
@@ -33,7 +33,7 @@ const FEATURE_LABELS: Record<string, string> = {
   reviews: "الآراء",
   bookings: "الحجوزات",
   orders: "الطلبات والمدفوعات",
-  balance: "الرصيد والنقاط",
+  balance: "الرصيد والفيتزونات",
   chat: "الدردشة المباشرة",
   complaints: "الشكاوى",
   discounts: "أكواد الخصم",

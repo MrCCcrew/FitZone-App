@@ -1,4 +1,4 @@
-import type { CoachIntent, CoachLang, CoachProfileData, CoachQuickAction } from "@/lib/ai-coach/types";
+﻿import type { CoachIntent, CoachLang, CoachProfileData, CoachQuickAction } from "@/lib/ai-coach/types";
 import { isCoachAdvancedFeaturesEnabled } from "@/lib/ai-coach/config";
 
 function action(id: string, label: string, prompt: string): CoachQuickAction {
@@ -94,7 +94,7 @@ export function buildQuickActions(options: {
     const base = [
       action("membership-detail", t("اشتراكي الحالي", "My membership"), t("ما اشتراكي الحالي؟", "What is my current membership?")),
       action("bookings", t("حجوزاتي", "My bookings"), t("ما حجوزاتي القادمة؟", "What are my upcoming bookings?")),
-      action("wallet", t("محفظتي ونقاطي", "Wallet and points"), t("ما رصيد محفظتي ونقاطي؟", "What are my wallet balance and points?")),
+      action("wallet", t("محفظتي وفيتزوناتي", "Wallet and points"), t("ما رصيد محفظتي وفيتزوناتي؟", "What are my wallet balance and points?")),
     ];
     if (checkInDue || !hasProfile) base.push(coachCheckInAction);
     base.push(coachFoodAction, handoff);

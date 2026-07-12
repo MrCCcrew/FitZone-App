@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireAdminFeature } from "@/lib/admin-guard";
 
@@ -44,11 +44,11 @@ const DEFAULT: StoreFreeGiftsGameSettings = {
   showCountdown: false,
   rewardsPool: [
     { id: "r1", labelAr: "هدية مجانية",  labelEn: "Free Gift",       type: "free_product",  icon: "🎁", value: 0,   weight: 25, active: true },
-    { id: "r2", labelAr: "50 نقطة",       labelEn: "50 Points",       type: "points",        icon: "⭐", value: 50,  weight: 22, active: true },
+    { id: "r2", labelAr: "50 فيتزونة",       labelEn: "50 Points",       type: "points",        icon: "⭐", value: 50,  weight: 22, active: true },
     { id: "r3", labelAr: "شحن مجاني",    labelEn: "Free Shipping",   type: "free_shipping", icon: "🚚", value: 0,   weight: 18, active: true },
     { id: "r4", labelAr: "خصم 10%",      labelEn: "10% Discount",    type: "discount",      icon: "🪙", value: 10,  weight: 15, active: true },
     { id: "r5", labelAr: "صندوق بونص",   labelEn: "Bonus Chest",     type: "bonus_chest",   icon: "💎", value: 0,   weight: 10, active: true },
-    { id: "r6", labelAr: "100 نقطة",      labelEn: "100 Points",      type: "points",        icon: "🏆", value: 100, weight: 6,  active: true },
+    { id: "r6", labelAr: "100 فيتزونة",      labelEn: "100 Points",      type: "points",        icon: "🏆", value: 100, weight: 6,  active: true },
     { id: "r7", labelAr: "هدية إضافية",  labelEn: "Extra Gift",      type: "free_product",  icon: "🎀", value: 0,   weight: 3,  active: true },
     { id: "r8", labelAr: "50 ج.م رصيد", labelEn: "50 EGP Credit",   type: "wallet",        icon: "💳", value: 50,  weight: 1,  active: true },
   ],

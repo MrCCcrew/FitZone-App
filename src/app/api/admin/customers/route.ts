@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import bcryptjs from "bcryptjs";
 import { requireAdminFeature } from "@/lib/admin-guard";
 import { db } from "@/lib/db";
@@ -271,7 +271,7 @@ async function applyWalletAndRewards(userId: string, nextBalance?: number, nextP
         data: {
           rewardId: rewards.id,
           points: delta,
-          reason: delta > 0 ? "إضافة نقاط من الإدارة" : "خصم نقاط من الإدارة",
+          reason: delta > 0 ? "إضافة فيتزونات من الإدارة" : "خصم فيتزونات من الإدارة",
         },
       });
     }

@@ -1,4 +1,4 @@
-import type { CoachIntent } from "@/lib/ai-coach/types";
+﻿import type { CoachIntent } from "@/lib/ai-coach/types";
 
 function normalize(text: string) {
   return text
@@ -73,7 +73,7 @@ export function detectCoachIntent(message: string): CoachIntent {
   if (matches(text, [/\bحجز\b/, /\bاحجز\b/, /\bbooking\b/, /\bbook\b/, /\bsession\b/])) return "booking_help";
 
   // Account
-  if (matches(text, [/\bاشتراكي\b/, /\bمحفظتي\b/, /\bنقاطي\b/, /\bحجوزاتي\b/, /\baccount\b/, /\bwallet\b/, /\brewards\b/])) return "account_summary";
+  if (matches(text, [/\bاشتراكي\b/, /\bمحفظتي\b/, /\bفيتزوناتي\b/, /\bحجوزاتي\b/, /\baccount\b/, /\bwallet\b/, /\brewards\b/])) return "account_summary";
 
   // Offers
   if (matches(text, [/\bعرض\b/, /\bعروض\b/, /\boffer\b/, /\bdiscount\b/, /\bpromo\b/])) return "offer_lookup";

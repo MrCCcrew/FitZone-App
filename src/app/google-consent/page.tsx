@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -94,10 +94,10 @@ export default function GoogleConsentPage() {
           {[
             ["🔐", t("تفعيل الحساب", "Account Activation"),
               t("حسابك مرتبط بحساب جوجل ويمكن استخدامه فوراً.", "Your account is linked to Google and can be used immediately.")],
-            ["🎁", t("نقاط الولاء", "Loyalty Points"),
-              t("كل 1 جنيه = نقاط تراكمية تستخدمها على أي خدمة. صلاحيتها 6 شهور.", "Every 1 EGP = cumulative points usable on any service. Valid for 6 months.")],
-            ["🎉", t("نقاط الترحيب", "Welcome Points"),
-              t("بمجرد إنشاء الحساب، هيتم إضافة 100 نقطة هدية ترحيباً بيكِ 🎁", "Upon account creation, 100 gift points will be added as a welcome bonus 🎁")],
+            ["🎁", t("فيتزونات الولاء", "Loyalty Points"),
+              t("كل 1 جنيه = فيتزونات تراكمية تستخدمها على أي خدمة. صلاحيتها 6 شهور.", "Every 1 EGP = cumulative points usable on any service. Valid for 6 months.")],
+            ["🎉", t("فيتزونات الترحيب", "Welcome Points"),
+              t("بمجرد إنشاء الحساب، هيتم إضافة 100 فيتزونة هدية ترحيباً بيكِ 🎁", "Upon account creation, 100 gift points will be added as a welcome bonus 🎁")],
             ["👥", t("نظام الإحالة", "Referral System"),
               t("ستجدين كود الإحالة الخاص بك داخل حسابك. شاركيه مع أصحابك — لما أي عضو تشترك في باقة مدفوعة باستخدام كودك، هتاخدي مكافأة مالية في محفظتك.", "You'll find your referral code in your profile. Share it — when any member subscribes to a paid plan using your code, you earn a cash reward in your wallet.")],
             ["🔒", t("الأمان والخصوصية", "Security & Privacy"),
@@ -113,7 +113,7 @@ export default function GoogleConsentPage() {
 
           <div style={{ borderTop: "1px solid rgba(255,255,255,.1)", paddingTop: 12, marginTop: 4 }}>
             <p style={{ color: "#f472b6", fontSize: 13, fontWeight: 600 }}>
-              ✔️ {t("التسجيل سهل وسريع — ابدئي الآن واستفيدي من النقاط والهدايا 🎁", "Quick & easy sign-up — start now and enjoy points and gifts 🎁")}
+              ✔️ {t("التسجيل سهل وسريع — ابدئي الآن واستفيدي من الفيتزونات والهدايا 🎁", "Quick & easy sign-up — start now and enjoy points and gifts 🎁")}
             </p>
           </div>
         </div>

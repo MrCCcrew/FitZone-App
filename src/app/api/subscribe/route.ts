@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/app-session";
 import { db } from "@/lib/db";
 
@@ -127,7 +127,7 @@ export async function POST(req: Request) {
         activeMem?.membership?.kind === "subscription" || activeMem?.membership?.kind === "package";
       if (!hasActivePaidSub) {
         return NextResponse.json(
-          { error: "يجب أن يكون لديك اشتراك مدفوع فعال لاستخدام رصيد المحفظة أو النقاط على هذا الكلاس." },
+          { error: "يجب أن يكون لديك اشتراك مدفوع فعال لاستخدام رصيد المحفظة أو الفيتزونات على هذا الكلاس." },
           { status: 400 },
         );
       }
@@ -149,7 +149,7 @@ export async function POST(req: Request) {
     if (pointsDeductCount > 0) {
       const currentPoints = pointsRow?.points ?? 0;
       if (pointsDeductCount > currentPoints) {
-        return NextResponse.json({ error: "رصيد النقاط غير كافٍ." }, { status: 400 });
+        return NextResponse.json({ error: "رصيد الفيتزونات غير كافٍ." }, { status: 400 });
       }
       validatedPointsDeduct = pointsDeductCount;
     }
@@ -559,7 +559,7 @@ export async function POST(req: Request) {
           data: {
             rewardId: pointsRecord.id,
             points: -actualPointsDeduct,
-            reason: `استخدام نقاط لسداد اشتراك باقة ${plan.name}`,
+            reason: `استخدام فيتزونات لسداد اشتراك باقة ${plan.name}`,
           },
         });
         paymentAmount = Math.max(0, (paymentAmount ?? 0) - actualPointsEGP);

@@ -1,4 +1,4 @@
-import nodemailer from "nodemailer";
+﻿import nodemailer from "nodemailer";
 import type { MembershipInvoiceDetails } from "@/lib/membership-invoice";
 import type { MembershipCardAttachment } from "@/lib/membership-card";
 
@@ -141,7 +141,7 @@ export async function sendSubscriptionEmail(
                 </tr>` : ""}
                 ${(invoice.details.pointsDeduct ?? 0) > 0 ? `
                 <tr>
-                  <td style="padding: 8px 0; color: #9ca3af; font-size: 13px; border-bottom: 1px solid #2a2a2a;">خصم نقاط المكافآت</td>
+                  <td style="padding: 8px 0; color: #9ca3af; font-size: 13px; border-bottom: 1px solid #2a2a2a;">خصم فيتزونات</td>
                   <td style="padding: 8px 0; color: #4ade80; font-weight: 700; font-size: 13px; border-bottom: 1px solid #2a2a2a; text-align: left;">- ${money(invoice.details.pointsDeduct ?? 0)} ج.م</td>
                 </tr>` : ""}
                 <tr>

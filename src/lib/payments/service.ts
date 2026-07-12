@@ -1,4 +1,4 @@
-import { db } from "@/lib/db";
+﻿import { db } from "@/lib/db";
 import { buildAttendancePayload, ensureMembershipAttendancePass, ensurePrivateAttendancePass } from "@/lib/attendance";
 import { sendSubscriptionEmail } from "@/lib/email";
 import { getRewardSettings, calcTier } from "@/lib/reward-settings";
@@ -152,7 +152,7 @@ export async function restorePaymentBalanceAdjustments(input: {
         data: {
           rewardId: rewardPoints.id,
           points: pointsCount,
-          reason: `استرجاع نقاط ولاء لعملية غير مكتملة ${input.reference ?? ""}`.trim(),
+          reason: `استرجاع فيتزونات ولاء لعملية غير مكتملة ${input.reference ?? ""}`.trim(),
         },
       });
     }
@@ -206,7 +206,7 @@ async function restorePaymentTransactionAdjustments(transactionId: string) {
         data: {
           rewardId: rewardPoints.id,
           points: adjustments.pointsCount,
-          reason: `استرجاع نقاط ولاء للمعاملة ${transaction.referenceCode ?? transaction.id}`,
+          reason: `استرجاع فيتزونات ولاء للمعاملة ${transaction.referenceCode ?? transaction.id}`,
         },
       });
     }
@@ -1207,7 +1207,7 @@ export async function unlockPendingReferralReward(subscribedUserId: string) {
         title: "🎉 مكافأة إحالة!",
         body: rType === "wallet"
           ? `اشترك أحد أعضائك المُحالين بنجاح وحصلتِ على ${rValue} ج.م في محفظتك!`
-          : `اشترك أحد أعضائك المُحالين بنجاح وحصلتِ على ${rValue} نقطة في رصيد مكافآتك!`,
+          : `اشترك أحد أعضائك المُحالين بنجاح وحصلتِ على ${rValue} فيتزونة في رصيد مكافآتك!`,
         type: "success",
       },
     });

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect, useCallback } from "react";
 import { AdminSectionShell, AdminCard } from "./shared";
@@ -117,15 +117,15 @@ export default function RewardSettings() {
           <div className="space-y-6">
             {/* Onboarding Rewards */}
             <div>
-              <h3 className="mb-3 text-base font-black text-[#fff4f8]">🎁 نقاط ترحيب العضو الجديد</h3>
+              <h3 className="mb-3 text-base font-black text-[#fff4f8]">🎁 فيتزونات ترحيب العضو الجديد</h3>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className={LABEL}>نقاط إكمال البيانات الشخصية</label>
+                  <label className={LABEL}>فيتزونات إكمال البيانات الشخصية</label>
                   <input className={INPUT} type="number" min="0" value={settings.onboardingProfilePoints}
                     onChange={set("onboardingProfilePoints")} />
                 </div>
                 <div>
-                  <label className={LABEL}>نقاط تفعيل البريد الإلكتروني</label>
+                  <label className={LABEL}>فيتزونات تفعيل البريد الإلكتروني</label>
                   <input className={INPUT} type="number" min="0" value={settings.onboardingEmailPoints}
                     onChange={set("onboardingEmailPoints")} />
                 </div>
@@ -136,15 +136,15 @@ export default function RewardSettings() {
 
             {/* Subscription Points */}
             <div>
-              <h3 className="mb-3 text-base font-black text-[#fff4f8]">🎯 نقاط الاشتراك</h3>
+              <h3 className="mb-3 text-base font-black text-[#fff4f8]">🎯 فيتزونات الاشتراك</h3>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className={LABEL}>نقاط عند كل اشتراك جديد</label>
+                  <label className={LABEL}>فيتزونات عند كل اشتراك جديد</label>
                   <input className={INPUT} type="number" min="0" value={settings.pointsPerSubscription}
                     onChange={set("pointsPerSubscription")} />
                 </div>
                 <div>
-                  <label className={LABEL}>قيمة النقطة الواحدة (جنيه)</label>
+                  <label className={LABEL}>قيمة الفيتزونة الواحدة (جنيه)</label>
                   <input className={INPUT} type="number" min="0" step="0.01" value={settings.pointValueEGP}
                     onChange={set("pointValueEGP")} />
                 </div>
@@ -161,19 +161,19 @@ export default function RewardSettings() {
                   <label className={LABEL}>نوع المكافأة</label>
                   <select className={INPUT} style={{ backgroundColor: "#2a0f1b" }} value={settings.referralRewardType}
                     onChange={(e) => setSettings((p) => ({ ...p, referralRewardType: e.target.value as "points" | "wallet" }))}>
-                    <option value="points">نقاط مكافآت</option>
+                    <option value="points">فيتزونات</option>
                     <option value="wallet">رصيد محفظة (جنيه)</option>
                   </select>
                 </div>
                 <div>
                   <label className={LABEL}>
-                    قيمة المكافأة {settings.referralRewardType === "points" ? "(نقطة)" : "(جنيه)"}
+                    قيمة المكافأة {settings.referralRewardType === "points" ? "(فيتزونة)" : "(جنيه)"}
                   </label>
                   <input className={INPUT} type="number" min="0" value={settings.referralRewardValue}
                     onChange={set("referralRewardValue")} />
                 </div>
                 <div>
-                  <label className={LABEL}>نقاط إضافية للمُحال (عند التسجيل)</label>
+                  <label className={LABEL}>فيتزونات إضافية للمُحال (عند التسجيل)</label>
                   <input className={INPUT} type="number" min="0" value={settings.pointsPerReferral}
                     onChange={set("pointsPerReferral")} />
                 </div>
@@ -184,7 +184,7 @@ export default function RewardSettings() {
 
             {/* Tier Thresholds */}
             <div>
-              <h3 className="mb-3 text-base font-black text-[#fff4f8]">🏅 حدود مستويات العضوية (نقاط)</h3>
+              <h3 className="mb-3 text-base font-black text-[#fff4f8]">🏅 حدود مستويات العضوية (فيتزونات)</h3>
               <div className="grid grid-cols-3 gap-4">
                 <div>
                   <label className={LABEL}>🥈 فضي (Silver)</label>

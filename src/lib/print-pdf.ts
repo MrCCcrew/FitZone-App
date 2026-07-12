@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Print-to-PDF utility — opens a styled print window.
  * Arabic RTL is handled natively by the browser.
  */
@@ -432,12 +432,12 @@ export function printClubReport(opts: {
         <div class="kpi-value red">${fmt(s.walletBonusCost)} ج</div>
       </div>
       <div class="kpi-card">
-        <div class="kpi-label">نقاط مستردة (تكلفة)</div>
+        <div class="kpi-label">فيتزونات مستردة (تكلفة)</div>
         <div class="kpi-value red">${fmt(s.redeemedPointsCost)} ج</div>
-        <div style="font-size:11px;color:#888">سعر النقطة: ${opts.pointValueEGP} ج</div>
+        <div style="font-size:11px;color:#888">سعر الفيتزونة: ${opts.pointValueEGP} ج</div>
       </div>
       <div class="kpi-card">
-        <div class="kpi-label">التزامات النقاط الحالية</div>
+        <div class="kpi-label">التزامات الفيتزونات الحالية</div>
         <div class="kpi-value orange">${fmt(s.currentPointsLiability)} ج</div>
       </div>
       <div class="kpi-card">
@@ -453,7 +453,7 @@ export function printClubReport(opts: {
       <div class="invoice-box">
         <div style="font-size:12px;color:#777;margin-bottom:4px">إجمالي الربح</div>
         <div style="font-size:22px;font-weight:900;color:${s.grossProfit >= 0 ? "#16a34a" : "#dc2626"}">${fmt(s.grossProfit)} ج</div>
-        <div style="font-size:11px;color:#888;margin-top:4px">= إيرادات − مكافآت محفظة − نقاط مستردة</div>
+        <div style="font-size:11px;color:#888;margin-top:4px">= إيرادات − مكافآت محفظة − فيتزونات مستردة</div>
       </div>
       <div class="net-profit-box" style="margin-bottom:0">
         <div>

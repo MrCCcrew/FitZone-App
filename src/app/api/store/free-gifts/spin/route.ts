@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { db } from "@/lib/db";
 import { getGameSettings, type RewardPoolItem } from "@/app/api/admin/store-free-gifts-game/route";
@@ -7,10 +7,10 @@ const COOKIE = "fitzone-game-token";
 
 const FALLBACK_POOL: RewardPoolItem[] = [
   { id: "f1", labelAr: "هدية مجانية", labelEn: "Free Gift",      type: "free_product",  icon: "🎁", value: 0,   weight: 30, active: true },
-  { id: "f2", labelAr: "50 نقطة",      labelEn: "50 Points",      type: "points",        icon: "⭐", value: 50,  weight: 25, active: true },
+  { id: "f2", labelAr: "50 فيتزونة",      labelEn: "50 Points",      type: "points",        icon: "⭐", value: 50,  weight: 25, active: true },
   { id: "f3", labelAr: "شحن مجاني",   labelEn: "Free Shipping",  type: "free_shipping", icon: "🚚", value: 0,   weight: 20, active: true },
   { id: "f4", labelAr: "خصم 10%",     labelEn: "10% Discount",   type: "discount",      icon: "🪙", value: 10,  weight: 15, active: true },
-  { id: "f5", labelAr: "100 نقطة",     labelEn: "100 Points",     type: "points",        icon: "🏆", value: 100, weight: 10, active: true },
+  { id: "f5", labelAr: "100 فيتزونة",     labelEn: "100 Points",     type: "points",        icon: "🏆", value: 100, weight: 10, active: true },
 ];
 
 function pickByWeight(pool: RewardPoolItem[]): { item: RewardPoolItem; index: number } {

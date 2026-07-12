@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentAppUser, createAppSessionToken, APP_SESSION_COOKIE, getAppSessionCookieOptions } from "@/lib/app-session";
 import { applyRateLimit, getClientIp } from "@/lib/rate-limit";
@@ -78,7 +78,7 @@ export async function POST(req: Request) {
             data: {
               userId: user.id,
               title: "🎉 مكافأة تفعيل البريد!",
-              body: `حصلتِ على ${emailPoints} نقطة لتفعيل بريدك الإلكتروني.`,
+              body: `حصلتِ على ${emailPoints} فيتزونة لتفعيل بريدك الإلكتروني.`,
               type: "success",
             },
           });
