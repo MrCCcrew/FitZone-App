@@ -190,7 +190,7 @@ export default function StoreGiftCampaign() {
         {[
           ["🎁", "إجمالي المطالبات", stats.totalClaims, "text-pink-400"],
           ["✅", "هدايا مُكتسبة", stats.earnedClaims, "text-green-400"],
-          ["⚙️", "الحالة", settings.isActive && settings.campaignEnabled ? "مفعّلة" : "متوقفة", settings.isActive && settings.campaignEnabled ? "text-green-400" : "text-red-400"],
+          ["⚙️", "الحالة", settings.isActive ? "مفعّلة" : "متوقفة", settings.isActive ? "text-green-400" : "text-red-400"],
         ].map(([icon, label, value, color]) => (
           <div key={String(label)} className="rounded-2xl border border-white/10 bg-white/5 p-4 text-center">
             <div className="text-2xl mb-1">{String(icon)}</div>
@@ -211,30 +211,17 @@ export default function StoreGiftCampaign() {
         <h3 className="text-white font-black text-lg">⚙️ إعدادات حملة هدايا المتجر</h3>
         <p className="text-xs text-gray-500">هذه الحملة تطبق على منتجات المتجر فقط — لا تؤثر على الاشتراكات أو الجيم.</p>
 
-        {/* Toggle active — single switch controls both isActive + campaignEnabled */}
-        <div className="flex items-center gap-4">
-          <label className="flex items-center gap-3 cursor-pointer">
-            <div
-              onClick={() => { const v = !settings.isActive; set("isActive", v); set("campaignEnabled", v); }}
-              className={`w-12 h-6 rounded-full transition-colors cursor-pointer ${settings.isActive ? "bg-pink-600" : "bg-gray-700"}`}
-              style={{ position: "relative" }}
-            >
-              <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${settings.isActive ? "right-1" : "right-7"}`} />
-            </div>
-            <span className="text-white font-bold text-sm">تفعيل الحملة وعرضها للعملاء</span>
-          </label>
-          {/* removed separate campaignEnabled toggle — it always mirrors isActive */}
-          <label className="flex items-center gap-3 cursor-pointer" style={{ display: "none" }}>
-            <div
-              onClick={() => set("campaignEnabled", !settings.campaignEnabled)}
-              className={`w-12 h-6 rounded-full transition-colors cursor-pointer ${settings.campaignEnabled ? "bg-green-600" : "bg-gray-700"}`}
-              style={{ position: "relative" }}
-            >
-              <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${settings.campaignEnabled ? "right-1" : "right-7"}`} />
-            </div>
-            <span className="text-white font-bold text-sm">عرض الحملة للعملاء</span>
-          </label>
-        </div>
+        {/* Single toggle — controls both isActive and campaignEnabled together */}
+        <label className="flex items-center gap-3 cursor-pointer">
+          <div
+            onClick={() => { const v = !settings.isActive; set("isActive", v); set("campaignEnabled", v); }}
+            className={`w-12 h-6 rounded-full transition-colors cursor-pointer ${settings.isActive ? "bg-pink-600" : "bg-gray-700"}`}
+            style={{ position: "relative" }}
+          >
+            <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${settings.isActive ? "right-1" : "right-7"}`} />
+          </div>
+          <span className="text-white font-bold text-sm">تفعيل الحملة وعرضها للعملاء</span>
+        </label>
 
         <div className="grid grid-cols-2 gap-4">
           <div>
