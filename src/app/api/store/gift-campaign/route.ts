@@ -7,7 +7,7 @@ export async function GET() {
   const settings = await getStoreCampaignSettings();
 
   // Campaign not active — return nothing so UI shows no banner
-  if (!settings.isActive || !settings.campaignEnabled) {
+  if (!settings.isActive) {
     return NextResponse.json({ active: false });
   }
 
