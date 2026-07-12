@@ -32,8 +32,10 @@ function generatePartnerBenefitCode() {
   return `FZ-${body}`;
 }
 
+const PENDING_PREFIX = "[PENDING_APPROVAL]";
+
 type ViewMode = "admin" | "partner";
-type AdminTab = "partners" | "commissions" | "withdrawals";
+type AdminTab = "partners" | "pending" | "commissions" | "withdrawals";
 type WdFilter = "all" | "pending" | "approved" | "rejected";
 type WdEntry = { notes: string; receiptUrl: string; uploading: boolean; acting: boolean };
 
@@ -199,6 +201,21 @@ export default function Partners({ viewMode = "admin" }: { viewMode?: ViewMode }
 
   const deletePartner = async (id: string) => {
     if (!window.confirm("هل تريد حذف هذا الشريك وحسابه؟")) return;
+    await fetch("/api/admin/partners", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
+    void loadAdmin();
+  };
+
+  const approvePartner = async (partner: Partner) => {
+    const cleanNotes = (partner.notes ?? "").replace(PENDING_PREFIX, "").trim() || null;
+    await fetch("/api/admin/partners", {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: partner.id, isActive: true, showOnPublicPage: true, notes: cleanNotes }),
+    });
+    void loadAdmin();
+  };
+
+  const rejectPartner = async (id: string) => {
+    if (!window.confirm("رفض وحذف طلب الشريك؟")) return;
     await fetch("/api/admin/partners", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
     void loadAdmin();
   };
@@ -648,6 +665,8 @@ export default function Partners({ viewMode = "admin" }: { viewMode?: ViewMode }
   const totalWithdrawn = commissions.filter((c) => c.status === "withdrawn").reduce((s, c) => s + c.amount, 0);
   const pendingWithdrawalsCount = adminWithdrawals.filter((r) => r.status === "pending").length;
   const filteredWithdrawals = wdFilter === "all" ? adminWithdrawals : adminWithdrawals.filter((r) => r.status === wdFilter);
+  const pendingPartners = partners.filter((p) => p.notes?.startsWith(PENDING_PREFIX));
+  const activePartners = partners.filter((p) => !p.notes?.startsWith(PENDING_PREFIX));
 
   const openModal = (partner?: Partner) => {
     setModal(partner ? { ...partner } : { commissionRate: 10, commissionType: "percentage", isActive: true, showOnPublicPage: true });
@@ -660,33 +679,109 @@ export default function Partners({ viewMode = "admin" }: { viewMode?: ViewMode }
   return (
     <div className="space-y-6">
       {/* Tabs */}
-      <div className="flex gap-2 border-b border-gray-800 pb-1">
+      <div className="flex gap-2 border-b border-gray-800 pb-1 flex-wrap">
         {(
           [
-            ["partners", "الشركاء"],
+            ["partners", `الشركاء (${activePartners.length})`],
+            ["pending", `طلبات الموافقة${pendingPartners.length > 0 ? ` (${pendingPartners.length})` : ""}`],
             ["commissions", "العمولات المالية"],
             ["withdrawals", `طلبات السحب${pendingWithdrawalsCount > 0 ? ` (${pendingWithdrawalsCount})` : ""}`],
           ] as [AdminTab, string][]
         ).map(([key, label]) => (
           <button key={key} onClick={() => setTab(key)}
-            className={`rounded-t-lg px-4 py-2 text-sm font-bold transition-colors ${tab === key ? "bg-pink-600 text-white" : "text-gray-400 hover:text-white"}`}>
+            className={`rounded-t-lg px-4 py-2 text-sm font-bold transition-colors ${tab === key ? "bg-pink-600 text-white" : key === "pending" && pendingPartners.length > 0 ? "text-yellow-300 hover:text-white" : "text-gray-400 hover:text-white"}`}>
             {label}
           </button>
         ))}
       </div>
 
+      {/* ── Pending Approval Tab ── */}
+      {tab === "pending" && (
+        <section className="space-y-5">
+          <h3 className="text-lg font-black text-white">طلبات الموافقة على شركاء جدد</h3>
+          {pendingPartners.length === 0 && <div className="py-16 text-center text-sm text-gray-500">لا توجد طلبات معلقة.</div>}
+          <div className="space-y-4">
+            {pendingPartners.map((p) => (
+              <div key={p.id} className="rounded-2xl border border-yellow-500/30 bg-yellow-950/10 p-5 space-y-4">
+                <div className="flex items-start gap-4">
+                  <div className="h-14 w-14 flex-shrink-0 overflow-hidden rounded-xl border border-gray-700 bg-gray-800">
+                    {p.logoUrl
+                      ? <img src={p.logoUrl} alt={p.name} className="h-full w-full object-cover" />
+                      : <div className="flex h-full items-center justify-center text-xl font-black text-gray-500">{p.name[0]}</div>
+                    }
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-black text-white">{p.name}</span>
+                      {p.nameEn && <span className="text-xs text-gray-400">{p.nameEn}</span>}
+                      <span className="rounded-full bg-yellow-900/40 px-2 py-0.5 text-xs text-yellow-300">⏳ بانتظار الموافقة</span>
+                      <span className="rounded-full bg-pink-900/30 px-2 py-0.5 text-xs text-pink-300">{CATEGORY_LABELS[p.category] ?? p.category}</span>
+                    </div>
+                    <div className="mt-1 text-xs text-gray-400">{p.linkedUser?.email}</div>
+                    {p.contactPhone && <div className="mt-0.5 text-xs text-gray-500">📞 {p.contactPhone}</div>}
+                    {p.websiteUrl && <a href={p.websiteUrl} target="_blank" rel="noopener noreferrer" className="mt-0.5 inline-block text-xs text-pink-300 hover:underline">🔗 {p.websiteUrl}</a>}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+                  <div className="rounded-xl bg-gray-800/60 p-2">
+                    <span className="text-gray-400">عمولته: </span>
+                    <span className="font-bold text-white">{p.commissionType === "percentage" ? `${p.commissionRate}%` : `${p.commissionRate} ج.م`}</span>
+                  </div>
+                  {p.referralDiscountRate != null && (
+                    <div className="rounded-xl bg-gray-800/60 p-2">
+                      <span className="text-gray-400">خصم إحالة: </span>
+                      <span className="font-bold text-white">{p.referralDiscountRate}%</span>
+                    </div>
+                  )}
+                  {p.memberBenefitRate != null && (
+                    <div className="rounded-xl bg-gray-800/60 p-2">
+                      <span className="text-gray-400">ميزة الأعضاء: </span>
+                      <span className="font-bold text-white">{p.memberBenefitRate}%</span>
+                    </div>
+                  )}
+                  {p.memberBenefitCode && (
+                    <div className="rounded-xl bg-gray-800/60 p-2">
+                      <span className="text-gray-400">كود: </span>
+                      <span className="font-mono font-bold text-pink-300">{p.memberBenefitCode}</span>
+                    </div>
+                  )}
+                </div>
+                {(p.contractStartDate || p.contractEndDate) && (
+                  <div className="text-xs text-gray-500">التعاقد: {p.contractStartDate ?? "—"} → {p.contractEndDate ?? "—"}</div>
+                )}
+                {p.notes && p.notes.replace(PENDING_PREFIX, "").trim() && (
+                  <div className="rounded-xl bg-gray-800/60 p-3 text-xs text-gray-300">
+                    <span className="text-gray-500">ملاحظات: </span>{p.notes.replace(PENDING_PREFIX, "").trim()}
+                  </div>
+                )}
+                <div className="flex gap-3">
+                  <button onClick={() => void approvePartner(p)}
+                    className="flex-1 rounded-xl bg-emerald-600 py-2.5 text-sm font-black text-white hover:bg-emerald-500">
+                    ✓ موافقة وتفعيل الشريك
+                  </button>
+                  <button onClick={() => void rejectPartner(p.id)}
+                    className="rounded-xl bg-red-950/50 px-6 py-2.5 text-sm font-black text-red-300 hover:bg-red-900/50">
+                    رفض وحذف
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* ── Partners Tab ── */}
       {tab === "partners" && (
         <section className="space-y-5">
           <div className="flex items-center justify-between">
-            <h3 className="text-lg font-black text-white">إدارة الشركاء ({partners.length})</h3>
+            <h3 className="text-lg font-black text-white">إدارة الشركاء ({activePartners.length})</h3>
             <button onClick={() => openModal()} className="rounded-xl bg-pink-600 px-4 py-2 text-sm font-bold text-white">+ شريك جديد</button>
           </div>
 
-          {partners.length === 0 && <div className="py-16 text-center text-sm text-gray-500">لا يوجد شركاء بعد.</div>}
+          {activePartners.length === 0 && <div className="py-16 text-center text-sm text-gray-500">لا يوجد شركاء بعد.</div>}
 
           <div className="grid gap-4 xl:grid-cols-2">
-            {partners.map((p) => (
+            {activePartners.map((p) => (
               <div key={p.id} className="rounded-2xl border border-gray-800 bg-gray-900/60 p-4 space-y-3">
                 <div className="flex items-start gap-4">
                   <div className="h-14 w-14 flex-shrink-0 overflow-hidden rounded-xl border border-gray-700 bg-gray-800">
