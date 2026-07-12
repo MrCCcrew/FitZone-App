@@ -7907,6 +7907,7 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
     referralProgress: number; referralCode: string | null; alreadyClaimed: boolean; authenticated: boolean;
     endsAt: string | null;
   } | null>(null);
+  const [freeGiftGameEnabled, setFreeGiftGameEnabled] = useState(false);
   const [deliveryOptions, setDeliveryOptions] = useState<PublicDeliveryOption[]>([]);
   const [selectedDeliveryId, setSelectedDeliveryId] = useState<string | null>(null);
   const [paymentSettings, setPaymentSettings] = useState<PublicPaymentSettings>({
@@ -7939,6 +7940,10 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
       .then((d) => {
         if (d && d.active) setGiftCampaign({ ...d.settings, ...d, active: true });
       })
+      .catch(() => {});
+    fetch("/api/store/free-gifts/check", { cache: "no-store" })
+      .then((r) => r.ok ? r.json() : null)
+      .then((d: { enabled?: boolean } | null) => { if (d?.enabled) setFreeGiftGameEnabled(true); })
       .catch(() => {});
   }, []);
 
@@ -8255,24 +8260,26 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                 {/* ── Store Gift Campaign Banner ── */}
                 <StoreGiftCampaignCard giftCampaign={giftCampaign} cartItems={cartItems} />
                 {/* ── Free Gifts Game CTA ── */}
-                <a href="/store/free-gifts" style={{
-                  display: "flex", alignItems: "center", gap: 12,
-                  background: "linear-gradient(135deg,rgba(233,30,99,.1),rgba(194,24,91,.06))",
-                  border: "1.5px solid rgba(233,30,99,.4)",
-                  borderRadius: 14, padding: "13px 16px", marginTop: 10,
-                  textDecoration: "none",
-                }}>
-                  <span style={{ fontSize: 28 }}>🎁</span>
-                  <div style={{ flex: 1 }}>
-                    <p style={{ margin: 0, fontSize: 14, fontWeight: 900, color: "#C2185B", fontFamily: "Cairo,Tajawal,sans-serif" }}>
-                      {t("عندك هدايا مجانية في انتظارك!", "You have free gifts waiting for you!")}
-                    </p>
-                    <p style={{ margin: "2px 0 0", fontSize: 12, color: "#7A5B68", fontFamily: "Cairo,Tajawal,sans-serif" }}>
-                      {t("العبي اللعبة واختاري منتجات مجانية مع طلبك", "Play the game and pick free products with your order")}
-                    </p>
-                  </div>
-                  <span style={{ fontSize: 18, color: "#C2185B" }}>←</span>
-                </a>
+                {freeGiftGameEnabled && (
+                  <a href="/store/free-gifts" style={{
+                    display: "flex", alignItems: "center", gap: 12,
+                    background: "linear-gradient(135deg,rgba(233,30,99,.1),rgba(194,24,91,.06))",
+                    border: "1.5px solid rgba(233,30,99,.4)",
+                    borderRadius: 14, padding: "13px 16px", marginTop: 10,
+                    textDecoration: "none",
+                  }}>
+                    <span style={{ fontSize: 28 }}>🎁</span>
+                    <div style={{ flex: 1 }}>
+                      <p style={{ margin: 0, fontSize: 14, fontWeight: 900, color: "#C2185B", fontFamily: "Cairo,Tajawal,sans-serif" }}>
+                        {t("عندك هدايا مجانية في انتظارك!", "You have free gifts waiting for you!")}
+                      </p>
+                      <p style={{ margin: "2px 0 0", fontSize: 12, color: "#7A5B68", fontFamily: "Cairo,Tajawal,sans-serif" }}>
+                        {t("العبي اللعبة واختاري منتجات مجانية مع طلبك", "Play the game and pick free products with your order")}
+                      </p>
+                    </div>
+                    <span style={{ fontSize: 18, color: "#C2185B" }}>←</span>
+                  </a>
+                )}
                 <button className="btn-primary" disabled={cartItems.length === 0} style={{ width: "100%", justifyContent: "center", padding: "13px", fontSize: 15, marginTop: 14, opacity: cartItems.length === 0 ? 0.5 : 1 }} onClick={() => setStep("address")}>
                   {lang === "ar" ? "التالي: العنوان ←" : "Next: Address →"}
                 </button>
