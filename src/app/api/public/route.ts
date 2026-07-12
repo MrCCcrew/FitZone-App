@@ -641,6 +641,7 @@ export async function GET(request: Request) {
           importantInfo: product.importantInfo ?? null,
           disclaimer: product.disclaimer ?? null,
           editorialReview: product.editorialReview ?? null,
+          unitLabel: product.unitLabel ?? null,
           rating,
           reviewCount,
           stock: product.stock,

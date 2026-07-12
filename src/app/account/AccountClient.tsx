@@ -2903,6 +2903,13 @@ function WalletTab({
   const { lang } = useLang();
   const t = (arText: string, enText: string) => (lang === "ar" ? arText : enText);
   const [activeSection, setActiveSection] = useState<"wallet" | "points">("wallet");
+  const [pointValueEGP, setPointValueEGP] = useState<number>(0.05);
+  useEffect(() => {
+    fetch("/api/me/checkout-options", { cache: "no-store" })
+      .then(r => r.json())
+      .then((d: { pointValueEGP?: number }) => { if (typeof d.pointValueEGP === "number") setPointValueEGP(d.pointValueEGP); })
+      .catch(() => {});
+  }, []);
   const [copied, setCopied]   = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [selectedAmount, setSelectedAmount] = useState<number | null>(null);
@@ -3092,7 +3099,7 @@ function WalletTab({
 
             <div className="mt-4 pt-4 border-t border-white/10 text-center">
               <div className="text-gray-400 text-xs">{t("قيمة نقاطك", "Points value")}</div>
-              <div className="text-yellow-400 font-black text-xl">{formatMoney(Math.floor(rewards.points / 10), lang)} {lang === "en" ? "EGP" : "ج.م"}</div>
+              <div className="text-yellow-400 font-black text-xl">{formatMoney(Math.round(rewards.points * pointValueEGP * 100) / 100, lang)} {lang === "en" ? "EGP" : "ج.م"}</div>
             </div>
           </div>
 
