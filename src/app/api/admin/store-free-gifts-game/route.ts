@@ -8,11 +8,12 @@ export type RewardPoolItem = {
   id: string;
   labelAr: string;
   labelEn: string;
-  type: string;   // free text — admin can define any reward type
-  icon: string;   // emoji shown in wheel/cards
+  type: string;
+  icon: string;
   value: number;
   weight: number;
   active: boolean;
+  productId?: string;
 };
 
 export type StoreFreeGiftsGameSettings = {
