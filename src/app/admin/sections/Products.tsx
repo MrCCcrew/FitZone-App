@@ -130,24 +130,48 @@ export default function Products() {
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [giftOnlyIds, setGiftOnlyIds] = useState<Set<string>>(new Set());
+  const [togglingGiftOnly, setTogglingGiftOnly] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [p, o, c, s] = await Promise.all([
+      const [p, o, c, s, g] = await Promise.all([
         fetch("/api/admin/products", { cache: "no-store" }).then((r) => r.json()),
         fetch("/api/admin/orders", { cache: "no-store" }).then((r) => r.json()),
         fetch("/api/admin/product-categories", { cache: "no-store" }).then((r) => r.json()),
         fetch("/api/admin/suppliers", { cache: "no-store" }).then((r) => r.json()),
+        fetch("/api/admin/gift-only-products", { cache: "no-store" }).then((r) => r.json()),
       ]);
       setProducts(Array.isArray(p) ? p : []);
       setOrders(Array.isArray(o) ? o : []);
       setCategories(Array.isArray(c) ? c : []);
       setSuppliers(Array.isArray(s?.suppliers) ? s.suppliers : []);
+      setGiftOnlyIds(new Set(Array.isArray(g?.ids) ? g.ids : []));
     } finally {
       setLoading(false);
     }
   }, []);
+
+  const toggleGiftOnly = useCallback(async (productId: string) => {
+    setTogglingGiftOnly(productId);
+    try {
+      const newIds = new Set(giftOnlyIds);
+      if (newIds.has(productId)) {
+        newIds.delete(productId);
+      } else {
+        newIds.add(productId);
+      }
+      await fetch("/api/admin/gift-only-products", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: Array.from(newIds) }),
+      });
+      setGiftOnlyIds(newIds);
+    } finally {
+      setTogglingGiftOnly(null);
+    }
+  }, [giftOnlyIds]);
 
   useEffect(() => {
     void load();
@@ -469,7 +493,12 @@ export default function Products() {
                     ) : (
                       <span className="text-4xl">{product.emoji}</span>
                     )}
-                    <span className="rounded-full bg-pink-500/20 px-2 py-1 text-xs text-pink-300">{product.categoryLabel ?? categoryMap.get(product.category)?.label ?? product.category}</span>
+                    <div className="flex flex-col items-end gap-1">
+                      <span className="rounded-full bg-pink-500/20 px-2 py-1 text-xs text-pink-300">{product.categoryLabel ?? categoryMap.get(product.category)?.label ?? product.category}</span>
+                      {giftOnlyIds.has(product.id) && (
+                        <span className="rounded-full bg-purple-500/20 px-2 py-1 text-xs text-purple-300">🎁 هدية فقط</span>
+                      )}
+                    </div>
                   </div>
                   <h4 className="font-black text-white">{product.name}</h4>
                   {product.nameEn ? <div className="mt-1 text-xs text-gray-500">{product.nameEn}</div> : null}
@@ -480,14 +509,27 @@ export default function Products() {
                   <div className="mt-2 text-xs text-gray-500">صور: {product.images?.length ?? 0} | مقاسات: {product.sizes?.length ?? 0}</div>
 
                   {!selectMode && (
-                    <div className="mt-3 flex gap-2">
-                      <button onClick={() => { setUploadError(null); setProductModal({ ...product }); }} className="flex-1 rounded-lg bg-gray-800 px-3 py-2 text-xs text-white">تعديل</button>
-                      <button onClick={async (e) => {
-                        e.stopPropagation();
-                        if (!window.confirm("هل تريد حذف هذا المنتج؟")) return;
-                        await fetch("/api/admin/products", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: product.id }) });
-                        await load();
-                      }} className="rounded-lg bg-red-950/50 px-3 py-2 text-xs text-red-300">حذف</button>
+                    <div className="mt-3 flex flex-col gap-2">
+                      <div className="flex gap-2">
+                        <button onClick={() => { setUploadError(null); setProductModal({ ...product }); }} className="flex-1 rounded-lg bg-gray-800 px-3 py-2 text-xs text-white">تعديل</button>
+                        <button onClick={async (e) => {
+                          e.stopPropagation();
+                          if (!window.confirm("هل تريد حذف هذا المنتج؟")) return;
+                          await fetch("/api/admin/products", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: product.id }) });
+                          await load();
+                        }} className="rounded-lg bg-red-950/50 px-3 py-2 text-xs text-red-300">حذف</button>
+                      </div>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); void toggleGiftOnly(product.id); }}
+                        disabled={togglingGiftOnly === product.id}
+                        className={`w-full rounded-lg px-3 py-2 text-xs font-bold transition-colors ${
+                          giftOnlyIds.has(product.id)
+                            ? "bg-purple-900/60 text-purple-300 border border-purple-700/50"
+                            : "bg-gray-800/60 text-gray-400 border border-gray-700/50"
+                        }`}
+                      >
+                        {togglingGiftOnly === product.id ? "..." : giftOnlyIds.has(product.id) ? "🎁 هدية فقط (مخفي من المتجر)" : "🎁 تعيين كـ هدية فقط"}
+                      </button>
                     </div>
                   )}
                 </div>
