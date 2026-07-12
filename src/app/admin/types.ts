@@ -331,6 +331,7 @@ export interface Product {
   images?: string[];
   sizes?: string[];
   colors?: string[];
+  unitLabel?: string | null;
 }
 
 export interface InventoryReceiptItem {

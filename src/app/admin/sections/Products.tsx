@@ -24,6 +24,7 @@ type EditableProduct = Omit<Product, "id" | "sold"> & {
   importantInfo?: string;
   disclaimer?: string;
   editorialReview?: string;
+  unitLabel?: string | null;
 };
 type EditableCategory =
   | ProductCategory
@@ -59,6 +60,7 @@ const EMPTY_PRODUCT: EditableProduct = {
   importantInfo: "",
   disclaimer: "",
   editorialReview: "",
+  unitLabel: "",
   supplierId: null,
   costPrice: null,
   barcode: "",
@@ -593,8 +595,79 @@ export default function Products() {
                 </div>
               )}
             </div>
-            {sizeType !== "none" && <FieldHint title="المقاسات" hint={sizeType === "shoes" ? "اختر مقاسات الأحذية المتوفرة لهذا المنتج." : "اختر مقاسات الملابس المتوفرة لهذا المنتج."}><div className="flex flex-wrap gap-2">{(sizeType === "shoes" ? SHOES : CLOTHING).map((size) => <button key={size} type="button" onClick={() => setProductModal({ ...productModal, sizes: toggle(productModal.sizes, size) })} className={`rounded-lg border px-3 py-1.5 text-xs font-bold ${productModal.sizes?.includes(size) ? "border-red-600 bg-red-600 text-white" : "border-gray-700 bg-gray-800 text-gray-400"}`}>{size}</button>)}</div></FieldHint>}
-            <FieldHint title="الألوان" hint="اختياري. اختر الألوان المتاحة حتى تظهر للعميل داخل صفحة المنتج."><div className="flex flex-wrap gap-2">{["#111111", "#FFFFFF", "#6B7280", "#EF4444", "#3B82F6", "#22C55E", "#EC4899", "#D4A574"].map((color) => <button key={color} type="button" onClick={() => setProductModal({ ...productModal, colors: toggle(productModal.colors, color) })} className={`h-8 w-8 rounded-full border-2 ${productModal.colors?.includes(color) ? "border-red-500" : "border-gray-600"}`} style={{ backgroundColor: color }} />)}</div></FieldHint>
+            {sizeType !== "none" && (
+              <FieldHint
+                title="المقاسات"
+                hint={sizeType === "shoes" ? "اختر مقاسات الأحذية المتوفرة لهذا المنتج." : "اختر مقاسات الملابس المتوفرة لهذا المنتج."}
+              >
+                <div className="space-y-2">
+                  <div className="flex flex-wrap gap-2">
+                    {(sizeType === "shoes" ? SHOES : CLOTHING).map((size) => (
+                      <button key={size} type="button" onClick={() => setProductModal({ ...productModal, sizes: toggle(productModal.sizes, size) })} className={`rounded-lg border px-3 py-1.5 text-xs font-bold ${productModal.sizes?.includes(size) ? "border-red-600 bg-red-600 text-white" : "border-gray-700 bg-gray-800 text-gray-400"}`}>{size}</button>
+                    ))}
+                  </div>
+                  {sizeType === "clothing" && (
+                    <div className="flex flex-wrap gap-2 pt-1 border-t border-gray-700">
+                      {["مقاس واحد", "مقاس حر"].map((s) => (
+                        <button key={s} type="button" onClick={() => setProductModal({ ...productModal, sizes: toggle(productModal.sizes, s) })} className={`rounded-lg border px-3 py-1.5 text-xs font-bold ${productModal.sizes?.includes(s) ? "border-purple-500 bg-purple-600 text-white" : "border-gray-700 bg-gray-800 text-purple-300"}`}>{s}</button>
+                      ))}
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs text-gray-500">تلبيس من وزن:</span>
+                        <input
+                          type="text"
+                          placeholder="مثال: 70-90 كيلو"
+                          className="rounded-lg border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-white w-28 outline-none"
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              const val = (e.target as HTMLInputElement).value.trim();
+                              if (val) {
+                                const label = `تلبيس ${val}`;
+                                setProductModal((m) => m ? { ...m, sizes: toggle(m.sizes, label) } : m);
+                                (e.target as HTMLInputElement).value = "";
+                              }
+                            }
+                          }}
+                        />
+                        <span className="text-[10px] text-gray-600">Enter للإضافة</span>
+                      </div>
+                    </div>
+                  )}
+                  {!!productModal.sizes?.filter(s => !CLOTHING.includes(s) && !SHOES.includes(s) && s !== "مقاس واحد" && s !== "مقاس حر").length && (
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      {productModal.sizes!.filter(s => !CLOTHING.includes(s) && !SHOES.includes(s) && s !== "مقاس واحد" && s !== "مقاس حر").map((s) => (
+                        <button key={s} type="button" onClick={() => setProductModal({ ...productModal, sizes: productModal.sizes?.filter(x => x !== s) ?? [] })} className="rounded-lg border border-amber-500 bg-amber-900/30 px-3 py-1.5 text-xs font-bold text-amber-300">
+                          {s} ✕
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </FieldHint>
+            )}
+            <FieldHint title="الألوان" hint="اختياري. اختر الألوان المتاحة حتى تظهر للعميل داخل صفحة المنتج.">
+              <div className="flex flex-wrap gap-2">
+                {["#111111", "#FFFFFF", "#6B7280", "#EF4444", "#3B82F6", "#22C55E", "#EC4899", "#D4A574"].map((color) => (
+                  <button key={color} type="button" onClick={() => setProductModal({ ...productModal, colors: toggle(productModal.colors, color) })} className={`h-8 w-8 rounded-full border-2 ${productModal.colors?.includes(color) ? "border-red-500" : "border-gray-600"}`} style={{ backgroundColor: color }} />
+                ))}
+                <button
+                  type="button"
+                  title="ألوان متعددة"
+                  onClick={() => setProductModal({ ...productModal, colors: toggle(productModal.colors, "multicolor") })}
+                  className={`h-8 w-8 rounded-full border-2 ${productModal.colors?.includes("multicolor") ? "border-red-500" : "border-gray-600"}`}
+                  style={{ background: "conic-gradient(red, yellow, lime, cyan, blue, magenta, red)" }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setProductModal({ ...productModal, colors: toggle(productModal.colors, "available") })}
+                  className={`rounded-full border-2 px-3 text-xs font-bold ${productModal.colors?.includes("available") ? "border-red-500 bg-gray-700 text-white" : "border-gray-600 bg-gray-800 text-gray-400"}`}
+                >
+                  حسب المتوفر
+                </button>
+              </div>
+            </FieldHint>
+            <FieldHint title="الخامة" hint="اختياري. مثال: قطن 100%، بوليستر، قطن+ليكرا...">
+              <input type="text" value={productModal.unitLabel ?? ""} onChange={(e) => setProductModal({ ...productModal, unitLabel: e.target.value })} className={INPUT} placeholder="مثال: قطن 100% — بوليستر — قطن+ليكرا" />
+            </FieldHint>
 
             {/* ── محتوى إضافي ── */}
             <div className="rounded-xl border border-gray-700 bg-gray-800/50 p-4 space-y-4">

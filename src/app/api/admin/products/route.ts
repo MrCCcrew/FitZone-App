@@ -77,6 +77,7 @@ export async function GET() {
         importantInfo: product.importantInfo ?? "",
         disclaimer: product.disclaimer ?? "",
         editorialReview: product.editorialReview ?? "",
+        unitLabel: product.unitLabel ?? "",
         // Admin-only internal fields
         supplierId: product.supplierId ?? null,
         supplierName: product.supplier?.name ?? null,
@@ -103,7 +104,7 @@ export async function POST(req: Request) {
   const {
     name, nameEn, category, price, oldPrice, vatEnabled, stock,
     description, descriptionEn, images, sizes, colors, faqs,
-    whoShouldBuy, importantInfo, disclaimer, editorialReview,
+    whoShouldBuy, importantInfo, disclaimer, editorialReview, unitLabel,
     supplierId, costPrice, barcode, isFeatured, isNew, isBestSeller, isSpecialOffer,
   } = body;
 
@@ -134,6 +135,7 @@ export async function POST(req: Request) {
       importantInfo: importantInfo ? String(importantInfo) : null,
       disclaimer: disclaimer ? String(disclaimer) : null,
       editorialReview: editorialReview ? String(editorialReview) : null,
+      unitLabel: unitLabel ? String(unitLabel) : null,
       isActive: true,
       supplierId: supplierId ? String(supplierId) : null,
       costPrice: costPrice != null ? Number(costPrice) : null,
@@ -174,6 +176,7 @@ export async function POST(req: Request) {
     importantInfo: importantInfo ?? "",
     disclaimer: disclaimer ?? "",
     editorialReview: editorialReview ?? "",
+    unitLabel: product.unitLabel ?? "",
     supplierId: product.supplierId ?? null,
     supplierName: product.supplier?.name ?? null,
     costPrice: product.costPrice ?? null,
@@ -214,6 +217,7 @@ export async function PATCH(req: Request) {
   if (rest.importantInfo !== undefined) data.importantInfo = rest.importantInfo ? String(rest.importantInfo) : null;
   if (rest.disclaimer !== undefined) data.disclaimer = rest.disclaimer ? String(rest.disclaimer) : null;
   if (rest.editorialReview !== undefined) data.editorialReview = rest.editorialReview ? String(rest.editorialReview) : null;
+  if (rest.unitLabel !== undefined) data.unitLabel = rest.unitLabel ? String(rest.unitLabel) : null;
   // Admin-only internal fields
   if (rest.supplierId !== undefined) data.supplierId = rest.supplierId ? String(rest.supplierId) : null;
   if (rest.costPrice !== undefined) data.costPrice = rest.costPrice != null ? Number(rest.costPrice) : null;

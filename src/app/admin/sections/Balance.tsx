@@ -64,12 +64,17 @@ export default function Balance() {
   const [topupAmount, setTopupAmount] = useState(0);
   const [topupReason, setTopupReason] = useState("");
   const [search, setSearch] = useState("");
+  const [pointValueEGP, setPointValueEGP] = useState(0.05);
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
-    const d: BalanceData = await fetch("/api/admin/balance").then(r => r.json());
+    const [d, settings] = await Promise.all([
+      fetch("/api/admin/balance").then(r => r.json()) as Promise<BalanceData>,
+      fetch("/api/admin/reward-settings").then(r => r.json()).catch(() => ({})) as Promise<{ pointValueEGP?: number }>,
+    ]);
     setCustomers(d.customers ?? []);
     setTransactions(d.transactions ?? []);
+    if (typeof settings.pointValueEGP === "number") setPointValueEGP(settings.pointValueEGP);
     setLoading(false);
   }, []);
   useEffect(() => { fetchAll(); }, [fetchAll]);
@@ -79,7 +84,7 @@ export default function Balance() {
     const { customer, mode } = adjustModal;
     setSaving(true);
     const type = mode === "points"
-      ? (adjustType === "add" ? "earn"  : "deduct")
+      ? (adjustType === "add" ? "earn"  : "redeem")
       : (adjustType === "add" ? "topup" : "deduct");
     await fetch("/api/admin/balance", {
       method:  "POST",
@@ -191,7 +196,7 @@ export default function Balance() {
                         </div>
                       </div>
                     </td>
-                    <td className="py-3 px-4 text-gray-400 text-xs">{Math.floor(c.points / 10)} ج.م</td>
+                    <td className="py-3 px-4 text-gray-400 text-xs">{Math.round(c.points * pointValueEGP * 100) / 100} ج.م</td>
                     <td className="py-3 px-4">
                       <button onClick={() => { setAdjustModal({ customer: c, mode: "points" }); setAdjustValue(0); }} className="text-yellow-500 hover:text-yellow-400 text-xs font-bold transition-colors">تعديل النقاط</button>
                     </td>

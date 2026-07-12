@@ -6908,6 +6908,7 @@ type StoreProduct = {
   importantInfo?: string | null;
   disclaimer?: string | null;
   editorialReview?: string | null;
+  unitLabel?: string | null;
 };
 
 type StoreCategory = {
@@ -6981,6 +6982,7 @@ const mapApiProductToStoreProduct = (
     importantInfo?: string | null;
     disclaimer?: string | null;
     editorialReview?: string | null;
+    unitLabel?: string | null;
   },
   i: number,
 ): StoreProduct => ({
@@ -7006,6 +7008,7 @@ const mapApiProductToStoreProduct = (
   importantInfo: p.importantInfo ?? null,
   disclaimer: p.disclaimer ?? null,
   editorialReview: p.editorialReview ?? null,
+  unitLabel: p.unitLabel ?? null,
 });
 const ProductVisual = ({ product, h = 200 }: { product: StoreProduct; h?: number }) => {
   const firstImage = product.images?.[0];
@@ -7620,10 +7623,32 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
             {!!product.colors?.length && (
               <div style={{ marginBottom: 24 }}>
                 <div style={{ color: C.white, fontWeight: 700, marginBottom: 10 }}>{t("اللون", "Color")}</div>
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                  {product.colors.map((color) => (
-                    <button key={color} onClick={() => setSelectedColor(color)} style={{ width: 30, height: 30, borderRadius: "50%", border: `2px solid ${selectedColor === color ? C.red : C.border}`, background: color, cursor: "pointer" }} />
-                  ))}
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                  {product.colors.map((color) => {
+                    if (color === "multicolor") {
+                      return (
+                        <button key={color} onClick={() => setSelectedColor(color)} title={t("ألوان متعددة", "Multicolor")} style={{ width: 30, height: 30, borderRadius: "50%", border: `2px solid ${selectedColor === color ? C.red : C.border}`, background: "conic-gradient(red, yellow, lime, cyan, blue, magenta, red)", cursor: "pointer" }} />
+                      );
+                    }
+                    if (color === "available") {
+                      return (
+                        <button key={color} onClick={() => setSelectedColor(color)} style={{ height: 30, borderRadius: 999, border: `2px solid ${selectedColor === color ? C.red : C.border}`, background: C.bgCard, color: C.gray, cursor: "pointer", padding: "0 12px", fontSize: 12, fontWeight: 700 }}>
+                          {t("حسب المتوفر", "As available")}
+                        </button>
+                      );
+                    }
+                    return (
+                      <button key={color} onClick={() => setSelectedColor(color)} style={{ width: 30, height: 30, borderRadius: "50%", border: `2px solid ${selectedColor === color ? C.red : C.border}`, background: color, cursor: "pointer" }} />
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            {product.unitLabel && (
+              <div style={{ marginBottom: 24, padding: "12px 16px", borderRadius: 10, border: `1px solid ${C.border}`, background: C.bgCard2 }}>
+                <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+                  <span style={{ color: C.gray, fontSize: 13, fontWeight: 600 }}>{t("الخامة:", "Material:")}</span>
+                  <span style={{ color: C.white, fontSize: 13, fontWeight: 700 }}>{product.unitLabel}</span>
                 </div>
               </div>
             )}
