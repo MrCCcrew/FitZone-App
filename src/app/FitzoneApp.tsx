@@ -7908,6 +7908,7 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
     endsAt: string | null;
   } | null>(null);
   const [freeGiftGameEnabled, setFreeGiftGameEnabled] = useState(false);
+  const [cartProducts, setCartProducts] = useState<Array<{ id: string; images: string[] }>>([]);
   const [deliveryOptions, setDeliveryOptions] = useState<PublicDeliveryOption[]>([]);
   const [selectedDeliveryId, setSelectedDeliveryId] = useState<string | null>(null);
   const [paymentSettings, setPaymentSettings] = useState<PublicPaymentSettings>({
@@ -7960,11 +7961,13 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
         }
         // Refresh cart prices in case vatEnabled changed after items were added
         if (Array.isArray(d.products) && d.products.length > 0) {
+          const apiProducts = d.products as Array<{ id?: string; price: number; vatEnabled?: boolean; images?: string[] }>;
+          setCartProducts(apiProducts.flatMap((p) => p.id ? [{ id: p.id, images: p.images ?? [] }] : []));
           const current = readCart();
           if (current.length === 0) return;
           let changed = false;
           const updated = current.map((cartItem) => {
-            const apiProduct = (d.products as Array<{ id?: string; price: number; vatEnabled?: boolean }>).find((p) => p.id === cartItem.productId);
+            const apiProduct = apiProducts.find((p) => p.id === cartItem.productId);
             if (!apiProduct) return cartItem;
             const correctPrice = apiProduct.vatEnabled ? applyVat(apiProduct.price) : apiProduct.price;
             if (cartItem.vatEnabled !== (apiProduct.vatEnabled ?? false) || Math.abs(cartItem.price - correctPrice) > 0.01) {
@@ -8244,7 +8247,11 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                 )}
                 {cartItems.map((item) => (
                   <div key={`${item.productId}-${item.size ?? ""}`} className="card" style={{ padding: 18, marginBottom: 12, display: "flex", gap: 14, alignItems: "center" }}>
-                    <div style={{ width: 70, height: 70, borderRadius: 10, overflow: "hidden", flexShrink: 0 }}><GymImg type={item.type} w={70} h={70} /></div>
+                    <div style={{ width: 70, height: 70, borderRadius: 10, overflow: "hidden", flexShrink: 0, background: "rgba(255,255,255,0.05)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      {cartProducts.find((p) => p.id === item.productId)?.images?.[0]
+                        ? <img src={cartProducts.find((p) => p.id === item.productId)!.images[0]} alt={item.name} style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+                        : <GymImg type={item.type} w={70} h={70} />}
+                    </div>
                     <div style={{ flex: 1 }}>
                       <h3 style={{ fontWeight: 700, fontSize: 14, color: C.white }}>{item.name}</h3>
                       {item.size && <p style={{ color: C.gray, fontSize: 12, marginTop: 3 }}>{t("المقاس", "Size")}: {item.size}</p>}

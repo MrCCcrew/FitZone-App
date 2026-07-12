@@ -463,7 +463,12 @@ export default function Products() {
                   )}
 
                   <div className="mb-3 flex items-start justify-between">
-                    <span className="text-4xl">{product.emoji}</span>
+                    {product.images?.[0] ? (
+                      <img src={product.images[0]} alt={product.name}
+                        className="w-14 h-14 rounded-xl object-contain bg-white/5 border border-white/10" />
+                    ) : (
+                      <span className="text-4xl">{product.emoji}</span>
+                    )}
                     <span className="rounded-full bg-pink-500/20 px-2 py-1 text-xs text-pink-300">{product.categoryLabel ?? categoryMap.get(product.category)?.label ?? product.category}</span>
                   </div>
                   <h4 className="font-black text-white">{product.name}</h4>
