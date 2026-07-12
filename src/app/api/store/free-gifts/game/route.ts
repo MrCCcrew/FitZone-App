@@ -50,12 +50,24 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "session_error" }, { status: 500 });
   }
 
-  // Eligible products — only show products explicitly chosen by admin
+  // Eligible products — combine admin-selected IDs with any products marked as "gift only"
   let eligibleProducts: { id: string; name: string; images: string | null; price: number; category: string }[] = [];
   try {
-    if (settings.eligibleGiftProductIds.length > 0) {
+    // Load gift-only product IDs from siteContent
+    let giftOnlyIds: string[] = [];
+    const giftOnlyRecord = await db.siteContent.findUnique({ where: { section: "gift_only_products" } });
+    if (giftOnlyRecord) {
+      try {
+        const parsed = JSON.parse(giftOnlyRecord.content) as { ids?: unknown };
+        giftOnlyIds = Array.isArray(parsed.ids) ? (parsed.ids as string[]).filter((x) => typeof x === "string") : [];
+      } catch { giftOnlyIds = []; }
+    }
+
+    const allEligibleIds = [...new Set([...settings.eligibleGiftProductIds, ...giftOnlyIds])];
+
+    if (allEligibleIds.length > 0) {
       eligibleProducts = await db.product.findMany({
-        where: { id: { in: settings.eligibleGiftProductIds }, isActive: true, deletedAt: null },
+        where: { id: { in: allEligibleIds }, isActive: true, deletedAt: null },
         select: { id: true, name: true, images: true, price: true, category: true },
       });
     }
