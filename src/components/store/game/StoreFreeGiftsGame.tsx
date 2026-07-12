@@ -22,6 +22,8 @@ type Product      = { id: string; name: string; price: number; images: string | 
 
 type GameState = {
   gameEnabled?: boolean;
+  cooldown?: boolean;
+  cooldownUntil?: string;
   step: number;
   spinDone: boolean;
   spinResult: { type: string; value: number; labelAr: string; labelEn?: string } | null;
@@ -152,7 +154,7 @@ export function StoreFreeGiftsGame() {
       if (!res.ok) throw new Error("confirm failed");
       const data = await res.json() as { ok: boolean; selectedProductIds: string[] };
 
-      // Add won products to localStorage cart at price 0 (or discounted)
+      // Add won products to localStorage cart — always free (price = 0), type = "gift"
       const wonIds: string[] = data.selectedProductIds ?? game.selectedProductIds;
       const wonProducts = game.eligibleProducts.filter(p => wonIds.includes(p.id));
       if (wonProducts.length > 0 && typeof window !== "undefined") {
@@ -160,19 +162,12 @@ export function StoreFreeGiftsGame() {
         let cart: Array<{ productId: string; name: string; price: number; qty: number; size: string | null; type: string }> = [];
         try { cart = JSON.parse(localStorage.getItem(CART_KEY) ?? "[]") as typeof cart; } catch { cart = []; }
 
-        const spinType = game.spinResult?.type ?? "free_product";
-        const spinValue = game.spinResult?.value ?? 0;
-
         for (const p of wonProducts) {
-          let price = 0;
-          if (spinType === "discount" && spinValue > 0) {
-            price = Math.max(0, Math.round(p.price * (1 - spinValue / 100) * 100) / 100);
-          }
-          const existing = cart.find(c => c.productId === p.id);
+          const existing = cart.find(c => c.productId === p.id && c.type === "gift");
           if (existing) {
             existing.qty += 1;
           } else {
-            cart.push({ productId: p.id, name: p.name, price, qty: 1, size: null, type: p.category ?? "gift" });
+            cart.push({ productId: p.id, name: p.name, price: 0, qty: 1, size: null, type: "gift" });
           }
         }
         localStorage.setItem(CART_KEY, JSON.stringify(cart));
@@ -213,6 +208,38 @@ export function StoreFreeGiftsGame() {
   );
 
   if (!game) return null;
+
+  // ── Cooldown screen ──
+  if (game.cooldown) {
+    const until = game.cooldownUntil ? new Date(game.cooldownUntil) : null;
+    const untilStr = until
+      ? until.toLocaleDateString("ar-EG", { day: "numeric", month: "long", year: "numeric" })
+      : null;
+    return (
+      <div style={{ minHeight: "60vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, background: "linear-gradient(160deg,#1a0010 0%,#2d0520 40%,#1a000c 100%)" }}>
+        <div style={{ textAlign: "center", fontFamily: "Cairo,Tajawal,sans-serif", maxWidth: 360 }}>
+          <div style={{ fontSize: 72, marginBottom: 16 }}>⏳</div>
+          <h2 style={{ fontSize: 20, fontWeight: 900, color: "#fbbf24", marginBottom: 12 }}>
+            {t("لقد استخدمتِ اللعبة مسبقاً", "You've already played the game")}
+          </h2>
+          <p style={{ color: "rgba(255,255,255,.7)", fontSize: 14, lineHeight: 1.7, marginBottom: 8 }}>
+            {t(
+              "يمكنك المشاركة مرة واحدة كل 30 يوماً فقط. شكراً لتسوقك معنا!",
+              "You can participate once every 30 days. Thank you for shopping with us!",
+            )}
+          </p>
+          {untilStr && (
+            <p style={{ color: "#e91e63", fontWeight: 700, fontSize: 13, marginBottom: 24 }}>
+              {t(`يمكنك اللعب مجدداً في: ${untilStr}`, `You can play again on: ${untilStr}`)}
+            </p>
+          )}
+          <a href="/?page=shop" style={{ display: "inline-block", padding: "12px 32px", borderRadius: 12, background: "linear-gradient(135deg,#e91e63,#c2185b)", color: "#fff", fontSize: 14, fontWeight: 900, textDecoration: "none" }}>
+            {t("تصفحي المتجر 🛍️", "Browse the Store 🛍️")}
+          </a>
+        </div>
+      </div>
+    );
+  }
 
   // ── Confirmed screen ──
   if (confirmed) return (

@@ -42,6 +42,30 @@ export async function GET(req: NextRequest) {
   const userId = user?.id ?? null;
 
   const dbx = db as any;
+
+  // ── Cooldown check: 30 days after last confirmed session ──────────────────
+  const COOLDOWN_MS = 30 * 24 * 60 * 60 * 1000;
+  const cutoff = new Date(Date.now() - COOLDOWN_MS);
+
+  if (userId) {
+    // Logged-in: check by userId
+    const recentConfirmed = await dbx.storeFreeGiftsSession.findFirst({
+      where: { userId, status: "confirmed", confirmedAt: { gte: cutoff } },
+      orderBy: { confirmedAt: "desc" },
+    }).catch(() => null);
+    if (recentConfirmed?.confirmedAt) {
+      const cooldownUntil = new Date(new Date(recentConfirmed.confirmedAt).getTime() + COOLDOWN_MS);
+      return NextResponse.json({ gameEnabled: true, cooldown: true, cooldownUntil: cooldownUntil.toISOString() });
+    }
+  } else if (token) {
+    // Anonymous: check by cookie token
+    const existingSession = await dbx.storeFreeGiftsSession.findUnique({ where: { token } }).catch(() => null);
+    if (existingSession?.status === "confirmed" && existingSession.confirmedAt && new Date(existingSession.confirmedAt) >= cutoff) {
+      const cooldownUntil = new Date(new Date(existingSession.confirmedAt).getTime() + COOLDOWN_MS);
+      return NextResponse.json({ gameEnabled: true, cooldown: true, cooldownUntil: cooldownUntil.toISOString() });
+    }
+  }
+
   let session: Awaited<ReturnType<typeof getOrCreateSession>>;
   try {
     session = await getOrCreateSession(token, userId);
