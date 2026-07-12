@@ -7277,15 +7277,24 @@ const ShopPage = ({ navigate }: { navigate: (p: string) => void }) => {
       <section className="section">
         <div className="container">
           <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 32 }}>
-            <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch", paddingBottom: 4 }}>
-              <div style={{ display: "flex", gap: 8, flexWrap: "nowrap", minWidth: "max-content" }}>
+            <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch", borderBottom: `2px solid ${C.border}` }}>
+              <div style={{ display: "flex", gap: 0, flexWrap: "nowrap", minWidth: "max-content" }}>
                 {categoryButtons.map((label) => {
                   const categoryRecord = categories.find((item) => item.label === label);
                   const displayLabel = label === allLabel ? allLabel : localizeStoreCategory(label, categoryRecord?.key, lang);
                   const icon = label !== allLabel ? categoryRecord?.icon : null;
+                  const isActive = cat === label;
                   return (
-                    <button key={label} className={`tab ${cat === label ? "active" : ""}`} onClick={() => setCat(label)} style={{ display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
-                      {icon && <img src={icon} alt="" style={{ width: 20, height: 20, objectFit: "contain" }} />}
+                    <button key={label} onClick={() => setCat(label)} style={{
+                      display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap",
+                      padding: "10px 18px", background: "transparent", border: "none",
+                      borderBottom: isActive ? `2px solid ${C.red}` : "2px solid transparent",
+                      marginBottom: -2, cursor: "pointer", transition: "all .2s",
+                      color: isActive ? C.white : C.gray,
+                      fontWeight: isActive ? 700 : 500,
+                      fontSize: 14, fontFamily: "'Cairo', sans-serif",
+                    }}>
+                      {icon && <img src={icon} alt="" style={{ width: 20, height: 20, objectFit: "contain", borderRadius: 4 }} />}
                       {displayLabel}
                     </button>
                   );
