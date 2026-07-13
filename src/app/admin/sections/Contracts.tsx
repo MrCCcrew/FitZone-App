@@ -711,6 +711,8 @@ export default function Contracts() {
   const [partners, setPartners] = useState<Partner[]>([]);
   const [partnerComms, setPartnerComms] = useState<PartnerManagerCommissionRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const [deleteMgrConfirm, setDeleteMgrConfirm] = useState<ContractsManagerRow | null>(null);
+  const [deleteMgrInput, setDeleteMgrInput] = useState("");
 
   const [showCreateMgr, setShowCreateMgr] = useState(false);
   const [showCreateAgent, setShowCreateAgent] = useState(false);
@@ -935,10 +937,15 @@ export default function Contracts() {
     if (res.ok) void loadAgents();
   };
 
-  const deleteMgr = async (m: ContractsManagerRow) => {
-    if (!window.confirm(`حذف المدير "${m.name}"؟ ستُحذف صلاحياته وتُبقى بيانات مناديبه.`)) return;
-    const res = await fetch("/api/admin/contracts", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ managerId: m.id }) });
-    if (res.ok) void loadManagers();
+  const deleteMgr = (m: ContractsManagerRow) => {
+    setDeleteMgrConfirm(m);
+    setDeleteMgrInput("");
+  };
+
+  const confirmDeleteMgr = async () => {
+    if (!deleteMgrConfirm) return;
+    const res = await fetch("/api/admin/contracts", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ managerId: deleteMgrConfirm.id }) });
+    if (res.ok) { setDeleteMgrConfirm(null); setDeleteMgrInput(""); void loadManagers(); }
   };
 
   const openAgentDetail = async (a: SalesAgentRow) => {
@@ -1462,6 +1469,77 @@ export default function Contracts() {
                   </div>
                 </>
               ) : null}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Delete ContractsManager confirmation dialog ── */}
+      {deleteMgrConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,.75)" }}>
+          <div className="w-full max-w-md rounded-2xl border border-red-900/50 bg-[#1a0a10] p-6 shadow-2xl">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-900/40 flex items-center justify-center text-xl">⚠️</div>
+              <div>
+                <h3 className="text-white font-black text-base">حذف مدير التعاقدات</h3>
+                <p className="text-red-400 text-xs font-bold">هذا الإجراء لا يمكن التراجع عنه</p>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-red-800/40 bg-red-950/30 p-4 mb-4 space-y-2 text-sm">
+              <p className="text-gray-200">
+                أنت على وشك حذف مدير التعاقدات <span className="text-white font-black">&quot;{deleteMgrConfirm.name}&quot;</span>
+              </p>
+              {deleteMgrConfirm.agentsCount > 0 && (
+                <div className="flex items-start gap-2 text-yellow-400">
+                  <span className="mt-0.5 shrink-0">⚠️</span>
+                  <p>
+                    <span className="font-bold">{deleteMgrConfirm.agentsCount} مندوب</span> مرتبطون بهذا المدير — سيصبحون بدون مدير ولن يظهروا في أي لوحة تعاقدات حتى يتم إعادة تعيينهم يدوياً.
+                  </p>
+                </div>
+              )}
+              {(deleteMgrConfirm.pendingCommission > 0 || deleteMgrConfirm.settledCommission > 0) && (
+                <div className="flex items-start gap-2 text-orange-400">
+                  <span className="mt-0.5 shrink-0">💸</span>
+                  <p>
+                    عمولات مسجّلة:{" "}
+                    {deleteMgrConfirm.pendingCommission > 0 && <span className="font-bold">{deleteMgrConfirm.pendingCommission.toFixed(2)} ج.م معلّقة </span>}
+                    {deleteMgrConfirm.settledCommission > 0 && <span className="font-bold">{deleteMgrConfirm.settledCommission.toFixed(2)} ج.م محصّلة </span>}
+                    — ستُحذف جميعها نهائياً.
+                  </p>
+                </div>
+              )}
+              <div className="flex items-start gap-2 text-gray-400">
+                <span className="mt-0.5 shrink-0">🔐</span>
+                <p>سيُسحب منه صلاحية الأدمن ويعود عضواً عادياً.</p>
+              </div>
+            </div>
+
+            <p className="text-gray-400 text-xs mb-2">
+              اكتب اسم المدير <span className="text-white font-bold">&quot;{deleteMgrConfirm.name}&quot;</span> للتأكيد:
+            </p>
+            <input
+              type="text"
+              value={deleteMgrInput}
+              onChange={e => setDeleteMgrInput(e.target.value)}
+              placeholder={deleteMgrConfirm.name}
+              className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white placeholder-gray-600 focus:border-red-500/50 focus:outline-none mb-4"
+            />
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => void confirmDeleteMgr()}
+                disabled={deleteMgrInput.trim() !== deleteMgrConfirm.name.trim()}
+                className="flex-1 rounded-xl bg-red-700 py-2.5 text-sm font-black text-white transition-colors hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-30"
+              >
+                تأكيد الحذف النهائي
+              </button>
+              <button
+                onClick={() => { setDeleteMgrConfirm(null); setDeleteMgrInput(""); }}
+                className="flex-1 rounded-xl border border-white/10 py-2.5 text-sm font-bold text-gray-300 transition-colors hover:bg-white/5"
+              >
+                إلغاء
+              </button>
             </div>
           </div>
         </div>
