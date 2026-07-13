@@ -22,6 +22,7 @@ type Product      = { id: string; name: string; price: number; images: string | 
 
 type GameState = {
   gameEnabled?: boolean;
+  requiresLogin?: boolean;
   cooldown?: boolean;
   cooldownUntil?: string;
   step: number;
@@ -64,6 +65,10 @@ export function StoreFreeGiftsGame() {
       const res = await fetch("/api/store/free-gifts/game", { cache: "no-store" });
       if (!res.ok) throw new Error("failed");
       const data = await res.json() as GameState;
+      if (data.requiresLogin) {
+        setError("__login__");
+        return;
+      }
       if (data.gameEnabled === false) {
         setError(t("لعبة الهدايا غير مفعّلة حالياً.", "The gift game is not active right now."));
         return;
@@ -193,6 +198,28 @@ export function StoreFreeGiftsGame() {
       <div style={{ textAlign: "center", color: "rgba(255,255,255,.5)", fontFamily: "Cairo,Tajawal,sans-serif" }}>
         <div style={{ fontSize: 36, marginBottom: 12 }}>⏳</div>
         <p>{t("جارٍ تحميل الهدايا...", "Loading gifts...")}</p>
+      </div>
+    </div>
+  );
+
+  if (error === "__login__") return (
+    <div style={{ minHeight: "60vh", display: "flex", alignItems: "center", justifyContent: "center", padding: "0 16px" }}>
+      <div style={{ textAlign: "center", fontFamily: "Cairo,Tajawal,sans-serif", maxWidth: 360 }}>
+        <div style={{ fontSize: 64, marginBottom: 16 }}>🎁</div>
+        <h2 style={{ color: "#fff", fontWeight: 900, fontSize: 22, marginBottom: 8 }}>
+          {t("مرحباً بك في لعبة الهدايا!", "Welcome to the Gift Game!")}
+        </h2>
+        <p style={{ color: "#d1d5db", fontSize: 14, marginBottom: 24, lineHeight: 1.7 }}>
+          {t("يجب تسجيل الدخول أولاً للمشاركة في لعبة الهدايا المجانية والفوز بجوائز حصرية.", "You need to sign in first to play the free gift game and win exclusive prizes.")}
+        </p>
+        <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
+          <a href="/auth/login" style={{ display: "inline-block", padding: "12px 28px", borderRadius: 12, background: "linear-gradient(135deg,#f59e0b,#f97316)", color: "#fff", fontWeight: 900, fontSize: 15, textDecoration: "none" }}>
+            {t("🔑 تسجيل الدخول", "🔑 Sign In")}
+          </a>
+          <a href="/auth/register" style={{ display: "inline-block", padding: "12px 28px", borderRadius: 12, border: "1px solid rgba(255,255,255,.2)", color: "#e5e7eb", fontWeight: 700, fontSize: 15, textDecoration: "none" }}>
+            {t("إنشاء حساب جديد", "Create Account")}
+          </a>
+        </div>
       </div>
     </div>
   );

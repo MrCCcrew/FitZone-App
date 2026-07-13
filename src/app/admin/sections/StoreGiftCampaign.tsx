@@ -35,18 +35,35 @@ function GiftCampaignClaimsLog() {
   const [page, setPage]           = useState(1);
   const [data, setData]           = useState<{ claims: ClaimRow[]; total: number } | null>(null);
   const [loading, setLoading]     = useState(false);
+  const [actioning, setActioning] = useState<string | null>(null);
 
-  useEffect(() => {
-    void (async () => {
-      setLoading(true);
-      try {
-        const qs = new URLSearchParams({ page: String(page), ...(filterKey !== "all" ? { status: filterKey } : {}) });
-        const res = await fetch(`/api/admin/store-gift-campaign/claims?${qs.toString()}`, { cache: "no-store" });
-        if (!res.ok) return;
-        setData(await res.json() as { claims: ClaimRow[]; total: number });
-      } finally { setLoading(false); }
-    })();
-  }, [filterKey, page]);
+  const fetchClaims = useCallback(async (fk: string, pg: number) => {
+    setLoading(true);
+    try {
+      const qs = new URLSearchParams({ page: String(pg), ...(fk !== "all" ? { status: fk } : {}) });
+      const res = await fetch(`/api/admin/store-gift-campaign/claims?${qs.toString()}`, { cache: "no-store" });
+      if (!res.ok) return;
+      setData(await res.json() as { claims: ClaimRow[]; total: number });
+    } finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { void fetchClaims(filterKey, page); }, [filterKey, page, fetchClaims]);
+
+  const cancelClaim = async (id: string) => {
+    if (!confirm("إلغاء هذه المطالبة وإزالة الهدية من حساب العميل؟")) return;
+    setActioning(id);
+    await fetch(`/api/admin/store-gift-campaign/claims/${id}`, { method: "PATCH" }).catch(() => {});
+    setActioning(null);
+    void fetchClaims(filterKey, page);
+  };
+
+  const deleteClaim = async (id: string) => {
+    if (!confirm("حذف هذا السجل نهائياً؟")) return;
+    setActioning(id);
+    await fetch(`/api/admin/store-gift-campaign/claims/${id}`, { method: "DELETE" }).catch(() => {});
+    setActioning(null);
+    void fetchClaims(filterKey, page);
+  };
 
   const totalPages = data ? Math.ceil(data.total / 25) : 1;
 
@@ -74,7 +91,7 @@ function GiftCampaignClaimsLog() {
                 <table className="w-full text-xs border-collapse">
                   <thead>
                     <tr className="text-gray-500 border-b border-white/5">
-                      {["العميل", "المكافأة", "الحالة", "التاريخ", "الطلب"].map(h => (
+                      {["العميل", "المكافأة", "الحالة", "التاريخ", "الطلب", "إجراء"].map(h => (
                         <th key={h} className="text-right p-2 font-bold">{h}</th>
                       ))}
                     </tr>
@@ -82,8 +99,10 @@ function GiftCampaignClaimsLog() {
                   <tbody>
                     {data.claims.map(row => {
                       const si = CLAIM_STATUS_LABELS[row.status] ?? { label: row.status, color: "#9ca3af" };
+                      const busy = actioning === row.id;
+                      const canCancel = row.status === "pending" || row.status === "earned";
                       return (
-                        <tr key={row.id} className="border-b border-white/5">
+                        <tr key={row.id} className="border-b border-white/5" style={{ opacity: busy ? 0.5 : 1 }}>
                           <td className="p-2">
                             <div className="font-bold text-gray-200">{row.user?.name ?? "—"}</div>
                             <div className="text-gray-500 text-[11px]">{row.user?.email ?? row.id.slice(-8)}</div>
@@ -107,6 +126,22 @@ function GiftCampaignClaimsLog() {
                                   #{row.storeOrder.id.slice(-6).toUpperCase()}
                                 </span>
                               : <span className="text-gray-600 text-[11px]">—</span>}
+                          </td>
+                          <td className="p-2">
+                            <div className="flex gap-1">
+                              {canCancel && (
+                                <button onClick={() => void cancelClaim(row.id)} disabled={busy}
+                                  className="text-[11px] font-bold px-2 py-0.5 rounded-md disabled:opacity-40"
+                                  style={{ background: "#f59e0b22", color: "#f59e0b" }}>
+                                  إلغاء
+                                </button>
+                              )}
+                              <button onClick={() => void deleteClaim(row.id)} disabled={busy}
+                                className="text-[11px] font-bold px-2 py-0.5 rounded-md disabled:opacity-40"
+                                style={{ background: "#ef444422", color: "#ef4444" }}>
+                                حذف
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );

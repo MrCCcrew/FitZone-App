@@ -40,6 +40,7 @@ function GameSessionsLog() {
   const [page, setPage]           = useState(1);
   const [data, setData]           = useState<{ sessions: SessionRow[]; total: number } | null>(null);
   const [loading, setLoading]     = useState(false);
+  const [actioning, setActioning] = useState<string | null>(null);
 
   const fetchSessions = async (fk: string, pg: number) => {
     setLoading(true);
@@ -50,7 +51,6 @@ function GameSessionsLog() {
       const res = await fetch(`/api/admin/store-free-gifts-game/sessions?${qs.toString()}`, { cache: "no-store" });
       if (!res.ok) return;
       const d = await res.json() as { sessions: SessionRow[]; total: number };
-      // Filter client-side for the sub-types of "confirmed"
       if (fk === "confirmed_no_order") d.sessions = d.sessions.filter(s => s.status === "confirmed" && !s.storeOrder);
       if (fk === "confirmed_with_order") d.sessions = d.sessions.filter(s => s.status === "confirmed" && !!s.storeOrder);
       setData(d);
@@ -61,13 +61,28 @@ function GameSessionsLog() {
 
   useEffect(() => { void fetchSessions(filterKey, page); }, [filterKey, page]);
 
+  const cancelSession = async (id: string) => {
+    if (!confirm("إلغاء هذه الجلسة وإزالة الهدية من حساب العميل؟")) return;
+    setActioning(id);
+    await fetch(`/api/admin/store-free-gifts-game/sessions/${id}`, { method: "PATCH" }).catch(() => {});
+    setActioning(null);
+    void fetchSessions(filterKey, page);
+  };
+
+  const deleteSession = async (id: string) => {
+    if (!confirm("حذف هذا السجل نهائياً؟")) return;
+    setActioning(id);
+    await fetch(`/api/admin/store-free-gifts-game/sessions/${id}`, { method: "DELETE" }).catch(() => {});
+    setActioning(null);
+    void fetchSessions(filterKey, page);
+  };
+
   const totalPages = data ? Math.ceil(data.total / 25) : 1;
 
   return (
     <div style={{ marginTop: 32, background: "rgba(255,255,255,.04)", borderRadius: 16, padding: 20 }}>
       <h3 style={{ color: "#f59e0b", fontWeight: 900, fontSize: 15, marginBottom: 14 }}>📋 سجل جلسات اللعبة</h3>
 
-      {/* Filter tabs */}
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
         {FILTER_TABS.map(tab => (
           <button key={tab.key} onClick={() => { setFilterKey(tab.key); setPage(1); }}
@@ -90,7 +105,7 @@ function GameSessionsLog() {
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                   <thead>
                     <tr style={{ color: "#9ca3af", borderBottom: "1px solid rgba(255,255,255,.08)" }}>
-                      {["العميل", "المكافأة", "المنتجات", "الحالة", "التاريخ", "الطلب"].map(h => (
+                      {["العميل", "المكافأة", "المنتجات", "الحالة", "التاريخ", "الطلب", "إجراء"].map(h => (
                         <th key={h} style={{ padding: "6px 8px", textAlign: "right", fontWeight: 700 }}>{h}</th>
                       ))}
                     </tr>
@@ -101,8 +116,10 @@ function GameSessionsLog() {
                       const statusInfo = SESSION_STATUS_LABELS[ds] ?? { label: ds, color: "#9ca3af" };
                       let productCount = 0;
                       try { productCount = (JSON.parse(row.selectedProductIds) as string[]).length; } catch { productCount = 0; }
+                      const busy = actioning === row.id;
+                      const canCancel = row.status === "confirmed" && !row.storeOrder;
                       return (
-                        <tr key={row.id} style={{ borderBottom: "1px solid rgba(255,255,255,.05)" }}>
+                        <tr key={row.id} style={{ borderBottom: "1px solid rgba(255,255,255,.05)", opacity: busy ? 0.5 : 1 }}>
                           <td style={{ padding: "7px 8px", color: "#e5e7eb" }}>
                             <div style={{ fontWeight: 700, fontSize: 12 }}>{row.user?.name ?? "—"}</div>
                             <div style={{ color: "#9ca3af", fontSize: 11 }}>{row.user?.email ?? row.id.slice(-8)}</div>
@@ -129,6 +146,20 @@ function GameSessionsLog() {
                                 </span>
                               : <span style={{ color: "#6b7280", fontSize: 11 }}>—</span>}
                           </td>
+                          <td style={{ padding: "7px 8px" }}>
+                            <div style={{ display: "flex", gap: 4 }}>
+                              {canCancel && (
+                                <button onClick={() => void cancelSession(row.id)} disabled={busy}
+                                  style={{ padding: "3px 8px", borderRadius: 6, border: "none", background: "#f59e0b22", color: "#f59e0b", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                                  إلغاء الهدية
+                                </button>
+                              )}
+                              <button onClick={() => void deleteSession(row.id)} disabled={busy}
+                                style={{ padding: "3px 8px", borderRadius: 6, border: "none", background: "#ef444422", color: "#ef4444", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                                حذف
+                              </button>
+                            </div>
+                          </td>
                         </tr>
                       );
                     })}
@@ -137,7 +168,6 @@ function GameSessionsLog() {
               </div>
             )}
 
-          {/* Pagination */}
           {totalPages > 1 && (
             <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 12 }}>
               <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
