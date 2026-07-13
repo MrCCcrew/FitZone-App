@@ -204,6 +204,7 @@ async function getAccountData(userId: string) {
         createdAt: user.createdAt.toISOString(),
         emailVerified: user.emailVerified ? user.emailVerified.toISOString() : null,
         hasPassword: !!user.password,
+        avatar: user.avatar ?? null,
       },
       membership: activeMembership
         ? {
