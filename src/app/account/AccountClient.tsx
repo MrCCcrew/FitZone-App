@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { format, differenceInDays } from "date-fns";
 import { ar, enUS } from "date-fns/locale";
@@ -25,6 +25,7 @@ interface AccountData {
     createdAt: string;
     emailVerified: string | null;
     hasPassword: boolean;
+    avatar: string | null;
   };
   membership: {
     id: string;
@@ -647,10 +648,293 @@ function StatCard({
   );
 }
 
+// ─── Avatar helpers ───────────────────────────────────────────────────────────
+const PRESET_AVATARS = [
+  { id: "1",  from: "#ef4444", to: "#7f1d1d", emoji: "💪" },
+  { id: "2",  from: "#f59e0b", to: "#78350f", emoji: "🔥" },
+  { id: "3",  from: "#10b981", to: "#064e3b", emoji: "⚡" },
+  { id: "4",  from: "#6366f1", to: "#312e81", emoji: "🏋️" },
+  { id: "5",  from: "#ec4899", to: "#831843", emoji: "🌟" },
+  { id: "6",  from: "#0ea5e9", to: "#0c4a6e", emoji: "🏃" },
+  { id: "7",  from: "#f97316", to: "#7c2d12", emoji: "🥊" },
+  { id: "8",  from: "#a855f7", to: "#4c1d95", emoji: "🦁" },
+  { id: "9",  from: "#14b8a6", to: "#134e4a", emoji: "🧘" },
+  { id: "10", from: "#f43f5e", to: "#881337", emoji: "❤️‍🔥" },
+  { id: "11", from: "#84cc16", to: "#365314", emoji: "🐅" },
+  { id: "12", from: "#06b6d4", to: "#164e63", emoji: "🏊" },
+  { id: "13", from: "#e11d48", to: "#4c0519", emoji: "🦅" },
+  { id: "14", from: "#d97706", to: "#451a03", emoji: "🏆" },
+  { id: "15", from: "#7c3aed", to: "#2e1065", emoji: "⚔️" },
+  { id: "16", from: "#0f766e", to: "#042f2e", emoji: "🤸" },
+] as const;
+
+type PresetAvatar = typeof PRESET_AVATARS[number];
+
+function getPreset(avatar: string | null): PresetAvatar | null {
+  if (!avatar?.startsWith("avatar:preset:")) return null;
+  const id = avatar.split(":")[2];
+  return PRESET_AVATARS.find(a => a.id === id) ?? null;
+}
+
+function AvatarDisplay({ avatar, name, size = 80 }: { avatar: string | null; name: string; size?: number }) {
+  const preset = getPreset(avatar);
+  const fs = Math.round(size * 0.42);
+  const style: React.CSSProperties = { width: size, height: size, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" };
+
+  if (preset) {
+    return (
+      <div style={{ ...style, background: `linear-gradient(135deg,${preset.from},${preset.to})`, fontSize: fs }}>
+        {preset.emoji}
+      </div>
+    );
+  }
+  if (avatar?.startsWith("http")) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src={avatar} alt="avatar" style={{ ...style, objectFit: "cover" }} />
+    );
+  }
+  return (
+    <div style={{ ...style, background: "linear-gradient(135deg,#dc2626,#7f1d1d)", color: "#fff", fontWeight: 900, fontSize: Math.round(size * 0.38) }}>
+      {name?.[0] ?? "ع"}
+    </div>
+  );
+}
+
+// Gym frames — applied on canvas before upload
+const GYM_FRAMES = [
+  {
+    id: "fitzone",
+    label: "FitZone",
+    svg: (w: number) => `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${w}">
+      <defs>
+        <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#ef4444"/>
+          <stop offset="100%" stop-color="#dc2626"/>
+        </linearGradient>
+      </defs>
+      <circle cx="${w/2}" cy="${w/2}" r="${w/2-2}" fill="none" stroke="url(#g)" stroke-width="${Math.round(w*0.065)}" opacity="0.95"/>
+      <circle cx="${w/2}" cy="${w/2}" r="${w/2-2}" fill="none" stroke="#fff" stroke-width="${Math.round(w*0.01)}" opacity="0.25"/>
+      <text x="${w/2}" y="${w-Math.round(w*0.06)}" text-anchor="middle" font-size="${Math.round(w*0.075)}" font-weight="900" fill="#ef4444" font-family="Arial,sans-serif" letter-spacing="3">FITZONE</text>
+    </svg>`,
+  },
+  {
+    id: "gold",
+    label: "بطل ذهبي",
+    svg: (w: number) => `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${w}">
+      <defs>
+        <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#fbbf24"/>
+          <stop offset="50%" stop-color="#f59e0b"/>
+          <stop offset="100%" stop-color="#d97706"/>
+        </linearGradient>
+      </defs>
+      <circle cx="${w/2}" cy="${w/2}" r="${w/2-2}" fill="none" stroke="url(#g)" stroke-width="${Math.round(w*0.07)}" opacity="0.95"/>
+      <circle cx="${w/2}" cy="${w/2}" r="${w/2-2}" fill="none" stroke="#fff" stroke-width="${Math.round(w*0.015)}" opacity="0.35"/>
+      <text x="${w/2}" y="${Math.round(w*0.16)}" text-anchor="middle" font-size="${Math.round(w*0.12)}" fill="#fbbf24">★</text>
+      <text x="${Math.round(w*0.08)}" y="${w/2+Math.round(w*0.04)}" text-anchor="middle" font-size="${Math.round(w*0.1)}" fill="#fbbf24">★</text>
+      <text x="${Math.round(w*0.92)}" y="${w/2+Math.round(w*0.04)}" text-anchor="middle" font-size="${Math.round(w*0.1)}" fill="#fbbf24">★</text>
+    </svg>`,
+  },
+  {
+    id: "dark",
+    label: "Pro",
+    svg: (w: number) => `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${w}">
+      <defs>
+        <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#6366f1"/>
+          <stop offset="100%" stop-color="#1e1b4b"/>
+        </linearGradient>
+      </defs>
+      <circle cx="${w/2}" cy="${w/2}" r="${w/2-2}" fill="none" stroke="url(#g)" stroke-width="${Math.round(w*0.065)}" opacity="0.95"/>
+      <circle cx="${w/2}" cy="${w/2}" r="${w/2*0.88}" fill="none" stroke="#6366f1" stroke-width="1" opacity="0.4"/>
+      <text x="${w/2}" y="${w-Math.round(w*0.06)}" text-anchor="middle" font-size="${Math.round(w*0.07)}" font-weight="900" fill="#6366f1" font-family="Arial,sans-serif" letter-spacing="2">PRO</text>
+    </svg>`,
+  },
+] as const;
+
+type FrameId = typeof GYM_FRAMES[number]["id"];
+
+async function applyFrameToCanvas(file: File, frameId: FrameId): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const SIZE = 400;
+    const canvas = document.createElement("canvas");
+    canvas.width = SIZE; canvas.height = SIZE;
+    const ctx = canvas.getContext("2d")!;
+
+    const img = new Image();
+    img.onload = () => {
+      // Crop to circle
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(SIZE / 2, SIZE / 2, SIZE / 2 - 2, 0, Math.PI * 2);
+      ctx.clip();
+      const scale = Math.max(SIZE / img.width, SIZE / img.height);
+      const sw = img.width * scale, sh = img.height * scale;
+      ctx.drawImage(img, (SIZE - sw) / 2, (SIZE - sh) / 2, sw, sh);
+      ctx.restore();
+
+      // Apply frame
+      const frame = GYM_FRAMES.find(f => f.id === frameId);
+      if (!frame) { canvas.toBlob(b => b ? resolve(b) : reject(new Error("blob")), "image/png"); return; }
+      const svgStr = frame.svg(SIZE);
+      const blob = new Blob([svgStr], { type: "image/svg+xml" });
+      const url = URL.createObjectURL(blob);
+      const fImg = new Image();
+      fImg.onload = () => {
+        ctx.drawImage(fImg, 0, 0, SIZE, SIZE);
+        URL.revokeObjectURL(url);
+        canvas.toBlob(b => b ? resolve(b) : reject(new Error("blob")), "image/png");
+      };
+      fImg.onerror = reject;
+      fImg.src = url;
+    };
+    img.onerror = reject;
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+function AvatarSection({ avatar, name, onAvatarChange }: { avatar: string | null; name: string; onAvatarChange: (a: string) => void }) {
+  const { lang } = useLang();
+  const t = (ar: string, en: string) => lang === "ar" ? ar : en;
+  const [view, setView] = useState<"main" | "presets" | "upload">("main");
+  const [frame, setFrame] = useState<FrameId>("fitzone");
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const pickPhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    setPhotoFile(f);
+    setPhotoPreview(URL.createObjectURL(f));
+    setMsg(null);
+  };
+
+  const selectPreset = async (id: string) => {
+    setSaving(true); setMsg(null);
+    const preset = `avatar:preset:${id}`;
+    const res = await fetch("/api/me/avatar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ preset }) });
+    if (res.ok) { onAvatarChange(preset); setView("main"); setMsg(t("✅ تم تغيير الأفاتار", "✅ Avatar updated")); }
+    else setMsg(t("❌ تعذر الحفظ", "❌ Failed to save"));
+    setSaving(false);
+  };
+
+  const uploadPhoto = async () => {
+    if (!photoFile) return;
+    setSaving(true); setMsg(null);
+    try {
+      const blob = await applyFrameToCanvas(photoFile, frame);
+      const fd = new FormData();
+      fd.append("file", new File([blob], "avatar.png", { type: "image/png" }));
+      const res = await fetch("/api/me/avatar", { method: "POST", body: fd });
+      const data = await res.json() as { ok?: boolean; avatar?: string; error?: string };
+      if (res.ok && data.avatar) { onAvatarChange(data.avatar); setView("main"); setPhotoFile(null); setPhotoPreview(null); setMsg(t("✅ تم رفع الصورة", "✅ Photo uploaded")); }
+      else setMsg(data.error ?? t("❌ فشل الرفع", "❌ Upload failed"));
+    } catch { setMsg(t("❌ حدث خطأ", "❌ Error occurred")); }
+    setSaving(false);
+  };
+
+  if (view === "presets") return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <button onClick={() => setView("main")} className="text-gray-400 hover:text-white text-sm">← {t("رجوع", "Back")}</button>
+        <h3 className="text-white font-black text-sm">{t("اختاري أفاتار", "Choose an Avatar")}</h3>
+      </div>
+      <div className="grid grid-cols-4 gap-3">
+        {PRESET_AVATARS.map(p => (
+          <button key={p.id} onClick={() => void selectPreset(p.id)} disabled={saving}
+            className="flex flex-col items-center gap-1 group disabled:opacity-50">
+            <div style={{ background: `linear-gradient(135deg,${p.from},${p.to})`, width: 64, height: 64, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, border: avatar === `avatar:preset:${p.id}` ? "3px solid #ef4444" : "3px solid transparent", transition: "all .2s" }}
+              className="group-hover:scale-110">
+              {p.emoji}
+            </div>
+          </button>
+        ))}
+      </div>
+      {msg && <p className="text-sm text-center" style={{ color: msg.startsWith("✅") ? "#10b981" : "#ef4444" }}>{msg}</p>}
+    </div>
+  );
+
+  if (view === "upload") return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <button onClick={() => setView("main")} className="text-gray-400 hover:text-white text-sm">← {t("رجوع", "Back")}</button>
+        <h3 className="text-white font-black text-sm">{t("رفع صورة شخصية", "Upload Photo")}</h3>
+      </div>
+
+      {/* Frame picker */}
+      <div>
+        <p className="text-gray-400 text-xs mb-2">{t("اختاري البرواز:", "Choose frame:")}</p>
+        <div className="flex gap-3">
+          {GYM_FRAMES.map(f => (
+            <button key={f.id} onClick={() => setFrame(f.id as FrameId)}
+              className="flex flex-col items-center gap-1">
+              <div style={{ width: 52, height: 52, borderRadius: "50%", border: frame === f.id ? "3px solid #ef4444" : "3px solid rgba(255,255,255,.15)", transition: "all .2s", overflow: "hidden", position: "relative" }}>
+                <div style={{ width: "100%", height: "100%", background: "linear-gradient(135deg,#374151,#111827)" }} />
+                {f.id === "fitzone" && <div style={{ position: "absolute", inset: 0, border: "3px solid #ef4444", borderRadius: "50%" }} />}
+                {f.id === "gold" && <div style={{ position: "absolute", inset: 0, border: "4px solid #f59e0b", borderRadius: "50%" }} />}
+                {f.id === "dark" && <div style={{ position: "absolute", inset: 0, border: "3px solid #6366f1", borderRadius: "50%" }} />}
+              </div>
+              <span className="text-xs text-gray-400">{f.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Upload area */}
+      <div onClick={() => fileRef.current?.click()}
+        className="cursor-pointer border-2 border-dashed border-white/15 rounded-2xl p-6 flex flex-col items-center gap-2 hover:border-red-500/50 transition-colors">
+        {photoPreview
+          ? <img src={photoPreview} alt="preview" className="w-24 h-24 rounded-full object-cover" />
+          : <><div className="text-4xl">📷</div><p className="text-gray-400 text-sm">{t("اضغطي لاختيار صورة", "Tap to select a photo")}</p></>}
+        <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={pickPhoto} />
+      </div>
+
+      {photoFile && (
+        <button onClick={() => void uploadPhoto()} disabled={saving}
+          className="w-full py-3 rounded-xl font-black text-sm disabled:opacity-50 text-white"
+          style={{ background: "linear-gradient(135deg,#ef4444,#dc2626)" }}>
+          {saving ? t("جارٍ الرفع...", "Uploading...") : t("رفع الصورة", "Upload Photo")}
+        </button>
+      )}
+      {msg && <p className="text-sm text-center" style={{ color: msg.startsWith("✅") ? "#10b981" : "#ef4444" }}>{msg}</p>}
+    </div>
+  );
+
+  return (
+    <div className="flex items-center gap-4">
+      <div className="relative">
+        <AvatarDisplay avatar={avatar} name={name} size={72} />
+        <button onClick={() => setView("presets")}
+          className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full flex items-center justify-center text-xs"
+          style={{ background: "linear-gradient(135deg,#ef4444,#dc2626)", border: "2px solid #1a0a10" }}>
+          ✏️
+        </button>
+      </div>
+      <div className="flex-1">
+        <p className="text-white font-black text-sm mb-1">{t("الصورة الشخصية", "Profile Photo")}</p>
+        <div className="flex gap-2">
+          <button onClick={() => setView("presets")} className="text-xs px-3 py-1.5 rounded-lg font-bold text-white" style={{ background: "rgba(239,68,68,.2)", border: "1px solid rgba(239,68,68,.3)" }}>
+            {t("أفاتارز", "Avatars")}
+          </button>
+          <button onClick={() => setView("upload")} className="text-xs px-3 py-1.5 rounded-lg font-bold text-gray-300" style={{ border: "1px solid rgba(255,255,255,.15)" }}>
+            {t("رفع صورة", "Upload")}
+          </button>
+        </div>
+      </div>
+      {msg && <p className="text-xs" style={{ color: msg.startsWith("✅") ? "#10b981" : "#ef4444" }}>{msg}</p>}
+    </div>
+  );
+}
+
 // ─── Tab: Profile ─────────────────────────────────────────────────────────────
 function ProfileTab({ user, profileComplete, profilePoints }: { user: AccountData["user"]; profileComplete: boolean; profilePoints: number }) {
   const { lang } = useLang();
   const t = (arText: string, enText: string) => (lang === "ar" ? arText : enText);
+  const [avatar, setAvatar] = useState(user.avatar);
   const [form, setForm] = useState({
     name:       user.name,
     phone:      user.phone || "",
@@ -805,11 +1089,9 @@ function ProfileTab({ user, profileComplete, profilePoints }: { user: AccountDat
 
       {/* Profile card */}
       <div className={CARD + " flex items-center gap-5"}>
-        <div className="w-20 h-20 rounded-full bg-gradient-to-br from-red-600 to-red-900 flex items-center justify-center text-white font-black text-3xl shrink-0">
-          {user.name?.[0] ?? "ع"}
-        </div>
-        <div className="flex-1">
-          <div className="text-white font-black text-xl">{user.name}</div>
+        <AvatarDisplay avatar={avatar} name={user.name} size={80} />
+        <div className="flex-1 min-w-0">
+          <div className="text-white font-black text-xl truncate">{user.name}</div>
           <div className="flex items-center gap-2 text-gray-400 text-sm" dir="ltr">
             {user.email}
             {isVerified
@@ -824,6 +1106,11 @@ function ProfileTab({ user, profileComplete, profilePoints }: { user: AccountDat
             <span className="text-gray-600 text-xs">{t("عضو منذ", "Member since")} {joined}</span>
           </div>
         </div>
+      </div>
+
+      {/* Avatar picker */}
+      <div className={CARD}>
+        <AvatarSection avatar={avatar} name={user.name} onAvatarChange={setAvatar} />
       </div>
 
       {/* Edit form */}
