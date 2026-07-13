@@ -41,6 +41,8 @@ export async function GET(req: NextRequest) {
   const user = await getCurrentAppUser();
   const userId = user?.id ?? null;
 
+  if (!userId) return NextResponse.json({ requiresLogin: true });
+
   const dbx = db as any;
 
   // ── Cooldown check: 30 days after last confirmed session ──────────────────
