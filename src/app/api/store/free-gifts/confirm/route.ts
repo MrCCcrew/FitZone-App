@@ -63,5 +63,22 @@ export async function POST() {
     data: { status: "confirmed", confirmedAt: new Date() },
   });
 
+  // Clear any admin override for this user — they've used their allowed replay
+  if (userId) {
+    const overrideRecord = await db.siteContent.findUnique({ where: { section: "gift_game_user_overrides" } }).catch(() => null);
+    if (overrideRecord) {
+      try {
+        const overrides = JSON.parse(overrideRecord.content) as Record<string, string>;
+        if (userId in overrides) {
+          delete overrides[userId];
+          await db.siteContent.update({
+            where: { section: "gift_game_user_overrides" },
+            data: { content: JSON.stringify(overrides) },
+          });
+        }
+      } catch { /* noop */ }
+    }
+  }
+
   return NextResponse.json({ ok: true, selectedProductIds: selected, rewardType, rewardValue });
 }

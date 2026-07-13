@@ -35,12 +35,27 @@ const FILTER_TABS = [
   { key: "expired",  label: "انتهت المدة" },
 ];
 
+type ActionPanel = {
+  id: string;
+  label: string;
+  type: "cancel" | "delete";
+  mode: "immediate" | "date";
+  date: string;
+};
+
+// Returns tomorrow's date as YYYY-MM-DD
+function defaultDate() {
+  const d = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+  return d.toISOString().split("T")[0];
+}
+
 function GameSessionsLog() {
   const [filterKey, setFilterKey] = useState("all");
   const [page, setPage]           = useState(1);
   const [data, setData]           = useState<{ sessions: SessionRow[]; total: number } | null>(null);
   const [loading, setLoading]     = useState(false);
   const [actioning, setActioning] = useState<string | null>(null);
+  const [panel, setPanel]         = useState<ActionPanel | null>(null);
 
   const fetchSessions = async (fk: string, pg: number) => {
     setLoading(true);
@@ -61,18 +76,22 @@ function GameSessionsLog() {
 
   useEffect(() => { void fetchSessions(filterKey, page); }, [filterKey, page]);
 
-  const cancelSession = async (id: string) => {
-    if (!confirm("إلغاء هذه الجلسة وإزالة الهدية من حساب العميل؟")) return;
-    setActioning(id);
-    await fetch(`/api/admin/store-free-gifts-game/sessions/${id}`, { method: "PATCH" }).catch(() => {});
-    setActioning(null);
-    void fetchSessions(filterKey, page);
-  };
+  const submitPanel = async () => {
+    if (!panel) return;
+    const nextPlayableAt = panel.mode === "immediate" ? null : new Date(panel.date).toISOString();
+    setActioning(panel.id);
+    setPanel(null);
 
-  const deleteSession = async (id: string) => {
-    if (!confirm("حذف هذا السجل نهائياً؟")) return;
-    setActioning(id);
-    await fetch(`/api/admin/store-free-gifts-game/sessions/${id}`, { method: "DELETE" }).catch(() => {});
+    if (panel.type === "cancel") {
+      await fetch(`/api/admin/store-free-gifts-game/sessions/${panel.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nextPlayableAt }),
+      }).catch(() => {});
+    } else {
+      const qs = nextPlayableAt ? `?nextPlayableAt=${encodeURIComponent(nextPlayableAt)}` : "";
+      await fetch(`/api/admin/store-free-gifts-game/sessions/${panel.id}${qs}`, { method: "DELETE" }).catch(() => {});
+    }
     setActioning(null);
     void fetchSessions(filterKey, page);
   };
@@ -149,12 +168,12 @@ function GameSessionsLog() {
                           <td style={{ padding: "7px 8px" }}>
                             <div style={{ display: "flex", gap: 4 }}>
                               {canCancel && (
-                                <button onClick={() => void cancelSession(row.id)} disabled={busy}
+                                <button onClick={() => setPanel({ id: row.id, label: row.user?.name ?? row.id.slice(-8), type: "cancel", mode: "immediate", date: defaultDate() })} disabled={busy}
                                   style={{ padding: "3px 8px", borderRadius: 6, border: "none", background: "#f59e0b22", color: "#f59e0b", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
                                   إلغاء الهدية
                                 </button>
                               )}
-                              <button onClick={() => void deleteSession(row.id)} disabled={busy}
+                              <button onClick={() => setPanel({ id: row.id, label: row.user?.name ?? row.id.slice(-8), type: "delete", mode: "immediate", date: defaultDate() })} disabled={busy}
                                 style={{ padding: "3px 8px", borderRadius: 6, border: "none", background: "#ef444422", color: "#ef4444", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
                                 حذف
                               </button>
@@ -167,6 +186,49 @@ function GameSessionsLog() {
                 </table>
               </div>
             )}
+
+          {/* Action panel */}
+          {panel && (
+            <div style={{ marginTop: 12, background: "rgba(0,0,0,.4)", border: `1px solid ${panel.type === "cancel" ? "#f59e0b55" : "#ef444455"}`, borderRadius: 12, padding: 16 }}>
+              <p style={{ color: "#e5e7eb", fontWeight: 700, fontSize: 13, marginBottom: 10 }}>
+                {panel.type === "cancel" ? "🚫 إلغاء هدية:" : "🗑️ حذف سجل:"} <span style={{ color: "#f3f4f6" }}>{panel.label}</span>
+              </p>
+
+              <p style={{ color: "#9ca3af", fontSize: 12, marginBottom: 8 }}>
+                {panel.type === "cancel"
+                  ? "بعد الإلغاء، متى يُسمح للعميل بالدخول مرة أخرى؟"
+                  : "هل تريد تقييد العميل بعد الحذف؟"}
+              </p>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                  <input type="radio" checked={panel.mode === "immediate"} onChange={() => setPanel(p => p ? { ...p, mode: "immediate" } : p)} />
+                  <span style={{ color: "#d1d5db", fontSize: 12 }}>
+                    {panel.type === "cancel" ? "السماح باللعب فوراً" : "لا، اسمح له باللعب بشكل طبيعي"}
+                  </span>
+                </label>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                  <input type="radio" checked={panel.mode === "date"} onChange={() => setPanel(p => p ? { ...p, mode: "date" } : p)} />
+                  <span style={{ color: "#d1d5db", fontSize: 12 }}>السماح فقط بعد تاريخ:</span>
+                  <input type="date" value={panel.date} disabled={panel.mode !== "date"}
+                    onChange={e => setPanel(p => p ? { ...p, date: e.target.value } : p)}
+                    style={{ background: "rgba(255,255,255,.08)", border: "1px solid rgba(255,255,255,.15)", borderRadius: 6, padding: "2px 8px", color: "#f3f4f6", fontSize: 11 }} />
+                </label>
+              </div>
+
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={() => void submitPanel()}
+                  style={{ padding: "6px 16px", borderRadius: 8, border: "none", fontWeight: 700, fontSize: 12, cursor: "pointer",
+                    background: panel.type === "cancel" ? "#f59e0b" : "#ef4444", color: "#fff" }}>
+                  {panel.type === "cancel" ? "تأكيد الإلغاء" : "تأكيد الحذف"}
+                </button>
+                <button onClick={() => setPanel(null)}
+                  style={{ padding: "6px 16px", borderRadius: 8, border: "1px solid rgba(255,255,255,.15)", background: "transparent", color: "#9ca3af", fontSize: 12, cursor: "pointer" }}>
+                  رجوع
+                </button>
+              </div>
+            </div>
+          )}
 
           {totalPages > 1 && (
             <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 12 }}>

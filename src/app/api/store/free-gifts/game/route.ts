@@ -45,25 +45,32 @@ export async function GET(req: NextRequest) {
 
   const dbx = db as any;
 
-  // ── Cooldown check: 30 days after last confirmed session ──────────────────
+  // ── Cooldown check: admin override first, then natural 30-day window ────────
   const COOLDOWN_MS = 30 * 24 * 60 * 60 * 1000;
-  const cutoff = new Date(Date.now() - COOLDOWN_MS);
+  const OVERRIDES_KEY = "gift_game_user_overrides";
+  const now = new Date();
 
-  if (userId) {
-    // Logged-in: check by userId
+  // Check admin override table (takes priority over natural cooldown)
+  const overrideRecord = await db.siteContent.findUnique({ where: { section: OVERRIDES_KEY } }).catch(() => null);
+  let overrides: Record<string, string> = {};
+  try { overrides = JSON.parse(overrideRecord?.content ?? "{}") as Record<string, string>; } catch { /* noop */ }
+  const adminOverrideDate = userId && userId in overrides ? new Date(overrides[userId]) : undefined;
+
+  if (adminOverrideDate !== undefined) {
+    if (adminOverrideDate > now) {
+      // Admin set a future restriction → block until that date
+      return NextResponse.json({ gameEnabled: true, cooldown: true, cooldownUntil: adminOverrideDate.toISOString() });
+    }
+    // Admin override is in the past (or epoch = allow immediately) → skip natural cooldown below
+  } else {
+    // No admin override → check natural 30-day cooldown
+    const cutoff = new Date(Date.now() - COOLDOWN_MS);
     const recentConfirmed = await dbx.storeFreeGiftsSession.findFirst({
       where: { userId, status: "confirmed", confirmedAt: { gte: cutoff } },
       orderBy: { confirmedAt: "desc" },
     }).catch(() => null);
     if (recentConfirmed?.confirmedAt) {
       const cooldownUntil = new Date(new Date(recentConfirmed.confirmedAt).getTime() + COOLDOWN_MS);
-      return NextResponse.json({ gameEnabled: true, cooldown: true, cooldownUntil: cooldownUntil.toISOString() });
-    }
-  } else if (token) {
-    // Anonymous: check by cookie token
-    const existingSession = await dbx.storeFreeGiftsSession.findUnique({ where: { token } }).catch(() => null);
-    if (existingSession?.status === "confirmed" && existingSession.confirmedAt && new Date(existingSession.confirmedAt) >= cutoff) {
-      const cooldownUntil = new Date(new Date(existingSession.confirmedAt).getTime() + COOLDOWN_MS);
       return NextResponse.json({ gameEnabled: true, cooldown: true, cooldownUntil: cooldownUntil.toISOString() });
     }
   }
