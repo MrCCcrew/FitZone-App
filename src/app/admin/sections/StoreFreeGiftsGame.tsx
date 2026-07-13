@@ -1,6 +1,163 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 
+// ── Sessions Log ──────────────────────────────────────────────────────────────
+type SessionRow = {
+  id: string;
+  status: string;
+  spinRewardType: string | null;
+  spinRewardValue: number | null;
+  selectedProductIds: string;
+  giftSlotsCount: number | null;
+  createdAt: string;
+  confirmedAt: string | null;
+  user: { id: string; name: string | null; email: string | null } | null;
+  storeOrder: { id: string; status: string; total: number } | null;
+};
+
+const SESSION_STATUS_LABELS: Record<string, { label: string; color: string }> = {
+  active:   { label: "لعب ولم يكمل",        color: "#f59e0b" },
+  confirmed_no_order: { label: "كسب / بانتظار الطلب", color: "#6366f1" },
+  confirmed_with_order: { label: "تم استلام الهدية", color: "#10b981" },
+  expired:  { label: "انتهت المدة",           color: "#6b7280" },
+};
+
+function sessionDisplayStatus(row: SessionRow) {
+  if (row.status === "confirmed") return row.storeOrder ? "confirmed_with_order" : "confirmed_no_order";
+  return row.status;
+}
+
+const FILTER_TABS = [
+  { key: "all",      label: "الكل" },
+  { key: "active",   label: "لعب ولم يكمل" },
+  { key: "confirmed_no_order", label: "كسب / بانتظار الطلب", apiValue: "confirmed" },
+  { key: "confirmed_with_order", label: "تم استلام الهدية", apiValue: "confirmed" },
+  { key: "expired",  label: "انتهت المدة" },
+];
+
+function GameSessionsLog() {
+  const [filterKey, setFilterKey] = useState("all");
+  const [page, setPage]           = useState(1);
+  const [data, setData]           = useState<{ sessions: SessionRow[]; total: number } | null>(null);
+  const [loading, setLoading]     = useState(false);
+
+  const fetchSessions = async (fk: string, pg: number) => {
+    setLoading(true);
+    try {
+      const tab = FILTER_TABS.find(t => t.key === fk);
+      const apiStatus = tab && "apiValue" in tab ? tab.apiValue : (fk === "all" ? "" : fk);
+      const qs = new URLSearchParams({ page: String(pg), ...(apiStatus ? { status: apiStatus } : {}) });
+      const res = await fetch(`/api/admin/store-free-gifts-game/sessions?${qs.toString()}`, { cache: "no-store" });
+      if (!res.ok) return;
+      const d = await res.json() as { sessions: SessionRow[]; total: number };
+      // Filter client-side for the sub-types of "confirmed"
+      if (fk === "confirmed_no_order") d.sessions = d.sessions.filter(s => s.status === "confirmed" && !s.storeOrder);
+      if (fk === "confirmed_with_order") d.sessions = d.sessions.filter(s => s.status === "confirmed" && !!s.storeOrder);
+      setData(d);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { void fetchSessions(filterKey, page); }, [filterKey, page]);
+
+  const totalPages = data ? Math.ceil(data.total / 25) : 1;
+
+  return (
+    <div style={{ marginTop: 32, background: "rgba(255,255,255,.04)", borderRadius: 16, padding: 20 }}>
+      <h3 style={{ color: "#f59e0b", fontWeight: 900, fontSize: 15, marginBottom: 14 }}>📋 سجل جلسات اللعبة</h3>
+
+      {/* Filter tabs */}
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
+        {FILTER_TABS.map(tab => (
+          <button key={tab.key} onClick={() => { setFilterKey(tab.key); setPage(1); }}
+            style={{ padding: "5px 12px", borderRadius: 20, border: "none", fontSize: 12, fontWeight: 700, cursor: "pointer",
+              background: filterKey === tab.key ? "#f59e0b" : "rgba(255,255,255,.1)",
+              color: filterKey === tab.key ? "#000" : "#ccc" }}>
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {loading && <p style={{ color: "#9ca3af", fontSize: 13 }}>جارٍ التحميل…</p>}
+
+      {!loading && data && (
+        <>
+          {data.sessions.length === 0
+            ? <p style={{ color: "#6b7280", fontSize: 13 }}>لا توجد جلسات لهذا الفلتر.</p>
+            : (
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                  <thead>
+                    <tr style={{ color: "#9ca3af", borderBottom: "1px solid rgba(255,255,255,.08)" }}>
+                      {["العميل", "المكافأة", "المنتجات", "الحالة", "التاريخ", "الطلب"].map(h => (
+                        <th key={h} style={{ padding: "6px 8px", textAlign: "right", fontWeight: 700 }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.sessions.map(row => {
+                      const ds = sessionDisplayStatus(row);
+                      const statusInfo = SESSION_STATUS_LABELS[ds] ?? { label: ds, color: "#9ca3af" };
+                      let productCount = 0;
+                      try { productCount = (JSON.parse(row.selectedProductIds) as string[]).length; } catch { productCount = 0; }
+                      return (
+                        <tr key={row.id} style={{ borderBottom: "1px solid rgba(255,255,255,.05)" }}>
+                          <td style={{ padding: "7px 8px", color: "#e5e7eb" }}>
+                            <div style={{ fontWeight: 700, fontSize: 12 }}>{row.user?.name ?? "—"}</div>
+                            <div style={{ color: "#9ca3af", fontSize: 11 }}>{row.user?.email ?? row.id.slice(-8)}</div>
+                          </td>
+                          <td style={{ padding: "7px 8px", color: "#f3f4f6" }}>
+                            {row.spinRewardType ?? "—"}
+                            {row.spinRewardValue ? <span style={{ color: "#9ca3af" }}> ({row.spinRewardValue})</span> : null}
+                          </td>
+                          <td style={{ padding: "7px 8px", color: "#d1d5db" }}>
+                            {productCount > 0 ? `${productCount} منتج (مجموع ${row.giftSlotsCount ?? 1})` : `مجموع ${row.giftSlotsCount ?? 1}`}
+                          </td>
+                          <td style={{ padding: "7px 8px" }}>
+                            <span style={{ background: statusInfo.color + "22", color: statusInfo.color, padding: "2px 8px", borderRadius: 10, fontWeight: 700, fontSize: 11 }}>
+                              {statusInfo.label}
+                            </span>
+                          </td>
+                          <td style={{ padding: "7px 8px", color: "#9ca3af", fontSize: 11 }}>
+                            {new Date(row.createdAt).toLocaleDateString("ar-EG", { day: "2-digit", month: "2-digit", year: "numeric" })}
+                          </td>
+                          <td style={{ padding: "7px 8px", color: "#d1d5db" }}>
+                            {row.storeOrder
+                              ? <span style={{ background: "#10b98122", color: "#10b981", padding: "2px 6px", borderRadius: 8, fontSize: 11 }}>
+                                  #{row.storeOrder.id.slice(-6).toUpperCase()}
+                                </span>
+                              : <span style={{ color: "#6b7280", fontSize: 11 }}>—</span>}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 12 }}>
+              <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+                style={{ padding: "4px 12px", borderRadius: 8, border: "none", background: "rgba(255,255,255,.1)", color: "#ccc", cursor: page === 1 ? "not-allowed" : "pointer", opacity: page === 1 ? .4 : 1 }}>
+                ← السابق
+              </button>
+              <span style={{ color: "#9ca3af", fontSize: 12, lineHeight: "28px" }}>{page} / {totalPages}</span>
+              <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+                style={{ padding: "4px 12px", borderRadius: 8, border: "none", background: "rgba(255,255,255,.1)", color: "#ccc", cursor: page === totalPages ? "not-allowed" : "pointer", opacity: page === totalPages ? .4 : 1 }}>
+                التالي →
+              </button>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 type RewardPoolItem = {
   id: string;
   type: string;
@@ -443,6 +600,8 @@ export function StoreFreeGiftsGameSection() {
         style={{ padding: "13px", borderRadius: 12, border: "none", background: saved ? "#10b981" : saving ? "rgba(255,255,255,.1)" : "linear-gradient(135deg,#f59e0b,#f97316)", color: saving ? "rgba(255,255,255,.4)" : "#fff", fontSize: 15, fontWeight: 900, cursor: saving ? "not-allowed" : "pointer", transition: "all .25s" }}>
         {saved ? "✅ تم الحفظ" : saving ? "جارٍ الحفظ..." : "💾 حفظ الإعدادات"}
       </button>
+
+      <GameSessionsLog />
     </div>
   );
 }
