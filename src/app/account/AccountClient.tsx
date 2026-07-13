@@ -2633,6 +2633,68 @@ function OrdersTab({ orders }: { orders: AccountData["orders"] }) {
   );
 }
 
+function PendingGameGiftBanner() {
+  const { lang } = useLang();
+  const t = (ar: string, en: string) => lang === "ar" ? ar : en;
+  const [pending, setPending] = useState<{ products: { id: string; name: string; image: string | null }[]; confirmedAt: string } | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [added, setAdded] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/store/free-gifts/pending", { cache: "no-store" })
+      .then(r => r.ok ? r.json() : null)
+      .then((d: { pending: typeof pending } | null) => { if (d?.pending) setPending(d.pending); })
+      .catch(() => {});
+  }, []);
+
+  if (!pending || pending.products.length === 0) return null;
+
+  const addToCart = () => {
+    if (adding || added) return;
+    setAdding(true);
+    try {
+      const CART_KEY = "fitzone:cart";
+      let cart: Array<{ productId: string; name: string; price: number; qty: number; size: string | null; type: string }> = [];
+      try { cart = JSON.parse(localStorage.getItem(CART_KEY) ?? "[]") as typeof cart; } catch { cart = []; }
+      for (const p of pending.products) {
+        if (!cart.find(c => c.productId === p.id && c.type === "gift")) {
+          cart.push({ productId: p.id, name: p.name, price: 0, qty: 1, size: null, type: "gift" });
+        }
+      }
+      localStorage.setItem(CART_KEY, JSON.stringify(cart));
+      try { window.dispatchEvent(new Event("fitzone-cart-updated")); } catch { /* noop */ }
+      setAdded(true);
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  return (
+    <div className="rounded-2xl border border-pink-500/40 bg-gradient-to-r from-pink-900/20 to-purple-900/10 p-4 mb-4 flex items-start gap-4">
+      <span className="text-3xl flex-shrink-0">🎁</span>
+      <div className="flex-1 min-w-0">
+        <p className="font-black text-pink-300 text-sm mb-1">
+          {t("لديك هدية من لعبة الهدايا المجانية!", "You have a free gift from the game!")}
+        </p>
+        <p className="text-xs text-gray-400 mb-2">
+          {t(`${pending.products.length} منتج مجاني بانتظار إتمام الطلب`, `${pending.products.length} free product(s) waiting for your order`)}
+        </p>
+        <div className="flex gap-2 flex-wrap">
+          <button onClick={addToCart} disabled={adding || added}
+            className="text-xs font-bold px-3 py-1.5 rounded-lg bg-pink-600 text-white disabled:opacity-60">
+            {added ? t("✅ تمت الإضافة للسلة", "✅ Added to cart") : t("أضف الهدايا للسلة", "Add gifts to cart")}
+          </button>
+          {added && (
+            <a href="/?page=cart" className="text-xs font-bold px-3 py-1.5 rounded-lg border border-pink-500/40 text-pink-300">
+              {t("اذهب للسلة →", "Go to cart →")}
+            </a>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AccountOrdersTab({ orders }: { orders: AccountData["orders"] }) {
   const { lang } = useLang();
   const t = (arText: string, enText: string) => (lang === "ar" ? arText : enText);
@@ -2664,16 +2726,20 @@ function AccountOrdersTab({ orders }: { orders: AccountData["orders"] }) {
 
   if (items.length === 0) {
     return (
-      <div className={CARD + " text-center py-10"}>
-        <div className="text-4xl mb-3">🛍️</div>
-        <p className="text-gray-400 mb-4">{t("لا توجد طلبات من المتجر حتى الآن.", "No store orders yet.")}</p>
-        <a href="/?page=shop" className="inline-block bg-red-600 text-white font-bold px-5 py-2 rounded-xl text-sm">{t("اذهبي إلى المتجر", "Go to shop")}</a>
+      <div className="space-y-4">
+        <PendingGameGiftBanner />
+        <div className={CARD + " text-center py-10"}>
+          <div className="text-4xl mb-3">🛍️</div>
+          <p className="text-gray-400 mb-4">{t("لا توجد طلبات من المتجر حتى الآن.", "No store orders yet.")}</p>
+          <a href="/?page=shop" className="inline-block bg-red-600 text-white font-bold px-5 py-2 rounded-xl text-sm">{t("اذهبي إلى المتجر", "Go to shop")}</a>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="space-y-4">
+      <PendingGameGiftBanner />
       {items.map((order) => (
         <div key={order.id} className={CARD}>
           <div className="flex items-center gap-3 cursor-pointer" onClick={() => setExpanded(expanded === order.id ? null : order.id)}>

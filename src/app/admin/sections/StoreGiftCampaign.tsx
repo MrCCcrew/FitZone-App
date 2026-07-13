@@ -3,6 +3,135 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { StoreGiftCampaignSettings } from "@/app/api/admin/store-gift-campaign/route";
 
+// ── Claims Log ────────────────────────────────────────────────────────────────
+type ClaimRow = {
+  id: string;
+  status: string;
+  rewardType: string;
+  rewardValue: string | null;
+  createdAt: string;
+  claimedAt: string | null;
+  user: { id: string; name: string | null; email: string | null } | null;
+  storeOrder: { id: string; status: string; total: number } | null;
+};
+
+const CLAIM_STATUS_LABELS: Record<string, { label: string; color: string }> = {
+  pending:   { label: "بانتظار الطلب",   color: "#f59e0b" },
+  earned:    { label: "كُسبت",            color: "#6366f1" },
+  claimed:   { label: "استُلمت",          color: "#10b981" },
+  cancelled: { label: "ملغاة",            color: "#6b7280" },
+};
+
+const CLAIM_FILTER_TABS = [
+  { key: "all",       label: "الكل" },
+  { key: "pending",   label: "بانتظار الطلب" },
+  { key: "earned",    label: "كُسبت" },
+  { key: "claimed",   label: "استُلمت" },
+  { key: "cancelled", label: "ملغاة" },
+];
+
+function GiftCampaignClaimsLog() {
+  const [filterKey, setFilterKey] = useState("all");
+  const [page, setPage]           = useState(1);
+  const [data, setData]           = useState<{ claims: ClaimRow[]; total: number } | null>(null);
+  const [loading, setLoading]     = useState(false);
+
+  useEffect(() => {
+    void (async () => {
+      setLoading(true);
+      try {
+        const qs = new URLSearchParams({ page: String(page), ...(filterKey !== "all" ? { status: filterKey } : {}) });
+        const res = await fetch(`/api/admin/store-gift-campaign/claims?${qs.toString()}`, { cache: "no-store" });
+        if (!res.ok) return;
+        setData(await res.json() as { claims: ClaimRow[]; total: number });
+      } finally { setLoading(false); }
+    })();
+  }, [filterKey, page]);
+
+  const totalPages = data ? Math.ceil(data.total / 25) : 1;
+
+  return (
+    <div className="mt-8 rounded-2xl border border-pink-900/30 bg-white/5 p-5">
+      <h3 className="font-black text-pink-400 text-sm mb-4">📋 سجل مطالبات الحملة</h3>
+
+      <div className="flex gap-2 flex-wrap mb-4">
+        {CLAIM_FILTER_TABS.map(tab => (
+          <button key={tab.key} onClick={() => { setFilterKey(tab.key); setPage(1); }}
+            className={`text-xs font-bold px-3 py-1 rounded-full border transition-colors ${filterKey === tab.key ? "bg-pink-600 border-pink-600 text-white" : "border-white/10 text-gray-400 hover:text-white"}`}>
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {loading && <p className="text-gray-500 text-sm">جارٍ التحميل…</p>}
+
+      {!loading && data && (
+        <>
+          {data.claims.length === 0
+            ? <p className="text-gray-600 text-sm">لا توجد مطالبات لهذا الفلتر.</p>
+            : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs border-collapse">
+                  <thead>
+                    <tr className="text-gray-500 border-b border-white/5">
+                      {["العميل", "المكافأة", "الحالة", "التاريخ", "الطلب"].map(h => (
+                        <th key={h} className="text-right p-2 font-bold">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.claims.map(row => {
+                      const si = CLAIM_STATUS_LABELS[row.status] ?? { label: row.status, color: "#9ca3af" };
+                      return (
+                        <tr key={row.id} className="border-b border-white/5">
+                          <td className="p-2">
+                            <div className="font-bold text-gray-200">{row.user?.name ?? "—"}</div>
+                            <div className="text-gray-500 text-[11px]">{row.user?.email ?? row.id.slice(-8)}</div>
+                          </td>
+                          <td className="p-2 text-gray-300">
+                            {row.rewardType}
+                            {row.rewardValue && <span className="text-gray-500"> ({row.rewardValue})</span>}
+                          </td>
+                          <td className="p-2">
+                            <span className="px-2 py-0.5 rounded-full font-bold text-[11px]"
+                              style={{ background: si.color + "22", color: si.color }}>
+                              {si.label}
+                            </span>
+                          </td>
+                          <td className="p-2 text-gray-500 text-[11px]">
+                            {new Date(row.createdAt).toLocaleDateString("ar-EG", { day: "2-digit", month: "2-digit", year: "numeric" })}
+                          </td>
+                          <td className="p-2">
+                            {row.storeOrder
+                              ? <span className="text-[11px] px-2 py-0.5 rounded-lg" style={{ background: "#10b98122", color: "#10b981" }}>
+                                  #{row.storeOrder.id.slice(-6).toUpperCase()}
+                                </span>
+                              : <span className="text-gray-600 text-[11px]">—</span>}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+          {totalPages > 1 && (
+            <div className="flex gap-2 justify-center mt-3">
+              <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+                className="text-xs px-3 py-1 rounded-lg border border-white/10 text-gray-400 disabled:opacity-40">← السابق</button>
+              <span className="text-gray-500 text-xs leading-7">{page} / {totalPages}</span>
+              <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+                className="text-xs px-3 py-1 rounded-lg border border-white/10 text-gray-400 disabled:opacity-40">التالي →</button>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 type AdminProduct = { id: string; name: string; images?: string[] | null };
 
 function getThumb(images: string[] | null | undefined): string | null {
@@ -335,6 +464,8 @@ export default function StoreGiftCampaign() {
       >
         {saving ? "جارٍ الحفظ..." : "💾 حفظ إعدادات الحملة"}
       </button>
+
+      <GiftCampaignClaimsLog />
     </div>
   );
 }
