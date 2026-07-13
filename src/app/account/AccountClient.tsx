@@ -5167,9 +5167,24 @@ export default function AccountClient({ data }: { data: AccountData }) {
       <div className="border-b border-[#ffbcdb]/20 bg-[#14060d]/92 backdrop-blur-xl">
         <div className="max-w-5xl mx-auto px-4 py-6">
           <div className="flex items-center gap-4">
-            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-pink-500 via-fuchsia-500 to-pink-800 text-xl font-black text-white shadow-[0_18px_40px_rgba(190,24,93,0.35)]">
-              {data.user.name?.[0] ?? "ع"}
-            </div>
+            {(() => {
+              const tier = data.rewards?.tier;
+              const hasMembership = !!data.membership;
+              const ringColor = !hasMembership
+                ? "#ec4899"
+                : tier === "platinum" ? "#a855f7"
+                : tier === "gold"     ? "#eab308"
+                : tier === "silver"   ? "#9ca3af"
+                : "#b45309";
+              return (
+                <div className="relative shrink-0" style={{ width: 56, height: 56 }}>
+                  <AvatarDisplay avatar={data.user.avatar ?? null} name={data.user.name} size={56} />
+                  <div className="absolute inset-0 rounded-full pointer-events-none"
+                    style={{ border: `3px solid ${ringColor}`, boxShadow: `0 0 10px ${ringColor}80` }}
+                  />
+                </div>
+              );
+            })()}
             <div className="flex-1">
               <h1 className="text-xl font-black text-[#fff7fb]">{data.user.name}</h1>
               <div className="flex items-center gap-3 mt-1 flex-wrap">
