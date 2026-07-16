@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { AdminFeature } from "@/lib/admin-permissions";
 import { TranslateButton } from "./TranslateButton";
 
 type Tab = "hero" | "contact" | "trainersPage" | "announcements" | "about" | "blog" | "policy" | "privacy" | "refund" | "store";
@@ -975,6 +976,7 @@ function BlogTabFixed({ data, onChange }: { data: BlogData; onChange: (d: BlogDa
 }
 
 export default function PagesContent() {
+  const [userFeatures, setUserFeatures] = useState<AdminFeature[]>([]);
   const [activeTab, setActiveTab] = useState<Tab>("hero");
   const [hero, setHero] = useState<HeroData>(DEFAULTS.hero as HeroData);
   const [contact, setContact] = useState<ContactData>(DEFAULTS.contact as ContactData);
@@ -989,6 +991,28 @@ export default function PagesContent() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ text: string; ok: boolean } | null>(null);
+
+  useEffect(() => {
+    void fetch("/api/admin/session", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((s: { user?: { permissions?: AdminFeature[] } }) => {
+        if (s.user?.permissions) setUserFeatures(s.user.permissions);
+      })
+      .catch(() => null);
+  }, []);
+
+  const visibleTabs = useMemo(() => {
+    const hasSiteContent = userFeatures.includes("site-content");
+    const hasBlogOnly = !hasSiteContent && userFeatures.includes("blog");
+    if (hasBlogOnly) return TABS.filter((t) => t.id === "blog");
+    return TABS;
+  }, [userFeatures]);
+
+  useEffect(() => {
+    if (visibleTabs.length > 0 && !visibleTabs.find((t) => t.id === activeTab)) {
+      setActiveTab(visibleTabs[0].id);
+    }
+  }, [visibleTabs, activeTab]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1136,7 +1160,7 @@ export default function PagesContent() {
     <div className="space-y-6">
       <div className="rounded-3xl border border-gray-800 bg-gray-950/70 p-5">
         <div className="mb-5 flex flex-wrap items-center gap-3">
-          {TABS.map((tab) => (
+          {visibleTabs.map((tab) => (
             <button
               key={tab.id}
               type="button"
@@ -1155,7 +1179,7 @@ export default function PagesContent() {
 
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-gray-800 pb-5">
           <div>
-            <div className="text-xl font-black text-white">{TABS.find((tab) => tab.id === activeTab)?.label}</div>
+            <div className="text-xl font-black text-white">{visibleTabs.find((tab) => tab.id === activeTab)?.label}</div>
             <div className="mt-1 text-sm text-gray-400">
               كل التعديلات هنا تُحفظ مباشرة داخل قاعدة البيانات وتظهر في الموقع بعد الحفظ.
             </div>

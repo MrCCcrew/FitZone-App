@@ -41,7 +41,8 @@ export type AdminFeature =
   | "suppliers"
   | "delivery-companies"
   | "store-campaigns"
-  | "store-free-gifts";
+  | "store-free-gifts"
+  | "blog";
 
 
 export const ADMIN_FEATURES: AdminFeature[] = [
@@ -75,6 +76,7 @@ export const ADMIN_FEATURES: AdminFeature[] = [
   "delivery-companies",
   "store-campaigns",
   "store-free-gifts",
+  "blog",
 ];
 
 const STAFF_FEATURES: AdminFeature[] = [
@@ -192,6 +194,9 @@ export function canAccessAdminFeature(
 export function canAccessAdminSection(role: string | undefined, permissions: string[] | undefined, section: Section) {
   if (section === "settings") {
     return canAccessAdminFeature(role, permissions, "settings") || (role === "staff" && canAccessAdminFeature(role, permissions, "referrals"));
+  }
+  if (section === "pages") {
+    return canAccessAdminFeature(role, permissions, "site-content") || canAccessAdminFeature(role, permissions, "blog");
   }
   return canAccessAdminFeature(role, permissions, SECTION_FEATURE_MAP[section]);
 }

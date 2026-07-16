@@ -49,6 +49,7 @@ const FEATURE_LABELS: Record<string, string> = {
   "delivery-companies": "شركات التوصيل",
   "store-campaigns": "حملة هدايا المتجر",
   "store-free-gifts": "لعبة الهدايا المجانية",
+  blog: "المدونة فقط",
 };
 
 type EmployeeForm = {
