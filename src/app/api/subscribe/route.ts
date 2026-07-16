@@ -10,7 +10,7 @@ class SubscribeError extends Error {
     this.action = action;
   }
 }
-import { sendSubscriptionEmail } from "@/lib/email";
+import { sendSubscriptionEmail, sendAdminSubscriptionNotification } from "@/lib/email";
 import { generateMembershipInvoicePdf, type MembershipInvoiceDetails } from "@/lib/membership-invoice";
 import { buildAttendancePayload, ensureMembershipAttendancePass } from "@/lib/attendance";
 import { generateMembershipQrCard } from "@/lib/membership-card";
@@ -1243,6 +1243,16 @@ export async function POST(req: Request) {
         },
         membershipCard,
       ).catch((error) => console.error("[SUBSCRIBE_EMAIL]", error));
+      void sendAdminSubscriptionNotification({
+        customerName: userRecord.name ?? "—",
+        customerEmail: userRecord.email,
+        planName: result.planName,
+        offerTitle: result.offerTitle,
+        endDate: result.endDate,
+        amount: result.paymentAmount,
+        paymentMethod: result.membershipPaymentMethod,
+        invoiceNumber: invoiceDetails.invoiceNumber,
+      }).catch((error) => console.error("[SUBSCRIBE_ADMIN_EMAIL]", error));
     } catch (error) {
       console.error("[SUBSCRIBE_POST_COMMIT]", error);
     }
