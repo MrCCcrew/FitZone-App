@@ -4,6 +4,8 @@ import { db } from "@/lib/db";
 import { createPaymentTransaction, restorePaymentBalanceAdjustments, unlockPendingReferralReward } from "@/lib/payments/service";
 import { getStoreCampaignSettings } from "@/app/api/admin/store-gift-campaign/route";
 import { cookies } from "next/headers";
+import { sendStoreOrderEmail, sendAdminOrderNotification } from "@/lib/email";
+import { generateStoreOrderInvoicePdf } from "@/lib/store-order-invoice";
 
 const GAME_COOKIE = "fitzone-game-token";
 
@@ -399,6 +401,45 @@ export async function POST(req: Request) {
     // Unlock pending referral reward for confirmed/free orders (fire-and-forget)
     if (total <= 0 || paymentMethod === "cod") {
       void unlockPendingReferralReward(userId).catch(() => {});
+    }
+
+    // Send order confirmation emails (fire-and-forget, non-critical)
+    if (currentUser?.email && (total <= 0 || paymentMethod === "cod")) {
+      const invoiceNumber = `ORD-${order.id.slice(-8).toUpperCase()}`;
+      const orderItems = items.map((item) => {
+        const product = products.find((p) => p.id === item.productId)!;
+        const orderItem = order.items.find((oi) => oi.productId === item.productId);
+        return {
+          name: product.name,
+          quantity: item.quantity,
+          unitPrice: orderItem?.price ?? product.price,
+          size: item.size ?? null,
+        };
+      });
+      const invoiceDetails = {
+        invoiceNumber,
+        customerName: currentUser.name ?? "عميل",
+        customerEmail: currentUser.email,
+        paymentMethod,
+        issuedAt: new Date(),
+        items: orderItems,
+        subtotal,
+        shippingFee,
+        discountTotal,
+        total,
+        address: body.address?.trim() || null,
+        deliveryLabel: deliveryOption?.name ?? null,
+        isClubPickup,
+      };
+      void (async () => {
+        try {
+          const invoicePdf = await generateStoreOrderInvoicePdf(invoiceDetails);
+          void sendStoreOrderEmail(invoiceDetails, invoicePdf).catch((e) => console.error("[ORDER_EMAIL]", e));
+          void sendAdminOrderNotification(invoiceDetails).catch((e) => console.error("[ORDER_ADMIN_EMAIL]", e));
+        } catch (e) {
+          console.error("[ORDER_INVOICE_GEN]", e);
+        }
+      })();
     }
 
     // Auto-apply store gift campaign (fire-and-forget, never blocks order)
