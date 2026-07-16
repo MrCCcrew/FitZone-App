@@ -1,6 +1,6 @@
 ﻿import { db } from "@/lib/db";
 import { buildAttendancePayload, ensureMembershipAttendancePass, ensurePrivateAttendancePass } from "@/lib/attendance";
-import { sendSubscriptionEmail } from "@/lib/email";
+import { sendSubscriptionEmail, sendAdminSubscriptionNotification } from "@/lib/email";
 import { getRewardSettings, calcTier } from "@/lib/reward-settings";
 import { generateMembershipQrCard } from "@/lib/membership-card";
 import { generateMembershipInvoicePdf, type MembershipInvoiceDetails } from "@/lib/membership-invoice";
@@ -955,6 +955,16 @@ export async function updatePaymentTransactionStatus(
                 : null,
               membershipCard,
             ).catch((err) => console.error("[PAYMENT_EMAIL]", err));
+            void sendAdminSubscriptionNotification({
+              customerName: userRecord.name ?? "—",
+              customerEmail: userRecord.email,
+              planName: membership.membership?.name ?? "الباقة",
+              offerTitle: membership.offer?.title ?? null,
+              endDate,
+              amount: transaction.amount,
+              paymentMethod: transaction.paymentMethod,
+              invoiceNumber: normalizedInvoice?.invoiceNumber ?? `MBR-${existing.membershipId.slice(-8).toUpperCase()}`,
+            }).catch((err) => console.error("[PAYMENT_ADMIN_EMAIL]", err));
           }
         }
       }

@@ -240,6 +240,99 @@ export async function sendSubscriptionEmail(
   }
 }
 
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  cash: "كاش",
+  free: "مجاني",
+  wallet: "محفظة",
+  card: "بطاقة أونلاين",
+  instapay: "إنستا باي",
+  manual_pending: "قيد الدفع",
+};
+
+export async function sendAdminSubscriptionNotification(opts: {
+  customerName: string;
+  customerEmail: string;
+  planName: string;
+  offerTitle?: string | null;
+  endDate: Date;
+  amount: number;
+  paymentMethod: string;
+  invoiceNumber: string;
+}) {
+  const { customerName, customerEmail, planName, offerTitle, endDate, amount, paymentMethod, invoiceNumber } = opts;
+  const endStr = endDate.toLocaleDateString("ar-EG", { year: "numeric", month: "long", day: "numeric" });
+  const methodLabel = PAYMENT_METHOD_LABELS[paymentMethod] ?? paymentMethod;
+  const displayPlan = offerTitle?.trim() || planName;
+  const isFree = amount === 0 || paymentMethod === "free";
+
+  const html = `
+    <div dir="rtl" style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; background: #0f0a0d; color: #fff; border-radius: 16px; overflow: hidden; border: 1px solid #2a1220;">
+      <div style="background: linear-gradient(135deg, #be185d, #7c1535); padding: 28px 32px; text-align: center;">
+        <h1 style="margin: 0 0 4px; font-size: 24px; font-weight: 900; letter-spacing: 1px;">FIT<span style="color: #f9a8d4;">ZONE</span></h1>
+        <p style="margin: 0; font-size: 13px; color: rgba(255,255,255,0.8);">إشعار اشتراك جديد</p>
+      </div>
+      <div style="padding: 28px 32px;">
+        <div style="background: #1a0a12; border: 1px solid #3d1528; border-radius: 12px; padding: 20px; margin-bottom: 20px;">
+          <p style="margin: 0 0 16px; font-size: 16px; font-weight: 900; color: #f9a8d4;">✅ عميل جديد اشترك!</p>
+          <table style="width: 100%; border-collapse: collapse;">
+            <tr>
+              <td style="padding: 9px 0; color: #9ca3af; font-size: 13px; border-bottom: 1px solid #2a1220; width: 130px;">اسم العميل</td>
+              <td style="padding: 9px 0; color: #fff; font-weight: 800; font-size: 14px; border-bottom: 1px solid #2a1220;">${customerName}</td>
+            </tr>
+            <tr>
+              <td style="padding: 9px 0; color: #9ca3af; font-size: 13px; border-bottom: 1px solid #2a1220;">الإيميل</td>
+              <td style="padding: 9px 0; border-bottom: 1px solid #2a1220;">
+                <a href="mailto:${customerEmail}" style="color: #f9a8d4; font-weight: 700; font-size: 13px; text-decoration: none;">${customerEmail}</a>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding: 9px 0; color: #9ca3af; font-size: 13px; border-bottom: 1px solid #2a1220;">نوع الاشتراك</td>
+              <td style="padding: 9px 0; color: #fde68a; font-weight: 900; font-size: 15px; border-bottom: 1px solid #2a1220;">${displayPlan}</td>
+            </tr>
+            <tr>
+              <td style="padding: 9px 0; color: #9ca3af; font-size: 13px; border-bottom: 1px solid #2a1220;">صالح حتى</td>
+              <td style="padding: 9px 0; color: #fff; font-weight: 700; font-size: 13px; border-bottom: 1px solid #2a1220;">${endStr}</td>
+            </tr>
+            <tr>
+              <td style="padding: 9px 0; color: #9ca3af; font-size: 13px; border-bottom: 1px solid #2a1220;">طريقة الدفع</td>
+              <td style="padding: 9px 0; color: #fff; font-weight: 700; font-size: 13px; border-bottom: 1px solid #2a1220;">${methodLabel}</td>
+            </tr>
+            <tr>
+              <td style="padding: 9px 0; color: #9ca3af; font-size: 13px; border-bottom: 1px solid #2a1220;">المبلغ المدفوع</td>
+              <td style="padding: 9px 0; font-weight: 900; font-size: 15px; border-bottom: 1px solid #2a1220; color: ${isFree ? "#4ade80" : "#f9a8d4"};">
+                ${isFree ? "مجاني 🎁" : `${money(amount)} ج.م`}
+              </td>
+            </tr>
+            <tr>
+              <td style="padding: 9px 0; color: #9ca3af; font-size: 13px;">رقم الفاتورة</td>
+              <td style="padding: 9px 0; color: #6b7280; font-size: 12px; font-family: monospace;">${invoiceNumber}</td>
+            </tr>
+          </table>
+        </div>
+        <p style="font-size: 12px; color: #6b7280; margin: 0; text-align: center;">
+          هذا إشعار تلقائي من نظام FitZone — لا ترد على هذا الإيميل.
+        </p>
+      </div>
+      <div style="background: #0a0508; padding: 14px 32px; text-align: center;">
+        <p style="margin: 0; font-size: 12px; color: #4b5563;">© 2026 FitZone Fitness Club</p>
+      </div>
+    </div>
+  `;
+
+  try {
+    await getTransporter().sendMail({
+      from: FROM,
+      to: ["info@fitzoneland.com", "admin@fitzoneland.com"],
+      subject: `🎉 اشتراك جديد — ${customerName} (${displayPlan})`,
+      html,
+    });
+    return true;
+  } catch (err) {
+    console.error("[EMAIL_ADMIN_SUBSCRIPTION]", err);
+    return false;
+  }
+}
+
 export async function sendContactEmail(opts: {
   senderName: string;
   senderEmail: string;
