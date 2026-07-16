@@ -1236,6 +1236,27 @@ export default function PagesContent() {
         {!loading && activeTab === "privacy" ? <LegalTab data={privacy} onChange={setPrivacy} /> : null}
         {!loading && activeTab === "refund" ? <LegalTab data={refund} onChange={setRefund} /> : null}
         {!loading && activeTab === "store" ? <StoreTab data={store} onChange={setStore} /> : null}
+
+        {!loading && (
+          <div className="flex justify-end gap-3 border-t border-gray-800 pt-5">
+            <button
+              type="button"
+              onClick={saveCurrentTab}
+              disabled={saving}
+              className="rounded-2xl bg-pink-600 px-5 py-3 text-sm font-black text-white transition-colors hover:bg-pink-500 disabled:opacity-50"
+            >
+              {saving ? "جارٍ حفظ التغييرات..." : "حفظ التغييرات"}
+            </button>
+            <button
+              type="button"
+              onClick={resetCurrentTab}
+              disabled={saving}
+              className="rounded-2xl border border-gray-700 px-5 py-3 text-sm font-bold text-gray-300 transition-colors hover:bg-gray-900 disabled:opacity-50"
+            >
+              إعادة تعيين
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
