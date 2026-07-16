@@ -1,7 +1,21 @@
 ﻿"use client";
 
-import { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import type { Transaction, Customer } from "../types";
+
+function CustomerAvatar({ avatar, name, size = 32 }: { avatar: string; name: string; size?: number }) {
+  const isUrl = avatar.startsWith("http");
+  const initial = name?.[0]?.toUpperCase() ?? "؟";
+  const style: React.CSSProperties = { width: size, height: size, borderRadius: "50%", flexShrink: 0 };
+  if (isUrl) return <img src={avatar} alt={name} style={{ ...style, objectFit: "cover", display: "block" }} />;
+  return (
+    <div style={{ ...style, display: "flex", alignItems: "center", justifyContent: "center",
+      background: "linear-gradient(135deg,#ff4f93,#7a1d47)", color: "#fff", fontWeight: 900,
+      fontSize: Math.round(size * 0.38) }}>
+      {avatar.length === 1 ? avatar : initial}
+    </div>
+  );
+}
 
 interface BalanceCustomer extends Customer { tier?: string; }
 interface BalanceData { customers: BalanceCustomer[]; transactions: Transaction[]; }
@@ -180,7 +194,7 @@ export default function Balance() {
                     </td>
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-full bg-red-700 flex items-center justify-center text-white font-black text-sm">{c.avatar}</div>
+                        <CustomerAvatar avatar={c.avatar} name={c.name} size={32} />
                         <div>
                           <div className="text-white font-medium text-sm">{c.name}</div>
                           <div className="text-gray-500 text-xs">{c.phone}</div>
@@ -231,7 +245,7 @@ export default function Balance() {
                   <tr key={c.id} className="border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors">
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-full bg-red-700 flex items-center justify-center text-white font-black text-sm">{c.avatar}</div>
+                        <CustomerAvatar avatar={c.avatar} name={c.name} size={32} />
                         <div>
                           <div className="text-white font-medium">{c.name}</div>
                           <div className="text-gray-500 text-xs">{c.phone}</div>
