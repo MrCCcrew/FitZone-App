@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import type { Customer, CustomerMembershipReport, HealthSurveyResponse } from "../types";
 import { AdminCard, AdminEmptyState, AdminSectionShell } from "./shared";
 
@@ -60,6 +60,25 @@ const EMPTY_CUSTOMER: NewCustomer = {
   avatar: "ع",
   trainerRefToken: "",
 };
+
+function CustomerAvatar({ avatar, name, size = 44 }: { avatar: string; name: string; size?: number }) {
+  const isUrl = avatar.startsWith("http");
+  const initial = name?.[0]?.toUpperCase() ?? "ع";
+  const style: React.CSSProperties = { width: size, height: size, borderRadius: "50%", flexShrink: 0 };
+  if (isUrl) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src={avatar} alt={name} style={{ ...style, objectFit: "cover", display: "block" }} />
+    );
+  }
+  return (
+    <div
+      style={{ ...style, display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg,#ff4f93,#7a1d47)", color: "#fff", fontWeight: 900, fontSize: Math.round(size * 0.38), boxShadow: "0 8px 24px rgba(190,24,93,0.22)" }}
+    >
+      {avatar.length === 1 ? avatar : initial}
+    </div>
+  );
+}
 
 function formatDate(value?: string | null) {
   if (!value) return "—";
@@ -702,9 +721,7 @@ export default function Customers() {
                     >
                       <td className="px-5 py-4">
                         <div className="flex items-center gap-3">
-                          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-[#ff4f93] to-[#7a1d47] text-sm font-black text-white shadow-[0_18px_40px_rgba(190,24,93,0.22)]">
-                            {customer.avatar}
-                          </div>
+                          <CustomerAvatar avatar={customer.avatar} name={customer.name} size={44} />
                           <div>
                             <button
                               onClick={() => { setViewCustomer(customer); void loadSurvey(customer.id); }}
@@ -794,9 +811,7 @@ export default function Customers() {
         <Modal title="ملف العميل" onClose={() => setViewCustomer(null)}>
           <div className="space-y-5">
             <div className="flex items-center gap-4">
-              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-[#ff4f93] to-[#7a1d47] text-2xl font-black text-white">
-                {viewCustomer.avatar}
-              </div>
+              <CustomerAvatar avatar={viewCustomer.avatar} name={viewCustomer.name} size={64} />
               <div>
                 <div className="text-xl font-black text-[#fff4f8]">{viewCustomer.name}</div>
                 <div className="mt-1 flex items-center gap-2">

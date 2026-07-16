@@ -551,7 +551,7 @@ export async function PATCH(req: Request) {
     if (name !== undefined) data.name = name;
     if (email !== undefined) data.email = email;
     if (phone !== undefined) data.phone = phone;
-    if (name !== undefined && name.length > 0) data.avatar = name[0].toUpperCase();
+    // never overwrite a real avatar (URL or preset) when only editing the name
     if (password?.trim()) data.password = await bcryptjs.hash(password.trim(), 12);
 
     if (Object.keys(data).length > 0) {
