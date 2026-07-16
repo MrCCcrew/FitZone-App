@@ -6883,8 +6883,8 @@ const SchedulePage = () => {
 };
 
 // ─── SHOP PAGE ────────────────────────────────────────────────────────────────
-type StoreFaq = { q: string; a: string };
-type StoreWhoItem = { title: string; desc: string; suitable: boolean };
+type StoreFaq = { q: string; a: string; qEn?: string; aEn?: string };
+type StoreWhoItem = { title: string; desc: string; suitable: boolean; titleEn?: string; descEn?: string };
 type StoreProduct = {
   id?: string;
   name: string;
@@ -7813,9 +7813,9 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
                 <div key={i} className="card" style={{ padding: 20, borderRight: `4px solid ${item.suitable ? C.success : "#ef4444"}` }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
                     <span style={{ fontSize: 22 }}>{item.suitable ? "✅" : "❌"}</span>
-                    <span style={{ fontWeight: 800, color: C.white, fontSize: 15 }}>{item.title}</span>
+                    <span style={{ fontWeight: 800, color: C.white, fontSize: 15 }}>{lang === "en" && item.titleEn ? item.titleEn : item.title}</span>
                   </div>
-                  <p style={{ color: C.gray, fontSize: 13, lineHeight: 1.8, margin: 0 }}>{item.desc}</p>
+                  <p style={{ color: C.gray, fontSize: 13, lineHeight: 1.8, margin: 0 }}>{lang === "en" && item.descEn ? item.descEn : item.desc}</p>
                 </div>
               ))}
             </div>
@@ -7846,10 +7846,10 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
               {product.faqs.map((faq, i) => (
                 <div key={i} className="card" style={{ padding: 20 }}>
                   <div style={{ fontWeight: 800, color: C.white, marginBottom: 8, display: "flex", gap: 10 }}>
-                    <span style={{ color: C.red }}>س:</span> {faq.q}
+                    <span style={{ color: C.red }}>{t("س:", "Q:")}</span> {lang === "en" && faq.qEn ? faq.qEn : faq.q}
                   </div>
                   <div style={{ color: C.gray, lineHeight: 1.8, fontSize: 14, display: "flex", gap: 10 }}>
-                    <span style={{ color: C.success, fontWeight: 800 }}>ج:</span> {faq.a}
+                    <span style={{ color: C.success, fontWeight: 800 }}>{t("ج:", "A:")}</span> {lang === "en" && faq.aEn ? faq.aEn : faq.a}
                   </div>
                 </div>
               ))}
