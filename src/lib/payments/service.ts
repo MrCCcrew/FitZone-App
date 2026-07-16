@@ -1,6 +1,7 @@
 ﻿import { db } from "@/lib/db";
 import { buildAttendancePayload, ensureMembershipAttendancePass, ensurePrivateAttendancePass } from "@/lib/attendance";
-import { sendSubscriptionEmail, sendAdminSubscriptionNotification } from "@/lib/email";
+import { sendSubscriptionEmail, sendAdminSubscriptionNotification, sendStoreOrderEmail, sendAdminOrderNotification } from "@/lib/email";
+import { generateStoreOrderInvoicePdf } from "@/lib/store-order-invoice";
 import { getRewardSettings, calcTier } from "@/lib/reward-settings";
 import { generateMembershipQrCard } from "@/lib/membership-card";
 import { generateMembershipInvoicePdf, type MembershipInvoiceDetails } from "@/lib/membership-invoice";
@@ -973,7 +974,11 @@ export async function updatePaymentTransactionStatus(
     if (existing?.orderId) {
       const order = await db.order.findUnique({
         where: { id: existing.orderId },
-        select: { status: true },
+        select: {
+          status: true, subtotal: true, shippingFee: true, discountTotal: true, total: true,
+          paymentMethod: true, address: true, deliveryLabel: true, isClubPickup: true,
+          items: { include: { product: { select: { name: true } } } },
+        },
       });
       if (order?.status === "pending") {
         await db.order.update({
@@ -985,6 +990,45 @@ export async function updatePaymentTransactionStatus(
           try {
             await unlockPendingReferralReward(existing.userId);
           } catch {}
+        }
+        // Send order emails (fire-and-forget)
+        if (existing.userId && order) {
+          void (async () => {
+            try {
+              const userRecord = await db.user.findUnique({
+                where: { id: existing.userId! },
+                select: { email: true, name: true },
+              });
+              if (!userRecord?.email) return;
+              const invoiceNumber = `ORD-${existing.orderId!.slice(-8).toUpperCase()}`;
+              const orderItems = order.items.map((oi) => ({
+                name: oi.product.name,
+                quantity: oi.quantity,
+                unitPrice: oi.price,
+                size: oi.size ?? null,
+              }));
+              const invoiceDetails = {
+                invoiceNumber,
+                customerName: userRecord.name ?? "عميل",
+                customerEmail: userRecord.email,
+                paymentMethod: transaction.paymentMethod ?? order.paymentMethod ?? "paymob",
+                issuedAt: transaction.paidAt ?? new Date(),
+                items: orderItems,
+                subtotal: order.subtotal,
+                shippingFee: order.shippingFee,
+                discountTotal: order.discountTotal,
+                total: order.total,
+                address: order.address ?? null,
+                deliveryLabel: order.deliveryLabel ?? null,
+                isClubPickup: order.isClubPickup,
+              };
+              const invoicePdf = await generateStoreOrderInvoicePdf(invoiceDetails);
+              void sendStoreOrderEmail(invoiceDetails, invoicePdf).catch((e) => console.error("[PAYMENT_ORDER_EMAIL]", e));
+              void sendAdminOrderNotification(invoiceDetails).catch((e) => console.error("[PAYMENT_ORDER_ADMIN_EMAIL]", e));
+            } catch (e) {
+              console.error("[PAYMENT_ORDER_INVOICE_GEN]", e);
+            }
+          })();
         }
       }
     }

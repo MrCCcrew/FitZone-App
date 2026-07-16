@@ -1,6 +1,7 @@
 ﻿import nodemailer from "nodemailer";
 import type { MembershipInvoiceDetails } from "@/lib/membership-invoice";
 import type { MembershipCardAttachment } from "@/lib/membership-card";
+import type { StoreOrderInvoiceDetails } from "@/lib/store-order-invoice";
 
 function getTransporter() {
   return nodemailer.createTransport({
@@ -322,13 +323,177 @@ export async function sendAdminSubscriptionNotification(opts: {
   try {
     await getTransporter().sendMail({
       from: FROM,
-      to: ["info@fitzoneland.com", "admin@fitzoneland.com"],
+      to: "info@fitzoneland.com, admin@fitzoneland.com",
       subject: `🎉 اشتراك جديد — ${customerName} (${displayPlan})`,
       html,
     });
     return true;
   } catch (err) {
     console.error("[EMAIL_ADMIN_SUBSCRIPTION]", err);
+    return false;
+  }
+}
+
+function buildOrderItemsHtml(items: StoreOrderInvoiceDetails["items"]) {
+  return items.map((item) => `
+    <tr style="border-bottom: 1px solid #2a1220;">
+      <td style="padding: 9px 4px; color: #fff; font-weight: 700; font-size: 13px;">
+        ${item.name}${item.size ? ` <span style="color:#9ca3af;font-weight:400;">(${item.size})</span>` : ""}
+      </td>
+      <td style="padding: 9px 4px; color: #9ca3af; font-size: 13px; text-align: center;">${item.quantity}</td>
+      <td style="padding: 9px 4px; color: #9ca3af; font-size: 13px; text-align: right;">${money(item.unitPrice)} ج.م</td>
+      <td style="padding: 9px 4px; color: #f9a8d4; font-weight: 700; font-size: 13px; text-align: right;">${money(item.unitPrice * item.quantity)} ج.م</td>
+    </tr>`).join("");
+}
+
+const STORE_PAYMENT_LABELS: Record<string, string> = {
+  cod: "دفع عند الاستلام",
+  cash: "كاش",
+  wallet: "محفظة",
+  paymob: "بطاقة أونلاين",
+  instapay: "إنستا باي",
+  free: "مجاني",
+};
+
+export async function sendStoreOrderEmail(
+  details: StoreOrderInvoiceDetails,
+  invoicePdf: Buffer,
+) {
+  const methodLabel = STORE_PAYMENT_LABELS[details.paymentMethod] ?? details.paymentMethod;
+  const deliveryText = details.isClubPickup
+    ? "استلام من الجيم"
+    : (details.deliveryLabel ?? "—");
+
+  const html = `
+    <div dir="rtl" style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; background: #111; color: #fff; border-radius: 16px; overflow: hidden;">
+      <div style="background: linear-gradient(135deg,#be185d,#7c1535); padding: 28px 32px; text-align: center;">
+        <h1 style="margin: 0 0 4px; font-size: 24px; font-weight: 900; letter-spacing: 1px;">FIT<span style="color: #f9a8d4;">ZONE</span></h1>
+        <p style="margin: 0; font-size: 13px; color: rgba(255,255,255,.8);">تأكيد طلبك من متجرنا</p>
+      </div>
+      <div style="padding: 28px 32px;">
+        <p style="font-size: 17px; font-weight: 700; color: #fff; margin: 0 0 6px;">مبروك ${details.customerName} 🎉</p>
+        <p style="font-size: 14px; color: #cbd5e1; line-height: 1.8; margin: 0 0 20px;">تم تأكيد طلبك بنجاح. تجدين أدناه تفاصيل الطلب والفاتورة مرفقة معه.</p>
+
+        <div style="background: #1a0a12; border: 1px solid #3d1528; border-radius: 12px; overflow: hidden; margin-bottom: 18px;">
+          <div style="background: #230d18; padding: 10px 16px; font-size: 13px; color: #f9a8d4; font-weight: 800;">المنتجات المطلوبة</div>
+          <table style="width:100%; border-collapse: collapse; padding: 0 16px;">
+            <thead>
+              <tr style="border-bottom: 1px solid #3d1528;">
+                <th style="padding: 8px 4px; color: #9ca3af; font-size: 11px; text-align: right; font-weight: 700;">المنتج</th>
+                <th style="padding: 8px 4px; color: #9ca3af; font-size: 11px; text-align: center; font-weight: 700;">الكمية</th>
+                <th style="padding: 8px 4px; color: #9ca3af; font-size: 11px; text-align: right; font-weight: 700;">السعر</th>
+                <th style="padding: 8px 4px; color: #9ca3af; font-size: 11px; text-align: right; font-weight: 700;">الإجمالي</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${buildOrderItemsHtml(details.items)}
+            </tbody>
+          </table>
+          <div style="padding: 10px 16px; border-top: 1px solid #3d1528;">
+            ${details.shippingFee > 0 ? `<div style="display:flex;justify-content:space-between;font-size:13px;color:#9ca3af;margin-bottom:4px;"><span>الشحن</span><span>${money(details.shippingFee)} ج.م</span></div>` : ""}
+            ${details.discountTotal > 0 ? `<div style="display:flex;justify-content:space-between;font-size:13px;color:#4ade80;margin-bottom:4px;"><span>خصم</span><span>- ${money(details.discountTotal)} ج.م</span></div>` : ""}
+            <div style="display:flex;justify-content:space-between;font-size:15px;font-weight:900;color:#f9a8d4;margin-top:6px;padding-top:6px;border-top:1px solid #3d1528;">
+              <span>الإجمالي المدفوع</span><span>${money(details.total)} ج.م</span>
+            </div>
+          </div>
+        </div>
+
+        <div style="background: #1a0a12; border: 1px solid #3d1528; border-radius: 12px; padding: 14px 16px; margin-bottom: 18px; font-size: 13px;">
+          <div style="margin-bottom: 6px; color: #9ca3af;">طريقة الدفع: <span style="color:#fff;font-weight:700;">${methodLabel}</span></div>
+          <div style="color: #9ca3af;">التوصيل: <span style="color:#fff;font-weight:700;">${deliveryText}</span></div>
+          ${details.address ? `<div style="margin-top: 6px; color: #9ca3af;">العنوان: <span style="color:#fff;font-weight:700;">${details.address}</span></div>` : ""}
+        </div>
+
+        <p style="font-size: 12px; color: #6b7280; margin: 0;">الفاتورة مرفقة مع هذا الإيميل. لأي استفسار: <a href="mailto:info@fitzoneland.com" style="color:#f9a8d4;">info@fitzoneland.com</a></p>
+      </div>
+      <div style="background: #0a0508; padding: 14px 32px; text-align: center;">
+        <p style="margin: 0; font-size: 12px; color: #4b5563;">© 2026 FitZone Fitness Club</p>
+      </div>
+    </div>
+  `;
+
+  try {
+    await getTransporter().sendMail({
+      from: FROM,
+      to: details.customerEmail,
+      subject: `✅ تم تأكيد طلبك — ${details.invoiceNumber}`,
+      html,
+      attachments: [{
+        filename: `fitzone-order-invoice-${details.invoiceNumber}.pdf`,
+        content: invoicePdf,
+        contentType: "application/pdf",
+      }],
+    });
+    return true;
+  } catch (err) {
+    console.error("[EMAIL_STORE_ORDER]", err);
+    return false;
+  }
+}
+
+export async function sendAdminOrderNotification(details: StoreOrderInvoiceDetails) {
+  const methodLabel = STORE_PAYMENT_LABELS[details.paymentMethod] ?? details.paymentMethod;
+  const deliveryText = details.isClubPickup ? "استلام من الجيم" : (details.deliveryLabel ?? "—");
+
+  const html = `
+    <div dir="rtl" style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; background: #0f0a0d; color: #fff; border-radius: 16px; overflow: hidden; border: 1px solid #2a1220;">
+      <div style="background: linear-gradient(135deg,#1d4ed8,#0c2a6e); padding: 24px 32px; text-align: center;">
+        <h1 style="margin: 0 0 4px; font-size: 22px; font-weight: 900;">FIT<span style="color:#93c5fd;">ZONE</span></h1>
+        <p style="margin: 0; font-size: 13px; color: rgba(255,255,255,.8);">طلب شراء جديد من المتجر</p>
+      </div>
+      <div style="padding: 24px 32px;">
+        <div style="background: #0f1a2e; border: 1px solid #1e3a5f; border-radius: 12px; padding: 16px; margin-bottom: 16px;">
+          <p style="margin: 0 0 12px; font-size: 15px; font-weight: 900; color: #93c5fd;">🛒 طلب جديد!</p>
+          <div style="font-size: 13px; color: #9ca3af; margin-bottom: 6px;">العميل: <span style="color:#fff;font-weight:800;">${details.customerName}</span></div>
+          <div style="font-size: 13px; color: #9ca3af; margin-bottom: 6px;">الإيميل: <a href="mailto:${details.customerEmail}" style="color:#93c5fd;font-weight:700;">${details.customerEmail}</a></div>
+          <div style="font-size: 13px; color: #9ca3af; margin-bottom: 6px;">طريقة الدفع: <span style="color:#fff;font-weight:700;">${methodLabel}</span></div>
+          <div style="font-size: 13px; color: #9ca3af; margin-bottom: 6px;">التوصيل: <span style="color:#fff;font-weight:700;">${deliveryText}</span></div>
+          ${details.address ? `<div style="font-size: 13px; color: #9ca3af;">العنوان: <span style="color:#fff;font-weight:700;">${details.address}</span></div>` : ""}
+        </div>
+
+        <div style="background: #0f1a2e; border: 1px solid #1e3a5f; border-radius: 12px; overflow: hidden; margin-bottom: 16px;">
+          <div style="background: #162238; padding: 10px 16px; font-size: 13px; color: #93c5fd; font-weight: 800;">المنتجات</div>
+          <table style="width:100%; border-collapse: collapse;">
+            <thead>
+              <tr style="border-bottom: 1px solid #1e3a5f;">
+                <th style="padding: 8px 4px; color: #6b7280; font-size: 11px; text-align: right; font-weight: 700;">المنتج</th>
+                <th style="padding: 8px 4px; color: #6b7280; font-size: 11px; text-align: center; font-weight: 700;">الكمية</th>
+                <th style="padding: 8px 4px; color: #6b7280; font-size: 11px; text-align: right; font-weight: 700;">السعر</th>
+                <th style="padding: 8px 4px; color: #6b7280; font-size: 11px; text-align: right; font-weight: 700;">الإجمالي</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${details.items.map((item) => `
+              <tr style="border-bottom: 1px solid #1e3a5f;">
+                <td style="padding: 9px 4px; color: #e5e7eb; font-weight: 700; font-size: 13px;">${item.name}${item.size ? ` (${item.size})` : ""}</td>
+                <td style="padding: 9px 4px; color: #9ca3af; font-size: 13px; text-align: center;">${item.quantity}</td>
+                <td style="padding: 9px 4px; color: #9ca3af; font-size: 13px; text-align: right;">${money(item.unitPrice)} ج.م</td>
+                <td style="padding: 9px 4px; color: #93c5fd; font-weight: 700; font-size: 13px; text-align: right;">${money(item.unitPrice * item.quantity)} ج.م</td>
+              </tr>`).join("")}
+            </tbody>
+          </table>
+          <div style="padding: 10px 16px; border-top: 1px solid #1e3a5f; text-align: left;">
+            ${details.shippingFee > 0 ? `<div style="font-size:13px;color:#9ca3af;margin-bottom:4px;">الشحن: ${money(details.shippingFee)} ج.م</div>` : ""}
+            ${details.discountTotal > 0 ? `<div style="font-size:13px;color:#4ade80;margin-bottom:4px;">خصم: - ${money(details.discountTotal)} ج.م</div>` : ""}
+            <div style="font-size:15px;font-weight:900;color:#93c5fd;">الإجمالي: ${money(details.total)} ج.م</div>
+          </div>
+        </div>
+
+        <p style="font-size: 12px; color: #6b7280; margin: 0; text-align: center;">رقم الفاتورة: ${details.invoiceNumber}</p>
+      </div>
+    </div>
+  `;
+
+  try {
+    await getTransporter().sendMail({
+      from: FROM,
+      to: "info@fitzoneland.com, admin@fitzoneland.com",
+      subject: `🛒 طلب جديد — ${details.customerName} (${money(details.total)} ج.م)`,
+      html,
+    });
+    return true;
+  } catch (err) {
+    console.error("[EMAIL_ADMIN_ORDER]", err);
     return false;
   }
 }
