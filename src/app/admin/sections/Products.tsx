@@ -15,8 +15,8 @@ const INPUT = "w-full rounded-xl border border-gray-700 bg-gray-800 px-4 py-2.5 
 const CLOTHING = ["XS", "S", "M", "L", "XL", "XXL"];
 const SHOES = Array.from({ length: 27 }, (_, i) => String(i + 20));
 
-type Faq = { q: string; a: string };
-type WhoItem = { title: string; desc: string; suitable: boolean };
+type Faq = { q: string; a: string; qEn?: string; aEn?: string };
+type WhoItem = { title: string; desc: string; suitable: boolean; titleEn?: string; descEn?: string };
 type EditableProduct = Omit<Product, "id" | "sold"> & {
   id?: string;
   faqs?: Faq[];
@@ -746,6 +746,14 @@ export default function Products() {
                     </div>
                     <input value={item.title} onChange={(e) => setProductModal({ ...productModal, whoShouldBuy: (productModal.whoShouldBuy ?? []).map((x, i) => i === idx ? { ...x, title: e.target.value } : x) })} placeholder="العنوان (مثال: المتحمسين لصحة القلب)" className={INPUT} />
                     <textarea value={item.desc} onChange={(e) => setProductModal({ ...productModal, whoShouldBuy: (productModal.whoShouldBuy ?? []).map((x, i) => i === idx ? { ...x, desc: e.target.value } : x) })} placeholder="الوصف التفصيلي..." rows={2} className={`${INPUT} resize-none`} />
+                    <div className="flex gap-2">
+                      <input value={item.titleEn ?? ""} onChange={(e) => setProductModal({ ...productModal, whoShouldBuy: (productModal.whoShouldBuy ?? []).map((x, i) => i === idx ? { ...x, titleEn: e.target.value } : x) })} placeholder="Title in English" className={`${INPUT} flex-1`} dir="ltr" />
+                      <TranslateButton from={item.title} onTranslated={(t) => setProductModal({ ...productModal, whoShouldBuy: (productModal.whoShouldBuy ?? []).map((x, i) => i === idx ? { ...x, titleEn: t } : x) })} />
+                    </div>
+                    <div className="flex gap-2">
+                      <textarea value={item.descEn ?? ""} onChange={(e) => setProductModal({ ...productModal, whoShouldBuy: (productModal.whoShouldBuy ?? []).map((x, i) => i === idx ? { ...x, descEn: e.target.value } : x) })} placeholder="Description in English..." rows={2} className={`${INPUT} flex-1 resize-none`} dir="ltr" />
+                      <TranslateButton from={item.desc} onTranslated={(t) => setProductModal({ ...productModal, whoShouldBuy: (productModal.whoShouldBuy ?? []).map((x, i) => i === idx ? { ...x, descEn: t } : x) })} />
+                    </div>
                   </div>
                 ))}
                 <button type="button" onClick={() => setProductModal({ ...productModal, whoShouldBuy: [...(productModal.whoShouldBuy ?? []), { title: "", desc: "", suitable: true }] })} className="w-full rounded-lg border border-dashed border-gray-600 py-2 text-xs text-gray-400 hover:border-pink-500 hover:text-pink-400">+ إضافة فئة</button>
@@ -764,6 +772,14 @@ export default function Products() {
                     </div>
                     <input value={faq.q} onChange={(e) => setProductModal({ ...productModal, faqs: (productModal.faqs ?? []).map((x, i) => i === idx ? { ...x, q: e.target.value } : x) })} placeholder="السؤال" className={INPUT} />
                     <textarea value={faq.a} onChange={(e) => setProductModal({ ...productModal, faqs: (productModal.faqs ?? []).map((x, i) => i === idx ? { ...x, a: e.target.value } : x) })} placeholder="الإجابة" rows={2} className={`${INPUT} resize-none`} />
+                    <div className="flex gap-2">
+                      <input value={faq.qEn ?? ""} onChange={(e) => setProductModal({ ...productModal, faqs: (productModal.faqs ?? []).map((x, i) => i === idx ? { ...x, qEn: e.target.value } : x) })} placeholder="Question in English" className={`${INPUT} flex-1`} dir="ltr" />
+                      <TranslateButton from={faq.q} onTranslated={(t) => setProductModal({ ...productModal, faqs: (productModal.faqs ?? []).map((x, i) => i === idx ? { ...x, qEn: t } : x) })} />
+                    </div>
+                    <div className="flex gap-2">
+                      <textarea value={faq.aEn ?? ""} onChange={(e) => setProductModal({ ...productModal, faqs: (productModal.faqs ?? []).map((x, i) => i === idx ? { ...x, aEn: e.target.value } : x) })} placeholder="Answer in English..." rows={2} className={`${INPUT} flex-1 resize-none`} dir="ltr" />
+                      <TranslateButton from={faq.a} onTranslated={(t) => setProductModal({ ...productModal, faqs: (productModal.faqs ?? []).map((x, i) => i === idx ? { ...x, aEn: t } : x) })} />
+                    </div>
                   </div>
                 ))}
                 <button type="button" onClick={() => setProductModal({ ...productModal, faqs: [...(productModal.faqs ?? []), { q: "", a: "" }] })} className="w-full rounded-lg border border-dashed border-gray-600 py-2 text-xs text-gray-400 hover:border-pink-500 hover:text-pink-400">+ إضافة سؤال</button>
