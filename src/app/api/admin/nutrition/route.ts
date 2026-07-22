@@ -26,6 +26,8 @@ function formatProfile(p: {
   followupFeeMember: number;
   commissionRate?: number;
   commissionType?: string;
+  sessionCommissionRate?: number;
+  sessionCommissionType?: string;
   createdAt: Date;
   user: { id: string; name: string | null; email: string | null; phone: string | null } | null;
 }) {
@@ -44,6 +46,8 @@ function formatProfile(p: {
     followupFeeMember: p.followupFeeMember,
     commissionRate: p.commissionRate ?? 0,
     commissionType: p.commissionType ?? "percentage",
+    sessionCommissionRate: p.sessionCommissionRate ?? 0,
+    sessionCommissionType: p.sessionCommissionType ?? "percentage",
     createdAt: p.createdAt.toISOString(),
     linkedUser: p.user,
   };
@@ -155,10 +159,66 @@ export async function POST(req: Request) {
     followupFeeMember?: number;
     commissionRate?: number;
     commissionType?: string;
+    sessionCommissionRate?: number;
+    sessionCommissionType?: string;
   };
 
   if (!body.userId || !body.name) {
     return NextResponse.json({ error: "userId و name مطلوبان" }, { status: 400 });
+  }
+
+  // Validation for sessionCommissionRate
+  if (body.sessionCommissionRate !== undefined) {
+    const rate = body.sessionCommissionRate;
+    if (typeof rate !== "number" || !Number.isFinite(rate)) {
+      return NextResponse.json({ error: "sessionCommissionRate يجب أن يكون رقم صحيح" }, { status: 400 });
+    }
+    if (rate < 0) {
+      return NextResponse.json({ error: "sessionCommissionRate لا يمكن أن يكون سالب" }, { status: 400 });
+    }
+  }
+
+  // Validation for sessionCommissionType
+  if (body.sessionCommissionType !== undefined) {
+    const type = body.sessionCommissionType;
+    if (type !== "percentage" && type !== "fixed") {
+      return NextResponse.json({ error: "sessionCommissionType يجب أن يكون 'percentage' أو 'fixed'" }, { status: 400 });
+    }
+
+    // If percentage, rate must be between 0 and 100
+    if (type === "percentage" && body.sessionCommissionRate !== undefined) {
+      const rate = body.sessionCommissionRate;
+      if (rate > 100) {
+        return NextResponse.json({ error: "عمولة النسبة المئوية يجب ألا تتجاوز 100%" }, { status: 400 });
+      }
+    }
+  }
+
+  // Validation for commissionRate (existing referral commission - don't change its rules)
+  if (body.commissionRate !== undefined) {
+    const rate = body.commissionRate;
+    if (typeof rate !== "number" || !Number.isFinite(rate)) {
+      return NextResponse.json({ error: "commissionRate يجب أن يكون رقم صحيح" }, { status: 400 });
+    }
+    if (rate < 0) {
+      return NextResponse.json({ error: "commissionRate لا يمكن أن يكون سالب" }, { status: 400 });
+    }
+  }
+
+  // Validation for commissionType
+  if (body.commissionType !== undefined) {
+    const type = body.commissionType;
+    if (type !== "percentage" && type !== "fixed") {
+      return NextResponse.json({ error: "commissionType يجب أن يكون 'percentage' أو 'fixed'" }, { status: 400 });
+    }
+
+    // If percentage, rate must be between 0 and 100
+    if (type === "percentage" && body.commissionRate !== undefined) {
+      const rate = body.commissionRate;
+      if (rate > 100) {
+        return NextResponse.json({ error: "عمولة النسبة المئوية يجب ألا تتجاوز 100%" }, { status: 400 });
+      }
+    }
   }
 
   const data = {
@@ -175,6 +235,8 @@ export async function POST(req: Request) {
     followupFeeMember: body.followupFeeMember ?? 50,
     commissionRate: body.commissionRate ?? 0,
     commissionType: body.commissionType === "fixed" ? "fixed" : "percentage",
+    sessionCommissionRate: body.sessionCommissionRate ?? 0,
+    sessionCommissionType: body.sessionCommissionType === "fixed" ? "fixed" : "percentage",
   } as any;
 
   const dbx = db as any;
