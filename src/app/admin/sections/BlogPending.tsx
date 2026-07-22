@@ -2,15 +2,76 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+// Allowed YouTube hostnames (strict allowlist)
+const ALLOWED_YOUTUBE_HOSTS = new Set([
+  "youtube.com",
+  "www.youtube.com",
+  "m.youtube.com",
+  "music.youtube.com",
+  "youtu.be",
+]);
+
+// Helper: Extract safe YouTube video ID from URL
+function getYouTubeEmbedUrl(url: string): string | null {
+  if (!url) return null;
+
+  try {
+    const urlObj = new URL(url);
+    const hostname = urlObj.hostname.toLowerCase();
+
+    // Strict hostname check - only allow trusted YouTube domains
+    if (!ALLOWED_YOUTUBE_HOSTS.has(hostname)) {
+      return null;
+    }
+
+    let videoId: string | null = null;
+
+    // youtube.com/watch?v=VIDEO_ID
+    if (hostname !== 'youtu.be' && urlObj.pathname === '/watch') {
+      videoId = urlObj.searchParams.get('v');
+    }
+    // youtu.be/VIDEO_ID
+    else if (hostname === 'youtu.be') {
+      videoId = urlObj.pathname.slice(1); // remove leading /
+    }
+    // youtube.com/shorts/VIDEO_ID
+    else if (hostname !== 'youtu.be' && urlObj.pathname.startsWith('/shorts/')) {
+      videoId = urlObj.pathname.split('/')[2];
+    }
+    // youtube.com/embed/VIDEO_ID
+    else if (hostname !== 'youtu.be' && urlObj.pathname.startsWith('/embed/')) {
+      videoId = urlObj.pathname.split('/')[2];
+    }
+
+    // Validate video ID format (alphanumeric, underscore, hyphen only - typically 11 chars, allow 10-12)
+    if (videoId && /^[a-zA-Z0-9_-]{10,12}$/.test(videoId)) {
+      return `https://www.youtube.com/embed/${videoId}`;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
 type PendingPost = {
   id: string;
-  title: string;
+  title: string;              // NOT NULL
   titleEn: string | null;
-  category: string;
-  author: string;
-  summary: string;
-  content: string;
-  coverImage: string;
+  category: string;           // NOT NULL
+  categoryEn: string | null;
+  author: string;             // NOT NULL
+  authorEn: string | null;
+  date: string;               // NOT NULL
+  dateEn: string | null;
+  readTime: string;           // NOT NULL
+  readTimeEn: string | null;
+  summary: string;            // NOT NULL
+  summaryEn: string | null;
+  content: string;            // NOT NULL
+  contentEn: string | null;
+  coverImage: string;         // NOT NULL (from schema)
+  videoUrl: string;           // NOT NULL (from schema)
   featured: boolean;
   status: string;
   existingPostId: string | null;
@@ -157,7 +218,7 @@ export default function BlogPending() {
                       )}
                     </div>
                     <div className="mt-2 text-sm text-gray-400">
-                      {post.category} · {post.author}
+                      {post.category} · {post.author} · {post.date} · {post.readTime}
                     </div>
                     <div className="mt-1 text-xs text-gray-500">
                       قدمه: {post.submitter.name ?? post.submitter.email} · {new Date(post.createdAt).toLocaleDateString("ar-EG")}
@@ -178,22 +239,89 @@ export default function BlogPending() {
 
                 {isExpanded && (
                   <div className="mt-4 space-y-4 border-t border-gray-800 pt-4">
+                    {/* معلومات أساسية */}
+                    <div className="grid grid-cols-2 gap-3 text-xs">
+                      <div>
+                        <span className="text-gray-500">التصنيف:</span> <span className="text-gray-300">{post.category}</span>
+                        {post.categoryEn && <span className="text-gray-500 ml-2">({post.categoryEn})</span>}
+                      </div>
+                      <div>
+                        <span className="text-gray-500">الكاتب:</span> <span className="text-gray-300">{post.author}</span>
+                        {post.authorEn && <span className="text-gray-500 ml-2">({post.authorEn})</span>}
+                      </div>
+                      <div>
+                        <span className="text-gray-500">التاريخ:</span> <span className="text-gray-300">{post.date}</span>
+                        {post.dateEn && <span className="text-gray-500 ml-2">({post.dateEn})</span>}
+                      </div>
+                      <div>
+                        <span className="text-gray-500">وقت القراءة:</span> <span className="text-gray-300">{post.readTime}</span>
+                        {post.readTimeEn && <span className="text-gray-500 ml-2">({post.readTimeEn})</span>}
+                      </div>
+                    </div>
+
+                    {/* الملخص */}
                     <div>
                       <div className="text-xs font-bold text-gray-400 mb-1">الملخص:</div>
                       <div className="text-sm text-gray-300">{post.summary}</div>
+                      {post.summaryEn && (
+                        <div className="mt-2 text-sm text-gray-400 italic">{post.summaryEn}</div>
+                      )}
                     </div>
+
+                    {/* المحتوى */}
                     <div>
                       <div className="text-xs font-bold text-gray-400 mb-1">المحتوى:</div>
                       <div className="max-h-60 overflow-y-auto rounded-lg bg-black/40 p-3 text-sm text-gray-300 whitespace-pre-wrap">
                         {post.content}
                       </div>
+                      {post.contentEn && (
+                        <div className="mt-2 max-h-60 overflow-y-auto rounded-lg bg-black/40 p-3 text-sm text-gray-400 whitespace-pre-wrap">
+                          <div className="text-xs font-bold mb-2">English Content:</div>
+                          {post.contentEn}
+                        </div>
+                      )}
                     </div>
+
+                    {/* صورة الغلاف */}
                     {post.coverImage && (
                       <div>
-                        <div className="text-xs font-bold text-gray-400 mb-2">صورة الغلاف:</div>
-                        <img src={post.coverImage} alt={post.title} className="h-40 w-auto rounded-lg border border-gray-700 object-cover" />
+                        <div className="text-xs font-bold text-gray-400 mb-2">📷 صورة الغلاف:</div>
+                        <img src={post.coverImage} alt={post.title} className="max-w-full h-auto rounded-lg border border-gray-700 object-cover" />
                       </div>
                     )}
+
+                    {/* الفيديو */}
+                    {post.videoUrl && (
+                      <div>
+                        <div className="text-xs font-bold text-gray-400 mb-2">🎥 رابط الفيديو:</div>
+                        <div className="rounded-lg bg-black/40 p-3">
+                          <a
+                            href={post.videoUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-sm text-blue-400 hover:text-blue-300 break-all"
+                          >
+                            {post.videoUrl}
+                          </a>
+                          {(() => {
+                            const embedUrl = getYouTubeEmbedUrl(post.videoUrl);
+                            return embedUrl ? (
+                              <div className="mt-3 aspect-video">
+                                <iframe
+                                  src={embedUrl}
+                                  title={post.title}
+                                  className="w-full h-full rounded-lg"
+                                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                  allowFullScreen
+                                />
+                              </div>
+                            ) : null;
+                          })()}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* English Title */}
                     {post.titleEn && (
                       <div className="rounded-lg bg-gray-900/50 p-3 text-xs text-gray-400">
                         <div className="font-bold">English Title:</div>
