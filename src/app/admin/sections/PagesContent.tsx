@@ -860,6 +860,7 @@ function BlogTabFixed({ data, onChange, userFeatures }: { data: BlogData; onChan
           </div>
         </Field>
       </div>
+      )}
 
       <div className="grid gap-4 rounded-2xl border border-gray-800 bg-black/30 p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">

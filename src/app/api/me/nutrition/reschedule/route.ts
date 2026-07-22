@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getCurrentAppUser } from "@/lib/app-session";
 import { db } from "@/lib/db";
 
 async function getUser() {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }), userId: null };
+  const currentUser = await getCurrentAppUser();
+  if (!currentUser?.id) {
+    return { error: NextResponse.json({ error: "غير مسجل" }, { status: 401 }), userId: null };
   }
-  return { error: null, userId: session.user.id };
+  return { error: null, userId: currentUser.id };
 }
 
 // GET /api/me/nutrition/reschedule — get my pending reschedule requests

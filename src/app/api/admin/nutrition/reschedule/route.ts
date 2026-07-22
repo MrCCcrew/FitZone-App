@@ -13,7 +13,7 @@ async function checkAdmin() {
 // GET /api/admin/nutrition/reschedule — get reschedule requests
 export async function GET(req: Request) {
   const { error, userId } = await checkAdmin();
-  if (error) return error;
+  if (error || !userId) return error || NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { searchParams } = new URL(req.url);
   const status = searchParams.get("status");
@@ -130,10 +130,10 @@ export async function POST(req: Request) {
     action: "create_reschedule_request",
     targetType: "RescheduleRequest",
     targetId: rescheduleRequest.id,
-    details: JSON.stringify({
+    details: {
       sessionId: body.sessionId,
       proposedNewSlot: body.proposedNewSlot,
-    }),
+    },
   });
 
   return NextResponse.json({ rescheduleRequest });
@@ -253,7 +253,7 @@ export async function PATCH(req: Request) {
     action: body.action,
     targetType: "RescheduleRequest",
     targetId: body.requestId,
-    details: body.reason,
+    details: body.reason ? { reason: body.reason } : null,
   });
 
   const updated = await db.rescheduleRequest.findUnique({

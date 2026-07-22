@@ -235,7 +235,7 @@ export async function PATCH(req: Request) {
       action: "reject_blog_post",
       targetType: "BlogPendingPost",
       targetId: body.postId,
-      details: body.rejectReason,
+      details: body.rejectReason ? { reason: body.rejectReason } : null,
     });
 
     // TODO: Send notification to submitter
