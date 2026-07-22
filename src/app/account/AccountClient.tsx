@@ -4659,6 +4659,8 @@ function NutritionistProfileTab() {
   const [commissionSummary, setCommissionSummary] = useState({ totalEarned: 0, pendingEarned: 0, referralEarned: 0, sessionEarned: 0 });
   const [commissionRate, setCommissionRate] = useState(0);
   const [commissionType, setCommissionType] = useState("percentage");
+  const [sessionCommissionRate, setSessionCommissionRate] = useState(0);
+  const [sessionCommissionType, setSessionCommissionType] = useState("percentage");
   const [linksMsg, setLinksMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [linkCreating, setLinkCreating] = useState(false);
   const [newLinkLabel, setNewLinkLabel] = useState("");
@@ -4677,6 +4679,8 @@ function NutritionistProfileTab() {
         setQuestions(slotsData.profile.questions ?? []);
         setCommissionRate(slotsData.profile.commissionRate ?? 0);
         setCommissionType(slotsData.profile.commissionType ?? "percentage");
+        setSessionCommissionRate(slotsData.profile.sessionCommissionRate ?? 0);
+        setSessionCommissionType(slotsData.profile.sessionCommissionType ?? "percentage");
       }
       if (linksData.links) {
         setLinks(linksData.links);
@@ -4867,8 +4871,10 @@ function NutritionistProfileTab() {
                 <div className="text-lg font-black text-purple-700 dark:text-purple-300">{commissionSummary.sessionEarned.toFixed(2)} {t("ج.م", "EGP")}</div>
               </div>
             </div>
-            <div className="text-xs text-gray-400 bg-gray-50 dark:bg-gray-800 rounded-lg p-3">
-              {t(`نسبة عمولتك: ${commissionRate}${commissionType === "percentage" ? "%" : " ج.م"} على الاشتراكات والجلسات (يحددها الإدارة).`, `Your commission rate: ${commissionRate}${commissionType === "percentage" ? "%" : " EGP"} on subscriptions and sessions (set by admin).`)}
+            <div className="text-xs text-gray-400 bg-gray-50 dark:bg-gray-800 rounded-lg p-3 space-y-1">
+              <div>{t(`🔗 عمولة الإحالات: ${commissionRate}${commissionType === "percentage" ? "%" : " ج.م"}`, `🔗 Referral commission: ${commissionRate}${commissionType === "percentage" ? "%" : " EGP"}`)}</div>
+              <div>{t(`💼 عمولة الجلسات: ${sessionCommissionRate}${sessionCommissionType === "percentage" ? "%" : " ج.م"}`, `💼 Session commission: ${sessionCommissionRate}${sessionCommissionType === "percentage" ? "%" : " EGP"}`)}</div>
+              <div className="text-gray-500 text-xs mt-1">{t("(يحددها الإدارة)", "(set by admin)")}</div>
             </div>
 
             {/* Create new link */}

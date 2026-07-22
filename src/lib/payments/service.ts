@@ -1073,7 +1073,7 @@ export async function updatePaymentTransactionStatus(
       const session = await db.nutritionSession.findFirst({
         where: { id: nutritionSessionId, status: "approved" },
         include: {
-          nutritionist: { select: { userId: true, commissionRate: true, commissionType: true } },
+          nutritionist: { select: { userId: true, sessionCommissionRate: true, sessionCommissionType: true } },
         },
       });
 
@@ -1083,22 +1083,43 @@ export async function updatePaymentTransactionStatus(
           data: { status: "paid", paidAt: transaction.paidAt ?? new Date(), paymentTransactionId: transactionId },
         });
 
-        // Calculate and create commission
-        const { commissionRate, commissionType, userId: nutritionistUserId } = session.nutritionist;
-        if (commissionRate > 0) {
-          const commissionAmount =
-            commissionType === "percentage"
-              ? (session.price * commissionRate) / 100
-              : commissionRate;
+        // Calculate and create session commission
+        const { sessionCommissionRate, sessionCommissionType, userId: nutritionistUserId } = session.nutritionist;
+        const actualPaidAmount = transaction.amount; // المبلغ المدفوع فعلياً
 
-          await db.nutritionCommission.create({
-            data: {
-              nutritionistUserId,
-              nutritionSessionId: session.id,
-              amount: commissionAmount,
-              status: "earned",
-            },
-          });
+        if (sessionCommissionRate > 0 && actualPaidAmount > 0) {
+          let rawCommission = 0;
+
+          if (sessionCommissionType === "percentage") {
+            rawCommission = (actualPaidAmount * sessionCommissionRate) / 100;
+          } else {
+            // fixed
+            rawCommission = sessionCommissionRate;
+          }
+
+          // العمولة النهائية لا تتجاوز المبلغ المدفوع
+          const finalCommission = Math.min(rawCommission, actualPaidAmount);
+          // تقريب إلى رقمين عشريين (نفس قاعدة الأموال المستخدمة في المشروع)
+          const roundedCommission = Math.round(finalCommission * 100) / 100;
+
+          if (roundedCommission > 0) {
+            // منع التكرار: استخدام try-catch للتعامل مع unique constraint
+            try {
+              await db.nutritionCommission.create({
+                data: {
+                  nutritionistUserId,
+                  nutritionSessionId: session.id,
+                  amount: roundedCommission,
+                  status: "earned",
+                },
+              });
+            } catch (err: any) {
+              // إذا كان الخطأ بسبب duplicate nutritionSessionId، تجاهله (idempotent)
+              if (!err.code || err.code !== "P2002") {
+                throw err; // أي خطأ آخر يُرمى مرة أخرى
+              }
+            }
+          }
         }
 
         if (existing?.userId) {

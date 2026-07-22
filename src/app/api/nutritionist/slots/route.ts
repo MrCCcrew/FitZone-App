@@ -27,6 +27,8 @@ export async function GET() {
       followupFeeMember: true,
       commissionRate: true,
       commissionType: true,
+      sessionCommissionRate: true,
+      sessionCommissionType: true,
     },
   });
   if (!profile) return NextResponse.json({ error: "الملف غير موجود" }, { status: 404 });

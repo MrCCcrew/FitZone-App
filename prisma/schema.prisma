@@ -1601,7 +1601,7 @@ model NutritionCommission {
   nutritionistUserId      String
   nutritionReferralLinkId String?
   userMembershipId        String?   @unique
-  nutritionSessionId      String?
+  nutritionSessionId      String?   @unique
   amount                  Float
   status                  String    @default("earned") // earned | settled
   settledAt               DateTime?
@@ -1642,6 +1642,10 @@ model NutritionistProfile {
   // Referral commission settings (editable by admin)
   commissionRate Float @default(0)
   commissionType String @default("percentage") // percentage | fixed
+
+  // Session commission settings (editable by admin)
+  sessionCommissionRate Float @default(0)
+  sessionCommissionType String @default("percentage") // percentage | fixed
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

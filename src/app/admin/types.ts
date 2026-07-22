@@ -683,6 +683,8 @@ export interface NutritionistProfileRow {
   followupFeeMember: number;
   commissionRate: number;
   commissionType: string;
+  sessionCommissionRate: number;
+  sessionCommissionType: string;
   createdAt: string;
   linkedUser: { id: string; name: string | null; email: string | null; phone: string | null } | null;
 }
