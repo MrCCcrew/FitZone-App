@@ -235,7 +235,7 @@ function ProfileForm({ profile, staffUsers, onSave, onClose }: {
       {/* Commission settings */}
       <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: 10, alignItems: "end" }}>
         <div>
-          <label style={{ fontSize: 11, color: "#9a8a90" }}>نسبة/قيمة عمولة الإحالة</label>
+          <label style={{ fontSize: 11, color: "#9a8a90" }}>نسبة/قيمة العمولة (إحالات + جلسات)</label>
           <input type="number" min="0" step="0.1" value={commissionRate} onChange={(e) => setCommissionRate(Number(e.target.value))} style={{ ...inputSt, marginTop: 4, width: 140 }} />
         </div>
         <div>
