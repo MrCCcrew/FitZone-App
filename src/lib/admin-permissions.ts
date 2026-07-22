@@ -119,6 +119,7 @@ export const SECTION_FEATURE_MAP: Record<Section, AdminFeature> = {
   accounting: "accounting",
   settings: "settings",
   pages: "site-content",
+  "blog-pending": "site-content",
   knowledge: "knowledge",
   subscriptions: "memberships",
   packages: "memberships",

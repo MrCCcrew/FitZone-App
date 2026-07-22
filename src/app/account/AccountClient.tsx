@@ -4619,7 +4619,14 @@ type NutritionSessionItem = {
 
 type NutritionQuestion = { id: string; label: string; type: string; required: boolean; options?: string[] };
 type NutritionReferralLink = { id: string; token: string; label: string | null; clickCount: number; isActive: boolean; createdAt: string };
-type NutritionCommissionItem = { id: string; amount: number; status: string; createdAt: string; userMembership?: { user?: { name?: string } } };
+type NutritionCommissionItem = {
+  id: string;
+  amount: number;
+  status: string;
+  createdAt: string;
+  userMembership?: { user?: { name?: string } };
+  nutritionSession?: { id: string; type: string; price: number; user?: { name?: string } };
+};
 
 function NutritionistProfileTab() {
   const { lang } = useLang();
@@ -4647,7 +4654,9 @@ function NutritionistProfileTab() {
   // Links
   const [links, setLinks] = useState<NutritionReferralLink[]>([]);
   const [commissions, setCommissions] = useState<NutritionCommissionItem[]>([]);
-  const [commissionSummary, setCommissionSummary] = useState({ totalEarned: 0, pendingEarned: 0 });
+  const [referralCommissions, setReferralCommissions] = useState<NutritionCommissionItem[]>([]);
+  const [sessionCommissions, setSessionCommissions] = useState<NutritionCommissionItem[]>([]);
+  const [commissionSummary, setCommissionSummary] = useState({ totalEarned: 0, pendingEarned: 0, referralEarned: 0, sessionEarned: 0 });
   const [commissionRate, setCommissionRate] = useState(0);
   const [commissionType, setCommissionType] = useState("percentage");
   const [linksMsg, setLinksMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -4672,7 +4681,9 @@ function NutritionistProfileTab() {
       if (linksData.links) {
         setLinks(linksData.links);
         setCommissions(linksData.commissions ?? []);
-        setCommissionSummary(linksData.summary ?? { totalEarned: 0, pendingEarned: 0 });
+        setReferralCommissions(linksData.referralCommissions ?? []);
+        setSessionCommissions(linksData.sessionCommissions ?? []);
+        setCommissionSummary(linksData.summary ?? { totalEarned: 0, pendingEarned: 0, referralEarned: 0, sessionEarned: 0 });
       }
     } finally {
       setLoading(false);
@@ -4846,8 +4857,18 @@ function NutritionistProfileTab() {
                 <div className="text-xl font-black text-amber-700 dark:text-amber-300">{commissionSummary.pendingEarned.toFixed(2)} {t("ج.م", "EGP")}</div>
               </div>
             </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-xl border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 p-3">
+                <div className="text-xs text-blue-600 dark:text-blue-400 mb-1">{t("عمولات الإحالات", "Referral commissions")}</div>
+                <div className="text-lg font-black text-blue-700 dark:text-blue-300">{commissionSummary.referralEarned.toFixed(2)} {t("ج.م", "EGP")}</div>
+              </div>
+              <div className="rounded-xl border border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-900/20 p-3">
+                <div className="text-xs text-purple-600 dark:text-purple-400 mb-1">{t("عمولات الجلسات", "Session commissions")}</div>
+                <div className="text-lg font-black text-purple-700 dark:text-purple-300">{commissionSummary.sessionEarned.toFixed(2)} {t("ج.م", "EGP")}</div>
+              </div>
+            </div>
             <div className="text-xs text-gray-400 bg-gray-50 dark:bg-gray-800 rounded-lg p-3">
-              {t(`نسبة عمولتك: ${commissionRate}${commissionType === "percentage" ? "%" : " ج.م"} لكل اشتراك عبر رابطك (يحددها الإدارة).`, `Your commission rate: ${commissionRate}${commissionType === "percentage" ? "%" : " EGP"} per subscription via your link (set by admin).`)}
+              {t(`نسبة عمولتك: ${commissionRate}${commissionType === "percentage" ? "%" : " ج.م"} على الاشتراكات والجلسات (يحددها الإدارة).`, `Your commission rate: ${commissionRate}${commissionType === "percentage" ? "%" : " EGP"} on subscriptions and sessions (set by admin).`)}
             </div>
 
             {/* Create new link */}
@@ -4893,19 +4914,43 @@ function NutritionistProfileTab() {
               </div>
             )}
 
-            {/* Commission history */}
-            {commissions.length > 0 && (
+            {/* Session Commissions */}
+            {sessionCommissions.length > 0 && (
               <div className="mt-4">
-                <div className="font-bold text-sm mb-3">{t("سجل العمولات", "Commission history")}</div>
+                <div className="font-bold text-sm mb-3">{t("💰 عمولات الجلسات", "💰 Session commissions")}</div>
                 <div className="space-y-2">
-                  {commissions.slice(0, 20).map((c) => (
-                    <div key={c.id} className="flex items-center justify-between p-3 rounded-lg border border-gray-100 dark:border-gray-800">
+                  {sessionCommissions.slice(0, 20).map((c) => (
+                    <div key={c.id} className="flex items-center justify-between p-3 rounded-lg border border-purple-100 dark:border-purple-900/30 bg-purple-50/50 dark:bg-purple-900/10">
+                      <div>
+                        <div className="text-sm font-bold">{c.nutritionSession?.user?.name ?? "—"}</div>
+                        <div className="text-xs text-gray-400">
+                          {c.nutritionSession?.type === "consultation" ? t("كشف", "Consultation") : t("إعادة كشف", "Followup")} • {c.nutritionSession?.price.toFixed(0)} {t("ج.م", "EGP")}
+                        </div>
+                        <div className="text-xs text-gray-400">{new Date(c.createdAt).toLocaleDateString(lang === "ar" ? "ar-EG" : "en-US")}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-bold text-purple-600">{c.amount.toFixed(2)} {t("ج.م", "EGP")}</div>
+                        <div className={`text-xs ${c.status === "settled" ? "text-gray-400" : "text-amber-500"}`}>{c.status === "settled" ? t("مسدد", "Settled") : t("في الانتظار", "Pending")}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Referral Commissions */}
+            {referralCommissions.length > 0 && (
+              <div className="mt-4">
+                <div className="font-bold text-sm mb-3">{t("🔗 عمولات الإحالات", "🔗 Referral commissions")}</div>
+                <div className="space-y-2">
+                  {referralCommissions.slice(0, 20).map((c) => (
+                    <div key={c.id} className="flex items-center justify-between p-3 rounded-lg border border-blue-100 dark:border-blue-900/30 bg-blue-50/50 dark:bg-blue-900/10">
                       <div>
                         <div className="text-sm font-bold">{c.userMembership?.user?.name ?? "—"}</div>
                         <div className="text-xs text-gray-400">{new Date(c.createdAt).toLocaleDateString(lang === "ar" ? "ar-EG" : "en-US")}</div>
                       </div>
                       <div className="text-right">
-                        <div className="font-bold text-green-600">{c.amount.toFixed(2)} {t("ج.م", "EGP")}</div>
+                        <div className="font-bold text-blue-600">{c.amount.toFixed(2)} {t("ج.م", "EGP")}</div>
                         <div className={`text-xs ${c.status === "settled" ? "text-gray-400" : "text-amber-500"}`}>{c.status === "settled" ? t("مسدد", "Settled") : t("في الانتظار", "Pending")}</div>
                       </div>
                     </div>
@@ -4931,14 +4976,31 @@ function NutritionTab() {
   const [chosenSlot, setChosenSlot] = useState<string | null>(null);
   const [slotSaving, setSlotSaving] = useState(false);
   const [actionMsg, setActionMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [rescheduleRequests, setRescheduleRequests] = useState<Array<{
+    id: string;
+    proposedNewSlot: string | null;
+    doctorReason: string | null;
+    session: {
+      id: string;
+      selectedSlot: string | null;
+      nutritionist: { id: string; name: string; image: string | null };
+    };
+  }>>([]);
+  const [respondingRequest, setRespondingRequest] = useState<string | null>(null);
+  const [alternativeSlots, setAlternativeSlots] = useState<string[]>([]);
 
   const load = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/me/nutrition", { cache: "no-store" });
-      const data = await res.json() as { sessions?: NutritionSessionItem[]; error?: string };
-      if (res.ok) setSessions(data.sessions ?? []);
-      else setError(data.error ?? t("حدث خطأ", "An error occurred"));
+      const [sessionsRes, requestsRes] = await Promise.all([
+        fetch("/api/me/nutrition", { cache: "no-store" }),
+        fetch("/api/me/nutrition/reschedule", { cache: "no-store" }),
+      ]);
+      const sessionsData = await sessionsRes.json() as { sessions?: NutritionSessionItem[]; error?: string };
+      const requestsData = await requestsRes.json() as { requests?: typeof rescheduleRequests; error?: string };
+      if (sessionsRes.ok) setSessions(sessionsData.sessions ?? []);
+      if (requestsRes.ok) setRescheduleRequests(requestsData.requests ?? []);
+      if (!sessionsRes.ok) setError(sessionsData.error ?? t("حدث خطأ", "An error occurred"));
     } catch { setError(t("تعذر تحميل البيانات", "Failed to load")); }
     finally { setLoading(false); }
   };
@@ -4978,6 +5040,26 @@ function NutritionTab() {
     finally { setSlotSaving(false); }
   };
 
+  const respondToReschedule = async (requestId: string, action: "accept" | "reject" | "refund", clientChosenSlot?: string, clientReason?: string) => {
+    setRespondingRequest(requestId);
+    setActionMsg(null);
+    try {
+      const res = await fetch("/api/me/nutrition/reschedule", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requestId, action, clientChosenSlot, clientReason }),
+      });
+      const data = await res.json() as { error?: string };
+      if (res.ok) {
+        if (action === "accept") setActionMsg({ ok: true, text: t("تم قبول الموعد الجديد", "New appointment accepted") });
+        else if (action === "refund") setActionMsg({ ok: true, text: t("تم إرسال طلب استرجاع المبلغ للدكتورة", "Refund request sent to doctor") });
+        else setActionMsg({ ok: true, text: t("تم اختيار موعد بديل", "Alternative slot selected") });
+        await load();
+      } else { setActionMsg({ ok: false, text: data.error ?? t("حدث خطأ", "An error occurred") }); }
+    } catch { setActionMsg({ ok: false, text: t("حدث خطأ", "An error occurred") }); }
+    finally { setRespondingRequest(null); }
+  };
+
   const statusLabel: Record<string, { ar: string; en: string; color: string }> = {
     pending: { ar: "في انتظار التأكيد", en: "Pending confirmation", color: "#f59e0b" },
     awaiting_slot: { ar: "اختاري موعدك", en: "Choose your slot", color: "#3b82f6" },
@@ -5000,6 +5082,82 @@ function NutritionTab() {
       {actionMsg && (
         <div className={`rounded-xl border px-4 py-3 text-sm ${actionMsg.ok ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-300" : "border-rose-400/30 bg-rose-500/10 text-rose-300"}`}>
           {actionMsg.text}
+        </div>
+      )}
+
+      {/* Reschedule Requests */}
+      {rescheduleRequests.length > 0 && (
+        <div className="rounded-xl border border-amber-400/30 bg-amber-500/10 p-4 space-y-3">
+          <div className="flex items-center gap-2 text-amber-300 font-bold text-sm">
+            <span className="text-lg">⚠️</span>
+            <span>{t("طلبات تغيير مواعيد", "Reschedule Requests")} ({rescheduleRequests.length})</span>
+          </div>
+          {rescheduleRequests.map((req) => (
+            <div key={req.id} className={`${CARD} border-amber-400/20`}>
+              <div className="flex items-start justify-between gap-3 mb-3">
+                <div>
+                  <div className="font-bold text-[#fff7fb] text-sm">{t("مع دكتورة", "with Dr.")} {req.session.nutritionist.name}</div>
+                  {req.session.nutritionist.image && (
+                    <img src={req.session.nutritionist.image} alt={req.session.nutritionist.name} className="w-12 h-12 rounded-full object-cover mt-2" />
+                  )}
+                </div>
+                <span className="text-amber-400 text-2xl">📅</span>
+              </div>
+
+              <div className="space-y-2 mb-3">
+                <div className="rounded-lg bg-black/20 px-3 py-2">
+                  <div className="text-xs text-[#9a7a88]">{t("الموعد الحالي:", "Current appointment:")}</div>
+                  <div className="text-sm font-bold text-[#ffb7d0]">{req.session.selectedSlot ?? "—"}</div>
+                </div>
+                {req.proposedNewSlot && (
+                  <div className="rounded-lg bg-amber-500/10 border border-amber-400/20 px-3 py-2">
+                    <div className="text-xs text-amber-300">{t("الموعد الجديد المقترح:", "Proposed new appointment:")}</div>
+                    <div className="text-sm font-bold text-amber-200">{req.proposedNewSlot}</div>
+                  </div>
+                )}
+                {req.doctorReason && (
+                  <div className="rounded-lg bg-black/20 px-3 py-2">
+                    <div className="text-xs text-[#9a7a88] mb-1">{t("سبب التغيير:", "Reason:")}</div>
+                    <div className="text-xs text-[#d7aabd]">{req.doctorReason}</div>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <button
+                  onClick={() => void respondToReschedule(req.id, "accept")}
+                  disabled={respondingRequest === req.id}
+                  className="w-full rounded-xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-500 disabled:opacity-50"
+                >
+                  {t("✓ موافقة على الموعد الجديد", "✓ Accept new appointment")}
+                </button>
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      const slot = prompt(t("أدخلي موعد بديل تفضليه:", "Enter your preferred alternative slot:"));
+                      if (slot?.trim()) void respondToReschedule(req.id, "reject", slot.trim());
+                    }}
+                    disabled={respondingRequest === req.id}
+                    className="flex-1 rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-500 disabled:opacity-50"
+                  >
+                    {t("📅 اختيار موعد آخر", "📅 Choose another slot")}
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (confirm(t("هل تريدين استرجاع المبلغ بدلاً من تغيير الموعد؟", "Do you want a refund instead of rescheduling?"))) {
+                        void respondToReschedule(req.id, "refund");
+                      }
+                    }}
+                    disabled={respondingRequest === req.id}
+                    className="flex-1 rounded-xl bg-rose-600 px-4 py-2 text-sm font-bold text-white hover:bg-rose-500 disabled:opacity-50"
+                  >
+                    {t("💰 استرجاع المبلغ", "💰 Request refund")}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       )}
 

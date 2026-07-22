@@ -307,6 +307,37 @@ function SessionCard({ session, onAction, onDelete }: { session: NutritionSessio
   const [proposedInput, setProposedInput] = useState("");
   const [doctorNote, setDoctorNote] = useState(session.doctorNote ?? "");
   const [loading, setLoading] = useState(false);
+  const [showRescheduleForm, setShowRescheduleForm] = useState(false);
+  const [rescheduleSlot, setRescheduleSlot] = useState("");
+  const [rescheduleReason, setRescheduleReason] = useState("");
+
+  async function sendRescheduleRequest() {
+    if (!rescheduleSlot.trim()) {
+      alert("يرجى إدخال الموعد الجديد المقترح");
+      return;
+    }
+    setLoading(true);
+    const res = await fetch("/api/admin/nutrition/reschedule", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sessionId: session.id,
+        proposedNewSlot: rescheduleSlot.trim(),
+        doctorReason: rescheduleReason.trim() || undefined,
+      }),
+    });
+    setLoading(false);
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert((d as { error?: string }).error ?? "خطأ في إرسال الطلب");
+      return;
+    }
+    alert("تم إرسال طلب تغيير الموعد للعميلة");
+    setShowRescheduleForm(false);
+    setRescheduleSlot("");
+    setRescheduleReason("");
+    onAction();
+  }
 
   async function act(action: string, extra: Record<string, unknown> = {}) {
     setLoading(true);
@@ -417,6 +448,11 @@ function SessionCard({ session, onAction, onDelete }: { session: NutritionSessio
                     تم الكشف ✓
                   </button>
                 )}
+                {session.status === "paid" && (
+                  <button onClick={() => setShowRescheduleForm(true)} disabled={loading} style={{ padding: "7px 14px", background: "#f59e0b", border: "none", borderRadius: 8, color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 12 }}>
+                    📅 طلب تغيير الموعد
+                  </button>
+                )}
                 <button onClick={() => act("reject")} disabled={loading} style={{ padding: "7px 14px", background: "#dc2626", border: "none", borderRadius: 8, color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 12 }}>
                   رفض
                 </button>
@@ -424,6 +460,40 @@ function SessionCard({ session, onAction, onDelete }: { session: NutritionSessio
                   إلغاء
                 </button>
               </div>
+
+              {/* Reschedule Request Form */}
+              {showRescheduleForm && (
+                <div style={{ marginTop: 14, background: "rgba(245,158,11,.1)", border: "1px solid rgba(245,158,11,.3)", borderRadius: 10, padding: 14, display: "grid", gap: 10 }}>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: "#f59e0b" }}>طلب تغيير موعد الجلسة</div>
+                  <div>
+                    <label style={{ fontSize: 11, color: "#9a8a90", display: "block", marginBottom: 4 }}>الموعد الجديد المقترح</label>
+                    <input
+                      value={rescheduleSlot}
+                      onChange={(e) => setRescheduleSlot(e.target.value)}
+                      placeholder="مثال: الأحد 15 يوليو الساعة 10 صباحاً"
+                      style={{ width: "100%", background: "rgba(255,255,255,.1)", border: "1px solid rgba(255,255,255,.2)", borderRadius: 8, padding: "8px 10px", color: "#fff", fontSize: 12, outline: "none", boxSizing: "border-box" }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 11, color: "#9a8a90", display: "block", marginBottom: 4 }}>سبب التغيير (اختياري)</label>
+                    <textarea
+                      value={rescheduleReason}
+                      onChange={(e) => setRescheduleReason(e.target.value)}
+                      placeholder="سبب الظرف الطارئ..."
+                      rows={2}
+                      style={{ width: "100%", background: "rgba(255,255,255,.1)", border: "1px solid rgba(255,255,255,.2)", borderRadius: 8, padding: "8px 10px", color: "#fff", fontSize: 12, outline: "none", resize: "vertical", boxSizing: "border-box" }}
+                    />
+                  </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button onClick={() => void sendRescheduleRequest()} disabled={loading} style={{ padding: "8px 14px", background: "#f59e0b", border: "none", borderRadius: 8, color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 12, flex: 1 }}>
+                      إرسال الطلب
+                    </button>
+                    <button onClick={() => setShowRescheduleForm(false)} disabled={loading} style={{ padding: "8px 14px", background: "rgba(255,255,255,.1)", border: "1px solid rgba(255,255,255,.2)", borderRadius: 8, color: "#c9b9c1", cursor: "pointer", fontSize: 12 }}>
+                      إلغاء
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -444,13 +514,37 @@ export default function Nutrition({ adminRole = "admin" }: { adminRole?: string 
   const [loading, setLoading] = useState(false);
   const [showProfileForm, setShowProfileForm] = useState(false);
   const [editingProfile, setEditingProfile] = useState<NutritionistProfileRow | null>(null);
+  const [refundRequests, setRefundRequests] = useState<Array<{
+    id: string;
+    proposedNewSlot: string | null;
+    doctorReason: string | null;
+    clientReason: string | null;
+    refundAmount: number | null;
+    session: {
+      id: string;
+      price: number;
+      selectedSlot: string | null;
+      user: { id: string; name: string | null; phone: string | null };
+    };
+  }>>([]);
+
+  const loadRefundRequests = useCallback(async () => {
+    const res = await fetch("/api/admin/nutrition/reschedule?status=client_wants_refund");
+    if (res.ok) {
+      const d = await res.json() as { requests: typeof refundRequests };
+      setRefundRequests(d.requests ?? []);
+    }
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
     if (tab === "sessions" || tab === "my") {
-      const res = await fetch(`/api/admin/nutrition?view=sessions&status=${statusFilter}`);
-      if (res.ok) {
-        const d = await res.json() as { sessions: NutritionSessionRow[]; hasOwnProfile?: boolean };
+      const [sessionsRes] = await Promise.all([
+        fetch(`/api/admin/nutrition?view=sessions&status=${statusFilter}`),
+        loadRefundRequests(),
+      ]);
+      if (sessionsRes.ok) {
+        const d = await sessionsRes.json() as { sessions: NutritionSessionRow[]; hasOwnProfile?: boolean };
         setSessions(d.sessions);
         if (typeof d.hasOwnProfile === "boolean") setIsOwnProfile(d.hasOwnProfile);
       }
@@ -463,7 +557,7 @@ export default function Nutrition({ adminRole = "admin" }: { adminRole?: string 
       if (staffRes.ok) { const d = await staffRes.json() as { employees: { id: string; name: string; email: string }[] }; setStaffUsers(d.employees); }
     }
     setLoading(false);
-  }, [tab, statusFilter]);
+  }, [tab, statusFilter, loadRefundRequests]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -583,6 +677,84 @@ export default function Nutrition({ adminRole = "admin" }: { adminRole?: string 
               </button>
             ))}
           </div>
+
+          {/* Refund Requests Section */}
+          {refundRequests.length > 0 && (
+            <div style={{ background: "rgba(239,68,68,.1)", border: "1px solid rgba(239,68,68,.3)", borderRadius: 12, padding: 14 }}>
+              <div style={{ fontWeight: 700, fontSize: 14, color: "#ef4444", marginBottom: 10 }}>⚠ طلبات استرجاع معلقة ({refundRequests.length})</div>
+              <div style={{ display: "grid", gap: 8 }}>
+                {refundRequests.map((req) => (
+                  <div key={req.id} style={{ background: "rgba(255,255,255,.05)", borderRadius: 10, padding: 12, display: "grid", gap: 8 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start" }}>
+                      <div>
+                        <div style={{ fontWeight: 700, color: "#fff", fontSize: 13 }}>{req.session.user.name ?? "—"}</div>
+                        <div style={{ fontSize: 12, color: "#9a8a90" }}>{req.session.user.phone ?? "—"}</div>
+                        <div style={{ fontSize: 12, color: "#9a8a90", marginTop: 4 }}>
+                          الموعد الحالي: <span style={{ color: "#f5c542" }}>{req.session.selectedSlot ?? "—"}</span>
+                        </div>
+                        {req.proposedNewSlot && (
+                          <div style={{ fontSize: 12, color: "#9a8a90" }}>
+                            الموعد المقترح: <span style={{ color: "#f59e0b" }}>{req.proposedNewSlot}</span>
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ fontWeight: 700, fontSize: 16, color: "#ef4444" }}>
+                        {req.refundAmount ?? req.session.price} ج.م
+                      </div>
+                    </div>
+                    {req.clientReason && (
+                      <div style={{ fontSize: 12, color: "#c9b9c1", background: "rgba(0,0,0,.2)", borderRadius: 6, padding: "6px 10px" }}>
+                        <span style={{ color: "#9a8a90" }}>سبب الرفض: </span>{req.clientReason}
+                      </div>
+                    )}
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button
+                        onClick={async () => {
+                          if (!confirm("هل أنت متأكدة من الموافقة على استرجاع المبلغ؟")) return;
+                          const res = await fetch("/api/admin/nutrition/reschedule", {
+                            method: "PATCH",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ requestId: req.id, action: "approve_refund" }),
+                          });
+                          if (res.ok) {
+                            alert("تمت الموافقة وإضافة المبلغ لمحفظة العميلة");
+                            load();
+                          } else {
+                            const d = await res.json().catch(() => ({}));
+                            alert((d as { error?: string }).error ?? "خطأ");
+                          }
+                        }}
+                        style={{ flex: 1, padding: "8px 12px", background: "#22c55e", border: "none", borderRadius: 8, color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 12 }}
+                      >
+                        ✓ موافقة على الاسترجاع
+                      </button>
+                      <button
+                        onClick={async () => {
+                          const reason = prompt("سبب الرفض (اختياري):");
+                          if (reason === null) return; // user cancelled
+                          const res = await fetch("/api/admin/nutrition/reschedule", {
+                            method: "PATCH",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ requestId: req.id, action: "reject_refund", reason: reason || undefined }),
+                          });
+                          if (res.ok) {
+                            alert("تم رفض طلب الاسترجاع");
+                            load();
+                          } else {
+                            const d = await res.json().catch(() => ({}));
+                            alert((d as { error?: string }).error ?? "خطأ");
+                          }
+                        }}
+                        style={{ padding: "8px 12px", background: "rgba(239,68,68,.2)", border: "1px solid rgba(239,68,68,.4)", borderRadius: 8, color: "#ef4444", fontWeight: 700, cursor: "pointer", fontSize: 12 }}
+                      >
+                        ✗ رفض
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {loading ? (
             <div style={{ color: "#9a8a90", textAlign: "center", padding: 40 }}>جارٍ التحميل...</div>

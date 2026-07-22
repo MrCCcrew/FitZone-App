@@ -7,6 +7,7 @@ import { canAccessAdminSection, getDefaultAdminSection, isAdminRole } from "@/li
 import Overview from "./sections/Overview";
 import Accounting from "./sections/Accounting";
 import PagesContent from "./sections/PagesContent";
+import BlogPending from "./sections/BlogPending";
 import ChatKnowledge from "./sections/ChatKnowledge";
 import Subscriptions from "./sections/Subscriptions";
 import Packages from "./sections/Packages";
@@ -48,6 +49,7 @@ const NAV: { id: Section; label: string; icon: string }[] = [
   { id: "overview", label: "لوحة التحكم", icon: "📊" },
   { id: "accounting", label: "الحسابات والتقارير", icon: "💼" },
   { id: "pages", label: "الصفحات والمحتوى", icon: "📄" },
+  { id: "blog-pending", label: "طلبات نشر المدونة", icon: "📝" },
   { id: "knowledge", label: "قاعدة معرفة البوت", icon: "KB" },
   { id: "subscriptions", label: "الاشتراكات والعروض", icon: "🎟️" },
   { id: "packages", label: "الباقات", icon: "🎁" },
@@ -93,6 +95,7 @@ const TITLES: Record<string, string> = {
   overview: "لوحة التحكم",
   accounting: "الحسابات وتقارير المتجر والجيم",
   pages: "إدارة الصفحات والمحتوى",
+  "blog-pending": "طلبات نشر المقالات",
   knowledge: "قاعدة معرفة البوت",
   subscriptions: "إدارة الاشتراكات والعروض",
   packages: "إدارة الباقات",
@@ -129,6 +132,7 @@ const SECTIONS: Record<string, ComponentType> = {
   overview: Overview,
   accounting: Accounting,
   pages: PagesContent,
+  "blog-pending": BlogPending,
   knowledge: ChatKnowledge,
   subscriptions: Subscriptions,
   packages: Packages,

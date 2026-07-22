@@ -136,6 +136,8 @@ model User {
   inventoryReceiptsPerformed  InventoryReceipt[]         @relation("InventoryReceiptPerformer")
   storeCampaignClaims        StoreGiftCampaignClaim[]
   freeGiftsSessions          StoreFreeGiftsSession[]
+  blogPendingPosts           BlogPendingPost[]
+  blogPostReviews            BlogPendingPost[]          @relation("BlogReviewer")
 }
 
 model AuditLog {
@@ -1599,6 +1601,7 @@ model NutritionCommission {
   nutritionistUserId      String
   nutritionReferralLinkId String?
   userMembershipId        String?   @unique
+  nutritionSessionId      String?
   amount                  Float
   status                  String    @default("earned") // earned | settled
   settledAt               DateTime?
@@ -1607,6 +1610,7 @@ model NutritionCommission {
   nutritionistUser      User                   @relation("NutritionCommissions", fields: [nutritionistUserId], references: [id], onDelete: Cascade)
   nutritionReferralLink NutritionReferralLink?  @relation(fields: [nutritionReferralLinkId], references: [id], onDelete: SetNull)
   userMembership        UserMembership?         @relation(fields: [userMembershipId], references: [id], onDelete: SetNull)
+  nutritionSession      NutritionSession?       @relation(fields: [nutritionSessionId], references: [id], onDelete: SetNull)
 
   @@index([nutritionistUserId, status])
   @@index([createdAt])
@@ -1681,9 +1685,87 @@ model NutritionSession {
 
   user         User                @relation("NutritionSessionUser", fields: [userId], references: [id], onDelete: Cascade)
   nutritionist NutritionistProfile @relation(fields: [nutritionistId], references: [id], onDelete: Cascade)
+  rescheduleRequests RescheduleRequest[]
+  commissions        NutritionCommission[]
 
   @@index([userId])
   @@index([nutritionistId])
+  @@index([status])
+}
+
+model RescheduleRequest {
+  id                String   @id @default(cuid())
+  sessionId         String
+  // doctor_initiated | client_initiated
+  initiatedBy       String   @default("doctor_initiated")
+  // pending_client | client_accepted | client_rejected | client_wants_refund | refund_approved | refund_rejected | completed | cancelled
+  status            String   @default("pending_client")
+
+  // Doctor's proposed new slot
+  proposedNewSlot   String?
+  doctorReason      String?  @db.Text
+
+  // Client's response
+  clientResponse    String?  // accept | reject | refund
+  clientChosenSlot  String?  // if client picks different slot
+  clientReason      String?  @db.Text
+
+  // Refund tracking
+  refundAmount      Float?
+  refundStatus      String?  // pending | approved | rejected | completed
+  refundApprovedBy  String?  // doctor/admin userId
+  refundApprovedAt  DateTime?
+  refundCompletedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  session NutritionSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([status])
+}
+
+model BlogPendingPost {
+  id          String   @id @default(cuid())
+  submittedBy String   // userId of contracts_manager who submitted
+  // pending | approved | rejected
+  status      String   @default("pending")
+
+  // Post data (same structure as BlogPost in site_content.blog.posts)
+  title       String   @db.Text
+  titleEn     String?  @db.Text
+  category    String
+  categoryEn  String?
+  author      String
+  authorEn    String?
+  date        String
+  dateEn      String?
+  readTime    String
+  readTimeEn  String?
+  featured    Boolean  @default(false)
+  summary     String   @db.Text
+  summaryEn   String?  @db.Text
+  content     String   @db.LongText
+  contentEn   String?  @db.LongText
+  coverImage  String   @db.Text
+  videoUrl    String   @db.Text
+
+  // If editing existing post
+  existingPostId String? // ID from site_content.blog.posts array
+
+  // Admin response
+  reviewedBy  String?
+  reviewedAt  DateTime?
+  rejectReason String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  submitter User  @relation(fields: [submittedBy], references: [id], onDelete: Cascade)
+  reviewer  User? @relation("BlogReviewer", fields: [reviewedBy], references: [id], onDelete: SetNull)
+
+  @@index([submittedBy])
   @@index([status])
 }
 

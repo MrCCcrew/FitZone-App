@@ -3,6 +3,7 @@ export type Section =
   | "accounting"
   | "settings"
   | "pages"
+  | "blog-pending"
   | "knowledge"
   | "subscriptions"
   | "packages"

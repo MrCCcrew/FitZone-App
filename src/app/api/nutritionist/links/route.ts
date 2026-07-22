@@ -30,6 +30,10 @@ export async function GET() {
       where: { nutritionistUserId: userId! },
       orderBy: { createdAt: "desc" },
       take: 100,
+      include: {
+        userMembership: { select: { user: { select: { name: true } } } },
+        nutritionSession: { select: { id: true, type: true, price: true, user: { select: { name: true } } } },
+      },
     }),
     dbx.nutritionistProfile.findUnique({
       where: { userId: userId! },
@@ -37,13 +41,27 @@ export async function GET() {
     }),
   ]);
 
+  const referralCommissions = commissions.filter((c: any) => c.userMembershipId !== null);
+  const sessionCommissions = commissions.filter((c: any) => c.nutritionSessionId !== null);
+
   const totalEarned: number = commissions.reduce((sum: number, c: any) => sum + c.amount, 0);
   const pendingEarned: number = commissions.filter((c: any) => c.status === "earned").reduce((sum: number, c: any) => sum + c.amount, 0);
+
+  const referralEarned: number = referralCommissions.reduce((sum: number, c: any) => sum + c.amount, 0);
+  const sessionEarned: number = sessionCommissions.reduce((sum: number, c: any) => sum + c.amount, 0);
 
   return NextResponse.json({
     links,
     commissions,
-    summary: { totalEarned, pendingEarned, count: commissions.length },
+    referralCommissions,
+    sessionCommissions,
+    summary: {
+      totalEarned,
+      pendingEarned,
+      referralEarned,
+      sessionEarned,
+      count: commissions.length
+    },
     commissionRate: profile?.commissionRate ?? 0,
     commissionType: profile?.commissionType ?? "percentage",
   });
