@@ -1070,19 +1070,47 @@ export async function updatePaymentTransactionStatus(
     const nutritionSessionId =
       typeof metadata?.nutritionSessionId === "string" ? metadata.nutritionSessionId : null;
     if (nutritionSessionId) {
-      await db.nutritionSession.updateMany({
+      const session = await db.nutritionSession.findFirst({
         where: { id: nutritionSessionId, status: "approved" },
-        data: { status: "paid", paidAt: transaction.paidAt ?? new Date(), paymentTransactionId: transactionId },
+        include: {
+          nutritionist: { select: { userId: true, commissionRate: true, commissionType: true } },
+        },
       });
-      if (existing?.userId) {
-        await db.notification.create({
-          data: {
-            userId: existing.userId,
-            title: "تم تأكيد حجز كشف دكتورة التغذية!",
-            body: "تم استلام دفعتك بنجاح. ستتواصل معك الدكتورة قريباً.",
-            type: "success",
-          },
-        }).catch(() => null);
+
+      if (session) {
+        await db.nutritionSession.update({
+          where: { id: nutritionSessionId },
+          data: { status: "paid", paidAt: transaction.paidAt ?? new Date(), paymentTransactionId: transactionId },
+        });
+
+        // Calculate and create commission
+        const { commissionRate, commissionType, userId: nutritionistUserId } = session.nutritionist;
+        if (commissionRate > 0) {
+          const commissionAmount =
+            commissionType === "percentage"
+              ? (session.price * commissionRate) / 100
+              : commissionRate;
+
+          await db.nutritionCommission.create({
+            data: {
+              nutritionistUserId,
+              nutritionSessionId: session.id,
+              amount: commissionAmount,
+              status: "earned",
+            },
+          });
+        }
+
+        if (existing?.userId) {
+          await db.notification.create({
+            data: {
+              userId: existing.userId,
+              title: "تم تأكيد حجز كشف دكتورة التغذية!",
+              body: "تم استلام دفعتك بنجاح. ستتواصل معك الدكتورة قريباً.",
+              type: "success",
+            },
+          }).catch(() => null);
+        }
       }
     }
   }

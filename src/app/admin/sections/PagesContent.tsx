@@ -701,11 +701,16 @@ const EMPTY_BLOG_POST: BlogPost = {
   active: true,
 };
 
-function BlogTabFixed({ data, onChange }: { data: BlogData; onChange: (d: BlogData) => void }) {
+function BlogTabFixed({ data, onChange, userFeatures }: { data: BlogData; onChange: (d: BlogData) => void; userFeatures: AdminFeature[] }) {
   const [draft, setDraft] = useState<BlogPost>(EMPTY_BLOG_POST);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [submitMessage, setSubmitMessage] = useState<{ text: string; ok: boolean } | null>(null);
+
+  const hasSiteContent = userFeatures.includes("site-content");
+  const hasBlogOnly = !hasSiteContent && userFeatures.includes("blog");
 
   const update = <K extends keyof BlogData>(key: K, value: BlogData[K]) => onChange({ ...data, [key]: value });
   const setDraftField = <K extends keyof BlogPost>(key: K, value: BlogPost[K]) =>
@@ -715,10 +720,57 @@ function BlogTabFixed({ data, onChange }: { data: BlogData; onChange: (d: BlogDa
     setDraft(EMPTY_BLOG_POST);
     setEditingId(null);
     setUploadError("");
+    setSubmitMessage(null);
   };
 
-  const savePost = () => {
+  const savePost = async () => {
     if (!draft.title.trim()) return;
+
+    // If user has blog-only permission (contracts_manager), submit to pending
+    if (hasBlogOnly) {
+      setSubmitting(true);
+      setSubmitMessage(null);
+      try {
+        const res = await fetch("/api/admin/blog-pending", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: draft.title,
+            titleEn: draft.titleEn,
+            category: draft.category || "عام",
+            categoryEn: draft.categoryEn,
+            author: draft.author || "الإدارة",
+            authorEn: draft.authorEn,
+            date: draft.date || new Date().toLocaleDateString("ar-EG"),
+            dateEn: draft.dateEn,
+            readTime: draft.readTime || "5 دق",
+            readTimeEn: draft.readTimeEn,
+            featured: draft.featured,
+            summary: draft.summary,
+            summaryEn: draft.summaryEn,
+            content: draft.content,
+            contentEn: draft.contentEn,
+            coverImage: draft.coverImage || "",
+            videoUrl: draft.videoUrl || "",
+            existingPostId: editingId || undefined,
+          }),
+        });
+        const result = await res.json() as { error?: string };
+        if (res.ok) {
+          setSubmitMessage({ ok: true, text: "تم إرسال المقال للمراجعة. سيظهر في المدونة بعد موافقة الإدارة." });
+          resetDraft();
+        } else {
+          setSubmitMessage({ ok: false, text: result.error ?? "حدث خطأ أثناء الإرسال" });
+        }
+      } catch {
+        setSubmitMessage({ ok: false, text: "حدث خطأ أثناء الإرسال" });
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
+
+    // Admin/staff: save directly
     const nextPost = { ...draft, id: draft.id || `post-${Date.now()}` };
     let posts = data.posts.filter((post) => post.id !== nextPost.id);
     if (nextPost.featured) {
@@ -776,14 +828,27 @@ function BlogTabFixed({ data, onChange }: { data: BlogData; onChange: (d: BlogDa
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 rounded-2xl border border-gray-800 bg-black/30 p-4">
-        <Field label="تصنيفات المدونة (كل تصنيف في سطر)">
-          <TTextarea
-            value={listToText(data.categories)}
-            onChange={(v) => update("categories", textToList(v))}
-            rows={4}
-          />
-        </Field>
+      {hasBlogOnly && (
+        <div className="rounded-2xl border border-yellow-500/30 bg-yellow-950/20 px-4 py-3 text-sm text-yellow-200">
+          ⚠️ ملاحظة: جميع المقالات التي تضيفها ستُرسل للمراجعة أولاً وستظهر في المدونة بعد موافقة الإدارة.
+        </div>
+      )}
+
+      {submitMessage && (
+        <div className={`rounded-2xl border px-4 py-3 text-sm ${submitMessage.ok ? "border-emerald-500/30 bg-emerald-950/30 text-emerald-200" : "border-red-500/30 bg-red-950/30 text-red-200"}`}>
+          {submitMessage.text}
+        </div>
+      )}
+
+      {!hasBlogOnly && (
+        <div className="grid gap-4 rounded-2xl border border-gray-800 bg-black/30 p-4">
+          <Field label="تصنيفات المدونة (كل تصنيف في سطر)">
+            <TTextarea
+              value={listToText(data.categories)}
+              onChange={(v) => update("categories", textToList(v))}
+              rows={4}
+            />
+          </Field>
         <Field label="Blog Categories EN (one per line)">
           <div className="space-y-1">
             <TTextarea
@@ -923,22 +988,24 @@ function BlogTabFixed({ data, onChange }: { data: BlogData; onChange: (d: BlogDa
             </div>
             <button
               type="button"
-              onClick={savePost}
-              className="w-full rounded-xl bg-pink-600 px-4 py-2 text-sm font-bold text-white hover:bg-pink-500"
+              onClick={() => void savePost()}
+              disabled={submitting}
+              className="w-full rounded-xl bg-pink-600 px-4 py-2 text-sm font-bold text-white hover:bg-pink-500 disabled:opacity-50"
             >
-              {editingId ? "تحديث المحتوى" : "إضافة المحتوى"}
+              {submitting ? "جارٍ الإرسال..." : hasBlogOnly ? (editingId ? "تحديث وإرسال للمراجعة" : "إرسال للمراجعة") : (editingId ? "تحديث المحتوى" : "إضافة المحتوى")}
             </button>
           </div>
         </div>
       </div>
 
-      <div className="grid gap-4">
-        {data.posts.length === 0 ? (
-          <div className="rounded-2xl border border-gray-800 bg-black/20 px-4 py-8 text-center text-sm text-gray-400">
-            لا يوجد محتوى بعد. أضيفي أول فيديو أو مقال للمدونة.
-          </div>
-        ) : (
-          data.posts.map((post) => (
+      {!hasBlogOnly && (
+        <div className="grid gap-4">
+          {data.posts.length === 0 ? (
+            <div className="rounded-2xl border border-gray-800 bg-black/20 px-4 py-8 text-center text-sm text-gray-400">
+              لا يوجد محتوى بعد. أضيفي أول فيديو أو مقال للمدونة.
+            </div>
+          ) : (
+            data.posts.map((post) => (
             <div key={post.id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gray-800 bg-gray-950/60 px-4 py-3">
               <div>
                 <div className="text-sm font-bold text-white">{post.title}</div>
@@ -968,9 +1035,10 @@ function BlogTabFixed({ data, onChange }: { data: BlogData; onChange: (d: BlogDa
                 </button>
               </div>
             </div>
-          ))
-        )}
-      </div>
+            ))
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -1231,7 +1299,7 @@ export default function PagesContent() {
           <AnnouncementsTab data={announcements} onChange={setAnnouncements} />
         ) : null}
         {!loading && activeTab === "about" ? <AboutTab data={about} onChange={setAbout} /> : null}
-        {!loading && activeTab === "blog" ? <BlogTabFixed data={blog} onChange={setBlog} /> : null}
+        {!loading && activeTab === "blog" ? <BlogTabFixed data={blog} onChange={setBlog} userFeatures={userFeatures} /> : null}
         {!loading && activeTab === "policy" ? <LegalTab data={policy} onChange={setPolicy} /> : null}
         {!loading && activeTab === "privacy" ? <LegalTab data={privacy} onChange={setPrivacy} /> : null}
         {!loading && activeTab === "refund" ? <LegalTab data={refund} onChange={setRefund} /> : null}
