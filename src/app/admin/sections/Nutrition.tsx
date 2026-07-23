@@ -596,10 +596,14 @@ export default function Nutrition({ adminRole = "admin" }: { adminRole?: string 
   const [mySlots, setMySlots] = useState<{ label: string; day: string; time: string }[]>([]);
   const [myQuestions, setMyQuestions] = useState<{ id: string; label: string; type: string; required: boolean; options?: string[] }[]>([]);
   const [myLinks, setMyLinks] = useState<{ id: string; token: string; label: string | null; clickCount: number; isActive: boolean }[]>([]);
-  const [myCommissions, setMyCommissions] = useState<{ id: string; amount: number; status: string; createdAt: string; userMembership?: { user?: { name?: string } } }[]>([]);
-  const [myCommissionSummary, setMyCommissionSummary] = useState({ totalEarned: 0, pendingEarned: 0 });
+  const [myCommissions, setMyCommissions] = useState<{ id: string; amount: number; status: string; createdAt: string; userMembership?: { user?: { name?: string } }; nutritionSession?: { id: string; type: string; price: number; status: string; paidAt: string | null; createdAt: string; user?: { name?: string } } }[]>([]);
+  const [myReferralCommissions, setMyReferralCommissions] = useState<typeof myCommissions>([]);
+  const [mySessionCommissions, setMySessionCommissions] = useState<typeof myCommissions>([]);
+  const [myCommissionSummary, setMyCommissionSummary] = useState({ totalEarned: 0, pendingEarned: 0, referralEarned: 0, sessionEarned: 0 });
   const [myCommissionRate, setMyCommissionRate] = useState(0);
   const [myCommissionType, setMyCommissionType] = useState("percentage");
+  const [mySessionCommissionRate, setMySessionCommissionRate] = useState(0);
+  const [mySessionCommissionType, setMySessionCommissionType] = useState("percentage");
   const [newSlotLabel, setNewSlotLabel] = useState("");
   const [newSlotDay, setNewSlotDay] = useState("الأحد");
   const [newSlotTime, setNewSlotTime] = useState("10:00");
@@ -621,18 +625,31 @@ export default function Nutrition({ adminRole = "admin" }: { adminRole?: string 
       fetch("/api/nutritionist/slots", { cache: "no-store" }),
       fetch("/api/nutritionist/links", { cache: "no-store" }),
     ]);
-    const sData = await sRes.json().catch(() => ({})) as { profile?: { slots?: typeof mySlots; questions?: typeof myQuestions; commissionRate?: number; commissionType?: string } };
-    const lData = await lRes.json().catch(() => ({})) as { links?: typeof myLinks; commissions?: typeof myCommissions; summary?: typeof myCommissionSummary };
+    const sData = await sRes.json().catch(() => ({})) as { profile?: { slots?: typeof mySlots; questions?: typeof myQuestions; commissionRate?: number; commissionType?: string; sessionCommissionRate?: number; sessionCommissionType?: string } };
+    const lData = await lRes.json().catch(() => ({})) as { links?: typeof myLinks; commissions?: typeof myCommissions; referralCommissions?: typeof myReferralCommissions; sessionCommissions?: typeof mySessionCommissions; summary?: typeof myCommissionSummary; commissionRate?: number; commissionType?: string; sessionCommissionRate?: number; sessionCommissionType?: string };
     if (sData.profile) {
       setMySlots(sData.profile.slots ?? []);
       setMyQuestions(sData.profile.questions ?? []);
       setMyCommissionRate(sData.profile.commissionRate ?? 0);
       setMyCommissionType(sData.profile.commissionType ?? "percentage");
+      setMySessionCommissionRate(sData.profile.sessionCommissionRate ?? 0);
+      setMySessionCommissionType(sData.profile.sessionCommissionType ?? "percentage");
     }
     if (lData.links) {
       setMyLinks(lData.links);
       setMyCommissions(lData.commissions ?? []);
-      setMyCommissionSummary(lData.summary ?? { totalEarned: 0, pendingEarned: 0 });
+      setMyReferralCommissions(lData.referralCommissions ?? []);
+      setMySessionCommissions(lData.sessionCommissions ?? []);
+      setMyCommissionSummary(lData.summary ?? { totalEarned: 0, pendingEarned: 0, referralEarned: 0, sessionEarned: 0 });
+      // Also get from links API if available
+      if (lData.commissionRate !== undefined) {
+        setMyCommissionRate(lData.commissionRate);
+        setMyCommissionType(lData.commissionType ?? "percentage");
+      }
+      if (lData.sessionCommissionRate !== undefined) {
+        setMySessionCommissionRate(lData.sessionCommissionRate);
+        setMySessionCommissionType(lData.sessionCommissionType ?? "percentage");
+      }
     }
     setMyLoading(false);
   }, []);
@@ -898,6 +915,7 @@ export default function Nutrition({ adminRole = "admin" }: { adminRole?: string 
           {/* REFERRAL LINKS */}
           {!myLoading && mySection === "links" && (
             <div style={{ display: "grid", gap: 14 }}>
+              {/* 4 Cards: Total, Pending, Referral, Session */}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                 <div style={{ background: "rgba(34,197,94,.1)", border: "1px solid rgba(34,197,94,.2)", borderRadius: 12, padding: 14 }}>
                   <div style={{ fontSize: 11, color: "#9a8a90", marginBottom: 4 }}>إجمالي العمولات</div>
@@ -908,8 +926,24 @@ export default function Nutrition({ adminRole = "admin" }: { adminRole?: string 
                   <div style={{ fontWeight: 800, fontSize: 20, color: "#f5c542" }}>{myCommissionSummary.pendingEarned.toFixed(2)} ج.م</div>
                 </div>
               </div>
-              <div style={{ fontSize: 12, color: "#9a8a90", background: "rgba(255,255,255,.04)", borderRadius: 8, padding: "8px 12px" }}>
-                نسبة عمولتك: {myCommissionRate}{myCommissionType === "percentage" ? "%" : " ج.م"} لكل اشتراك عبر رابطك
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <div style={{ background: "rgba(59,130,246,.1)", border: "1px solid rgba(59,130,246,.2)", borderRadius: 12, padding: 14 }}>
+                  <div style={{ fontSize: 11, color: "#9a8a90", marginBottom: 4 }}>🔗 عمولات الإحالات</div>
+                  <div style={{ fontWeight: 800, fontSize: 18, color: "#3b82f6" }}>{myCommissionSummary.referralEarned.toFixed(2)} ج.م</div>
+                  <div style={{ fontSize: 11, color: "#6b9fdb", marginTop: 4 }}>{myReferralCommissions.length} إحالة</div>
+                </div>
+                <div style={{ background: "rgba(167,139,250,.1)", border: "1px solid rgba(167,139,250,.2)", borderRadius: 12, padding: 14 }}>
+                  <div style={{ fontSize: 11, color: "#9a8a90", marginBottom: 4 }}>💼 عمولات الجلسات</div>
+                  <div style={{ fontWeight: 800, fontSize: 18, color: "#a78bfa" }}>{myCommissionSummary.sessionEarned.toFixed(2)} ج.م</div>
+                  <div style={{ fontSize: 11, color: "#b39ddb", marginTop: 4 }}>{mySessionCommissions.length} جلسة</div>
+                </div>
+              </div>
+
+              {/* Commission Settings */}
+              <div style={{ fontSize: 12, color: "#9a8a90", background: "rgba(255,255,255,.04)", borderRadius: 8, padding: "10px 14px", display: "grid", gap: 6 }}>
+                <div>🔗 عمولة الإحالات: {myCommissionRate}{myCommissionType === "percentage" ? "%" : " ج.م"} لكل اشتراك عبر رابطك</div>
+                <div>💼 عمولة الجلسات: {mySessionCommissionRate}{mySessionCommissionType === "percentage" ? "%" : " ج.م"} لكل حجز مباشر</div>
+                <div style={{ fontSize: 11, color: "#7a6a74", marginTop: 2 }}>(القيم تحددها الإدارة)</div>
               </div>
               <div style={{ background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 12, padding: 14, display: "grid", gap: 10 }}>
                 <div style={{ fontWeight: 700, fontSize: 13, color: "#fff" }}>إنشاء رابط إحالة جديد</div>
@@ -947,19 +981,55 @@ export default function Nutrition({ adminRole = "admin" }: { adminRole?: string 
                   );
                 })
               )}
-              {myCommissions.length > 0 && (
+              {/* Session Commissions Section */}
+              {mySessionCommissions.length > 0 && (
                 <div style={{ marginTop: 8 }}>
-                  <div style={{ fontWeight: 700, fontSize: 13, color: "#fff", marginBottom: 8 }}>سجل العمولات</div>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: "#fff", marginBottom: 10, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <span>💼 عمولات الجلسات (مكسبك)</span>
+                    <span style={{ fontSize: 11, background: "rgba(167,139,250,.15)", color: "#a78bfa", padding: "4px 10px", borderRadius: 12, fontWeight: 600 }}>{mySessionCommissions.length} جلسة</span>
+                  </div>
                   <div style={{ display: "grid", gap: 8 }}>
-                    {myCommissions.slice(0, 20).map((c) => (
-                      <div key={c.id} style={{ background: "rgba(255,255,255,.04)", borderRadius: 10, padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    {mySessionCommissions.slice(0, 20).map((c) => (
+                      <div key={c.id} style={{ background: "rgba(167,139,250,.08)", border: "1px solid rgba(167,139,250,.15)", borderRadius: 10, padding: "12px 14px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 700, fontSize: 13, color: "#fff" }}>{c.nutritionSession?.user?.name ?? "—"}</div>
+                          <div style={{ fontSize: 12, color: "#b39ddb", marginTop: 2 }}>
+                            {c.nutritionSession?.type === "consultation" ? "كشف" : "إعادة كشف"}
+                          </div>
+                          <div style={{ fontSize: 11, color: "#9a8a90", marginTop: 4 }}>
+                            سعر الجلسة: {c.nutritionSession?.price.toFixed(0) ?? "—"} ج.م • {c.nutritionSession?.createdAt ? new Date(c.nutritionSession.createdAt).toLocaleDateString("ar-EG") : "—"}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: "left", minWidth: 90 }}>
+                          <div style={{ fontSize: 11, color: "#a78bfa", marginBottom: 2 }}>مكسبك</div>
+                          <div style={{ fontWeight: 800, color: "#a78bfa", fontSize: 16 }}>{c.amount.toFixed(2)} ج.م</div>
+                          <div style={{ fontSize: 11, color: c.status === "settled" ? "#9a8a90" : "#f5c542", marginTop: 2 }}>
+                            {c.status === "settled" ? "✓ مسدد" : "⏳ في الانتظار"}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Referral Commissions Section */}
+              {myReferralCommissions.length > 0 && (
+                <div style={{ marginTop: 8 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: "#fff", marginBottom: 10, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <span>🔗 عمولات الإحالات</span>
+                    <span style={{ fontSize: 11, background: "rgba(59,130,246,.15)", color: "#3b82f6", padding: "4px 10px", borderRadius: 12, fontWeight: 600 }}>{myReferralCommissions.length} إحالة</span>
+                  </div>
+                  <div style={{ display: "grid", gap: 8 }}>
+                    {myReferralCommissions.slice(0, 20).map((c) => (
+                      <div key={c.id} style={{ background: "rgba(59,130,246,.08)", border: "1px solid rgba(59,130,246,.15)", borderRadius: 10, padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                         <div>
                           <div style={{ fontWeight: 600, fontSize: 13, color: "#fff" }}>{c.userMembership?.user?.name ?? "—"}</div>
                           <div style={{ fontSize: 12, color: "#9a8a90" }}>{new Date(c.createdAt).toLocaleDateString("ar-EG")}</div>
                         </div>
                         <div style={{ textAlign: "left" }}>
-                          <div style={{ fontWeight: 800, color: "#22c55e", fontSize: 14 }}>{c.amount.toFixed(2)} ج.م</div>
-                          <div style={{ fontSize: 12, color: c.status === "settled" ? "#9a8a90" : "#f5c542" }}>{c.status === "settled" ? "مسدد" : "في الانتظار"}</div>
+                          <div style={{ fontWeight: 800, color: "#3b82f6", fontSize: 14 }}>{c.amount.toFixed(2)} ج.م</div>
+                          <div style={{ fontSize: 12, color: c.status === "settled" ? "#9a8a90" : "#f5c542" }}>{c.status === "settled" ? "✓ مسدد" : "⏳ في الانتظار"}</div>
                         </div>
                       </div>
                     ))}
