@@ -3371,7 +3371,7 @@ const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string) =
               {/* Certifications */}
               {((lang === "en" ? (trainerDetailModal.certificationsEn ?? trainerDetailModal.certifications) : trainerDetailModal.certifications)).length > 0 && (
                 <div style={{ marginBottom: 20 }}>
-                  <div style={{ fontWeight: 800, color: C.white, marginBottom: 10, fontSize: 14 }}>{t("الشهادات والمؤهلات", "Certifications")}</div>
+                  <div style={{ fontWeight: 800, color: "#f9a8d4", marginBottom: 10, fontSize: 14 }}>{t("الشهادات والمؤهلات", "Certifications")}</div>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                     {(lang === "en" ? (trainerDetailModal.certificationsEn ?? trainerDetailModal.certifications) : trainerDetailModal.certifications).map((cert, i) => (
                       <span key={i} style={{ background: "rgba(233,30,99,.12)", border: `1px solid ${C.red}`, borderRadius: 20, padding: "5px 14px", fontSize: 12, color: "#ffb7d0" }}>🎓 {cert}</span>
@@ -3710,10 +3710,17 @@ const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string) =
                       <div>
                         <div style={{ fontSize: 14, color: "#ffb7d0", marginBottom: 14 }}>{t("اختاري موعداً متاحاً:", "Choose an available appointment:")}</div>
                         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                          {nutritionist.slots.map((slot, i) => {
-                            const selected = nutritionSlot === slot.label;
+                          {nutritionist.slots.map((slot) => {
+                            // Create unique identifier from day + time to avoid duplicate label issues
+                            const slotId = `${slot.day}-${slot.time}`;
+                            const selected = nutritionSlot === slotId;
                             return (
-                              <button key={i} onClick={() => setNutritionSlot(selected ? null : slot.label)} style={{ padding: "12px 16px", borderRadius: 12, border: `2px solid ${selected ? C.red : mdBorder}`, background: selected ? "rgba(233,30,99,.1)" : "rgba(255,255,255,.04)", cursor: "pointer", textAlign: "start", transition: "border-color .2s,background .2s" }}>
+                              <button
+                                key={slotId}
+                                onClick={() => setNutritionSlot(selected ? null : slotId)}
+                                aria-pressed={selected}
+                                style={{ padding: "12px 16px", borderRadius: 12, border: `2px solid ${selected ? C.red : mdBorder}`, background: selected ? "rgba(233,30,99,.1)" : "rgba(255,255,255,.04)", cursor: "pointer", textAlign: "start", transition: "border-color .2s,background .2s" }}
+                              >
                                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                                   <div>
                                     <div style={{ fontWeight: 700, fontSize: 14, color: "#fff" }}>{slot.label}</div>
@@ -3730,20 +3737,24 @@ const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string) =
                         </div>
 
                         {/* Payment preview — shown only when a slot is selected */}
-                        {nutritionSlot && (
-                          <div style={{ marginTop: 16, padding: "14px 16px", borderRadius: 14, border: "1px solid rgba(74,222,128,.35)", background: "rgba(74,222,128,.06)" }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                              <span style={{ fontSize: 20 }}>💳</span>
-                              <div style={{ fontWeight: 800, fontSize: 14, color: "#4ade80" }}>{t("موعدك محجوز — أكملي الدفع لتثبيته", "Slot reserved — complete payment to confirm")}</div>
-                            </div>
-                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                              <div style={{ fontSize: 12, color: "#d7aabd" }}>
-                                📅 {nutritionSlot}
+                        {nutritionSlot && (() => {
+                          // Find selected slot to display its label
+                          const selectedSlot = nutritionist.slots.find(s => `${s.day}-${s.time}` === nutritionSlot);
+                          return (
+                            <div style={{ marginTop: 16, padding: "14px 16px", borderRadius: 14, border: "1px solid rgba(74,222,128,.35)", background: "rgba(74,222,128,.06)" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                                <span style={{ fontSize: 20 }}>💳</span>
+                                <div style={{ fontWeight: 800, fontSize: 14, color: "#4ade80" }}>{t("موعدك محجوز — أكملي الدفع لتثبيته", "Slot reserved — complete payment to confirm")}</div>
                               </div>
-                              <div style={{ fontWeight: 900, fontSize: 18, color: "#4ade80" }}>{price} {t("ج.م", "EGP")}</div>
+                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                                <div style={{ fontSize: 12, color: "#d7aabd" }}>
+                                  📅 {selectedSlot?.label ?? nutritionSlot}
+                                </div>
+                                <div style={{ fontWeight: 900, fontSize: 18, color: "#4ade80" }}>{price} {t("ج.م", "EGP")}</div>
+                              </div>
                             </div>
-                          </div>
-                        )}
+                          );
+                        })()}
                       </div>
                     )}
 
@@ -9176,7 +9187,7 @@ const TrainersPage = ({ navigate, summary }: { navigate: (p: string) => void; su
               )}
               {((lang === "en" ? (trainerDetailModal.certificationsEn ?? trainerDetailModal.certifications) : trainerDetailModal.certifications)).length > 0 && (
                 <div style={{ marginBottom: 18 }}>
-                  <div style={{ fontWeight: 800, color: C.white, marginBottom: 10, fontSize: 14 }}>{t("الشهادات", "Certifications")}</div>
+                  <div style={{ fontWeight: 800, color: "#f9a8d4", marginBottom: 10, fontSize: 14 }}>{t("الشهادات", "Certifications")}</div>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                     {(lang === "en" ? (trainerDetailModal.certificationsEn ?? trainerDetailModal.certifications) : trainerDetailModal.certifications).map((cert, i) => (
                       <span key={i} style={{ background: "rgba(233,30,99,.12)", border: `1px solid ${C.red}`, borderRadius: 20, padding: "5px 14px", fontSize: 12, color: "#ffb7d0" }}>🎓 {cert}</span>
