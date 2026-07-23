@@ -38,6 +38,18 @@ export async function POST(req: Request) {
     const body = (await req.json()) as CheckoutBody;
     const purpose = body.purpose ?? "order";
 
+    // TEMPORARY: wallet_topup disabled for maintenance (Release 0)
+    // Will be re-enabled after HMAC/amount/currency validation (Release 5+)
+    if (purpose === "wallet_topup") {
+      return NextResponse.json(
+        {
+          error: "خدمة شحن المحفظة متوقفة مؤقتًا للصيانة.",
+          code: "WALLET_TOPUP_MAINTENANCE",
+        },
+        { status: 503, headers: { "Cache-Control": "no-store", "Retry-After": "3600" } },
+      );
+    }
+
     let resolvedAmount = Number(body.amount ?? 0);
     let resolvedMembershipId = body.membershipId ?? null;
     let resolvedOfferId = body.offerId ?? null;
