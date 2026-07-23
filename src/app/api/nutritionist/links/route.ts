@@ -32,12 +32,27 @@ export async function GET() {
       take: 100,
       include: {
         userMembership: { select: { user: { select: { name: true } } } },
-        nutritionSession: { select: { id: true, type: true, price: true, user: { select: { name: true } } } },
+        nutritionSession: {
+          select: {
+            id: true,
+            type: true,
+            price: true,
+            status: true,
+            paidAt: true,
+            createdAt: true,
+            user: { select: { name: true } },
+          },
+        },
       },
     }),
     dbx.nutritionistProfile.findUnique({
       where: { userId: userId! },
-      select: { commissionRate: true, commissionType: true },
+      select: {
+        commissionRate: true,
+        commissionType: true,
+        sessionCommissionRate: true,
+        sessionCommissionType: true,
+      },
     }),
   ]);
 
@@ -64,6 +79,8 @@ export async function GET() {
     },
     commissionRate: profile?.commissionRate ?? 0,
     commissionType: profile?.commissionType ?? "percentage",
+    sessionCommissionRate: profile?.sessionCommissionRate ?? 0,
+    sessionCommissionType: profile?.sessionCommissionType ?? "percentage",
   });
 }
 
