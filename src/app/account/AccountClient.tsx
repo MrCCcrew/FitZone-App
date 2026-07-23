@@ -4863,12 +4863,14 @@ function NutritionistProfileTab() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="rounded-xl border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 p-3">
-                <div className="text-xs text-blue-600 dark:text-blue-400 mb-1">{t("عمولات الإحالات", "Referral commissions")}</div>
+                <div className="text-xs text-blue-600 dark:text-blue-400 mb-1">{t("🔗 عمولات الإحالات", "🔗 Referral commissions")}</div>
                 <div className="text-lg font-black text-blue-700 dark:text-blue-300">{commissionSummary.referralEarned.toFixed(2)} {t("ج.م", "EGP")}</div>
+                <div className="text-xs text-blue-500 mt-1">{referralCommissions.length} {t("إحالة", "referrals")}</div>
               </div>
               <div className="rounded-xl border border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-900/20 p-3">
-                <div className="text-xs text-purple-600 dark:text-purple-400 mb-1">{t("عمولات الجلسات", "Session commissions")}</div>
+                <div className="text-xs text-purple-600 dark:text-purple-400 mb-1">{t("💼 عمولات الجلسات", "💼 Session commissions")}</div>
                 <div className="text-lg font-black text-purple-700 dark:text-purple-300">{commissionSummary.sessionEarned.toFixed(2)} {t("ج.م", "EGP")}</div>
+                <div className="text-xs text-purple-500 mt-1">{sessionCommissions.length} {t("جلسة", "sessions")}</div>
               </div>
             </div>
             <div className="text-xs text-gray-400 bg-gray-50 dark:bg-gray-800 rounded-lg p-3 space-y-1">
@@ -4923,20 +4925,26 @@ function NutritionistProfileTab() {
             {/* Session Commissions */}
             {sessionCommissions.length > 0 && (
               <div className="mt-4">
-                <div className="font-bold text-sm mb-3">{t("💰 عمولات الجلسات", "💰 Session commissions")}</div>
+                <div className="font-bold text-sm mb-3 flex items-center justify-between">
+                  <span>{t("💼 عمولات الجلسات (مكسبك)", "💼 Session commissions (your earnings)")}</span>
+                  <span className="text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 px-2 py-1 rounded-full">{sessionCommissions.length} {t("جلسة", "sessions")}</span>
+                </div>
                 <div className="space-y-2">
                   {sessionCommissions.slice(0, 20).map((c) => (
                     <div key={c.id} className="flex items-center justify-between p-3 rounded-lg border border-purple-100 dark:border-purple-900/30 bg-purple-50/50 dark:bg-purple-900/10">
-                      <div>
+                      <div className="flex-1">
                         <div className="text-sm font-bold">{c.nutritionSession?.user?.name ?? "—"}</div>
-                        <div className="text-xs text-gray-400">
-                          {c.nutritionSession?.type === "consultation" ? t("كشف", "Consultation") : t("إعادة كشف", "Followup")} • {c.nutritionSession?.price.toFixed(0)} {t("ج.م", "EGP")}
+                        <div className="text-xs text-gray-500 mt-0.5">
+                          {c.nutritionSession?.type === "consultation" ? t("كشف", "Consultation") : t("إعادة كشف", "Followup")}
                         </div>
-                        <div className="text-xs text-gray-400">{new Date(c.createdAt).toLocaleDateString(lang === "ar" ? "ar-EG" : "en-US")}</div>
+                        <div className="text-xs text-gray-400 mt-1">
+                          {t("سعر الجلسة:", "Session price:")} {c.nutritionSession?.price.toFixed(0)} {t("ج.م", "EGP")} • {new Date(c.createdAt).toLocaleDateString(lang === "ar" ? "ar-EG" : "en-US")}
+                        </div>
                       </div>
-                      <div className="text-right">
-                        <div className="font-bold text-purple-600">{c.amount.toFixed(2)} {t("ج.م", "EGP")}</div>
-                        <div className={`text-xs ${c.status === "settled" ? "text-gray-400" : "text-amber-500"}`}>{c.status === "settled" ? t("مسدد", "Settled") : t("في الانتظار", "Pending")}</div>
+                      <div className="text-right shrink-0">
+                        <div className="text-xs text-purple-600 dark:text-purple-400 mb-0.5">{t("مكسبك", "Your earning")}</div>
+                        <div className="text-lg font-black text-purple-600 dark:text-purple-400">{c.amount.toFixed(2)} {t("ج.م", "EGP")}</div>
+                        <div className={`text-xs ${c.status === "settled" ? "text-gray-400" : "text-amber-500"}`}>{c.status === "settled" ? t("✓ مسدد", "✓ Settled") : t("⏳ في الانتظار", "⏳ Pending")}</div>
                       </div>
                     </div>
                   ))}
