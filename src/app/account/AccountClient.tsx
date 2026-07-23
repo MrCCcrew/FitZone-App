@@ -3249,6 +3249,10 @@ function ConvertPointsCard({ points, lang }: { points: number; lang: "ar" | "en"
   );
 }
 
+// TEMPORARY FEATURE FLAG (Release 0)
+// Disable wallet topup until HMAC/amount/currency validation ready (Release 5+)
+const WALLET_TOPUP_ENABLED = false;
+
 // ─── Tab: Wallet & Points ─────────────────────────────────────────────────────
 function WalletTab({
   wallet, rewards, referral,
@@ -3342,56 +3346,74 @@ function WalletTab({
             <div className="text-gray-400">{lang === "en" ? "EGP" : "جنيه مصري"}</div>
           </div>
 
-          {/* Top-up card — quick amounts + custom input + pay button */}
-          <div className={CARD}>
-            <h4 className="text-white font-black mb-3">{t("شحن المحفظة", "Top up wallet")}</h4>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
-              {TOPUP_AMOUNTS.map((v) => (
-                <button
-                  key={v}
-                  onClick={() => {
-                    setSelectedAmount(v);
-                    setCustomAmount("");
-                    setLastTx(null);
-                    setPayError(null);
-                  }}
-                  className={`text-white font-bold py-3 rounded-xl text-sm transition-colors ${selectedAmount === v ? "bg-blue-600" : "bg-gray-800 hover:bg-blue-600"}`}
-                >
-                  {formatMoney(v, lang)} {lang === "en" ? "EGP" : "ج.م"}
-                </button>
-              ))}
-            </div>
-            <input
-              type="number"
-              placeholder={t("مبلغ مخصص...", "Custom amount...")}
-              className={`${INPUT} mb-3`}
-              dir="ltr"
-              value={customAmount}
-              onChange={(e) => {
-                const val = e.target.value;
-                setCustomAmount(val);
-                setSelectedAmount(val ? Number(val) : null);
-                setLastTx(null);
-                setPayError(null);
-              }}
-            />
-            <button
-              onClick={() => startTopup()}
-              disabled={paying}
-              className="w-full min-h-[44px] bg-pink-600 hover:bg-pink-700 disabled:opacity-60 text-white font-black px-4 py-3 rounded-xl text-sm"
-            >
-              {t("الدفع عبر Paymob", "Pay with Paymob")}
-            </button>
-            {payError && <div className="mt-2 text-xs text-red-400">{payError}</div>}
-            {lastTx?.id && (
-              <div className="mt-2 text-xs text-gray-400">
-                {t("تم إنشاء معاملة الشحن. يمكنك متابعة التأكيد من هنا:", "Top-up transaction created. You can continue verification here:")}{" "}
-                <a className="text-pink-300 underline" href={`/payment/verify?transactionId=${lastTx.id}`}>
-                  {t("صفحة التحقق من الدفع", "Payment verification page")}
-                </a>
+          {/* TEMPORARY: Maintenance notice (Release 0) */}
+          {!WALLET_TOPUP_ENABLED ? (
+            <div className={CARD}>
+              <div className="text-center py-8">
+                <div className="text-5xl mb-4">⚠️</div>
+                <h4 className="text-white font-black mb-2 text-lg">
+                  {t("صيانة مؤقتة", "Temporary Maintenance")}
+                </h4>
+                <p className="text-gray-400 text-sm max-w-md mx-auto">
+                  {t(
+                    "خدمة شحن المحفظة متوقفة مؤقتًا للتحديث والصيانة. نعتذر عن الإزعاج ونعمل على إعادتها قريبًا.",
+                    "Wallet top-up service is temporarily disabled for updates and maintenance. We apologize for the inconvenience and are working to restore it soon."
+                  )}
+                </p>
               </div>
-            )}
-          </div>
+            </div>
+          ) : (
+            /* Top-up card — quick amounts + custom input + pay button */
+            <div className={CARD}>
+              <h4 className="text-white font-black mb-3">{t("شحن المحفظة", "Top up wallet")}</h4>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+                {TOPUP_AMOUNTS.map((v) => (
+                  <button
+                    key={v}
+                    onClick={() => {
+                      setSelectedAmount(v);
+                      setCustomAmount("");
+                      setLastTx(null);
+                      setPayError(null);
+                    }}
+                    className={`text-white font-bold py-3 rounded-xl text-sm transition-colors ${selectedAmount === v ? "bg-blue-600" : "bg-gray-800 hover:bg-blue-600"}`}
+                  >
+                    {formatMoney(v, lang)} {lang === "en" ? "EGP" : "ج.م"}
+                  </button>
+                ))}
+              </div>
+              <input
+                type="number"
+                placeholder={t("مبلغ مخصص...", "Custom amount...")}
+                className={`${INPUT} mb-3`}
+                dir="ltr"
+                value={customAmount}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setCustomAmount(val);
+                  setSelectedAmount(val ? Number(val) : null);
+                  setLastTx(null);
+                  setPayError(null);
+                }}
+              />
+              <button
+                onClick={() => startTopup()}
+                disabled={paying}
+                className="w-full min-h-[44px] bg-pink-600 hover:bg-pink-700 disabled:opacity-60 text-white font-black px-4 py-3 rounded-xl text-sm"
+              >
+                {t("الدفع عبر Paymob", "Pay with Paymob")}
+              </button>
+              {payError && <div className="mt-2 text-xs text-red-400">{payError}</div>}
+              {lastTx?.id && (
+                <div className="mt-2 text-xs text-gray-400">
+                  {t("تم إنشاء معاملة الشحن. يمكنك متابعة التأكيد من هنا:", "Top-up transaction created. You can continue verification here:")}{" "}
+                  <a className="text-pink-300 underline" href={`/payment/verify?transactionId=${lastTx.id}`}>
+                    {t("صفحة التحقق من الدفع", "Payment verification page")}
+                  </a>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Transactions */}
           <div className={CARD}>
