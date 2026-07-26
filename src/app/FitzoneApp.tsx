@@ -9510,7 +9510,7 @@ const BlogPage = () => {
           style={{
             width: "100%",
             height,
-            objectFit: "cover",
+            objectFit: "contain",
             objectPosition: "center",
             borderRadius: 14,
             display: "block",
