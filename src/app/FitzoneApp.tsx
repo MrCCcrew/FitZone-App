@@ -9442,6 +9442,23 @@ const PartnersPage = ({ navigate, summary }: { navigate: (p: string) => void; su
 };
 
 // ─── BLOG PAGE ────────────────────────────────────────────────────────────────
+// Helper to normalize media URLs (videos and images)
+const normalizeMediaUrl = (url?: string | null): string | undefined => {
+  if (!url) return undefined;
+  // Don't modify if already has protocol or is relative/data/blob URI
+  if (
+    url.startsWith("http://") ||
+    url.startsWith("https://") ||
+    url.startsWith("/") ||
+    url.startsWith("data:") ||
+    url.startsWith("blob:")
+  ) {
+    return url;
+  }
+  // Add https:// for R2 URLs or other protocol-less URLs
+  return `https://${url}`;
+};
+
 const BlogPage = () => {
   const t = useT();
   const { lang } = useLang();
@@ -9479,21 +9496,42 @@ const BlogPage = () => {
   }, [allLabel]);
 
   const renderMedia = (post: PublicBlogPost, height: number) => {
-    if (post.videoUrl) {
+    const videoUrl = normalizeMediaUrl(post.videoUrl);
+    const posterUrl = normalizeMediaUrl(post.coverImage);
+
+    if (videoUrl) {
       return (
         <video
-          src={post.videoUrl}
+          src={videoUrl}
+          poster={posterUrl}
           controls
-          style={{ width: "100%", height, objectFit: "cover", borderRadius: 14 }}
+          preload="metadata"
+          playsInline
+          style={{
+            width: "100%",
+            height,
+            objectFit: "cover",
+            objectPosition: "center",
+            borderRadius: 14,
+            display: "block",
+            backgroundColor: "#000",
+          }}
         />
       );
     }
-    if (post.coverImage) {
+    if (posterUrl) {
       return (
         <img
-          src={post.coverImage}
+          src={posterUrl}
           alt={post.title}
-          style={{ width: "100%", height, objectFit: "cover", borderRadius: 14 }}
+          style={{
+            width: "100%",
+            height,
+            objectFit: "cover",
+            objectPosition: "center",
+            borderRadius: 14,
+            display: "block",
+          }}
         />
       );
     }
