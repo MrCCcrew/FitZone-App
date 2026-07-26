@@ -426,29 +426,92 @@ export async function PUT(request: Request) {
   if (error) return error;
 
   try {
-    const body = (await request.json()) as { fromTrainerId?: string; toTrainerId?: string };
-    if (!body.fromTrainerId || !body.toTrainerId) {
-      return NextResponse.json({ error: "fromTrainerId و toTrainerId مطلوبان." }, { status: 400 });
+    const body = (await request.json()) as {
+      fromTrainerId?: string;
+      toTrainerId?: string;
+      toTrainerIds?: string[];
+      classIds?: string[];
+      mode?: "all" | "selected";
+    };
+    const toTrainerIds = body.toTrainerIds ?? (body.toTrainerId ? [body.toTrainerId] : []);
+
+    if (!body.fromTrainerId || toTrainerIds.length === 0) {
+      return NextResponse.json({ error: "fromTrainerId و toTrainerIds مطلوبان." }, { status: 400 });
     }
-    if (body.fromTrainerId === body.toTrainerId) {
+    if (toTrainerIds.includes(body.fromTrainerId)) {
       return NextResponse.json({ error: "المدربة المصدر والهدف نفسها." }, { status: 400 });
     }
 
-    const [fromTrainer, toTrainer] = await Promise.all([
-      db.trainer.findUnique({ where: { id: body.fromTrainerId }, select: { id: true } }),
-      db.trainer.findUnique({ where: { id: body.toTrainerId }, select: { id: true } }),
-    ]);
-    if (!fromTrainer) return NextResponse.json({ error: "المدربة المصدر غير موجودة." }, { status: 404 });
-    if (!toTrainer) return NextResponse.json({ error: "المدربة الهدف غير موجودة." }, { status: 404 });
-
-    const result = await db.class.updateMany({
-      where: { trainerId: body.fromTrainerId },
-      data: { trainerId: body.toTrainerId },
+    // Verify all trainers exist
+    const allTrainerIds = [body.fromTrainerId, ...toTrainerIds];
+    const trainers = await db.trainer.findMany({
+      where: { id: { in: allTrainerIds } },
+      select: { id: true },
     });
 
+    if (trainers.length !== allTrainerIds.length) {
+      return NextResponse.json({ error: "مدربة أو أكثر غير موجودة." }, { status: 404 });
+    }
+
+    // Get classes to transfer
+    const whereCondition: { trainerId: string; id?: { in: string[] } } = {
+      trainerId: body.fromTrainerId,
+    };
+
+    if (body.mode === "selected" && body.classIds && Array.isArray(body.classIds)) {
+      whereCondition.id = { in: body.classIds };
+    }
+
+    const classesToTransfer = await db.class.findMany({
+      where: whereCondition,
+      select: { id: true },
+    });
+
+    if (classesToTransfer.length === 0) {
+      return NextResponse.json({ error: "لا توجد كلاسات للنقل." }, { status: 404 });
+    }
+
+    // Transfer classes
+    let totalTransferred = 0;
+    const distribution: Record<string, number> = {};
+
+    if (toTrainerIds.length === 1) {
+      // Simple transfer to one trainer
+      const result = await db.class.updateMany({
+        where: whereCondition,
+        data: { trainerId: toTrainerIds[0] },
+      });
+      totalTransferred = result.count;
+      distribution[toTrainerIds[0]] = result.count;
+    } else {
+      // Distribute classes evenly across multiple trainers
+      const classIds = classesToTransfer.map((c) => c.id);
+      const classesPerTrainer = Math.ceil(classIds.length / toTrainerIds.length);
+
+      for (let i = 0; i < toTrainerIds.length; i++) {
+        const start = i * classesPerTrainer;
+        const end = Math.min(start + classesPerTrainer, classIds.length);
+        const batch = classIds.slice(start, end);
+
+        if (batch.length > 0) {
+          const result = await db.class.updateMany({
+            where: { id: { in: batch } },
+            data: { trainerId: toTrainerIds[i] },
+          });
+          totalTransferred += result.count;
+          distribution[toTrainerIds[i]] = result.count;
+        }
+      }
+    }
+
     clearPublicApiCache();
-    return NextResponse.json({ success: true, transferred: result.count });
-  } catch {
+    return NextResponse.json({
+      success: true,
+      transferred: totalTransferred,
+      distribution,
+    });
+  } catch (err) {
+    console.error("[TRANSFER_CLASSES]", err);
     return NextResponse.json({ error: "تعذر نقل الكلاسات الآن." }, { status: 500 });
   }
 }

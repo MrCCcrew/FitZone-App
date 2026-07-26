@@ -270,8 +270,10 @@ export default function Classes() {
   const [canAddClasses, setCanAddClasses] = useState(true);
   const [transferModal, setTransferModal] = useState(false);
   const [transferFrom, setTransferFrom] = useState("");
-  const [transferTo, setTransferTo] = useState("");
+  const [transferTo, setTransferTo] = useState<string[]>([]);
   const [transferring, setTransferring] = useState(false);
+  const [selectedForTransfer, setSelectedForTransfer] = useState<Set<string>>(new Set());
+  const [transferMode, setTransferMode] = useState<"all" | "selected">("all");
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
@@ -532,25 +534,86 @@ export default function Classes() {
   }
 
   async function transferClasses() {
-    if (!transferFrom || !transferTo) { alert("اختر المدربة المصدر والمدربة الهدف."); return; }
+    if (!transferFrom || transferTo.length === 0) {
+      alert("اختر المدربة المصدر والمدربة/المدربات الهدف.");
+      return;
+    }
+
     const fromName = trainers.find((t) => t.id === transferFrom)?.name ?? transferFrom;
-    const toName = trainers.find((t) => t.id === transferTo)?.name ?? transferTo;
-    const count = classes.filter((c) => c.trainerId === transferFrom).length;
-    if (count === 0) { alert("لا توجد كلاسات مسجلة لهذه المدربة."); return; }
-    if (!confirm(`سيتم نقل ${count} كلاس من "${fromName}" إلى "${toName}". هل تريد المتابعة؟`)) return;
+
+    // Determine which classes to transfer
+    let classesToTransfer: string[];
+    let count: number;
+
+    if (transferMode === "selected") {
+      if (selectedForTransfer.size === 0) {
+        alert("اختر كلاس واحد على الأقل للنقل.");
+        return;
+      }
+      classesToTransfer = Array.from(selectedForTransfer);
+      count = classesToTransfer.length;
+    } else {
+      const allClasses = classes.filter((c) => c.trainerId === transferFrom);
+      classesToTransfer = allClasses.map(c => c.id);
+      count = allClasses.length;
+    }
+
+    if (count === 0) {
+      alert("لا توجد كلاسات مسجلة لهذه المدربة.");
+      return;
+    }
+
+    // Build confirmation message
+    let confirmMsg = "";
+    if (transferTo.length === 1) {
+      const toName = trainers.find((t) => t.id === transferTo[0])?.name ?? transferTo[0];
+      confirmMsg = `سيتم نقل ${count} كلاس من "${fromName}" إلى "${toName}". هل تريد المتابعة؟`;
+    } else {
+      const toNames = transferTo.map(id => trainers.find((t) => t.id === id)?.name ?? id).join("، ");
+      confirmMsg = `سيتم توزيع ${count} كلاس من "${fromName}" على ${transferTo.length} مدربة: ${toNames}. هل تريد المتابعة؟`;
+    }
+
+    if (!confirm(confirmMsg)) return;
+
     setTransferring(true);
     try {
       const res = await fetch("/api/admin/classes", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fromTrainerId: transferFrom, toTrainerId: transferTo }),
+        body: JSON.stringify({
+          fromTrainerId: transferFrom,
+          toTrainerIds: transferTo,
+          classIds: transferMode === "selected" ? classesToTransfer : undefined,
+          mode: transferMode
+        }),
       });
-      const data = (await res.json().catch(() => ({}))) as { success?: boolean; transferred?: number; error?: string };
+      const data = (await res.json().catch(() => ({}))) as {
+        success?: boolean;
+        transferred?: number;
+        error?: string;
+        distribution?: Record<string, number>;
+      };
       if (!res.ok) { alert(data.error ?? "تعذر نقل الكلاسات."); return; }
-      alert(`تم نقل ${data.transferred ?? count} كلاس بنجاح إلى "${toName}".`);
+
+      // Show success message with distribution
+      if (transferTo.length === 1) {
+        const toName = trainers.find((t) => t.id === transferTo[0])?.name ?? transferTo[0];
+        alert(`تم نقل ${data.transferred ?? count} كلاس بنجاح إلى "${toName}".`);
+      } else if (data.distribution) {
+        const distMsg = Object.entries(data.distribution)
+          .map(([trainerId, cnt]) => {
+            const name = trainers.find(t => t.id === trainerId)?.name ?? trainerId;
+            return `${name}: ${cnt} كلاس`;
+          })
+          .join("\n");
+        alert(`تم توزيع ${data.transferred ?? count} كلاس بنجاح:\n\n${distMsg}`);
+      }
+
       setTransferModal(false);
       setTransferFrom("");
-      setTransferTo("");
+      setTransferTo([]);
+      setSelectedForTransfer(new Set());
+      setTransferMode("all");
       await fetchAll();
     } finally {
       setTransferring(false);
@@ -611,7 +674,7 @@ export default function Classes() {
         <div className="flex gap-2">
           {userRole === "admin" || userRole === "staff" ? (
             <button
-              onClick={() => { setTransferFrom(""); setTransferTo(""); setTransferModal(true); }}
+              onClick={() => { setTransferFrom(""); setTransferTo([]); setTransferModal(true); }}
               className="rounded-2xl bg-amber-500/20 border border-amber-500/40 px-4 py-3 text-sm font-bold text-amber-300 transition hover:bg-amber-500/30"
             >
               ⇄ نقل كلاسات مدربة
@@ -892,13 +955,63 @@ export default function Classes() {
       )}
 
       {transferModal && (
-        <Modal title="نقل كلاسات مدربة إلى أخرى" onClose={() => setTransferModal(false)}>
+        <Modal title="نقل كلاسات مدربة إلى أخرى" onClose={() => { setTransferModal(false); setSelectedForTransfer(new Set()); setTransferMode("all"); }}>
           <div className="space-y-5">
-            <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-              سيتم نقل <strong>جميع</strong> الكلاسات المسجلة للمدربة المختارة إلى المدربة الأخرى دفعة واحدة.
+            {/* Important Notice */}
+            <div className="space-y-3">
+              <div className="rounded-xl border border-blue-500/25 bg-blue-500/10 px-4 py-3 text-sm text-blue-200">
+                <div className="flex gap-2">
+                  <span>ℹ️</span>
+                  <div>
+                    <strong className="block mb-1">ملاحظة مهمة:</strong>
+                    عند نقل الكلاس، سيتم نقل <strong>كل الحجوزات والجداول</strong> الخاصة به تلقائيًا للمدربة الجديدة.
+                    العملاء المحجوزين سيصبحون تحت المدربة الجديدة.
+                  </div>
+                </div>
+              </div>
+              <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+                <div className="flex gap-2">
+                  <span>⚠️</span>
+                  <div>
+                    تأكد من الاختيار الصحيح قبل النقل - العملية <strong>لا يمكن التراجع عنها</strong> بسهولة.
+                  </div>
+                </div>
+              </div>
             </div>
-            <Field label="المدربة المصدر (التي ستغادر)">
-              <select value={transferFrom} onChange={(e) => setTransferFrom(e.target.value)} className={INPUT}>
+
+            {/* Transfer Mode Selection */}
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setTransferMode("all"); setSelectedForTransfer(new Set()); }}
+                className={`flex-1 rounded-xl px-4 py-3 text-sm font-bold transition ${
+                  transferMode === "all"
+                    ? "bg-amber-500 text-black"
+                    : "border border-white/10 bg-white/5 text-white/70 hover:bg-white/10"
+                }`}
+              >
+                نقل جميع الكلاسات
+              </button>
+              <button
+                onClick={() => setTransferMode("selected")}
+                className={`flex-1 rounded-xl px-4 py-3 text-sm font-bold transition ${
+                  transferMode === "selected"
+                    ? "bg-amber-500 text-black"
+                    : "border border-white/10 bg-white/5 text-white/70 hover:bg-white/10"
+                }`}
+              >
+                اختيار كلاسات محددة
+              </button>
+            </div>
+
+            <Field label="المدربة المصدر (التي ستنقل منها)">
+              <select
+                value={transferFrom}
+                onChange={(e) => {
+                  setTransferFrom(e.target.value);
+                  setSelectedForTransfer(new Set());
+                }}
+                className={INPUT}
+              >
                 <option value="" className="bg-[#2a0f1f]">اختر المدربة</option>
                 {trainers.map((t) => {
                   const count = classes.filter((c) => c.trainerId === t.id).length;
@@ -910,26 +1023,124 @@ export default function Classes() {
                 })}
               </select>
             </Field>
-            <Field label="المدربة الهدف (التي ستستلم الكلاسات)">
-              <select value={transferTo} onChange={(e) => setTransferTo(e.target.value)} className={INPUT}>
-                <option value="" className="bg-[#2a0f1f]">اختر المدربة</option>
-                {trainers.filter((t) => t.id !== transferFrom).map((t) => (
-                  <option key={t.id} value={t.id} className="bg-[#2a0f1f]">
-                    {t.name} — {t.specialty}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            {transferFrom && (
-              <div className="rounded-xl bg-white/5 px-4 py-3 text-sm text-white/70">
-                عدد الكلاسات التي سيتم نقلها: <strong className="text-white">{classes.filter((c) => c.trainerId === transferFrom).length}</strong>
+
+            {/* Selected Classes List */}
+            {transferMode === "selected" && transferFrom && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-semibold text-white/85">اختر الكلاسات للنقل</label>
+                  <span className="text-xs text-white/50">
+                    {selectedForTransfer.size} محدد
+                  </span>
+                </div>
+                <div className="max-h-64 space-y-2 overflow-y-auto rounded-xl border border-white/10 bg-white/5 p-3">
+                  {classes.filter((c) => c.trainerId === transferFrom).length === 0 ? (
+                    <div className="py-8 text-center text-sm text-white/40">لا توجد كلاسات</div>
+                  ) : (
+                    classes
+                      .filter((c) => c.trainerId === transferFrom)
+                      .map((cls) => (
+                        <label
+                          key={cls.id}
+                          className="flex cursor-pointer items-center gap-3 rounded-lg border border-white/10 bg-white/5 p-3 transition hover:bg-white/10"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedForTransfer.has(cls.id)}
+                            onChange={(e) => {
+                              const newSet = new Set(selectedForTransfer);
+                              if (e.target.checked) {
+                                newSet.add(cls.id);
+                              } else {
+                                newSet.delete(cls.id);
+                              }
+                              setSelectedForTransfer(newSet);
+                            }}
+                            className="h-4 w-4 accent-amber-500"
+                          />
+                          <div className="flex-1">
+                            <div className="text-sm font-bold text-white">{cls.name}</div>
+                            <div className="text-xs text-white/50">
+                              {cls.day} • {formatTime12(cls.time)} • {cls.type}
+                            </div>
+                          </div>
+                        </label>
+                      ))
+                  )}
+                </div>
               </div>
             )}
+
+            <Field label="المدربة/المدربات الهدف (التي ستستلم الكلاسات)">
+              <div className="space-y-2">
+                <div className="text-xs text-white/50 mb-2">
+                  يمكنك اختيار مدربة واحدة أو عدة مدربات لتوزيع الكلاسات عليهم
+                </div>
+                <div className="max-h-48 space-y-2 overflow-y-auto rounded-xl border border-white/10 bg-white/5 p-3">
+                  {trainers.filter((t) => t.id !== transferFrom).map((t) => (
+                    <label
+                      key={t.id}
+                      className="flex cursor-pointer items-center gap-3 rounded-lg border border-white/10 bg-white/5 p-3 transition hover:bg-white/10"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={transferTo.includes(t.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setTransferTo([...transferTo, t.id]);
+                          } else {
+                            setTransferTo(transferTo.filter((id) => id !== t.id));
+                          }
+                        }}
+                        className="h-4 w-4 accent-fuchsia-500"
+                      />
+                      <div className="flex-1">
+                        <div className="text-sm font-bold text-white">{t.name}</div>
+                        <div className="text-xs text-white/50">{t.specialty}</div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </Field>
+
+            {transferFrom && transferTo.length > 0 && (
+              <div className="rounded-xl bg-white/5 px-4 py-3 text-sm text-white/70">
+                {transferMode === "all" ? (
+                  <>
+                    عدد الكلاسات: <strong className="text-white">{classes.filter((c) => c.trainerId === transferFrom).length}</strong>
+                  </>
+                ) : (
+                  <>
+                    عدد الكلاسات المحددة: <strong className="text-white">{selectedForTransfer.size}</strong>
+                  </>
+                )}
+                <br />
+                {transferTo.length === 1 ? (
+                  <>سيتم النقل إلى: <strong className="text-white">{trainers.find((t) => t.id === transferTo[0])?.name}</strong></>
+                ) : (
+                  <>
+                    سيتم التوزيع على <strong className="text-white">{transferTo.length}</strong> مدربة
+                    {transferMode === "all" && ` (${Math.ceil(classes.filter((c) => c.trainerId === transferFrom).length / transferTo.length)} كلاس لكل مدربة تقريباً)`}
+                  </>
+                )}
+              </div>
+            )}
+
             <div className="flex justify-end gap-3">
-              <button onClick={() => setTransferModal(false)} className="rounded-2xl border border-white/10 px-5 py-3 text-sm font-bold text-white/70 hover:text-white">إلغاء</button>
+              <button
+                onClick={() => {
+                  setTransferModal(false);
+                  setSelectedForTransfer(new Set());
+                  setTransferMode("all");
+                }}
+                className="rounded-2xl border border-white/10 px-5 py-3 text-sm font-bold text-white/70 hover:text-white"
+              >
+                إلغاء
+              </button>
               <button
                 onClick={() => void transferClasses()}
-                disabled={transferring || !transferFrom || !transferTo}
+                disabled={transferring || !transferFrom || transferTo.length === 0 || (transferMode === "selected" && selectedForTransfer.size === 0)}
                 className="rounded-2xl bg-amber-500 px-6 py-3 text-sm font-black text-black transition hover:bg-amber-400 disabled:opacity-50"
               >
                 {transferring ? "جارٍ النقل..." : "نقل الكلاسات"}
