@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  canManageBooking,
+  canMarkAttendance,
   getBookingPaymentDisplay,
   getBookingStatusDisplay,
-  isBookingActionableInAdmin,
   isPendingPaymentBooking,
 } from "@/lib/admin-booking-display";
 
@@ -23,13 +24,16 @@ describe("admin booking display", () => {
     expect(getBookingPaymentDisplay(pendingBooking)).toBe("في انتظار الدفع");
   });
 
-  it("prevents pending-payment bookings from admin actions and bulk selection", () => {
-    expect(isBookingActionableInAdmin(pendingBooking, "admin")).toBe(false);
+  it("allows admins to manage pending-payment bookings but disables their attendance", () => {
+    expect(canManageBooking("admin")).toBe(true);
+    expect(canMarkAttendance(pendingBooking, "admin")).toBe(false);
     expect(isPendingPaymentBooking(pendingBooking)).toBe(true);
   });
 
-  it("keeps active booking actions unchanged and non-admins read-only", () => {
-    expect(isBookingActionableInAdmin(activeBooking, "admin")).toBe(true);
-    expect(isBookingActionableInAdmin(activeBooking, "trainer")).toBe(false);
+  it("keeps active admin actions enabled and non-admins read-only", () => {
+    expect(canManageBooking("admin")).toBe(true);
+    expect(canMarkAttendance(activeBooking, "admin")).toBe(true);
+    expect(canManageBooking("trainer")).toBe(false);
+    expect(canMarkAttendance(activeBooking, "trainer")).toBe(false);
   });
 });

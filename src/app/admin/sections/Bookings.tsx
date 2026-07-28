@@ -4,9 +4,10 @@ import jsQR from "jsqr";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import {
+  canManageBooking,
+  canMarkAttendance,
   getBookingPaymentDisplay,
   getBookingStatusDisplay,
-  isBookingActionableInAdmin,
   isPendingPaymentBooking,
 } from "@/lib/admin-booking-display";
 import { AdminCard, AdminEmptyState, AdminSectionShell } from "./shared";
@@ -792,17 +793,16 @@ export default function Bookings() {
 
   const totalPages = Math.max(1, Math.ceil(bookings.length / PER_PAGE));
   const pagedBookings = bookings.slice((page - 1) * PER_PAGE, page * PER_PAGE);
-  const selectablePagedBookings = pagedBookings.filter((booking) => !isPendingPaymentBooking(booking));
-  const allPageSelected = selectablePagedBookings.length > 0 && selectablePagedBookings.every((b) => selectedIds.has(b.id));
-  const somePageSelected = !allPageSelected && selectablePagedBookings.some((b) => selectedIds.has(b.id));
+  const allPageSelected = pagedBookings.length > 0 && pagedBookings.every((b) => selectedIds.has(b.id));
+  const somePageSelected = !allPageSelected && pagedBookings.some((b) => selectedIds.has(b.id));
 
   const toggleSelectAll = () => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
       if (allPageSelected) {
-        selectablePagedBookings.forEach((b) => next.delete(b.id));
+        pagedBookings.forEach((b) => next.delete(b.id));
       } else {
-        selectablePagedBookings.forEach((b) => next.add(b.id));
+        pagedBookings.forEach((b) => next.add(b.id));
       }
       return next;
     });
@@ -1198,7 +1198,8 @@ export default function Bookings() {
                       const isPendingPayment = isPendingPaymentBooking(booking);
                       const statusDisplay = getBookingStatusDisplay(booking);
                       const paymentDisplay = getBookingPaymentDisplay(booking);
-                      const canManageBooking = isBookingActionableInAdmin(booking, userRole);
+                      const canManage = canManageBooking(userRole);
+                      const canAttend = canMarkAttendance(booking, userRole);
 
                       return <tr
                       key={booking.id}
@@ -1206,14 +1207,12 @@ export default function Bookings() {
                     >
                       {userRole === "admin" && (
                         <td className="px-4 py-4">
-                          {!isPendingPayment && (
-                            <input
-                              type="checkbox"
-                              checked={selectedIds.has(booking.id)}
-                              onChange={() => toggleSelect(booking.id)}
-                              className="h-4 w-4 cursor-pointer accent-[#ff4f93]"
-                            />
-                          )}
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(booking.id)}
+                            onChange={() => toggleSelect(booking.id)}
+                            className="h-4 w-4 cursor-pointer accent-[#ff4f93]"
+                          />
                         </td>
                       )}
                       <td className="px-5 py-4">
@@ -1242,7 +1241,7 @@ export default function Bookings() {
                         <div className="mt-1 text-xs text-[#d7aabd]">{paymentDisplay ?? formatPayment(booking.paymentMethod)}</div>
                       </td>
                       <td className="px-5 py-4">
-                        {canManageBooking ? (
+                        {canManage ? (
                           <div className="flex flex-wrap gap-2">
                             <button
                               onClick={() => setRescheduleModal(booking)}
@@ -1250,10 +1249,11 @@ export default function Bookings() {
                             >
                               تعديل الموعد
                             </button>
-                            {booking.status !== "attended" && (
+                            {(booking.status === "confirmed" || isPendingPayment) && (
                               <button
                                 onClick={() => void handleAction(booking.id, "attended")}
-                                disabled={working}
+                                disabled={working || !canAttend}
+                                title={!canAttend ? "لا يمكن تسجيل الحضور قبل إتمام الدفع" : undefined}
                                 className="rounded-lg bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300 transition-colors hover:bg-emerald-500/20 disabled:opacity-50"
                               >
                                 تسجيل حضور
