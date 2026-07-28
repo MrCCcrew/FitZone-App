@@ -113,6 +113,9 @@ export async function GET(req: Request) {
             status: booking.userMembership.status,
           }
         : null,
+      userMembership: booking.userMembership
+        ? { status: booking.userMembership.status }
+        : null,
     })),
   );
 }

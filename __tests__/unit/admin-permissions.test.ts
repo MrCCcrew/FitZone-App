@@ -50,15 +50,27 @@ describe("Admin Permissions - Attendance & Bookings", () => {
   });
 
   const mockRequireAdminFeature = vi.mocked(requireAdminFeature);
+  const mockAdminFeatureAccess = (role: string, userId: string) =>
+    ({
+      session: {
+        user: {
+          id: userId,
+          email: `${userId}@test.com`,
+          name: userId,
+          role,
+          jobTitle: null,
+          permissions: [],
+        },
+      },
+      role,
+      permissions: [],
+    }) as Awaited<ReturnType<typeof requireAdminFeature>>;
 
   // ─── Attendance Endpoint ────────────────────────────────────────────────────
 
   describe("/api/admin/attendance POST", () => {
     it("allows admin role to mark attendance", async () => {
-      mockRequireAdminFeature.mockResolvedValue({
-        session: { user: { id: "admin1" } },
-        role: "admin",
-      });
+      mockRequireAdminFeature.mockResolvedValue(mockAdminFeatureAccess("admin", "admin1"));
 
       vi.mocked(extractAttendanceCode).mockReturnValue("PASS123");
       vi.mocked(db.attendancePass.findUnique).mockResolvedValue({
@@ -94,7 +106,7 @@ describe("Admin Permissions - Attendance & Bookings", () => {
         body: JSON.stringify({ scanValue: "PASS123", scheduleId: "s1", mode: "class" }),
       });
 
-      const response = await attendancePOST(req);
+      const response = (await attendancePOST(req))!;
       const json = await response.json();
 
       expect(response.status).toBe(200);
@@ -102,17 +114,14 @@ describe("Admin Permissions - Attendance & Bookings", () => {
     });
 
     it("rejects non-admin with feature=bookings (403)", async () => {
-      mockRequireAdminFeature.mockResolvedValue({
-        session: { user: { id: "staff1" } },
-        role: "staff", // Has feature but not admin
-      });
+      mockRequireAdminFeature.mockResolvedValue(mockAdminFeatureAccess("staff", "staff1")); // Has feature but not admin
 
       const req = new Request("http://localhost/api/admin/attendance", {
         method: "POST",
         body: JSON.stringify({ scanValue: "PASS123", scheduleId: "s1" }),
       });
 
-      const response = await attendancePOST(req);
+      const response = (await attendancePOST(req))!;
       const json = await response.json();
 
       expect(response.status).toBe(403);
@@ -121,17 +130,14 @@ describe("Admin Permissions - Attendance & Bookings", () => {
     });
 
     it("rejects trainer role even with feature access (403)", async () => {
-      mockRequireAdminFeature.mockResolvedValue({
-        session: { user: { id: "trainer1" } },
-        role: "trainer",
-      });
+      mockRequireAdminFeature.mockResolvedValue(mockAdminFeatureAccess("trainer", "trainer1"));
 
       const req = new Request("http://localhost/api/admin/attendance", {
         method: "POST",
         body: JSON.stringify({ scanValue: "PASS123" }),
       });
 
-      const response = await attendancePOST(req);
+      const response = (await attendancePOST(req))!;
       const json = await response.json();
 
       expect(response.status).toBe(403);
@@ -143,10 +149,7 @@ describe("Admin Permissions - Attendance & Bookings", () => {
 
   describe("/api/admin/bookings POST", () => {
     it("allows admin to create booking", async () => {
-      mockRequireAdminFeature.mockResolvedValue({
-        session: { user: { id: "admin1" } },
-        role: "admin",
-      });
+      mockRequireAdminFeature.mockResolvedValue(mockAdminFeatureAccess("admin", "admin1"));
 
       const req = new Request("http://localhost/api/admin/bookings", {
         method: "POST",
@@ -161,10 +164,7 @@ describe("Admin Permissions - Attendance & Bookings", () => {
     });
 
     it("rejects non-admin (403)", async () => {
-      mockRequireAdminFeature.mockResolvedValue({
-        session: { user: { id: "staff1" } },
-        role: "staff",
-      });
+      mockRequireAdminFeature.mockResolvedValue(mockAdminFeatureAccess("staff", "staff1"));
 
       const req = new Request("http://localhost/api/admin/bookings", {
         method: "POST",
@@ -181,10 +181,7 @@ describe("Admin Permissions - Attendance & Bookings", () => {
 
   describe("/api/admin/bookings PATCH", () => {
     it("allows admin to modify booking", async () => {
-      mockRequireAdminFeature.mockResolvedValue({
-        session: { user: { id: "admin1" } },
-        role: "admin",
-      });
+      mockRequireAdminFeature.mockResolvedValue(mockAdminFeatureAccess("admin", "admin1"));
 
       const req = new Request("http://localhost/api/admin/bookings", {
         method: "PATCH",
@@ -197,10 +194,7 @@ describe("Admin Permissions - Attendance & Bookings", () => {
     });
 
     it("rejects non-admin (403)", async () => {
-      mockRequireAdminFeature.mockResolvedValue({
-        session: { user: { id: "contracts1" } },
-        role: "contracts_manager",
-      });
+      mockRequireAdminFeature.mockResolvedValue(mockAdminFeatureAccess("contracts_manager", "contracts1"));
 
       const req = new Request("http://localhost/api/admin/bookings", {
         method: "PATCH",
@@ -217,10 +211,7 @@ describe("Admin Permissions - Attendance & Bookings", () => {
 
   describe("/api/admin/bookings DELETE", () => {
     it("allows admin to delete booking", async () => {
-      mockRequireAdminFeature.mockResolvedValue({
-        session: { user: { id: "admin1" } },
-        role: "admin",
-      });
+      mockRequireAdminFeature.mockResolvedValue(mockAdminFeatureAccess("admin", "admin1"));
 
       const req = new Request("http://localhost/api/admin/bookings", {
         method: "DELETE",
@@ -232,10 +223,7 @@ describe("Admin Permissions - Attendance & Bookings", () => {
     });
 
     it("rejects non-admin (403)", async () => {
-      mockRequireAdminFeature.mockResolvedValue({
-        session: { user: { id: "staff1" } },
-        role: "staff",
-      });
+      mockRequireAdminFeature.mockResolvedValue(mockAdminFeatureAccess("staff", "staff1"));
 
       const req = new Request("http://localhost/api/admin/bookings", {
         method: "DELETE",
@@ -254,10 +242,7 @@ describe("Admin Permissions - Attendance & Bookings", () => {
 
   describe("pending_payment membership booking attendance", () => {
     it("rejects attendance for pending_payment booking even by admin", async () => {
-      mockRequireAdminFeature.mockResolvedValue({
-        session: { user: { id: "admin1" } },
-        role: "admin",
-      });
+      mockRequireAdminFeature.mockResolvedValue(mockAdminFeatureAccess("admin", "admin1"));
 
       vi.mocked(extractAttendanceCode).mockReturnValue("PASS456");
       vi.mocked(db.attendancePass.findUnique).mockResolvedValue({
@@ -297,7 +282,7 @@ describe("Admin Permissions - Attendance & Bookings", () => {
         body: JSON.stringify({ scanValue: "PASS456", scheduleId: "s2", mode: "class" }),
       });
 
-      const response = await attendancePOST(req);
+      const response = (await attendancePOST(req))!;
       const json = await response.json();
 
       expect(response.status).toBe(400);
@@ -306,10 +291,7 @@ describe("Admin Permissions - Attendance & Bookings", () => {
     });
 
     it("allows attendance for active membership confirmed booking", async () => {
-      mockRequireAdminFeature.mockResolvedValue({
-        session: { user: { id: "admin1" } },
-        role: "admin",
-      });
+      mockRequireAdminFeature.mockResolvedValue(mockAdminFeatureAccess("admin", "admin1"));
 
       vi.mocked(extractAttendanceCode).mockReturnValue("PASS789");
       vi.mocked(db.attendancePass.findUnique).mockResolvedValue({
@@ -348,7 +330,7 @@ describe("Admin Permissions - Attendance & Bookings", () => {
         body: JSON.stringify({ scanValue: "PASS789", scheduleId: "s3", mode: "class" }),
       });
 
-      const response = await attendancePOST(req);
+      const response = (await attendancePOST(req))!;
       const json = await response.json();
 
       expect(response.status).toBe(200);

@@ -3,6 +3,12 @@
 import jsQR from "jsqr";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
+import {
+  getBookingPaymentDisplay,
+  getBookingStatusDisplay,
+  isBookingActionableInAdmin,
+  isPendingPaymentBooking,
+} from "@/lib/admin-booking-display";
 import { AdminCard, AdminEmptyState, AdminSectionShell } from "./shared";
 
 type BookingRow = {
@@ -20,6 +26,7 @@ type BookingRow = {
     class: { id: string; name: string; trainer: string };
   };
   membership: { id: string; name: string; status: string } | null;
+  userMembership: { status: string } | null;
 };
 
 type ScheduleOption = {
@@ -785,16 +792,17 @@ export default function Bookings() {
 
   const totalPages = Math.max(1, Math.ceil(bookings.length / PER_PAGE));
   const pagedBookings = bookings.slice((page - 1) * PER_PAGE, page * PER_PAGE);
-  const allPageSelected = pagedBookings.length > 0 && pagedBookings.every((b) => selectedIds.has(b.id));
-  const somePageSelected = !allPageSelected && pagedBookings.some((b) => selectedIds.has(b.id));
+  const selectablePagedBookings = pagedBookings.filter((booking) => !isPendingPaymentBooking(booking));
+  const allPageSelected = selectablePagedBookings.length > 0 && selectablePagedBookings.every((b) => selectedIds.has(b.id));
+  const somePageSelected = !allPageSelected && selectablePagedBookings.some((b) => selectedIds.has(b.id));
 
   const toggleSelectAll = () => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
       if (allPageSelected) {
-        pagedBookings.forEach((b) => next.delete(b.id));
+        selectablePagedBookings.forEach((b) => next.delete(b.id));
       } else {
-        pagedBookings.forEach((b) => next.add(b.id));
+        selectablePagedBookings.forEach((b) => next.add(b.id));
       }
       return next;
     });
@@ -1186,18 +1194,26 @@ export default function Bookings() {
                 </thead>
                 <tbody>
                   {pagedBookings.map((booking) => (
-                    <tr
+                    (() => {
+                      const isPendingPayment = isPendingPaymentBooking(booking);
+                      const statusDisplay = getBookingStatusDisplay(booking);
+                      const paymentDisplay = getBookingPaymentDisplay(booking);
+                      const canManageBooking = isBookingActionableInAdmin(booking, userRole);
+
+                      return <tr
                       key={booking.id}
                       className={`border-b border-[rgba(255,188,219,0.08)] transition-colors hover:bg-white/[0.03] ${selectedIds.has(booking.id) ? "bg-rose-950/20" : ""}`}
                     >
                       {userRole === "admin" && (
                         <td className="px-4 py-4">
-                          <input
-                            type="checkbox"
-                            checked={selectedIds.has(booking.id)}
-                            onChange={() => toggleSelect(booking.id)}
-                            className="h-4 w-4 cursor-pointer accent-[#ff4f93]"
-                          />
+                          {!isPendingPayment && (
+                            <input
+                              type="checkbox"
+                              checked={selectedIds.has(booking.id)}
+                              onChange={() => toggleSelect(booking.id)}
+                              className="h-4 w-4 cursor-pointer accent-[#ff4f93]"
+                            />
+                          )}
                         </td>
                       )}
                       <td className="px-5 py-4">
@@ -1213,19 +1229,20 @@ export default function Bookings() {
                         <div className="mt-1 text-xs text-[#b98ea0]">{formatDate(booking.schedule.date)} • {booking.schedule.time}</div>
                       </td>
                       <td className="px-5 py-4">
-                        <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-bold ${STATUS_BADGE[booking.status] ?? "bg-white/10 text-white/70"}`}>
-                          {STATUS_LABELS[booking.status] ?? booking.status}
+                        <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-bold ${statusDisplay?.badgeClass ?? STATUS_BADGE[booking.status] ?? "bg-white/10 text-white/70"}`}>
+                          {statusDisplay?.label ?? STATUS_LABELS[booking.status] ?? booking.status}
                         </span>
                       </td>
                       <td className="px-5 py-4 text-[#d7aabd]">
-                        {booking.membership?.name ?? "بدون اشتراك"}
+                        <div>{booking.membership?.name ?? "بدون اشتراك"}</div>
+                        {isPendingPayment && <div className="mt-1 text-xs text-amber-300">في انتظار إتمام الدفع</div>}
                       </td>
                       <td className="px-5 py-4">
                         <div className="font-bold text-[#fff4f8]">{booking.paidAmount.toLocaleString("ar-EG")} ج.م</div>
-                        <div className="mt-1 text-xs text-[#d7aabd]">{formatPayment(booking.paymentMethod)}</div>
+                        <div className="mt-1 text-xs text-[#d7aabd]">{paymentDisplay ?? formatPayment(booking.paymentMethod)}</div>
                       </td>
                       <td className="px-5 py-4">
-                        {userRole === "admin" ? (
+                        {canManageBooking ? (
                           <div className="flex flex-wrap gap-2">
                             <button
                               onClick={() => setRescheduleModal(booking)}
@@ -1269,10 +1286,13 @@ export default function Bookings() {
                             </button>
                           </div>
                         ) : (
-                          <span className="text-xs text-[#b98ea0]">مشاهدة فقط</span>
+                          <span className="text-xs text-[#b98ea0]">
+                            {isPendingPayment ? "الحجز غير نشط حتى إتمام الدفع" : "مشاهدة فقط"}
+                          </span>
                         )}
                       </td>
-                    </tr>
+                    </tr>;
+                    })()
                   ))}
                 </tbody>
               </table>
