@@ -586,6 +586,9 @@ export async function POST(req: Request) {
           startDate: resolvedStart,
           endDate,
           status: needsPaymentConfirmation ? "pending_payment" : "active",
+          pendingExpiresAt: needsPaymentConfirmation
+            ? new Date(Date.now() + 60 * 60 * 1000) // 60 minutes from now
+            : null,
           paymentAmount: paymentAmount ?? 0,
           paymentMethod: membershipPaymentMethod,
           offerTitle: offerTitle ?? null,

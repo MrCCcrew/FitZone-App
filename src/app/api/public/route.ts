@@ -365,7 +365,7 @@ export async function GET(request: Request) {
               },
             },
           },
-          orderBy: { price: "asc" },
+          orderBy: [{ displayPriority: "desc" }, { createdAt: "desc" }],
         }),
         db.testimonial.findMany({
           where: { status: "approved" },

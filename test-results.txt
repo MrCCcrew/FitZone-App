@@ -1,0 +1,88 @@
+
+> fitzone@0.1.0 test
+> vitest run
+
+
+ RUN  v4.1.9 C:/Fitzone
+
+ ❯ __tests__/unit/lib/admin-permissions.test.ts (42 tests | 1 failed) 17ms
+     × contracts_manager gets contracts + customers 4ms
+ ❯ __tests__/integration/memberships/activation.test.ts (6 tests | 6 failed) 13ms
+     × calls userMembership.updateMany with status:'active' 7ms
+     × includes startDate and endDate in the updateMany data 1ms
+     × end date is startDate + 30 days for a 30-day membership 2ms
+     × end date is startDate + 90 days for a 90-day membership 1ms
+     × skips side-effects when updateMany returns count=0 (already activated) 1ms
+     × skips activation entirely when membership is already active 1ms
+stdout | __tests__/class-transfer-integration.test.ts > Class Transfer Integration > should preserve schedule integrity after transfer
+prisma:error 
+Invalid `db.trainer.create()` invocation in
+C:/Fitzone/__tests__/class-transfer-integration.test.ts:21:37
+
+  18 
+  19 beforeEach(async () => {
+  20   // Create test trainers
+→ 21   testTrainer1 = await db.trainer.create(
+Error in connector: Error querying the database: Server error: `ERROR HY000 (45028): pool timeout: failed to retrieve a connection from pool after 10002ms
+    (pool connections: active=0 idle=0 limit=2)'
+
+stdout | __tests__/class-transfer-integration.test.ts > Class Transfer Integration > should preserve schedule integrity after transfer
+prisma:error 
+Invalid `db.trainer.create()` invocation in
+C:/Fitzone/__tests__/class-transfer-integration.test.ts:21:37
+
+  18 
+  19 beforeEach(async () => {
+  20   // Create test trainers
+→ 21   testTrainer1 = await db.trainer.create(
+Error in connector: Error querying the database: Server error: `ERROR HY000 (45028): pool timeout: failed to retrieve a connection from pool after 10001ms
+    (pool connections: active=0 idle=0 limit=2)'
+
+stdout | __tests__/class-transfer-integration.test.ts > Class Transfer Integration > should handle transfer of class with no bookings
+prisma:error 
+Invalid `db.trainer.create()` invocation in
+C:/Fitzone/__tests__/class-transfer-integration.test.ts:21:37
+
+  18 
+  19 beforeEach(async () => {
+  20   // Create test trainers
+→ 21   testTrainer1 = await db.trainer.create(
+Error in connector: Error querying the database: Server error: `ERROR HY000 (45028): pool timeout: failed to retrieve a connection from pool after 10011ms
+    (pool connections: active=0 idle=0 limit=2)'
+
+stdout | __tests__/class-transfer-integration.test.ts > Class Transfer Integration > should maintain data integrity in concurrent transfers
+prisma:error 
+Invalid `db.trainer.create()` invocation in
+C:/Fitzone/__tests__/class-transfer-integration.test.ts:21:37
+
+  18 
+  19 beforeEach(async () => {
+  20   // Create test trainers
+→ 21   testTrainer1 = await db.trainer.create(
+Error in connector: Error querying the database: Server error: `ERROR HY000 (45028): pool timeout: failed to retrieve a connection from pool after 10001ms
+    (pool connections: active=0 idle=0 limit=2)'
+
+stdout | __tests__/class-transfer-integration.test.ts
+prisma:error 
+Invalid `db.trainer.create()` invocation in
+C:/Fitzone/__tests__/class-transfer-integration.test.ts:21:37
+
+  18 
+  19 beforeEach(async () => {
+  20   // Create test trainers
+→ 21   testTrainer1 = await db.trainer.create(
+Error in connector: Error querying the database: Server error: `ERROR HY000 (45028): pool timeout: failed to retrieve a connection from pool after 10005ms
+    (pool connections: active=0 idle=0 limit=2)'
+
+ ❯ __tests__/class-transfer-integration.test.ts (5 tests | 5 failed) 50044ms
+     × should transfer class with bookings to new trainer 10020ms
+     × should distribute classes evenly across multiple trainers 10003ms
+     × should preserve schedule integrity after transfer 10012ms
+     × should handle transfer of class with no bookings 10002ms
+     × should maintain data integrity in concurrent transfers 10006ms
+
+ Test Files  3 failed | 7 passed (10)
+      Tests  12 failed | 146 passed (158)
+   Start at  22:30:21
+   Duration  50.77s (transform 1.10s, setup 0ms, import 2.55s, tests 50.16s, environment 1ms)
+

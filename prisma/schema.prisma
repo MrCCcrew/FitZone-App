@@ -202,7 +202,8 @@ model UserMembership {
   membershipId String
   startDate    DateTime @default(now())
   endDate      DateTime
-  status       String   @default("active") // active | expired | cancelled
+  status       String   @default("active") // active | expired | cancelled | pending_payment
+  pendingExpiresAt DateTime? // When pending_payment expires (60 min from creation)
   paymentAmount Float   @default(0)
   paymentMethod String? // cash | free | wallet | card | instapay | offer
   offerTitle    String?
@@ -438,6 +439,7 @@ model Product {
   vatEnabled      Boolean @default(false)
   // Supplier (admin-only — never exposed to customers)
   supplierId      String?
+  displayPriority Int       @default(0) // Higher number = appears first
   deletedAt       DateTime? // soft delete
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt @default(now())
@@ -452,6 +454,7 @@ model Product {
   @@index([supplierId])
   @@index([category, isActive])
   @@index([deletedAt])
+  @@index([displayPriority])
 }
 
 model ProductReview {

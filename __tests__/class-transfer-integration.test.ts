@@ -46,13 +46,14 @@ describe("Class Transfer Integration", () => {
     });
 
     // Create test user for bookings
-    testUser = await db.user.create({
+    const createdUser = await db.user.create({
       data: {
         email: `test_${Date.now()}@test.com`,
         name: "Test Client",
       },
       select: { id: true, name: true },
     });
+    testUser = { id: createdUser.id, name: createdUser.name ?? "Test Client" };
 
     // Create test classes
     testClass1 = await db.class.create({

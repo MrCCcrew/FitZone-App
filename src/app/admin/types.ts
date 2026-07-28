@@ -321,6 +321,7 @@ export interface Product {
   supplierName?: string | null;
   costPrice?: number | null;
   barcode?: string | null;
+  displayPriority?: number;
   isFeatured?: boolean;
   isNew?: boolean;
   isBestSeller?: boolean;

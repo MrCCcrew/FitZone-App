@@ -68,6 +68,7 @@ const EMPTY_PRODUCT: EditableProduct = {
   isNew: false,
   isBestSeller: false,
   isSpecialOffer: false,
+  displayPriority: 0,
 };
 
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
@@ -506,7 +507,7 @@ export default function Products() {
                     <span className="text-sm text-yellow-400">{product.price.toLocaleString("ar-EG")} ج.م</span>
                     {product.vatEnabled && <span className="rounded bg-emerald-900/60 px-1.5 py-0.5 text-[10px] font-bold text-emerald-400">+14% VAT</span>}
                   </div>
-                  <div className="mt-2 text-xs text-gray-500">صور: {product.images?.length ?? 0} | مقاسات: {product.sizes?.length ?? 0}</div>
+                  <div className="mt-2 text-xs text-gray-500">صور: {product.images?.length ?? 0} | مقاسات: {product.sizes?.length ?? 0} | أولوية: {product.displayPriority ?? 0}</div>
 
                   {!selectMode && (
                     <div className="mt-3 flex flex-col gap-2">
@@ -579,6 +580,7 @@ export default function Products() {
               <FieldHint title="المخزون" hint="عدد القطع المتاحة الآن للبيع من هذا المنتج."><input type="number" value={productModal.stock} onChange={(e) => setProductModal({ ...productModal, stock: Number(e.target.value) })} placeholder="مثال: 25" className={INPUT} /></FieldHint>
               <FieldHint title="السعر الحالي" hint="السعر الذي سيدفعه العميل عند إضافة المنتج إلى السلة."><input type="number" value={productModal.price} onChange={(e) => setProductModal({ ...productModal, price: Number(e.target.value) })} placeholder="مثال: 850" className={INPUT} /></FieldHint>
               <FieldHint title="السعر قبل الخصم" hint="اختياري. اتركه فارغًا إذا لم يوجد خصم على المنتج."><input type="number" value={productModal.oldPrice ?? ""} onChange={(e) => setProductModal({ ...productModal, oldPrice: e.target.value ? Number(e.target.value) : null })} placeholder="مثال: 1200" className={INPUT} /></FieldHint>
+              <FieldHint title="أولوية العرض" hint="الرقم الأكبر يظهر أولاً في قسم 'الكل' للعملاء. القيمة الافتراضية: 0"><input type="number" value={productModal.displayPriority ?? 0} onChange={(e) => setProductModal({ ...productModal, displayPriority: Number(e.target.value) })} placeholder="0" className={INPUT} /></FieldHint>
               <div className="col-span-2 flex items-center gap-4 rounded-xl border border-gray-700 bg-black/20 px-4 py-3">
                 <label className="flex cursor-pointer items-center gap-3">
                   <div className={`relative h-6 w-11 rounded-full transition-colors ${productModal.vatEnabled ? "bg-emerald-500" : "bg-gray-600"}`} onClick={() => setProductModal({ ...productModal, vatEnabled: !productModal.vatEnabled })}>
