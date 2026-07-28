@@ -19,6 +19,10 @@ export function getBookingPaymentDisplay(booking: AdminBookingDisplayInput) {
   return isPendingPaymentBooking(booking) ? "في انتظار الدفع" : null;
 }
 
-export function isBookingActionableInAdmin(booking: AdminBookingDisplayInput, userRole: string | null) {
-  return userRole === "admin" && !isPendingPaymentBooking(booking);
+export function canManageBooking(userRole: string | null) {
+  return userRole === "admin";
+}
+
+export function canMarkAttendance(booking: AdminBookingDisplayInput, userRole: string | null) {
+  return canManageBooking(userRole) && !isPendingPaymentBooking(booking) && booking.status === "confirmed";
 }
