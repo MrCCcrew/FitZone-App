@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/app-session";
 import { db } from "@/lib/db";
+import { isBookingOperational } from "@/lib/booking-operational";
 
 export async function POST(req: Request) {
   try {
@@ -111,11 +112,22 @@ export async function PATCH(req: Request) {
 
     const booking = await db.booking.findFirst({
       where: { id: bookingId, userId },
-      include: { schedule: { include: { class: true } } },
+      include: {
+        userMembership: { select: { status: true } },
+        schedule: { include: { class: true } },
+      },
     });
 
     if (!booking) {
       return NextResponse.json({ error: "الحجز غير موجود" }, { status: 404 });
+    }
+
+    // Check operational status
+    if (!isBookingOperational(booking)) {
+      return NextResponse.json(
+        { error: "لا يمكن تعديل حجز مرتبط باشتراك غير نشط" },
+        { status: 400 }
+      );
     }
 
     if (booking.status !== "confirmed") {

@@ -9,6 +9,7 @@ import {
   isMembershipEligibleForAttendance,
   isPrivateApplicationEligibleForAttendance,
 } from "@/lib/attendance";
+import { isBookingOperational } from "@/lib/booking-operational";
 
 function startOfDay(value: Date) {
   const date = new Date(value);
@@ -147,6 +148,14 @@ export async function POST(req: Request) {
   const guard = await requireAdminFeature("bookings");
   if ("error" in guard) return guard.error;
 
+  // Only admin role can mark attendance
+  if (guard.role !== "admin") {
+    return NextResponse.json(
+      { error: "هذه العملية متاحة للمدير فقط" },
+      { status: 403 }
+    );
+  }
+
   const body = (await req.json().catch(() => ({}))) as {
     scanValue?: string;
     scheduleId?: string | null;
@@ -212,6 +221,7 @@ export async function POST(req: Request) {
         status: { in: ["confirmed", "attended"] },
       },
       include: {
+        userMembership: { select: { status: true } },
         schedule: {
           include: {
             class: { include: { trainer: true } },
@@ -222,6 +232,14 @@ export async function POST(req: Request) {
 
     if (!booking) {
       return NextResponse.json({ error: "لا يوجد حجز مطابق لهذا العميل في هذا الكلاس." }, { status: 404 });
+    }
+
+    // Check booking operational status (membership must be active)
+    if (!isBookingOperational(booking)) {
+      return NextResponse.json(
+        { error: "لا يمكن تسجيل الحضور. الاشتراك المرتبط بهذا الحجز غير نشط." },
+        { status: 400 }
+      );
     }
 
     if (booking.status === "attended") {

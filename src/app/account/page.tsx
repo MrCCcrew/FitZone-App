@@ -77,13 +77,11 @@ async function getAccountData(userId: string) {
 
     if (!user) return null;
 
-    const PENDING_EXPIRE_MS = 24 * 60 * 60 * 1000; // 24 h
     const now24 = new Date();
 
-    // ── Step 1: Fetch payment transactions for ALL pending_payment memberships ──
-    // We use TX.createdAt (when payment was initiated) — NOT startDate which can be a future membership date.
+    // ── Step 1: Fetch payment transactions for pending_payment memberships ──
     const pendingMembershipIds = user.memberships
-      .filter((m) => m.status === "pending_payment")
+      .filter((m) => m.status === "pending_payment" && m.pendingExpiresAt !== null)
       .map((m) => m.id);
 
     const pendingTxList = pendingMembershipIds.length
@@ -92,40 +90,29 @@ async function getAccountData(userId: string) {
             membershipId: { in: pendingMembershipIds },
             status: { in: ["pending", "requires_action"] },
           },
-          select: { membershipId: true, id: true, checkoutUrl: true, createdAt: true },
+          select: { membershipId: true, id: true, checkoutUrl: true },
           orderBy: { createdAt: "desc" }, // newest first
         })
       : [];
 
-    // Build two maps from one pass (ordered DESC):
-    //   pendingTxMap         → latest tx per membership (for checkout URL)
-    //   pendingTxCreatedAtMap → oldest tx per membership (= when payment was first initiated)
+    // Build map: membershipId → latest checkout URL
     const pendingTxMap = new Map<string, { transactionId: string; checkoutUrl: string | null }>();
-    const pendingTxCreatedAtMap = new Map<string, Date>();
     for (const tx of pendingTxList) {
-      if (!tx.membershipId) continue;
-      // latest checkout URL (only first hit since we iterate DESC)
-      if (!pendingTxMap.has(tx.membershipId)) {
-        pendingTxMap.set(tx.membershipId, { transactionId: tx.id, checkoutUrl: tx.checkoutUrl ?? null });
-      }
-      // oldest createdAt (always overwrite — last write in DESC iteration = oldest record)
-      pendingTxCreatedAtMap.set(tx.membershipId, tx.createdAt);
+      if (!tx.membershipId || pendingTxMap.has(tx.membershipId)) continue;
+      pendingTxMap.set(tx.membershipId, { transactionId: tx.id, checkoutUrl: tx.checkoutUrl ?? null });
     }
 
-    // ── Step 2: Determine expired pending memberships ──
-    // A pending_payment membership is "expired" when >= 24 h have passed since payment was initiated.
-    // We use the TX createdAt as the reference; fall back to startDate only if no TX exists.
+    // ── Step 2: Determine expired pending memberships (pendingExpiresAt <= now) ──
     const expiredPendingIds = new Set(
       user.memberships
         .filter((m) => {
-          if (m.status !== "pending_payment") return false;
-          const refTime = pendingTxCreatedAtMap.get(m.id) ?? new Date(m.startDate);
-          return now24.getTime() - refTime.getTime() >= PENDING_EXPIRE_MS;
+          if (m.status !== "pending_payment" || !m.pendingExpiresAt) return false;
+          return new Date(m.pendingExpiresAt) <= now24;
         })
         .map((m) => m.id),
     );
 
-    // ── Step 3: Fire-and-forget DELETION of expired pending memberships ──
+    // ── Step 3: Fire-and-forget cleanup of expired pending memberships ──
     if (expiredPendingIds.size > 0) {
       const expiredList = [...expiredPendingIds];
       // Cancel the payment transactions first (they reference membershipId as a plain string — no FK cascade)
@@ -150,20 +137,16 @@ async function getAccountData(userId: string) {
 
     const activeMembership = user.memberships.find((membership) => membership.status === "active") ?? null;
 
-    // Only treat pending_payment as "live" if < 24 h have passed since payment initiation
+    // Only treat pending_payment as "live" if < 60 min have passed since creation
     const pendingPaymentMembership =
       user.memberships.find((m) => {
-        if (m.status !== "pending_payment") return false;
-        const refTime = pendingTxCreatedAtMap.get(m.id) ?? new Date(m.startDate);
-        return now24.getTime() - refTime.getTime() < PENDING_EXPIRE_MS;
+        if (m.status !== "pending_payment" || !m.pendingExpiresAt) return false;
+        return new Date(m.pendingExpiresAt) > now24; // Not expired yet
       }) ?? null;
 
     // Reuse from pendingTxMap (already fetched above)
     const pendingPaymentTx = pendingPaymentMembership
       ? (pendingTxMap.get(pendingPaymentMembership.id) ?? null)
-      : null;
-    const pendingPaymentRefTime = pendingPaymentMembership
-      ? (pendingTxCreatedAtMap.get(pendingPaymentMembership.id) ?? new Date(pendingPaymentMembership.startDate))
       : null;
     const classesUsed = user.bookings.filter(
       (booking) =>
@@ -226,7 +209,7 @@ async function getAccountData(userId: string) {
           }
         : null,
       membershipHistory: user.memberships
-        // Hide memberships that are still pending_payment but past the 24 h window —
+        // Hide memberships that are still pending_payment but past the 60 min window —
         // they are being auto-cancelled in the background and are meaningless to the customer.
         // Also hide admin-cancelled memberships that were never paid (paymentMethod is empty).
         .filter((membership) => {
@@ -251,11 +234,11 @@ async function getAccountData(userId: string) {
           ? pendingTxMap.get(membership.id) ?? null
           : null;
 
-        // If a pending_payment membership is older than 24 h from payment initiation, hide the payment CTA
-        const membershipRefTime = pendingTxCreatedAtMap.get(membership.id) ?? new Date(membership.startDate);
+        // Check if pending_payment has expired (pendingExpiresAt <= now)
         const isExpiredPending =
           membership.status === "pending_payment" &&
-          now24.getTime() - membershipRefTime.getTime() >= PENDING_EXPIRE_MS;
+          membership.pendingExpiresAt &&
+          new Date(membership.pendingExpiresAt) <= now24;
 
         return {
           id: membership.id,
@@ -292,19 +275,18 @@ async function getAccountData(userId: string) {
           productRewards: productRewards.filter((reward) => reward.productId && reward.quantity > 0),
         };
       }),
-      pendingPayment: pendingPaymentMembership
+      pendingPayment: pendingPaymentMembership && pendingPaymentMembership.pendingExpiresAt
         ? {
             plan: pendingPaymentMembership.membership.name,
             amount: pendingPaymentMembership.paymentAmount,
             transactionId: pendingPaymentTx?.transactionId ?? null,
             checkoutUrl: pendingPaymentTx?.checkoutUrl ?? null,
             startDate: pendingPaymentMembership.startDate.toISOString(),
-            // Use TX.createdAt (when payment was initiated) for the countdown — NOT startDate
-            hoursRemaining: Math.max(
+            pendingExpiresAt: pendingPaymentMembership.pendingExpiresAt.toISOString(),
+            minutesRemaining: Math.max(
               1,
               Math.ceil(
-                (PENDING_EXPIRE_MS - (now24.getTime() - (pendingPaymentRefTime?.getTime() ?? now24.getTime()))) /
-                  (60 * 60 * 1000),
+                (new Date(pendingPaymentMembership.pendingExpiresAt).getTime() - now24.getTime()) / (60 * 1000),
               ),
             ),
           }
@@ -351,8 +333,14 @@ async function getAccountData(userId: string) {
         emailPoints: rewardSettings.onboardingEmailPoints,
       },
       bookings: user.bookings
-        // Hide bookings tied to expired-pending memberships
-        .filter((booking) => !booking.userMembershipId || !expiredPendingIds.has(booking.userMembershipId))
+        // Hide bookings tied to expired-pending or non-active memberships
+        .filter((booking) => {
+          if (!booking.userMembershipId) return true; // standalone booking
+          if (expiredPendingIds.has(booking.userMembershipId)) return false;
+          // Find the membership
+          const membership = user.memberships.find((m) => m.id === booking.userMembershipId);
+          return membership?.status === "active"; // only show if membership is active
+        })
         .map((booking) => ({
           id: booking.id,
           scheduleId: booking.scheduleId,

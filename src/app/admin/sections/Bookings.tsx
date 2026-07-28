@@ -921,23 +921,24 @@ export default function Bookings() {
         </div>
       </AdminCard>
 
-      <AdminCard>
-        <div className="grid gap-5 xl:grid-cols-[1.1fr_.9fr]">
-          <div className="space-y-4">
-            <div className="flex items-center justify-between gap-3 flex-wrap">
-              <div>
-                <h3 className="text-base font-black text-[#fff4f8]">الحضور بالـ QR</h3>
-                <p className="mt-1 text-sm text-[#d7aabd]">
-                  سجّل حضور العميل مباشرة من الكود، مع ربطه بالكلاس أو جلسة البرايفيت.
-                </p>
+      {userRole === "admin" && (
+        <AdminCard>
+          <div className="grid gap-5 xl:grid-cols-[1.1fr_.9fr]">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                  <h3 className="text-base font-black text-[#fff4f8]">الحضور بالـ QR</h3>
+                  <p className="mt-1 text-sm text-[#d7aabd]">
+                    سجّل حضور العميل مباشرة من الكود، مع ربطه بالكلاس أو جلسة البرايفيت.
+                  </p>
+                </div>
+                <button
+                  onClick={() => void loadAttendance()}
+                  className="rounded-xl bg-white/10 px-4 py-2 text-sm font-bold text-[#fff4f8] transition-colors hover:bg-white/20"
+                >
+                  تحديث سجل الحضور
+                </button>
               </div>
-              <button
-                onClick={() => void loadAttendance()}
-                className="rounded-xl bg-white/10 px-4 py-2 text-sm font-bold text-[#fff4f8] transition-colors hover:bg-white/20"
-              >
-                تحديث سجل الحضور
-              </button>
-            </div>
 
             <div className="grid gap-3 md:grid-cols-3">
               <select
@@ -1134,7 +1135,8 @@ export default function Bookings() {
             )}
           </div>
         </div>
-      </AdminCard>
+        </AdminCard>
+      )}
 
       <AdminCard className="overflow-hidden p-0">
         {loading ? (
@@ -1146,7 +1148,7 @@ export default function Bookings() {
         ) : (
           <>
             {/* Bulk action bar */}
-            {selectedIds.size > 0 && (
+            {selectedIds.size > 0 && userRole === "admin" && (
               <div className="flex items-center justify-between gap-3 border-b border-[rgba(255,188,219,0.12)] bg-rose-950/30 px-5 py-3">
                 <span className="text-sm font-bold text-[#fff4f8]">
                   تم تحديد {selectedIds.size} حجز
@@ -1165,16 +1167,18 @@ export default function Bookings() {
               <table className="w-full min-w-[1060px] text-sm">
                 <thead>
                   <tr className="border-b border-[rgba(255,188,219,0.12)] text-right text-xs text-[#d7aabd]">
-                    <th className="px-4 py-4 w-10">
-                      <input
-                        type="checkbox"
-                        checked={allPageSelected}
-                        ref={(node) => { if (node) node.indeterminate = somePageSelected; }}
-                        onChange={toggleSelectAll}
-                        className="h-4 w-4 cursor-pointer accent-[#ff4f93]"
-                        title="تحديد الكل في الصفحة"
-                      />
-                    </th>
+                    {userRole === "admin" && (
+                      <th className="px-4 py-4 w-10">
+                        <input
+                          type="checkbox"
+                          checked={allPageSelected}
+                          ref={(node) => { if (node) node.indeterminate = somePageSelected; }}
+                          onChange={toggleSelectAll}
+                          className="h-4 w-4 cursor-pointer accent-[#ff4f93]"
+                          title="تحديد الكل في الصفحة"
+                        />
+                      </th>
+                    )}
                     {["العميل", "الكلاس", "اليوم/الوقت", "الحالة", "الاشتراك", "الدفع", "إجراءات"].map((header) => (
                       <th key={header} className="px-5 py-4 font-medium">{header}</th>
                     ))}
@@ -1186,14 +1190,16 @@ export default function Bookings() {
                       key={booking.id}
                       className={`border-b border-[rgba(255,188,219,0.08)] transition-colors hover:bg-white/[0.03] ${selectedIds.has(booking.id) ? "bg-rose-950/20" : ""}`}
                     >
-                      <td className="px-4 py-4">
-                        <input
-                          type="checkbox"
-                          checked={selectedIds.has(booking.id)}
-                          onChange={() => toggleSelect(booking.id)}
-                          className="h-4 w-4 cursor-pointer accent-[#ff4f93]"
-                        />
-                      </td>
+                      {userRole === "admin" && (
+                        <td className="px-4 py-4">
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(booking.id)}
+                            onChange={() => toggleSelect(booking.id)}
+                            className="h-4 w-4 cursor-pointer accent-[#ff4f93]"
+                          />
+                        </td>
+                      )}
                       <td className="px-5 py-4">
                         <div className="font-bold text-[#fff4f8]">{booking.user.name}</div>
                         <div className="mt-1 text-xs text-[#d7aabd]">{booking.user.phone}</div>
@@ -1219,48 +1225,52 @@ export default function Bookings() {
                         <div className="mt-1 text-xs text-[#d7aabd]">{formatPayment(booking.paymentMethod)}</div>
                       </td>
                       <td className="px-5 py-4">
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            onClick={() => setRescheduleModal(booking)}
-                            className="rounded-lg bg-white/5 px-3 py-2 text-xs text-[#fff4f8] transition-colors hover:bg-white/10"
-                          >
-                            تعديل الموعد
-                          </button>
-                          {booking.status !== "attended" && (
+                        {userRole === "admin" ? (
+                          <div className="flex flex-wrap gap-2">
                             <button
-                              onClick={() => void handleAction(booking.id, "attended")}
-                              disabled={working}
-                              className="rounded-lg bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300 transition-colors hover:bg-emerald-500/20 disabled:opacity-50"
+                              onClick={() => setRescheduleModal(booking)}
+                              className="rounded-lg bg-white/5 px-3 py-2 text-xs text-[#fff4f8] transition-colors hover:bg-white/10"
                             >
-                              تسجيل حضور
+                              تعديل الموعد
                             </button>
-                          )}
-                          {booking.status !== "cancelled" && (
+                            {booking.status !== "attended" && (
+                              <button
+                                onClick={() => void handleAction(booking.id, "attended")}
+                                disabled={working}
+                                className="rounded-lg bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300 transition-colors hover:bg-emerald-500/20 disabled:opacity-50"
+                              >
+                                تسجيل حضور
+                              </button>
+                            )}
+                            {booking.status !== "cancelled" && (
+                              <button
+                                onClick={() => void handleAction(booking.id, "cancel")}
+                                disabled={working}
+                                className="rounded-lg bg-rose-500/10 px-3 py-2 text-xs text-rose-300 transition-colors hover:bg-rose-500/20 disabled:opacity-50"
+                              >
+                                إلغاء
+                              </button>
+                            )}
+                            {booking.status === "cancelled" && (
+                              <button
+                                onClick={() => void handleAction(booking.id, "confirm")}
+                                disabled={working}
+                                className="rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-300 transition-colors hover:bg-amber-500/20 disabled:opacity-50"
+                              >
+                                إعادة تفعيل
+                              </button>
+                            )}
                             <button
-                              onClick={() => void handleAction(booking.id, "cancel")}
+                              onClick={() => void handleDelete(booking.id)}
                               disabled={working}
-                              className="rounded-lg bg-rose-500/10 px-3 py-2 text-xs text-rose-300 transition-colors hover:bg-rose-500/20 disabled:opacity-50"
+                              className="rounded-lg bg-rose-900/30 px-3 py-2 text-xs text-rose-400 transition-colors hover:bg-rose-900/50 disabled:opacity-50"
                             >
-                              إلغاء
+                              حذف
                             </button>
-                          )}
-                          {booking.status === "cancelled" && (
-                            <button
-                              onClick={() => void handleAction(booking.id, "confirm")}
-                              disabled={working}
-                              className="rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-300 transition-colors hover:bg-amber-500/20 disabled:opacity-50"
-                            >
-                              إعادة تفعيل
-                            </button>
-                          )}
-                          <button
-                            onClick={() => void handleDelete(booking.id)}
-                            disabled={working}
-                            className="rounded-lg bg-rose-900/30 px-3 py-2 text-xs text-rose-400 transition-colors hover:bg-rose-900/50 disabled:opacity-50"
-                          >
-                            حذف
-                          </button>
-                        </div>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-[#b98ea0]">مشاهدة فقط</span>
+                        )}
                       </td>
                     </tr>
                   ))}

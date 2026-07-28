@@ -48,7 +48,8 @@ interface AccountData {
     transactionId: string | null;
     checkoutUrl: string | null;
     startDate: string;
-    hoursRemaining: number;
+    pendingExpiresAt: string;
+    minutesRemaining: number;
   } | null;
   membershipHistory: {
     id: string;
@@ -1511,12 +1512,12 @@ function MembershipTab({ membership, pendingPayment }: { membership: AccountData
             {t(`المبلغ المطلوب: ${pendingPayment.amount.toLocaleString("ar-EG")} ج.م`, `Amount due: ${pendingPayment.amount.toLocaleString("en-US")} EGP`)}
           </div>
           {/* Countdown */}
-          <div className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 mt-1 text-xs font-black ${pendingPayment.hoursRemaining <= 3 ? "bg-red-500/20 text-red-300 border border-red-500/40" : "bg-amber-500/15 text-amber-300 border border-amber-500/30"}`}>
+          <div className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 mt-1 text-xs font-black ${pendingPayment.minutesRemaining <= 30 ? "bg-red-500/20 text-red-300 border border-red-500/40" : "bg-amber-500/15 text-amber-300 border border-amber-500/30"}`}>
             <span>⏱</span>
             <span>
-              {pendingPayment.hoursRemaining <= 3
-                ? t(`تبقّى أقل من ${pendingPayment.hoursRemaining} ساعة فقط!`, `Less than ${pendingPayment.hoursRemaining}h left!`)
-                : t(`ينتهي خلال ${pendingPayment.hoursRemaining} ساعة`, `Expires in ${pendingPayment.hoursRemaining}h`)}
+              {pendingPayment.minutesRemaining <= 30
+                ? t(`تبقّى أقل من ${pendingPayment.minutesRemaining} دقيقة فقط!`, `Less than ${pendingPayment.minutesRemaining}h left!`)
+                : t(`ينتهي خلال ${pendingPayment.minutesRemaining} دقيقة`, `Expires in ${pendingPayment.minutesRemaining}h`)}
             </span>
           </div>
         </div>
@@ -1538,7 +1539,7 @@ function MembershipTab({ membership, pendingPayment }: { membership: AccountData
       {/* Warning note */}
       <div className="mt-3 rounded-xl bg-black/30 border border-amber-500/20 px-4 py-2.5 text-xs text-amber-200/80 leading-relaxed">
         {t(
-          "⚠️ إذا لم يتم إتمام الدفع خلال 24 ساعة من وقت الاشتراك، سيتم إلغاء الاشتراك تلقائيًا وسيختفي من صفحتك، مع إلغاء أي حجوزات مرتبطة به.",
+          "⚠️ إذا لم يتم إتمام الدفع خلال 24 دقيقة من وقت الاشتراك، سيتم إلغاء الاشتراك تلقائيًا وسيختفي من صفحتك، مع إلغاء أي حجوزات مرتبطة به.",
           "⚠️ If payment is not completed within 24 hours of subscribing, the subscription and any linked bookings will be automatically cancelled and removed from your page.",
         )}
       </div>
@@ -1686,7 +1687,7 @@ function MembershipTab({ membership, pendingPayment }: { membership: AccountData
           </a>
         </div>
 
-      ) : remaining <= 30 ? (
+      ) : remaining <= 300 ? (
         /* ≤ 30 days — soft reminder */
         <div className="rounded-2xl border border-yellow-600/30 bg-yellow-950/15 p-5 flex items-center justify-between gap-4">
           <div>
@@ -1879,12 +1880,12 @@ function AccountMembershipTab({
           <div className="text-amber-200 text-sm">
             {t(`المبلغ المطلوب: ${pendingPayment.amount.toLocaleString("ar-EG")} ج.م`, `Amount due: ${pendingPayment.amount.toLocaleString("en-US")} EGP`)}
           </div>
-          <div className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 mt-1 text-xs font-black ${pendingPayment.hoursRemaining <= 3 ? "bg-red-500/20 text-red-300 border border-red-500/40" : "bg-amber-500/15 text-amber-300 border border-amber-500/30"}`}>
+          <div className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 mt-1 text-xs font-black ${pendingPayment.minutesRemaining <= 30 ? "bg-red-500/20 text-red-300 border border-red-500/40" : "bg-amber-500/15 text-amber-300 border border-amber-500/30"}`}>
             <span>⏱</span>
             <span>
-              {pendingPayment.hoursRemaining <= 3
-                ? t(`تبقّى أقل من ${pendingPayment.hoursRemaining} ساعة فقط!`, `Less than ${pendingPayment.hoursRemaining}h left!`)
-                : t(`ينتهي خلال ${pendingPayment.hoursRemaining} ساعة`, `Expires in ${pendingPayment.hoursRemaining}h`)}
+              {pendingPayment.minutesRemaining <= 30
+                ? t(`تبقّى أقل من ${pendingPayment.minutesRemaining} دقيقة فقط!`, `Less than ${pendingPayment.minutesRemaining}h left!`)
+                : t(`ينتهي خلال ${pendingPayment.minutesRemaining} دقيقة`, `Expires in ${pendingPayment.minutesRemaining}h`)}
             </span>
           </div>
         </div>
@@ -1904,7 +1905,7 @@ function AccountMembershipTab({
       </div>
       <div className="mt-3 rounded-xl bg-black/30 border border-amber-500/20 px-4 py-2.5 text-xs text-amber-200/80 leading-relaxed">
         {t(
-          "⚠️ إذا لم يتم إتمام الدفع خلال 24 ساعة من وقت الاشتراك، سيتم إلغاء الاشتراك تلقائيًا وسيختفي من صفحتك، مع إلغاء أي حجوزات مرتبطة به.",
+          "⚠️ إذا لم يتم إتمام الدفع خلال 24 دقيقة من وقت الاشتراك، سيتم إلغاء الاشتراك تلقائيًا وسيختفي من صفحتك، مع إلغاء أي حجوزات مرتبطة به.",
           "⚠️ If payment is not completed within 24 hours of subscribing, the subscription and any linked bookings will be automatically cancelled and removed from your page.",
         )}
       </div>

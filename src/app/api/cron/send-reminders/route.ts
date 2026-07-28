@@ -51,9 +51,15 @@ export async function GET(req: Request) {
       status: "confirmed",
       reminderSentAt: null,
       schedule: { isActive: true },
+      // Exclude bookings linked to non-active memberships
+      OR: [
+        { userMembershipId: null }, // standalone bookings
+        { userMembership: { status: "active" } }, // active membership bookings
+      ],
     },
     include: {
-      user:     { select: { id: true, name: true } },
+      user: { select: { id: true, name: true } },
+      userMembership: { select: { status: true } },
       schedule: {
         include: { class: { include: { trainer: { select: { name: true } } } } },
       },

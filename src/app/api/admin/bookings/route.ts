@@ -118,16 +118,12 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const { error: err, role, userId } = await checkAdmin();
+  const { error: err, role } = await checkAdmin();
   if (err) return err;
-  if (role === "trainer") {
-    const profile = await db.trainer.findFirst({
-      where: { userId: userId! },
-      select: { canAddBookings: true },
-    });
-    if (!profile?.canAddBookings) {
-      return NextResponse.json({ error: "ليس لديك صلاحية إضافة حجوزات." }, { status: 403 });
-    }
+
+  // Only admin can create bookings
+  if (role !== "admin") {
+    return NextResponse.json({ error: "غير مسموح. هذه العملية للمسؤولين فقط." }, { status: 403 });
   }
 
   try {
@@ -195,6 +191,11 @@ export async function PATCH(req: Request) {
   const { error: err, role, userId } = await checkAdmin();
   if (err) return err;
 
+  // Only admin can modify bookings
+  if (role !== "admin") {
+    return NextResponse.json({ error: "غير مسموح. هذه العملية للمسؤولين فقط." }, { status: 403 });
+  }
+
   try {
     const payload = (await req.json()) as {
       bookingId?: string;
@@ -218,13 +219,7 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: "الحجز غير موجود." }, { status: 404 });
     }
 
-    // Trainers can only act on bookings for their own classes
-    if (role === "trainer") {
-      const ownTrainer = await getTrainerProfileId(userId!);
-      if (booking.schedule.class.trainerId !== ownTrainer) {
-        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-      }
-    }
+    // Admin-only mutations - trainer checks removed
 
     if (payload.action === "cancel") {
       if (booking.status === "cancelled") {
@@ -334,8 +329,13 @@ export async function PATCH(req: Request) {
 }
 
 export async function DELETE(req: Request) {
-  const { error: err, role, userId } = await checkAdmin();
+  const { error: err, role } = await checkAdmin();
   if (err) return err;
+
+  // Only admin can delete bookings
+  if (role !== "admin") {
+    return NextResponse.json({ error: "غير مسموح. هذه العملية للمسؤولين فقط." }, { status: 403 });
+  }
 
   try {
     const { bookingId } = (await req.json()) as { bookingId?: string };
@@ -347,13 +347,7 @@ export async function DELETE(req: Request) {
     });
     if (!booking) return NextResponse.json({ error: "الحجز غير موجود." }, { status: 404 });
 
-    // Trainers can only delete bookings for their own classes
-    if (role === "trainer") {
-      const ownTrainer = await getTrainerProfileId(userId!);
-      if (booking.schedule.class.trainerId !== ownTrainer) {
-        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-      }
-    }
+    // Admin-only deletion - no trainer-specific checks needed
 
     await db.booking.delete({ where: { id: bookingId } });
 

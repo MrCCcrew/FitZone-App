@@ -522,50 +522,122 @@ export async function updatePaymentTransactionStatus(
   // Activate linked membership or order when payment confirmed
   if (status === "paid") {
     if (existing?.membershipId) {
-      const membership = await db.userMembership.findUnique({
-        where: { id: existing.membershipId },
-        select: {
-          status: true,
-          offerId: true,
-          membership: {
-            select: {
-              name: true,
-              nameEn: true,
-              duration: true,
-              walletBonus: true,
-              productRewards: true,
+      // ── Activate membership with race condition protection ────────────────
+      const membershipId = existing.membershipId; // TypeScript narrowing
+      let activationSucceeded = false;
+      let membershipData: {
+        status: string;
+        startDate: Date;
+        offerId: string | null;
+        membership: { name: string; nameEn: string | null; duration: number; walletBonus: number; productRewards: string | null };
+        offer: { title: string } | null;
+      } | null = null;
+
+      await db.$transaction(async (tx) => {
+        const membership = await tx.userMembership.findUnique({
+          where: { id: membershipId },
+          select: {
+            id: true,
+            status: true,
+            pendingExpiresAt: true,
+            offerId: true,
+            membership: {
+              select: {
+                name: true,
+                nameEn: true,
+                duration: true,
+                walletBonus: true,
+                productRewards: true,
+              },
+            },
+            offer: {
+              select: { title: true },
             },
           },
-          offer: {
-            select: { title: true },
-          },
-        },
-      });
-      if (membership?.status === "pending_payment") {
-        const now = new Date();
-        const duration = membership.membership?.duration ?? 30;
-        const endDate = new Date(now.getTime() + duration * 24 * 60 * 60 * 1000);
-
-        // updateMany with WHERE status=pending_payment makes this idempotent:
-        // concurrent webhook calls won't double-activate.
-        const activated = await db.userMembership.updateMany({
-          where: { id: existing.membershipId, status: "pending_payment" },
-          data: { status: "active", startDate: now, endDate },
         });
-        if (activated.count === 0) {
-          // Already activated by a concurrent webhook — skip side effects
-          return mapPaymentTransaction(transaction);
+
+        if (!membership) {
+          console.warn(`[WEBHOOK] Membership ${membershipId} not found (deleted by cron?)`);
+          return;
         }
 
-        // Unlock pending referral reward for the user who just subscribed
-        if (existing.userId) {
-          try {
-            await unlockPendingReferralReward(existing.userId);
-          } catch {}
+        // Late payment check: if cancelled by cron after timeout
+        if (membership.status === "cancelled") {
+          console.warn(
+            `[WEBHOOK] Late payment for membership ${membershipId}. ` +
+            `Cron already cancelled it. Booking spots may have been reassigned. Manual review required.`
+          );
+          // Record in transaction metadata for admin review/refund
+          await tx.paymentTransaction.update({
+            where: { id: transactionId },
+            data: {
+              metadata: stringifyJson({
+                ...(parseJson(existing.metadata) ?? {}),
+                latePaymentWarning: true,
+                membershipStatus: "cancelled",
+                paymentReceivedAt: new Date().toISOString(),
+              }),
+            },
+          });
+          return;
         }
 
-        // Create partner commission on confirmed Paymob payment
+        if (membership.status === "pending_payment") {
+          const now = new Date();
+          const duration = membership.membership?.duration ?? 30;
+          const endDate = new Date(now.getTime() + duration * 24 * 60 * 60 * 1000);
+
+          // Atomic activation: race vs cron cleanup
+          const activated = await tx.userMembership.updateMany({
+            where: { id: membershipId, status: "pending_payment" },
+            data: {
+              status: "active",
+              startDate: now,
+              endDate,
+              pendingExpiresAt: null, // Clear timeout on successful activation
+            },
+          });
+
+          if (activated.count === 0) {
+            console.warn(`[WEBHOOK] Membership ${membershipId} already processed (cron won race)`);
+            return;
+          }
+
+          console.log(`[WEBHOOK] Webhook won race - activated membership ${membershipId}`);
+          activationSucceeded = true;
+          membershipData = {
+            status: membership.status,
+            startDate: now,
+            offerId: membership.offerId,
+            membership: membership.membership,
+            offer: membership.offer,
+          };
+        }
+      });
+
+      if (!activationSucceeded || !membershipData) {
+        // Webhook lost race or membership already processed
+        return mapPaymentTransaction(transaction);
+      }
+
+      // TypeScript narrowing: membershipData is guaranteed non-null here
+      const activatedData: {
+        status: string;
+        startDate: Date;
+        offerId: string | null;
+        membership: { name: string; nameEn: string | null; duration: number; walletBonus: number; productRewards: string | null };
+        offer: { title: string } | null;
+      } = membershipData;
+
+      // Unlock pending referral reward for the user who just subscribed
+      if (existing.userId) {
         try {
+          await unlockPendingReferralReward(existing.userId);
+        } catch {}
+      }
+
+      // Create partner commission on confirmed Paymob payment
+      try {
           const mem = await db.userMembership.findUnique({
             where: { id: existing.membershipId },
             select: {
@@ -599,12 +671,12 @@ export async function updatePaymentTransactionStatus(
               }
             }
           }
-        } catch {}
+      } catch {}
 
-        // Deferred commissions for Paymob-confirmed subscriptions.
-        // Mirrors the !needsPaymentConfirmation blocks in subscribe/route.ts.
-        // All operations use upsert / existence checks to be idempotent.
-        try {
+      // Deferred commissions for Paymob-confirmed subscriptions.
+      // Mirrors the !needsPaymentConfirmation blocks in subscribe/route.ts.
+      // All operations use upsert / existence checks to be idempotent.
+      try {
           const dbx = db as any;
           const fullMem = await dbx.userMembership.findUnique({
             where: { id: existing.membershipId },
@@ -805,7 +877,7 @@ export async function updatePaymentTransactionStatus(
         } catch {}
 
         // Give wallet bonus
-        const walletBonus = membership.membership?.walletBonus ?? 0;
+        const walletBonus = activatedData.membership?.walletBonus ?? 0;
         if (walletBonus > 0 && existing.userId) {
           const wallet = await db.wallet.upsert({
             where: { userId: existing.userId },
@@ -817,7 +889,7 @@ export async function updatePaymentTransactionStatus(
               walletId: wallet.id,
               amount: walletBonus,
               type: "credit",
-              description: `مكافأة الاشتراك في باقة ${membership.membership?.name ?? ""}`,
+              description: `مكافأة الاشتراك في باقة ${activatedData.membership?.name ?? ""}`,
             },
           });
         }
@@ -843,7 +915,7 @@ export async function updatePaymentTransactionStatus(
         }
 
         // Deduct product rewards from inventory
-        const productRewardsRaw = membership.membership?.productRewards ?? null;
+        const productRewardsRaw = activatedData.membership?.productRewards ?? null;
         if (productRewardsRaw) {
           try {
             const productRewards = JSON.parse(productRewardsRaw) as { productId: string; quantity: number }[];
@@ -869,7 +941,7 @@ export async function updatePaymentTransactionStatus(
                   averageCostAfter: product.averageCost,
                   referenceType: "membership",
                   referenceId: existing.membershipId,
-                  notes: `Package activation: ${membership.membership?.name ?? ""}`,
+                  notes: `Package activation: ${activatedData.membership?.name ?? ""}`,
                 },
               });
             }
@@ -877,9 +949,9 @@ export async function updatePaymentTransactionStatus(
         }
 
         // Increment offer subscribers
-        if (membership.offerId) {
+        if (activatedData.offerId) {
           await db.offer.update({
-            where: { id: membership.offerId },
+            where: { id: activatedData.offerId },
             data: { currentSubscribers: { increment: 1 } },
           });
         }
@@ -888,7 +960,7 @@ export async function updatePaymentTransactionStatus(
           await db.notification.create({
             data: {
               userId: existing.userId,
-              title: `تم تفعيل اشتراكك في ${membership.membership?.name ?? "الباقة"}!`,
+              title: `تم تفعيل اشتراكك في ${activatedData.membership?.name ?? "الباقة"}!`,
               body: "تم استلام دفعتك وتفعيل اشتراكك بنجاح.",
               type: "success",
             },
@@ -912,6 +984,9 @@ export async function updatePaymentTransactionStatus(
             }));
             const metadata = parseJson(transaction.metadata);
             const invoiceDetails = toInvoiceDetails(metadata);
+            const now = new Date();
+            const duration = activatedData.membership?.duration ?? 30;
+            const endDate = new Date(now.getTime() + duration * 24 * 60 * 60 * 1000);
             const normalizedInvoice = invoiceDetails
               ? {
                   ...invoiceDetails,
@@ -929,9 +1004,9 @@ export async function updatePaymentTransactionStatus(
               if (pass) {
                 membershipCard = await generateMembershipQrCard({
                   memberName: userRecord.name ?? "FitZone Member",
-                  membershipName: membership.membership?.name ?? "Membership",
-                  membershipNameEn: membership.membership?.nameEn ?? null,
-                  offerTitle: membership.offer?.title ?? null,
+                  membershipName: activatedData.membership?.name ?? "Membership",
+                  membershipNameEn: activatedData.membership?.nameEn ?? null,
+                  offerTitle: activatedData.offer?.title ?? null,
                   endDate,
                   qrPayload: buildAttendancePayload(pass.code),
                   cardCode: pass.code,
@@ -943,7 +1018,7 @@ export async function updatePaymentTransactionStatus(
             void sendSubscriptionEmail(
               userRecord.email,
               userRecord.name ?? "العضوة",
-              membership.membership?.name ?? "الباقة",
+              activatedData.membership?.name ?? "الباقة",
               endDate,
               walletBonus > 0 ? walletBonus : undefined,
               scheduleRows,
@@ -959,8 +1034,8 @@ export async function updatePaymentTransactionStatus(
             void sendAdminSubscriptionNotification({
               customerName: userRecord.name ?? "—",
               customerEmail: userRecord.email,
-              planName: membership.membership?.name ?? "الباقة",
-              offerTitle: membership.offer?.title ?? null,
+              planName: activatedData.membership?.name ?? "الباقة",
+              offerTitle: activatedData.offer?.title ?? null,
               endDate,
               amount: transaction.amount,
               paymentMethod: transaction.paymentMethod,
@@ -1134,7 +1209,7 @@ export async function updatePaymentTransactionStatus(
         }
       }
     }
-  }
+  // end if (status === "paid")
 
   return mapPaymentTransaction(transaction);
 }
