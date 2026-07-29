@@ -1,6 +1,7 @@
 ﻿'use client';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useLang } from "@/lib/language";
+import { trackBusinessView } from "@/lib/analytics/client-events";
 import { StoreGiftCampaignCard } from "@/components/store/StoreGiftCampaignCard";
 import { StoreGiftToast, dispatchGiftToast } from "@/components/store/StoreGiftToast";
 import { StoreGiftBadge } from "@/components/store/StoreGiftBadge";
@@ -4450,6 +4451,9 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
     }
     if (userSummary == null) return;
 
+    if (plan.id && plan.kind === "subscription") trackBusinessView("subscription_viewed", plan.id);
+    if (plan.id && plan.kind === "package") trackBusinessView("package_viewed", plan.id);
+
     // Custom kind: show month picker before continuing (only if months not yet selected)
     if (plan.minMonths && plan.maxMonths && !plan.selectedMonths) {
       setSelectedCustomMonths(plan.minMonths);
@@ -6317,7 +6321,7 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
                     <span>{countdown.expired ? t("انتهى العرض", "Offer expired") : t("العرض ساري الآن", "Offer is active")}</span>
                   </div>
                   <button
-                    onClick={() => openSubscribeModal(o.membershipId, o.id, o.specialPrice ?? null)}
+                    onClick={() => { trackBusinessView("offer_viewed", o.id); openSubscribeModal(o.membershipId, o.id, o.specialPrice ?? null); }}
                     disabled={offerUnavailable}
                     style={{
                       width: "100%",
@@ -6456,7 +6460,7 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
                       <button
                         className="btn-primary"
                         style={{ width: "100%", justifyContent: "center", fontSize: 14, background: packageColor, borderColor: packageColor, marginTop: "auto" }}
-                        onClick={() => openSubscribeModal(pkg.id)}
+                        onClick={() => { trackBusinessView("package_viewed", pkg.id); openSubscribeModal(pkg.id); }}
                       >
                         {t("اشتركي الآن", "Subscribe now")}
                       </button>

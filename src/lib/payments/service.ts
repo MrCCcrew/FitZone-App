@@ -5,6 +5,8 @@ import { generateStoreOrderInvoicePdf } from "@/lib/store-order-invoice";
 import { getRewardSettings, calcTier } from "@/lib/reward-settings";
 import { generateMembershipQrCard } from "@/lib/membership-card";
 import { generateMembershipInvoicePdf, type MembershipInvoiceDetails } from "@/lib/membership-invoice";
+import { recordPaymentStatusEvent } from "@/lib/analytics/payment-events";
+import { recordMembershipActivatedEvent } from "@/lib/analytics/membership-events";
 import { getDefaultPaymentProvider, getPaymentProvider, listPaymentProviders } from "@/lib/payments/registry";
 import type {
   PaymentProviderKey,
@@ -484,6 +486,12 @@ export async function updatePaymentTransactionStatus(
     },
   });
 
+  const previousStatus = existing?.status;
+  const wasOpen = previousStatus === "pending" || previousStatus === "processing" || previousStatus === "requires_action";
+  if (wasOpen && (status === "paid" || status === "failed" || status === "cancelled" || status === "expired")) {
+    void recordPaymentStatusEvent(transactionId, status).catch(() => null);
+  }
+
   if (status === "failed" || status === "cancelled" || status === "expired") {
     await restorePaymentTransactionAdjustments(transactionId);
 
@@ -619,6 +627,7 @@ export async function updatePaymentTransactionStatus(
         // Webhook lost race or membership already processed
         return mapPaymentTransaction(transaction);
       }
+      void recordMembershipActivatedEvent(existing.membershipId, transactionId).catch(() => null);
 
       // TypeScript narrowing: membershipData is guaranteed non-null here
       const activatedData: {

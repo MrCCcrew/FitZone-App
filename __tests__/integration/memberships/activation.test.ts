@@ -1,5 +1,12 @@
 ﻿import { describe, it, expect, vi, beforeEach } from "vitest";
 
+vi.mock("server-only", () => ({}));
+
+const { recordMembershipActivatedEvent } = vi.hoisted(() => ({
+  recordMembershipActivatedEvent: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock("@/lib/analytics/membership-events", () => ({ recordMembershipActivatedEvent }));
+
 // ─── Mocks ────────────────────────────────────────────────────────────────────
 
 // Create shared mock instances for transaction
@@ -112,6 +119,7 @@ describe("membership activation — happy path", () => {
         data:  expect.objectContaining({ status: "active", pendingExpiresAt: null }),
       }),
     );
+    expect(recordMembershipActivatedEvent).toHaveBeenCalledWith("m1", "tx-001");
   });
 
   it("includes startDate and endDate in the updateMany data", async () => {
@@ -206,6 +214,7 @@ describe("membership activation — idempotency guard", () => {
     // Notification and email must NOT fire when activation was a no-op
     expect(db.notification.create).not.toHaveBeenCalled();
     expect(db.user.findUnique).not.toHaveBeenCalled();
+    expect(recordMembershipActivatedEvent).not.toHaveBeenCalled();
   });
 
   it("skips activation entirely when membership is already active", async () => {
@@ -219,5 +228,6 @@ describe("membership activation — idempotency guard", () => {
     await updatePaymentTransactionStatus("tx-001", "paid");
 
     expect(db.userMembership.updateMany).not.toHaveBeenCalled();
+    expect(recordMembershipActivatedEvent).not.toHaveBeenCalled();
   });
 });

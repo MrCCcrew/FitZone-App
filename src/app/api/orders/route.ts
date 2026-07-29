@@ -6,6 +6,7 @@ import { getStoreCampaignSettings } from "@/app/api/admin/store-gift-campaign/ro
 import { cookies } from "next/headers";
 import { sendStoreOrderEmail, sendAdminOrderNotification } from "@/lib/email";
 import { generateStoreOrderInvoicePdf } from "@/lib/store-order-invoice";
+import { recordCheckoutStarted } from "@/lib/analytics/checkout-events";
 
 const GAME_COOKIE = "fitzone-game-token";
 
@@ -378,6 +379,16 @@ export async function POST(req: Request) {
         });
         checkoutUrl = transaction.checkoutUrl ?? null;
         transactionId = transaction.id;
+        void recordCheckoutStarted({
+          userId,
+          entityType: "order",
+          entityId: order.id,
+          entityName: `Order ${order.id}`,
+          value: total,
+          currency: "EGP",
+          source: "store_checkout",
+          paymentTransactionId: transaction.id,
+        });
       } catch (error) {
         await restorePaymentBalanceAdjustments({
           userId,
