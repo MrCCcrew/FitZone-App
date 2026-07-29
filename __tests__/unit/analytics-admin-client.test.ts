@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { analyticsQuery, loadAdminAnalytics } from "@/lib/analytics/admin-client";
+import { analyticsDisplayNumber, analyticsQuery, analyticsSectionErrorLabels, loadAdminAnalytics, resolveAdminAnalyticsLoad } from "@/lib/analytics/admin-client";
+
+const fulfilled = (value: unknown): PromiseFulfilledResult<unknown> => ({ status: "fulfilled", value });
+const rejected = (reason: unknown): PromiseRejectedResult => ({ status: "rejected", reason });
+const allSucceeded = () => ({ overview: fulfilled({}), traffic: fulfilled({}), events: fulfilled({}), conversions: fulfilled({}) });
 
 describe("admin analytics client", () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -25,5 +29,36 @@ describe("admin analytics client", () => {
     const results = await loadAdminAnalytics({ from: "2026-01-01", to: "2026-01-31", timezone: "UTC" }, new AbortController().signal);
     expect(results.traffic.status).toBe("rejected");
     expect(results.overview.status).toBe("fulfilled");
+  });
+
+  it("clears retry state when all four analytics endpoints succeed", () => {
+    const { payload, failedSections } = resolveAdminAnalyticsLoad(allSucceeded());
+    expect(failedSections).toEqual([]);
+    expect(payload).toEqual({ overview: {}, traffic: {}, events: {}, conversions: {} });
+  });
+
+  it("identifies only the failed section while preserving successful data", () => {
+    const { payload, failedSections } = resolveAdminAnalyticsLoad({ ...allSucceeded(), traffic: rejected(new Error("offline")) });
+    expect(failedSections).toEqual(["traffic"]);
+    expect(analyticsSectionErrorLabels[failedSections[0]!]).toBe("تعذر تحميل بيانات الزيارات");
+    expect(payload).toEqual({ overview: {}, events: {}, conversions: {} });
+  });
+
+  it("clears a previous section failure after a successful retry", () => {
+    expect(resolveAdminAnalyticsLoad({ ...allSucceeded(), events: rejected(new Error("offline")) }).failedSections).toEqual(["events"]);
+    expect(resolveAdminAnalyticsLoad(allSucceeded()).failedSections).toEqual([]);
+  });
+
+  it("does not surface AbortError as a visible section failure", () => {
+    const abortError = Object.assign(new Error("request aborted"), { name: "AbortError" });
+    const { payload, failedSections } = resolveAdminAnalyticsLoad({ ...allSucceeded(), conversions: rejected(abortError) });
+    expect(failedSections).toEqual([]);
+    expect(payload).toEqual({ overview: {}, traffic: {}, events: {} });
+  });
+
+  it("normalizes nullable revenue values to zero", () => {
+    expect(analyticsDisplayNumber(null)).toBe(0);
+    expect(analyticsDisplayNumber(undefined)).toBe(0);
+    expect(analyticsDisplayNumber(0)).toBe(0);
   });
 });
