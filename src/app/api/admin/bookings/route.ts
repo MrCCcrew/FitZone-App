@@ -1,13 +1,15 @@
 import { NextResponse } from "next/server";
-import { requireAdminFeature } from "@/lib/admin-guard";
+import { requireAdminPermission } from "@/lib/admin-authorization-server";
 import { db } from "@/lib/db";
 import { logAudit } from "@/lib/audit-context";
+import { isBookingOperational } from "@/lib/booking-operational";
+import { getAdminSession } from "@/lib/admin-session";
 
 async function checkAdmin() {
-  const guard = await requireAdminFeature("bookings");
-  return "error" in guard
-    ? { error: guard.error, role: null, userId: null }
-    : { error: null, role: guard.role, userId: guard.session.user.id };
+  const session = await getAdminSession();
+  return session
+    ? { error: null, role: "admin", userId: session.id }
+    : { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }), role: null, userId: null };
 }
 
 async function getTrainerProfileId(userId: string): Promise<string | null> {
@@ -28,7 +30,7 @@ function endOfDay(value: Date) {
 }
 
 export async function GET(req: Request) {
-  const guard = await requireAdminFeature("bookings");
+  const guard = await requireAdminPermission("bookings_view");
   if ("error" in guard) return guard.error;
 
   const { searchParams } = new URL(req.url);
@@ -40,7 +42,7 @@ export async function GET(req: Request) {
   // Trainer filter
   let trainerProfileId: string | null = null;
   if (guard.role === "trainer") {
-    trainerProfileId = await getTrainerProfileId(guard.session.user.id);
+    trainerProfileId = await getTrainerProfileId(guard.session.id);
     if (!trainerProfileId) return NextResponse.json([]);
   }
 
@@ -121,6 +123,8 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  const authorization = await requireAdminPermission("bookings_create");
+  if ("error" in authorization) return authorization.error;
   const { error: err, role } = await checkAdmin();
   if (err) return err;
 
@@ -210,11 +214,21 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: "بيانات الحجز غير مكتملة." }, { status: 400 });
     }
 
+    const actionPermissions = {
+      attended: "manual_attendance",
+      cancel: "bookings_cancel",
+      confirm: "bookings_cancel",
+      reschedule: "bookings_reschedule",
+    } as const;
+    const authorization = await requireAdminPermission(actionPermissions[payload.action]);
+    if ("error" in authorization) return authorization.error;
+
     const booking = await db.booking.findUnique({
       where: { id: payload.bookingId },
       include: {
         schedule: { include: { class: true } },
         user: true,
+        userMembership: { select: { status: true } },
       },
     });
 
@@ -225,6 +239,7 @@ export async function PATCH(req: Request) {
     // Admin-only mutations - trainer checks removed
 
     if (payload.action === "cancel") {
+      void logAudit({ action: "cancel", targetType: "booking", targetId: booking.id, details: { userId: booking.userId } });
       if (booking.status === "cancelled") {
         return NextResponse.json({ success: true });
       }
@@ -252,6 +267,10 @@ export async function PATCH(req: Request) {
     }
 
     if (payload.action === "attended") {
+      if (booking.status !== "confirmed" || !isBookingOperational(booking)) {
+        return NextResponse.json({ error: "لا يمكن تسجيل الحضور قبل إتمام الدفع أو للحجز غير المؤكد." }, { status: 400 });
+      }
+      void logAudit({ action: "manual_attendance", targetType: "booking", targetId: booking.id, details: { userId: booking.userId } });
       await db.booking.update({
         where: { id: booking.id },
         data: { status: "attended" },
@@ -278,6 +297,7 @@ export async function PATCH(req: Request) {
     }
 
     if (payload.action === "reschedule") {
+      void logAudit({ action: "reschedule", targetType: "booking", targetId: booking.id, details: { userId: booking.userId } });
       if (!payload.scheduleId) {
         return NextResponse.json({ error: "الميعاد الجديد مطلوب." }, { status: 400 });
       }
@@ -341,7 +361,27 @@ export async function DELETE(req: Request) {
   }
 
   try {
-    const { bookingId } = (await req.json()) as { bookingId?: string };
+    const { bookingId, bookingIds } = (await req.json()) as { bookingId?: string; bookingIds?: string[] };
+    if (Array.isArray(bookingIds)) {
+      const authorization = await requireAdminPermission("bookings_bulk_delete");
+      if ("error" in authorization) return authorization.error;
+      if (bookingIds.length === 0) return NextResponse.json({ error: "لم يتم تحديد حجوزات." }, { status: 400 });
+      for (const id of bookingIds) {
+        const booking = await db.booking.findUnique({ where: { id }, include: { schedule: { include: { class: true } } } });
+        if (!booking) continue;
+        await db.booking.delete({ where: { id } });
+        await Promise.all([
+          ...(booking.status !== "cancelled"
+            ? [db.schedule.update({ where: { id: booking.scheduleId }, data: { availableSpots: { increment: 1 } } })]
+            : []),
+          db.notification.create({ data: { userId: booking.userId, title: `تم إلغاء حجز ${booking.schedule.class.name}`, body: "تم حذف الحجز بواسطة الإدارة.", type: "warning" } }),
+        ]);
+        void logAudit({ action: "bulk_delete", targetType: "booking", targetId: id });
+      }
+      return NextResponse.json({ success: true, count: bookingIds.length });
+    }
+    const authorization = await requireAdminPermission("bookings_delete");
+    if ("error" in authorization) return authorization.error;
     if (!bookingId) return NextResponse.json({ error: "معرّف الحجز مطلوب." }, { status: 400 });
 
     const booking = await db.booking.findUnique({
@@ -353,6 +393,7 @@ export async function DELETE(req: Request) {
     // Admin-only deletion - no trainer-specific checks needed
 
     await db.booking.delete({ where: { id: bookingId } });
+    void logAudit({ action: "delete", targetType: "booking", targetId: bookingId });
 
     const ops: Promise<unknown>[] = [];
 

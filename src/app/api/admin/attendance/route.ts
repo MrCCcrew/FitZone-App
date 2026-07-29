@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAdminFeature } from "@/lib/admin-guard";
+import { requireAdminPermission } from "@/lib/admin-authorization-server";
 import { db } from "@/lib/db";
 import {
   ensureMembershipAttendancePass,
@@ -10,6 +11,7 @@ import {
   isPrivateApplicationEligibleForAttendance,
 } from "@/lib/attendance";
 import { isBookingOperational } from "@/lib/booking-operational";
+import { logAudit } from "@/lib/audit-context";
 
 function startOfDay(value: Date) {
   const date = new Date(value);
@@ -29,7 +31,7 @@ function parseRequestedDate(raw: string | null) {
 }
 
 export async function GET(req: Request) {
-  const guard = await requireAdminFeature("bookings");
+  const guard = await requireAdminPermission("qr_attendance");
   if ("error" in guard) return guard.error;
 
   const { searchParams } = new URL(req.url);
@@ -41,7 +43,7 @@ export async function GET(req: Request) {
 
   let trainerProfileId: string | null = null;
   if (guard.role === "trainer") {
-    const t = await db.trainer.findFirst({ where: { userId: guard.session.user.id }, select: { id: true } });
+    const t = await db.trainer.findFirst({ where: { userId: guard.session.id }, select: { id: true } });
     if (!t) return NextResponse.json({ schedules: [], checkIns: [] });
     trainerProfileId = t.id;
   }
@@ -145,11 +147,18 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const guard = await requireAdminFeature("bookings");
+  const attendanceSource = req.headers.get("x-attendance-source") === "qr" ? "qr" : "manual";
+  const guard = await requireAdminPermission(
+    attendanceSource === "qr" ? "qr_attendance" : "manual_attendance",
+  );
   if ("error" in guard) return guard.error;
 
   // Only admin role can mark attendance
-  if (guard.role !== "admin") {
+  if (
+    guard.role !== "admin" &&
+    !guard.permissions.includes("manual_attendance") &&
+    !guard.permissions.includes("qr_attendance")
+  ) {
     return NextResponse.json(
       { error: "هذه العملية متاحة للمدير فقط" },
       { status: 403 }
@@ -160,7 +169,9 @@ export async function POST(req: Request) {
     scanValue?: string;
     scheduleId?: string | null;
     mode?: "class" | "private";
+    source?: "manual" | "qr";
   };
+
 
   const code = extractAttendanceCode(body.scanValue);
   const mode = body.mode === "private" ? "private" : "class";
@@ -274,7 +285,7 @@ export async function POST(req: Request) {
           userMembershipId: pass.userMembership!.id,
           bookingId: booking.id,
           scheduleId: booking.scheduleId,
-          scannedByUserId: guard.session.user.id,
+          scannedByUserId: guard.session.id,
           checkInType: "class",
         },
       });
@@ -323,6 +334,7 @@ export async function POST(req: Request) {
 
       return { created, sessionsUsed, membershipExpired };
     });
+    void logAudit({ action: attendanceSource === "qr" ? "qr_attendance" : "manual_attendance", targetType: "booking", targetId: booking.id });
 
     return NextResponse.json({
       success: true,
@@ -374,7 +386,7 @@ export async function POST(req: Request) {
         passId: pass.id,
         userId: pass.userId,
         privateSessionApplicationId: pass.privateSessionApplication!.id,
-        scannedByUserId: guard.session.user.id,
+        scannedByUserId: guard.session.id,
         checkInType: pass.privateSessionApplication!.type === "mini_private" ? "mini_private" : "private",
       },
     });

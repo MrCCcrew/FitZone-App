@@ -2,11 +2,11 @@ import { NextResponse } from "next/server";
 import bcryptjs from "bcryptjs";
 import { db } from "@/lib/db";
 import { requireAdminFeature } from "@/lib/admin-guard";
-import { ADMIN_FEATURES, isAdminRole } from "@/lib/admin-permissions";
+import { ADMIN_FEATURES, ADMIN_PERMISSION_KEYS, isAdminRole } from "@/lib/admin-permissions";
 
 function parsePermissions(value: unknown) {
   if (!Array.isArray(value)) return [];
-  return value.filter((item): item is string => typeof item === "string" && ADMIN_FEATURES.includes(item as never));
+  return value.filter((item): item is string => typeof item === "string" && ADMIN_PERMISSION_KEYS.includes(item as never));
 }
 
 function serializeEmployee(user: {

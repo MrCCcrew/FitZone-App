@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { AdminEmployee, AuditLogEntry } from "../types";
-import { ADMIN_FEATURES, ROLE_FEATURE_TEMPLATES, type AdminRole } from "@/lib/admin-permissions";
+import { ADMIN_FEATURES, BOOKING_PERMISSIONS, ROLE_FEATURE_TEMPLATES, type AdminRole } from "@/lib/admin-permissions";
 import Referrals from "./Referrals";
 import TrainerReferrals from "./TrainerReferrals";
 
@@ -50,6 +50,14 @@ const FEATURE_LABELS: Record<string, string> = {
   "store-campaigns": "حملة هدايا المتجر",
   "store-free-gifts": "لعبة الهدايا المجانية",
   blog: "المدونة فقط",
+  bookings_view: "مشاهدة الحجوزات",
+  bookings_create: "إضافة حجز",
+  bookings_reschedule: "تعديل موعد الحجز",
+  bookings_cancel: "إلغاء الحجز",
+  bookings_delete: "حذف الحجز",
+  bookings_bulk_delete: "حذف جماعي",
+  manual_attendance: "تسجيل حضور يدوي",
+  qr_attendance: "تسجيل حضور عبر QR",
 };
 
 type EmployeeForm = {
@@ -601,6 +609,22 @@ export default function Settings({ userRole = "staff", permissions = [] }: { use
                       <span>{FEATURE_LABELS[feature] ?? feature}</span>
                     </label>
                   ))}
+                </div>
+                <div className="mt-5 rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <div className="font-bold text-white">الحجوزات والحضور</div>
+                  <p className="mt-1 text-xs text-[#d7aabd]">المشاهدة لا تمنح التعديل أو الحضور تلقائيًا.</p>
+                  <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    {BOOKING_PERMISSIONS.map((permission) => (
+                      <label key={permission} className="flex items-center gap-3 rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-[#fff4f8]">
+                        <input
+                          type="checkbox"
+                          checked={form.adminPermissions.includes(permission)}
+                          onChange={() => togglePermission(permission)}
+                        />
+                        <span>{FEATURE_LABELS[permission]}</span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
               </div>
 

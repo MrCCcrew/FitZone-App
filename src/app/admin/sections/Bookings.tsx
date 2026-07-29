@@ -4,12 +4,11 @@ import jsQR from "jsqr";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import {
-  canManageBooking,
-  canMarkAttendance,
   getBookingPaymentDisplay,
   getBookingStatusDisplay,
   isPendingPaymentBooking,
 } from "@/lib/admin-booking-display";
+import { hasAdminPermission } from "@/lib/admin-authorization";
 import { AdminCard, AdminEmptyState, AdminSectionShell } from "./shared";
 
 type BookingRow = {
@@ -228,6 +227,7 @@ export default function Bookings() {
   const [page, setPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [userRole, setUserRole] = useState<string | null>(null);
+  const [userPermissions, setUserPermissions] = useState<string[]>([]);
   const [trainerPerms, setTrainerPerms] = useState({ canSendGifts: false, canAddBookings: false });
   const [permsLoaded, setPermsLoaded] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -319,7 +319,7 @@ export default function Bookings() {
   }, [attendanceMode, attendanceScheduleId]);
 
   const submitScan = useCallback(
-    async (rawValue: string) => {
+    async (rawValue: string, source: "manual" | "qr" = "manual") => {
       const value = rawValue.trim();
       if (!value) return;
 
@@ -328,7 +328,7 @@ export default function Bookings() {
       try {
         const response = await fetch("/api/admin/attendance", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "x-attendance-source": source },
           body: JSON.stringify({
             scanValue: value,
             scheduleId: attendanceMode === "class" ? attendanceScheduleId || null : null,
@@ -462,7 +462,7 @@ export default function Bookings() {
             rawValue = fallbackResult?.data?.trim() ?? "";
           }
           if (rawValue) {
-            await submitScan(rawValue);
+            await submitScan(rawValue, "qr");
           }
         } catch {
           // ignore transient camera detection errors
@@ -555,7 +555,7 @@ export default function Bookings() {
             return;
           }
 
-          await submitScan(rawValue);
+          await submitScan(rawValue, "qr");
         } finally {
           URL.revokeObjectURL(objectUrl);
         }
@@ -589,9 +589,10 @@ export default function Bookings() {
   useEffect(() => {
     void (async () => {
       const res = await fetch("/api/admin/session", { cache: "no-store" });
-      const data = await res.json().catch(() => ({})) as { user?: { role?: string } };
+      const data = await res.json().catch(() => ({})) as { user?: { role?: string; permissions?: string[] } };
       const role = data.user?.role ?? null;
       setUserRole(role);
+      setUserPermissions(Array.isArray(data.user?.permissions) ? data.user.permissions : []);
       if (role === "trainer") {
         const tRes = await fetch("/api/admin/trainers", { cache: "no-store" });
         const tData = await tRes.json().catch(() => []) as Array<{ canSendGifts?: boolean; canAddBookings?: boolean }>;
@@ -699,15 +700,11 @@ export default function Bookings() {
     if (!confirmed) return;
     setWorking(true);
     try {
-      await Promise.all(
-        Array.from(selectedIds).map((id) =>
-          fetch("/api/admin/bookings", {
-            method: "DELETE",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ bookingId: id }),
-          }),
-        ),
-      );
+      await fetch("/api/admin/bookings", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bookingIds: Array.from(selectedIds) }),
+      });
       setSelectedIds(new Set());
       await loadBookings();
     } finally {
@@ -792,6 +789,14 @@ export default function Bookings() {
   }, [bookings]);
 
   const totalPages = Math.max(1, Math.ceil(bookings.length / PER_PAGE));
+  const permissionUser = { role: userRole ?? "", permissions: userPermissions };
+  const canCreateBooking = hasAdminPermission(permissionUser, "bookings_create");
+  const canRescheduleBooking = hasAdminPermission(permissionUser, "bookings_reschedule");
+  const canCancelBooking = hasAdminPermission(permissionUser, "bookings_cancel");
+  const canDeleteBooking = hasAdminPermission(permissionUser, "bookings_delete");
+  const canBulkDelete = hasAdminPermission(permissionUser, "bookings_bulk_delete");
+  const canManualAttendance = hasAdminPermission(permissionUser, "manual_attendance");
+  const canQrAttendance = hasAdminPermission(permissionUser, "qr_attendance");
   const pagedBookings = bookings.slice((page - 1) * PER_PAGE, page * PER_PAGE);
   const allPageSelected = pagedBookings.length > 0 && pagedBookings.every((b) => selectedIds.has(b.id));
   const somePageSelected = !allPageSelected && pagedBookings.some((b) => selectedIds.has(b.id));
@@ -885,7 +890,7 @@ export default function Bookings() {
               🎁 هدية تجريبية
             </button>
           )}
-          {permsLoaded && (userRole !== "trainer" || trainerPerms.canAddBookings) && (
+          {permsLoaded && canCreateBooking && (
             <button
               onClick={() => {
                 setSelectedCustomer("");
@@ -929,7 +934,7 @@ export default function Bookings() {
         </div>
       </AdminCard>
 
-      {userRole === "admin" && (
+      {canQrAttendance && (
         <AdminCard>
           <div className="grid gap-5 xl:grid-cols-[1.1fr_.9fr]">
             <div className="space-y-4">
@@ -1156,7 +1161,7 @@ export default function Bookings() {
         ) : (
           <>
             {/* Bulk action bar */}
-            {selectedIds.size > 0 && userRole === "admin" && (
+            {selectedIds.size > 0 && canBulkDelete && (
               <div className="flex items-center justify-between gap-3 border-b border-[rgba(255,188,219,0.12)] bg-rose-950/30 px-5 py-3">
                 <span className="text-sm font-bold text-[#fff4f8]">
                   تم تحديد {selectedIds.size} حجز
@@ -1175,7 +1180,7 @@ export default function Bookings() {
               <table className="w-full min-w-[1060px] text-sm">
                 <thead>
                   <tr className="border-b border-[rgba(255,188,219,0.12)] text-right text-xs text-[#d7aabd]">
-                    {userRole === "admin" && (
+                    {canBulkDelete && (
                       <th className="px-4 py-4 w-10">
                         <input
                           type="checkbox"
@@ -1198,14 +1203,13 @@ export default function Bookings() {
                       const isPendingPayment = isPendingPaymentBooking(booking);
                       const statusDisplay = getBookingStatusDisplay(booking);
                       const paymentDisplay = getBookingPaymentDisplay(booking);
-                      const canManage = canManageBooking(userRole);
-                      const canAttend = canMarkAttendance(booking, userRole);
+                      const canAttend = canManualAttendance && booking.status === "confirmed" && !isPendingPayment;
 
                       return <tr
                       key={booking.id}
                       className={`border-b border-[rgba(255,188,219,0.08)] transition-colors hover:bg-white/[0.03] ${selectedIds.has(booking.id) ? "bg-rose-950/20" : ""}`}
                     >
-                      {userRole === "admin" && (
+                      {canBulkDelete && (
                         <td className="px-4 py-4">
                           <input
                             type="checkbox"
@@ -1241,15 +1245,15 @@ export default function Bookings() {
                         <div className="mt-1 text-xs text-[#d7aabd]">{paymentDisplay ?? formatPayment(booking.paymentMethod)}</div>
                       </td>
                       <td className="px-5 py-4">
-                        {canManage ? (
+                        {canRescheduleBooking || canCancelBooking || canDeleteBooking || canManualAttendance ? (
                           <div className="flex flex-wrap gap-2">
-                            <button
+                            {canRescheduleBooking && <button
                               onClick={() => setRescheduleModal(booking)}
                               className="rounded-lg bg-white/5 px-3 py-2 text-xs text-[#fff4f8] transition-colors hover:bg-white/10"
                             >
                               تعديل الموعد
-                            </button>
-                            {(booking.status === "confirmed" || isPendingPayment) && (
+                            </button>}
+                            {canManualAttendance && (booking.status === "confirmed" || isPendingPayment) && (
                               <button
                                 onClick={() => void handleAction(booking.id, "attended")}
                                 disabled={working || !canAttend}
@@ -1259,7 +1263,7 @@ export default function Bookings() {
                                 تسجيل حضور
                               </button>
                             )}
-                            {booking.status !== "cancelled" && (
+                            {canCancelBooking && booking.status !== "cancelled" && (
                               <button
                                 onClick={() => void handleAction(booking.id, "cancel")}
                                 disabled={working}
@@ -1268,7 +1272,7 @@ export default function Bookings() {
                                 إلغاء
                               </button>
                             )}
-                            {booking.status === "cancelled" && (
+                            {canCancelBooking && booking.status === "cancelled" && (
                               <button
                                 onClick={() => void handleAction(booking.id, "confirm")}
                                 disabled={working}
@@ -1277,13 +1281,13 @@ export default function Bookings() {
                                 إعادة تفعيل
                               </button>
                             )}
-                            <button
+                            {canDeleteBooking && <button
                               onClick={() => void handleDelete(booking.id)}
                               disabled={working}
                               className="rounded-lg bg-rose-900/30 px-3 py-2 text-xs text-rose-400 transition-colors hover:bg-rose-900/50 disabled:opacity-50"
                             >
                               حذف
-                            </button>
+                            </button>}
                           </div>
                         ) : (
                           <span className="text-xs text-[#b98ea0]">
