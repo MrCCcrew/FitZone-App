@@ -32,7 +32,7 @@ function validTimeZone(value: string) {
 export function parseAdminAnalyticsFilters(searchParams: URLSearchParams): AdminAnalyticsFilters {
   const parsed = schema.safeParse(Object.fromEntries(searchParams));
   if (!parsed.success) throw new Error("invalid_filters");
-  const timezone = parsed.data.timezone ?? "Asia/Kuwait";
+  const timezone = parsed.data.timezone ?? "Africa/Cairo";
   if (!validTimeZone(timezone)) throw new Error("invalid_timezone");
   const today = new Date();
   const defaultTo = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate(), 23, 59, 59, 999));

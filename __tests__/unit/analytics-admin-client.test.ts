@@ -9,7 +9,7 @@ describe("admin analytics client", () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it("serializes only supported non-sensitive filters", () => {
-    expect(analyticsQuery({ from: "2026-01-01", to: "2026-01-31", timezone: "Asia/Kuwait", source: "membership_checkout" })).toBe("from=2026-01-01&to=2026-01-31&timezone=Asia%2FKuwait&source=membership_checkout");
+    expect(analyticsQuery({ from: "2026-01-01", to: "2026-01-31", timezone: "Africa/Cairo", source: "membership_checkout" })).toBe("from=2026-01-01&to=2026-01-31&timezone=Africa%2FCairo&source=membership_checkout");
   });
 
   it("fetches all sections with one shared filter set and forwards AbortSignal", async () => {

@@ -4,7 +4,7 @@ import { parseAdminAnalyticsFilters, safeRate } from "@/lib/analytics/admin-filt
 describe("admin analytics filters", () => {
   it("uses a 30-day default range and the project timezone", () => {
     const filters = parseAdminAnalyticsFilters(new URLSearchParams());
-    expect(filters.timezone).toBe("Asia/Kuwait");
+    expect(filters.timezone).toBe("Africa/Cairo");
     expect(filters.to.getTime() - filters.from.getTime()).toBeLessThanOrEqual(30 * 24 * 60 * 60 * 1000);
   });
 
@@ -15,6 +15,10 @@ describe("admin analytics filters", () => {
     expect(() => parseAdminAnalyticsFilters(new URLSearchParams("timezone=Not/AZone"))).toThrow("invalid_timezone");
     expect(() => parseAdminAnalyticsFilters(new URLSearchParams("eventName=raw_payload"))).toThrow("invalid_filters");
     expect(() => parseAdminAnalyticsFilters(new URLSearchParams("entityType=user"))).toThrow("invalid_filters");
+  });
+
+  it("preserves a timezone supplied by an existing analytics link", () => {
+    expect(parseAdminAnalyticsFilters(new URLSearchParams("timezone=Asia/Kuwait")).timezone).toBe("Asia/Kuwait");
   });
 
   it("never returns NaN or Infinity rates", () => {
