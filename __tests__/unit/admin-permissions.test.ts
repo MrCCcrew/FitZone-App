@@ -7,6 +7,14 @@ vi.mock("@/lib/admin-guard", () => ({
   requireAdminFeature: vi.fn(),
 }));
 
+vi.mock("@/lib/admin-authorization-server", () => ({
+  requireAdminPermission: vi.fn(),
+}));
+
+vi.mock("@/lib/admin-session", () => ({
+  getAdminSession: vi.fn(),
+}));
+
 vi.mock("@/lib/db", () => ({
   db: {
     attendancePass: { findUnique: vi.fn() },
@@ -43,28 +51,39 @@ import { POST as bookingsPOST, PATCH as bookingsPATCH, DELETE as bookingsDELETE 
 import { db } from "@/lib/db";
 import { extractAttendanceCode } from "@/lib/attendance";
 import { requireAdminFeature } from "@/lib/admin-guard";
+import { requireAdminPermission } from "@/lib/admin-authorization-server";
+import { getAdminSession } from "@/lib/admin-session";
 
 describe("Admin Permissions - Attendance & Bookings", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  const mockRequireAdminFeature = vi.mocked(requireAdminFeature);
-  const mockAdminFeatureAccess = (role: string, userId: string) =>
-    ({
+  const mockRequireAdminFeature = vi.mocked(requireAdminPermission);
+  const mockAdminFeatureAccess = (role: string, userId: string) => {
+    if (role !== "admin") {
+      return { error: NextResponse.json({ error: "Forbidden" }, { status: 403 }) } as Awaited<ReturnType<typeof requireAdminPermission>>;
+    }
+    return ({
       session: {
-        user: {
-          id: userId,
-          email: `${userId}@test.com`,
-          name: userId,
-          role,
-          jobTitle: null,
-          permissions: [],
-        },
+        id: userId,
+        email: `${userId}@test.com`,
+        name: userId,
+        role,
+        jobTitle: null,
+        permissions: [],
+        exp: 0,
       },
       role,
       permissions: [],
-    }) as Awaited<ReturnType<typeof requireAdminFeature>>;
+    }) as Awaited<ReturnType<typeof requireAdminPermission>>;
+  };
+
+  beforeEach(() => {
+    vi.mocked(getAdminSession).mockResolvedValue({
+      id: "admin1", email: "admin1@test.com", name: "admin1", role: "admin", jobTitle: null, permissions: [], exp: 0,
+    });
+  });
 
   // ─── Attendance Endpoint ────────────────────────────────────────────────────
 
@@ -125,7 +144,7 @@ describe("Admin Permissions - Attendance & Bookings", () => {
       const json = await response.json();
 
       expect(response.status).toBe(403);
-      expect(json.error).toBe("هذه العملية متاحة للمدير فقط");
+      expect(json.error).toBe("Forbidden");
       expect(db.attendancePass.findUnique).not.toHaveBeenCalled();
     });
 
@@ -141,7 +160,7 @@ describe("Admin Permissions - Attendance & Bookings", () => {
       const json = await response.json();
 
       expect(response.status).toBe(403);
-      expect(json.error).toBe("هذه العملية متاحة للمدير فقط");
+      expect(json.error).toBe("Forbidden");
     });
   });
 
@@ -157,7 +176,7 @@ describe("Admin Permissions - Attendance & Bookings", () => {
       });
 
       // Will fail validation, but we're testing role check happens first
-      const response = await bookingsPOST(req);
+      const response = (await bookingsPOST(req))!;
 
       // If we got past role check, error will be about missing data (not 403)
       expect(response.status).not.toBe(403);
@@ -171,11 +190,11 @@ describe("Admin Permissions - Attendance & Bookings", () => {
         body: JSON.stringify({ userId: "u1", scheduleId: "s1" }),
       });
 
-      const response = await bookingsPOST(req);
+      const response = (await bookingsPOST(req))!;
       const json = await response.json();
 
       expect(response.status).toBe(403);
-      expect(json.error).toContain("للمسؤولين فقط");
+      expect(json.error).toBe("Forbidden");
     });
   });
 
@@ -189,7 +208,7 @@ describe("Admin Permissions - Attendance & Bookings", () => {
       });
 
       // Will fail validation, but role check happens first
-      const response = await bookingsPATCH(req);
+      const response = (await bookingsPATCH(req))!;
       expect(response.status).not.toBe(403);
     });
 
@@ -201,11 +220,11 @@ describe("Admin Permissions - Attendance & Bookings", () => {
         body: JSON.stringify({ bookingId: "b1", action: "cancel" }),
       });
 
-      const response = await bookingsPATCH(req);
+      const response = (await bookingsPATCH(req))!;
       const json = await response.json();
 
       expect(response.status).toBe(403);
-      expect(json.error).toContain("للمسؤولين فقط");
+      expect(json.error).toBe("Forbidden");
     });
   });
 
@@ -218,7 +237,7 @@ describe("Admin Permissions - Attendance & Bookings", () => {
         body: JSON.stringify({ bookingId: "b1" }),
       });
 
-      const response = await bookingsDELETE(req);
+      const response = (await bookingsDELETE(req))!;
       expect(response.status).not.toBe(403);
     });
 
@@ -230,11 +249,11 @@ describe("Admin Permissions - Attendance & Bookings", () => {
         body: JSON.stringify({ bookingId: "b1" }),
       });
 
-      const response = await bookingsDELETE(req);
+      const response = (await bookingsDELETE(req))!;
       const json = await response.json();
 
       expect(response.status).toBe(403);
-      expect(json.error).toContain("للمسؤولين فقط");
+      expect(json.error).toBe("Forbidden");
     });
   });
 

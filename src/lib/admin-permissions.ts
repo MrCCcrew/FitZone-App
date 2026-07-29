@@ -44,6 +44,19 @@ export type AdminFeature =
   | "store-free-gifts"
   | "blog";
 
+export const BOOKING_PERMISSIONS = [
+  "bookings_view",
+  "bookings_create",
+  "bookings_reschedule",
+  "bookings_cancel",
+  "bookings_delete",
+  "bookings_bulk_delete",
+  "manual_attendance",
+  "qr_attendance",
+] as const;
+
+export type BookingPermission = (typeof BOOKING_PERMISSIONS)[number];
+
 
 export const ADMIN_FEATURES: AdminFeature[] = [
   "settings",
@@ -78,6 +91,8 @@ export const ADMIN_FEATURES: AdminFeature[] = [
   "store-free-gifts",
   "blog",
 ];
+
+export const ADMIN_PERMISSION_KEYS = [...ADMIN_FEATURES, ...BOOKING_PERMISSIONS] as const;
 
 const STAFF_FEATURES: AdminFeature[] = [
   "site-content",
