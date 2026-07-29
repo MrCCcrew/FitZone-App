@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
+import { Suspense } from "react";
 import { Geist, Geist_Mono, Cairo, Tajawal } from "next/font/google";
 import Providers from "./Providers";
+import AnalyticsTracker from "@/components/analytics/AnalyticsTracker";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -222,7 +224,7 @@ export default function RootLayout({
         />
       </head>
       <body className={`${geistSans.variable} ${geistMono.variable} ${cairo.variable} ${tajawal.variable} antialiased`}>
-        <Providers>{children}</Providers>
+        <Providers><Suspense fallback={null}><AnalyticsTracker /></Suspense>{children}</Providers>
       </body>
     </html>
   );
