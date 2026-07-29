@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { Section } from "./types";
 import { canAccessAdminSection, getDefaultAdminSection, isAdminRole } from "@/lib/admin-permissions";
 import Overview from "./sections/Overview";
+import Analytics from "./sections/Analytics";
 import Accounting from "./sections/Accounting";
 import PagesContent from "./sections/PagesContent";
 import BlogPending from "./sections/BlogPending";
@@ -47,6 +48,7 @@ const GYM_SECTIONS: Section[] = ["subscriptions", "packages", "goals", "health",
 const NAV: { id: Section; label: string; icon: string }[] = [
   { id: "settings", label: "الإعدادات والصلاحيات", icon: "⚙️" },
   { id: "overview", label: "لوحة التحكم", icon: "📊" },
+  { id: "analytics", label: "تحليلات الموقع", icon: "📈" },
   { id: "accounting", label: "الحسابات والتقارير", icon: "💼" },
   { id: "pages", label: "الصفحات والمحتوى", icon: "📄" },
   { id: "blog-pending", label: "طلبات نشر المدونة", icon: "📝" },
@@ -93,6 +95,7 @@ if (trainersInsertAt >= 0) {
 const TITLES: Record<string, string> = {
   settings: "إدارة الإعدادات والصلاحيات",
   overview: "لوحة التحكم",
+  analytics: "تحليلات الموقع",
   accounting: "الحسابات وتقارير المتجر والجيم",
   pages: "إدارة الصفحات والمحتوى",
   "blog-pending": "طلبات نشر المقالات",
@@ -130,6 +133,7 @@ const TITLES: Record<string, string> = {
 const SECTIONS: Record<string, ComponentType> = {
   settings: Settings,
   overview: Overview,
+  analytics: Analytics,
   accounting: Accounting,
   pages: PagesContent,
   "blog-pending": BlogPending,

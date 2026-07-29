@@ -42,7 +42,8 @@ export type AdminFeature =
   | "delivery-companies"
   | "store-campaigns"
   | "store-free-gifts"
-  | "blog";
+  | "blog"
+  | "analytics_view";
 
 export const BOOKING_PERMISSIONS = [
   "bookings_view",
@@ -90,6 +91,7 @@ export const ADMIN_FEATURES: AdminFeature[] = [
   "store-campaigns",
   "store-free-gifts",
   "blog",
+  "analytics_view",
 ];
 
 export const ADMIN_PERMISSION_KEYS = [...ADMIN_FEATURES, ...BOOKING_PERMISSIONS] as const;
@@ -131,6 +133,7 @@ export const ROLE_FEATURE_TEMPLATES: Record<AdminRole, AdminFeature[]> = {
 
 export const SECTION_FEATURE_MAP: Record<Section, AdminFeature> = {
   overview: "overview",
+  analytics: "analytics_view",
   accounting: "accounting",
   settings: "settings",
   pages: "site-content",

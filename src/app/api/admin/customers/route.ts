@@ -4,6 +4,7 @@ import { requireAdminFeature } from "@/lib/admin-guard";
 import { db } from "@/lib/db";
 import { logAudit } from "@/lib/audit-context";
 import { getRewardSettings, calcTier } from "@/lib/reward-settings";
+import { recordMembershipActivatedEvent } from "@/lib/analytics/membership-events";
 
 async function checkAdmin() {
   const guard = await requireAdminFeature("customers");
@@ -195,7 +196,7 @@ async function applyMembership(userId: string, planName?: string, status?: Custo
   const endDate = new Date(startDate);
   endDate.setDate(endDate.getDate() + plan.duration);
 
-  await db.userMembership.create({
+  const createdMembership = await db.userMembership.create({
     data: {
       userId,
       membershipId: plan.id,
@@ -204,6 +205,8 @@ async function applyMembership(userId: string, planName?: string, status?: Custo
       status: "active",
     },
   });
+
+  void recordMembershipActivatedEvent(createdMembership.id).catch(() => null);
 
   if (plan.walletBonus > 0) {
     const wallet = await db.wallet.upsert({

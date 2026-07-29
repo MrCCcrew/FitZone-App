@@ -104,10 +104,10 @@ describe("normalizeAdminPermissions", () => {
     expect(perms).toContain("accounting");
     expect(perms).not.toContain("settings");
   });
-  it("contracts_manager gets contracts + customers", () => {
+  it("contracts_manager gets contracts only", () => {
     const perms = normalizeAdminPermissions("contracts_manager", undefined);
     expect(perms).toContain("contracts");
-    expect(perms).toContain("customers");
+    expect(perms).not.toContain("customers");
     expect(perms).not.toContain("accounting");
   });
 });
@@ -133,6 +133,11 @@ describe("canAccessAdminFeature", () => {
     expect(canAccessAdminFeature("staff", ["accounting"], "accounting")).toBe(true);
     expect(canAccessAdminFeature("staff", ["accounting"], "memberships")).toBe(false);
   });
+  it("requires analytics_view for staff while granting it to full admins", () => {
+    expect(canAccessAdminFeature("staff", [], "analytics_view")).toBe(false);
+    expect(canAccessAdminFeature("staff", ["analytics_view"], "analytics_view")).toBe(true);
+    expect(canAccessAdminFeature("admin", [], "analytics_view")).toBe(true);
+  });
   it("unknown role cannot access anything", () => {
     expect(canAccessAdminFeature("unknown", [], "settings")).toBe(false);
     expect(canAccessAdminFeature(undefined, [], "overview")).toBe(false);
@@ -144,6 +149,11 @@ describe("canAccessAdminFeature", () => {
 });
 
 describe("canAccessAdminSection", () => {
+  it("shows the analytics section only with analytics_view", () => {
+    expect(canAccessAdminSection("staff", [], "analytics")).toBe(false);
+    expect(canAccessAdminSection("staff", ["analytics_view"], "analytics")).toBe(true);
+    expect(canAccessAdminSection("admin", [], "analytics")).toBe(true);
+  });
   it("admin can access all major sections", () => {
     const sections = ["overview","accounting","settings","subscriptions","classes","products","orders","customers"] as const;
     for (const section of sections) {

@@ -7,6 +7,7 @@ import { logAudit } from "@/lib/audit-context";
 import { buildAttendancePayload } from "@/lib/attendance";
 import { generateMembershipQrCard } from "@/lib/membership-card";
 import { sendGiftTrialEmail } from "@/lib/email";
+import { recordMembershipActivatedEvent } from "@/lib/analytics/membership-events";
 
 const GIFT_MEMBERSHIP_NAME = "حصة تجريبية مجانية";
 
@@ -159,6 +160,8 @@ export async function POST(req: Request) {
 
     return { userMembership: um };
   });
+
+  void recordMembershipActivatedEvent(userMembership.id).catch(() => null);
 
   void logAudit({
     action: "gift_trial",

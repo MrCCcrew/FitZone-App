@@ -20,6 +20,8 @@ import {
   unlockPendingReferralReward,
 } from "@/lib/payments/service";
 import { getRewardSettings, calcTier } from "@/lib/reward-settings";
+import { recordCheckoutStarted } from "@/lib/analytics/checkout-events";
+import { recordMembershipActivatedEvent } from "@/lib/analytics/membership-events";
 
 type SubscribePayload = {
   membershipId?: string | null;
@@ -1097,6 +1099,9 @@ export async function POST(req: Request) {
         actualPointsDeduct,
         actualPointsEGP,
         discountCode: discountRecord && discountApplied > 0 ? String(discountCode ?? "").trim().toUpperCase() : null,
+        planId: plan.id,
+        planKind: plan.kind,
+        offerId,
       };
     })
     .catch((error: unknown) => {
@@ -1111,6 +1116,7 @@ export async function POST(req: Request) {
 
   // Unlock pending referral reward when subscription is immediately active
   if (!result.needsPaymentConfirmation) {
+    void recordMembershipActivatedEvent(result.subscriptionId).catch(() => null);
     try {
       await unlockPendingReferralReward(userId);
     } catch {}
@@ -1192,6 +1198,19 @@ export async function POST(req: Request) {
       });
       checkoutUrl = transaction.checkoutUrl ?? null;
       transactionId = transaction.id;
+      if (result.planId) {
+        const entityType = result.offerId ? "offer" : result.planKind === "package" ? "package" : "subscription";
+        void recordCheckoutStarted({
+          userId,
+          entityType,
+          entityId: result.offerId ?? result.planId,
+          entityName: result.offerTitle ?? result.planName,
+          value: result.paymentAmount,
+          currency: "EGP",
+          source: result.offerId ? "offer_checkout" : result.planKind === "package" ? "package_checkout" : "membership_checkout",
+          paymentTransactionId: transaction.id,
+        });
+      }
     } catch (error) {
       console.error("[SUBSCRIBE_PAYMENT_INIT]", error);
       await restorePaymentBalanceAdjustments({
