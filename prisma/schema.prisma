@@ -130,6 +130,10 @@ model User {
   nutritionCommissions       NutritionCommission[]       @relation("NutritionCommissions")
   healthResponses            HealthResponse[]            @relation("HealthResponses")
   nutritionistProfile        NutritionistProfile?        @relation("NutritionistAccount")
+  analyticsVisitors          AnalyticsVisitor[]
+  analyticsSessions          AnalyticsSession[]
+  analyticsPageViews         AnalyticsPageView[]
+  analyticsEvents            AnalyticsEvent[]
   nutritionSessions          NutritionSession[]          @relation("NutritionSessionUser")
   orderStatusHistory         OrderStatusHistory[]        @relation("OrderStatusPerformer")
   inventoryMovementsPerformed InventoryMovement[]        @relation("InventoryMovementPerformer")
@@ -1902,5 +1906,120 @@ model ManagerPartnerCommission {
   partnerCommission PartnerCommission? @relation(fields: [partnerCommissionId], references: [id], onDelete: SetNull)
 
   @@index([managerId, status])
+  @@index([createdAt])
+}
+
+// ─── First-party privacy-preserving analytics ───────────────────────────────
+
+model AnalyticsVisitor {
+  id              String   @id @default(cuid())
+  anonymousId     String   @unique
+  userId          String?
+  firstSeenAt     DateTime @default(now())
+  lastSeenAt      DateTime @default(now())
+  countryCode     String?
+  countryName     String?
+  region          String?
+  city            String?
+  deviceType      String?
+  browser         String?
+  operatingSystem String?
+  isBot           Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user       User?                 @relation(fields: [userId], references: [id], onDelete: SetNull)
+  sessions   AnalyticsSession[]
+  pageViews  AnalyticsPageView[]
+  events     AnalyticsEvent[]
+
+  @@index([firstSeenAt])
+  @@index([lastSeenAt])
+  @@index([userId])
+  @@index([countryCode])
+}
+
+model AnalyticsSession {
+  id                 String   @id @default(cuid())
+  visitorId          String
+  userId             String?
+  startedAt          DateTime @default(now())
+  lastActivityAt     DateTime @default(now())
+  endedAt            DateTime?
+  durationSeconds    Int      @default(0)
+  landingPage        String?
+  exitPage           String?
+  referrer           String?
+  utmSource          String?
+  utmMedium          String?
+  utmCampaign        String?
+  deviceType         String?
+  countryCode        String?
+  city               String?
+  pageViewCount      Int      @default(0)
+  isBounce           Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  visitor    AnalyticsVisitor    @relation(fields: [visitorId], references: [id], onDelete: Cascade)
+  user       User?               @relation(fields: [userId], references: [id], onDelete: SetNull)
+  pageViews  AnalyticsPageView[]
+  events     AnalyticsEvent[]
+
+  @@index([visitorId])
+  @@index([userId])
+  @@index([startedAt])
+  @@index([countryCode])
+}
+
+model AnalyticsPageView {
+  id              String   @id @default(cuid())
+  sessionId       String
+  visitorId       String
+  userId          String?
+  path            String
+  pageTitle       String?
+  enteredAt       DateTime @default(now())
+  exitedAt        DateTime?
+  durationSeconds Int      @default(0)
+  referrerPath    String?
+  createdAt       DateTime @default(now())
+
+  session  AnalyticsSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  visitor  AnalyticsVisitor @relation(fields: [visitorId], references: [id], onDelete: Cascade)
+  user     User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([sessionId])
+  @@index([visitorId])
+  @@index([userId])
+  @@index([path])
+  @@index([createdAt])
+}
+
+model AnalyticsEvent {
+  id             String   @id @default(cuid())
+  sessionId      String
+  visitorId      String
+  userId         String?
+  eventName      String
+  eventCategory  String
+  pagePath       String
+  entityType     String?
+  entityId       String?
+  entityName     String?
+  metadata       Json?
+  createdAt      DateTime @default(now())
+
+  session  AnalyticsSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  visitor  AnalyticsVisitor @relation(fields: [visitorId], references: [id], onDelete: Cascade)
+  user     User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([sessionId])
+  @@index([visitorId])
+  @@index([userId])
+  @@index([eventName])
+  @@index([eventCategory])
+  @@index([pagePath])
+  @@index([entityType, entityId])
   @@index([createdAt])
 }
