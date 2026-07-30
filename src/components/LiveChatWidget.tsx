@@ -276,6 +276,7 @@ export default function LiveChatWidget() {
   return (
     <>
       <button
+        data-tour="ai-coach"
         onClick={() => {
           setOpen((value) => !value);
           ensureSession().catch(() => {});

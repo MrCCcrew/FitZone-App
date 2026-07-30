@@ -3925,6 +3925,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
   const [healthQuestions, setHealthQuestions] = useState<PublicHealthQuestion[]>([]);
   const [selectedGoals, setSelectedGoals] = useState<string[]>([]);
   const [goalViewParentId, setGoalViewParentId] = useState<string | null>(null);
+  const tourSelectedGoalRef = useRef<string | null>(null);
   const plansRef = useRef<HTMLDivElement | null>(null);
   const featuredCardRef = useRef<HTMLDivElement | null>(null);
   const [subscribing, setSubscribing] = useState<string | null>(null);
@@ -4242,10 +4243,32 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
       }
       return cleaned;
     });
-    setTimeout(() => {
+    requestAnimationFrame(() => {
       plansRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 50);
+    });
   };
+
+  useEffect(() => {
+    const showGoalMembershipsForTour = () => {
+      if (selectedGoals.length > 0) return;
+      const firstSelectableGoal = displayGoals.find((goal) => (goalsByParent.get(goal.id)?.length ?? 0) === 0);
+      if (!firstSelectableGoal) return;
+      tourSelectedGoalRef.current = firstSelectableGoal.id;
+      toggleGoal(firstSelectableGoal.id);
+    };
+    const clearTourGoal = () => {
+      const temporaryGoalId = tourSelectedGoalRef.current;
+      if (!temporaryGoalId) return;
+      setSelectedGoals((current) => current.filter((goalId) => goalId !== temporaryGoalId));
+      tourSelectedGoalRef.current = null;
+    };
+    window.addEventListener("fitzone:tour-show-goal-memberships", showGoalMembershipsForTour);
+    window.addEventListener("fitzone:tour-clear-goal", clearTourGoal);
+    return () => {
+      window.removeEventListener("fitzone:tour-show-goal-memberships", showGoalMembershipsForTour);
+      window.removeEventListener("fitzone:tour-clear-goal", clearTourGoal);
+    };
+  }, [displayGoals, goalsByParent, selectedGoals.length]);
 
   const filteredPlans = useMemo(() => {
     if (selectedGoals.length === 0) return [];
@@ -5734,7 +5757,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
         </section>
       )}
 
-      {!hasPendingFlow && <section className="section" data-tour="goals" style={{ paddingTop: 36 }}>
+      {!hasPendingFlow && <section className="section" style={{ paddingTop: 36 }}>
         <div className="container">
           <div style={{ textAlign: "center", marginBottom: 28 }}>
             <h2 className="section-title">
@@ -5767,7 +5790,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
             </div>
           ) : (
             <>
-              <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 16 }}>
+              <div data-tour="goals" style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 16, scrollMarginTop: 120 }}>
                 {displayGoals.map((goal) => {
                   const active = selectedGoals.includes(goal.id);
                   const hasChildren = !goal.parentId && (goalsByParent.get(goal.id)?.length ?? 0) > 0;
@@ -5813,7 +5836,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
         </div>
       </section>}
 
-      {!hasPendingFlow && <section className="section" data-tour="memberships" ref={plansRef}>
+      {!hasPendingFlow && <section className="section" ref={plansRef}>
         <div className="container">
           {subMsg && (
             <div style={{ marginBottom: 20, padding: "14px 20px", borderRadius: 8, background: subMsg.ok ? "#dcfce7" : "#fee2e2", color: subMsg.ok ? "#166534" : "#991b1b", fontWeight: 700, textAlign: "center", fontSize: 14 }}>
@@ -6006,7 +6029,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
               لا توجد اشتراكات مرتبطة بالأهداف المختارة حالياً.
             </div>
           ) : (
-            <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr 1fr", "repeat(3, 1fr)", "repeat(4, 1fr)"), gap: 16 }}>
+            <div data-tour="goal-memberships" style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr 1fr", "repeat(3, 1fr)", "repeat(4, 1fr)"), gap: 16, scrollMarginTop: 120 }}>
               {filteredPlans.map((p) => {
                 const before = p.priceBefore ?? null;
                 const after = p.priceAfter ?? p.price;
@@ -6571,7 +6594,7 @@ const ClassesPage = ({ navigate }: { navigate: (p: string) => void }) => {
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 32 }}>
             {types.map(tp => <button key={tp} className={`tab ${filterType === tp ? "active" : ""}`} onClick={() => setFilterType(tp)}>{tp}</button>)}
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 24 }}>
+          <div data-tour="classes-list" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 24, scrollMarginTop: 120 }}>
             {filtered.map(c => {
               const firstSchedule = c.schedules[0];
               const spots = firstSchedule?.availableSpots ?? c.maxSpots;
@@ -6890,7 +6913,7 @@ const SchedulePage = () => {
           </p>
         </div>
       </section>
-      <section className="section" data-tour="schedule">
+      <section className="section">
         <div className="container" style={{ overflowX: "hidden" }}>
           {renderBoard(
             t("مواعيد الكلاسات الصباحية", "Morning Classes"),
@@ -7404,7 +7427,7 @@ const ShopPage = ({ navigate }: { navigate: (p: string) => void }) => {
             const hasMoreShop = filtered.length > SHOP_INITIAL && !showAllShopProducts;
             return (
               <>
-                <div id="shop-products" data-tour="shop" style={{ display: "grid", gridTemplateColumns: shopGridCols, gap: shopGap, scrollMarginTop: 120 }}>
+                <div id="shop-products" data-tour="shop-products" style={{ display: "grid", gridTemplateColumns: shopGridCols, gap: shopGap, scrollMarginTop: 120 }}>
                   {shownFiltered.map(p => <ProductMiniCard key={p.id ?? p.name} product={p} navigate={navigate} wishlist={wishlist} lang={lang} t={t} giftCampaignActive={giftCampaign?.active} giftCampaignMin={giftCampaign?.minSubtotal} giftRewardLabel={giftCampaignRewardLabel(giftCampaign)} compact={isMobile} />)}
                 </div>
                 {hasMoreShop && (
@@ -9115,7 +9138,7 @@ const TrainersPage = ({ navigate, summary }: { navigate: (p: string) => void; su
       </section>
       <section className="section">
         <div className="container">
-          <div id="trainers-list" data-tour="trainers" style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 24, scrollMarginTop: 120 }}>
+          <div id="trainers-list" data-tour="trainers-list" style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 24, scrollMarginTop: 120 }}>
             {trainers.map((tr, index) => (
               <div key={tr.id} className="card card-hover" style={{ padding: 0, overflow: "hidden", textAlign: "center" }}>
                 {/* Photo */}
@@ -10154,13 +10177,13 @@ export default function App() {
     }
   };
 
-  const navigateForTour = useCallback((tourPage: "memberships" | "schedule" | "trainers" | "shop" | null) => {
+  const navigateForTour = useCallback((tourPage: "memberships" | "classes" | "trainers" | "shop" | null) => {
     if (!tourPage) return;
     navigating.current = true;
     setPage((current) => current === tourPage ? current : tourPage);
   }, []);
 
-  const finishTourAt = useCallback((target: "goals" | "memberships") => {
+  const finishTourAt = useCallback((target: "goals") => {
     navigating.current = true;
     setPage("memberships");
     if (tourFrameRef.current !== null) cancelAnimationFrame(tourFrameRef.current);
