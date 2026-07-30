@@ -5929,10 +5929,12 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
                   {/* Right: Date picker + CTA */}
                   <div style={{ flex: "1 1 220px", minWidth: 0, maxWidth: 340, margin: "0 auto", width: "100%", display: "flex", flexDirection: "column", gap: 12 }}>
                     <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(199,0,114,0.25)", borderRadius: 10, padding: "16px 16px 14px" }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: "#c70072", marginBottom: 10 }}>
+                      <label htmlFor="featured-plan-start-date" style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#c70072", marginBottom: 10 }}>
                         📅 {t("اختاري تاريخ بداية الاشتراك", "Choose your start date")}
-                      </div>
+                      </label>
                       <input
+                        id="featured-plan-start-date"
+                        name="featuredStartDate"
                         type="date"
                         min={todayStr}
                         max={maxDateStr}
