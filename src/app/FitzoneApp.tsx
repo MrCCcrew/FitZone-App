@@ -747,8 +747,8 @@ const Header = ({
   return (
     <header style={{ background: "rgba(255,245,248,.97)", backdropFilter: "blur(12px)", borderBottom: `1px solid ${C.border}`, position: "sticky", top: 0, zIndex: 100 }}>
       {/* Top bar */}
-      <div style={{ background: C.redDark, padding: "6px 0", textAlign: "center" }}>
-        <span style={{ fontSize: 12, fontWeight: 600, color: "#fff" }}>
+      <div style={{ background: C.redDark, minHeight: 30, padding: "6px 0", textAlign: "center", overflow: "hidden" }}>
+        <span style={{ fontSize: 12, fontWeight: 600, color: "#fff", whiteSpace: "nowrap" }}>
           {announcements.length > 0 ? announcements[annIndex] : t(DEFAULT_TOP_BAR.ar, DEFAULT_TOP_BAR.en)}
         </span>
       </div>
@@ -2480,9 +2480,9 @@ const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string, s
                 {heroCtaSecondary}
               </button>
             </div>
-            <div style={{ display: "flex", gap: viewportWidth() < 768 ? 20 : 40, marginTop: 48, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", gap: viewportWidth() < 768 ? 20 : 40, marginTop: 48, minHeight: 48, flexWrap: "wrap" }}>
               {heroStats.map(([n,l]) => (
-                <div key={l}>
+                <div key={l} style={{ minWidth: 72 }}>
                   <div style={{ fontSize: 30, fontWeight: 900, color: C.red }}>{n}</div>
                   <div style={{ fontSize: 12, color: C.gray, marginTop: 2 }}>{l}</div>
                 </div>
