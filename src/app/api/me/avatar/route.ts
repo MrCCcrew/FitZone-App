@@ -3,7 +3,7 @@ import { randomUUID } from "crypto";
 import { getCurrentAppUser } from "@/lib/app-session";
 import { db } from "@/lib/db";
 import { PutObjectCommand } from "@aws-sdk/client-s3";
-import { getMissingR2Env, getR2Client, R2_BUCKET, R2_PUBLIC_URL } from "@/lib/r2";
+import { getMissingR2Env, getR2Client, R2_BUCKET, R2_PUBLIC_CACHE_CONTROL, R2_PUBLIC_URL } from "@/lib/r2";
 import { applySensitiveRateLimit, getClientIp } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
@@ -61,6 +61,7 @@ export async function POST(req: Request) {
       Key: key,
       Body: buffer,
       ContentType: file.type,
+      CacheControl: R2_PUBLIC_CACHE_CONTROL,
     }));
 
     const url = `${R2_PUBLIC_URL}/${key}`;

@@ -39,3 +39,4 @@ export function getR2Client() {
 
 export const R2_BUCKET = process.env.R2_BUCKET_NAME ?? "fitzone-images";
 export const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL ?? "";
+export const R2_PUBLIC_CACHE_CONTROL = "public, max-age=31536000, immutable";
