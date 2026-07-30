@@ -41,10 +41,6 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://fitzoneland.com"),
   alternates: {
     canonical: "https://fitzoneland.com",
-    languages: {
-      "ar-EG": "https://fitzoneland.com",
-      "en": "https://fitzoneland.com",
-    },
   },
   applicationName: "FitZone",
   keywords: [
@@ -187,33 +183,11 @@ export default function RootLayout({
     name: "FitZone | نادي سيدات بني سويف",
     url: "https://fitzoneland.com",
     inLanguage: ["ar", "en"],
-    potentialAction: {
-      "@type": "SearchAction",
-      target: "https://fitzoneland.com/?q={search_term_string}",
-      "query-input": "required name=search_term_string",
-    },
   };
 
   return (
     <html lang="ar" dir="rtl" suppressHydrationWarning>
       <head>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              (function () {
-                if (typeof window === "undefined") return;
-                if (window.location.hostname === "www.fitzoneland.com") {
-                  window.location.replace(
-                    "https://fitzoneland.com" +
-                      window.location.pathname +
-                      window.location.search +
-                      window.location.hash
-                  );
-                }
-              })();
-            `,
-          }}
-        />
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }}
