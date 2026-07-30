@@ -2316,6 +2316,13 @@ const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string, s
     return () => clearInterval(timer);
   }, [heroContent.slides]);
   useEffect(() => {
+    const slides = heroContent.slides ?? [];
+    if (slides.length < 2) return;
+    const nextIndex = (heroSlideIndex + 1) % slides.length;
+    const image = new Image();
+    image.src = slides[nextIndex];
+  }, [heroContent.slides, heroSlideIndex]);
+  useEffect(() => {
     if (homeOffers.length === 0) return;
     const timer = setInterval(() => setOfferNow(Date.now()), 1000);
     return () => clearInterval(timer);
@@ -2509,16 +2516,19 @@ const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string, s
                         borderRadius: 14,
                         background: "linear-gradient(135deg, rgba(30,5,20,.9), rgba(10,2,8,.95))",
                       }} />
-                    ) : heroSlides.map((slide, index) => (
+                    ) : heroSlides.filter((_, index) => index === heroSlideIndex || index === (heroSlideIndex + 1) % heroSlides.length).map((slide) => {
+                      const index = heroSlides.indexOf(slide);
+                      const isCurrent = index === heroSlideIndex;
+                      return (
                       <div
                         key={`${slide}-${index}`}
                         style={{
                           position: "absolute",
                           inset: 10,
-                          opacity: index === heroSlideIndex ? 1 : 0,
-                          transform: index === heroSlideIndex ? "scale(1)" : "scale(1.035)",
+                          opacity: isCurrent ? 1 : 0,
+                          transform: isCurrent ? "scale(1)" : "scale(1.035)",
                           transition: "opacity 700ms ease, transform 700ms ease",
-                          pointerEvents: index === heroSlideIndex ? "auto" : "none",
+                          pointerEvents: isCurrent ? "auto" : "none",
                           borderRadius: 14,
                           overflow: "hidden",
                         }}
@@ -2527,8 +2537,8 @@ const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string, s
                           src={slide}
                           alt={`hero-slide-${index + 1}`}
                           style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-                          fetchPriority={index === 0 ? "high" : "low"}
-                          loading={index === 0 ? "eager" : "lazy"}
+                          fetchPriority={isCurrent ? "high" : "low"}
+                          loading={isCurrent ? "eager" : "lazy"}
                         />
                         <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, transparent, rgba(26,8,18,.18))", pointerEvents: "none" }} />
                         <div
@@ -2549,7 +2559,7 @@ const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string, s
                           {index + 1} <bdi>{t("من", "of")}</bdi> {heroSlides.length}
                         </div>
                       </div>
-                    ))}
+                    )})}
                   </div>
                   <div style={{ position: "absolute", right: 18, bottom: 18, display: heroSlides.length > 0 ? "flex" : "none", gap: 8 }}>
                     {heroSlides.map((_, index) => (
@@ -2879,8 +2889,10 @@ const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string, s
             </div>
             <button className="btn-outline" onClick={() => { sessionStorage.setItem("fitzone_offers_scroll", "packages-section"); navigate("offers"); }}>{t("مزيد من الباقات", "More plans")}</button>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 24, minHeight: memberships.length === 0 ? 400 : undefined }}>
-            {memberships.map((m, i) => {
+          <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 24 }}>
+            {memberships.length === 0 ? Array.from({ length: 3 }, (_, index) => (
+              <div key={index} className="card" aria-hidden="true" style={{ minHeight: viewportWidth() < 768 ? 520 : 500, background: "linear-gradient(110deg, #fff0f5 8%, #fff 18%, #fff0f5 33%)", backgroundSize: "200% 100%", animation: "shimmer 1.4s ease-in-out infinite" }} />
+            )) : memberships.map((m, i) => {
               const accentColor = m.color ?? PLAN_COLORS[i % PLAN_COLORS.length];
               const hasDis = m.priceBefore != null && m.priceBefore > (m.priceAfter ?? m.price);
               const discount = hasDis ? Math.round((1 - (m.priceAfter ?? m.price) / m.priceBefore!) * 100) : null;
