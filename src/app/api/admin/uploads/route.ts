@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { getAdminSession } from "@/lib/admin-session";
 import { applySensitiveRateLimit, getClientIp } from "@/lib/rate-limit";
-import { getMissingR2Env, getR2Client, R2_BUCKET, R2_PUBLIC_URL } from "@/lib/r2";
+import { getMissingR2Env, getR2Client, R2_BUCKET, R2_PUBLIC_CACHE_CONTROL, R2_PUBLIC_URL } from "@/lib/r2";
 
 const MAX_FILE_SIZE = 100 * 1024 * 1024;
 const ALLOWED_TYPES = new Set([
@@ -138,6 +138,7 @@ export async function POST(req: Request) {
         Key: key,
         Body: buffer,
         ContentType: file.type,
+        CacheControl: R2_PUBLIC_CACHE_CONTROL,
       }),
     );
 
