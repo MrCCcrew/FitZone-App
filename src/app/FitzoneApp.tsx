@@ -1456,6 +1456,11 @@ type PublicMembership = {
   classSessions?: Array<{ classId: string; classType?: string; sessions: number }> | null;
 };
 
+export type InitialHomeData = {
+  memberships: PublicMembership[];
+  offers: PublicOffer[];
+};
+
 type PublicHealthQuestion = {
   id: string;
   title: string;
@@ -2118,7 +2123,7 @@ const PrivateBookingModal = ({ trainer, type, onClose }: { trainer: PublicTraine
   );
 };
 
-const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string, scrollTarget?: "shop-products" | "trainers-list") => void; summary: UserSummary | null; storeEnabled: boolean }) => {
+const HomePage = ({ navigate, summary, storeEnabled, initialHomeData }: { navigate: (p: string, scrollTarget?: "shop-products" | "trainers-list") => void; summary: UserSummary | null; storeEnabled: boolean; initialHomeData?: InitialHomeData }) => {
   const _w = useWindowWidth();
   const { lang } = useLang();
   const t = useT();
@@ -2147,7 +2152,15 @@ const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string, s
             { icon: "🤸", name: "بيلاتس", count: "10 كلاسات", color: "#0EA5E9", bg: "rgba(14,165,233,.08)", border: "rgba(14,165,233,.2)" },
             { icon: "🏃", name: "كارديو", count: "6 كلاسات", color: "#F97316", bg: "rgba(249,115,22,.08)", border: "rgba(249,115,22,.2)" },
           ];
-  const [memberships, setMemberships] = useState(DEFAULT_HOME_MEMBERSHIPS);
+  const initialMembershipRows = initialHomeData?.memberships ?? [];
+  const initialMembershipSource = initialMembershipRows.filter((mb) => mb.kind === "package").length > 0
+    ? initialMembershipRows.filter((mb) => mb.kind === "package")
+    : initialMembershipRows.filter((mb) => mb.kind === "subscription");
+  const [memberships, setMemberships] = useState(() => initialMembershipSource.slice(0, 3).map((mb, i) => ({
+    id: mb.id, name: mb.name, price: mb.price, priceBefore: mb.priceBefore ?? null, priceAfter: mb.priceAfter ?? null,
+    image: mb.image ?? null, period: cycleLabel(mb.cycle, mb.durationDays), features: Array.isArray(mb.features) ? mb.features.slice(0, 4) : [],
+    color: HOME_PLAN_COLORS[i % HOME_PLAN_COLORS.length], popular: i === 1,
+  })));
   const [trainers, setTrainers] = useState<PublicTrainer[]>([]);
   const [trainerDetailModal, setTrainerDetailModal] = useState<PublicTrainer | null>(null);
   const [privateBookingModal, setPrivateBookingModal] = useState<{ trainer: PublicTrainer; type: "private" | "mini_private" } | null>(null);
@@ -2163,10 +2176,17 @@ const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string, s
   const [testimonials, setTestimonials] = useState<PublicTestimonial[]>([]);
   const [products, setProducts] = useState<StoreProduct[]>([]);
   const [showAllHomeProducts, setShowAllHomeProducts] = useState(false);
-  const [homeOffers, setHomeOffers] = useState<PublicOffer[]>([]);
-  const [homeCustomPlans, setHomeCustomPlans] = useState<PublicMembership[]>([]);
-  const [homeFeaturedPlan, setHomeFeaturedPlan] = useState<{ id: string; name: string; price: number; priceBefore: number | null; subtitle: string | null; features: string[]; durationDays: number } | null>(null);
-  const [homeDataReady, setHomeDataReady] = useState(false);
+  const [homeOffers, setHomeOffers] = useState<PublicOffer[]>(() => (initialHomeData?.offers ?? []).filter((offer) => offer.showOnHome).slice(0, 3));
+  const [homeCustomPlans, setHomeCustomPlans] = useState<PublicMembership[]>(() => initialMembershipRows.filter((mb) => mb.kind === "custom").slice(0, 3));
+  const [homeFeaturedPlan, setHomeFeaturedPlan] = useState<{ id: string; name: string; price: number; priceBefore: number | null; subtitle: string | null; features: string[]; durationDays: number } | null>(() => {
+    const featured = initialMembershipRows.find((mb) => mb.isFeatured);
+    return featured ? { id: featured.id, name: featured.name, price: featured.priceAfter ?? featured.price, priceBefore: featured.priceBefore ?? null, subtitle: featured.subtitle ?? null, features: featured.features.slice(0, 4), durationDays: featured.durationDays } : null;
+  });
+  const [homeDataReady, setHomeDataReady] = useState(Boolean(initialHomeData));
+  const homeSectionTopology = useRef({
+    offers: (initialHomeData?.offers ?? []).some((offer) => offer.showOnHome) || initialMembershipRows.some((mb) => mb.kind === "custom"),
+    featured: initialMembershipRows.some((mb) => mb.isFeatured),
+  });
   const [trialMembership, setTrialMembership] = useState<{ id: string; name: string; price: number; sessionsCount: number; features: string[]; durationDays: number } | null>(null);
   const [todayClasses, setTodayClasses] = useState<Array<{ id: string; time: string; name: string; trainer: string; trainerImage: string | null; spots: number; color: string; type: string }>>([]);
   const [todayIndex, setTodayIndex] = useState(0);
@@ -2174,7 +2194,9 @@ const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string, s
   const todayTrackRef = useRef<HTMLDivElement | null>(null);
   const todayOffsetRef = useRef(0);
   const todaySegmentWidthRef = useRef(0);
+  const todayContainerWidthRef = useRef(0);
   const todayPausedRef = useRef(false);
+  const preloadedHeroUrlsRef = useRef(new Set<string>());
     const [heroContent, setHeroContent] = useState<HomeHeroContent>({
       badge: "نادي لياقة للسيدات والأطفال في بني سويف",
       badgeEn: "First women & kids gym in Beni Suef",
@@ -2208,12 +2230,12 @@ const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string, s
     loadPublicApi(true).then(d => {
       if (Array.isArray(d.memberships) && d.memberships.length > 0) {
         const featured = (d.memberships as PublicMembership[]).find((mb) => mb.isFeatured);
-        setHomeFeaturedPlan(featured ? { id: featured.id, name: featured.name, price: featured.priceAfter ?? featured.price, priceBefore: featured.priceBefore ?? null, subtitle: featured.subtitle ?? null, features: featured.features.slice(0, 4), durationDays: featured.durationDays } : null);
+        if (featured || !homeSectionTopology.current.featured) setHomeFeaturedPlan(featured ? { id: featured.id, name: featured.name, price: featured.priceAfter ?? featured.price, priceBefore: featured.priceBefore ?? null, subtitle: featured.subtitle ?? null, features: featured.features.slice(0, 4), durationDays: featured.durationDays } : null);
         const packages = (d.memberships as PublicMembership[]).filter((mb) => mb.kind === "package");
         const subscriptions = (d.memberships as PublicMembership[]).filter((mb) => mb.kind === "subscription");
         const source = packages.length > 0 ? packages : subscriptions;
         const homeCustom = (d.memberships as PublicMembership[]).filter((mb) => mb.kind === "custom");
-        setHomeCustomPlans(homeCustom.slice(0, 3));
+        if (homeCustom.length > 0 || !homeSectionTopology.current.offers) setHomeCustomPlans(homeCustom.slice(0, 3));
         setMemberships(source.slice(0, 3).map((mb, i) => ({
           id: mb.id,
           name: mb.name,
@@ -2261,7 +2283,7 @@ const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string, s
       }
       if (Array.isArray(d.offers)) {
         const onHome = (d.offers as PublicOffer[]).filter((o) => o.showOnHome).slice(0, 3);
-        setHomeOffers(onHome);
+        if (onHome.length > 0 || !homeSectionTopology.current.offers) setHomeOffers(onHome);
       }
       if (Array.isArray(d.classes)) {
         const now = new Date();
@@ -2320,17 +2342,28 @@ const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string, s
   useEffect(() => {
     const slides = heroContent.slides ?? [];
     if (slides.length <= 1) return;
-    const timer = setInterval(() => {
-      setHeroSlideIndex((current) => (current + 1) % slides.length);
-    }, 2800);
-    return () => clearInterval(timer);
+    let timer: number | undefined;
+    const startAutoplay = () => {
+      timer = window.setInterval(() => {
+        setHeroSlideIndex((current) => (current + 1) % slides.length);
+      }, 2800);
+    };
+    const initialDelay = window.setTimeout(startAutoplay, 5000);
+    return () => {
+      window.clearTimeout(initialDelay);
+      if (timer !== undefined) window.clearInterval(timer);
+    };
   }, [heroContent.slides]);
   useEffect(() => {
     const slides = heroContent.slides ?? [];
     if (slides.length < 2) return;
     const nextIndex = (heroSlideIndex + 1) % slides.length;
+    const currentUrl = slides[heroSlideIndex];
+    const nextUrl = slides[nextIndex];
+    if (!nextUrl || nextUrl === currentUrl || preloadedHeroUrlsRef.current.has(nextUrl)) return;
+    preloadedHeroUrlsRef.current.add(nextUrl);
     const image = new Image();
-    image.src = slides[nextIndex];
+    image.src = nextUrl;
   }, [heroContent.slides, heroSlideIndex]);
   useEffect(() => {
     if (homeOffers.length === 0) return;
@@ -2346,6 +2379,7 @@ const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string, s
       const sw = track.scrollWidth / 3;
       if (sw <= 0) return;
       const containerW = carousel?.offsetWidth ?? window.innerWidth;
+      todayContainerWidthRef.current = containerW;
       todaySegmentWidthRef.current = sw;
       if (sw >= containerW) {
         // enough content to fill viewport — start at middle copy
@@ -2376,12 +2410,12 @@ const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string, s
       if (todaySegmentWidthRef.current <= 0 && todayTrackRef.current) {
         const sw = todayTrackRef.current.scrollWidth / 3;
         if (sw > 0) {
-          const containerW = todayCarouselRef.current?.offsetWidth ?? window.innerWidth;
+          const containerW = todayContainerWidthRef.current || window.innerWidth;
           todaySegmentWidthRef.current = sw;
           if (sw >= containerW) todayOffsetRef.current = -sw;
         }
       }
-      const containerW = todayCarouselRef.current?.offsetWidth ?? window.innerWidth;
+      const containerW = todayContainerWidthRef.current || window.innerWidth;
       const shouldScroll = todaySegmentWidthRef.current >= containerW;
       if (!todayPausedRef.current && shouldScroll) {
         todayOffsetRef.current = wrapCarouselOffset(
@@ -2430,6 +2464,11 @@ const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string, s
     ["📦", summary?.membership?.name ?? getTierLabel(summary?.rewardTier), summary?.membership ? t("الاشتراك النشط", "Active plan") : t("مستوى العضوية", "Membership tier")],
   ];
     const heroSlides = heroContent.slides ?? [];
+    const nextHeroSlideIndex = heroSlides.length > 1 ? (heroSlideIndex + 1) % heroSlides.length : -1;
+    const visibleHeroSlides = heroSlides
+      .map((slide, index) => ({ slide, index }))
+      .filter(({ index }) => index === heroSlideIndex || index === nextHeroSlideIndex)
+      .filter(({ slide }, index, slides) => slides.findIndex((entry) => entry.slide === slide) === index);
     const heroBadge = lang === "en" ? heroContent.badgeEn ?? heroContent.badge : heroContent.badge;
     const heroHeadline1 = lang === "en" ? heroContent.headline1En ?? heroContent.headline1 : heroContent.headline1;
     const heroHeadline2 = lang === "en" ? heroContent.headline2En ?? heroContent.headline2 : heroContent.headline2;
@@ -2526,8 +2565,7 @@ const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string, s
                         borderRadius: 14,
                         background: "linear-gradient(135deg, rgba(30,5,20,.9), rgba(10,2,8,.95))",
                       }} />
-                    ) : heroSlides.filter((_, index) => index === heroSlideIndex || index === (heroSlideIndex + 1) % heroSlides.length).map((slide) => {
-                      const index = heroSlides.indexOf(slide);
+                    ) : visibleHeroSlides.map(({ slide, index }) => {
                       const isCurrent = index === heroSlideIndex;
                       return (
                       <div
@@ -2609,7 +2647,7 @@ const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string, s
       </section>
 
       {/* ─ HOME OFFERS GRID ─ */}
-      {homeDataReady && (homeOffers.length > 0 || homeCustomPlans.length > 0) && (
+      {homeDataReady && homeSectionTopology.current.offers && (
         <section className="section" style={{ paddingTop: 48, paddingBottom: 48 }}>
           <div className="container">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 32, flexWrap: "wrap", gap: 12 }}>
@@ -2780,7 +2818,7 @@ const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string, s
       )}
 
       {/* ─ FEATURED PLAN (Open Time) on Home ─ */}
-      {homeDataReady && homeFeaturedPlan && (
+      {homeDataReady && homeSectionTopology.current.featured && homeFeaturedPlan && (
         <section className="section" style={{ paddingTop: 40, paddingBottom: 40 }}>
           <div className="container">
             <div style={{
@@ -2900,9 +2938,11 @@ const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string, s
             <button className="btn-outline" onClick={() => { sessionStorage.setItem("fitzone_offers_scroll", "packages-section"); navigate("offers"); }}>{t("مزيد من الباقات", "More plans")}</button>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 24 }}>
-            {memberships.length === 0 ? Array.from({ length: 3 }, (_, index) => (
-              <div key={index} className="card" aria-hidden="true" style={{ minHeight: viewportWidth() < 768 ? 520 : 500, background: "linear-gradient(110deg, #fff0f5 8%, #fff 18%, #fff0f5 33%)", backgroundSize: "200% 100%", animation: "shimmer 1.4s ease-in-out infinite" }} />
-            )) : memberships.map((m, i) => {
+            {memberships.length === 0 ? (
+              <div className="card" style={{ gridColumn: "1 / -1", padding: 24, textAlign: "center", color: C.gray }}>
+                {t("لا توجد باقات متاحة حاليًا.", "No memberships are available right now.")}
+              </div>
+            ) : memberships.map((m, i) => {
               const accentColor = m.color ?? PLAN_COLORS[i % PLAN_COLORS.length];
               const textColor = getAccessibleTextColor(accentColor);
               const hasDis = m.priceBefore != null && m.priceBefore > (m.priceAfter ?? m.price);
@@ -10042,7 +10082,7 @@ function RedirectToAccountTab({ tab }: { tab: string }) {
   return null;
 }
 
-export default function App() {
+export default function App({ initialHomeData }: { initialHomeData?: InitialHomeData }) {
   const { lang } = useLang();
   const [page, setPage] = useState(() => {
     if (typeof window === "undefined") return "home";
@@ -10245,16 +10285,16 @@ export default function App() {
   }, []);
 
   const pages = {
-    home: <HomePage navigate={navigate} summary={summary} storeEnabled={storeEnabled} />,
+    home: <HomePage navigate={navigate} summary={summary} storeEnabled={storeEnabled} initialHomeData={initialHomeData} />,
     about: <AboutPage />,
     classes: <ClassesPage navigate={navigate} />,
     classDetail: <ClassDetailPage navigate={navigate} />,
     schedule: <SchedulePage />,
     offers: <OffersPage navigate={navigate} />,
-    shop: storeEnabled ? <ShopPage navigate={navigate} /> : <HomePage navigate={navigate} summary={summary} storeEnabled={storeEnabled} />,
-    productDetail: storeEnabled ? <ProductDetailPage navigate={navigate} walletBalance={summary?.walletBalance ?? 0} /> : <HomePage navigate={navigate} summary={summary} storeEnabled={storeEnabled} />,
-    cart: storeEnabled ? <CartPage navigate={navigate} summary={summary} /> : <HomePage navigate={navigate} summary={summary} storeEnabled={storeEnabled} />,
-    checkout: storeEnabled ? <CartPage navigate={navigate} summary={summary} /> : <HomePage navigate={navigate} summary={summary} storeEnabled={storeEnabled} />,
+    shop: storeEnabled ? <ShopPage navigate={navigate} /> : <HomePage navigate={navigate} summary={summary} storeEnabled={storeEnabled} initialHomeData={initialHomeData} />,
+    productDetail: storeEnabled ? <ProductDetailPage navigate={navigate} walletBalance={summary?.walletBalance ?? 0} /> : <HomePage navigate={navigate} summary={summary} storeEnabled={storeEnabled} initialHomeData={initialHomeData} />,
+    cart: storeEnabled ? <CartPage navigate={navigate} summary={summary} /> : <HomePage navigate={navigate} summary={summary} storeEnabled={storeEnabled} initialHomeData={initialHomeData} />,
+    checkout: storeEnabled ? <CartPage navigate={navigate} summary={summary} /> : <HomePage navigate={navigate} summary={summary} storeEnabled={storeEnabled} initialHomeData={initialHomeData} />,
     wallet: <RedirectToAccountTab tab="wallet" />,
     rewards: <RedirectToAccountTab tab="wallet" />,
     referral: <RedirectToAccountTab tab="wallet" />,
