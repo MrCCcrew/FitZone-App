@@ -341,6 +341,8 @@ const PaymobIframeModal = ({
               <img
                 src={logo.src}
                 alt={logo.alt}
+                width={46}
+                height={16}
                 style={{ maxWidth: 46, maxHeight: 16, objectFit: "contain", display: "block" }}
               />
             </div>
@@ -1090,6 +1092,8 @@ const Footer = ({ navigate, storeEnabled, onRestartTour }: { navigate: (p: strin
               <img
                 src={src}
                 alt={alt}
+                width={80}
+                height={40}
                 style={{ height: bg === "#fff" ? 28 : 40, width: "auto", maxWidth: "100%", display: "block", objectFit: "contain" }}
                 loading="lazy"
               />
@@ -1929,7 +1933,7 @@ const PrivateBookingModal = ({ trainer, type, onClose }: { trainer: PublicTraine
         {/* Info banner */}
         <div style={{ background: "rgba(233,30,99,.08)", border: "1px solid rgba(233,30,99,.22)", borderRadius: 10, padding: "10px 14px", marginBottom: 20, fontSize: 12, color: "#ffb7d0", lineHeight: 1.9 }}>
           {isPrivate
-            ? <><strong style={{ color: "#fff" }}>🎯 {t("برايفيت","Private")} —</strong> {t("12 حصة / شهر · من ساعة إلى ساعة ونصف · برنامج مخصص حسب حالتك 100%","12 sessions/month · 60–90 min · 100% personalised program")}<br /><strong style={{ color: C.gold }}>{t("السعر: تحدده المدربة بعد مراجعة طلبك","Price: set by your trainer after reviewing your application")}</strong></>
+            ? <><strong style={{ color: "#fff" }}>🎯 {t("برايفيت","Private")} —</strong> {t("12 حصة / شهر · من ساعة إلى ساعة ونصف · برنامج مخصص حسب حالتك 100%","12 sessions/month · 60–90 min · 100% personalised program")}<br /><strong style={{ color: C.goldText }}>{t("السعر: تحدده المدربة بعد مراجعة طلبك","Price: set by your trainer after reviewing your application")}</strong></>
             : <><strong style={{ color: "#fff" }}>👥 {t("ميني برايفيت","Mini Private")} —</strong> {t("12 حصة / شهر · ساعة كل مرة · مجموعة من 3 إلى 5 عملاء","12 sessions/month · 60 min · group of 3–5 clients")}<br /><strong style={{ color: C.gold }}>{t("السعر: تحدده المدربة بعد مراجعة طلبك","Price: set by your trainer after reviewing your application")}</strong></>}
         </div>
 
@@ -2157,6 +2161,7 @@ const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string, s
   const [homeOffers, setHomeOffers] = useState<PublicOffer[]>([]);
   const [homeCustomPlans, setHomeCustomPlans] = useState<PublicMembership[]>([]);
   const [homeFeaturedPlan, setHomeFeaturedPlan] = useState<{ id: string; name: string; price: number; priceBefore: number | null; subtitle: string | null; features: string[]; durationDays: number } | null>(null);
+  const [homeDataReady, setHomeDataReady] = useState(false);
   const [trialMembership, setTrialMembership] = useState<{ id: string; name: string; price: number; sessionsCount: number; features: string[]; durationDays: number } | null>(null);
   const [todayClasses, setTodayClasses] = useState<Array<{ id: string; time: string; name: string; trainer: string; trainerImage: string | null; spots: number; color: string; type: string }>>([]);
   const [todayIndex, setTodayIndex] = useState(0);
@@ -2289,7 +2294,7 @@ const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string, s
       if (d.trialMembership && typeof d.trialMembership === "object") {
         setTrialMembership(d.trialMembership as { id: string; name: string; price: number; sessionsCount: number; features: string[]; durationDays: number });
       }
-    }).catch(() => {});
+    }).catch(() => {}).finally(() => setHomeDataReady(true));
   }, [lang, refreshTick]);
   useEffect(() => {
     fetch("/api/site-content?sections=hero", { cache: "no-store" })
@@ -2599,7 +2604,7 @@ const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string, s
       </section>
 
       {/* ─ HOME OFFERS GRID ─ */}
-      {(homeOffers.length > 0 || homeCustomPlans.length > 0) && (
+      {(!homeDataReady || homeOffers.length > 0 || homeCustomPlans.length > 0) && (
         <section className="section" style={{ paddingTop: 48, paddingBottom: 48 }}>
           <div className="container">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 32, flexWrap: "wrap", gap: 12 }}>
@@ -2609,8 +2614,9 @@ const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string, s
               </div>
               <button className="btn-outline" onClick={() => { sessionStorage.setItem("fitzone_offers_scroll", "offers-section"); navigate("offers"); }}>{t("مزيد من العروض", "More offers")}</button>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", `repeat(${Math.min(homeOffers.length + homeCustomPlans.length, 3)}, 1fr)`), gap: 24 }}>
-              {homeOffers.map((offer) => {
+            <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", `repeat(${Math.min(Math.max(homeOffers.length + homeCustomPlans.length, 3), 3)}, 1fr)`), gap: 24 }}>
+              {!homeDataReady && Array.from({ length: 3 }, (_, index) => <div key={`offer-skeleton-${index}`} className="card" aria-hidden="true" style={{ minHeight: viewportWidth() < 768 ? 500 : 470, background: "linear-gradient(110deg, #fff0f5 8%, #fff 18%, #fff0f5 33%)", backgroundSize: "200% 100%", animation: "shimmer 1.4s ease-in-out infinite" }} />)}
+              {homeDataReady && homeOffers.map((offer) => {
                 const cd = getCountdownParts(offer.expiresAt);
                 const maxSubscribers = typeof offer.maxSubscribers === "number" ? offer.maxSubscribers : null;
                 const hasSeatLimit = offer.showMaxSubscribers && maxSubscribers != null && maxSubscribers > 0;
@@ -2715,7 +2721,7 @@ const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string, s
                   </div>
                 );
               })}
-              {homeCustomPlans.map((plan) => {
+              {homeDataReady && homeCustomPlans.map((plan) => {
                 const minM = plan.minMonths ?? 3;
                 const maxM = plan.maxMonths ?? 6;
                 const pct = plan.discountPct ?? 0;
@@ -2770,10 +2776,10 @@ const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string, s
       )}
 
       {/* ─ FEATURED PLAN (Open Time) on Home ─ */}
-      {homeFeaturedPlan && (
+      {(!homeDataReady || homeFeaturedPlan) && (
         <section className="section" style={{ paddingTop: 40, paddingBottom: 40 }}>
           <div className="container">
-            <div style={{
+            {!homeDataReady ? <div className="card" aria-hidden="true" style={{ minHeight: viewportWidth() < 768 ? 350 : 270, background: "linear-gradient(110deg, #fff0f5 8%, #fff 18%, #fff0f5 33%)", backgroundSize: "200% 100%", animation: "shimmer 1.4s ease-in-out infinite" }} /> : homeFeaturedPlan ? <div style={{
               borderRadius: 20,
               border: "2px solid rgba(199,0,114,0.45)",
               background: "linear-gradient(135deg, rgba(28,0,22,0.97) 0%, rgba(48,0,32,0.97) 60%, rgba(33,0,25,0.97) 100%)",
@@ -2825,7 +2831,7 @@ const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string, s
                   </div>
                 </div>
               </div>
-            </div>
+            </div> : null}
           </div>
         </section>
       )}

@@ -188,7 +188,7 @@ export default function RootLayout({
   return (
     <html lang="ar" dir="rtl" suppressHydrationWarning>
       <head>
-        <link rel="preconnect" href="https://pub-0379158b967c4c599f9d754b82418d72.r2.dev" crossOrigin="anonymous" />
+        <link rel="preconnect" href="https://pub-0379158b967c4c599f9d754b82418d72.r2.dev" />
         <link rel="dns-prefetch" href="https://pub-0379158b967c4c599f9d754b82418d72.r2.dev" />
         <script
           type="application/ld+json"
