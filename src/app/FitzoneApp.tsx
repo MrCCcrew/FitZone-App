@@ -35,6 +35,11 @@ const C = {
   successDark: "#166534",
 };
 
+const getAccessibleTextColor = (color: string) => {
+  const normalized = color.trim().toLowerCase().replace(/\s+/g, "");
+  return normalized === "#c8a200" || normalized === "rgb(200,162,0)" ? C.goldText : color;
+};
+
 const css = `
   *{box-sizing:border-box;margin:0;padding:0;}
   html{scroll-behavior:smooth;}
@@ -749,8 +754,8 @@ const Header = ({
   return (
     <header style={{ background: "rgba(255,245,248,.97)", backdropFilter: "blur(12px)", borderBottom: `1px solid ${C.border}`, position: "sticky", top: 0, zIndex: 100 }}>
       {/* Top bar */}
-      <div style={{ background: C.redDark, minHeight: 30, padding: "6px 0", textAlign: "center", overflow: "hidden" }}>
-        <span style={{ fontSize: 12, fontWeight: 600, color: "#fff", whiteSpace: "nowrap" }}>
+      <div style={{ background: C.redDark, height: 30, boxSizing: "border-box", padding: "6px 0", textAlign: "center", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <span style={{ fontSize: 12, fontWeight: 600, color: "#fff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%", paddingInline: 12 }}>
           {announcements.length > 0 ? announcements[annIndex] : t(DEFAULT_TOP_BAR.ar, DEFAULT_TOP_BAR.en)}
         </span>
       </div>
@@ -1070,7 +1075,7 @@ const Footer = ({ navigate, storeEnabled, onRestartTour }: { navigate: (p: strin
             { src: "/payment-logos/u-valu-logo.webp",      alt: "valU",              bg: "#fff"        },
             { src: "/payment-logos/sympl-menu2.png",       alt: "Sympl",             bg: "#fff"        },
             { src: "/payment-logos/sohoooooola.png",       alt: "Souhoola",          bg: "#fff"        },
-          ].map(({ src, alt, bg }) => (
+          ].filter(({ src }) => Boolean(src)).map(({ src, alt, bg }) => (
             <div
               key={alt}
               title={alt}
@@ -1126,8 +1131,8 @@ const Footer = ({ navigate, storeEnabled, onRestartTour }: { navigate: (p: strin
                 { src: "/payment-logos/etisalat-cash.svg", alt: "e& Cash"       },
                 { src: "/payment-logos/orange-cash.svg",   alt: "Orange Cash"   },
                 { src: "/payment-logos/fawry.svg",         alt: "Fawry"         },
-              ].map(({ src, alt }) => (
-                <img key={alt} src={src} alt={alt} title={alt}
+              ].filter(({ src }) => Boolean(src)).map(({ src, alt }) => (
+                <img key={alt} src={src} alt={alt} title={alt} width={24} height={16}
                   style={{ height: 16, width: "auto", borderRadius: 2, display: "block", objectFit: "contain" }}
                   loading="lazy"
                 />
@@ -2604,7 +2609,7 @@ const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string, s
       </section>
 
       {/* ─ HOME OFFERS GRID ─ */}
-      {(!homeDataReady || homeOffers.length > 0 || homeCustomPlans.length > 0) && (
+      {homeDataReady && (homeOffers.length > 0 || homeCustomPlans.length > 0) && (
         <section className="section" style={{ paddingTop: 48, paddingBottom: 48 }}>
           <div className="container">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 32, flexWrap: "wrap", gap: 12 }}>
@@ -2615,8 +2620,7 @@ const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string, s
               <button className="btn-outline" onClick={() => { sessionStorage.setItem("fitzone_offers_scroll", "offers-section"); navigate("offers"); }}>{t("مزيد من العروض", "More offers")}</button>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", `repeat(${Math.min(Math.max(homeOffers.length + homeCustomPlans.length, 3), 3)}, 1fr)`), gap: 24 }}>
-              {!homeDataReady && Array.from({ length: 3 }, (_, index) => <div key={`offer-skeleton-${index}`} className="card" aria-hidden="true" style={{ minHeight: viewportWidth() < 768 ? 500 : 470, background: "linear-gradient(110deg, #fff0f5 8%, #fff 18%, #fff0f5 33%)", backgroundSize: "200% 100%", animation: "shimmer 1.4s ease-in-out infinite" }} />)}
-              {homeDataReady && homeOffers.map((offer) => {
+              {homeOffers.map((offer) => {
                 const cd = getCountdownParts(offer.expiresAt);
                 const maxSubscribers = typeof offer.maxSubscribers === "number" ? offer.maxSubscribers : null;
                 const hasSeatLimit = offer.showMaxSubscribers && maxSubscribers != null && maxSubscribers > 0;
@@ -2721,7 +2725,7 @@ const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string, s
                   </div>
                 );
               })}
-              {homeDataReady && homeCustomPlans.map((plan) => {
+              {homeCustomPlans.map((plan) => {
                 const minM = plan.minMonths ?? 3;
                 const maxM = plan.maxMonths ?? 6;
                 const pct = plan.discountPct ?? 0;
@@ -2776,10 +2780,10 @@ const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string, s
       )}
 
       {/* ─ FEATURED PLAN (Open Time) on Home ─ */}
-      {(!homeDataReady || homeFeaturedPlan) && (
+      {homeDataReady && homeFeaturedPlan && (
         <section className="section" style={{ paddingTop: 40, paddingBottom: 40 }}>
           <div className="container">
-            {!homeDataReady ? <div className="card" aria-hidden="true" style={{ minHeight: viewportWidth() < 768 ? 350 : 270, background: "linear-gradient(110deg, #fff0f5 8%, #fff 18%, #fff0f5 33%)", backgroundSize: "200% 100%", animation: "shimmer 1.4s ease-in-out infinite" }} /> : homeFeaturedPlan ? <div style={{
+            <div style={{
               borderRadius: 20,
               border: "2px solid rgba(199,0,114,0.45)",
               background: "linear-gradient(135deg, rgba(28,0,22,0.97) 0%, rgba(48,0,32,0.97) 60%, rgba(33,0,25,0.97) 100%)",
@@ -2831,7 +2835,7 @@ const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string, s
                   </div>
                 </div>
               </div>
-            </div> : null}
+            </div>
           </div>
         </section>
       )}
@@ -2900,6 +2904,7 @@ const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string, s
               <div key={index} className="card" aria-hidden="true" style={{ minHeight: viewportWidth() < 768 ? 520 : 500, background: "linear-gradient(110deg, #fff0f5 8%, #fff 18%, #fff0f5 33%)", backgroundSize: "200% 100%", animation: "shimmer 1.4s ease-in-out infinite" }} />
             )) : memberships.map((m, i) => {
               const accentColor = m.color ?? PLAN_COLORS[i % PLAN_COLORS.length];
+              const textColor = getAccessibleTextColor(accentColor);
               const hasDis = m.priceBefore != null && m.priceBefore > (m.priceAfter ?? m.price);
               const discount = hasDis ? Math.round((1 - (m.priceAfter ?? m.price) / m.priceBefore!) * 100) : null;
               return (
@@ -2911,7 +2916,7 @@ const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string, s
                     ) : (
                       <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, background: `linear-gradient(135deg, ${accentColor}22, ${accentColor}0D)` }}>
                         <div style={{ fontSize: 38 }}>🎟️</div>
-                        <div style={{ color: accentColor, fontSize: 12, fontWeight: 800 }}>{m.name}</div>
+                        <div style={{ color: textColor, fontSize: 12, fontWeight: 800 }}>{m.name}</div>
                       </div>
                     )}
                     <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(10,5,8,.80) 0%, transparent 55%)" }} />
@@ -2926,7 +2931,7 @@ const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string, s
                   </div>
                   {/* Content */}
                   <div style={{ padding: "18px 20px 20px", display: "flex", flexDirection: "column", flex: 1 }}>
-                    <div style={{ fontSize: 30, fontWeight: 900, color: accentColor, lineHeight: 1, marginBottom: 2 }}>
+                    <div style={{ fontSize: 30, fontWeight: 900, color: textColor, lineHeight: 1, marginBottom: 2 }}>
                       {formatCurrency(m.priceAfter ?? m.price)}
                     </div>
                     {hasDis && m.priceBefore != null && (
@@ -5643,7 +5648,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
                               </div>
                             </div>
                             <div style={{ display: "flex", gap: 4, flexWrap: "wrap", justifyContent: "flex-end", alignItems: "center" }}>
-                              {["/payment-logos/visa.svg", "/payment-logos/mastercard.svg", "/payment-logos/u-valu-logo.webp", "/payment-logos/sympl-menu2.png"].map((src) => (
+                              {["/payment-logos/visa.svg", "/payment-logos/mastercard.svg", "/payment-logos/u-valu-logo.webp", "/payment-logos/sympl-menu2.png"].filter(Boolean).map((src) => (
                                 <div key={src} style={{ background: "#fff", borderRadius: 4, padding: "2px 4px", height: 24, display: "flex", alignItems: "center" }}>
                                   <img src={src} alt="" width={40} height={18} style={{ height: 18, maxWidth: 40, objectFit: "contain" }} />
                                 </div>
@@ -5651,7 +5656,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
                               <div style={{ background: "#fff", borderRadius: 4, padding: "2px 6px", height: 24, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2 }}>
                                 <span style={{ fontSize: 7, fontWeight: 700, color: "#555", lineHeight: 1, whiteSpace: "nowrap" }}>{t("المحافظ", "Wallets")}</span>
                                 <div style={{ display: "flex", gap: 2, alignItems: "center" }}>
-                                  {["/payment-logos/vodafone-cash.svg", "/payment-logos/we-pay.svg", "/payment-logos/etisalat-cash.svg", "/payment-logos/orange-cash.svg", "/payment-logos/fawry.svg"].map((src) => (
+                                  {["/payment-logos/vodafone-cash.svg", "/payment-logos/we-pay.svg", "/payment-logos/etisalat-cash.svg", "/payment-logos/orange-cash.svg", "/payment-logos/fawry.svg"].filter(Boolean).map((src) => (
                                     <img key={src} src={src} alt="" width={16} height={10} style={{ height: 10, width: "auto", borderRadius: 1, objectFit: "contain" }} />
                                   ))}
                                 </div>
@@ -7825,7 +7830,7 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
                   { src: "/payment-logos/u-valu-logo.webp",   alt: "valU",         bg: "#fff" },
                   { src: "/payment-logos/sympl-menu2.png",    alt: "Sympl",        bg: "#fff" },
                   { src: "/payment-logos/sohoooooola.png",    alt: "Souhoola",     bg: "#fff" },
-                ].map(({ src, alt, bg }) => (
+                ].filter(({ src }) => Boolean(src)).map(({ src, alt, bg }) => (
                   <div key={alt} style={{ height: 28, borderRadius: 6, background: bg, border: "1px solid rgba(255,255,255,.15)", padding: "3px 7px", display: "flex", alignItems: "center" }}>
                     <img src={src} alt={alt} width={40} height={20} style={{ height: 20, width: "auto", objectFit: "contain", display: "block" }} loading="lazy" />
                   </div>
@@ -7833,7 +7838,7 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
                 <div style={{ height: 28, borderRadius: 6, background: "#fff", border: "1px solid rgba(255,255,255,.15)", padding: "2px 7px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2 }}>
                   <span style={{ fontSize: 7, fontWeight: 700, color: "#555", lineHeight: 1, whiteSpace: "nowrap" }}>{t("المحافظ", "Wallets")}</span>
                   <div style={{ display: "flex", gap: 2, alignItems: "center" }}>
-                    {["/payment-logos/vodafone-cash.svg", "/payment-logos/we-pay.svg", "/payment-logos/etisalat-cash.svg", "/payment-logos/orange-cash.svg", "/payment-logos/fawry.svg"].map((src) => (
+                    {["/payment-logos/vodafone-cash.svg", "/payment-logos/we-pay.svg", "/payment-logos/etisalat-cash.svg", "/payment-logos/orange-cash.svg", "/payment-logos/fawry.svg"].filter(Boolean).map((src) => (
                       <img key={src} src={src} alt="" width={16} height={10} style={{ height: 10, width: "auto", borderRadius: 1, objectFit: "contain" }} loading="lazy" />
                     ))}
                   </div>
@@ -8564,7 +8569,7 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                             { src: "/payment-logos/mastercard.svg", alt: "Mastercard" },
                             { src: "/payment-logos/u-valu-logo.webp", alt: "valU" },
                             { src: "/payment-logos/sympl-menu2.png", alt: "Sympl" },
-                          ].map(({ src, alt }) => (
+                          ].filter(({ src }) => Boolean(src)).map(({ src, alt }) => (
                             <div key={alt} style={{ height: 26, borderRadius: 5, background: "#fff", border: "1px solid rgba(0,0,0,.12)", padding: "2px 5px", display: "flex", alignItems: "center" }}>
                               <img src={src} alt={alt} width={40} height={18} style={{ height: 18, width: "auto", objectFit: "contain", display: "block" }} loading="lazy" />
                             </div>
@@ -8572,7 +8577,7 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                           <div style={{ height: 26, borderRadius: 5, background: "#fff", border: "1px solid rgba(0,0,0,.12)", padding: "2px 6px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2 }}>
                             <span style={{ fontSize: 7, fontWeight: 700, color: "#555", lineHeight: 1, whiteSpace: "nowrap" }}>{t("المحافظ", "Wallets")}</span>
                             <div style={{ display: "flex", gap: 2, alignItems: "center" }}>
-                              {["/payment-logos/vodafone-cash.svg", "/payment-logos/we-pay.svg", "/payment-logos/etisalat-cash.svg", "/payment-logos/orange-cash.svg", "/payment-logos/fawry.svg"].map((src) => (
+                              {["/payment-logos/vodafone-cash.svg", "/payment-logos/we-pay.svg", "/payment-logos/etisalat-cash.svg", "/payment-logos/orange-cash.svg", "/payment-logos/fawry.svg"].filter(Boolean).map((src) => (
                                 <img key={src} src={src} alt="" width={16} height={10} style={{ height: 10, width: "auto", borderRadius: 1, objectFit: "contain" }} loading="lazy" />
                               ))}
                             </div>
