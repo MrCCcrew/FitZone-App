@@ -2098,7 +2098,7 @@ const PrivateBookingModal = ({ trainer, type, onClose }: { trainer: PublicTraine
   );
 };
 
-const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string) => void; summary: UserSummary | null; storeEnabled: boolean }) => {
+const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string, scrollTarget?: "shop-products" | "trainers-list") => void; summary: UserSummary | null; storeEnabled: boolean }) => {
   const _w = useWindowWidth();
   const { lang } = useLang();
   const t = useT();
@@ -3057,7 +3057,7 @@ const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string) =
             </div>
             <button
               className="btn-primary"
-              onClick={() => navigate("shop")}
+              onClick={() => navigate("shop", "shop-products")}
               style={{
                 boxShadow: "0 12px 30px rgba(233,30,99,0.3)",
                 borderColor: "transparent",
@@ -3232,7 +3232,7 @@ const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string) =
               <h2 className="section-title">{t("مدرباتنا", "Our trainers")} <span>{t("المحترفات", "experts")}</span></h2>
               <p className="section-sub" style={{ marginTop: 6 }}>{t("فريق مدربات محترفات في بني سويف لمساعدتك على بناء برنامج مناسب لهدفك.", "A team of professional coaches in Beni Suef to help you reach your goal.")}</p>
             </div>
-            <button className="btn-outline" onClick={() => navigate("trainers")}>{t("عرض كل المدربات", "All trainers")}</button>
+            <button className="btn-outline" onClick={() => navigate("trainers", "trainers-list")}>{t("عرض كل المدربات", "All trainers")}</button>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: trainers.length === 1 ? "minmax(0,360px)" : responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 24, justifyContent: trainers.length === 1 ? "center" : undefined }}>
             {trainers.map((trainer, index) => (
@@ -7391,7 +7391,7 @@ const ShopPage = ({ navigate }: { navigate: (p: string) => void }) => {
             const hasMoreShop = filtered.length > SHOP_INITIAL && !showAllShopProducts;
             return (
               <>
-                <div style={{ display: "grid", gridTemplateColumns: shopGridCols, gap: shopGap }}>
+                <div id="shop-products" style={{ display: "grid", gridTemplateColumns: shopGridCols, gap: shopGap, scrollMarginTop: 120 }}>
                   {shownFiltered.map(p => <ProductMiniCard key={p.id ?? p.name} product={p} navigate={navigate} wishlist={wishlist} lang={lang} t={t} giftCampaignActive={giftCampaign?.active} giftCampaignMin={giftCampaign?.minSubtotal} giftRewardLabel={giftCampaignRewardLabel(giftCampaign)} compact={isMobile} />)}
                 </div>
                 {hasMoreShop && (
@@ -9102,7 +9102,7 @@ const TrainersPage = ({ navigate, summary }: { navigate: (p: string) => void; su
       </section>
       <section className="section">
         <div className="container">
-          <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 24 }}>
+          <div id="trainers-list" style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 24, scrollMarginTop: 120 }}>
             {trainers.map((tr, index) => (
               <div key={tr.id} className="card card-hover" style={{ padding: 0, overflow: "hidden", textAlign: "center" }}>
                 {/* Photo */}
@@ -9986,6 +9986,7 @@ export default function App() {
   const [cartCount, setCartCount] = useState(0);
   const [storeEnabled, setStoreEnabled] = useState(false);
   const navigating = useRef(false);
+  const pendingScrollTarget = useRef<"shop-products" | "trainers-list" | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -10024,6 +10025,21 @@ export default function App() {
     } else {
       window.history.replaceState({ page }, "", url.toString());
     }
+  }, [page]);
+
+  useEffect(() => {
+    const targetId = pendingScrollTarget.current;
+    if (!targetId) return;
+
+    const frame = requestAnimationFrame(() => {
+      document.getElementById(targetId)?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+      pendingScrollTarget.current = null;
+    });
+
+    return () => cancelAnimationFrame(frame);
   }, [page]);
 
   useEffect(() => {
@@ -10085,7 +10101,7 @@ export default function App() {
     return () => window.removeEventListener("fitzone-cart-updated", syncCart);
   }, []);
 
-  const navigate = (p: string) => {
+  const navigate = (p: string, scrollTarget?: "shop-products" | "trainers-list") => {
     const accountTabs: Record<string, string> = {
       account: "profile",
       wallet: "wallet",
@@ -10107,8 +10123,11 @@ export default function App() {
     }
 
     navigating.current = true;
+    pendingScrollTarget.current = scrollTarget ?? null;
     setPage(p);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    if (!scrollTarget) {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
   };
 
   const pages = {
