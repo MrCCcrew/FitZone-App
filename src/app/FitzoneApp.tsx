@@ -10,6 +10,7 @@ import { useStoreGiftCampaign } from "@/components/store/useStoreGiftCampaign";
 import { StoreGiftGameEntryPopup } from "@/components/store/game/StoreGiftGameEntryPopup";
 
 const FitZoneTour = dynamic(() => import("@/components/onboarding/FitZoneTour"), { ssr: false });
+const ONBOARDING_COMPLETED_KEY = "fitzone_onboarding_completed_v1";
 
 // ─── FIT ZONE BRAND COLORS ─────────────────────────────────────────────────
 const C = {
@@ -1276,7 +1277,7 @@ const AboutPage = () => {
                   <FZLogo size={56} />
                   <div>
                     <div style={{ fontSize: 22, fontWeight: 900, color: "#fff" }}>{lang === "en" ? about.nameEn ?? about.name : about.name}</div>
-                    <div style={{ fontSize: 12, color: C.gold, letterSpacing: 2 }}>FITNESS CLUB</div>
+                    <div style={{ fontSize: 12, color: C.goldText, letterSpacing: 2 }}>FITNESS CLUB</div>
                   </div>
                 </div>
                 <span style={{ background: "rgba(233,30,99,.15)", color: "#fff", borderRadius: 999, padding: "6px 16px", fontSize: 12, fontWeight: 700 }}>
@@ -1297,7 +1298,7 @@ const AboutPage = () => {
               </div>
 
               <div style={{ marginTop: 28, background: "rgba(0,0,0,.4)", borderRadius: 18, padding: 20, border: "1px solid rgba(255,255,255,.08)" }}>
-                <div style={{ fontSize: 18, fontWeight: 900, color: C.gold, marginBottom: 12, textAlign: "center" }}>
+                    <div style={{ fontSize: 18, fontWeight: 900, color: C.goldText, marginBottom: 12, textAlign: "center" }}>
                   {t("الرياضة ليست مجرد وسيلة", "Fitness is more than a way")}
                 </div>
                 <div style={{ fontSize: 15, fontWeight: 700, color: "#fff", marginBottom: 16, textAlign: "center" }}>
@@ -1320,7 +1321,7 @@ const AboutPage = () => {
                         alignItems: "flex-start",
                       }}
                     >
-                      <span style={{ color: C.gold, fontWeight: 900 }}>•</span>
+                      <span style={{ color: C.goldText, fontWeight: 900 }}>•</span>
                       <span>{item}</span>
                     </div>
                   ))}
@@ -1332,7 +1333,7 @@ const AboutPage = () => {
                 <div style={{ color: "#f4dbe5", marginTop: 6, fontSize: 14 }}>
                   {t("وامنحي نفسك فرصة لتكوني في أفضل حالتك", "Give yourself the chance to be at your best")}
                 </div>
-                <div style={{ marginTop: 14, display: "flex", justifyContent: "center", flexWrap: "wrap", gap: 12, color: C.gold, fontWeight: 800 }}>
+                  <div style={{ marginTop: 14, display: "flex", justifyContent: "center", flexWrap: "wrap", gap: 12, color: C.goldText, fontWeight: 800 }}>
                   <span>📞 {contactInfo.phone || "01001514535"}</span>
                   {contactInfo.whatsapp ? <span>📱 {contactInfo.whatsapp}</span> : null}
                 </div>
@@ -2558,13 +2559,16 @@ const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string, s
                         aria-label={t(`الانتقال إلى الصورة ${index + 1}`, `Go to slide ${index + 1}`)}
                         onClick={() => setHeroSlideIndex(index)}
                         style={{
-                          width: index === heroSlideIndex ? 26 : 10,
+                          width: 26,
                           height: 10,
                           borderRadius: 999,
                           border: "none",
                           background: index === heroSlideIndex ? C.red : "rgba(255,255,255,.65)",
                           cursor: "pointer",
-                          transition: "all .2s ease",
+                          transform: `scaleX(${index === heroSlideIndex ? 1 : 10 / 26})`,
+                          transformOrigin: "center",
+                          opacity: index === heroSlideIndex ? 1 : .85,
+                          transition: "transform .2s ease, opacity .2s ease, background-color .2s ease",
                         }}
                       />
                     ))}
@@ -5623,14 +5627,14 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
                             <div style={{ display: "flex", gap: 4, flexWrap: "wrap", justifyContent: "flex-end", alignItems: "center" }}>
                               {["/payment-logos/visa.svg", "/payment-logos/mastercard.svg", "/payment-logos/u-valu-logo.webp", "/payment-logos/sympl-menu2.png"].map((src) => (
                                 <div key={src} style={{ background: "#fff", borderRadius: 4, padding: "2px 4px", height: 24, display: "flex", alignItems: "center" }}>
-                                  <img src={src} alt="" style={{ height: 18, maxWidth: 40, objectFit: "contain" }} />
+                                  <img src={src} alt="" width={40} height={18} style={{ height: 18, maxWidth: 40, objectFit: "contain" }} />
                                 </div>
                               ))}
                               <div style={{ background: "#fff", borderRadius: 4, padding: "2px 6px", height: 24, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2 }}>
                                 <span style={{ fontSize: 7, fontWeight: 700, color: "#555", lineHeight: 1, whiteSpace: "nowrap" }}>{t("المحافظ", "Wallets")}</span>
                                 <div style={{ display: "flex", gap: 2, alignItems: "center" }}>
                                   {["/payment-logos/vodafone-cash.svg", "/payment-logos/we-pay.svg", "/payment-logos/etisalat-cash.svg", "/payment-logos/orange-cash.svg", "/payment-logos/fawry.svg"].map((src) => (
-                                    <img key={src} src={src} alt="" style={{ height: 10, width: "auto", borderRadius: 1, objectFit: "contain" }} />
+                                    <img key={src} src={src} alt="" width={16} height={10} style={{ height: 10, width: "auto", borderRadius: 1, objectFit: "contain" }} />
                                   ))}
                                 </div>
                               </div>
@@ -5790,7 +5794,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
             </div>
           ) : (
             <>
-              <div data-tour="goals" style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 16, scrollMarginTop: 120 }}>
+              <div data-tour="goals" style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 16, minHeight: viewportWidth() < 768 ? 260 : 340, scrollMarginTop: 120 }}>
                 {displayGoals.map((goal) => {
                   const active = selectedGoals.includes(goal.id);
                   const hasChildren = !goal.parentId && (goalsByParent.get(goal.id)?.length ?? 0) > 0;
@@ -5816,7 +5820,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
                     >
                       <div style={{ marginBottom: 12 }}>
                         {goal.image ? (
-                          <img src={goal.image} alt={goal.name} loading="lazy" style={{ width: "100%", height: "auto", maxHeight: 200, objectFit: "cover", objectPosition: "top", display: "block", borderRadius: 12 }} />
+                          <img src={goal.image} alt="" loading="lazy" style={{ width: "100%", height: "auto", aspectRatio: "4 / 3", maxHeight: 200, objectFit: "cover", objectPosition: "top", display: "block", borderRadius: 12 }} />
                         ) : (
                           <div style={{ height: 120, borderRadius: 12, background: "rgba(233,30,99,.08)", display: "flex", alignItems: "center", justifyContent: "center", color: C.gray, fontWeight: 700 }}>
                             {goal.name}
@@ -7805,14 +7809,14 @@ const ProductDetailPage = ({ navigate, walletBalance = 0 }: { navigate: (p: stri
                   { src: "/payment-logos/sohoooooola.png",    alt: "Souhoola",     bg: "#fff" },
                 ].map(({ src, alt, bg }) => (
                   <div key={alt} style={{ height: 28, borderRadius: 6, background: bg, border: "1px solid rgba(255,255,255,.15)", padding: "3px 7px", display: "flex", alignItems: "center" }}>
-                    <img src={src} alt={alt} style={{ height: 20, width: "auto", objectFit: "contain", display: "block" }} loading="lazy" />
+                    <img src={src} alt={alt} width={40} height={20} style={{ height: 20, width: "auto", objectFit: "contain", display: "block" }} loading="lazy" />
                   </div>
                 ))}
                 <div style={{ height: 28, borderRadius: 6, background: "#fff", border: "1px solid rgba(255,255,255,.15)", padding: "2px 7px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2 }}>
                   <span style={{ fontSize: 7, fontWeight: 700, color: "#555", lineHeight: 1, whiteSpace: "nowrap" }}>{t("المحافظ", "Wallets")}</span>
                   <div style={{ display: "flex", gap: 2, alignItems: "center" }}>
                     {["/payment-logos/vodafone-cash.svg", "/payment-logos/we-pay.svg", "/payment-logos/etisalat-cash.svg", "/payment-logos/orange-cash.svg", "/payment-logos/fawry.svg"].map((src) => (
-                      <img key={src} src={src} alt="" style={{ height: 10, width: "auto", borderRadius: 1, objectFit: "contain" }} loading="lazy" />
+                      <img key={src} src={src} alt="" width={16} height={10} style={{ height: 10, width: "auto", borderRadius: 1, objectFit: "contain" }} loading="lazy" />
                     ))}
                   </div>
                 </div>
@@ -8544,14 +8548,14 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                             { src: "/payment-logos/sympl-menu2.png", alt: "Sympl" },
                           ].map(({ src, alt }) => (
                             <div key={alt} style={{ height: 26, borderRadius: 5, background: "#fff", border: "1px solid rgba(0,0,0,.12)", padding: "2px 5px", display: "flex", alignItems: "center" }}>
-                              <img src={src} alt={alt} style={{ height: 18, width: "auto", objectFit: "contain", display: "block" }} loading="lazy" />
+                              <img src={src} alt={alt} width={40} height={18} style={{ height: 18, width: "auto", objectFit: "contain", display: "block" }} loading="lazy" />
                             </div>
                           ))}
                           <div style={{ height: 26, borderRadius: 5, background: "#fff", border: "1px solid rgba(0,0,0,.12)", padding: "2px 6px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2 }}>
                             <span style={{ fontSize: 7, fontWeight: 700, color: "#555", lineHeight: 1, whiteSpace: "nowrap" }}>{t("المحافظ", "Wallets")}</span>
                             <div style={{ display: "flex", gap: 2, alignItems: "center" }}>
                               {["/payment-logos/vodafone-cash.svg", "/payment-logos/we-pay.svg", "/payment-logos/etisalat-cash.svg", "/payment-logos/orange-cash.svg", "/payment-logos/fawry.svg"].map((src) => (
-                                <img key={src} src={src} alt="" style={{ height: 10, width: "auto", borderRadius: 1, objectFit: "contain" }} loading="lazy" />
+                                <img key={src} src={src} alt="" width={16} height={10} style={{ height: 10, width: "auto", borderRadius: 1, objectFit: "contain" }} loading="lazy" />
                               ))}
                             </div>
                           </div>
@@ -10025,6 +10029,7 @@ export default function App() {
   const [cartCount, setCartCount] = useState(0);
   const [storeEnabled, setStoreEnabled] = useState(false);
   const [tourOpen, setTourOpen] = useState(false);
+  const [tourPromptOpen, setTourPromptOpen] = useState(false);
   const navigating = useRef(false);
   const pendingScrollTarget = useRef<"shop-products" | "trainers-list" | null>(null);
   const tourFrameRef = useRef<number | null>(null);
@@ -10043,9 +10048,17 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (page !== "home" || localStorage.getItem("fitzone_onboarding_completed_v1")) return;
-    setTourOpen(true);
-  }, []);
+    if (page !== "home" || localStorage.getItem(ONBOARDING_COMPLETED_KEY)) return;
+
+    const showPrompt = () => {
+      setTourPromptOpen(true);
+      cleanup();
+    };
+    const events: Array<keyof WindowEventMap> = ["pointerdown", "touchstart", "keydown", "scroll"];
+    const cleanup = () => events.forEach((event) => window.removeEventListener(event, showPrompt));
+    events.forEach((event) => window.addEventListener(event, showPrompt, { once: true, passive: event !== "keydown" }));
+    return cleanup;
+  }, [page]);
 
   useEffect(() => () => {
     if (tourFrameRef.current !== null) cancelAnimationFrame(tourFrameRef.current);
@@ -10186,6 +10199,16 @@ export default function App() {
     setPage((current) => current === tourPage ? current : tourPage);
   }, []);
 
+  const openTour = useCallback(() => {
+    setTourPromptOpen(false);
+    setTourOpen(true);
+  }, []);
+
+  const dismissTourPrompt = useCallback(() => {
+    localStorage.setItem(ONBOARDING_COMPLETED_KEY, "true");
+    setTourPromptOpen(false);
+  }, []);
+
   const finishTourAt = useCallback((target: "goals") => {
     navigating.current = true;
     setPage("memberships");
@@ -10239,9 +10262,21 @@ export default function App() {
         </div>
         {page !== "memberships" && (pages[page as keyof typeof pages] || pages.home)}
       </main>
-      <Footer navigate={navigate} storeEnabled={storeEnabled} onRestartTour={() => setTourOpen(true)} />
+      <Footer navigate={navigate} storeEnabled={storeEnabled} onRestartTour={openTour} />
       <BottomNav currentPage={page} navigate={navigate} cartCount={cartCount} storeEnabled={storeEnabled} />
       <StoreGiftToast />
+      {tourPromptOpen && (
+        <aside aria-live="polite" style={{ position: "fixed", zIndex: 79, right: 20, bottom: 104, width: "min(340px, calc(100vw - 40px))", background: "#fff", border: `1px solid ${C.border}`, borderRadius: 16, boxShadow: "0 14px 36px rgba(26,8,18,.16)", padding: "16px 18px" }}>
+          <button type="button" onClick={dismissTourPrompt} aria-label={lang === "en" ? "Close" : "إغلاق"} style={{ position: "absolute", top: 8, [lang === "en" ? "right" : "left"]: 10, border: 0, background: "transparent", color: C.gray, fontSize: 20, lineHeight: 1, cursor: "pointer" }}>×</button>
+          <strong style={{ display: "block", color: C.white, fontSize: 16, marginBottom: 6 }}>{lang === "en" ? "New here?" : "جديدة هنا؟"}</strong>
+          <p style={{ color: C.grayLight, fontSize: 13, lineHeight: 1.7, marginBottom: 12 }}>{lang === "en" ? "Take a quick tour and discover FitZone’s key features." : "خدي جولة سريعة وتعرفي على أهم مميزات FitZone."}</p>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button type="button" onClick={openTour} style={{ border: 0, borderRadius: 8, background: C.redText, color: "#fff", padding: "8px 12px", font: "700 12px inherit", cursor: "pointer" }}>{lang === "en" ? "Start tour" : "ابدئي الجولة"}</button>
+            <button type="button" onClick={dismissTourPrompt} style={{ border: `1px solid ${C.redText}`, borderRadius: 8, background: "#fff", color: C.redText, padding: "8px 12px", font: "700 12px inherit", cursor: "pointer" }}>{lang === "en" ? "Not now" : "مش دلوقتي"}</button>
+          </div>
+          <style>{`@media(max-width:767px){aside[aria-live="polite"]{right:20px!important;bottom:calc(160px + env(safe-area-inset-bottom,0px))!important;}}`}</style>
+        </aside>
+      )}
       {tourOpen && <FitZoneTour onNavigate={navigateForTour} onFinishNavigate={finishTourAt} onClose={() => setTourOpen(false)} />}
     </div>
   );
