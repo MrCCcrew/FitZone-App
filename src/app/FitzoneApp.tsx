@@ -6030,7 +6030,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
             </div>
           ) : (
             <div data-tour="goal-memberships" style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr 1fr", "repeat(3, 1fr)", "repeat(4, 1fr)"), gap: 16, scrollMarginTop: 120 }}>
-              {filteredPlans.map((p) => {
+              {filteredPlans.map((p, index) => {
                 const before = p.priceBefore ?? null;
                 const after = p.priceAfter ?? p.price;
                 const hasDiscount = before != null && before > after;
@@ -6038,6 +6038,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
                 return (
                   <div
                     key={p.name}
+                    data-tour={index === 0 ? "first-goal-membership-card" : undefined}
                     className="card"
                     style={{
                       padding: 0,
@@ -6594,13 +6595,13 @@ const ClassesPage = ({ navigate }: { navigate: (p: string) => void }) => {
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 32 }}>
             {types.map(tp => <button key={tp} className={`tab ${filterType === tp ? "active" : ""}`} onClick={() => setFilterType(tp)}>{tp}</button>)}
           </div>
-          <div data-tour="classes-list" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 24, scrollMarginTop: 120 }}>
-            {filtered.map(c => {
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 24 }}>
+            {filtered.map((c, index) => {
               const firstSchedule = c.schedules[0];
               const spots = firstSchedule?.availableSpots ?? c.maxSpots;
               const iColor = getIntensityColor(c.intensity);
               return (
-              <div key={c.id} className="card card-hover" style={{ cursor: "pointer" }} onClick={() => { if (typeof window !== "undefined") { window.sessionStorage.setItem(CLASS_STORAGE_KEY, JSON.stringify(c)); } navigate("classDetail"); }}>
+               <div key={c.id} data-tour={index === 0 ? "first-class-card" : undefined} className="card card-hover" style={{ cursor: "pointer", scrollMarginTop: 120 }} onClick={() => { if (typeof window !== "undefined") { window.sessionStorage.setItem(CLASS_STORAGE_KEY, JSON.stringify(c)); } navigate("classDetail"); }}>
                 <div style={{ height: 180 }}><GymImg type={resolveClassImageType(c.type)} w="100%" h={180} /></div>
                 <div style={{ padding: 20 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
@@ -7087,7 +7088,7 @@ const useWishlist = () => {
 
 // ─── PRODUCT MINI CARD ────────────────────────────────────────────────────────
 const ProductMiniCard = ({
-  product, navigate, wishlist, lang, t, giftCampaignActive, giftCampaignMin, giftRewardLabel, compact,
+  product, navigate, wishlist, lang, t, giftCampaignActive, giftCampaignMin, giftRewardLabel, compact, tourTarget,
 }: {
   product: StoreProduct;
   navigate: (p: string) => void;
@@ -7098,6 +7099,7 @@ const ProductMiniCard = ({
   giftCampaignMin?: number;
   giftRewardLabel?: string;
   compact?: boolean;
+  tourTarget?: string;
 }) => {
   const outOfStock = typeof product.stock === "number" && product.stock <= 0;
   const cardId = product.id ?? product.name;
@@ -7108,6 +7110,7 @@ const ProductMiniCard = ({
   };
   return (
     <div
+      data-tour={tourTarget}
       onClick={goDetail}
       style={{
         background: "#fff", borderRadius: compact ? 12 : 16, overflow: "hidden", cursor: "pointer",
@@ -7427,8 +7430,8 @@ const ShopPage = ({ navigate }: { navigate: (p: string) => void }) => {
             const hasMoreShop = filtered.length > SHOP_INITIAL && !showAllShopProducts;
             return (
               <>
-                <div id="shop-products" data-tour="shop-products" style={{ display: "grid", gridTemplateColumns: shopGridCols, gap: shopGap, scrollMarginTop: 120 }}>
-                  {shownFiltered.map(p => <ProductMiniCard key={p.id ?? p.name} product={p} navigate={navigate} wishlist={wishlist} lang={lang} t={t} giftCampaignActive={giftCampaign?.active} giftCampaignMin={giftCampaign?.minSubtotal} giftRewardLabel={giftCampaignRewardLabel(giftCampaign)} compact={isMobile} />)}
+                <div id="shop-products" style={{ display: "grid", gridTemplateColumns: shopGridCols, gap: shopGap, scrollMarginTop: 120 }}>
+                  {shownFiltered.map((p, index) => <ProductMiniCard key={p.id ?? p.name} product={p} navigate={navigate} wishlist={wishlist} lang={lang} t={t} giftCampaignActive={giftCampaign?.active} giftCampaignMin={giftCampaign?.minSubtotal} giftRewardLabel={giftCampaignRewardLabel(giftCampaign)} compact={isMobile} tourTarget={index === 0 ? "first-shop-product" : undefined} />)}
                 </div>
                 {hasMoreShop && (
                   <div style={{ textAlign: "center", marginTop: 28 }}>
@@ -9138,9 +9141,9 @@ const TrainersPage = ({ navigate, summary }: { navigate: (p: string) => void; su
       </section>
       <section className="section">
         <div className="container">
-          <div id="trainers-list" data-tour="trainers-list" style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 24, scrollMarginTop: 120 }}>
+          <div id="trainers-list" style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 24, scrollMarginTop: 120 }}>
             {trainers.map((tr, index) => (
-              <div key={tr.id} className="card card-hover" style={{ padding: 0, overflow: "hidden", textAlign: "center" }}>
+              <div key={tr.id} data-tour={index === 0 ? "first-trainer-card" : undefined} className="card card-hover" style={{ padding: 0, overflow: "hidden", textAlign: "center", scrollMarginTop: 120 }}>
                 {/* Photo */}
                 <div style={{ height: 230, cursor: "pointer", position: "relative", overflow: "hidden" }} onClick={() => setTrainerDetailModal(tr)}>
                   {tr.image ? (
