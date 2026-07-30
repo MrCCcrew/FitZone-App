@@ -1,6 +1,17 @@
 import type { Metadata } from "next";
-import FitzoneApp from "./FitzoneApp";
+import FitzoneApp, { type InitialHomeData } from "./FitzoneApp";
 import LiveChatWidget from "@/components/LiveChatWidget";
+import { getInitialHomeData as loadInitialHomeData } from "@/lib/home-initial-data";
+
+export const dynamic = "force-dynamic";
+
+async function getInitialHomeData() {
+  try {
+    return await loadInitialHomeData() as InitialHomeData;
+  } catch {
+    return { memberships: [], offers: [] } as InitialHomeData;
+  }
+}
 
 export const metadata: Metadata = {
   title: "FitZone | أفضل نادي سيدات في بني سويف ومصر",
@@ -28,7 +39,8 @@ export const metadata: Metadata = {
   },
 };
 
-export default function Home() {
+export default async function Home() {
+  const initialHomeData = await getInitialHomeData();
   const healthClubJsonLd = {
     "@context": "https://schema.org",
     "@type": "HealthClub",
@@ -149,7 +161,7 @@ export default function Home() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
       />
-      <FitzoneApp />
+      <FitzoneApp initialHomeData={initialHomeData} />
       <LiveChatWidget />
     </>
   );
