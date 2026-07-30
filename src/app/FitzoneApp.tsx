@@ -1,5 +1,6 @@
 ﻿'use client';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { useLang } from "@/lib/language";
 import { trackBusinessView } from "@/lib/analytics/client-events";
 import { StoreGiftCampaignCard } from "@/components/store/StoreGiftCampaignCard";
@@ -7,6 +8,8 @@ import { StoreGiftToast, dispatchGiftToast } from "@/components/store/StoreGiftT
 import { StoreGiftBadge } from "@/components/store/StoreGiftBadge";
 import { useStoreGiftCampaign } from "@/components/store/useStoreGiftCampaign";
 import { StoreGiftGameEntryPopup } from "@/components/store/game/StoreGiftGameEntryPopup";
+
+const FitZoneTour = dynamic(() => import("@/components/onboarding/FitZoneTour"), { ssr: false });
 
 // ─── FIT ZONE BRAND COLORS ─────────────────────────────────────────────────
 const C = {
@@ -827,6 +830,7 @@ const Header = ({
             </button>
           )}
           <button
+            data-tour="account"
             onClick={() => navigate("account")}
             aria-label={summary?.authenticated ? (summary.user?.name || t("حسابي", "My account")) : t("تسجيل الدخول", "Login")}
             style={{
@@ -872,7 +876,7 @@ const Header = ({
 };
 
 // ─── FOOTER ─────────────────────────────────────────────────────────────────
-const Footer = ({ navigate, storeEnabled }: { navigate: (p: string) => void; storeEnabled: boolean }) => {
+const Footer = ({ navigate, storeEnabled, onRestartTour }: { navigate: (p: string) => void; storeEnabled: boolean; onRestartTour: () => void }) => {
   const [contact, setContact] = useState<PublicContact>(DEFAULT_CONTACT);
   const t = useT();
 
@@ -910,6 +914,9 @@ const Footer = ({ navigate, storeEnabled }: { navigate: (p: string) => void; sto
               "Fitness club in Beni Suef for women and kids with memberships, classes, expert coaches, and a sports shop in one place.",
             )}
           </p>
+          <button type="button" onClick={onRestartTour} style={{ border: "none", background: "none", color: C.redDark, fontFamily: "inherit", fontSize: 13, fontWeight: 700, cursor: "pointer", padding: 0, marginBottom: 16 }}>
+            {t("جولة استخدام الموقع", "Website tour")}
+          </button>
           <div style={{ display: "flex", gap: 10 }}>
             {socialLinks.map(({ key, href, color }) => (
               href ? (
@@ -5727,7 +5734,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
         </section>
       )}
 
-      {!hasPendingFlow && <section className="section" style={{ paddingTop: 36 }}>
+      {!hasPendingFlow && <section className="section" data-tour="goals" style={{ paddingTop: 36 }}>
         <div className="container">
           <div style={{ textAlign: "center", marginBottom: 28 }}>
             <h2 className="section-title">
@@ -5806,7 +5813,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
         </div>
       </section>}
 
-      {!hasPendingFlow && <section className="section" ref={plansRef}>
+      {!hasPendingFlow && <section className="section" data-tour="memberships" ref={plansRef}>
         <div className="container">
           {subMsg && (
             <div style={{ marginBottom: 20, padding: "14px 20px", borderRadius: 8, background: subMsg.ok ? "#dcfce7" : "#fee2e2", color: subMsg.ok ? "#166534" : "#991b1b", fontWeight: 700, textAlign: "center", fontSize: 14 }}>
@@ -6883,7 +6890,7 @@ const SchedulePage = () => {
           </p>
         </div>
       </section>
-      <section className="section">
+      <section className="section" data-tour="schedule">
         <div className="container" style={{ overflowX: "hidden" }}>
           {renderBoard(
             t("مواعيد الكلاسات الصباحية", "Morning Classes"),
@@ -7397,7 +7404,7 @@ const ShopPage = ({ navigate }: { navigate: (p: string) => void }) => {
             const hasMoreShop = filtered.length > SHOP_INITIAL && !showAllShopProducts;
             return (
               <>
-                <div id="shop-products" style={{ display: "grid", gridTemplateColumns: shopGridCols, gap: shopGap, scrollMarginTop: 120 }}>
+                <div id="shop-products" data-tour="shop" style={{ display: "grid", gridTemplateColumns: shopGridCols, gap: shopGap, scrollMarginTop: 120 }}>
                   {shownFiltered.map(p => <ProductMiniCard key={p.id ?? p.name} product={p} navigate={navigate} wishlist={wishlist} lang={lang} t={t} giftCampaignActive={giftCampaign?.active} giftCampaignMin={giftCampaign?.minSubtotal} giftRewardLabel={giftCampaignRewardLabel(giftCampaign)} compact={isMobile} />)}
                 </div>
                 {hasMoreShop && (
@@ -9108,7 +9115,7 @@ const TrainersPage = ({ navigate, summary }: { navigate: (p: string) => void; su
       </section>
       <section className="section">
         <div className="container">
-          <div id="trainers-list" style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 24, scrollMarginTop: 120 }}>
+          <div id="trainers-list" data-tour="trainers" style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 24, scrollMarginTop: 120 }}>
             {trainers.map((tr, index) => (
               <div key={tr.id} className="card card-hover" style={{ padding: 0, overflow: "hidden", textAlign: "center" }}>
                 {/* Photo */}
@@ -9991,8 +9998,10 @@ export default function App() {
   const [summary, setSummary] = useState<UserSummary | null>(null);
   const [cartCount, setCartCount] = useState(0);
   const [storeEnabled, setStoreEnabled] = useState(false);
+  const [tourOpen, setTourOpen] = useState(false);
   const navigating = useRef(false);
   const pendingScrollTarget = useRef<"shop-products" | "trainers-list" | null>(null);
+  const tourFrameRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -10005,6 +10014,15 @@ export default function App() {
       url.searchParams.delete("ref");
       window.history.replaceState({}, "", url.toString());
     }
+  }, []);
+
+  useEffect(() => {
+    if (page !== "home" || localStorage.getItem("fitzone_onboarding_completed_v1")) return;
+    setTourOpen(true);
+  }, []);
+
+  useEffect(() => () => {
+    if (tourFrameRef.current !== null) cancelAnimationFrame(tourFrameRef.current);
   }, []);
 
   useEffect(() => {
@@ -10136,6 +10154,24 @@ export default function App() {
     }
   };
 
+  const navigateForTour = useCallback((tourPage: "memberships" | "schedule" | "trainers" | "shop" | null) => {
+    if (!tourPage) return;
+    navigating.current = true;
+    setPage((current) => current === tourPage ? current : tourPage);
+  }, []);
+
+  const finishTourAt = useCallback((target: "goals" | "memberships") => {
+    navigating.current = true;
+    setPage("memberships");
+    if (tourFrameRef.current !== null) cancelAnimationFrame(tourFrameRef.current);
+    tourFrameRef.current = requestAnimationFrame(() => {
+      tourFrameRef.current = requestAnimationFrame(() => {
+        document.querySelector<HTMLElement>(`[data-tour="${target}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+        tourFrameRef.current = null;
+      });
+    });
+  }, []);
+
   const pages = {
     home: <HomePage navigate={navigate} summary={summary} storeEnabled={storeEnabled} />,
     about: <AboutPage />,
@@ -10177,9 +10213,10 @@ export default function App() {
         </div>
         {page !== "memberships" && (pages[page as keyof typeof pages] || pages.home)}
       </main>
-      <Footer navigate={navigate} storeEnabled={storeEnabled} />
+      <Footer navigate={navigate} storeEnabled={storeEnabled} onRestartTour={() => setTourOpen(true)} />
       <BottomNav currentPage={page} navigate={navigate} cartCount={cartCount} storeEnabled={storeEnabled} />
       <StoreGiftToast />
+      {tourOpen && <FitZoneTour onNavigate={navigateForTour} onFinishNavigate={finishTourAt} onClose={() => setTourOpen(false)} />}
     </div>
   );
 }
