@@ -15,14 +15,17 @@ const C = {
   bgCard2: "#FFF0F5",
   border: "#F5D0DC",
   red: "#E91E63",
+  redText: "#BE123C",
   redDark: "#C2185B",
   redLight: "#F06292",
   gold: "#C8A200",
+  goldText: "#92400E",
   goldLight: "#F0C420",
   goldDark: "#8A6E00",
   white: "#1A0812",
   gray: "#7A5B68",
-  grayLight: "#B090A0",
+  grayLight: "#4B5563",
+  successText: "#15803D",
   grayDark: "#E8D0D8",
   success: "#16A34A",
   successDark: "#166534",
@@ -35,7 +38,7 @@ const css = `
   .app{min-height:100vh;}
 
   .btn-primary{background:${C.redDark};color:#fff;border:none;padding:12px 28px;border-radius:6px;font-family:'Cairo',sans-serif;font-size:15px;font-weight:700;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;gap:8px;letter-spacing:.3px;}
-  .btn-primary:hover{background:${C.red};transform:translateY(-1px);box-shadow:0 6px 20px rgba(233,30,99,.35);}
+  .btn-primary:hover{background:${C.redText};transform:translateY(-1px);box-shadow:0 6px 20px rgba(233,30,99,.35);}
   .btn-gold{background:linear-gradient(135deg,${C.gold},${C.goldLight});color:#000;border:none;padding:12px 28px;border-radius:6px;font-family:'Cairo',sans-serif;font-size:15px;font-weight:700;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;gap:8px;}
   .btn-gold:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(200,162,0,.35);}
   .btn-outline{background:transparent;color:${C.redDark};border:2px solid ${C.redDark};padding:10px 26px;border-radius:6px;font-family:'Cairo',sans-serif;font-size:15px;font-weight:700;cursor:pointer;transition:all .2s;}
@@ -2594,7 +2597,7 @@ const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string, s
                   ? Math.max(maxSubscribers - offer.currentSubscribers, 0)
                   : null;
                 const isSpecial = offer.type === "special";
-                const accentColor = isSpecial ? C.red : C.gold;
+                const accentColor = isSpecial ? C.redText : C.goldText;
                 return (
                   <div key={offer.id} className="card card-hover" style={{ padding: 0, overflow: "hidden", border: `1px solid ${accentColor}33` }}>
                     {/* Image */}
@@ -2602,14 +2605,14 @@ const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string, s
                       <div style={{ height: 180, overflow: "hidden", position: "relative" }}>
                         <img src={offer.image} alt={offer.title} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                         <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(10,5,8,.75) 0%, transparent 55%)" }} />
-                        <span style={{ position: "absolute", top: 12, insetInlineStart: 12, background: accentColor, color: "#fff", fontSize: 11, fontWeight: 800, padding: "3px 10px", borderRadius: 20 }}>
+                          <span style={{ position: "absolute", top: 12, insetInlineStart: 12, background: accentColor, color: "#fff", fontSize: 11, fontWeight: 800, padding: "3px 10px", borderRadius: 20 }}>
                           {isSpecial ? t("عرض خاص", "Special") : offer.type === "percentage" ? `${offer.discount}% ${t("خصم","off")}` : t("عرض","Offer")}
                         </span>
                       </div>
                     )}
                     <div style={{ padding: "20px 22px 22px" }}>
                       {!offer.image && (
-                        <span style={{ display: "inline-block", background: `${accentColor}22`, color: accentColor, fontSize: 11, fontWeight: 800, padding: "3px 10px", borderRadius: 20, marginBottom: 10 }}>
+                          <span style={{ display: "inline-block", background: isSpecial ? C.redText : `${accentColor}22`, color: isSpecial ? "#fff" : accentColor, fontSize: 11, fontWeight: 800, padding: "3px 10px", borderRadius: 20, marginBottom: 10 }}>
                           {isSpecial ? t("عرض خاص", "Special") : offer.type === "percentage" ? `${offer.discount}% ${t("خصم","off")}` : t("عرض","Offer")}
                         </span>
                       )}
@@ -2649,7 +2652,7 @@ const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string, s
                           )}
                           {remaining != null && (
                             <div style={{ textAlign: "center" }}>
-                              <div style={{ fontWeight: 800, fontSize: 18, color: C.gold }}>{remaining.toLocaleString(lang === "en" ? "en-US" : "ar-EG")}</div>
+                              <div style={{ fontWeight: 800, fontSize: 18, color: C.goldText }}>{remaining.toLocaleString(lang === "en" ? "en-US" : "ar-EG")}</div>
                               <div style={{ fontSize: 10, color: C.gray }}>{t("مقعد متبقي", "left")}</div>
                             </div>
                           )}
@@ -2705,7 +2708,7 @@ const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string, s
                       ) : (
                         <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, background: `linear-gradient(135deg, ${C.red}22, ${C.red}0D)` }}>
                           <div style={{ fontSize: 42 }}>🎯</div>
-                          <div style={{ color: C.red, fontSize: 12, fontWeight: 800 }}>{t("عرض تخصيص", "Custom plan")}</div>
+                          <div style={{ color: C.redText, fontSize: 12, fontWeight: 800 }}>{t("عرض تخصيص", "Custom plan")}</div>
                         </div>
                       )}
                       <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(10,5,8,.80) 0%, transparent 55%)" }} />
@@ -2719,12 +2722,12 @@ const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string, s
                       {hasDiscount && (
                         <div style={{ fontSize: 15, color: C.gray, textDecoration: "line-through", lineHeight: 1, marginBottom: 2 }}>{plan.price.toLocaleString(lang === "en" ? "en-US" : "ar-EG")}</div>
                       )}
-                      <div style={{ fontSize: 32, fontWeight: 900, color: C.red, lineHeight: 1, marginBottom: 2 }}>{discountedPrice.toLocaleString(lang === "en" ? "en-US" : "ar-EG")}</div>
+                      <div style={{ fontSize: 32, fontWeight: 900, color: C.redText, lineHeight: 1, marginBottom: 2 }}>{discountedPrice.toLocaleString(lang === "en" ? "en-US" : "ar-EG")}</div>
                       <div style={{ fontSize: 11, color: C.gray, marginBottom: 10 }}>{t("ج.م / شهر", "EGP / month")}</div>
                       <h3 style={{ fontWeight: 800, fontSize: 16, color: C.white, marginBottom: 8 }}>{plan.name}</h3>
                       <div style={{ display: "flex", gap: 10, color: C.gray, fontSize: 12, marginBottom: 14, flexWrap: "wrap" }}>
                         <span>📅 {minM} – {maxM} {t("شهور", "months")}</span>
-                        {pct > 0 && <span style={{ color: "#4ade80" }}>✅ {t(`خصم ${pct}% على الإجمالي`, `${pct}% total discount`)}</span>}
+                        {pct > 0 && <span style={{ color: C.successText }}>✅ {t(`خصم ${pct}% على الإجمالي`, `${pct}% total discount`)}</span>}
                       </div>
                       <ul style={{ listStyle: "none", marginBottom: 20, flex: 1 }}>
                         {(plan.features ?? []).slice(0, 4).map((item) => (
@@ -3106,11 +3109,11 @@ const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string, s
                             {p.vatEnabled && <span style={{ fontSize: 9, color: "#10b981", background: "rgba(16,185,129,0.12)", borderRadius: 4, padding: "2px 5px", alignSelf: "flex-start" }}>{lang === "en" ? "Incl. 14% VAT" : "شامل ضريبة 14%"}</span>}
                           </div>
                           <button
-                            style={{ width: "100%", padding: isMobile ? "8px 6px" : "10px", borderRadius: 10, border: "none", background: outOfStock ? "#e5e7eb" : `linear-gradient(135deg,${C.red},#c2185b)`, color: outOfStock ? "#9ca3af" : "#fff", fontWeight: 800, fontSize: isMobile ? 11 : 13, cursor: outOfStock ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, fontFamily: "inherit", boxShadow: outOfStock ? "none" : "0 4px 14px rgba(233,30,99,.3)" }}
+                            style={{ width: "100%", padding: isMobile ? "8px 6px" : "10px", borderRadius: 10, border: "none", background: outOfStock ? "#e5e7eb" : `linear-gradient(135deg,${C.red},#c2185b)`, color: outOfStock ? C.grayLight : "#fff", fontWeight: 800, fontSize: isMobile ? 11 : 13, cursor: outOfStock ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, fontFamily: "inherit", boxShadow: outOfStock ? "none" : "0 4px 14px rgba(233,30,99,.3)" }}
                             disabled={outOfStock}
                             onClick={e => { e.stopPropagation(); if (outOfStock) return; addToCart({ productId: p.id ?? p.name, name: p.name, price: p.vatEnabled ? applyVat(p.price) : p.price, vatEnabled: p.vatEnabled ?? false, qty: 1, size: p.sizeType === "none" ? null : p.sizes?.[0] ?? null, type: p.type }); navigate("cart"); }}
                           >
-                            <I n="cart" s={isMobile ? 12 : 14} c={outOfStock ? "#9ca3af" : "#fff"} /> {outOfStock ? t("نفذت الكمية", "Out of stock") : t("أضيفي للسلة", "Add to cart")}
+                            <I n="cart" s={isMobile ? 12 : 14} c={outOfStock ? C.grayLight : "#fff"} /> {outOfStock ? t("نفذت الكمية", "Out of stock") : t("أضيفي للسلة", "Add to cart")}
                           </button>
                         </div>
                       </div>
@@ -3121,9 +3124,9 @@ const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string, s
                   <div style={{ textAlign: "center", marginTop: 28 }}>
                     <button
                       onClick={() => setShowAllHomeProducts(true)}
-                      style={{ padding: "12px 36px", borderRadius: 12, border: `2px solid ${C.red}`, background: "transparent", color: C.red, fontWeight: 800, fontSize: 14, cursor: "pointer", fontFamily: "inherit", transition: "all .2s" }}
-                      onMouseEnter={e => { const b = e.currentTarget as HTMLButtonElement; b.style.background = C.red; b.style.color = "#fff"; }}
-                      onMouseLeave={e => { const b = e.currentTarget as HTMLButtonElement; b.style.background = "transparent"; b.style.color = C.red; }}
+                      style={{ padding: "12px 36px", borderRadius: 12, border: `2px solid ${C.redText}`, background: "transparent", color: C.redText, fontWeight: 800, fontSize: 14, cursor: "pointer", fontFamily: "inherit", transition: "all .2s" }}
+                      onMouseEnter={e => { const b = e.currentTarget as HTMLButtonElement; b.style.background = C.redText; b.style.color = "#fff"; }}
+                      onMouseLeave={e => { const b = e.currentTarget as HTMLButtonElement; b.style.background = "transparent"; b.style.color = C.redText; }}
                     >
                       {t(`عرض المزيد (${products.length - INITIAL}+)`, `Show more (${products.length - INITIAL}+)`)}
                     </button>
@@ -3249,11 +3252,11 @@ const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string, s
                 {/* Info */}
                 <div style={{ padding: "16px 18px 20px" }}>
                   <h3 style={{ fontWeight: 900, fontSize: 17, color: C.white, marginBottom: 3 }}>{lang === "en" && trainer.nameEn ? trainer.nameEn : trainer.name}</h3>
-                  <p style={{ color: C.red, fontSize: 12, fontWeight: 700, marginBottom: 14, letterSpacing: ".3px" }}>{lang === "en" && trainer.specialtyEn ? trainer.specialtyEn : trainer.specialty}</p>
+                  <p style={{ color: C.redText, fontSize: 12, fontWeight: 700, marginBottom: 14, letterSpacing: ".3px" }}>{lang === "en" && trainer.specialtyEn ? trainer.specialtyEn : trainer.specialty}</p>
                   {/* Stats */}
                   <div style={{ display: "flex", justifyContent: "center", gap: 0, marginBottom: 16, border: "1px solid rgba(255,255,255,.08)", borderRadius: 10, overflow: "hidden" }}>
                     <div style={{ flex: 1, textAlign: "center", padding: "10px 6px", borderInlineEnd: "1px solid rgba(255,255,255,.08)" }}>
-                      <div style={{ fontWeight: 800, fontSize: 16, color: C.gold }}>⭐ {trainer.rating}</div>
+                      <div style={{ fontWeight: 800, fontSize: 16, color: C.goldText }}>⭐ {trainer.rating}</div>
                       <div style={{ fontSize: 10, color: C.gray, marginTop: 2 }}>{t("التقييم", "Rating")}</div>
                     </div>
                     <div style={{ flex: 1, textAlign: "center", padding: "10px 6px" }}>
@@ -3312,7 +3315,7 @@ const HomePage = ({ navigate, summary, storeEnabled }: { navigate: (p: string, s
               return (
                 <div key={t.id ?? `${name}-${index}`} className="card" style={{ padding: 28, borderRight: `3px solid ${C.red}` }}>
                   <div style={{ display: "flex", marginBottom: 12 }}>
-                    {[...Array(t.rating)].map((_,i) => <span key={i} style={{ color: C.gold, fontSize: 16 }}>⭐</span>)}
+                    {[...Array(t.rating)].map((_,i) => <span key={i} style={{ color: C.goldText, fontSize: 16 }}>⭐</span>)}
                   </div>
                   <p style={{ color: C.gray, lineHeight: 1.8, fontSize: 14, marginBottom: 20 }}>"{t.content}"</p>
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -3899,7 +3902,7 @@ function mapMembershipToPlanItem(membership: PublicMembership, color: string, po
 }
 
 const DEFAULT_PLANS: PlanItem[] = [];
-const PLAN_COLORS = [C.gray, C.red, C.gold, "#A855F7", "#3498DB", "#27AE60"];
+const PLAN_COLORS = [C.gray, C.redText, C.goldText, "#A855F7", "#3498DB", "#27AE60"];
 const GLOBAL_SUBSCRIBE_EVENT = "fitzone:open-subscribe";
 
 const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: string) => void; summary: UserSummary | null }) => {
@@ -5470,19 +5473,19 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
                       {summary.membershipDiscount > 0 ? (
                         <div style={{ display: "flex", justifyContent: "space-between", color: C.gray }}>
                           <span>{t("خصم الباقة", "Membership discount")}</span>
-                          <strong style={{ color: C.success }}>- {formatCurrency(summary.membershipDiscount)}</strong>
+                          <strong style={{ color: C.successText }}>- {formatCurrency(summary.membershipDiscount)}</strong>
                         </div>
                       ) : null}
                       {summary.promoDiscount > 0 ? (
                         <div style={{ display: "flex", justifyContent: "space-between", color: C.gray }}>
                           <span>{discountResult?.description ? `${t("كود الخصم", "Promo code")} (${discountCode.trim().toUpperCase()})` : t("خصم الكود", "Promo discount")}</span>
-                          <strong style={{ color: C.success }}>- {formatCurrency(summary.promoDiscount)}</strong>
+                          <strong style={{ color: C.successText }}>- {formatCurrency(summary.promoDiscount)}</strong>
                         </div>
                       ) : null}
                       {summary.affiliateDiscount > 0 ? (
                         <div style={{ display: "flex", justifyContent: "space-between", color: C.gray }}>
                           <span>{t("خصم الشريك", "Partner discount")}</span>
-                          <strong style={{ color: C.success }}>- {formatCurrency(summary.affiliateDiscount)}</strong>
+                          <strong style={{ color: C.successText }}>- {formatCurrency(summary.affiliateDiscount)}</strong>
                         </div>
                       ) : subCheckoutOptions?.affiliateDiscountEligible && (checkoutPreview.plan.offerId || checkoutPreview.plan.kind === "package") ? (
                         <div style={{ fontSize: 11, color: C.gray, fontStyle: "italic", paddingTop: 2 }}>
@@ -5492,19 +5495,19 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
                       {summary.rewardsDiscount > 0 ? (
                         <div style={{ display: "flex", justifyContent: "space-between", color: C.gray }}>
                           <span>{t("خصم فيتزونات", "FitZonas discount")}</span>
-                          <strong style={{ color: C.gold }}>- {formatCurrency(summary.rewardsDiscount)}</strong>
+                          <strong style={{ color: C.goldText }}>- {formatCurrency(summary.rewardsDiscount)}</strong>
                         </div>
                       ) : null}
                       {summary.walletDiscount > 0 ? (
                         <div style={{ display: "flex", justifyContent: "space-between", color: C.gray }}>
                           <span>{t("خصم المحفظة", "Wallet discount")}</span>
-                          <strong style={{ color: "#4ade80" }}>- {formatCurrency(summary.walletDiscount)}</strong>
+                          <strong style={{ color: C.successText }}>- {formatCurrency(summary.walletDiscount)}</strong>
                         </div>
                       ) : null}
                       <div style={{ height: 1, background: C.border, margin: "4px 0" }} />
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                         <span style={{ fontWeight: 900, color: C.white }}>{t("الإجمالي المستحق", "Amount due")}</span>
-                        <strong style={{ color: C.red, fontSize: 18 }}>{formatCurrency(summary.finalAmount)}</strong>
+                        <strong style={{ color: C.redText, fontSize: 18 }}>{formatCurrency(summary.finalAmount)}</strong>
                       </div>
                     </div>
                   </div>
@@ -5520,7 +5523,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
                           </div>
                           <span style={{ fontSize: 13, color: C.grayLight }}>
                             {t("استخدام فيتزونات", "Use FitZonas")}
-                            {" "}<strong style={{ color: C.gold }}>({subCheckoutOptions.rewardPoints.toLocaleString(lang === "ar" ? "ar-EG" : "en-US")} {t("فيتزونة", "FZs")} = {formatCurrency(subCheckoutOptions.rewardPointsEGP)})</strong>
+                            {" "}<strong style={{ color: C.goldText }}>({subCheckoutOptions.rewardPoints.toLocaleString(lang === "ar" ? "ar-EG" : "en-US")} {t("فيتزونة", "FZs")} = {formatCurrency(subCheckoutOptions.rewardPointsEGP)})</strong>
                           </span>
                         </div>
                       )}
@@ -5531,7 +5534,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
                           </div>
                           <span style={{ fontSize: 13, color: C.grayLight }}>
                             {t("استخدام رصيد المحفظة", "Use wallet balance")}
-                            {" "}<strong style={{ color: "#4ade80" }}>({formatCurrency(subCheckoutOptions.walletBalance)} {t("ج.م", "EGP")})</strong>
+                            {" "}<strong style={{ color: C.successText }}>({formatCurrency(subCheckoutOptions.walletBalance)} {t("ج.م", "EGP")})</strong>
                           </span>
                         </div>
                       )}
@@ -6033,7 +6036,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
                       {(p.popular || (hasDiscount && discountPercent != null)) && (
                         <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
                           {p.popular && (
-                            <span style={{ background: C.red, color: "#fff", padding: "2px 9px", borderRadius: 999, fontSize: 10, fontWeight: 800 }}>
+                            <span style={{ background: C.redText, color: "#fff", padding: "2px 9px", borderRadius: 999, fontSize: 10, fontWeight: 800 }}>
                               ⭐ {t("الأكثر شعبية", "Popular")}
                             </span>
                           )}
@@ -6222,6 +6225,7 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
                 ? Math.max(maxSubscribers - o.currentSubscribers, 0)
                 : null;
               const offerUnavailable = countdown.expired || (remaining != null && remaining <= 0);
+              const offerTextColor = o.type === "special" ? C.redText : C.goldText;
               return (
               <div
                 key={o.id}
@@ -6251,7 +6255,7 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
                     ) : (
                       <div style={{ height: 140, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, background: `linear-gradient(135deg, ${o.color}22, ${o.color}0D)` }}>
                         <div style={{ fontSize: viewportWidth() < 768 ? 34 : 42 }}>{o.type === "special" ? "⏳" : "🎁"}</div>
-                        <div style={{ color: o.color, fontSize: 12, fontWeight: 800 }}>
+                        <div style={{ color: offerTextColor, fontSize: 12, fontWeight: 800 }}>
                           {o.type === "special" ? t("عرض خاص", "Special offer") : t("خصم متاح", "Active discount")}
                         </div>
                       </div>
@@ -6265,7 +6269,7 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
                           {formatCurrency(o.priceBefore)}
                         </div>
                       )}
-                      <div style={{ fontSize: 34, fontWeight: 900, color: o.color, lineHeight: 1 }}>
+                      <div style={{ fontSize: 34, fontWeight: 900, color: offerTextColor, lineHeight: 1 }}>
                         {o.type === "special" ? formatCurrency(o.specialPrice ?? 0) : o.type === "percentage" ? `${o.discount}%` : `${o.discount} ${t("ج.م", "EGP")}`}
                       </div>
                       <div style={{ color: C.gray, fontSize: 11, marginTop: 4 }}>
@@ -6296,7 +6300,7 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
                       { label: t("ثانية","s"), value: countdown.seconds },
                     ].map((item) => (
                       <div key={item.label} style={{ minWidth: 52, borderRadius: 10, background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.1)", padding: "8px 6px", textAlign: "center" }}>
-                        <div style={{ fontSize: 17, fontWeight: 900, color: countdown.expired ? C.gray : o.color }}>{String(item.value).padStart(2,"0")}</div>
+                        <div style={{ fontSize: 17, fontWeight: 900, color: countdown.expired ? C.gray : offerTextColor }}>{String(item.value).padStart(2,"0")}</div>
                         <div style={{ fontSize: 9, color: C.gray }}>{item.label}</div>
                       </div>
                     ))}
@@ -6312,7 +6316,7 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
                       )}
                       {remaining != null && (
                         <div>
-                          <div style={{ fontWeight: 800, fontSize: 16, color: C.gold }}>{remaining.toLocaleString(lang === "en" ? "en-US" : "ar-EG")}</div>
+                          <div style={{ fontWeight: 800, fontSize: 16, color: C.goldText }}>{remaining.toLocaleString(lang === "en" ? "en-US" : "ar-EG")}</div>
                           <div style={{ fontSize: 10, color: C.gray }}>{t("مقعد متبقي", "left")}</div>
                         </div>
                       )}
@@ -6329,9 +6333,9 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
                       width: "100%",
                       padding: "10px",
                       borderRadius: 10,
-                      border: `2px solid ${o.color}`,
+                      border: `2px solid ${offerTextColor}`,
                       background: "transparent",
-                      color: o.color,
+                      color: offerTextColor,
                       fontFamily: "'Cairo', sans-serif",
                       fontSize: 14,
                       fontWeight: 700,
@@ -6386,7 +6390,7 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
                         <h3 style={{ fontWeight: 800, fontSize: 16, color: C.white, marginBottom: 8 }}>{plan.name}</h3>
                         <div style={{ display: "flex", gap: 10, color: C.gray, fontSize: 12, marginBottom: 14, flexWrap: "wrap" }}>
                           <span>📅 {minM} – {maxM} {t("شهور", "months")}</span>
-                          {pct > 0 && <span style={{ color: "#4ade80" }}>✅ {t(`خصم ${pct}% على الإجمالي`, `${pct}% total discount`)}</span>}
+                          {pct > 0 && <span style={{ color: C.successText }}>✅ {t(`خصم ${pct}% على الإجمالي`, `${pct}% total discount`)}</span>}
                         </div>
                         <ul style={{ listStyle: "none", marginBottom: 20, flex: 1 }}>
                           {(plan.features ?? []).map((item) => (
@@ -7106,7 +7110,7 @@ const ProductMiniCard = ({
         </button>
         {/* Discount badge */}
         {product.badge && (
-          <span style={{ position: "absolute", top: 8, right: 8, zIndex: 2, background: C.red, color: "#fff", fontSize: compact ? 9 : 11, fontWeight: 800, padding: compact ? "2px 7px" : "3px 10px", borderRadius: 99 }}>
+          <span style={{ position: "absolute", top: 8, right: 8, zIndex: 2, background: C.redText, color: "#fff", fontSize: compact ? 9 : 11, fontWeight: 800, padding: compact ? "2px 7px" : "3px 10px", borderRadius: 99 }}>
             {product.badge}
           </span>
         )}
@@ -7137,13 +7141,13 @@ const ProductMiniCard = ({
         )}
         <div style={{ display: "flex", flexDirection: "column", gap: 3, marginBottom: compact ? 10 : 12, marginTop: "auto" }}>
           <div style={{ display: "flex", alignItems: "center", gap: compact ? 5 : 8, flexWrap: "wrap" }}>
-            <span style={{ fontWeight: 900, color: C.red, fontSize: compact ? 15 : 20 }}>{formatCurrency(product.vatEnabled ? applyVat(product.price) : product.price)} <span style={{ fontSize: compact ? 10 : 12, fontWeight: 600 }}>{lang === "en" ? "EGP" : "ج.م"}</span></span>
+            <span style={{ fontWeight: 900, color: C.redText, fontSize: compact ? 15 : 20 }}>{formatCurrency(product.vatEnabled ? applyVat(product.price) : product.price)} <span style={{ fontSize: compact ? 10 : 12, fontWeight: 600 }}>{lang === "en" ? "EGP" : "ج.م"}</span></span>
             {product.oldPrice && <span style={{ textDecoration: "line-through", color: C.gray, fontSize: compact ? 11 : 13 }}>{formatCurrency(product.oldPrice)}</span>}
           </div>
           {product.vatEnabled && <span style={{ fontSize: 9, color: "#10b981", background: "rgba(16,185,129,0.12)", borderRadius: 4, padding: "2px 5px", alignSelf: "flex-start" }}>{lang === "en" ? "Incl. 14% VAT" : "شامل ضريبة 14%"}</span>}
         </div>
         <button
-          style={{ width: "100%", padding: compact ? "8px 6px" : "10px", borderRadius: 10, border: "none", background: outOfStock ? "#e5e7eb" : `linear-gradient(135deg,${C.red},#c2185b)`, color: outOfStock ? "#9ca3af" : "#fff", fontWeight: 800, fontSize: compact ? 11 : 13, cursor: outOfStock ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: compact ? 5 : 6, fontFamily: "inherit", boxShadow: outOfStock ? "none" : "0 4px 14px rgba(233,30,99,.3)" }}
+          style={{ width: "100%", padding: compact ? "8px 6px" : "10px", borderRadius: 10, border: "none", background: outOfStock ? "#e5e7eb" : `linear-gradient(135deg,${C.red},#c2185b)`, color: outOfStock ? C.grayLight : "#fff", fontWeight: 800, fontSize: compact ? 11 : 13, cursor: outOfStock ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: compact ? 5 : 6, fontFamily: "inherit", boxShadow: outOfStock ? "none" : "0 4px 14px rgba(233,30,99,.3)" }}
           disabled={outOfStock}
           onClick={e => {
             e.stopPropagation();
@@ -7161,7 +7165,7 @@ const ProductMiniCard = ({
             navigate("cart");
           }}
         >
-          <I n="cart" s={compact ? 12 : 14} c={outOfStock ? "#9ca3af" : "#fff"} />
+          <I n="cart" s={compact ? 12 : 14} c={outOfStock ? C.grayLight : "#fff"} />
           {outOfStock ? t("نفذت الكمية", "Out of stock") : t("أضيفي للسلة", "Add to cart")}
         </button>
       </div>
@@ -7400,9 +7404,9 @@ const ShopPage = ({ navigate }: { navigate: (p: string) => void }) => {
                   <div style={{ textAlign: "center", marginTop: 28 }}>
                     <button
                       onClick={() => setShowAllShopProducts(true)}
-                      style={{ padding: "12px 36px", borderRadius: 12, border: `2px solid ${C.red}`, background: "transparent", color: C.red, fontWeight: 800, fontSize: 14, cursor: "pointer", fontFamily: "inherit", transition: "all .2s" }}
-                      onMouseEnter={e => { const b = e.currentTarget as HTMLButtonElement; b.style.background = C.red; b.style.color = "#fff"; }}
-                      onMouseLeave={e => { const b = e.currentTarget as HTMLButtonElement; b.style.background = "transparent"; b.style.color = C.red; }}
+                      style={{ padding: "12px 36px", borderRadius: 12, border: `2px solid ${C.redText}`, background: "transparent", color: C.redText, fontWeight: 800, fontSize: 14, cursor: "pointer", fontFamily: "inherit", transition: "all .2s" }}
+                      onMouseEnter={e => { const b = e.currentTarget as HTMLButtonElement; b.style.background = C.redText; b.style.color = "#fff"; }}
+                      onMouseLeave={e => { const b = e.currentTarget as HTMLButtonElement; b.style.background = "transparent"; b.style.color = C.redText; }}
                     >
                       {t(`عرض المزيد (${filtered.length - SHOP_INITIAL}+)`, `Show more (${filtered.length - SHOP_INITIAL}+)`)}
                     </button>
@@ -8549,7 +8553,7 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                         <div style={{ width: 18, height: 18, borderRadius: 4, border: `2px solid ${useRewards ? C.red : C.border}`, background: useRewards ? C.red : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                           {useRewards && <I n="check" s={11} c="#fff" />}
                         </div>
-                        <span style={{ fontSize: 13, color: C.grayLight }}>{t("استخدام فيتزونات الولاء", "Use FitZonas")} <strong style={{ color: C.gold }}>({(summary?.rewardPoints ?? 0).toLocaleString(lang === "ar" ? "ar-EG" : "en-US")} {t("فيتزونة", "FZs")} = {formatCurrency(rewardsValue)})</strong></span>
+                        <span style={{ fontSize: 13, color: C.grayLight }}>{t("استخدام فيتزونات الولاء", "Use FitZonas")} <strong style={{ color: C.goldText }}>({(summary?.rewardPoints ?? 0).toLocaleString(lang === "ar" ? "ar-EG" : "en-US")} {t("فيتزونة", "FZs")} = {formatCurrency(rewardsValue)})</strong></span>
                       </div>
                     )}
                     {walletBalance > 0 && (
@@ -8557,7 +8561,7 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
                         <div style={{ width: 18, height: 18, borderRadius: 4, border: `2px solid ${useWallet ? C.red : C.border}`, background: useWallet ? C.red : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                           {useWallet && <I n="check" s={11} c="#fff" />}
                         </div>
-                        <span style={{ fontSize: 13, color: C.grayLight }}>{t("استخدام رصيد المحفظة", "Use wallet balance")} <strong style={{ color: "#4ade80" }}>({formatCurrency(walletBalance)} {t("ج.م", "EGP")})</strong></span>
+                        <span style={{ fontSize: 13, color: C.grayLight }}>{t("استخدام رصيد المحفظة", "Use wallet balance")} <strong style={{ color: C.successText }}>({formatCurrency(walletBalance)} {t("ج.م", "EGP")})</strong></span>
                       </div>
                     )}
                   </div>
@@ -8599,8 +8603,8 @@ const CartPage = ({ navigate, summary }: { navigate: (p: string) => void; summar
             <div className="divider" />
             <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 13 }}><span style={{ color: C.gray }}>{t("الإجمالي الفرعي", "Subtotal")}</span><span style={{ color: C.white }}>{formatCurrency(subtotal)}</span></div>
             {vatTotal > 0 && <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 12 }}><span style={{ color: "#10b981" }}>{t("منها ضريبة القيمة المضافة 14%", "Incl. 14% VAT")}</span><span style={{ color: "#10b981" }}>{formatCurrency(vatTotal)}</span></div>}
-            {rewardsDiscount > 0 && <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 13 }}><span style={{ color: C.gray }}>{t("خصم الفيتزونات", "FitZonas discount")}</span><span style={{ color: C.gold }}>- {formatCurrency(rewardsDiscount)}</span></div>}
-            {walletDiscount > 0 && <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 13 }}><span style={{ color: C.gray }}>{t("خصم المحفظة", "Wallet discount")}</span><span style={{ color: "#4ade80" }}>- {formatCurrency(walletDiscount)}</span></div>}
+            {rewardsDiscount > 0 && <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 13 }}><span style={{ color: C.gray }}>{t("خصم الفيتزونات", "FitZonas discount")}</span><span style={{ color: C.goldText }}>- {formatCurrency(rewardsDiscount)}</span></div>}
+            {walletDiscount > 0 && <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 13 }}><span style={{ color: C.gray }}>{t("خصم المحفظة", "Wallet discount")}</span><span style={{ color: C.successText }}>- {formatCurrency(walletDiscount)}</span></div>}
             <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 13 }}>
               <span style={{ color: C.gray }}>{t("رسوم الشحن", "Shipping fee")}</span>
               <span style={{ color: C.white }}>{formatCurrency(shippingFee)}</span>
@@ -8736,8 +8740,8 @@ const RewardsPage = () => {
   const { lang } = useLang();
   const tiers = [
     { name: t("برونزي", "Bronze"), min: 0, max: 999, icon: "🥉", color: "#CD7F32" },
-    { name: t("فضي", "Silver"), min: 1000, max: 2999, icon: "🥈", color: "#9CA3AF", current: true },
-    { name: t("ذهبي", "Gold"), min: 3000, max: 4999, icon: "🥇", color: C.gold },
+    { name: t("فضي", "Silver"), min: 1000, max: 2999, icon: "🥈", color: C.grayLight, current: true },
+    { name: t("ذهبي", "Gold"), min: 3000, max: 4999, icon: "🥇", color: C.goldText },
     { name: t("بلاتيني", "Platinum"), min: 5000, max: null, icon: "💎", color: "#A855F7" },
   ];
   const earnMethods = [
@@ -9119,7 +9123,7 @@ const TrainersPage = ({ navigate, summary }: { navigate: (p: string) => void; su
                 {/* Info */}
                 <div style={{ padding: "16px 18px 20px" }}>
                   <h3 style={{ fontWeight: 900, fontSize: 17, color: C.white, marginBottom: 3 }}>{lang === "en" && tr.nameEn ? tr.nameEn : tr.name}</h3>
-                  <p style={{ color: C.red, fontSize: 12, fontWeight: 700, marginBottom: 10 }}>{lang === "en" && tr.specialtyEn ? tr.specialtyEn : tr.specialty}</p>
+                  <p style={{ color: C.redText, fontSize: 12, fontWeight: 700, marginBottom: 10 }}>{lang === "en" && tr.specialtyEn ? tr.specialtyEn : tr.specialty}</p>
                   {tr.bio && tr.bio !== "null" && <p style={{ color: C.gray, fontSize: 12, lineHeight: 1.7, marginBottom: 10 }}>{tr.bio}</p>}
                   {tr.certifications.length > 0 && (
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "center", marginBottom: 12 }}>
@@ -9131,7 +9135,7 @@ const TrainersPage = ({ navigate, summary }: { navigate: (p: string) => void; su
                   {/* Stats */}
                   <div style={{ display: "flex", justifyContent: "center", gap: 0, marginBottom: 14, border: "1px solid rgba(255,255,255,.08)", borderRadius: 10, overflow: "hidden" }}>
                     <div style={{ flex: 1, textAlign: "center", padding: "9px 6px", borderInlineEnd: "1px solid rgba(255,255,255,.08)" }}>
-                      <div style={{ fontWeight: 800, fontSize: 15, color: C.gold }}>⭐ {tr.rating}</div>
+                      <div style={{ fontWeight: 800, fontSize: 15, color: C.goldText }}>⭐ {tr.rating}</div>
                       <div style={{ fontSize: 10, color: C.gray, marginTop: 2 }}>{t("التقييم", "Rating")}</div>
                     </div>
                     <div style={{ flex: 1, textAlign: "center", padding: "9px 6px" }}>
