@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { CalendarDays, CircleUserRound, CreditCard, ShoppingBag, Sparkles, Star, Target, Users } from "lucide-react";
 import { useLang } from "@/lib/language";
 
-type TourTarget = "goals" | "goal-memberships" | "classes-list" | "trainers-list" | "shop-products" | "account" | "ai-coach";
+type TourTarget = "goals" | "first-goal-membership-card" | "first-class-card" | "first-trainer-card" | "first-shop-product" | "account" | "ai-coach";
 type TourPage = "memberships" | "classes" | "trainers" | "shop" | null;
 type Step = { target: TourTarget; page: TourPage; icon: typeof Target; ar: { title: string; body: string }; en: { title: string; body: string } };
 
@@ -19,17 +19,17 @@ const COMPLETED_KEY = "fitzone_onboarding_completed_v1";
 const MAX_TARGET_FRAMES = 18;
 const STEPS: Step[] = [
   { target: "goals", page: "memberships", icon: Target, ar: { title: "اختاري هدفك", body: "اختاري النشاط أو الهدف المناسب لكِ، وسنعرض لكِ الاشتراكات والخدمات المرتبطة به." }, en: { title: "Choose your goal", body: "Select the activity or fitness goal that suits you, and we’ll show you the related services and memberships." } },
-  { target: "goal-memberships", page: "memberships", icon: CreditCard, ar: { title: "الاشتراكات المناسبة لهدفك", body: "بعد اختيار هدفك، يعرض لكِ FitZone الاشتراكات المناسبة له. قارني السعر والمدة وعدد الحصص والمميزات، ثم اختاري الأنسب لكِ." }, en: { title: "Memberships for your goal", body: "After choosing your goal, FitZone shows the memberships that suit it. Compare the price, duration, sessions, and benefits, then choose what fits you." } },
-  { target: "classes-list", page: "classes", icon: CalendarDays, ar: { title: "احجزي الكلاس المناسب", body: "تابعي مواعيد الكلاسات والسعة المتاحة، ثم احجزي الموعد المناسب حسب اشتراكك." }, en: { title: "Book the right class", body: "View available class times and capacity, then book the session that fits your membership." } },
-  { target: "trainers-list", page: "trainers", icon: Users, ar: { title: "تعرّفي على المدربات", body: "شاهدي تخصصات المدربات واختاري الخدمة أو المدربة المناسبة لكِ." }, en: { title: "Meet the trainers", body: "Explore trainer specialties and choose the right trainer or service." } },
-  { target: "shop-products", page: "shop", icon: ShoppingBag, ar: { title: "تسوّقي بسهولة", body: "تصفحي المنتجات، أضيفي ما تحتاجينه للسلة، وأكملي طلبك من داخل الموقع." }, en: { title: "Shop easily", body: "Browse products, add items to your cart, and complete your order from the website." } },
+  { target: "first-goal-membership-card", page: "memberships", icon: CreditCard, ar: { title: "الاشتراكات المناسبة لهدفك", body: "بعد اختيار هدفك، يعرض لكِ FitZone الاشتراكات المناسبة له. قارني السعر والمدة وعدد الحصص والمميزات، ثم اختاري الأنسب لكِ." }, en: { title: "Memberships for your goal", body: "After choosing your goal, FitZone shows the memberships that suit it. Compare the price, duration, sessions, and benefits, then choose what fits you." } },
+  { target: "first-class-card", page: "classes", icon: CalendarDays, ar: { title: "احجزي الكلاس المناسب", body: "تابعي مواعيد الكلاسات والسعة المتاحة، ثم احجزي الموعد المناسب حسب اشتراكك." }, en: { title: "Book the right class", body: "View available class times and capacity, then book the session that fits your membership." } },
+  { target: "first-trainer-card", page: "trainers", icon: Users, ar: { title: "تعرّفي على المدربات", body: "شاهدي تخصصات المدربات واختاري الخدمة أو المدربة المناسبة لكِ." }, en: { title: "Meet the trainers", body: "Explore trainer specialties and choose the right trainer or service." } },
+  { target: "first-shop-product", page: "shop", icon: ShoppingBag, ar: { title: "تسوّقي بسهولة", body: "تصفحي المنتجات، أضيفي ما تحتاجينه للسلة، وأكملي طلبك من داخل الموقع." }, en: { title: "Shop easily", body: "Browse products, add items to your cart, and complete your order from the website." } },
   { target: "account", page: null, icon: CircleUserRound, ar: { title: "كل تفاصيلك في حسابك", body: "تابعي اشتراكك، حجوزاتك، مدفوعاتك، محفظتك، نقاطك ومكافآتك من مكان واحد." }, en: { title: "Everything in one account", body: "Track your membership, bookings, payments, wallet, points, and rewards." } },
   { target: "ai-coach", page: null, icon: Sparkles, ar: { title: "متنسيش تزوري AI Coach", body: "مساعدكِ الذكي في FitZone هيساعدكِ في اختيار الاشتراك المناسب، فهم خدمات ومميزات الموقع، تنظيم أهدافكِ، والإجابة عن أسئلتكِ الرياضية والعامة." }, en: { title: "Don’t forget to visit AI Coach", body: "Your FitZone AI assistant can help you choose the right membership, understand the website features, organize your goals, and answer fitness and general questions." } },
 ];
 
 const copy = {
-  ar: { welcomeTitle: "أهلًا بكِ في FitZone", welcomeBody: "في جولة سريعة هنعرفكِ إزاي تختاري هدفك، تشوفي الاشتراكات، تحجزي الكلاسات، وتستفيدي من مميزات الموقع.", start: "ابدئي الجولة", skip: "تخطي الآن", previous: "السابق", next: "التالي", close: "إغلاق", finishTitle: "أصبحتِ جاهزة للبدء 🎉", finishBody: "ابدئي باختيار هدفك أو مشاهدة الاشتراكات، ويمكنك تشغيل الجولة مرة أخرى في أي وقت.", goals: "اختاري هدفك", memberships: "شاهدي الاشتراكات", finish: "إنهاء", step: "من" },
-  en: { welcomeTitle: "Welcome to FitZone", welcomeBody: "Take a quick tour to learn how to choose your goal, explore memberships, book classes, and use the website features.", start: "Start tour", skip: "Skip for now", previous: "Previous", next: "Next", close: "Close", finishTitle: "You’re ready to start 🎉", finishBody: "Choose your goal or explore memberships. You can restart this tour anytime.", goals: "Choose your goal", memberships: "Explore memberships", finish: "Finish", step: "of" },
+  ar: { welcomeTitle: "أهلًا بكِ في FitZone", welcomeBody: "في جولة سريعة هنعرفكِ إزاي تختاري هدفك، تشوفي الاشتراكات، تحجزي الكلاسات، وتستفيدي من مميزات الموقع.", start: "ابدئي الجولة", skip: "تخطي الآن", previous: "السابق", next: "التالي", close: "إغلاق", finishTitle: "بقيتي جاهزة دلوقتي يا بطلة 🎉", finishBody: "اختاري هدفك، شوفي الاشتراكات المناسبة ليكِ، ومتنسيش إن AI Coach موجود يساعدك في أي وقت.", goals: "اختاري هدفك", memberships: "شاهدي الاشتراكات", finish: "إنهاء", step: "من" },
+  en: { welcomeTitle: "Welcome to FitZone", welcomeBody: "Take a quick tour to learn how to choose your goal, explore memberships, book classes, and use the website features.", start: "Start tour", skip: "Skip for now", previous: "Previous", next: "Next", close: "Close", finishTitle: "You’re ready now, champion 🎉", finishBody: "Choose your goal, explore the memberships that suit you, and remember that AI Coach is always there to help.", goals: "Choose your goal", memberships: "Explore memberships", finish: "Finish", step: "of" },
 };
 
 export default function FitZoneTour({ onNavigate, onFinishNavigate, onClose }: Props) {
@@ -70,7 +70,7 @@ export default function FitZoneTour({ onNavigate, onFinishNavigate, onClose }: P
 
   const openViewAndWaitForTarget = useCallback((current: Step, onMissing: () => void) => {
     onNavigate(current.page);
-    if (current.target === "goal-memberships") {
+    if (current.target === "first-goal-membership-card") {
       window.dispatchEvent(new Event("fitzone:tour-show-goal-memberships"));
     }
 
@@ -79,7 +79,9 @@ export default function FitZoneTour({ onNavigate, onFinishNavigate, onClose }: P
       const element = targetElement(current.target);
       if (element) {
         element.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "center", inline: "nearest" });
-        measureFrameRef.current = requestAnimationFrame(() => measure(current.target));
+        measureFrameRef.current = requestAnimationFrame(() => {
+          measureFrameRef.current = requestAnimationFrame(() => measure(current.target));
+        });
         return;
       }
       attempts += 1;
@@ -141,7 +143,9 @@ export default function FitZoneTour({ onNavigate, onFinishNavigate, onClose }: P
       : targetRect.left > 370
         ? { top: Math.max(20, Math.min(targetRect.top, window.innerHeight - 320)), left: targetRect.left - 360 }
         : { bottom: 24, left: "50%", transform: "translateX(-50%)" }
-    : { bottom: "calc(16px + env(safe-area-inset-bottom, 0px))", left: 12, right: 12 };
+    : targetRect && typeof window !== "undefined" && targetRect.bottom > window.innerHeight * 0.62
+      ? { top: "calc(12px + env(safe-area-inset-top, 0px))", left: 12, right: 12 }
+      : { bottom: "calc(16px + env(safe-area-inset-bottom, 0px))", left: 12, right: 12 };
 
   return (
     <div className="fitzone-tour" dir={lang === "en" ? "ltr" : "rtl"} onKeyDown={onKeyDown}>
