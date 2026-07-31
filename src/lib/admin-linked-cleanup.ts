@@ -84,21 +84,13 @@ export async function deleteOfferAndLinkedClientData(
   tx: CleanupDbClient,
   offerId: string,
 ) {
-  const linkedMemberships = await tx.userMembership.findMany({
-    where: { offerId },
-    select: { id: true },
-  });
-
-  const membershipCleanup = await cleanupUserMembershipRecords(
-    tx,
-    linkedMemberships.map((membership) => membership.id),
-  );
-
+  // Offer-linked memberships are historical purchase records. OfferId is
+  // nullable/SetNull and their immutable snapshots remain operational.
   await tx.offer.delete({
     where: { id: offerId },
   });
 
-  return membershipCleanup;
+  return { deletedMemberships: 0, deletedBookings: 0 };
 }
 
 export async function deleteMembershipAndLinkedClientData(

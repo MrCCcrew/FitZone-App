@@ -25,6 +25,14 @@ function parseJsonArray<T>(value: string | null | undefined) {
   }
 }
 
+function offerSnapshot(value: string | null | undefined) {
+  try { return value ? JSON.parse(value) as { features?: string[]; durationDays?: number; allowedClassTypes?: string[] } : null; } catch { return null; }
+}
+
+function snapshotClassSessions(value: string | null | undefined) {
+  return offerSnapshot(value)?.allowedClassTypes?.map((classType) => ({ classId: classType, classType, sessions: 0 })) ?? null;
+}
+
 async function getAccountData(userId: string) {
   try {
     const [user, rewardSettings] = await Promise.all([
@@ -197,15 +205,13 @@ async function getAccountData(userId: string) {
             startDate: activeMembership.startDate.toISOString(),
             endDate: activeMembership.endDate.toISOString(),
             status: activeMembership.status,
-            features: parseFeatures(activeMembership.membership.features),
+            features: offerSnapshot(activeMembership.offerSnapshot)?.features ?? parseFeatures(activeMembership.membership.features),
             maxClasses: activeMembership.membership.maxClasses,
             classesUsed,
             paymentAmount: activeMembership.paymentAmount,
             paymentMethod: activeMembership.paymentMethod ?? "",
             offerTitle: activeMembership.offerTitle ?? null,
-            classSessions: parseJsonArray<{ classId: string; classType?: string; className?: string; sessions: number }>(
-              activeMembership.membership.classSessions,
-            ),
+            classSessions: snapshotClassSessions(activeMembership.offerSnapshot) ?? parseJsonArray<{ classId: string; classType?: string; className?: string; sessions: number }>(activeMembership.membership.classSessions),
           }
         : null,
       membershipHistory: user.memberships
@@ -219,7 +225,8 @@ async function getAccountData(userId: string) {
           return true;
         })
         .map((membership) => {
-        const features = parseFeatures(membership.membership.features);
+        const snapshot = offerSnapshot(membership.offerSnapshot);
+        const features = snapshot?.features ?? parseFeatures(membership.membership.features);
         const attendedCount = membership.bookings.filter((booking) => booking.status === "attended").length;
         const totalSessions = membership.totalSessions ?? membership.membership.sessionsCount ?? membership.membership.maxClasses;
         const sessionsRemaining =
@@ -252,7 +259,7 @@ async function getAccountData(userId: string) {
           paymentAmount: membership.paymentAmount,
           paymentMethod: membership.paymentMethod ?? "",
           offerTitle: membership.offerTitle ?? membership.offer?.title ?? null,
-          durationDays: membership.membership.duration,
+          durationDays: snapshot?.durationDays ?? membership.snapshotDurationDays ?? membership.membership.duration,
           features,
           maxClasses: membership.membership.maxClasses,
           totalSessions,
@@ -261,9 +268,7 @@ async function getAccountData(userId: string) {
           bookedCount: membership.bookings.length,
           checkoutUrl: isExpiredPending ? null : (pendingTx?.checkoutUrl ?? null),
           transactionId: isExpiredPending ? null : (pendingTx?.transactionId ?? null),
-          classSessions: parseJsonArray<{ classId: string; classType?: string; className?: string; sessions: number }>(
-            membership.membership.classSessions,
-          ),
+          classSessions: snapshotClassSessions(membership.offerSnapshot) ?? parseJsonArray<{ classId: string; classType?: string; className?: string; sessions: number }>(membership.membership.classSessions),
           bookings: membership.bookings.map((booking) => ({
             id: booking.id,
             className: booking.schedule.class.name,

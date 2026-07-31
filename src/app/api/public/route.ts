@@ -330,6 +330,7 @@ export async function GET(request: Request) {
         db.offer.findMany({
           where: { isActive: true },
           orderBy: { expiresAt: "asc" },
+          include: { allowedClassTypes: { select: { classType: true } } },
         }),
         db.class.findMany({
           where: { isActive: true },
@@ -497,6 +498,7 @@ export async function GET(request: Request) {
         sessionsCount: offer.sessionsCount ?? null,
         priceBefore: offer.priceBefore ?? null,
         features: lang === "en" ? parseJsonArray(offer.featuresEn) : parseJsonArray(offer.features),
+        allowedClassTypes: offer.allowedClassTypes.map((item) => item.classType),
       })),
       classes: classes.map((gymClass) => ({
         id: gymClass.id,
