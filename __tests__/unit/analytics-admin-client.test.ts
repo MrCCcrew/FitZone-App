@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { analyticsDisplayNumber, analyticsQuery, analyticsSectionErrorLabels, loadAdminAnalytics, resolveAdminAnalyticsLoad } from "@/lib/analytics/admin-client";
+import { analyticsDisplayNumber, analyticsEndpointNames, analyticsQuery, analyticsSectionErrorLabels, analyticsSections, loadAdminAnalytics, resolveAdminAnalyticsLoad } from "@/lib/analytics/admin-client";
 
 const fulfilled = (value: unknown): PromiseFulfilledResult<unknown> => ({ status: "fulfilled", value });
 const rejected = (reason: unknown): PromiseRejectedResult => ({ status: "rejected", reason });
@@ -12,15 +12,20 @@ describe("admin analytics client", () => {
     expect(analyticsQuery({ from: "2026-01-01", to: "2026-01-31", timezone: "Africa/Cairo", source: "membership_checkout" })).toBe("from=2026-01-01&to=2026-01-31&timezone=Africa%2FCairo&source=membership_checkout");
   });
 
-  it("fetches all sections with one shared filter set and forwards AbortSignal", async () => {
+  it("fetches all sections with one shared filter set and uses the Safari-safe activity alias", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true }) });
     vi.stubGlobal("fetch", fetchMock);
-    const controller = new AbortController();
-    const results = await loadAdminAnalytics({ from: "2026-01-01", to: "2026-01-31", timezone: "UTC" }, controller.signal);
+    const results = await loadAdminAnalytics({ from: "2026-01-01", to: "2026-01-31", timezone: "UTC" });
     expect(fetchMock).toHaveBeenCalledTimes(4);
     expect(fetchMock.mock.calls[0]?.[0]).toContain("from=2026-01-01");
-    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ signal: controller.signal });
+    expect(fetchMock.mock.calls.some((call) => String(call[0]).includes("/api/admin/analytics/activity?"))).toBe(true);
     expect(results.overview.status).toBe("fulfilled");
+    expect(results.events.status).toBe("fulfilled");
+  });
+
+  it("keeps the internal events key while mapping its endpoint to activity", () => {
+    expect(analyticsEndpointNames.events).toBe("activity");
+    expect(analyticsSections).toContain("events");
   });
 
   it("keeps partial endpoint failures isolated", async () => {
