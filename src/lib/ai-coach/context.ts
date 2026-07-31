@@ -74,6 +74,8 @@ export function parseCoachContext(raw: string | null | undefined, lang: CoachLan
         version: 1,
         lang: parsed.lang === "en" ? "en" : lang,
         lastIntent: parsed.lastIntent,
+        lastTopic: parsed.lastTopic ?? null,
+        statedWeight: typeof parsed.statedWeight === "number" ? parsed.statedWeight : undefined,
         questionnaire: {
           stage: parsed.questionnaire?.stage ?? "idle",
           answers: parsed.questionnaire?.answers ?? {},

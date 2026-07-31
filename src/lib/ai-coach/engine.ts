@@ -311,6 +311,16 @@ async function buildDeterministicReply(args: {
       action: { type: "navigate", page: "shop", anchor: "shop-products" },
     };
   }
+  if (intent === "weight_advice" || (baseContext.lastTopic === "weight_loss" && /(?:اعمل ايه|ابدأ ازاي|انصحني)/i.test(normalizedQuestion))) {
+    const statedWeight = Number(userMessage.match(/\d+(?:\.\d+)?/)?.[0]) || baseContext.statedWeight;
+    const nextContext = { ...baseContext, lastTopic: "weight_loss" as const, statedWeight, lastIntent: "weight_advice" as const };
+    await db.chatSession.update({ where: { id: sessionId }, data: { context: serializeCoachContext(nextContext), lastMessageAt: new Date() } });
+    return { intent: "weight_advice", text: lang === "en" ? "Start gradually with low-impact activity, progressive resistance training, balanced meals with protein, vegetables and water, and avoid harsh diets. If you have chronic conditions, severe pain, or shortness of breath, consult a qualified clinician first. What is your height, and do you have any health condition or injury that affects exercise?" : "ابدأ تدريجيًا بنشاط منخفض التأثير وتمارين مقاومة بسيطة، وركز على عجز سعرات معتدل وبروتين وخضار ومياه، وتجنب الأنظمة القاسية. لو عندك مرض مزمن أو ألم شديد أو ضيق تنفس، راجع مختصًا مؤهلًا أولًا. طولك كام، وهل عندك أي مشكلة صحية أو إصابة تمنع التمرين؟", facts: [], quickActions: buildActions(snapshot, intent, nextContext) };
+  }
+  if (intent === "nutrition_review") {
+    await updateContext(sessionId, { ...baseContext, lastTopic: "nutrition" }, intent);
+    return { intent, text: lang === "en" ? "Tell me roughly what you ate in a full day: breakfast, lunch, dinner, snacks, drinks, approximate portions, and whether your goal is weight loss, maintenance, or gain." : "اكتب لي أكل يوم كامل تقريبًا: الفطار والغدا والعشا والسناكس والمشروبات والكميات التقريبية، وقولي هدفك تخسيس ولا تثبيت ولا زيادة وزن.", facts: [], quickActions: buildActions(snapshot, intent, baseContext) };
+  }
   if (asksOwnMembership) {
     const membership = await getAuthenticatedCustomerMembership(user?.id ?? null);
     const text = !user?.id

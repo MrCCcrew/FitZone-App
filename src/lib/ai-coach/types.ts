@@ -16,6 +16,8 @@ export type CoachIntent =
   | "complaint_help"
   | "human_handoff"
   | "food_check"
+  | "nutrition_review"
+  | "weight_advice"
   | "check_in"
   | "unknown";
 
@@ -64,6 +66,7 @@ export type CoachConversationContext = {
   lang: CoachLang;
   lastIntent?: CoachIntent;
   lastTopic?: "weight_loss" | "fitness" | "nutrition" | null;
+  statedWeight?: number;
   questionnaire: CoachQuestionnaireState;
   // Optional counter used only when advanced coaching nudges are enabled.
   nudgeShownCount?: number;
