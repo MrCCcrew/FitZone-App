@@ -61,6 +61,7 @@ const EMPTY_OFFER: Omit<Offer, "id" | "usedCount" | "currentSubscribers"> = {
   priceBefore: null,
   features: [],
   featuresEn: [],
+  allowedClassTypes: [],
 };
 
 const CYCLE_LABELS: Record<NonNullable<Plan["cycle"]>, string> = {
@@ -1255,6 +1256,15 @@ export default function Subscriptions() {
                     <input type="number" value={offerModal.durationDays ?? ""} onChange={(event) => setOfferModal({ ...offerModal, durationDays: event.target.value ? Number(event.target.value) : null })} className={INPUT} dir="ltr" placeholder="مثال: 30" />
                   </Field>
                 </div>
+                <Field label="الكلاسات المرتبطة بالعرض" hint="اختيار متعدد. ترك القائمة فارغة يعني السماح بجميع الكلاسات. تعديل العرض لا يغيّر حقوق المشتركات الحاليات.">
+                  <div className="flex flex-wrap gap-2">
+                    {[...new Map(gymClasses.map((gymClass) => [gymClass.type.trim().toLowerCase(), gymClass])).values()].map((gymClass) => {
+                      const classType = gymClass.type.trim().toLowerCase();
+                      const selected = (offerModal.allowedClassTypes ?? []).includes(classType);
+                      return <button key={classType} type="button" onClick={() => setOfferModal({ ...offerModal, allowedClassTypes: selected ? (offerModal.allowedClassTypes ?? []).filter((item) => item !== classType) : [...(offerModal.allowedClassTypes ?? []), classType] })} className={`rounded-xl border px-3 py-2 text-sm ${selected ? "border-[#ff4f93] bg-[#ff4f93]/15 text-white" : "border-gray-700 bg-gray-800 text-gray-300"}`}>{gymClass.typeEn || gymClass.type}</button>;
+                    })}
+                  </div>
+                </Field>
                 <label className="flex items-center gap-3 rounded-2xl border border-[rgba(255,188,219,0.12)] bg-black/15 px-4 py-3 text-sm text-[#fff4f8]">
                   <input
                     type="checkbox"

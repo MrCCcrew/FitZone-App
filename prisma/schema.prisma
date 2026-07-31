@@ -213,6 +213,13 @@ model UserMembership {
   offerTitle    String?
   offerId       String?
   totalSessions Int?
+  // Immutable purchase-time terms for offer subscriptions. Null means a legacy
+  // membership and intentionally preserves its historical behaviour.
+  offerSnapshot String? @db.LongText
+  allowedClassTypesSnapshot String? @db.LongText // JSON class type keys; null = no offer restriction
+  snapshotDurationDays Int?
+  snapshotOriginalPrice Float?
+  snapshotFinalPrice Float?
   productRewardsUsed String? @db.LongText
   salesAgentUserId String?
   salesCodeType    String?
@@ -786,6 +793,21 @@ model Offer {
 
   membership Membership? @relation(fields: [membershipId], references: [id])
   userMemberships UserMembership[]
+  allowedClassTypes OfferAllowedClassType[]
+}
+
+// Class types are currently represented by Class.type (there is no ClassType
+// catalogue model). Store the normalized type key here so offers can be edited
+// independently without changing the existing membership class configuration.
+model OfferAllowedClassType {
+  id        String @id @default(cuid())
+  offerId   String
+  classType String
+
+  offer Offer @relation(fields: [offerId], references: [id], onDelete: Cascade)
+
+  @@unique([offerId, classType])
+  @@index([classType])
 }
 
 model ProductCategory {

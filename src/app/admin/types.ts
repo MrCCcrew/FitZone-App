@@ -155,6 +155,7 @@ export interface Offer {
   priceBefore?: number | null;
   features?: string[];
   featuresEn?: string[];
+  allowedClassTypes?: string[];
 }
 
 export interface GymClass {

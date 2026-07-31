@@ -18,6 +18,11 @@ function normalizeOfferType(value: string | null | undefined): "percentage" | "f
   return value === "fixed" || value === "special" ? value : "percentage";
 }
 
+function normalizeAllowedClassTypes(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.map((item) => String(item).trim().toLowerCase()).filter(Boolean))];
+}
+
 function mapOffer(
   offer: {
     id: string;
@@ -44,6 +49,7 @@ function mapOffer(
     priceBefore?: number | null;
     features?: string | null;
     featuresEn?: string | null;
+    allowedClassTypes?: Array<{ classType: string }>;
     membership?: { name: string } | null;
   },
 ) {
@@ -77,6 +83,7 @@ function mapOffer(
     priceBefore: offer.priceBefore ?? null,
     features: parseFeatures(offer.features),
     featuresEn: parseFeatures(offer.featuresEn),
+    allowedClassTypes: offer.allowedClassTypes?.map((item) => item.classType) ?? [],
   };
 }
 
@@ -85,7 +92,7 @@ export async function GET() {
   if (err) return err;
 
   const offers = await db.offer.findMany({
-    include: { membership: { select: { name: true } } },
+    include: { membership: { select: { name: true } }, allowedClassTypes: { select: { classType: true } } },
     orderBy: [{ showOnHome: "desc" }, { expiresAt: "asc" }],
   });
 
@@ -110,6 +117,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "أدخلي قيمة الاشتراك الخاصة بالعرض." }, { status: 400 });
     }
 
+    const allowedClassTypes = normalizeAllowedClassTypes(body.allowedClassTypes);
     const created = await db.offer.create({
       data: {
         title,
@@ -135,8 +143,9 @@ export async function POST(req: Request) {
         priceBefore: body.priceBefore != null && body.priceBefore !== "" ? Number(body.priceBefore) : null,
         features: Array.isArray(body.features) && body.features.length > 0 ? JSON.stringify(body.features) : null,
         featuresEn: Array.isArray(body.featuresEn) && body.featuresEn.length > 0 ? JSON.stringify(body.featuresEn) : null,
+        allowedClassTypes: { create: allowedClassTypes.map((classType) => ({ classType })) },
       },
-      include: { membership: { select: { name: true } } },
+      include: { membership: { select: { name: true } }, allowedClassTypes: { select: { classType: true } } },
     });
 
     void logAudit({ action: "create", targetType: "offer", targetId: created.id, details: { title: created.title } });
@@ -198,11 +207,18 @@ export async function PATCH(req: Request) {
     if (body.featuresEn !== undefined) {
       data.featuresEn = Array.isArray(body.featuresEn) && body.featuresEn.length > 0 ? JSON.stringify(body.featuresEn) : null;
     }
+    if (body.allowedClassTypes !== undefined) {
+      const allowedClassTypes = normalizeAllowedClassTypes(body.allowedClassTypes);
+      data.allowedClassTypes = {
+        deleteMany: {},
+        create: allowedClassTypes.map((classType) => ({ classType })),
+      };
+    }
 
     const updated = await db.offer.update({
       where: { id },
       data,
-      include: { membership: { select: { name: true } } },
+      include: { membership: { select: { name: true } }, allowedClassTypes: { select: { classType: true } } },
     });
 
     void logAudit({ action: "update", targetType: "offer", targetId: id, details: { title: updated.title, changes: Object.keys(data) } });

@@ -32,6 +32,7 @@ import {
 import { buildQuickActions } from "@/lib/ai-coach/quick-actions";
 import { recommendClasses, recommendMembership } from "@/lib/ai-coach/recommender";
 import { getCoachSiteSnapshot } from "@/lib/ai-coach/site-data";
+import { getAuthenticatedCustomerMembership, searchActiveOffers, searchAvailableMemberships, searchClassSchedule } from "@/lib/ai-coach/catalog-tools";
 import type {
   CoachConversationContext,
   CoachIntent,
@@ -292,6 +293,37 @@ async function buildDeterministicReply(args: {
   const knowledgeEntry = matchKnowledge(userMessage, snapshot.knowledge);
   const baseContext = { ...context, nudgeShownCount: context.nudgeShownCount ?? 0 };
 
+  // Catalog answers always come from bounded, read-only tools at request time.
+  // Do this before any optional LLM phrasing so stale prompt data cannot win.
+  const normalizedQuestion = userMessage.toLowerCase();
+  const asksOwnMembership = /اشتراكي|باقي لي|ينتهي امتي|عضويتي|my membership|remaining sessions/i.test(normalizedQuestion);
+  const asksOffer = /عرض|عروض|offer|discount|خصم/i.test(normalizedQuestion);
+  const asksSchedule = /مواعيد|ميعاد|بعد الساعه|schedule|today/i.test(normalizedQuestion);
+  if (asksOwnMembership) {
+    const membership = await getAuthenticatedCustomerMembership(user?.id ?? null);
+    const text = !user?.id
+      ? (lang === "en" ? "Please sign in first so I can safely check only your membership." : "سجّلي الدخول أولًا علشان أقدر أراجع عضويتك بأمان.")
+      : !membership
+        ? (lang === "en" ? "I couldn't find an active membership on your account." : "ما لقيتش عضوية نشطة على حسابك حاليًا.")
+        : (lang === "en"
+          ? `Your current membership is ${membership.name}. It ends on ${membership.endDate.toLocaleDateString("en-GB")}.${membership.remainingSessions == null ? "" : ` Remaining sessions: ${membership.remainingSessions}.`}${membership.allowedClassTypes?.length ? ` Included class types: ${membership.allowedClassTypes.join(", ")}.` : ""}`
+          : `اشتراكك الحالي ${membership.name} وينتهي ${membership.endDate.toLocaleDateString("ar-EG")}.${membership.remainingSessions == null ? "" : ` المتبقي لك ${membership.remainingSessions} حصة.`}${membership.allowedClassTypes?.length ? ` والكلاسات المشمولة: ${membership.allowedClassTypes.join("، ")}.` : ""}`);
+    await updateContext(sessionId, baseContext, "account_summary");
+    return { intent: "account_summary", text, facts: [], quickActions: buildActions(snapshot, "account_summary", baseContext) };
+  }
+  if (asksOffer || asksSchedule || intent === "pricing") {
+    const rows: any[] = asksSchedule ? await searchClassSchedule(userMessage) : asksOffer ? await searchActiveOffers(userMessage) : await searchAvailableMemberships(userMessage);
+    const text = rows.length === 0
+      ? (lang === "en" ? "That information is not currently available." : "المعلومة دي غير متاحة حاليًا.")
+      : asksSchedule
+        ? (lang === "en" ? rows.map((row) => `${row.name}: ${row.schedules.map((s: { date: Date; time: string }) => `${new Date(s.date).toLocaleDateString("en-GB")} ${s.time}`).join("; ") || "no upcoming times"}`).join("\n") : rows.map((row) => `${row.name}: ${row.schedules.map((s: { date: Date; time: string }) => `${new Date(s.date).toLocaleDateString("ar-EG")} ${s.time}`).join("، ") || "لا توجد مواعيد قادمة"}`).join("\n"))
+        : asksOffer
+          ? (lang === "en" ? rows.map((row) => `${row.title}: ${row.finalPrice ?? "price unavailable"} EGP${row.durationDays ? `, ${row.durationDays} days` : ""}; expires ${row.expiresAt.toLocaleDateString("en-GB")}.`).join("\n") : rows.map((row) => `${row.title}: السعر النهائي ${row.finalPrice ?? "غير متاح"} جنيه${row.durationDays ? `، المدة ${row.durationDays} يوم` : ""}، ينتهي ${row.expiresAt.toLocaleDateString("ar-EG")}.`).join("\n"))
+          : (lang === "en" ? rows.map((row) => `${row.name}: ${row.price} EGP, ${row.duration} days${row.sessionsCount ? `, ${row.sessionsCount} sessions` : ""}.`).join("\n") : rows.map((row) => `${row.name}: ${row.price} جنيه، ${row.duration} يوم${row.sessionsCount ? `، ${row.sessionsCount} حصة` : ""}.`).join("\n"));
+    await updateContext(sessionId, baseContext, asksSchedule ? "schedule_lookup" : asksOffer ? "offer_lookup" : "pricing");
+    return { intent: asksSchedule ? "schedule_lookup" : asksOffer ? "offer_lookup" : "pricing", text, facts: [], quickActions: buildActions(snapshot, intent, baseContext) };
+  }
+
   // ── Live support ───────────────────────────────────────────────────────────
   if (intent === "human_handoff" || wantsLiveSupport(userMessage)) {
     await transferToLiveSupport(sessionId, lang);
@@ -431,7 +463,7 @@ async function buildDeterministicReply(args: {
   });
 
   const outcome = intent === "class_recommendation" ? "class_suggested"
-    : intent === "pricing" || intent === "membership_recommendation" ? "membership_recommended"
+    : intent === "membership_recommendation" ? "membership_recommended"
     : intent;
 
   logAdvancedCoachEvent({ sessionId, intent, usedAI, outcome });

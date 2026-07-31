@@ -549,6 +549,7 @@ export async function updatePaymentTransactionStatus(
             status: true,
             pendingExpiresAt: true,
             offerId: true,
+            snapshotDurationDays: true,
             membership: {
               select: {
                 name: true,
@@ -592,7 +593,9 @@ export async function updatePaymentTransactionStatus(
 
         if (membership.status === "pending_payment") {
           const now = new Date();
-          const duration = membership.membership?.duration ?? 30;
+          // Pending offer memberships carry their purchase-time duration. A
+          // later edit to the offer or linked plan cannot alter this activation.
+          const duration = membership.snapshotDurationDays ?? membership.membership?.duration ?? 30;
           const endDate = new Date(now.getTime() + duration * 24 * 60 * 60 * 1000);
 
           // Atomic activation: race vs cron cleanup
@@ -617,7 +620,7 @@ export async function updatePaymentTransactionStatus(
             status: membership.status,
             startDate: now,
             offerId: membership.offerId,
-            membership: membership.membership,
+            membership: { ...membership.membership, duration },
             offer: membership.offer,
           };
         }

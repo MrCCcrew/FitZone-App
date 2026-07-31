@@ -327,11 +327,14 @@ export async function POST(req: Request) {
       let resolvedMembershipId = membershipId as string | undefined;
       let offerTitle: string | null = null;
       let offerTitleEn: string | null = null;
-      let offerRecord: { id: string; title: string; titleEn: string | null; specialPrice: number | null; sessionsCount: number | null; durationDays: number | null } | null = null;
+      let offerRecord: { id: string; title: string; titleEn: string | null; specialPrice: number | null; sessionsCount: number | null; durationDays: number | null; type: string; discount: number; description: string | null; descriptionEn: string | null; priceBefore: number | null; features: string | null; featuresEn: string | null; allowedClassTypes: Array<{ classType: string }> } | null = null;
       let walletBonus = 0;
 
       if (offerId) {
-        const offer = await tx.offer.findUnique({ where: { id: offerId } });
+        const offer = await tx.offer.findUnique({
+          where: { id: offerId },
+          include: { allowedClassTypes: { select: { classType: true } } },
+        });
         if (!offer || !offer.isActive || offer.expiresAt <= new Date()) {
           throw new Error("العرض الخاص غير متاح الآن.");
         }
@@ -380,7 +383,7 @@ export async function POST(req: Request) {
         }
         offerTitle = offer.title;
         offerTitleEn = offer.titleEn ?? null;
-        offerRecord = { id: offer.id, title: offer.title, titleEn: offer.titleEn ?? null, specialPrice: offer.specialPrice ?? null, sessionsCount: offer.sessionsCount ?? null, durationDays: offer.durationDays ?? null };
+        offerRecord = offer;
       }
 
       if (!resolvedMembershipId) {
@@ -569,6 +572,29 @@ export async function POST(req: Request) {
 
       const membershipPaymentMethod = offerId ? "offer" : resolvedPaymentMethod;
 
+      // Freeze all mutable offer terms before creating a pending payment. The
+      // webhook must activate this exact record and never re-read the live offer.
+      const offerSnapshot = offerRecord ? JSON.stringify({
+        offerId: offerRecord.id,
+        title: offerRecord.title,
+        titleEn: offerRecord.titleEn,
+        description: offerRecord.description,
+        descriptionEn: offerRecord.descriptionEn,
+        features: parseJsonArray<string>(offerRecord.features),
+        featuresEn: parseJsonArray<string>(offerRecord.featuresEn),
+        type: offerRecord.type,
+        discountType: offerRecord.type,
+        discountValue: offerRecord.discount,
+        originalPrice,
+        finalPrice: paymentAmount ?? 0,
+        durationDays: offerRecord.durationDays ?? plan.duration,
+        sessionsCount: offerRecord.sessionsCount ?? plan.sessionsCount ?? null,
+        allowedClassTypes: offerRecord.allowedClassTypes.map((item) => item.classType),
+      }) : null;
+      const allowedClassTypesSnapshot = offerRecord
+        ? JSON.stringify(offerRecord.allowedClassTypes.map((item) => item.classType))
+        : null;
+
       // Subscriptions with a remaining balance stay pending_payment until Paymob webhook confirms
       const needsPaymentConfirmation = (paymentAmount ?? 0) > 0;
 
@@ -595,7 +621,12 @@ export async function POST(req: Request) {
           paymentMethod: membershipPaymentMethod,
           offerTitle: offerTitle ?? null,
           offerId: offerRecord?.id ?? null,
-          totalSessions: plan.sessionsCount ?? null,
+          totalSessions: offerRecord?.sessionsCount ?? plan.sessionsCount ?? null,
+          offerSnapshot,
+          allowedClassTypesSnapshot,
+          snapshotDurationDays: offerRecord ? (offerRecord.durationDays ?? plan.duration) : null,
+          snapshotOriginalPrice: offerRecord ? originalPrice : null,
+          snapshotFinalPrice: offerRecord ? (paymentAmount ?? 0) : null,
           productRewardsUsed: productRewards.length ? JSON.stringify(productRewards) : null,
           salesAgentUserId: resolvedSalesAgentUserId,
           salesCodeType: resolvedSalesCodeType,

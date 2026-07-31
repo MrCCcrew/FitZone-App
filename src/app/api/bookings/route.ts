@@ -3,6 +3,25 @@ import { getCurrentAppUser } from "@/lib/app-session";
 import { db } from "@/lib/db";
 import { isBookingOperational } from "@/lib/booking-operational";
 
+function membershipAllowsClass(membership: { allowedClassTypesSnapshot: string | null; membership: { classSessions: string | null } | null }, gymClass: { id: string; type: string | null }) {
+  if (membership.allowedClassTypesSnapshot != null) {
+    try {
+      const allowed = JSON.parse(membership.allowedClassTypesSnapshot) as unknown;
+      if (Array.isArray(allowed)) {
+        const types = new Set(allowed.map((value) => String(value).trim().toLowerCase()).filter(Boolean));
+        return types.size === 0 || types.has((gymClass.type ?? "").trim().toLowerCase());
+      }
+    } catch { /* legacy fallback below */ }
+  }
+  if (!membership.membership?.classSessions) return true;
+  try {
+    const entries = JSON.parse(membership.membership.classSessions) as Array<{ classId: string; classType?: string }>;
+    if (!entries.length) return true;
+    const type = (gymClass.type ?? "").trim().toLowerCase();
+    return entries.some((entry) => entry.classId === gymClass.id || entry.classId === type || entry.classType?.trim().toLowerCase() === type);
+  } catch { return true; }
+}
+
 export async function POST(req: Request) {
   try {
     const currentUser = await getCurrentAppUser();
@@ -45,7 +64,12 @@ export async function POST(req: Request) {
     const activeMembership = await db.userMembership.findFirst({
       where: { userId, status: "active" },
       orderBy: { startDate: "desc" },
+      include: { membership: { select: { classSessions: true } } },
     });
+
+    if (activeMembership && !membershipAllowsClass(activeMembership, schedule.class)) {
+      return NextResponse.json({ error: "هذا الكلاس غير مشمول ضمن العرض المشترك به." }, { status: 400 });
+    }
 
     if (activeMembership && activeMembership.totalSessions !== null && activeMembership.totalSessions > 0) {
       const usedBookings = await db.booking.count({
@@ -169,8 +193,11 @@ export async function PATCH(req: Request) {
           where: { id: booking.userMembershipId },
           include: { membership: { select: { classSessions: true } } },
         });
+        if (activeMem && !membershipAllowsClass(activeMem, newSchedule.class)) {
+          return NextResponse.json({ error: "هذا الكلاس غير مشمول ضمن العرض المشترك به." }, { status: 400 });
+        }
         const rawClassSessions = activeMem?.membership?.classSessions;
-        if (rawClassSessions) {
+        if (rawClassSessions && activeMem?.allowedClassTypesSnapshot == null) {
           try {
             const classSessions = JSON.parse(rawClassSessions) as Array<{
               classId: string;
