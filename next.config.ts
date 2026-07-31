@@ -18,6 +18,11 @@ const contentSecurityPolicy = [
 ].join("; ");
 
 const nextConfig: NextConfig = {
+  // This intentionally exposes only a boolean build flag. It is used by the
+  // client-side hydration diagnostic and never contains session data.
+  env: {
+    HYDRATION_AUTH_DEBUG: isProduction && process.env.HYDRATION_AUTH_DEBUG === "true" ? "true" : "false",
+  },
   experimental: {
     cpus: 2,
     workerThreads: false,

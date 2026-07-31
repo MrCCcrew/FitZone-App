@@ -703,6 +703,79 @@ const DEFAULT_TOP_BAR = {
   en: "💪 01001514535 · Beni Suef · First ladies & kids gym",
 };
 const SHOW_CLASSES_PAGE = false;
+const HYDRATION_AUTH_DEBUG = process.env.NODE_ENV === "production" && process.env.HYDRATION_AUTH_DEBUG === "true";
+
+type AuthDebugState = "pending" | "guest" | "authenticated";
+type AuthDebugPhase = "initial" | "mounted" | "summary-loaded";
+
+function getAuthDebugState(summary?: UserSummary | null): AuthDebugState {
+  return summary == null ? "pending" : summary.authenticated ? "authenticated" : "guest";
+}
+
+function getAuthDebugPhase(summary: UserSummary | null | undefined, mounted: boolean): AuthDebugPhase {
+  if (summary != null) return "summary-loaded";
+  return mounted ? "mounted" : "initial";
+}
+
+function authDebugAttributes(
+  component: string,
+  summary: UserSummary | null | undefined,
+  mounted: boolean,
+  conditionalElements: readonly string[],
+) {
+  if (!HYDRATION_AUTH_DEBUG) return {};
+  return {
+    "data-auth-component": component,
+    "data-auth-state": getAuthDebugState(summary),
+    "data-auth-role": summary?.user?.role ?? "none",
+    "data-render-phase": getAuthDebugPhase(summary, mounted),
+    "data-auth-conditionals": conditionalElements.join(","),
+  };
+}
+
+function readAuthDebugMarkers() {
+  return Array.from(document.querySelectorAll<HTMLElement>("[data-auth-component]")).map((element) => ({
+    component: element.dataset.authComponent ?? "unknown",
+    state: element.dataset.authState ?? "unknown",
+    role: element.dataset.authRole ?? "none",
+    phase: element.dataset.renderPhase ?? "unknown",
+    conditionals: element.dataset.authConditionals ?? "",
+  }));
+}
+
+function installHydrationAuthDebugListeners() {
+  if (!HYDRATION_AUTH_DEBUG || typeof window === "undefined") return;
+  const debugWindow = window as Window & { __fitzoneHydrationAuthDebugInstalled?: boolean };
+  if (debugWindow.__fitzoneHydrationAuthDebugInstalled) return;
+  debugWindow.__fitzoneHydrationAuthDebugInstalled = true;
+
+  const report = (kind: "console.error" | "window.error" | "unhandledrejection", errorName: string) => {
+    console.debug("[Hydration auth debug]", {
+      kind,
+      timestamp: new Date().toISOString(),
+      errorName,
+      markers: readAuthDebugMarkers(),
+    });
+  };
+  const originalConsoleError = console.error.bind(console);
+  console.error = (...args: unknown[]) => {
+    originalConsoleError(...args);
+    report("console.error", "ConsoleError");
+  };
+  window.addEventListener("error", (event) => report(
+    "window.error",
+    event.error instanceof Error ? event.error.name : "ErrorEvent",
+  ));
+  window.addEventListener("unhandledrejection", (event) => report(
+    "unhandledrejection",
+    event.reason instanceof Error ? event.reason.name : "UnhandledRejection",
+  ));
+}
+
+// This runs while the client bundle is evaluated, before React starts
+// hydrating, so the first hydration error is not missed.
+installHydrationAuthDebugListeners();
+
 const Header = ({
   currentPage,
   navigate,
@@ -710,6 +783,7 @@ const Header = ({
   walletBalance = "0",
   summary,
   storeEnabled,
+  diagnosticMounted,
 }: {
   currentPage: string;
   navigate: (p: string) => void;
@@ -717,8 +791,22 @@ const Header = ({
   walletBalance?: string;
   summary?: UserSummary | null;
   storeEnabled: boolean;
+  diagnosticMounted: boolean;
 }) => {
   const { lang, toggleLang } = useLang();
+  const authState = getAuthDebugState(summary);
+  const renderPhase = getAuthDebugPhase(summary, diagnosticMounted);
+  const headerConditionals = summary?.authenticated ? ["authenticated-nav", "user-widget"] : ["guest-nav", "user-widget"];
+  useEffect(() => {
+    if (!HYDRATION_AUTH_DEBUG) return;
+    console.debug("[Hydration auth debug]", {
+      component: "Header",
+      phase: renderPhase,
+      authState,
+      role: summary?.user?.role ?? "none",
+      conditionalElements: headerConditionals,
+    });
+  }, [authState, headerConditionals, renderPhase, summary?.user?.role]);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [announcements, setAnnouncements] = useState<string[]>([]);
   const [annIndex, setAnnIndex] = useState(0);
@@ -752,7 +840,7 @@ const Header = ({
     { id: "blog", label: t("المدونة", "Blog") },
   ];
   return (
-    <header style={{ background: "rgba(255,245,248,.97)", backdropFilter: "blur(12px)", borderBottom: `1px solid ${C.border}`, position: "sticky", top: 0, zIndex: 100 }}>
+    <header {...authDebugAttributes("header", summary, diagnosticMounted, headerConditionals)} style={{ background: "rgba(255,245,248,.97)", backdropFilter: "blur(12px)", borderBottom: `1px solid ${C.border}`, position: "sticky", top: 0, zIndex: 100 }}>
       {/* Top bar */}
       <div style={{ background: C.redDark, height: 30, boxSizing: "border-box", padding: "6px 0", textAlign: "center", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
         <span style={{ fontSize: 12, fontWeight: 600, color: "#fff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%", paddingInline: 12 }}>
@@ -779,7 +867,7 @@ const Header = ({
             </div>
           </div>
         </div>
-        <nav className="hide-mobile" style={{ display: "flex", gap: 2 }}>
+        <nav {...authDebugAttributes("navigation", summary, diagnosticMounted, headerConditionals)} className="hide-mobile" style={{ display: "flex", gap: 2 }}>
           {navItems.map(item => (
             <button
               key={item.id}
@@ -838,6 +926,7 @@ const Header = ({
             </button>
           )}
           <button
+            {...authDebugAttributes("user-menu", summary, diagnosticMounted, [summary?.authenticated ? "authenticated-nav" : "guest-nav", "user-widget"])}
             data-tour="account"
             onClick={() => navigate("account")}
             aria-label={summary?.authenticated ? (summary.user?.name || t("حسابي", "My account")) : t("تسجيل الدخول", "Login")}
@@ -2126,7 +2215,7 @@ const PrivateBookingModal = ({ trainer, type, onClose }: { trainer: PublicTraine
   );
 };
 
-const HomePage = ({ navigate, summary, storeEnabled, initialHomeData }: { navigate: (p: string, scrollTarget?: "shop-products" | "trainers-list") => void; summary: UserSummary | null; storeEnabled: boolean; initialHomeData?: InitialHomeData }) => {
+const HomePage = ({ navigate, summary, storeEnabled, initialHomeData, diagnosticMounted = false }: { navigate: (p: string, scrollTarget?: "shop-products" | "trainers-list") => void; summary: UserSummary | null; storeEnabled: boolean; initialHomeData?: InitialHomeData; diagnosticMounted?: boolean }) => {
   const _w = useWindowWidth();
   const { lang } = useLang();
   const t = useT();
@@ -2634,7 +2723,7 @@ const HomePage = ({ navigate, summary, storeEnabled, initialHomeData }: { naviga
           </div>
         </div>
         {/* Floating card */}
-        <div style={{ position: "absolute", left: viewportWidth() < 768 ? "auto" : (lang === "ar" ? "5%" : "auto"), right: viewportWidth() < 768 ? 16 : (lang === "ar" ? "auto" : "5%"), bottom: viewportWidth() < 768 ? 16 : 40, background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 12, padding: "14px 20px", display: viewportWidth() < 768 ? "none" : "flex", alignItems: "center", gap: 12, zIndex: 2 }}>
+        <div {...authDebugAttributes("account-summary", summary, diagnosticMounted, ["account-summary"])} style={{ position: "absolute", left: viewportWidth() < 768 ? "auto" : (lang === "ar" ? "5%" : "auto"), right: viewportWidth() < 768 ? 16 : (lang === "ar" ? "auto" : "5%"), bottom: viewportWidth() < 768 ? 16 : 40, background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 12, padding: "14px 20px", display: viewportWidth() < 768 ? "none" : "flex", alignItems: "center", gap: 12, zIndex: 2 }}>
           <div style={{ width: 36, height: 36, background: "rgba(233,30,99,.15)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center" }}>🏆</div>
           <div>
             <div style={{ fontWeight: 700, fontSize: 13, color: C.white }}>{summary?.authenticated ? (summary.user?.name || t("عضوة جديدة", "New member")) : t("مشتركات اليوم", "Today's members")}</div>
@@ -10084,6 +10173,20 @@ export default function App({ initialHomeData }: { initialHomeData?: InitialHome
   const [, setViewportVersion] = useState(0);
   const [page, setPage] = useState("home");
   const [summary, setSummary] = useState<UserSummary | null>(null);
+  const [authDiagnosticMounted, setAuthDiagnosticMounted] = useState(false);
+  useEffect(() => {
+    if (HYDRATION_AUTH_DEBUG) setAuthDiagnosticMounted(true);
+  }, []);
+  useEffect(() => {
+    if (!HYDRATION_AUTH_DEBUG) return;
+    console.debug("[Hydration auth debug]", {
+      component: "FitzoneApp",
+      phase: getAuthDebugPhase(summary, authDiagnosticMounted),
+      authState: getAuthDebugState(summary),
+      role: summary?.user?.role ?? "none",
+      conditionalElements: summary?.authenticated ? ["authenticated-nav", "account-summary", "user-widget"] : ["guest-nav", "user-widget"],
+    });
+  }, [authDiagnosticMounted, summary]);
   const [cartCount, setCartCount] = useState(0);
   const [storeEnabled, setStoreEnabled] = useState(false);
   const [tourOpen, setTourOpen] = useState(false);
@@ -10310,16 +10413,16 @@ export default function App({ initialHomeData }: { initialHomeData?: InitialHome
   }, []);
 
   const pages = {
-    home: <HomePage navigate={navigate} summary={summary} storeEnabled={storeEnabled} initialHomeData={initialHomeData} />,
+    home: <HomePage navigate={navigate} summary={summary} storeEnabled={storeEnabled} initialHomeData={initialHomeData} diagnosticMounted={authDiagnosticMounted} />,
     about: <AboutPage />,
     classes: <ClassesPage navigate={navigate} />,
     classDetail: <ClassDetailPage navigate={navigate} />,
     schedule: <SchedulePage />,
     offers: <OffersPage navigate={navigate} />,
-    shop: storeEnabled ? <ShopPage navigate={navigate} /> : <HomePage navigate={navigate} summary={summary} storeEnabled={storeEnabled} initialHomeData={initialHomeData} />,
-    productDetail: storeEnabled ? <ProductDetailPage navigate={navigate} walletBalance={summary?.walletBalance ?? 0} /> : <HomePage navigate={navigate} summary={summary} storeEnabled={storeEnabled} initialHomeData={initialHomeData} />,
-    cart: storeEnabled ? <CartPage navigate={navigate} summary={summary} /> : <HomePage navigate={navigate} summary={summary} storeEnabled={storeEnabled} initialHomeData={initialHomeData} />,
-    checkout: storeEnabled ? <CartPage navigate={navigate} summary={summary} /> : <HomePage navigate={navigate} summary={summary} storeEnabled={storeEnabled} initialHomeData={initialHomeData} />,
+    shop: storeEnabled ? <ShopPage navigate={navigate} /> : <HomePage navigate={navigate} summary={summary} storeEnabled={storeEnabled} initialHomeData={initialHomeData} diagnosticMounted={authDiagnosticMounted} />,
+    productDetail: storeEnabled ? <ProductDetailPage navigate={navigate} walletBalance={summary?.walletBalance ?? 0} /> : <HomePage navigate={navigate} summary={summary} storeEnabled={storeEnabled} initialHomeData={initialHomeData} diagnosticMounted={authDiagnosticMounted} />,
+    cart: storeEnabled ? <CartPage navigate={navigate} summary={summary} /> : <HomePage navigate={navigate} summary={summary} storeEnabled={storeEnabled} initialHomeData={initialHomeData} diagnosticMounted={authDiagnosticMounted} />,
+    checkout: storeEnabled ? <CartPage navigate={navigate} summary={summary} /> : <HomePage navigate={navigate} summary={summary} storeEnabled={storeEnabled} initialHomeData={initialHomeData} diagnosticMounted={authDiagnosticMounted} />,
     wallet: <RedirectToAccountTab tab="wallet" />,
     rewards: <RedirectToAccountTab tab="wallet" />,
     referral: <RedirectToAccountTab tab="wallet" />,
@@ -10331,7 +10434,16 @@ export default function App({ initialHomeData }: { initialHomeData?: InitialHome
   };
 
   return (
-    <div className="app" dir={lang === "ar" ? "rtl" : "ltr"}>
+    <div
+      {...authDebugAttributes(
+        "FitzoneApp",
+        summary,
+        authDiagnosticMounted,
+        summary?.authenticated ? ["authenticated-nav", "account-summary", "user-widget"] : ["guest-nav", "user-widget"],
+      )}
+      className="app"
+      dir={lang === "ar" ? "rtl" : "ltr"}
+    >
       <style>{css}</style>
       <Header
         currentPage={page}
@@ -10340,6 +10452,7 @@ export default function App({ initialHomeData }: { initialHomeData?: InitialHome
         walletBalance={(summary?.walletBalance ?? 0).toLocaleString(lang === "ar" ? "ar-EG" : "en-US")}
         summary={summary}
         storeEnabled={storeEnabled}
+        diagnosticMounted={authDiagnosticMounted}
       />
       <main>
         {/* MembershipsPage is always mounted so subscription modals work from any page.
