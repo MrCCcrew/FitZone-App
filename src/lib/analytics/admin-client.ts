@@ -46,17 +46,24 @@ export function analyticsQuery(filters: AnalyticsFilters) {
   return params.toString();
 }
 
-async function getJson(path: string, signal: AbortSignal) {
-  const response = await fetch(path, { signal, cache: "no-store", credentials: "same-origin" });
+async function getJson(path: string) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+  if (process.env.NODE_ENV === "development") console.debug("[Analytics] requesting", path);
+  try {
+    const response = await fetch(path, { signal: controller.signal, cache: "no-store", credentials: "same-origin" });
+    if (process.env.NODE_ENV === "development") console.debug("[Analytics] response", path, response.status);
   if (!response.ok) {
     const error = new Error(`request_failed_${response.status}`) as Error & { status?: number; endpoint?: string };
     error.status = response.status; error.endpoint = path; throw error;
   }
   return response.json();
+  } finally { clearTimeout(timeout); }
 }
 
-export async function loadAdminAnalytics(filters: AnalyticsFilters, signal: AbortSignal) {
+export async function loadAdminAnalytics(filters: AnalyticsFilters, _legacySignal?: AbortSignal) {
   const query = analyticsQuery(normalizeAnalyticsFilters(filters));
-  const results = await Promise.allSettled(analyticsSections.map((name) => getJson(`/api/admin/analytics/${name}?${query}`, signal)));
+  // Always build all four requests; layout/viewport never participates here.
+  const results = await Promise.allSettled(analyticsSections.map((name) => getJson(`/api/admin/analytics/${name}?${query}`)));
   return Object.fromEntries(results.map((result, index) => [analyticsSections[index], result])) as Record<AnalyticsSection, PromiseSettledResult<unknown>>;
 }
