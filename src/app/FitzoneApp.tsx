@@ -784,6 +784,7 @@ const Header = ({
   summary,
   storeEnabled,
   diagnosticMounted,
+  hydrationDisable,
 }: {
   currentPage: string;
   navigate: (p: string) => void;
@@ -792,6 +793,7 @@ const Header = ({
   summary?: UserSummary | null;
   storeEnabled: boolean;
   diagnosticMounted: boolean;
+  hydrationDisable?: string;
 }) => {
   const { lang, toggleLang } = useLang();
   const authState = getAuthDebugState(summary);
@@ -842,11 +844,11 @@ const Header = ({
   return (
     <header {...authDebugAttributes("header", summary, diagnosticMounted, headerConditionals)} style={{ background: "rgba(255,245,248,.97)", backdropFilter: "blur(12px)", borderBottom: `1px solid ${C.border}`, position: "sticky", top: 0, zIndex: 100 }}>
       {/* Top bar */}
-      <div style={{ background: C.redDark, height: 30, boxSizing: "border-box", padding: "6px 0", textAlign: "center", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      {hydrationDisable !== "announcement" && <div style={{ background: C.redDark, height: 30, boxSizing: "border-box", padding: "6px 0", textAlign: "center", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
         <span style={{ fontSize: 12, fontWeight: 600, color: "#fff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%", paddingInline: 12 }}>
           {announcements.length > 0 ? announcements[annIndex] : t(DEFAULT_TOP_BAR.ar, DEFAULT_TOP_BAR.en)}
         </span>
-      </div>
+      </div>}
       <div className="container" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", height: 78 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
           {currentPage !== "home" && (
@@ -2215,7 +2217,7 @@ const PrivateBookingModal = ({ trainer, type, onClose }: { trainer: PublicTraine
   );
 };
 
-const HomePage = ({ navigate, summary, storeEnabled, initialHomeData, diagnosticMounted = false }: { navigate: (p: string, scrollTarget?: "shop-products" | "trainers-list") => void; summary: UserSummary | null; storeEnabled: boolean; initialHomeData?: InitialHomeData; diagnosticMounted?: boolean }) => {
+const HomePage = ({ navigate, summary, storeEnabled, initialHomeData, diagnosticMounted = false, hydrationDisable }: { navigate: (p: string, scrollTarget?: "shop-products" | "trainers-list") => void; summary: UserSummary | null; storeEnabled: boolean; initialHomeData?: InitialHomeData; diagnosticMounted?: boolean; hydrationDisable?: string }) => {
   const _w = useWindowWidth();
   const { lang } = useLang();
   const t = useT();
@@ -2584,7 +2586,7 @@ const HomePage = ({ navigate, summary, storeEnabled, initialHomeData, diagnostic
   return (
     <div>
       {/* ─ HERO ─ */}
-      <section style={{ position: "relative", minHeight: 520, display: "flex", alignItems: "center", overflow: "hidden" }}>
+      {hydrationDisable !== "hero" && <section style={{ position: "relative", minHeight: 520, display: "flex", alignItems: "center", overflow: "hidden" }}>
         <div style={{ position: "absolute", inset: 0 }}>
           <GymImg type="gymReal" w="100%" h={600} />
           <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg, rgba(252,228,236,.85) 30%, rgba(255,240,245,.4) 100%)" }} />
@@ -2723,17 +2725,17 @@ const HomePage = ({ navigate, summary, storeEnabled, initialHomeData, diagnostic
           </div>
         </div>
         {/* Floating card */}
-        <div {...authDebugAttributes("account-summary", summary, diagnosticMounted, ["account-summary"])} style={{ position: "absolute", left: viewportWidth() < 768 ? "auto" : (lang === "ar" ? "5%" : "auto"), right: viewportWidth() < 768 ? 16 : (lang === "ar" ? "auto" : "5%"), bottom: viewportWidth() < 768 ? 16 : 40, background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 12, padding: "14px 20px", display: viewportWidth() < 768 ? "none" : "flex", alignItems: "center", gap: 12, zIndex: 2 }}>
+        {hydrationDisable !== "home-widgets" && <div {...authDebugAttributes("account-summary", summary, diagnosticMounted, ["account-summary"])} style={{ position: "absolute", left: viewportWidth() < 768 ? "auto" : (lang === "ar" ? "5%" : "auto"), right: viewportWidth() < 768 ? 16 : (lang === "ar" ? "auto" : "5%"), bottom: viewportWidth() < 768 ? 16 : 40, background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 12, padding: "14px 20px", display: viewportWidth() < 768 ? "none" : "flex", alignItems: "center", gap: 12, zIndex: 2 }}>
           <div style={{ width: 36, height: 36, background: "rgba(233,30,99,.15)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center" }}>🏆</div>
           <div>
             <div style={{ fontWeight: 700, fontSize: 13, color: C.white }}>{summary?.authenticated ? (summary.user?.name || t("عضوة جديدة", "New member")) : t("مشتركات اليوم", "Today's members")}</div>
             <div style={{ fontSize: 11, color: C.redDark }}>{summary?.authenticated ? `${t("الباقة:", "Plan:")} ${summary.membership?.name ?? t("بدون اشتراك", "No membership")}` : "+12 عضوة جديدة"}</div>
           </div>
-        </div>
-      </section>
+        </div>}
+      </section>}
 
       {/* ─ HOME OFFERS GRID ─ */}
-      {homeDataReady && homeSectionTopology.current.offers && (
+      {hydrationDisable !== "offers" && homeDataReady && homeSectionTopology.current.offers && (
         <section className="section" style={{ paddingTop: 48, paddingBottom: 48 }}>
           <div className="container">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 32, flexWrap: "wrap", gap: 12 }}>
@@ -3013,7 +3015,7 @@ const HomePage = ({ navigate, summary, storeEnabled, initialHomeData, diagnostic
       ) : null}
 
       {/* ─ MEMBERSHIPS / PACKAGES ─ */}
-      <section className="section" style={{ background: C.bgCard }}>
+      {hydrationDisable !== "memberships" && <section className="section" style={{ background: C.bgCard }}>
         <div className="container">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 40, flexWrap: "wrap", gap: 12 }}>
             <div>
@@ -3081,7 +3083,7 @@ const HomePage = ({ navigate, summary, storeEnabled, initialHomeData, diagnostic
             })}
           </div>
         </div>
-      </section>
+      </section>}
 
       {/* ─ SCHEDULE PREVIEW ─ */}
       <section className="section">
@@ -10168,7 +10170,7 @@ function RedirectToAccountTab({ tab }: { tab: string }) {
   return null;
 }
 
-export default function App({ initialHomeData }: { initialHomeData?: InitialHomeData }) {
+export default function App({ initialHomeData, hydrationDisable }: { initialHomeData?: InitialHomeData; hydrationDisable?: string }) {
   const { lang } = useLang();
   const [, setViewportVersion] = useState(0);
   const [page, setPage] = useState("home");
@@ -10191,6 +10193,9 @@ export default function App({ initialHomeData }: { initialHomeData?: InitialHome
   const [storeEnabled, setStoreEnabled] = useState(false);
   const [tourOpen, setTourOpen] = useState(false);
   const [tourPromptOpen, setTourPromptOpen] = useState(false);
+  useEffect(() => {
+    if (HYDRATION_AUTH_DEBUG && hydrationDisable) console.debug("[Hydration isolation]", { disabledSection: hydrationDisable });
+  }, [hydrationDisable]);
   const navigating = useRef(false);
   const pendingScrollTarget = useRef<"shop-products" | "trainers-list" | null>(null);
   const tourFrameRef = useRef<number | null>(null);
@@ -10413,7 +10418,7 @@ export default function App({ initialHomeData }: { initialHomeData?: InitialHome
   }, []);
 
   const pages = {
-    home: <HomePage navigate={navigate} summary={summary} storeEnabled={storeEnabled} initialHomeData={initialHomeData} diagnosticMounted={authDiagnosticMounted} />,
+    home: <HomePage navigate={navigate} summary={summary} storeEnabled={storeEnabled} initialHomeData={initialHomeData} diagnosticMounted={authDiagnosticMounted} hydrationDisable={hydrationDisable} />,
     about: <AboutPage />,
     classes: <ClassesPage navigate={navigate} />,
     classDetail: <ClassDetailPage navigate={navigate} />,
@@ -10453,6 +10458,7 @@ export default function App({ initialHomeData }: { initialHomeData?: InitialHome
         summary={summary}
         storeEnabled={storeEnabled}
         diagnosticMounted={authDiagnosticMounted}
+        hydrationDisable={hydrationDisable}
       />
       <main>
         {/* MembershipsPage is always mounted so subscription modals work from any page.
@@ -10465,8 +10471,8 @@ export default function App({ initialHomeData }: { initialHomeData?: InitialHome
       </main>
       <Footer navigate={navigate} storeEnabled={storeEnabled} onRestartTour={openTour} />
       <BottomNav currentPage={page} navigate={navigate} cartCount={cartCount} storeEnabled={storeEnabled} />
-      <StoreGiftToast />
-      {tourPromptOpen && (
+      {hydrationDisable !== "home-widgets" && <StoreGiftToast />}
+      {hydrationDisable !== "tour" && tourPromptOpen && (
         <aside aria-live="polite" style={{ position: "fixed", zIndex: 79, right: 20, bottom: 104, width: "min(340px, calc(100vw - 40px))", background: "#fff", border: `1px solid ${C.border}`, borderRadius: 16, boxShadow: "0 14px 36px rgba(26,8,18,.16)", padding: "16px 18px" }}>
           <button type="button" onClick={dismissTourPrompt} aria-label={lang === "en" ? "Close" : "إغلاق"} style={{ position: "absolute", top: 8, [lang === "en" ? "right" : "left"]: 10, border: 0, background: "transparent", color: C.gray, fontSize: 20, lineHeight: 1, cursor: "pointer" }}>×</button>
           <strong style={{ display: "block", color: C.white, fontSize: 16, marginBottom: 6 }}>{lang === "en" ? "New here?" : "جديدة هنا؟"}</strong>
@@ -10478,7 +10484,7 @@ export default function App({ initialHomeData }: { initialHomeData?: InitialHome
           <style>{`@media(max-width:767px){aside[aria-live="polite"]{right:20px!important;bottom:calc(160px + env(safe-area-inset-bottom,0px))!important;}}`}</style>
         </aside>
       )}
-      {tourOpen && <FitZoneTour onNavigate={navigateForTour} onFinishNavigate={finishTourAt} onClose={() => setTourOpen(false)} />}
+      {hydrationDisable !== "tour" && tourOpen && <FitZoneTour onNavigate={navigateForTour} onFinishNavigate={finishTourAt} onClose={() => setTourOpen(false)} />}
     </div>
   );
 }

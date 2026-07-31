@@ -41,7 +41,14 @@ export const metadata: Metadata = {
   },
 };
 
-export default async function Home() {
+const isolationSections = new Set(["hero", "announcement", "offers", "memberships", "home-widgets", "tour", "ai-coach", "push-prompt"]);
+
+export default async function Home({ searchParams }: { searchParams: Promise<{ hydrationDisable?: string | string[] }> }) {
+  const requestedDisable = (await searchParams).hydrationDisable;
+  const requestedSection = Array.isArray(requestedDisable) ? requestedDisable[0] : requestedDisable;
+  const hydrationDisable = isHydrationAuthDebugEnabled() && requestedSection && isolationSections.has(requestedSection)
+    ? requestedSection
+    : undefined;
   const initialHomeData = await getInitialHomeData();
   const hydrationDebugEnabled = isHydrationAuthDebugEnabled();
   const session = hydrationDebugEnabled ? await getHydrationServerSessionMarker() : null;
@@ -196,9 +203,9 @@ export default async function Home() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
       />
-      <FitzoneApp initialHomeData={initialHomeData} />
+      <FitzoneApp initialHomeData={initialHomeData} hydrationDisable={hydrationDisable} />
       {hydrationSnapshot && <HydrationAuthDebugProbe snapshot={hydrationSnapshot} />}
-      <AICoachClientOnly />
+      {hydrationDisable !== "ai-coach" && <AICoachClientOnly />}
     </>
   );
 }
