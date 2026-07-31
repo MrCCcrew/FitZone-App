@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { Geist, Geist_Mono, Cairo, Tajawal } from "next/font/google";
 import Providers from "./Providers";
 import AnalyticsTracker from "@/components/analytics/AnalyticsTracker";
+import { getHydrationServerSessionMarker, isHydrationAuthDebugEnabled } from "@/lib/hydration-auth-debug-server";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -153,11 +154,23 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  if (isHydrationAuthDebugEnabled()) {
+    const session = await getHydrationServerSessionMarker();
+    console.info("[Hydration auth debug server]", {
+      component: "layout",
+      hasSession: session.hasSession,
+      role: session.role,
+      lang: "ar",
+      dir: "rtl",
+      currentPage: "root",
+      conditionalComponents: ["Providers", "AnalyticsTracker"],
+    });
+  }
   const organizationJsonLd = {
     "@context": "https://schema.org",
     "@type": "Organization",

@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import FitzoneApp, { type InitialHomeData } from "./FitzoneApp";
 import AICoachClientOnly from "@/components/AICoachClientOnly";
+import HydrationAuthDebugProbe, { type HydrationServerSnapshot } from "@/components/HydrationAuthDebugProbe";
 import { getInitialHomeData as loadInitialHomeData } from "@/lib/home-initial-data";
+import { getHydrationServerSessionMarker, isHydrationAuthDebugEnabled } from "@/lib/hydration-auth-debug-server";
 
 export const dynamic = "force-dynamic";
 
@@ -41,6 +43,39 @@ export const metadata: Metadata = {
 
 export default async function Home() {
   const initialHomeData = await getInitialHomeData();
+  const hydrationDebugEnabled = isHydrationAuthDebugEnabled();
+  const session = hydrationDebugEnabled ? await getHydrationServerSessionMarker() : null;
+  const hydrationSnapshot: HydrationServerSnapshot | null = hydrationDebugEnabled
+    ? {
+        hasSession: session?.hasSession ?? false,
+        role: session?.role ?? null,
+        lang: "ar",
+        dir: "rtl",
+        currentPage: "home",
+        // Hero content is client-fetched; its SSR state is intentionally empty.
+        heroSlideIds: [],
+        offerIds: initialHomeData.offers.map((offer) => offer.id),
+        membershipIds: initialHomeData.memberships.map((membership) => membership.id),
+        conditionalComponents: ["FitzoneApp", "AICoachClientOnly"],
+      }
+    : null;
+  if (hydrationSnapshot) {
+    console.info("[Hydration auth debug server]", {
+      component: "page",
+      hasSession: hydrationSnapshot.hasSession,
+      role: hydrationSnapshot.role,
+      lang: hydrationSnapshot.lang,
+      dir: hydrationSnapshot.dir,
+      currentPage: hydrationSnapshot.currentPage,
+      heroSlideCount: hydrationSnapshot.heroSlideIds.length,
+      heroSlideIds: hydrationSnapshot.heroSlideIds,
+      offerCount: hydrationSnapshot.offerIds.length,
+      offerIds: hydrationSnapshot.offerIds,
+      membershipCount: hydrationSnapshot.membershipIds.length,
+      membershipIds: hydrationSnapshot.membershipIds,
+      conditionalComponents: hydrationSnapshot.conditionalComponents,
+    });
+  }
   const healthClubJsonLd = {
     "@context": "https://schema.org",
     "@type": "HealthClub",
@@ -162,6 +197,7 @@ export default async function Home() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
       />
       <FitzoneApp initialHomeData={initialHomeData} />
+      {hydrationSnapshot && <HydrationAuthDebugProbe snapshot={hydrationSnapshot} />}
       <AICoachClientOnly />
     </>
   );
