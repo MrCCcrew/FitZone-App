@@ -10,7 +10,7 @@ type ChatMessage = {
   senderName?: string | null;
   content: string;
   createdAt: string;
-  metadata?: { membershipId?: string; closeSession?: boolean } | null;
+  metadata?: { membershipId?: string; closeSession?: boolean; action?: { type: "navigate"; page: "shop"; anchor: "shop-products" } } | null;
 };
 
 type QuickAction = {
@@ -233,6 +233,17 @@ export default function LiveChatWidget() {
     }
   }, [messages]);
 
+  const openShop = () => {
+    window.dispatchEvent(new CustomEvent("fitzone:ai-coach-navigate", {
+      detail: { type: "navigate", page: "shop", anchor: "shop-products" },
+    }));
+  };
+
+  useEffect(() => {
+    const action = messages[messages.length - 1]?.metadata?.action;
+    if (action?.type === "navigate" && action.page === "shop" && action.anchor === "shop-products") openShop();
+  }, [messages]);
+
   const sendMessage = async (preset?: string) => {
     const content = (preset ?? input).trim();
     if (!content) return;
@@ -450,6 +461,9 @@ export default function LiveChatWidget() {
                       {message.senderName || (isUser ? t("أنت", "You") : message.senderType === "bot" ? "AI Coach" : t("الدعم", "Support"))}
                     </div>
                     <div style={{ whiteSpace: "pre-wrap" }}>{message.content}</div>
+                    {message.metadata?.action?.page === "shop" && (
+                      <button onClick={openShop} style={{ ...quickButtonStyle, marginTop: 8 }}>فتح المتجر</button>
+                    )}
                   </div>
                 </div>
               );

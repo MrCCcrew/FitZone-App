@@ -12,6 +12,7 @@ export type CoachIntent =
   | "offer_lookup"
   | "trainer_info"
   | "product_help"
+  | "shop_browse"
   | "complaint_help"
   | "human_handoff"
   | "food_check"
@@ -62,6 +63,7 @@ export type CoachConversationContext = {
   version: 1;
   lang: CoachLang;
   lastIntent?: CoachIntent;
+  lastTopic?: "weight_loss" | "fitness" | "nutrition" | null;
   questionnaire: CoachQuestionnaireState;
   // Optional counter used only when advanced coaching nudges are enabled.
   nudgeShownCount?: number;
@@ -224,4 +226,5 @@ export type CoachStructuredReply = {
   usedAI?: boolean;
   outcome?: string;
   metadata?: Record<string, unknown>;
+  action?: { type: "navigate"; page: "shop"; anchor: "shop-products" };
 };

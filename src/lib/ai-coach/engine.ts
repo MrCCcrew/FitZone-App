@@ -299,6 +299,16 @@ async function buildDeterministicReply(args: {
   const asksOwnMembership = /اشتراكي|باقي لي|ينتهي امتي|عضويتي|my membership|remaining sessions/i.test(normalizedQuestion);
   const asksOffer = /عرض|عروض|offer|discount|خصم/i.test(normalizedQuestion);
   const asksSchedule = /مواعيد|ميعاد|بعد الساعه|schedule|today/i.test(normalizedQuestion);
+  if (intent === "shop_browse") {
+    await updateContext(sessionId, baseContext, intent);
+    return {
+      intent,
+      text: lang === "en" ? "Sure, I’ll open the shop products now." : "تمام، هفتح لك منتجات المتجر دلوقتي.",
+      facts: [],
+      quickActions: buildActions(snapshot, intent, baseContext),
+      action: { type: "navigate", page: "shop", anchor: "shop-products" },
+    };
+  }
   if (asksOwnMembership) {
     const membership = await getAuthenticatedCustomerMembership(user?.id ?? null);
     const text = !user?.id
@@ -318,10 +328,23 @@ async function buildDeterministicReply(args: {
       : asksSchedule
         ? (lang === "en" ? rows.map((row) => `${row.name}: ${row.schedules.map((s: { date: Date; time: string }) => `${new Date(s.date).toLocaleDateString("en-GB")} ${s.time}`).join("; ") || "no upcoming times"}`).join("\n") : rows.map((row) => `${row.name}: ${row.schedules.map((s: { date: Date; time: string }) => `${new Date(s.date).toLocaleDateString("ar-EG")} ${s.time}`).join("، ") || "لا توجد مواعيد قادمة"}`).join("\n"))
         : asksOffer
-          ? (lang === "en" ? rows.map((row) => `${row.title}: ${row.finalPrice ?? "price unavailable"} EGP${row.durationDays ? `, ${row.durationDays} days` : ""}; expires ${row.expiresAt.toLocaleDateString("en-GB")}.`).join("\n") : rows.map((row) => `${row.title}: السعر النهائي ${row.finalPrice ?? "غير متاح"} جنيه${row.durationDays ? `، المدة ${row.durationDays} يوم` : ""}، ينتهي ${row.expiresAt.toLocaleDateString("ar-EG")}.`).join("\n"))
+          ? (lang === "en" ? rows.slice(0, 5).map((row) => `${row.title}: final ${row.finalPrice ?? "price unavailable"} EGP${row.originalPrice != null ? ` (was ${row.originalPrice} EGP)` : ""}${row.durationDays ? `, ${row.durationDays} days` : ""}${row.sessionsCount ? `, ${row.sessionsCount} sessions` : ""}${row.allowedClassTypes.length ? `; classes: ${row.allowedClassTypes.join(", ")}` : "; all classes"}; expires ${row.expiresAt.toLocaleDateString("en-GB")}.`).join("\n") : rows.slice(0, 5).map((row) => `${row.title}: السعر النهائي ${row.finalPrice ?? "غير متاح"} جنيه${row.originalPrice != null ? ` بدل ${row.originalPrice} جنيه` : ""}${row.durationDays ? `، المدة ${row.durationDays} يوم` : ""}${row.sessionsCount ? `، ${row.sessionsCount} حصة` : ""}${row.allowedClassTypes.length ? `، الكلاسات: ${row.allowedClassTypes.join("، ")}` : "، يشمل كل الكلاسات"}، ينتهي ${row.expiresAt.toLocaleDateString("ar-EG")}.`).join("\n"))
           : (lang === "en" ? rows.map((row) => `${row.name}: ${row.price} EGP, ${row.duration} days${row.sessionsCount ? `, ${row.sessionsCount} sessions` : ""}.`).join("\n") : rows.map((row) => `${row.name}: ${row.price} جنيه، ${row.duration} يوم${row.sessionsCount ? `، ${row.sessionsCount} حصة` : ""}.`).join("\n"));
     await updateContext(sessionId, baseContext, asksSchedule ? "schedule_lookup" : asksOffer ? "offer_lookup" : "pricing");
     return { intent: asksSchedule ? "schedule_lookup" : asksOffer ? "offer_lookup" : "pricing", text, facts: [], quickActions: buildActions(snapshot, intent, baseContext) };
+  }
+
+  const mentionsWeightLoss = /تخسيس|اخس|خساره الوزن|حرق دهون|weight loss/i.test(userMessage);
+  const asksAdvice = /نصايح|نصيحه|معلومه|ابدأ تمرين|ازيد لياقتي|اتمرن كام|tips|advice/i.test(userMessage);
+  const topic = mentionsWeightLoss ? "weight_loss" : baseContext.lastTopic;
+  if (mentionsWeightLoss || (asksAdvice && topic === "weight_loss")) {
+    const safety = detectSafetyFlags(userMessage);
+    const text = lang === "en"
+      ? "For safe weight loss: keep a moderate calorie deficit without starving yourself, prioritize protein and vegetables, train resistance 2–3 times weekly, add suitable cardio, sleep well, and track weight or measurements weekly. If you have pain, an injury, or a health condition, consult a qualified professional before changing training."
+      : "للتخسيس بشكل آمن: اعمل عجز سعرات معتدل من غير تجويع، وركز على البروتين والخضار والمياه، وتمارين مقاومة 2–3 مرات أسبوعيًا مع كارديو مناسب، ونوم كويس، ومتابعة الوزن أو المقاسات أسبوعيًا." + (safety.hasRisk ? " وبما إنك ذكرت ألم أو إصابة/حالة صحية، راجع مختص قبل تغيير التمرين." : "");
+    const nextContext = { ...baseContext, lastTopic: "weight_loss" as const, lastIntent: "faq" as const };
+    await db.chatSession.update({ where: { id: sessionId }, data: { context: serializeCoachContext(nextContext), lastMessageAt: new Date() } });
+    return { intent: "faq", text, facts: [], quickActions: buildActions(snapshot, "faq", nextContext) };
   }
 
   // ── Live support ───────────────────────────────────────────────────────────
@@ -519,6 +542,7 @@ export async function handleCoachMessage(sessionId: string, userMessage: string,
       recommendedMembershipId: reply.recommendedMembershipId ?? null,
       quickActions: reply.quickActions,
       usedAI: reply.usedAI ?? false,
+      action: reply.action,
     });
   }
 
