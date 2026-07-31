@@ -34,6 +34,12 @@ export function detectCoachIntent(message: string): CoachIntent {
 
   if (!text) return "unknown";
 
+  // A named entity has priority over generic discount/offer wording.
+  if (matches(text, [/\b(?:خصم|عرض)\s+على\s+(?:ال)?(?:منتجات|ملابس)\b/])) return "product_discount";
+  if (matches(text, [/\b(?:رشح|رشحي)\b.*\b(?:منتج|لبس|ملابس)\b/])) return "product_recommendation";
+  if (matches(text, [/\b(?:وزني|وزن)\s+\d+.*\b(?:اعمل ايه|ابدأ ازاي)\b/, /\bمحتاج\s+اخس\b/, /\bوزني عالي\b/])) return "weight_advice";
+  if (matches(text, [/\b(?:عايزه|عايزة)\s+نظام\s+غذائي\b/])) return "nutrition_guidance";
+
   // Greetings
   if (matches(text, [/^(اهلا|السلام|مرحبا|هاي|hello|hi|hey)\b/, /\bازيك\b/, /\bعامل ايه\b/])) return "greeting";
 
@@ -53,7 +59,7 @@ export function detectCoachIntent(message: string): CoachIntent {
   )
     return "check_in";
 
-  if (matches(text, [/\b(?:وزني|وزن)\s+\d+.*\b(?:اعمل ايه|ابدأ ازاي)\b/, /\bمحتاج\s+اخس\b/, /\bوزني عالي\b/])) return "weight_advice";
+  if (matches(text, [/\bوزني\s+\d+\b/])) return "weight_context";
 
   if (matches(text, [/\b(?:اريد|عايز)\s+تقييم\s+(?:سريع\s+)?(?:لاكلي|لأكلي)\b/, /\bnutrition review\b/])) return "nutrition_review";
 

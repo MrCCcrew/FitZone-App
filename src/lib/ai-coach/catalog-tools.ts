@@ -3,18 +3,37 @@ import { db } from "@/lib/db";
 const MAX = 8;
 const norm = (value: string) => value.toLowerCase().replace(/[أإآ]/g, "ا").replace(/ة/g, "ه").trim();
 const json = <T>(value: string | null | undefined, fallback: T): T => { try { return value ? JSON.parse(value) as T : fallback; } catch { return fallback; } };
+const STOP_WORDS = new Set(["هل", "يوجد", "عندكم", "ايه", "العروض", "عرض", "خاصه", "خصومات", "اللي", "في", "عن", "كلمني", "على", "الجيم", "باقه", "الباقات"]);
+function searchTerms(query: string) { return norm(query).split(/\s+/).filter((term) => term.length > 2 && !STOP_WORDS.has(term)); }
+function looselyMatches(text: string, query: string) {
+  const terms = searchTerms(query); if (!terms.length) return true;
+  const haystack = norm(text);
+  return terms.some((term) => haystack.includes(term) || (term.length >= 4 && [...haystack].some((_, index) => haystack.slice(index, index + term.length - 1) === term.slice(0, -1))));
+}
 
 /** Read-only, bounded catalog tools. They accept search terms only, never SQL/Prisma input. */
 export async function searchAvailableMemberships(query = "") {
   const rows = await db.membership.findMany({ where: { isActive: true }, orderBy: [{ sortOrder: "asc" }, { price: "asc" }], take: MAX, select: { id: true, name: true, nameEn: true, kind: true, duration: true, sessionsCount: true, price: true, priceBefore: true, priceAfter: true, features: true, classSessions: true, goals: { select: { goal: { select: { name: true, nameEn: true } } } } } });
-  const q = norm(query);
-  return rows.filter((row) => !q || norm(`${row.name} ${row.nameEn ?? ""} ${row.features}`).includes(q)).map((row) => ({ ...row, allowedClasses: json<Array<{ classId: string; classType?: string }>>(row.classSessions, []), features: json<string[]>(row.features, []), goals: row.goals.map((g) => g.goal.name) }));
+  return rows.filter((row) => looselyMatches(`${row.name} ${row.nameEn ?? ""} ${row.features}`, query)).map((row) => ({ ...row, allowedClasses: json<Array<{ classId: string; classType?: string }>>(row.classSessions, []), features: json<string[]>(row.features, []), goals: row.goals.map((g) => g.goal.name) }));
 }
 
 export async function searchActiveOffers(query = "") {
   const rows = await db.offer.findMany({ where: { isActive: true, expiresAt: { gt: new Date() } }, orderBy: { expiresAt: "asc" }, take: MAX, include: { membership: { select: { name: true, price: true, duration: true, sessionsCount: true, goals: { select: { goal: { select: { name: true } } } } } }, allowedClassTypes: { select: { classType: true } } } });
-  const q = norm(query);
-  return rows.filter((row) => !q || norm(`${row.title} ${row.titleEn ?? ""} ${row.description ?? ""}`).includes(q)).map((row) => ({ id: row.id, title: row.title, titleEn: row.titleEn, type: row.type, originalPrice: row.priceBefore ?? row.membership?.price ?? null, discount: row.discount, finalPrice: row.specialPrice ?? row.membership?.price ?? null, expiresAt: row.expiresAt, durationDays: row.durationDays ?? row.membership?.duration ?? null, sessionsCount: row.sessionsCount ?? row.membership?.sessionsCount ?? null, allowedClassTypes: row.allowedClassTypes.map((item) => item.classType), features: json<string[]>(row.features, []), goals: row.membership?.goals.map((g) => g.goal.name) ?? [] }));
+  return rows.filter((row) => looselyMatches(`${row.title} ${row.titleEn ?? ""} ${row.description ?? ""}`, query)).map((row) => {
+    const originalPrice = row.priceBefore ?? row.membership?.price ?? null;
+    const finalPrice = row.specialPrice ?? row.membership?.price ?? null;
+    return { id: row.id, title: row.title, titleEn: row.titleEn, type: row.type, originalPrice, discount: row.discount, finalPrice, expiresAt: row.expiresAt, durationDays: row.durationDays ?? row.membership?.duration ?? null, sessionsCount: row.sessionsCount ?? row.membership?.sessionsCount ?? null, allowedClassTypes: row.allowedClassTypes.map((item) => item.classType), features: json<string[]>(row.features, []), goals: row.membership?.goals.map((g) => g.goal.name) ?? [] };
+  });
+}
+
+/** Customer-visible, active products only; inventory is enforced when tracked. */
+export async function searchAvailableProducts(query = "", filters?: { discountedOnly?: boolean }) {
+  const rows = await db.product.findMany({
+    where: { isActive: true, deletedAt: null, OR: [{ trackInventory: false }, { stock: { gt: 0 } }] },
+    orderBy: [{ displayPriority: "desc" }, { isBestSeller: "desc" }], take: MAX,
+    select: { id: true, name: true, nameEn: true, category: true, description: true, price: true, oldPrice: true, stock: true, trackInventory: true, images: true },
+  });
+  return rows.filter((row) => (!filters?.discountedOnly || (row.oldPrice ?? 0) > row.price) && looselyMatches(`${row.name} ${row.nameEn ?? ""} ${row.category} ${row.description ?? ""}`, query)).map((row) => ({ ...row, image: json<string[]>(row.images, [])[0] ?? null, discountPercent: row.oldPrice && row.oldPrice > row.price ? Math.round((1 - row.price / row.oldPrice) * 100) : null }));
 }
 
 export async function getOfferDetails(idOrName: string) { return (await searchActiveOffers(idOrName)).find((row) => row.id === idOrName || norm(row.title) === norm(idOrName)) ?? null; }
@@ -22,8 +41,7 @@ export async function getMembershipDetails(idOrName: string) { return (await sea
 
 export async function searchClassSchedule(query = "") {
   const rows = await db.class.findMany({ where: { isActive: true }, take: MAX, include: { trainer: { select: { name: true } }, schedules: { where: { isActive: true, date: { gte: new Date() } }, orderBy: [{ date: "asc" }, { time: "asc" }], take: 5 } } });
-  const q = norm(query);
-  return rows.filter((row) => !q || norm(`${row.name} ${row.type} ${row.category ?? ""} ${row.subType ?? ""}`).includes(q)).map((row) => ({ name: row.name, type: row.type, category: row.category, trainer: row.trainer.name, schedules: row.schedules.map((s) => ({ date: s.date, time: s.time, availableSpots: s.availableSpots })) }));
+  return rows.filter((row) => looselyMatches(`${row.name} ${row.type} ${row.category ?? ""} ${row.subType ?? ""}`, query)).map((row) => ({ name: row.name, type: row.type, category: row.category, trainer: row.trainer.name, schedules: row.schedules.map((s) => ({ date: s.date, time: s.time, availableSpots: s.availableSpots })) }));
 }
 
 export async function getAuthenticatedCustomerMembership(userId: string | null) {
