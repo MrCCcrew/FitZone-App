@@ -796,6 +796,8 @@ const Header = ({
   hydrationDisable?: string;
 }) => {
   const { lang, toggleLang } = useLang();
+  const announcementRendered = hydrationDisable !== "announcement";
+  const firstAnnouncementRender = useRef({ hydrationDisable: hydrationDisable ?? null, announcementRendered });
   const authState = getAuthDebugState(summary);
   const renderPhase = getAuthDebugPhase(summary, diagnosticMounted);
   const headerConditionals = summary?.authenticated ? ["authenticated-nav", "user-widget"] : ["guest-nav", "user-widget"];
@@ -809,6 +811,10 @@ const Header = ({
       conditionalElements: headerConditionals,
     });
   }, [authState, headerConditionals, renderPhase, summary?.user?.role]);
+  useEffect(() => {
+    if (!HYDRATION_AUTH_DEBUG) return;
+    console.debug("[Hydration isolation client]", firstAnnouncementRender.current);
+  }, []);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [announcements, setAnnouncements] = useState<string[]>([]);
   const [annIndex, setAnnIndex] = useState(0);
@@ -844,7 +850,7 @@ const Header = ({
   return (
     <header {...authDebugAttributes("header", summary, diagnosticMounted, headerConditionals)} style={{ background: "rgba(255,245,248,.97)", backdropFilter: "blur(12px)", borderBottom: `1px solid ${C.border}`, position: "sticky", top: 0, zIndex: 100 }}>
       {/* Top bar */}
-      {hydrationDisable !== "announcement" && <div style={{ background: C.redDark, height: 30, boxSizing: "border-box", padding: "6px 0", textAlign: "center", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      {announcementRendered && <div style={{ background: C.redDark, height: 30, boxSizing: "border-box", padding: "6px 0", textAlign: "center", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
         <span style={{ fontSize: 12, fontWeight: 600, color: "#fff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%", paddingInline: 12 }}>
           {announcements.length > 0 ? announcements[annIndex] : t(DEFAULT_TOP_BAR.ar, DEFAULT_TOP_BAR.en)}
         </span>

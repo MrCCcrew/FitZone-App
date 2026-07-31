@@ -49,6 +49,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ h
   const hydrationDisable = isHydrationAuthDebugEnabled() && requestedSection && isolationSections.has(requestedSection)
     ? requestedSection
     : undefined;
+  const announcementRendered = hydrationDisable !== "announcement";
   const initialHomeData = await getInitialHomeData();
   const hydrationDebugEnabled = isHydrationAuthDebugEnabled();
   const session = hydrationDebugEnabled ? await getHydrationServerSessionMarker() : null;
@@ -82,6 +83,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ h
       membershipIds: hydrationSnapshot.membershipIds,
       conditionalComponents: hydrationSnapshot.conditionalComponents,
     });
+    console.info("[Hydration isolation server]", { hydrationDisable: hydrationDisable ?? null, announcementRendered });
   }
   const healthClubJsonLd = {
     "@context": "https://schema.org",
