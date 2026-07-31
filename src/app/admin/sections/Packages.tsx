@@ -4,27 +4,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Goal, Plan } from "../types";
 import { AdminCard, AdminEmptyState, AdminSectionShell } from "./shared";
 import { TranslateButton } from "./TranslateButton";
+import { getClassTypeArabicLabel } from "../class-type-labels";
 
 const INPUT =
   "w-full rounded-xl border border-gray-700 bg-gray-800 px-4 py-2.5 text-sm text-white outline-none transition-colors focus:border-[#ff4f93]";
-
-const CLASS_TYPE_LABELS: Record<string, string> = {
-  fitness: "فيتنس",
-  zumba: "زومبا",
-  crossfit: "كروس فيت",
-  yoga: "يوجا",
-  pilates: "بيلاتس",
-  cardio: "كارديو",
-  strength: "قوة",
-  bodybuilding: "بيلدينج",
-  building: "بيلدينج",
-  boxing: "كيك بوكس",
-  kickboxing: "كيك بوكس",
-  karate: "كاراتيه",
-  selfdefense: "سلف ديفنس",
-  dance: "رقص شرقي",
-  kids: "أطفال",
-};
 
 const normalizeClassType = (value: string) => value.trim().toLowerCase();
 
@@ -141,7 +124,7 @@ export default function Packages() {
           if (!rawType) return;
           const typeKey = normalizeClassType(rawType);
           if (!unique.has(typeKey)) {
-            unique.set(typeKey, CLASS_TYPE_LABELS[typeKey] ?? rawType);
+            unique.set(typeKey, getClassTypeArabicLabel(rawType));
           }
         });
         setClasses(Array.from(unique, ([type, label]) => ({ type, label })));
@@ -554,7 +537,7 @@ export default function Packages() {
                     >
                       <div>
                         {classes.find((item) => item.type === entry.classId)?.label ??
-                          CLASS_TYPE_LABELS[entry.classId] ??
+                          getClassTypeArabicLabel(entry.classId) ??
                           entry.classId ??
                           "كلاس"}
                         <span className="mr-2 text-xs text-[#d7aabd]">

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { GymClass, Goal, Offer, Plan } from "../types";
 import { AdminCard, AdminEmptyState, AdminSectionShell } from "./shared";
 import { TranslateButton } from "./TranslateButton";
+import { getClassTypeArabicLabel } from "../class-type-labels";
 
 const INPUT =
   "w-full rounded-xl border border-gray-700 bg-gray-800 px-4 py-2.5 text-sm text-white outline-none transition-colors focus:border-[#ff4f93]";
@@ -989,7 +990,7 @@ export default function Subscriptions() {
                             }`}
                           >
                             <span>
-                              {type}
+                              {getClassTypeArabicLabel(type)}
                               <span className="mr-1 font-normal opacity-60">({typeClasses.length})</span>
                             </span>
                             {isActive ? <span className="text-[#ff4f93]">✓</span> : null}
@@ -1261,7 +1262,7 @@ export default function Subscriptions() {
                     {[...new Map(gymClasses.map((gymClass) => [gymClass.type.trim().toLowerCase(), gymClass])).values()].map((gymClass) => {
                       const classType = gymClass.type.trim().toLowerCase();
                       const selected = (offerModal.allowedClassTypes ?? []).includes(classType);
-                      return <button key={classType} type="button" onClick={() => setOfferModal({ ...offerModal, allowedClassTypes: selected ? (offerModal.allowedClassTypes ?? []).filter((item) => item !== classType) : [...(offerModal.allowedClassTypes ?? []), classType] })} className={`rounded-xl border px-3 py-2 text-sm ${selected ? "border-[#ff4f93] bg-[#ff4f93]/15 text-white" : "border-gray-700 bg-gray-800 text-gray-300"}`}>{gymClass.typeEn || gymClass.type}</button>;
+                      return <button key={classType} type="button" onClick={() => setOfferModal({ ...offerModal, allowedClassTypes: selected ? (offerModal.allowedClassTypes ?? []).filter((item) => item !== classType) : [...(offerModal.allowedClassTypes ?? []), classType] })} className={`rounded-xl border px-3 py-2 text-sm ${selected ? "border-[#ff4f93] bg-[#ff4f93]/15 text-white" : "border-gray-700 bg-gray-800 text-gray-300"}`}>{getClassTypeArabicLabel(gymClass.type)}</button>;
                     })}
                   </div>
                 </Field>
