@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import FitzoneApp, { type InitialHomeData } from "./FitzoneApp";
-import LiveChatWidget from "@/components/LiveChatWidget";
+import AICoachClientOnly from "@/components/AICoachClientOnly";
 import { getInitialHomeData as loadInitialHomeData } from "@/lib/home-initial-data";
 
 export const dynamic = "force-dynamic";
@@ -162,7 +162,7 @@ export default async function Home() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
       />
       <FitzoneApp initialHomeData={initialHomeData} />
-      <LiveChatWidget />
+      <AICoachClientOnly />
     </>
   );
 }
