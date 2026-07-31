@@ -2,6 +2,12 @@ export type AnalyticsFilters = { from: string; to: string; timezone: string; sou
 export type AnalyticsPayloads = Record<"overview" | "traffic" | "events" | "conversions", unknown>;
 export const analyticsSections = ["overview", "traffic", "events", "conversions"] as const;
 export type AnalyticsSection = (typeof analyticsSections)[number];
+export const analyticsEndpointNames = {
+  overview: "overview",
+  traffic: "traffic",
+  events: "activity",
+  conversions: "conversions",
+} as const;
 export const analyticsSectionErrorLabels: Record<AnalyticsSection, string> = {
   overview: "تعذر تحميل الملخص",
   traffic: "تعذر تحميل بيانات الزيارات",
@@ -64,6 +70,6 @@ async function getJson(path: string) {
 export async function loadAdminAnalytics(filters: AnalyticsFilters, _legacySignal?: AbortSignal) {
   const query = analyticsQuery(normalizeAnalyticsFilters(filters));
   // Always build all four requests; layout/viewport never participates here.
-  const results = await Promise.allSettled(analyticsSections.map((name) => getJson(`/api/admin/analytics/${name}?${query}`)));
+  const results = await Promise.allSettled(analyticsSections.map((name) => getJson(`/api/admin/analytics/${analyticsEndpointNames[name]}?${query}`)));
   return Object.fromEntries(results.map((result, index) => [analyticsSections[index], result])) as Record<AnalyticsSection, PromiseSettledResult<unknown>>;
 }
