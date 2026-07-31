@@ -13,7 +13,20 @@ function normalize(text: string) {
 }
 
 function matches(text: string, patterns: RegExp[]) {
-  return patterns.some((pattern) => pattern.test(text));
+  return patterns.some((pattern) => {
+    if (pattern.test(text)) return true;
+
+    // JavaScript's \b is ASCII-centric, so it does not form word boundaries
+    // around Arabic letters. Re-run boundary-based patterns against padded text
+    // with whitespace boundaries, after normalization has removed punctuation.
+    if (!pattern.source.includes("\\b") || !/[\u0600-\u06ff]/u.test(pattern.source)) return false;
+
+    const arabicBoundaryPattern = new RegExp(
+      pattern.source.replaceAll("\\b", "(?:^|\\s)"),
+      pattern.flags,
+    );
+    return arabicBoundaryPattern.test(` ${text} `);
+  });
 }
 
 export function detectCoachIntent(message: string): CoachIntent {
@@ -64,7 +77,7 @@ export function detectCoachIntent(message: string): CoachIntent {
   if (matches(text, [/\bرشحي\b.*\bباقه\b/, /\bباقه\b/, /\bعضويه مناسبه\b/, /\brecommend\b.*\bmembership\b/, /\bابد[اأ]ي رحلتك\b/])) return "membership_recommendation";
 
   // Classes
-  if (matches(text, [/\bكلاس\b/, /\bحصه\b/, /\bclass\b/, /\bworkout class\b/, /\bالتخسيس\b/, /\bشد الجسم\b/, /\bرشحي لي كلاس\b/])) return "class_recommendation";
+  if (matches(text, [/\bكلاس\b/, /\bحصه\b/, /\bclass\b/, /\bworkout class\b/, /\b(?:ال|لل)?تخسيس\b/, /\bشد الجسم\b/, /\bرشحي لي كلاس\b/])) return "class_recommendation";
 
   // Schedule
   if (matches(text, [/\bمواعيد\b/, /\bالنهارده\b/, /\bاليوم\b/, /\bschedule\b/, /\btoday\b/, /\bclasses today\b/])) return "schedule_lookup";
@@ -76,7 +89,7 @@ export function detectCoachIntent(message: string): CoachIntent {
   if (matches(text, [/\bاشتراكي\b/, /\bمحفظتي\b/, /\bفيتزوناتي\b/, /\bحجوزاتي\b/, /\baccount\b/, /\bwallet\b/, /\brewards\b/])) return "account_summary";
 
   // Offers
-  if (matches(text, [/\bعرض\b/, /\bعروض\b/, /\boffer\b/, /\bdiscount\b/, /\bpromo\b/])) return "offer_lookup";
+  if (matches(text, [/\b(?:ال)?(?:عرض|عروض)\b/, /\boffer\b/, /\bdiscount\b/, /\bpromo\b/])) return "offer_lookup";
 
   // Trainers
   if (matches(text, [/\bمدرب\b/, /\bمدربه\b/, /\btrainer\b/, /\bcoach\b/])) return "trainer_info";
