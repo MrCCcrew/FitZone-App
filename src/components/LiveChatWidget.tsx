@@ -1,7 +1,7 @@
 "use client";
 
 import type { CSSProperties } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useLang } from "@/lib/language";
 
 type ChatMessage = {
@@ -87,8 +87,6 @@ export default function LiveChatWidget() {
       })
       .catch(() => {});
   }, []);
-
-  const lastMessageId = useMemo(() => messages[messages.length - 1]?.id, [messages]);
 
   const clearStoredSession = () => {
     if (typeof window === "undefined") return;
@@ -425,7 +423,7 @@ export default function LiveChatWidget() {
 
               return (
                 <div
-                  key={`${message.id}-${lastMessageId}`}
+                  key={message.id}
                   style={{
                     display: "flex",
                     justifyContent: isUser ? "flex-start" : "flex-end",
