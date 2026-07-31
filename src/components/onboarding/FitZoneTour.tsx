@@ -16,7 +16,6 @@ type Props = {
 };
 
 const COMPLETED_KEY = "fitzone_onboarding_completed_v1";
-const MAX_TARGET_FRAMES = 18;
 const STEPS: Step[] = [
   { target: "goals", page: "memberships", icon: Target, ar: { title: "اختاري هدفك", body: "اختاري النشاط أو الهدف المناسب لكِ، وسنعرض لكِ الاشتراكات والخدمات المرتبطة به." }, en: { title: "Choose your goal", body: "Select the activity or fitness goal that suits you, and we’ll show you the related services and memberships." } },
   { target: "first-goal-membership-card", page: "memberships", icon: CreditCard, ar: { title: "الاشتراكات المناسبة لهدفك", body: "بعد اختيار هدفك، يعرض لكِ FitZone الاشتراكات المناسبة له. قارني السعر والمدة وعدد الحصص والمميزات، ثم اختاري الأنسب لكِ." }, en: { title: "Memberships for your goal", body: "After choosing your goal, FitZone shows the memberships that suit it. Compare the price, duration, sessions, and benefits, then choose what fits you." } },
@@ -41,8 +40,9 @@ export default function FitZoneTour({ onNavigate, onFinishNavigate, onClose }: P
   const [mascotAvailable, setMascotAvailable] = useState(true);
   const dialogRef = useRef<HTMLDivElement>(null);
   const previousFocus = useRef<HTMLElement | null>(null);
-  const targetFrameRef = useRef<number | null>(null);
   const measureFrameRef = useRef<number | null>(null);
+  const targetObserverRef = useRef<MutationObserver | null>(null);
+  const targetWaitTimeoutRef = useRef<number | null>(null);
 
   const targetElement = useCallback((target: TourTarget) => document.querySelector<HTMLElement>(`[data-tour="${target}"]`), []);
   const measure = useCallback((target: TourTarget) => {
@@ -68,41 +68,47 @@ export default function FitZoneTour({ onNavigate, onFinishNavigate, onClose }: P
     requestAnimationFrame(() => previousFocus.current?.focus());
   }, [onClose]);
 
-  const openViewAndWaitForTarget = useCallback((current: Step, onMissing: () => void) => {
+  const openViewAndWaitForTarget = useCallback((current: Step) => {
     onNavigate(current.page);
     if (current.target === "first-goal-membership-card") {
       window.dispatchEvent(new Event("fitzone:tour-show-goal-memberships"));
     }
 
-    let attempts = 0;
-    const waitForTarget = () => {
+    const revealTarget = () => {
       const element = targetElement(current.target);
-      if (element) {
-        element.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "center", inline: "nearest" });
-        measureFrameRef.current = requestAnimationFrame(() => {
-          measureFrameRef.current = requestAnimationFrame(() => measure(current.target));
-        });
-        return;
-      }
-      attempts += 1;
-      if (attempts >= MAX_TARGET_FRAMES) {
-        onMissing();
-        return;
-      }
-      targetFrameRef.current = requestAnimationFrame(waitForTarget);
+      if (!element) return false;
+      targetObserverRef.current?.disconnect();
+      if (targetWaitTimeoutRef.current !== null) window.clearTimeout(targetWaitTimeoutRef.current);
+      element.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "center", inline: "nearest" });
+      measureFrameRef.current = requestAnimationFrame(() => {
+        measureFrameRef.current = requestAnimationFrame(() => measure(current.target));
+      });
+      return true;
     };
-    targetFrameRef.current = requestAnimationFrame(waitForTarget);
+    if (revealTarget()) return;
+    // Cards can be rendered after page navigation/data loading. Observe the DOM
+    // instead of skipping the step after an arbitrary number of animation frames.
+    targetObserverRef.current = new MutationObserver(() => { revealTarget(); });
+    targetObserverRef.current.observe(document.body, { childList: true, subtree: true });
+    targetWaitTimeoutRef.current = window.setTimeout(() => {
+      // Keep the same step visible if the target is unavailable for this user.
+      // This prevents a silent 3→6 jump and lets the user navigate explicitly.
+      targetObserverRef.current?.disconnect();
+      setTargetRect(null);
+    }, 3000);
   }, [measure, onNavigate, reducedMotion, targetElement]);
 
   useEffect(() => {
     if (step < 0 || step >= STEPS.length) return;
     const current = STEPS[step];
-    openViewAndWaitForTarget(current, () => setStep((value) => value === step ? value + 1 : value));
+    openViewAndWaitForTarget(current);
     return () => {
-      if (targetFrameRef.current !== null) cancelAnimationFrame(targetFrameRef.current);
       if (measureFrameRef.current !== null) cancelAnimationFrame(measureFrameRef.current);
-      targetFrameRef.current = null;
       measureFrameRef.current = null;
+      targetObserverRef.current?.disconnect();
+      targetObserverRef.current = null;
+      if (targetWaitTimeoutRef.current !== null) window.clearTimeout(targetWaitTimeoutRef.current);
+      targetWaitTimeoutRef.current = null;
     };
   }, [step, openViewAndWaitForTarget]);
 
