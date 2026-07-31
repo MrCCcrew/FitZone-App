@@ -32,7 +32,7 @@ import {
 import { buildQuickActions } from "@/lib/ai-coach/quick-actions";
 import { recommendClasses, recommendMembership } from "@/lib/ai-coach/recommender";
 import { getCoachSiteSnapshot } from "@/lib/ai-coach/site-data";
-import { getAuthenticatedCustomerMembership, searchActiveOffers, searchAvailableMemberships, searchClassSchedule } from "@/lib/ai-coach/catalog-tools";
+import { getAuthenticatedCustomerMembership, searchActiveOffers, searchAvailableMemberships, searchAvailableProducts, searchClassSchedule } from "@/lib/ai-coach/catalog-tools";
 import type {
   CoachConversationContext,
   CoachIntent,
@@ -310,6 +310,23 @@ async function buildDeterministicReply(args: {
       quickActions: buildActions(snapshot, intent, baseContext),
       action: { type: "navigate", page: "shop", anchor: "shop-products" },
     };
+  }
+  if (intent === "weight_context") {
+    const statedWeight = Number(userMessage.match(/\d+(?:\.\d+)?/)?.[0]);
+    const nextContext = { ...baseContext, statedWeight: Number.isFinite(statedWeight) ? statedWeight : undefined, lastTopic: "weight_loss" as const, lastIntent: intent };
+    await db.chatSession.update({ where: { id: sessionId }, data: { context: serializeCoachContext(nextContext), lastMessageAt: new Date() } });
+    return { intent, text: "تمام، هدفك تخسيس ولا تحسين لياقة؟ وطولك كام؟", facts: [], quickActions: buildActions(snapshot, intent, nextContext) };
+  }
+  if (intent === "nutrition_guidance") {
+    return { intent, text: "أقدر أساعدك بإطار غذائي عام وآمن: ركزي على البروتين والخضار والمياه وتنظيم الوجبات. هدفك إيه، وعمرك وطولك ووزنك تقريبًا كام؟ وهل عندك مرض مزمن أو حساسية أو حمل؟", facts: [], quickActions: buildActions(snapshot, intent, baseContext) };
+  }
+  if (intent === "product_recommendation") {
+    const apparel = /لبس|ملابس/i.test(normalizedQuestion);
+    if (!apparel) return { intent, text: "بتدوري على ملابس تمرين، إكسسوارات، ولا منتجات للأطفال؟", facts: [], quickActions: buildActions(snapshot, intent, baseContext) };
+    try { const products = await searchAvailableProducts("ملابس"); const names = products.slice(0, 2).map((p) => `${p.name} — ${p.price} جنيه`).join("\n"); return { intent, text: names || "لم أجد ملابس تمرين متاحة حاليًا.", facts: [], quickActions: buildActions(snapshot, intent, baseContext) }; } catch { return { intent, text: "تعذر تحميل منتجات المتجر الآن، جرّبي مرة أخرى بعد قليل.", facts: [], quickActions: [] }; }
+  }
+  if (intent === "product_discount") {
+    try { const products = await searchAvailableProducts("", { discountedOnly: true }); const text = products.length ? products.slice(0, 5).map((p) => `${p.name}: ${p.price} جنيه بدل ${p.oldPrice} جنيه (${p.discountPercent}% خصم)`).join("\n") : "لا توجد خصومات نشطة على منتجات المتجر حاليًا."; return { intent, text, facts: [], quickActions: buildActions(snapshot, intent, baseContext) }; } catch { return { intent, text: "تعذر تحميل منتجات المتجر الآن، جرّبي مرة أخرى بعد قليل.", facts: [], quickActions: [] }; }
   }
   if (intent === "weight_advice" || (baseContext.lastTopic === "weight_loss" && /(?:اعمل ايه|ابدأ ازاي|انصحني)/i.test(normalizedQuestion))) {
     const statedWeight = Number(userMessage.match(/\d+(?:\.\d+)?/)?.[0]) || baseContext.statedWeight;
