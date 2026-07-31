@@ -1174,8 +1174,11 @@ function useViewportFlags() {
   };
 }
 
+// Keep the server and the very first browser render identical. App updates this
+// after hydration, then responsive rendering can safely use the real viewport.
+let hydratedViewportWidth = 1280;
 function viewportWidth() {
-  return typeof window === "undefined" ? 1280 : window.innerWidth;
+  return hydratedViewportWidth;
 }
 
 function responsiveColumns(mobile: string, tablet: string, desktop: string) {
@@ -10078,6 +10081,7 @@ function RedirectToAccountTab({ tab }: { tab: string }) {
 
 export default function App({ initialHomeData }: { initialHomeData?: InitialHomeData }) {
   const { lang } = useLang();
+  const [, setViewportVersion] = useState(0);
   const [page, setPage] = useState("home");
   const [summary, setSummary] = useState<UserSummary | null>(null);
   const [cartCount, setCartCount] = useState(0);
@@ -10087,6 +10091,16 @@ export default function App({ initialHomeData }: { initialHomeData?: InitialHome
   const navigating = useRef(false);
   const pendingScrollTarget = useRef<"shop-products" | "trainers-list" | null>(null);
   const tourFrameRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const syncViewport = () => {
+      hydratedViewportWidth = window.innerWidth;
+      setViewportVersion((version) => version + 1);
+    };
+    syncViewport();
+    window.addEventListener("resize", syncViewport);
+    return () => window.removeEventListener("resize", syncViewport);
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
