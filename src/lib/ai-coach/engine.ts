@@ -299,6 +299,8 @@ async function buildDeterministicReply(args: {
   const asksOwnMembership = /اشتراكي|باقي لي|ينتهي امتي|عضويتي|my membership|remaining sessions/i.test(normalizedQuestion);
   const asksOffer = /عرض|عروض|offer|discount|خصم/i.test(normalizedQuestion);
   const asksSchedule = /مواعيد|ميعاد|بعد الساعه|schedule|today/i.test(normalizedQuestion);
+  const asksRecommendation = /رشح|انسب|مميز|recommend|best/i.test(normalizedQuestion);
+  const wantsWeightLoss = /تخسيس|اخس|خساره الوزن|حرق دهون|weight loss/i.test(normalizedQuestion) || baseContext.lastTopic === "weight_loss";
   if (intent === "shop_browse") {
     await updateContext(sessionId, baseContext, intent);
     return {
@@ -321,10 +323,46 @@ async function buildDeterministicReply(args: {
     await updateContext(sessionId, baseContext, "account_summary");
     return { intent: "account_summary", text, facts: [], quickActions: buildActions(snapshot, "account_summary", baseContext) };
   }
+  if (asksRecommendation && (intent === "membership_recommendation" || asksOffer || /اشتراك|باقه|membership/i.test(normalizedQuestion))) {
+    if (!wantsWeightLoss) {
+      await updateContext(sessionId, baseContext, "membership_recommendation");
+      return { intent: "membership_recommendation", text: lang === "en" ? "What is your main goal, and roughly what is your budget?" : "هدفك الأساسي إيه وميزانيتك تقريبًا كام؟", facts: [], quickActions: buildActions(snapshot, "membership_recommendation", baseContext) };
+    }
+    try {
+      const [offers, memberships] = await Promise.all([searchActiveOffers(""), searchAvailableMemberships("")]);
+      const score = (row: { goals?: string[]; allowedClassTypes?: string[]; allowedClasses?: Array<{ classType?: string }>; title?: string; name?: string; features?: string[] }) => {
+        const text = `${row.title ?? row.name ?? ""} ${(row.goals ?? []).join(" ")} ${(row.features ?? []).join(" ")} ${(row.allowedClassTypes ?? row.allowedClasses?.map((item) => item.classType).filter(Boolean) ?? []).join(" ")}`.toLowerCase();
+        return /تخسيس|رشاقه|fitness|zumba|cardio|strength|yoga|pilates/.test(text) ? 2 : 0;
+      };
+      const choices = [
+        ...offers.map((row) => ({ kind: "offer" as const, row, score: score(row), price: row.finalPrice ?? Number.POSITIVE_INFINITY })),
+        ...memberships.map((row) => ({ kind: "membership" as const, row, score: score(row), price: row.priceAfter ?? row.price })),
+      ].sort((a, b) => b.score - a.score || a.price - b.price);
+      const [best, alternative] = choices;
+      if (!best) {
+        return { intent: "membership_recommendation", text: lang === "en" ? "There are no active offers right now, but I can show you the available memberships." : "لا توجد عروض نشطة حاليًا، لكن دي الاشتراكات المتاحة.", facts: [], quickActions: buildActions(snapshot, "membership_recommendation", baseContext) };
+      }
+      const label = best.kind === "offer" ? best.row.title : best.row.name;
+      const price = best.kind === "offer" ? best.row.finalPrice : (best.row.priceAfter ?? best.row.price);
+      const altLabel = alternative ? (alternative.kind === "offer" ? alternative.row.title : alternative.row.name) : null;
+      const text = lang === "en" ? `The closest available option for your weight-loss goal is ${label} (${price ?? "price unavailable"} EGP).${altLabel ? ` An alternative is ${altLabel}.` : ""}` : `الأنسب من الخيارات المتاحة لهدف التخسيس هو ${label} بسعر ${price ?? "غير متاح"} جنيه.${altLabel ? ` والبديل: ${altLabel}.` : ""}`;
+      await updateContext(sessionId, { ...baseContext, lastTopic: "weight_loss" }, "membership_recommendation");
+      return { intent: "membership_recommendation", text, facts: [], quickActions: buildActions(snapshot, "membership_recommendation", baseContext) };
+    } catch {
+      return { intent: "membership_recommendation", text: lang === "en" ? "Unable to load data right now. Please try again shortly." : "تعذر تحميل البيانات الآن، جرّب مرة أخرى بعد قليل.", facts: [], quickActions: buildActions(snapshot, "membership_recommendation", baseContext) };
+    }
+  }
   if (asksOffer || asksSchedule || intent === "pricing") {
-    const rows: any[] = asksSchedule ? await searchClassSchedule(userMessage) : asksOffer ? await searchActiveOffers(userMessage) : await searchAvailableMemberships(userMessage);
+    let rows: any[];
+    try {
+      rows = asksSchedule ? await searchClassSchedule(userMessage) : asksOffer ? await searchActiveOffers("") : await searchAvailableMemberships("");
+    } catch {
+      return { intent: asksOffer ? "offer_lookup" : intent, text: lang === "en" ? "Unable to load data right now. Please try again shortly." : "تعذر تحميل البيانات الآن، جرّب مرة أخرى بعد قليل.", facts: [], quickActions: buildActions(snapshot, intent, baseContext) };
+    }
     const text = rows.length === 0
-      ? (lang === "en" ? "That information is not currently available." : "المعلومة دي غير متاحة حاليًا.")
+      ? asksOffer
+        ? (lang === "en" ? "There are no active offers right now, but I can show you the available memberships." : "لا توجد عروض نشطة حاليًا، لكن دي الاشتراكات المتاحة.")
+        : (lang === "en" ? "There are no active memberships available right now." : "لا توجد اشتراكات نشطة متاحة حاليًا.")
       : asksSchedule
         ? (lang === "en" ? rows.map((row) => `${row.name}: ${row.schedules.map((s: { date: Date; time: string }) => `${new Date(s.date).toLocaleDateString("en-GB")} ${s.time}`).join("; ") || "no upcoming times"}`).join("\n") : rows.map((row) => `${row.name}: ${row.schedules.map((s: { date: Date; time: string }) => `${new Date(s.date).toLocaleDateString("ar-EG")} ${s.time}`).join("، ") || "لا توجد مواعيد قادمة"}`).join("\n"))
         : asksOffer
