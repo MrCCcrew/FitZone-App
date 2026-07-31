@@ -66,19 +66,19 @@ export default function Analytics() {
   const [data, setData] = useState<{ overview?: Overview; traffic?: Traffic; events?: Events; conversions?: Conversions }>({});
   const [errors, setErrors] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
-  const controller = useRef<AbortController | null>(null);
+  const loadVersion = useRef(0);
   const load = useCallback(async (next = filters) => {
     const normalized = normalizeAnalyticsFilters(next);
     if (!normalized.from || !normalized.to || normalized.from > normalized.to) { setErrors(["يرجى اختيار نطاق تاريخ صحيح."]); return; }
-    controller.current?.abort(); const current = new AbortController(); controller.current = current; setLoading(true); setErrors([]);
+    const version = ++loadVersion.current; setLoading(true); setErrors([]);
     try {
-      const result = await loadAdminAnalytics(normalized, current.signal); if (current.signal.aborted) return;
+      const result = await loadAdminAnalytics(normalized); if (version !== loadVersion.current) return;
       const { payload, failedSections } = resolveAdminAnalyticsLoad(result);
       setData(payload as typeof data); setErrors(failedSections.map((section) => analyticsSectionErrorLabels[section]));
-    } catch (error) { if (!current.signal.aborted) { setData({}); setErrors(["تعذر تحميل بيانات التحليلات. حاول مرة أخرى."]); } }
-    finally { if (!current.signal.aborted) setLoading(false); }
+    } catch (error) { if (version === loadVersion.current) { setData({}); setErrors(["تعذر تحميل بيانات التحليلات. حاول مرة أخرى."]); } }
+    finally { if (version === loadVersion.current) setLoading(false); }
   }, [filters]);
-  useEffect(() => { void load(filters); return () => controller.current?.abort(); }, []); // initial request only
+  useEffect(() => { void load(filters); }, []); // initial request only; old responses are ignored by version
   const apply = () => { const normalized = normalizeAnalyticsFilters(draft); setDraft(normalized); setFilters(normalized); const query = analyticsQuery(normalized); window.history.replaceState(null, "", `${window.location.pathname}?${query}`); void load(normalized); };
   const preset = (days: number) => setDraft({ ...draft, from: daysAgo(days - 1), to: today() });
   const thisMonth = () => { const now = new Date(); setDraft({ ...draft, from: dateInput(new Date(now.getFullYear(), now.getMonth(), 1)), to: today() }); };
