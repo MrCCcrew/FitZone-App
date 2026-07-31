@@ -43,21 +43,19 @@ export function detectCoachIntent(message: string): CoachIntent {
   // Complaints
   if (matches(text, [/\bشكوى\b/, /\bcomplaint\b/, /\bمشكله\b/, /\bproblem\b/])) return "complaint_help";
 
-  // Check-in — before food so "وزني" doesn't match food
+  // Explicit logging only. Mentioning a weight is advice, never an implicit write.
   if (
     matches(text, [
-      /\bوزني اليوم\b/,
-      /\baليوم وزني\b/,
+      /\b(?:سجل|سجلي|احفظ|ضيف)\s+(?:لي\s+)?وزني\b/,
       /\bوزنت نفسي\b/,
-      /\bسجلي وزني\b/,
-      /\bقياسي اليوم\b/,
       /\bcheck.?in\b/,
-      /\bوزني\s+\d/,
-      /\d+\s*(?:كيلو|kg)\b.*(?:وزن|weight)/,
-      /(?:وزن|weight).*\d+\s*(?:كيلو|kg)/,
     ])
   )
     return "check_in";
+
+  if (matches(text, [/\b(?:وزني|وزن)\s+\d+.*\b(?:اعمل ايه|ابدأ ازاي)\b/, /\bمحتاج\s+اخس\b/, /\bوزني عالي\b/])) return "weight_advice";
+
+  if (matches(text, [/\b(?:اريد|عايز)\s+تقييم\s+(?:سريع\s+)?(?:لاكلي|لأكلي)\b/, /\bnutrition review\b/])) return "nutrition_review";
 
   // Food check
   if (
@@ -72,9 +70,10 @@ export function detectCoachIntent(message: string): CoachIntent {
   )
     return "food_check";
 
+  // Recommendation must win over a generic membership list.
+  if (matches(text, [/\bافضل\s+(?:اشتراك|باقه|عضويه)\b/, /\b(?:رشح|رشحي|انسب)\b.*\b(?:اشتراك|باقه|عضويه)\b/, /\bاشتراك\s+مناسب\b/, /\brecommend\b.*\bmembership\b/])) return "membership_recommendation";
   // Pricing / membership
   if (matches(text, [/\bسعر\b/, /\bاسعار\b/, /\bprice\b/, /\bpricing\b/, /\bاشتراك\b/, /\bعضويه\b/, /\bmembership\b/])) return "pricing";
-  if (matches(text, [/\bرشحي\b.*\bباقه\b/, /\bباقه\b/, /\bعضويه مناسبه\b/, /\brecommend\b.*\bmembership\b/, /\bابد[اأ]ي رحلتك\b/])) return "membership_recommendation";
 
   // Classes
   if (matches(text, [/\bكلاس\b/, /\bحصه\b/, /\bclass\b/, /\bworkout class\b/, /\b(?:ال|لل)?تخسيس\b/, /\bشد الجسم\b/, /\bرشحي لي كلاس\b/])) return "class_recommendation";
