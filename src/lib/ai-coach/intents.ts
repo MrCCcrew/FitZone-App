@@ -92,8 +92,10 @@ export function detectCoachIntent(message: string): CoachIntent {
   if (matches(text, [/\b(?:ال)?(?:عرض|عروض)\b/, /\boffer\b/, /\bdiscount\b/, /\bpromo\b/])) return "offer_lookup";
 
   // Trainers
-  if (matches(text, [/\bمدرب\b/, /\bمدربه\b/, /\btrainer\b/, /\bcoach\b/])) return "trainer_info";
+  if (matches(text, [/\b(?:ال)?مدرب(?:ه|ات)?\b/, /\btrainer\b/, /\bcoach\b/])) return "trainer_info";
 
+  // Store navigation must win over generic product help and prior context.
+  if (matches(text, [/\bاقصد\s+(?:ال)?منتجات\b/, /\b(?:اقصد\s+)?(?:منتجات\s+)?المتجر\b/, /\bافتحي\s+المتجر\b/, /\bعايز\s+اتصفح\s+المتجر\b/, /\bوريني\s+(?:ال)?منتجات\b/, /\bعندكم\s+منتجات\b/, /\bعايز\s+اشوف\s+(?:ال)?لبس\b/, /\bopen\s+(?:the\s+)?shop\b/, /\bshop\s+browse\b/])) return "shop_browse";
   // Products
   if (matches(text, [/\bمنتج\b/, /\bمتجر\b/, /\bshop\b/, /\bproduct\b/, /\bleggings\b/, /\bsupplement\b/])) return "product_help";
 

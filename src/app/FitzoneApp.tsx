@@ -2225,7 +2225,6 @@ const HomePage = ({ navigate, summary, storeEnabled, initialHomeData }: { naviga
       ],
     });
   const [heroSlideIndex, setHeroSlideIndex] = useState(0);
-  const [offerNow, setOfferNow] = useState(Date.now());
   useEffect(() => {
     loadPublicApi(true).then(d => {
       if (Array.isArray(d.memberships) && d.memberships.length > 0) {
@@ -2365,11 +2364,6 @@ const HomePage = ({ navigate, summary, storeEnabled, initialHomeData }: { naviga
     const image = new Image();
     image.src = nextUrl;
   }, [heroContent.slides, heroSlideIndex]);
-  useEffect(() => {
-    if (homeOffers.length === 0) return;
-    const timer = setInterval(() => setOfferNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, [homeOffers.length]);
   const animatedTodayClasses = useMemo(() => todayClasses, [todayClasses]);
   useEffect(() => {
     const measure = () => {
@@ -3003,7 +2997,7 @@ const HomePage = ({ navigate, summary, storeEnabled, initialHomeData }: { naviga
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 32, gap: 12, flexWrap: "wrap" }}>
             <div>
               <h2 className="section-title">{t("كلاسات", "Today's")} <span>{t("اليوم", "classes")}</span></h2>
-              <p suppressHydrationWarning style={{ color: C.gray, fontSize: 14 }}>{new Date().toLocaleDateString(lang === "en" ? "en-US" : "ar-EG", { weekday: "long", day: "numeric", month: "long", year: "numeric" })} · {t("بني سويف", "Beni Suef")}</p>
+              <p style={{ color: C.gray, fontSize: 14 }}>{t("جدول اليوم", "Today’s schedule")} · {t("بني سويف", "Beni Suef")}</p>
             </div>
             <button className="btn-outline" onClick={() => navigate("schedule")}>{t("الجدول الكامل", "Full schedule")}</button>
           </div>
@@ -10084,10 +10078,7 @@ function RedirectToAccountTab({ tab }: { tab: string }) {
 
 export default function App({ initialHomeData }: { initialHomeData?: InitialHomeData }) {
   const { lang } = useLang();
-  const [page, setPage] = useState(() => {
-    if (typeof window === "undefined") return "home";
-    return new URL(window.location.href).searchParams.get("page") || "home";
-  });
+  const [page, setPage] = useState("home");
   const [summary, setSummary] = useState<UserSummary | null>(null);
   const [cartCount, setCartCount] = useState(0);
   const [storeEnabled, setStoreEnabled] = useState(false);
@@ -10157,15 +10148,24 @@ export default function App({ initialHomeData }: { initialHomeData?: InitialHome
     const targetId = pendingScrollTarget.current;
     if (!targetId) return;
 
-    const frame = requestAnimationFrame(() => {
-      document.getElementById(targetId)?.scrollIntoView({
-        behavior: "smooth",
-        block: "start",
-      });
+    let frame: number | null = null;
+    const reveal = () => {
+      const target = document.getElementById(targetId);
+      if (!target) return false;
+      observer.disconnect();
+      frame = requestAnimationFrame(() => target.scrollIntoView({ behavior: "smooth", block: "start" }));
       pendingScrollTarget.current = null;
-    });
+      return true;
+    };
+    const observer = new MutationObserver(reveal);
+    if (!reveal()) observer.observe(document.body, { childList: true, subtree: true });
+    const timeout = window.setTimeout(() => observer.disconnect(), 3000);
 
-    return () => cancelAnimationFrame(frame);
+    return () => {
+      observer.disconnect();
+      window.clearTimeout(timeout);
+      if (frame !== null) cancelAnimationFrame(frame);
+    };
   }, [page]);
 
   useEffect(() => {
@@ -10255,6 +10255,17 @@ export default function App({ initialHomeData }: { initialHomeData?: InitialHome
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
   };
+
+  useEffect(() => {
+    const handleCoachNavigation = (event: Event) => {
+      const detail = (event as CustomEvent<{ type?: string; page?: string; anchor?: string }>).detail;
+      if (detail?.type === "navigate" && detail.page === "shop" && detail.anchor === "shop-products") {
+        navigate("shop", "shop-products");
+      }
+    };
+    window.addEventListener("fitzone:ai-coach-navigate", handleCoachNavigation);
+    return () => window.removeEventListener("fitzone:ai-coach-navigate", handleCoachNavigation);
+  }, [navigate]);
 
   const navigateForTour = useCallback((tourPage: "memberships" | "classes" | "trainers" | "shop" | null) => {
     if (!tourPage) return;
