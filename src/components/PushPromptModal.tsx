@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useLang } from "@/lib/language";
 
 const STORAGE_KEY = "fitzone_push_prompted";
+const hydrationDebugEnabled = process.env.NODE_ENV === "production" && process.env.HYDRATION_AUTH_DEBUG === "true";
 
 function urlBase64ToUint8Array(b64: string): Uint8Array<ArrayBuffer> {
   const pad = "=".repeat((4 - (b64.length % 4)) % 4);
@@ -35,6 +36,7 @@ export default function PushPromptModal() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    if (hydrationDebugEnabled && new URL(window.location.href).searchParams.get("hydrationDisable") === "push-prompt") return;
     if (localStorage.getItem(STORAGE_KEY)) return;
     if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
     if (Notification.permission !== "default") return;
