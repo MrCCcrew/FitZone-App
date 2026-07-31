@@ -42,7 +42,8 @@ export function parseAdminAnalyticsFilters(searchParams: URLSearchParams): Admin
   if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || from > to || to.getTime() - from.getTime() > 366 * DAY) {
     throw new Error("invalid_date_range");
   }
-  return { from, to, timezone, source: parsed.data.source, eventName: parsed.data.eventName, entityType: parsed.data.entityType };
+  const source = parsed.data.source?.trim();
+  return { from, to, timezone, ...(source ? { source } : {}), eventName: parsed.data.eventName, entityType: parsed.data.entityType };
 }
 
 export function dateRange(filters: AdminAnalyticsFilters) {

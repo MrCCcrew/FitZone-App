@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { analyticsDisplayNumber, analyticsQuery, analyticsSectionErrorLabels, loadAdminAnalytics, resolveAdminAnalyticsLoad, type AnalyticsFilters } from "@/lib/analytics/admin-client";
+import { analyticsDisplayNumber, analyticsQuery, analyticsSectionErrorLabels, loadAdminAnalytics, normalizeAnalyticsFilters, resolveAdminAnalyticsLoad, type AnalyticsFilters } from "@/lib/analytics/admin-client";
 import { AdminCard, AdminEmptyState, AdminSectionShell } from "./shared";
 
 type Overview = { traffic: { visitors: number; sessions: number; pageViews: number; bounceRate: number; averageSessionDuration: number }; business: { checkoutStarted: number; paymentSucceeded: number; membershipActivated: number }; revenue: { successfulPaymentValue: number | null; averageSuccessfulPaymentValue: number | null; currencyBreakdown: { currency: string; value: number; payments: number; averageValue: number }[] } };
@@ -10,12 +10,13 @@ type Traffic = { daily: { date: string; visitors: number; sessions: number; page
 type Events = { totalsByEventName: { eventName: string; count: number }[]; topEntities: { entityType: string | null; entityName: string | null; count: number; successfulValue: number }[]; paymentMethodBreakdown: { paymentMethodType: string; count: number }[]; failureCategoryBreakdown: { failureCategory: string; count: number }[] };
 type Conversions = { definition: string; membershipFunnel: { views: number; checkoutStarted: number; paymentSucceeded: number; membershipActivated: number; viewToCheckoutRate: number; checkoutToPaymentRate: number; paymentToActivationRate: number }; storeFunnel: { checkoutStarted: number; paymentSucceeded: number; totalRate: number } };
 
-const today = () => new Date().toISOString().slice(0, 10);
-const daysAgo = (days: number) => new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+const dateInput = (value: Date) => `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+const today = () => dateInput(new Date());
+const daysAgo = (days: number) => dateInput(new Date(Date.now() - days * 86400000));
 const initialFilters = (): AnalyticsFilters => {
   if (typeof window === "undefined") return { from: daysAgo(29), to: today(), timezone: "Africa/Cairo" };
   const params = new URLSearchParams(window.location.search);
-  return { from: params.get("from") ?? daysAgo(29), to: params.get("to") ?? today(), timezone: params.get("timezone") ?? "Africa/Cairo" };
+  return normalizeAnalyticsFilters({ from: params.get("from") ?? daysAgo(29), to: params.get("to") ?? today(), timezone: params.get("timezone") ?? "Africa/Cairo", source: params.get("source") ?? undefined });
 };
 const count = (value: number) => value.toLocaleString("ar-EG");
 const duration = (value: number) => `${Math.floor(value / 60)} د ${Math.round(value % 60)} ث`;
@@ -67,19 +68,20 @@ export default function Analytics() {
   const [loading, setLoading] = useState(true);
   const controller = useRef<AbortController | null>(null);
   const load = useCallback(async (next = filters) => {
-    if (!next.from || !next.to || next.from > next.to) { setErrors(["يرجى اختيار نطاق تاريخ صحيح."]); return; }
+    const normalized = normalizeAnalyticsFilters(next);
+    if (!normalized.from || !normalized.to || normalized.from > normalized.to) { setErrors(["يرجى اختيار نطاق تاريخ صحيح."]); return; }
     controller.current?.abort(); const current = new AbortController(); controller.current = current; setLoading(true); setErrors([]);
     try {
-      const result = await loadAdminAnalytics(next, current.signal); if (current.signal.aborted) return;
+      const result = await loadAdminAnalytics(normalized, current.signal); if (current.signal.aborted) return;
       const { payload, failedSections } = resolveAdminAnalyticsLoad(result);
       setData(payload as typeof data); setErrors(failedSections.map((section) => analyticsSectionErrorLabels[section]));
     } catch (error) { if (!current.signal.aborted) { setData({}); setErrors(["تعذر تحميل بيانات التحليلات. حاول مرة أخرى."]); } }
     finally { if (!current.signal.aborted) setLoading(false); }
   }, [filters]);
   useEffect(() => { void load(filters); return () => controller.current?.abort(); }, []); // initial request only
-  const apply = () => { setFilters(draft); const query = analyticsQuery(draft); window.history.replaceState(null, "", `${window.location.pathname}?${query}`); void load(draft); };
+  const apply = () => { const normalized = normalizeAnalyticsFilters(draft); setDraft(normalized); setFilters(normalized); const query = analyticsQuery(normalized); window.history.replaceState(null, "", `${window.location.pathname}?${query}`); void load(normalized); };
   const preset = (days: number) => setDraft({ ...draft, from: daysAgo(days - 1), to: today() });
-  const thisMonth = () => { const now = new Date(); setDraft({ ...draft, from: new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10), to: today() }); };
+  const thisMonth = () => { const now = new Date(); setDraft({ ...draft, from: dateInput(new Date(now.getFullYear(), now.getMonth(), 1)), to: today() }); };
   const overview = data.overview, traffic = data.traffic, events = data.events, conversions = data.conversions;
   const funnel = useMemo(() => conversions ? [{ name: "المشاهدات", count: conversions.membershipFunnel.views }, { name: "بدء الدفع", count: conversions.membershipFunnel.checkoutStarted }, { name: "الدفع الناجح", count: conversions.membershipFunnel.paymentSucceeded }, { name: "تفعيل العضوية", count: conversions.membershipFunnel.membershipActivated }] : [], [conversions]);
   return <AdminSectionShell title="تحليلات الموقع" subtitle="مؤشرات مجمعة، مع مسار تحويل مبني على الأحداث وليس على مستخدمين فريدين." actions={errors.length ? <button onClick={() => void load(filters)} className="rounded-xl bg-pink-600 px-4 py-2 text-sm font-bold text-white">إعادة المحاولة</button> : null}>
