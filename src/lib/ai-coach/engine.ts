@@ -15,6 +15,7 @@ import {
   buildFoodCheckReply,
   buildIntentReply,
   buildMembershipAssessmentReply,
+  buildOfferLookupReply,
   buildQuestionPrompt,
   buildWelcomeMessage,
   matchKnowledge,
@@ -31,8 +32,14 @@ import {
 } from "@/lib/ai-coach/advanced";
 import { buildQuickActions } from "@/lib/ai-coach/quick-actions";
 import { recommendClasses, recommendMembership } from "@/lib/ai-coach/recommender";
-import { getCoachSiteSnapshot } from "@/lib/ai-coach/site-data";
-import { getAuthenticatedCustomerMembership, searchActiveOffers, searchAvailableMemberships, searchAvailableProducts, searchClassSchedule } from "@/lib/ai-coach/catalog-tools";
+import { getCoachToolContext } from "@/lib/ai-coach/tool-registry";
+import { getPublicScheduleReadState, searchActiveOffers, searchAvailableMemberships, searchClassSchedule } from "@/lib/ai-coach/catalog-tools";
+import { extractCatalogSearchQuery } from "@/lib/catalog-query";
+import { isCoachSmartModeEnabled } from "@/lib/ai-coach/config";
+import { isCoachDebugEnabled } from "@/lib/ai-coach/config";
+import { createCoachDebugTrace } from "@/lib/ai-coach/debug";
+import { understandCoachMessage, type CoachUnderstanding } from "@/lib/ai-coach/understanding";
+import { COACH_PAGES, findCoachPage, pageAction } from "@/lib/ai-coach/page-registry";
 import type {
   CoachConversationContext,
   CoachIntent,
@@ -132,8 +139,13 @@ async function phraseStructuredReply(args: {
   userMessage: string;
   draft: string;
   facts: string[];
+  knowledgeEntry?: import("@/lib/ai-coach/types").CoachKnowledgeEntry | null;
 }): Promise<{ text: string; usedAI: boolean }> {
-  const phrased = await phraseCoachReply(args);
+  if (args.knowledgeEntry?.isMandatory || args.knowledgeEntry?.allowParaphrasing === false) {
+    return { text: args.knowledgeEntry.answer, usedAI: false };
+  }
+  if (!isCoachSmartModeEnabled()) return { text: args.draft, usedAI: false };
+  const phrased = await phraseCoachReply({ ...args, knowledge: args.knowledgeEntry, allowGeneralFitness: args.intent === "unknown" || args.intent === "faq" || args.intent === "class_recommendation" });
   return { text: phrased ?? args.draft, usedAI: Boolean(phrased) };
 }
 
@@ -228,7 +240,7 @@ async function handleQuestionnaireFlow(args: {
   const nextStage = getNextStage(questionnaire.stage);
 
   if (nextStage === "done") {
-    const snapshot = await getCoachSiteSnapshot(lang, userId, sessionId);
+    const { snapshot } = await getCoachToolContext({ intent: "membership_recommendation", message: userMessage, lang, userId });
     const membership = recommendMembership(nextAnswers, snapshot.memberships, snapshot.coachProfile);
     const safetyFlags = detectSafetyFlags(userMessage);
     const draft = buildMembershipAssessmentReply({ lang, answers: nextAnswers, membership, safetyFlags, profile: snapshot.coachProfile });
@@ -284,13 +296,38 @@ async function buildDeterministicReply(args: {
   lang: CoachLang;
   context: CoachConversationContext;
   messageCount: number;
+  understanding?: CoachUnderstanding;
 }): Promise<CoachStructuredReply> {
-  const { sessionId, userMessage, intent, lang, context, messageCount } = args;
+  const { sessionId, userMessage, intent, lang, context, messageCount, understanding } = args;
   const user = await getCurrentAppUser().catch(() => null);
-  const snapshot = await getCoachSiteSnapshot(lang, user?.id ?? null, sessionId);
+  if (understanding?.intent === "forbidden_write_action") {
+    return { intent: "privacy_guard", text: lang === "en" ? "I can’t make changes to balances, memberships, prices, schedules, or permissions. I can help you find the right page or contact support." : "مقدرش أعدّل رصيد أو نقاط أو اشتراك أو سعر أو جدول أو صلاحيات. أقدر أساعدك توصلي للصفحة المناسبة أو الدعم.", facts: [], quickActions: [], sourceType: "policy_guard", confidence: 1, metadata: { fallbackUsed: false, understanding } };
+  }
+  if (understanding?.intent === "clarification_required") {
+    return { intent: "unknown", text: lang === "en" ? "Do you mean memberships, products, classes, or offers?" : "تقصدِي الاشتراكات، المنتجات، الكلاسات، ولا العروض؟", facts: [], quickActions: [], sourceType: "safe_fallback", confidence: understanding.confidence, metadata: { fallbackUsed: false, clarificationQuestion: true, understanding } };
+  }
+  if (understanding?.intent === "site_navigation") {
+    const page = findCoachPage(userMessage) ?? (understanding.contextReference ? COACH_PAGES.find((item) => item.id === context.lastActionTarget || item.id === context.lastDomain) ?? null : null);
+    if (page && (!page.requiredAuth || user?.id)) return { intent: "faq", text: lang === "en" ? `Sure — I can take you to ${page.description}.` : `طبعًا، هفتح لك ${page.description}.`, facts: [], quickActions: [], sourceType: "live_site_data", confidence: understanding.confidence, actions: [pageAction(page, lang)], metadata: { fallbackUsed: false, understanding } };
+    if (page?.requiredAuth) return { intent: "account_summary", text: lang === "en" ? "Please sign in first to open your account." : "سجّلي دخولك الأول علشان أفتح لك حسابك.", facts: [], quickActions: [], sourceType: "policy_guard", confidence: 1, actions: [{ type: "open_page", label: lang === "en" ? "Sign in" : "تسجيل الدخول", url: "/login" }] };
+  }
+  if (intent === "privacy_guard") {
+    return { intent, text: lang === "en" ? "I can’t show another user’s data. I can help with your own account after you sign in." : "مقدرش أعرض بيانات أي مستخدم تاني حفاظًا على الخصوصية، لكن أقدر أساعدك في بيانات حسابك إنتِ بعد تسجيل الدخول.", facts: [], quickActions: [], sourceType: "policy_guard", confidence: 1, requiresEscalation: false, metadata: { usedTools: [], fallbackUsed: false, fallbackReason: "privacy_guard" } };
+  }
+  const resolvedToolMessage = typeof understanding?.extractedEntities.searchTerm === "string" ? understanding.extractedEntities.searchTerm : typeof understanding?.extractedEntities.className === "string" ? understanding.extractedEntities.className : understanding?.listAll ? "" : userMessage;
+  const toolContext = await getCoachToolContext({ intent, message: resolvedToolMessage, lang, userId: user?.id ?? null, sort: understanding?.sort, temporalFilter: understanding?.temporalFilter.date === "tomorrow" ? { date: "tomorrow" } : undefined, catalogType: understanding?.extractedEntities.catalogType === "package" ? "package" : "membership" });
+  const snapshot = toolContext.snapshot;
   const profile = snapshot.coachProfile;
   const attendance = snapshot.account.attendanceStats;
+  const safetyFlags = detectSafetyFlags(userMessage);
+  if (safetyFlags.hasUrgentSymptom) {
+    return { intent: "faq", text: lang === "en" ? "Please stop exercising for now and seek urgent medical assessment, especially for chest pain, fainting, severe pain, or trouble breathing. I can’t assess emergencies in chat." : "وقفي التمرين دلوقتي واطلبي تقييم طبي عاجل، خصوصًا مع ألم صدر أو إغماء أو ألم شديد أو صعوبة في التنفس. ماينفعش أقيّم الحالات الطارئة من الشات.", facts: [], quickActions: [], sourceType: "safe_fallback", confidence: 0.95, requiresEscalation: true };
+  }
   const knowledgeEntry = matchKnowledge(userMessage, snapshot.knowledge);
+  if (intent === "account_summary" && !user?.id) {
+    return { intent, text: lang === "en" ? "Please sign in first, then I can show your balance and reward points." : "سجّلي دخولك الأول، وبعدها أقدر أقولك رصيدك ونقاطك.", facts: [], quickActions: [], sourceType: "policy_guard", confidence: 1, actions: [{ type: "open_page", label: lang === "en" ? "Sign in" : "تسجيل الدخول", url: "/login" }], requiresEscalation: false, metadata: { usedTools: toolContext.usedTools, fallbackUsed: false, fallbackReason: "unauthenticated" } };
+  }
+  const hasLiveKnowledgeConflict = Boolean(knowledgeEntry && toolContext.usedTools.some((tool) => tool !== "getKnowledge") && /[0-9٠-٩]/.test(knowledgeEntry.answer));
   const baseContext = { ...context, nudgeShownCount: context.nudgeShownCount ?? 0 };
 
   // Catalog answers always come from bounded, read-only tools at request time.
@@ -301,6 +338,9 @@ async function buildDeterministicReply(args: {
   const asksSchedule = /مواعيد|ميعاد|بعد الساعه|schedule|today/i.test(normalizedQuestion);
   const asksRecommendation = /رشح|انسب|مميز|recommend|best/i.test(normalizedQuestion);
   const wantsWeightLoss = /تخسيس|اخس|خساره الوزن|حرق دهون|weight loss/i.test(normalizedQuestion) || baseContext.lastTopic === "weight_loss";
+  if (!toolContext.toolsEnabled && (intent === "product_recommendation" || intent === "product_discount" || asksOwnMembership || asksRecommendation || asksOffer || asksSchedule || intent === "pricing")) {
+    return { intent, text: lang === "en" ? "Live FitZone data is unavailable right now, but I can still help with general fitness guidance or a published policy." : "بيانات FitZone المباشرة مش متاحة دلوقتي، لكن أقدر أساعدك بنصيحة رياضية عامة أو بمعلومة منشورة.", facts: [], quickActions: buildActions(snapshot, intent, baseContext), sourceType: "safe_fallback", confidence: 0.6, metadata: { usedTools: toolContext.usedTools, fallbackUsed: true } };
+  }
   if (intent === "shop_browse") {
     await updateContext(sessionId, baseContext, intent);
     return {
@@ -323,10 +363,10 @@ async function buildDeterministicReply(args: {
   if (intent === "product_recommendation") {
     const apparel = /لبس|ملابس/i.test(normalizedQuestion);
     if (!apparel) return { intent, text: "بتدوري على ملابس تمرين، إكسسوارات، ولا منتجات للأطفال؟", facts: [], quickActions: buildActions(snapshot, intent, baseContext) };
-    try { const products = await searchAvailableProducts("ملابس"); const names = products.slice(0, 2).map((p) => `${p.name} — ${p.price} جنيه`).join("\n"); return { intent, text: names || "لم أجد ملابس تمرين متاحة حاليًا.", facts: [], quickActions: buildActions(snapshot, intent, baseContext) }; } catch { return { intent, text: "تعذر تحميل منتجات المتجر الآن، جرّبي مرة أخرى بعد قليل.", facts: [], quickActions: [] }; }
+    const names = snapshot.products.slice(0, 2).map((p) => `${p.name} — ${p.price} جنيه`).join("\n"); return { intent, text: names || "لم أجد ملابس تمرين متاحة حاليًا.", facts: [], quickActions: buildActions(snapshot, intent, baseContext), sourceType: "live_site_data", metadata: { usedTools: toolContext.usedTools, toolStatuses: toolContext.toolStatuses, resultCounts: toolContext.resultCounts, authenticated: Boolean(user?.id), fallbackUsed: !names, fallbackReason: !names ? "success_empty" : undefined } };
   }
   if (intent === "product_discount") {
-    try { const products = await searchAvailableProducts("", { discountedOnly: true }); const text = products.length ? products.slice(0, 5).map((p) => `${p.name}: ${p.price} جنيه بدل ${p.oldPrice} جنيه (${p.discountPercent}% خصم)`).join("\n") : "لا توجد خصومات نشطة على منتجات المتجر حاليًا."; return { intent, text, facts: [], quickActions: buildActions(snapshot, intent, baseContext) }; } catch { return { intent, text: "تعذر تحميل منتجات المتجر الآن، جرّبي مرة أخرى بعد قليل.", facts: [], quickActions: [] }; }
+    const text = snapshot.products.length ? snapshot.products.slice(0, 5).map((p) => `${p.name}: ${p.price} جنيه`).join("\n") : "لا توجد خصومات نشطة على منتجات المتجر حاليًا."; return { intent, text, facts: [], quickActions: buildActions(snapshot, intent, baseContext), sourceType: "live_site_data", metadata: { usedTools: toolContext.usedTools, toolStatuses: toolContext.toolStatuses, resultCounts: toolContext.resultCounts, authenticated: Boolean(user?.id), fallbackUsed: snapshot.products.length === 0, fallbackReason: snapshot.products.length === 0 ? "success_empty" : undefined } };
   }
   if (intent === "weight_advice" || (baseContext.lastTopic === "weight_loss" && /(?:اعمل ايه|ابدأ ازاي|انصحني)/i.test(normalizedQuestion))) {
     const statedWeight = Number(userMessage.match(/\d+(?:\.\d+)?/)?.[0]) || baseContext.statedWeight;
@@ -339,14 +379,12 @@ async function buildDeterministicReply(args: {
     return { intent, text: lang === "en" ? "Tell me roughly what you ate in a full day: breakfast, lunch, dinner, snacks, drinks, approximate portions, and whether your goal is weight loss, maintenance, or gain." : "اكتب لي أكل يوم كامل تقريبًا: الفطار والغدا والعشا والسناكس والمشروبات والكميات التقريبية، وقولي هدفك تخسيس ولا تثبيت ولا زيادة وزن.", facts: [], quickActions: buildActions(snapshot, intent, baseContext) };
   }
   if (asksOwnMembership) {
-    const membership = await getAuthenticatedCustomerMembership(user?.id ?? null);
+    const membership = snapshot.account.membership;
     const text = !user?.id
       ? (lang === "en" ? "Please sign in first so I can safely check only your membership." : "سجّلي الدخول أولًا علشان أقدر أراجع عضويتك بأمان.")
       : !membership
         ? (lang === "en" ? "I couldn't find an active membership on your account." : "ما لقيتش عضوية نشطة على حسابك حاليًا.")
-        : (lang === "en"
-          ? `Your current membership is ${membership.name}. It ends on ${membership.endDate.toLocaleDateString("en-GB")}.${membership.remainingSessions == null ? "" : ` Remaining sessions: ${membership.remainingSessions}.`}${membership.allowedClassTypes?.length ? ` Included class types: ${membership.allowedClassTypes.join(", ")}.` : ""}`
-          : `اشتراكك الحالي ${membership.name} وينتهي ${membership.endDate.toLocaleDateString("ar-EG")}.${membership.remainingSessions == null ? "" : ` المتبقي لك ${membership.remainingSessions} حصة.`}${membership.allowedClassTypes?.length ? ` والكلاسات المشمولة: ${membership.allowedClassTypes.join("، ")}.` : ""}`);
+        : (lang === "en" ? `Your current membership is ${membership.name}. It ends on ${new Date(membership.endDate).toLocaleDateString("en-GB")}.` : `اشتراكك الحالي ${membership.name} وينتهي ${new Date(membership.endDate).toLocaleDateString("ar-EG")}.`);
     await updateContext(sessionId, baseContext, "account_summary");
     return { intent: "account_summary", text, facts: [], quickActions: buildActions(snapshot, "account_summary", baseContext) };
   }
@@ -356,21 +394,22 @@ async function buildDeterministicReply(args: {
       return { intent: "membership_recommendation", text: lang === "en" ? "What is your main goal, and roughly what is your budget?" : "هدفك الأساسي إيه وميزانيتك تقريبًا كام؟", facts: [], quickActions: buildActions(snapshot, "membership_recommendation", baseContext) };
     }
     try {
-      const [offers, memberships] = await Promise.all([searchActiveOffers(""), searchAvailableMemberships("")]);
+      const offers: Array<{ title: string; finalPrice?: number }> = [];
+      const memberships = snapshot.memberships;
       const score = (row: { goals?: string[]; allowedClassTypes?: string[]; allowedClasses?: Array<{ classType?: string }>; title?: string; name?: string; features?: string[] }) => {
         const text = `${row.title ?? row.name ?? ""} ${(row.goals ?? []).join(" ")} ${(row.features ?? []).join(" ")} ${(row.allowedClassTypes ?? row.allowedClasses?.map((item) => item.classType).filter(Boolean) ?? []).join(" ")}`.toLowerCase();
         return /تخسيس|رشاقه|fitness|zumba|cardio|strength|yoga|pilates/.test(text) ? 2 : 0;
       };
       const choices = [
         ...offers.map((row) => ({ kind: "offer" as const, row, score: score(row), price: row.finalPrice ?? Number.POSITIVE_INFINITY })),
-        ...memberships.map((row) => ({ kind: "membership" as const, row, score: score(row), price: row.priceAfter ?? row.price })),
+        ...memberships.map((row) => ({ kind: "membership" as const, row, score: score(row), price: row.price })),
       ].sort((a, b) => b.score - a.score || a.price - b.price);
       const [best, alternative] = choices;
       if (!best) {
         return { intent: "membership_recommendation", text: lang === "en" ? "There are no active offers right now, but I can show you the available memberships." : "لا توجد عروض نشطة حاليًا، لكن دي الاشتراكات المتاحة.", facts: [], quickActions: buildActions(snapshot, "membership_recommendation", baseContext) };
       }
       const label = best.kind === "offer" ? best.row.title : best.row.name;
-      const price = best.kind === "offer" ? best.row.finalPrice : (best.row.priceAfter ?? best.row.price);
+      const price = best.kind === "offer" ? best.row.finalPrice : best.row.price;
       const altLabel = alternative ? (alternative.kind === "offer" ? alternative.row.title : alternative.row.name) : null;
       const text = lang === "en" ? `The closest available option for your weight-loss goal is ${label} (${price ?? "price unavailable"} EGP).${altLabel ? ` An alternative is ${altLabel}.` : ""}` : `الأنسب من الخيارات المتاحة لهدف التخسيس هو ${label} بسعر ${price ?? "غير متاح"} جنيه.${altLabel ? ` والبديل: ${altLabel}.` : ""}`;
       await updateContext(sessionId, { ...baseContext, lastTopic: "weight_loss" }, "membership_recommendation");
@@ -380,6 +419,30 @@ async function buildDeterministicReply(args: {
     }
   }
   if (asksOffer || asksSchedule || intent === "pricing") {
+    const rows = asksSchedule ? snapshot.classes : asksOffer ? snapshot.offers : snapshot.memberships;
+    const isPackageQuery = understanding?.domain === "packages";
+    const toolName = asksSchedule ? "searchClassSchedule" : asksOffer ? "searchOffers" : isPackageQuery ? "searchPackages" : "searchMemberships";
+    const catalogToolFailed = toolContext.toolStatuses[toolName] === "tool_error";
+    const extractedClassName = typeof understanding?.extractedEntities.className === "string" ? understanding.extractedEntities.className : "";
+    const classSearch = extractedClassName ? { searchTerm: extractedClassName, isListAll: false } : extractCatalogSearchQuery("class", userMessage);
+    const emptyScheduleState = !catalogToolFailed && asksSchedule && rows.length === 0 ? await getPublicScheduleReadState().catch(() => null) : null;
+    const text = catalogToolFailed
+      ? (asksOffer ? buildOfferLookupReply(lang, [], true) : lang === "en" ? "Unable to load current live results right now. Please try again shortly." : "تعذر تحميل النتائج المباشرة الآن. جرّبي مرة أخرى بعد قليل.")
+      : rows.length === 0
+      ? asksOffer
+        ? buildOfferLookupReply(lang, [])
+        : asksSchedule
+          ? (emptyScheduleState === "no_schedules" ? (lang === "en" ? "Classes exist, but this environment has no schedules yet." : "الكلاسات موجودة، لكن مفيش مواعيد مضافة في النسخة الحالية.") : emptyScheduleState === "no_future_schedules" ? (lang === "en" ? "There are past schedules, but no upcoming schedules are currently visible." : "فيه مواعيد قديمة، لكن مفيش مواعيد قادمة ظاهرة حاليًا.") : emptyScheduleState === "no_bookable_schedules" ? (lang === "en" ? "There are upcoming schedules, but none are bookable right now." : "فيه مواعيد قادمة، لكنها غير متاحة للحجز حاليًا.") : classSearch.isListAll ? (lang === "en" ? "There are no classes available in the current schedule." : "مفيش كلاسات متاحة في الجدول الحالي.") : (lang === "en" ? `No ${classSearch.searchTerm} class is available ${understanding?.temporalFilter.date === "tomorrow" ? "tomorrow" : "in the current schedule"}.` : `مش ظاهر كلاس ${classSearch.searchTerm} متاح ${understanding?.temporalFilter.date === "tomorrow" ? "بكرة" : "في الجدول الحالي"}.`))
+          : (lang === "en" ? (isPackageQuery ? "There are no matching packages." : "There are no matching memberships.") : (isPackageQuery ? "لا توجد باقات مطابقة." : "لا توجد اشتراكات مطابقة."))
+      : asksSchedule
+        ? snapshot.classes.map((row) => `${row.name}: ${row.schedules.map((schedule) => `${new Date(schedule.date).toLocaleDateString(lang === "en" ? "en-GB" : "ar-EG")} ${schedule.time}`).join("؛ ")}`).join("\n")
+        : asksOffer
+          ? snapshot.offers.map((row) => `${row.title}: ${row.description || (lang === "en" ? "active offer" : "عرض نشط")}`).join("\n")
+          : snapshot.memberships.map((row) => `${row.name}: ${row.price} ${lang === "en" ? "EGP" : "جنيه"}`).join("\n");
+    await updateContext(sessionId, baseContext, asksSchedule ? "schedule_lookup" : asksOffer ? "offer_lookup" : "pricing");
+    return { intent: asksSchedule ? "schedule_lookup" : asksOffer ? "offer_lookup" : "pricing", text, facts: [], quickActions: buildActions(snapshot, intent, baseContext), actions: rows.length ? buildSafeActions(asksSchedule ? "schedule_lookup" : asksOffer ? "offer_lookup" : "pricing", Boolean(user?.id)) : [], sourceType: "live_site_data", confidence: rows.length ? 0.92 : 0.55, metadata: { usedTools: toolContext.usedTools, toolStatuses: toolContext.toolStatuses, resultCounts: toolContext.resultCounts, authenticated: Boolean(user?.id), toolFailed: toolContext.toolFailed, fallbackUsed: rows.length === 0, fallbackReason: rows.length === 0 ? "success_empty" : undefined } };
+  }
+  if (false) {
     let rows: any[];
     try {
       rows = asksSchedule ? await searchClassSchedule(userMessage) : asksOffer ? await searchActiveOffers("") : await searchAvailableMemberships("");
@@ -401,6 +464,13 @@ async function buildDeterministicReply(args: {
 
   const mentionsWeightLoss = /تخسيس|اخس|خساره الوزن|حرق دهون|weight loss/i.test(userMessage);
   const asksAdvice = /نصايح|نصيحه|معلومه|ابدأ تمرين|ازيد لياقتي|اتمرن كام|tips|advice/i.test(userMessage);
+  if (intent === "product_help") {
+    if (toolContext.toolStatuses.searchProducts === "tool_error") {
+      return { intent, text: lang === "en" ? "Unable to load current live results right now. Please try again shortly." : "تعذر تحميل النتائج المباشرة الآن. جرّبي مرة أخرى بعد قليل.", facts: [], quickActions: buildActions(snapshot, intent, baseContext), sourceType: "live_site_data", metadata: { usedTools: toolContext.usedTools, toolStatuses: toolContext.toolStatuses, resultCounts: toolContext.resultCounts, authenticated: Boolean(user?.id), toolFailed: true, fallbackUsed: false } };
+    }
+    const text = snapshot.products.length ? snapshot.products.slice(0, 5).map((product) => `${product.name}: ${product.price} جنيه`).join("\n") : "مفيش منتجات مطابقة ظاهرة حاليًا.";
+    return { intent, text, facts: [], quickActions: buildActions(snapshot, intent, baseContext), actions: snapshot.products.length ? buildSafeActions(intent, Boolean(user?.id)) : [], sourceType: "live_site_data", confidence: snapshot.products.length ? 0.9 : 0.55, metadata: { usedTools: toolContext.usedTools, toolStatuses: toolContext.toolStatuses, resultCounts: toolContext.resultCounts, authenticated: Boolean(user?.id), fallbackUsed: snapshot.products.length === 0, fallbackReason: snapshot.products.length === 0 ? "success_empty" : undefined } };
+  }
   const topic = mentionsWeightLoss ? "weight_loss" : baseContext.lastTopic;
   if (mentionsWeightLoss || (asksAdvice && topic === "weight_loss")) {
     const safety = detectSafetyFlags(userMessage);
@@ -523,7 +593,7 @@ async function buildDeterministicReply(args: {
     ...classRecommendations.slice(0, 3).map((c) => c.name),
   ].slice(0, 8);
 
-  const { text: mainText, usedAI } = await phraseStructuredReply({ lang, intent, userMessage, draft, facts });
+  const { text: mainText, usedAI } = await phraseStructuredReply({ lang, intent, userMessage, draft, facts, knowledgeEntry });
 
   // ── Nudge ──────────────────────────────────────────────────────────────────
   const nudgeShownCount = baseContext.nudgeShownCount ?? 0;
@@ -554,7 +624,7 @@ async function buildDeterministicReply(args: {
     : intent === "membership_recommendation" ? "membership_recommended"
     : intent;
 
-  logAdvancedCoachEvent({ sessionId, intent, usedAI, outcome });
+  logAdvancedCoachEvent({ sessionId, intent, usedAI, outcome, sourceType: hasLiveKnowledgeConflict ? "mixed" : knowledgeEntry?.isMandatory ? "mandatory_knowledge" : knowledgeEntry ? "knowledge_base" : usedAI ? "general_fitness" : "safe_fallback", toolNames: toolContext.usedTools, fallbackUsed: !usedAI, errorCode: hasLiveKnowledgeConflict ? "knowledge_live_conflict" : toolContext.toolFailed ? "tool_failed" : undefined });
 
   return {
     intent,
@@ -562,7 +632,22 @@ async function buildDeterministicReply(args: {
     facts,
     quickActions: buildActions(snapshot, intent, nextContext),
     usedAI,
+    sourceType: hasLiveKnowledgeConflict ? "mixed" : knowledgeEntry?.isMandatory ? "mandatory_knowledge" : knowledgeEntry ? "knowledge_base" : usedAI ? "general_fitness" : "safe_fallback",
+    confidence: knowledgeEntry ? 0.82 : usedAI ? 0.72 : 0.45,
+    actions: buildSafeActions(intent, snapshot.account.authenticated),
+    requiresEscalation: detectSafetyFlags(userMessage).hasRisk,
+    metadata: { usedTools: toolContext.usedTools, toolStatuses: toolContext.toolStatuses, resultCounts: toolContext.resultCounts, authenticated: Boolean(user?.id), toolFailed: toolContext.toolFailed, fallbackUsed: !usedAI, conflictDetected: hasLiveKnowledgeConflict },
   };
+}
+
+function buildSafeActions(intent: CoachIntent, authenticated: boolean) {
+  const actions: NonNullable<CoachStructuredReply["actions"]> = [];
+  if (intent === "pricing" || intent === "membership_recommendation") actions.push({ type: "open_page", label: "شوفي الاشتراكات", url: "/#memberships" });
+  if (intent === "offer_lookup") actions.push({ type: "open_page", label: "شوفي العروض", url: "/#offers" });
+  if (intent === "schedule_lookup" || intent === "class_recommendation") actions.push({ type: "open_page", label: "شوفي الكلاسات", url: "/#classes" });
+  if (intent === "product_help" || intent === "product_recommendation") actions.push({ type: "open_page", label: "افتحي المتجر", url: "/store" });
+  if (intent === "account_summary" && authenticated) actions.push({ type: "open_page", label: "افتحي حسابي", url: "/account" });
+  return actions;
 }
 
 async function updateContext(sessionId: string, context: CoachConversationContext, intent: CoachIntent) {
@@ -596,10 +681,25 @@ export async function handleCoachMessage(sessionId: string, userMessage: string,
   if (session.mode === "live") return getSessionWithRelations(sessionId);
 
   const context = parseCoachContext(session.context, lang);
-  const intent = detectCoachIntent(userMessage);
+  const understanding = await understandCoachMessage(userMessage, lang, { lastIntent: context.lastIntent, lastDomain: context.lastDomain, lastActionTarget: context.lastActionTarget, lastEntities: context.lastEntities, contextUpdatedAt: context.contextUpdatedAt });
+  const intent = understanding.legacyIntent;
   const messageCount = (session as { messages: { id: string }[] }).messages.length;
 
-  const reply = await buildDeterministicReply({ sessionId, userMessage, intent, lang, context, messageCount });
+  const reply = await buildDeterministicReply({ sessionId, userMessage, intent, lang, context, messageCount, understanding });
+
+  const resultCounts = reply.metadata?.resultCounts as Record<string, number> | undefined;
+  const successfulCatalogTurn = !understanding.safetyFlags.length && understanding.intent !== "clarification_required" && !reply.metadata?.toolFailed && (understanding.domain !== null || understanding.intent === "site_navigation");
+  if (successfulCatalogTurn) {
+    const total = Number(resultCounts?.searchPackages ?? resultCounts?.searchMemberships ?? resultCounts?.searchProducts ?? resultCounts?.searchClassSchedule ?? resultCounts?.searchOffers ?? 0);
+    const nextContext: CoachConversationContext = { ...context, lastIntent: intent, lastDomain: understanding.domain, lastEntities: understanding.extractedEntities, lastListMode: understanding.listAll, lastSort: understanding.sort, lastTemporalFilter: understanding.temporalFilter, lastActionTarget: understanding.intent === "site_navigation" ? String(understanding.extractedEntities.pageId ?? context.lastActionTarget ?? "") : understanding.domain, lastResultCount: total, lastResultIds: [], contextUpdatedAt: new Date().toISOString() };
+    await db.chatSession.update({ where: { id: sessionId }, data: { context: serializeCoachContext(nextContext), lastMessageAt: new Date() } });
+  }
+
+  if (isCoachDebugEnabled()) {
+    const metadata = reply.metadata ?? {};
+    const trace = createCoachDebugTrace({ detectedIntent: intent, rawStageMatched: understanding.safetyFlags.length ? "safety" : understanding.contextReference ? "context" : "semantic", safetyFlags: understanding.safetyFlags, semanticIntent: understanding.intent, finalIntent: reply.intent, extractedEntities: understanding.extractedEntities, listAll: understanding.listAll, sort: understanding.sort, temporalFilter: understanding.temporalFilter, contextDomainBefore: context.lastDomain, contextDomainAfter: successfulCatalogTurn ? understanding.domain : context.lastDomain, referencedPreviousTurn: understanding.contextReference, clarificationUsed: understanding.intent === "clarification_required", legacyFallbackUsed: understanding.intent === "general_fitness" && intent === "unknown", selectedTools: metadata.usedTools, toolStatuses: metadata.toolStatuses, resultCounts: metadata.resultCounts, authenticated: Boolean((metadata.authenticated as boolean | undefined)), sourceType: reply.sourceType ?? "safe_fallback", fallbackUsed: Boolean(metadata.fallbackUsed ?? !reply.usedAI), fallbackReason: metadata.fallbackReason, llmUsed: Boolean(reply.usedAI) });
+    if (trace) console.info(trace);
+  }
 
   if (!reply.switchToLive && !reply.closeSession && reply.text) {
     await createBotMessage(sessionId, reply.text, {
@@ -608,6 +708,7 @@ export async function handleCoachMessage(sessionId: string, userMessage: string,
       quickActions: reply.quickActions,
       usedAI: reply.usedAI ?? false,
       action: reply.action,
+      structured: { answer: reply.text, intent: understanding.intent, language: lang === "ar" ? "ar-EG" : "en", voiceStyle: lang === "ar" ? "friendly_egyptian" : "friendly", sourceType: reply.sourceType ?? "safe_fallback", confidenceInternal: reply.confidence ?? understanding.confidence, actions: reply.actions ?? [], cards: [], totalResults: Number((reply.metadata?.resultCounts as Record<string, number> | undefined)?.searchPackages ?? (reply.metadata?.resultCounts as Record<string, number> | undefined)?.searchMemberships ?? (reply.metadata?.resultCounts as Record<string, number> | undefined)?.searchProducts ?? (reply.metadata?.resultCounts as Record<string, number> | undefined)?.searchClassSchedule ?? 0), shownResults: 0, hasMore: false, listMode: understanding.listAll, voiceSummary: null, clarificationQuestion: understanding.intent === "clarification_required" ? reply.text : null, usedTools: (reply.metadata?.usedTools as string[] | undefined) ?? [], toolStatuses: (reply.metadata?.toolStatuses as Record<string, string> | undefined) ?? {}, fallbackUsed: (reply.metadata?.fallbackUsed as boolean | undefined) ?? !reply.usedAI, requiresAuthentication: understanding.requiresAuthentication, requiresEscalation: reply.requiresEscalation ?? false },
     });
   }
 
@@ -622,7 +723,7 @@ export async function buildCoachPayload(
 
   const context = parseCoachContext(session.context, lang);
   const user = await getCurrentAppUser().catch(() => null);
-  const snapshot = await getCoachSiteSnapshot(lang, user?.id ?? null, session.id);
+  const { snapshot } = await getCoachToolContext({ intent: context.lastIntent ?? "unknown", message: "", lang, userId: user?.id ?? null });
 
   return {
     ...session,

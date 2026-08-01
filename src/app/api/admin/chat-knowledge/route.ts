@@ -10,6 +10,12 @@ function parseKeywords(value: string | null) {
   }
 }
 
+function parseOptionalDate(value: unknown) {
+  if (!value) return null;
+  const date = new Date(String(value));
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
 async function checkAdmin() {
   const guard = await requireAdminFeature("knowledge");
   return "error" in guard ? guard.error : null;
@@ -33,6 +39,13 @@ export async function GET() {
         answer: entry.answer,
         priority: entry.priority,
         active: entry.isActive,
+        isMandatory: entry.isMandatory,
+        allowParaphrasing: entry.allowParaphrasing,
+        validFrom: entry.validFrom,
+        validUntil: entry.validUntil,
+        lastReviewedAt: entry.lastReviewedAt,
+        sourceType: entry.sourceType,
+        status: entry.status,
         updatedAt: entry.updatedAt,
       })),
     );
@@ -48,11 +61,14 @@ export async function POST(req: Request) {
     if (err) return err;
 
     const body = await req.json();
-    const { title, category, keywords, answer, priority, active } = body;
+    const { title, category, keywords, answer, priority, active, isMandatory, allowParaphrasing, validFrom, validUntil, sourceType, status } = body;
 
     if (!title?.trim() || !answer?.trim()) {
       return NextResponse.json({ error: "title and answer are required" }, { status: 400 });
     }
+    const parsedValidFrom = parseOptionalDate(validFrom);
+    const parsedValidUntil = parseOptionalDate(validUntil);
+    if (parsedValidFrom === undefined || parsedValidUntil === undefined || (parsedValidFrom && parsedValidUntil && parsedValidUntil < parsedValidFrom)) return NextResponse.json({ error: "Invalid validity dates" }, { status: 400 });
 
     const entry = await db.chatKnowledgeEntry.create({
       data: {
@@ -62,6 +78,12 @@ export async function POST(req: Request) {
         answer: answer.trim(),
         priority: Number(priority ?? 0),
         isActive: active !== false,
+        isMandatory: Boolean(isMandatory),
+        allowParaphrasing: allowParaphrasing !== false,
+        validFrom: parsedValidFrom,
+        validUntil: parsedValidUntil,
+        sourceType: String(sourceType || "admin").slice(0, 80),
+        status: status === "draft" ? "draft" : "published",
       },
     });
 
@@ -87,8 +109,11 @@ export async function PATCH(req: Request) {
     if (err) return err;
 
     const body = await req.json();
-    const { id, title, category, keywords, answer, priority, active } = body;
+    const { id, title, category, keywords, answer, priority, active, isMandatory, allowParaphrasing, validFrom, validUntil, sourceType, status } = body;
     if (!id) return NextResponse.json({ error: "id is required" }, { status: 400 });
+    const parsedValidFrom = validFrom === undefined ? undefined : parseOptionalDate(validFrom);
+    const parsedValidUntil = validUntil === undefined ? undefined : parseOptionalDate(validUntil);
+    if (parsedValidFrom === undefined && validFrom !== undefined || parsedValidUntil === undefined && validUntil !== undefined || (parsedValidFrom && parsedValidUntil && parsedValidUntil < parsedValidFrom)) return NextResponse.json({ error: "Invalid validity dates" }, { status: 400 });
 
     await db.chatKnowledgeEntry.update({
       where: { id },
@@ -101,6 +126,13 @@ export async function PATCH(req: Request) {
         ...(answer !== undefined ? { answer: String(answer).trim() } : {}),
         ...(priority !== undefined ? { priority: Number(priority) || 0 } : {}),
         ...(active !== undefined ? { isActive: Boolean(active) } : {}),
+        ...(isMandatory !== undefined ? { isMandatory: Boolean(isMandatory) } : {}),
+        ...(allowParaphrasing !== undefined ? { allowParaphrasing: Boolean(allowParaphrasing) } : {}),
+        ...(validFrom !== undefined ? { validFrom: parsedValidFrom } : {}),
+        ...(validUntil !== undefined ? { validUntil: parsedValidUntil } : {}),
+        ...(sourceType !== undefined ? { sourceType: String(sourceType || "admin").slice(0, 80) } : {}),
+        ...(status !== undefined ? { status: status === "draft" ? "draft" : "published" } : {}),
+        ...(answer !== undefined ? { lastReviewedAt: new Date() } : {}),
       },
     });
 

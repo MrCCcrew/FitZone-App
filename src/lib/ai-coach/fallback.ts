@@ -22,6 +22,7 @@ function normalize(text: string) {
     .replace(/[أإآ]/g, "ا")
     .replace(/ة/g, "ه")
     .replace(/ى/g, "ي")
+    .replace(/[\u064B-\u065F\u0670]/g, "")
     .replace(/[^\p{L}\p{N}\s-]/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
@@ -41,8 +42,15 @@ export function matchKnowledge(message: string, entries: CoachKnowledgeEntry[]) 
 
     // Title phrase match — highest signal
     const normalizedTitle = normalize(entry.title);
+    const normalizedCategory = normalize(entry.category);
+    const normalizedAnswer = normalize(entry.answer);
     if (normalized.includes(normalizedTitle)) score += 6;
     else if (normalizedTitle.split(" ").every((w) => normalized.includes(w))) score += 4;
+
+    // Category and answer are supporting signals only; they cannot win alone.
+    if (normalizedCategory && normalized.includes(normalizedCategory)) score += 2;
+    const answerTokenHits = tokens.filter((token) => token.length >= 3 && normalizedAnswer.includes(token)).length;
+    score += Math.min(3, answerTokenHits);
 
     // Keyword scoring — phrase match > token overlap
     for (const keyword of entry.keywords) {
@@ -65,7 +73,7 @@ export function matchKnowledge(message: string, entries: CoachKnowledgeEntry[]) 
   }
 
   // Require a minimum meaningful score to avoid returning noise
-  return bestScore >= 4 ? best : null;
+  return bestScore >= 5 ? best : null;
 }
 
 // ─── Basic builders ───────────────────────────────────────────────────────────
@@ -91,10 +99,16 @@ export function buildPricingReply(lang: CoachLang, memberships: CoachPublicMembe
 
 export function buildOffersReply(lang: CoachLang, offers: CoachPublicOffer[]) {
   if (offers.length === 0)
-    return lang === "en" ? "There are no active offers at the moment." : "لا توجد عروض مفعلة في الوقت الحالي.";
+    return lang === "en" ? "There are no active visible offers right now." : "مفيش عروض نشطة ظاهرة حاليًا.";
   return lang === "en"
     ? `Current offers:\n${offers.slice(0, 4).map((o) => `- ${o.title}: ${o.description || "Special active offer"}`).join("\n")}`
     : `العروض الحالية:\n${offers.slice(0, 4).map((o) => `- ${o.title}: ${o.description || "عرض خاص متاح الآن"}`).join("\n")}`;
+}
+
+export function buildOfferLookupReply(lang: CoachLang, offers: CoachPublicOffer[], toolFailed = false) {
+  if (toolFailed)
+    return lang === "en" ? "Unable to load offers right now. Please try again shortly." : "تعذر تحميل العروض الآن، جرّب مرة أخرى بعد قليل.";
+  return buildOffersReply(lang, offers);
 }
 
 export function buildScheduleReply(lang: CoachLang, classes: CoachPublicClass[]) {

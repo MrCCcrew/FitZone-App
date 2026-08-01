@@ -19,6 +19,7 @@ export type CoachIntent =
   | "shop_browse"
   | "complaint_help"
   | "human_handoff"
+  | "privacy_guard"
   | "food_check"
   | "nutrition_review"
   | "weight_advice"
@@ -74,6 +75,15 @@ export type CoachConversationContext = {
   questionnaire: CoachQuestionnaireState;
   // Optional counter used only when advanced coaching nudges are enabled.
   nudgeShownCount?: number;
+    lastDomain?: "memberships" | "packages" | "products" | "classes" | "offers" | "account" | "site" | null;
+  lastEntities?: Record<string, string | number | boolean>;
+  lastListMode?: boolean;
+  lastSort?: "price_asc" | null;
+  lastTemporalFilter?: Record<string, string>;
+  lastActionTarget?: string | null;
+  lastResultIds?: string[];
+  lastResultCount?: number;
+  contextUpdatedAt?: string;
 };
 
 export type CoachQuickAction = {
@@ -84,6 +94,7 @@ export type CoachQuickAction = {
 
 export type CoachSafetyFlags = {
   hasRisk: boolean;
+  hasUrgentSymptom?: boolean;
   mentionsInjury: boolean;
   mentionsPregnancy: boolean;
   mentionsChronicCondition: boolean;
@@ -102,7 +113,7 @@ export type CoachPublicOffer = {
   id: string;
   title: string;
   description: string;
-  expiresAt: string;
+  expiresAt: string | null;
 };
 
 export type CoachPublicTrainer = {
@@ -150,7 +161,15 @@ export type CoachKnowledgeEntry = {
   answer: string;
   priority: number;
   keywords: string[];
+  isMandatory?: boolean;
+  allowParaphrasing?: boolean;
+  validFrom?: string | null;
+  validUntil?: string | null;
 };
+
+export type CoachSourceType = "live_site_data" | "mandatory_knowledge" | "knowledge_base" | "general_fitness" | "safe_fallback" | "policy_guard" | "mixed";
+
+export type CoachAction = { type: "open_page"; label: string; url: "/" | "/login" | "/account" | "/store" | "/#memberships" | "/#offers" | "/#classes" };
 
 export type CoachAttendanceStats = {
   attendedCount30d: number;
@@ -234,4 +253,8 @@ export type CoachStructuredReply = {
   outcome?: string;
   metadata?: Record<string, unknown>;
   action?: { type: "navigate"; page: "shop"; anchor: "shop-products" };
+  sourceType?: CoachSourceType;
+  confidence?: number;
+  actions?: CoachAction[];
+  requiresEscalation?: boolean;
 };

@@ -13,6 +13,7 @@ function normalize(text: string) {
 
 export function detectSafetyFlags(message: string): CoachSafetyFlags {
   const text = normalize(message);
+  const hasUrgentSymptom = /(chest pain|faint|fainted|shortness of breath|severe pain|difficulty breathing)/.test(text);
   const mentionsInjury = /(اصابه|injury|التواء|تمزق|fracture)/.test(text);
   const mentionsPregnancy = /(حامل|pregnan|رضاعه|breastfeeding)/.test(text);
   const mentionsChronicCondition = /(سكر|ضغط|القلب|thyroid|chronic|مزمن|ربو|asthma)/.test(text);
@@ -20,6 +21,7 @@ export function detectSafetyFlags(message: string): CoachSafetyFlags {
 
   return {
     hasRisk: mentionsInjury || mentionsPregnancy || mentionsChronicCondition || mentionsPain,
+    hasUrgentSymptom,
     mentionsInjury,
     mentionsPregnancy,
     mentionsChronicCondition,

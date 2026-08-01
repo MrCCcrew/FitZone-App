@@ -1146,6 +1146,14 @@ model ChatKnowledgeEntry {
   answer    String
   priority  Int      @default(0)
   isActive  Boolean  @default(true)
+  // Optional governance fields. Defaults preserve every existing entry's behavior.
+  isMandatory       Boolean   @default(false)
+  allowParaphrasing Boolean   @default(true)
+  validFrom         DateTime?
+  validUntil        DateTime?
+  lastReviewedAt    DateTime?
+  sourceType        String    @default("admin")
+  status            String    @default("published")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -1196,6 +1204,11 @@ model CoachEventLog {
   usedAI    Boolean  @default(false)
   handoff   Boolean  @default(false)
   outcome   String?  // food_check | class_suggested | membership_recommended | check_in | handoff | unknown
+  sourceType String? // live_site_data | mandatory_knowledge | knowledge_base | general_fitness | safe_fallback | mixed
+  toolNames  String? @db.Text // bounded, read-only tool names as JSON
+  durationMs Int?
+  fallbackUsed Boolean @default(false)
+  errorCode String?
   createdAt DateTime @default(now())
 }
 

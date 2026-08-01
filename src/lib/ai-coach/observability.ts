@@ -8,6 +8,11 @@ export function logCoachEvent(data: {
   usedAI: boolean;
   handoff?: boolean;
   outcome?: string;
+  sourceType?: string;
+  toolNames?: string[];
+  durationMs?: number;
+  fallbackUsed?: boolean;
+  errorCode?: string;
 }): void {
   db.coachEventLog
     .create({
@@ -17,6 +22,11 @@ export function logCoachEvent(data: {
         usedAI: data.usedAI,
         handoff: data.handoff ?? false,
         outcome: data.outcome ?? null,
+        sourceType: data.sourceType ?? null,
+        toolNames: data.toolNames ? JSON.stringify(data.toolNames.slice(0, 8)) : null,
+        durationMs: data.durationMs,
+        fallbackUsed: data.fallbackUsed ?? false,
+        errorCode: data.errorCode ?? null,
       },
     })
     .catch((err: unknown) => {

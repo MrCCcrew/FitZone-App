@@ -78,6 +78,11 @@ export function logAdvancedCoachEvent(data: {
   usedAI: boolean;
   handoff?: boolean;
   outcome?: string;
+  sourceType?: string;
+  toolNames?: string[];
+  durationMs?: number;
+  fallbackUsed?: boolean;
+  errorCode?: string;
 }) {
   if (!canUseAdvancedCoachFeatures() || !isCoachObservabilityEnabled()) return;
   logCoachEvent(data);

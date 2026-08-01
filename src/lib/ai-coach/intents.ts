@@ -34,6 +34,21 @@ export function detectCoachIntent(message: string): CoachIntent {
 
   if (!text) return "unknown";
 
+  if ((text.includes("مستخدم تاني") || text.includes("عميل آخر") || text.includes("عميل اخر") || text.includes("بيانات شخص تاني") || text.includes("another user") || text.includes("other customer"))) return "privacy_guard";
+  if (text.includes("رصيدي") || text.includes("نقاطي") || text.includes("wallet") || text.includes("reward")) return "account_summary";
+  if ((text.includes("مواعيد") || text.includes("schedule")) && (text.includes("كلاس") || text.includes("كيك بوكس") || text.includes("kickbox") || text.includes("class"))) return "schedule_lookup";
+  if ((text.includes("منتج") || text.includes("منتجات") || text.includes("متجر") || text.includes("عندكم") || text.includes("بتبيعوا")) && (text.includes("تخسيس") || text.includes("دايت") || text.includes("خساره") || text.includes("خسارة") || text.includes("weight loss") || text.includes("diet"))) return "product_help";
+
+  // Privacy and account intent guards must win before any fitness/general matching.
+  if (matches(text, [/\b(?:بيانات|رصيد|نقاط|اشتراك|حجوزات)\b.*\b(?:مستخدم|عميل|شخص)\s+(?:تاني|آخر|اخر)\b/, /\b(?:another|other)\s+(?:user|customer)\b/])) return "privacy_guard";
+  if (matches(text, [/\bرصيدي\b/, /\bنقاطي\b/, /\bwallet\b/, /\breward(?:s| points)?\b/])) return "account_summary";
+  if (matches(text, [/\bحجوزاتي\b/, /\bmy bookings\b/])) return "account_summary";
+  if (matches(text, [/\bاشتراكي\b/, /\bعضويتي\b/, /\bmy membership\b/])) return "account_summary";
+  if (matches(text, [/\b(?:منتج|منتجات|متجر|بتبيعوا|عندكم)\b.*\b(?:تخسيس|دايت|خساره|خسارة|weight loss|diet)\b/, /\b(?:تخسيس|دايت|خساره|خسارة|weight loss|diet)\b.*\b(?:منتج|منتجات|متجر)\b/])) return "product_help";
+  if (matches(text, [/\b(?:عرض|عروض|offer|discount)\b/])) return "offer_lookup";
+  if (matches(text, [/\b(?:سعر|اسعار|أسعار|price|pricing)\b.*\b(?:اشتراك|عضويه|عضوية|membership)\b/])) return "pricing";
+  if (matches(text, [/\b(?:مواعيد|ميعاد|schedule)\b.*\b(?:كلاس|class|كيك بوكس|kickbox)\b/, /\b(?:كيك بوكس|kickbox)\b.*\b(?:مواعيد|schedule)\b/])) return "schedule_lookup";
+
   // A named entity has priority over generic discount/offer wording.
   if (matches(text, [/\b(?:خصم|عرض)\s+على\s+(?:ال)?(?:منتجات|ملابس)\b/])) return "product_discount";
   if (matches(text, [/\b(?:رشح|رشحي)\b.*\b(?:منتج|لبس|ملابس)\b/])) return "product_recommendation";

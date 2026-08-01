@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { initializeChatSession, serializeChatSession } from "@/lib/chatbot";
 import { applyRateLimit, getClientIp } from "@/lib/rate-limit";
+import { coachSessionCookie, createCoachSessionCookie, ownsCoachSession } from "@/lib/ai-coach/session-guard";
 
 export async function GET(req: NextRequest) {
   try {
@@ -11,6 +12,8 @@ export async function GET(req: NextRequest) {
     if (!sessionId) {
       return NextResponse.json({ error: "معرف الجلسة مطلوب." }, { status: 400 });
     }
+
+    if (!(await ownsCoachSession(sessionId))) return NextResponse.json({ error: "Session unavailable." }, { status: 403 });
 
     const session = await db.chatSession.findUnique({
       where: { id: sessionId },
@@ -55,9 +58,9 @@ export async function POST(req: Request) {
 
     const initialized = await initializeChatSession(session.id, lang);
 
-    return NextResponse.json(
-      await serializeChatSession((initialized ?? session) as typeof initialized, lang),
-    );
+    const response = NextResponse.json(await serializeChatSession((initialized ?? session) as typeof initialized, lang));
+    response.cookies.set(coachSessionCookie(await createCoachSessionCookie(session.id)));
+    return response;
   } catch (error) {
     console.error("[CHAT_SESSION_POST]", error);
     return NextResponse.json({ error: "الخدمة غير متاحة مؤقتًا.", messages: [] }, { status: 500 });

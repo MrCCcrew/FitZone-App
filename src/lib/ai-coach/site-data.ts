@@ -57,7 +57,7 @@ function computeAttendanceStats(
 
 export async function getCoachKnowledgeEntries(): Promise<CoachKnowledgeEntry[]> {
   const entries = await db.chatKnowledgeEntry.findMany({
-    where: { isActive: true },
+    where: { isActive: true, status: "published", OR: [{ validFrom: null }, { validFrom: { lte: new Date() } }], AND: [{ OR: [{ validUntil: null }, { validUntil: { gte: new Date() } }] }] },
     orderBy: [{ priority: "desc" }, { updatedAt: "desc" }],
   });
 
@@ -68,6 +68,10 @@ export async function getCoachKnowledgeEntries(): Promise<CoachKnowledgeEntry[]>
     answer: entry.answer,
     priority: entry.priority,
     keywords: parseJsonArray(entry.keywords),
+    isMandatory: entry.isMandatory,
+    allowParaphrasing: entry.allowParaphrasing,
+    validFrom: entry.validFrom?.toISOString() ?? null,
+    validUntil: entry.validUntil?.toISOString() ?? null,
   }));
 }
 

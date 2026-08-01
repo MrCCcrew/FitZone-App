@@ -11,6 +11,12 @@ type FormState = {
   answer: string;
   priority: number;
   active: boolean;
+  isMandatory: boolean;
+  allowParaphrasing: boolean;
+  status: "published" | "draft";
+  sourceType: string;
+  validFrom: string;
+  validUntil: string;
 };
 
 const EMPTY_FORM: FormState = {
@@ -20,6 +26,12 @@ const EMPTY_FORM: FormState = {
   answer: "",
   priority: 0,
   active: true,
+  isMandatory: false,
+  allowParaphrasing: true,
+  status: "published",
+  sourceType: "admin",
+  validFrom: "",
+  validUntil: "",
 };
 
 const CATEGORY_OPTIONS = [
@@ -76,6 +88,12 @@ export default function ChatKnowledge() {
       answer: entry.answer,
       priority: entry.priority,
       active: entry.active,
+      isMandatory: Boolean(entry.isMandatory),
+      allowParaphrasing: entry.allowParaphrasing !== false,
+      status: entry.status === "draft" ? "draft" : "published",
+      sourceType: entry.sourceType || "admin",
+      validFrom: entry.validFrom ? new Date(entry.validFrom).toISOString().slice(0, 10) : "",
+      validUntil: entry.validUntil ? new Date(entry.validUntil).toISOString().slice(0, 10) : "",
     });
   };
 
@@ -83,6 +101,10 @@ export default function ChatKnowledge() {
 
   const persist = async () => {
     if (!form.title.trim() || !form.answer.trim()) return;
+    if (form.validFrom && form.validUntil && form.validUntil < form.validFrom) {
+      setMessage("تاريخ الانتهاء لازم يكون بعد تاريخ البداية.");
+      return;
+    }
     setSaving(true);
     setMessage("");
 
@@ -96,6 +118,12 @@ export default function ChatKnowledge() {
       answer: form.answer,
       priority: Number(form.priority || 0),
       active: form.active,
+      isMandatory: form.isMandatory,
+      allowParaphrasing: form.allowParaphrasing,
+      status: form.status,
+      sourceType: form.sourceType.trim() || "admin",
+      validFrom: form.validFrom || null,
+      validUntil: form.validUntil || null,
     };
 
     const res = await fetch("/api/admin/chat-knowledge", {
@@ -196,6 +224,29 @@ export default function ChatKnowledge() {
             <input type="checkbox" checked={form.active} onChange={(e) => setField("active", e.target.checked)} />
             العنصر فعال
           </label>
+          <label className="flex items-center gap-3 text-sm text-gray-300">
+            <input type="checkbox" checked={form.isMandatory} onChange={(e) => setField("isMandatory", e.target.checked)} />
+            Mandatory answer
+          </label>
+          <label className="flex items-center gap-3 text-sm text-gray-300">
+            <input type="checkbox" checked={form.allowParaphrasing} onChange={(e) => setField("allowParaphrasing", e.target.checked)} />
+            Allow natural phrasing
+          </label>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-gray-400 text-xs mb-1.5">حالة النشر</label>
+              <select value={form.status} onChange={(e) => setField("status", e.target.value === "draft" ? "draft" : "published")} className="w-full rounded-2xl bg-black border border-gray-800 text-white px-4 py-3 outline-none focus:border-red-600">
+                <option value="published">منشور</option><option value="draft">مسودة</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-gray-400 text-xs mb-1.5">مصدر المحتوى</label>
+              <input value={form.sourceType} onChange={(e) => setField("sourceType", e.target.value)} className="w-full rounded-2xl bg-black border border-gray-800 text-white px-4 py-3 outline-none focus:border-red-600" />
+            </div>
+            <div><label className="block text-gray-400 text-xs mb-1.5">صالح من</label><input type="date" value={form.validFrom} onChange={(e) => setField("validFrom", e.target.value)} className="w-full rounded-2xl bg-black border border-gray-800 text-white px-4 py-3" /></div>
+            <div><label className="block text-gray-400 text-xs mb-1.5">صالح حتى</label><input type="date" value={form.validUntil} onChange={(e) => setField("validUntil", e.target.value)} className="w-full rounded-2xl bg-black border border-gray-800 text-white px-4 py-3" /></div>
+          </div>
+          {(form.status === "draft" || (form.validUntil && form.validUntil < new Date().toISOString().slice(0, 10))) && <div className="text-xs text-amber-400">هذا السجل لن يُستخدم في ردود AI Coach الحالية.</div>}
 
           <div className="flex gap-3">
             <button
