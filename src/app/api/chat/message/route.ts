@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { generateBotReply, serializeChatSession } from "@/lib/chatbot";
 import { applyRateLimit, getClientIp } from "@/lib/rate-limit";
+import { ownsCoachSession } from "@/lib/ai-coach/session-guard";
+import { z } from "zod";
+
+const messageSchema = z.object({ sessionId: z.string().min(8).max(128), content: z.string().trim().min(1).max(1800), visitorName: z.string().trim().max(100).optional(), visitorPhone: z.string().trim().max(40).optional(), lang: z.enum(["ar", "en"]).optional() });
 
 export async function POST(req: Request) {
   try {
@@ -15,7 +19,10 @@ export async function POST(req: Request) {
       );
     }
 
-    const { sessionId, content, visitorName, visitorPhone, lang } = await req.json();
+    const parsed = messageSchema.safeParse(await req.json().catch(() => null));
+    if (!parsed.success) return NextResponse.json({ error: "Invalid chat message." }, { status: 400 });
+    const { sessionId, content, visitorName, visitorPhone, lang } = parsed.data;
+    if (!(await ownsCoachSession(sessionId))) return NextResponse.json({ error: "Session unavailable." }, { status: 403 });
 
     if (!sessionId || !content?.trim()) {
       return NextResponse.json({ error: "بيانات الرسالة غير مكتملة." }, { status: 400 });
@@ -29,8 +36,8 @@ export async function POST(req: Request) {
     await db.chatSession.update({
       where: { id: sessionId },
       data: {
-        visitorName: visitorName?.trim() || session.visitorName,
-        visitorPhone: visitorPhone?.trim() || session.visitorPhone,
+        visitorName: visitorName || session.visitorName,
+        visitorPhone: visitorPhone || session.visitorPhone,
         lastMessageAt: new Date(),
       },
     });
@@ -40,13 +47,13 @@ export async function POST(req: Request) {
         sessionId,
         senderType: "user",
         senderName: visitorName?.trim() || "العميل",
-        content: content.trim(),
+        content,
       },
     });
 
     const updatedSession = await db.chatSession.findUnique({ where: { id: sessionId } });
     if (updatedSession?.mode !== "live") {
-      await generateBotReply(sessionId, content.trim(), lang === "en" ? "en" : "ar");
+      await generateBotReply(sessionId, content, lang === "en" ? "en" : "ar");
     }
 
     const payload = await db.chatSession.findUnique({

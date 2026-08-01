@@ -1,8 +1,16 @@
 "use client";
 
 import type { CSSProperties } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLang } from "@/lib/language";
+import { Loader2, Mic, Phone, PhoneOff, Send, Square } from "lucide-react";
+import {
+  actionsFromNavigationTarget,
+  COACH_UI_ACTION_EVENT,
+  COACH_UI_ACTION_RESULT_EVENT,
+  type CoachUiActionBatch,
+  type CoachUiActionResult,
+} from "@/lib/ai-coach/ui-action-dispatcher";
 
 type ChatMessage = {
   id: string;
@@ -10,7 +18,7 @@ type ChatMessage = {
   senderName?: string | null;
   content: string;
   createdAt: string;
-  metadata?: { membershipId?: string; closeSession?: boolean; action?: { type: "navigate"; page: "shop"; anchor: "shop-products" } } | null;
+  metadata?: { membershipId?: string; closeSession?: boolean; action?: { type: "navigate"; page: "shop"; anchor: "shop-products" }; structured?: { actions?: Array<{ type: "open_page"; label: string; url: "/" | "/login" | "/account" | "/store" | "/#memberships" | "/#offers" | "/#classes" }> } } | null;
 };
 
 type QuickAction = {
@@ -32,6 +40,108 @@ type ChatSessionPayload = {
 
 const STORAGE_KEY = "fitzone-live-chat-session";
 const VISITOR_KEY = "fitzone-live-chat-visitor";
+export const recorderMimeCandidates = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/mp4"] as const;
+
+export function selectSupportedRecorderMime(isSupported: (mime: string) => boolean) {
+  return recorderMimeCandidates.find(isSupported) ?? "";
+}
+
+export function stopMediaRecorder(recorder: Pick<MediaRecorder, "state" | "stop"> | null) {
+  if (recorder?.state === "recording") recorder.stop();
+}
+
+export function buildFinalRecording(chunks: Blob[], mime: string) {
+  return new Blob(chunks.filter((chunk) => chunk.size > 0), { type: mime });
+}
+
+export function createRealtimeToolOutputEvents(callId: string, result: unknown) {
+  return [
+    { type: "conversation.item.create", item: { type: "function_call_output", call_id: callId, output: JSON.stringify(result) } },
+    { type: "response.create" },
+  ];
+}
+
+export const shouldShowMessageTts = (realtimeCallActive: boolean) => !realtimeCallActive;
+
+type RealtimeInteractiveResult = {
+  navigationTarget?: { page?: string | null; sectionId?: string | null } | null;
+  data?: Array<Record<string, unknown>>;
+};
+
+export function buildCoachUiActionsForToolResult(toolName: string, value: unknown): CoachUiActionBatch | null {
+  const result = value as RealtimeInteractiveResult | undefined;
+  const target = result?.navigationTarget;
+  const rows = Array.isArray(result?.data) ? result.data : [];
+  const ids = rows.map((row) => typeof row.id === "string" ? row.id : "").filter(Boolean);
+  const action = actionsFromNavigationTarget(target, {});
+  if (!action) return null;
+
+  const section = target?.sectionId;
+  if (toolName === "searchTrainers" && ids.length) {
+    action.actions.splice(2, 0, { type: "setTrainerFilter", trainerIds: ids }, { type: "highlightItems", itemType: "trainer", ids });
+  } else if (toolName === "searchGoals" && ids.length) {
+    action.actions.splice(2, 0, { type: "highlightItems", itemType: "goal", ids });
+    const memberships = Array.isArray(rows[0]?.memberships) ? rows[0].memberships : [];
+    const membershipIds = memberships.map((membership) => typeof (membership as Record<string, unknown>).id === "string" ? (membership as Record<string, unknown>).id as string : "").filter(Boolean);
+    if (rows.length === 1 && membershipIds.length) {
+      action.actions[1] = { type: "navigateToPage", page: "memberships" };
+      action.actions[2] = { type: "openSection", sectionId: "memberships" };
+      action.actions[action.actions.length - 1] = { type: "scrollToSection", sectionId: "memberships" };
+      action.actions.splice(3, 0, { type: "setGoalFilter", goalId: ids[0] }, { type: "setMembershipResults", membershipIds }, { type: "highlightItems", itemType: "membership", ids: membershipIds });
+    }
+  } else if (toolName === "searchTrialClasses" && ids.length) {
+    action.actions.splice(2, 0, { type: "setClassFilter", classIds: rows.map((row) => typeof row.classId === "string" ? row.classId : "").filter(Boolean), trialOnly: true }, { type: "highlightItems", itemType: "class", ids });
+  } else if (toolName === "searchOffers" && ids.length) {
+    const activeIds = rows.filter((row) => row.status === "active" || row.status === "available_without_expiry" || row.state === "active").map((row) => typeof row.id === "string" ? row.id : "").filter(Boolean);
+    if (activeIds.length) action.actions.splice(2, 0, { type: "highlightItems", itemType: "offer", ids: activeIds });
+  } else if (toolName === "getNutritionDoctor" && ids.length) {
+    action.actions.splice(2, 0, { type: "highlightItems", itemType: "nutrition", ids });
+  } else if ((toolName === "searchMemberships" || toolName === "searchPackages") && ids.length) {
+    action.actions.splice(2, 0, { type: "setMembershipResults", membershipIds: ids }, { type: "highlightItems", itemType: "membership", ids });
+  } else if (section === "shop-products" && ids.length) {
+    action.actions.splice(2, 0, { type: "setProductFilters", productIds: ids }, { type: "highlightItems", itemType: "product", ids });
+  }
+  return action;
+}
+
+export function dispatchCoachUiActions(batch: CoachUiActionBatch): Promise<CoachUiActionResult> {
+  if (typeof window === "undefined") return Promise.resolve({ requestId: "server", status: "navigation_blocked", completed: false });
+  const requestId = crypto.randomUUID();
+  return new Promise((resolve) => {
+    const onResult = (event: Event) => {
+      const detail = (event as CustomEvent<CoachUiActionResult>).detail;
+      if (detail?.requestId !== requestId) return;
+      window.removeEventListener(COACH_UI_ACTION_RESULT_EVENT, onResult);
+      window.clearTimeout(timeout);
+      resolve(detail);
+    };
+    // Only a safety escape hatch: navigation itself waits for the rendered section.
+    const timeout = window.setTimeout(() => {
+      window.removeEventListener(COACH_UI_ACTION_RESULT_EVENT, onResult);
+      resolve({ requestId, status: "ui_action_failed", completed: false });
+    }, 3_000);
+    window.addEventListener(COACH_UI_ACTION_RESULT_EVENT, onResult);
+    window.dispatchEvent(new CustomEvent(COACH_UI_ACTION_EVENT, { detail: { requestId, batch } }));
+  });
+}
+
+export async function inspectLocalRecording(blob: Blob, timeoutMs = 4_000): Promise<{ canDecodeLocally: boolean; localAudioDuration: number | null }> {
+  if (typeof Audio === "undefined" || typeof URL === "undefined") return { canDecodeLocally: false, localAudioDuration: null };
+  const url = URL.createObjectURL(blob);
+  try {
+    return await new Promise((resolve) => {
+      const audio = new Audio();
+      const finish = (canDecodeLocally: boolean) => {
+        audio.onloadedmetadata = null; audio.oncanplaythrough = null; audio.onerror = null;
+        resolve({ canDecodeLocally, localAudioDuration: Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : null });
+      };
+      const timer = globalThis.setTimeout(() => finish(false), timeoutMs);
+      const valid = () => { globalThis.clearTimeout(timer); finish(Number.isFinite(audio.duration) && audio.duration > 0); };
+      audio.onloadedmetadata = valid; audio.oncanplaythrough = valid; audio.onerror = () => { globalThis.clearTimeout(timer); finish(false); };
+      audio.src = url; audio.load();
+    });
+  } finally { URL.revokeObjectURL(url); }
+}
 
 function normalizeSessionId(raw: string | null) {
   const value = raw?.trim();
@@ -71,6 +181,26 @@ export default function LiveChatWidget() {
   const [error, setError] = useState("");
   const [isMobile, setIsMobile] = useState(false);
   const [gymPhone, setGymPhone] = useState("");
+  const voiceEnabled = process.env.NEXT_PUBLIC_AI_COACH_VOICE_ENABLED === "true";
+  const realtimeEnabled = process.env.NEXT_PUBLIC_AI_COACH_REALTIME_VOICE_ENABLED === "true";
+  const [realtimeState, setRealtimeState] = useState<"idle" | "connecting" | "listening" | "thinking" | "assistant_speaking" | "error">("idle");
+  const [autoplayBlocked, setAutoplayBlocked] = useState(false);
+  const realtimeVoice = "marin" as const;
+  const [recording, setRecording] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const startedAtRef = useRef(0);
+  const cancelledRecordingRef = useRef(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const messagesAreaRef = useRef<HTMLDivElement | null>(null);
+  const messageEndRef = useRef<HTMLDivElement | null>(null);
+  const retryAudioRef = useRef<{ blob: Blob; durationMs: number } | null>(null);
+  const realtimePeerRef = useRef<RTCPeerConnection | null>(null);
+  const realtimeStreamRef = useRef<MediaStream | null>(null);
+  const realtimeAudioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth <= 768);
@@ -232,12 +362,15 @@ export default function LiveChatWidget() {
       setStatus("resolved");
     }
   }, [messages]);
+  useEffect(() => { const area = messagesAreaRef.current; if (!area) return; const nearBottom = area.scrollHeight - area.scrollTop - area.clientHeight < 96; if (nearBottom) messageEndRef.current?.scrollIntoView({ block: "end" }); }, [messages, transcribing, error]);
 
   const openShop = () => {
     window.dispatchEvent(new CustomEvent("fitzone:ai-coach-navigate", {
       detail: { type: "navigate", page: "shop", anchor: "shop-products" },
     }));
   };
+
+  const openSafePage = (url: "/" | "/login" | "/account" | "/store" | "/#memberships" | "/#offers" | "/#classes") => window.location.assign(url);
 
   useEffect(() => {
     const action = messages[messages.length - 1]?.metadata?.action;
@@ -282,12 +415,92 @@ export default function LiveChatWidget() {
     }
   };
 
+  const endRealtime = () => {
+    realtimePeerRef.current?.close(); realtimePeerRef.current = null;
+    realtimeStreamRef.current?.getTracks().forEach((track) => track.stop()); realtimeStreamRef.current = null;
+    realtimeAudioRef.current?.pause(); if (realtimeAudioRef.current) realtimeAudioRef.current.srcObject = null; realtimeAudioRef.current = null;
+    setRealtimeState("idle");
+  };
+  useEffect(() => () => { audioRef.current?.pause(); streamRef.current?.getTracks().forEach((track) => track.stop()); endRealtime(); }, []);
+  useEffect(() => { if (!recording) return; const timer = window.setInterval(() => setRecordingSeconds((value) => value + 1), 1000); return () => window.clearInterval(timer); }, [recording]);
+  const stopPlayback = () => { audioRef.current?.pause(); audioRef.current = null; };
+  const stopRecording = () => stopMediaRecorder(recorderRef.current);
+  const cancelRecording = () => { cancelledRecordingRef.current = true; chunksRef.current = []; stopRecording(); };
+  const startRecording = async () => {
+    if (!voiceEnabled || recording || transcribing || !navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") { setError(t("مش قادرين نستخدم الميكروفون. فعّلي الإذن من إعدادات المتصفح وجربي تاني.", "Microphone recording is unavailable.")); return; }
+    try {
+      stopPlayback(); const stream = await navigator.mediaDevices.getUserMedia({ audio: true }); streamRef.current = stream; chunksRef.current = []; cancelledRecordingRef.current = false;
+      const selectedRecorderMime = selectSupportedRecorderMime((mime) => MediaRecorder.isTypeSupported(mime)); const recorder = selectedRecorderMime ? new MediaRecorder(stream, { mimeType: selectedRecorderMime }) : new MediaRecorder(stream); recorderRef.current = recorder; startedAtRef.current = Date.now(); setRecordingSeconds(0); setRecording(true);
+      recorder.ondataavailable = (event) => { if (event.data.size) chunksRef.current.push(event.data); };
+      recorder.onstop = async () => {
+        setRecording(false); stream.getTracks().forEach((track) => track.stop()); streamRef.current = null;
+        if (cancelledRecordingRef.current) { cancelledRecordingRef.current = false; chunksRef.current = []; return; }
+        const chunks = chunksRef.current; chunksRef.current = [];
+        const audio = buildFinalRecording(chunks, recorder.mimeType || selectedRecorderMime || "audio/webm");
+        const local = await inspectLocalRecording(audio);
+        if (process.env.NODE_ENV === "development") {
+          const header = new Uint8Array(await audio.slice(0, 12).arrayBuffer());
+          const firstBytesSignature = Array.from(header).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+          console.info("[VOICE_RECORDER]", { selectedRecorderMime: selectedRecorderMime || null, recorderMimeAfterCreation: recorder.mimeType || null, chunksCount: chunks.length, individualChunkSizes: chunks.map((chunk) => chunk.size), finalBlobSize: audio.size, finalBlobMime: audio.type, firstBytesSignature, ...local });
+        }
+        if (!audio.size || !local.canDecodeLocally) { setError(t("التسجيل اتعمل لكن صيغة الصوت مش متوافقة مع المتصفح. جربي تاني أو استخدمي المحادثة الصوتية المباشرة.", "Recording format is not compatible with this browser. Try again or use live voice.")); return; }
+        await transcribeAudio(audio, Math.round(local.localAudioDuration! * 1000));
+      };
+      recorder.start();
+    } catch { setError(t("مش قادرين نستخدم الميكروفون. فعّلي الإذن من إعدادات المتصفح وجربي تاني.", "Enable microphone permission and try again.")); }
+  };
+  const transcribeAudio = async (audio: Blob, durationMs: number) => { setTranscribing(true); setError(""); try { const id = await ensureSession(); if (!id) return; const form = new FormData(); form.set("sessionId", id); form.set("audio", audio, `voice.${audio.type.includes("ogg") ? "ogg" : audio.type.includes("mp4") ? "m4a" : "webm"}`); form.set("durationMs", String(durationMs)); form.set("localeHint", lang); const response = await fetch("/api/chat/voice/transcribe", { method: "POST", body: form }); const data = await response.json(); if (!response.ok) { retryAudioRef.current = data.errorCode === "STT_NETWORK_ERROR" || data.errorCode === "STT_TIMEOUT" ? { blob: audio, durationMs } : null; setError(data.error ?? t("معرفتش أفهم التسجيل المرة دي. تقدري تعيدي التسجيل أو تكتبي سؤالك.", "Unable to transcribe recording.")); return; } retryAudioRef.current = null; setInput(data.normalizedTranscript); } finally { setTranscribing(false); } };
+  const retryTranscription = () => { const retry = retryAudioRef.current; if (retry) transcribeAudio(retry.blob, retry.durationMs); };
+  const playMessage = async (messageId: string) => { if (realtimeState !== "idle") { setError(t("الصوت المباشر شغال دلوقتي.", "Live voice is active.")); return; } try { stopPlayback(); const id = await ensureSession(); if (!id) return; const response = await fetch("/api/chat/voice/speak", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId: id, messageId }) }); if (!response.ok) throw new Error(); const audio = new Audio(URL.createObjectURL(await response.blob())); audioRef.current = audio; audio.onended = () => URL.revokeObjectURL(audio.src); await audio.play(); } catch { setError(t("الرد النصي جاهز، لكن تشغيل الصوت مش متاح دلوقتي.", "The text reply is ready, but audio is unavailable.")); } };
+  const startRealtime = async () => {
+    if (!realtimeEnabled || realtimeState !== "idle" || !window.RTCPeerConnection || !navigator.mediaDevices?.getUserMedia) { setError(t("المحادثة المباشرة مش متاحة دلوقتي، تقدري تستخدمي التسجيل أو الكتابة.", "Live voice is unavailable. Use recording or text.")); return; }
+    setRealtimeState("connecting"); setError(""); stopPlayback(); stopRecording();
+    try {
+      const id = await ensureSession(); if (!id) throw new Error();
+      const tokenResponse = await fetch("/api/chat/voice/realtime/session", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId: id, lang, voice: realtimeVoice }) });
+      const tokenData = await tokenResponse.json().catch(() => ({})) as { clientSecret?: string };
+      if (!tokenResponse.ok || !tokenData.clientSecret) throw new Error();
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true }); realtimeStreamRef.current = stream;
+      const peer = new RTCPeerConnection(); realtimePeerRef.current = peer;
+      const remoteAudio = new Audio(); remoteAudio.autoplay = true; remoteAudio.setAttribute("playsinline", ""); realtimeAudioRef.current = remoteAudio;
+      const playRemoteAudio = () => remoteAudio.play().then(() => setAutoplayBlocked(false)).catch(() => setAutoplayBlocked(true));
+      peer.ontrack = (event) => { remoteAudio.srcObject = event.streams[0] ?? null; void playRemoteAudio(); setRealtimeState("assistant_speaking"); };
+      peer.onconnectionstatechange = () => { if (["failed", "disconnected", "closed"].includes(peer.connectionState)) endRealtime(); };
+      stream.getTracks().forEach((track) => peer.addTrack(track, stream));
+      const channel = peer.createDataChannel("oai-events");
+      channel.onmessage = async (event) => {
+        let data: { type?: string; name?: string; call_id?: string; arguments?: string } = {};
+        try { data = JSON.parse(event.data); } catch { return; }
+        if (data.type === "response.function_call_arguments.done" && data.name && data.call_id) {
+          let args: Record<string, unknown> = {}; try { args = JSON.parse(data.arguments ?? "{}"); } catch { /* server rejects malformed args */ }
+          const toolResponse = await fetch("/api/chat/voice/realtime/tool", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId: id, name: data.name, arguments: args, lang }) });
+          const toolData = await toolResponse.json().catch(() => ({})) as { result?: unknown };
+          const uiActions = buildCoachUiActionsForToolResult(data.name, toolData.result);
+          const uiResult = uiActions ? await dispatchCoachUiActions(uiActions) : null;
+          const functionResult = uiResult && !uiResult.completed
+            ? { ...(toolData.result as Record<string, unknown>), uiActionStatus: uiResult.status, spokenSummary: "لقيتلك النتائج، لكن مقدرتش أفتح القسم تلقائيًا." }
+            : toolData.result ?? { allowed: false };
+          if (channel.readyState === "open") { setRealtimeState("thinking"); for (const responseEvent of createRealtimeToolOutputEvents(data.call_id, functionResult)) channel.send(JSON.stringify(responseEvent)); }
+          loadSession(id).catch(() => {});
+        }
+        if (data.type === "input_audio_buffer.speech_started") { remoteAudio.pause(); setRealtimeState("listening"); }
+        if (data.type === "response.created") { setRealtimeState("assistant_speaking"); void playRemoteAudio(); }
+        if (data.type === "response.audio.delta") { setRealtimeState("assistant_speaking"); void playRemoteAudio(); }
+        if (data.type === "response.done") setRealtimeState("listening");
+      };
+      const offer = await peer.createOffer(); await peer.setLocalDescription(offer);
+      const answer = await fetch("https://api.openai.com/v1/realtime/calls", { method: "POST", headers: { Authorization: `Bearer ${tokenData.clientSecret}`, "Content-Type": "application/sdp" }, body: offer.sdp });
+      if (!answer.ok) throw new Error();
+      await peer.setRemoteDescription({ type: "answer", sdp: await answer.text() }); setRealtimeState("listening");
+    } catch { endRealtime(); setError(t("المحادثة المباشرة مش متاحة دلوقتي، تقدري تستخدمي التسجيل أو الكتابة.", "Live voice is unavailable. Use recording or text.")); }
+  };
+
   return (
     <>
       <button
         data-tour="ai-coach"
         onClick={() => {
-          setOpen((value) => !value);
+          setOpen((value) => { if (value) endRealtime(); return !value; });
           ensureSession().catch(() => {});
         }}
         style={{
@@ -321,7 +534,9 @@ export default function LiveChatWidget() {
             zIndex: 80,
             width: isMobile ? "calc(100vw - 40px)" : "min(390px, calc(100vw - 24px))",
             maxWidth: "calc(100vw - 24px)",
-            maxHeight: isMobile ? "calc(100vh - 226px)" : "calc(100vh - 212px)",
+            height: isMobile ? "calc(100dvh - 226px)" : "min(720px, calc(100dvh - 132px))",
+            maxHeight: isMobile ? "calc(100dvh - 226px)" : "min(720px, calc(100dvh - 132px))",
+            minHeight: 0,
             background: "#FFF5F8",
             border: "1px solid #F5D0DC",
             borderRadius: 24,
@@ -414,6 +629,7 @@ export default function LiveChatWidget() {
                 }}
               >
                 {error}
+                {voiceEnabled && retryAudioRef.current && <button onClick={retryTranscription} style={{ ...quickButtonStyle, marginTop: 8 }}>إعادة المحاولة</button>}
               </div>
             )}
           </div>
@@ -421,13 +637,15 @@ export default function LiveChatWidget() {
           <div
             style={{
               flex: 1,
-              minHeight: 220,
-              maxHeight: "calc(100vh - 360px)",
-              overflowY: "auto",
-              padding: 14,
+              minHeight: 0,
+              overflow: "hidden",
+              padding: 0,
               background: "#FFF5F8",
+              display: "flex",
+              flexDirection: "column",
             }}
           >
+            <div ref={messagesAreaRef} style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 14 }}>
             {messages.map((message) => {
               const isUser = message.senderType === "user";
               const isSupport = message.senderType === "admin" || message.senderType === "staff";
@@ -461,9 +679,15 @@ export default function LiveChatWidget() {
                       {message.senderName || (isUser ? t("أنت", "You") : message.senderType === "bot" ? "AI Coach" : t("الدعم", "Support"))}
                     </div>
                     <div style={{ whiteSpace: "pre-wrap" }}>{message.content}</div>
+                    {voiceEnabled && message.senderType === "bot" && shouldShowMessageTts(realtimeState !== "idle") && <div style={{ display: "flex", gap: 6, marginTop: 8 }}><button aria-label="تشغيل الرد صوتيًا" onClick={() => playMessage(message.id)} style={quickButtonStyle}>▶ {t("اسمعي", "Play")}</button><button aria-label="إيقاف الصوت" onClick={stopPlayback} style={quickButtonStyle}>■ {t("إيقاف", "Stop")}</button></div>}
                     {message.metadata?.action?.page === "shop" && (
                       <button onClick={openShop} style={{ ...quickButtonStyle, marginTop: 8 }}>فتح المتجر</button>
                     )}
+                    {message.metadata?.structured?.actions?.map((action) => (
+                      <button key={`${message.id}-${action.url}`} onClick={() => openSafePage(action.url)} style={{ ...quickButtonStyle, marginTop: 8, marginInlineEnd: 6 }}>
+                        {action.label}
+                      </button>
+                    ))}
                   </div>
                 </div>
               );
@@ -487,22 +711,32 @@ export default function LiveChatWidget() {
                 </div>
               </div>
             )}
+            <div ref={messageEndRef} />
+            </div>
           </div>
 
           <div
             style={{
               display: "flex",
+              flexWrap: "wrap",
+              flexShrink: 0,
               gap: 8,
               padding: 12,
               borderTop: "1px solid #F5D0DC",
               background: "#FFF0F5",
             }}
           >
+            {voiceEnabled && (recording || transcribing) && <div style={{ width: "100%", fontSize: 12, color: "#E91E63" }}>{recording ? `${t("بتسمعك دلوقتي", "Listening")}… ${recordingSeconds}s` : t("جاري فهم كلامك…", "Understanding your voice…")}</div>}
+            {realtimeEnabled && realtimeState !== "idle" && <div style={{ width: "100%", fontSize: 12, color: "#E91E63" }}>{realtimeState === "connecting" ? t("جاري الاتصال…", "Connecting…") : realtimeState === "thinking" ? t("بفهم سؤالك…", "Understanding…") : realtimeState === "assistant_speaking" ? t("برد عليك…", "Responding…") : t("بسمعك…", "Listening…")}</div>}
+            {realtimeEnabled && autoplayBlocked && <button onClick={() => { void realtimeAudioRef.current?.play().then(() => setAutoplayBlocked(false)); }} style={{ ...quickButtonStyle, width: "100%" }}>{t("اضغطي مرة واحدة لتشغيل صوت المساعد.", "Tap once to play assistant audio.")}</button>}
+            {realtimeEnabled && <button aria-label={realtimeState === "idle" ? "ابدئي محادثة صوتية" : "إنهاء المحادثة الصوتية"} title={realtimeState === "idle" ? "محادثة صوتية" : "إنهاء المحادثة"} onClick={realtimeState === "idle" ? startRealtime : endRealtime} disabled={realtimeState === "connecting"} style={{ flex: "0 0 44px", width: 44, height: 52, border: "1px solid #F5D0DC", borderRadius: 14, background: realtimeState === "idle" ? "#fff" : "#BE185D", color: realtimeState === "idle" ? "#E91E63" : "#fff", display: "grid", placeItems: "center", cursor: "pointer" }}>{realtimeState === "connecting" ? <Loader2 size={18} className="animate-spin" /> : realtimeState === "idle" ? <Phone size={18} /> : <PhoneOff size={18} />}</button>}
+            {voiceEnabled && <div style={{ width: "100%", fontSize: 10, color: "#7A5B68" }}>{t("الصوت بيتحوّل لنص علشان AI Coach يفهم سؤالك. التسجيل مش بيتحفظ بشكل دائم.", "Voice is converted to text. Recordings are not stored permanently.")}</div>}
+            {voiceEnabled && <button aria-label={recording ? "إيقاف التسجيل" : "ابدئي تسجيل صوتي"} title={recording ? "إيقاف التسجيل" : "ابدئي تسجيل صوتي"} onClick={recording ? stopRecording : startRecording} disabled={loading || transcribing} style={{ flex: "0 0 44px", width: 44, height: 52, border: "1px solid #F5D0DC", borderRadius: 14, background: recording ? "#BE185D" : "#fff", color: recording ? "#fff" : "#E91E63", display: "grid", placeItems: "center", cursor: "pointer" }}>{transcribing ? <Loader2 size={18} className="animate-spin" /> : recording ? <Square size={17} fill="currentColor" /> : <Mic size={19} />}</button>}
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder={t("اكتبي سؤالك عن اللياقة أو التغذية أو الباقة...", "Ask about fitness, nutrition, membership, schedule, or support...")}
-              style={{ ...inputStyle, minHeight: 52, resize: "none", flex: 1 }}
+              style={{ ...inputStyle, width: "auto", minWidth: 0, minHeight: 52, maxHeight: 120, resize: "vertical", flex: "1 1 180px" }}
             />
             <button
               onClick={() => sendMessage()}
@@ -513,6 +747,8 @@ export default function LiveChatWidget() {
                 background: "linear-gradient(135deg, #E91E63, #F06292)",
                 color: "#fff",
                 padding: "0 18px",
+                flex: "0 0 auto",
+                minWidth: 64,
                 fontWeight: 800,
                 cursor: "pointer",
                 opacity: loading || !input.trim() ? 0.6 : 1,

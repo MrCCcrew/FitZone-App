@@ -4,6 +4,8 @@ import { ensureDefaultProductCategories } from "@/lib/product-categories";
 import { getPublicApiCache, setPublicApiCache } from "@/lib/public-cache";
 import { getPaymentSettings } from "@/lib/payments/settings";
 import { parseStoredTrainerFileLinks } from "@/lib/trainer-profile";
+import { activePublicOfferWhere } from "@/lib/offers";
+import { visibleClassScheduleWhere, visibleMembershipWhere, visibleProductWhere, visibleScheduleWhere, visibleTrainerWhere } from "@/lib/public-catalog";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 30;
@@ -304,13 +306,7 @@ export async function GET(request: Request) {
 
     await ensureDefaultProductCategories();
 
-    const scheduleFrom = new Date();
-    scheduleFrom.setHours(0, 0, 0, 0);
-    // Go back 6 h so classes stored as local-midnight in Egypt (UTC+2) aren't cut off by the UTC window
-    scheduleFrom.setTime(scheduleFrom.getTime() - 6 * 60 * 60 * 1000);
-    const scheduleTo = new Date();
-    scheduleTo.setDate(scheduleTo.getDate() + 14); // 14-day window: guarantees every day of the week appears at least twice
-    scheduleTo.setHours(23, 59, 59, 999);
+    const scheduleNow = new Date();
 
     const [categories, goals, memberships, offers, classes, trainers, siteContent, products, testimonials, healthQuestions, deliveryOptions, paymobSettings, nutritionistRow] =
       await Promise.all([
@@ -323,28 +319,28 @@ export async function GET(request: Request) {
           orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
         }),
         db.membership.findMany({
-          where: { isActive: true },
+          where: visibleMembershipWhere(),
           include: { goals: { select: { goalId: true } } },
           orderBy: [{ sortOrder: "asc" }, { price: "asc" }],
         }),
         db.offer.findMany({
-          where: { isActive: true },
+          where: activePublicOfferWhere(),
           orderBy: { expiresAt: "asc" },
           include: { allowedClassTypes: { select: { classType: true } } },
         }),
         db.class.findMany({
-          where: { isActive: true },
+          where: visibleClassScheduleWhere(scheduleNow),
           include: {
             trainer: true,
             schedules: {
-              where: { isActive: true, date: { gte: scheduleFrom, lte: scheduleTo } },
+              where: visibleScheduleWhere(scheduleNow),
               orderBy: [{ date: "asc" }, { time: "asc" }],
             },
           },
           orderBy: { name: "asc" },
         }),
-        db.trainer.findMany({
-          where: { isActive: true },
+          db.trainer.findMany({
+            where: visibleTrainerWhere(),
           include: {
             _count: {
               select: {
@@ -358,7 +354,7 @@ export async function GET(request: Request) {
           where: { section: { in: ["trainersPage", "contact", "blog", "paymentSettings", "trial_class_settings", "store_settings", "trial_classes_config", "gift_only_products"] } },
         }),
         db.product.findMany({
-          where: { isActive: true },
+          where: visibleProductWhere(),
           include: {
             reviews: {
               select: {

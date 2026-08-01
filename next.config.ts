@@ -22,6 +22,8 @@ const nextConfig: NextConfig = {
   // client-side hydration diagnostic and never contains session data.
   env: {
     HYDRATION_AUTH_DEBUG: isProduction && process.env.HYDRATION_AUTH_DEBUG === "true" ? "true" : "false",
+    NEXT_PUBLIC_AI_COACH_VOICE_ENABLED: process.env.AI_COACH_VOICE_ENABLED === "true" ? "true" : "false",
+    NEXT_PUBLIC_AI_COACH_REALTIME_VOICE_ENABLED: process.env.AI_COACH_REALTIME_VOICE_ENABLED === "true" ? "true" : "false",
   },
   experimental: {
     cpus: 2,
@@ -68,7 +70,7 @@ const nextConfig: NextConfig = {
           },
           {
             key: "Permissions-Policy",
-            value: "camera=(self), microphone=(), geolocation=(self), payment=(self)",
+            value: "camera=(self), microphone=(self), geolocation=(self), payment=(self)",
           },
           {
             key: "Cross-Origin-Opener-Policy",

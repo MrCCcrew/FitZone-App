@@ -8,9 +8,45 @@ import { StoreGiftToast, dispatchGiftToast } from "@/components/store/StoreGiftT
 import { StoreGiftBadge } from "@/components/store/StoreGiftBadge";
 import { useStoreGiftCampaign } from "@/components/store/useStoreGiftCampaign";
 import { StoreGiftGameEntryPopup } from "@/components/store/game/StoreGiftGameEntryPopup";
+import {
+  COACH_SECTION_IDS,
+  COACH_UI_ACTION_EVENT,
+  COACH_UI_ACTION_RESULT_EVENT,
+  parseCoachUiActionBatch,
+  type CoachUiActionResult,
+} from "@/lib/ai-coach/ui-action-dispatcher";
 
 const FitZoneTour = dynamic(() => import("@/components/onboarding/FitZoneTour"), { ssr: false });
 const ONBOARDING_COMPLETED_KEY = "fitzone_onboarding_completed_v1";
+
+type CoachVisualState = {
+  activeDomain: "offers" | "goals" | "memberships" | "trainers" | "classes" | "products" | "nutrition" | null;
+  selectedGoalId: string | null;
+  membershipResultIds: string[];
+  membershipSort: "price_asc" | "price_desc" | null;
+  trainerFilter: { ids: string[]; specialty: string | null };
+  classFilter: { ids: string[]; trialOnly: boolean; date: string | null };
+  productFilters: { ids: string[]; searchTerm: string | null; categoryId: string | null; sort: "price_asc" | "price_desc" | null };
+  highlightedItems: Partial<Record<"offer" | "trainer" | "membership" | "class" | "product" | "goal" | "nutrition", string[]>>;
+  pendingSectionId: string | null;
+  openItemId: string | null;
+  actionSource: "ai_coach" | null;
+};
+
+const emptyCoachVisualState: CoachVisualState = {
+  activeDomain: null, selectedGoalId: null, membershipResultIds: [], membershipSort: null,
+  trainerFilter: { ids: [], specialty: null }, classFilter: { ids: [], trialOnly: false, date: null },
+  productFilters: { ids: [], searchTerm: null, categoryId: null, sort: null },
+  highlightedItems: {}, pendingSectionId: null, openItemId: null, actionSource: null,
+};
+
+function CoachAccessibilityAnnouncer({ announcement }: { announcement: string }) {
+  return (
+    <div className="sr-only" aria-live="polite" aria-atomic="true">
+      {announcement}
+    </div>
+  );
+}
 
 // ─── FIT ZONE BRAND COLORS ─────────────────────────────────────────────────
 const C = {
@@ -3320,7 +3356,7 @@ const HomePage = ({ navigate, summary, storeEnabled, initialHomeData, diagnostic
 
       {/* ─ NUTRITION DOCTOR ─ */}
       {nutritionist && (
-        <section className="section" style={{ background: C.bgCard2 }}>
+        <section id="nutrition" className="section" style={{ background: C.bgCard2, scrollMarginTop: 120 }}>
           <div className="container">
             {/* Section header */}
             <div style={{ textAlign: "center", marginBottom: 40 }}>
@@ -4073,7 +4109,7 @@ const DEFAULT_PLANS: PlanItem[] = [];
 const PLAN_COLORS = [C.gray, C.redText, C.goldText, "#A855F7", "#3498DB", "#27AE60"];
 const GLOBAL_SUBSCRIBE_EVENT = "fitzone:open-subscribe";
 
-const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: string) => void; summary: UserSummary | null }) => {
+const MembershipsPage = ({ navigate, summary: userSummary, coachState }: { navigate: (p: string) => void; summary: UserSummary | null; coachState?: CoachVisualState }) => {
   const t = useT();
   const { lang } = useLang();
   const [tab, setTab] = useState<"all" | "monthly" | "quarterly" | "semi_annual" | "annual" | "custom">("all");
@@ -4086,6 +4122,13 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
   const [healthQuestions, setHealthQuestions] = useState<PublicHealthQuestion[]>([]);
   const [selectedGoals, setSelectedGoals] = useState<string[]>([]);
   const [goalViewParentId, setGoalViewParentId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (coachState?.actionSource === "ai_coach" && coachState.selectedGoalId) {
+      setGoalViewParentId(null);
+      setSelectedGoals([coachState.selectedGoalId]);
+    }
+  }, [coachState?.actionSource, coachState?.selectedGoalId]);
   const tourSelectedGoalRef = useRef<string | null>(null);
   const plansRef = useRef<HTMLDivElement | null>(null);
   const featuredCardRef = useRef<HTMLDivElement | null>(null);
@@ -4126,10 +4169,9 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
     offerSpecialPrice?: number | null;
   } | null>(null);
   const [allOffers, setAllOffers] = useState<PublicOffer[]>([]);
-  const hasPendingFlow = typeof window !== "undefined" && !!(
-    window.sessionStorage.getItem(MEMBERSHIP_FLOW_STORAGE_KEY) ||
-    window.sessionStorage.getItem("fitzone_trial_booking")
-  );
+  // Storage is intentionally read only after hydration.  The server and the
+  // first client render must both start with the same membership page tree.
+  const [hasPendingFlow, setHasPendingFlow] = useState(false);
   const [membershipPaymentSettings, setMembershipPaymentSettings] = useState<PublicPaymentSettings>({
     displayLabel: "Paymob",
     displayLabelAr: "الدفع الإلكتروني عبر Paymob",
@@ -4140,6 +4182,10 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
     cashOnDeliveryLabel: t("الدفع عند الاستلام", "Cash on delivery"),
   });
   useEffect(() => {
+    setHasPendingFlow(Boolean(
+      window.sessionStorage.getItem(MEMBERSHIP_FLOW_STORAGE_KEY) ||
+      window.sessionStorage.getItem("fitzone_trial_booking"),
+    ));
     setMembershipDataReady(false);
     loadPublicApi(true)
       .then((d) => {
@@ -4438,9 +4484,13 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
       if (ids.length === 0) return true;
       return ids.some((id) => selectedGoals.includes(id));
     });
-    if (tab === "all") return byGoal;
-    return byGoal.filter((plan) => (plan.cycle ?? "custom") === tab);
-  }, [plans, selectedGoals, tab]);
+    const byCycle = tab === "all" ? byGoal : byGoal.filter((plan) => (plan.cycle ?? "custom") === tab);
+    const requestedIds = coachState?.membershipResultIds ?? [];
+    const requested = requestedIds.length ? byCycle.filter((plan) => requestedIds.includes(plan.id ?? "")) : byCycle;
+    if (coachState?.membershipSort === "price_asc") return [...requested].sort((a, b) => (a.priceAfter ?? a.price) - (b.priceAfter ?? b.price));
+    if (coachState?.membershipSort === "price_desc") return [...requested].sort((a, b) => (b.priceAfter ?? b.price) - (a.priceAfter ?? a.price));
+    return requested;
+  }, [plans, selectedGoals, tab, coachState?.membershipResultIds, coachState?.membershipSort]);
 
   const surveyBlockedTypes = useMemo(() => {
     const blocked = new Set<string>();
@@ -5893,7 +5943,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
         </div>
       )}
 
-      <section style={{ background: `linear-gradient(135deg, #FFE0EC, ${C.bg})`, padding: "64px 0" }}>
+      <section id="memberships" style={{ background: `linear-gradient(135deg, #FFE0EC, ${C.bg})`, padding: "64px 0", scrollMarginTop: 120 }}>
         <div className="container" style={{ textAlign: "center" }}>
           <span className="tag" style={{ marginBottom: 16, display: "inline-block" }}>{t("الأهداف والاشتراكات", "Goals and memberships")}</span>
           <h1 style={{ fontSize: viewportWidth() < 768 ? 32 : 44, fontWeight: 900, marginBottom: 12, color: C.white }}>{t("اختاري", "Choose")} <span style={{ color: C.red }}>{t("هدفك واشتراكك", "your goal and membership")}</span></h1>
@@ -5951,7 +6001,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
             </div>
           ) : (
             <>
-              <div data-tour="goals" style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 16, minHeight: viewportWidth() < 768 ? 260 : 340, scrollMarginTop: 120 }}>
+              <div id="goals" data-tour="goals" style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 16, minHeight: viewportWidth() < 768 ? 260 : 340, scrollMarginTop: 120 }}>
                 {displayGoals.map((goal) => {
                   const active = selectedGoals.includes(goal.id);
                   const hasChildren = !goal.parentId && (goalsByParent.get(goal.id)?.length ?? 0) > 0;
@@ -6347,7 +6397,7 @@ const MembershipsPage = ({ navigate, summary: userSummary }: { navigate: (p: str
 
 // ─── OFFERS PAGE ──────────────────────────────────────────────────────────────
 const DEFAULT_OFFERS: Array<PublicOffer & { color: string }> = [];
-const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
+const OffersPage = ({ navigate, coachState }: { navigate: (p: string) => void; coachState?: CoachVisualState }) => {
   const t = useT();
   const { lang } = useLang();
   const [offers, setOffers] = useState(DEFAULT_OFFERS);
@@ -6405,7 +6455,7 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
         </div>
       </section>
 
-      <section id="offers-section" className="section">
+      <section id="offers" className="section" style={{ scrollMarginTop: 120 }}>
         <div className="container">
           <h2 className="section-title" style={{ marginBottom: 32 }}>{t("العروض", "Current")} <span>{t("الحالية", "offers")}</span></h2>
           <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 24 }}>
@@ -6425,7 +6475,7 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
                 style={{
                   padding: 0,
                   position: "relative",
-                  border: `1px solid ${o.color}33`,
+                  border: coachState?.highlightedItems.offer?.includes(o.id) ? `3px solid ${C.red}` : `1px solid ${o.color}33`,
                   boxShadow: "0 18px 45px rgba(233,30,99,.12)",
                   overflow: "hidden",
                   display: "flex",
@@ -6556,7 +6606,7 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
                   const discountedPrice = plan.priceAfter != null ? plan.priceAfter : (pct > 0 ? Math.round(plan.price * (1 - pct / 100)) : plan.price);
                   const hasDiscount = pct > 0 && discountedPrice < plan.price;
                   return (
-                    <div key={plan.id} className="card card-hover" style={{ padding: 0, overflow: "hidden", border: `1px solid ${planColor}33`, boxShadow: "0 18px 45px rgba(233,30,99,.12)", display: "flex", flexDirection: "column", height: "100%" }}>
+                    <div key={plan.id} className="card card-hover" style={{ padding: 0, overflow: "hidden", border: coachState?.highlightedItems.offer?.includes(plan.id) ? `3px solid ${C.red}` : `1px solid ${planColor}33`, boxShadow: "0 18px 45px rgba(233,30,99,.12)", display: "flex", flexDirection: "column", height: "100%" }}>
                       <div style={{ height: 200, overflow: "hidden", position: "relative", flexShrink: 0 }}>
                         {plan.image ? (
                           <img src={plan.image} alt={plan.name} style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "center", display: "block" }} />
@@ -6616,7 +6666,7 @@ const OffersPage = ({ navigate }: { navigate: (p: string) => void }) => {
                 const discount = hasDiscount ? Math.round((1 - after / before) * 100) : null;
                 const packageColor = PLAN_COLORS[i % PLAN_COLORS.length];
                 return (
-                  <div key={pkg.id} className="card card-hover" style={{ padding: 0, overflow: "hidden", border: `1px solid ${packageColor}33`, boxShadow: "0 18px 45px rgba(233,30,99,.12)", display: "flex", flexDirection: "column", height: "100%" }}>
+                  <div key={pkg.id} className="card card-hover" style={{ padding: 0, overflow: "hidden", border: coachState?.highlightedItems.membership?.includes(pkg.id) ? `3px solid ${C.red}` : `1px solid ${packageColor}33`, boxShadow: "0 18px 45px rgba(233,30,99,.12)", display: "flex", flexDirection: "column", height: "100%" }}>
                     {/* Full-bleed image */}
                     <div style={{ height: 200, overflow: "hidden", position: "relative", flexShrink: 0 }}>
                       {pkg.image ? (
@@ -7065,7 +7115,7 @@ const SchedulePage = () => {
 
   return (
     <div>
-      <section style={{ background: `linear-gradient(135deg, #FFE0EC, ${C.bg})`, padding: "48px 0 32px" }}>
+      <section id="classes" style={{ background: `linear-gradient(135deg, #FFE0EC, ${C.bg})`, padding: "48px 0 32px", scrollMarginTop: 120 }}>
         <div className="container">
           <h1 style={{ fontSize: viewportWidth() < 768 ? 30 : 40, fontWeight: 900, color: C.white, marginBottom: 8 }}>
             {t("الجدول الأسبوعي", "Weekly Schedule")}
@@ -7393,7 +7443,7 @@ function giftCampaignRewardLabel(c: { rewardType: string; rewardWalletAmount: nu
   return "منتج مجاني";
 }
 
-const ShopPage = ({ navigate }: { navigate: (p: string) => void }) => {
+const ShopPage = ({ navigate, coachState }: { navigate: (p: string) => void; coachState?: CoachVisualState }) => {
   const t = useT();
   const { lang } = useLang();
   const wishlist = useWishlist();
@@ -7447,6 +7497,18 @@ const ShopPage = ({ navigate }: { navigate: (p: string) => void }) => {
     setCat(allLabel);
   }, [allLabel]);
 
+  useEffect(() => {
+    if (coachState?.actionSource !== "ai_coach") return;
+    const filters = coachState.productFilters;
+    setSearch(filters.searchTerm ?? "");
+    if (filters.categoryId) {
+      const category = categories.find((item) => item.key === filters.categoryId || item.label === filters.categoryId);
+      if (category) setCat(category.label);
+    } else {
+      setCat(allLabel);
+    }
+  }, [allLabel, categories, coachState?.actionSource, coachState?.productFilters]);
+
   // Reset "show all" when category or search changes
   useEffect(() => { setShowAllShopProducts(false); }, [cat, search]);
 
@@ -7473,7 +7535,15 @@ const ShopPage = ({ navigate }: { navigate: (p: string) => void }) => {
       p.cat.toLowerCase().includes(term) ||
       (p.sizes ?? []).some((size) => size.toLowerCase().includes(term))
     );
+  }).filter((p) => {
+    const requestedIds = coachState?.productFilters.ids ?? [];
+    return requestedIds.length === 0 || requestedIds.includes(p.id ?? "");
   });
+  const coachSorted = coachState?.productFilters.sort === "price_asc"
+    ? [...filtered].sort((a, b) => a.price - b.price)
+    : coachState?.productFilters.sort === "price_desc"
+      ? [...filtered].sort((a, b) => b.price - a.price)
+      : filtered;
 
   const recommended = search.trim()
     ? [...products]
@@ -7587,8 +7657,8 @@ const ShopPage = ({ navigate }: { navigate: (p: string) => void }) => {
 
           {/* ── All Products ── */}
           {(() => {
-            const shownFiltered = showAllShopProducts ? filtered : filtered.slice(0, SHOP_INITIAL);
-            const hasMoreShop = filtered.length > SHOP_INITIAL && !showAllShopProducts;
+            const shownFiltered = showAllShopProducts ? coachSorted : coachSorted.slice(0, SHOP_INITIAL);
+            const hasMoreShop = coachSorted.length > SHOP_INITIAL && !showAllShopProducts;
             return (
               <>
                 <div id="shop-products" style={{ display: "grid", gridTemplateColumns: shopGridCols, gap: shopGap, scrollMarginTop: 120 }}>
@@ -7602,11 +7672,11 @@ const ShopPage = ({ navigate }: { navigate: (p: string) => void }) => {
                       onMouseEnter={e => { const b = e.currentTarget as HTMLButtonElement; b.style.background = C.redText; b.style.color = "#fff"; }}
                       onMouseLeave={e => { const b = e.currentTarget as HTMLButtonElement; b.style.background = "transparent"; b.style.color = C.redText; }}
                     >
-                      {t(`عرض المزيد (${filtered.length - SHOP_INITIAL}+)`, `Show more (${filtered.length - SHOP_INITIAL}+)`)}
+                      {t(`عرض المزيد (${coachSorted.length - SHOP_INITIAL}+)`, `Show more (${coachSorted.length - SHOP_INITIAL}+)`)}
                     </button>
                   </div>
                 )}
-                {filtered.length === 0 && (
+                {coachSorted.length === 0 && (
                   <div style={{ textAlign: "center", padding: "48px 0", color: C.gray }}>
                     <div style={{ fontSize: 40, marginBottom: 12 }}>🔍</div>
                     <p style={{ fontSize: 16 }}>{t("لا توجد منتجات مطابقة", "No matching products")}</p>
@@ -9247,7 +9317,7 @@ const AccountPage = ({ navigate }: { navigate: (p: string) => void }) => {
 };
 
 // ─── TRAINERS PAGE ────────────────────────────────────────────────────────────
-const TrainersPage = ({ navigate, summary }: { navigate: (p: string) => void; summary: UserSummary | null }) => {
+const TrainersPage = ({ navigate, summary, coachState }: { navigate: (p: string) => void; summary: UserSummary | null; coachState?: CoachVisualState }) => {
   const { lang } = useLang();
   const t = useT();
   const _w = useWindowWidth();
@@ -9288,6 +9358,11 @@ const TrainersPage = ({ navigate, summary }: { navigate: (p: string) => void; su
   const subtitle = lang === "en" ? pageContent.subtitleEn ?? pageContent.subtitle : pageContent.subtitle;
   const description = lang === "en" ? pageContent.descriptionEn ?? pageContent.description : pageContent.description;
   const highlight = lang === "en" ? pageContent.highlightEn ?? pageContent.highlight : pageContent.highlight;
+  const displayedTrainers = useMemo(() => {
+    const filter = coachState?.trainerFilter;
+    if (!filter || (filter.ids.length === 0 && !filter.specialty)) return trainers;
+    return trainers.filter((trainer) => filter.ids.length ? filter.ids.includes(trainer.id) : trainer.specialty.toLowerCase().includes(filter.specialty?.toLowerCase() ?? ""));
+  }, [coachState?.trainerFilter, trainers]);
 
   return (
     <div>
@@ -9303,8 +9378,8 @@ const TrainersPage = ({ navigate, summary }: { navigate: (p: string) => void; su
       <section className="section">
         <div className="container">
           <div id="trainers-list" style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 24, scrollMarginTop: 120 }}>
-            {trainers.map((tr, index) => (
-              <div key={tr.id} data-tour={index === 0 ? "first-trainer-card" : undefined} className="card card-hover" style={{ padding: 0, overflow: "hidden", textAlign: "center", scrollMarginTop: 120 }}>
+            {displayedTrainers.map((tr, index) => (
+              <div key={tr.id} data-tour={index === 0 ? "first-trainer-card" : undefined} className="card card-hover" style={{ padding: 0, overflow: "hidden", textAlign: "center", scrollMarginTop: 120, outline: coachState?.highlightedItems.trainer?.includes(tr.id) ? `3px solid ${C.red}` : undefined }}>
                 {/* Photo */}
                 <div style={{ height: 230, cursor: "pointer", position: "relative", overflow: "hidden" }} onClick={() => setTrainerDetailModal(tr)}>
                   {tr.image ? (
@@ -10180,6 +10255,8 @@ export default function App({ initialHomeData, hydrationDisable }: { initialHome
   const { lang } = useLang();
   const [, setViewportVersion] = useState(0);
   const [page, setPage] = useState("home");
+  const [coachVisualState, setCoachVisualState] = useState<CoachVisualState>(emptyCoachVisualState);
+  const [coachAnnouncement, setCoachAnnouncement] = useState("");
   const [summary, setSummary] = useState<UserSummary | null>(null);
   const [authDiagnosticMounted, setAuthDiagnosticMounted] = useState(false);
   useEffect(() => {
@@ -10203,7 +10280,7 @@ export default function App({ initialHomeData, hydrationDisable }: { initialHome
     if (HYDRATION_AUTH_DEBUG && hydrationDisable) console.debug("[Hydration isolation]", { disabledSection: hydrationDisable });
   }, [hydrationDisable]);
   const navigating = useRef(false);
-  const pendingScrollTarget = useRef<"shop-products" | "trainers-list" | null>(null);
+  const pendingScrollTarget = useRef<string | null>(null);
   const tourFrameRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -10355,7 +10432,7 @@ export default function App({ initialHomeData, hydrationDisable }: { initialHome
     return () => window.removeEventListener("fitzone-cart-updated", syncCart);
   }, []);
 
-  const navigate = (p: string, scrollTarget?: "shop-products" | "trainers-list") => {
+  const navigate = (p: string, scrollTarget?: string) => {
     const accountTabs: Record<string, string> = {
       account: "profile",
       wallet: "wallet",
@@ -10395,6 +10472,97 @@ export default function App({ initialHomeData, hydrationDisable }: { initialHome
     return () => window.removeEventListener("fitzone:ai-coach-navigate", handleCoachNavigation);
   }, [navigate]);
 
+  useEffect(() => {
+    const isTyping = () => {
+      const active = document.activeElement as HTMLElement | null;
+      return active?.tagName === "INPUT" || active?.tagName === "TEXTAREA" || active?.isContentEditable;
+    };
+    const emitResult = (result: CoachUiActionResult) =>
+      window.dispatchEvent(new CustomEvent(COACH_UI_ACTION_RESULT_EVENT, { detail: result }));
+
+    const waitForSection = (sectionId: string, requestId: string) => {
+      let safetyTimeout: number | null = null;
+      const finish = (status: CoachUiActionResult["status"], completed: boolean) => {
+        observer.disconnect();
+        if (safetyTimeout !== null) window.clearTimeout(safetyTimeout);
+        setCoachVisualState((current) => current.pendingSectionId === sectionId ? { ...current, pendingSectionId: null } : current);
+        if (completed) setCoachAnnouncement(`تم فتح قسم ${sectionId}.`);
+        emitResult({ requestId, status, completed });
+      };
+      const reveal = () => {
+        const target = document.getElementById(sectionId);
+        if (!target) return false;
+        observer.disconnect();
+        requestAnimationFrame(() => {
+          target.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+          if (!isTyping()) {
+            const heading = target.querySelector<HTMLElement>("h1, h2, h3, [tabindex]") ?? target;
+            if (!heading.hasAttribute("tabindex")) heading.setAttribute("tabindex", "-1");
+            heading.focus({ preventScroll: true });
+          }
+          finish("ui_action_completed", true);
+        });
+        return true;
+      };
+      const observer = new MutationObserver(reveal);
+      if (!reveal()) {
+        observer.observe(document.body, { childList: true, subtree: true });
+        // Safety timeout only: actual navigation is driven by the render/observer above.
+        safetyTimeout = window.setTimeout(() => finish("section_not_found", false), 3_000);
+      }
+    };
+
+    const handleCoachActions = (event: Event) => {
+      const detail = (event as CustomEvent<{ requestId?: string; batch?: unknown }>).detail;
+      const requestId = detail?.requestId;
+      const batch = parseCoachUiActionBatch(detail?.batch);
+      if (!requestId || !batch) {
+        if (requestId) emitResult({ requestId, status: "navigation_blocked", completed: false });
+        return;
+      }
+
+      let targetPage: string | null = null;
+      let targetSection: string | null = null;
+      let actionFailed = false;
+      setCoachVisualState((previous) => {
+        let next: CoachVisualState = { ...previous, actionSource: "ai_coach", highlightedItems: { ...previous.highlightedItems } };
+        for (const action of batch.actions) {
+          switch (action.type) {
+            case "clearPreviousCoachState":
+              next = { ...next, highlightedItems: {}, openItemId: null };
+              break;
+            case "navigateToPage": targetPage = action.page; break;
+            case "openSection":
+            case "scrollToSection": targetSection = action.sectionId; next.pendingSectionId = action.sectionId; break;
+            case "setGoalFilter": next.selectedGoalId = action.goalId; next.activeDomain = "goals"; break;
+            case "setMembershipResults": next.membershipResultIds = action.membershipIds; next.membershipSort = action.sort ?? null; next.activeDomain = "memberships"; break;
+            case "setTrainerFilter": next.trainerFilter = { ids: action.trainerIds, specialty: action.specialty ?? null }; next.activeDomain = "trainers"; break;
+            case "setClassFilter": next.classFilter = { ids: action.classIds ?? [], trialOnly: action.trialOnly ?? false, date: action.date ?? null }; next.activeDomain = "classes"; break;
+            case "setProductFilters": next.productFilters = { ids: action.productIds ?? [], searchTerm: action.searchTerm ?? null, categoryId: action.categoryId ?? null, sort: action.sort ?? null }; next.activeDomain = "products"; break;
+            case "highlightItems": next.highlightedItems[action.itemType] = action.ids; break;
+            case "openItemDetails": next.openItemId = action.itemId; break;
+            default: actionFailed = true;
+          }
+        }
+        return next;
+      });
+
+      if (actionFailed || (targetSection && !COACH_SECTION_IDS.includes(targetSection))) {
+        emitResult({ requestId, status: "navigation_blocked", completed: false });
+        return;
+      }
+      if (targetPage) navigate(targetPage, targetSection ?? undefined);
+      if (targetSection) {
+        waitForSection(targetSection, requestId);
+      } else {
+        emitResult({ requestId, status: "ui_action_completed", completed: true });
+      }
+    };
+
+    window.addEventListener(COACH_UI_ACTION_EVENT, handleCoachActions);
+    return () => window.removeEventListener(COACH_UI_ACTION_EVENT, handleCoachActions);
+  }, [navigate]);
+
   const navigateForTour = useCallback((tourPage: "memberships" | "classes" | "trainers" | "shop" | null) => {
     if (!tourPage) return;
     navigating.current = true;
@@ -10429,8 +10597,8 @@ export default function App({ initialHomeData, hydrationDisable }: { initialHome
     classes: <ClassesPage navigate={navigate} />,
     classDetail: <ClassDetailPage navigate={navigate} />,
     schedule: <SchedulePage />,
-    offers: <OffersPage navigate={navigate} />,
-    shop: storeEnabled ? <ShopPage navigate={navigate} /> : <HomePage navigate={navigate} summary={summary} storeEnabled={storeEnabled} initialHomeData={initialHomeData} diagnosticMounted={authDiagnosticMounted} />,
+    offers: <OffersPage navigate={navigate} coachState={coachVisualState} />,
+    shop: storeEnabled ? <ShopPage navigate={navigate} coachState={coachVisualState} /> : <HomePage navigate={navigate} summary={summary} storeEnabled={storeEnabled} initialHomeData={initialHomeData} diagnosticMounted={authDiagnosticMounted} />,
     productDetail: storeEnabled ? <ProductDetailPage navigate={navigate} walletBalance={summary?.walletBalance ?? 0} /> : <HomePage navigate={navigate} summary={summary} storeEnabled={storeEnabled} initialHomeData={initialHomeData} diagnosticMounted={authDiagnosticMounted} />,
     cart: storeEnabled ? <CartPage navigate={navigate} summary={summary} /> : <HomePage navigate={navigate} summary={summary} storeEnabled={storeEnabled} initialHomeData={initialHomeData} diagnosticMounted={authDiagnosticMounted} />,
     checkout: storeEnabled ? <CartPage navigate={navigate} summary={summary} /> : <HomePage navigate={navigate} summary={summary} storeEnabled={storeEnabled} initialHomeData={initialHomeData} diagnosticMounted={authDiagnosticMounted} />,
@@ -10438,7 +10606,7 @@ export default function App({ initialHomeData, hydrationDisable }: { initialHome
     rewards: <RedirectToAccountTab tab="wallet" />,
     referral: <RedirectToAccountTab tab="wallet" />,
     account: <RedirectToAccountTab tab="profile" />,
-    trainers: <TrainersPage navigate={navigate} summary={summary} />,
+    trainers: <TrainersPage navigate={navigate} summary={summary} coachState={coachVisualState} />,
     partners: <PartnersPage navigate={navigate} summary={summary} />,
     blog: <BlogPage />,
     contact: <ContactPage />,
@@ -10466,12 +10634,13 @@ export default function App({ initialHomeData, hydrationDisable }: { initialHome
         diagnosticMounted={authDiagnosticMounted}
         hydrationDisable={hydrationDisable}
       />
-      <main>
+      <main data-ai-coach-domain={coachVisualState.activeDomain ?? undefined} data-ai-coach-source={coachVisualState.actionSource ?? undefined}>
+        <CoachAccessibilityAnnouncer announcement={coachAnnouncement} />
         {/* MembershipsPage is always mounted so subscription modals work from any page.
             When hidden, use a 0×0 absolute container so fixed-position modals still
             render and receive pointer events (display:none blocks them). */}
         <div style={page !== "memberships" ? { position: "absolute", width: 0, height: 0, overflow: "hidden" } : {}}>
-          <MembershipsPage navigate={navigate} summary={summary} />
+          <MembershipsPage navigate={navigate} summary={summary} coachState={coachVisualState} />
         </div>
         {page !== "memberships" && (pages[page as keyof typeof pages] || pages.home)}
       </main>
@@ -10479,7 +10648,7 @@ export default function App({ initialHomeData, hydrationDisable }: { initialHome
       <BottomNav currentPage={page} navigate={navigate} cartCount={cartCount} storeEnabled={storeEnabled} />
       {hydrationDisable !== "home-widgets" && <StoreGiftToast />}
       {hydrationDisable !== "tour" && tourPromptOpen && (
-        <aside aria-live="polite" style={{ position: "fixed", zIndex: 79, right: 20, bottom: 104, width: "min(340px, calc(100vw - 40px))", background: "#fff", border: `1px solid ${C.border}`, borderRadius: 16, boxShadow: "0 14px 36px rgba(26,8,18,.16)", padding: "16px 18px" }}>
+        <aside role="dialog" aria-modal="false" style={{ position: "fixed", zIndex: 79, right: 20, bottom: 104, width: "min(340px, calc(100vw - 40px))", background: "#fff", border: `1px solid ${C.border}`, borderRadius: 16, boxShadow: "0 14px 36px rgba(26,8,18,.16)", padding: "16px 18px" }}>
           <button type="button" onClick={dismissTourPrompt} aria-label={lang === "en" ? "Close" : "إغلاق"} style={{ position: "absolute", top: 8, [lang === "en" ? "right" : "left"]: 10, border: 0, background: "transparent", color: C.gray, fontSize: 20, lineHeight: 1, cursor: "pointer" }}>×</button>
           <strong style={{ display: "block", color: C.white, fontSize: 16, marginBottom: 6 }}>{lang === "en" ? "New here?" : "جديدة هنا؟"}</strong>
           <p style={{ color: C.grayLight, fontSize: 13, lineHeight: 1.7, marginBottom: 12 }}>{lang === "en" ? "Take a quick tour and discover FitZone’s key features." : "خدي جولة سريعة وتعرفي على أهم مميزات FitZone."}</p>
@@ -10487,7 +10656,7 @@ export default function App({ initialHomeData, hydrationDisable }: { initialHome
             <button type="button" onClick={openTour} style={{ border: 0, borderRadius: 8, background: C.redText, color: "#fff", padding: "8px 12px", font: "700 12px inherit", cursor: "pointer" }}>{lang === "en" ? "Start tour" : "ابدئي الجولة"}</button>
             <button type="button" onClick={dismissTourPrompt} style={{ border: `1px solid ${C.redText}`, borderRadius: 8, background: "#fff", color: C.redText, padding: "8px 12px", font: "700 12px inherit", cursor: "pointer" }}>{lang === "en" ? "Not now" : "مش دلوقتي"}</button>
           </div>
-          <style>{`@media(max-width:767px){aside[aria-live="polite"]{right:20px!important;bottom:calc(160px + env(safe-area-inset-bottom,0px))!important;}}`}</style>
+          <style>{`@media(max-width:767px){aside[role="dialog"]{right:20px!important;bottom:calc(160px + env(safe-area-inset-bottom,0px))!important;}}`}</style>
         </aside>
       )}
       {hydrationDisable !== "tour" && tourOpen && <FitZoneTour onNavigate={navigateForTour} onFinishNavigate={finishTourAt} onClose={() => setTourOpen(false)} />}

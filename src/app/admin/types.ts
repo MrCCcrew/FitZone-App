@@ -596,6 +596,13 @@ export interface ChatKnowledgeEntry {
   answer: string;
   priority: number;
   active: boolean;
+  isMandatory?: boolean;
+  allowParaphrasing?: boolean;
+  validFrom?: string | null;
+  validUntil?: string | null;
+  lastReviewedAt?: string | null;
+  sourceType?: string;
+  status?: string;
   updatedAt: string;
 }
 

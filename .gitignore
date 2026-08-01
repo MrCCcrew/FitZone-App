@@ -62,3 +62,8 @@ next-env.d.ts
 *.tar.gz
 *.sql.gz
 /root/backups/
+
+# Local development artifacts
+hydration-dev.err.log
+hydration-dev.out.log
+test-results/
