@@ -66,7 +66,7 @@ describe("AI Coach read-only tool registry", () => {
 
   it("passes an empty search term for membership list questions", async () => {
     await getCoachToolContext({ intent: "pricing", message: "إيه أسعار الاشتراكات؟", lang: "ar", userId: null });
-    expect(mocks.memberships).toHaveBeenCalledWith("");
+    expect(mocks.memberships).toHaveBeenCalledWith("", { sort: undefined, duration: undefined });
   });
 
   it("passes only the product subject to product search", async () => {

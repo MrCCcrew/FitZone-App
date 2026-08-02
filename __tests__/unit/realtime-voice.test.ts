@@ -30,11 +30,12 @@ describe("Realtime voice session", () => {
     vi.stubGlobal("fetch", fetchMock);
     const result = await openAiRealtimeProvider.createSession({ sessionId: "session-12345678", lang: "ar", voice: "cedar" });
     const [, request] = fetchMock.mock.calls[0] as [string, RequestInit];
-    const body = JSON.parse(String(request.body)) as { session: { tools: Array<{ name: string }>; tracing: unknown; model: string; audio: { output: { voice: string } }; reasoning: { effort: string }; instructions: string } };
+    const body = JSON.parse(String(request.body)) as { session: { tools: Array<{ name: string }>; tracing: unknown; model: string; audio: { input: { turn_detection: Record<string, unknown> }; output: { voice: string } }; reasoning: { effort: string }; instructions: string } };
     expect(result).toEqual(expect.objectContaining({ token: "ephemeral-secret", model: "gpt-realtime-2", voice: "cedar" }));
     expect(JSON.stringify(result)).not.toContain("server-only-key");
     expect(body.session.tracing).toBeNull();
     expect(body.session.audio.output.voice).toBe("cedar");
+    expect(body.session.audio.input.turn_detection).toEqual({ type: "server_vad", threshold: 0.25, prefix_padding_ms: 500, silence_duration_ms: 900, create_response: true, interrupt_response: true });
     expect(body.session.reasoning.effort).toBe("low");
     expect(body.session.instructions).toMatch(/FitZone/);
     expect(body.session.tools.map((tool) => tool.name)).toEqual(realtimeToolDefinitions.map(([name]) => name));

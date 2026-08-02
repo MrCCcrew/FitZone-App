@@ -5,6 +5,7 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["__tests__/**/*.test.ts"],
+    setupFiles: ["__tests__/integration/openai-fetch-mock.ts"],
     coverage: {
       provider: "v8",
       reporter: ["text", "html"],

@@ -9,7 +9,7 @@ describe("multi-stage coach understanding", () => {
   it.each(pricing)("understands membership pricing: %s", async (message) => {
     const result = await understandCoachMessage(message, "ar");
     expect(["membership_pricing", "membership_lookup"]).toContain(result.intent);
-    expect(result.allowedTools).toEqual(["searchMemberships"]);
+    expect(result.allowedTools).toEqual(message === pricing[2] ? ["searchPackages"] : ["searchMemberships"]);
   });
   it.each(classes)("understands class schedule: %s", async (message) => {
     const result = await understandCoachMessage(message, "ar");

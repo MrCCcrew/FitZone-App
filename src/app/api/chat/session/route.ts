@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { initializeChatSession, serializeChatSession } from "@/lib/chatbot";
 import { applyRateLimit, getClientIp } from "@/lib/rate-limit";
 import { coachSessionCookie, createCoachSessionCookie, ownsCoachSession } from "@/lib/ai-coach/session-guard";
+import { getCurrentAppUser } from "@/lib/app-session";
 
 export async function GET(req: NextRequest) {
   try {
@@ -49,10 +50,12 @@ export async function POST(req: Request) {
 
     const body = await req.json().catch(() => ({}));
     const lang = body && body.lang === "en" ? "en" : "ar";
+    const user = await getCurrentAppUser();
     const session = await db.chatSession.create({
       data: {
         status: "open",
         mode: "bot",
+        userId: user?.id ?? null,
       },
     });
 
