@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { randomBytes } from "crypto";
 
 const db = new PrismaClient();
 
@@ -112,9 +113,10 @@ async function main() {
   ]);
 
   // ─── Users ────────────────────────────────────────────────────────────────────
-  const adminHash  = await bcrypt.hash("Admin123!", 10);
-  const memberHash = await bcrypt.hash("Member123!", 10);
-  const ahmed2Hash = await bcrypt.hash("Ahmed123!", 10);
+  const seedPassword = (name: string) => process.env[name] ?? randomBytes(32).toString("hex");
+  const adminHash  = await bcrypt.hash(seedPassword("SEED_ADMIN_PASSWORD"), 10);
+  const memberHash = await bcrypt.hash(seedPassword("SEED_MEMBER_PASSWORD"), 10);
+  const ahmed2Hash = await bcrypt.hash(seedPassword("SEED_AHMED_PASSWORD"), 10);
 
   const [adminUser, memberUser, ahmed2User] = await Promise.all([
     db.user.create({ data: { name: "المدير العام", email: "admin@fitzone.eg", password: adminHash, role: "admin", phone: "01000000000" } }),
@@ -195,9 +197,7 @@ async function main() {
   console.log("✅ تم تحميل البيانات بنجاح!");
   console.log("─────────────────────────────────────────");
   console.log("👤 المستخدمون:");
-  console.log("   admin@fitzone.eg     / Admin123!   (مدير)");
-  console.log("   yasmine@fitzone.eg   / Member123!  (عضو VIP)");
-  console.log("   ahmed@fitzone.eg     / Ahmed123!   (عضو أساسي)");
+  console.log("   Seed account passwords are supplied only through SEED_*_PASSWORD environment variables.");
   console.log("─────────────────────────────────────────");
   console.log(`📦 ${await db.membership.count()} باقات`);
   console.log(`🏋️  ${await db.class.count()} كلاسات`);

@@ -77,7 +77,7 @@ test.describe("Login page (/login) — structure and validation", () => {
 
   test("submitting fake credentials shows an error message (mocked API)", async ({ page }) => {
     await page.locator('input[type="email"]').fill("fake@notreal.test");
-    await page.locator('input[type="password"]').fill("wrongpassword123");
+    await page.locator('input[type="password"]').fill(String(Date.now()));
     await page.getByRole("button", { name: /دخول|تسجيل|login/i }).first().click();
 
     // Wait for mocked API response to render
