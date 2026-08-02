@@ -42,9 +42,9 @@ describe("Realtime voice session", () => {
     expect(body.session.tools.every((tool) => !/delete|update|payment|sql/i.test(tool.name))).toBe(true);
   });
 
-  it("defaults to marin and rejects unapproved voices", () => {
+  it("defaults Realtime to marin but requires an explicit approved TTS voice", () => {
     delete process.env.AI_COACH_REALTIME_VOICE; delete process.env.AI_COACH_TTS_VOICE;
-    expect(configuredCoachVoice()).toBe("marin"); expect(configuredTtsVoice()).toBe("marin");
+    expect(configuredCoachVoice()).toBe("marin"); expect(configuredTtsVoice()).toBeNull();
     expect(configuredCoachVoice("cedar")).toBe("cedar"); expect(configuredCoachVoice("unknown")).toBe("marin");
   });
 });
@@ -69,6 +69,13 @@ describe("TTS spoken text", () => {
     await openAiTtsProvider.synthesize({ text: "أهلًا", voice: "marin", speed: 1 });
     const [, request] = fetchMock.mock.calls[0] as [string, RequestInit]; const body = JSON.parse(String(request.body));
     expect(body).toEqual(expect.objectContaining({ voice: "marin", format: "mp3" }));
+  });
+
+  it("does not silently replace a missing TTS voice", () => {
+    delete process.env.AI_COACH_TTS_VOICE;
+    expect(configuredTtsVoice()).toBeNull();
+    process.env.AI_COACH_TTS_VOICE = "cedar";
+    expect(configuredTtsVoice()).toBe("cedar");
   });
 
   it("uses voiceSummary and never speaks URLs", () => {

@@ -10,6 +10,7 @@ import { assertActiveVoiceToolSession, voiceQuotaEnabled, VoiceQuotaError } from
 
 const names = ["searchMemberships", "searchPackages", "searchOffers", "searchProducts", "searchClassSchedule", "getAccountSummary", "getPageLink", "searchTrainers", "searchGoals", "searchTrialClasses", "getNutritionDoctor", "getSiteOverview"] as const;
 const schema = z.object({ sessionId: z.string().min(8).max(128), voiceSessionId: z.string().length(64).optional(), name: z.enum(names), arguments: z.object({ query: z.string().trim().max(1800).optional(), pageId: z.string().trim().max(64).optional() }).strict(), lang: z.enum(["ar", "en"]).default("ar") });
+const fallbackQuery: Partial<Record<(typeof names)[number], string>> = { searchMemberships: "الاشتراكات", searchPackages: "الباقات", searchOffers: "العروض", searchProducts: "منتجات المتجر", searchClassSchedule: "مواعيد الكلاسات", searchTrainers: "المدربات", searchGoals: "الأهداف", searchTrialClasses: "الكلاسات التجريبية" };
 export const isForbiddenRealtimeToolRequest = (query: string) => /(?:غي[ّ]?ر(?:ي)?|عد[ّ]?ل|احذف|امسح|ادفع|نف[ّ]?ذ|change|edit|delete|remove|pay|execute)/i.test(query) && /(?:رصيدي|رصيد|نقاطي|نقاط|اشتراكي|اشتراك|عضويتي|عضوية|price|balance|points|membership|sql)/i.test(query);
 
 export function realtimeVoiceSummary(content: string, metadata: string | null) {
@@ -23,7 +24,8 @@ export function realtimeVoiceSummary(content: string, metadata: string | null) {
 
 export async function POST(req: Request) {
   const parsed = schema.safeParse(await req.json().catch(() => null));
-  if (!parsed.success || !(await ownsCoachSession(parsed.data.sessionId))) return NextResponse.json({ error: "Tool unavailable." }, { status: 403 });
+  if (!parsed.success) return NextResponse.json({ error: "Tool unavailable.", ...(process.env.AI_COACH_VOICE_DEBUG_ENABLED === "true" ? { errorCode: "INVALID_ARGUMENTS" } : {}) }, { status: 400 });
+  if (!(await ownsCoachSession(parsed.data.sessionId))) return NextResponse.json({ error: "Tool unavailable." }, { status: 403 });
   if (voiceQuotaEnabled()) {
     const user = await getCurrentAppUser();
     if (!user || !parsed.data.voiceSessionId) return NextResponse.json({ errorCode: "VOICE_SESSION_REQUIRED" }, { status: 403 });
@@ -34,7 +36,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ errorCode }, { status: 403 });
     }
   }
-  const query = parsed.data.arguments.query || (parsed.data.name === "getPageLink" ? `افتح ${parsed.data.arguments.pageId ?? ""}` : "");
+  const query = parsed.data.arguments.query || (parsed.data.name === "getPageLink" ? `افتح ${parsed.data.arguments.pageId ?? ""}` : fallbackQuery[parsed.data.name] ?? "");
   if (!query && !["getNutritionDoctor", "getSiteOverview"].includes(parsed.data.name)) return NextResponse.json({ error: "Tool arguments invalid." }, { status: 400 });
   if (isForbiddenRealtimeToolRequest(query)) return NextResponse.json({ result: { allowed: false, answer: "مش هقدر أنفذ تعديل أو عملية حساسة من المحادثة." } });
   if (query) {

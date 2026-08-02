@@ -16,6 +16,10 @@ async function getInitialHomeData() {
 }
 
 export const metadata: Metadata = {
+  icons: {
+    icon: "/fitzone-logo-200.jpeg",
+    apple: "/fitzone-logo-200.jpeg",
+  },
   title: "FitZone | أفضل نادي سيدات في بني سويف ومصر",
   description:
     "FitZone أفضل نادي رياضي للسيدات والأطفال في بني سويف، مصر. كلاسات يوجا، زومبا، بيلاتس، باقات اشتراك بأسعار مناسبة، مدربات متخصصات، ومتجر منتجات رياضية. سجّلي الآن!",
