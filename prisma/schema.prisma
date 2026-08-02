@@ -7,6 +7,34 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum VoiceSessionStatus {
+  active
+  finalized
+}
+
+enum VoiceTerminationReason {
+  user_ended
+  quota_exhausted
+  max_duration
+  expired
+  heartbeat_timeout
+  connection_failed
+  cleanup
+  authorization_failed
+}
+
+enum KnowledgePrivacyClass {
+  STATIC
+  DYNAMIC
+  PERSONAL
+}
+
+enum KnowledgeAnswerSource {
+  ADMIN
+  TOOL_TEMPLATE
+  OPENAI_SUGGESTION
+}
+
 // ─── Auth (NextAuth v5) ───────────────────────────────────────────────────────
 
 model Account {
@@ -142,6 +170,9 @@ model User {
   freeGiftsSessions          StoreFreeGiftsSession[]
   blogPendingPosts           BlogPendingPost[]
   blogPostReviews            BlogPendingPost[]          @relation("BlogReviewer")
+  coachChatSessions          ChatSession[]              @relation("CoachChatOwner")
+  voiceMonthlyQuotas         VoiceMonthlyQuota[]        @relation("VoiceQuotaUser")
+  voiceRealtimeSessions      VoiceRealtimeSession[]     @relation("VoiceSessionUser")
 }
 
 model AuditLog {
@@ -1059,6 +1090,7 @@ model Complaint {
 
 model ChatSession {
   id                    String   @id @default(cuid())
+  userId                String?
   visitorName           String?
   visitorPhone          String?
   status                String   @default("open") // open | live | resolved
@@ -1071,8 +1103,12 @@ model ChatSession {
   updatedAt             DateTime @updatedAt
 
   assignedTo            User?       @relation("AssignedSupport", fields: [assignedToId], references: [id])
+  user                  User?       @relation("CoachChatOwner", fields: [userId], references: [id], onDelete: SetNull)
   recommendedMembership Membership? @relation(fields: [recommendedMembershipId], references: [id])
   messages              ChatMessage[]
+  voiceRealtimeSessions VoiceRealtimeSession[]
+
+  @@index([userId, createdAt])
 }
 
 model ChatMessage {
@@ -1154,8 +1190,97 @@ model ChatKnowledgeEntry {
   lastReviewedAt    DateTime?
   sourceType        String    @default("admin")
   status            String    @default("published")
+  canonicalQuestion String?   @db.Text
+  language          String    @default("ar") @db.VarChar(12)
+  privacyClass      KnowledgePrivacyClass?
+  answerSource      KnowledgeAnswerSource?
+  sourceReference   String?   @db.VarChar(500)
+  sourceVersion     String?   @db.VarChar(191)
+  confidence        Float?
+  approved          Boolean   @default(false)
+  expiresAt         DateTime?
+  lastUsedAt        DateTime?
+  usageCount        Int       @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  aliases ChatKnowledgeAlias[]
+
+  @@index([approved, privacyClass, language, expiresAt])
+}
+
+model ChatKnowledgeAlias {
+  id                     String   @id @default(cuid())
+  knowledgeEntryId       String
+  normalizedQuestion     String   @db.VarChar(500)
+  normalizedQuestionHash String   @db.Char(64)
+  language               String   @default("ar") @db.VarChar(12)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  knowledgeEntry ChatKnowledgeEntry @relation(fields: [knowledgeEntryId], references: [id], onDelete: Cascade)
+
+  @@unique([normalizedQuestionHash, language])
+  @@index([knowledgeEntryId])
+  @@index([normalizedQuestionHash, language])
+}
+
+model CoachKnowledgeSourceVersion {
+  id              String   @id @default(cuid())
+  sourceType      String   @db.VarChar(191)
+  sourceReference String   @db.VarChar(500)
+  sourceVersion   String   @db.VarChar(191)
+  updatedAt       DateTime @updatedAt
+
+  @@unique([sourceType, sourceReference])
+}
+
+model VoiceMonthlyQuota {
+  id                  String   @id @default(cuid())
+  userId              String
+  periodKey           String   @db.Char(7)
+  entitlementSeconds  Int
+  usedSeconds         Int      @default(0)
+  reservedSeconds     Int      @default(0)
+  updatedAt           DateTime @updatedAt
+  createdAt           DateTime @default(now())
+
+  user     User                   @relation("VoiceQuotaUser", fields: [userId], references: [id], onDelete: Cascade)
+  sessions VoiceRealtimeSession[]
+
+  @@unique([userId, periodKey])
+  @@index([periodKey, updatedAt])
+}
+
+model VoiceRealtimeSession {
+  id                  String                 @id @default(cuid())
+  voiceSessionId      String                 @unique @db.Char(64)
+  userId              String
+  chatSessionId       String?
+  quotaId             String
+  startedAt           DateTime               @default(now())
+  connectedAt         DateTime?
+  lastHeartbeatAt     DateTime?
+  lastActivityAt      DateTime?
+  billingCursorAt     DateTime?
+  expiresAt           DateTime
+  finalizedAt         DateTime?
+  billableSeconds     Int                    @default(0)
+  reservedSeconds     Int
+  status              VoiceSessionStatus    @default(active)
+  terminationReason   VoiceTerminationReason?
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+
+  user        User              @relation("VoiceSessionUser", fields: [userId], references: [id], onDelete: Cascade)
+  chatSession ChatSession?      @relation(fields: [chatSessionId], references: [id], onDelete: SetNull)
+  quota       VoiceMonthlyQuota @relation(fields: [quotaId], references: [id], onDelete: Restrict)
+
+  @@index([userId, status])
+  @@index([status, expiresAt])
+  @@index([status, lastHeartbeatAt])
+  @@index([quotaId, status])
+  @@index([chatSessionId, status])
 }
 
 // ─── AI Coach ─────────────────────────────────────────────────────────────────

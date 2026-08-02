@@ -48,6 +48,7 @@ import type {
   CoachStructuredReply,
 } from "@/lib/ai-coach/types";
 import { db } from "@/lib/db";
+import { findConservativeSemanticStaticKnowledge, findExactApprovedStaticKnowledge } from "@/lib/ai-coach/shared-knowledge-cache";
 
 type ChatSessionWithRelations = Awaited<ReturnType<typeof getSessionWithRelations>>;
 
@@ -314,14 +315,23 @@ async function buildDeterministicReply(args: {
   if (intent === "privacy_guard") {
     return { intent, text: lang === "en" ? "I can’t show another user’s data. I can help with your own account after you sign in." : "مقدرش أعرض بيانات أي مستخدم تاني حفاظًا على الخصوصية، لكن أقدر أساعدك في بيانات حسابك إنتِ بعد تسجيل الدخول.", facts: [], quickActions: [], sourceType: "policy_guard", confidence: 1, requiresEscalation: false, metadata: { usedTools: [], fallbackUsed: false, fallbackReason: "privacy_guard" } };
   }
+  const safetyFlags = detectSafetyFlags(userMessage);
+  if (safetyFlags.hasUrgentSymptom) {
+    return { intent: "faq", text: lang === "en" ? "Please stop exercising for now and seek urgent medical assessment, especially for chest pain, fainting, severe pain, or trouble breathing. I can’t assess emergencies in chat." : "وقفي التمرين دلوقتي واطلبي تقييم طبي عاجل، خصوصًا مع ألم صدر أو إغماء أو ألم شديد أو صعوبة في التنفس. ماينفعش أقيّم الحالات الطارئة من الشات.", facts: [], quickActions: [], sourceType: "safe_fallback", confidence: 0.95, requiresEscalation: true };
+  }
+  const isPersonalQuestion = intent === "account_summary" || /رقم.*(تليفون|هاتف)|دفع|حجز|اشتراكي|عضويتي|رصيدي|نقاطي|my (membership|account|booking|payment|phone)/i.test(userMessage);
+  if (!isPersonalQuestion) {
+    const exactSharedKnowledge = await findExactApprovedStaticKnowledge(userMessage, lang);
+    if (exactSharedKnowledge) return { intent: "faq", text: exactSharedKnowledge.answer, facts: [], quickActions: [], sourceType: "knowledge_base", confidence: exactSharedKnowledge.confidence ?? 1, metadata: { usedTools: [], fallbackUsed: false, sharedKnowledge: "exact" } };
+  }
   const resolvedToolMessage = typeof understanding?.extractedEntities.searchTerm === "string" ? understanding.extractedEntities.searchTerm : typeof understanding?.extractedEntities.className === "string" ? understanding.extractedEntities.className : understanding?.listAll ? "" : userMessage;
   const toolContext = await getCoachToolContext({ intent, message: resolvedToolMessage, lang, userId: user?.id ?? null, sort: understanding?.sort, temporalFilter: understanding?.temporalFilter.date === "tomorrow" ? { date: "tomorrow" } : undefined, catalogType: understanding?.extractedEntities.catalogType === "package" ? "package" : "membership" });
   const snapshot = toolContext.snapshot;
   const profile = snapshot.coachProfile;
   const attendance = snapshot.account.attendanceStats;
-  const safetyFlags = detectSafetyFlags(userMessage);
-  if (safetyFlags.hasUrgentSymptom) {
-    return { intent: "faq", text: lang === "en" ? "Please stop exercising for now and seek urgent medical assessment, especially for chest pain, fainting, severe pain, or trouble breathing. I can’t assess emergencies in chat." : "وقفي التمرين دلوقتي واطلبي تقييم طبي عاجل، خصوصًا مع ألم صدر أو إغماء أو ألم شديد أو صعوبة في التنفس. ماينفعش أقيّم الحالات الطارئة من الشات.", facts: [], quickActions: [], sourceType: "safe_fallback", confidence: 0.95, requiresEscalation: true };
+  if (!isPersonalQuestion) {
+    const semanticSharedKnowledge = await findConservativeSemanticStaticKnowledge(userMessage, lang);
+    if (semanticSharedKnowledge) return { intent: "faq", text: semanticSharedKnowledge.answer, facts: [], quickActions: [], sourceType: "knowledge_base", confidence: semanticSharedKnowledge.confidence ?? 0.88, metadata: { usedTools: toolContext.usedTools, fallbackUsed: false, sharedKnowledge: "semantic" } };
   }
   const knowledgeEntry = matchKnowledge(userMessage, snapshot.knowledge);
   if (intent === "account_summary" && !user?.id) {

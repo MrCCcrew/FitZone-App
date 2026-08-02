@@ -5,9 +5,11 @@ import { ownsCoachSession } from "@/lib/ai-coach/session-guard";
 import { handleCoachMessage } from "@/lib/ai-coach/engine";
 import { understandCoachMessage } from "@/lib/ai-coach/understanding";
 import { getNutritionDoctorInteractive, getSiteOverviewInteractive, searchGoalsInteractive, searchMembershipsInteractive, searchOffersInteractive, searchPackagesInteractive, searchSchedulesInteractive, searchTrainersInteractive, searchTrialClassesInteractive } from "@/lib/ai-coach/interactive-tools";
+import { getCurrentAppUser } from "@/lib/app-session";
+import { assertActiveVoiceToolSession, voiceQuotaEnabled, VoiceQuotaError } from "@/lib/ai-coach/voice/quota";
 
 const names = ["searchMemberships", "searchPackages", "searchOffers", "searchProducts", "searchClassSchedule", "getAccountSummary", "getPageLink", "searchTrainers", "searchGoals", "searchTrialClasses", "getNutritionDoctor", "getSiteOverview"] as const;
-const schema = z.object({ sessionId: z.string().min(8).max(128), name: z.enum(names), arguments: z.object({ query: z.string().trim().max(1800).optional(), pageId: z.string().trim().max(64).optional() }).strict(), lang: z.enum(["ar", "en"]).default("ar") });
+const schema = z.object({ sessionId: z.string().min(8).max(128), voiceSessionId: z.string().length(64).optional(), name: z.enum(names), arguments: z.object({ query: z.string().trim().max(1800).optional(), pageId: z.string().trim().max(64).optional() }).strict(), lang: z.enum(["ar", "en"]).default("ar") });
 export const isForbiddenRealtimeToolRequest = (query: string) => /(?:غي[ّ]?ر(?:ي)?|عد[ّ]?ل|احذف|امسح|ادفع|نف[ّ]?ذ|change|edit|delete|remove|pay|execute)/i.test(query) && /(?:رصيدي|رصيد|نقاطي|نقاط|اشتراكي|اشتراك|عضويتي|عضوية|price|balance|points|membership|sql)/i.test(query);
 
 export function realtimeVoiceSummary(content: string, metadata: string | null) {
@@ -22,6 +24,16 @@ export function realtimeVoiceSummary(content: string, metadata: string | null) {
 export async function POST(req: Request) {
   const parsed = schema.safeParse(await req.json().catch(() => null));
   if (!parsed.success || !(await ownsCoachSession(parsed.data.sessionId))) return NextResponse.json({ error: "Tool unavailable." }, { status: 403 });
+  if (voiceQuotaEnabled()) {
+    const user = await getCurrentAppUser();
+    if (!user || !parsed.data.voiceSessionId) return NextResponse.json({ errorCode: "VOICE_SESSION_REQUIRED" }, { status: 403 });
+    try {
+      await assertActiveVoiceToolSession({ voiceSessionId: parsed.data.voiceSessionId, userId: user.id, chatSessionId: parsed.data.sessionId });
+    } catch (error) {
+      const errorCode = error instanceof VoiceQuotaError ? error.code : "VOICE_SESSION_UNAVAILABLE";
+      return NextResponse.json({ errorCode }, { status: 403 });
+    }
+  }
   const query = parsed.data.arguments.query || (parsed.data.name === "getPageLink" ? `افتح ${parsed.data.arguments.pageId ?? ""}` : "");
   if (!query && !["getNutritionDoctor", "getSiteOverview"].includes(parsed.data.name)) return NextResponse.json({ error: "Tool arguments invalid." }, { status: 400 });
   if (isForbiddenRealtimeToolRequest(query)) return NextResponse.json({ result: { allowed: false, answer: "مش هقدر أنفذ تعديل أو عملية حساسة من المحادثة." } });

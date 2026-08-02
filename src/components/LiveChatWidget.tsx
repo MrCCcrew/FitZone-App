@@ -63,6 +63,107 @@ export function createRealtimeToolOutputEvents(callId: string, result: unknown) 
 
 export const shouldShowMessageTts = (realtimeCallActive: boolean) => !realtimeCallActive;
 
+export type VoicePlatform = { isIOS: boolean; isSafari: boolean; isStandalonePWA: boolean };
+
+export function detectVoicePlatform(userAgent = typeof navigator === "undefined" ? "" : navigator.userAgent, standalone = typeof navigator !== "undefined" && Boolean((navigator as Navigator & { standalone?: boolean }).standalone)) : VoicePlatform {
+  const isIOS = /iPad|iPhone|iPod/.test(userAgent) || (/Macintosh/.test(userAgent) && typeof navigator !== "undefined" && navigator.maxTouchPoints > 1);
+  const isSafari = isIOS && /Safari/.test(userAgent) && !/CriOS|FxiOS|EdgiOS|OPiOS/.test(userAgent);
+  const isStandalonePWA = standalone || (typeof window !== "undefined" && window.matchMedia("(display-mode: standalone)").matches);
+  return { isIOS, isSafari, isStandalonePWA };
+}
+
+export const realtimeMicrophoneConstraints: MediaTrackConstraints = {
+  echoCancellation: true,
+  noiseSuppression: true,
+  autoGainControl: true,
+  channelCount: 1,
+};
+
+export function buildAiCoachShellStyle(isMobile: boolean): CSSProperties {
+  return {
+    position: "fixed",
+    top: isMobile ? 0 : undefined,
+    bottom: isMobile ? 0 : 20,
+    insetInlineStart: isMobile ? 0 : undefined,
+    insetInlineEnd: isMobile ? 0 : 20,
+    zIndex: 1000,
+    width: isMobile ? "100vw" : "clamp(360px, 30vw, 460px)",
+    maxWidth: isMobile ? "100vw" : "calc(100vw - 40px)",
+    height: isMobile ? "var(--ai-chat-viewport-height, 100dvh)" : "min(720px, calc(100dvh - 40px))",
+    maxHeight: isMobile ? "none" : "calc(100dvh - 40px)",
+    minHeight: 0,
+    background: "#FFF5F8",
+    border: "1px solid #F5D0DC",
+    borderRadius: isMobile ? 0 : 24,
+    overflow: "hidden",
+    boxShadow: "0 18px 50px rgba(233,30,99,.15)",
+    display: "flex",
+    flexDirection: "column",
+  };
+}
+
+export const realtimeTurnDetection = {
+  type: "server_vad",
+  threshold: 0.25,
+  prefix_padding_ms: 500,
+  silence_duration_ms: 900,
+  create_response: true,
+  interrupt_response: true,
+} as const;
+
+// The ephemeral session already carries instructions, voice, audio output, tools, and tool_choice.
+// This event updates only VAD, while retaining the required Realtime session discriminator.
+export function buildRealtimeSessionUpdate() {
+  return {
+    type: "session.update" as const,
+    session: {
+      type: "realtime" as const,
+      audio: { input: { turn_detection: realtimeTurnDetection } },
+    },
+  };
+}
+
+type RealtimeErrorDetails = {
+  type?: string;
+  code?: string;
+  message?: string;
+  param?: string;
+};
+
+export type RealtimeErrorKind = "fatal" | "recoverable" | "tool";
+
+const realtimeEventLabels: Record<string, string> = {
+  "session.created": "session.created",
+  "session.updated": "session.updated",
+  "input_audio_buffer.speech_started": "speech_started",
+  "input_audio_buffer.speech_stopped": "speech_stopped",
+  "input_audio_buffer.committed": "committed",
+  "response.created": "response.created",
+  error: "error",
+};
+
+export function realtimeEventLabel(type?: string) {
+  return realtimeEventLabels[type ?? ""] ?? type ?? "unknown";
+}
+
+export function classifyRealtimeError(error?: RealtimeErrorDetails): RealtimeErrorKind {
+  const type = error?.type?.toLowerCase() ?? "";
+  const code = error?.code?.toLowerCase() ?? "";
+  const message = error?.message?.toLowerCase() ?? "";
+  const detail = [type, code, message, error?.param].filter(Boolean).join(" ");
+  if (type === "tool_error" || /^(tool|function_call)[_.:-]/.test(code) || /\b(tool|function) call\b/.test(message)) return "tool";
+  if (/(response.*active|already.*active|buffer.*empty|empty.*buffer|cancel.*race|already.*cancel)/.test(detail)) return "recoverable";
+  return "fatal";
+}
+
+export async function unlockIOSAudio(audio: HTMLAudioElement, contextRef: { current: AudioContext | null }) {
+  audio.muted = false;
+  audio.volume = 1;
+  if (!contextRef.current && typeof AudioContext !== "undefined") contextRef.current = new AudioContext();
+  await contextRef.current?.resume().catch(() => {});
+  await audio.play().catch(() => {});
+}
+
 type RealtimeInteractiveResult = {
   navigationTarget?: { page?: string | null; sectionId?: string | null } | null;
   data?: Array<Record<string, unknown>>;
@@ -183,9 +284,21 @@ export default function LiveChatWidget() {
   const [gymPhone, setGymPhone] = useState("");
   const voiceEnabled = process.env.NEXT_PUBLIC_AI_COACH_VOICE_ENABLED === "true";
   const realtimeEnabled = process.env.NEXT_PUBLIC_AI_COACH_REALTIME_VOICE_ENABLED === "true";
-  const [realtimeState, setRealtimeState] = useState<"idle" | "connecting" | "listening" | "thinking" | "assistant_speaking" | "error">("idle");
+  const [realtimeState, setRealtimeState] = useState<"idle" | "connecting" | "initializing" | "listening" | "thinking" | "assistant_speaking" | "error">("idle");
+  const realtimeStatusLabel = realtimeState === "connecting" || realtimeState === "initializing"
+    ? t("جاري تهيئة المكالمة…", "Initializing call…")
+    : realtimeState === "thinking"
+      ? t("بفهم سؤالك…", "Understanding…")
+      : realtimeState === "assistant_speaking"
+        ? t("برد عليك…", "Responding…")
+        : realtimeState === "error"
+          ? t("تعذر إعداد المكالمة.", "Call setup failed.")
+          : t("بسمعك…", "Listening…");
   const [autoplayBlocked, setAutoplayBlocked] = useState(false);
+  const [manualVoiceFallback, setManualVoiceFallback] = useState(false);
+  const [voiceDebug, setVoiceDebug] = useState({ platform: "", pcState: "new", iceState: "new", dataChannelState: "closed", trackState: "none", trackMuted: false, lastRealtimeEvent: "", lastErrorCode: "", lastErrorType: "" });
   const realtimeVoice = "marin" as const;
+  const voiceDebugEnabled = process.env.NEXT_PUBLIC_AI_COACH_VOICE_DEBUG_ENABLED === "true";
   const [recording, setRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
@@ -201,6 +314,16 @@ export default function LiveChatWidget() {
   const realtimePeerRef = useRef<RTCPeerConnection | null>(null);
   const realtimeStreamRef = useRef<MediaStream | null>(null);
   const realtimeAudioRef = useRef<HTMLAudioElement | null>(null);
+  const realtimeChannelRef = useRef<RTCDataChannel | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const speechStartedRef = useRef(false);
+  const vadFallbackTimerRef = useRef<number | null>(null);
+  const remoteAudioPlayAttemptRef = useRef(false);
+  const realtimeEventSequenceRef = useRef<string[]>([]);
+  const realtimeSessionReadyRef = useRef(false);
+  const realtimeSessionUpdateSentRef = useRef(false);
+  const realtimeVoiceSessionIdRef = useRef<string | null>(null);
+  const realtimeHeartbeatTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth <= 768);
@@ -208,6 +331,37 @@ export default function LiveChatWidget() {
     window.addEventListener("resize", check);
     return () => window.removeEventListener("resize", check);
   }, []);
+
+  useEffect(() => {
+    if (!open || !isMobile) return;
+    document.body.classList.add("fitzone-ai-coach-mobile-open");
+    const viewport = window.visualViewport;
+    const updateViewportHeight = () => document.documentElement.style.setProperty("--ai-chat-viewport-height", `${Math.round(viewport?.height ?? window.innerHeight)}px`);
+    updateViewportHeight();
+    viewport?.addEventListener("resize", updateViewportHeight);
+    viewport?.addEventListener("scroll", updateViewportHeight);
+    return () => {
+      document.body.classList.remove("fitzone-ai-coach-mobile-open");
+      document.documentElement.style.removeProperty("--ai-chat-viewport-height");
+      viewport?.removeEventListener("resize", updateViewportHeight);
+      viewport?.removeEventListener("scroll", updateViewportHeight);
+    };
+  }, [open, isMobile]);
+
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.hidden) return;
+      const track = realtimeStreamRef.current?.getAudioTracks()[0];
+      const peer = realtimePeerRef.current;
+      const channel = realtimeChannelRef.current;
+      if (track && (track.readyState === "ended" || peer?.connectionState === "failed" || channel?.readyState === "closed")) {
+        endRealtime();
+        setError(t("انتهت المكالمة أثناء وجود التطبيق بالخلفية. ابدئي مكالمة جديدة.", "The call ended while the app was in the background. Start a new call."));
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, [lang]);
 
   useEffect(() => {
     fetch("/api/site-content?sections=contact", { cache: "no-store" })
@@ -362,7 +516,7 @@ export default function LiveChatWidget() {
       setStatus("resolved");
     }
   }, [messages]);
-  useEffect(() => { const area = messagesAreaRef.current; if (!area) return; const nearBottom = area.scrollHeight - area.scrollTop - area.clientHeight < 96; if (nearBottom) messageEndRef.current?.scrollIntoView({ block: "end" }); }, [messages, transcribing, error]);
+  useEffect(() => { messageEndRef.current?.scrollIntoView({ block: "end", behavior: "smooth" }); }, [messages, transcribing, error, realtimeState]);
 
   const openShop = () => {
     window.dispatchEvent(new CustomEvent("fitzone:ai-coach-navigate", {
@@ -415,10 +569,35 @@ export default function LiveChatWidget() {
     }
   };
 
+  const clearRealtimeTimers = () => {
+    if (vadFallbackTimerRef.current) window.clearTimeout(vadFallbackTimerRef.current);
+    vadFallbackTimerRef.current = null;
+    if (realtimeHeartbeatTimerRef.current) window.clearInterval(realtimeHeartbeatTimerRef.current);
+    realtimeHeartbeatTimerRef.current = null;
+  };
   const endRealtime = () => {
+    const activeVoiceSessionId = realtimeVoiceSessionIdRef.current;
+    const activeChatSessionId = sessionId;
+    if (activeVoiceSessionId && activeChatSessionId) {
+      void fetch("/api/chat/voice/realtime/finalize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: activeChatSessionId, voiceSessionId: activeVoiceSessionId, reason: "user_ended" }),
+        keepalive: true,
+      }).catch(() => {});
+    }
+    realtimeVoiceSessionIdRef.current = null;
+    clearRealtimeTimers();
     realtimePeerRef.current?.close(); realtimePeerRef.current = null;
     realtimeStreamRef.current?.getTracks().forEach((track) => track.stop()); realtimeStreamRef.current = null;
-    realtimeAudioRef.current?.pause(); if (realtimeAudioRef.current) realtimeAudioRef.current.srcObject = null; realtimeAudioRef.current = null;
+    realtimeChannelRef.current = null;
+    realtimeAudioRef.current?.pause(); if (realtimeAudioRef.current) realtimeAudioRef.current.srcObject = null;
+    speechStartedRef.current = false;
+    realtimeEventSequenceRef.current = [];
+    realtimeSessionReadyRef.current = false;
+    realtimeSessionUpdateSentRef.current = false;
+    remoteAudioPlayAttemptRef.current = false;
+    setManualVoiceFallback(false);
     setRealtimeState("idle");
   };
   useEffect(() => () => { audioRef.current?.pause(); streamRef.current?.getTracks().forEach((track) => track.stop()); endRealtime(); }, []);
@@ -455,49 +634,139 @@ export default function LiveChatWidget() {
   const startRealtime = async () => {
     if (!realtimeEnabled || realtimeState !== "idle" || !window.RTCPeerConnection || !navigator.mediaDevices?.getUserMedia) { setError(t("المحادثة المباشرة مش متاحة دلوقتي، تقدري تستخدمي التسجيل أو الكتابة.", "Live voice is unavailable. Use recording or text.")); return; }
     setRealtimeState("connecting"); setError(""); stopPlayback(); stopRecording();
+    const platform = detectVoicePlatform();
+    const remoteAudio = realtimeAudioRef.current;
+    if (!remoteAudio) { setRealtimeState("error"); return; }
+    // Must happen before the first await so iOS Safari keeps the user gesture.
+    void unlockIOSAudio(remoteAudio, audioContextRef);
+    const peer = new RTCPeerConnection(); realtimePeerRef.current = peer;
+    remoteAudioPlayAttemptRef.current = false;
+    const microphonePromise = navigator.mediaDevices.getUserMedia({ audio: realtimeMicrophoneConstraints });
+    const setDebug = (values: Partial<typeof voiceDebug>) => voiceDebugEnabled && setVoiceDebug((current) => ({ ...current, ...values }));
+    realtimeEventSequenceRef.current = [];
+    realtimeSessionReadyRef.current = false;
+    realtimeSessionUpdateSentRef.current = false;
+    setDebug({ lastRealtimeEvent: "", lastErrorCode: "", lastErrorType: "" });
+    setDebug({ platform: `${platform.isIOS ? "iOS" : "other"}${platform.isSafari ? " Safari" : ""}${platform.isStandalonePWA ? " PWA" : ""}`, pcState: peer.connectionState, iceState: peer.iceConnectionState });
     try {
       const id = await ensureSession(); if (!id) throw new Error();
       const tokenResponse = await fetch("/api/chat/voice/realtime/session", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId: id, lang, voice: realtimeVoice }) });
-      const tokenData = await tokenResponse.json().catch(() => ({})) as { clientSecret?: string };
+      const tokenData = await tokenResponse.json().catch(() => ({})) as { clientSecret?: string; voiceSessionId?: string };
       if (!tokenResponse.ok || !tokenData.clientSecret) throw new Error();
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true }); realtimeStreamRef.current = stream;
-      const peer = new RTCPeerConnection(); realtimePeerRef.current = peer;
-      const remoteAudio = new Audio(); remoteAudio.autoplay = true; remoteAudio.setAttribute("playsinline", ""); realtimeAudioRef.current = remoteAudio;
-      const playRemoteAudio = () => remoteAudio.play().then(() => setAutoplayBlocked(false)).catch(() => setAutoplayBlocked(true));
-      peer.ontrack = (event) => { remoteAudio.srcObject = event.streams[0] ?? null; void playRemoteAudio(); setRealtimeState("assistant_speaking"); };
-      peer.onconnectionstatechange = () => { if (["failed", "disconnected", "closed"].includes(peer.connectionState)) endRealtime(); };
-      stream.getTracks().forEach((track) => peer.addTrack(track, stream));
+      realtimeVoiceSessionIdRef.current = typeof tokenData.voiceSessionId === "string" ? tokenData.voiceSessionId : null;
+      const stream = await microphonePromise; realtimeStreamRef.current = stream;
+      const microphoneTrack = stream.getAudioTracks()[0];
+      if (!microphoneTrack) throw new Error();
+      if (voiceDebugEnabled) console.info("[AI_COACH_REALTIME_MIC]", { readyState: microphoneTrack.readyState, enabled: microphoneTrack.enabled, muted: microphoneTrack.muted, ...microphoneTrack.getSettings() });
+      setDebug({ trackState: microphoneTrack.readyState, trackMuted: microphoneTrack.muted });
+      const playRemoteAudio = () => {
+        if (remoteAudioPlayAttemptRef.current) return Promise.resolve();
+        remoteAudioPlayAttemptRef.current = true;
+        return remoteAudio.play().then(() => setAutoplayBlocked(false)).catch(() => setAutoplayBlocked(true));
+      };
+      peer.ontrack = (event) => { remoteAudio.srcObject = event.streams[0] ?? null; void playRemoteAudio(); if (realtimeSessionReadyRef.current) setRealtimeState("assistant_speaking"); };
+      peer.onconnectionstatechange = () => { setDebug({ pcState: peer.connectionState }); if (["failed", "disconnected", "closed"].includes(peer.connectionState)) endRealtime(); };
+      peer.oniceconnectionstatechange = () => setDebug({ iceState: peer.iceConnectionState });
+      peer.addTrack(microphoneTrack, stream);
       const channel = peer.createDataChannel("oai-events");
+      realtimeChannelRef.current = channel;
+      channel.onopen = () => {
+        setDebug({ dataChannelState: channel.readyState });
+        if (realtimeSessionUpdateSentRef.current) return;
+        realtimeSessionUpdateSentRef.current = true;
+        realtimeSessionReadyRef.current = false;
+        setRealtimeState("initializing");
+        channel.send(JSON.stringify(buildRealtimeSessionUpdate()));
+      };
+      channel.onclose = () => setDebug({ dataChannelState: channel.readyState });
       channel.onmessage = async (event) => {
-        let data: { type?: string; name?: string; call_id?: string; arguments?: string } = {};
+        let data: { type?: string; name?: string; call_id?: string; arguments?: string; event_id?: string; error?: RealtimeErrorDetails } = {};
         try { data = JSON.parse(event.data); } catch { return; }
-        if (data.type === "response.function_call_arguments.done" && data.name && data.call_id) {
+        const eventLabel = realtimeEventLabel(data.type);
+        realtimeEventSequenceRef.current = [...realtimeEventSequenceRef.current, eventLabel].slice(-12);
+        setDebug({ lastRealtimeEvent: eventLabel });
+        if (data.type === "session.created") setRealtimeState("initializing");
+        if (data.type === "session.updated") {
+          realtimeSessionReadyRef.current = true;
+          setRealtimeState("listening");
+          const voiceSessionId = realtimeVoiceSessionIdRef.current;
+          if (voiceSessionId && !realtimeHeartbeatTimerRef.current) {
+            const heartbeat = () => fetch("/api/chat/voice/realtime/heartbeat", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ sessionId: id, voiceSessionId }),
+            }).then((response) => {
+              if (!response.ok) endRealtime();
+            }).catch(() => {});
+            heartbeat();
+            realtimeHeartbeatTimerRef.current = window.setInterval(heartbeat, 12_000);
+          }
+        }
+        if (data.type === "response.function_call_arguments.done" && data.name && data.call_id && realtimeSessionReadyRef.current) {
           let args: Record<string, unknown> = {}; try { args = JSON.parse(data.arguments ?? "{}"); } catch { /* server rejects malformed args */ }
-          const toolResponse = await fetch("/api/chat/voice/realtime/tool", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId: id, name: data.name, arguments: args, lang }) });
-          const toolData = await toolResponse.json().catch(() => ({})) as { result?: unknown };
+          const toolResponse = await fetch("/api/chat/voice/realtime/tool", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId: id, voiceSessionId: realtimeVoiceSessionIdRef.current ?? undefined, name: data.name, arguments: args, lang }) });
+          const toolData = await toolResponse.json().catch(() => ({})) as { result?: unknown; errorCode?: unknown };
+          if (!toolResponse.ok && process.env.NODE_ENV === "development") {
+            console.error("[AI_COACH_REALTIME_TOOL_ERROR]", {
+              status: toolResponse.status,
+              errorCode: typeof toolData.errorCode === "string" ? toolData.errorCode : `TOOL_HTTP_${toolResponse.status}`,
+              toolName: data.name,
+              hasSessionId: Boolean(id),
+              hasCallId: Boolean(data.call_id),
+            });
+          }
           const uiActions = buildCoachUiActionsForToolResult(data.name, toolData.result);
           const uiResult = uiActions ? await dispatchCoachUiActions(uiActions) : null;
           const functionResult = uiResult && !uiResult.completed
             ? { ...(toolData.result as Record<string, unknown>), uiActionStatus: uiResult.status, spokenSummary: "لقيتلك النتائج، لكن مقدرتش أفتح القسم تلقائيًا." }
-            : toolData.result ?? { allowed: false };
+            : toolResponse.ok ? toolData.result ?? { allowed: false } : { allowed: false, answer: "Tool unavailable." };
           if (channel.readyState === "open") { setRealtimeState("thinking"); for (const responseEvent of createRealtimeToolOutputEvents(data.call_id, functionResult)) channel.send(JSON.stringify(responseEvent)); }
           loadSession(id).catch(() => {});
         }
-        if (data.type === "input_audio_buffer.speech_started") { remoteAudio.pause(); setRealtimeState("listening"); }
-        if (data.type === "response.created") { setRealtimeState("assistant_speaking"); void playRemoteAudio(); }
-        if (data.type === "response.audio.delta") { setRealtimeState("assistant_speaking"); void playRemoteAudio(); }
-        if (data.type === "response.done") setRealtimeState("listening");
+        if (data.type === "input_audio_buffer.speech_started") { speechStartedRef.current = true; if (vadFallbackTimerRef.current) window.clearTimeout(vadFallbackTimerRef.current); remoteAudio.pause(); setManualVoiceFallback(false); if (realtimeSessionReadyRef.current) setRealtimeState("listening"); }
+        if (data.type === "input_audio_buffer.speech_stopped" && realtimeSessionReadyRef.current) setRealtimeState("thinking");
+        if (data.type === "response.created" && realtimeSessionReadyRef.current) setRealtimeState("thinking");
+        if ((data.type === "response.output_audio.delta" || data.type === "response.audio.delta") && realtimeSessionReadyRef.current) { setRealtimeState("assistant_speaking"); void playRemoteAudio(); }
+        if (data.type === "response.done" && realtimeSessionReadyRef.current) setRealtimeState("listening");
+        if (data.type === "error") {
+          const error = data.error;
+          const kind = classifyRealtimeError(error);
+          setDebug({ lastErrorCode: error?.code ?? "", lastErrorType: error?.type ?? "" });
+          if (process.env.NODE_ENV === "development") {
+            console.error("[AI_COACH_REALTIME_ERROR]", {
+              eventType: data.type,
+              errorType: error?.type,
+              errorCode: error?.code,
+              errorMessage: error?.message,
+              errorParam: error?.param,
+              eventId: data.event_id,
+            });
+            console.info("[AI_COACH_REALTIME_EVENT_SEQUENCE]", realtimeEventSequenceRef.current);
+          }
+          if (kind === "fatal") {
+            setRealtimeState("error");
+            setError(error?.code === "missing_required_parameter" && error?.param === "session.type"
+              ? t("تعذر إعداد المكالمة الصوتية. ابدئي مكالمة جديدة.", "Live voice configuration failed. Start a new call.")
+              : t("حصلت مشكلة في المحادثة الصوتية. ابدئي مكالمة جديدة.", "There was a problem with live voice. Start a new call."));
+          } else if (kind === "recoverable") {
+            setRealtimeState("listening");
+          } else {
+            setRealtimeState("listening");
+            setError(t("حصلت مشكلة أثناء تنفيذ طلب المساعدة، لكن المكالمة ما زالت مستمرة.", "A tool request failed, but the call is still active."));
+          }
+        }
       };
       const offer = await peer.createOffer(); await peer.setLocalDescription(offer);
       const answer = await fetch("https://api.openai.com/v1/realtime/calls", { method: "POST", headers: { Authorization: `Bearer ${tokenData.clientSecret}`, "Content-Type": "application/sdp" }, body: offer.sdp });
       if (!answer.ok) throw new Error();
-      await peer.setRemoteDescription({ type: "answer", sdp: await answer.text() }); setRealtimeState("listening");
+      await peer.setRemoteDescription({ type: "answer", sdp: await answer.text() }); setRealtimeState("initializing");
+      if (platform.isIOS) vadFallbackTimerRef.current = window.setTimeout(() => { if (microphoneTrack.readyState === "live" && !speechStartedRef.current) setManualVoiceFallback(true); }, 5_000);
     } catch { endRealtime(); setError(t("المحادثة المباشرة مش متاحة دلوقتي، تقدري تستخدمي التسجيل أو الكتابة.", "Live voice is unavailable. Use recording or text.")); }
   };
 
   return (
     <>
-      <button
+      {!open && <button
         data-tour="ai-coach"
         onClick={() => {
           setOpen((value) => { if (value) endRealtime(); return !value; });
@@ -521,32 +790,18 @@ export default function LiveChatWidget() {
         }}
       >
         AI Coach
-      </button>
+      </button>}
+
+      <style>{`@media (max-width: 768px) { .fitzone-ai-coach-mobile-open .mobile-bottom-nav { display: none !important; } .ai-coach-quick-actions { scrollbar-width: none; -ms-overflow-style: none; } .ai-coach-quick-actions::-webkit-scrollbar { display: none; } }`}</style>
 
       {open && (
         <div
           dir={lang === "ar" ? "rtl" : "ltr"}
-          style={{
-            position: "fixed",
-            bottom: isMobile ? "calc(156px + env(safe-area-inset-bottom, 0px))" : 96,
-            top: isMobile ? 70 : 112,
-            right: 20,
-            zIndex: 80,
-            width: isMobile ? "calc(100vw - 40px)" : "min(390px, calc(100vw - 24px))",
-            maxWidth: "calc(100vw - 24px)",
-            height: isMobile ? "calc(100dvh - 226px)" : "min(720px, calc(100dvh - 132px))",
-            maxHeight: isMobile ? "calc(100dvh - 226px)" : "min(720px, calc(100dvh - 132px))",
-            minHeight: 0,
-            background: "#FFF5F8",
-            border: "1px solid #F5D0DC",
-            borderRadius: 24,
-            overflow: "hidden",
-            boxShadow: "0 18px 50px rgba(233,30,99,.15)",
-            display: "flex",
-            flexDirection: "column",
-          }}
+          style={buildAiCoachShellStyle(isMobile)}
         >
-          <div style={{ padding: 16, borderBottom: "1px solid #F5D0DC", background: "linear-gradient(135deg, #E91E63, #F06292)" }}>
+          <audio ref={realtimeAudioRef} autoPlay playsInline controls={false} style={{ display: "none" }} />
+          <div style={{ position: "relative", display: "flex", flexDirection: "column", flex: "1 1 auto", height: "100%", minHeight: 0, overflow: "hidden" }}>
+          <div style={{ flexShrink: 0, padding: isMobile ? "calc(16px + env(safe-area-inset-top, 0px)) 16px 16px" : 16, borderBottom: "1px solid #F5D0DC", background: "linear-gradient(135deg, #E91E63, #F06292)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
               <div>
                 <div style={{ color: "#fff", fontWeight: 900, fontSize: 16 }}>AI Coach</div>
@@ -598,6 +853,7 @@ export default function LiveChatWidget() {
 
           <div
             style={{
+              flexShrink: 0,
               padding: 12,
               borderBottom: "1px solid #F5D0DC",
               display: "grid",
@@ -608,9 +864,9 @@ export default function LiveChatWidget() {
             <input value={name} onChange={(e) => setName(e.target.value)} placeholder={t("اسمك", "Your name")} style={inputStyle} />
             <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={t("رقم الجوال", "Phone number")} style={inputStyle} />
             {quickActions.length > 0 && (
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <div className="ai-coach-quick-actions" style={{ display: "flex", flexWrap: "nowrap", gap: 8, width: "100%", minWidth: 0, overflowX: "auto", overscrollBehaviorX: "contain", paddingInline: 4, paddingBottom: 2, scrollPaddingInline: 12 }}>
                 {quickActions.map((item) => (
-                  <button key={item.id} onClick={() => sendMessage(item.prompt)} style={quickButtonStyle}>
+                  <button key={item.id} onClick={() => sendMessage(item.prompt)} style={{ ...quickButtonStyle, flex: "0 0 auto", whiteSpace: "nowrap" }}>
                     {item.label}
                   </button>
                 ))}
@@ -636,7 +892,7 @@ export default function LiveChatWidget() {
 
           <div
             style={{
-              flex: 1,
+              flex: "1 1 auto",
               minHeight: 0,
               overflow: "hidden",
               padding: 0,
@@ -645,7 +901,7 @@ export default function LiveChatWidget() {
               flexDirection: "column",
             }}
           >
-            <div ref={messagesAreaRef} style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 14 }}>
+            <div ref={messagesAreaRef} style={{ flex: "1 1 auto", minHeight: isMobile ? 0 : 220, overflowY: "auto", overscrollBehavior: "contain", WebkitOverflowScrolling: "touch", padding: 14 }}>
             {messages.map((message) => {
               const isUser = message.senderType === "user";
               const isSupport = message.senderType === "admin" || message.senderType === "staff";
@@ -717,21 +973,24 @@ export default function LiveChatWidget() {
 
           <div
             style={{
-              display: "flex",
-              flexWrap: "wrap",
               flexShrink: 0,
-              gap: 8,
-              padding: 12,
+              padding: isMobile ? "12px 12px calc(env(safe-area-inset-bottom, 0px) + 8px)" : 12,
               borderTop: "1px solid #F5D0DC",
               background: "#FFF0F5",
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 8,
+              position: "relative",
+              zIndex: 1,
             }}
           >
             {voiceEnabled && (recording || transcribing) && <div style={{ width: "100%", fontSize: 12, color: "#E91E63" }}>{recording ? `${t("بتسمعك دلوقتي", "Listening")}… ${recordingSeconds}s` : t("جاري فهم كلامك…", "Understanding your voice…")}</div>}
-            {realtimeEnabled && realtimeState !== "idle" && <div style={{ width: "100%", fontSize: 12, color: "#E91E63" }}>{realtimeState === "connecting" ? t("جاري الاتصال…", "Connecting…") : realtimeState === "thinking" ? t("بفهم سؤالك…", "Understanding…") : realtimeState === "assistant_speaking" ? t("برد عليك…", "Responding…") : t("بسمعك…", "Listening…")}</div>}
+            {realtimeEnabled && realtimeState !== "idle" && <div style={{ width: "100%", fontSize: 12, color: "#E91E63" }}>{realtimeStatusLabel}</div>}
             {realtimeEnabled && autoplayBlocked && <button onClick={() => { void realtimeAudioRef.current?.play().then(() => setAutoplayBlocked(false)); }} style={{ ...quickButtonStyle, width: "100%" }}>{t("اضغطي مرة واحدة لتشغيل صوت المساعد.", "Tap once to play assistant audio.")}</button>}
             {realtimeEnabled && <button aria-label={realtimeState === "idle" ? "ابدئي محادثة صوتية" : "إنهاء المحادثة الصوتية"} title={realtimeState === "idle" ? "محادثة صوتية" : "إنهاء المحادثة"} onClick={realtimeState === "idle" ? startRealtime : endRealtime} disabled={realtimeState === "connecting"} style={{ flex: "0 0 44px", width: 44, height: 52, border: "1px solid #F5D0DC", borderRadius: 14, background: realtimeState === "idle" ? "#fff" : "#BE185D", color: realtimeState === "idle" ? "#E91E63" : "#fff", display: "grid", placeItems: "center", cursor: "pointer" }}>{realtimeState === "connecting" ? <Loader2 size={18} className="animate-spin" /> : realtimeState === "idle" ? <Phone size={18} /> : <PhoneOff size={18} />}</button>}
-            {voiceEnabled && <div style={{ width: "100%", fontSize: 10, color: "#7A5B68" }}>{t("الصوت بيتحوّل لنص علشان AI Coach يفهم سؤالك. التسجيل مش بيتحفظ بشكل دائم.", "Voice is converted to text. Recordings are not stored permanently.")}</div>}
             {voiceEnabled && <button aria-label={recording ? "إيقاف التسجيل" : "ابدئي تسجيل صوتي"} title={recording ? "إيقاف التسجيل" : "ابدئي تسجيل صوتي"} onClick={recording ? stopRecording : startRecording} disabled={loading || transcribing} style={{ flex: "0 0 44px", width: 44, height: 52, border: "1px solid #F5D0DC", borderRadius: 14, background: recording ? "#BE185D" : "#fff", color: recording ? "#fff" : "#E91E63", display: "grid", placeItems: "center", cursor: "pointer" }}>{transcribing ? <Loader2 size={18} className="animate-spin" /> : recording ? <Square size={17} fill="currentColor" /> : <Mic size={19} />}</button>}
+            {realtimeEnabled && manualVoiceFallback && <button onClick={() => { realtimeStreamRef.current?.getAudioTracks().forEach((track) => { track.enabled = true; }); setManualVoiceFallback(false); }} style={{ ...quickButtonStyle, flex: "0 0 auto" }}>{t("ابدئي الكلام", "Start talking")}</button>}
+            {voiceDebugEnabled && <div aria-label="AI Coach voice debug" style={{ position: "absolute", insetInline: 12, bottom: isMobile ? "calc(env(safe-area-inset-bottom, 0px) + 104px)" : 96, zIndex: 2, maxWidth: "calc(100% - 24px)", pointerEvents: "none", fontSize: 10, color: "#7A5B68", direction: "ltr", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{`platform=${voiceDebug.platform || "unknown"} · pc=${voiceDebug.pcState} · ice=${voiceDebug.iceState} · dc=${voiceDebug.dataChannelState} · track=${voiceDebug.trackState}/${voiceDebug.trackMuted ? "muted" : "unmuted"} · event=${voiceDebug.lastRealtimeEvent || "—"} · errorCode=${voiceDebug.lastErrorCode || "—"} · errorType=${voiceDebug.lastErrorType || "—"}`}</div>}
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -756,6 +1015,7 @@ export default function LiveChatWidget() {
             >
               {loading ? "..." : t("إرسال", "Send")}
             </button>
+          </div>
           </div>
         </div>
       )}

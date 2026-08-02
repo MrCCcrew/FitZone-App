@@ -39,7 +39,7 @@ export const openAiRealtimeProvider: RealtimeVoiceProvider = {
       body: JSON.stringify({
         session: {
           type: "realtime", model, output_modalities: ["audio"], instructions: instructions(lang), reasoning: { effort: "low" },
-          audio: { input: { turn_detection: { type: "semantic_vad", eagerness: "low", create_response: true, interrupt_response: true } }, output: { voice } },
+          audio: { input: { turn_detection: { type: "server_vad", threshold: 0.25, prefix_padding_ms: 500, silence_duration_ms: 900, create_response: true, interrupt_response: true } }, output: { voice } },
           tools: realtimeToolDefinitions.map(([name, description]) => ({ type: "function", name, description, parameters: { type: "object", properties: { query: { type: "string", maxLength: 1800 }, pageId: { type: "string", maxLength: 64 } }, additionalProperties: false } })),
           tool_choice: "auto", tracing: null,
         },

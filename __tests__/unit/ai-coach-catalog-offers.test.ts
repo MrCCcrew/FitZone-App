@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
 const offers = vi.hoisted(() => vi.fn());
-vi.mock("@/lib/db", () => ({ db: { offer: { findMany: offers } } }));
+const customPlans = vi.hoisted(() => vi.fn().mockResolvedValue([]));
+vi.mock("@/lib/db", () => ({ db: { offer: { findMany: offers }, membership: { findMany: customPlans } } }));
 
 import { searchActiveOffers } from "@/lib/ai-coach/catalog-tools";
 
