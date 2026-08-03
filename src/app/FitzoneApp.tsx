@@ -1822,8 +1822,9 @@ function getTierLabel(tier?: string) {
   return lang === "en" ? "Bronze" : "برونزي";
 }
 
-function getCountdownParts(expiresAt: string) {
-  const diff = new Date(expiresAt).getTime() - Date.now();
+function getCountdownParts(expiresAt: string, now: number) {
+  if (now === 0) return { expired: false, days: 0, hours: 0, minutes: 0, seconds: 0 };
+  const diff = new Date(expiresAt).getTime() - now;
   if (diff <= 0) {
     return { expired: true, days: 0, hours: 0, minutes: 0, seconds: 0 };
   }
@@ -1835,6 +1836,19 @@ function getCountdownParts(expiresAt: string) {
   const seconds = totalSeconds % 60;
 
   return { expired: false, days, hours, minutes, seconds };
+}
+
+// Keep the time-dependent offer markup stable through hydration. The clock is
+// intentionally advanced only after mount, then refreshed once per second.
+function useHydratedOfferClock() {
+  const [now, setNow] = useState(0);
+  useEffect(() => {
+    const tick = () => setNow(Date.now());
+    tick();
+    const interval = window.setInterval(tick, 1_000);
+    return () => window.clearInterval(interval);
+  }, []);
+  return now;
 }
 
 const DEFAULT_CONTACT: PublicContact = {
@@ -2261,6 +2275,7 @@ const PrivateBookingModal = ({ trainer, type, onClose }: { trainer: PublicTraine
 
 const HomePage = ({ navigate, summary, storeEnabled, initialHomeData, diagnosticMounted = false, hydrationDisable }: { navigate: (p: string, scrollTarget?: "shop-products" | "trainers-list") => void; summary: UserSummary | null; storeEnabled: boolean; initialHomeData?: InitialHomeData; diagnosticMounted?: boolean; hydrationDisable?: string }) => {
   const _w = useWindowWidth();
+  const offerClock = useHydratedOfferClock();
   const { lang } = useLang();
   const t = useT();
   const [refreshTick, setRefreshTick] = useState(0);
@@ -2789,7 +2804,7 @@ const HomePage = ({ navigate, summary, storeEnabled, initialHomeData, diagnostic
             </div>
             <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", `repeat(${Math.min(Math.max(homeOffers.length + homeCustomPlans.length, 3), 3)}, 1fr)`), gap: 24 }}>
               {homeOffers.map((offer) => {
-                const cd = getCountdownParts(offer.expiresAt);
+                const cd = getCountdownParts(offer.expiresAt, offerClock);
                 const maxSubscribers = typeof offer.maxSubscribers === "number" ? offer.maxSubscribers : null;
                 const hasSeatLimit = offer.showMaxSubscribers && maxSubscribers != null && maxSubscribers > 0;
                 const remaining = hasSeatLimit
@@ -6398,6 +6413,7 @@ const MembershipsPage = ({ navigate, summary: userSummary, coachState }: { navig
 // ─── OFFERS PAGE ──────────────────────────────────────────────────────────────
 const DEFAULT_OFFERS: Array<PublicOffer & { color: string }> = [];
 const OffersPage = ({ navigate, coachState }: { navigate: (p: string) => void; coachState?: CoachVisualState }) => {
+  const offerClock = useHydratedOfferClock();
   const t = useT();
   const { lang } = useLang();
   const [offers, setOffers] = useState(DEFAULT_OFFERS);
@@ -6460,7 +6476,7 @@ const OffersPage = ({ navigate, coachState }: { navigate: (p: string) => void; c
           <h2 className="section-title" style={{ marginBottom: 32 }}>{t("العروض", "Current")} <span>{t("الحالية", "offers")}</span></h2>
           <div style={{ display: "grid", gridTemplateColumns: responsiveColumns("1fr", "1fr 1fr", "repeat(3, 1fr)"), gap: 24 }}>
             {offers.map(o => {
-              const countdown = getCountdownParts(o.expiresAt);
+              const countdown = getCountdownParts(o.expiresAt, offerClock);
               const maxSubscribers = typeof o.maxSubscribers === "number" ? o.maxSubscribers : null;
               const hasSeatLimit = o.showMaxSubscribers && maxSubscribers != null && maxSubscribers > 0;
               const remaining = hasSeatLimit
