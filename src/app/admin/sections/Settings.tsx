@@ -267,6 +267,7 @@ function getRoleLabel(role: string) {
 
 export default function Settings({ userRole = "staff", permissions = [] }: { userRole?: string; permissions?: string[] }) {
   const canManageSettings = userRole === "admin" || permissions.includes("settings");
+  const canManageTrainerReferrals = userRole === "admin" || userRole === "head_coach" || userRole === "trainer";
   const [activeTab, setActiveTab] = useState<"employees" | "referrals" | "trainer-referrals" | "audit">(canManageSettings ? "employees" : "referrals");
   const [employees, setEmployees] = useState<AdminEmployee[]>([]);
   const [employeeSearch, setEmployeeSearch] = useState("");
@@ -472,13 +473,13 @@ export default function Settings({ userRole = "staff", permissions = [] }: { use
           >
             لينكات إحالة الاستاف
           </button>
-          <button
+          {canManageTrainerReferrals && <button
             type="button"
             onClick={() => setActiveTab("trainer-referrals")}
             className={`rounded-xl px-4 py-2 text-sm font-bold ${activeTab === "trainer-referrals" ? "bg-pink-600 text-white" : "bg-white/5 text-[#d7aabd]"}`}
           >
             لينكات إحالة المدربات
-          </button>
+          </button>}
         </div>
 
         {activeTab === "employees" ? (
@@ -733,7 +734,7 @@ export default function Settings({ userRole = "staff", permissions = [] }: { use
           </div>
         ) : activeTab === "referrals" ? (
           <Referrals userRole={userRole} />
-        ) : activeTab === "trainer-referrals" ? (
+        ) : activeTab === "trainer-referrals" && canManageTrainerReferrals ? (
           <TrainerReferrals userRole={userRole} />
         ) : (
           <div className="space-y-4">

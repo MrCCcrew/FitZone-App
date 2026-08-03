@@ -54,6 +54,7 @@ export type PaymentVerificationResult = {
 
 export type PaymentWebhookResult = {
   ok: boolean;
+  code?: "MISSING_HMAC" | "INVALID_HMAC";
   transactionId?: string | null;
   status?: PaymentStatus;
   message?: string;

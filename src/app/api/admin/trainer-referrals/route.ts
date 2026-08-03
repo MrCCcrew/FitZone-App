@@ -12,8 +12,11 @@ function generateToken() {
 
 async function requireTrainerReferralAccess() {
   const auth = await requireAdminFeature("trainers");
-  if (!("error" in auth)) return auth;
-  return requireAdminFeature("settings");
+  if ("error" in auth) return auth;
+  if (auth.role !== "admin" && auth.role !== "head_coach" && auth.role !== "trainer") {
+    return { error: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
+  }
+  return auth;
 }
 
 // GET /api/admin/trainer-referrals?view=commissions&trainerUserId=X

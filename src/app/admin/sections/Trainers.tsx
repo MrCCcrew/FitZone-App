@@ -227,6 +227,7 @@ export default function Trainers() {
   const [userRole, setUserRole] = useState<string | null>(null);
   const isTrainerRole = userRole === "trainer";
   const isHeadCoachOrAbove = userRole === "admin" || userRole === "head_coach" || userRole === "staff";
+  const canManageTrainerReferrals = userRole === "admin" || userRole === "head_coach" || userRole === "trainer";
   const [applications, setApplications] = useState<Application[]>([]);
   const [appStatusFilter, setAppStatusFilter] = useState("all");
   const [appLoading, setAppLoading] = useState(false);
@@ -603,7 +604,7 @@ export default function Trainers() {
             ...(!isTrainerRole ? [["applications","طلبات البرايفيت"]] as const : []),
             ["discounts","أكواد خصم المدربات"],
             ...(isHeadCoachOrAbove ? [["attendance","الحضور والغياب"]] as const : []),
-            ...((isHeadCoachOrAbove || isTrainerRole) ? [["referrals","لينكات الإحالة"]] as const : []),
+            ...(canManageTrainerReferrals ? [["referrals","لينكات الإحالة"]] as const : []),
           ] as [string, string][]
         ).map(([key,label]) => (
           <button key={key} onClick={() => setActiveTab(key as typeof activeTab)}
@@ -887,7 +888,7 @@ export default function Trainers() {
       )}
 
       {/* ── Referrals Tab ── */}
-      {activeTab === "referrals" && (
+      {activeTab === "referrals" && canManageTrainerReferrals && (
         <TrainerReferrals userRole={userRole ?? undefined} />
       )}
 

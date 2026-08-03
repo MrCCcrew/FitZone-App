@@ -3,6 +3,8 @@ import { db } from "@/lib/db";
 import { getCurrentAppUser } from "@/lib/app-session";
 import { createPaymentTransaction } from "@/lib/payments/service";
 
+const MIN_WALLET_TOPUP_AMOUNT = 10;
+
 type CheckoutBody = {
   provider?: string;
   purpose?: "order" | "membership" | "wallet_topup";
@@ -37,18 +39,6 @@ export async function POST(req: Request) {
 
     const body = (await req.json()) as CheckoutBody;
     const purpose = body.purpose ?? "order";
-
-    // TEMPORARY: wallet_topup disabled for maintenance (Release 0)
-    // Will be re-enabled after HMAC/amount/currency validation (Release 5+)
-    if (purpose === "wallet_topup") {
-      return NextResponse.json(
-        {
-          error: "خدمة شحن المحفظة متوقفة مؤقتًا للصيانة.",
-          code: "WALLET_TOPUP_MAINTENANCE",
-        },
-        { status: 503, headers: { "Cache-Control": "no-store", "Retry-After": "3600" } },
-      );
-    }
 
     let resolvedAmount = Number(body.amount ?? 0);
     let resolvedMembershipId = body.membershipId ?? null;
@@ -114,8 +104,12 @@ export async function POST(req: Request) {
         description = description ?? `سداد اشتراك باقة ${membership.name}`;
       }
     } else if (purpose === "wallet_topup") {
-      if (!Number.isFinite(resolvedAmount) || resolvedAmount <= 0) {
+      if (!Number.isFinite(resolvedAmount) || resolvedAmount < MIN_WALLET_TOPUP_AMOUNT) {
         return NextResponse.json({ error: "قيمة شحن المحفظة غير صحيحة." }, { status: 400 });
+      }
+
+      if (String(body.currency ?? "EGP").toUpperCase() !== "EGP") {
+        return NextResponse.json({ error: "عملة شحن المحفظة يجب أن تكون EGP.", code: "UNSUPPORTED_WALLET_CURRENCY" }, { status: 400 });
       }
 
       description = description ?? "شحن رصيد المحفظة";

@@ -1,10 +1,16 @@
 ﻿import { describe, it, expect, vi, beforeEach } from "vitest";
 
+const { transactionalPaymentFindUnique, transactionalWalletUpsert, transactionalWalletTransactionCreate } = vi.hoisted(() => ({
+  transactionalPaymentFindUnique: vi.fn(),
+  transactionalWalletUpsert: vi.fn().mockResolvedValue({ id: "w1" }),
+  transactionalWalletTransactionCreate: vi.fn(),
+}));
+
 // ─── Mock all external dependencies before importing service ──────────────────
 
 vi.mock("@/lib/db", () => ({
   db: {
-    paymentTransaction: { findUnique: vi.fn(), update: vi.fn(), findMany: vi.fn() },
+    paymentTransaction: { findUnique: vi.fn(), update: vi.fn(), updateMany: vi.fn().mockResolvedValue({ count: 1 }), findMany: vi.fn() },
     userMembership:     { findUnique: vi.fn(), updateMany: vi.fn() },
     booking:            { findMany: vi.fn().mockResolvedValue([]), updateMany: vi.fn() },
     schedule:           { update: vi.fn() },
@@ -27,9 +33,9 @@ vi.mock("@/lib/db", () => ({
     siteContent:        { findUnique: vi.fn().mockResolvedValue(null) },
     $transaction: vi.fn().mockImplementation(async (cb: (tx: unknown) => unknown) =>
       cb({
-        paymentTransaction: { findUnique: vi.fn().mockResolvedValue(null), update: vi.fn() },
-        wallet:             { upsert: vi.fn().mockResolvedValue({ id: "w1" }), update: vi.fn() },
-        walletTransaction:  { create: vi.fn() },
+        paymentTransaction: { findUnique: transactionalPaymentFindUnique, update: vi.fn(), updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+        wallet:             { upsert: transactionalWalletUpsert, update: vi.fn() },
+        walletTransaction:  { create: transactionalWalletTransactionCreate },
         rewardPoints:       { upsert: vi.fn().mockResolvedValue({ id: "rp1" }) },
         rewardHistory:      { create: vi.fn() },
       })
@@ -129,6 +135,28 @@ describe("updatePaymentTransactionStatus — idempotency (paid → paid)", () =>
 
     expect(db.paymentTransaction.update).toHaveBeenCalledOnce();
     expect(result.status).toBe("paid");
+  });
+});
+
+describe("wallet top-up payment", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("credits the wallet once when a paid webhook is repeated", async () => {
+    const paidTopup = { ...BASE_TX, purpose: "wallet_topup", status: "paid", amount: 100, paidAt: new Date() };
+    vi.mocked(db.paymentTransaction.findUnique)
+      .mockResolvedValueOnce(pendingSelect({ purpose: "wallet_topup" }) as never)
+      .mockResolvedValueOnce(paidTopup as never)
+      .mockResolvedValueOnce(paidTopup as never)
+      .mockResolvedValueOnce(paidTopup as never);
+    vi.mocked(db.paymentTransaction.update).mockResolvedValue(paidTopup as never);
+    transactionalPaymentFindUnique.mockResolvedValue(paidTopup);
+
+    await updatePaymentTransactionStatus("tx-001", "paid");
+    await updatePaymentTransactionStatus("tx-001", "paid");
+
+    expect(db.$transaction).toHaveBeenCalledOnce();
+    expect(transactionalWalletTransactionCreate).toHaveBeenCalledOnce();
+    expect(transactionalWalletUpsert).toHaveBeenCalledWith(expect.objectContaining({ update: { balance: { increment: 100 } } }));
   });
 });
 

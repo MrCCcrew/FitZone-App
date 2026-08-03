@@ -1312,14 +1312,14 @@ export async function POST(req: Request) {
   }
 
   // ── Immediate notification for pending_payment subscriptions ─────────────
-  // Tell the user they have 24 hours to pay or the subscription will be cancelled
+  // The expiry is always read from pendingExpiresAt; new pending payments last 60 minutes.
   if (result.paymentAmount > 0 && checkoutUrl) {
     try {
       await db.notification.create({
         data: {
           userId,
           title: "⏳ أكملي الدفع لتفعيل اشتراكك",
-          body: `اشتراكك في "${result.planName}" في انتظار إتمام الدفع. لديكِ 24 ساعة فقط — إذا لم يتم الدفع سيُلغى الاشتراك تلقائيًا.`,
+          body: `اشتراكك في "${result.planName}" في انتظار إتمام الدفع وسيُلغى تلقائيًا بعد 60 دقيقة إذا لم يكتمل الدفع.`,
           type: "warning",
         },
       });

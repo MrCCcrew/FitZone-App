@@ -468,11 +468,12 @@ async function handleWebhook(payload: unknown): Promise<PaymentWebhookResult> {
   }
 
   const providedHmac = String(body.hmac ?? "").trim();
-  if (providedHmac) {
-    const expected = computePaymobHmac(body.obj, requireSecret("PAYMOB_HMAC_SECRET"));
-    if (!verifyHmac(providedHmac, expected)) {
-      return { ok: false, message: "Paymob webhook HMAC verification failed." };
-    }
+  if (!providedHmac) {
+    return { ok: false, code: "MISSING_HMAC", message: "Paymob webhook HMAC is required." };
+  }
+  const expected = computePaymobHmac(body.obj, requireSecret("PAYMOB_HMAC_SECRET"));
+  if (!verifyHmac(providedHmac, expected)) {
+    return { ok: false, code: "INVALID_HMAC", message: "Paymob webhook HMAC verification failed." };
   }
 
   const transactionId = body.obj.order?.merchant_order_id ?? body.obj.special_reference ?? null;

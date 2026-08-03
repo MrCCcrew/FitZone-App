@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/app-session";
 import { db } from "@/lib/db";
 import { isBookingOperational } from "@/lib/booking-operational";
+import { canMembershipBookClass, resolveMembershipClassEligibility } from "@/lib/membership-class-eligibility";
 
 function membershipAllowsClass(membership: { allowedClassTypesSnapshot: string | null; membership: { classSessions: string | null } | null }, gymClass: { id: string; type: string | null }) {
   if (membership.allowedClassTypesSnapshot != null) {
@@ -61,15 +62,22 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "تم حجز هذا الموعد مسبقًا" }, { status: 409 });
     }
 
-    const activeMembership = await db.userMembership.findFirst({
-      where: { userId, status: "active" },
-      orderBy: { startDate: "desc" },
+    const now = new Date();
+    const activeMemberships = await db.userMembership.findMany({
+      where: { userId, status: "active", startDate: { lte: now }, endDate: { gte: now } },
+      orderBy: [{ endDate: "asc" }, { startDate: "asc" }],
       include: { membership: { select: { classSessions: true } } },
     });
-
-    if (activeMembership && !membershipAllowsClass(activeMembership, schedule.class)) {
-      return NextResponse.json({ error: "هذا الكلاس غير مشمول ضمن العرض المشترك به." }, { status: 400 });
+    const eligibility = await resolveMembershipClassEligibility({ userId, classes: [schedule.class], now, memberships: activeMemberships });
+    if (!eligibility.hasEligibleMembership) {
+      return NextResponse.json({ error: "لا توجد عضوية فعالة للحجز.", code: "NO_ELIGIBLE_MEMBERSHIP" }, { status: 400 });
     }
+    if (!eligibility.unrestricted && !eligibility.allowedClassIds.includes(schedule.class.id)) {
+      return NextResponse.json({ error: "هذا الكلاس غير مشمول ضمن العرض المشترك به.", code: "CLASS_NOT_INCLUDED_IN_MEMBERSHIP" }, { status: 400 });
+    }
+    // The earliest-expiring eligible membership wins deterministically, so a
+    // booking never consumes sessions from an arbitrary active membership.
+    const activeMembership = activeMemberships.find((membership) => membershipAllowsClass(membership, schedule.class)) ?? null;
 
     if (activeMembership && activeMembership.totalSessions !== null && activeMembership.totalSessions > 0) {
       const usedBookings = await db.booking.count({
@@ -187,51 +195,36 @@ export async function PATCH(req: Request) {
         return NextResponse.json({ error: "لا توجد أماكن متاحة لهذا الموعد" }, { status: 400 });
       }
 
-      // ── Validate class restrictions from active membership plan ───────────
-      if (booking.userMembershipId) {
-        const activeMem = await db.userMembership.findUnique({
-          where: { id: booking.userMembershipId },
-          include: { membership: { select: { classSessions: true } } },
-        });
-        if (activeMem && !membershipAllowsClass(activeMem, newSchedule.class)) {
-          return NextResponse.json({ error: "هذا الكلاس غير مشمول ضمن العرض المشترك به." }, { status: 400 });
-        }
-        const rawClassSessions = activeMem?.membership?.classSessions;
-        if (rawClassSessions && activeMem?.allowedClassTypesSnapshot == null) {
-          try {
-            const classSessions = JSON.parse(rawClassSessions) as Array<{
-              classId: string;
-              classType?: string;
-            }>;
-            if (classSessions.length > 0) {
-              const allowedClassIds = new Set(classSessions.map((cs) => cs.classId));
-              const allowedTypes = new Set(
-                classSessions
-                  .map((cs) => cs.classType?.trim().toLowerCase())
-                  .filter((t): t is string => !!t),
-              );
-              const classType = (newSchedule.class.type ?? "").trim().toLowerCase();
-              const allowed =
-                allowedClassIds.has(newSchedule.classId) ||
-                (classType && allowedTypes.has(classType)) ||
-                allowedClassIds.has(classType); // fallback: classId stored as type name
-              if (!allowed) {
-                return NextResponse.json(
-                  { error: "هذا الكلاس غير متاح ضمن اشتراكك الحالي" },
-                  { status: 400 },
-                );
-              }
-            }
-          } catch {
-            /* ignore invalid JSON — no restriction applied */
-          }
-        }
+      // Resolve class eligibility from every currently valid membership.
+      const activeMemberships = await db.userMembership.findMany({
+        where: { userId, status: "active", startDate: { lte: now }, endDate: { gte: now } },
+        orderBy: [{ endDate: "asc" }, { startDate: "asc" }],
+        include: { membership: { select: { classSessions: true } } },
+      });
+      const eligibility = await resolveMembershipClassEligibility({
+        userId,
+        classes: [newSchedule.class],
+        now,
+        memberships: activeMemberships,
+      });
+      if (!eligibility.hasEligibleMembership) {
+        return NextResponse.json({ error: "لا توجد عضوية فعالة للحجز.", code: "NO_ELIGIBLE_MEMBERSHIP" }, { status: 400 });
       }
+      if (!eligibility.unrestricted && !eligibility.allowedClassIds.includes(newSchedule.class.id)) {
+        return NextResponse.json({ error: "هذا الكلاس غير مشمول ضمن العرض المشترك به.", code: "CLASS_NOT_INCLUDED_IN_MEMBERSHIP" }, { status: 400 });
+      }
+
+      const currentMembership = activeMemberships.find((membership) => membership.id === booking.userMembershipId);
+      // Keep the current membership when it still covers the class; otherwise
+      // choose the earliest-expiring eligible membership that does.
+      const targetMembership = currentMembership && canMembershipBookClass(currentMembership, newSchedule.class)
+        ? currentMembership
+        : activeMemberships.find((membership) => canMembershipBookClass(membership, newSchedule.class));
 
       await db.$transaction([
         db.booking.update({
           where: { id: bookingId },
-          data: { scheduleId: newSchedule.id },
+          data: { scheduleId: newSchedule.id, userMembershipId: targetMembership?.id ?? booking.userMembershipId },
         }),
         db.schedule.update({
           where: { id: booking.scheduleId },
