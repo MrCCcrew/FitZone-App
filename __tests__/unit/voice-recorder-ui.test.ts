@@ -42,7 +42,7 @@ describe("Realtime playback routing", () => {
   it("uses iOS-safe microphone constraints and explicit server VAD", () => {
     expect(realtimeMicrophoneConstraints).toEqual({ echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 });
     expect(realtimeMicrophoneConstraints).not.toHaveProperty("sampleRate");
-    expect(realtimeTurnDetection).toEqual({ type: "server_vad", threshold: 0.25, prefix_padding_ms: 500, silence_duration_ms: 900, create_response: true, interrupt_response: true });
+    expect(realtimeTurnDetection).toEqual({ type: "server_vad", threshold: 0.25, prefix_padding_ms: 500, silence_duration_ms: 900, create_response: true, interrupt_response: false });
   });
 
   it("identifies iPhone Safari without treating iOS Chrome as Safari", () => {

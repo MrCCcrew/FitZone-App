@@ -35,7 +35,7 @@ describe("Realtime voice session", () => {
     expect(JSON.stringify(result)).not.toContain("server-only-key");
     expect(body.session.tracing).toBeNull();
     expect(body.session.audio.output.voice).toBe("cedar");
-    expect(body.session.audio.input.turn_detection).toEqual({ type: "server_vad", threshold: 0.25, prefix_padding_ms: 500, silence_duration_ms: 900, create_response: true, interrupt_response: true });
+    expect(body.session.audio.input.turn_detection).toEqual({ type: "server_vad", threshold: 0.25, prefix_padding_ms: 500, silence_duration_ms: 900, create_response: true, interrupt_response: false });
     expect(body.session.reasoning.effort).toBe("low");
     expect(body.session.instructions).toMatch(/FitZone/);
     expect(body.session.tools.map((tool) => tool.name)).toEqual(realtimeToolDefinitions.map(([name]) => name));

@@ -39,7 +39,9 @@ export const openAiRealtimeProvider: RealtimeVoiceProvider = {
       body: JSON.stringify({
         session: {
           type: "realtime", model, output_modalities: ["audio"], instructions: instructions(lang), reasoning: { effort: "low" },
-          audio: { input: { turn_detection: { type: "server_vad", threshold: 0.25, prefix_padding_ms: 500, silence_duration_ms: 900, create_response: true, interrupt_response: true } }, output: { voice } },
+          // One VAD mode only. The server creates exactly one response per completed turn.
+          // Barge-in starts disabled so normal speaker echo cannot cancel output.
+          audio: { input: { turn_detection: { type: "server_vad", threshold: 0.25, prefix_padding_ms: 500, silence_duration_ms: 900, create_response: true, interrupt_response: false } }, output: { voice } },
           tools: realtimeToolDefinitions.map(([name, description]) => ({ type: "function", name, description, parameters: { type: "object", properties: { query: { type: "string", maxLength: 1800 }, pageId: { type: "string", maxLength: 64 } }, additionalProperties: false } })),
           tool_choice: "auto", tracing: null,
         },
