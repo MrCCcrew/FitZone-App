@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { detectExplicitNavigationTarget } from "@/lib/ai-coach/intents";
 import { understandCoachMessage } from "@/lib/ai-coach/understanding";
 import { COACH_PAGES, pageAction } from "@/lib/ai-coach/page-registry";
-import { createRealtimeToolOutputEvents, isClientVoiceDebugEnabled, logClientVoiceDebug } from "@/components/LiveChatWidget";
+import { canStartRealtimeConnection, createRealtimeToolOutputEvents, hasRealtimeResponseOutput, isClientVoiceDebugEnabled, logClientVoiceDebug, realtimeMicrophoneConstraints, realtimeTurnDetection } from "@/components/LiveChatWidget";
 
 describe("AI Coach explicit Arabic navigation", () => {
   const cases = [
@@ -71,5 +71,22 @@ describe("AI Coach explicit Arabic navigation", () => {
     expect(info).toHaveBeenCalledOnce();
     info.mockRestore();
     error.mockRestore();
+  });
+
+  it("uses one non-barge-in server VAD cycle and echo-safe microphone processing", () => {
+    expect(realtimeTurnDetection).toMatchObject({ type: "server_vad", create_response: true, interrupt_response: false });
+    expect(realtimeMicrophoneConstraints).toMatchObject({ echoCancellation: true, noiseSuppression: true, autoGainControl: true });
+    // Function output is the only case where the client asks the server for a final reply.
+    expect(createRealtimeToolOutputEvents("tool-1", { allowed: true }).filter((event) => event.type === "response.create")).toHaveLength(1);
+  });
+
+  it("requires an explicit idle click path and never treats an empty response as success", () => {
+    const idle = { enabled: true, state: "idle", connectionInFlight: false, sessionRequestInFlight: false, hasPeer: false, hasDataChannel: false, supported: true };
+    expect(canStartRealtimeConnection(idle)).toBe(true);
+    expect(canStartRealtimeConnection({ ...idle, connectionInFlight: true })).toBe(false);
+    expect(canStartRealtimeConnection({ ...idle, hasPeer: true })).toBe(false);
+    expect(canStartRealtimeConnection({ ...idle, state: "listening" })).toBe(false);
+    expect(hasRealtimeResponseOutput(false)).toBe(false);
+    expect(hasRealtimeResponseOutput(true)).toBe(true);
   });
 });
