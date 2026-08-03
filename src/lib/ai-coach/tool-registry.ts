@@ -37,7 +37,7 @@ export function selectCoachTools(intent: CoachIntent, message: string, authentic
 }
 
 /** Read-only orchestration boundary. It accepts no client userId and never exposes raw Prisma access to the model. */
-export async function getCoachToolContext(args: { intent: CoachIntent; message: string; lang: CoachLang; userId: string | null; sort?: "price_asc" | null; temporalFilter?: { date?: "tomorrow" }; catalogType?: "membership" | "package"; duration?: "monthly" | "quarterly" | "semiannual" | "annual" }) {
+export async function getCoachToolContext(args: { intent: CoachIntent; message: string; lang: CoachLang; userId: string | null; sort?: "price_asc" | null; temporalFilter?: { date?: "today" | "tomorrow" }; catalogType?: "membership" | "package"; duration?: "monthly" | "quarterly" | "semiannual" | "annual" }) {
   const snapshot = emptySnapshot(Boolean(args.userId));
   const usedTools: CoachToolName[] = ["getKnowledge"];
   const toolStatuses: Partial<Record<CoachToolName, CoachToolStatus>> = {};

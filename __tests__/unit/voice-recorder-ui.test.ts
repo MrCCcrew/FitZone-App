@@ -1,9 +1,23 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildFinalRecording, buildRealtimeSessionUpdate, classifyRealtimeError, createRealtimeToolOutputEvents, detectVoicePlatform, inspectLocalRecording, realtimeEventLabel, realtimeMicrophoneConstraints, realtimeTurnDetection, recorderMimeCandidates, selectSupportedRecorderMime, shouldShowMessageTts, stopMediaRecorder } from "@/components/LiveChatWidget";
+import { buildFinalRecording, buildRealtimeSessionUpdate, canSubmitMessage, classifyRealtimeError, createRealtimeToolOutputEvents, detectVoicePlatform, inspectLocalRecording, messageFingerprint, realtimeEventLabel, realtimeMicrophoneConstraints, realtimeTurnDetection, recorderMimeCandidates, selectSupportedRecorderMime, shouldAutoPlayMessageTts, shouldReuseTtsAudio, shouldShowMessageTts, stopMediaRecorder } from "@/components/LiveChatWidget";
 
 afterEach(() => vi.unstubAllGlobals());
 
 describe("Press-to-Talk recorder assembly", () => {
+  it("accepts one STT submission and blocks duplicate/in-flight fingerprints", () => {
+    const fingerprint = messageFingerprint("لو عايزة أخس 10 كيلو");
+    expect(canSubmitMessage({ fingerprint, inFlightFingerprint: null, recent: null, now: 1_000 })).toBe(true);
+    expect(canSubmitMessage({ fingerprint, inFlightFingerprint: fingerprint, recent: null, now: 1_001 })).toBe(false);
+    expect(canSubmitMessage({ fingerprint, inFlightFingerprint: null, recent: { fingerprint, at: 1_000 }, now: 1_200 })).toBe(false);
+    expect(canSubmitMessage({ fingerprint, inFlightFingerprint: null, recent: { fingerprint, at: 1_000 }, now: 2_600 })).toBe(true);
+  });
+  it("auto-requests TTS only for a completed STT turn outside Realtime", () => {
+    expect(shouldAutoPlayMessageTts("typed", false)).toBe(false);
+    expect(shouldAutoPlayMessageTts("stt", false)).toBe(true);
+    expect(shouldAutoPlayMessageTts("stt", true)).toBe(false);
+    expect(shouldReuseTtsAudio("reply-1", "reply-1")).toBe(true);
+    expect(shouldReuseTtsAudio("reply-1", "reply-2")).toBe(false);
+  });
   it("selects the first browser-supported recorder MIME candidate", () => {
     expect(selectSupportedRecorderMime((mime) => mime === "audio/ogg;codecs=opus")).toBe("audio/ogg;codecs=opus");
     expect(selectSupportedRecorderMime(() => false)).toBe("");

@@ -9,7 +9,8 @@ vi.mock("@/lib/ai-coach/quick-actions", () => ({ buildQuickActions: vi.fn().mock
 vi.mock("@/lib/ai-coach/catalog-tools", () => ({ getAuthenticatedCustomerMembership: vi.fn(), searchActiveOffers: searchOffers, searchAvailableMemberships: searchMemberships, searchAvailableProducts: searchProducts, searchClassSchedule: searchClasses }));
 vi.mock("@/lib/ai-coach/advanced", () => ({ buildAdvancedNudge: vi.fn(), createAdvancedCheckIn: createCheckIn, logAdvancedCoachEvent: vi.fn(), parseAdvancedCheckIn: vi.fn().mockReturnValue(null), persistQuestionnaireProfile: vi.fn() }));
 
-import { handleCoachMessage } from "@/lib/ai-coach/engine";
+import { extractConversationFacts, handleCoachMessage } from "@/lib/ai-coach/engine";
+import { createDefaultContext } from "@/lib/ai-coach/context";
 
 describe("AI Coach engine safety", () => {
   beforeEach(() => vi.clearAllMocks());
@@ -18,6 +19,12 @@ describe("AI Coach engine safety", () => {
     expect(createCheckIn).not.toHaveBeenCalled();
     expect(update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ context: expect.stringContaining('"statedWeight":120') }) }));
     expect(createMessage).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ content: expect.stringContaining("طولك") }) }));
+  });
+
+  it("persists only valid supplied body facts and leaves empty turns untouched", () => {
+    const context = createDefaultContext("ar");
+    expect(extractConversationFacts("وزني 90 كيلو وطولي 165 وعمري 30 ونشاطي قليل", context)).toMatchObject({ statedWeight: 90, questionnaire: { answers: { weight: 90, height: 165, age: 30, activity: "low" } } });
+    expect(extractConversationFacts("تمام", context)).toBeNull();
   });
 
   it("blocks a compound injection/privacy/database attack before any tool", async () => {
