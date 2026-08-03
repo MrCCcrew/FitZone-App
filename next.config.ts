@@ -24,6 +24,9 @@ const nextConfig: NextConfig = {
     HYDRATION_AUTH_DEBUG: isProduction && process.env.HYDRATION_AUTH_DEBUG === "true" ? "true" : "false",
     NEXT_PUBLIC_AI_COACH_VOICE_ENABLED: process.env.AI_COACH_VOICE_ENABLED === "true" ? "true" : "false",
     NEXT_PUBLIC_AI_COACH_REALTIME_VOICE_ENABLED: process.env.AI_COACH_REALTIME_VOICE_ENABLED === "true" ? "true" : "false",
+    NEXT_PUBLIC_AI_COACH_STT_ENABLED: process.env.AI_COACH_STT_ENABLED === "true" ? "true" : "false",
+    NEXT_PUBLIC_AI_COACH_TTS_ENABLED: process.env.AI_COACH_TTS_ENABLED === "true" ? "true" : "false",
+    NEXT_PUBLIC_AI_COACH_VOICE_DEBUG_ENABLED: !isProduction && process.env.AI_COACH_VOICE_DEBUG_ENABLED === "true" ? "true" : "false",
   },
   experimental: {
     cpus: 2,
