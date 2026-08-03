@@ -151,20 +151,22 @@ describe("paymob handleWebhook — HMAC verification", () => {
     expect(result.ok).toBe(false);
   });
 
-  it("skips HMAC check when hmac field is absent (no field)", async () => {
+  it("rejects a webhook without HMAC", async () => {
     const result = await paymobPaymentProvider.handleWebhook!(
       { type: "TRANSACTION", obj: baseTxObj },
       new Headers(),
     );
-    expect(result.ok).toBe(true);
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe("MISSING_HMAC");
   });
 
-  it("skips HMAC check when hmac is empty string", async () => {
+  it("rejects an empty HMAC", async () => {
     const result = await paymobPaymentProvider.handleWebhook!(
       { type: "TRANSACTION", obj: baseTxObj, hmac: "" },
       new Headers(),
     );
-    expect(result.ok).toBe(true);
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe("MISSING_HMAC");
   });
 
   it("accepts HMAC in uppercase (case-insensitive comparison)", async () => {

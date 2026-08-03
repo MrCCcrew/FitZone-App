@@ -13,11 +13,17 @@ export async function GET(req: Request, context: { params: Promise<{ transaction
     const { transactionId } = await context.params;
     const transaction = await db.paymentTransaction.findUnique({
       where: { id: transactionId },
-      select: { id: true, userId: true, status: true },
+      select: { id: true, userId: true, status: true, purpose: true },
     });
 
     if (!transaction || transaction.userId !== user.id) {
       return NextResponse.json({ error: "معاملة الدفع غير موجودة." }, { status: 404 });
+    }
+
+    // Wallet credits are finalized only by an authenticated provider webhook.
+    // The browser return URL is intentionally read-only for wallet top-ups.
+    if (transaction.purpose === "wallet_topup") {
+      return NextResponse.json({ success: true, transaction });
     }
 
     const state = new URL(req.url).searchParams.get("state");

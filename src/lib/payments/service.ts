@@ -57,6 +57,23 @@ const PAYMENT_REFERENCE_PREFIXES: Record<PaymentReferenceCategory, string> = {
 
 type PaymentReferenceDbClient = Pick<typeof db, "userMembership" | "paymentReferenceCounter">;
 
+type WalletTopupTestFailpoint = "credit" | "ledger" | null;
+let walletTopupTestFailpoint: WalletTopupTestFailpoint = null;
+
+/** Test-only hook used by real transaction tests to prove rollback behavior. */
+export function setWalletTopupTestFailpoint(failpoint: WalletTopupTestFailpoint) {
+  if (process.env.NODE_ENV !== "test") {
+    throw new Error("Wallet top-up failpoints are available only in tests.");
+  }
+  walletTopupTestFailpoint = failpoint;
+}
+
+function triggerWalletTopupTestFailpoint(stage: Exclude<WalletTopupTestFailpoint, null>) {
+  if (process.env.NODE_ENV === "test" && walletTopupTestFailpoint === stage) {
+    throw new Error(`WALLET_TOPUP_TEST_FAILPOINT:${stage}`);
+  }
+}
+
 function normalizeExternalPaymentMethod(method: string | null | undefined) {
   const raw = String(method ?? "").trim().toLowerCase();
 
@@ -464,13 +481,53 @@ export async function updatePaymentTransactionStatus(
 ) {
   const existing = await db.paymentTransaction.findUnique({
     where: { id: transactionId },
-    select: { status: true, metadata: true, membershipId: true, orderId: true, userId: true },
+    select: { status: true, metadata: true, membershipId: true, orderId: true, userId: true, purpose: true },
   });
 
   // Idempotency: if already in a terminal state, skip re-processing
   if (existing?.status === "paid" && status === "paid") {
     const current = await db.paymentTransaction.findUnique({ where: { id: transactionId } });
     return mapPaymentTransaction(current!);
+  }
+
+  if (status === "paid" && existing?.purpose === "wallet_topup") {
+    await db.$transaction(async (tx) => {
+      const payment = await tx.paymentTransaction.findUnique({
+        where: { id: transactionId },
+        select: { id: true, userId: true, amount: true, currency: true, status: true, purpose: true, referenceCode: true },
+      });
+      if (!payment) throw new Error("معاملة الدفع غير موجودة.");
+      if (payment.purpose !== "wallet_topup" || payment.currency.toUpperCase() !== "EGP") {
+        throw new Error("معاملة شحن المحفظة غير صالحة.");
+      }
+
+      const claimed = await tx.paymentTransaction.updateMany({
+        where: { id: payment.id, status: { in: ["pending", "pending_payment", "processing", "requires_action"] } },
+        data: { status: "paid", paidAt: new Date() },
+      });
+      if (claimed.count === 0) return null;
+
+      triggerWalletTopupTestFailpoint("credit");
+      const wallet = await tx.wallet.upsert({
+        where: { userId: payment.userId },
+        update: { balance: { increment: payment.amount } },
+        create: { userId: payment.userId, balance: payment.amount },
+      });
+      triggerWalletTopupTestFailpoint("ledger");
+      await tx.walletTransaction.create({
+        data: {
+          walletId: wallet.id,
+          amount: payment.amount,
+          type: "credit",
+          description: `شحن محفظة عبر ${payment.referenceCode ?? payment.id}`,
+        },
+      });
+      return payment.id;
+    });
+
+    const current = await db.paymentTransaction.findUnique({ where: { id: transactionId } });
+    if (!current) throw new Error("معاملة الدفع غير موجودة.");
+    return mapPaymentTransaction(current);
   }
 
   const transaction = await db.paymentTransaction.update({
@@ -485,6 +542,20 @@ export async function updatePaymentTransactionStatus(
       failedAt: status === "failed" ? new Date() : undefined,
     },
   });
+
+  // Claim a successful payment transition before any side effect. This makes
+  // duplicate provider webhooks harmless, including wallet credits.
+  if (status === "paid" && existing?.status !== "paid") {
+    const claimed = await db.paymentTransaction.updateMany({
+      where: { id: transactionId, status: { in: ["pending", "pending_payment", "processing", "requires_action"] } },
+      data: { status: "paid", paidAt: new Date() },
+    });
+    if (claimed.count === 0) {
+      const current = await db.paymentTransaction.findUnique({ where: { id: transactionId } });
+      if (!current) throw new Error("معاملة الدفع غير موجودة.");
+      return mapPaymentTransaction(current);
+    }
+  }
 
   const previousStatus = existing?.status;
   const wasOpen = previousStatus === "pending" || previousStatus === "processing" || previousStatus === "requires_action";

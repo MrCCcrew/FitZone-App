@@ -120,29 +120,6 @@ async function getAccountData(userId: string) {
         .map((m) => m.id),
     );
 
-    // ── Step 3: Fire-and-forget cleanup of expired pending memberships ──
-    if (expiredPendingIds.size > 0) {
-      const expiredList = [...expiredPendingIds];
-      // Cancel the payment transactions first (they reference membershipId as a plain string — no FK cascade)
-      Promise.all([
-        db.paymentTransaction.updateMany({
-          where: { membershipId: { in: expiredList }, status: { in: ["pending", "requires_action"] } },
-          data: { status: "cancelled" },
-        }),
-        // Delete all bookings tied to these memberships
-        db.booking.deleteMany({
-          where: { userMembershipId: { in: expiredList } },
-        }),
-      ])
-        .then(() =>
-          // Finally delete the memberships themselves (cascades commissions)
-          db.userMembership.deleteMany({
-            where: { id: { in: expiredList }, status: "pending_payment" },
-          }),
-        )
-        .catch((err) => console.error("[AUTO_DELETE_EXPIRED_PENDING]", err));
-    }
-
     const activeMembership = user.memberships.find((membership) => membership.status === "active") ?? null;
 
     // Only treat pending_payment as "live" if < 60 min have passed since creation

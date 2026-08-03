@@ -1491,9 +1491,25 @@ function TrainerProfileTab() {
   );
 }
 
+function usePendingPaymentMinutes(pendingPayment: AccountData["pendingPayment"]) {
+  const getRemaining = () => pendingPayment
+    ? Math.max(0, Math.ceil((new Date(pendingPayment.pendingExpiresAt).getTime() - Date.now()) / 60_000))
+    : 0;
+  const [minutesRemaining, setMinutesRemaining] = useState(getRemaining);
+
+  useEffect(() => {
+    setMinutesRemaining(getRemaining());
+    const timer = window.setInterval(() => setMinutesRemaining(getRemaining()), 15_000);
+    return () => window.clearInterval(timer);
+  }, [pendingPayment?.pendingExpiresAt]);
+
+  return minutesRemaining;
+}
+
 function MembershipTab({ membership, pendingPayment }: { membership: AccountData["membership"]; pendingPayment: AccountData["pendingPayment"] }) {
   const { lang } = useLang();
   const t = (arText: string, enText: string) => (lang === "ar" ? arText : enText);
+  const minutesRemaining = usePendingPaymentMinutes(pendingPayment);
 
   const pendingBanner = pendingPayment ? (
     <div className="mb-4 rounded-2xl border-2 border-amber-400/60 bg-gradient-to-br from-amber-950/60 to-orange-950/50 p-5 shadow-lg shadow-amber-900/20">
@@ -1512,12 +1528,12 @@ function MembershipTab({ membership, pendingPayment }: { membership: AccountData
             {t(`المبلغ المطلوب: ${pendingPayment.amount.toLocaleString("ar-EG")} ج.م`, `Amount due: ${pendingPayment.amount.toLocaleString("en-US")} EGP`)}
           </div>
           {/* Countdown */}
-          <div className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 mt-1 text-xs font-black ${pendingPayment.minutesRemaining <= 30 ? "bg-red-500/20 text-red-300 border border-red-500/40" : "bg-amber-500/15 text-amber-300 border border-amber-500/30"}`}>
+          <div className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 mt-1 text-xs font-black ${minutesRemaining <= 30 ? "bg-red-500/20 text-red-300 border border-red-500/40" : "bg-amber-500/15 text-amber-300 border border-amber-500/30"}`}>
             <span>⏱</span>
             <span>
-              {pendingPayment.minutesRemaining <= 30
-                ? t(`تبقّى أقل من ${pendingPayment.minutesRemaining} دقيقة فقط!`, `Less than ${pendingPayment.minutesRemaining}h left!`)
-                : t(`ينتهي خلال ${pendingPayment.minutesRemaining} دقيقة`, `Expires in ${pendingPayment.minutesRemaining}h`)}
+              {minutesRemaining <= 30
+                ? t(`تبقّى أقل من ${minutesRemaining} دقيقة فقط!`, `Less than ${minutesRemaining} minutes left!`)
+                : t(`ينتهي خلال ${minutesRemaining} دقيقة`, `Expires in ${minutesRemaining} minutes`)}
             </span>
           </div>
         </div>
@@ -1539,8 +1555,8 @@ function MembershipTab({ membership, pendingPayment }: { membership: AccountData
       {/* Warning note */}
       <div className="mt-3 rounded-xl bg-black/30 border border-amber-500/20 px-4 py-2.5 text-xs text-amber-200/80 leading-relaxed">
         {t(
-          "⚠️ إذا لم يتم إتمام الدفع خلال 24 دقيقة من وقت الاشتراك، سيتم إلغاء الاشتراك تلقائيًا وسيختفي من صفحتك، مع إلغاء أي حجوزات مرتبطة به.",
-          "⚠️ If payment is not completed within 24 hours of subscribing, the subscription and any linked bookings will be automatically cancelled and removed from your page.",
+          "⚠️ الحجز في انتظار الدفع وسيتم إلغاؤه تلقائيًا بعد 60 دقيقة.",
+          "⚠️ This reservation is awaiting payment and will be automatically cancelled after 60 minutes.",
         )}
       </div>
     </div>
@@ -1864,6 +1880,7 @@ function AccountMembershipTab({
 }) {
   const { lang } = useLang();
   const t = (arText: string, enText: string) => (lang === "ar" ? arText : enText);
+  const minutesRemaining = usePendingPaymentMinutes(pendingPayment);
   const currentMembership = membershipHistory.find((item) => item.id === membership?.id) ?? null;
 
   const pendingBanner = pendingPayment ? (
@@ -1880,12 +1897,12 @@ function AccountMembershipTab({
           <div className="text-amber-200 text-sm">
             {t(`المبلغ المطلوب: ${pendingPayment.amount.toLocaleString("ar-EG")} ج.م`, `Amount due: ${pendingPayment.amount.toLocaleString("en-US")} EGP`)}
           </div>
-          <div className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 mt-1 text-xs font-black ${pendingPayment.minutesRemaining <= 30 ? "bg-red-500/20 text-red-300 border border-red-500/40" : "bg-amber-500/15 text-amber-300 border border-amber-500/30"}`}>
+          <div className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 mt-1 text-xs font-black ${minutesRemaining <= 30 ? "bg-red-500/20 text-red-300 border border-red-500/40" : "bg-amber-500/15 text-amber-300 border border-amber-500/30"}`}>
             <span>⏱</span>
             <span>
-              {pendingPayment.minutesRemaining <= 30
-                ? t(`تبقّى أقل من ${pendingPayment.minutesRemaining} دقيقة فقط!`, `Less than ${pendingPayment.minutesRemaining}h left!`)
-                : t(`ينتهي خلال ${pendingPayment.minutesRemaining} دقيقة`, `Expires in ${pendingPayment.minutesRemaining}h`)}
+              {minutesRemaining <= 30
+                ? t(`تبقّى أقل من ${minutesRemaining} دقيقة فقط!`, `Less than ${minutesRemaining} minutes left!`)
+                : t(`ينتهي خلال ${minutesRemaining} دقيقة`, `Expires in ${minutesRemaining} minutes`)}
             </span>
           </div>
         </div>
@@ -1905,8 +1922,8 @@ function AccountMembershipTab({
       </div>
       <div className="mt-3 rounded-xl bg-black/30 border border-amber-500/20 px-4 py-2.5 text-xs text-amber-200/80 leading-relaxed">
         {t(
-          "⚠️ إذا لم يتم إتمام الدفع خلال 24 دقيقة من وقت الاشتراك، سيتم إلغاء الاشتراك تلقائيًا وسيختفي من صفحتك، مع إلغاء أي حجوزات مرتبطة به.",
-          "⚠️ If payment is not completed within 24 hours of subscribing, the subscription and any linked bookings will be automatically cancelled and removed from your page.",
+          "⚠️ الحجز في انتظار الدفع وسيتم إلغاؤه تلقائيًا بعد 60 دقيقة.",
+          "⚠️ This reservation is awaiting payment and will be automatically cancelled after 60 minutes.",
         )}
       </div>
     </div>
@@ -2270,10 +2287,8 @@ function BookingsTabLegacy({ bookings }: { bookings: AccountData["bookings"] }) 
 }
 
 // ─── Tab: Orders ──────────────────────────────────────────────────────────────
-function BookingsTab({ bookings, classSessions, membershipHistory }: {
+function BookingsTab({ bookings }: {
   bookings: AccountData["bookings"];
-  classSessions: Array<{ classId: string; classType?: string; className?: string; sessions: number }>;
-  membershipHistory: AccountData["membershipHistory"];
 }) {
   const { lang } = useLang();
   const t = (arText: string, enText: string) => (lang === "ar" ? arText : enText);
@@ -2317,30 +2332,24 @@ function BookingsTab({ bookings, classSessions, membershipHistory }: {
     const load = async () => {
       setScheduleLoading(true);
       try {
-        const res = await fetch(`/api/public?ts=${Date.now()}`, { cache: "no-store" });
+        const res = await fetch("/api/me/booking-schedules", { cache: "no-store" });
         const data = await res.json();
-        if (!mounted || !data?.classes) return;
-        const entries = (data.classes as Array<{
+        if (!mounted || !Array.isArray(data?.schedules)) return;
+        const entries = (data.schedules as Array<{
           id: string;
-          name: string;
+          classId: string;
+          className: string;
           trainer: string;
           type: string;
           subType?: string | null;
-          schedules: { id: string; date: string; time: string; availableSpots: number }[];
-        }>).flatMap((cls) =>
-          cls.schedules.map((s) => ({
-            id: s.id,
-            classId: cls.id,
-            className: cls.name,
-            trainer: cls.trainer,
-            type: cls.type,
-            subType: cls.subType ?? null,
-            date: s.date,
-            time: s.time,
-            day: format(new Date(s.date), "EEEE", { locale: lang === "en" ? enUS : ar }),
-            availableSpots: s.availableSpots,
-          })),
-        ).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+          date: string;
+          time: string;
+          availableSpots: number;
+        }>).map((schedule) => ({
+          ...schedule,
+          subType: schedule.subType ?? null,
+          day: format(new Date(schedule.date), "EEEE", { locale: lang === "en" ? enUS : ar }),
+        })).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
         // Keep only the nearest upcoming slot per (day, time, className)
         const seen = new Set<string>();
         const deduped = entries.filter((r) => {
@@ -2376,46 +2385,8 @@ function BookingsTab({ bookings, classSessions, membershipHistory }: {
     return `${String(displayHour).padStart(2, "0")}.${String(minute).padStart(2, "0")} ${period}`;
   };
 
-  // ── Effective class restrictions for the booking being edited ─────────────
-  // Priority: booking's own membership classSessions → active membership classSessions
-  // → fallback: filter by the booking's own class type
-  const effectiveClassSessions = useMemo(() => {
-    if (editingBooking?.userMembershipId) {
-      const mem = membershipHistory.find((m) => m.id === editingBooking.userMembershipId);
-      if (mem?.classSessions?.length) return mem.classSessions;
-    }
-    if (classSessions?.length) return classSessions;
-    return null; // null = use type-based fallback
-  }, [editingBooking, membershipHistory, classSessions]);
-
-  // ── Filter schedule entries based on the effective class restrictions ──────
-  const allowedScheduleEntries = useMemo(() => {
-    if (effectiveClassSessions && effectiveClassSessions.length > 0) {
-      // classSessions-based filtering
-      const allowedClassIds = new Set(effectiveClassSessions.map((cs) => cs.classId).filter(Boolean));
-      const allowedTypes = new Set(
-        effectiveClassSessions
-          .map((cs) => cs.classType?.trim().toLowerCase())
-          .filter((t): t is string => !!t),
-      );
-      return scheduleEntries.filter((entry) => {
-        if (allowedClassIds.has(entry.classId)) return true;
-        const entryType = (entry.type ?? "").trim().toLowerCase();
-        if (entryType && allowedTypes.has(entryType)) return true;
-        // Fallback: packages store type name as classId
-        if (entryType && allowedClassIds.has(entryType)) return true;
-        return false;
-      });
-    }
-    // Type-based fallback: only show classes of the same type as the booking
-    if (editingBooking?.type) {
-      const bookingType = editingBooking.type.trim().toLowerCase();
-      return scheduleEntries.filter(
-        (entry) => (entry.type ?? "").trim().toLowerCase() === bookingType,
-      );
-    }
-    return scheduleEntries;
-  }, [scheduleEntries, effectiveClassSessions, editingBooking]);
+  // The authenticated endpoint already applies the central membership resolver.
+  const allowedScheduleEntries = scheduleEntries;
 
   const scheduleSlots = useMemo(() => {
     const times = Array.from(new Set(allowedScheduleEntries.map((item) => item.time)));
@@ -2631,18 +2602,14 @@ function BookingsTab({ bookings, classSessions, membershipHistory }: {
           <div className="text-center text-gray-400 py-10">{t("جاري تحميل الجدول...", "Loading schedule...")}</div>
         ) : allowedScheduleEntries.length === 0 ? (
           <div className="text-center text-gray-400 py-10">
-            {(effectiveClassSessions?.length || editingBooking?.type)
-              ? t("لا توجد مواعيد متاحة لكلاسات اشتراكك حاليًا.", "No schedule slots available for your plan's classes right now.")
-              : t("لا توجد مواعيد متاحة حاليًا.", "No schedule slots available right now.")}
+            {t("لا توجد مواعيد متاحة لكلاسات اشتراكك حاليًا.", "No schedule slots available for your plan's classes right now.")}
           </div>
         ) : (
           <>
-            {(effectiveClassSessions?.length || editingBooking?.type) && (
-              <div style={{ display: "flex", alignItems: "flex-start", gap: 8, background: "rgba(139,92,246,.08)", border: "1px solid rgba(139,92,246,.3)", borderRadius: 10, padding: "10px 14px", marginBottom: 12, fontSize: 13, color: "#c4b5fd", fontWeight: 700, lineHeight: 1.6 }}>
-                <span style={{ fontSize: 16, flexShrink: 0 }}>🔒</span>
-                <span>{t("يظهر هنا فقط الكلاسات المتاحة ضمن اشتراكك الحالي.", "Only classes included in your current plan are shown here.")}</span>
-              </div>
-            )}
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 8, background: "rgba(139,92,246,.08)", border: "1px solid rgba(139,92,246,.3)", borderRadius: 10, padding: "10px 14px", marginBottom: 12, fontSize: 13, color: "#c4b5fd", fontWeight: 700, lineHeight: 1.6 }}>
+              <span style={{ fontSize: 16, flexShrink: 0 }}>🔒</span>
+              <span>{t("يظهر هنا فقط الكلاسات المتاحة ضمن اشتراكك الحالي.", "Only classes included in your current plan are shown here.")}</span>
+            </div>
             <div style={{ display: "flex", alignItems: "flex-start", gap: 8, background: "rgba(245,197,66,.07)", border: "1px solid rgba(245,197,66,.25)", borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 13, color: "#f5c542", fontWeight: 700, lineHeight: 1.6 }}>
               <span style={{ fontSize: 16, flexShrink: 0 }}>⚠️</span>
               <span>{t("لا يمكن حجز أكثر من كلاس واحد في نفس التوقيت ونفس اليوم.", "You cannot book more than one class at the same time on the same day.")}</span>
@@ -3250,9 +3217,7 @@ function ConvertPointsCard({ points, lang }: { points: number; lang: "ar" | "en"
   );
 }
 
-// TEMPORARY FEATURE FLAG (Release 0)
-// Disable wallet topup until HMAC/amount/currency validation ready (Release 5+)
-const WALLET_TOPUP_ENABLED = false;
+const MIN_WALLET_TOPUP_AMOUNT = 10;
 
 // ─── Tab: Wallet & Points ─────────────────────────────────────────────────────
 function WalletTab({
@@ -3293,7 +3258,7 @@ function WalletTab({
   const effectiveAmount = selectedAmount ?? (customAmount ? Number(customAmount) : 0);
 
   const startTopup = async () => {
-    if (!Number.isFinite(effectiveAmount) || effectiveAmount <= 0) {
+    if (!Number.isFinite(effectiveAmount) || effectiveAmount < MIN_WALLET_TOPUP_AMOUNT) {
       setPayError(t("يرجى اختيار مبلغ صالح للشحن.", "Please choose a valid top-up amount."));
       return;
     }
@@ -3347,25 +3312,7 @@ function WalletTab({
             <div className="text-gray-400">{lang === "en" ? "EGP" : "جنيه مصري"}</div>
           </div>
 
-          {/* TEMPORARY: Maintenance notice (Release 0) */}
-          {!WALLET_TOPUP_ENABLED ? (
-            <div className={CARD}>
-              <div className="text-center py-8">
-                <div className="text-5xl mb-4">⚠️</div>
-                <h4 className="text-white font-black mb-2 text-lg">
-                  {t("صيانة مؤقتة", "Temporary Maintenance")}
-                </h4>
-                <p className="text-gray-400 text-sm max-w-md mx-auto">
-                  {t(
-                    "خدمة شحن المحفظة متوقفة مؤقتًا للتحديث والصيانة. نعتذر عن الإزعاج ونعمل على إعادتها قريبًا.",
-                    "Wallet top-up service is temporarily disabled for updates and maintenance. We apologize for the inconvenience and are working to restore it soon."
-                  )}
-                </p>
-              </div>
-            </div>
-          ) : (
-            /* Top-up card — quick amounts + custom input + pay button */
-            <div className={CARD}>
+          <div className={CARD}>
               <h4 className="text-white font-black mb-3">{t("شحن المحفظة", "Top up wallet")}</h4>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
                 {TOPUP_AMOUNTS.map((v) => (
@@ -3385,6 +3332,8 @@ function WalletTab({
               </div>
               <input
                 type="number"
+                min={MIN_WALLET_TOPUP_AMOUNT}
+                step="1"
                 placeholder={t("مبلغ مخصص...", "Custom amount...")}
                 className={`${INPUT} mb-3`}
                 dir="ltr"
@@ -3413,8 +3362,7 @@ function WalletTab({
                   </a>
                 </div>
               )}
-            </div>
-          )}
+          </div>
 
           {/* Transactions */}
           <div className={CARD}>
@@ -5541,7 +5489,7 @@ export default function AccountClient({ data }: { data: AccountData }) {
             {activeTab === "privateSessions"      && <PrivateSessionsTab />}
             {activeTab === "myPrivateSessions"    && <MyPrivateSessionsTab />}
             {activeTab === "membership"           && <AccountMembershipTab membership={data.membership} membershipHistory={data.membershipHistory} privateApplications={data.privateApplications} pendingPayment={data.pendingPayment} />}
-            {activeTab === "bookings"      && <BookingsTab      bookings={data.bookings} classSessions={data.membership?.classSessions ?? []} membershipHistory={data.membershipHistory} />}
+            {activeTab === "bookings"      && <BookingsTab      bookings={data.bookings} />}
             {activeTab === "nutrition"     && <NutritionTab />}
             {activeTab === "orders"        && <AccountOrdersTab orders={data.orders} />}
             {activeTab === "wallet"        && <WalletTab        wallet={data.wallet} rewards={data.rewards} referral={data.referral} />}

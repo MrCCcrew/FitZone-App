@@ -16,7 +16,7 @@ const txPaymentTransactionUpdate = vi.fn();
 
 vi.mock("@/lib/db", () => ({
   db: {
-    paymentTransaction: { findUnique: vi.fn(), update: vi.fn() },
+    paymentTransaction: { findUnique: vi.fn(), update: vi.fn(), updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
     userMembership:     { findUnique: vi.fn(), updateMany: vi.fn() },
     booking:            { findMany: vi.fn().mockResolvedValue([]), updateMany: vi.fn() },
     schedule:           { update: vi.fn() },
