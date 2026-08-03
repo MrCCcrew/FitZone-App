@@ -96,6 +96,47 @@ export const hasRealtimeResponseOutput = (audioStarted: boolean) => audioStarted
 
 export const shouldShowMessageTts = (realtimeCallActive: boolean) => !realtimeCallActive;
 
+export type VoiceCapabilities = { voiceEnabled: boolean; realtimeEnabled: boolean; recorderEnabled: boolean; ttsEnabled: boolean };
+
+/** Public build flags are capabilities, not session state. Keep them stable if a session request fails. */
+export function getVoiceCapabilities(flags = {
+  voice: process.env.NEXT_PUBLIC_AI_COACH_VOICE_ENABLED,
+  realtime: process.env.NEXT_PUBLIC_AI_COACH_REALTIME_VOICE_ENABLED,
+  recorder: process.env.NEXT_PUBLIC_AI_COACH_STT_ENABLED,
+  tts: process.env.NEXT_PUBLIC_AI_COACH_TTS_ENABLED,
+}): VoiceCapabilities {
+  const voiceEnabled = flags.voice === "true";
+  return {
+    voiceEnabled,
+    realtimeEnabled: voiceEnabled && flags.realtime === "true",
+    recorderEnabled: voiceEnabled && flags.recorder === "true",
+    ttsEnabled: voiceEnabled && flags.tts === "true",
+  };
+}
+
+export function shouldShowVoiceControls(capabilities: VoiceCapabilities, realtimeCallActive: boolean) {
+  return {
+    showCallButton: capabilities.realtimeEnabled,
+    showRecorderButton: capabilities.recorderEnabled,
+    showListenButton: capabilities.ttsEnabled && shouldShowMessageTts(realtimeCallActive),
+  };
+}
+
+export function shouldRequestChatSession(input: { sessionId: string; inFlight: boolean; lastLoadedSessionId: string | null; lastRequestKey: string | null; unmounted: boolean }) {
+  const requestKey = `session:${input.sessionId}`;
+  return Boolean(input.sessionId) && !input.unmounted && !input.inFlight && input.lastLoadedSessionId !== input.sessionId && input.lastRequestKey !== requestKey;
+}
+
+export function appendUniqueChatMessage(messages: ChatMessage[], message: ChatMessage) {
+  return messages.some((item) => item.id === message.id) ? messages : [...messages, message];
+}
+
+function sessionIdHash(value: string) {
+  let hash = 2166136261;
+  for (const character of value) hash = Math.imul(hash ^ character.charCodeAt(0), 16777619);
+  return (hash >>> 0).toString(36);
+}
+
 export type VoicePlatform = { isIOS: boolean; isSafari: boolean; isStandalonePWA: boolean };
 
 export function detectVoicePlatform(userAgent = typeof navigator === "undefined" ? "" : navigator.userAgent, standalone = typeof navigator !== "undefined" && Boolean((navigator as Navigator & { standalone?: boolean }).standalone)) : VoicePlatform {
@@ -329,8 +370,9 @@ export default function LiveChatWidget() {
   const [error, setError] = useState("");
   const [isMobile, setIsMobile] = useState(false);
   const [gymPhone, setGymPhone] = useState("");
-  const voiceEnabled = process.env.NEXT_PUBLIC_AI_COACH_VOICE_ENABLED === "true";
-  const realtimeEnabled = process.env.NEXT_PUBLIC_AI_COACH_REALTIME_VOICE_ENABLED === "true";
+  // Capabilities are intentionally independent from /api/chat/session payloads.
+  const [sessionCapabilities] = useState<VoiceCapabilities>(() => getVoiceCapabilities());
+  const { voiceEnabled, realtimeEnabled, recorderEnabled, ttsEnabled } = sessionCapabilities;
   const [realtimeState, setRealtimeState] = useState<"idle" | "connecting" | "initializing" | "listening" | "thinking" | "assistant_speaking" | "error">("idle");
   const realtimeStatusLabel = realtimeState === "connecting" || realtimeState === "initializing"
     ? t("جاري تهيئة المكالمة…", "Initializing call…")
@@ -379,7 +421,14 @@ export default function LiveChatWidget() {
   // These guards intentionally live in refs: React rerenders and StrictMode must not
   // turn one explicit click into more than one billed Realtime session.
   const connectionAttemptInFlightRef = useRef(false);
+  const realtimeSessionRequestInFlightRef = useRef(false);
+  const initialSessionLoadedRef = useRef(false);
   const sessionRequestInFlightRef = useRef(false);
+  const lastSessionRequestKeyRef = useRef<string | null>(null);
+  const lastLoadedSessionIdRef = useRef<string | null>(null);
+  const componentUnmountedRef = useRef(false);
+  const sessionAbortControllerRef = useRef<AbortController | null>(null);
+  const newSessionRequestSequenceRef = useRef(0);
   const explicitUserConnectRef = useRef(false);
   const reconnectAttemptCount = useRef(0);
   const lastConnectionAttemptAt = useRef(0);
@@ -389,6 +438,7 @@ export default function LiveChatWidget() {
   const navigationPerformedRef = useRef(false);
   const sessionStartedAtRef = useRef(0);
   const voiceDiagnosticsRef = useRef({ pageMountCount: 0, sessionRequestCount: 0, peerConnectionCount: 0, responseCreateCount: 0, toolCallCount: 0, reconnectCount: 0, ttsRequestCount: 0, cleanupCount: 0 });
+  const sessionDiagnosticsRef = useRef({ componentMountCount: 0, sessionFetchCount: 0, sessionFetchReason: "", sessionIdHash: "" });
   // Zero means "not enabled". The quota plan can set this public local-development
   // value later without changing the connection lifecycle.
   const maxSessionSeconds = Math.max(0, Number(process.env.NEXT_PUBLIC_AI_COACH_MAX_SESSION_SECONDS ?? 0) || 0);
@@ -404,7 +454,15 @@ export default function LiveChatWidget() {
     logClientVoiceDebug(voiceDebugEnabled, "info", "[AI_COACH_REALTIME_COUNTERS]", { ...voiceDiagnosticsRef.current });
   };
 
-  useEffect(() => { recordVoiceDiagnostic("pageMountCount"); }, []);
+  useEffect(() => {
+    recordVoiceDiagnostic("pageMountCount");
+    componentUnmountedRef.current = false;
+    sessionDiagnosticsRef.current.componentMountCount += 1;
+    return () => {
+      componentUnmountedRef.current = true;
+      sessionAbortControllerRef.current?.abort();
+    };
+  }, []);
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth <= 768);
@@ -487,6 +545,19 @@ export default function LiveChatWidget() {
   };
 
   const createFreshSession = async () => {
+    const requestKey = `new:${++newSessionRequestSequenceRef.current}`;
+    if (sessionRequestInFlightRef.current) return "";
+    const controller = new AbortController();
+    sessionAbortControllerRef.current?.abort();
+    sessionAbortControllerRef.current = controller;
+    const canUpdateState = () => !componentUnmountedRef.current && !controller.signal.aborted;
+    sessionRequestInFlightRef.current = true;
+    lastSessionRequestKeyRef.current = requestKey;
+    sessionDiagnosticsRef.current.sessionFetchCount += 1;
+    sessionDiagnosticsRef.current.sessionFetchReason = "new_chat";
+    sessionDiagnosticsRef.current.sessionIdHash = "";
+    logClientVoiceDebug(voiceDebugEnabled, "info", "[AI_COACH_SESSION_FETCH]", { ...sessionDiagnosticsRef.current });
+    if (!canUpdateState()) return "";
     clearStoredSession();
     setMessages([]);
     setQuickActions([]);
@@ -495,25 +566,32 @@ export default function LiveChatWidget() {
     setInput("");
     setError("");
 
-    const res = await fetch("/api/chat/session", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ lang }),
-    });
-    const data = (await res.json().catch(() => ({}))) as ChatSessionPayload;
+    try {
+      const res = await fetch("/api/chat/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lang }),
+        signal: controller.signal,
+      });
+      const data = (await res.json().catch(() => ({}))) as ChatSessionPayload;
 
-    if (!res.ok || !data?.id) {
-      setError(data.error ?? t("تعذر بدء المحادثة الآن. حاول مرة أخرى بعد قليل.", "Unable to start the conversation right now. Please try again shortly."));
+      if (!res.ok || !data?.id) {
+        if (!canUpdateState()) return "";
+        setError(data.error ?? t("تعذر بدء المحادثة الآن. حاول مرة أخرى بعد قليل.", "Unable to start the conversation right now. Please try again shortly."));
+        return "";
+      }
+
+      if (canUpdateState()) applyPayload(data);
+      lastLoadedSessionIdRef.current = data.id;
+      if (name.trim() || phone.trim()) saveVisitorIdentity(name, phone);
+      return data.id;
+    } catch {
+      if (canUpdateState()) setError(t("تعذر بدء المحادثة الآن.", "Unable to start the conversation right now."));
       return "";
+    } finally {
+      if (sessionAbortControllerRef.current === controller) sessionAbortControllerRef.current = null;
+      sessionRequestInFlightRef.current = false;
     }
-
-    applyPayload(data);
-
-    if (name.trim() || phone.trim()) {
-      saveVisitorIdentity(name, phone);
-    }
-
-    return data.id;
   };
 
   const loadPresence = async () => {
@@ -522,19 +600,40 @@ export default function LiveChatWidget() {
     setOnline(Boolean(data.online));
   };
 
-  const loadSession = async (id: string) => {
+  const loadSession = async (id: string, reason: "initial" | "invalid_session" = "initial") => {
     const validId = normalizeSessionId(id);
-    if (!validId) return;
+    if (!shouldRequestChatSession({ sessionId: validId, inFlight: sessionRequestInFlightRef.current, lastLoadedSessionId: lastLoadedSessionIdRef.current, lastRequestKey: lastSessionRequestKeyRef.current, unmounted: componentUnmountedRef.current })) return;
 
-    const res = await fetch(`/api/chat/session?sessionId=${validId}&lang=${lang}`, { cache: "no-store" });
-    const data = (await res.json().catch(() => ({}))) as ChatSessionPayload;
-    if (!res.ok || !data?.id) {
-      clearStoredSession();
-      if (open) setError(data.error ?? t("تعذر تحميل المحادثة الحالية.", "Unable to load the current conversation."));
-      return;
+    const controller = new AbortController();
+    sessionAbortControllerRef.current?.abort();
+    sessionAbortControllerRef.current = controller;
+    sessionRequestInFlightRef.current = true;
+    lastSessionRequestKeyRef.current = `session:${validId}`;
+    sessionDiagnosticsRef.current.sessionFetchCount += 1;
+    sessionDiagnosticsRef.current.sessionFetchReason = reason;
+    sessionDiagnosticsRef.current.sessionIdHash = sessionIdHash(validId);
+    logClientVoiceDebug(voiceDebugEnabled, "info", "[AI_COACH_SESSION_FETCH]", { ...sessionDiagnosticsRef.current });
+
+    try {
+      const res = await fetch(`/api/chat/session?sessionId=${encodeURIComponent(validId)}&lang=${lang}`, { cache: "no-store", signal: controller.signal });
+      const data = (await res.json().catch(() => ({}))) as ChatSessionPayload;
+      if (componentUnmountedRef.current || controller.signal.aborted) return;
+      if (!res.ok || !data?.id) {
+        // Only a documented invalid/missing session clears local identity. No automatic retry.
+        if (res.status === 404 || res.status === 410) clearStoredSession();
+        if (open) setError(data.error ?? t("تعذر تحميل المحادثة الحالية.", "Unable to load the current conversation."));
+        return;
+      }
+      lastLoadedSessionIdRef.current = validId;
+      applyPayload(data);
+    } catch (error) {
+      if (!(error instanceof DOMException && error.name === "AbortError") && !componentUnmountedRef.current) {
+        if (open) setError(t("تعذر تحميل المحادثة الحالية.", "Unable to load the current conversation."));
+      }
+    } finally {
+      if (sessionAbortControllerRef.current === controller) sessionAbortControllerRef.current = null;
+      sessionRequestInFlightRef.current = false;
     }
-
-    applyPayload(data);
   };
 
   const ensureSession = async () => {
@@ -565,6 +664,8 @@ export default function LiveChatWidget() {
   };
 
   useEffect(() => {
+    if (initialSessionLoadedRef.current) return;
+    initialSessionLoadedRef.current = true;
     loadPresence().catch(() => {});
 
     const storedId = normalizeSessionId(
@@ -576,18 +677,10 @@ export default function LiveChatWidget() {
 
     if (storedVisitor.name) setName(storedVisitor.name);
     if (storedVisitor.phone) setPhone(storedVisitor.phone);
-    if (storedId) loadSession(storedId).catch(() => {});
-
-    const interval = setInterval(() => {
-      loadPresence().catch(() => {});
-      const latest = normalizeSessionId(
-        typeof window !== "undefined" ? window.sessionStorage.getItem(STORAGE_KEY) : null,
-      );
-      if (latest) loadSession(latest).catch(() => {});
-    }, 30000);
-
-    return () => clearInterval(interval);
-  }, [open, lang]);
+    if (storedId) void loadSession(storedId);
+  // Initial load is deliberate: opening/closing, language, messages, and loading state must not reload a session.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     const latest = messages[messages.length - 1];
@@ -683,7 +776,7 @@ export default function LiveChatWidget() {
     recordVoiceDiagnostic("cleanupCount");
     explicitUserConnectRef.current = false;
     connectionAttemptInFlightRef.current = false;
-    sessionRequestInFlightRef.current = false;
+    realtimeSessionRequestInFlightRef.current = false;
     pendingUiActionsRef.current = null;
     navigationPerformedRef.current = false;
     responseHasOutputRef.current = false;
@@ -720,7 +813,7 @@ export default function LiveChatWidget() {
   const stopRecording = () => stopMediaRecorder(recorderRef.current);
   const cancelRecording = () => { cancelledRecordingRef.current = true; chunksRef.current = []; stopRecording(); };
   const startRecording = async () => {
-    if (!voiceEnabled || recording || transcribing || realtimeState !== "idle" || !navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") { setError(t("مش قادرين نستخدم التسجيل دلوقتي. اقفلي المكالمة الصوتية أو استني الطلب الحالي يخلص.", "Recording is unavailable while another voice request is active.")); return; }
+    if (!recorderEnabled || recording || transcribing || realtimeState !== "idle" || !navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") { setError(t("مش قادرين نستخدم التسجيل دلوقتي. اقفلي المكالمة الصوتية أو استني الطلب الحالي يخلص.", "Recording is unavailable while another voice request is active.")); return; }
     try {
       stopPlayback(); const stream = await navigator.mediaDevices.getUserMedia({ audio: true }); streamRef.current = stream; chunksRef.current = []; cancelledRecordingRef.current = false;
       const selectedRecorderMime = selectSupportedRecorderMime((mime) => MediaRecorder.isTypeSupported(mime)); const recorder = selectedRecorderMime ? new MediaRecorder(stream, { mimeType: selectedRecorderMime }) : new MediaRecorder(stream); recorderRef.current = recorder; startedAtRef.current = Date.now(); setRecordingSeconds(0); setRecording(true);
@@ -744,9 +837,9 @@ export default function LiveChatWidget() {
   };
   const transcribeAudio = async (audio: Blob, durationMs: number) => { setTranscribing(true); setError(""); try { if (realtimeState !== "idle") return; const id = await ensureSession(); if (!id) return; const form = new FormData(); form.set("sessionId", id); form.set("audio", audio, `voice.${audio.type.includes("ogg") ? "ogg" : audio.type.includes("mp4") ? "m4a" : "webm"}`); form.set("durationMs", String(durationMs)); form.set("localeHint", lang); const response = await fetch("/api/chat/voice/transcribe", { method: "POST", body: form }); const data = await response.json(); if (!response.ok) { retryAudioRef.current = data.errorCode === "STT_NETWORK_ERROR" || data.errorCode === "STT_TIMEOUT" ? { blob: audio, durationMs } : null; setError(data.error ?? t("معرفتش أفهم التسجيل المرة دي. تقدري تعيدي التسجيل أو تكتبي سؤالك.", "Unable to transcribe recording.")); return; } retryAudioRef.current = null; const transcript = typeof data.normalizedTranscript === "string" ? data.normalizedTranscript.trim() : ""; if (!transcript) { setError(t("الصوت اتسجل، بس الكلام مش واضح. جربي تاني.", "The recording was unclear. Please try again.")); return; } setInput(transcript); await sendMessage(transcript, "stt"); } finally { setTranscribing(false); } };
   const retryTranscription = () => { const retry = retryAudioRef.current; if (retry) transcribeAudio(retry.blob, retry.durationMs); };
-  const playMessage = async (messageId: string, automatic = false) => { if (realtimeState !== "idle") { if (!automatic) setError(t("الصوت المباشر شغال دلوقتي.", "Live voice is active.")); return; } try { if (audioRef.current && shouldReuseTtsAudio(activeTtsMessageIdRef.current, messageId)) { await audioRef.current.play(); setTtsAutoplayBlocked(false); return; } stopPlayback(); setTtsAutoplayBlocked(false); const id = await ensureSession(); if (!id) return; recordVoiceDiagnostic("ttsRequestCount"); const response = await fetch("/api/chat/voice/speak", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId: id, messageId }) }); const contentType = response.headers.get("content-type") ?? ""; const source = response.headers.get("x-ai-coach-audio-source") ?? "unknown"; if (voiceDebugEnabled) console.info("[AI_COACH_LISTEN]", { source, contentType, status: response.status }); if (!response.ok || !contentType.startsWith("audio/")) throw new Error("OPENAI_TTS_UNAVAILABLE"); const audio = new Audio(URL.createObjectURL(await response.blob())); audio.muted = false; audio.volume = 1; audioRef.current = audio; activeTtsMessageIdRef.current = messageId; audio.onended = () => { URL.revokeObjectURL(audio.src); activeTtsMessageIdRef.current = null; }; try { await audio.play(); } catch { if (automatic) { setTtsAutoplayBlocked(true); setError(t("الرد وصل، لكن تعذر تشغيل الصوت.", "The reply arrived, but audio could not play.")); return; } throw new Error("AUDIO_PLAY_BLOCKED"); } if (voiceDebugEnabled) console.info("[AI_COACH_LISTEN]", { source, play: "success" }); } catch (error) { if (voiceDebugEnabled) console.info("[AI_COACH_LISTEN]", { source: "openai-tts", play: "failed", name: error instanceof Error ? error.name : "unknown" }); setError(t("الرد وصل، لكن تعذر تشغيل الصوت.", "The reply arrived, but audio could not play.")); } };
+  const playMessage = async (messageId: string, automatic = false) => { if (!ttsEnabled || realtimeState !== "idle") { if (!automatic && realtimeState !== "idle") setError(t("الصوت المباشر شغال دلوقتي.", "Live voice is active.")); return; } try { if (audioRef.current && shouldReuseTtsAudio(activeTtsMessageIdRef.current, messageId)) { await audioRef.current.play(); setTtsAutoplayBlocked(false); return; } stopPlayback(); setTtsAutoplayBlocked(false); const id = await ensureSession(); if (!id) return; recordVoiceDiagnostic("ttsRequestCount"); const response = await fetch("/api/chat/voice/speak", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId: id, messageId }) }); const contentType = response.headers.get("content-type") ?? ""; const source = response.headers.get("x-ai-coach-audio-source") ?? "unknown"; if (voiceDebugEnabled) console.info("[AI_COACH_LISTEN]", { source, contentType, status: response.status }); if (!response.ok || !contentType.startsWith("audio/")) throw new Error("OPENAI_TTS_UNAVAILABLE"); const audio = new Audio(URL.createObjectURL(await response.blob())); audio.muted = false; audio.volume = 1; audioRef.current = audio; activeTtsMessageIdRef.current = messageId; audio.onended = () => { URL.revokeObjectURL(audio.src); activeTtsMessageIdRef.current = null; }; try { await audio.play(); } catch { if (automatic) { setTtsAutoplayBlocked(true); setError(t("الرد وصل، لكن تعذر تشغيل الصوت.", "The reply arrived, but audio could not play.")); return; } throw new Error("AUDIO_PLAY_BLOCKED"); } if (voiceDebugEnabled) console.info("[AI_COACH_LISTEN]", { source, play: "success" }); } catch (error) { if (voiceDebugEnabled) console.info("[AI_COACH_LISTEN]", { source: "openai-tts", play: "failed", name: error instanceof Error ? error.name : "unknown" }); setError(t("الرد وصل، لكن تعذر تشغيل الصوت.", "The reply arrived, but audio could not play.")); } };
   const startRealtime = async () => {
-    if (!canStartRealtimeConnection({ enabled: realtimeEnabled, state: realtimeState, connectionInFlight: connectionAttemptInFlightRef.current, sessionRequestInFlight: sessionRequestInFlightRef.current, hasPeer: Boolean(activePeerConnectionRef.current), hasDataChannel: Boolean(activeDataChannelRef.current), supported: Boolean(window.RTCPeerConnection && navigator.mediaDevices?.getUserMedia) })) { setError(t("المحادثة المباشرة مش متاحة دلوقتي، تقدري تستخدمي التسجيل أو الكتابة.", "Live voice is unavailable. Use recording or text.")); return; }
+    if (!canStartRealtimeConnection({ enabled: realtimeEnabled, state: realtimeState, connectionInFlight: connectionAttemptInFlightRef.current, sessionRequestInFlight: realtimeSessionRequestInFlightRef.current, hasPeer: Boolean(activePeerConnectionRef.current), hasDataChannel: Boolean(activeDataChannelRef.current), supported: Boolean(window.RTCPeerConnection && navigator.mediaDevices?.getUserMedia) })) { setError(t("المحادثة المباشرة مش متاحة دلوقتي، تقدري تستخدمي التسجيل أو الكتابة.", "Live voice is unavailable. Use recording or text.")); return; }
     explicitUserConnectRef.current = true;
     connectionAttemptInFlightRef.current = true;
     lastConnectionAttemptAt.current = Date.now();
@@ -771,10 +864,10 @@ export default function LiveChatWidget() {
     setDebug({ platform: `${platform.isIOS ? "iOS" : "other"}${platform.isSafari ? " Safari" : ""}${platform.isStandalonePWA ? " PWA" : ""}`, pcState: peer.connectionState, iceState: peer.iceConnectionState });
     try {
       const id = await ensureSession(); if (!id) throw new Error();
-      if (!explicitUserConnectRef.current || sessionRequestInFlightRef.current) throw new Error("CONNECTION_CANCELLED");
-      sessionRequestInFlightRef.current = true; recordVoiceDiagnostic("sessionRequestCount");
+      if (!explicitUserConnectRef.current || realtimeSessionRequestInFlightRef.current) throw new Error("CONNECTION_CANCELLED");
+      realtimeSessionRequestInFlightRef.current = true; recordVoiceDiagnostic("sessionRequestCount");
       const tokenResponse = await fetch("/api/chat/voice/realtime/session", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId: id, lang, voice: realtimeVoice }) });
-      sessionRequestInFlightRef.current = false;
+      realtimeSessionRequestInFlightRef.current = false;
       const tokenData = await tokenResponse.json().catch(() => ({})) as { clientSecret?: string; voiceSessionId?: string };
       if (!tokenResponse.ok || !tokenData.clientSecret) throw new Error();
       realtimeVoiceSessionIdRef.current = typeof tokenData.voiceSessionId === "string" ? tokenData.voiceSessionId : null;
@@ -841,11 +934,23 @@ export default function LiveChatWidget() {
             });
           }
           recordVoiceDiagnostic("toolCallCount");
+          const toolResult = toolData.result as { answer?: unknown } | undefined;
+          const toolAnswer = typeof toolResult?.answer === "string" ? toolResult.answer.trim() : "";
+          if (toolAnswer || !toolResponse.ok) {
+            const toolMessage: ChatMessage = {
+              id: `realtime-tool-${data.call_id}`,
+              senderType: "bot",
+              senderName: "AI Coach",
+              content: toolAnswer || t("حصلت مشكلة أثناء تنفيذ الطلب الصوتي. جربي مرة ثانية.", "The voice request could not be completed. Please try again."),
+              createdAt: new Date().toISOString(),
+            };
+            setMessages((current) => appendUniqueChatMessage(current, toolMessage));
+          }
           // Navigation waits for the assistant's resulting audio to begin. It never creates a new call.
           pendingUiActionsRef.current = buildCoachUiActionsForToolResult(data.name, toolData.result);
           const functionResult = toolResponse.ok ? toolData.result ?? { allowed: false } : { allowed: false, answer: "Tool unavailable." };
           if (channel.readyState === "open") { setRealtimeState("thinking"); for (const responseEvent of createRealtimeToolOutputEvents(data.call_id, functionResult)) channel.send(JSON.stringify(responseEvent)); }
-          loadSession(id).catch(() => {});
+          // Tool results are applied through the Realtime response; never reload the full chat session here.
         }
         if (data.type === "input_audio_buffer.speech_started") {
           // With non-barge-in VAD a short detection while output is playing is commonly speaker echo.
@@ -1084,7 +1189,7 @@ export default function LiveChatWidget() {
                       {message.senderName || (isUser ? t("أنت", "You") : message.senderType === "bot" ? "AI Coach" : t("الدعم", "Support"))}
                     </div>
                     <div style={{ whiteSpace: "pre-wrap" }}>{message.content}</div>
-                    {voiceEnabled && message.senderType === "bot" && shouldShowMessageTts(realtimeState !== "idle") && <div style={{ display: "flex", gap: 6, marginTop: 8 }}><button aria-label="تشغيل الرد صوتيًا" onClick={() => playMessage(message.id)} style={quickButtonStyle}>▶ {t("اسمعي", "Play")}</button><button aria-label="إيقاف الصوت" onClick={stopPlayback} style={quickButtonStyle}>■ {t("إيقاف", "Stop")}</button></div>}
+            {ttsEnabled && message.senderType === "bot" && shouldShowVoiceControls(sessionCapabilities, realtimeState !== "idle").showListenButton && <div style={{ display: "flex", gap: 6, marginTop: 8 }}><button aria-label="تشغيل الرد صوتيًا" onClick={() => playMessage(message.id)} style={quickButtonStyle}>▶ {t("اسمعي", "Play")}</button><button aria-label="إيقاف الصوت" onClick={stopPlayback} style={quickButtonStyle}>■ {t("إيقاف", "Stop")}</button></div>}
                     {message.metadata?.action?.page === "shop" && (
                       <button onClick={openShop} style={{ ...quickButtonStyle, marginTop: 8 }}>فتح المتجر</button>
                     )}
@@ -1133,12 +1238,12 @@ export default function LiveChatWidget() {
               zIndex: 1,
             }}
           >
-            {voiceEnabled && (recording || transcribing) && <div style={{ width: "100%", fontSize: 12, color: "#E91E63" }}>{recording ? `${t("بتسمعك دلوقتي", "Listening")}… ${recordingSeconds}s` : t("جاري فهم كلامك…", "Understanding your voice…")}</div>}
+            {recorderEnabled && (recording || transcribing) && <div style={{ width: "100%", fontSize: 12, color: "#E91E63" }}>{recording ? `${t("بتسمعك دلوقتي", "Listening")}… ${recordingSeconds}s` : t("جاري فهم كلامك…", "Understanding your voice…")}</div>}
             {realtimeEnabled && realtimeState !== "idle" && <div style={{ width: "100%", fontSize: 12, color: "#E91E63" }}>{realtimeStatusLabel}</div>}
             {realtimeEnabled && autoplayBlocked && <button onClick={() => { void realtimeAudioRef.current?.play().then(() => setAutoplayBlocked(false)); }} style={{ ...quickButtonStyle, width: "100%" }}>{t("اضغطي مرة واحدة لتشغيل صوت المساعد.", "Tap once to play assistant audio.")}</button>}
-            {ttsAutoplayBlocked && <button onClick={() => { void audioRef.current?.play().then(() => { setTtsAutoplayBlocked(false); setError(""); }).catch(() => {}); }} style={{ ...quickButtonStyle, width: "100%" }}>{t("اضغطي لتشغيل الرد الصوتي", "Tap to play the voice reply")}</button>}
-            {realtimeEnabled && <button aria-label={realtimeState === "idle" ? "ابدئي محادثة صوتية" : "إنهاء المحادثة الصوتية"} title={realtimeState === "idle" ? "محادثة صوتية" : "إنهاء المحادثة"} onClick={realtimeState === "idle" ? startRealtime : () => endRealtime()} disabled={realtimeState === "connecting"} style={{ flex: "0 0 44px", width: 44, height: 52, border: "1px solid #F5D0DC", borderRadius: 14, background: realtimeState === "idle" ? "#fff" : "#BE185D", color: realtimeState === "idle" ? "#E91E63" : "#fff", display: "grid", placeItems: "center", cursor: "pointer" }}>{realtimeState === "connecting" ? <Loader2 size={18} className="animate-spin" /> : realtimeState === "idle" ? <Phone size={18} /> : <PhoneOff size={18} />}</button>}
-            {voiceEnabled && <button aria-label={recording ? "إيقاف التسجيل" : "ابدئي تسجيل صوتي"} title={recording ? "إيقاف التسجيل" : "ابدئي تسجيل صوتي"} onClick={recording ? stopRecording : startRecording} disabled={loading || transcribing} style={{ flex: "0 0 44px", width: 44, height: 52, border: "1px solid #F5D0DC", borderRadius: 14, background: recording ? "#BE185D" : "#fff", color: recording ? "#fff" : "#E91E63", display: "grid", placeItems: "center", cursor: "pointer" }}>{transcribing ? <Loader2 size={18} className="animate-spin" /> : recording ? <Square size={17} fill="currentColor" /> : <Mic size={19} />}</button>}
+            {ttsEnabled && ttsAutoplayBlocked && <button onClick={() => { void audioRef.current?.play().then(() => { setTtsAutoplayBlocked(false); setError(""); }).catch(() => {}); }} style={{ ...quickButtonStyle, width: "100%" }}>{t("اضغطي لتشغيل الرد الصوتي", "Tap to play the voice reply")}</button>}
+            {shouldShowVoiceControls(sessionCapabilities, realtimeState !== "idle").showCallButton && <button aria-label={realtimeState === "idle" ? "ابدئي محادثة صوتية" : "إنهاء المحادثة الصوتية"} title={realtimeState === "idle" ? "محادثة صوتية" : "إنهاء المحادثة"} onClick={realtimeState === "idle" ? startRealtime : () => endRealtime()} disabled={realtimeState === "connecting"} style={{ flex: "0 0 44px", width: 44, height: 52, border: "1px solid #F5D0DC", borderRadius: 14, background: realtimeState === "idle" ? "#fff" : "#BE185D", color: realtimeState === "idle" ? "#E91E63" : "#fff", display: "grid", placeItems: "center", cursor: "pointer" }}>{realtimeState === "connecting" ? <Loader2 size={18} className="animate-spin" /> : realtimeState === "idle" ? <Phone size={18} /> : <PhoneOff size={18} />}</button>}
+            {shouldShowVoiceControls(sessionCapabilities, realtimeState !== "idle").showRecorderButton && <button aria-label={recording ? "إيقاف التسجيل" : "ابدئي تسجيل صوتي"} title={recording ? "إيقاف التسجيل" : "ابدئي تسجيل صوتي"} onClick={recording ? stopRecording : startRecording} disabled={loading || transcribing} style={{ flex: "0 0 44px", width: 44, height: 52, border: "1px solid #F5D0DC", borderRadius: 14, background: recording ? "#BE185D" : "#fff", color: recording ? "#fff" : "#E91E63", display: "grid", placeItems: "center", cursor: "pointer" }}>{transcribing ? <Loader2 size={18} className="animate-spin" /> : recording ? <Square size={17} fill="currentColor" /> : <Mic size={19} />}</button>}
             {realtimeEnabled && manualVoiceFallback && <button onClick={() => { realtimeStreamRef.current?.getAudioTracks().forEach((track) => { track.enabled = true; }); setManualVoiceFallback(false); }} style={{ ...quickButtonStyle, flex: "0 0 auto" }}>{t("ابدئي الكلام", "Start talking")}</button>}
             {voiceDebugEnabled && <div aria-label="AI Coach voice debug" style={{ position: "absolute", insetInline: 12, bottom: isMobile ? "calc(env(safe-area-inset-bottom, 0px) + 104px)" : 96, zIndex: 2, maxWidth: "calc(100% - 24px)", pointerEvents: "none", fontSize: 10, color: "#7A5B68", direction: "ltr", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{`platform=${voiceDebug.platform || "unknown"} · pc=${voiceDebug.pcState} · ice=${voiceDebug.iceState} · dc=${voiceDebug.dataChannelState} · track=${voiceDebug.trackState}/${voiceDebug.trackMuted ? "muted" : "unmuted"} · event=${voiceDebug.lastRealtimeEvent || "—"} · errorCode=${voiceDebug.lastErrorCode || "—"} · errorType=${voiceDebug.lastErrorType || "—"}`}</div>}
             <textarea
