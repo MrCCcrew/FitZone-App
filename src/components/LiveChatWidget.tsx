@@ -63,6 +63,24 @@ export function buildFinalRecording(chunks: Blob[], mime: string) {
   return new Blob(chunks.filter((chunk) => chunk.size > 0), { type: mime });
 }
 
+export function messageFingerprint(text: string) {
+  let hash = 2166136261;
+  for (const char of text.trim().toLowerCase()) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619);
+  return `${text.trim().length}:${(hash >>> 0).toString(36)}`;
+}
+
+export function canSubmitMessage(input: { fingerprint: string; inFlightFingerprint: string | null; recent: { fingerprint: string; at: number } | null; now: number; cooldownMs?: number }) {
+  return !input.inFlightFingerprint && !(input.recent?.fingerprint === input.fingerprint && input.now - input.recent.at < (input.cooldownMs ?? 1500));
+}
+
+export function shouldAutoPlayMessageTts(source: "typed" | "stt", realtimeActive: boolean) {
+  return source === "stt" && !realtimeActive;
+}
+
+export function shouldReuseTtsAudio(activeMessageId: string | null, messageId: string) {
+  return activeMessageId === messageId;
+}
+
 export function createRealtimeToolOutputEvents(callId: string, result: unknown) {
   return [
     { type: "conversation.item.create", item: { type: "function_call_output", call_id: callId, output: JSON.stringify(result) } },
@@ -312,6 +330,7 @@ export default function LiveChatWidget() {
           ? t("تعذر إعداد المكالمة.", "Call setup failed.")
           : t("بسمعك…", "Listening…");
   const [autoplayBlocked, setAutoplayBlocked] = useState(false);
+  const [ttsAutoplayBlocked, setTtsAutoplayBlocked] = useState(false);
   const [manualVoiceFallback, setManualVoiceFallback] = useState(false);
   const [voiceDebug, setVoiceDebug] = useState({ platform: "", pcState: "new", iceState: "new", dataChannelState: "closed", trackState: "none", trackMuted: false, remoteTrackReceived: false, remoteStreamTracksCount: 0, audioPaused: true, playResult: "", audioEvents: "", lastRealtimeEvent: "", lastErrorCode: "", lastErrorType: "" });
   const realtimeVoice = "marin" as const;
@@ -325,6 +344,7 @@ export default function LiveChatWidget() {
   const startedAtRef = useRef(0);
   const cancelledRecordingRef = useRef(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const activeTtsMessageIdRef = useRef<string | null>(null);
   const messagesAreaRef = useRef<HTMLDivElement | null>(null);
   const messageEndRef = useRef<HTMLDivElement | null>(null);
   const retryAudioRef = useRef<{ blob: Blob; durationMs: number } | null>(null);
@@ -341,6 +361,8 @@ export default function LiveChatWidget() {
   const realtimeSessionUpdateSentRef = useRef(false);
   const realtimeVoiceSessionIdRef = useRef<string | null>(null);
   const realtimeHeartbeatTimerRef = useRef<number | null>(null);
+  const messageRequestInFlightRef = useRef<string | null>(null);
+  const recentMessageFingerprintRef = useRef<{ fingerprint: string; at: number } | null>(null);
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth <= 768);
@@ -556,16 +578,21 @@ export default function LiveChatWidget() {
     if (action?.type === "navigate" && action.page === "shop" && action.anchor === "shop-products") openShop();
   }, [messages]);
 
-  const sendMessage = async (preset?: string) => {
+  const sendMessage = async (preset?: string, source: "typed" | "stt" = "typed") => {
     const content = (preset ?? input).trim();
-    if (!content) return;
+    if (!content || (source === "stt" && realtimeState !== "idle")) return null;
+    const fingerprint = messageFingerprint(content);
+    const recent = recentMessageFingerprintRef.current;
+    if (!canSubmitMessage({ fingerprint, inFlightFingerprint: messageRequestInFlightRef.current, recent, now: Date.now() })) return null;
+    messageRequestInFlightRef.current = fingerprint;
+    recentMessageFingerprintRef.current = { fingerprint, at: Date.now() };
 
     setLoading(true);
     setError("");
 
     try {
       const id = await ensureSession();
-      if (!id) return;
+      if (!id) return null;
 
       if (name.trim() || phone.trim()) saveVisitorIdentity(name, phone);
 
@@ -584,12 +611,18 @@ export default function LiveChatWidget() {
       const data = (await res.json().catch(() => ({}))) as ChatSessionPayload;
       if (!res.ok) {
         setError(data.error ?? t("تعذر إرسال الرسالة الآن.", "Unable to send the message right now."));
-        return;
+        return null;
       }
 
       applyPayload(data);
       setInput("");
+      if (shouldAutoPlayMessageTts(source, realtimeState !== "idle")) {
+        const reply = [...(data.messages ?? [])].reverse().find((message) => message.senderType === "bot" && message.content.trim());
+        if (reply) void playMessage(reply.id, true);
+      }
+      return data;
     } finally {
+      messageRequestInFlightRef.current = null;
       setLoading(false);
     }
   };
@@ -627,11 +660,11 @@ export default function LiveChatWidget() {
   };
   useEffect(() => () => { audioRef.current?.pause(); streamRef.current?.getTracks().forEach((track) => track.stop()); endRealtime(); }, []);
   useEffect(() => { if (!recording) return; const timer = window.setInterval(() => setRecordingSeconds((value) => value + 1), 1000); return () => window.clearInterval(timer); }, [recording]);
-  const stopPlayback = () => { audioRef.current?.pause(); audioRef.current = null; };
+  const stopPlayback = () => { audioRef.current?.pause(); audioRef.current = null; activeTtsMessageIdRef.current = null; };
   const stopRecording = () => stopMediaRecorder(recorderRef.current);
   const cancelRecording = () => { cancelledRecordingRef.current = true; chunksRef.current = []; stopRecording(); };
   const startRecording = async () => {
-    if (!voiceEnabled || recording || transcribing || !navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") { setError(t("مش قادرين نستخدم الميكروفون. فعّلي الإذن من إعدادات المتصفح وجربي تاني.", "Microphone recording is unavailable.")); return; }
+    if (!voiceEnabled || recording || transcribing || realtimeState !== "idle" || !navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") { setError(t("مش قادرين نستخدم التسجيل دلوقتي. اقفلي المكالمة الصوتية أو استني الطلب الحالي يخلص.", "Recording is unavailable while another voice request is active.")); return; }
     try {
       stopPlayback(); const stream = await navigator.mediaDevices.getUserMedia({ audio: true }); streamRef.current = stream; chunksRef.current = []; cancelledRecordingRef.current = false;
       const selectedRecorderMime = selectSupportedRecorderMime((mime) => MediaRecorder.isTypeSupported(mime)); const recorder = selectedRecorderMime ? new MediaRecorder(stream, { mimeType: selectedRecorderMime }) : new MediaRecorder(stream); recorderRef.current = recorder; startedAtRef.current = Date.now(); setRecordingSeconds(0); setRecording(true);
@@ -653,9 +686,9 @@ export default function LiveChatWidget() {
       recorder.start();
     } catch { setError(t("مش قادرين نستخدم الميكروفون. فعّلي الإذن من إعدادات المتصفح وجربي تاني.", "Enable microphone permission and try again.")); }
   };
-  const transcribeAudio = async (audio: Blob, durationMs: number) => { setTranscribing(true); setError(""); try { const id = await ensureSession(); if (!id) return; const form = new FormData(); form.set("sessionId", id); form.set("audio", audio, `voice.${audio.type.includes("ogg") ? "ogg" : audio.type.includes("mp4") ? "m4a" : "webm"}`); form.set("durationMs", String(durationMs)); form.set("localeHint", lang); const response = await fetch("/api/chat/voice/transcribe", { method: "POST", body: form }); const data = await response.json(); if (!response.ok) { retryAudioRef.current = data.errorCode === "STT_NETWORK_ERROR" || data.errorCode === "STT_TIMEOUT" ? { blob: audio, durationMs } : null; setError(data.error ?? t("معرفتش أفهم التسجيل المرة دي. تقدري تعيدي التسجيل أو تكتبي سؤالك.", "Unable to transcribe recording.")); return; } retryAudioRef.current = null; setInput(data.normalizedTranscript); } finally { setTranscribing(false); } };
+  const transcribeAudio = async (audio: Blob, durationMs: number) => { setTranscribing(true); setError(""); try { if (realtimeState !== "idle") return; const id = await ensureSession(); if (!id) return; const form = new FormData(); form.set("sessionId", id); form.set("audio", audio, `voice.${audio.type.includes("ogg") ? "ogg" : audio.type.includes("mp4") ? "m4a" : "webm"}`); form.set("durationMs", String(durationMs)); form.set("localeHint", lang); const response = await fetch("/api/chat/voice/transcribe", { method: "POST", body: form }); const data = await response.json(); if (!response.ok) { retryAudioRef.current = data.errorCode === "STT_NETWORK_ERROR" || data.errorCode === "STT_TIMEOUT" ? { blob: audio, durationMs } : null; setError(data.error ?? t("معرفتش أفهم التسجيل المرة دي. تقدري تعيدي التسجيل أو تكتبي سؤالك.", "Unable to transcribe recording.")); return; } retryAudioRef.current = null; const transcript = typeof data.normalizedTranscript === "string" ? data.normalizedTranscript.trim() : ""; if (!transcript) { setError(t("الصوت اتسجل، بس الكلام مش واضح. جربي تاني.", "The recording was unclear. Please try again.")); return; } setInput(transcript); await sendMessage(transcript, "stt"); } finally { setTranscribing(false); } };
   const retryTranscription = () => { const retry = retryAudioRef.current; if (retry) transcribeAudio(retry.blob, retry.durationMs); };
-  const playMessage = async (messageId: string) => { if (realtimeState !== "idle") { setError(t("الصوت المباشر شغال دلوقتي.", "Live voice is active.")); return; } try { stopPlayback(); const id = await ensureSession(); if (!id) return; const response = await fetch("/api/chat/voice/speak", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId: id, messageId }) }); const contentType = response.headers.get("content-type") ?? ""; const source = response.headers.get("x-ai-coach-audio-source") ?? "unknown"; if (voiceDebugEnabled) console.info("[AI_COACH_LISTEN]", { source, contentType, status: response.status }); if (!response.ok || !contentType.startsWith("audio/")) throw new Error("OPENAI_TTS_UNAVAILABLE"); const audio = new Audio(URL.createObjectURL(await response.blob())); audio.muted = false; audio.volume = 1; audioRef.current = audio; audio.onended = () => URL.revokeObjectURL(audio.src); await audio.play(); if (voiceDebugEnabled) console.info("[AI_COACH_LISTEN]", { source, play: "success" }); } catch (error) { if (voiceDebugEnabled) console.info("[AI_COACH_LISTEN]", { source: "openai-tts", play: "failed", name: error instanceof Error ? error.name : "unknown" }); setError(t("الرد النصي جاهز، لكن تشغيل صوت OpenAI مش متاح دلوقتي.", "The text reply is ready, but OpenAI voice is unavailable.")); } };
+  const playMessage = async (messageId: string, automatic = false) => { if (realtimeState !== "idle") { if (!automatic) setError(t("الصوت المباشر شغال دلوقتي.", "Live voice is active.")); return; } try { if (audioRef.current && shouldReuseTtsAudio(activeTtsMessageIdRef.current, messageId)) { await audioRef.current.play(); setTtsAutoplayBlocked(false); return; } stopPlayback(); setTtsAutoplayBlocked(false); const id = await ensureSession(); if (!id) return; const response = await fetch("/api/chat/voice/speak", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId: id, messageId }) }); const contentType = response.headers.get("content-type") ?? ""; const source = response.headers.get("x-ai-coach-audio-source") ?? "unknown"; if (voiceDebugEnabled) console.info("[AI_COACH_LISTEN]", { source, contentType, status: response.status }); if (!response.ok || !contentType.startsWith("audio/")) throw new Error("OPENAI_TTS_UNAVAILABLE"); const audio = new Audio(URL.createObjectURL(await response.blob())); audio.muted = false; audio.volume = 1; audioRef.current = audio; activeTtsMessageIdRef.current = messageId; audio.onended = () => { URL.revokeObjectURL(audio.src); activeTtsMessageIdRef.current = null; }; try { await audio.play(); } catch { if (automatic) { setTtsAutoplayBlocked(true); setError(t("الرد وصل، لكن تعذر تشغيل الصوت.", "The reply arrived, but audio could not play.")); return; } throw new Error("AUDIO_PLAY_BLOCKED"); } if (voiceDebugEnabled) console.info("[AI_COACH_LISTEN]", { source, play: "success" }); } catch (error) { if (voiceDebugEnabled) console.info("[AI_COACH_LISTEN]", { source: "openai-tts", play: "failed", name: error instanceof Error ? error.name : "unknown" }); setError(t("الرد وصل، لكن تعذر تشغيل الصوت.", "The reply arrived, but audio could not play.")); } };
   const startRealtime = async () => {
     if (!realtimeEnabled || realtimeState !== "idle" || !window.RTCPeerConnection || !navigator.mediaDevices?.getUserMedia) { setError(t("المحادثة المباشرة مش متاحة دلوقتي، تقدري تستخدمي التسجيل أو الكتابة.", "Live voice is unavailable. Use recording or text.")); return; }
     setRealtimeState("connecting"); setError(""); stopPlayback(); stopRecording();
@@ -1013,6 +1046,7 @@ export default function LiveChatWidget() {
             {voiceEnabled && (recording || transcribing) && <div style={{ width: "100%", fontSize: 12, color: "#E91E63" }}>{recording ? `${t("بتسمعك دلوقتي", "Listening")}… ${recordingSeconds}s` : t("جاري فهم كلامك…", "Understanding your voice…")}</div>}
             {realtimeEnabled && realtimeState !== "idle" && <div style={{ width: "100%", fontSize: 12, color: "#E91E63" }}>{realtimeStatusLabel}</div>}
             {realtimeEnabled && autoplayBlocked && <button onClick={() => { void realtimeAudioRef.current?.play().then(() => setAutoplayBlocked(false)); }} style={{ ...quickButtonStyle, width: "100%" }}>{t("اضغطي مرة واحدة لتشغيل صوت المساعد.", "Tap once to play assistant audio.")}</button>}
+            {ttsAutoplayBlocked && <button onClick={() => { void audioRef.current?.play().then(() => { setTtsAutoplayBlocked(false); setError(""); }).catch(() => {}); }} style={{ ...quickButtonStyle, width: "100%" }}>{t("اضغطي لتشغيل الرد الصوتي", "Tap to play the voice reply")}</button>}
             {realtimeEnabled && <button aria-label={realtimeState === "idle" ? "ابدئي محادثة صوتية" : "إنهاء المحادثة الصوتية"} title={realtimeState === "idle" ? "محادثة صوتية" : "إنهاء المحادثة"} onClick={realtimeState === "idle" ? startRealtime : endRealtime} disabled={realtimeState === "connecting"} style={{ flex: "0 0 44px", width: 44, height: 52, border: "1px solid #F5D0DC", borderRadius: 14, background: realtimeState === "idle" ? "#fff" : "#BE185D", color: realtimeState === "idle" ? "#E91E63" : "#fff", display: "grid", placeItems: "center", cursor: "pointer" }}>{realtimeState === "connecting" ? <Loader2 size={18} className="animate-spin" /> : realtimeState === "idle" ? <Phone size={18} /> : <PhoneOff size={18} />}</button>}
             {voiceEnabled && <button aria-label={recording ? "إيقاف التسجيل" : "ابدئي تسجيل صوتي"} title={recording ? "إيقاف التسجيل" : "ابدئي تسجيل صوتي"} onClick={recording ? stopRecording : startRecording} disabled={loading || transcribing} style={{ flex: "0 0 44px", width: 44, height: 52, border: "1px solid #F5D0DC", borderRadius: 14, background: recording ? "#BE185D" : "#fff", color: recording ? "#fff" : "#E91E63", display: "grid", placeItems: "center", cursor: "pointer" }}>{transcribing ? <Loader2 size={18} className="animate-spin" /> : recording ? <Square size={17} fill="currentColor" /> : <Mic size={19} />}</button>}
             {realtimeEnabled && manualVoiceFallback && <button onClick={() => { realtimeStreamRef.current?.getAudioTracks().forEach((track) => { track.enabled = true; }); setManualVoiceFallback(false); }} style={{ ...quickButtonStyle, flex: "0 0 auto" }}>{t("ابدئي الكلام", "Start talking")}</button>}

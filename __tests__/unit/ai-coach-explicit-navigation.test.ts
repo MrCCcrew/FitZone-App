@@ -24,6 +24,13 @@ describe("AI Coach explicit Arabic navigation", () => {
     await expect(understandCoachMessage("أسعار الباقات", "ar")).resolves.toMatchObject({ intent: "membership_lookup", domain: "packages", requestedAction: "answer" });
   });
 
+  it("keeps explicit schedule destinations separate from availability questions", async () => {
+    await expect(understandCoachMessage("وديني للمواعيد", "ar")).resolves.toMatchObject({ intent: "site_navigation", extractedEntities: { pageId: "classes" }, requiresModel: false });
+    await expect(understandCoachMessage("افتحي المواعيد", "ar")).resolves.toMatchObject({ intent: "site_navigation", extractedEntities: { pageId: "classes" }, requiresModel: false });
+    await expect(understandCoachMessage("إيه المواعيد المتاحة اليوم", "ar")).resolves.toMatchObject({ intent: "class_schedule", temporalFilter: { date: "today" } });
+    await expect(understandCoachMessage("قوليلي حصص النهاردة", "ar")).resolves.toMatchObject({ intent: "class_schedule", temporalFilter: { date: "today" } });
+  });
+
   it.each([
     ["\u0627\u0641\u062a\u062d \u0627\u0644\u062c\u062f\u0648\u0644", "classes", "/#classes"],
     ["\u0627\u0641\u062a\u062d \u0627\u0644\u0645\u0648\u0627\u0639\u064a\u062f", "classes", "/#classes"],

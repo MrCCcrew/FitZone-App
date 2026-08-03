@@ -96,10 +96,13 @@ export async function searchAvailableProducts(query = "", filters?: { discounted
 export async function getOfferDetails(idOrName: string) { return (await searchActiveOffers(idOrName)).find((row) => row.id === idOrName || norm(row.title) === norm(idOrName)) ?? null; }
 export async function getMembershipDetails(idOrName: string) { return (await searchAvailableMemberships(idOrName)).find((row) => row.id === idOrName || norm(row.name) === norm(idOrName)) ?? null; }
 
-export async function searchClassSchedule(query = "", filters?: { date?: "tomorrow" }) {
+export async function searchClassSchedule(query = "", filters?: { date?: "today" | "tomorrow" }) {
   const now = new Date();
   const rows = await db.class.findMany({ where: visibleClassScheduleWhere(now), take: MAX, include: { trainer: { select: { name: true } }, schedules: { where: visibleScheduleWhere(now), orderBy: [{ date: "asc" }, { time: "asc" }], take: 5 } } });
-  const tomorrow = new Date(now); tomorrow.setDate(tomorrow.getDate() + 1); tomorrow.setHours(0, 0, 0, 0);
+  // Schedules are calendar dates; resolve relative days in the club's timezone.
+  const cairo = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Cairo", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(now);
+  const day = Object.fromEntries(cairo.map((part) => [part.type, part.value]));
+  const tomorrow = new Date(Date.UTC(Number(day.year), Number(day.month) - 1, Number(day.day) + (filters?.date === "tomorrow" ? 1 : 0)));
   const nextDay = new Date(tomorrow); nextDay.setDate(nextDay.getDate() + 1);
   return rows.filter((row) => looselyMatches(`${row.name} ${row.type} ${row.category ?? ""} ${row.subType ?? ""}`, query)).map((row) => ({ name: row.name, type: row.type, category: row.category, trainer: row.trainer.name, schedules: row.schedules.filter((s) => !filters?.date || (s.date >= tomorrow && s.date < nextDay)).map((s) => ({ date: s.date, time: s.time, availableSpots: s.availableSpots })) })).filter((row) => row.schedules.length > 0 || !filters?.date);
 }

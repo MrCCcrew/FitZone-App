@@ -343,7 +343,7 @@ async function buildDeterministicReply(args: {
   if (safetyFlags.hasUrgentSymptom) {
     return { intent: "faq", text: lang === "en" ? "Please stop exercising for now and seek urgent medical assessment, especially for chest pain, fainting, severe pain, or trouble breathing. I can’t assess emergencies in chat." : "وقفي التمرين دلوقتي واطلبي تقييم طبي عاجل، خصوصًا مع ألم صدر أو إغماء أو ألم شديد أو صعوبة في التنفس. ماينفعش أقيّم الحالات الطارئة من الشات.", facts: [], quickActions: [], sourceType: "safe_fallback", confidence: 0.95, requiresEscalation: true };
   }
-  if (understanding?.intent === "general_fitness" || understanding?.intent === "nutrition_general" || understanding?.intent === "workout_recommendation") {
+  if ((understanding?.intent === "general_fitness" && intent !== "weight_context") || understanding?.intent === "nutrition_general" || understanding?.intent === "workout_recommendation") {
     const q = userMessage.toLowerCase();
     const text = /قيمي اكلي|قيمى اكلي|evaluate my food/.test(q)
       ? (lang === "ar" ? "أكيد. اكتبي أكلتِ إيه اليوم والكميات التقريبية وطريقة التحضير، وأنا أقيّمه بشكل عام." : "Sure. Tell me what you ate, approximate portions, and how it was prepared.")
@@ -354,7 +354,8 @@ async function buildDeterministicReply(args: {
           : /مبتدئ|مبتدئة|اتمرن ازاي|تمرن ازاي|workout/.test(q)
             ? (lang === "ar" ? "لو مبتدئة، ابدئي 3 أيام أسبوعيًا: 5–10 دقائق إحماء، تمارين جسم كامل بسيطة، ثم مشي خفيف. زوّدي الحمل تدريجيًا ووقفي عند ألم حاد. أقدر كمان أرشح لك الكلاسات المناسبة." : "As a beginner, start three days weekly with a warm-up, simple full-body work, and light walking. Increase gradually and stop for sharp pain.")
             : (lang === "ar" ? "أقدر أساعدك بإرشاد رياضي وغذائي عام وآمن. قوليلي هدفك ومستواك وأي ظروف صحية مهمة لو تحبي نصيحة أدق." : "I can help with safe general fitness and nutrition guidance. Tell me your goal, level, and any important health considerations for more tailored advice.");
-    return { intent: "faq", text, facts: [], quickActions: [], sourceType: "general_fitness", confidence: .9, actions: safetyFlags.hasRisk ? [{ type: "open_page", label: lang === "ar" ? "أخصائية التغذية" : "Nutrition specialist", url: "/#nutrition" }] : [], requiresEscalation: safetyFlags.hasRisk };
+    const phrased = understanding?.requiresModel ? await phraseStructuredReply({ lang, intent, userMessage, draft: text, facts: [] }) : { text, usedAI: false };
+    return { intent: "faq", text: phrased.text || text, usedAI: phrased.usedAI, facts: [], quickActions: [], sourceType: "general_fitness", confidence: .9, actions: safetyFlags.hasRisk ? [{ type: "open_page", label: lang === "ar" ? "أخصائية التغذية" : "Nutrition specialist", url: "/#nutrition" }] : [], requiresEscalation: safetyFlags.hasRisk };
   }
   const isPersonalQuestion = intent === "account_summary" || /رقم.*(تليفون|هاتف)|دفع|حجز|اشتراكي|عضويتي|رصيدي|نقاطي|my (membership|account|booking|payment|phone)/i.test(userMessage);
   if (!isPersonalQuestion) {
@@ -362,7 +363,8 @@ async function buildDeterministicReply(args: {
     if (exactSharedKnowledge) return { intent: "faq", text: exactSharedKnowledge.answer, facts: [], quickActions: [], sourceType: "knowledge_base", confidence: exactSharedKnowledge.confidence ?? 1, metadata: { usedTools: [], fallbackUsed: false, sharedKnowledge: "exact" } };
   }
   const resolvedToolMessage = typeof understanding?.extractedEntities.searchTerm === "string" ? understanding.extractedEntities.searchTerm : typeof understanding?.extractedEntities.className === "string" ? understanding.extractedEntities.className : understanding?.listAll ? "" : userMessage;
-  const toolContext = await getCoachToolContext({ intent, message: resolvedToolMessage, lang, userId: user?.id ?? null, sort: understanding?.sort, temporalFilter: understanding?.temporalFilter.date === "tomorrow" ? { date: "tomorrow" } : undefined, catalogType: understanding?.extractedEntities.catalogType === "package" ? "package" : "membership" });
+  const scheduleDate = understanding?.temporalFilter.date;
+  const toolContext = await getCoachToolContext({ intent, message: resolvedToolMessage, lang, userId: user?.id ?? null, sort: understanding?.sort, temporalFilter: scheduleDate === "today" || scheduleDate === "tomorrow" ? { date: scheduleDate } : undefined, catalogType: understanding?.extractedEntities.catalogType === "package" ? "package" : "membership" });
   const snapshot = toolContext.snapshot;
   const profile = snapshot.coachProfile;
   const attendance = snapshot.account.attendanceStats;
@@ -683,6 +685,20 @@ async function updateContext(sessionId: string, context: CoachConversationContex
   await db.chatSession.update({ where: { id: sessionId }, data: { context: serializeCoachContext(next), lastMessageAt: new Date() } });
 }
 
+export function extractConversationFacts(message: string, context: CoachConversationContext) {
+  const numberAfter = (pattern: RegExp, min: number, max: number) => {
+    const value = Number(message.match(pattern)?.[1]);
+    return Number.isFinite(value) && value >= min && value <= max ? value : undefined;
+  };
+  const weight = numberAfter(/(?:وزني|وزن)\s*(\d+(?:\.\d+)?)/i, 30, 250);
+  const height = numberAfter(/(?:طولي|طول)\s*(\d+)/i, 120, 230);
+  const age = numberAfter(/(?:عمري|عمر)\s*(\d+)/i, 12, 80);
+  const activity = /نشاطي\s*(?:قليل|خفيف)|\b(?:low)\s+activity\b/i.test(message) ? "low" as const : /نشاطي\s*(?:متوسط)|\b(?:medium)\s+activity\b/i.test(message) ? "medium" as const : /نشاطي\s*(?:عالي)|\b(?:high)\s+activity\b/i.test(message) ? "high" as const : undefined;
+  const answers = { ...context.questionnaire.answers, ...(weight ? { weight } : {}), ...(height ? { height } : {}), ...(age ? { age } : {}), ...(activity ? { activity } : {}) };
+  const changed = weight !== undefined || height !== undefined || age !== undefined || activity !== undefined;
+  return changed ? { ...context, ...(weight ? { statedWeight: weight } : {}), questionnaire: { ...context.questionnaire, answers }, lastTopic: /(?:عايزة|عايز).*اخس|خسارة الوزن|weight loss/i.test(message) ? "weight_loss" as const : context.lastTopic } : null;
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 export async function initializeCoachSession(sessionId: string, lang: CoachLang = "ar") {
@@ -708,7 +724,13 @@ export async function handleCoachMessage(sessionId: string, userMessage: string,
   if (!session) return null;
   if (session.mode === "live") return getSessionWithRelations(sessionId);
 
-  const context = parseCoachContext(session.context, lang);
+  let context = parseCoachContext(session.context, lang);
+  const factsContext = extractConversationFacts(userMessage, context);
+  if (factsContext) {
+    context = factsContext;
+    // Context persistence is independent from tools/model phrasing; a failed write never suppresses the reply.
+    await db.chatSession.update({ where: { id: sessionId }, data: { context: serializeCoachContext(context), lastMessageAt: new Date() } }).catch(() => {});
+  }
   const understanding = await understandCoachMessage(userMessage, lang, { lastIntent: context.lastIntent, lastDomain: context.lastDomain, lastActionTarget: context.lastActionTarget, lastEntities: context.lastEntities, contextUpdatedAt: context.contextUpdatedAt });
   const intent = understanding.legacyIntent;
   const messageCount = (session as { messages: { id: string }[] }).messages.length;
@@ -727,7 +749,7 @@ export async function handleCoachMessage(sessionId: string, userMessage: string,
 
   if (isCoachDebugEnabled()) {
     const metadata = reply.metadata ?? {};
-    const trace = createCoachDebugTrace({ detectedIntent: intent, rawStageMatched: understanding.safetyFlags.length ? "safety" : understanding.contextReference ? "context" : "semantic", safetyFlags: understanding.safetyFlags, semanticIntent: understanding.intent, finalIntent: reply.intent, extractedEntities: understanding.extractedEntities, listAll: understanding.listAll, sort: understanding.sort, temporalFilter: understanding.temporalFilter, contextDomainBefore: context.lastDomain, contextDomainAfter: successfulCatalogTurn ? understanding.domain : context.lastDomain, referencedPreviousTurn: understanding.contextReference, clarificationUsed: understanding.intent === "clarification_required", legacyFallbackUsed: understanding.intent === "general_fitness" && intent === "unknown", selectedTools: metadata.usedTools, toolStatuses: metadata.toolStatuses, resultCounts: metadata.resultCounts, authenticated: Boolean((metadata.authenticated as boolean | undefined)), sourceType: reply.sourceType ?? "safe_fallback", fallbackUsed: Boolean(metadata.fallbackUsed ?? !reply.usedAI), fallbackReason: metadata.fallbackReason, llmUsed: Boolean(reply.usedAI) });
+    const trace = createCoachDebugTrace({ detectedIntent: intent, transcriptReceived: true, requiresModel: understanding.requiresModel, allowedTools: understanding.allowedTools, finalTextGenerated: Boolean(reply.text?.trim()), actionsGenerated: Boolean(reply.actions?.length || reply.action), rawStageMatched: understanding.safetyFlags.length ? "safety" : understanding.contextReference ? "context" : "semantic", safetyFlags: understanding.safetyFlags, semanticIntent: understanding.intent, finalIntent: reply.intent, extractedEntities: understanding.extractedEntities, listAll: understanding.listAll, sort: understanding.sort, temporalFilter: understanding.temporalFilter, contextDomainBefore: context.lastDomain, contextDomainAfter: successfulCatalogTurn ? understanding.domain : context.lastDomain, referencedPreviousTurn: understanding.contextReference, clarificationUsed: understanding.intent === "clarification_required", legacyFallbackUsed: understanding.intent === "general_fitness" && intent === "unknown", selectedTools: metadata.usedTools, toolStatuses: metadata.toolStatuses, resultCounts: metadata.resultCounts, authenticated: Boolean((metadata.authenticated as boolean | undefined)), sourceType: reply.sourceType ?? "safe_fallback", fallbackUsed: Boolean(metadata.fallbackUsed ?? !reply.usedAI), fallbackReason: metadata.fallbackReason, llmUsed: Boolean(reply.usedAI) });
     if (trace) console.info(trace);
   }
 
