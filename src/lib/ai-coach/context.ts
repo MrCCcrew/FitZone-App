@@ -85,6 +85,7 @@ export function parseCoachContext(raw: string | null | undefined, lang: CoachLan
         lastResultIds: Array.isArray(parsed.lastResultIds) ? parsed.lastResultIds.filter((value): value is string => typeof value === "string").slice(0, 12) : [],
         lastResultCount: typeof parsed.lastResultCount === "number" ? parsed.lastResultCount : 0,
         contextUpdatedAt: typeof parsed.contextUpdatedAt === "string" ? parsed.contextUpdatedAt : undefined,
+        tour: parsed.tour && typeof parsed.tour === "object" ? { currentStep: Math.max(0, Number(parsed.tour.currentStep) || 0), totalSteps: Math.max(0, Number(parsed.tour.totalSteps) || 0), active: Boolean(parsed.tour.active) } : undefined,
         questionnaire: {
           stage: parsed.questionnaire?.stage ?? "idle",
           answers: parsed.questionnaire?.answers ?? {},

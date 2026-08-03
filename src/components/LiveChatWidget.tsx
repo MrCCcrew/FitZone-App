@@ -18,7 +18,7 @@ type ChatMessage = {
   senderName?: string | null;
   content: string;
   createdAt: string;
-  metadata?: { membershipId?: string; closeSession?: boolean; action?: { type: "navigate"; page: "shop"; anchor: "shop-products" }; structured?: { actions?: Array<{ type: "open_page"; label: string; url: "/" | "/login" | "/account" | "/store" | "/#memberships" | "/#offers" | "/#classes" | "/#blog" | "/#nutrition" | "/#partners" }> } } | null;
+  metadata?: { membershipId?: string; closeSession?: boolean; action?: { type: "navigate"; page: "shop"; anchor: "shop-products" }; structured?: { intent?: string; actions?: Array<{ type: "open_page"; label: string; url: "/" | "/login" | "/account" | "/store" | "/#memberships" | "/#offers" | "/#classes" | "/#blog" | "/#nutrition" | "/#partners" }> } } | null;
 };
 
 type QuickAction = {
@@ -313,7 +313,7 @@ export default function LiveChatWidget() {
           : t("بسمعك…", "Listening…");
   const [autoplayBlocked, setAutoplayBlocked] = useState(false);
   const [manualVoiceFallback, setManualVoiceFallback] = useState(false);
-  const [voiceDebug, setVoiceDebug] = useState({ platform: "", pcState: "new", iceState: "new", dataChannelState: "closed", trackState: "none", trackMuted: false, lastRealtimeEvent: "", lastErrorCode: "", lastErrorType: "" });
+  const [voiceDebug, setVoiceDebug] = useState({ platform: "", pcState: "new", iceState: "new", dataChannelState: "closed", trackState: "none", trackMuted: false, remoteTrackReceived: false, remoteStreamTracksCount: 0, audioPaused: true, playResult: "", audioEvents: "", lastRealtimeEvent: "", lastErrorCode: "", lastErrorType: "" });
   const realtimeVoice = "marin" as const;
   const voiceDebugEnabled = isClientVoiceDebugEnabled();
   const [recording, setRecording] = useState(false);
@@ -533,6 +533,11 @@ export default function LiveChatWidget() {
       setStatus("resolved");
     }
   }, [messages]);
+  useEffect(() => {
+    const latest = messages[messages.length - 1];
+    const action = latest?.metadata?.structured?.actions?.[0];
+    if (latest?.metadata?.structured?.intent === "site_navigation" && action) openSafePage(action.url);
+  }, [messages]);
   useEffect(() => { messageEndRef.current?.scrollIntoView({ block: "end", behavior: "smooth" }); }, [messages, transcribing, error, realtimeState]);
 
   const openShop = () => {
@@ -542,12 +547,7 @@ export default function LiveChatWidget() {
   };
 
   const openSafePage = (url: "/" | "/login" | "/account" | "/store" | "/#memberships" | "/#offers" | "/#classes" | "/#blog" | "/#nutrition" | "/#partners") => {
-    const pageByUrl: Partial<Record<typeof url, string>> = { "/store": "shop", "/#memberships": "memberships", "/#offers": "offers", "/#classes": "classes", "/#blog": "blog", "/#partners": "partners" };
-    const page = pageByUrl[url];
-    if (page) {
-      window.dispatchEvent(new CustomEvent("fitzone:ai-coach-navigate", { detail: { type: "navigate", page } }));
-      return;
-    }
+    // Use a real URL so actions also work from /account and other pages that do not mount FitzoneApp's SPA handler.
     window.location.assign(url);
   };
 
@@ -685,13 +685,12 @@ export default function LiveChatWidget() {
       if (voiceDebugEnabled) console.info("[AI_COACH_REALTIME_MIC]", { readyState: microphoneTrack.readyState, enabled: microphoneTrack.enabled, muted: microphoneTrack.muted, ...microphoneTrack.getSettings() });
       setDebug({ trackState: microphoneTrack.readyState, trackMuted: microphoneTrack.muted });
       const playRemoteAudio = () => {
-        if (remoteAudioPlayAttemptRef.current) return Promise.resolve();
         remoteAudioPlayAttemptRef.current = true;
         remoteAudio.muted = false;
         remoteAudio.volume = 1;
         return remoteAudio.play().then(() => { setAutoplayBlocked(false); if (voiceDebugEnabled) console.info("[AI_COACH_VOICE] audio_played"); }).catch((error) => { remoteAudioPlayAttemptRef.current = false; setAutoplayBlocked(true); setError(t("تعذر تشغيل صوت المساعد. اضغطي لتشغيله مرة أخرى.", "Assistant audio could not play. Tap to try again.")); if (voiceDebugEnabled) console.info("[AI_COACH_VOICE] audio_play_blocked", { name: error instanceof Error ? error.name : "unknown" }); });
       };
-      peer.ontrack = (event) => { remoteAudio.srcObject = event.streams[0] ?? new MediaStream([event.track]); remoteAudio.muted = false; remoteAudio.volume = 1; if (voiceDebugEnabled) console.info("[AI_COACH_VOICE] remote_track", { kind: event.track.kind, muted: event.track.muted, streamCount: event.streams.length }); void playRemoteAudio(); if (realtimeSessionReadyRef.current) setRealtimeState("assistant_speaking"); };
+      peer.ontrack = (event) => { const remoteStream = event.streams[0] ?? new MediaStream([event.track]); remoteAudio.srcObject = remoteStream; remoteAudio.muted = false; remoteAudio.volume = 1; setDebug({ remoteTrackReceived: event.track.kind === "audio", trackState: event.track.readyState, remoteStreamTracksCount: remoteStream.getAudioTracks().length, audioPaused: remoteAudio.paused }); void playRemoteAudio(); if (realtimeSessionReadyRef.current) setRealtimeState("assistant_speaking"); };
       peer.onconnectionstatechange = () => { setDebug({ pcState: peer.connectionState }); if (["failed", "disconnected", "closed"].includes(peer.connectionState)) endRealtime(); };
       peer.oniceconnectionstatechange = () => setDebug({ iceState: peer.iceConnectionState });
       peer.addTrack(microphoneTrack, stream);

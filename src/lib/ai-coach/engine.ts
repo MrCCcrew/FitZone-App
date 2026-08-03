@@ -40,6 +40,7 @@ import { isCoachDebugEnabled } from "@/lib/ai-coach/config";
 import { createCoachDebugTrace } from "@/lib/ai-coach/debug";
 import { understandCoachMessage, type CoachUnderstanding } from "@/lib/ai-coach/understanding";
 import { COACH_PAGES, findCoachPage, pageAction } from "@/lib/ai-coach/page-registry";
+import { siteTourCommand, siteTourPages, tourNarration } from "@/lib/ai-coach/site-tour";
 import type {
   CoachConversationContext,
   CoachIntent,
@@ -301,6 +302,28 @@ async function buildDeterministicReply(args: {
 }): Promise<CoachStructuredReply> {
   const { sessionId, userMessage, intent, lang, context, messageCount, understanding } = args;
   const user = await getCurrentAppUser().catch(() => null);
+  const tourPages = siteTourPages(Boolean(user?.id));
+  const tourCommand = siteTourCommand(userMessage);
+  if (understanding?.intent === "site_tour" || (context.tour?.active && (tourCommand || understanding?.intent === "site_navigation"))) {
+    const current = context.tour?.currentStep ?? 0;
+    const requestedPage = typeof understanding?.extractedEntities.pageId === "string" ? understanding.extractedEntities.pageId : null;
+    const directIndex = requestedPage ? tourPages.findIndex((page) => page.id === requestedPage) : -1;
+    const next = directIndex >= 0 ? directIndex : tourCommand === "next" ? current + 1 : tourCommand === "previous" ? Math.max(0, current - 1) : current;
+    if (tourCommand === "stop") {
+      const nextContext = { ...context, tour: { currentStep: current, totalSteps: tourPages.length, active: false } };
+      await db.chatSession.update({ where: { id: sessionId }, data: { context: serializeCoachContext(nextContext), lastMessageAt: new Date() } });
+      return { intent: "faq", text: lang === "ar" ? "تمام، وقفت الجولة. قوليلي تحبي تفتحي أي قسم؟" : "Okay, I stopped the tour. Which section would you like to open?", facts: [], quickActions: [], sourceType: "live_site_data", confidence: 1, metadata: { tour: nextContext.tour } };
+    }
+    if (!tourPages.length || next >= tourPages.length) {
+      const nextContext = { ...context, tour: { currentStep: tourPages.length, totalSteps: tourPages.length, active: false } };
+      await db.chatSession.update({ where: { id: sessionId }, data: { context: serializeCoachContext(nextContext), lastMessageAt: new Date() } });
+      return { intent: "faq", text: lang === "ar" ? "كده خلصنا الجولة. تحبي أفتح لك أي قسم؟" : "That completes the tour. Which section would you like to open?", facts: [], quickActions: [], sourceType: "live_site_data", confidence: 1, metadata: { tour: nextContext.tour } };
+    }
+    const page = tourPages[next];
+    const nextContext = { ...context, tour: { currentStep: next, totalSteps: tourPages.length, active: true } };
+    await db.chatSession.update({ where: { id: sessionId }, data: { context: serializeCoachContext(nextContext), lastMessageAt: new Date() } });
+    return { intent: "faq", text: tourNarration(page, lang, understanding?.intent === "site_tour"), facts: [], quickActions: [{ id: "tour-next", label: lang === "ar" ? "التالي" : "Next", prompt: lang === "ar" ? "التالي" : "next" }, { id: "tour-prev", label: lang === "ar" ? "السابق" : "Previous", prompt: lang === "ar" ? "السابق" : "previous" }, { id: "tour-stop", label: lang === "ar" ? "وقفي الجولة" : "Stop tour", prompt: lang === "ar" ? "وقفي الجولة" : "stop tour" }], sourceType: "live_site_data", confidence: 1, actions: [pageAction(page, lang)], metadata: { tour: nextContext.tour } };
+  }
   if (understanding?.intent === "forbidden_write_action") {
     return { intent: "privacy_guard", text: lang === "en" ? "I can’t make changes to balances, memberships, prices, schedules, or permissions. I can help you find the right page or contact support." : "مقدرش أعدّل رصيد أو نقاط أو اشتراك أو سعر أو جدول أو صلاحيات. أقدر أساعدك توصلي للصفحة المناسبة أو الدعم.", facts: [], quickActions: [], sourceType: "policy_guard", confidence: 1, metadata: { fallbackUsed: false, understanding } };
   }
@@ -319,6 +342,19 @@ async function buildDeterministicReply(args: {
   const safetyFlags = detectSafetyFlags(userMessage);
   if (safetyFlags.hasUrgentSymptom) {
     return { intent: "faq", text: lang === "en" ? "Please stop exercising for now and seek urgent medical assessment, especially for chest pain, fainting, severe pain, or trouble breathing. I can’t assess emergencies in chat." : "وقفي التمرين دلوقتي واطلبي تقييم طبي عاجل، خصوصًا مع ألم صدر أو إغماء أو ألم شديد أو صعوبة في التنفس. ماينفعش أقيّم الحالات الطارئة من الشات.", facts: [], quickActions: [], sourceType: "safe_fallback", confidence: 0.95, requiresEscalation: true };
+  }
+  if (understanding?.intent === "general_fitness" || understanding?.intent === "nutrition_general" || understanding?.intent === "workout_recommendation") {
+    const q = userMessage.toLowerCase();
+    const text = /قيمي اكلي|قيمى اكلي|evaluate my food/.test(q)
+      ? (lang === "ar" ? "أكيد. اكتبي أكلتِ إيه اليوم والكميات التقريبية وطريقة التحضير، وأنا أقيّمه بشكل عام." : "Sure. Tell me what you ate, approximate portions, and how it was prepared.")
+      : /فراخ|دجاج|رز|سلط/.test(q)
+        ? (lang === "ar" ? "وجبة كويسة عمومًا: الفراخ مصدر بروتين، والرز طاقة، والسلطة تضيف أليافًا. حسّنيها بضبط كمية الرز حسب هدفك وإضافة خضار أكثر، ومن غير كميات ما ينفعش أحسب سعرات بدقة." : "This is generally a balanced meal: protein, carbs, and vegetables. Portion the rice for your goal; I cannot calculate calories accurately without quantities.")
+        : /اخس|خساره الوزن|خسارة الوزن|weight loss/.test(q)
+          ? (lang === "ar" ? "ابدئي بخطوات ثابتة: وجبات فيها بروتين وخضار، قللي المشروبات السكرية والوجبات شديدة المعالجة، امشي أو اتمرني بانتظام، ونامي كويس. لو عايزة خطة مخصصة ابعتي الطول والوزن والعمر والنشاط والهدف." : "Start with protein and vegetables at meals, fewer sugary drinks and ultra-processed foods, regular activity, and good sleep. Share height, weight, age, activity, and goal for personalization.")
+          : /مبتدئ|مبتدئة|اتمرن ازاي|تمرن ازاي|workout/.test(q)
+            ? (lang === "ar" ? "لو مبتدئة، ابدئي 3 أيام أسبوعيًا: 5–10 دقائق إحماء، تمارين جسم كامل بسيطة، ثم مشي خفيف. زوّدي الحمل تدريجيًا ووقفي عند ألم حاد. أقدر كمان أرشح لك الكلاسات المناسبة." : "As a beginner, start three days weekly with a warm-up, simple full-body work, and light walking. Increase gradually and stop for sharp pain.")
+            : (lang === "ar" ? "أقدر أساعدك بإرشاد رياضي وغذائي عام وآمن. قوليلي هدفك ومستواك وأي ظروف صحية مهمة لو تحبي نصيحة أدق." : "I can help with safe general fitness and nutrition guidance. Tell me your goal, level, and any important health considerations for more tailored advice.");
+    return { intent: "faq", text, facts: [], quickActions: [], sourceType: "general_fitness", confidence: .9, actions: safetyFlags.hasRisk ? [{ type: "open_page", label: lang === "ar" ? "أخصائية التغذية" : "Nutrition specialist", url: "/#nutrition" }] : [], requiresEscalation: safetyFlags.hasRisk };
   }
   const isPersonalQuestion = intent === "account_summary" || /رقم.*(تليفون|هاتف)|دفع|حجز|اشتراكي|عضويتي|رصيدي|نقاطي|my (membership|account|booking|payment|phone)/i.test(userMessage);
   if (!isPersonalQuestion) {
@@ -347,7 +383,7 @@ async function buildDeterministicReply(args: {
   const asksOwnMembership = /اشتراكي|باقي لي|ينتهي امتي|عضويتي|my membership|remaining sessions/i.test(normalizedQuestion);
   const asksOffer = /عرض|عروض|offer|discount|خصم/i.test(normalizedQuestion);
   const asksSchedule = /مواعيد|ميعاد|بعد الساعه|schedule|today/i.test(normalizedQuestion);
-  const asksRecommendation = /رشح|انسب|مميز|recommend|best/i.test(normalizedQuestion);
+  const asksRecommendation = /رشح|انسب|مميز|اعرض.*(?:اشتراك|باقة)|(?:اشتراك|باقة).*هدف|recommend|best/i.test(normalizedQuestion);
   const wantsWeightLoss = /تخسيس|اخس|خساره الوزن|حرق دهون|weight loss/i.test(normalizedQuestion) || baseContext.lastTopic === "weight_loss";
   if (!toolContext.toolsEnabled && (intent === "product_recommendation" || intent === "product_discount" || asksOwnMembership || asksRecommendation || asksOffer || asksSchedule || intent === "pricing")) {
     return { intent, text: lang === "en" ? "Live FitZone data is unavailable right now, but I can still help with general fitness guidance or a published policy." : "بيانات FitZone المباشرة مش متاحة دلوقتي، لكن أقدر أساعدك بنصيحة رياضية عامة أو بمعلومة منشورة.", facts: [], quickActions: buildActions(snapshot, intent, baseContext), sourceType: "safe_fallback", confidence: 0.6, metadata: { usedTools: toolContext.usedTools, fallbackUsed: true } };
@@ -424,9 +460,9 @@ async function buildDeterministicReply(args: {
       const altLabel = alternative ? (alternative.kind === "offer" ? alternative.row.title : alternative.row.name) : null;
       const text = lang === "en" ? `The closest available option for your weight-loss goal is ${label} (${price ?? "price unavailable"} EGP).${altLabel ? ` An alternative is ${altLabel}.` : ""}` : `الأنسب من الخيارات المتاحة لهدف التخسيس هو ${label} بسعر ${price ?? "غير متاح"} جنيه.${altLabel ? ` والبديل: ${altLabel}.` : ""}`;
       await updateContext(sessionId, { ...baseContext, lastTopic: "weight_loss" }, "membership_recommendation");
-      return { intent: "membership_recommendation", text, facts: [], quickActions: buildActions(snapshot, "membership_recommendation", baseContext) };
+      return { intent: "membership_recommendation", text, facts: [], quickActions: buildActions(snapshot, "membership_recommendation", baseContext), actions: [{ type: "open_page", label: lang === "ar" ? "شوفي الاشتراكات" : "View memberships", url: "/#memberships" }] };
     } catch {
-      return { intent: "membership_recommendation", text: lang === "en" ? "Unable to load data right now. Please try again shortly." : "تعذر تحميل البيانات الآن، جرّب مرة أخرى بعد قليل.", facts: [], quickActions: buildActions(snapshot, "membership_recommendation", baseContext) };
+      return { intent: "membership_recommendation", text: lang === "en" ? "Unable to load matching memberships right now. Please try again shortly." : "حصلت مشكلة وأنا بدور على الاشتراكات المناسبة. جربي تاني بعد لحظة.", facts: [], quickActions: buildActions(snapshot, "membership_recommendation", baseContext) };
     }
   }
   if (asksOffer || asksSchedule || intent === "pricing") {
@@ -677,7 +713,9 @@ export async function handleCoachMessage(sessionId: string, userMessage: string,
   const intent = understanding.legacyIntent;
   const messageCount = (session as { messages: { id: string }[] }).messages.length;
 
-  const reply = await buildDeterministicReply({ sessionId, userMessage, intent, lang, context, messageCount, understanding });
+  let reply = await buildDeterministicReply({ sessionId, userMessage, intent, lang, context, messageCount, understanding });
+  // Never leave a customer turn without a visible assistant outcome.
+  if (!reply.text?.trim()) reply = { ...reply, text: lang === "ar" ? "معلش، حصلت مشكلة وأنا بجهز الرد. جربي تاني بعد لحظة." : "Sorry, there was a problem preparing the reply. Please try again in a moment.", sourceType: "safe_fallback", metadata: { ...(reply.metadata ?? {}), fallbackUsed: true, fallbackReason: "empty_reply_guard" } };
 
   const resultCounts = reply.metadata?.resultCounts as Record<string, number> | undefined;
   const successfulCatalogTurn = !understanding.safetyFlags.length && understanding.intent !== "clarification_required" && !reply.metadata?.toolFailed && (understanding.domain !== null || understanding.intent === "site_navigation");

@@ -49,7 +49,7 @@ async function searchMembershipKind(kind: "subscription" | "package", query = ""
   return rows.filter((row) => {
     const allowedClasses = json<Array<{ classId: string; classType?: string }>>(row.classSessions, []);
     const finalPrice = row.priceAfter ?? row.price;
-    return looselyMatches(`${row.name} ${row.nameEn ?? ""} ${row.features}`, searchTerm)
+    return looselyMatches(`${row.name} ${row.nameEn ?? ""} ${row.features} ${row.goals.map((g) => `${g.goal.name} ${g.goal.nameEn ?? ""}`).join(" ")} ${allowedClasses.map((item) => item.classType ?? "").join(" ")}`, searchTerm)
       && (!filters.goalId || row.goals.some((g) => g.goalId === filters.goalId))
       && (!filters.classId || allowedClasses.some((item) => item.classId === filters.classId))
       && (filters.priceMin == null || finalPrice >= filters.priceMin)
