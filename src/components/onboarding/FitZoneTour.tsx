@@ -36,6 +36,9 @@ export default function FitZoneTour({ onNavigate, onFinishNavigate, onClose }: P
   const text = copy[lang === "en" ? "en" : "ar"];
   const [step, setStep] = useState(-1);
   const [targetRect, setTargetRect] = useState<DOMRect | null>(null);
+  // A null viewport is deliberately shared by SSR and the first hydrated
+  // client render. Dimensions are only available after React has mounted.
+  const [viewport, setViewport] = useState<{ width: number; height: number } | null>(null);
   const [reducedMotion, setReducedMotion] = useState(false);
   const [mascotAvailable, setMascotAvailable] = useState(true);
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -54,11 +57,17 @@ export default function FitZoneTour({ onNavigate, onFinishNavigate, onClose }: P
   useEffect(() => {
     previousFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     dialogRef.current?.focus();
+    const updateViewport = () => setViewport({ width: window.innerWidth, height: window.innerHeight });
+    updateViewport();
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
     const update = () => setReducedMotion(media.matches);
     update();
     media.addEventListener("change", update);
-    return () => media.removeEventListener("change", update);
+    window.addEventListener("resize", updateViewport);
+    return () => {
+      media.removeEventListener("change", update);
+      window.removeEventListener("resize", updateViewport);
+    };
   }, []);
 
   const close = useCallback((status: "completed" | "skipped") => {
@@ -143,20 +152,20 @@ export default function FitZoneTour({ onNavigate, onFinishNavigate, onClose }: P
   const isFinish = step === STEPS.length;
   const current = step >= 0 && step < STEPS.length ? STEPS[step] : null;
   const Icon = current?.icon ?? Star;
-  const cardStyle: React.CSSProperties = targetRect && typeof window !== "undefined" && window.innerWidth >= 768
-    ? targetRect.right + 370 < window.innerWidth
-      ? { top: Math.max(20, Math.min(targetRect.top, window.innerHeight - 320)), left: targetRect.right + 20 }
+  const cardStyle: React.CSSProperties = targetRect && viewport?.width && viewport.width >= 768
+    ? targetRect.right + 370 < viewport.width
+      ? { top: Math.max(20, Math.min(targetRect.top, viewport.height - 320)), left: targetRect.right + 20 }
       : targetRect.left > 370
-        ? { top: Math.max(20, Math.min(targetRect.top, window.innerHeight - 320)), left: targetRect.left - 360 }
+        ? { top: Math.max(20, Math.min(targetRect.top, viewport.height - 320)), left: targetRect.left - 360 }
         : { bottom: 24, left: "50%", transform: "translateX(-50%)" }
-    : targetRect && typeof window !== "undefined" && targetRect.bottom > window.innerHeight * 0.62
+    : targetRect && viewport && targetRect.bottom > viewport.height * 0.62
       ? { top: "calc(12px + env(safe-area-inset-top, 0px))", left: 12, right: 12 }
       : { bottom: "calc(16px + env(safe-area-inset-bottom, 0px))", left: 12, right: 12 };
 
   return (
     <div className="fitzone-tour" dir={lang === "en" ? "ltr" : "rtl"} onKeyDown={onKeyDown}>
       <div className="fitzone-tour__overlay" aria-hidden="true" />
-      {targetRect && current && <div className="fitzone-tour__spotlight" aria-hidden="true" style={{ top: Math.max(8, targetRect.top - 8), left: Math.max(8, targetRect.left - 8), width: Math.min(window.innerWidth - 16, targetRect.width + 16), height: Math.min(window.innerHeight - 16, targetRect.height + 16) }} />}
+      {targetRect && current && viewport && <div className="fitzone-tour__spotlight" aria-hidden="true" style={{ top: Math.max(8, targetRect.top - 8), left: Math.max(8, targetRect.left - 8), width: Math.min(viewport.width - 16, targetRect.width + 16), height: Math.min(viewport.height - 16, targetRect.height + 16) }} />}
       <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="fitzone-tour-title" className={`fitzone-tour__card ${isWelcome ? "fitzone-tour__card--welcome" : ""}`} style={isWelcome || isFinish ? undefined : cardStyle}>
         <button type="button" className="fitzone-tour__close" onClick={() => close(isWelcome ? "skipped" : "completed")} aria-label={text.close}>×</button>
         <div className={`fitzone-tour__mascot ${isWelcome ? "fitzone-tour__mascot--welcome" : ""} ${isFinish ? "fitzone-tour__mascot--finish" : ""}`} aria-hidden="true">
