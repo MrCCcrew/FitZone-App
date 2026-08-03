@@ -18,7 +18,7 @@ type ChatMessage = {
   senderName?: string | null;
   content: string;
   createdAt: string;
-  metadata?: { membershipId?: string; closeSession?: boolean; action?: { type: "navigate"; page: "shop"; anchor: "shop-products" }; structured?: { actions?: Array<{ type: "open_page"; label: string; url: "/" | "/login" | "/account" | "/store" | "/#memberships" | "/#offers" | "/#classes" }> } } | null;
+  metadata?: { membershipId?: string; closeSession?: boolean; action?: { type: "navigate"; page: "shop"; anchor: "shop-products" }; structured?: { actions?: Array<{ type: "open_page"; label: string; url: "/" | "/login" | "/account" | "/store" | "/#memberships" | "/#offers" | "/#classes" | "/#blog" | "/#nutrition" | "/#partners" }> } } | null;
 };
 
 type QuickAction = {
@@ -41,6 +41,15 @@ type ChatSessionPayload = {
 const STORAGE_KEY = "fitzone-live-chat-session";
 const VISITOR_KEY = "fitzone-live-chat-visitor";
 export const recorderMimeCandidates = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/mp4"] as const;
+
+export function isClientVoiceDebugEnabled(value = process.env.NEXT_PUBLIC_AI_COACH_VOICE_DEBUG_ENABLED) {
+  return value === "true";
+}
+
+export function logClientVoiceDebug(enabled: boolean, level: "info" | "error", event: string, details?: unknown) {
+  if (!enabled) return;
+  console[level](event, details);
+}
 
 export function selectSupportedRecorderMime(isSupported: (mime: string) => boolean) {
   return recorderMimeCandidates.find(isSupported) ?? "";
@@ -162,6 +171,14 @@ export async function unlockIOSAudio(audio: HTMLAudioElement, contextRef: { curr
   if (!contextRef.current && typeof AudioContext !== "undefined") contextRef.current = new AudioContext();
   await contextRef.current?.resume().catch(() => {});
   await audio.play().catch(() => {});
+}
+
+/** Attach the Realtime remote track and attempt audible playback. No browser TTS fallback is used. */
+export async function attachRealtimeRemoteAudio(audio: HTMLAudioElement, track: MediaStreamTrack, streams: readonly MediaStream[]) {
+  audio.muted = false;
+  audio.volume = 1;
+  audio.srcObject = streams[0] ?? new MediaStream([track]);
+  await audio.play();
 }
 
 type RealtimeInteractiveResult = {
@@ -298,7 +315,7 @@ export default function LiveChatWidget() {
   const [manualVoiceFallback, setManualVoiceFallback] = useState(false);
   const [voiceDebug, setVoiceDebug] = useState({ platform: "", pcState: "new", iceState: "new", dataChannelState: "closed", trackState: "none", trackMuted: false, lastRealtimeEvent: "", lastErrorCode: "", lastErrorType: "" });
   const realtimeVoice = "marin" as const;
-  const voiceDebugEnabled = process.env.NEXT_PUBLIC_AI_COACH_VOICE_DEBUG_ENABLED === "true";
+  const voiceDebugEnabled = isClientVoiceDebugEnabled();
   const [recording, setRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
@@ -524,7 +541,15 @@ export default function LiveChatWidget() {
     }));
   };
 
-  const openSafePage = (url: "/" | "/login" | "/account" | "/store" | "/#memberships" | "/#offers" | "/#classes") => window.location.assign(url);
+  const openSafePage = (url: "/" | "/login" | "/account" | "/store" | "/#memberships" | "/#offers" | "/#classes" | "/#blog" | "/#nutrition" | "/#partners") => {
+    const pageByUrl: Partial<Record<typeof url, string>> = { "/store": "shop", "/#memberships": "memberships", "/#offers": "offers", "/#classes": "classes", "/#blog": "blog", "/#partners": "partners" };
+    const page = pageByUrl[url];
+    if (page) {
+      window.dispatchEvent(new CustomEvent("fitzone:ai-coach-navigate", { detail: { type: "navigate", page } }));
+      return;
+    }
+    window.location.assign(url);
+  };
 
   useEffect(() => {
     const action = messages[messages.length - 1]?.metadata?.action;
@@ -617,10 +642,10 @@ export default function LiveChatWidget() {
         const chunks = chunksRef.current; chunksRef.current = [];
         const audio = buildFinalRecording(chunks, recorder.mimeType || selectedRecorderMime || "audio/webm");
         const local = await inspectLocalRecording(audio);
-        if (process.env.NODE_ENV === "development") {
+        if (voiceDebugEnabled) {
           const header = new Uint8Array(await audio.slice(0, 12).arrayBuffer());
           const firstBytesSignature = Array.from(header).map((byte) => byte.toString(16).padStart(2, "0")).join("");
-          console.info("[VOICE_RECORDER]", { selectedRecorderMime: selectedRecorderMime || null, recorderMimeAfterCreation: recorder.mimeType || null, chunksCount: chunks.length, individualChunkSizes: chunks.map((chunk) => chunk.size), finalBlobSize: audio.size, finalBlobMime: audio.type, firstBytesSignature, ...local });
+          logClientVoiceDebug(true, "info", "[VOICE_RECORDER]", { selectedRecorderMime: selectedRecorderMime || null, recorderMimeAfterCreation: recorder.mimeType || null, chunksCount: chunks.length, individualChunkSizes: chunks.map((chunk) => chunk.size), finalBlobSize: audio.size, finalBlobMime: audio.type, firstBytesSignature, ...local });
         }
         if (!audio.size || !local.canDecodeLocally) { setError(t("التسجيل اتعمل لكن صيغة الصوت مش متوافقة مع المتصفح. جربي تاني أو استخدمي المحادثة الصوتية المباشرة.", "Recording format is not compatible with this browser. Try again or use live voice.")); return; }
         await transcribeAudio(audio, Math.round(local.localAudioDuration! * 1000));
@@ -662,9 +687,11 @@ export default function LiveChatWidget() {
       const playRemoteAudio = () => {
         if (remoteAudioPlayAttemptRef.current) return Promise.resolve();
         remoteAudioPlayAttemptRef.current = true;
-        return remoteAudio.play().then(() => { setAutoplayBlocked(false); if (voiceDebugEnabled) console.info("[AI_COACH_VOICE] audio_played"); }).catch((error) => { setAutoplayBlocked(true); if (voiceDebugEnabled) console.info("[AI_COACH_VOICE] audio_play_blocked", { name: error instanceof Error ? error.name : "unknown" }); });
+        remoteAudio.muted = false;
+        remoteAudio.volume = 1;
+        return remoteAudio.play().then(() => { setAutoplayBlocked(false); if (voiceDebugEnabled) console.info("[AI_COACH_VOICE] audio_played"); }).catch((error) => { remoteAudioPlayAttemptRef.current = false; setAutoplayBlocked(true); setError(t("تعذر تشغيل صوت المساعد. اضغطي لتشغيله مرة أخرى.", "Assistant audio could not play. Tap to try again.")); if (voiceDebugEnabled) console.info("[AI_COACH_VOICE] audio_play_blocked", { name: error instanceof Error ? error.name : "unknown" }); });
       };
-      peer.ontrack = (event) => { remoteAudio.srcObject = event.streams[0] ?? null; if (voiceDebugEnabled) console.info("[AI_COACH_VOICE] remote_track", { kind: event.track.kind, muted: event.track.muted, streamCount: event.streams.length }); void playRemoteAudio(); if (realtimeSessionReadyRef.current) setRealtimeState("assistant_speaking"); };
+      peer.ontrack = (event) => { remoteAudio.srcObject = event.streams[0] ?? new MediaStream([event.track]); remoteAudio.muted = false; remoteAudio.volume = 1; if (voiceDebugEnabled) console.info("[AI_COACH_VOICE] remote_track", { kind: event.track.kind, muted: event.track.muted, streamCount: event.streams.length }); void playRemoteAudio(); if (realtimeSessionReadyRef.current) setRealtimeState("assistant_speaking"); };
       peer.onconnectionstatechange = () => { setDebug({ pcState: peer.connectionState }); if (["failed", "disconnected", "closed"].includes(peer.connectionState)) endRealtime(); };
       peer.oniceconnectionstatechange = () => setDebug({ iceState: peer.iceConnectionState });
       peer.addTrack(microphoneTrack, stream);
@@ -706,8 +733,8 @@ export default function LiveChatWidget() {
           let args: Record<string, unknown> = {}; try { args = JSON.parse(data.arguments ?? "{}"); } catch { /* server rejects malformed args */ }
           const toolResponse = await fetch("/api/chat/voice/realtime/tool", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId: id, voiceSessionId: realtimeVoiceSessionIdRef.current ?? undefined, name: data.name, arguments: args, lang }) });
           const toolData = await toolResponse.json().catch(() => ({})) as { result?: unknown; errorCode?: unknown };
-          if (!toolResponse.ok && process.env.NODE_ENV === "development") {
-            console.error("[AI_COACH_REALTIME_TOOL_ERROR]", {
+          if (!toolResponse.ok && voiceDebugEnabled) {
+            logClientVoiceDebug(true, "error", "[AI_COACH_REALTIME_TOOL_ERROR]", {
               status: toolResponse.status,
               errorCode: typeof toolData.errorCode === "string" ? toolData.errorCode : `TOOL_HTTP_${toolResponse.status}`,
               toolName: data.name,
@@ -723,7 +750,7 @@ export default function LiveChatWidget() {
           if (channel.readyState === "open") { setRealtimeState("thinking"); for (const responseEvent of createRealtimeToolOutputEvents(data.call_id, functionResult)) channel.send(JSON.stringify(responseEvent)); }
           loadSession(id).catch(() => {});
         }
-        if (data.type === "input_audio_buffer.speech_started") { speechStartedRef.current = true; if (vadFallbackTimerRef.current) window.clearTimeout(vadFallbackTimerRef.current); remoteAudio.pause(); setManualVoiceFallback(false); if (realtimeSessionReadyRef.current) setRealtimeState("listening"); }
+        if (data.type === "input_audio_buffer.speech_started") { speechStartedRef.current = true; if (vadFallbackTimerRef.current) window.clearTimeout(vadFallbackTimerRef.current); remoteAudio.pause(); remoteAudioPlayAttemptRef.current = false; setManualVoiceFallback(false); if (realtimeSessionReadyRef.current) setRealtimeState("listening"); }
         if (data.type === "input_audio_buffer.speech_stopped" && realtimeSessionReadyRef.current) setRealtimeState("thinking");
         if (data.type === "response.created" && realtimeSessionReadyRef.current) setRealtimeState("thinking");
         if ((data.type === "response.output_audio.delta" || data.type === "response.audio.delta") && realtimeSessionReadyRef.current) { setRealtimeState("assistant_speaking"); void playRemoteAudio(); }
@@ -732,8 +759,8 @@ export default function LiveChatWidget() {
           const error = data.error;
           const kind = classifyRealtimeError(error);
           setDebug({ lastErrorCode: error?.code ?? "", lastErrorType: error?.type ?? "" });
-          if (process.env.NODE_ENV === "development") {
-            console.error("[AI_COACH_REALTIME_ERROR]", {
+          if (voiceDebugEnabled) {
+            logClientVoiceDebug(true, "error", "[AI_COACH_REALTIME_ERROR]", {
               eventType: data.type,
               errorType: error?.type,
               errorCode: error?.code,
@@ -741,7 +768,7 @@ export default function LiveChatWidget() {
               errorParam: error?.param,
               eventId: data.event_id,
             });
-            console.info("[AI_COACH_REALTIME_EVENT_SEQUENCE]", realtimeEventSequenceRef.current);
+            logClientVoiceDebug(true, "info", "[AI_COACH_REALTIME_EVENT_SEQUENCE]", realtimeEventSequenceRef.current);
           }
           if (kind === "fatal") {
             setRealtimeState("error");

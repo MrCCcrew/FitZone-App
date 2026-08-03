@@ -10464,8 +10464,10 @@ export default function App({ initialHomeData, hydrationDisable }: { initialHome
   useEffect(() => {
     const handleCoachNavigation = (event: Event) => {
       const detail = (event as CustomEvent<{ type?: string; page?: string; anchor?: string }>).detail;
-      if (detail?.type === "navigate" && detail.page === "shop" && detail.anchor === "shop-products") {
-        navigate("shop", "shop-products");
+      if (detail?.type === "navigate" && detail.page === "shop") {
+        navigate("shop", detail.anchor === "shop-products" ? "shop-products" : undefined);
+      } else if (detail?.type === "navigate" && ["memberships", "offers", "classes", "blog", "partners"].includes(detail.page ?? "")) {
+        navigate(detail.page!);
       }
     };
     window.addEventListener("fitzone:ai-coach-navigate", handleCoachNavigation);

@@ -1,6 +1,6 @@
 import { extractCatalogSearchQuery, normalizeCatalogText } from "@/lib/catalog-query";
 import { findCoachPage } from "@/lib/ai-coach/page-registry";
-import { detectCoachIntent } from "@/lib/ai-coach/intents";
+import { detectCoachIntent, detectExplicitNavigationTarget } from "@/lib/ai-coach/intents";
 import { classifyCoachIntent } from "@/lib/ai-coach/llm";
 import { classifyCatalogDomain, requestedOfferSubtype } from "@/lib/ai-coach/site-taxonomy";
 import type { CoachIntent, CoachLang } from "@/lib/ai-coach/types";
@@ -53,6 +53,9 @@ export async function understandCoachMessage(message: string, _lang: CoachLang, 
     if (/بكره/.test(text)) return result("class_schedule", .99, text, context?.lastEntities ?? {}, true, { ...followup, operation: "filter", temporalFilter: { date: "tomorrow" } });
   }
   if (isReference || /^(?:عايزه اعرف الموجود|عايزة اعرف الموجود|ايه الموجود|بكام|مواعيده|متاح|افتحه?|وريني|ايه الانواع)$/i.test(text)) return result("clarification_required", 1, text);
+  // Explicit navigation uses a fixed precedence and never inherits stale context.
+  const explicitNavigationTarget = detectExplicitNavigationTarget(message);
+  if (explicitNavigationTarget) return result("site_navigation", .99, text, { pageId: explicitNavigationTarget }, false, { operation: "open" });
   // Explicit domain terms are authoritative and must beat a stale navigation
   // context or cached alias. In particular, memberships are never shop items.
   if (/الاشتراك|الاشتراكات|عضوية|الباقات|membership|plans?/i.test(text)) {
