@@ -84,6 +84,7 @@ export type CoachConversationContext = {
   lastResultIds?: string[];
   lastResultCount?: number;
   contextUpdatedAt?: string;
+  tour?: { currentStep: number; totalSteps: number; active: boolean };
 };
 
 export type CoachQuickAction = {

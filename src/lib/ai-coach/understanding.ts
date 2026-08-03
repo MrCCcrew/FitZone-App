@@ -1,11 +1,13 @@
 import { extractCatalogSearchQuery, normalizeCatalogText } from "@/lib/catalog-query";
 import { findCoachPage } from "@/lib/ai-coach/page-registry";
 import { detectCoachIntent, detectExplicitNavigationTarget } from "@/lib/ai-coach/intents";
+import { isSiteTourRequest } from "@/lib/ai-coach/site-tour";
+import { extractMembershipGoal, goalSearchTerms } from "@/lib/ai-coach/membership-goals";
 import { classifyCoachIntent } from "@/lib/ai-coach/llm";
 import { classifyCatalogDomain, requestedOfferSubtype } from "@/lib/ai-coach/site-taxonomy";
 import type { CoachIntent, CoachLang } from "@/lib/ai-coach/types";
 
-export type CanonicalIntent = "general_fitness" | "workout_recommendation" | "nutrition_general" | "exercise_explanation" | "offer_lookup" | "membership_lookup" | "membership_pricing" | "product_lookup" | "class_schedule" | "trainer_lookup" | "club_information" | "site_navigation" | "account_summary" | "account_membership" | "account_bookings" | "account_wallet" | "account_points" | "support_request" | "privacy_guard" | "forbidden_write_action" | "medical_safety" | "out_of_scope" | "clarification_required";
+export type CanonicalIntent = "general_fitness" | "workout_recommendation" | "nutrition_general" | "exercise_explanation" | "offer_lookup" | "membership_lookup" | "membership_pricing" | "product_lookup" | "class_schedule" | "trainer_lookup" | "club_information" | "site_navigation" | "site_tour" | "account_summary" | "account_membership" | "account_bookings" | "account_wallet" | "account_points" | "support_request" | "privacy_guard" | "forbidden_write_action" | "medical_safety" | "out_of_scope" | "clarification_required";
 
 export type CoachDomain = "memberships" | "packages" | "products" | "classes" | "offers" | "account" | "site" | null;
 export type CoachUnderstanding = { intent: CanonicalIntent; confidence: number; extractedEntities: Record<string, string | number | boolean>; normalizedQuery: string; requestedAction: "answer" | "navigate" | "read_account" | "forbidden"; requiresAuthentication: boolean; allowedTools: string[]; listAll: boolean; legacyIntent: CoachIntent; domain: CoachDomain; operation: "list" | "search" | "filter" | "sort" | "open" | "read" | "forbidden" | "clarify"; sort: "price_asc" | null; temporalFilter: Record<string, string>; contextReference: boolean; safetyFlags: string[]; };
@@ -18,7 +20,7 @@ const IMPERSONATE_ADMIN = /اعتبرني\s+(?:ادمن|أدمن)|i(?:'|\s)?m\s+
 const URGENT = /chest pain|faint|shortness of breath|difficulty breathing|ألم صدر|اغماء|إغماء|ضيق تنفس/i;
 
 function legacyFor(intent: CanonicalIntent): CoachIntent {
-  const mapping: Record<CanonicalIntent, CoachIntent> = { general_fitness: "unknown", workout_recommendation: "class_recommendation", nutrition_general: "nutrition_guidance", exercise_explanation: "faq", offer_lookup: "offer_lookup", membership_lookup: "pricing", membership_pricing: "pricing", product_lookup: "product_help", class_schedule: "schedule_lookup", trainer_lookup: "trainer_info", club_information: "faq", site_navigation: "shop_browse", account_summary: "account_summary", account_membership: "account_summary", account_bookings: "account_summary", account_wallet: "account_summary", account_points: "account_summary", support_request: "human_handoff", privacy_guard: "privacy_guard", forbidden_write_action: "privacy_guard", medical_safety: "faq", out_of_scope: "unknown", clarification_required: "unknown" };
+  const mapping: Record<CanonicalIntent, CoachIntent> = { general_fitness: "unknown", workout_recommendation: "class_recommendation", nutrition_general: "nutrition_guidance", exercise_explanation: "faq", offer_lookup: "offer_lookup", membership_lookup: "pricing", membership_pricing: "pricing", product_lookup: "product_help", class_schedule: "schedule_lookup", trainer_lookup: "trainer_info", club_information: "faq", site_navigation: "shop_browse", site_tour: "faq", account_summary: "account_summary", account_membership: "account_summary", account_bookings: "account_summary", account_wallet: "account_summary", account_points: "account_summary", support_request: "human_handoff", privacy_guard: "privacy_guard", forbidden_write_action: "privacy_guard", medical_safety: "faq", out_of_scope: "unknown", clarification_required: "unknown" };
   return mapping[intent];
 }
 
@@ -36,6 +38,11 @@ export async function understandCoachMessage(message: string, _lang: CoachLang, 
   const safetyFlags = [INJECTION.test(text) && "prompt_injection", OTHER_USER.test(text) && "other_user_data", SQL_ACCESS.test(text) && "sql_access", IMPERSONATE_ADMIN.test(text) && "permission_escalation", WRITE_REQUEST.test(text) && "forbidden_write"].filter((flag): flag is string => Boolean(flag));
   if (safetyFlags.length) return result(safetyFlags.includes("other_user_data") || safetyFlags.includes("prompt_injection") || safetyFlags.includes("sql_access") ? "privacy_guard" : "forbidden_write_action", 1, text, {}, false, { safetyFlags, operation: "forbidden" });
   if (URGENT.test(text)) return result("medical_safety", 1, text);
+  if (isSiteTourRequest(message)) return result("site_tour", .99, text);
+  const membershipGoal = extractMembershipGoal(message);
+  if (membershipGoal && /اشتراك|باقه|باقة|عضوي|اعرض.*(?:اشتراك|باقه|باقة)/i.test(text)) return result("membership_lookup", .99, text, { goal: membershipGoal, searchTerm: goalSearchTerms(membershipGoal) });
+  if (membershipGoal && context?.lastIntent === "membership_recommendation") return result("membership_lookup", .99, text, { goal: membershipGoal, searchTerm: goalSearchTerms(membershipGoal) });
+  if (/خس|خساره الوزن|خسارة الوزن|قيمي اكلي|نظميلي اكلي|افضل وجبه بعد التمرين|زيادة لياقتي|ازيد لياقتي|اتمرن ازاي|تمرن ازاي|مبتدئ|مبتدئة|weight loss|fitness|workout/i.test(message)) return result("general_fitness", .9, text);
   if (/رصيدي|محفظتي|wallet/i.test(text)) return result("account_wallet", .99, text);
   if (/نقاطي|rewards?|points?/i.test(text)) return result("account_points", .99, text);
   if (/حجوزاتي|my bookings/i.test(text)) return result("account_bookings", .99, text);
@@ -77,6 +84,7 @@ export async function understandCoachMessage(message: string, _lang: CoachLang, 
   if (page && /افتح|وديني|روح|navigate|open/i.test(text)) return result("site_navigation", .98, text, { pageId: page.id });
   if (/عرض|عروض|offer|discount|promo/i.test(text)) return result("offer_lookup", .94, text);
   if (/مدرب|trainer|coach/i.test(text)) return result("trainer_lookup", .9, text);
+  if (/اخس|خساره الوزن|خسارة الوزن|قيمي اكلي|نظميلي اكلي|افضل وجبه بعد التمرين|زيادة لياقتي|ازيد لياقتي|اتمرن ازاي|تمرن ازاي|مبتدئ|مبتدئة|weight loss|fitness|workout/i.test(message)) return result("general_fitness", .9, text);
   if (/مواعيد|ميعاد|امتى|بكره|بكرا|النهارده|today|tomorrow|schedule|kick.?box|يوجا|yoga|بيلاتس|pilates/i.test(text)) { const q = extractCatalogSearchQuery("class", message); return result("class_schedule", .92, text, q.searchTerm ? { className: q.searchTerm } : {}, q.isListAll); }
   if (/منتج|منتجات|متجر|شوب|store|shop|protein|بروتين|ملابس|تخسيس|دايت|ادوات رياضي/i.test(text)) { const q = extractCatalogSearchQuery("product", message); return result("product_lookup", .91, text, q.searchTerm ? { searchTerm: q.searchTerm } : {}, q.isListAll); }
   if (/اشتراك|اشتراكات|عضوي|عضويه|باقات|باقه|سعر الجيم|تكلفه الجيم|اسعار الجيم|membership|plans?|pricing|price/i.test(text) || context?.lastIntent === "pricing" && /شهري|سنوي|monthly|annual/i.test(text)) { const q = extractCatalogSearchQuery("membership", message); return result(/سعر|تكلف|كام|price|pricing/i.test(text) ? "membership_pricing" : "membership_lookup", .91, text, q.searchTerm ? { searchTerm: q.searchTerm } : {}, q.isListAll); }

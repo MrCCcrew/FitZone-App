@@ -2,14 +2,26 @@
 
 export type CoachNavigationTarget = "classes" | "blog" | "store" | "offers" | "memberships" | "nutritionist" | "partners";
 
+/** Normalization for matching only.  It deliberately keeps the original text for replies. */
+export function normalizeArabicIntent(text: string) {
+  return text.toLowerCase()
+    .replace(/[\u0610-\u061a\u064b-\u065f\u0670\u06d6-\u06ed]/g, "")
+    .replace(/ـ/g, "")
+    .replace(/[أإآ]/g, "ا")
+    .replace(/ى/g, "ي")
+    .replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d)))
+    .replace(/[^\p{L}\p{N}\s.-]/gu, " ")
+    .replace(/\s+/g, " ").trim();
+}
+
 /** Resolve explicit page commands before broad catalog matching or stale context. */
 export function detectExplicitNavigationTarget(message: string): CoachNavigationTarget | null {
-  const text = normalize(message);
+  const text = normalizeArabicIntent(message).replace(/ة/g, "ه");
   const asksToBuy = /(?:اشتري|اشتري|buy)/i.test(text);
-  if (!asksToBuy && !/(?:افتح|افتحي|وديني|روح|روحي|انتقل|navigate|open)/i.test(text)) return null;
+  if (!asksToBuy && !/(?:افتح|افتحي|وديني|خديني|روح|روحي|وريني|انتقل|navigate|open)/i.test(text)) return null;
   const targets: Array<[CoachNavigationTarget, RegExp]> = [
     ["classes", /(?:الجدول|المواعيد|مواعيد|الحصص|حصص|الكلاسات|كلاسات|classes?|schedule)/i],
-    ["blog", /(?:المدونه|مدونه|المقالات|مقالات|المقال|مقال|blog)/i],
+    ["blog", /(?:المدونه|مدونه|المدوني|مدوني|المقالات|مقالات|المقال|مقال|البلوج|بلوج|blog)/i],
     ["store", /(?:المتجر|متجر|التسوق|تسوق|المنتجات|منتجات|store|shop)/i],
     ["offers", /(?:العروض|عروض|الخصومات|خصومات|offers?|discounts?)/i],
     ["memberships", /(?:الاشتراكات|اشتراكات|الباقات|باقات|العضويات|عضويات|memberships?|plans?)/i],
@@ -21,15 +33,8 @@ export function detectExplicitNavigationTarget(message: string): CoachNavigation
 }
 
 function normalize(text: string) {
-  return text
-    .toLowerCase()
-    .replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d)))
-    .replace(/[أإآ]/g, "ا")
+  return normalizeArabicIntent(text)
     .replace(/ة/g, "ه")
-    .replace(/ى/g, "ي")
-    .replace(/[^\p{L}\p{N}\s.-]/gu, " ")
-    .replace(/\s+/g, " ")
-    .trim();
 }
 
 function matches(text: string, patterns: RegExp[]) {
