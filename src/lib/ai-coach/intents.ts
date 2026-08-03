@@ -1,5 +1,25 @@
 ﻿import type { CoachIntent } from "@/lib/ai-coach/types";
 
+export type CoachNavigationTarget = "classes" | "blog" | "store" | "offers" | "memberships" | "nutritionist" | "partners";
+
+/** Resolve explicit page commands before broad catalog matching or stale context. */
+export function detectExplicitNavigationTarget(message: string): CoachNavigationTarget | null {
+  const text = normalize(message);
+  const asksToBuy = /(?:اشتري|اشتري|buy)/i.test(text);
+  if (!asksToBuy && !/(?:افتح|افتحي|وديني|روح|روحي|انتقل|navigate|open)/i.test(text)) return null;
+  const targets: Array<[CoachNavigationTarget, RegExp]> = [
+    ["classes", /(?:الجدول|المواعيد|مواعيد|الحصص|حصص|الكلاسات|كلاسات|classes?|schedule)/i],
+    ["blog", /(?:المدونه|مدونه|المقالات|مقالات|المقال|مقال|blog)/i],
+    ["store", /(?:المتجر|متجر|التسوق|تسوق|المنتجات|منتجات|store|shop)/i],
+    ["offers", /(?:العروض|عروض|الخصومات|خصومات|offers?|discounts?)/i],
+    ["memberships", /(?:الاشتراكات|اشتراكات|الباقات|باقات|العضويات|عضويات|memberships?|plans?)/i],
+    ["nutritionist", /(?:دكتوره التغذيه|دكتوره|التغذيه|اخصائيه التغذيه|nutritionist|nutrition)/i],
+    ["partners", /(?:شركاؤنا|شركاونا|الشركاء|شركاء|الشريك|شريك|partners?)/i],
+  ];
+  if (asksToBuy) return "store";
+  return targets.find(([, pattern]) => pattern.test(text))?.[0] ?? null;
+}
+
 function normalize(text: string) {
   return text
     .toLowerCase()

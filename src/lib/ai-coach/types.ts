@@ -169,7 +169,7 @@ export type CoachKnowledgeEntry = {
 
 export type CoachSourceType = "live_site_data" | "mandatory_knowledge" | "knowledge_base" | "general_fitness" | "safe_fallback" | "policy_guard" | "mixed";
 
-export type CoachAction = { type: "open_page"; label: string; url: "/" | "/login" | "/account" | "/store" | "/#memberships" | "/#offers" | "/#classes" };
+export type CoachAction = { type: "open_page"; label: string; url: "/" | "/login" | "/account" | "/store" | "/#memberships" | "/#offers" | "/#classes" | "/#blog" | "/#nutrition" | "/#partners" };
 
 export type CoachAttendanceStats = {
   attendedCount30d: number;

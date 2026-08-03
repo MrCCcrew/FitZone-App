@@ -906,15 +906,7 @@ function AvatarSection({ avatar, name, onAvatarChange }: { avatar: string | null
   );
 
   return (
-    <div className="flex items-center gap-4">
-      <div className="relative">
-        <AvatarDisplay avatar={avatar} name={name} size={72} />
-        <button onClick={() => setView("presets")}
-          className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full flex items-center justify-center text-xs"
-          style={{ background: "linear-gradient(135deg,#ef4444,#dc2626)", border: "2px solid #1a0a10" }}>
-          ✏️
-        </button>
-      </div>
+    <div className="flex items-center justify-between gap-4">
       <div className="flex-1">
         <p className="text-white font-black text-sm mb-1">{t("الصورة الشخصية", "Profile Photo")}</p>
         <div className="flex gap-2">
@@ -1090,7 +1082,6 @@ function ProfileTab({ user, profileComplete, profilePoints }: { user: AccountDat
 
       {/* Profile card */}
       <div className={CARD + " flex items-center gap-5"}>
-        <AvatarDisplay avatar={avatar} name={user.name} size={80} />
         <div className="flex-1 min-w-0">
           <div className="text-white font-black text-xl truncate">{user.name}</div>
           <div className="flex items-center gap-2 text-gray-400 text-sm" dir="ltr">

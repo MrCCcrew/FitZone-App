@@ -33,7 +33,7 @@ import {
 import { buildQuickActions } from "@/lib/ai-coach/quick-actions";
 import { recommendClasses, recommendMembership } from "@/lib/ai-coach/recommender";
 import { getCoachToolContext } from "@/lib/ai-coach/tool-registry";
-import { getPublicScheduleReadState, searchActiveOffers, searchAvailableMemberships, searchClassSchedule } from "@/lib/ai-coach/catalog-tools";
+import { getPublicScheduleReadState } from "@/lib/ai-coach/catalog-tools";
 import { extractCatalogSearchQuery } from "@/lib/catalog-query";
 import { isCoachSmartModeEnabled } from "@/lib/ai-coach/config";
 import { isCoachDebugEnabled } from "@/lib/ai-coach/config";
@@ -308,7 +308,8 @@ async function buildDeterministicReply(args: {
     return { intent: "unknown", text: lang === "en" ? "Do you mean memberships, products, classes, or offers?" : "تقصدِي الاشتراكات، المنتجات، الكلاسات، ولا العروض؟", facts: [], quickActions: [], sourceType: "safe_fallback", confidence: understanding.confidence, metadata: { fallbackUsed: false, clarificationQuestion: true, understanding } };
   }
   if (understanding?.intent === "site_navigation") {
-    const page = findCoachPage(userMessage) ?? (understanding.contextReference ? COACH_PAGES.find((item) => item.id === context.lastActionTarget || item.id === context.lastDomain) ?? null : null);
+    const requestedPageId = typeof understanding.extractedEntities.pageId === "string" ? understanding.extractedEntities.pageId : null;
+    const page = (requestedPageId ? COACH_PAGES.find((item) => item.id === requestedPageId) : null) ?? findCoachPage(userMessage) ?? (understanding.contextReference ? COACH_PAGES.find((item) => item.id === context.lastActionTarget || item.id === context.lastDomain) ?? null : null);
     if (page && (!page.requiredAuth || user?.id)) return { intent: "faq", text: lang === "en" ? `Sure — I can take you to ${page.description}.` : `طبعًا، هفتح لك ${page.description}.`, facts: [], quickActions: [], sourceType: "live_site_data", confidence: understanding.confidence, actions: [pageAction(page, lang)], metadata: { fallbackUsed: false, understanding } };
     if (page?.requiredAuth) return { intent: "account_summary", text: lang === "en" ? "Please sign in first to open your account." : "سجّلي دخولك الأول علشان أفتح لك حسابك.", facts: [], quickActions: [], sourceType: "policy_guard", confidence: 1, actions: [{ type: "open_page", label: lang === "en" ? "Sign in" : "تسجيل الدخول", url: "/login" }] };
   }
@@ -451,25 +452,6 @@ async function buildDeterministicReply(args: {
           : snapshot.memberships.map((row) => `${row.name}: ${row.price} ${lang === "en" ? "EGP" : "جنيه"}`).join("\n");
     await updateContext(sessionId, baseContext, asksSchedule ? "schedule_lookup" : asksOffer ? "offer_lookup" : "pricing");
     return { intent: asksSchedule ? "schedule_lookup" : asksOffer ? "offer_lookup" : "pricing", text, facts: [], quickActions: buildActions(snapshot, intent, baseContext), actions: rows.length ? buildSafeActions(asksSchedule ? "schedule_lookup" : asksOffer ? "offer_lookup" : "pricing", Boolean(user?.id)) : [], sourceType: "live_site_data", confidence: rows.length ? 0.92 : 0.55, metadata: { usedTools: toolContext.usedTools, toolStatuses: toolContext.toolStatuses, resultCounts: toolContext.resultCounts, authenticated: Boolean(user?.id), toolFailed: toolContext.toolFailed, fallbackUsed: rows.length === 0, fallbackReason: rows.length === 0 ? "success_empty" : undefined } };
-  }
-  if (false) {
-    let rows: any[];
-    try {
-      rows = asksSchedule ? await searchClassSchedule(userMessage) : asksOffer ? await searchActiveOffers("") : await searchAvailableMemberships("");
-    } catch {
-      return { intent: asksOffer ? "offer_lookup" : intent, text: lang === "en" ? "Unable to load data right now. Please try again shortly." : "تعذر تحميل البيانات الآن، جرّب مرة أخرى بعد قليل.", facts: [], quickActions: buildActions(snapshot, intent, baseContext) };
-    }
-    const text = rows.length === 0
-      ? asksOffer
-        ? (lang === "en" ? "There are no active offers right now, but I can show you the available memberships." : "لا توجد عروض نشطة حاليًا، لكن دي الاشتراكات المتاحة.")
-        : (lang === "en" ? "There are no active memberships available right now." : "لا توجد اشتراكات نشطة متاحة حاليًا.")
-      : asksSchedule
-        ? (lang === "en" ? rows.map((row) => `${row.name}: ${row.schedules.map((s: { date: Date; time: string }) => `${new Date(s.date).toLocaleDateString("en-GB")} ${s.time}`).join("; ") || "no upcoming times"}`).join("\n") : rows.map((row) => `${row.name}: ${row.schedules.map((s: { date: Date; time: string }) => `${new Date(s.date).toLocaleDateString("ar-EG")} ${s.time}`).join("، ") || "لا توجد مواعيد قادمة"}`).join("\n"))
-        : asksOffer
-          ? (lang === "en" ? rows.slice(0, 5).map((row) => `${row.title}: final ${row.finalPrice ?? "price unavailable"} EGP${row.originalPrice != null ? ` (was ${row.originalPrice} EGP)` : ""}${row.durationDays ? `, ${row.durationDays} days` : ""}${row.sessionsCount ? `, ${row.sessionsCount} sessions` : ""}${row.allowedClassTypes.length ? `; classes: ${row.allowedClassTypes.join(", ")}` : "; all classes"}; expires ${row.expiresAt.toLocaleDateString("en-GB")}.`).join("\n") : rows.slice(0, 5).map((row) => `${row.title}: السعر النهائي ${row.finalPrice ?? "غير متاح"} جنيه${row.originalPrice != null ? ` بدل ${row.originalPrice} جنيه` : ""}${row.durationDays ? `، المدة ${row.durationDays} يوم` : ""}${row.sessionsCount ? `، ${row.sessionsCount} حصة` : ""}${row.allowedClassTypes.length ? `، الكلاسات: ${row.allowedClassTypes.join("، ")}` : "، يشمل كل الكلاسات"}، ينتهي ${row.expiresAt.toLocaleDateString("ar-EG")}.`).join("\n"))
-          : (lang === "en" ? rows.map((row) => `${row.name}: ${row.price} EGP, ${row.duration} days${row.sessionsCount ? `, ${row.sessionsCount} sessions` : ""}.`).join("\n") : rows.map((row) => `${row.name}: ${row.price} جنيه، ${row.duration} يوم${row.sessionsCount ? `، ${row.sessionsCount} حصة` : ""}.`).join("\n"));
-    await updateContext(sessionId, baseContext, asksSchedule ? "schedule_lookup" : asksOffer ? "offer_lookup" : "pricing");
-    return { intent: asksSchedule ? "schedule_lookup" : asksOffer ? "offer_lookup" : "pricing", text, facts: [], quickActions: buildActions(snapshot, intent, baseContext) };
   }
 
   const mentionsWeightLoss = /تخسيس|اخس|خساره الوزن|حرق دهون|weight loss/i.test(userMessage);
