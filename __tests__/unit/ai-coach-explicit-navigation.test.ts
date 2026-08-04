@@ -34,14 +34,14 @@ describe("AI Coach explicit Arabic navigation", () => {
   it.each([
     ["\u0627\u0641\u062a\u062d \u0627\u0644\u062c\u062f\u0648\u0644", "classes", "/#classes"],
     ["\u0627\u0641\u062a\u062d \u0627\u0644\u0645\u0648\u0627\u0639\u064a\u062f", "classes", "/#classes"],
-    ["\u0627\u0641\u062a\u062d \u0627\u0644\u0645\u062f\u0648\u0646\u0629", "blog", "/#blog"],
+    ["\u0627\u0641\u062a\u062d \u0627\u0644\u0645\u062f\u0648\u0646\u0629", "blog", "/?page=blog"],
     ["\u0627\u0641\u062a\u062d \u0627\u0644\u0645\u062a\u062c\u0631", "store", "/store"],
     ["\u0627\u0641\u062a\u062d \u0627\u0644\u0639\u0631\u0648\u0636", "offers", "/#offers"],
     ["\u0627\u0641\u062a\u062d \u0627\u0644\u0627\u0634\u062a\u0631\u0627\u0643\u0627\u062a", "memberships", "/#memberships"],
     ["\u0627\u0641\u062a\u062d \u0627\u0644\u0628\u0627\u0642\u0627\u062a", "memberships", "/#memberships"],
     ["\u0627\u0641\u062a\u062d \u0627\u0644\u062f\u0643\u062a\u0648\u0631\u0629", "nutritionist", "/#nutrition"],
     ["\u0627\u0641\u062a\u062d \u062f\u0643\u062a\u0648\u0631\u0629 \u0627\u0644\u062a\u063a\u0630\u064a\u0629", "nutritionist", "/#nutrition"],
-    ["\u0627\u0641\u062a\u062d \u0627\u0644\u0634\u0631\u0643\u0627\u0621", "partners", "/#partners"],
+    ["\u0627\u0641\u062a\u062d \u0627\u0644\u0634\u0631\u0643\u0627\u0621", "partners", "/?page=partners"],
   ] as const)("keeps text, realtime action, and page registry aligned for %s", async (message, pageId, url) => {
     await expect(understandCoachMessage(message, "ar")).resolves.toMatchObject({ intent: "site_navigation", extractedEntities: { pageId } });
     const page = COACH_PAGES.find((entry) => entry.id === pageId);

@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { activePublicOfferWhere } from "@/lib/offers";
-import { visibleClassScheduleWhere, visibleMembershipWhere, visibleProductWhere, visibleScheduleWhere } from "@/lib/public-catalog";
+import { cairoDayWindow, visibleClassScheduleWhere, visibleMembershipWhere, visibleProductWhere, visibleScheduleWhere, visibleTrainerWhere } from "@/lib/public-catalog";
 import { requestedOfferSubtype } from "@/lib/ai-coach/site-taxonomy";
 import { scheduleReadState } from "@/lib/ai-coach/catalog-read-status";
 
@@ -93,18 +93,31 @@ export async function searchAvailableProducts(query = "", filters?: { discounted
   return rows.filter((row) => (!filters?.discountedOnly || (row.oldPrice ?? 0) > row.price) && looselyMatches(`${row.name} ${row.nameEn ?? ""} ${row.category} ${row.description ?? ""}`, query)).map((row) => ({ ...row, image: json<string[]>(row.images, [])[0] ?? null, discountPercent: row.oldPrice && row.oldPrice > row.price ? Math.round((1 - row.price / row.oldPrice) * 100) : null }));
 }
 
+/** Same visibility rule and ordering as GET /api/public trainers. */
+export async function searchVisibleTrainers(query = "") {
+  const rows = await db.trainer.findMany({
+    where: visibleTrainerWhere(),
+    include: { _count: { select: { classes: true } } },
+    orderBy: [{ showOnHome: "desc" }, { sortOrder: "asc" }, { name: "asc" }],
+  });
+  return rows.filter((row) => looselyMatches(`${row.name} ${row.specialty} ${row.bio ?? ""}`, query)).map((row) => ({
+    id: row.id,
+    name: row.name,
+    specialty: row.specialty,
+    bio: row.bio ?? "",
+    rating: row.rating ?? 0,
+    classesCount: row._count.classes,
+  }));
+}
+
 export async function getOfferDetails(idOrName: string) { return (await searchActiveOffers(idOrName)).find((row) => row.id === idOrName || norm(row.title) === norm(idOrName)) ?? null; }
 export async function getMembershipDetails(idOrName: string) { return (await searchAvailableMemberships(idOrName)).find((row) => row.id === idOrName || norm(row.name) === norm(idOrName)) ?? null; }
 
 export async function searchClassSchedule(query = "", filters?: { date?: "today" | "tomorrow" }) {
   const now = new Date();
   const rows = await db.class.findMany({ where: visibleClassScheduleWhere(now), take: MAX, include: { trainer: { select: { name: true } }, schedules: { where: visibleScheduleWhere(now), orderBy: [{ date: "asc" }, { time: "asc" }], take: 5 } } });
-  // Schedules are calendar dates; resolve relative days in the club's timezone.
-  const cairo = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Cairo", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(now);
-  const day = Object.fromEntries(cairo.map((part) => [part.type, part.value]));
-  const tomorrow = new Date(Date.UTC(Number(day.year), Number(day.month) - 1, Number(day.day) + (filters?.date === "tomorrow" ? 1 : 0)));
-  const nextDay = new Date(tomorrow); nextDay.setDate(nextDay.getDate() + 1);
-  return rows.filter((row) => looselyMatches(`${row.name} ${row.type} ${row.category ?? ""} ${row.subType ?? ""}`, query)).map((row) => ({ name: row.name, type: row.type, category: row.category, trainer: row.trainer.name, schedules: row.schedules.filter((s) => !filters?.date || (s.date >= tomorrow && s.date < nextDay)).map((s) => ({ date: s.date, time: s.time, availableSpots: s.availableSpots })) })).filter((row) => row.schedules.length > 0 || !filters?.date);
+  const dayWindow = filters?.date ? cairoDayWindow(now, filters.date === "tomorrow" ? 1 : 0) : null;
+  return rows.filter((row) => looselyMatches(`${row.name} ${row.type} ${row.category ?? ""} ${row.subType ?? ""}`, query)).map((row) => ({ name: row.name, type: row.type, category: row.category, trainer: row.trainer.name, schedules: row.schedules.filter((s) => !dayWindow || (s.date >= dayWindow.from && s.date < dayWindow.to)).map((s) => ({ date: s.date, time: s.time, availableSpots: s.availableSpots })) })).filter((row) => row.schedules.length > 0 || !filters?.date);
 }
 
 /** Read-only diagnostic used only to phrase an empty public schedule accurately. */

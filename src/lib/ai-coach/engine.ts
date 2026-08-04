@@ -355,7 +355,7 @@ async function buildDeterministicReply(args: {
             ? (lang === "ar" ? "لو مبتدئة، ابدئي 3 أيام أسبوعيًا: 5–10 دقائق إحماء، تمارين جسم كامل بسيطة، ثم مشي خفيف. زوّدي الحمل تدريجيًا ووقفي عند ألم حاد. أقدر كمان أرشح لك الكلاسات المناسبة." : "As a beginner, start three days weekly with a warm-up, simple full-body work, and light walking. Increase gradually and stop for sharp pain.")
             : (lang === "ar" ? "أقدر أساعدك بإرشاد رياضي وغذائي عام وآمن. قوليلي هدفك ومستواك وأي ظروف صحية مهمة لو تحبي نصيحة أدق." : "I can help with safe general fitness and nutrition guidance. Tell me your goal, level, and any important health considerations for more tailored advice.");
     const phrased = understanding?.requiresModel ? await phraseStructuredReply({ lang, intent, userMessage, draft: text, facts: [] }) : { text, usedAI: false };
-    return { intent: "faq", text: phrased.text || text, usedAI: phrased.usedAI, facts: [], quickActions: [], sourceType: "general_fitness", confidence: .9, actions: safetyFlags.hasRisk ? [{ type: "open_page", label: lang === "ar" ? "أخصائية التغذية" : "Nutrition specialist", url: "/#nutrition" }] : [], requiresEscalation: safetyFlags.hasRisk };
+    return { intent: "faq", text: phrased.text || text, usedAI: phrased.usedAI, facts: [], quickActions: [], sourceType: "general_fitness", confidence: .9, actions: safetyFlags.hasRisk ? [pageAction(COACH_PAGES.find((page) => page.id === "nutritionist")!, lang)] : [], requiresEscalation: safetyFlags.hasRisk };
   }
   const isPersonalQuestion = intent === "account_summary" || /رقم.*(تليفون|هاتف)|دفع|حجز|اشتراكي|عضويتي|رصيدي|نقاطي|my (membership|account|booking|payment|phone)/i.test(userMessage);
   if (!isPersonalQuestion) {
@@ -389,6 +389,25 @@ async function buildDeterministicReply(args: {
   const wantsWeightLoss = /تخسيس|اخس|خساره الوزن|حرق دهون|weight loss/i.test(normalizedQuestion) || baseContext.lastTopic === "weight_loss";
   if (!toolContext.toolsEnabled && (intent === "product_recommendation" || intent === "product_discount" || asksOwnMembership || asksRecommendation || asksOffer || asksSchedule || intent === "pricing")) {
     return { intent, text: lang === "en" ? "Live FitZone data is unavailable right now, but I can still help with general fitness guidance or a published policy." : "بيانات FitZone المباشرة مش متاحة دلوقتي، لكن أقدر أساعدك بنصيحة رياضية عامة أو بمعلومة منشورة.", facts: [], quickActions: buildActions(snapshot, intent, baseContext), sourceType: "safe_fallback", confidence: 0.6, metadata: { usedTools: toolContext.usedTools, fallbackUsed: true } };
+  }
+  if (intent === "trainer_info") {
+    const trainerStatus = toolContext.toolStatuses.searchTrainers;
+    const text = trainerStatus === "tool_error"
+      ? (lang === "en" ? "There was a problem loading the trainers' data. Please try again." : "حصلت مشكلة وأنا بحمّل بيانات المدربات، جربي مرة ثانية.")
+      : snapshot.trainers.length
+        ? snapshot.trainers.slice(0, 5).map((trainer) => `${trainer.name}${trainer.specialty ? ` — ${trainer.specialty}` : ""}`).join("\n")
+        : (lang === "en" ? "There are no published trainers visible right now." : "مش ظاهر عندي مدربات منشورات حاليًا.");
+    await updateContext(sessionId, baseContext, intent);
+    return {
+      intent,
+      text,
+      facts: [],
+      quickActions: buildActions(snapshot, intent, baseContext),
+      actions: trainerStatus === "success_with_results" ? [pageAction(COACH_PAGES.find((page) => page.id === "trainers")!, lang)] : [],
+      sourceType: "live_site_data",
+      confidence: trainerStatus === "success_with_results" ? 0.92 : trainerStatus === "success_empty" ? 0.7 : 0.35,
+      metadata: { usedTools: toolContext.usedTools, toolStatuses: toolContext.toolStatuses, resultCounts: toolContext.resultCounts, authenticated: Boolean(user?.id), toolFailed: trainerStatus === "tool_error", fallbackUsed: trainerStatus !== "success_with_results", fallbackReason: trainerStatus === "success_empty" ? "success_empty" : trainerStatus === "tool_error" ? "tool_error" : undefined },
+    };
   }
   if (intent === "shop_browse") {
     await updateContext(sessionId, baseContext, intent);
@@ -462,7 +481,7 @@ async function buildDeterministicReply(args: {
       const altLabel = alternative ? (alternative.kind === "offer" ? alternative.row.title : alternative.row.name) : null;
       const text = lang === "en" ? `The closest available option for your weight-loss goal is ${label} (${price ?? "price unavailable"} EGP).${altLabel ? ` An alternative is ${altLabel}.` : ""}` : `الأنسب من الخيارات المتاحة لهدف التخسيس هو ${label} بسعر ${price ?? "غير متاح"} جنيه.${altLabel ? ` والبديل: ${altLabel}.` : ""}`;
       await updateContext(sessionId, { ...baseContext, lastTopic: "weight_loss" }, "membership_recommendation");
-      return { intent: "membership_recommendation", text, facts: [], quickActions: buildActions(snapshot, "membership_recommendation", baseContext), actions: [{ type: "open_page", label: lang === "ar" ? "شوفي الاشتراكات" : "View memberships", url: "/#memberships" }] };
+      return { intent: "membership_recommendation", text, facts: [], quickActions: buildActions(snapshot, "membership_recommendation", baseContext), actions: [pageAction(COACH_PAGES.find((page) => page.id === "memberships")!, lang)] };
     } catch {
       return { intent: "membership_recommendation", text: lang === "en" ? "Unable to load matching memberships right now. Please try again shortly." : "حصلت مشكلة وأنا بدور على الاشتراكات المناسبة. جربي تاني بعد لحظة.", facts: [], quickActions: buildActions(snapshot, "membership_recommendation", baseContext) };
     }
@@ -672,11 +691,15 @@ async function buildDeterministicReply(args: {
 
 function buildSafeActions(intent: CoachIntent, authenticated: boolean) {
   const actions: NonNullable<CoachStructuredReply["actions"]> = [];
-  if (intent === "pricing" || intent === "membership_recommendation") actions.push({ type: "open_page", label: "شوفي الاشتراكات", url: "/#memberships" });
-  if (intent === "offer_lookup") actions.push({ type: "open_page", label: "شوفي العروض", url: "/#offers" });
-  if (intent === "schedule_lookup" || intent === "class_recommendation") actions.push({ type: "open_page", label: "شوفي الكلاسات", url: "/#classes" });
-  if (intent === "product_help" || intent === "product_recommendation") actions.push({ type: "open_page", label: "افتحي المتجر", url: "/store" });
-  if (intent === "account_summary" && authenticated) actions.push({ type: "open_page", label: "افتحي حسابي", url: "/account" });
+  const add = (id: "memberships" | "offers" | "classes" | "store" | "account") => {
+    const page = COACH_PAGES.find((item) => item.id === id);
+    if (page) actions.push(pageAction(page, "ar"));
+  };
+  if (intent === "pricing" || intent === "membership_recommendation") add("memberships");
+  if (intent === "offer_lookup") add("offers");
+  if (intent === "schedule_lookup" || intent === "class_recommendation") add("classes");
+  if (intent === "product_help" || intent === "product_recommendation") add("store");
+  if (intent === "account_summary" && authenticated) add("account");
   return actions;
 }
 

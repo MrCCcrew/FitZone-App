@@ -15,6 +15,7 @@ import {
   parseCoachUiActionBatch,
   type CoachUiActionResult,
 } from "@/lib/ai-coach/ui-action-dispatcher";
+import { COACH_PAGES } from "@/lib/ai-coach/page-registry";
 
 const FitZoneTour = dynamic(() => import("@/components/onboarding/FitZoneTour"), { ssr: false });
 const ONBOARDING_COMPLETED_KEY = "fitzone_onboarding_completed_v1";
@@ -734,10 +735,6 @@ const GymImg = ({ type = "hero", w = "100%", h = 300 }: { type?: string; w?: str
 };
 
 // ─── HEADER ─────────────────────────────────────────────────────────────────
-const DEFAULT_TOP_BAR = {
-  ar: "💪 01001514535 · بني سويف · أول نادي للسيدات والأطفال",
-  en: "💪 01001514535 · Beni Suef · First ladies & kids gym",
-};
 const SHOW_CLASSES_PAGE = false;
 const HYDRATION_AUTH_DEBUG = process.env.NODE_ENV === "production" && process.env.HYDRATION_AUTH_DEBUG === "true";
 
@@ -819,6 +816,7 @@ const Header = ({
   walletBalance = "0",
   summary,
   storeEnabled,
+  initialAnnouncements = [],
   diagnosticMounted,
   hydrationDisable,
 }: {
@@ -828,6 +826,7 @@ const Header = ({
   walletBalance?: string;
   summary?: UserSummary | null;
   storeEnabled: boolean;
+  initialAnnouncements?: string[];
   diagnosticMounted: boolean;
   hydrationDisable?: string;
 }) => {
@@ -852,7 +851,7 @@ const Header = ({
     console.debug("[Hydration isolation client]", firstAnnouncementRender.current);
   }, []);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [announcements, setAnnouncements] = useState<string[]>([]);
+  const [announcements, setAnnouncements] = useState<string[]>(initialAnnouncements);
   const [annIndex, setAnnIndex] = useState(0);
   const t = (ar: string, en: string) => (lang === "ar" ? ar : en);
   useEffect(() => {
@@ -888,7 +887,7 @@ const Header = ({
       {/* Top bar */}
       {announcementRendered && <div style={{ background: C.redDark, height: 30, boxSizing: "border-box", padding: "6px 0", textAlign: "center", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
         <span style={{ fontSize: 12, fontWeight: 600, color: "#fff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%", paddingInline: 12 }}>
-          {announcements.length > 0 ? announcements[annIndex] : t(DEFAULT_TOP_BAR.ar, DEFAULT_TOP_BAR.en)}
+          {announcements.length > 0 ? announcements[annIndex] : null}
         </span>
       </div>}
       <div className="container" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", height: 78 }}>
@@ -1595,6 +1594,8 @@ type PublicMembership = {
 export type InitialHomeData = {
   memberships: PublicMembership[];
   offers: PublicOffer[];
+  hero: Partial<HomeHeroContent> | null;
+  announcements: string[];
 };
 
 type PublicHealthQuestion = {
@@ -2273,7 +2274,7 @@ const PrivateBookingModal = ({ trainer, type, onClose }: { trainer: PublicTraine
   );
 };
 
-const HomePage = ({ navigate, summary, storeEnabled, initialHomeData, diagnosticMounted = false, hydrationDisable }: { navigate: (p: string, scrollTarget?: "shop-products" | "trainers-list") => void; summary: UserSummary | null; storeEnabled: boolean; initialHomeData?: InitialHomeData; diagnosticMounted?: boolean; hydrationDisable?: string }) => {
+const HomePage = ({ navigate, summary, storeEnabled, initialHomeData, diagnosticMounted = false, hydrationDisable }: { navigate: (p: string, scrollTarget?: string) => void; summary: UserSummary | null; storeEnabled: boolean; initialHomeData?: InitialHomeData; diagnosticMounted?: boolean; hydrationDisable?: string }) => {
   const _w = useWindowWidth();
   const offerClock = useHydratedOfferClock();
   const { lang } = useLang();
@@ -2348,33 +2349,14 @@ const HomePage = ({ navigate, summary, storeEnabled, initialHomeData, diagnostic
   const todayContainerWidthRef = useRef(0);
   const todayPausedRef = useRef(false);
   const preloadedHeroUrlsRef = useRef(new Set<string>());
-    const [heroContent, setHeroContent] = useState<HomeHeroContent>({
-      badge: "نادي لياقة للسيدات والأطفال في بني سويف",
-      badgeEn: "First women & kids gym in Beni Suef",
-      headline1: "ابدئي رحلتك",
-      headline1En: "Start your journey",
-      headline2: "FIT ZONE",
-      headline2En: "FIT ZONE",
-      headline3: "مع",
-      headline3En: "with",
-      subtext: "فيت زون يقدم اشتراكات جيم وكلاسات متنوعة للسيدات والأطفال في بني سويف، مع مدربات محترفات وبرامج تدريب عملية داخل بيئة آمنة ومريحة.",
-      subtextEn: "FitZone offers gym memberships and diverse classes for women and kids in Beni Suef, with expert coaches, practical programs, and a safe, comfortable environment.",
-      ctaPrimary: "اشتركي الآن",
-      ctaPrimaryEn: "Subscribe now",
-      ctaSecondary: "احجزي كلاس تجريبي",
-      ctaSecondaryEn: "Book a trial class",
-      slides: [],
-      stats: [
-        { value: "500+", label: "عضوة نشطة" },
-        { value: "50+", label: "كلاس أسبوعيًا" },
-        { value: "3", label: "مدربات محترفات" },
-      ],
-      statsEn: [
-        { value: "500+", label: "Active members" },
-        { value: "50+", label: "Weekly classes" },
-        { value: "3", label: "Pro trainers" },
-      ],
-    });
+    const [heroContent, setHeroContent] = useState<HomeHeroContent>(() => ({
+      badge: "", badgeEn: "", headline1: "", headline1En: "", headline2: "", headline2En: "", headline3: "", headline3En: "",
+      subtext: "", subtextEn: "", ctaPrimary: "", ctaPrimaryEn: "", ctaSecondary: "", ctaSecondaryEn: "",
+      ...(initialHomeData?.hero ?? {}),
+      slides: Array.isArray(initialHomeData?.hero?.slides) ? initialHomeData.hero.slides.filter((item): item is string => typeof item === "string") : [],
+      stats: Array.isArray(initialHomeData?.hero?.stats) ? initialHomeData.hero.stats as HomeHeroContent["stats"] : [],
+      statsEn: Array.isArray(initialHomeData?.hero?.statsEn) ? initialHomeData.hero.statsEn as HomeHeroContent["statsEn"] : [],
+    }));
   const [heroSlideIndex, setHeroSlideIndex] = useState(0);
   useEffect(() => {
     loadPublicApi(true).then(d => {
@@ -10299,6 +10281,14 @@ export default function App({ initialHomeData, hydrationDisable }: { initialHome
   const pendingScrollTarget = useRef<string | null>(null);
   const tourFrameRef = useRef<number | null>(null);
 
+  // A direct /#classes load must wait for the SPA page to render before
+  // scrolling. The target is validated against the central page registry.
+  useEffect(() => {
+    const targetPage = COACH_PAGES.find((item) => item.route === `/#${window.location.hash.slice(1)}`);
+    if (targetPage?.spaPage && targetPage.spaPage !== "home") setPage(targetPage.spaPage);
+    if (targetPage?.sectionId) pendingScrollTarget.current = targetPage.sectionId;
+  }, []);
+
   useEffect(() => {
     const syncViewport = () => {
       hydratedViewportWidth = window.innerWidth;
@@ -10471,6 +10461,11 @@ export default function App({ initialHomeData, hydrationDisable }: { initialHome
 
     navigating.current = true;
     pendingScrollTarget.current = scrollTarget ?? null;
+    if (p === "home" && scrollTarget) {
+      const targetUrl = new URL(window.location.href);
+      targetUrl.hash = `#${scrollTarget}`;
+      window.history.replaceState(window.history.state, "", targetUrl.toString());
+    }
     setPage(p);
     if (!scrollTarget) {
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -10482,8 +10477,8 @@ export default function App({ initialHomeData, hydrationDisable }: { initialHome
       const detail = (event as CustomEvent<{ type?: string; page?: string; anchor?: string }>).detail;
       if (detail?.type === "navigate" && detail.page === "shop") {
         navigate("shop", detail.anchor === "shop-products" ? "shop-products" : undefined);
-      } else if (detail?.type === "navigate" && ["memberships", "offers", "classes", "blog", "partners"].includes(detail.page ?? "")) {
-        navigate(detail.page!);
+      } else if (detail?.type === "navigate" && ["memberships", "offers", "classes", "trainers", "blog", "partners", "home"].includes(detail.page ?? "")) {
+        navigate(detail.page!, detail.anchor);
       }
     };
     window.addEventListener("fitzone:ai-coach-navigate", handleCoachNavigation);
@@ -10649,6 +10644,7 @@ export default function App({ initialHomeData, hydrationDisable }: { initialHome
         walletBalance={(summary?.walletBalance ?? 0).toLocaleString(lang === "ar" ? "ar-EG" : "en-US")}
         summary={summary}
         storeEnabled={storeEnabled}
+        initialAnnouncements={initialHomeData?.announcements}
         diagnosticMounted={authDiagnosticMounted}
         hydrationDisable={hydrationDisable}
       />

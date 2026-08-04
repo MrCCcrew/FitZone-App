@@ -11,7 +11,7 @@ async function getInitialHomeData() {
   try {
     return await loadInitialHomeData() as InitialHomeData;
   } catch {
-    return { memberships: [], offers: [] } as InitialHomeData;
+    return { memberships: [], offers: [], hero: null, announcements: [] } as InitialHomeData;
   }
 }
 
@@ -64,8 +64,9 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ h
         lang: "ar",
         dir: "rtl",
         currentPage: "home",
-        // Hero content is client-fetched; its SSR state is intentionally empty.
-        heroSlideIds: [],
+        // Hero content is loaded with the same server snapshot used by the
+        // first client render, so hydration observes identical content.
+        heroSlideIds: Array.isArray(initialHomeData.hero?.slides) ? initialHomeData.hero.slides.filter((slide): slide is string => typeof slide === "string") : [],
         offerIds: initialHomeData.offers.map((offer) => offer.id),
         membershipIds: initialHomeData.memberships.map((membership) => membership.id),
         conditionalComponents: ["FitzoneApp", "AICoachClientOnly"],

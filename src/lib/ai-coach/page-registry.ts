@@ -1,37 +1,50 @@
 import type { CoachAction } from "@/lib/ai-coach/types";
 
 export type CoachPage = {
-  id: "home" | "memberships" | "offers" | "classes" | "trainers" | "store" | "account" | "blog" | "nutritionist" | "partners" | "privacy" | "refund";
+  id: "home" | "goals" | "memberships" | "packages" | "offers" | "classes" | "trial_classes" | "trainers" | "store" | "product_categories" | "account" | "bookings" | "blog" | "nutritionist" | "partners" | "support" | "privacy" | "refund";
   route: CoachAction["url"];
   aliases: string[];
   description: string;
   requiredAuth: boolean;
   relatedEntities: string[];
+  spaPage?: "home" | "memberships" | "offers" | "classes" | "trainers" | "blog" | "partners";
+  sectionId?: string;
 };
 
 export const COACH_PAGES: readonly CoachPage[] = [
-  { id: "home", route: "/", aliases: ["الرئيسية", "home", "الصفحة الرئيسية"], description: "الصفحة الرئيسية للنادي", requiredAuth: false, relatedEntities: [] },
-  { id: "memberships", route: "/#memberships", aliases: ["الاشتراكات", "الباقات", "العضويات", "الاسعار", "plans", "memberships"], description: "باقات واشتراكات النادي", requiredAuth: false, relatedEntities: ["membership", "price"] },
-  { id: "offers", route: "/#offers", aliases: ["العروض", "الخصومات", "offers", "discounts"], description: "العروض النشطة", requiredAuth: false, relatedEntities: ["offer"] },
-  { id: "classes", route: "/#classes", aliases: ["الكلاسات", "الجدول", "الحصص", "classes", "schedule"], description: "الكلاسات ومواعيدها", requiredAuth: false, relatedEntities: ["class", "schedule"] },
-  { id: "trainers", route: "/#classes", aliases: ["المدربات", "المدربين", "trainers", "coaches"], description: "المدربات وتخصصاتهن", requiredAuth: false, relatedEntities: ["trainer"] },
-  { id: "store", route: "/store", aliases: ["المتجر", "المنتجات", "الشوب", "تسوقي", "shop", "store", "products"], description: "متجر المنتجات", requiredAuth: false, relatedEntities: ["product"] },
-  { id: "account", route: "/account", aliases: ["حسابي", "المحفظة", "نقاطي", "حجوزاتي", "account", "wallet"], description: "الحساب والحجوزات", requiredAuth: true, relatedEntities: ["account"] },
-  { id: "blog", route: "/#blog", aliases: ["المدونة", "مدونه", "المقالات", "المقال", "blog"], description: "مدونة FitZone", requiredAuth: false, relatedEntities: ["blog"] },
-  { id: "nutritionist", route: "/#nutrition", aliases: ["الدكتورة", "دكتوره", "دكتورة التغذية", "دكتوره التغذيه", "التغذية", "اخصائية التغذية", "nutritionist"], description: "خدمة أخصائية التغذية", requiredAuth: false, relatedEntities: ["nutrition"] },
-  { id: "partners", route: "/#partners", aliases: ["الشركاء", "شركاؤنا", "شركاونا", "الشريك", "partners"], description: "شركاء FitZone", requiredAuth: false, relatedEntities: ["partner"] },
-  { id: "privacy", route: "/", aliases: ["الخصوصية", "privacy"], description: "سياسة الخصوصية", requiredAuth: false, relatedEntities: ["policy"] },
-  { id: "refund", route: "/", aliases: ["الاسترجاع", "refund", "cancel"], description: "سياسة الاسترجاع والإلغاء", requiredAuth: false, relatedEntities: ["policy"] },
+  { id: "home", route: "/", aliases: ["home"], description: "FitZone home", requiredAuth: false, relatedEntities: [], spaPage: "home" },
+  { id: "goals", route: "/#goals", aliases: ["goals", "الأهداف"], description: "Fitness goals", requiredAuth: false, relatedEntities: ["goal"], spaPage: "memberships", sectionId: "goals" },
+  { id: "memberships", route: "/#memberships", aliases: ["memberships", "الاشتراكات", "الباقات"], description: "Memberships", requiredAuth: false, relatedEntities: ["membership", "price"], spaPage: "memberships", sectionId: "memberships" },
+  { id: "packages", route: "/#packages-section", aliases: ["packages", "الباقات"], description: "Packages", requiredAuth: false, relatedEntities: ["package"], spaPage: "offers", sectionId: "packages-section" },
+  { id: "offers", route: "/#offers", aliases: ["offers", "العروض"], description: "Offers", requiredAuth: false, relatedEntities: ["offer"], spaPage: "offers", sectionId: "offers" },
+  { id: "classes", route: "/#classes", aliases: ["classes", "الكلاسات", "الجدول", "schedule"], description: "Classes and schedule", requiredAuth: false, relatedEntities: ["class", "schedule"], spaPage: "home", sectionId: "classes" },
+  { id: "trial_classes", route: "/#classes", aliases: ["trial classes", "الكلاسات التجريبية"], description: "Trial classes", requiredAuth: false, relatedEntities: ["class"], spaPage: "home", sectionId: "classes" },
+  { id: "trainers", route: "/#trainers-list", aliases: ["trainers", "المدربات", "coaches"], description: "Published trainers", requiredAuth: false, relatedEntities: ["trainer"], spaPage: "trainers", sectionId: "trainers-list" },
+  { id: "store", route: "/store", aliases: ["store", "المتجر", "products"], description: "Store", requiredAuth: false, relatedEntities: ["product"], sectionId: "shop-products" },
+  { id: "product_categories", route: "/store", aliases: ["product categories", "أقسام المتجر"], description: "Store categories", requiredAuth: false, relatedEntities: ["product_category"], sectionId: "shop-products" },
+  { id: "account", route: "/account", aliases: ["account", "حسابي"], description: "Account", requiredAuth: true, relatedEntities: ["account"] },
+  { id: "bookings", route: "/account", aliases: ["bookings", "حجوزاتي"], description: "Bookings", requiredAuth: true, relatedEntities: ["booking"] },
+  { id: "blog", route: "/?page=blog", aliases: ["blog", "المدونة"], description: "FitZone blog", requiredAuth: false, relatedEntities: ["blog"], spaPage: "blog" },
+  { id: "nutritionist", route: "/#nutrition", aliases: ["nutritionist", "التغذية"], description: "Nutritionist", requiredAuth: false, relatedEntities: ["nutrition"], spaPage: "home", sectionId: "nutrition" },
+  { id: "partners", route: "/?page=partners", aliases: ["partners", "الشركاء"], description: "Partners", requiredAuth: false, relatedEntities: ["partner"], spaPage: "partners" },
+  { id: "support", route: "/", aliases: ["support", "الدعم"], description: "Support", requiredAuth: false, relatedEntities: [], spaPage: "home" },
+  { id: "privacy", route: "/privacy", aliases: ["privacy", "الخصوصية"], description: "Privacy policy", requiredAuth: false, relatedEntities: ["policy"] },
+  { id: "refund", route: "/refund", aliases: ["refund", "الاسترجاع"], description: "Refund policy", requiredAuth: false, relatedEntities: ["policy"] },
 ];
 
 export function findCoachPage(message: string) {
   const text = message.toLowerCase();
   return COACH_PAGES.find((page) => page.aliases.some((alias) => text.includes(alias))) ?? null;
 }
-
+export function findCoachPageByRoute(route: CoachAction["url"]) {
+  return COACH_PAGES.find((page) => page.route === route) ?? null;
+}
+export function pageBaseRoute(page: CoachPage): "/" | "/store" | "/account" {
+  if (page.route === "/store") return "/store";
+  if (page.route === "/account") return "/account";
+  return "/";
+}
 export function pageAction(page: CoachPage, lang: "ar" | "en"): CoachAction {
-  const labels: Record<CoachPage["id"], [string, string]> = {
-    home: ["افتحي الرئيسية", "Open home"], memberships: ["شوفي الاشتراكات", "View memberships"], offers: ["شوفي العروض", "View offers"], classes: ["شوفي الكلاسات", "View classes"], trainers: ["شوفي المدربات", "View trainers"], store: ["افتحي المتجر", "Open store"], account: ["افتحي حسابي", "Open account"], blog: ["افتحي المدونة", "Open blog"], nutritionist: ["افتحي أخصائية التغذية", "Open nutritionist"], partners: ["شوفي الشركاء", "View partners"], privacy: ["سياسة الخصوصية", "Privacy policy"], refund: ["سياسة الاسترجاع", "Refund policy"],
-  };
-  return { type: "open_page", label: labels[page.id][lang === "en" ? 1 : 0], url: page.route };
+  const label = lang === "en" ? `Open ${page.id}` : `افتحي ${page.description}`;
+  return { type: "open_page", label, url: page.route };
 }

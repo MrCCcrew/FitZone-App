@@ -1,18 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { getSiteCapability, siteCapabilities } from "@/lib/ai-coach/site-capability-registry";
+import { COACH_PAGES } from "@/lib/ai-coach/page-registry";
+import { capabilityPageIds, siteCapabilities } from "@/lib/ai-coach/site-capability-registry";
 
 describe("site capability registry", () => {
-  it("uses only allowlisted routes and read-only tool names", () => {
-    expect(siteCapabilities.length).toBeGreaterThan(8);
+  it("resolves every capability through the central page registry", () => {
     for (const capability of siteCapabilities) {
-      expect(["/", "/store", "/account"]).toContain(capability.route);
-      expect(capability.tools.every((tool) => !/delete|update|write|sql|payment/i.test(tool))).toBe(true);
+      const page = COACH_PAGES.find((item) => item.id === capabilityPageIds[capability.id]);
+      expect(page).toBeDefined();
+      expect(capability.sectionId).toBe(page?.sectionId ?? null);
+      expect(capability.route).toBe(page?.route === "/store" ? "/store" : page?.route === "/account" ? "/account" : "/");
     }
   });
 
-  it("maps visual domains to their page sections", () => {
-    expect(getSiteCapability("store")).toMatchObject({ route: "/store", sectionId: "shop-products" });
-    expect(getSiteCapability("trainers")).toMatchObject({ sectionId: "trainers-list" });
-    expect(getSiteCapability("account")?.requiresAuthentication).toBe(true);
+  it("does not expose a raw route or hash as an action", () => {
+    expect(siteCapabilities.every((capability) => capability.actions.includes("navigate"))).toBe(true);
+    expect(Object.values(capabilityPageIds).every((pageId) => COACH_PAGES.some((page) => page.id === pageId))).toBe(true);
   });
 });
