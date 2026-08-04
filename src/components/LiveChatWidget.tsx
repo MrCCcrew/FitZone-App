@@ -11,6 +11,7 @@ import {
   type CoachUiActionBatch,
   type CoachUiActionResult,
 } from "@/lib/ai-coach/ui-action-dispatcher";
+import { findCoachPageByRoute } from "@/lib/ai-coach/page-registry";
 
 type ChatMessage = {
   id: string;
@@ -18,7 +19,7 @@ type ChatMessage = {
   senderName?: string | null;
   content: string;
   createdAt: string;
-  metadata?: { membershipId?: string; closeSession?: boolean; action?: { type: "navigate"; page: "shop"; anchor: "shop-products" }; structured?: { intent?: string; actions?: Array<{ type: "open_page"; label: string; url: "/" | "/login" | "/account" | "/store" | "/#memberships" | "/#offers" | "/#classes" | "/#blog" | "/#nutrition" | "/#partners" }> } } | null;
+  metadata?: { membershipId?: string; closeSession?: boolean; action?: { type: "navigate"; page: "shop"; anchor: "shop-products" }; structured?: { intent?: string; actions?: Array<{ type: "open_page"; label: string; url: "/" | "/login" | "/account" | "/store" | "/privacy" | "/refund" | "/?page=blog" | "/?page=partners" | "/#memberships" | "/#offers" | "/#classes" | "/#trainers-list" | "/#nutrition" | "/#goals" | "/#packages-section" }> } } | null;
 };
 
 type QuickAction = {
@@ -703,8 +704,13 @@ export default function LiveChatWidget() {
     }));
   };
 
-  const openSafePage = (url: "/" | "/login" | "/account" | "/store" | "/#memberships" | "/#offers" | "/#classes" | "/#blog" | "/#nutrition" | "/#partners") => {
-    // Use a real URL so actions also work from /account and other pages that do not mount FitzoneApp's SPA handler.
+  const openSafePage = (url: "/" | "/login" | "/account" | "/store" | "/privacy" | "/refund" | "/?page=blog" | "/?page=partners" | "/#memberships" | "/#offers" | "/#classes" | "/#trainers-list" | "/#nutrition" | "/#goals" | "/#packages-section") => {
+    const page = findCoachPageByRoute(url);
+    if (page?.spaPage && window.location.pathname === "/") {
+      window.dispatchEvent(new CustomEvent("fitzone:ai-coach-navigate", { detail: { type: "navigate", page: page.spaPage, anchor: page.sectionId } }));
+      return;
+    }
+    // Only independent app routes are assigned directly.
     window.location.assign(url);
   };
 

@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 
-type InitialHomeData = {
+export type InitialHomeData = {
   memberships: Array<{
     id: string;
     name: string;
@@ -43,6 +43,8 @@ type InitialHomeData = {
     sessionsCount: number | null;
     features: string[];
   }>;
+  hero: Record<string, unknown> | null;
+  announcements: string[];
 };
 
 const parseArray = (value: string | null) => {
@@ -55,7 +57,7 @@ const parseArray = (value: string | null) => {
 };
 
 export async function getInitialHomeData(): Promise<InitialHomeData> {
-  const [memberships, offers] = await Promise.all([
+  const [memberships, offers, siteContent] = await Promise.all([
     db.membership.findMany({
       where: { isActive: true },
       include: { goals: { select: { goalId: true } } },
@@ -65,9 +67,27 @@ export async function getInitialHomeData(): Promise<InitialHomeData> {
       where: { isActive: true },
       orderBy: { expiresAt: "asc" },
     }),
+    db.siteContent.findMany({ where: { section: { in: ["hero", "announcements"] } }, select: { section: true, content: true } }),
   ]);
 
+  const heroRecord = siteContent.find((record) => record.section === "hero");
+  const announcementsRecord = siteContent.find((record) => record.section === "announcements");
+  let hero: Record<string, unknown> | null = null;
+  let announcements: string[] = [];
+  try {
+    const parsed = heroRecord ? JSON.parse(heroRecord.content) : null;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) hero = parsed as Record<string, unknown>;
+  } catch { /* neutral client placeholder */ }
+  try {
+    const parsed = announcementsRecord ? JSON.parse(announcementsRecord.content) : [];
+    announcements = Array.isArray(parsed) ? parsed.filter((item): item is { text?: unknown; active?: unknown } => Boolean(item && typeof item === "object"))
+      .filter((item) => item.active === true && typeof item.text === "string")
+      .map((item) => item.text as string) : [];
+  } catch { /* neutral client placeholder */ }
+
   return {
+    hero,
+    announcements,
     memberships: memberships.filter((membership) => membership.kind !== "trial").map((membership) => ({
       id: membership.id,
       name: membership.name,

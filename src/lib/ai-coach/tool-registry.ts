@@ -1,11 +1,11 @@
 import { getCoachAccountSummary, getCoachKnowledgeEntries } from "@/lib/ai-coach/site-data";
-import { getAuthenticatedCustomerMembership, searchActiveOffers, searchAvailableMemberships, searchAvailableProducts, searchClassSchedule, searchPackages } from "@/lib/ai-coach/catalog-tools";
+import { getAuthenticatedCustomerMembership, searchActiveOffers, searchAvailableMemberships, searchAvailableProducts, searchClassSchedule, searchPackages, searchVisibleTrainers } from "@/lib/ai-coach/catalog-tools";
 import { classifyCatalogDomain } from "@/lib/ai-coach/site-taxonomy";
 import { isCoachToolsEnabled } from "@/lib/ai-coach/config";
 import { extractCatalogSearchQuery } from "@/lib/catalog-query";
 import type { CoachIntent, CoachLang, CoachSiteSnapshot } from "@/lib/ai-coach/types";
 
-export type CoachToolName = "getKnowledge" | "searchMemberships" | "searchPackages" | "searchOffers" | "searchProducts" | "searchClassSchedule" | "getCurrentMembership" | "getAccountSummary";
+export type CoachToolName = "getKnowledge" | "searchMemberships" | "searchPackages" | "searchOffers" | "searchProducts" | "searchClassSchedule" | "searchTrainers" | "getCurrentMembership" | "getAccountSummary";
 export type CoachToolStatus = "success_with_results" | "success_empty" | "unauthenticated" | "forbidden" | "tool_error" | "tools_disabled";
 
 const MAX_TOOLS_PER_MESSAGE = 2;
@@ -32,6 +32,7 @@ export function selectCoachTools(intent: CoachIntent, message: string, authentic
   if (catalogType === "package" || classifyCatalogDomain(message) === "packages") return ["searchPackages"];
   if (intent === "pricing" || intent === "membership_recommendation") return ["searchMemberships"];
   if (intent === "schedule_lookup" || intent === "class_recommendation") return ["searchClassSchedule"];
+  if (intent === "trainer_info") return ["searchTrainers"];
   if (intent === "product_help" || intent === "product_recommendation" || intent === "product_discount") return ["searchProducts"];
   return [];
 }
@@ -78,6 +79,11 @@ export async function getCoachToolContext(args: { intent: CoachIntent; message: 
       if (tool === "searchClassSchedule") {
         const rows = args.temporalFilter ? await searchClassSchedule(extractCatalogSearchQuery("class", args.message).searchTerm, args.temporalFilter) : await searchClassSchedule(extractCatalogSearchQuery("class", args.message).searchTerm);
         snapshot.classes = rows.map((row, index) => ({ id: `${row.name}-${index}`, name: row.name, description: "", trainer: row.trainer, trainerSpecialty: "", category: row.category, type: row.type, subType: null, duration: "", schedules: row.schedules.map((schedule, scheduleIndex) => ({ id: `${index}-${scheduleIndex}`, date: schedule.date.toISOString(), time: schedule.time, availableSpots: schedule.availableSpots })) }));
+        resultCounts[tool] = rows.length;
+      }
+      if (tool === "searchTrainers") {
+        const rows = await searchVisibleTrainers(args.message);
+        snapshot.trainers = rows;
         resultCounts[tool] = rows.length;
       }
       if (tool === "getCurrentMembership") {
