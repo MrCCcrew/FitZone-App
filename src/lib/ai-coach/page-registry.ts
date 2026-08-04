@@ -17,7 +17,8 @@ const PAGE_LABELS_AR: Record<CoachPage["id"], string> = {
 };
 
 export const COACH_PAGES: readonly CoachPage[] = [
-  { id: "home", route: "/", aliases: ["home"], description: "FitZone home", requiredAuth: false, relatedEntities: [], spaPage: "home" },
+  // CRITICAL: home page must NOT have sectionId to prevent inheriting stale sections like #classes
+  { id: "home", route: "/", aliases: ["home"], description: "FitZone home", requiredAuth: false, relatedEntities: [], spaPage: "home", sectionId: undefined },
   { id: "goals", route: "/#goals", aliases: ["goals", "الأهداف"], description: "Fitness goals", requiredAuth: false, relatedEntities: ["goal"], spaPage: "memberships", sectionId: "goals" },
   { id: "memberships", route: "/#memberships", aliases: ["memberships", "الاشتراكات", "الباقات"], description: "Memberships", requiredAuth: false, relatedEntities: ["membership", "price"], spaPage: "memberships", sectionId: "memberships" },
   { id: "packages", route: "/#packages-section", aliases: ["packages", "الباقات"], description: "Packages", requiredAuth: false, relatedEntities: ["package"], spaPage: "offers", sectionId: "packages-section" },

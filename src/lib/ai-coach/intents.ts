@@ -19,6 +19,15 @@ export function detectExplicitNavigationTarget(message: string): CoachNavigation
   const text = normalizeArabicIntent(message).replace(/ة/g, "ه");
   const asksToBuy = /(?:اشتري|اشتري|buy)/i.test(text);
   const asksToBrowseProducts = /(?:عايز|عايزه|عايزة)\s+اشوف\s+(?:ال)?منتجات/i.test(text);
+
+  // Blog correction patterns: standalone blog mentions without navigation verbs still mean blog
+  const isBlogCorrection = /(?:لا\s+)?(?:اقصد|أقصد)\s+(?:ال)?(?:مدون[ةه]|مقالات|blog)/i.test(text);
+  const isBlogMention = /(?:طيب|طب)?\s*(?:ال)?(?:مدون[ةه]|المقالات|مقالات|blog)/i.test(text);
+  const negatesOtherIntent = /(?:لا|مش|ليس)\s+(?:اقصد|أقصد|عايز|عايزه)\s+(?:الاشتراكات|العروض)/i.test(text);
+
+  if (isBlogCorrection || (isBlogMention && negatesOtherIntent)) return "blog";
+  if (isBlogMention && !/(?:افتح|افتحي|وديني|خديني|روح|روحي|وريني|انتقل|navigate|open)/i.test(text)) return "blog";
+
   if (!asksToBuy && !asksToBrowseProducts && !/(?:افتح|افتحي|وديني|خديني|روح|روحي|وريني|انتقل|navigate|open)/i.test(text)) return null;
   const targets: Array<[CoachNavigationTarget, RegExp]> = [
     ["goals", /(?:الاهداف|اهداف|الهدف|هدف|goals?)/i], // Must come before "offers" to prevent confusion
@@ -74,7 +83,13 @@ export function detectCoachIntent(message: string): CoachIntent {
   if (matches(text, [/\b(?:منتج|منتجات|متجر|بتبيعوا|عندكم)\b.*\b(?:تخسيس|دايت|خساره|خسارة|weight loss|diet)\b/, /\b(?:تخسيس|دايت|خساره|خسارة|weight loss|diet)\b.*\b(?:منتج|منتجات|متجر)\b/])) return "product_help";
 
   // Goals must win over offers to prevent "الأهداف" → "العروض" confusion
-  if (matches(text, [/\b(?:ال)?(?:اهداف|هدف)\b/, /\bgoals?\b/, /\bاختار\s+هدف\b/, /\bاختاري\s+هدف\b/])) return "goals_list";
+  // Use explicit word boundaries and prevent "offers" keywords from overriding
+  if (matches(text, [/\b(?:ال)?(?:اهداف|هدف)\b/, /\bgoals?\b/, /\bاختار\s+هدف\b/, /\bاختاري\s+هدف\b/])) {
+    // Only return offers if there's an explicit offer keyword AND no goal keyword
+    if (!/\b(?:عرض|عروض|خصم|خصومات|offer|discount)\b/i.test(text)) return "goals_list";
+    // If both exist, goals win
+    return "goals_list";
+  }
 
   if (matches(text, [/\b(?:عرض|عروض|offer|discount)\b/])) return "offer_lookup";
   if (matches(text, [/\b(?:سعر|اسعار|أسعار|price|pricing)\b.*\b(?:اشتراك|عضويه|عضوية|membership)\b/])) return "pricing";

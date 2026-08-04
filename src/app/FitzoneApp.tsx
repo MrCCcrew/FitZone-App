@@ -10460,11 +10460,20 @@ export default function App({ initialHomeData, hydrationDisable }: { initialHome
     }
 
     navigating.current = true;
-    pendingScrollTarget.current = scrollTarget ?? null;
-    if (p === "home" && scrollTarget) {
+    // CRITICAL FIX: Clear pending section when navigating to home without explicit section
+    // This prevents stale sectionId (e.g., #classes) from being inherited
+    if (p === "home" && !scrollTarget) {
+      pendingScrollTarget.current = null;
       const targetUrl = new URL(window.location.href);
-      targetUrl.hash = `#${scrollTarget}`;
-      window.history.replaceState(window.history.state, "", targetUrl.toString());
+      targetUrl.hash = "";
+      window.history.replaceState(window.history.state, "", targetUrl.pathname + targetUrl.search);
+    } else {
+      pendingScrollTarget.current = scrollTarget ?? null;
+      if (p === "home" && scrollTarget) {
+        const targetUrl = new URL(window.location.href);
+        targetUrl.hash = `#${scrollTarget}`;
+        window.history.replaceState(window.history.state, "", targetUrl.toString());
+      }
     }
     setPage(p);
     if (!scrollTarget) {

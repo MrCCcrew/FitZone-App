@@ -50,7 +50,15 @@ export async function understandCoachMessage(message: string, _lang: CoachLang, 
   // Service/catalog entities must be classified before generic nutrition or fitness advice.
   if (/(?:الشركاء|شركاء|الشريك|شريك|استفاد.*الشركاء|خصم.*شريك|كود.*شريك|الشركات المتعاقدة|partners?)/i.test(message) && !/(?:افتح|افتحي|وديني|روح|روحي|open|navigate)/i.test(message)) return result("partner_info", .99, text, {}, true);
   if (/(?:دكتور[ةه].{0,8}تغذ|أخصائية تغذية|اخصائية تغذية|حجز تغذية|جلسات التغذية|مواعيد دكتورة التغذية|مين دكتورة التغذية|متابعة تغذية)/i.test(message) && !/(?:افتح|افتحي|وديني|روح|روحي|open|navigate)/i.test(message)) return result("nutritionist_service", .99, text, { availability: /(?:مواعيد|ميعاد|متاح)/i.test(message) }, false);
-  if (/(?:اهداف الاشتراك|أهداف الاشتراك|ايه الاهداف المتاحة|إيه الأهداف المتاحة|اختار هدف|الهدف المناسب|أهداف الجيم|اهداف من خلالها اختار اشتراك)/i.test(message)) return result("goals_list", .99, text, {}, true);
+  // CRITICAL: Goals must be detected BEFORE offers to prevent "الأهداف" → "العروض" confusion
+  // "إيه الأهداف الموجودة عندكم" or "قوليلي الأهداف" must resolve to goals_list
+  if (/(?:اهداف الاشتراك|أهداف الاشتراك|ايه الاهداف|إيه الأهداف|قوليلي الأهداف|الأهداف الموجودة|اختار هدف|الهدف المناسب|أهداف الجيم|اهداف من خلالها اختار اشتراك|في اهداف)/i.test(message)) {
+    // Only override to offers if there's an explicit offer keyword AND NO goal keyword
+    const hasOfferKeyword = /(?:عرض|عروض|خصم|خصومات|offer|discount)/i.test(message);
+    const hasGoalKeyword = /(?:هدف|اهداف|الاهداف|الهدف|goal)/i.test(message);
+    if (hasGoalKeyword && !hasOfferKeyword) return result("goals_list", .99, text, {}, true);
+    if (hasGoalKeyword) return result("goals_list", .99, text, {}, true);
+  }
   if (/(?:أفضل مدربة|افضل مدربة|رشحيلي مدربة|رشحلي مدربة|أنسب مدربة|انسب مدربة|مدربة للأطفال|مدربة للاطفال|مدربة كاراتيه|مدربة لياقة)/i.test(message)) return result("trainer_recommendation", .99, text, {}, false);
   if (/^(?:عايزة أخس|عايزه اخس|عايز أخس|عايز اخس|عايزة أزود لياقة|عايزه ازود لياقة|عايزة أشد جسمي|عايزه اشد جسمي)$/i.test(message.trim())) return result("goals_list", .98, text, { goalHint: message.trim() }, false);
   const membershipGoal = extractMembershipGoal(message);
@@ -75,7 +83,14 @@ export async function understandCoachMessage(message: string, _lang: CoachLang, 
   }
   if (isReference || /^(?:عايزه اعرف الموجود|عايزة اعرف الموجود|ايه الموجود|بكام|مواعيده|متاح|افتحه?|وريني|ايه الانواع)$/i.test(text)) return result("clarification_required", 1, text);
   // A request to show schedule data is an answer/tool request, not navigation.
-  if (/(?:مواعيد|ميعاد|الجدول|الكلاسات|حصص|schedule|classes)/i.test(text) && !/(?:افتحي|افتح|وديني|روحي|روح|وريني\s+الجدول|open|navigate)/i.test(text)) { const q = extractCatalogSearchQuery("class", message); return result("class_schedule", .97, text, q.searchTerm ? { className: q.searchTerm } : {}, q.isListAll, { temporalFilter: /النهارده|اليوم|today/i.test(text) ? { date: "today" } : /بكره|بكرا|tomorrow/i.test(text) ? { date: "tomorrow" } : {} }); }
+  // CRITICAL: "المواعيد" is NOT a class name — it's a request for schedule list
+  if (/(?:مواعيد|ميعاد|الجدول|الكلاسات|حصص|schedule|classes)/i.test(text) && !/(?:افتحي|افتح|وديني|روحي|روح|وريني\s+الجدول|open|navigate)/i.test(text)) {
+    const q = extractCatalogSearchQuery("class", message);
+    // "إيه المواعيد المتاحة" must be list-all without className filter
+    const isScheduleListRequest = /(?:ايه|إيه|ما)\s+(?:ال)?(?:مواعيد|المواعيد)|(?:المواعيد|مواعيد)\s+(?:المتاحه|المتاحة|القادمه|القادمة)/i.test(message);
+    if (isScheduleListRequest) return result("class_schedule", .97, text, {}, true, { temporalFilter: /النهارده|اليوم|today/i.test(text) ? { date: "today" } : /بكره|بكرا|tomorrow/i.test(text) ? { date: "tomorrow" } : {} });
+    return result("class_schedule", .97, text, q.searchTerm ? { className: q.searchTerm } : {}, q.isListAll, { temporalFilter: /النهارده|اليوم|today/i.test(text) ? { date: "today" } : /بكره|بكرا|tomorrow/i.test(text) ? { date: "tomorrow" } : {} });
+  }
   // Explicit navigation uses a fixed precedence and never inherits stale context.
   const explicitNavigationTarget = detectExplicitNavigationTarget(message);
   if (explicitNavigationTarget) return result("site_navigation", .99, text, { pageId: explicitNavigationTarget }, false, { operation: "open" });
@@ -85,6 +100,9 @@ export async function understandCoachMessage(message: string, _lang: CoachLang, 
     if (/افتح|وديني|روح|navigate|open/i.test(text)) return result("site_navigation", .99, text, { pageId: "memberships" });
     const q = extractCatalogSearchQuery("membership", message);
     const catalogType = /الباقات|باقة|package/i.test(text) ? "package" : "membership";
+    // CRITICAL: "أنواع الاشتراكات" or "الأنواع التانية" must be list-all without search query
+    const isListAllPattern = /(?:انواع|أنواع|الانواع|الأنواع)\s+(?:الاشتراكات|اشتراكات)|(?:الانواع|الأنواع)\s+(?:التانيه|التانية|الاخرى)/i.test(message);
+    if (isListAllPattern) return result("membership_lookup", .99, text, { catalogType }, true);
     return result("membership_lookup", .99, text, { ...(q.searchTerm ? { searchTerm: q.searchTerm } : {}), catalogType }, q.isListAll);
   }
   if (/المتجر|المنتج|المنتجات|store|shop|products?/i.test(text) && /افتح|وديني|روح|navigate|open/i.test(text)) return result("site_navigation", .99, text, { pageId: "store" });

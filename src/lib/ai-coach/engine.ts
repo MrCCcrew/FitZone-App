@@ -412,6 +412,16 @@ async function buildDeterministicReply(args: {
     const hint = typeof understanding?.extractedEntities.goalHint === "string" ? understanding.extractedEntities.goalHint : "";
     const selected = hint ? snapshot.goals.find((goal) => new RegExp("خس|وزن", "i").test(hint) ? /خس|وزن/i.test(goal.name) : /لياق|شد/i.test(goal.name)) : null;
     const memberships = selected ? await (await import("@/lib/ai-coach/catalog-tools")).searchMemberships("", { goalId: selected.id }) : [];
+    // CRITICAL: "في أهداف سنوية؟" should clarify that goals are fitness purposes, not membership durations
+    const asksAnnualGoals = /(?:في|هل|يوجد)\s+(?:اهداف|أهداف)\s+(?:سنوي[ةه]|شهري[ةه])/i.test(userMessage);
+    if (asksAnnualGoals && context.currentEntity === "goals") {
+      const text = lang === "ar"
+        ? "الأهداف هي الغرض من التمرين زي التخسيس أو شد الجسم. أما السنوي أو الشهري فده مدة الاشتراك. تقصدِي اشتراك سنوي مرتبط بهدف معين؟"
+        : "Goals are fitness purposes like weight loss or toning. Annual or monthly refers to membership duration. Do you mean an annual membership for a specific goal?";
+      const next = { ...baseContext, currentEntity: "goals" as const, lastResolvedIntent: intent, lastIntent: intent };
+      await db.chatSession.update({ where: { id: sessionId }, data: { context: serializeCoachContext(next), lastMessageAt: new Date() } });
+      return { intent, text, facts: [], quickActions: buildActions(snapshot, intent, next), sourceType: "live_site_data", metadata: { usedTools: toolContext.usedTools, clarificationQuestion: true } };
+    }
     const text = selected
       ? (memberships.length ? `الهدف الأقرب هو ${selected.name}. الاشتراكات المرتبطة به:\n${memberships.slice(0, 4).map((membership) => `- ${membership.name}: ${membership.priceAfter ?? membership.price} جنيه`).join("\n")}` : `الهدف ${selected.name} موجود، لكن مش ظاهر اشتراك مرتبط به حاليًا.`)
       : (snapshot.goals.length ? `الأهداف المتاحة:\n${snapshot.goals.map((goal) => `- ${goal.name}${goal.description ? `: ${goal.description}` : ""}`).join("\n")}\nأنهي هدف أقرب ليكي علشان أرشحلك الاشتراك المناسب؟` : "لا توجد أهداف منشورة حاليًا.");
