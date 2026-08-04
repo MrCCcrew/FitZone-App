@@ -19,6 +19,16 @@ export type SiteTaxonomyDomain = keyof typeof FITZONE_TAXONOMY;
 
 export function classifyCatalogDomain(text: string): SiteTaxonomyDomain | null {
   const value = text.toLowerCase();
+  // CRITICAL: Goals must be checked BEFORE offers to prevent "الأهداف" → "العروض" confusion
+  // "إيه الأهداف الموجودة عندكم" must resolve to goals, NOT offers
+  if (FITZONE_TAXONOMY.goals.aliases.some((word) => value.includes(word))) {
+    // Only override if there's an explicit offer keyword WITHOUT goals keyword
+    const hasOfferKeyword = FITZONE_TAXONOMY.offers.aliases.some((word) => value.includes(word));
+    const hasGoalKeyword = /(?:هدف|اهداف|الاهداف|الهدف|goal)/i.test(value);
+    if (hasGoalKeyword) return "goals";
+    if (hasOfferKeyword && !hasGoalKeyword) return "offers";
+    return "goals";
+  }
   // The head noun wins: "عرض كيك بوكس" is an offer, while "ميعاد كيك بوكس" is a schedule.
   if (FITZONE_TAXONOMY.offers.aliases.some((word) => value.includes(word))) return "offers";
   if (FITZONE_TAXONOMY.schedules.aliases.some((word) => value.includes(word))) return "schedules";
