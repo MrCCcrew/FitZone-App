@@ -5,10 +5,15 @@ export type CoachPage = {
   route: CoachAction["url"];
   aliases: string[];
   description: string;
+  labelAr: string;
   requiredAuth: boolean;
   relatedEntities: string[];
   spaPage?: "home" | "memberships" | "offers" | "classes" | "trainers" | "blog" | "partners";
   sectionId?: string;
+};
+
+const PAGE_LABELS_AR: Record<CoachPage["id"], string> = {
+  home: "الصفحة الرئيسية", goals: "عرض الأهداف", memberships: "عرض الاشتراكات", packages: "عرض الباقات", offers: "عرض العروض", classes: "عرض الكلاسات والمواعيد", trial_classes: "عرض الكلاسات التجريبية", trainers: "عرض المدربات", store: "فتح المتجر", product_categories: "أقسام المتجر", account: "الحساب", bookings: "حجوزاتي", blog: "المدونة", nutritionist: "حجز أو عرض التغذية", partners: "عرض الشركاء", support: "الدعم", privacy: "سياسة الخصوصية", refund: "سياسة الاسترجاع",
 };
 
 export const COACH_PAGES: readonly CoachPage[] = [
@@ -30,7 +35,7 @@ export const COACH_PAGES: readonly CoachPage[] = [
   { id: "support", route: "/", aliases: ["support", "الدعم"], description: "Support", requiredAuth: false, relatedEntities: [], spaPage: "home" },
   { id: "privacy", route: "/privacy", aliases: ["privacy", "الخصوصية"], description: "Privacy policy", requiredAuth: false, relatedEntities: ["policy"] },
   { id: "refund", route: "/refund", aliases: ["refund", "الاسترجاع"], description: "Refund policy", requiredAuth: false, relatedEntities: ["policy"] },
-];
+].map((page) => ({ ...page, labelAr: PAGE_LABELS_AR[page.id as CoachPage["id"]] })) as CoachPage[];
 
 export function findCoachPage(message: string) {
   const text = message.toLowerCase();
@@ -45,6 +50,7 @@ export function pageBaseRoute(page: CoachPage): "/" | "/store" | "/account" {
   return "/";
 }
 export function pageAction(page: CoachPage, lang: "ar" | "en"): CoachAction {
+  if (lang === "ar") return { type: "open_page", label: page.labelAr, url: page.route };
   const label = lang === "en" ? `Open ${page.id}` : `افتحي ${page.description}`;
   return { type: "open_page", label, url: page.route };
 }

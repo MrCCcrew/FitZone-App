@@ -95,19 +95,40 @@ export async function searchAvailableProducts(query = "", filters?: { discounted
 
 /** Same visibility rule and ordering as GET /api/public trainers. */
 export async function searchVisibleTrainers(query = "") {
-  const rows = await db.trainer.findMany({
-    where: visibleTrainerWhere(),
-    include: { _count: { select: { classes: true } } },
-    orderBy: [{ showOnHome: "desc" }, { sortOrder: "asc" }, { name: "asc" }],
-  });
-  return rows.filter((row) => looselyMatches(`${row.name} ${row.specialty} ${row.bio ?? ""}`, query)).map((row) => ({
-    id: row.id,
-    name: row.name,
-    specialty: row.specialty,
-    bio: row.bio ?? "",
-    rating: row.rating ?? 0,
-    classesCount: row._count.classes,
-  }));
+  const filters = ["isActive"]; // Must stay in lockstep with GET /api/public.
+  try {
+    const rows = await db.trainer.findMany({
+      where: visibleTrainerWhere(),
+      include: { _count: { select: { classes: true } } },
+      orderBy: [{ showOnHome: "desc" }, { sortOrder: "asc" }, { name: "asc" }],
+    });
+    const result = rows.filter((row) => looselyMatches(`${row.name} ${row.specialty ?? ""} ${row.bio ?? ""}`, query)).map((row) => ({
+      id: row.id, name: row.name, specialty: row.specialty ?? "", bio: row.bio ?? "", rating: row.rating ?? 0, classesCount: row._count.classes,
+    }));
+    console.info("[AI_COACH_SEARCH_TRAINERS]", { tool: "searchTrainers", queryStatus: query.trim() ? "filtered" : "list", returnedCount: result.length, appliedFilters: filters });
+    return result;
+  } catch (error) {
+    const code = typeof error === "object" && error && "code" in error ? String((error as { code?: unknown }).code ?? "unknown") : "unknown";
+    console.error("[AI_COACH_SEARCH_TRAINERS]", { tool: "searchTrainers", queryStatus: query.trim() ? "filtered" : "list", returnedCount: 0, appliedFilters: filters, errorCode: code });
+    throw error;
+  }
+}
+
+export async function searchVisiblePartners() {
+  const rows = await db.partner.findMany({ where: { isActive: true, showOnPublicPage: true }, orderBy: { createdAt: "asc" } });
+  const categoryLabel: Record<string, string> = { beauty_center: "مركز تجميل", salon: "صالون", pharmacy: "صيدلية", clinic: "عيادة", physiotherapy: "علاج طبيعي", nutrition: "تغذية", nursery: "حضانة", education: "تعليم", clothing: "ملابس", spa: "سبا", restaurant: "مطعم", sports: "رياضة", supplement: "مكملات", services: "خدمات", other: "خدمات" };
+  return rows.map((row) => ({ id: row.id, name: row.name, category: categoryLabel[row.category] ?? "خدمة", benefit: row.memberBenefitRate == null ? null : `${row.memberBenefitRate}%`, code: row.memberBenefitCode ?? null }));
+}
+
+export async function searchVisibleGoals(query = "") {
+  const rows = await db.clubGoal.findMany({ where: { isActive: true }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] });
+  return rows.filter((row) => !query.trim() || looselyMatches(`${row.name} ${row.nameEn ?? ""} ${row.slug} ${row.description ?? ""}`, query)).map((row) => ({ id: row.id, name: row.name, description: row.description ?? null }));
+}
+
+export async function getVisibleNutritionist() {
+  const row = await db.nutritionistProfile.findFirst({ where: { isActive: true, showOnHome: true }, orderBy: { createdAt: "asc" } });
+  if (!row) return null;
+  return { id: row.id, name: row.name, bio: row.bio ?? null, slots: json<Array<{ label: string; day?: string; time?: string }>>(row.slotsJson, []), consultationFee: row.consultationFee, followupFee: row.followupFee };
 }
 
 export async function getOfferDetails(idOrName: string) { return (await searchActiveOffers(idOrName)).find((row) => row.id === idOrName || norm(row.title) === norm(idOrName)) ?? null; }

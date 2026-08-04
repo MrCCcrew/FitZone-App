@@ -1,11 +1,11 @@
 import { getCoachAccountSummary, getCoachKnowledgeEntries } from "@/lib/ai-coach/site-data";
-import { getAuthenticatedCustomerMembership, searchActiveOffers, searchAvailableMemberships, searchAvailableProducts, searchClassSchedule, searchPackages, searchVisibleTrainers } from "@/lib/ai-coach/catalog-tools";
+import { getAuthenticatedCustomerMembership, getVisibleNutritionist, searchActiveOffers, searchAvailableMemberships, searchAvailableProducts, searchClassSchedule, searchPackages, searchVisibleGoals, searchVisiblePartners, searchVisibleTrainers } from "@/lib/ai-coach/catalog-tools";
 import { classifyCatalogDomain } from "@/lib/ai-coach/site-taxonomy";
 import { isCoachToolsEnabled } from "@/lib/ai-coach/config";
 import { extractCatalogSearchQuery } from "@/lib/catalog-query";
 import type { CoachIntent, CoachLang, CoachSiteSnapshot } from "@/lib/ai-coach/types";
 
-export type CoachToolName = "getKnowledge" | "searchMemberships" | "searchPackages" | "searchOffers" | "searchProducts" | "searchClassSchedule" | "searchTrainers" | "getCurrentMembership" | "getAccountSummary";
+export type CoachToolName = "getKnowledge" | "searchMemberships" | "searchPackages" | "searchOffers" | "searchProducts" | "searchClassSchedule" | "searchTrainers" | "searchPartners" | "searchGoals" | "getNutritionistService" | "getCurrentMembership" | "getAccountSummary";
 export type CoachToolStatus = "success_with_results" | "success_empty" | "unauthenticated" | "forbidden" | "tool_error" | "tools_disabled";
 
 const MAX_TOOLS_PER_MESSAGE = 2;
@@ -19,7 +19,7 @@ function requestedDuration(message: string): "monthly" | "quarterly" | "semiannu
 }
 
 function emptySnapshot(authenticated: boolean): CoachSiteSnapshot {
-  return { memberships: [], offers: [], classes: [], trainers: [], products: [], knowledge: [], account: { authenticated }, coachProfile: null, recentCheckIns: [], supportOnline: false };
+  return { memberships: [], offers: [], classes: [], trainers: [], partners: [], goals: [], nutritionist: null, products: [], knowledge: [], account: { authenticated }, coachProfile: null, recentCheckIns: [], supportOnline: false };
 }
 
 export function selectCoachTools(intent: CoachIntent, message: string, authenticated: boolean, catalogType?: "membership" | "package"): CoachToolName[] {
@@ -33,6 +33,10 @@ export function selectCoachTools(intent: CoachIntent, message: string, authentic
   if (intent === "pricing" || intent === "membership_recommendation") return ["searchMemberships"];
   if (intent === "schedule_lookup" || intent === "class_recommendation") return ["searchClassSchedule"];
   if (intent === "trainer_info") return ["searchTrainers"];
+  if (intent === "trainer_recommendation") return ["searchTrainers"];
+  if (intent === "partner_info") return ["searchPartners"];
+  if (intent === "nutritionist_service") return ["getNutritionistService"];
+  if (intent === "goals_list") return ["searchGoals"];
   if (intent === "product_help" || intent === "product_recommendation" || intent === "product_discount") return ["searchProducts"];
   return [];
 }
@@ -82,10 +86,15 @@ export async function getCoachToolContext(args: { intent: CoachIntent; message: 
         resultCounts[tool] = rows.length;
       }
       if (tool === "searchTrainers") {
-        const rows = await searchVisibleTrainers(args.message);
+        // Generic trainer wording is a list request, not a literal specialty search.
+        const trainerQuery = /(?:مدرب|مدربة|مدربات|trainer|coach|افضل|أفضل|رشح|رشحي)/i.test(args.message) ? "" : args.message;
+        const rows = await searchVisibleTrainers(trainerQuery);
         snapshot.trainers = rows;
         resultCounts[tool] = rows.length;
       }
+      if (tool === "searchPartners") { snapshot.partners = await searchVisiblePartners(); resultCounts[tool] = snapshot.partners.length; }
+      if (tool === "searchGoals") { snapshot.goals = await searchVisibleGoals(""); resultCounts[tool] = snapshot.goals.length; }
+      if (tool === "getNutritionistService") { snapshot.nutritionist = await getVisibleNutritionist(); resultCounts[tool] = snapshot.nutritionist ? 1 : 0; }
       if (tool === "getCurrentMembership") {
         const membership = await getAuthenticatedCustomerMembership(args.userId);
         snapshot.account.membership = membership ? { name: membership.name, endDate: membership.endDate.toISOString() } : null;

@@ -390,6 +390,43 @@ async function buildDeterministicReply(args: {
   if (!toolContext.toolsEnabled && (intent === "product_recommendation" || intent === "product_discount" || asksOwnMembership || asksRecommendation || asksOffer || asksSchedule || intent === "pricing")) {
     return { intent, text: lang === "en" ? "Live FitZone data is unavailable right now, but I can still help with general fitness guidance or a published policy." : "بيانات FitZone المباشرة مش متاحة دلوقتي، لكن أقدر أساعدك بنصيحة رياضية عامة أو بمعلومة منشورة.", facts: [], quickActions: buildActions(snapshot, intent, baseContext), sourceType: "safe_fallback", confidence: 0.6, metadata: { usedTools: toolContext.usedTools, fallbackUsed: true } };
   }
+  if (intent === "partner_info") {
+    const text = snapshot.partners.length
+      ? `تقدري تستفيدي من عروض أو خصومات الشركاء المسجلين عندنا:\n${snapshot.partners.slice(0, 5).map((partner) => `- ${partner.name}${partner.category ? ` (${partner.category})` : ""}${partner.benefit ? `: خصم ${partner.benefit}` : ""}${partner.code ? `، الكود: ${partner.code}` : ""}`).join("\n")}\nقوليلي نوع الخدمة اللي بتدوري عليها أو أعرّفك بالشركاء المتاحين.`
+      : "لا توجد بيانات شركاء منشورة حاليًا.";
+    const next = { ...baseContext, currentEntity: "partners" as const, lastResolvedIntent: intent, lastIntent: intent };
+    await db.chatSession.update({ where: { id: sessionId }, data: { context: serializeCoachContext(next), lastMessageAt: new Date() } });
+    return { intent, text, facts: [], quickActions: buildActions(snapshot, intent, next), actions: [pageAction(COACH_PAGES.find((page) => page.id === "partners")!, lang)], sourceType: "live_site_data", metadata: { usedTools: toolContext.usedTools, toolStatuses: toolContext.toolStatuses, resultCounts: toolContext.resultCounts, toolFailed: toolContext.toolFailed } };
+  }
+  if (intent === "nutritionist_service") {
+    const service = snapshot.nutritionist;
+    const asksAvailability = /(?:مواعيد|ميعاد|متاح)/i.test(userMessage);
+    const text = !service ? "خدمة أخصائية التغذية غير ظاهرة كمتاحة حاليًا."
+      : asksAvailability ? (service.slots.length ? `مواعيد أخصائية التغذية المتاحة:\n${service.slots.map((slot) => `- ${slot.label}`).join("\n")}` : "الخدمة متاحة، لكن لا توجد مواعيد منشورة حاليًا. تقدري تفتحي صفحة التغذية للحجز.")
+      : `أيوه، خدمة أخصائية التغذية متاحة مع ${service.name}${service.bio ? ` — ${service.bio}` : ""}. تقدري تحجزي كشف أو متابعة من صفحة التغذية.${service.consultationFee ? ` سعر الكشف ${service.consultationFee} جنيه.` : ""}`;
+    const next = { ...baseContext, currentEntity: "nutritionist" as const, lastResolvedIntent: intent, lastIntent: intent };
+    await db.chatSession.update({ where: { id: sessionId }, data: { context: serializeCoachContext(next), lastMessageAt: new Date() } });
+    return { intent, text, facts: [], quickActions: buildActions(snapshot, intent, next), actions: [pageAction(COACH_PAGES.find((page) => page.id === "nutritionist")!, lang)], sourceType: "live_site_data", metadata: { usedTools: toolContext.usedTools, toolStatuses: toolContext.toolStatuses, resultCounts: toolContext.resultCounts } };
+  }
+  if (intent === "goals_list") {
+    const hint = typeof understanding?.extractedEntities.goalHint === "string" ? understanding.extractedEntities.goalHint : "";
+    const selected = hint ? snapshot.goals.find((goal) => new RegExp("خس|وزن", "i").test(hint) ? /خس|وزن/i.test(goal.name) : /لياق|شد/i.test(goal.name)) : null;
+    const memberships = selected ? await (await import("@/lib/ai-coach/catalog-tools")).searchMemberships("", { goalId: selected.id }) : [];
+    const text = selected
+      ? (memberships.length ? `الهدف الأقرب هو ${selected.name}. الاشتراكات المرتبطة به:\n${memberships.slice(0, 4).map((membership) => `- ${membership.name}: ${membership.priceAfter ?? membership.price} جنيه`).join("\n")}` : `الهدف ${selected.name} موجود، لكن مش ظاهر اشتراك مرتبط به حاليًا.`)
+      : (snapshot.goals.length ? `الأهداف المتاحة:\n${snapshot.goals.map((goal) => `- ${goal.name}${goal.description ? `: ${goal.description}` : ""}`).join("\n")}\nأنهي هدف أقرب ليكي علشان أرشحلك الاشتراك المناسب؟` : "لا توجد أهداف منشورة حاليًا.");
+    const next = { ...baseContext, currentEntity: "goals" as const, selectedGoal: selected?.id ?? baseContext.selectedGoal ?? null, lastResolvedIntent: intent, lastIntent: intent };
+    await db.chatSession.update({ where: { id: sessionId }, data: { context: serializeCoachContext(next), lastMessageAt: new Date() } });
+    return { intent, text, facts: [], quickActions: buildActions(snapshot, intent, next), actions: [pageAction(COACH_PAGES.find((page) => page.id === "goals")!, lang)], sourceType: "live_site_data", metadata: { usedTools: toolContext.usedTools, toolStatuses: toolContext.toolStatuses, resultCounts: toolContext.resultCounts } };
+  }
+  if (intent === "trainer_recommendation") {
+    const query = userMessage.toLowerCase();
+    const target = /(?:تخس|وزن)/i.test(query) ? "التخسيس" : /(?:أطفال|اطفال)/i.test(query) ? "الأطفال" : /كاراتيه/i.test(query) ? "الكاراتيه" : /لياقة/i.test(query) ? "اللياقة" : null;
+    if (!target) return { intent, text: "أقدر أرشحلك الأنسب، هدفك تخسيس، لياقة، أطفال، كاراتيه ولا حاجة تانية؟", facts: [], quickActions: buildActions(snapshot, intent, baseContext), sourceType: "live_site_data" };
+    const trainer = snapshot.trainers.find((row) => `${row.specialty} ${row.bio}`.toLowerCase().includes(target.toLowerCase())) ?? snapshot.trainers[0];
+    const text = trainer ? `الأنسب لهدف ${target} من المدربات المنشورات عندنا هي ${trainer.name}${trainer.specialty ? ` لأنها متخصصة في ${trainer.specialty}` : ""}.` : "لا توجد مدربات منشورات مطابقات لهذا الهدف حاليًا.";
+    return { intent, text, facts: [], quickActions: buildActions(snapshot, intent, baseContext), actions: trainer ? [pageAction(COACH_PAGES.find((page) => page.id === "trainers")!, lang)] : [], sourceType: "live_site_data", metadata: { usedTools: toolContext.usedTools, toolStatuses: toolContext.toolStatuses, resultCounts: toolContext.resultCounts } };
+  }
   if (intent === "trainer_info") {
     const trainerStatus = toolContext.toolStatuses.searchTrainers;
     const text = trainerStatus === "tool_error"
@@ -397,12 +434,13 @@ async function buildDeterministicReply(args: {
       : snapshot.trainers.length
         ? snapshot.trainers.slice(0, 5).map((trainer) => `${trainer.name}${trainer.specialty ? ` — ${trainer.specialty}` : ""}`).join("\n")
         : (lang === "en" ? "There are no published trainers visible right now." : "مش ظاهر عندي مدربات منشورات حاليًا.");
-    await updateContext(sessionId, baseContext, intent);
+    const next = { ...baseContext, currentEntity: "trainers" as const, lastResolvedIntent: intent, lastIntent: intent };
+    await db.chatSession.update({ where: { id: sessionId }, data: { context: serializeCoachContext(next), lastMessageAt: new Date() } });
     return {
       intent,
       text,
       facts: [],
-      quickActions: buildActions(snapshot, intent, baseContext),
+      quickActions: buildActions(snapshot, intent, next),
       actions: trainerStatus === "success_with_results" ? [pageAction(COACH_PAGES.find((page) => page.id === "trainers")!, lang)] : [],
       sourceType: "live_site_data",
       confidence: trainerStatus === "success_with_results" ? 0.92 : trainerStatus === "success_empty" ? 0.7 : 0.35,
@@ -754,7 +792,7 @@ export async function handleCoachMessage(sessionId: string, userMessage: string,
     // Context persistence is independent from tools/model phrasing; a failed write never suppresses the reply.
     await db.chatSession.update({ where: { id: sessionId }, data: { context: serializeCoachContext(context), lastMessageAt: new Date() } }).catch(() => {});
   }
-  const understanding = await understandCoachMessage(userMessage, lang, { lastIntent: context.lastIntent, lastDomain: context.lastDomain, lastActionTarget: context.lastActionTarget, lastEntities: context.lastEntities, contextUpdatedAt: context.contextUpdatedAt });
+  const understanding = await understandCoachMessage(userMessage, lang, { lastIntent: context.lastIntent, currentEntity: context.currentEntity, lastDomain: context.lastDomain, lastActionTarget: context.lastActionTarget, lastEntities: context.lastEntities, contextUpdatedAt: context.contextUpdatedAt });
   const intent = understanding.legacyIntent;
   const messageCount = (session as { messages: { id: string }[] }).messages.length;
 
