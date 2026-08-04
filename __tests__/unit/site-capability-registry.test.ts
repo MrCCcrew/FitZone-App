@@ -8,7 +8,7 @@ describe("site capability registry", () => {
       const page = COACH_PAGES.find((item) => item.id === capabilityPageIds[capability.id]);
       expect(page).toBeDefined();
       expect(capability.sectionId).toBe(page?.sectionId ?? null);
-      expect(capability.route).toBe(page?.route === "/store" ? "/store" : page?.route === "/account" ? "/account" : "/");
+      expect(capability.route).toBe(page?.route === "/?page=shop" ? "/?page=shop" : page?.route === "/account" ? "/account" : "/");
     }
   });
 

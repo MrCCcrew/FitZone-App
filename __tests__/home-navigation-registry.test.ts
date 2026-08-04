@@ -13,4 +13,12 @@ describe("homepage navigation registry", () => {
   it("does not register an unknown classes hash", () => {
     expect(COACH_PAGES.some((page) => String(page.route) === "/#missing-classes")).toBe(false);
   });
+
+  it("resolves store navigation to the rendered shop SPA section", () => {
+    expect(COACH_PAGES.find((page) => page.id === "store")).toMatchObject({
+      route: "/?page=shop",
+      spaPage: "shop",
+      sectionId: "shop-products",
+    });
+  });
 });

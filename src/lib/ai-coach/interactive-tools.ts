@@ -9,7 +9,7 @@ import { scheduleReadState, traceCoachCatalogRead, trainerReadState } from "@/li
 
 const card = z.object({ id: z.string(), title: z.string(), subtitle: z.string().nullable(), image: z.string().nullable() });
 export const interactiveToolResultSchema = z.object({
-  status: z.enum(["success", "empty", "unavailable"]), sourceType: z.string().optional(), resultType: z.string().optional(), data: z.array(z.unknown()), resultCount: z.number().int().nonnegative(), spokenSummary: z.string(), cards: z.array(card), navigationTarget: z.object({ page: z.enum(["/", "/store", "/account"]), sectionId: z.string().nullable() }).nullable(), uiAction: z.unknown().nullable().optional(), warnings: z.array(z.string()),
+  status: z.enum(["success", "empty", "unavailable"]), sourceType: z.string().optional(), resultType: z.string().optional(), data: z.array(z.unknown()), resultCount: z.number().int().nonnegative(), spokenSummary: z.string(), cards: z.array(card), navigationTarget: z.object({ page: z.enum(["/", "/?page=shop", "/account"]), sectionId: z.string().nullable() }).nullable(), uiAction: z.unknown().nullable().optional(), warnings: z.array(z.string()),
 });
 export type InteractiveToolResult = z.infer<typeof interactiveToolResultSchema>;
 const nav = (id: Parameters<typeof getSiteCapability>[0]) => { const item = getSiteCapability(id); return item ? { page: item.route, sectionId: item.sectionId } : null; };

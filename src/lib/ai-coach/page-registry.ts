@@ -8,7 +8,7 @@ export type CoachPage = {
   labelAr: string;
   requiredAuth: boolean;
   relatedEntities: string[];
-  spaPage?: "home" | "memberships" | "offers" | "classes" | "trainers" | "blog" | "partners";
+  spaPage?: "home" | "memberships" | "offers" | "classes" | "trainers" | "shop" | "blog" | "partners";
   sectionId?: string;
 };
 
@@ -25,8 +25,8 @@ export const COACH_PAGES: readonly CoachPage[] = [
   { id: "classes", route: "/#classes", aliases: ["classes", "الكلاسات", "الجدول", "schedule"], description: "Classes and schedule", requiredAuth: false, relatedEntities: ["class", "schedule"], spaPage: "home", sectionId: "classes" },
   { id: "trial_classes", route: "/#classes", aliases: ["trial classes", "الكلاسات التجريبية"], description: "Trial classes", requiredAuth: false, relatedEntities: ["class"], spaPage: "home", sectionId: "classes" },
   { id: "trainers", route: "/#trainers-list", aliases: ["trainers", "المدربات", "coaches"], description: "Published trainers", requiredAuth: false, relatedEntities: ["trainer"], spaPage: "trainers", sectionId: "trainers-list" },
-  { id: "store", route: "/store", aliases: ["store", "المتجر", "products"], description: "Store", requiredAuth: false, relatedEntities: ["product"], sectionId: "shop-products" },
-  { id: "product_categories", route: "/store", aliases: ["product categories", "أقسام المتجر"], description: "Store categories", requiredAuth: false, relatedEntities: ["product_category"], sectionId: "shop-products" },
+  { id: "store", route: "/?page=shop", aliases: ["store", "المتجر", "products"], description: "Store", requiredAuth: false, relatedEntities: ["product"], spaPage: "shop", sectionId: "shop-products" },
+  { id: "product_categories", route: "/?page=shop", aliases: ["product categories", "أقسام المتجر"], description: "Store categories", requiredAuth: false, relatedEntities: ["product_category"], spaPage: "shop", sectionId: "shop-products" },
   { id: "account", route: "/account", aliases: ["account", "حسابي"], description: "Account", requiredAuth: true, relatedEntities: ["account"] },
   { id: "bookings", route: "/account", aliases: ["bookings", "حجوزاتي"], description: "Bookings", requiredAuth: true, relatedEntities: ["booking"] },
   { id: "blog", route: "/?page=blog", aliases: ["blog", "المدونة"], description: "FitZone blog", requiredAuth: false, relatedEntities: ["blog"], spaPage: "blog" },
@@ -44,13 +44,16 @@ export function findCoachPage(message: string) {
 export function findCoachPageByRoute(route: CoachAction["url"]) {
   return COACH_PAGES.find((page) => page.route === route) ?? null;
 }
-export function pageBaseRoute(page: CoachPage): "/" | "/store" | "/account" {
-  if (page.route === "/store") return "/store";
+export function findCoachPageById(id: CoachPage["id"]) {
+  return COACH_PAGES.find((page) => page.id === id) ?? null;
+}
+export function pageBaseRoute(page: CoachPage): "/" | "/?page=shop" | "/account" {
+  if (page.route === "/?page=shop") return "/?page=shop";
   if (page.route === "/account") return "/account";
   return "/";
 }
 export function pageAction(page: CoachPage, lang: "ar" | "en"): CoachAction {
-  if (lang === "ar") return { type: "open_page", label: page.labelAr, url: page.route };
+  if (lang === "ar") return { type: "open_page", label: page.labelAr, url: page.route, pageId: page.id };
   const label = lang === "en" ? `Open ${page.id}` : `افتحي ${page.description}`;
-  return { type: "open_page", label, url: page.route };
+  return { type: "open_page", label, url: page.route, pageId: page.id };
 }

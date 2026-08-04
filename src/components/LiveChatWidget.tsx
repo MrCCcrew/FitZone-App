@@ -11,7 +11,8 @@ import {
   type CoachUiActionBatch,
   type CoachUiActionResult,
 } from "@/lib/ai-coach/ui-action-dispatcher";
-import { findCoachPageByRoute } from "@/lib/ai-coach/page-registry";
+import { findCoachPageById, findCoachPageByRoute } from "@/lib/ai-coach/page-registry";
+import type { CoachAction } from "@/lib/ai-coach/types";
 
 type ChatMessage = {
   id: string;
@@ -19,7 +20,7 @@ type ChatMessage = {
   senderName?: string | null;
   content: string;
   createdAt: string;
-  metadata?: { membershipId?: string; closeSession?: boolean; action?: { type: "navigate"; page: "shop"; anchor: "shop-products" }; structured?: { intent?: string; actions?: Array<{ type: "open_page"; label: string; url: "/" | "/login" | "/account" | "/store" | "/privacy" | "/refund" | "/?page=blog" | "/?page=partners" | "/#memberships" | "/#offers" | "/#classes" | "/#trainers-list" | "/#nutrition" | "/#goals" | "/#packages-section" }> } } | null;
+  metadata?: { membershipId?: string; closeSession?: boolean; action?: { type: "navigate"; pageId: "store" }; structured?: { intent?: string; actions?: CoachAction[] } } | null;
 };
 
 type QuickAction = {
@@ -698,13 +699,7 @@ export default function LiveChatWidget() {
   }, [messages]);
   useEffect(() => { messageEndRef.current?.scrollIntoView({ block: "end", behavior: "smooth" }); }, [messages, transcribing, error, realtimeState]);
 
-  const openShop = () => {
-    window.dispatchEvent(new CustomEvent("fitzone:ai-coach-navigate", {
-      detail: { type: "navigate", page: "shop", anchor: "shop-products" },
-    }));
-  };
-
-  const openSafePage = (url: "/" | "/login" | "/account" | "/store" | "/privacy" | "/refund" | "/?page=blog" | "/?page=partners" | "/#memberships" | "/#offers" | "/#classes" | "/#trainers-list" | "/#nutrition" | "/#goals" | "/#packages-section") => {
+  const openSafePage = (url: CoachAction["url"]) => {
     const page = findCoachPageByRoute(url);
     if (page?.spaPage && window.location.pathname === "/") {
       window.dispatchEvent(new CustomEvent("fitzone:ai-coach-navigate", { detail: { type: "navigate", page: page.spaPage, anchor: page.sectionId } }));
@@ -714,9 +709,14 @@ export default function LiveChatWidget() {
     window.location.assign(url);
   };
 
+  const openCoachPage = (pageId: "store") => {
+    const page = findCoachPageById(pageId);
+    if (page) openSafePage(page.route);
+  };
+
   useEffect(() => {
     const action = messages[messages.length - 1]?.metadata?.action;
-    if (action?.type === "navigate" && action.page === "shop" && action.anchor === "shop-products") openShop();
+    if (action?.type === "navigate") openCoachPage(action.pageId);
   }, [messages]);
 
   const sendMessage = async (preset?: string, source: "typed" | "stt" = "typed") => {
@@ -1196,11 +1196,11 @@ export default function LiveChatWidget() {
                     </div>
                     <div style={{ whiteSpace: "pre-wrap" }}>{message.content}</div>
             {ttsEnabled && message.senderType === "bot" && shouldShowVoiceControls(sessionCapabilities, realtimeState !== "idle").showListenButton && <div style={{ display: "flex", gap: 6, marginTop: 8 }}><button aria-label="تشغيل الرد صوتيًا" onClick={() => playMessage(message.id)} style={quickButtonStyle}>▶ {t("اسمعي", "Play")}</button><button aria-label="إيقاف الصوت" onClick={stopPlayback} style={quickButtonStyle}>■ {t("إيقاف", "Stop")}</button></div>}
-                    {message.metadata?.action?.page === "shop" && (
-                      <button onClick={openShop} style={{ ...quickButtonStyle, marginTop: 8 }}>فتح المتجر</button>
+                    {message.metadata?.action?.pageId === "store" && (
+                      <button onClick={() => openCoachPage("store")} style={{ ...quickButtonStyle, marginTop: 8 }}>فتح المتجر</button>
                     )}
                     {message.metadata?.structured?.actions?.map((action) => (
-                      <button key={`${message.id}-${action.url}`} onClick={() => openSafePage(action.url)} style={{ ...quickButtonStyle, marginTop: 8, marginInlineEnd: 6 }}>
+                      <button key={`${message.id}-${action.url}`} onClick={() => action.pageId === "store" ? openCoachPage("store") : openSafePage(action.url)} style={{ ...quickButtonStyle, marginTop: 8, marginInlineEnd: 6 }}>
                         {action.label}
                       </button>
                     ))}

@@ -3,7 +3,7 @@ import { COACH_PAGES, pageBaseRoute } from "@/lib/ai-coach/page-registry";
 
 export const siteCapabilitySchema = z.object({
   id: z.enum(["home", "goals", "memberships", "packages", "offers", "classes", "trial_classes", "trainers", "nutrition", "store", "product_categories", "account", "bookings", "support"]),
-  title: z.string(), description: z.string(), route: z.enum(["/", "/store", "/account"]), sectionId: z.string().nullable(),
+  title: z.string(), description: z.string(), route: z.enum(["/", "/?page=shop", "/account"]), sectionId: z.string().nullable(),
   actions: z.array(z.enum(["navigate", "highlight", "showCards", "filter", "openDetails"])), tools: z.array(z.string()), requiresAuthentication: z.boolean(), navigationMethod: z.enum(["route", "route_and_scroll", "client_event"]),
 });
 export type SiteCapability = z.infer<typeof siteCapabilitySchema>;
