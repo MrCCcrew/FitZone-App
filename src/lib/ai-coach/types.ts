@@ -11,6 +11,10 @@ export type CoachIntent =
   | "account_summary"
   | "offer_lookup"
   | "trainer_info"
+  | "trainer_recommendation"
+  | "partner_info"
+  | "nutritionist_service"
+  | "goals_list"
   | "product_help"
   | "product_recommendation"
   | "product_discount"
@@ -70,6 +74,11 @@ export type CoachConversationContext = {
   version: 1;
   lang: CoachLang;
   lastIntent?: CoachIntent;
+  /** Small, structured context only; no transcript is persisted here. */
+  currentEntity?: "trainers" | "partners" | "nutritionist" | "goals" | "classes" | null;
+  lastResolvedIntent?: CoachIntent;
+  selectedGoal?: string | null;
+  selectedCategory?: string | null;
   lastTopic?: "weight_loss" | "fitness" | "nutrition" | null;
   statedWeight?: number;
   questionnaire: CoachQuestionnaireState;
@@ -125,6 +134,10 @@ export type CoachPublicTrainer = {
   rating: number;
   classesCount: number;
 };
+
+export type CoachPublicPartner = { id: string; name: string; category: string; benefit: string | null; code: string | null };
+export type CoachPublicGoal = { id: string; name: string; description: string | null };
+export type CoachNutritionistService = { id: string; name: string; bio: string | null; slots: Array<{ label: string; day?: string; time?: string }>; consultationFee: number; followupFee: number };
 
 export type CoachPublicSchedule = {
   id: string;
@@ -233,6 +246,9 @@ export type CoachSiteSnapshot = {
   offers: CoachPublicOffer[];
   classes: CoachPublicClass[];
   trainers: CoachPublicTrainer[];
+  partners: CoachPublicPartner[];
+  goals: CoachPublicGoal[];
+  nutritionist: CoachNutritionistService | null;
   products: CoachPublicProduct[];
   knowledge: CoachKnowledgeEntry[];
   account: CoachAccountSummary;
