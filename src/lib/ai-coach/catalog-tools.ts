@@ -116,8 +116,19 @@ export async function searchVisibleTrainers(query = "") {
 
 export async function searchVisiblePartners() {
   const rows = await db.partner.findMany({ where: { isActive: true, showOnPublicPage: true }, orderBy: { createdAt: "asc" } });
-  const categoryLabel: Record<string, string> = { beauty_center: "مركز تجميل", salon: "صالون", pharmacy: "صيدلية", clinic: "عيادة", physiotherapy: "علاج طبيعي", nutrition: "تغذية", nursery: "حضانة", education: "تعليم", clothing: "ملابس", spa: "سبا", restaurant: "مطعم", sports: "رياضة", supplement: "مكملات", services: "خدمات", other: "خدمات" };
-  return rows.map((row) => ({ id: row.id, name: row.name, category: categoryLabel[row.category] ?? "خدمة", benefit: row.memberBenefitRate == null ? null : `${row.memberBenefitRate}%`, code: row.memberBenefitCode ?? null }));
+  // Use category value directly - no hardcoded labels. Admin can edit categories freely.
+  // Format: convert snake_case to readable Arabic if needed, or use as-is
+  const formatCategory = (cat: string) => {
+    // Simple formatting: replace _ with space and capitalize
+    return cat.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  };
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    category: row.category ? formatCategory(row.category) : "خدمة",
+    benefit: row.memberBenefitRate == null ? null : `${row.memberBenefitRate}%`,
+    code: row.memberBenefitCode ?? null
+  }));
 }
 
 export async function searchVisibleGoals(query = "") {

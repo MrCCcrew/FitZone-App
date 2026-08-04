@@ -86,14 +86,19 @@ export async function getCoachToolContext(args: { intent: CoachIntent; message: 
         resultCounts[tool] = rows.length;
       }
       if (tool === "searchTrainers") {
-        // Generic trainer wording is a list request, not a literal specialty search.
-        const trainerQuery = /(?:مدرب|مدربة|مدربات|trainer|coach|افضل|أفضل|رشح|رشحي)/i.test(args.message) ? "" : args.message;
+        // Extract specialty term only - don't pass full conversational query
+        const trainerQuery = extractCatalogSearchQuery("trainer", args.message).searchTerm;
         const rows = await searchVisibleTrainers(trainerQuery);
         snapshot.trainers = rows;
         resultCounts[tool] = rows.length;
       }
       if (tool === "searchPartners") { snapshot.partners = await searchVisiblePartners(); resultCounts[tool] = snapshot.partners.length; }
-      if (tool === "searchGoals") { snapshot.goals = await searchVisibleGoals(""); resultCounts[tool] = snapshot.goals.length; }
+      if (tool === "searchGoals") {
+        // Extract goal-specific search term (e.g., "التخسيس", "الأطفال")
+        const goalQuery = extractCatalogSearchQuery("goal", args.message).searchTerm;
+        snapshot.goals = await searchVisibleGoals(goalQuery);
+        resultCounts[tool] = snapshot.goals.length;
+      }
       if (tool === "getNutritionistService") { snapshot.nutritionist = await getVisibleNutritionist(); resultCounts[tool] = snapshot.nutritionist ? 1 : 0; }
       if (tool === "getCurrentMembership") {
         const membership = await getAuthenticatedCustomerMembership(args.userId);

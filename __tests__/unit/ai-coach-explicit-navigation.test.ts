@@ -35,7 +35,9 @@ describe("AI Coach explicit Arabic navigation", () => {
     ["\u0627\u0641\u062a\u062d \u0627\u0644\u062c\u062f\u0648\u0644", "classes", "/#classes"],
     ["\u0627\u0641\u062a\u062d \u0627\u0644\u0645\u0648\u0627\u0639\u064a\u062f", "classes", "/#classes"],
     ["\u0627\u0641\u062a\u062d \u0627\u0644\u0645\u062f\u0648\u0646\u0629", "blog", "/?page=blog"],
-    ["\u0627\u0641\u062a\u062d \u0627\u0644\u0645\u062a\u062c\u0631", "store", "/store"],
+    ["\u0627\u0641\u062a\u062d \u0627\u0644\u0645\u062a\u062c\u0631", "store", "/?page=shop"],
+    ["\u0648\u062f\u064a\u0646\u064a \u0644\u0644\u0645\u062a\u062c\u0631", "store", "/?page=shop"],
+    ["\u0639\u0627\u064a\u0632\u0629 \u0623\u0634\u0648\u0641 \u0627\u0644\u0645\u0646\u062a\u062c\u0627\u062a", "store", "/?page=shop"],
     ["\u0627\u0641\u062a\u062d \u0627\u0644\u0639\u0631\u0648\u0636", "offers", "/#offers"],
     ["\u0627\u0641\u062a\u062d \u0627\u0644\u0627\u0634\u062a\u0631\u0627\u0643\u0627\u062a", "memberships", "/#memberships"],
     ["\u0627\u0641\u062a\u062d \u0627\u0644\u0628\u0627\u0642\u0627\u062a", "memberships", "/#memberships"],
@@ -46,6 +48,7 @@ describe("AI Coach explicit Arabic navigation", () => {
     await expect(understandCoachMessage(message, "ar")).resolves.toMatchObject({ intent: "site_navigation", extractedEntities: { pageId } });
     const page = COACH_PAGES.find((entry) => entry.id === pageId);
     expect(pageAction(page!, "ar").url).toBe(url);
+    expect(pageAction(page!, "ar").pageId).toBe(pageId);
     expect(createRealtimeToolOutputEvents("call", { actions: [pageAction(page!, "ar")] })).toEqual(expect.arrayContaining([
       expect.objectContaining({ item: expect.objectContaining({ output: JSON.stringify({ actions: [pageAction(page!, "ar")] }) }) }),
     ]));

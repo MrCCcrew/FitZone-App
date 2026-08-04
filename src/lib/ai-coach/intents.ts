@@ -1,6 +1,6 @@
 ﻿import type { CoachIntent } from "@/lib/ai-coach/types";
 
-export type CoachNavigationTarget = "classes" | "blog" | "store" | "offers" | "memberships" | "nutritionist" | "partners";
+export type CoachNavigationTarget = "classes" | "blog" | "store" | "offers" | "memberships" | "nutritionist" | "partners" | "goals";
 
 /** Normalization for matching only.  It deliberately keeps the original text for replies. */
 export function normalizeArabicIntent(text: string) {
@@ -18,8 +18,10 @@ export function normalizeArabicIntent(text: string) {
 export function detectExplicitNavigationTarget(message: string): CoachNavigationTarget | null {
   const text = normalizeArabicIntent(message).replace(/ة/g, "ه");
   const asksToBuy = /(?:اشتري|اشتري|buy)/i.test(text);
-  if (!asksToBuy && !/(?:افتح|افتحي|وديني|خديني|روح|روحي|وريني|انتقل|navigate|open)/i.test(text)) return null;
+  const asksToBrowseProducts = /(?:عايز|عايزه|عايزة)\s+اشوف\s+(?:ال)?منتجات/i.test(text);
+  if (!asksToBuy && !asksToBrowseProducts && !/(?:افتح|افتحي|وديني|خديني|روح|روحي|وريني|انتقل|navigate|open)/i.test(text)) return null;
   const targets: Array<[CoachNavigationTarget, RegExp]> = [
+    ["goals", /(?:الاهداف|اهداف|الهدف|هدف|goals?)/i], // Must come before "offers" to prevent confusion
     ["classes", /(?:الجدول|المواعيد|مواعيد|الحصص|حصص|الكلاسات|كلاسات|classes?|schedule)/i],
     ["blog", /(?:المدونه|مدونه|المدوني|مدوني|المقالات|مقالات|المقال|مقال|البلوج|بلوج|blog)/i],
     ["store", /(?:المتجر|متجر|التسوق|تسوق|المنتجات|منتجات|store|shop)/i],
@@ -70,6 +72,10 @@ export function detectCoachIntent(message: string): CoachIntent {
   if (matches(text, [/\bحجوزاتي\b/, /\bmy bookings\b/])) return "account_summary";
   if (matches(text, [/\bاشتراكي\b/, /\bعضويتي\b/, /\bmy membership\b/])) return "account_summary";
   if (matches(text, [/\b(?:منتج|منتجات|متجر|بتبيعوا|عندكم)\b.*\b(?:تخسيس|دايت|خساره|خسارة|weight loss|diet)\b/, /\b(?:تخسيس|دايت|خساره|خسارة|weight loss|diet)\b.*\b(?:منتج|منتجات|متجر)\b/])) return "product_help";
+
+  // Goals must win over offers to prevent "الأهداف" → "العروض" confusion
+  if (matches(text, [/\b(?:ال)?(?:اهداف|هدف)\b/, /\bgoals?\b/, /\bاختار\s+هدف\b/, /\bاختاري\s+هدف\b/])) return "goals_list";
+
   if (matches(text, [/\b(?:عرض|عروض|offer|discount)\b/])) return "offer_lookup";
   if (matches(text, [/\b(?:سعر|اسعار|أسعار|price|pricing)\b.*\b(?:اشتراك|عضويه|عضوية|membership)\b/])) return "pricing";
   if (matches(text, [/\b(?:مواعيد|ميعاد|schedule)\b.*\b(?:كلاس|class|كيك بوكس|kickbox)\b/, /\b(?:كيك بوكس|kickbox)\b.*\b(?:مواعيد|schedule)\b/])) return "schedule_lookup";

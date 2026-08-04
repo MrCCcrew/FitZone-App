@@ -454,7 +454,7 @@ async function buildDeterministicReply(args: {
       text: lang === "en" ? "Sure, I’ll open the shop products now." : "تمام، هفتح لك منتجات المتجر دلوقتي.",
       facts: [],
       quickActions: buildActions(snapshot, intent, baseContext),
-      action: { type: "navigate", page: "shop", anchor: "shop-products" },
+      action: { type: "navigate", pageId: "store" },
     };
   }
   if (intent === "weight_context") {
@@ -495,6 +495,33 @@ async function buildDeterministicReply(args: {
     return { intent: "account_summary", text, facts: [], quickActions: buildActions(snapshot, "account_summary", baseContext) };
   }
   if (asksRecommendation && (intent === "membership_recommendation" || asksOffer || /اشتراك|باقه|membership/i.test(normalizedQuestion))) {
+    // Check if we have a selected goal from previous context
+    const selectedGoalId = baseContext.selectedGoal ?? null;
+    const budgetMax = typeof understanding?.extractedEntities.budgetMax === "number" ? understanding.extractedEntities.budgetMax : baseContext.questionnaire.answers.budget;
+
+    // If we have a selected goal, filter memberships by MembershipGoal relation
+    if (selectedGoalId) {
+      const goalFilteredMemberships = await (await import("@/lib/ai-coach/catalog-tools")).searchMemberships("", {
+        goalId: selectedGoalId,
+        priceMax: budgetMax
+      });
+
+      if (goalFilteredMemberships.length === 0) {
+        const goalRow = await db.clubGoal.findUnique({ where: { id: selectedGoalId }, select: { name: true } });
+        const text = goalRow
+          ? (lang === "en" ? `The goal exists, but there are no memberships linked to "${goalRow.name}" right now.` : `الهدف موجود، لكن مش ظاهر اشتراك مرتبط بـ"${goalRow.name}" حاليًا.`)
+          : (lang === "en" ? "The selected goal could not be found." : "الهدف المختار مش موجود.");
+        return { intent: "membership_recommendation", text, facts: [], quickActions: buildActions(snapshot, "membership_recommendation", baseContext) };
+      }
+
+      const text = lang === "en"
+        ? `Based on your selected goal${budgetMax ? ` and budget up to ${budgetMax} EGP` : ""}, here are the matching memberships:\n${goalFilteredMemberships.slice(0, 4).map((m) => `- ${m.name}: ${m.priceAfter ?? m.price} EGP`).join("\n")}`
+        : `بناءً على هدفك${budgetMax ? ` وميزانية ${budgetMax} جنيه` : ""}، دي الاشتراكات المناسبة:\n${goalFilteredMemberships.slice(0, 4).map((m) => `- ${m.name}: ${m.priceAfter ?? m.price} جنيه`).join("\n")}`;
+
+      await updateContext(sessionId, baseContext, "membership_recommendation");
+      return { intent: "membership_recommendation", text, facts: [], quickActions: buildActions(snapshot, "membership_recommendation", baseContext), actions: [pageAction(COACH_PAGES.find((page) => page.id === "memberships")!, lang)] };
+    }
+
     if (!wantsWeightLoss) {
       await updateContext(sessionId, baseContext, "membership_recommendation");
       return { intent: "membership_recommendation", text: lang === "en" ? "What is your main goal, and roughly what is your budget?" : "هدفك الأساسي إيه وميزانيتك تقريبًا كام؟", facts: [], quickActions: buildActions(snapshot, "membership_recommendation", baseContext) };

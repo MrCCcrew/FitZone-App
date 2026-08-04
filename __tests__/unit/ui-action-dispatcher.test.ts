@@ -37,6 +37,35 @@ describe("AI Coach UI action dispatcher", () => {
     ]);
   });
 
+  it("opens product action buttons in the shop page and products section", () => {
+    const batch = actionsFromNavigationTarget({ page: "/?page=shop", sectionId: "shop-products" });
+    expect(batch?.actions).toEqual([
+      { type: "clearPreviousCoachState" },
+      { type: "navigateToPage", page: "shop" },
+      { type: "openSection", sectionId: "shop-products" },
+      { type: "scrollToSection", sectionId: "shop-products" },
+    ]);
+  });
+
+  it("contains no obsolete store route in AI Coach navigation code", () => {
+    const files = [
+      "src/lib/ai-coach/page-registry.ts",
+      "src/lib/ai-coach/site-capability-registry.ts",
+      "src/lib/ai-coach/tool-registry.ts",
+      "src/lib/ai-coach/engine.ts",
+      "src/components/LiveChatWidget.tsx",
+    ];
+    for (const file of files) expect(readFileSync(join(process.cwd(), file), "utf8")).not.toContain("/store");
+  });
+
+  it("uses SPA navigation on home and the resolved shop URL from account", () => {
+    const widget = readFileSync(join(process.cwd(), "src/components/LiveChatWidget.tsx"), "utf8");
+    expect(widget).toContain('window.location.pathname === "/"');
+    expect(widget).toContain('detail: { type: "navigate", page: page.spaPage, anchor: page.sectionId }');
+    expect(widget).toContain("window.location.assign(url)");
+    expect(widget).toContain('action.pageId === "store" ? openCoachPage("store") : openSafePage(action.url)');
+  });
+
   it("does not create a client action for unknown or unavailable targets", () => {
     expect(actionsFromNavigationTarget({ page: "/evil", sectionId: "evil" })).toBeNull();
     expect(actionsFromNavigationTarget(null)).toBeNull();
