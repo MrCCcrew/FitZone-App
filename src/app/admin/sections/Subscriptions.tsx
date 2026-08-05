@@ -5,6 +5,7 @@ import type { GymClass, Goal, Offer, Plan } from "../types";
 import { AdminCard, AdminEmptyState, AdminSectionShell } from "./shared";
 import { TranslateButton } from "./TranslateButton";
 import { getClassTypeArabicLabel } from "../class-type-labels";
+import { formatTime12Hour } from "@/lib/time-format";
 
 const INPUT =
   "w-full rounded-xl border border-gray-700 bg-gray-800 px-4 py-2.5 text-sm text-white outline-none transition-colors focus:border-[#ff4f93]";
@@ -39,7 +40,7 @@ const EMPTY_PLAN: Omit<PlanDraft, "id" | "membersCount"> = {
   discountPct: null,
 };
 
-const EMPTY_OFFER: Omit<Offer, "id" | "usedCount" | "currentSubscribers"> = {
+const EMPTY_OFFER: Omit<Offer, "id" | "usedCount" | "currentSubscribers"> & { allowedClassIds?: string[] } = {
   title: "",
   titleEn: "",
   discount: 0,
@@ -63,6 +64,7 @@ const EMPTY_OFFER: Omit<Offer, "id" | "usedCount" | "currentSubscribers"> = {
   features: [],
   featuresEn: [],
   allowedClassTypes: [],
+  allowedClassIds: [], // NEW: specific class IDs
 };
 
 const CYCLE_LABELS: Record<NonNullable<Plan["cycle"]>, string> = {
@@ -1001,7 +1003,7 @@ export default function Subscriptions() {
                   </div>
                   {!(planModal.classSessions?.length) && (
                     <div className="mt-2 rounded-xl border border-[rgba(255,188,219,0.1)] bg-black/20 px-4 py-2 text-xs text-[#d7aabd]">
-                      لا يوجد تحديد — جميع الكلاسات ستظهر في الجدول
+                      ⚠️ لم يتم تحديد أي كلاس - لن يتمكن العميل من حجز أي كلاس
                     </div>
                   )}
                 </>
@@ -1257,14 +1259,53 @@ export default function Subscriptions() {
                     <input type="number" value={offerModal.durationDays ?? ""} onChange={(event) => setOfferModal({ ...offerModal, durationDays: event.target.value ? Number(event.target.value) : null })} className={INPUT} dir="ltr" placeholder="مثال: 30" />
                   </Field>
                 </div>
-                <Field label="الكلاسات المرتبطة بالعرض" hint="اختيار متعدد. ترك القائمة فارغة يعني السماح بجميع الكلاسات. تعديل العرض لا يغيّر حقوق المشتركات الحاليات.">
-                  <div className="flex flex-wrap gap-2">
-                    {[...new Map(gymClasses.map((gymClass) => [gymClass.type.trim().toLowerCase(), gymClass])).values()].map((gymClass) => {
-                      const classType = gymClass.type.trim().toLowerCase();
-                      const selected = (offerModal.allowedClassTypes ?? []).includes(classType);
-                      return <button key={classType} type="button" onClick={() => setOfferModal({ ...offerModal, allowedClassTypes: selected ? (offerModal.allowedClassTypes ?? []).filter((item) => item !== classType) : [...(offerModal.allowedClassTypes ?? []), classType] })} className={`rounded-xl border px-3 py-2 text-sm ${selected ? "border-[#ff4f93] bg-[#ff4f93]/15 text-white" : "border-gray-700 bg-gray-800 text-gray-300"}`}>{getClassTypeArabicLabel(gymClass.type)}</button>;
-                    })}
+                <Field label="الكلاسات المحددة للعرض" hint="اختاري الكلاسات المحددة التي سيتمكن العميل من حجزها ضمن هذا العرض. ترك القائمة فارغة يعني عدم السماح بأي كلاس.">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {gymClasses
+                      .filter((cls) => cls.active)
+                      .map((cls) => {
+                        const selected = ((offerModal as typeof EMPTY_OFFER).allowedClassIds ?? []).includes(cls.id);
+                        return (
+                          <button
+                            key={cls.id}
+                            type="button"
+                            onClick={() => {
+                              const current = (offerModal as typeof EMPTY_OFFER).allowedClassIds ?? [];
+                              setOfferModal({
+                                ...offerModal,
+                                allowedClassIds: selected
+                                  ? current.filter((id) => id !== cls.id)
+                                  : [...current, cls.id],
+                              } as typeof offerModal);
+                            }}
+                            className={`rounded-xl border px-4 py-3 text-sm text-right transition-colors ${
+                              selected
+                                ? "border-[#ff4f93] bg-[#ff4f93]/15 text-white"
+                                : "border-gray-700 bg-gray-800 text-gray-300 hover:border-gray-600"
+                            }`}
+                          >
+                            <div className="font-bold text-base">{cls.name}</div>
+                            <div className="text-xs mt-1 opacity-70">
+                              {getClassTypeArabicLabel(cls.type)} • {cls.trainer}
+                            </div>
+                            <div className="text-xs mt-1 opacity-50">
+                              {formatTime12Hour(cls.time)} • {cls.day}
+                            </div>
+                          </button>
+                        );
+                      })}
                   </div>
+
+                  {/* Legacy types - for reference during migration */}
+                  {offerModal.allowedClassTypes && offerModal.allowedClassTypes.length > 0 && (
+                    <div className="text-xs text-gray-500 mt-3 p-3 bg-gray-800/50 rounded-lg">
+                      <div className="font-bold mb-1">الأنواع القديمة (للمرجعية فقط):</div>
+                      <div>{offerModal.allowedClassTypes.map((type) => getClassTypeArabicLabel(type)).join(", ")}</div>
+                      <div className="mt-2 text-[10px] text-gray-600">
+                        سيتم تحويل هذه الأنواع إلى كلاسات محددة عند الحفظ
+                      </div>
+                    </div>
+                  )}
                 </Field>
                 <label className="flex items-center gap-3 rounded-2xl border border-[rgba(255,188,219,0.12)] bg-black/15 px-4 py-3 text-sm text-[#fff4f8]">
                   <input

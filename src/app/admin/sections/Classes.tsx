@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { TranslateButton } from "./TranslateButton";
 import type { GymClass } from "../types";
+import { formatTime12Hour } from "@/lib/time-format";
 
 type ApiTrainer = {
   id: string;
@@ -10,14 +11,6 @@ type ApiTrainer = {
   nameEn?: string | null;
   specialty: string;
   specialtyEn?: string | null;
-};
-
-const formatTime12 = (time: string) => {
-  const [h, m] = time.split(":").map(Number);
-  if (isNaN(h) || isNaN(m)) return time;
-  const period = h < 12 ? "ص" : "م";
-  const hour = h % 12 === 0 ? 12 : h % 12;
-  return `${String(hour).padStart(2, "0")}:${String(m).padStart(2, "0")} ${period}`;
 };
 
 const DAYS = [
@@ -821,7 +814,7 @@ export default function Classes() {
                           <div className="mt-1 text-[11px] text-white/55">{item.category}</div>
                         ) : null}
                         <div className="mt-1 text-[11px] font-semibold text-fuchsia-300/80">{item.trainer}</div>
-                        <div className="mt-1 text-xs text-white/45">{formatTime12(item.time)}</div>
+                        <div className="mt-1 text-xs text-white/45">{formatTime12Hour(item.time)}</div>
                         <div className={`mt-2 inline-flex rounded-full border px-2 py-1 text-[11px] font-bold ${resolveTypeColor(item.type)}`}>
                           {normalizeTypeLabel(item.type)}
                         </div>
@@ -892,7 +885,7 @@ export default function Classes() {
                       <td className="px-4 py-4 text-white/70">{item.trainer}</td>
                       <td className="px-4 py-4 text-white/70">{item.day}</td>
                       <td className="px-4 py-4 text-white/70">
-                        {formatTime12(item.time)}
+                        {formatTime12Hour(item.time)}
                       </td>
                       <td className="px-4 py-4 text-white/70">{item.duration} دقيقة</td>
                       <td className="px-4 py-4 text-white/70">
@@ -1061,7 +1054,7 @@ export default function Classes() {
                           <div className="flex-1">
                             <div className="text-sm font-bold text-white">{cls.name}</div>
                             <div className="text-xs text-white/50">
-                              {cls.day} • {formatTime12(cls.time)} • {cls.type}
+                              {cls.day} • {formatTime12Hour(cls.time)} • {cls.type}
                             </div>
                           </div>
                         </label>

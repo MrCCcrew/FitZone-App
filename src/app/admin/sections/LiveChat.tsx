@@ -2,14 +2,17 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { ChatMessage, ChatSession, QuickReply } from "../types";
+import { formatDateTime12Hour } from "@/lib/time-format";
 
 function formatTime(value: string) {
-  return new Date(value).toLocaleString("ar-EG", {
+  // Format date with 12-hour time
+  const date = new Date(value);
+  const dateStr = date.toLocaleDateString("ar-EG", {
     month: "short",
     day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
   });
+  const timeStr = formatDateTime12Hour(value);
+  return `${dateStr} ${timeStr}`;
 }
 
 export default function LiveChat() {

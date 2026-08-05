@@ -15,7 +15,15 @@ export async function GET() {
     db.userMembership.findMany({
       where: { userId: currentUser.id, status: "active", startDate: { lte: now }, endDate: { gte: now } },
       orderBy: [{ endDate: "asc" }, { startDate: "asc" }],
-      include: { membership: { select: { classSessions: true } } },
+      select: {
+        id: true,
+        offerId: true,
+        status: true,
+        startDate: true,
+        endDate: true,
+        allowedClassTypesSnapshot: true,
+        membership: { select: { classSessions: true } },
+      },
     }),
     db.class.findMany({
       where: visibleClassScheduleWhere(now),

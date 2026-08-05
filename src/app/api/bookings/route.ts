@@ -3,6 +3,7 @@ import { getCurrentAppUser } from "@/lib/app-session";
 import { db } from "@/lib/db";
 import { isBookingOperational } from "@/lib/booking-operational";
 import { canMembershipBookClass, resolveMembershipClassEligibility } from "@/lib/membership-class-eligibility";
+import { isClassAllowedForSource } from "@/lib/get-eligible-classes";
 
 function membershipAllowsClass(membership: { allowedClassTypesSnapshot: string | null; membership: { classSessions: string | null } | null }, gymClass: { id: string; type: string | null }) {
   if (membership.allowedClassTypesSnapshot != null) {
@@ -78,6 +79,25 @@ export async function POST(req: Request) {
     // The earliest-expiring eligible membership wins deterministically, so a
     // booking never consumes sessions from an arbitrary active membership.
     const activeMembership = activeMemberships.find((membership) => membershipAllowsClass(membership, schedule.class)) ?? null;
+
+    // NEW: Validate class eligibility for offer-based memberships
+    // This check ensures customers can only book classes specifically assigned to their offer
+    if (activeMembership && activeMembership.offerId) {
+      const isAllowed = await isClassAllowedForSource(
+        { type: "offer", id: activeMembership.offerId },
+        schedule.class.id
+      );
+
+      if (!isAllowed) {
+        return NextResponse.json(
+          {
+            error: "الكلاس المختار غير متاح ضمن هذا الاشتراك أو العرض.",
+            code: "CLASS_NOT_ALLOWED_IN_OFFER",
+          },
+          { status: 400 }
+        );
+      }
+    }
 
     if (activeMembership && activeMembership.totalSessions !== null && activeMembership.totalSessions > 0) {
       const usedBookings = await db.booking.count({

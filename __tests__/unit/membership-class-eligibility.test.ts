@@ -24,8 +24,39 @@ describe("resolveMembershipClassEligibility", () => {
   });
 
   it("marks eligibility unrestricted when any active membership is unrestricted", async () => {
-    const result = await resolveMembershipClassEligibility({ userId: "u1", classes, now, memberships: [membership(), membership({ id: "m2", membership: { classSessions: JSON.stringify([]) } })] });
+    // Unrestricted = classSessions is null (not defined), NOT empty array
+    const result = await resolveMembershipClassEligibility({ userId: "u1", classes, now, memberships: [membership(), membership({ id: "m2", membership: { classSessions: null } })] });
     expect(result).toMatchObject({ hasEligibleMembership: true, unrestricted: true, allowedClassIds: [], eligibleMembershipIds: ["m1", "m2"] });
+  });
+
+  it("treats empty classSessions as zero classes (not unrestricted)", async () => {
+    // NEW: empty array = zero classes allowed (not all classes)
+    const result = await resolveMembershipClassEligibility({ userId: "u1", classes, now, memberships: [membership({ membership: { classSessions: JSON.stringify([]) } })] });
+    expect(result).toMatchObject({ hasEligibleMembership: true, unrestricted: false, allowedClassIds: [] });
+  });
+
+  it("classId does not allow other classes of same type", async () => {
+    // Test with two yoga classes: yoga-a and yoga-b
+    const yogaClasses = [
+      { id: "yoga-a", type: "Yoga" },
+      { id: "yoga-b", type: "Yoga" },
+      { id: "boxing", type: "Boxing" },
+    ];
+    const result = await resolveMembershipClassEligibility({
+      userId: "u1",
+      classes: yogaClasses,
+      now,
+      memberships: [
+        membership({
+          membership: {
+            classSessions: JSON.stringify([{ classId: "yoga-a", classType: "Yoga" }]),
+          },
+        }),
+      ],
+    });
+    // Only yoga-a should be allowed, NOT yoga-b (even though same type)
+    expect(result.allowedClassIds).toEqual(["yoga-a"]);
+    expect(result.allowedClassIds).not.toContain("yoga-b");
   });
 
   it.each([

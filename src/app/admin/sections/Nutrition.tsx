@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { NutritionistProfileRow, NutritionSessionRow } from "../types";
+import { formatTime12Hour } from "@/lib/time-format";
 
 // Flat keys stored by the booking form → display label
 const FLAT_LABELS: { key: string; label: string }[] = [
@@ -847,7 +848,7 @@ export default function Nutrition({ adminRole = "admin" }: { adminRole?: string 
                 <div key={i} style={{ background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 10, padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div>
                     <div style={{ fontWeight: 700, fontSize: 13, color: "#fff" }}>{slot.label}</div>
-                    <div style={{ fontSize: 12, color: "#9a8a90" }}>{slot.day} — {slot.time}</div>
+                    <div style={{ fontSize: 12, color: "#9a8a90" }}>{slot.day} — {formatTime12Hour(slot.time)}</div>
                   </div>
                   <button onClick={() => setMySlots((p) => p.filter((_, idx) => idx !== i))} style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: 16 }}>🗑</button>
                 </div>

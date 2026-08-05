@@ -23,6 +23,11 @@ function normalizeAllowedClassTypes(value: unknown): string[] {
   return [...new Set(value.map((item) => String(item).trim().toLowerCase()).filter(Boolean))];
 }
 
+function normalizeAllowedClassIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.map((item) => String(item).trim()).filter(Boolean))];
+}
+
 function mapOffer(
   offer: {
     id: string;
@@ -50,6 +55,7 @@ function mapOffer(
     features?: string | null;
     featuresEn?: string | null;
     allowedClassTypes?: Array<{ classType: string }>;
+    allowedClasses?: Array<{ classId: string }>;
     membership?: { name: string } | null;
   },
 ) {
@@ -84,6 +90,7 @@ function mapOffer(
     features: parseFeatures(offer.features),
     featuresEn: parseFeatures(offer.featuresEn),
     allowedClassTypes: offer.allowedClassTypes?.map((item) => item.classType) ?? [],
+    allowedClassIds: offer.allowedClasses?.map((item) => item.classId) ?? [], // NEW
   };
 }
 
@@ -92,7 +99,11 @@ export async function GET() {
   if (err) return err;
 
   const offers = await db.offer.findMany({
-    include: { membership: { select: { name: true } }, allowedClassTypes: { select: { classType: true } } },
+    include: {
+      membership: { select: { name: true } },
+      allowedClassTypes: { select: { classType: true } },
+      allowedClasses: { select: { classId: true } }, // NEW
+    },
     orderBy: [{ showOnHome: "desc" }, { expiresAt: "asc" }],
   });
 
@@ -118,6 +129,24 @@ export async function POST(req: Request) {
     }
 
     const allowedClassTypes = normalizeAllowedClassTypes(body.allowedClassTypes);
+    const allowedClassIds = normalizeAllowedClassIds(body.allowedClassIds); // NEW
+
+    // Validate class IDs exist and are active
+    if (allowedClassIds.length > 0) {
+      const validClasses = await db.class.findMany({
+        where: { id: { in: allowedClassIds }, isActive: true },
+        select: { id: true },
+      });
+      const validIds = new Set(validClasses.map((c) => c.id));
+      const invalidIds = allowedClassIds.filter((id) => !validIds.has(id));
+      if (invalidIds.length > 0) {
+        return NextResponse.json(
+          { error: `بعض الكلاسات المختارة غير موجودة أو غير نشطة: ${invalidIds.join(", ")}` },
+          { status: 400 }
+        );
+      }
+    }
+
     const created = await db.offer.create({
       data: {
         title,
@@ -144,8 +173,13 @@ export async function POST(req: Request) {
         features: Array.isArray(body.features) && body.features.length > 0 ? JSON.stringify(body.features) : null,
         featuresEn: Array.isArray(body.featuresEn) && body.featuresEn.length > 0 ? JSON.stringify(body.featuresEn) : null,
         allowedClassTypes: { create: allowedClassTypes.map((classType) => ({ classType })) },
+        allowedClasses: { create: allowedClassIds.map((classId) => ({ classId })) }, // NEW
       },
-      include: { membership: { select: { name: true } }, allowedClassTypes: { select: { classType: true } } },
+      include: {
+        membership: { select: { name: true } },
+        allowedClassTypes: { select: { classType: true } },
+        allowedClasses: { select: { classId: true } }, // NEW
+      },
     });
 
     void logAudit({ action: "create", targetType: "offer", targetId: created.id, details: { title: created.title } });
@@ -215,10 +249,40 @@ export async function PATCH(req: Request) {
       };
     }
 
+    // NEW: Handle allowedClassIds update
+    if (body.allowedClassIds !== undefined) {
+      const allowedClassIds = normalizeAllowedClassIds(body.allowedClassIds);
+
+      // Validate class IDs exist and are active
+      if (allowedClassIds.length > 0) {
+        const validClasses = await db.class.findMany({
+          where: { id: { in: allowedClassIds }, isActive: true },
+          select: { id: true },
+        });
+        const validIds = new Set(validClasses.map((c) => c.id));
+        const invalidIds = allowedClassIds.filter((cid) => !validIds.has(cid));
+        if (invalidIds.length > 0) {
+          return NextResponse.json(
+            { error: `بعض الكلاسات المختارة غير موجودة أو غير نشطة: ${invalidIds.join(", ")}` },
+            { status: 400 }
+          );
+        }
+      }
+
+      data.allowedClasses = {
+        deleteMany: {}, // Remove old links
+        create: allowedClassIds.map((classId) => ({ classId })), // Add new links
+      };
+    }
+
     const updated = await db.offer.update({
       where: { id },
       data,
-      include: { membership: { select: { name: true } }, allowedClassTypes: { select: { classType: true } } },
+      include: {
+        membership: { select: { name: true } },
+        allowedClassTypes: { select: { classType: true } },
+        allowedClasses: { select: { classId: true } }, // NEW
+      },
     });
 
     void logAudit({ action: "update", targetType: "offer", targetId: id, details: { title: updated.title, changes: Object.keys(data) } });

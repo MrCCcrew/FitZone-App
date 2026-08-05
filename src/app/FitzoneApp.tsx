@@ -16,6 +16,7 @@ import {
   type CoachUiActionResult,
 } from "@/lib/ai-coach/ui-action-dispatcher";
 import { COACH_PAGES } from "@/lib/ai-coach/page-registry";
+import { formatTime12Hour } from "@/lib/time-format";
 
 const FitZoneTour = dynamic(() => import("@/components/onboarding/FitZoneTour"), { ssr: false });
 const ONBOARDING_COMPLETED_KEY = "fitzone_onboarding_completed_v1";
@@ -4600,12 +4601,7 @@ const MembershipsPage = ({ navigate, summary: userSummary, coachState }: { navig
   };
 
   const formatScheduleTimeLabel = (value: string) => {
-    const [h, m] = value.split(":").map((n) => Number(n));
-    const hour = Number.isNaN(h) ? 0 : h;
-    const minute = Number.isNaN(m) ? 0 : m;
-    const period = hour < 12 ? "صباحًا" : hour < 16 ? "ظهرًا" : "مساءً";
-    const displayHour = hour % 12 === 0 ? 12 : hour % 12;
-    return `${String(displayHour).padStart(2, "0")}.${String(minute).padStart(2, "0")} ${period}`;
+    return formatTime12Hour(value);
   };
 
   const scheduleSlots = useMemo(() => {
@@ -7013,17 +7009,7 @@ const SchedulePage = () => {
   };
 
   const formatTimeLabel = (value: string) => {
-    const [h, m] = value.split(":").map((n) => Number(n));
-    const hour = Number.isNaN(h) ? 0 : h;
-    const minute = Number.isNaN(m) ? 0 : m;
-    if (lang === "en") {
-      const period = hour < 12 ? "AM" : "PM";
-      const displayHour = hour % 12 === 0 ? 12 : hour % 12;
-      return `${String(displayHour).padStart(2, "0")}:${String(minute).padStart(2, "0")} ${period}`;
-    }
-    const period = hour < 12 ? "صباحًا" : hour < 16 ? "ظهرًا" : "مساءً";
-    const displayHour = hour % 12 === 0 ? 12 : hour % 12;
-    return `${String(displayHour).padStart(2, "0")}.${String(minute).padStart(2, "0")} ${period}`;
+    return formatTime12Hour(value, { locale: lang === "en" ? "en-US" : "ar-EG" });
   };
 
   const MORNING_FALLBACK = ["09:00", "10:00", "11:00", "12:00", "13:00"];
