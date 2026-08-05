@@ -40,7 +40,7 @@ const EMPTY_PLAN: Omit<PlanDraft, "id" | "membersCount"> = {
   discountPct: null,
 };
 
-const EMPTY_OFFER: Omit<Offer, "id" | "usedCount" | "currentSubscribers"> & { allowedClassIds?: string[] } = {
+const EMPTY_OFFER: Omit<Offer, "id" | "usedCount" | "currentSubscribers"> = {
   title: "",
   titleEn: "",
   discount: 0,
@@ -64,7 +64,7 @@ const EMPTY_OFFER: Omit<Offer, "id" | "usedCount" | "currentSubscribers"> & { al
   features: [],
   featuresEn: [],
   allowedClassTypes: [],
-  allowedClassIds: [], // NEW: specific class IDs
+  allowedClassIds: [],
 };
 
 const CYCLE_LABELS: Record<NonNullable<Plan["cycle"]>, string> = {
@@ -1259,54 +1259,92 @@ export default function Subscriptions() {
                     <input type="number" value={offerModal.durationDays ?? ""} onChange={(event) => setOfferModal({ ...offerModal, durationDays: event.target.value ? Number(event.target.value) : null })} className={INPUT} dir="ltr" placeholder="مثال: 30" />
                   </Field>
                 </div>
-                <Field label="الكلاسات المحددة للعرض" hint="اختاري الكلاسات المحددة التي سيتمكن العميل من حجزها ضمن هذا العرض. ترك القائمة فارغة يعني عدم السماح بأي كلاس.">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {gymClasses
-                      .filter((cls) => cls.active)
-                      .map((cls) => {
-                        const selected = ((offerModal as typeof EMPTY_OFFER).allowedClassIds ?? []).includes(cls.id);
-                        return (
-                          <button
-                            key={cls.id}
-                            type="button"
-                            onClick={() => {
-                              const current = (offerModal as typeof EMPTY_OFFER).allowedClassIds ?? [];
-                              setOfferModal({
-                                ...offerModal,
-                                allowedClassIds: selected
-                                  ? current.filter((id) => id !== cls.id)
-                                  : [...current, cls.id],
-                              } as typeof offerModal);
-                            }}
-                            className={`rounded-xl border px-4 py-3 text-sm text-right transition-colors ${
-                              selected
-                                ? "border-[#ff4f93] bg-[#ff4f93]/15 text-white"
-                                : "border-gray-700 bg-gray-800 text-gray-300 hover:border-gray-600"
-                            }`}
-                          >
-                            <div className="font-bold text-base">{cls.name}</div>
-                            <div className="text-xs mt-1 opacity-70">
-                              {getClassTypeArabicLabel(cls.type)} • {cls.trainer}
-                            </div>
-                            <div className="text-xs mt-1 opacity-50">
-                              {formatTime12Hour(cls.time)} • {cls.day}
-                            </div>
-                          </button>
-                        );
-                      })}
-                  </div>
-
-                  {/* Legacy types - for reference during migration */}
-                  {offerModal.allowedClassTypes && offerModal.allowedClassTypes.length > 0 && (
-                    <div className="text-xs text-gray-500 mt-3 p-3 bg-gray-800/50 rounded-lg">
-                      <div className="font-bold mb-1">الأنواع القديمة (للمرجعية فقط):</div>
-                      <div>{offerModal.allowedClassTypes.map((type) => getClassTypeArabicLabel(type)).join(", ")}</div>
-                      <div className="mt-2 text-[10px] text-gray-600">
-                        سيتم تحويل هذه الأنواع إلى كلاسات محددة عند الحفظ
+                {offerModal.type === "special" ? (
+                  <Field label="أنواع الكلاسات المتاحة" hint="اختاري أنواع الكلاسات التي يتمكن العميل من حجزها ضمن هذا العرض. ترك القائمة فارغة يعني عدم السماح بأي كلاس.">
+                    {uniqueClassTypes.length === 0 ? (
+                      <div className="text-xs text-[#d7aabd]">لا توجد كلاسات مضافة في النظام حتى الآن.</div>
+                    ) : (
+                      <>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          {uniqueClassTypes.map(({ type, classes: typeClasses }) => {
+                            const selected = (offerModal.allowedClassTypes ?? []).includes(type);
+                            return (
+                              <button
+                                key={type}
+                                type="button"
+                                onClick={() => {
+                                  const current = offerModal.allowedClassTypes ?? [];
+                                  setOfferModal({
+                                    ...offerModal,
+                                    allowedClassTypes: selected
+                                      ? current.filter((t) => t !== type)
+                                      : [...current, type],
+                                  });
+                                }}
+                                className={`flex items-center justify-between rounded-xl border px-4 py-3 text-xs font-bold transition-colors ${
+                                  selected
+                                    ? "border-[#ff4f93] bg-[#ff4f93]/10 text-[#fff4f8]"
+                                    : "border-[rgba(255,188,219,0.12)] bg-black/15 text-[#d7aabd]"
+                                }`}
+                              >
+                                <span>
+                                  {getClassTypeArabicLabel(type)}
+                                  <span className="mr-1 font-normal opacity-60">({typeClasses.length})</span>
+                                </span>
+                                {selected ? <span className="text-[#ff4f93]">✓</span> : null}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        {!(offerModal.allowedClassTypes?.length) && (
+                          <div className="mt-2 rounded-xl border border-[rgba(255,188,219,0.1)] bg-black/20 px-4 py-2 text-xs text-[#d7aabd]">
+                            ⚠️ لم يتم تحديد أي نوع - لن يتمكن العميل من حجز أي كلاس
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </Field>
+                ) : (
+                  <Field label="الكلاسات المتاحة" hint="اختاري الحصص الفردية التي يتمكن العميل من حجزها ضمن هذا العرض.">
+                    {gymClasses.length === 0 ? (
+                      <div className="text-xs text-[#d7aabd]">لا توجد كلاسات مضافة في النظام حتى الآن.</div>
+                    ) : (
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {gymClasses.filter((cls) => cls.active).map((cls) => {
+                          const selected = (offerModal.allowedClassIds ?? []).includes(cls.id);
+                          return (
+                            <button
+                              key={cls.id}
+                              type="button"
+                              onClick={() => {
+                                const current = offerModal.allowedClassIds ?? [];
+                                setOfferModal({
+                                  ...offerModal,
+                                  allowedClassIds: selected
+                                    ? current.filter((id) => id !== cls.id)
+                                    : [...current, cls.id],
+                                });
+                              }}
+                              className={`flex items-center justify-between rounded-xl border px-4 py-3 text-xs font-bold transition-colors ${
+                                selected
+                                  ? "border-[#ff4f93] bg-[#ff4f93]/10 text-[#fff4f8]"
+                                  : "border-[rgba(255,188,219,0.12)] bg-black/15 text-[#d7aabd]"
+                              }`}
+                            >
+                              <span>
+                                {cls.name}
+                                <span className="mr-1 font-normal opacity-60">
+                                  ({getClassTypeArabicLabel(cls.type)} - {cls.day} {formatTime12Hour(cls.time, { meridiem: "ar" })})
+                                </span>
+                              </span>
+                              {selected ? <span className="text-[#ff4f93]">✓</span> : null}
+                            </button>
+                          );
+                        })}
                       </div>
-                    </div>
-                  )}
-                </Field>
+                    )}
+                  </Field>
+                )}
                 <label className="flex items-center gap-3 rounded-2xl border border-[rgba(255,188,219,0.12)] bg-black/15 px-4 py-3 text-sm text-[#fff4f8]">
                   <input
                     type="checkbox"

@@ -23,11 +23,6 @@ function normalizeAllowedClassTypes(value: unknown): string[] {
   return [...new Set(value.map((item) => String(item).trim().toLowerCase()).filter(Boolean))];
 }
 
-function normalizeAllowedClassIds(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return [...new Set(value.map((item) => String(item).trim()).filter(Boolean))];
-}
-
 function mapOffer(
   offer: {
     id: string;
@@ -90,7 +85,7 @@ function mapOffer(
     features: parseFeatures(offer.features),
     featuresEn: parseFeatures(offer.featuresEn),
     allowedClassTypes: offer.allowedClassTypes?.map((item) => item.classType) ?? [],
-    allowedClassIds: offer.allowedClasses?.map((item) => item.classId) ?? [], // NEW
+    allowedClassIds: offer.allowedClasses?.map((item) => item.classId) ?? [],
   };
 }
 
@@ -128,24 +123,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "أدخلي قيمة الاشتراك الخاصة بالعرض." }, { status: 400 });
     }
 
+    // Branch based on offer type
+    const isSpecialOffer = type === "special";
     const allowedClassTypes = normalizeAllowedClassTypes(body.allowedClassTypes);
-    const allowedClassIds = normalizeAllowedClassIds(body.allowedClassIds); // NEW
-
-    // Validate class IDs exist and are active
-    if (allowedClassIds.length > 0) {
-      const validClasses = await db.class.findMany({
-        where: { id: { in: allowedClassIds }, isActive: true },
-        select: { id: true },
-      });
-      const validIds = new Set(validClasses.map((c) => c.id));
-      const invalidIds = allowedClassIds.filter((id) => !validIds.has(id));
-      if (invalidIds.length > 0) {
-        return NextResponse.json(
-          { error: `بعض الكلاسات المختارة غير موجودة أو غير نشطة: ${invalidIds.join(", ")}` },
-          { status: 400 }
-        );
-      }
-    }
+    const allowedClassIds = normalizeAllowedClassTypes(body.allowedClassIds);
 
     const created = await db.offer.create({
       data: {
@@ -172,13 +153,18 @@ export async function POST(req: Request) {
         priceBefore: body.priceBefore != null && body.priceBefore !== "" ? Number(body.priceBefore) : null,
         features: Array.isArray(body.features) && body.features.length > 0 ? JSON.stringify(body.features) : null,
         featuresEn: Array.isArray(body.featuresEn) && body.featuresEn.length > 0 ? JSON.stringify(body.featuresEn) : null,
-        allowedClassTypes: { create: allowedClassTypes.map((classType) => ({ classType })) },
-        allowedClasses: { create: allowedClassIds.map((classId) => ({ classId })) }, // NEW
+        // Special offers: ONLY class types
+        ...(isSpecialOffer ? {
+          allowedClassTypes: { create: allowedClassTypes.map((classType) => ({ classType })) },
+        } : {
+          // Non-special offers: direct class links (if provided)
+          allowedClasses: allowedClassIds.length > 0 ? { create: allowedClassIds.map((classId) => ({ classId })) } : undefined,
+        }),
       },
       include: {
         membership: { select: { name: true } },
         allowedClassTypes: { select: { classType: true } },
-        allowedClasses: { select: { classId: true } }, // NEW
+        allowedClasses: { select: { classId: true } },
       },
     });
 
@@ -202,11 +188,25 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: "معرف العرض مطلوب." }, { status: 400 });
     }
 
+    // Get current offer type
+    const current = await db.offer.findUnique({
+      where: { id },
+      select: { type: true },
+    });
+    if (!current) {
+      return NextResponse.json({ error: "العرض غير موجود." }, { status: 404 });
+    }
+
+    const currentType = normalizeOfferType(current.type);
+    const newType = body.type !== undefined ? normalizeOfferType(String(body.type)) : currentType;
+    const finalType = newType; // Type after update
+    const isSpecialOffer = finalType === "special";
+
     const data: Record<string, unknown> = {};
 
     if (body.title !== undefined) data.title = String(body.title).trim();
     if (body.titleEn !== undefined) data.titleEn = String(body.titleEn).trim() || null;
-    if (body.type !== undefined) data.type = normalizeOfferType(String(body.type));
+    if (body.type !== undefined) data.type = newType;
     if (body.discount !== undefined) data.discount = Number(body.discount ?? 0);
     if (body.description !== undefined) data.description = body.description ? String(body.description).trim() : null;
     if (body.descriptionEn !== undefined) data.descriptionEn = body.descriptionEn ? String(body.descriptionEn).trim() : null;
@@ -241,38 +241,30 @@ export async function PATCH(req: Request) {
     if (body.featuresEn !== undefined) {
       data.featuresEn = Array.isArray(body.featuresEn) && body.featuresEn.length > 0 ? JSON.stringify(body.featuresEn) : null;
     }
-    if (body.allowedClassTypes !== undefined) {
-      const allowedClassTypes = normalizeAllowedClassTypes(body.allowedClassTypes);
-      data.allowedClassTypes = {
-        deleteMany: {},
-        create: allowedClassTypes.map((classType) => ({ classType })),
-      };
-    }
 
-    // NEW: Handle allowedClassIds update
-    if (body.allowedClassIds !== undefined) {
-      const allowedClassIds = normalizeAllowedClassIds(body.allowedClassIds);
-
-      // Validate class IDs exist and are active
-      if (allowedClassIds.length > 0) {
-        const validClasses = await db.class.findMany({
-          where: { id: { in: allowedClassIds }, isActive: true },
-          select: { id: true },
-        });
-        const validIds = new Set(validClasses.map((c) => c.id));
-        const invalidIds = allowedClassIds.filter((cid) => !validIds.has(cid));
-        if (invalidIds.length > 0) {
-          return NextResponse.json(
-            { error: `بعض الكلاسات المختارة غير موجودة أو غير نشطة: ${invalidIds.join(", ")}` },
-            { status: 400 }
-          );
-        }
+    // Branch based on final offer type
+    if (isSpecialOffer) {
+      // Special offer: update class types only
+      if (body.allowedClassTypes !== undefined) {
+        const allowedClassTypes = normalizeAllowedClassTypes(body.allowedClassTypes);
+        data.allowedClassTypes = {
+          deleteMany: {},
+          create: allowedClassTypes.map((classType) => ({ classType })),
+        };
       }
-
-      data.allowedClasses = {
-        deleteMany: {}, // Remove old links
-        create: allowedClassIds.map((classId) => ({ classId })), // Add new links
-      };
+      // If transitioning from non-special → special, delete direct links
+      if (currentType !== "special") {
+        data.allowedClasses = { deleteMany: {} };
+      }
+    } else {
+      // Non-special offer: update direct class links
+      if (body.allowedClassIds !== undefined) {
+        const allowedClassIds = normalizeAllowedClassTypes(body.allowedClassIds);
+        data.allowedClasses = {
+          deleteMany: {},
+          create: allowedClassIds.map((classId) => ({ classId })),
+        };
+      }
     }
 
     const updated = await db.offer.update({
@@ -281,7 +273,7 @@ export async function PATCH(req: Request) {
       include: {
         membership: { select: { name: true } },
         allowedClassTypes: { select: { classType: true } },
-        allowedClasses: { select: { classId: true } }, // NEW
+        allowedClasses: { select: { classId: true } },
       },
     });
 
