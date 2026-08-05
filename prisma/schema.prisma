@@ -410,6 +410,7 @@ model Class {
 
   trainer   Trainer    @relation(fields: [trainerId], references: [id])
   schedules Schedule[]
+  allowedInOffers OfferAllowedClass[]
 }
 
 model Schedule {
@@ -825,6 +826,7 @@ model Offer {
   membership Membership? @relation(fields: [membershipId], references: [id])
   userMemberships UserMembership[]
   allowedClassTypes OfferAllowedClassType[]
+  allowedClasses OfferAllowedClass[]
 }
 
 // Class types are currently represented by Class.type (there is no ClassType
@@ -839,6 +841,22 @@ model OfferAllowedClassType {
 
   @@unique([offerId, classType])
   @@index([classType])
+}
+
+// Direct relationship between Offer and specific Class instances
+// Replaces classType-based filtering with specific classId filtering
+model OfferAllowedClass {
+  id        String   @id @default(cuid())
+  offerId   String
+  classId   String
+  createdAt DateTime @default(now())
+
+  offer Offer @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  class Class @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  @@unique([offerId, classId])
+  @@index([offerId])
+  @@index([classId])
 }
 
 model ProductCategory {

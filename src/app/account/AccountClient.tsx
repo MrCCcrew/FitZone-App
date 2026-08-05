@@ -8,6 +8,7 @@ import { useLang } from "@/lib/language";
 import { TranslateButton } from "@/app/admin/sections/TranslateButton";
 import PushNotificationToggle from "@/components/PushNotificationToggle";
 import PushPromptModal from "@/components/PushPromptModal";
+import { formatTime12Hour } from "@/lib/time-format";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 interface AccountData {
@@ -2103,7 +2104,7 @@ function AccountMembershipTab({
                       <div key={booking.id} className="flex items-center justify-between gap-3 rounded-xl border border-[#ffbcdb]/10 bg-black/20 px-3 py-2 text-sm">
                         <div>
                           <div className="font-bold text-white">{booking.className}</div>
-                          <div className="text-xs text-[#d7aabd]">{booking.trainerName} • {format(new Date(booking.date), "d MMM yyyy", { locale: lang === "en" ? enUS : ar })} • {booking.time}</div>
+                          <div className="text-xs text-[#d7aabd]">{booking.trainerName} • {format(new Date(booking.date), "d MMM yyyy", { locale: lang === "en" ? enUS : ar })} • {formatTime12Hour(booking.time, { locale: lang === "en" ? "en-US" : "ar-EG" })}</div>
                         </div>
                         <span className={`text-[11px] px-2 py-1 rounded-full font-bold ${STATUS_MAP[booking.status]?.color ?? "bg-gray-700 text-gray-300"}`}>
                           {STATUS_MAP[booking.status]?.label ?? booking.status}
@@ -2252,7 +2253,7 @@ function BookingsTabLegacy({ bookings }: { bookings: AccountData["bookings"] }) 
                 <div className="text-white font-black">{b.className}</div>
                 <div className="text-gray-400 text-xs">{t("مع", "With")} {b.trainerName}</div>
                 <div className="text-gray-500 text-xs mt-1">
-                  {format(new Date(b.date), "EEEE d MMMM", { locale: lang === "en" ? enUS : ar })}  {b.time}
+                  {format(new Date(b.date), "EEEE d MMMM", { locale: lang === "en" ? enUS : ar })}  {formatTime12Hour(b.time, { locale: lang === "en" ? "en-US" : "ar-EG" })}
                 </div>
               </div>
               <div className="flex flex-col items-end gap-2">
@@ -2368,12 +2369,7 @@ function BookingsTab({ bookings }: {
   };
 
   const formatScheduleTimeLabel = (value: string) => {
-    const [h, m] = value.split(":").map((n) => Number(n));
-    const hour = Number.isNaN(h) ? 0 : h;
-    const minute = Number.isNaN(m) ? 0 : m;
-    const period = lang === "en" ? (hour < 12 ? "AM" : hour < 16 ? "PM" : "PM") : hour < 12 ? "صباحًا" : hour < 16 ? "ظهرًا" : "مساءً";
-    const displayHour = hour % 12 === 0 ? 12 : hour % 12;
-    return `${String(displayHour).padStart(2, "0")}.${String(minute).padStart(2, "0")} ${period}`;
+    return formatTime12Hour(value, { locale: lang === "en" ? "en-US" : "ar-EG" });
   };
 
   // The authenticated endpoint already applies the central membership resolver.
@@ -2531,7 +2527,7 @@ function BookingsTab({ bookings }: {
                   <div className="text-white font-black">{b.className}</div>
                   <div className="text-gray-400 text-xs">{t("مع", "With")} {b.trainerName}</div>
                   <div className="text-gray-500 text-xs mt-1">
-                    {format(new Date(b.date), "EEEE d MMMM", { locale: lang === "en" ? enUS : ar })} {b.time}
+                    {format(new Date(b.date), "EEEE d MMMM", { locale: lang === "en" ? enUS : ar })} {formatTime12Hour(b.time, { locale: lang === "en" ? "en-US" : "ar-EG" })}
                   </div>
                 </div>
                 <div className="flex flex-col items-end gap-2">

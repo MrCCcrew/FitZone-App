@@ -119,9 +119,13 @@ export function buildScheduleReply(lang: CoachLang, classes: CoachPublicClass[])
     return lang === "en"
       ? "There are no upcoming active class slots in the next few days."
       : "لا توجد مواعيد كلاسات متاحة خلال الأيام القريبة.";
+
+  // Import formatTime12Hour
+  const { formatTime12Hour } = require("@/lib/time-format");
+
   return lang === "en"
-    ? `Upcoming classes:\n${items.map(({ c, s }) => `- ${c.name} · ${new Date(s.date).toLocaleDateString("en-US")} · ${s.time}`).join("\n")}`
-    : `المواعيد القريبة:\n${items.map(({ c, s }) => `- ${c.name} · ${new Date(s.date).toLocaleDateString("ar-EG")} · ${s.time}`).join("\n")}`;
+    ? `Upcoming classes:\n${items.map(({ c, s }) => `- ${c.name} · ${new Date(s.date).toLocaleDateString("en-US")} · ${formatTime12Hour(s.time, { locale: "en-US" })}`).join("\n")}`
+    : `المواعيد القريبة:\n${items.map(({ c, s }) => `- ${c.name} · ${new Date(s.date).toLocaleDateString("ar-EG")} · ${formatTime12Hour(s.time, { locale: "ar-EG" })}`).join("\n")}`;
 }
 
 export function buildTrainerReply(lang: CoachLang, trainers: CoachPublicTrainer[]) {

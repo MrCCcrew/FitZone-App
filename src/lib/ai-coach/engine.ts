@@ -23,6 +23,7 @@ import {
 import { detectSafetyFlags } from "@/lib/ai-coach/guards";
 import { detectCoachIntent } from "@/lib/ai-coach/intents";
 import { phraseCoachReply } from "@/lib/ai-coach/llm";
+import { formatTime12Hour } from "@/lib/time-format";
 import {
   buildAdvancedNudge,
   createAdvancedCheckIn,
@@ -578,7 +579,7 @@ async function buildDeterministicReply(args: {
           ? (emptyScheduleState === "no_schedules" ? (lang === "en" ? "Classes exist, but this environment has no schedules yet." : "الكلاسات موجودة، لكن مفيش مواعيد مضافة في النسخة الحالية.") : emptyScheduleState === "no_future_schedules" ? (lang === "en" ? "There are past schedules, but no upcoming schedules are currently visible." : "فيه مواعيد قديمة، لكن مفيش مواعيد قادمة ظاهرة حاليًا.") : emptyScheduleState === "no_bookable_schedules" ? (lang === "en" ? "There are upcoming schedules, but none are bookable right now." : "فيه مواعيد قادمة، لكنها غير متاحة للحجز حاليًا.") : classSearch.isListAll ? (lang === "en" ? "There are no classes available in the current schedule." : "مفيش كلاسات متاحة في الجدول الحالي.") : (lang === "en" ? `No ${classSearch.searchTerm} class is available ${understanding?.temporalFilter.date === "tomorrow" ? "tomorrow" : "in the current schedule"}.` : `مش ظاهر كلاس ${classSearch.searchTerm} متاح ${understanding?.temporalFilter.date === "tomorrow" ? "بكرة" : "في الجدول الحالي"}.`))
           : (lang === "en" ? (isPackageQuery ? "There are no matching packages." : "There are no matching memberships.") : (isPackageQuery ? "لا توجد باقات مطابقة." : "لا توجد اشتراكات مطابقة."))
       : asksSchedule
-        ? snapshot.classes.map((row) => `${row.name}: ${row.schedules.map((schedule) => `${new Date(schedule.date).toLocaleDateString(lang === "en" ? "en-GB" : "ar-EG")} ${schedule.time}`).join("؛ ")}`).join("\n")
+        ? snapshot.classes.map((row) => `${row.name}: ${row.schedules.map((schedule) => `${new Date(schedule.date).toLocaleDateString(lang === "en" ? "en-GB" : "ar-EG")} ${formatTime12Hour(schedule.time, { locale: lang === "en" ? "en-US" : "ar-EG" })}`).join("؛ ")}`).join("\n")
         : asksOffer
           ? snapshot.offers.map((row) => `${row.title}: ${row.description || (lang === "en" ? "active offer" : "عرض نشط")}`).join("\n")
           : snapshot.memberships.map((row) => `${row.name}: ${row.price} ${lang === "en" ? "EGP" : "جنيه"}`).join("\n");

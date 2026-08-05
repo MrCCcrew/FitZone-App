@@ -10,6 +10,7 @@ import {
 } from "@/lib/admin-booking-display";
 import { hasAdminPermission } from "@/lib/admin-authorization";
 import { AdminCard, AdminEmptyState, AdminSectionShell } from "./shared";
+import { formatTime12Hour } from "@/lib/time-format";
 
 type BookingRow = {
   id: string;
@@ -826,7 +827,7 @@ export default function Bookings() {
     () =>
       schedules.map((item) => ({
         value: item.id,
-        label: `${item.class.name} • ${formatDay(item.date)} • ${formatDate(item.date)} • ${item.time}`,
+        label: `${item.class.name} • ${formatDay(item.date)} • ${formatDate(item.date)} • ${formatTime12Hour(item.time)}`,
         availableSpots: item.availableSpots,
       })),
     [schedules],
@@ -972,7 +973,7 @@ export default function Bookings() {
                 <option value="">اختَر الموعد</option>
                 {attendanceSchedules.map((schedule) => (
                   <option key={schedule.id} value={schedule.id}>
-                    {schedule.class.name} • {formatDay(schedule.date)} • {formatDate(schedule.date)} • {schedule.time}
+                    {schedule.class.name} • {formatDay(schedule.date)} • {formatDate(schedule.date)} • {formatTime12Hour(schedule.time)}
                   </option>
                 ))}
               </select>
@@ -1133,7 +1134,7 @@ export default function Bookings() {
                     </div>
                     <div className="mt-3 space-y-1 text-sm text-[#d7aabd]">
                       {item.booking ? (
-                        <div>الكلاس: <span className="font-bold text-white">{item.booking.className}</span> • {item.booking.time}</div>
+                        <div>الكلاس: <span className="font-bold text-white">{item.booking.className}</span> • {formatTime12Hour(item.booking.time)}</div>
                       ) : null}
                       {item.privateSession ? (
                         <div>المدربة: <span className="font-bold text-white">{item.privateSession.trainerName}</span></div>
@@ -1229,7 +1230,7 @@ export default function Bookings() {
                       </td>
                       <td className="px-5 py-4 text-[#d7aabd]">
                         <div>{formatDay(booking.schedule.date)}</div>
-                        <div className="mt-1 text-xs text-[#b98ea0]">{formatDate(booking.schedule.date)} • {booking.schedule.time}</div>
+                        <div className="mt-1 text-xs text-[#b98ea0]">{formatDate(booking.schedule.date)} • {formatTime12Hour(booking.schedule.time)}</div>
                       </td>
                       <td className="px-5 py-4">
                         <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-bold ${statusDisplay?.badgeClass ?? STATUS_BADGE[booking.status] ?? "bg-white/10 text-white/70"}`}>
@@ -1417,7 +1418,7 @@ export default function Bookings() {
             <div className="rounded-2xl border border-[rgba(255,188,219,0.14)] bg-black/20 p-4 text-sm text-[#d7aabd]">
               <div className="font-bold text-[#fff4f8]">{rescheduleModal.user.name}</div>
               <div className="mt-1">الكلاس: {rescheduleModal.schedule.class.name}</div>
-              <div className="mt-1">الموعد الحالي: {formatDay(rescheduleModal.schedule.date)} • {formatDate(rescheduleModal.schedule.date)} • {rescheduleModal.schedule.time}</div>
+              <div className="mt-1">الموعد الحالي: {formatDay(rescheduleModal.schedule.date)} • {formatDate(rescheduleModal.schedule.date)} • {formatTime12Hour(rescheduleModal.schedule.time)}</div>
             </div>
 
             <div>

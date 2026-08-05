@@ -7,7 +7,8 @@ describe("customization offers inventory", () => {
   const tools = readFileSync(resolve(process.cwd(), "src/lib/ai-coach/interactive-tools.ts"), "utf8");
 
   it("uses the real Membership(kind=custom) source alongside Offer", () => {
-    expect(schema).toContain('kind        String  @default("subscription")');
+    // Match kind field regardless of spacing (Prisma format may vary)
+    expect(schema).toMatch(/kind\s+String\s+@default\("subscription"\)/);
     expect(tools).toContain('where: { kind: "custom" }');
     expect(tools).toContain('sourceType: "Offer + Membership(kind=custom)"');
     expect(tools).toContain('"available_without_expiry"');
