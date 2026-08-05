@@ -183,4 +183,21 @@ describe("Time format regression tests", () => {
     expect(formatTime12Hour("08:00")).toBe("08:00 ص");
     expect(formatTime12Hour("13:30")).toBe("01:30 م");
   });
+
+  it("supports explicit meridiem override for English AM/PM", () => {
+    // Production requirement: display times with English AM/PM regardless of locale
+    expect(formatTime12Hour("00:00", { meridiem: "en" })).toBe("12:00 AM");
+    expect(formatTime12Hour("08:00", { meridiem: "en" })).toBe("08:00 AM");
+    expect(formatTime12Hour("12:00", { meridiem: "en" })).toBe("12:00 PM");
+    expect(formatTime12Hour("13:00", { meridiem: "en" })).toBe("01:00 PM");
+    expect(formatTime12Hour("16:00", { meridiem: "en" })).toBe("04:00 PM");
+    expect(formatTime12Hour("17:00", { meridiem: "en" })).toBe("05:00 PM");
+    expect(formatTime12Hour("23:15", { meridiem: "en" })).toBe("11:15 PM");
+  });
+
+  it("supports explicit meridiem override for Arabic ص/م", () => {
+    expect(formatTime12Hour("08:00", { meridiem: "ar" })).toBe("08:00 ص");
+    expect(formatTime12Hour("13:00", { meridiem: "ar" })).toBe("01:00 م");
+    expect(formatTime12Hour("16:00", { meridiem: "ar" })).toBe("04:00 م");
+  });
 });

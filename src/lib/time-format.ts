@@ -9,16 +9,24 @@ export type TimeFormatOptions = {
   locale?: "ar-EG" | "en-US";
   timezone?: string;
   showSeconds?: boolean;
+  /** Override meridiem format: "ar" for ص/م, "en" for AM/PM */
+  meridiem?: "ar" | "en";
 };
 
 /**
  * Formats a time string (HH:mm or HH:mm:ss) to 12-hour format
- * Examples:
+ * Examples (default Arabic meridiem):
  * - "08:00" => "08:00 ص"
  * - "13:30" => "01:30 م"
  * - "00:00" => "12:00 ص"
  * - "12:00" => "12:00 م"
  * - "23:15" => "11:15 م"
+ *
+ * Examples (meridiem: "en"):
+ * - "08:00" => "08:00 AM"
+ * - "13:00" => "01:00 PM"
+ * - "16:00" => "04:00 PM"
+ * - "17:00" => "05:00 PM"
  */
 export function formatTime12Hour(
   value: string | null | undefined,
@@ -26,7 +34,7 @@ export function formatTime12Hour(
 ): string {
   if (!value) return "";
 
-  const { locale = "ar-EG", showSeconds = false } = options;
+  const { locale = "ar-EG", showSeconds = false, meridiem } = options;
 
   try {
     // Parse HH:mm or HH:mm:ss format
@@ -41,7 +49,9 @@ export function formatTime12Hour(
 
     // Determine AM/PM
     const isPM = hours >= 12;
-    const period = locale === "ar-EG" ? (isPM ? "م" : "ص") : (isPM ? "PM" : "AM");
+    // Allow explicit meridiem override or fallback to locale
+    const meridiemFormat = meridiem ?? (locale === "ar-EG" ? "ar" : "en");
+    const period = meridiemFormat === "ar" ? (isPM ? "م" : "ص") : (isPM ? "PM" : "AM");
 
     // Convert to 12-hour format
     // Special cases: 0 => 12, 12 stays 12, 13-23 => 1-11
