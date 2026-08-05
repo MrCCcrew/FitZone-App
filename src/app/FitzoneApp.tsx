@@ -3189,7 +3189,7 @@ const HomePage = ({ navigate, summary, storeEnabled, initialHomeData, diagnostic
                       style={{ padding: 20, borderRight: `3px solid ${s.color}` }}
                     >
                       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
-                        <span style={{ background: `${s.color}22`, color: s.color, padding: "4px 12px", borderRadius: 4, fontSize: 13, fontWeight: 700 }}>{s.time}</span>
+                        <span style={{ background: `${s.color}22`, color: s.color, padding: "4px 12px", borderRadius: 4, fontSize: 13, fontWeight: 700 }}>{formatTime12Hour(s.time, { meridiem: "en" })}</span>
                         <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 4, background: s.spots === 0 ? "rgba(239,68,68,.15)" : s.spots < 4 ? "rgba(234,179,8,.12)" : "rgba(34,197,94,.12)", color: s.spots === 0 ? "#EF4444" : s.spots < 4 ? "#EAB308" : C.success, fontWeight: 600 }}>
                           {s.spots === 0 ? t("ممتلئ", "Full") : s.spots < 4 ? `${s.spots} ${t("متبقية", "left")}` : t("متاح الآن", "Available")}
                         </span>
@@ -3930,7 +3930,7 @@ const HomePage = ({ navigate, summary, storeEnabled, initialHomeData, diagnostic
                                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                                   <div>
                                     <div style={{ fontWeight: 700, fontSize: 14, color: "#fff" }}>{slot.label}</div>
-                                    <div style={{ fontSize: 12, color: "#ffb7d0", marginTop: 2 }}>{slot.day} — {slot.time}</div>
+                                    <div style={{ fontSize: 12, color: "#ffb7d0", marginTop: 2 }}>{slot.day} — {formatTime12Hour(slot.time, { meridiem: "en" })}</div>
                                   </div>
                                   {selected && <span style={{ fontSize: 18 }}>✅</span>}
                                 </div>
@@ -6929,7 +6929,7 @@ const ClassDetailPage = ({ navigate }: { navigate: (p: string) => void }) => {
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
                   <div>
                     <div style={{ fontWeight: 700, fontSize: 13, color: C.white }}>{new Date(s.date).toLocaleDateString(lang === "en" ? "en-US" : "ar-EG", { weekday: "long", day: "numeric", month: "long" })}</div>
-                    <div style={{ color: C.gray, fontSize: 12 }}>{s.time}</div>
+                    <div style={{ color: C.gray, fontSize: 12 }}>{formatTime12Hour(s.time, { meridiem: "en" })}</div>
                   </div>
                   <span style={{ background: s.availableSpots === 0 ? "rgba(239,68,68,.12)" : "rgba(34,197,94,.12)", color: s.availableSpots === 0 ? "#EF4444" : C.success, padding: "3px 8px", borderRadius: 4, fontSize: 11, fontWeight: 600, height: "fit-content" }}>
                     {s.availableSpots === 0 ? t("ممتلئ", "Full") : `${s.availableSpots} ${t("متبقية", "left")}`}
@@ -9235,7 +9235,7 @@ const AccountPage = ({ navigate }: { navigate: (p: string) => void }) => {
                 <div key={i} className="card" style={{ padding: 18, marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div>
                     <div style={{ fontWeight: 700, fontSize: 14, color: C.white }}>{b.name}</div>
-                    <div style={{ color: C.gray, fontSize: 12, marginTop: 3 }}>{b.date} · {b.time} · {t("مع", "with")} {b.trainer}</div>
+                    <div style={{ color: C.gray, fontSize: 12, marginTop: 3 }}>{b.date} · {formatTime12Hour(b.time, { meridiem: "en" })} · {t("مع", "with")} {b.trainer}</div>
                   </div>
                   <span style={{ padding: "3px 12px", borderRadius: 4, fontSize: 11, fontWeight: 600, background: b.status === "confirmed" ? "rgba(34,197,94,.12)" : b.status === "pending" ? "rgba(233,30,99,.12)" : "rgba(239,68,68,.1)", color: b.status === "confirmed" ? C.success : b.status === "pending" ? C.red : "#EF4444" }}>
                     {b.status}

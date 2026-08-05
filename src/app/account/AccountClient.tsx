@@ -2104,7 +2104,7 @@ function AccountMembershipTab({
                       <div key={booking.id} className="flex items-center justify-between gap-3 rounded-xl border border-[#ffbcdb]/10 bg-black/20 px-3 py-2 text-sm">
                         <div>
                           <div className="font-bold text-white">{booking.className}</div>
-                          <div className="text-xs text-[#d7aabd]">{booking.trainerName} • {format(new Date(booking.date), "d MMM yyyy", { locale: lang === "en" ? enUS : ar })} • {formatTime12Hour(booking.time, { locale: lang === "en" ? "en-US" : "ar-EG" })}</div>
+                          <div className="text-xs text-[#d7aabd]">{booking.trainerName} • {format(new Date(booking.date), "d MMM yyyy", { locale: lang === "en" ? enUS : ar })} • {formatTime12Hour(booking.time, { meridiem: "en" })}</div>
                         </div>
                         <span className={`text-[11px] px-2 py-1 rounded-full font-bold ${STATUS_MAP[booking.status]?.color ?? "bg-gray-700 text-gray-300"}`}>
                           {STATUS_MAP[booking.status]?.label ?? booking.status}
@@ -2253,7 +2253,7 @@ function BookingsTabLegacy({ bookings }: { bookings: AccountData["bookings"] }) 
                 <div className="text-white font-black">{b.className}</div>
                 <div className="text-gray-400 text-xs">{t("مع", "With")} {b.trainerName}</div>
                 <div className="text-gray-500 text-xs mt-1">
-                  {format(new Date(b.date), "EEEE d MMMM", { locale: lang === "en" ? enUS : ar })}  {formatTime12Hour(b.time, { locale: lang === "en" ? "en-US" : "ar-EG" })}
+                  {format(new Date(b.date), "EEEE d MMMM", { locale: lang === "en" ? enUS : ar })} {formatTime12Hour(b.time, { meridiem: "en" })}
                 </div>
               </div>
               <div className="flex flex-col items-end gap-2">
@@ -2527,7 +2527,7 @@ function BookingsTab({ bookings }: {
                   <div className="text-white font-black">{b.className}</div>
                   <div className="text-gray-400 text-xs">{t("مع", "With")} {b.trainerName}</div>
                   <div className="text-gray-500 text-xs mt-1">
-                    {format(new Date(b.date), "EEEE d MMMM", { locale: lang === "en" ? enUS : ar })} {formatTime12Hour(b.time, { locale: lang === "en" ? "en-US" : "ar-EG" })}
+                    {format(new Date(b.date), "EEEE d MMMM", { locale: lang === "en" ? enUS : ar })} {formatTime12Hour(b.time, { meridiem: "en" })}
                   </div>
                 </div>
                 <div className="flex flex-col items-end gap-2">
@@ -4737,7 +4737,7 @@ function NutritionistProfileTab() {
                 <div key={i} className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 dark:border-gray-700">
                   <div className="flex-1">
                     <div className="font-bold text-sm">{slot.label}</div>
-                    <div className="text-xs text-gray-400">{slot.day} — {slot.time}</div>
+                    <div className="text-xs text-gray-400">{slot.day} — {formatTime12Hour(slot.time, { meridiem: "en" })}</div>
                   </div>
                   <button onClick={() => removeSlot(i)} className="text-red-500 hover:text-red-600 text-sm px-2">🗑</button>
                 </div>
