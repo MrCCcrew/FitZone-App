@@ -3195,23 +3195,23 @@ const HomePage = ({ navigate, summary, storeEnabled, initialHomeData, diagnostic
                         </span>
                       </div>
                       <div style={{ fontWeight: 700, fontSize: 16, color: C.white, marginBottom: 4 }}>{s.name}</div>
-                      {(s.trainer || s.trainerImage) ? (
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
-                          {s.trainerImage ? (
-                            <img
-                              src={s.trainerImage}
-                              alt={s.trainer || ""}
-                              loading="lazy"
-                              style={{ width: 40, height: 40, borderRadius: "50%", objectFit: "cover", objectPosition: "top", flexShrink: 0, border: `2px solid ${s.color}88` }}
-                            />
-                          ) : (
-                            <div style={{ width: 40, height: 40, borderRadius: "50%", background: `${s.color}22`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>
-                              👩
-                            </div>
-                          )}
-                          {s.trainer && <span style={{ color: C.gray, fontSize: 13 }}>{t("مع", "With")} {s.trainer}</span>}
-                        </div>
-                      ) : <div style={{ marginBottom: 16 }} />}
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+                        {s.trainerImage ? (
+                          <img
+                            src={s.trainerImage}
+                            alt={s.trainer || t("المدربة", "Trainer")}
+                            loading="lazy"
+                            style={{ width: 40, height: 40, borderRadius: "50%", objectFit: "cover", objectPosition: "top", flexShrink: 0, border: `2px solid ${s.color}88` }}
+                          />
+                        ) : (
+                          <div style={{ width: 40, height: 40, borderRadius: "50%", background: `${s.color}22`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>
+                            👩
+                          </div>
+                        )}
+                        <span style={{ color: C.gray, fontSize: 13 }}>
+                          {t("مع المدربة", "With trainer")}: {s.trainer || t("لم يتم تحديد المدربة", "Not assigned")}
+                        </span>
+                      </div>
                       <button className="btn-primary" style={{ width: "100%", justifyContent: "center", padding: "8px", fontSize: 13, opacity: s.spots === 0 ? .5 : 1 }} disabled={s.spots === 0} onClick={() => {
                         window.dispatchEvent(new CustomEvent("fitzone:trial-booking", { detail: { scheduleId: s.id } }));
                       }}>
