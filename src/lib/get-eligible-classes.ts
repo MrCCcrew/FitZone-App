@@ -35,10 +35,14 @@ interface OfferClassEligibilityOptions {
 /**
  * Get eligible classes for an Offer
  *
- * Priority:
- * 1. Direct OfferAllowedClass links (new system)
- * 2. Legacy OfferAllowedClassType fallback (temporary)
- * 3. Empty = ZERO classes (NOT all classes)
+ * For SPECIAL offers (type === "special"):
+ * - ONLY use OfferAllowedClassType (class types, not individual classes)
+ * - Ignore OfferAllowedClass direct links completely
+ *
+ * For other offer types:
+ * - Priority: Direct links first, then legacy types
+ *
+ * Empty = ZERO classes (NOT all classes)
  */
 async function getEligibleClassesForOffer(
   offerId: string,
@@ -46,7 +50,53 @@ async function getEligibleClassesForOffer(
 ): Promise<EligibleClass[]> {
   const { includeInactive = false, logLegacyFallback = true } = options;
 
-  // 1. Try direct class links first (new system)
+  // Fetch offer type to determine which system to use
+  const offer = await db.offer.findUnique({
+    where: { id: offerId },
+    select: { type: true },
+  });
+
+  if (!offer) {
+    return [];
+  }
+
+  const isSpecialOffer = offer.type === "special";
+
+  // For SPECIAL offers: ONLY use class types (ignore direct links)
+  if (isSpecialOffer) {
+    const allowedTypes = await db.offerAllowedClassType.findMany({
+      where: { offerId },
+    });
+
+    if (allowedTypes.length === 0) {
+      // No types = ZERO classes allowed
+      return [];
+    }
+
+    const classTypes = allowedTypes.map((t) => t.classType.toLowerCase().trim());
+    const classes = await db.class.findMany({
+      where: {
+        type: {
+          in: classTypes,
+        },
+        ...(includeInactive ? {} : { isActive: true }),
+      },
+      include: {
+        trainer: { select: { name: true } },
+      },
+    });
+
+    return classes.map((cls) => ({
+      id: cls.id,
+      name: cls.name,
+      type: cls.type,
+      trainer: cls.trainer.name,
+      isActive: cls.isActive,
+    }));
+  }
+
+  // For non-special offers: Use direct links with legacy fallback
+  // 1. Try direct class links first
   const directLinks = await db.offerAllowedClass.findMany({
     where: { offerId },
     include: {
@@ -71,7 +121,7 @@ async function getEligibleClassesForOffer(
       }));
   }
 
-  // 2. Fallback to legacy classType-based filtering (temporary during migration)
+  // 2. Fallback to legacy classType-based filtering
   const legacyTypes = await db.offerAllowedClassType.findMany({
     where: { offerId },
   });
@@ -238,7 +288,36 @@ export async function isClassAllowedForSource(
   classId: string
 ): Promise<boolean> {
   if (source.type === "offer") {
-    // Check direct link first
+    // Fetch offer type to determine validation logic
+    const offer = await db.offer.findUnique({
+      where: { id: source.id },
+      select: { type: true },
+    });
+
+    if (!offer) return false;
+
+    const isSpecialOffer = offer.type === "special";
+
+    // For SPECIAL offers: ONLY check class types (ignore direct links)
+    if (isSpecialOffer) {
+      const gymClass = await db.class.findUnique({
+        where: { id: classId },
+        select: { type: true },
+      });
+
+      if (!gymClass) return false;
+
+      const allowedTypes = await db.offerAllowedClassType.findMany({
+        where: { offerId: source.id },
+      });
+
+      if (allowedTypes.length === 0) return false;
+
+      const types = allowedTypes.map((t) => t.classType.toLowerCase().trim());
+      return types.includes(gymClass.type.toLowerCase().trim());
+    }
+
+    // For non-special offers: Check direct link first, then fallback to types
     const directLink = await db.offerAllowedClass.findFirst({
       where: {
         offerId: source.id,
