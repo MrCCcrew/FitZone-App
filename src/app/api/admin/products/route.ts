@@ -112,40 +112,88 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "بيانات المنتج ناقصة." }, { status: 400 });
   }
 
+  // Parse and validate stock and cost
+  const stockNum = Number(stock ?? 0);
+  const costNum = Number(costPrice ?? 0);
+
+  // Validate finite numbers
+  if (!Number.isFinite(stockNum) || !Number.isFinite(costNum)) {
+    return NextResponse.json({ error: "قيم المخزون أو التكلفة غير صحيحة." }, { status: 400 });
+  }
+
+  // Reject negative values
+  if (stockNum < 0 || costNum < 0) {
+    return NextResponse.json({ error: "المخزون والتكلفة يجب أن تكون قيم موجبة." }, { status: 400 });
+  }
+
+  // Validation: Opening stock requires cost
+  if (stockNum > 0 && costNum <= 0) {
+    return NextResponse.json({
+      error: "يجب إدخال تكلفة المنتج (Cost Price) عند تحديد مخزون افتتاحي أكبر من صفر.",
+    }, { status: 400 });
+  }
+
   const categoryRecord = await db.productCategory.findFirst({
     where: { key: String(category ?? "gear") },
   });
 
-  const product = await db.product.create({
-    data: {
-      name: String(name),
-      nameEn: nameEn ? String(nameEn) : null,
-      category: categoryRecord?.key ?? "gear",
-      price: Number(price),
-      oldPrice: oldPrice ? Number(oldPrice) : null,
-      vatEnabled: Boolean(vatEnabled ?? false),
-      stock: Number(stock ?? 0),
-      description: description ? String(description) : null,
-      descriptionEn: descriptionEn ? String(descriptionEn) : null,
-      images: Array.isArray(images) ? JSON.stringify(images.filter(Boolean)) : null,
-      sizes: Array.isArray(sizes) ? JSON.stringify(sizes.filter(Boolean)) : null,
-      colors: Array.isArray(colors) ? JSON.stringify(colors.filter(Boolean)) : null,
-      faqs: Array.isArray(faqs) ? JSON.stringify(faqs) : null,
-      whoShouldBuy: Array.isArray(whoShouldBuy) ? JSON.stringify(whoShouldBuy) : null,
-      importantInfo: importantInfo ? String(importantInfo) : null,
-      disclaimer: disclaimer ? String(disclaimer) : null,
-      editorialReview: editorialReview ? String(editorialReview) : null,
-      unitLabel: unitLabel ? String(unitLabel) : null,
-      isActive: true,
-      supplierId: supplierId ? String(supplierId) : null,
-      costPrice: costPrice != null ? Number(costPrice) : null,
-      barcode: barcode ? String(barcode) : null,
-      isFeatured: Boolean(isFeatured ?? false),
-      isNew: Boolean(isNew ?? false),
-      isBestSeller: Boolean(isBestSeller ?? false),
-      isSpecialOffer: Boolean(isSpecialOffer ?? false),
-    },
-    include: { supplier: { select: { name: true } } },
+  // Transaction: Create product + opening stock movement
+  const product = await db.$transaction(async (tx) => {
+    // Create product with final values
+    const newProduct = await tx.product.create({
+      data: {
+        name: String(name),
+        nameEn: nameEn ? String(nameEn) : null,
+        category: categoryRecord?.key ?? "gear",
+        price: Number(price),
+        oldPrice: oldPrice ? Number(oldPrice) : null,
+        vatEnabled: Boolean(vatEnabled ?? false),
+        stock: stockNum,
+        averageCost: stockNum > 0 ? costNum : 0,
+        lastPurchaseCost: 0,
+        description: description ? String(description) : null,
+        descriptionEn: descriptionEn ? String(descriptionEn) : null,
+        images: Array.isArray(images) ? JSON.stringify(images.filter(Boolean)) : null,
+        sizes: Array.isArray(sizes) ? JSON.stringify(sizes.filter(Boolean)) : null,
+        colors: Array.isArray(colors) ? JSON.stringify(colors.filter(Boolean)) : null,
+        faqs: Array.isArray(faqs) ? JSON.stringify(faqs) : null,
+        whoShouldBuy: Array.isArray(whoShouldBuy) ? JSON.stringify(whoShouldBuy) : null,
+        importantInfo: importantInfo ? String(importantInfo) : null,
+        disclaimer: disclaimer ? String(disclaimer) : null,
+        editorialReview: editorialReview ? String(editorialReview) : null,
+        unitLabel: unitLabel ? String(unitLabel) : null,
+        isActive: true,
+        supplierId: supplierId ? String(supplierId) : null,
+        costPrice: costPrice != null ? Number(costPrice) : null,
+        barcode: barcode ? String(barcode) : null,
+        isFeatured: Boolean(isFeatured ?? false),
+        isNew: Boolean(isNew ?? false),
+        isBestSeller: Boolean(isBestSeller ?? false),
+        isSpecialOffer: Boolean(isSpecialOffer ?? false),
+      },
+      include: { supplier: { select: { name: true } } },
+    });
+
+    // Create opening stock movement if stock > 0
+    if (stockNum > 0) {
+      await tx.inventoryMovement.create({
+        data: {
+          productId: newProduct.id,
+          type: "opening_stock",
+          quantityChange: stockNum,
+          quantityBefore: 0,
+          quantityAfter: stockNum,
+          unitCost: costNum,
+          averageCostBefore: 0,
+          averageCostAfter: costNum,
+          referenceType: "product_opening_stock",
+          referenceId: newProduct.id,
+          notes: "رصيد افتتاحي من شاشة إضافة المنتج",
+        },
+      });
+    }
+
+    return newProduct;
   });
 
   void logAudit({ action: "create", targetType: "product", targetId: product.id, details: { name: product.name, price: product.price } });
