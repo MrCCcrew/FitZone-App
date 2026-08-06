@@ -247,6 +247,40 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: "معرّف المنتج مطلوب." }, { status: 400 });
   }
 
+  // Read current product to validate stock changes
+  const current = await db.product.findUnique({
+    where: { id: String(id) },
+    select: { id: true, stock: true },
+  });
+
+  if (!current) {
+    return NextResponse.json({ error: "المنتج غير موجود." }, { status: 404 });
+  }
+
+  // Validate stock changes
+  if (rest.stock !== undefined) {
+    const requestedStock = Number(rest.stock);
+
+    // Reject invalid values
+    if (!Number.isFinite(requestedStock)) {
+      return NextResponse.json({ error: "قيمة المخزون غير صحيحة." }, { status: 400 });
+    }
+
+    if (requestedStock < 0) {
+      return NextResponse.json({ error: "المخزون يجب أن يكون قيمة موجبة." }, { status: 400 });
+    }
+
+    // Reject if stock changed
+    if (requestedStock !== current.stock) {
+      return NextResponse.json({
+        error: "لا يمكن تعديل المخزون من شاشة المنتج. استخدم حركة تسوية المخزون.",
+      }, { status: 400 });
+    }
+
+    // If stock unchanged, allow for compatibility but don't write it
+    // (skip adding to data object)
+  }
+
   const data: Record<string, unknown> = {};
   if (active !== undefined) data.isActive = Boolean(active);
   if (rest.name !== undefined) data.name = String(rest.name);
@@ -254,7 +288,7 @@ export async function PATCH(req: Request) {
   if (rest.price !== undefined) data.price = Number(rest.price);
   if (rest.oldPrice !== undefined) data.oldPrice = rest.oldPrice ? Number(rest.oldPrice) : null;
   if (rest.vatEnabled !== undefined) data.vatEnabled = Boolean(rest.vatEnabled);
-  if (rest.stock !== undefined) data.stock = Number(rest.stock);
+  // Stock modification removed - handled above
   if (rest.description !== undefined) data.description = rest.description ? String(rest.description) : null;
   if (rest.descriptionEn !== undefined) data.descriptionEn = rest.descriptionEn ? String(rest.descriptionEn) : null;
   if (rest.images !== undefined) data.images = Array.isArray(rest.images) ? JSON.stringify(rest.images.filter(Boolean)) : null;
