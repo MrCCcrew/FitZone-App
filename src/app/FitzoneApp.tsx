@@ -4148,6 +4148,8 @@ const MembershipsPage = ({ navigate, summary: userSummary, coachState }: { navig
   }, [coachState?.actionSource, coachState?.selectedGoalId]);
   const tourSelectedGoalRef = useRef<string | null>(null);
   const plansRef = useRef<HTMLDivElement | null>(null);
+  const firstMatchingPlanRef = useRef<HTMLDivElement | null>(null);
+  const pendingMobileGoalScrollRef = useRef(false);
   const featuredCardRef = useRef<HTMLDivElement | null>(null);
   const [subscribing, setSubscribing] = useState<string | null>(null);
   const [subMsg, setSubMsg] = useState<{ text: string; ok: boolean; action?: "back_to_schedule" | "back_to_plan" } | null>(null);
@@ -4480,9 +4482,18 @@ const MembershipsPage = ({ navigate, summary: userSummary, coachState }: { navig
       }
       return cleaned;
     });
-    requestAnimationFrame(() => {
-      plansRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
+
+    // Scroll behavior: on desktop scroll to plans section, on mobile will scroll to first matching plan
+    const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
+    if (isMobile) {
+      // Set flag to trigger mobile scroll in useEffect after filteredPlans update
+      pendingMobileGoalScrollRef.current = true;
+    } else {
+      // Desktop: scroll to plans section immediately
+      requestAnimationFrame(() => {
+        plansRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    }
   };
 
   useEffect(() => {
@@ -4521,6 +4532,33 @@ const MembershipsPage = ({ navigate, summary: userSummary, coachState }: { navig
     if (coachState?.membershipSort === "price_desc") return [...requested].sort((a, b) => (b.priceAfter ?? b.price) - (a.priceAfter ?? a.price));
     return requested;
   }, [plans, selectedGoals, tab, coachState?.membershipResultIds, coachState?.membershipSort]);
+
+  // Mobile: scroll to first matching plan after goal selection (only when user clicked)
+  useEffect(() => {
+    // Only scroll if user explicitly clicked a goal on mobile
+    if (!pendingMobileGoalScrollRef.current) return;
+    if (typeof window === "undefined" || window.innerWidth >= 768) {
+      pendingMobileGoalScrollRef.current = false;
+      return;
+    }
+
+    // Clear flag if no goals selected or no results
+    if (selectedGoals.length === 0 || filteredPlans.length === 0) {
+      pendingMobileGoalScrollRef.current = false;
+      return;
+    }
+
+    // Scroll to first matching plan on mobile after React updates
+    requestAnimationFrame(() => {
+      if (firstMatchingPlanRef.current) {
+        firstMatchingPlanRef.current.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      }
+      pendingMobileGoalScrollRef.current = false;
+    });
+  }, [selectedGoals.join("|"), filteredPlans[0]?.id, filteredPlans.length]);
 
   const surveyBlockedTypes = useMemo(() => {
     const blocked = new Set<string>();
@@ -6287,6 +6325,7 @@ const MembershipsPage = ({ navigate, summary: userSummary, coachState }: { navig
                 return (
                   <div
                     key={p.name}
+                    ref={index === 0 && selectedGoals.length > 0 ? firstMatchingPlanRef : undefined}
                     data-tour={index === 0 ? "first-goal-membership-card" : undefined}
                     className="card"
                     style={{
@@ -6297,6 +6336,7 @@ const MembershipsPage = ({ navigate, summary: userSummary, coachState }: { navig
                       overflow: "hidden",
                       display: "flex",
                       flexDirection: "column",
+                      scrollMarginTop: "110px",
                       borderRadius: 18,
                     }}
                   >
