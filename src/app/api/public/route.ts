@@ -6,6 +6,7 @@ import { getPaymentSettings } from "@/lib/payments/settings";
 import { parseStoredTrainerFileLinks } from "@/lib/trainer-profile";
 import { activePublicOfferWhere } from "@/lib/offers";
 import { visibleClassScheduleWhere, visibleMembershipWhere, visibleProductWhere, visibleScheduleWhere, visibleTrainerWhere } from "@/lib/public-catalog";
+import { getEligibleClassesForSource } from "@/lib/get-eligible-classes";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 30;
@@ -88,6 +89,7 @@ type PublicPayload = {
     sessionsCount: number | null;
     features: string[];
     priceBefore: number | null;
+    allowedClassTypes: string[];
   }>;
   classes: Array<{
     id: string;
@@ -296,9 +298,13 @@ function parseSiteContentRecord<T>(records: Array<{ section: string; content: st
 
 export async function GET(request: Request) {
   try {
-    const lang = new URL(request.url).searchParams.get("lang") === "en" ? "en" : "ar";
+    const url = new URL(request.url);
+    const lang = url.searchParams.get("lang") === "en" ? "en" : "ar";
+    const offerId = url.searchParams.get("offerId") || null;
+
+    const cacheKey = offerId ? `${lang}:offer:${offerId}` : lang;
     const now = Date.now();
-    const cached = getPublicApiCache(lang);
+    const cached = getPublicApiCache(cacheKey);
 
     if (cached && cached.expiresAt > now) {
       return NextResponse.json(cached.payload, { headers: RESPONSE_HEADERS });
@@ -385,6 +391,41 @@ export async function GET(request: Request) {
           orderBy: { createdAt: "asc" },
         }),
       ]);
+
+    // Server-side filtering for special offers ONLY
+    let filteredClasses = classes;
+    if (offerId) {
+      // Find the offer and validate it's a special offer
+      const offer = offers.find((o) => o.id === offerId);
+
+      if (!offer) {
+        // Invalid or inactive offerId
+        return NextResponse.json(
+          { error: "Offer not found or inactive" },
+          { status: 400, headers: RESPONSE_HEADERS }
+        );
+      }
+
+      if (offer.type !== "special") {
+        // Regular offers don't support schedule filtering via offerId
+        return NextResponse.json(
+          { error: "Schedule filtering is only supported for special offers" },
+          { status: 400, headers: RESPONSE_HEADERS }
+        );
+      }
+
+      // Filter for special offers
+      const eligibleClasses = await getEligibleClassesForSource(
+        { type: "offer", id: offerId }
+      );
+
+      if (eligibleClasses.length === 0) {
+        filteredClasses = [];
+      } else {
+        const eligibleIds = new Set(eligibleClasses.map(c => c.id));
+        filteredClasses = classes.filter(c => eligibleIds.has(c.id));
+      }
+    }
 
     const categoryMeta = new Map(
       categories.map((category) => [
@@ -496,7 +537,7 @@ export async function GET(request: Request) {
         features: lang === "en" ? parseJsonArray(offer.featuresEn) : parseJsonArray(offer.features),
         allowedClassTypes: offer.allowedClassTypes.map((item) => item.classType),
       })),
-      classes: classes.map((gymClass) => ({
+      classes: filteredClasses.map((gymClass) => ({
         id: gymClass.id,
         name: lang === "en" ? (gymClass.nameEn || gymClass.name) : gymClass.name,
         description: lang === "en" ? (gymClass.descriptionEn || gymClass.description || "") : (gymClass.description || ""),
@@ -725,7 +766,7 @@ export async function GET(request: Request) {
       storeEnabled,
     };
 
-    setPublicApiCache(lang, {
+    setPublicApiCache(cacheKey, {
       expiresAt: now + 30_000,
       payload,
     });

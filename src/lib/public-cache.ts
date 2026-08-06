@@ -31,3 +31,9 @@ export function setPublicApiCache(lang: string, cache: CacheEntry) {
 export function clearPublicApiCache() {
   delete globalForPublicApiCache.fitzonePublicApiCache;
 }
+
+export function clearPublicApiCacheKey(key: string) {
+  if (globalForPublicApiCache.fitzonePublicApiCache) {
+    delete globalForPublicApiCache.fitzonePublicApiCache[key];
+  }
+}

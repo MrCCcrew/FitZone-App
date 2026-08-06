@@ -236,22 +236,37 @@ function getUiLang() {
   return value === "en" ? "en" : "ar";
 }
 
-function loadPublicApi(force = false) {
+function loadPublicApi(force = false, offerId?: string | null) {
   const lang = getUiLang();
+  const cacheKey = offerId ? `${lang}:offer:${offerId}` : lang;
+
   if (force) {
-    publicApiCache[lang] = null;
+    publicApiCache[cacheKey] = null;
   }
 
-  if (!publicApiCache[lang]) {
-    publicApiCache[lang] = fetch(`/api/public?lang=${lang}`, { cache: "no-store" })
+  if (!publicApiCache[cacheKey]) {
+    const url = offerId
+      ? `/api/public?lang=${lang}&offerId=${offerId}`
+      : `/api/public?lang=${lang}`;
+
+    publicApiCache[cacheKey] = fetch(url, { cache: "no-store" })
       .then((r) => r.json())
       .catch((error) => {
-        publicApiCache[lang] = null;
+        publicApiCache[cacheKey] = null;
         throw error;
       });
   }
 
-  return publicApiCache[lang] as Promise<Record<string, unknown>>;
+  return publicApiCache[cacheKey] as Promise<Record<string, unknown>>;
+}
+
+function clearOfferCaches() {
+  const lang = getUiLang();
+  Object.keys(publicApiCache).forEach(key => {
+    if (key.startsWith(`${lang}:offer:`)) {
+      delete publicApiCache[key];
+    }
+  });
 }
 
 function useT() {
@@ -1555,6 +1570,7 @@ type PublicOffer = {
   durationDays?: number | null;
   sessionsCount?: number | null;
   features?: string[];
+  allowedClassTypes?: string[];
 };
 
 type PublicGoal = {
@@ -1590,6 +1606,7 @@ type PublicMembership = {
   maxMonths?: number | null;
   discountPct?: number | null;
   classSessions?: Array<{ classId: string; classType?: string; sessions: number }> | null;
+  allowedClassTypes?: string[] | null;
 };
 
 export type InitialHomeData = {
@@ -4062,6 +4079,7 @@ type PlanItem = {
   discountPct?: number | null;
   selectedMonths?: number | null;
   classSessions?: Array<{ classId: string; classType?: string; sessions: number }> | null;
+  allowedClassTypes?: string[] | null;
   kind?: string | null;
 };
 
@@ -4099,6 +4117,7 @@ function mapMembershipToPlanItem(membership: PublicMembership, color: string, po
     maxMonths: membership.maxMonths ?? null,
     discountPct: membership.discountPct ?? null,
     classSessions: Array.isArray((membership as any).classSessions) ? (membership as any).classSessions : null,
+    allowedClassTypes: Array.isArray((membership as any).allowedClassTypes) ? (membership as any).allowedClassTypes : null,
     kind: membership.kind ?? null,
   };
 }
@@ -4329,8 +4348,21 @@ const MembershipsPage = ({ navigate, summary: userSummary, coachState }: { navig
           goalIds: [],
           subtitle: t("اشتراك في عرض", "Offer subscription"),
           isFeatured: false,
+          allowedClassTypes: offer.allowedClassTypes ?? null,
         };
-        openSurvey(virtualOfferPlan);
+
+        // For special offers, load filtered schedules
+        if (offer.type === "special") {
+          loadPublicApi(true, offer.id).then((filteredData) => {
+            setPublicClasses(filteredData.classes as PublicClass[]);
+            openSurvey(virtualOfferPlan);
+          }).catch(() => {
+            openSurvey(virtualOfferPlan);
+          });
+        } else {
+          openSurvey(virtualOfferPlan);
+        }
+        resolved = true;
       }
     }
     if (typeof window !== "undefined") {
@@ -4503,10 +4535,23 @@ const MembershipsPage = ({ navigate, summary: userSummary, coachState }: { navig
     return Array.from(blocked);
   }, [healthQuestions, surveyAnswers]);
 
-  // Derive the class types linked to the current plan via classSessions.
+  // Derive the class types linked to the current plan via classSessions or allowedClassTypes (for offers).
   // If populated, the schedule shows ONLY those types and the day options are limited accordingly.
   const planAllowedClassTypes = useMemo((): Set<string> | null => {
-    if (!schedulePlan?.classSessions?.length) return null;
+    if (!schedulePlan) return null;
+
+    // Priority 1: Check allowedClassTypes (used by special offers)
+    if (schedulePlan.allowedClassTypes && schedulePlan.allowedClassTypes.length > 0) {
+      const types = new Set<string>();
+      schedulePlan.allowedClassTypes.forEach((type) => {
+        const key = normalizeClassTypeKey(type);
+        if (key) types.add(key);
+      });
+      return types.size > 0 ? types : null;
+    }
+
+    // Priority 2: Check classSessions (used by memberships/packages)
+    if (!schedulePlan.classSessions?.length) return null;
     const types = new Set<string>();
     schedulePlan.classSessions.forEach((cs) => {
       if (cs.classType) {
@@ -5200,7 +5245,7 @@ const MembershipsPage = ({ navigate, summary: userSummary, coachState }: { navig
                         : "المواعيد المعروضة تستبعد الكلاسات الممنوعة حسب الاستبيان."}
                 </p>
               </div>
-              <button onClick={() => { setSchedulePlan(null); setDaysPerWeek(null); setScheduleStep("frequency"); }} aria-label={t("إغلاق", "Close")} style={{ border: "none", background: "none", fontSize: 22, cursor: "pointer", color: "#c9b9c1" }}>×</button>
+              <button onClick={() => { clearOfferCaches(); setSchedulePlan(null); setDaysPerWeek(null); setScheduleStep("frequency"); }} aria-label={t("إغلاق", "Close")} style={{ border: "none", background: "none", fontSize: 22, cursor: "pointer", color: "#c9b9c1" }}>×</button>
             </div>
 
             {surveyBlockedTypes.length > 0 && scheduleStep === "slots" && (
