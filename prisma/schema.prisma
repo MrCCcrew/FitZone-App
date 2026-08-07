@@ -458,6 +458,7 @@ model Product {
   oldPrice    Float?
   category    String
   stock       Int     @default(0)
+  reservedStock Int   @default(0) // Phase 2C: pending order reservations
   sku         String? @unique
   barcode     String?
   unitLabel   String?
