@@ -16,7 +16,8 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Cron not configured" }, { status: 503 });
   }
 
-  const provided = new URL(req.url).searchParams.get("secret") ?? "";
+  // Use header for authentication (safer than query string)
+  const provided = req.headers.get("x-cron-secret") ?? "";
   if (provided !== secret) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
