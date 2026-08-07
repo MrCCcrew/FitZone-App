@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { releaseOrderReservation } from "@/lib/inventory-service";
 
 /**
  * Phase 2B: Pending Orders Timeout Cron
@@ -97,50 +98,16 @@ export async function GET(req: Request) {
           throw new Error("PAYMENT_CONFIRMED_RACE");
         }
 
-        // 4. Restore stock if deducted
-        if (order.inventoryDeducted) {
-          // Aggregate quantities by productId
-          const productQuantities = new Map<string, number>();
-          for (const item of order.items) {
-            const current = productQuantities.get(item.productId) || 0;
-            productQuantities.set(item.productId, current + item.quantity);
-          }
-
-          // Restore stock
-          for (const [productId, totalQuantity] of productQuantities) {
-            const item = order.items.find((i) => i.productId === productId);
-            if (!item || !item.product.trackInventory) continue;
-
-            const product = item.product;
-
-            await tx.product.update({
-              where: { id: productId },
-              data: { stock: { increment: totalQuantity } },
-            });
-
-            await tx.inventoryMovement.create({
-              data: {
-                productId,
-                type: "order_restore",
-                quantityChange: totalQuantity,
-                quantityBefore: product.stock,
-                quantityAfter: product.stock + totalQuantity,
-                unitCost: null,
-                averageCostBefore: product.averageCost,
-                averageCostAfter: product.averageCost,
-                referenceType: "Order",
-                referenceId: order.id,
-                reason: "انتهت صلاحية الطلب (مهلة ساعة واحدة)",
-              },
-            });
-          }
-
-          // Reset inventory flag
-          await tx.order.update({
-            where: { id: order.id },
-            data: { inventoryDeducted: false },
-          });
-        }
+        // 4. Release reservation (Phase 2C: reservedStock -= quantity, stock unchanged)
+        // Phase 2C: inventoryDeducted=false for pending orders (reservation only)
+        await releaseOrderReservation(
+          tx,
+          order.items.map((item) => ({
+            productId: item.productId,
+            quantity: item.quantity,
+          })),
+          order.id
+        );
       });
 
       expired++;

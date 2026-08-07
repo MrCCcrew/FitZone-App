@@ -594,9 +594,11 @@ export async function updatePaymentTransactionStatus(
       }
     }
 
-    // Phase 2B: Restore stock for failed orders
+    // Phase 2C: Release reservation for failed orders
     const failedOrderId = existing?.orderId;
     if (failedOrderId) {
+      const { releaseOrderReservation } = await import("@/lib/inventory-service");
+
       await db.$transaction(async (tx) => {
         const order = await tx.order.findUnique({
           where: { id: failedOrderId },
@@ -605,24 +607,17 @@ export async function updatePaymentTransactionStatus(
             status: true,
             inventoryDeducted: true,
             items: {
-              include: {
-                product: {
-                  select: {
-                    id: true,
-                    name: true,
-                    stock: true,
-                    trackInventory: true,
-                    averageCost: true,
-                  },
-                },
+              select: {
+                productId: true,
+                quantity: true,
               },
             },
           },
         });
 
-        // Only restore if still pending and inventory was deducted
-        if (!order || order.status !== "pending" || !order.inventoryDeducted) {
-          return; // Already processed or never deducted
+        // Only release if still pending and reservation exists (inventoryDeducted=false in Phase 2C)
+        if (!order || order.status !== "pending") {
+          return; // Already processed
         }
 
         // Double-check: no paid payment (race guard)
@@ -635,52 +630,25 @@ export async function updatePaymentTransactionStatus(
           throw new Error("PAYMENT_CONFIRMED_RACE");
         }
 
-        // Aggregate quantities by productId
-        const productQuantities = new Map<string, number>();
-        for (const item of order.items) {
-          const current = productQuantities.get(item.productId) || 0;
-          productQuantities.set(item.productId, current + item.quantity);
-        }
-
-        // Restore stock
-        for (const [productId, totalQuantity] of productQuantities) {
-          const item = order.items.find((i) => i.productId === productId);
-          if (!item || !item.product.trackInventory) continue;
-
-          const product = item.product;
-
-          await tx.product.update({
-            where: { id: productId },
-            data: { stock: { increment: totalQuantity } },
-          });
-
-          await tx.inventoryMovement.create({
-            data: {
-              productId,
-              type: "order_restore",
-              quantityChange: totalQuantity,
-              quantityBefore: product.stock,
-              quantityAfter: product.stock + totalQuantity,
-              unitCost: null,
-              averageCostBefore: product.averageCost,
-              averageCostAfter: product.averageCost,
-              referenceType: "Order",
-              referenceId: order.id,
-              reason: `إلغاء طلب بسبب فشل الدفع (${status})`,
-            },
-          });
-        }
+        // Release reservation (reservedStock -= quantity, stock unchanged)
+        await releaseOrderReservation(
+          tx,
+          order.items.map((item) => ({
+            productId: item.productId,
+            quantity: item.quantity,
+          })),
+          failedOrderId
+        );
 
         // Cancel order
         await tx.order.update({
           where: { id: failedOrderId },
           data: {
             status: "cancelled",
-            inventoryDeducted: false,
             cancelledAt: new Date(),
           },
         });
-      });
+      }, { timeout: 10000 });
     }
 
     const restored = await db.paymentTransaction.findUnique({ where: { id: transactionId } });
@@ -1219,64 +1187,98 @@ export async function updatePaymentTransactionStatus(
     }
 
     if (existing?.orderId) {
+      // Phase 2C: Convert reservation to sale atomically
+      const { confirmOrderInventorySale, updateOrderItemCostPrices } = await import("@/lib/inventory-service");
+
       const order = await db.order.findUnique({
         where: { id: existing.orderId },
         select: {
           status: true, subtotal: true, shippingFee: true, discountTotal: true, total: true,
           paymentMethod: true, address: true, deliveryLabel: true, isClubPickup: true,
+          inventoryDeducted: true,
           items: { include: { product: { select: { name: true } } } },
         },
       });
-      if (order?.status === "pending") {
+
+      if (order?.status === "pending" && !order.inventoryDeducted) {
+        // Phase 2C: Convert reservation → sale
+        await db.$transaction(async (tx) => {
+          // Atomic claim: only process if still pending
+          const claimed = await tx.order.updateMany({
+            where: { id: existing.orderId!, status: "pending" },
+            data: { status: "confirmed", inventoryDeducted: true },
+          });
+
+          if (claimed.count === 0) {
+            return; // Already processed by another webhook
+          }
+
+          // Convert reservation to sale (stock -= qty, reservedStock -= qty, capture COGS)
+          const saleResults = await confirmOrderInventorySale(
+            tx,
+            order.items.map((item) => ({
+              productId: item.productId,
+              quantity: item.quantity,
+            })),
+            existing.orderId!
+          );
+
+          // Capture cost prices in order items
+          await updateOrderItemCostPrices(tx, existing.orderId!, saleResults);
+        }, { timeout: 15000 });
+      } else if (order?.status === "pending" && order.inventoryDeducted) {
+        // Already converted (idempotent webhook retry)
         await db.order.update({
           where: { id: existing.orderId },
           data: { status: "confirmed" },
         });
-        // Unlock pending referral reward for Paymob-confirmed store orders
-        if (existing.userId) {
+      }
+
+      // Unlock pending referral reward for Paymob-confirmed store orders
+      if (order && existing.userId) {
+        try {
+          await unlockPendingReferralReward(existing.userId);
+        } catch {}
+      }
+
+      // Send order emails (fire-and-forget)
+      if (order && existing.userId) {
+        void (async () => {
           try {
-            await unlockPendingReferralReward(existing.userId);
-          } catch {}
-        }
-        // Send order emails (fire-and-forget)
-        if (existing.userId && order) {
-          void (async () => {
-            try {
-              const userRecord = await db.user.findUnique({
-                where: { id: existing.userId! },
-                select: { email: true, name: true },
-              });
-              if (!userRecord?.email) return;
-              const invoiceNumber = `ORD-${existing.orderId!.slice(-8).toUpperCase()}`;
-              const orderItems = order.items.map((oi) => ({
-                name: oi.product.name,
-                quantity: oi.quantity,
-                unitPrice: oi.price,
-                size: oi.size ?? null,
-              }));
-              const invoiceDetails = {
-                invoiceNumber,
-                customerName: userRecord.name ?? "عميل",
-                customerEmail: userRecord.email,
-                paymentMethod: transaction.paymentMethod ?? order.paymentMethod ?? "paymob",
-                issuedAt: transaction.paidAt ?? new Date(),
-                items: orderItems,
-                subtotal: order.subtotal,
-                shippingFee: order.shippingFee,
-                discountTotal: order.discountTotal,
-                total: order.total,
-                address: order.address ?? null,
-                deliveryLabel: order.deliveryLabel ?? null,
-                isClubPickup: order.isClubPickup,
-              };
-              const invoicePdf = await generateStoreOrderInvoicePdf(invoiceDetails);
-              void sendStoreOrderEmail(invoiceDetails, invoicePdf).catch((e) => console.error("[PAYMENT_ORDER_EMAIL]", e));
-              void sendAdminOrderNotification(invoiceDetails).catch((e) => console.error("[PAYMENT_ORDER_ADMIN_EMAIL]", e));
-            } catch (e) {
-              console.error("[PAYMENT_ORDER_INVOICE_GEN]", e);
-            }
-          })();
-        }
+            const userRecord = await db.user.findUnique({
+              where: { id: existing.userId! },
+              select: { email: true, name: true },
+            });
+            if (!userRecord?.email) return;
+            const invoiceNumber = `ORD-${existing.orderId!.slice(-8).toUpperCase()}`;
+            const orderItems = order.items.map((oi) => ({
+              name: oi.product.name,
+              quantity: oi.quantity,
+              unitPrice: oi.price,
+              size: oi.size ?? null,
+            }));
+            const invoiceDetails = {
+              invoiceNumber,
+              customerName: userRecord.name ?? "عميل",
+              customerEmail: userRecord.email,
+              paymentMethod: transaction.paymentMethod ?? order.paymentMethod ?? "paymob",
+              issuedAt: transaction.paidAt ?? new Date(),
+              items: orderItems,
+              subtotal: order.subtotal,
+              shippingFee: order.shippingFee,
+              discountTotal: order.discountTotal,
+              total: order.total,
+              address: order.address ?? null,
+              deliveryLabel: order.deliveryLabel ?? null,
+              isClubPickup: order.isClubPickup,
+            };
+            const invoicePdf = await generateStoreOrderInvoicePdf(invoiceDetails);
+            void sendStoreOrderEmail(invoiceDetails, invoicePdf).catch((e) => console.error("[PAYMENT_ORDER_EMAIL]", e));
+            void sendAdminOrderNotification(invoiceDetails).catch((e) => console.error("[PAYMENT_ORDER_ADMIN_EMAIL]", e));
+          } catch (e) {
+            console.error("[PAYMENT_ORDER_INVOICE_GEN]", e);
+          }
+        })();
       }
     }
 
