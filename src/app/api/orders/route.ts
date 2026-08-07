@@ -256,68 +256,132 @@ export async function POST(req: Request) {
     const discountTotal = Math.round((validatedWalletDeduct + pointsEGP) * 100) / 100;
     const total = Math.max(0, baseTotal - discountTotal);
 
-    const order = await db.order.create({
-      data: {
-        userId,
-        businessUnit: "store",
-        subtotal,
-        discountTotal,
-        shippingFee,
-        total,
-        status: "pending",
-        address: body.address?.trim() || null,
-        paymentMethod,
-        deliveryOptionId: deliveryOption?.id ?? null,
-        deliveryLabel: deliveryOption?.name ?? (isClubPickup ? "استلام من الجيم" : null),
-        estimatedDeliveryDays: deliveryOption?.estimatedDaysMax ?? deliveryOption?.estimatedDaysMin ?? null,
-        isClubPickup,
-        recipientName: body.recipientName?.trim() || null,
-        recipientPhone: body.recipientPhone?.trim() || null,
-        items: {
-          create: items.map((item) => {
-            const product = products.find((entry) => entry.id === item.productId)!;
-            if (giftProductIds.has(product.id)) {
-              return { productId: product.id, quantity: item.quantity, price: 0, vatAmount: 0, size: item.size ?? null };
-            }
-            const itemPrice = product.vatEnabled ? Math.round(product.price * (1 + VAT_RATE) * 100) / 100 : product.price;
-            const vatAmount = product.vatEnabled ? Math.round(product.price * VAT_RATE * 100) / 100 : 0;
-            return {
-              productId: product.id,
-              quantity: item.quantity,
-              price: itemPrice,
-              vatAmount,
-              size: item.size ?? null,
-            };
-          }),
-        },
-      },
-      include: { items: true },
-    });
+    // ── Phase 2B: Atomic order creation + stock deduction + movement ────────
+    // Aggregate quantities by productId (handle duplicate products in cart)
+    const productQuantities = new Map<string, number>();
+    for (const item of items) {
+      const current = productQuantities.get(item.productId) || 0;
+      productQuantities.set(item.productId, current + item.quantity);
+    }
 
-    const inventoryJobs = items.map(async (item) => {
-      const product = products.find((entry) => entry.id === item.productId)!;
-      const beforeStock = product.stock;
-      const afterStock = product.trackInventory ? beforeStock - item.quantity : beforeStock;
-      if (product.trackInventory) {
-        await db.product.update({
-          where: { id: item.productId },
-          data: { stock: { decrement: item.quantity } },
+    const order = await db.$transaction(async (tx) => {
+      // 1. Fresh read of product data inside transaction
+      const productData = new Map<string, {
+        id: string;
+        name: string;
+        stock: number;
+        averageCost: number;
+        trackInventory: boolean;
+      }>();
+
+      for (const [productId, totalQuantity] of productQuantities) {
+        const product = await tx.product.findUnique({
+          where: { id: productId },
+          select: {
+            id: true,
+            name: true,
+            stock: true,
+            averageCost: true,
+            trackInventory: true,
+          },
+        });
+
+        if (!product) {
+          throw new Error(`Product not found: ${productId}`);
+        }
+
+        // Check availability for tracked products
+        if (product.trackInventory && product.stock < totalQuantity) {
+          throw new Error(`مخزون غير كافٍ: ${product.name}`);
+        }
+
+        productData.set(productId, product);
+      }
+
+      // 2. Create order + items
+      const newOrder = await tx.order.create({
+        data: {
+          userId,
+          businessUnit: "store",
+          subtotal,
+          discountTotal,
+          shippingFee,
+          total,
+          status: "pending",
+          address: body.address?.trim() || null,
+          paymentMethod,
+          deliveryOptionId: deliveryOption?.id ?? null,
+          deliveryLabel: deliveryOption?.name ?? (isClubPickup ? "استلام من الجيم" : null),
+          estimatedDeliveryDays: deliveryOption?.estimatedDaysMax ?? deliveryOption?.estimatedDaysMin ?? null,
+          isClubPickup,
+          recipientName: body.recipientName?.trim() || null,
+          recipientPhone: body.recipientPhone?.trim() || null,
+          items: {
+            create: items.map((item) => {
+              const product = products.find((entry) => entry.id === item.productId)!;
+              if (giftProductIds.has(product.id)) {
+                return { productId: product.id, quantity: item.quantity, price: 0, vatAmount: 0, size: item.size ?? null };
+              }
+              const itemPrice = product.vatEnabled ? Math.round(product.price * (1 + VAT_RATE) * 100) / 100 : product.price;
+              const vatAmount = product.vatEnabled ? Math.round(product.price * VAT_RATE * 100) / 100 : 0;
+              return {
+                productId: product.id,
+                quantity: item.quantity,
+                price: itemPrice,
+                vatAmount,
+                size: item.size ?? null,
+                // Phase 2B: costPrice NOT set (Phase 2C will capture at payment confirmation)
+              };
+            }),
+          },
+        },
+        include: { items: true },
+      });
+
+      // 3. Deduct stock + create movements (aggregated per product)
+      for (const [productId, totalQuantity] of productQuantities) {
+        const product = productData.get(productId)!;
+
+        if (!product.trackInventory) continue;
+
+        // Optimistic lock: update only if stock matches
+        const updated = await tx.product.updateMany({
+          where: {
+            id: productId,
+            stock: product.stock,  // Concurrency guard
+          },
+          data: { stock: { decrement: totalQuantity } },
+        });
+
+        if (updated.count !== 1) {
+          throw new Error(`Stock changed for ${product.name} during order creation. Please retry.`);
+        }
+
+        // Create movement (type="order_deduction", NOT "sale" - Phase 2B)
+        await tx.inventoryMovement.create({
+          data: {
+            productId,
+            type: "order_deduction",
+            quantityChange: -totalQuantity,
+            quantityBefore: product.stock,
+            quantityAfter: product.stock - totalQuantity,
+            unitCost: null,  // Phase 2B: no COGS capture yet
+            averageCostBefore: product.averageCost,
+            averageCostAfter: product.averageCost,  // Unchanged (reservation, not sale)
+            referenceType: "Order",
+            referenceId: newOrder.id,
+            reason: `رصيد محجوز لطلب #${newOrder.id.slice(-8)}`,
+          },
         });
       }
-      await db.inventoryMovement.create({
-        data: {
-          productId: product.id,
-          type: "sale",
-          quantityChange: -Math.abs(item.quantity),
-          quantityBefore: beforeStock,
-          quantityAfter: afterStock,
-          unitCost: product.averageCost,
-          averageCostBefore: product.averageCost,
-          averageCostAfter: product.averageCost,
-          referenceType: "order",
-          referenceId: order.id,
-        },
+
+      // 4. Mark inventory as deducted
+      await tx.order.update({
+        where: { id: newOrder.id },
+        data: { inventoryDeducted: true },
       });
+
+      return newOrder;
     });
 
     if (validatedWalletDeduct > 0) {
@@ -390,6 +454,63 @@ export async function POST(req: Request) {
           paymentTransactionId: transaction.id,
         });
       } catch (error) {
+        // Phase 2B: Payment transaction creation failed - restore stock atomically
+        await db.$transaction(async (tx) => {
+          // Aggregate quantities by productId
+          const productQuantities = new Map<string, number>();
+          for (const item of order.items) {
+            const current = productQuantities.get(item.productId) || 0;
+            productQuantities.set(item.productId, current + item.quantity);
+          }
+
+          // Restore stock for tracked products
+          for (const [productId, totalQuantity] of productQuantities) {
+            const product = await tx.product.findUnique({
+              where: { id: productId },
+              select: {
+                id: true,
+                name: true,
+                stock: true,
+                trackInventory: true,
+                averageCost: true,
+              },
+            });
+
+            if (!product || !product.trackInventory) continue;
+
+            await tx.product.update({
+              where: { id: productId },
+              data: { stock: { increment: totalQuantity } },
+            });
+
+            await tx.inventoryMovement.create({
+              data: {
+                productId,
+                type: "order_restore",
+                quantityChange: totalQuantity,
+                quantityBefore: product.stock,
+                quantityAfter: product.stock + totalQuantity,
+                unitCost: null,
+                averageCostBefore: product.averageCost,
+                averageCostAfter: product.averageCost,
+                referenceType: "Order",
+                referenceId: order.id,
+                reason: "فشل إنشاء معاملة الدفع",
+              },
+            });
+          }
+
+          // Cancel order and reset inventory flag
+          await tx.order.update({
+            where: { id: order.id },
+            data: {
+              status: "cancelled",
+              inventoryDeducted: false,
+              cancelledAt: new Date(),
+            },
+          });
+        });
+
         await restorePaymentBalanceAdjustments({
           userId,
           walletAmount: validatedWalletDeduct,
@@ -464,17 +585,15 @@ export async function POST(req: Request) {
       }).catch((e: unknown) => console.error("[FREE_GIFTS_LINK]", e));
     }
 
-    await Promise.all([
-      ...inventoryJobs,
-      db.notification.create({
-        data: {
-          userId,
-          title: "تم تسجيل طلبك",
-          body: "تم حفظ طلبك بنجاح. يمكنك متابعة حالة الدفع من صفحة الطلبات.",
-          type: "info",
-        },
-      }),
-    ]);
+    // Create notification
+    await db.notification.create({
+      data: {
+        userId,
+        title: "تم تسجيل طلبك",
+        body: "تم حفظ طلبك بنجاح. يمكنك متابعة حالة الدفع من صفحة الطلبات.",
+        type: "info",
+      },
+    });
 
     return NextResponse.json({
       success: true,
@@ -517,46 +636,75 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: "لا يمكن إلغاء هذا الطلب." }, { status: 400 });
     }
 
-    await Promise.all([
-      db.order.update({
-        where: { id: orderId },
-        data: { status: "cancelled" },
-      }),
-      ...order.items.map(async (item) => {
-        const product = await db.product.findUnique({ where: { id: item.productId } });
-        if (!product) return;
-        const beforeStock = product.stock;
-        const afterStock = product.trackInventory ? beforeStock + item.quantity : beforeStock;
-        if (product.trackInventory) {
-          await db.product.update({
-            where: { id: item.productId },
-            data: { stock: { increment: item.quantity } },
+    // Phase 2B: Atomic cancellation + stock restore
+    await db.$transaction(async (tx) => {
+      // Only restore if inventory was deducted
+      if (order.inventoryDeducted) {
+        // Aggregate quantities by productId
+        const productQuantities = new Map<string, number>();
+        for (const item of order.items) {
+          const current = productQuantities.get(item.productId) || 0;
+          productQuantities.set(item.productId, current + item.quantity);
+        }
+
+        // Restore stock
+        for (const [productId, totalQuantity] of productQuantities) {
+          const product = await tx.product.findUnique({
+            where: { id: productId },
+            select: {
+              id: true,
+              name: true,
+              stock: true,
+              trackInventory: true,
+              averageCost: true,
+            },
+          });
+
+          if (!product || !product.trackInventory) continue;
+
+          await tx.product.update({
+            where: { id: productId },
+            data: { stock: { increment: totalQuantity } },
+          });
+
+          await tx.inventoryMovement.create({
+            data: {
+              productId,
+              type: "order_restore",
+              quantityChange: totalQuantity,
+              quantityBefore: product.stock,
+              quantityAfter: product.stock + totalQuantity,
+              unitCost: null,  // Phase 2B: no COGS reversal yet
+              averageCostBefore: product.averageCost,
+              averageCostAfter: product.averageCost,
+              referenceType: "Order",
+              referenceId: order.id,
+              reason: "إلغاء طلب من العميل",
+            },
           });
         }
-        await db.inventoryMovement.create({
-          data: {
-            productId: product.id,
-            type: "return",
-            quantityChange: Math.abs(item.quantity),
-            quantityBefore: beforeStock,
-            quantityAfter: afterStock,
-            unitCost: product.averageCost,
-            averageCostBefore: product.averageCost,
-            averageCostAfter: product.averageCost,
-            referenceType: "order",
-            referenceId: order.id,
-          },
-        });
-      }),
-      db.notification.create({
+      }
+
+      // Cancel order
+      await tx.order.update({
+        where: { id: orderId },
+        data: {
+          status: "cancelled",
+          inventoryDeducted: false,
+          cancelledAt: new Date(),
+        },
+      });
+
+      // Create notification
+      await tx.notification.create({
         data: {
           userId,
           title: "تم إلغاء الطلب",
           body: "تم إلغاء طلبك واستعادة المخزون بنجاح.",
           type: "info",
         },
-      }),
-    ]);
+      });
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {
