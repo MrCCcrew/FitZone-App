@@ -594,6 +594,95 @@ export async function updatePaymentTransactionStatus(
       }
     }
 
+    // Phase 2B: Restore stock for failed orders
+    const failedOrderId = existing?.orderId;
+    if (failedOrderId) {
+      await db.$transaction(async (tx) => {
+        const order = await tx.order.findUnique({
+          where: { id: failedOrderId },
+          select: {
+            id: true,
+            status: true,
+            inventoryDeducted: true,
+            items: {
+              include: {
+                product: {
+                  select: {
+                    id: true,
+                    name: true,
+                    stock: true,
+                    trackInventory: true,
+                    averageCost: true,
+                  },
+                },
+              },
+            },
+          },
+        });
+
+        // Only restore if still pending and inventory was deducted
+        if (!order || order.status !== "pending" || !order.inventoryDeducted) {
+          return; // Already processed or never deducted
+        }
+
+        // Double-check: no paid payment (race guard)
+        const paidPayment = await tx.paymentTransaction.findFirst({
+          where: { orderId: failedOrderId, status: "paid" },
+        });
+
+        if (paidPayment) {
+          // Payment confirmed during this transaction - abort
+          throw new Error("PAYMENT_CONFIRMED_RACE");
+        }
+
+        // Aggregate quantities by productId
+        const productQuantities = new Map<string, number>();
+        for (const item of order.items) {
+          const current = productQuantities.get(item.productId) || 0;
+          productQuantities.set(item.productId, current + item.quantity);
+        }
+
+        // Restore stock
+        for (const [productId, totalQuantity] of productQuantities) {
+          const item = order.items.find((i) => i.productId === productId);
+          if (!item || !item.product.trackInventory) continue;
+
+          const product = item.product;
+
+          await tx.product.update({
+            where: { id: productId },
+            data: { stock: { increment: totalQuantity } },
+          });
+
+          await tx.inventoryMovement.create({
+            data: {
+              productId,
+              type: "order_restore",
+              quantityChange: totalQuantity,
+              quantityBefore: product.stock,
+              quantityAfter: product.stock + totalQuantity,
+              unitCost: null,
+              averageCostBefore: product.averageCost,
+              averageCostAfter: product.averageCost,
+              referenceType: "Order",
+              referenceId: order.id,
+              reason: `إلغاء طلب بسبب فشل الدفع (${status})`,
+            },
+          });
+        }
+
+        // Cancel order
+        await tx.order.update({
+          where: { id: failedOrderId },
+          data: {
+            status: "cancelled",
+            inventoryDeducted: false,
+            cancelledAt: new Date(),
+          },
+        });
+      });
+    }
+
     const restored = await db.paymentTransaction.findUnique({ where: { id: transactionId } });
     return mapPaymentTransaction(restored!);
   }

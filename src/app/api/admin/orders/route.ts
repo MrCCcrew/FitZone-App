@@ -228,47 +228,76 @@ export async function PATCH(req: Request) {
     const prevStatus = order.status;
     const newStatus = body.status;
 
-    // Guard: prevent double inventory deduction
+    // Phase 2B: Guard - prevent double inventory deduction
     const shouldDeduct = ["confirmed", "preparing"].includes(newStatus) && !order.inventoryDeducted;
     const shouldRestore = newStatus === "cancelled" && order.inventoryDeducted;
     const shouldRestoreReturn = newStatus === "returned" && order.inventoryDeducted;
 
     if (shouldDeduct) {
-      // Check stock availability first
+      // Phase 2B: Business rule check - warn about unpaid Paymob orders
+      if (order.paymentMethod === "paymob") {
+        const paidTx = await db.paymentTransaction.findFirst({
+          where: { orderId: order.id, status: "paid" },
+        });
+
+        if (!paidTx) {
+          console.warn(`[ADMIN] Confirming unpaid Paymob order ${order.id} - manual override`);
+          // Audit trail logged to console (activityLog table not in schema)
+        }
+      }
+
+      // Aggregate quantities by productId (Phase 2B)
+      const productQuantities = new Map<string, number>();
+      for (const item of order.items) {
+        const key = item.variantId || item.productId;
+        const current = productQuantities.get(key) || 0;
+        productQuantities.set(key, current + item.quantity);
+      }
+
+      // Check stock availability first (aggregated)
       for (const item of order.items) {
         if (!item.product.trackInventory) continue;
         const available = item.variant ? item.variant.stock : item.product.stock;
-        if (available < item.quantity) {
+        const requiredQty = productQuantities.get(item.variantId || item.productId) || item.quantity;
+        if (available < requiredQty) {
           return NextResponse.json({
-            error: `المخزون غير كافي للمنتج "${item.product.name}" (متاح: ${available}، مطلوب: ${item.quantity})`,
+            error: `المخزون غير كافي للمنتج "${item.product.name}" (متاح: ${available}، مطلوب: ${requiredQty})`,
           }, { status: 400 });
         }
       }
-      // Deduct stock
+
+      // Deduct stock (aggregated per product)
+      const deductedProducts = new Set<string>();
       for (const item of order.items) {
         if (!item.product.trackInventory) continue;
+
+        const key = item.variantId || item.productId;
+        if (deductedProducts.has(key)) continue; // Already deducted
+        deductedProducts.add(key);
+
+        const totalQty = productQuantities.get(key)!;
         const before = item.variant ? item.variant.stock : item.product.stock;
-        const after = before - item.quantity;
+        const after = before - totalQty;
 
         if (item.variantId && item.variant) {
-          await db.productVariant.update({ where: { id: item.variantId }, data: { stock: { decrement: item.quantity } } });
+          await db.productVariant.update({ where: { id: item.variantId }, data: { stock: { decrement: totalQty } } });
         }
-        await db.product.update({ where: { id: item.productId }, data: { stock: { decrement: item.quantity } } });
+        await db.product.update({ where: { id: item.productId }, data: { stock: { decrement: totalQty } } });
 
         await db.inventoryMovement.create({
           data: {
             productId: item.productId,
             variantId: item.variantId ?? null,
             type: "order_deduction",
-            quantityChange: -item.quantity,
+            quantityChange: -totalQty,
             quantityBefore: before,
             quantityAfter: after,
-            unitCost: item.product.averageCost,
+            unitCost: null,  // Phase 2B: no COGS capture yet
             averageCostBefore: item.product.averageCost,
             averageCostAfter: item.product.averageCost,
             referenceType: "Order",
             referenceId: order.id,
-            reason: `تأكيد الطلب #${order.id.slice(-8)}`,
+            reason: `تأكيد الطلب #${order.id.slice(-8)} (Admin)`,
             performedByUserId: userId,
           },
         });
@@ -277,26 +306,41 @@ export async function PATCH(req: Request) {
     }
 
     if (shouldRestore || shouldRestoreReturn) {
-      // Restore stock
+      // Phase 2B: Aggregate quantities by productId
+      const productQuantities = new Map<string, number>();
+      for (const item of order.items) {
+        const key = item.variantId || item.productId;
+        const current = productQuantities.get(key) || 0;
+        productQuantities.set(key, current + item.quantity);
+      }
+
+      // Restore stock (aggregated)
+      const restoredProducts = new Set<string>();
       for (const item of order.items) {
         if (!item.product.trackInventory) continue;
+
+        const key = item.variantId || item.productId;
+        if (restoredProducts.has(key)) continue; // Already restored
+        restoredProducts.add(key);
+
+        const totalQty = productQuantities.get(key)!;
         const before = item.variant ? item.variant.stock : item.product.stock;
-        const after = before + item.quantity;
+        const after = before + totalQty;
 
         if (item.variantId) {
-          await db.productVariant.update({ where: { id: item.variantId }, data: { stock: { increment: item.quantity } } });
+          await db.productVariant.update({ where: { id: item.variantId }, data: { stock: { increment: totalQty } } });
         }
-        await db.product.update({ where: { id: item.productId }, data: { stock: { increment: item.quantity } } });
+        await db.product.update({ where: { id: item.productId }, data: { stock: { increment: totalQty } } });
 
         await db.inventoryMovement.create({
           data: {
             productId: item.productId,
             variantId: item.variantId ?? null,
             type: "order_restore",
-            quantityChange: item.quantity,
+            quantityChange: totalQty,
             quantityBefore: before,
             quantityAfter: after,
-            unitCost: item.product.averageCost,
+            unitCost: null,  // Phase 2B: no COGS reversal yet
             averageCostBefore: item.product.averageCost,
             averageCostAfter: item.product.averageCost,
             referenceType: "Order",
