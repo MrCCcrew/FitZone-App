@@ -1204,8 +1204,8 @@ const Footer = ({ navigate, storeEnabled, onRestartTour }: { navigate: (p: strin
         ))}
         <div>
           <p style={{ fontWeight: 700, marginBottom: 16, color: C.white, fontSize: 14, margin: "0 0 16px" }}>{t("معلومات التواصل", "Contact info")}</p>
-          {[["phone", contact.phone], ["mail", contact.email], ["map", contact.address]].map(([icon, text]) => (
-            <div key={text} style={{ display: "flex", gap: 8, alignItems: "flex-start", marginBottom: 10, color: C.gray, fontSize: 12 }}>
+          {[["phone", contact.phone], ["mail", contact.email], ["map", contact.address]].filter(([, text]) => text?.trim()).map(([icon, text]) => (
+            <div key={icon} style={{ display: "flex", gap: 8, alignItems: "flex-start", marginBottom: 10, color: C.gray, fontSize: 12 }}>
               <I n={icon} s={14} c={C.red} /><span>{text}</span>
             </div>
           ))}
