@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Product } from "../types";
 
 type Supplier = { id: string; name: string; phone: string | null; isActive: boolean };
@@ -67,7 +67,7 @@ const LOW_STOCK_THRESHOLD = 10;
 const MOVS_PER_PAGE = 30;
 
 export default function Inventory() {
-  const [tab, setTab] = useState<"receipts" | "movements" | "alerts" | "reports">("receipts");
+  const [tab, setTab] = useState<"receipts" | "adjustments" | "movements" | "alerts" | "reports">("receipts");
   const [products, setProducts] = useState<Product[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [receipts, setReceipts] = useState<Receipt[]>([]);
@@ -88,19 +88,61 @@ export default function Inventory() {
   const [movSearch, setMovSearch] = useState("");
   const [movPage, setMovPage] = useState(1);
 
+  // Adjustment form
+  const [adjProduct, setAdjProduct] = useState<Product | null>(null);
+  const [adjType, setAdjType] = useState<"increase" | "decrease">("increase");
+  const [adjQuantity, setAdjQuantity] = useState<string>("");
+  const [adjUnitCost, setAdjUnitCost] = useState<string>("");
+  const [adjReason, setAdjReason] = useState<string>("");
+  const [adjNotes, setAdjNotes] = useState<string>("");
+  const [showPreview, setShowPreview] = useState<boolean>(false);
+  const [submitting, setSubmitting] = useState<boolean>(false);
+  const [adjErrors, setAdjErrors] = useState<string[]>([]);
+  const [adjApiError, setAdjApiError] = useState<string>("");
+  const [adjSuccess, setAdjSuccess] = useState<string>("");
+  const adjustmentSubmitLockRef = useRef<boolean>(false);
+
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [prodRes, suppRes, recRes, movRes] = await Promise.all([
-        fetch("/api/admin/products", { cache: "no-store" }).then(r => r.json()),
-        fetch("/api/admin/suppliers", { cache: "no-store" }).then(r => r.json()),
-        fetch("/api/admin/inventory/receipts", { cache: "no-store" }).then(r => r.json()),
-        fetch("/api/admin/inventory/movements", { cache: "no-store" }).then(r => r.json()),
+      const [prodFetch, suppFetch, recFetch, movFetch] = await Promise.all([
+        fetch("/api/admin/products", { cache: "no-store" }),
+        fetch("/api/admin/suppliers", { cache: "no-store" }),
+        fetch("/api/admin/inventory/receipts", { cache: "no-store" }),
+        fetch("/api/admin/inventory/movements", { cache: "no-store" }),
       ]);
-      setProducts(Array.isArray(prodRes) ? prodRes : []);
-      setSuppliers(Array.isArray(suppRes?.suppliers) ? suppRes.suppliers : []);
-      setReceipts(Array.isArray(recRes) ? recRes : []);
-      setMovements(Array.isArray(movRes) ? movRes : []);
+
+      if (!prodFetch.ok || !suppFetch.ok || !recFetch.ok || !movFetch.ok) {
+        console.error("[LOAD_DATA] Some endpoints failed");
+        return null;
+      }
+
+      const [prodRes, suppRes, recRes, movRes] = await Promise.all([
+        prodFetch.json(),
+        suppFetch.json(),
+        recFetch.json(),
+        movFetch.json(),
+      ]);
+
+      const loadedProducts = Array.isArray(prodRes) ? prodRes : [];
+      const loadedSuppliers = Array.isArray(suppRes?.suppliers) ? suppRes.suppliers : [];
+      const loadedReceipts = Array.isArray(recRes) ? recRes : [];
+      const loadedMovements = Array.isArray(movRes) ? movRes : [];
+
+      setProducts(loadedProducts);
+      setSuppliers(loadedSuppliers);
+      setReceipts(loadedReceipts);
+      setMovements(loadedMovements);
+
+      return {
+        products: loadedProducts,
+        suppliers: loadedSuppliers,
+        receipts: loadedReceipts,
+        movements: loadedMovements,
+      };
+    } catch (error) {
+      console.error("[LOAD_DATA]", error);
+      return null;
     } finally {
       setLoading(false);
     }
@@ -147,6 +189,271 @@ export default function Inventory() {
       await loadData();
     } finally {
       setSaving(false);
+    }
+  };
+
+  // ══════════════════════════════════════════════════════════════
+  // ADJUSTMENT HELPERS
+  // ══════════════════════════════════════════════════════════════
+
+  const invalidatePreview = () => {
+    setShowPreview(false);
+  };
+
+  const clearAdjustmentMessages = () => {
+    setAdjErrors([]);
+    setAdjApiError("");
+    setAdjSuccess("");
+  };
+
+  const clearAdjustmentForm = () => {
+    setAdjProduct(null);
+    setAdjType("increase");
+    setAdjQuantity("");
+    setAdjUnitCost("");
+    setAdjReason("");
+    setAdjNotes("");
+    setShowPreview(false);
+    setAdjErrors([]);
+    // ✅ Don't clear messages (adjApiError/adjSuccess)
+  };
+
+  const validateForm = (): { valid: boolean; errors: string[] } => {
+    const errors: string[] = [];
+
+    if (!adjProduct) {
+      errors.push("يجب اختيار منتج");
+      return { valid: false, errors };
+    }
+
+    const quantity = Number(adjQuantity);
+    if (!Number.isFinite(quantity)) {
+      errors.push("الكمية يجب أن تكون رقم صحيح");
+    } else if (!Number.isInteger(quantity)) {
+      errors.push("الكمية يجب أن تكون عدد صحيح (بدون كسور)");
+    } else if (quantity <= 0) {
+      errors.push("الكمية يجب أن تكون أكبر من صفر");
+    } else if (adjType === "decrease" && quantity > adjProduct.stock) {
+      errors.push(`الكمية المخصومة (${quantity}) أكبر من المخزون المتاح (${adjProduct.stock})`);
+    }
+
+    if (adjType === "increase") {
+      const unitCost = Number(adjUnitCost);
+      if (!Number.isFinite(unitCost)) {
+        errors.push("تكلفة الوحدة يجب أن تكون رقم صحيح");
+      } else if (unitCost <= 0) {
+        errors.push("تكلفة الوحدة يجب أن تكون أكبر من صفر");
+      }
+    }
+
+    if (typeof adjReason !== "string" || adjReason.trim().length === 0) {
+      errors.push("سبب التسوية مطلوب");
+    }
+
+    return { valid: errors.length === 0, errors };
+  };
+
+  const calculatePreview = () => {
+    const validation = validateForm();
+    if (!validation.valid || !adjProduct) return null;
+
+    const quantity = Number(adjQuantity);
+    const currentStock = adjProduct.stock;
+    const currentAvg = adjProduct.averageCost ?? 0;
+
+    if (adjType === "increase") {
+      const unitCost = Number(adjUnitCost);
+      const newStock = currentStock + quantity;
+      const newAvg = newStock > 0
+        ? (currentStock * currentAvg + quantity * unitCost) / newStock
+        : unitCost;
+
+      return {
+        stockBefore: currentStock,
+        stockChange: `+${quantity}`,
+        stockAfter: newStock,
+        avgBefore: currentAvg,
+        avgChange: unitCost,
+        avgAfter: newAvg,
+      };
+    } else {
+      const newStock = currentStock - quantity;
+      return {
+        stockBefore: currentStock,
+        stockChange: `-${quantity}`,
+        stockAfter: newStock,
+        avgBefore: currentAvg,
+        avgChange: null,
+        avgAfter: currentAvg,
+      };
+    }
+  };
+
+  const submitAdjustment = async () => {
+    if (adjustmentSubmitLockRef.current) {
+      console.warn("[ADJUSTMENT] Double submit prevented");
+      return;
+    }
+
+    if (!showPreview || !adjProduct) {
+      console.warn("[ADJUSTMENT] Invalid state for submission");
+      return;
+    }
+
+    const validation = validateForm();
+    if (!validation.valid) {
+      setAdjErrors(validation.errors);
+      setShowPreview(false);
+      return;
+    }
+
+    adjustmentSubmitLockRef.current = true;
+    setSubmitting(true);
+    setAdjErrors([]);
+    setAdjApiError("");
+    setAdjSuccess("");
+
+    const productId = adjProduct.id;
+    const type = adjType;
+    const quantity = Number(adjQuantity);
+    const unitCost = type === "increase" ? Number(adjUnitCost) : undefined;
+    const reason = adjReason.trim();
+    const notesValue = adjNotes.trim();
+
+    try {
+      const payload: Record<string, unknown> = {
+        productId,
+        type,
+        quantity,
+        reason,
+      };
+
+      if (type === "increase" && unitCost != null) {
+        payload.unitCost = unitCost;
+      }
+
+      if (notesValue) {
+        payload.notes = notesValue;
+      }
+
+      const res = await fetch("/api/admin/inventory/adjustments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      let data: { error?: string; [key: string]: unknown } = {};
+      try {
+        data = await res.json();
+      } catch {
+        data = { error: "فشل قراءة استجابة الخادم" };
+      }
+
+      if (res.ok) {
+        const refreshed = await loadData();
+
+        // ✅ Clear form first
+        clearAdjustmentForm();
+
+        if (refreshed) {
+          // ✅ Success: refresh succeeded
+          setAdjSuccess("✅ تمت التسوية بنجاح!");
+          setTimeout(() => setAdjSuccess(""), 5000);
+        } else {
+          // ✅ Success + refresh failure
+          setAdjSuccess("✅ تمت التسوية بنجاح!");
+          setAdjApiError("تمت التسوية ولكن تعذر تحديث العرض. يرجى تحديث الصفحة.");
+          // ✅ Don't clear messages
+        }
+        return;
+      }
+
+      if (res.status === 400) {
+        setAdjApiError(data.error ?? "خطأ في البيانات المرسلة");
+        return;
+      }
+
+      if (res.status === 404) {
+        await loadData();
+        // ✅ Clear form first, then set error
+        clearAdjustmentForm();
+        setAdjApiError(data.error ?? "المنتج غير موجود (تم حذفه من النظام)");
+        return;
+      }
+
+      if (res.status === 409) {
+        const refreshed = await loadData();
+
+        if (refreshed) {
+          // ✅ Refresh succeeded
+          const freshProduct = refreshed.products.find(p => p.id === productId);
+          if (freshProduct) {
+            setAdjProduct(freshProduct);
+            setAdjApiError(
+              (data.error ?? "تغير المخزون أثناء التسوية") +
+              "\n\nتم تحديث بيانات المنتج. يرجى مراجعة الرصيد والمتوسط الجديد وإعادة المحاولة."
+            );
+          } else {
+            // Product deleted during conflict
+            clearAdjustmentForm();
+            setAdjApiError("❌ المنتج لم يعد موجوداً في النظام");
+            return;
+          }
+        } else {
+          // ✅ Refresh failed - stale data warning
+          setAdjApiError(
+            (data.error ?? "تغير المخزون أثناء التسوية") +
+            "، وتعذر تحديث البيانات تلقائياً.\n\nحدّث الصفحة قبل إعادة المحاولة."
+          );
+        }
+
+        setShowPreview(false);
+        return;
+      }
+
+      if (res.status === 422) {
+        const refreshed = await loadData();
+
+        if (refreshed) {
+          // ✅ Refresh succeeded
+          const freshProduct = refreshed.products.find(p => p.id === productId);
+          if (freshProduct) {
+            setAdjProduct(freshProduct);
+            setAdjApiError(data.error ?? "الكمية المطلوبة أكبر من المخزون المتاح");
+          } else {
+            clearAdjustmentForm();
+            setAdjApiError("❌ المنتج لم يعد موجوداً");
+            return;
+          }
+        } else {
+          // ✅ Refresh failed - stale data warning
+          setAdjApiError(
+            (data.error ?? "الكمية المطلوبة أكبر من المخزون المتاح") +
+            "\n\nتعذر تحديث الرصيد الحالي. حدّث الصفحة قبل إعادة المحاولة."
+          );
+        }
+
+        setShowPreview(false);
+        return;
+      }
+
+      if (res.status === 500) {
+        setAdjApiError(
+          "حدث خطأ في الخادم:\n" +
+          (data.error ?? "خطأ غير متوقع") +
+          "\n\nيرجى المحاولة مرة أخرى أو الاتصال بالدعم الفني."
+        );
+        return;
+      }
+
+      setAdjApiError(`خطأ غير متوقع (${res.status}): ${data.error ?? "غير معروف"}`);
+
+    } catch (error) {
+      console.error("[ADJUSTMENT_SUBMIT]", error);
+      setAdjApiError("فشل الاتصال بالخادم. يرجى التحقق من الاتصال بالإنترنت والمحاولة مرة أخرى.");
+    } finally {
+      adjustmentSubmitLockRef.current = false;
+      setSubmitting(false);
     }
   };
 
@@ -207,6 +514,7 @@ export default function Inventory() {
         {(
           [
             { key: "receipts", label: "فواتير المشتريات" },
+            { key: "adjustments", label: "تسوية المخزون" },
             { key: "movements", label: "حركة المخزون" },
             { key: "alerts", label: alertCount > 0 ? `تنبيهات المخزون (${alertCount})` : "تنبيهات المخزون" },
             { key: "reports", label: "تقارير المخزون" },
@@ -217,6 +525,414 @@ export default function Inventory() {
           </button>
         ))}
       </div>
+
+      {/* ── TAB: Adjustments ── */}
+      {tab === "adjustments" && (
+        <div style={CARD}>
+          <h2 style={{ fontSize: 16, fontWeight: 900, color: "#fff4f8", marginBottom: 16, marginTop: 0 }}>
+            تسوية المخزون اليدوية
+          </h2>
+
+          {/* Success Message */}
+          {adjSuccess && (
+            <div style={{
+              background: "rgba(74,222,128,.1)",
+              border: "1px solid rgba(74,222,128,.3)",
+              borderRadius: 10,
+              padding: 12,
+              marginBottom: 16,
+            }}>
+              <div style={{ fontSize: 13, color: "#4ade80", fontWeight: 700 }}>
+                {adjSuccess}
+              </div>
+            </div>
+          )}
+
+          {/* API Error */}
+          {adjApiError && (
+            <div style={{
+              background: "rgba(248,113,113,.1)",
+              border: "1px solid rgba(248,113,113,.3)",
+              borderRadius: 10,
+              padding: 12,
+              marginBottom: 16,
+              whiteSpace: "pre-line",
+            }}>
+              <div style={{ fontSize: 12, color: "#f87171", fontWeight: 700, marginBottom: 4 }}>
+                ❌ خطأ
+              </div>
+              <div style={{ fontSize: 11, color: "#f87171" }}>
+                {adjApiError}
+              </div>
+            </div>
+          )}
+
+          {/* Validation Errors */}
+          {adjErrors.length > 0 && (
+            <div style={{
+              background: "rgba(248,113,113,.1)",
+              border: "1px solid rgba(248,113,113,.3)",
+              borderRadius: 10,
+              padding: 12,
+              marginBottom: 16,
+            }}>
+              <div style={{ fontSize: 12, color: "#f87171", fontWeight: 700, marginBottom: 6 }}>
+                يرجى تصحيح الأخطاء التالية:
+              </div>
+              <ul style={{ margin: "8px 0 0 0", paddingRight: 20, fontSize: 11, color: "#f87171" }}>
+                {adjErrors.map((err, i) => (
+                  <li key={i}>{err}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Product Selection */}
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ fontSize: 12, color: "#d7aabd", display: "block", marginBottom: 4 }}>
+              المنتج *
+            </label>
+            <select
+              value={adjProduct?.id ?? ""}
+              onChange={e => {
+                const p = products.find(pr => pr.id === e.target.value);
+                setAdjProduct(p ?? null);
+                setAdjQuantity("");
+                setAdjUnitCost("");
+                setAdjReason("");
+                setAdjNotes("");
+                invalidatePreview();
+              }}
+              disabled={submitting}
+              style={{ ...INPUT, opacity: submitting ? 0.5 : 1, cursor: submitting ? "not-allowed" : "pointer" }}
+            >
+              <option value="">اختر منتجاً</option>
+              {products.filter(p => p.active).map(p => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Product Info */}
+          {adjProduct && (
+            <div style={{ background: "rgba(0,0,0,.2)", borderRadius: 12, padding: 12, marginBottom: 12 }}>
+              <div style={{ fontSize: 13, color: "#fff4f8", marginBottom: 4 }}>
+                <b>{adjProduct.name}</b>
+              </div>
+              <div style={{ fontSize: 12, color: "#d7aabd" }}>
+                الرصيد الحالي: <b style={{ color: "#ffd166" }}>{adjProduct.stock}</b>
+              </div>
+              <div style={{ fontSize: 12, color: "#d7aabd" }}>
+                متوسط التكلفة: <b style={{ color: "#4ade80" }}>
+                  {adjProduct.averageCost?.toLocaleString("ar-EG", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) ?? "0.00"} ج.م
+                </b>
+              </div>
+              {adjProduct.lastPurchaseCost != null && adjProduct.lastPurchaseCost > 0 && (
+                <div style={{ fontSize: 11, color: "#888", marginTop: 4 }}>
+                  آخر سعر شراء: {adjProduct.lastPurchaseCost.toLocaleString("ar-EG")} ج.م (مرجعي فقط)
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Type Toggle */}
+          {adjProduct && (
+            <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
+              <button
+                onClick={() => {
+                  setAdjType("increase");
+                  invalidatePreview();
+                }}
+                disabled={submitting}
+                style={{
+                  flex: 1, padding: "10px", borderRadius: 10, border: "none",
+                  background: adjType === "increase" ? "#4ade80" : "rgba(255,255,255,.08)",
+                  color: adjType === "increase" ? "#000" : "#d7aabd",
+                  fontWeight: 700,
+                  cursor: submitting ? "not-allowed" : "pointer",
+                  opacity: submitting ? 0.5 : 1,
+                }}
+              >
+                زيادة
+              </button>
+              <button
+                onClick={() => {
+                  setAdjType("decrease");
+                  setAdjUnitCost("");
+                  invalidatePreview();
+                }}
+                disabled={submitting}
+                style={{
+                  flex: 1, padding: "10px", borderRadius: 10, border: "none",
+                  background: adjType === "decrease" ? "#f87171" : "rgba(255,255,255,.08)",
+                  color: adjType === "decrease" ? "#fff" : "#d7aabd",
+                  fontWeight: 700,
+                  cursor: submitting ? "not-allowed" : "pointer",
+                  opacity: submitting ? 0.5 : 1,
+                }}
+              >
+                تخفيض
+              </button>
+            </div>
+          )}
+
+          {/* Quantity */}
+          {adjProduct && (
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ fontSize: 12, color: "#d7aabd", display: "block", marginBottom: 4 }}>
+                الكمية {adjType === "increase" ? "المضافة" : "المخصومة"} *
+              </label>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={adjQuantity}
+                onChange={e => {
+                  setAdjQuantity(e.target.value);
+                  invalidatePreview();
+                }}
+                disabled={submitting}
+                style={{ ...INPUT, direction: "ltr", opacity: submitting ? 0.5 : 1, cursor: submitting ? "not-allowed" : "text" }}
+                placeholder="10"
+              />
+            </div>
+          )}
+
+          {/* Unit Cost (Increase) */}
+          {adjProduct && adjType === "increase" && (
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ fontSize: 12, color: "#d7aabd", display: "block", marginBottom: 4 }}>
+                تكلفة الوحدة (ج.م) *
+              </label>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={adjUnitCost}
+                onChange={e => {
+                  setAdjUnitCost(e.target.value);
+                  invalidatePreview();
+                }}
+                disabled={submitting}
+                style={{ ...INPUT, direction: "ltr", opacity: submitting ? 0.5 : 1, cursor: submitting ? "not-allowed" : "text" }}
+                placeholder="50.00"
+              />
+            </div>
+          )}
+
+          {/* Exit Cost (Decrease - Read Only) */}
+          {adjProduct && adjType === "decrease" && (
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ fontSize: 12, color: "#d7aabd", display: "block", marginBottom: 4 }}>
+                تكلفة الخروج
+              </label>
+              <input
+                disabled
+                readOnly
+                value={`${adjProduct.averageCost?.toLocaleString("ar-EG") ?? "0"} ج.م (متوسط التكلفة الحالي)`}
+                style={{ ...INPUT, opacity: 0.6, cursor: "not-allowed" }}
+              />
+              <div style={{ fontSize: 11, color: "#d7aabd", marginTop: 4 }}>
+                سيتم خصم الكمية بمتوسط التكلفة الحالي. المتوسط لن يتغير.
+              </div>
+            </div>
+          )}
+
+          {/* Reason */}
+          {adjProduct && (
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ fontSize: 12, color: "#d7aabd", display: "block", marginBottom: 4 }}>
+                سبب التسوية *
+              </label>
+              <input
+                value={adjReason}
+                onChange={e => {
+                  setAdjReason(e.target.value);
+                  invalidatePreview();
+                }}
+                disabled={submitting}
+                style={{ ...INPUT, opacity: submitting ? 0.5 : 1, cursor: submitting ? "not-allowed" : "text" }}
+                placeholder={
+                  adjType === "increase"
+                    ? "شراء خارجي / هدية من مورد / تصحيح جرد"
+                    : "تالف / منتهي الصلاحية / هدية للعميل / خطأ في الجرد"
+                }
+              />
+            </div>
+          )}
+
+          {/* Notes */}
+          {adjProduct && (
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ fontSize: 12, color: "#d7aabd", display: "block", marginBottom: 4 }}>
+                ملاحظات (اختياري)
+              </label>
+              <textarea
+                value={adjNotes}
+                onChange={e => {
+                  setAdjNotes(e.target.value);
+                  invalidatePreview();
+                }}
+                disabled={submitting}
+                style={{ ...INPUT, minHeight: 60, resize: "vertical", opacity: submitting ? 0.5 : 1, cursor: submitting ? "not-allowed" : "text" } as React.CSSProperties}
+              />
+            </div>
+          )}
+
+          {/* Preview */}
+          {showPreview && (() => {
+            const preview = calculatePreview();
+            return preview && (
+              <div style={{
+                background: "rgba(233,30,99,.1)",
+                border: "1px solid rgba(233,30,99,.3)",
+                borderRadius: 12,
+                padding: 16,
+                marginBottom: 16,
+              }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: "#e91e63", marginBottom: 12 }}>
+                  معاينة التسوية
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 12 }}>
+                  <div>
+                    <div style={{ fontSize: 11, color: "#d7aabd" }}>الرصيد الحالي</div>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: "#fff4f8" }}>
+                      {preview.stockBefore}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, color: "#d7aabd" }}>التغيير</div>
+                    <div style={{
+                      fontSize: 16,
+                      fontWeight: 700,
+                      color: adjType === "increase" ? "#4ade80" : "#f87171"
+                    }}>
+                      {preview.stockChange}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, color: "#d7aabd" }}>الرصيد الجديد</div>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: "#ffd166" }}>
+                      {preview.stockAfter}
+                    </div>
+                  </div>
+                </div>
+
+                <hr style={{ border: "none", borderTop: "1px solid rgba(255,255,255,.1)", margin: "12px 0" }} />
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 12 }}>
+                  <div>
+                    <div style={{ fontSize: 11, color: "#d7aabd" }}>متوسط التكلفة الحالي</div>
+                    <div style={{ fontSize: 14, color: "#d7aabd" }}>
+                      {preview.avgBefore.toLocaleString("ar-EG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ج.م
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, color: "#d7aabd" }}>
+                      {adjType === "increase" ? "تكلفة الوحدة الجديدة" : "—"}
+                    </div>
+                    <div style={{ fontSize: 14, color: adjType === "increase" ? "#4ade80" : "#d7aabd" }}>
+                      {adjType === "increase" && preview.avgChange != null
+                        ? `${preview.avgChange.toLocaleString("ar-EG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ج.م`
+                        : "—"}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, color: "#d7aabd" }}>متوسط التكلفة المتوقع</div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: "#ffd166" }}>
+                      {preview.avgAfter.toLocaleString("ar-EG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ج.م
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{
+                  marginTop: 12,
+                  padding: 10,
+                  background: "rgba(255,209,102,.15)",
+                  borderRadius: 8,
+                  fontSize: 11,
+                  color: "#ffd166",
+                  lineHeight: 1.5,
+                }}>
+                  ⚠️ <b>تأكيد:</b> سيتم تسجيل حركة تسوية مخزون دائمة. تأكد من الكمية والسبب قبل التنفيذ.
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Action Buttons */}
+          {adjProduct && (
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              {!showPreview && (
+                <button
+                  onClick={() => {
+                    const validation = validateForm();
+                    if (validation.valid) {
+                      setShowPreview(true);
+                      setAdjErrors([]);
+                    } else {
+                      setAdjErrors(validation.errors);
+                    }
+                  }}
+                  disabled={submitting}
+                  style={{
+                    background: submitting ? "rgba(255,255,255,.08)" : "#e91e63",
+                    color: submitting ? "#888" : "#fff",
+                    border: "none",
+                    borderRadius: 10,
+                    padding: "12px 24px",
+                    fontWeight: 700,
+                    cursor: submitting ? "not-allowed" : "pointer",
+                    opacity: submitting ? 0.5 : 1,
+                  }}
+                >
+                  معاينة التسوية
+                </button>
+              )}
+
+              {showPreview && (
+                <>
+                  <button
+                    onClick={() => {
+                      if (!submitting) {
+                        setShowPreview(false);
+                      }
+                    }}
+                    disabled={submitting}
+                    style={{
+                      background: "rgba(255,255,255,.08)",
+                      color: submitting ? "#888" : "#d7aabd",
+                      border: "none",
+                      borderRadius: 10,
+                      padding: "12px 20px",
+                      fontWeight: 700,
+                      cursor: submitting ? "not-allowed" : "pointer",
+                      opacity: submitting ? 0.5 : 1,
+                    }}
+                  >
+                    تعديل
+                  </button>
+                  <button
+                    onClick={submitAdjustment}
+                    disabled={submitting}
+                    style={{
+                      background: submitting ? "rgba(255,255,255,.08)" : "#4ade80",
+                      color: submitting ? "#888" : "#000",
+                      border: "none",
+                      borderRadius: 10,
+                      padding: "12px 24px",
+                      fontWeight: 700,
+                      cursor: submitting ? "not-allowed" : "pointer",
+                      opacity: submitting ? 0.5 : 1,
+                    }}
+                  >
+                    {submitting ? "جاري التنفيذ..." : "تأكيد التسوية"}
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── TAB: Receipts ── */}
       {tab === "receipts" && (
