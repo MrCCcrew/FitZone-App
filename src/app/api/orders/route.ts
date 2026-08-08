@@ -545,15 +545,20 @@ export async function PATCH(req: Request) {
           order.id
         );
       } else if (order.status === "confirmed" && order.inventoryDeducted) {
-        // Confirmed order: return flow (Phase 2D - temporary Phase 2B logic)
-        // TODO Phase 2D: Implement proper return with costPrice and WAC adjustment
-        const productQuantities = new Map<string, number>();
+        // Phase 2D: Confirmed order return with historical COGS and WAC recalculation
+        const productData = new Map<string, { quantity: number; totalCost: number; items: typeof order.items }>();
+
         for (const item of order.items) {
-          const current = productQuantities.get(item.productId) || 0;
-          productQuantities.set(item.productId, current + item.quantity);
+          const current = productData.get(item.productId) || { quantity: 0, totalCost: 0, items: [] };
+          const itemCost = (item.costPrice ?? 0) * item.quantity; // Use historical snapshot
+          productData.set(item.productId, {
+            quantity: current.quantity + item.quantity,
+            totalCost: current.totalCost + itemCost,
+            items: [...current.items, item],
+          });
         }
 
-        for (const [productId, totalQuantity] of productQuantities) {
+        for (const [productId, data] of productData) {
           const product = await tx.product.findUnique({
             where: { id: productId },
             select: { id: true, name: true, stock: true, trackInventory: true, averageCost: true },
@@ -561,21 +566,36 @@ export async function PATCH(req: Request) {
 
           if (!product || !product.trackInventory) continue;
 
+          const returnQuantity = data.quantity;
+          const returnUnitCost = data.totalCost / returnQuantity; // Weighted average of returned items
+
+          const stockBefore = product.stock;
+          const stockAfter = stockBefore + returnQuantity;
+          const avgBefore = product.averageCost;
+
+          // Phase 2D: Recalculate WAC including returned goods at historical cost
+          const newAvg = stockAfter > 0
+            ? (stockBefore * avgBefore + returnQuantity * returnUnitCost) / stockAfter
+            : returnUnitCost;
+
           await tx.product.update({
             where: { id: productId },
-            data: { stock: { increment: totalQuantity } },
+            data: {
+              stock: stockAfter,
+              averageCost: newAvg,
+            },
           });
 
           await tx.inventoryMovement.create({
             data: {
               productId,
               type: "return",
-              quantityChange: totalQuantity,
-              quantityBefore: product.stock,
-              quantityAfter: product.stock + totalQuantity,
-              unitCost: null, // TODO Phase 2D: use OrderItem.costPrice
-              averageCostBefore: product.averageCost,
-              averageCostAfter: product.averageCost, // TODO Phase 2D: recalculate WAC
+              quantityChange: returnQuantity,
+              quantityBefore: stockBefore,
+              quantityAfter: stockAfter,
+              unitCost: returnUnitCost, // Historical cost from OrderItem.costPrice
+              averageCostBefore: avgBefore,
+              averageCostAfter: newAvg, // Phase 2D: WAC recalculated
               referenceType: "Order",
               referenceId: order.id,
               reason: "إرجاع - إلغاء طلب من العميل",
