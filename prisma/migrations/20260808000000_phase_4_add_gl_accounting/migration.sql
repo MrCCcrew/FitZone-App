@@ -54,7 +54,7 @@ ALTER TABLE `JournalEntry` ADD CONSTRAINT `JournalEntry_accountId_fkey` FOREIGN 
 INSERT INTO `GLAccount` (`id`, `code`, `name`, `type`, `isActive`, `createdAt`, `updatedAt`) VALUES
 ('gl-1010', '1010', 'Inventory Asset', 'asset', 1, NOW(), NOW()),
 ('gl-1020', '1020', 'Cash', 'asset', 1, NOW(), NOW()),
-('gl-1030', '1030', 'Paymob Clearing', 'asset', 1, NOW(), NOW()),
+('gl-1030', '1030', 'Accounts Receivable', 'asset', 1, NOW(), NOW()),
 ('gl-2010', '2010', 'Accounts Payable', 'liability', 1, NOW(), NOW()),
 ('gl-3010', '3010', 'Opening Balance Equity', 'equity', 1, NOW(), NOW()),
 ('gl-4010', '4010', 'Sales Revenue', 'revenue', 1, NOW(), NOW()),
