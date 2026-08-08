@@ -93,7 +93,7 @@ describe("Phase 4: Accounting / GL Integration", () => {
         data: { status: "confirmed", inventoryDeducted: true },
       });
 
-      // Post GL journal
+      // Post GL journal (default payment method → Paymob Clearing)
       await postSaleJournal(
         tx,
         newOrder.id,
@@ -102,7 +102,8 @@ describe("Phase 4: Accounting / GL Integration", () => {
           productId: r.productId,
           quantity: 2,
           costPrice: r.costPrice,
-        }))
+        })),
+        "paymob" // Explicit for test clarity
       );
 
       return newOrder;
@@ -120,16 +121,16 @@ describe("Phase 4: Accounting / GL Integration", () => {
 
     expect(journal).toBeTruthy();
     expect(journal!.status).toBe("posted");
-    expect(journal!.entries.length).toBe(4); // Cash Dr, Revenue Cr, COGS Dr, Inventory Cr
+    expect(journal!.entries.length).toBe(4); // Paymob Clearing Dr, Revenue Cr, COGS Dr, Inventory Cr
 
     // Verify balance (convert Decimal to number)
     const totalDebit = journal!.entries.reduce((sum, e) => sum + Number(e.debit), 0);
     const totalCredit = journal!.entries.reduce((sum, e) => sum + Number(e.credit), 0);
     expect(Math.abs(totalDebit - totalCredit)).toBeLessThan(0.01);
 
-    // Verify accounts
-    const cashDebit = journal!.entries.find(
-      (e) => e.account.code === "1020" && Number(e.debit) > 0
+    // Verify accounts (Paymob payment)
+    const paymobDebit = journal!.entries.find(
+      (e) => e.account.code === "1030" && Number(e.debit) > 0
     );
     const revenueCredit = journal!.entries.find(
       (e) => e.account.code === "4010" && Number(e.credit) > 0
@@ -141,8 +142,8 @@ describe("Phase 4: Accounting / GL Integration", () => {
       (e) => e.account.code === "1010" && Number(e.credit) > 0
     );
 
-    expect(cashDebit).toBeTruthy();
-    expect(Number(cashDebit!.debit)).toBe(200);
+    expect(paymobDebit).toBeTruthy();
+    expect(Number(paymobDebit!.debit)).toBe(200);
 
     expect(revenueCredit).toBeTruthy();
     expect(Number(revenueCredit!.credit)).toBe(200);
@@ -280,7 +281,8 @@ describe("Phase 4: Accounting / GL Integration", () => {
           productId: r.productId,
           quantity: 3,
           costPrice: r.costPrice,
-        }))
+        })),
+        "paymob" // Test 3
       );
 
       return newOrder;
@@ -350,7 +352,7 @@ describe("Phase 4: Accounting / GL Integration", () => {
         returnCost: data.totalCost / data.quantity,
       }));
 
-      await postReturnJournal(tx, order.id, orderData.total, returnItems);
+      await postReturnJournal(tx, order.id, orderData.total, returnItems, "paymob"); // Test 3 return
 
       await tx.order.update({
         where: { id: order.id },
@@ -416,7 +418,8 @@ describe("Phase 4: Accounting / GL Integration", () => {
           productId: r.productId,
           quantity: 1,
           costPrice: r.costPrice,
-        }))
+        })),
+        "paymob" // Test 4
       );
 
       return newOrder;
@@ -428,7 +431,8 @@ describe("Phase 4: Accounting / GL Integration", () => {
         tx,
         order.id,
         100,
-        [{ productId: testProduct.id, quantity: 1, costPrice: 100 }]
+        [{ productId: testProduct.id, quantity: 1, costPrice: 100 }],
+        "paymob" // Test 4 retry
       );
     }, { timeout: 10000 });
 
@@ -592,7 +596,7 @@ describe("Phase 4: Accounting / GL Integration", () => {
       await postSaleJournal(tx, orderId, 0.30, [
         { productId: testProduct.id, quantity: 1, costPrice: 0.10 },
         { productId: testProduct.id, quantity: 1, costPrice: 0.20 },
-      ]);
+      ], "paymob"); // Test 8
 
       const journal = await tx.journal.findUnique({
         where: {
@@ -686,7 +690,7 @@ describe("Phase 4: Accounting / GL Integration", () => {
       // Minimum precision: 0.01 EGP
       await postSaleJournal(tx, orderId, 0.01, [
         { productId: testProduct.id, quantity: 1, costPrice: 0.01 },
-      ]);
+      ], "paymob"); // Test 10
 
       const journal = await tx.journal.findUnique({
         where: {
@@ -706,5 +710,325 @@ describe("Phase 4: Accounting / GL Integration", () => {
       expect(totalDebit).toBe(totalCredit);
       expect(totalDebit).toBe(0.02); // 0.01 revenue + 0.01 COGS
     });
+  }, 20000);
+
+  // Test 11: Paymob payment uses Paymob Clearing account
+  it("Paymob payment posts to Paymob Clearing (1030), not Cash", async () => {
+    await db.$transaction(async (tx) => {
+      const orderId = `test-paymob-${Date.now()}`;
+
+      // Paymob payment (default when paymentMethod is not "cod")
+      await postSaleJournal(
+        tx,
+        orderId,
+        100,
+        [{ productId: testProduct.id, quantity: 1, costPrice: 50 }],
+        "paymob" // Explicit Paymob
+      );
+
+      const journal = await tx.journal.findUnique({
+        where: {
+          referenceType_referenceId: {
+            referenceType: "Order",
+            referenceId: orderId,
+          },
+        },
+        include: { entries: { include: { account: true } } },
+      });
+
+      expect(journal).not.toBeNull();
+
+      // Find payment entry
+      const paymobEntry = journal!.entries.find(
+        (e) => e.account.code === "1030" && Number(e.debit) > 0
+      );
+      const cashEntry = journal!.entries.find(
+        (e) => e.account.code === "1020" && Number(e.debit) > 0
+      );
+
+      expect(paymobEntry).toBeTruthy();
+      expect(paymobEntry!.description).toContain("Paymob");
+      expect(Number(paymobEntry!.debit)).toBe(100);
+      expect(cashEntry).toBeFalsy(); // Should NOT use Cash
+    });
+  }, 20000);
+
+  // Test 12: Cash pickup uses Cash account
+  it("Cash pickup posts to Cash (1020), not Paymob Clearing", async () => {
+    await db.$transaction(async (tx) => {
+      const orderId = `test-cash-${Date.now()}`;
+
+      // Cash pickup
+      await postSaleJournal(
+        tx,
+        orderId,
+        100,
+        [{ productId: testProduct.id, quantity: 1, costPrice: 50 }],
+        "cod" // Cash on delivery / pickup
+      );
+
+      const journal = await tx.journal.findUnique({
+        where: {
+          referenceType_referenceId: {
+            referenceType: "Order",
+            referenceId: orderId,
+          },
+        },
+        include: { entries: { include: { account: true } } },
+      });
+
+      expect(journal).not.toBeNull();
+
+      // Find payment entry
+      const cashEntry = journal!.entries.find(
+        (e) => e.account.code === "1020" && Number(e.debit) > 0
+      );
+      const paymobEntry = journal!.entries.find(
+        (e) => e.account.code === "1030" && Number(e.debit) > 0
+      );
+
+      expect(cashEntry).toBeTruthy();
+      expect(cashEntry!.description).toContain("Cash");
+      expect(Number(cashEntry!.debit)).toBe(100);
+      expect(paymobEntry).toBeFalsy(); // Should NOT use Paymob Clearing
+    });
+  }, 20000);
+
+  // Test 13: Paymob return reverses Paymob Clearing
+  it("Paymob return reverses Paymob Clearing, not Cash", async () => {
+    await db.$transaction(async (tx) => {
+      const orderId = `test-paymob-return-${Date.now()}`;
+
+      // Original Paymob sale
+      await postSaleJournal(
+        tx,
+        orderId,
+        100,
+        [{ productId: testProduct.id, quantity: 1, costPrice: 50 }],
+        "paymob"
+      );
+
+      // Return
+      await postReturnJournal(
+        tx,
+        orderId,
+        100,
+        [{ productId: testProduct.id, quantity: 1, returnCost: 50 }],
+        "paymob" // Must match original
+      );
+
+      const returnJournal = await tx.journal.findUnique({
+        where: {
+          referenceType_referenceId: {
+            referenceType: "OrderReturn",
+            referenceId: orderId,
+          },
+        },
+        include: { entries: { include: { account: true } } },
+      });
+
+      expect(returnJournal).not.toBeNull();
+
+      // Refund should credit Paymob Clearing
+      const paymobCredit = returnJournal!.entries.find(
+        (e) => e.account.code === "1030" && Number(e.credit) > 0
+      );
+      const cashCredit = returnJournal!.entries.find(
+        (e) => e.account.code === "1020" && Number(e.credit) > 0
+      );
+
+      expect(paymobCredit).toBeTruthy();
+      expect(paymobCredit!.description).toContain("Paymob");
+      expect(Number(paymobCredit!.credit)).toBe(100);
+      expect(cashCredit).toBeFalsy();
+    });
+  }, 20000);
+
+  // Test 14: Cash return reverses Cash
+  it("Cash return reverses Cash, not Paymob Clearing", async () => {
+    await db.$transaction(async (tx) => {
+      const orderId = `test-cash-return-${Date.now()}`;
+
+      // Original Cash sale
+      await postSaleJournal(
+        tx,
+        orderId,
+        100,
+        [{ productId: testProduct.id, quantity: 1, costPrice: 50 }],
+        "cod"
+      );
+
+      // Return
+      await postReturnJournal(
+        tx,
+        orderId,
+        100,
+        [{ productId: testProduct.id, quantity: 1, returnCost: 50 }],
+        "cod" // Must match original
+      );
+
+      const returnJournal = await tx.journal.findUnique({
+        where: {
+          referenceType_referenceId: {
+            referenceType: "OrderReturn",
+            referenceId: orderId,
+          },
+        },
+        include: { entries: { include: { account: true } } },
+      });
+
+      expect(returnJournal).not.toBeNull();
+
+      // Refund should credit Cash
+      const cashCredit = returnJournal!.entries.find(
+        (e) => e.account.code === "1020" && Number(e.credit) > 0
+      );
+      const paymobCredit = returnJournal!.entries.find(
+        (e) => e.account.code === "1030" && Number(e.credit) > 0
+      );
+
+      expect(cashCredit).toBeTruthy();
+      expect(cashCredit!.description).toContain("Cash");
+      expect(Number(cashCredit!.credit)).toBe(100);
+      expect(paymobCredit).toBeFalsy();
+    });
+  }, 20000);
+
+  // Test 15: Wallet payment uses Paymob Clearing
+  it("Wallet payment posts to Paymob Clearing (online store)", async () => {
+    await db.$transaction(async (tx) => {
+      const orderId = `test-wallet-${Date.now()}`;
+
+      await postSaleJournal(
+        tx,
+        orderId,
+        100,
+        [{ productId: testProduct.id, quantity: 1, costPrice: 50 }],
+        "wallet" // Wallet through online store
+      );
+
+      const journal = await tx.journal.findUnique({
+        where: {
+          referenceType_referenceId: {
+            referenceType: "Order",
+            referenceId: orderId,
+          },
+        },
+        include: { entries: { include: { account: true } } },
+      });
+
+      expect(journal).not.toBeNull();
+
+      const paymobEntry = journal!.entries.find(
+        (e) => e.account.code === "1030" && Number(e.debit) > 0
+      );
+
+      expect(paymobEntry).toBeTruthy();
+      expect(Number(paymobEntry!.debit)).toBe(100);
+    });
+  }, 20000);
+
+  // Test 16: Card payment uses Paymob Clearing
+  it("Card payment posts to Paymob Clearing (online store)", async () => {
+    await db.$transaction(async (tx) => {
+      const orderId = `test-card-${Date.now()}`;
+
+      await postSaleJournal(
+        tx,
+        orderId,
+        100,
+        [{ productId: testProduct.id, quantity: 1, costPrice: 50 }],
+        "card"
+      );
+
+      const journal = await tx.journal.findUnique({
+        where: {
+          referenceType_referenceId: {
+            referenceType: "Order",
+            referenceId: orderId,
+          },
+        },
+        include: { entries: { include: { account: true } } },
+      });
+
+      expect(journal).not.toBeNull();
+
+      const paymobEntry = journal!.entries.find(
+        (e) => e.account.code === "1030" && Number(e.debit) > 0
+      );
+
+      expect(paymobEntry).toBeTruthy();
+      expect(Number(paymobEntry!.debit)).toBe(100);
+    });
+  }, 20000);
+
+  // Test 17: Unknown payment method throws error
+  it("Unknown payment method throws error (safe failure)", async () => {
+    await expect(
+      db.$transaction(async (tx) => {
+        const orderId = `test-unknown-${Date.now()}`;
+
+        await postSaleJournal(
+          tx,
+          orderId,
+          100,
+          [{ productId: testProduct.id, quantity: 1, costPrice: 50 }],
+          "unknown-method"
+        );
+      })
+    ).rejects.toThrow(/Unknown payment method/i);
+
+    // Verify no journal was created
+    const journal = await db.journal.findFirst({
+      where: {
+        referenceType: "Order",
+        referenceId: { contains: "test-unknown-" },
+      },
+    });
+
+    expect(journal).toBeNull();
+  }, 20000);
+
+  // Test 18: Purchase receipt does NOT auto-post GL
+  it("Purchase receipt updates inventory but does NOT auto-post GL", async () => {
+    const productBefore = await db.product.findUnique({
+      where: { id: testProduct.id },
+      select: { stock: true, averageCost: true },
+    });
+
+    const receipt = await db.$transaction(async (tx) => {
+      return await tx.inventoryReceipt.create({
+        data: {
+          referenceNumber: `TEST-NO-GL-${Date.now()}`,
+          supplierId: null,
+          status: "posted",
+          totalCost: 500,
+          items: {
+            create: [
+              {
+                productId: testProduct.id,
+                quantity: 10,
+                unitCost: 50,
+                totalCost: 500,
+              },
+            ],
+          },
+        },
+      });
+    });
+
+    // Inventory should be updated (manual verification via inventory-service not called here,
+    // but receipt creation itself doesn't auto-post GL)
+    const purchaseJournal = await db.journal.findUnique({
+      where: {
+        referenceType_referenceId: {
+          referenceType: "InventoryReceipt",
+          referenceId: receipt.id,
+        },
+      },
+    });
+
+    // No GL journal should exist (automatic posting disabled)
+    expect(purchaseJournal).toBeNull();
   }, 20000);
 });

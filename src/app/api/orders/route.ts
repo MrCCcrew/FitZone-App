@@ -613,7 +613,7 @@ export async function PATCH(req: Request) {
               returnCost: data.totalCost / data.quantity,
             }));
 
-            await postReturnJournal(tx, order.id, order.total, returnItems);
+            await postReturnJournal(tx, order.id, order.total, returnItems, order.paymentMethod);
           } catch (err) {
             console.error("[GL_RETURN_JOURNAL]", err);
             // Don't block cancellation if GL fails
