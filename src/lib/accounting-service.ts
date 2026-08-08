@@ -18,7 +18,7 @@ type TransactionClient = Parameters<Parameters<typeof db.$transaction>[0]>[0];
 const GL_ACCOUNTS = {
   INVENTORY_ASSET: "1010",
   CASH: "1020",
-  ACCOUNTS_RECEIVABLE: "1030",
+  PAYMOB_CLEARING: "1030", // Paymob Clearing / مستحقات لدى Paymob (formerly Accounts Receivable)
   ACCOUNTS_PAYABLE: "2010",
   OPENING_BALANCE_EQUITY: "3010",
   SALES_REVENUE: "4010",
@@ -30,6 +30,31 @@ interface JournalLineItem {
   debit: number;
   credit: number;
   description?: string;
+}
+
+/**
+ * Map payment method to GL account
+ * Throws error on unknown method to prevent posting to wrong account
+ */
+function mapPaymentMethodToAccount(paymentMethod: string | null | undefined): string {
+  const method = String(paymentMethod ?? "").toLowerCase().trim();
+
+  // Cash pickup at gym
+  if (method === "cod") {
+    return GL_ACCOUNTS.CASH;
+  }
+
+  // Online store payments through Paymob
+  // (card, paymob, wallet all go through Paymob checkout)
+  if (method === "card" || method === "paymob" || method === "wallet") {
+    return GL_ACCOUNTS.PAYMOB_CLEARING;
+  }
+
+  // Unknown method - fail safely
+  throw new Error(
+    `Unknown payment method for GL posting: "${method}". ` +
+    `Expected: cod (cash) or card/paymob/wallet (online).`
+  );
 }
 
 /**
@@ -142,7 +167,11 @@ async function postJournal(
 /**
  * Post sale journal (Order confirmation)
  *
- * Dr Cash/Receivable {amount}
+ * Payment account depends on order payment method:
+ * - COD/Cash pickup: Dr Cash
+ * - Paymob online: Dr Paymob Clearing
+ *
+ * Dr Cash/Paymob Clearing {amount}
  *   Cr Sales Revenue {amount}
  *
  * Dr COGS {qty * costPrice}
@@ -152,17 +181,23 @@ export async function postSaleJournal(
   tx: TransactionClient,
   orderId: string,
   orderTotal: number,
-  items: Array<{ productId: string; quantity: number; costPrice: number }>
+  items: Array<{ productId: string; quantity: number; costPrice: number }>,
+  paymentMethod?: string
 ): Promise<string | null> {
   const totalCOGS = items.reduce((sum, item) => sum + item.quantity * item.costPrice, 0);
+
+  // Map payment method to GL account (throws on unknown)
+  const paymentAccount = mapPaymentMethodToAccount(paymentMethod);
+  const isCashPickup = paymentAccount === GL_ACCOUNTS.CASH;
+  const paymentDescription = isCashPickup ? "Cash sale" : "Paymob sale";
 
   const entries: JournalLineItem[] = [
     // Revenue recognition
     {
-      accountCode: GL_ACCOUNTS.CASH, // Simplified: all sales → Cash
+      accountCode: paymentAccount,
       debit: orderTotal,
       credit: 0,
-      description: "Sale receipt",
+      description: paymentDescription,
     },
     {
       accountCode: GL_ACCOUNTS.SALES_REVENUE,
@@ -197,8 +232,13 @@ export async function postSaleJournal(
 /**
  * Post purchase journal (Receipt)
  *
+ * DEFERRED: Purchase account mapping requires business confirmation
+ * - Cash purchases vs Accounts Payable (supplier terms)
+ * - Currently simplified to Cash only
+ * - Production deployment should verify supplier payment terms
+ *
  * Dr Inventory Asset {qty * unitCost}
- *   Cr Cash/Payable {qty * unitCost}
+ *   Cr Cash {qty * unitCost}
  */
 export async function postPurchaseJournal(
   tx: TransactionClient,
@@ -213,10 +253,10 @@ export async function postPurchaseJournal(
       description: "Inventory purchase",
     },
     {
-      accountCode: GL_ACCOUNTS.CASH, // Simplified: all purchases → Cash
+      accountCode: GL_ACCOUNTS.CASH, // DEFERRED: All purchases → Cash (supplier terms not confirmed)
       debit: 0,
       credit: totalCost,
-      description: "Purchase payment",
+      description: "Purchase payment (cash)",
     },
   ];
 
@@ -232,8 +272,12 @@ export async function postPurchaseJournal(
 /**
  * Post return journal (Order cancellation)
  *
+ * Reverses original payment account:
+ * - COD/Cash pickup: Cr Cash
+ * - Paymob online: Cr Paymob Clearing
+ *
  * Dr Sales Revenue {amount}
- *   Cr Cash/Receivable {amount}
+ *   Cr Cash/Paymob Clearing {amount}
  *
  * Dr Inventory Asset {qty * returnCost}
  *   Cr COGS {qty * returnCost}
@@ -242,9 +286,15 @@ export async function postReturnJournal(
   tx: TransactionClient,
   orderId: string,
   orderTotal: number,
-  items: Array<{ productId: string; quantity: number; returnCost: number }>
+  items: Array<{ productId: string; quantity: number; returnCost: number }>,
+  paymentMethod?: string // Must match original order payment method
 ): Promise<string | null> {
   const totalReturnCost = items.reduce((sum, item) => sum + item.quantity * item.returnCost, 0);
+
+  // Reverse original payment account (same mapper as sale)
+  const paymentAccount = mapPaymentMethodToAccount(paymentMethod);
+  const isCashPickup = paymentAccount === GL_ACCOUNTS.CASH;
+  const refundDescription = isCashPickup ? "Cash refund" : "Paymob refund";
 
   const entries: JournalLineItem[] = [
     // Revenue reversal
@@ -255,10 +305,10 @@ export async function postReturnJournal(
       description: "Sale return - revenue reversal",
     },
     {
-      accountCode: GL_ACCOUNTS.CASH,
+      accountCode: paymentAccount,
       debit: 0,
       credit: orderTotal,
-      description: "Sale return - refund",
+      description: refundDescription,
     },
     // COGS reversal
     {
@@ -286,6 +336,11 @@ export async function postReturnJournal(
 
 /**
  * Post manual adjustment journal
+ *
+ * DEFERRED: Adjustment account mapping not confirmed
+ * - Opening Balance Equity is for true opening balances only
+ * - Adjustments should use reason-specific accounts (shrinkage, damage, etc.)
+ * - This function exists but should not be called automatically in production
  *
  * Dr/Cr Inventory Asset {valuationChange}
  *   Cr/Dr Opening Balance Equity {valuationChange}

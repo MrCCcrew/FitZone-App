@@ -1237,7 +1237,8 @@ export async function updatePaymentTransactionStatus(
                 productId: r.productId,
                 quantity: order.items.find((i) => i.productId === r.productId)?.quantity ?? 0,
                 costPrice: r.costPrice,
-              }))
+              })),
+              order.paymentMethod // Pass payment method for account determination
             );
           } catch (err) {
             console.error("[GL_SALE_JOURNAL]", err);
