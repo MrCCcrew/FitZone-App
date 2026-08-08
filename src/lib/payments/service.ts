@@ -1225,6 +1225,24 @@ export async function updatePaymentTransactionStatus(
 
           // Capture cost prices in order items
           await updateOrderItemCostPrices(tx, existing.orderId!, saleResults);
+
+          // Phase 4: Post GL journal for sale
+          try {
+            const { postSaleJournal } = await import("@/lib/accounting-service");
+            await postSaleJournal(
+              tx,
+              existing.orderId!,
+              order.total,
+              saleResults.map((r) => ({
+                productId: r.productId,
+                quantity: order.items.find((i) => i.productId === r.productId)?.quantity ?? 0,
+                costPrice: r.costPrice,
+              }))
+            );
+          } catch (err) {
+            console.error("[GL_SALE_JOURNAL]", err);
+            // Don't block order confirmation if GL fails
+          }
         }, { timeout: 15000 });
       } else if (order?.status === "pending" && order.inventoryDeducted) {
         // Already converted (idempotent webhook retry)
