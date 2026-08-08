@@ -2207,3 +2207,55 @@ model AnalyticsEvent {
   @@index([createdAt])
   @@index([paymentTransactionId])
 }
+
+// ─── Phase 4: General Ledger / Accounting ─────────────────────────────────────
+
+model GLAccount {
+  id        String   @id @default(cuid())
+  code      String   @unique // e.g. "1010", "4010", "5010"
+  name      String   // e.g. "Inventory Asset", "Sales Revenue", "COGS"
+  type      String   // asset | liability | equity | revenue | expense
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  entries JournalEntry[]
+
+  @@index([type, isActive])
+}
+
+model Journal {
+  id                String   @id @default(cuid())
+  referenceType     String   // Order | InventoryReceipt | Adjustment
+  referenceId       String   // FK to source document
+  description       String   @db.Text
+  date              DateTime @default(now())
+  status            String   @default("posted") // draft | posted | reversed
+  reversalJournalId String?  // FK to Journal that reverses this
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  entries    JournalEntry[]
+  reversalOf Journal?        @relation("JournalReversal", fields: [reversalJournalId], references: [id], onDelete: SetNull)
+  reversals  Journal[]       @relation("JournalReversal")
+
+  @@unique([referenceType, referenceId])
+  @@index([status, date])
+}
+
+model JournalEntry {
+  id          String   @id @default(cuid())
+  journalId   String
+  accountId   String
+  debit       Decimal  @default(0) @db.Decimal(18, 2) // EGP with 2 decimals (piastres)
+  credit      Decimal  @default(0) @db.Decimal(18, 2)
+  description String?  @db.Text
+  createdAt   DateTime @default(now())
+
+  journal Journal   @relation(fields: [journalId], references: [id], onDelete: Cascade)
+  account GLAccount @relation(fields: [accountId], references: [id])
+
+  @@index([journalId])
+  @@index([accountId])
+  @@index([createdAt])
+}
