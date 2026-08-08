@@ -163,6 +163,16 @@ export async function POST(req: Request) {
     }
 
     await tx.inventoryReceipt.update({ where: { id: receipt.id }, data: { totalCost } });
+
+    // Phase 4: Post GL purchase journal
+    try {
+      const { postPurchaseJournal } = await import("@/lib/accounting-service");
+      await postPurchaseJournal(tx, receipt.id, totalCost);
+    } catch (err) {
+      console.error("[GL_PURCHASE_JOURNAL]", err);
+      // Don't block receipt if GL fails
+    }
+
     return receipt.id;
   }).catch((error: unknown) => {
     const message = error instanceof Error ? error.message : "تعذر تسجيل المشتريات.";

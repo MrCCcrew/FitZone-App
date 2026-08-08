@@ -602,6 +602,23 @@ export async function PATCH(req: Request) {
             },
           });
         }
+
+        // Phase 4: Post GL return journal if confirmed order
+        if (order.status === "confirmed" && order.inventoryDeducted) {
+          try {
+            const { postReturnJournal } = await import("@/lib/accounting-service");
+            const returnItems = Array.from(productData.entries()).map(([productId, data]) => ({
+              productId,
+              quantity: data.quantity,
+              returnCost: data.totalCost / data.quantity,
+            }));
+
+            await postReturnJournal(tx, order.id, order.total, returnItems);
+          } catch (err) {
+            console.error("[GL_RETURN_JOURNAL]", err);
+            // Don't block cancellation if GL fails
+          }
+        }
       }
 
       // Cancel order
