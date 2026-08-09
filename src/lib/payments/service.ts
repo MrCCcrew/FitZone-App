@@ -1206,7 +1206,11 @@ export async function updatePaymentTransactionStatus(
           // Atomic claim: only process if still pending
           const claimed = await tx.order.updateMany({
             where: { id: existing.orderId!, status: "pending" },
-            data: { status: "confirmed", inventoryDeducted: true },
+            data: {
+              status: "confirmed",
+              inventoryDeducted: true,
+              confirmedAt: new Date(), // Immutable: set once at sale completion
+            },
           });
 
           if (claimed.count === 0) {

@@ -1,38 +1,18 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireAdminFeature } from "@/lib/admin-guard";
+import {
+  parseDateStart,
+  parseDateEnd,
+  createDateRangeFilter,
+  calculateStoreAccounting,
+} from "@/lib/accounting-report-service";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const dbx = db as any;
 
 type BusinessUnit = "store" | "club";
 type FeeRuleCategory = "platform" | "external_service" | "other";
-
-function parseDateStart(value: string | null) {
-  if (!value) return null;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
-  date.setHours(0, 0, 0, 0);
-  return date;
-}
-
-function parseDateEnd(value: string | null) {
-  if (!value) return null;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
-  date.setHours(23, 59, 59, 999);
-  return date;
-}
-
-function inRangeFilter(field: string, from: Date | null, to: Date | null) {
-  if (!from && !to) return undefined;
-  return {
-    [field]: {
-      ...(from ? { gte: from } : {}),
-      ...(to ? { lte: to } : {}),
-    },
-  };
-}
 
 function round2(value: number) {
   return Math.round((value + Number.EPSILON) * 100) / 100;
@@ -111,14 +91,27 @@ export async function GET(request: Request) {
       orderBy: [{ isActive: "desc" }, { createdAt: "desc" }],
     }),
     db.accountingExpense.findMany({
-      where: inRangeFilter("expenseDate", from, to),
+      where: createDateRangeFilter("expenseDate", from, to),
       orderBy: { expenseDate: "desc" },
     }),
+    // ═══════════════════════════════════════════════════════════════════════
+    // SALE ORDERS: Recognize revenue on Order.confirmedAt (completion event)
+    // ═══════════════════════════════════════════════════════════════════════
+    // Eligible sales must have:
+    // - businessUnit = "store"
+    // - confirmedAt NOT NULL (atomic sale completion timestamp)
+    // - inventoryDeducted = true (physical stock converted)
+    // - status in valid completed-sale states
+    //
+    // Recognition period: Order.confirmedAt in [from, to)
+    // ═══════════════════════════════════════════════════════════════════════
     db.order.findMany({
       where: {
         businessUnit: "store",
-        status: { in: ["confirmed", "delivered"] },
-        ...inRangeFilter("createdAt", from, to),
+        confirmedAt: { not: null }, // Must have completion event timestamp
+        inventoryDeducted: true,    // Must have converted stock
+        status: { in: ["confirmed", "preparing", "delivered"] },
+        ...createDateRangeFilter("confirmedAt", from, to), // EVENT-BASED recognition
       },
       include: {
         user: { select: { name: true } },
@@ -130,24 +123,40 @@ export async function GET(request: Request) {
           select: { provider: true, paymentMethod: true, amount: true },
         },
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: { confirmedAt: "desc" },
     }),
-    // Cancelled orders that were actually paid = returns/refunds
+    // ═══════════════════════════════════════════════════════════════════════
+    // RETURN ORDERS: Recognize returns on Order.cancelledAt (cancellation event)
+    // ═══════════════════════════════════════════════════════════════════════
+    // Valid returns must have:
+    // - businessUnit = "store"
+    // - status = "cancelled"
+    // - cancelledAt NOT NULL (cancellation event timestamp)
+    // - inventoryDeducted = true (was previously a completed sale)
+    //
+    // Recognition period: Order.cancelledAt in [from, to)
+    //
+    // Pre-payment cancellations excluded by inventoryDeducted check
+    // ═══════════════════════════════════════════════════════════════════════
     db.order.findMany({
       where: {
         businessUnit: "store",
         status: "cancelled",
-        ...inRangeFilter("createdAt", from, to),
-        paymentTransactions: { some: { status: "paid" } },
+        cancelledAt: { not: null },   // Must have cancellation event timestamp
+        inventoryDeducted: true,      // Must have been a completed sale (excludes pre-payment cancellations)
+        ...createDateRangeFilter("cancelledAt", from, to), // EVENT-BASED recognition
       },
       include: {
         user: { select: { name: true } },
         items: { include: { product: { select: { name: true } } } },
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: { cancelledAt: "desc" },
     }),
     db.inventoryReceipt.findMany({
-      where: inRangeFilter("receivedAt", from, to),
+      where: {
+        status: "posted", // Only financially valid posted receipts
+        ...createDateRangeFilter("receivedAt", from, to),
+      },
       include: {
         items: {
           include: {
@@ -157,17 +166,13 @@ export async function GET(request: Request) {
       },
       orderBy: { receivedAt: "desc" },
     }),
-    db.inventoryMovement.findMany({
-      where: {
-        referenceType: "order",
-        type: { in: ["sale", "return"] },
-        ...inRangeFilter("createdAt", from, to),
-      },
-    }),
+    // Inventory movements will be fetched AFTER orders to ensure COGS integrity
+    // (see COGS calculation below - movements must be reconciled to actual store orders)
+    Promise.resolve([]), // Placeholder - replaced with order-reconciled movements below
     db.userMembership.findMany({
       where: {
         status: { in: ["active", "expired"] },
-        ...inRangeFilter("startDate", from, to),
+        ...createDateRangeFilter("startDate", from, to),
       },
       include: {
         user: { select: { name: true } },
@@ -178,7 +183,7 @@ export async function GET(request: Request) {
     db.booking.findMany({
       where: {
         status: { in: ["confirmed", "attended"] },
-        ...inRangeFilter("createdAt", from, to),
+        ...createDateRangeFilter("createdAt", from, to),
       },
       include: {
         user: { select: { name: true } },
@@ -192,14 +197,14 @@ export async function GET(request: Request) {
     }),
     db.rewardPoints.findMany({ select: { points: true } }),
     db.rewardHistory.findMany({
-      where: inRangeFilter("createdAt", from, to),
+      where: createDateRangeFilter("createdAt", from, to),
       orderBy: { createdAt: "desc" },
       take: 100,
     }),
     db.paymentTransaction.findMany({
       where: {
         status: "paid",
-        ...inRangeFilter("createdAt", from, to),
+        ...createDateRangeFilter("createdAt", from, to),
       },
       orderBy: { createdAt: "desc" },
       select: {
@@ -216,19 +221,19 @@ export async function GET(request: Request) {
     // Partner commissions earned in period (by subscription startDate)
     db.partnerCommission.findMany({
       where: {
-        userMembership: inRangeFilter("startDate", from, to),
+        userMembership: createDateRangeFilter("startDate", from, to),
       },
       select: { amount: true, status: true },
     }),
     // Agent commissions earned in period (by membership startDate)
     db.agentCommission.findMany({
       where: {
-        userMembership: inRangeFilter("startDate", from, to),
+        userMembership: createDateRangeFilter("startDate", from, to),
       },
       select: { amount: true, status: true },
     }),
     dbx.salesAgentCommission.findMany({
-      where: inRangeFilter("createdAt", from, to),
+      where: createDateRangeFilter("createdAt", from, to),
       include: {
         agent: { select: { id: true, name: true, managerId: true, manager: { select: { id: true, name: true } } } },
         userMembership: {
@@ -239,7 +244,7 @@ export async function GET(request: Request) {
       take: 300,
     }),
     dbx.managerCommission.findMany({
-      where: inRangeFilter("createdAt", from, to),
+      where: createDateRangeFilter("createdAt", from, to),
       include: {
         manager: { select: { id: true, name: true } },
         agentCommission: {
@@ -255,7 +260,7 @@ export async function GET(request: Request) {
       take: 300,
     }),
     dbx.managerPartnerCommission.findMany({
-      where: inRangeFilter("createdAt", from, to),
+      where: createDateRangeFilter("createdAt", from, to),
       include: {
         manager: { select: { id: true, name: true } },
         partnerCommission: {
@@ -303,7 +308,7 @@ export async function GET(request: Request) {
     const vatTotal = round2(order.items.reduce((sum, item) => sum + (item.vatAmount ?? 0), 0));
     return {
       id: order.id,
-      date: order.createdAt.toISOString(),
+      date: order.confirmedAt!.toISOString(), // Sale event timestamp (confirmed! because query filters confirmedAt NOT NULL)
       customerName: order.user.name ?? "عميل",
       items: order.items.map((item) => item.product.name).join("، "),
       paymentMethod: order.paymentMethod,
@@ -323,10 +328,10 @@ export async function GET(request: Request) {
   const storePurchaseInvoicesTotal = round2(receipts.reduce((sum, receipt) => sum + receipt.totalCost, 0));
   const storeExpensesTotal = round2(storeExpenses.reduce((sum, expense) => sum + expense.amount, 0));
 
-  // Returns: cancelled orders that were actually paid
+  // Returns: cancelled orders that were previously completed sales
   const storeReturnRows = cancelledOrders.map((order) => ({
     id: order.id,
-    date: order.createdAt.toISOString(),
+    date: order.cancelledAt!.toISOString(), // Return event timestamp (confirmed! because query filters cancelledAt NOT NULL)
     customerName: order.user.name ?? "عميل",
     items: order.items.map((item) => item.product.name).join("، "),
     paymentMethod: order.paymentMethod,
@@ -337,13 +342,14 @@ export async function GET(request: Request) {
   // Net sales = gross sales - returns
   const storeSalesRevenue = round2(storeGrossSales - storeReturnsTotal);
 
-  const storeCOGS = round2(
-    orderMovements.reduce((sum, movement) => {
-      const cost = Math.abs(movement.quantityChange) * (movement.unitCost ?? 0);
-      if (movement.type === "return") return sum - cost;
-      return sum + cost;
-    }, 0),
-  );
+  // ═════════════════════════════════════════════════════════════════════════════
+  // COGS CALCULATION — USES SHARED ACCOUNTING SERVICE
+  // ═════════════════════════════════════════════════════════════════════════════
+  // Call shared calculateStoreAccounting for COGS (production logic shared with tests)
+  // This correctly splits sale and return movements to prevent period mixing
+  // ═════════════════════════════════════════════════════════════════════════════
+  const accountingMetrics = await calculateStoreAccounting(from, to, db);
+  const storeCOGS = accountingMetrics.cogs;
 
   const storeFeeEntries = storeOrderRows.flatMap((order) =>
     activeFeeRules
@@ -591,6 +597,7 @@ export async function GET(request: Request) {
         orderCount: storeOrderRows.length,
         returnCount: storeReturnRows.length,
         purchaseInvoiceCount: receipts.length,
+        historicalNullConfirmedAtCount: accountingMetrics.historicalNullConfirmedAtCount, // Orders excluded from accounting (missing event timestamp)
       },
       sales: storeOrderRows,
       returns: storeReturnRows,

@@ -542,6 +542,7 @@ model Order {
   deliveryCompanyId String?
   trackingNumber    String?
   inventoryDeducted Boolean  @default(false) // guard: stock deducted once only
+  confirmedAt   DateTime? // Immutable: set once when sale completed (inventory converted + payment confirmed)
   cancelledAt   DateTime?
   deliveredAt   DateTime?
   createdAt     DateTime @default(now())
@@ -559,6 +560,7 @@ model Order {
   @@index([status, createdAt])
   @@index([userId, createdAt])
   @@index([deliveryCompanyId])
+  @@index([confirmedAt])
 }
 
 model OrderItem {

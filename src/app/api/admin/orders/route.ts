@@ -228,81 +228,105 @@ export async function PATCH(req: Request) {
     const prevStatus = order.status;
     const newStatus = body.status;
 
-    // Phase 2B: Guard - prevent double inventory deduction
-    const shouldDeduct = ["confirmed", "preparing"].includes(newStatus) && !order.inventoryDeducted;
+    // Phase 2C+: Atomic COD/admin sale completion
+    // Convert reservation → physical sale using shared atomic logic
+    const shouldConvertToSale = ["confirmed", "preparing"].includes(newStatus) && !order.inventoryDeducted;
     const shouldRestore = newStatus === "cancelled" && order.inventoryDeducted;
     const shouldRestoreReturn = newStatus === "returned" && order.inventoryDeducted;
 
-    if (shouldDeduct) {
-      // Phase 2B: Business rule check - warn about unpaid Paymob orders
-      if (order.paymentMethod === "paymob") {
+    if (shouldConvertToSale) {
+      // Payment method validation: block unpaid online payments
+      // Store orders use: "paymob" or "wallet" (online) or "cod" (offline)
+      if (["paymob", "wallet"].includes(order.paymentMethod)) {
         const paidTx = await db.paymentTransaction.findFirst({
           where: { orderId: order.id, status: "paid" },
         });
 
         if (!paidTx) {
-          console.warn(`[ADMIN] Confirming unpaid Paymob order ${order.id} - manual override`);
-          // Audit trail logged to console (activityLog table not in schema)
-        }
-      }
-
-      // Aggregate quantities by productId (Phase 2B)
-      const productQuantities = new Map<string, number>();
-      for (const item of order.items) {
-        const key = item.variantId || item.productId;
-        const current = productQuantities.get(key) || 0;
-        productQuantities.set(key, current + item.quantity);
-      }
-
-      // Check stock availability first (aggregated)
-      for (const item of order.items) {
-        if (!item.product.trackInventory) continue;
-        const available = item.variant ? item.variant.stock : item.product.stock;
-        const requiredQty = productQuantities.get(item.variantId || item.productId) || item.quantity;
-        if (available < requiredQty) {
           return NextResponse.json({
-            error: `المخزون غير كافي للمنتج "${item.product.name}" (متاح: ${available}، مطلوب: ${requiredQty})`,
+            error: "لا يمكن تأكيد طلب الدفع الإلكتروني بدون معاملة مدفوعة. استخدم نظام الدفع الإلكتروني.",
           }, { status: 400 });
         }
       }
 
-      // Deduct stock (aggregated per product)
-      const deductedProducts = new Set<string>();
-      for (const item of order.items) {
-        if (!item.product.trackInventory) continue;
-
-        const key = item.variantId || item.productId;
-        if (deductedProducts.has(key)) continue; // Already deducted
-        deductedProducts.add(key);
-
-        const totalQty = productQuantities.get(key)!;
-        const before = item.variant ? item.variant.stock : item.product.stock;
-        const after = before - totalQty;
-
-        if (item.variantId && item.variant) {
-          await db.productVariant.update({ where: { id: item.variantId }, data: { stock: { decrement: totalQty } } });
-        }
-        await db.product.update({ where: { id: item.productId }, data: { stock: { decrement: totalQty } } });
-
-        await db.inventoryMovement.create({
-          data: {
-            productId: item.productId,
-            variantId: item.variantId ?? null,
-            type: "order_deduction",
-            quantityChange: -totalQty,
-            quantityBefore: before,
-            quantityAfter: after,
-            unitCost: null,  // Phase 2B: no COGS capture yet
-            averageCostBefore: item.product.averageCost,
-            averageCostAfter: item.product.averageCost,
-            referenceType: "Order",
-            referenceId: order.id,
-            reason: `تأكيد الطلب #${order.id.slice(-8)} (Admin)`,
-            performedByUserId: userId,
-          },
-        });
+      // Admin completion only allowed for COD orders
+      if (order.paymentMethod !== "cod") {
+        return NextResponse.json({
+          error: "تأكيد الطلب يدوياً متاح فقط لطلبات الدفع عند الاستلام (COD).",
+        }, { status: 400 });
       }
-      updateData.inventoryDeducted = true;
+
+      // Use Phase 2C atomic sale conversion (reuse shared logic)
+      const { confirmOrderInventorySale, updateOrderItemCostPrices } = await import("@/lib/inventory-service");
+
+      try {
+        // ATOMIC: All operations in ONE transaction
+        await db.$transaction(async (tx) => {
+          // Race-safe claim: only proceed if not already processed
+          const claimed = await tx.order.updateMany({
+            where: {
+              id: order.id,
+              inventoryDeducted: false,
+              confirmedAt: null, // Immutable accounting marker - must be unset
+              status: { in: ["pending", "confirmed"] }, // Only allow from pre-completion states
+            },
+            data: { status: newStatus }, // Claim by setting new status
+          });
+
+          if (claimed.count === 0) {
+            throw new Error("الطلب تم تأكيده مسبقاً أو في حالة غير صالحة للتأكيد");
+          }
+
+          // Capture single event timestamp for entire sale
+          const saleCompletionTime = new Date();
+
+          // Convert reservation → sale (stock-=qty, reservedStock-=qty, create movements)
+          const saleResults = await confirmOrderInventorySale(
+            tx,
+            order.items.map((item) => ({
+              productId: item.productId,
+              quantity: item.quantity,
+            })),
+            order.id
+          );
+
+          // Capture cost prices in order items
+          await updateOrderItemCostPrices(tx, order.id, saleResults);
+
+          // Final atomic update: mark completion and set timestamp
+          await tx.order.update({
+            where: { id: order.id },
+            data: {
+              inventoryDeducted: true,
+              confirmedAt: saleCompletionTime,
+              status: newStatus,
+            },
+          });
+
+          // Record status history inside same transaction
+          await tx.orderStatusHistory.create({
+            data: {
+              orderId: order.id,
+              fromStatus: prevStatus,
+              toStatus: newStatus,
+              performedByUserId: userId,
+            },
+          });
+        });
+
+        // Atomic completion succeeded - return updated order
+        const completedOrder = await db.order.findUnique({
+          where: { id: order.id },
+          include: ORDER_INCLUDE,
+        });
+
+        return NextResponse.json({
+          order: fmtOrder(completedOrder!)
+        });
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : "تعذر تأكيد الطلب.";
+        return NextResponse.json({ error: message }, { status: 400 });
+      }
     }
 
     if (shouldRestore || shouldRestoreReturn) {
@@ -354,7 +378,11 @@ export async function PATCH(req: Request) {
     }
 
     updateData.status = newStatus;
-    if (newStatus === "cancelled") updateData.cancelledAt = new Date();
+    // Do NOT set confirmedAt on generic status change
+    // confirmedAt must only be set at atomic inventory sale conversion
+    if (newStatus === "cancelled" && !order.cancelledAt) {
+      updateData.cancelledAt = new Date(); // Immutable: set once at cancellation
+    }
     if (newStatus === "delivered") updateData.deliveredAt = new Date();
 
     // Record status history
