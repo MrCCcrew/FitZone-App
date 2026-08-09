@@ -14,43 +14,43 @@ export const ACCOUNTING_TIMEZONE = "Africa/Cairo";
 
 /**
  * Parse date string to start of day in Cairo timezone.
- * Ensures accounting reports recognize full Cairo business day regardless of server/DB timezone.
+ * HOST-INDEPENDENT: Produces identical UTC result regardless of process TZ.
  *
- * Example: "2026-08-08" → 2026-08-08T00:00:00.000+02:00 (Cairo time) → UTC
+ * Example: "2026-08-09" → 2026-08-08T22:00:00.000Z (Cairo midnight in UTC, DST-aware)
  */
 export function parseDateStart(value: string | null): Date | null {
   if (!value) return null;
 
   try {
-    // Create date in Cairo timezone at start of day
-    const cairoDate = new Date(value + "T00:00:00");
-    if (Number.isNaN(cairoDate.getTime())) return null;
+    const [year, month, day] = value.split('-').map(Number);
+    if (!year || !month || !day) return null;
+    if (month < 1 || month > 12) return null;
+    if (day < 1 || day > 31) return null;
 
-    // Convert to UTC for database query (DB stores UTC)
-    const formatter = new Intl.DateTimeFormat("en-US", {
+    // Start with UTC midnight for this calendar date (host-independent)
+    const utcMidnight = Date.UTC(year, month - 1, day, 0, 0, 0);
+
+    // Format this UTC instant in Cairo timezone to see Cairo's local time
+    const formatter = new Intl.DateTimeFormat('en-US', {
       timeZone: ACCOUNTING_TIMEZONE,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
       hour12: false,
     });
 
-    const parts = formatter.formatToParts(cairoDate);
-    const year = parts.find(p => p.type === "year")?.value;
-    const month = parts.find(p => p.type === "month")?.value;
-    const day = parts.find(p => p.type === "day")?.value;
+    const parts = formatter.formatToParts(new Date(utcMidnight));
+    const cairoHour = parseInt(parts.find(p => p.type === 'hour')!.value);
+    const cairoMinute = parseInt(parts.find(p => p.type === 'minute')!.value);
 
-    // Reconstruct as Cairo midnight, then convert to UTC
-    const cairoMidnight = new Date(`${year}-${month}-${day}T00:00:00`);
+    // If UTC midnight shows 02:00 in Cairo, Cairo is UTC+2
+    // To get Cairo midnight, subtract 2 hours from UTC midnight
+    const offsetMs = (cairoHour * 60 + cairoMinute) * 60 * 1000;
+    const cairoMidnightUTC = utcMidnight - offsetMs;
 
-    // Get offset in minutes
-    const cairoOffset = getCairoOffsetMinutes(cairoMidnight);
-    const utcDate = new Date(cairoMidnight.getTime() - cairoOffset * 60000);
-
-    return utcDate;
+    return new Date(cairoMidnightUTC);
   } catch {
     return null;
   }
@@ -58,54 +58,79 @@ export function parseDateStart(value: string | null): Date | null {
 
 /**
  * Parse date string to start of NEXT day in Cairo timezone.
+ * HOST-INDEPENDENT: Produces identical UTC result regardless of process TZ.
  * Used for half-open interval upper bound: [from, to)
  *
- * Example: "2026-08-08" → 2026-08-09T00:00:00.000+02:00 (Cairo time) → UTC
- * This represents the exclusive upper bound for Aug 8 business day.
+ * Example: "2026-08-09" → 2026-08-09T22:00:00.000Z (next Cairo midnight in UTC)
  */
 export function parseDateEnd(value: string | null): Date | null {
   if (!value) return null;
 
   try {
-    // Parse the date and add 1 day to get start of next Cairo day
-    const inputDate = new Date(value + "T00:00:00");
-    if (Number.isNaN(inputDate.getTime())) return null;
+    const [year, month, day] = value.split('-').map(Number);
+    if (!year || !month || !day) return null;
+    if (month < 1 || month > 12) return null;
+    if (day < 1 || day > 31) return null;
 
-    // Add 1 day
-    const nextDay = new Date(inputDate);
-    nextDay.setDate(nextDay.getDate() + 1);
+    // Start with UTC midnight for NEXT calendar date (host-independent)
+    const utcNextDayMidnight = Date.UTC(year, month - 1, day + 1, 0, 0, 0);
 
-    const formatter = new Intl.DateTimeFormat("en-US", {
+    // Format this UTC instant in Cairo timezone
+    const formatter = new Intl.DateTimeFormat('en-US', {
       timeZone: ACCOUNTING_TIMEZONE,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
     });
 
-    const parts = formatter.formatToParts(nextDay);
-    const year = parts.find(p => p.type === "year")?.value;
-    const month = parts.find(p => p.type === "month")?.value;
-    const day = parts.find(p => p.type === "day")?.value;
+    const parts = formatter.formatToParts(new Date(utcNextDayMidnight));
+    const cairoHour = parseInt(parts.find(p => p.type === 'hour')!.value);
+    const cairoMinute = parseInt(parts.find(p => p.type === 'minute')!.value);
 
-    // Construct as Cairo midnight of next day, then convert to UTC
-    const cairoNextDayStart = new Date(`${year}-${month}-${day}T00:00:00`);
-    const cairoOffset = getCairoOffsetMinutes(cairoNextDayStart);
-    const utcDate = new Date(cairoNextDayStart.getTime() - cairoOffset * 60000);
+    // Calculate offset and adjust to Cairo next-day midnight
+    const offsetMs = (cairoHour * 60 + cairoMinute) * 60 * 1000;
+    const cairoNextDayMidnightUTC = utcNextDayMidnight - offsetMs;
 
-    return utcDate;
+    return new Date(cairoNextDayMidnightUTC);
   } catch {
     return null;
   }
 }
 
 /**
- * Get Cairo timezone offset in minutes for a given date.
- * Handles DST transitions (Egypt uses DST inconsistently, but Intl handles it).
+ * Get Cairo timezone offset in minutes for a given UTC instant.
+ * HOST-INDEPENDENT: Uses only Intl with explicit timezone.
+ * Handles DST transitions (Egypt DST is inconsistent, but Intl handles it).
  */
 export function getCairoOffsetMinutes(date: Date): number {
-  const utcDate = new Date(date.toLocaleString("en-US", { timeZone: "UTC" }));
-  const cairoDate = new Date(date.toLocaleString("en-US", { timeZone: ACCOUNTING_TIMEZONE }));
-  return Math.round((cairoDate.getTime() - utcDate.getTime()) / 60000);
+  const utcTimestamp = date.getTime();
+
+  // Format the UTC instant in Cairo timezone
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: ACCOUNTING_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+
+  const parts = formatter.formatToParts(date);
+  const cairoYear = parseInt(parts.find(p => p.type === 'year')!.value);
+  const cairoMonth = parseInt(parts.find(p => p.type === 'month')!.value);
+  const cairoDay = parseInt(parts.find(p => p.type === 'day')!.value);
+  const cairoHour = parseInt(parts.find(p => p.type === 'hour')!.value);
+  const cairoMinute = parseInt(parts.find(p => p.type === 'minute')!.value);
+
+  // Reconstruct Cairo local time as UTC timestamp
+  const cairoAsUTC = Date.UTC(cairoYear, cairoMonth - 1, cairoDay, cairoHour, cairoMinute, 0);
+
+  // Offset = Cairo local time - UTC time (in minutes)
+  return Math.round((cairoAsUTC - utcTimestamp) / 60000);
 }
 
 /**
