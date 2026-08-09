@@ -421,9 +421,19 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: message }, { status: 502 });
       }
     } else if (total > 0 && paymentMethod === "cod") {
-      await db.order.update({ where: { id: order.id }, data: { status: "confirmed" } });
+      // COD: Reserve inventory only, do NOT set confirmedAt yet
+      // confirmedAt must be set only at actual stock conversion event (future workflow)
+      await db.order.update({
+        where: { id: order.id },
+        data: { status: "confirmed" }
+      });
     } else if (total <= 0) {
-      await db.order.update({ where: { id: order.id }, data: { status: "confirmed" } });
+      // Zero-total: Reserve inventory only, do NOT set confirmedAt yet
+      // confirmedAt must be set only at actual stock conversion event (if applicable)
+      await db.order.update({
+        where: { id: order.id },
+        data: { status: "confirmed" }
+      });
     }
 
     // Unlock pending referral reward for confirmed/free orders (fire-and-forget)
