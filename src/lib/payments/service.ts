@@ -8,6 +8,7 @@ import { generateMembershipInvoicePdf, type MembershipInvoiceDetails } from "@/l
 import { recordPaymentStatusEvent } from "@/lib/analytics/payment-events";
 import { recordMembershipActivatedEvent } from "@/lib/analytics/membership-events";
 import { getDefaultPaymentProvider, getPaymentProvider, listPaymentProviders } from "@/lib/payments/registry";
+import { runPaidMembershipPostActivationReconciliation } from "@/lib/payments/reconciliation-helper";
 import type {
   PaymentProviderKey,
   PaymentPurpose,
@@ -96,6 +97,142 @@ function parseJson(value: string | null | undefined) {
   } catch {
     return null;
   }
+}
+
+/**
+ * Shared activation helper for both normal payment and recovery flows.
+ * Atomically claims payment and activates membership in ONE transaction.
+ *
+ * CRITICAL: Both normal webhook and verified recovery MUST use this helper
+ * to ensure identical activation business logic (duration calculation,
+ * late payment handling, race protection, etc.)
+ */
+async function activatePaidMembershipTx(
+  tx: any,
+  transactionId: string,
+  membershipId: string
+): Promise<{
+  success: boolean;
+  membershipData: {
+    status: string;
+    startDate: Date;
+    offerId: string | null;
+    membership: {
+      name: string;
+      nameEn: string | null;
+      duration: number;
+      walletBonus: number;
+      productRewards: string | null;
+    };
+    offer: { title: string } | null;
+  } | null;
+}> {
+  const membership = await tx.userMembership.findUnique({
+    where: { id: membershipId },
+    select: {
+      id: true,
+      status: true,
+      pendingExpiresAt: true,
+      offerId: true,
+      snapshotDurationDays: true,
+      membership: {
+        select: {
+          name: true,
+          nameEn: true,
+          duration: true,
+          walletBonus: true,
+          productRewards: true,
+        },
+      },
+      offer: {
+        select: { title: true },
+      },
+    },
+  });
+
+  if (!membership) {
+    console.warn(`[ACTIVATION] Membership ${membershipId} not found (deleted by cron?)`);
+    return { success: false, membershipData: null };
+  }
+
+  // Late payment check: if cancelled by cron after timeout
+  if (membership.status === "cancelled") {
+    console.warn(
+      `[ACTIVATION] Late payment for membership ${membershipId}. ` +
+      `Cron already cancelled it. Booking spots may have been reassigned. Manual review required.`
+    );
+    // Record in transaction metadata for admin review/refund
+    const existing = await tx.paymentTransaction.findUnique({
+      where: { id: transactionId },
+      select: { metadata: true },
+    });
+    await tx.paymentTransaction.update({
+      where: { id: transactionId },
+      data: {
+        metadata: stringifyJson({
+          ...(parseJson(existing?.metadata) ?? {}),
+          latePaymentWarning: true,
+          membershipStatus: "cancelled",
+          paymentReceivedAt: new Date().toISOString(),
+        }),
+      },
+    });
+    return { success: false, membershipData: null };
+  }
+
+  // Already active - return existing state
+  if (membership.status === "active") {
+    const duration = membership.snapshotDurationDays ?? membership.membership?.duration ?? 30;
+    return {
+      success: true,
+      membershipData: {
+        status: membership.status,
+        startDate: new Date(), // Will be overwritten by actual startDate if available
+        offerId: membership.offerId,
+        membership: { ...membership.membership, duration },
+        offer: membership.offer,
+      },
+    };
+  }
+
+  if (membership.status === "pending_payment") {
+    const now = new Date();
+    // Pending offer memberships carry their purchase-time duration. A
+    // later edit to the offer or linked plan cannot alter this activation.
+    const duration = membership.snapshotDurationDays ?? membership.membership?.duration ?? 30;
+    const endDate = new Date(now.getTime() + duration * 24 * 60 * 60 * 1000);
+
+    // Atomic activation: race vs cron cleanup
+    const activated = await tx.userMembership.updateMany({
+      where: { id: membershipId, status: "pending_payment" },
+      data: {
+        status: "active",
+        startDate: now,
+        endDate,
+        pendingExpiresAt: null, // Clear timeout on successful activation
+      },
+    });
+
+    if (activated.count === 0) {
+      console.warn(`[ACTIVATION] Membership ${membershipId} already processed (cron won race)`);
+      return { success: false, membershipData: null };
+    }
+
+    console.log(`[ACTIVATION] Successfully activated membership ${membershipId}`);
+    return {
+      success: true,
+      membershipData: {
+        status: "active",
+        startDate: now,
+        offerId: membership.offerId,
+        membership: { ...membership.membership, duration },
+        offer: membership.offer,
+      },
+    };
+  }
+
+  // Invalid status for activation
+  return { success: false, membershipData: null };
 }
 
 function extractPaymentAdjustments(metadata: Record<string, unknown> | null | undefined) {
@@ -670,88 +807,9 @@ export async function updatePaymentTransactionStatus(
       } | null = null;
 
       await db.$transaction(async (tx) => {
-        const membership = await tx.userMembership.findUnique({
-          where: { id: membershipId },
-          select: {
-            id: true,
-            status: true,
-            pendingExpiresAt: true,
-            offerId: true,
-            snapshotDurationDays: true,
-            membership: {
-              select: {
-                name: true,
-                nameEn: true,
-                duration: true,
-                walletBonus: true,
-                productRewards: true,
-              },
-            },
-            offer: {
-              select: { title: true },
-            },
-          },
-        });
-
-        if (!membership) {
-          console.warn(`[WEBHOOK] Membership ${membershipId} not found (deleted by cron?)`);
-          return;
-        }
-
-        // Late payment check: if cancelled by cron after timeout
-        if (membership.status === "cancelled") {
-          console.warn(
-            `[WEBHOOK] Late payment for membership ${membershipId}. ` +
-            `Cron already cancelled it. Booking spots may have been reassigned. Manual review required.`
-          );
-          // Record in transaction metadata for admin review/refund
-          await tx.paymentTransaction.update({
-            where: { id: transactionId },
-            data: {
-              metadata: stringifyJson({
-                ...(parseJson(existing.metadata) ?? {}),
-                latePaymentWarning: true,
-                membershipStatus: "cancelled",
-                paymentReceivedAt: new Date().toISOString(),
-              }),
-            },
-          });
-          return;
-        }
-
-        if (membership.status === "pending_payment") {
-          const now = new Date();
-          // Pending offer memberships carry their purchase-time duration. A
-          // later edit to the offer or linked plan cannot alter this activation.
-          const duration = membership.snapshotDurationDays ?? membership.membership?.duration ?? 30;
-          const endDate = new Date(now.getTime() + duration * 24 * 60 * 60 * 1000);
-
-          // Atomic activation: race vs cron cleanup
-          const activated = await tx.userMembership.updateMany({
-            where: { id: membershipId, status: "pending_payment" },
-            data: {
-              status: "active",
-              startDate: now,
-              endDate,
-              pendingExpiresAt: null, // Clear timeout on successful activation
-            },
-          });
-
-          if (activated.count === 0) {
-            console.warn(`[WEBHOOK] Membership ${membershipId} already processed (cron won race)`);
-            return;
-          }
-
-          console.log(`[WEBHOOK] Webhook won race - activated membership ${membershipId}`);
-          activationSucceeded = true;
-          membershipData = {
-            status: membership.status,
-            startDate: now,
-            offerId: membership.offerId,
-            membership: { ...membership.membership, duration },
-            offer: membership.offer,
-          };
-        }
+        const result = await activatePaidMembershipTx(tx, transactionId, membershipId);
+        activationSucceeded = result.success;
+        membershipData = result.membershipData;
       });
 
       if (!activationSucceeded || !membershipData) {
@@ -760,430 +818,18 @@ export async function updatePaymentTransactionStatus(
       }
       void recordMembershipActivatedEvent(existing.membershipId, transactionId).catch(() => null);
 
-      // TypeScript narrowing: membershipData is guaranteed non-null here
-      const activatedData: {
-        status: string;
-        startDate: Date;
-        offerId: string | null;
-        membership: { name: string; nameEn: string | null; duration: number; walletBonus: number; productRewards: string | null };
-        offer: { title: string } | null;
-      } = membershipData;
 
-      // Unlock pending referral reward for the user who just subscribed
-      if (existing.userId) {
-        try {
-          await unlockPendingReferralReward(existing.userId);
-        } catch {}
-      }
-
-      // Create partner commission on confirmed Paymob payment
-      try {
-          const mem = await db.userMembership.findUnique({
-            where: { id: existing.membershipId },
-            select: {
-              partnerId: true, partnerCodeId: true, affiliateLinkId: true, paymentAmount: true,
-              // Fetch membership listed price so commission base is not reduced by
-              // per-customer discounts (affiliate link, wallet, reward points).
-              membership: { select: { price: true, priceAfter: true } },
-            },
-          });
-          if (mem?.partnerId && (mem.partnerCodeId || mem.affiliateLinkId)) {
-            const partner = await db.partner.findUnique({
-              where: { id: mem.partnerId },
-              select: { commissionRate: true, commissionType: true },
-            });
-            if (partner) {
-              // Use listed membership price as commission base (not what customer paid).
-              // priceAfter = sale/discounted membership price; price = original list price.
-              const listedPrice = (mem.membership?.priceAfter && mem.membership.priceAfter > 0
-                ? mem.membership.priceAfter
-                : mem.membership?.price) ?? 0;
-              const base = listedPrice > 0 ? listedPrice : (mem.paymentAmount ?? 0);
-              const commission = partner.commissionType === "fixed"
-                ? partner.commissionRate
-                : Math.round((base * partner.commissionRate) / 100 * 100) / 100;
-              if (commission > 0) {
-                await db.partnerCommission.upsert({
-                  where: { userMembershipId: existing.membershipId },
-                  update: {},
-                  create: { partnerId: mem.partnerId, userMembershipId: existing.membershipId, amount: commission },
-                });
-              }
-            }
-          }
-      } catch {}
-
-      // Deferred commissions for Paymob-confirmed subscriptions.
-      // Mirrors the !needsPaymentConfirmation blocks in subscribe/route.ts.
-      // All operations use upsert / existence checks to be idempotent.
-      try {
-          const dbx = db as any;
-          const fullMem = await dbx.userMembership.findUnique({
-            where: { id: existing.membershipId },
-            select: {
-              salesAgentUserId:      true,
-              salesAgentId:          true,
-              staffReferralLinkId:   true,
-              trainerReferralLinkId: true,
-              nutritionReferralLinkId: true,
-              paymentAmount:         true,
-              partnerId:             true,
-              partnerCodeId:         true,
-              affiliateLinkId:       true,
-              staffReferralLink:   { select: { userId: true, user: { select: { commissionRate: true, commissionType: true } } } },
-              trainerReferralLink: { select: { userId: true, user: { select: { commissionRate: true, commissionType: true } } } },
-              nutritionReferralLink: { select: { userId: true, user: { select: { nutritionistProfile: { select: { commissionRate: true, commissionType: true } } } } } },
-            },
-          }) as {
-            salesAgentUserId: string | null;
-            salesAgentId: string | null;
-            staffReferralLinkId: string | null;
-            trainerReferralLinkId: string | null;
-            nutritionReferralLinkId: string | null;
-            paymentAmount: number | null;
-            partnerId: string | null;
-            partnerCodeId: string | null;
-            affiliateLinkId: string | null;
-            staffReferralLink:   { userId: string; user: { commissionRate: number; commissionType: string } } | null;
-            trainerReferralLink: { userId: string; user: { commissionRate: number; commissionType: string } } | null;
-            nutritionReferralLink: { userId: string; user: { nutritionistProfile: { commissionRate: number; commissionType: string } | null } } | null;
-          } | null;
-
-          if (fullMem) {
-            const paidAmount = fullMem.paymentAmount ?? 0;
-
-            // ── Manager–partner commission ──────────────────────────────────
-            if (fullMem.partnerId && (fullMem.partnerCodeId || fullMem.affiliateLinkId)) {
-              const partnerWithMgr = await dbx.partner.findUnique({
-                where: { id: fullMem.partnerId },
-                select: { managerId: true, managerCommissionType: true, managerCommissionRate: true, commissionRate: true, commissionType: true },
-              }) as { managerId: string | null; managerCommissionType: string | null; managerCommissionRate: number | null; commissionRate: number; commissionType: string } | null;
-              if (partnerWithMgr?.managerId && (partnerWithMgr.managerCommissionRate ?? 0) > 0) {
-                const existingPComm = await dbx.partnerCommission.findUnique({ where: { userMembershipId: existing.membershipId } });
-                if (existingPComm) {
-                  const existingMgrPComm = await dbx.managerPartnerCommission.findUnique({ where: { partnerCommissionId: existingPComm.id } });
-                  if (!existingMgrPComm) {
-                    const partnerComm = partnerWithMgr.commissionType === "fixed"
-                      ? partnerWithMgr.commissionRate
-                      : Math.round((paidAmount * partnerWithMgr.commissionRate) / 100 * 100) / 100;
-                    let mgrAmount = 0;
-                    if (partnerWithMgr.managerCommissionType === "percentage_of_partner") {
-                      mgrAmount = Math.round((partnerComm * (partnerWithMgr.managerCommissionRate ?? 0)) / 100 * 100) / 100;
-                    } else {
-                      mgrAmount = partnerWithMgr.managerCommissionRate ?? 0;
-                    }
-                    if (mgrAmount > 0) {
-                      await dbx.managerPartnerCommission.create({
-                        data: { managerId: partnerWithMgr.managerId, partnerCommissionId: existingPComm.id, userMembershipId: existing.membershipId, amount: mgrAmount },
-                      });
-                    }
-                  }
-                }
-              }
-            }
-
-            // ── Agent commission (from staff/trainer discount code) ─────────
-            if (fullMem.salesAgentUserId) {
-              const agentUser = await dbx.user.findUnique({
-                where: { id: fullMem.salesAgentUserId },
-                select: { commissionRate: true, commissionType: true },
-              }) as { commissionRate: number | null; commissionType: string | null } | null;
-              if (agentUser) {
-                const rate = agentUser.commissionRate ?? 0;
-                const commission = agentUser.commissionType === "fixed"
-                  ? rate
-                  : Math.round((paidAmount * rate) / 100 * 100) / 100;
-                if (commission > 0) {
-                  await dbx.agentCommission.upsert({
-                    where: { userMembershipId: existing.membershipId },
-                    update: {},
-                    create: { agentUserId: fullMem.salesAgentUserId, userMembershipId: existing.membershipId, amount: commission },
-                  });
-                }
-              }
-            }
-
-            // ── Sales agent referral commission + manager + conversion ───────
-            if (fullMem.salesAgentId) {
-              const sa = await dbx.salesAgent.findUnique({
-                where: { id: fullMem.salesAgentId },
-                select: { commissionRate: true, commissionType: true, managerId: true },
-              }) as { commissionRate: number; commissionType: string; managerId: string | null } | null;
-              if (sa) {
-                const commission = sa.commissionType === "fixed"
-                  ? sa.commissionRate
-                  : Math.round((paidAmount * sa.commissionRate) / 100 * 100) / 100;
-                if (commission > 0) {
-                  const saComm = await dbx.salesAgentCommission.upsert({
-                    where: { userMembershipId: existing.membershipId },
-                    update: {},
-                    create: { agentId: fullMem.salesAgentId, userMembershipId: existing.membershipId, amount: commission },
-                  }) as { id: string };
-                  if (sa.managerId) {
-                    const mgr = await dbx.contractsManager.findUnique({
-                      where: { id: sa.managerId },
-                      select: { id: true, commissionType: true, commissionRate: true, isActive: true },
-                    }) as { id: string; commissionType: string; commissionRate: number; isActive: boolean } | null;
-                    if (mgr?.isActive && mgr.commissionRate > 0) {
-                      const existingMgrComm = await dbx.managerCommission.findUnique({ where: { agentCommissionId: saComm.id } });
-                      if (!existingMgrComm) {
-                        let mgrAmount = 0;
-                        if (mgr.commissionType === "percentage_of_agents") {
-                          mgrAmount = Math.round((commission * mgr.commissionRate) / 100 * 100) / 100;
-                        } else if (mgr.commissionType === "percentage_of_revenue") {
-                          mgrAmount = Math.round((paidAmount * mgr.commissionRate) / 100 * 100) / 100;
-                        } else {
-                          mgrAmount = mgr.commissionRate;
-                        }
-                        if (mgrAmount > 0) {
-                          await dbx.managerCommission.create({
-                            data: { managerId: mgr.id, agentCommissionId: saComm.id, userMembershipId: existing.membershipId, amount: mgrAmount },
-                          });
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-              // Mark referral as converted (idempotent)
-              if (existing.userId) {
-                const ref = await dbx.salesAgentReferral.findUnique({ where: { userId: existing.userId } });
-                if (ref && !ref.convertedAt) {
-                  await dbx.salesAgentReferral.update({
-                    where: { userId: existing.userId },
-                    data: { convertedAt: new Date(), totalSpent: { increment: paidAmount } },
-                  });
-                } else if (ref?.convertedAt) {
-                  await dbx.salesAgentReferral.update({
-                    where: { userId: existing.userId },
-                    data: { totalSpent: { increment: paidAmount } },
-                  });
-                }
-              }
-            }
-
-            // ── Staff referral commission ────────────────────────────────────
-            if (fullMem.staffReferralLink) {
-              const { userId: staffUserId, user } = fullMem.staffReferralLink;
-              const commission = user.commissionType === "fixed"
-                ? user.commissionRate
-                : Math.round((paidAmount * user.commissionRate) / 100 * 100) / 100;
-              if (commission > 0) {
-                await dbx.staffCommission.upsert({
-                  where: { userMembershipId: existing.membershipId },
-                  update: {},
-                  create: { staffUserId, staffReferralLinkId: fullMem.staffReferralLinkId, userMembershipId: existing.membershipId, amount: commission },
-                });
-              }
-            }
-
-            // ── Trainer referral commission ──────────────────────────────────
-            if (fullMem.trainerReferralLink) {
-              const { userId: trainerUserId, user } = fullMem.trainerReferralLink;
-              const commission = user.commissionType === "fixed"
-                ? user.commissionRate
-                : Math.round((paidAmount * user.commissionRate) / 100 * 100) / 100;
-              if (commission > 0) {
-                await dbx.trainerCommission.upsert({
-                  where: { userMembershipId: existing.membershipId },
-                  update: {},
-                  create: { trainerUserId, trainerReferralLinkId: fullMem.trainerReferralLinkId, userMembershipId: existing.membershipId, amount: commission },
-                });
-              }
-            }
-
-            // ── Nutrition referral commission ────────────────────────────────
-            if (fullMem.nutritionReferralLink) {
-              const { userId: nutritionistUserId, user } = fullMem.nutritionReferralLink;
-              const profile = user.nutritionistProfile;
-              if (profile) {
-                const commission = profile.commissionType === "fixed"
-                  ? profile.commissionRate
-                  : Math.round((paidAmount * profile.commissionRate) / 100 * 100) / 100;
-                if (commission > 0) {
-                  await dbx.nutritionCommission.upsert({
-                    where: { userMembershipId: existing.membershipId },
-                    update: {},
-                    create: { nutritionistUserId, nutritionReferralLinkId: fullMem.nutritionReferralLinkId, userMembershipId: existing.membershipId, amount: commission },
-                  });
-                }
-              }
-            }
-          }
-        } catch {}
-
-        try {
-          await ensureMembershipAttendancePass(existing.membershipId);
-        } catch {}
-
-        // Give wallet bonus
-        const walletBonus = activatedData.membership?.walletBonus ?? 0;
-        if (walletBonus > 0 && existing.userId) {
-          const wallet = await db.wallet.upsert({
-            where: { userId: existing.userId },
-            update: { balance: { increment: walletBonus } },
-            create: { userId: existing.userId, balance: walletBonus },
-          });
-          await db.walletTransaction.create({
-            data: {
-              walletId: wallet.id,
-              amount: walletBonus,
-              type: "credit",
-              description: `مكافأة الاشتراك في باقة ${activatedData.membership?.name ?? ""}`,
-            },
-          });
-        }
-
-        // Grant subscription points for Paymob-confirmed subscriptions
-        if (existing.userId) {
-          try {
-            const rewardCfg = await getRewardSettings();
-            if (rewardCfg.pointsPerSubscription > 0) {
-              const rp = await db.rewardPoints.findUnique({ where: { userId: existing.userId } });
-              if (rp) {
-                const newPts = rp.points + rewardCfg.pointsPerSubscription;
-                await db.rewardPoints.update({
-                  where: { id: rp.id },
-                  data: { points: { increment: rewardCfg.pointsPerSubscription }, tier: calcTier(newPts, rewardCfg.tierThresholds) },
-                });
-                await db.rewardHistory.create({
-                  data: { rewardId: rp.id, points: rewardCfg.pointsPerSubscription, reason: "membership_purchase" },
-                });
-              }
-            }
-          } catch {}
-        }
-
-        // Deduct product rewards from inventory
-        const productRewardsRaw = activatedData.membership?.productRewards ?? null;
-        if (productRewardsRaw) {
-          try {
-            const productRewards = JSON.parse(productRewardsRaw) as { productId: string; quantity: number }[];
-            for (const reward of productRewards) {
-              if (!reward?.productId || !reward?.quantity) continue;
-              const product = await db.product.findUnique({ where: { id: reward.productId } });
-              if (!product) continue;
-              if (product.trackInventory) {
-                await db.product.update({
-                  where: { id: reward.productId },
-                  data: { stock: { decrement: reward.quantity } },
-                });
-              }
-              await db.inventoryMovement.create({
-                data: {
-                  productId: product.id,
-                  type: "package_consumption",
-                  quantityChange: -Math.abs(reward.quantity),
-                  quantityBefore: product.stock,
-                  quantityAfter: product.trackInventory ? product.stock - reward.quantity : product.stock,
-                  unitCost: product.averageCost,
-                  averageCostBefore: product.averageCost,
-                  averageCostAfter: product.averageCost,
-                  referenceType: "membership",
-                  referenceId: existing.membershipId,
-                  notes: `Package activation: ${activatedData.membership?.name ?? ""}`,
-                },
-              });
-            }
-          } catch {}
-        }
-
-        // Increment offer subscribers
-        if (activatedData.offerId) {
-          await db.offer.update({
-            where: { id: activatedData.offerId },
-            data: { currentSubscribers: { increment: 1 } },
-          });
-        }
-
-        if (existing.userId) {
-          await db.notification.create({
-            data: {
-              userId: existing.userId,
-              title: `تم تفعيل اشتراكك في ${activatedData.membership?.name ?? "الباقة"}!`,
-              body: "تم استلام دفعتك وتفعيل اشتراكك بنجاح.",
-              type: "success",
-            },
-          });
-
-          // Send confirmation email with booked schedule after payment verified
-          const userRecord = await db.user.findUnique({
-            where: { id: existing.userId },
-            select: { email: true, name: true },
-          });
-          if (userRecord?.email) {
-            const bookedSchedules = await db.booking.findMany({
-              where: { userMembershipId: existing.membershipId, status: "confirmed" },
-              include: { schedule: { include: { class: { include: { trainer: true } } } } },
-            });
-            const scheduleRows = bookedSchedules.map((b) => ({
-              date: b.schedule.date,
-              time: b.schedule.time,
-              className: b.schedule.class.name,
-              trainerName: b.schedule.class.trainer.name,
-            }));
-            const metadata = parseJson(transaction.metadata);
-            const invoiceDetails = toInvoiceDetails(metadata);
-            const now = new Date();
-            const duration = activatedData.membership?.duration ?? 30;
-            const endDate = new Date(now.getTime() + duration * 24 * 60 * 60 * 1000);
-            const normalizedInvoice = invoiceDetails
-              ? {
-                  ...invoiceDetails,
-                  paymentMethod: transaction.paymentMethod,
-                  startDate: now,
-                  endDate,
-                  issuedAt: transaction.paidAt ?? new Date(),
-                  finalAmount: transaction.amount,
-                }
-              : null;
-            const invoicePdf = normalizedInvoice ? await generateMembershipInvoicePdf(normalizedInvoice) : null;
-            let membershipCard = null;
-            try {
-              const pass = await ensureMembershipAttendancePass(existing.membershipId);
-              if (pass) {
-                membershipCard = await generateMembershipQrCard({
-                  memberName: userRecord.name ?? "FitZone Member",
-                  membershipName: activatedData.membership?.name ?? "Membership",
-                  membershipNameEn: activatedData.membership?.nameEn ?? null,
-                  offerTitle: activatedData.offer?.title ?? null,
-                  endDate,
-                  qrPayload: buildAttendancePayload(pass.code),
-                  cardCode: pass.code,
-                });
-              }
-            } catch (err) {
-              console.error("[PAYMENT_MEMBERSHIP_CARD]", err);
-            }
-            void sendSubscriptionEmail(
-              userRecord.email,
-              userRecord.name ?? "العضوة",
-              activatedData.membership?.name ?? "الباقة",
-              endDate,
-              walletBonus > 0 ? walletBonus : undefined,
-              scheduleRows,
-              normalizedInvoice && invoicePdf
-                ? {
-                    details: normalizedInvoice,
-                    filename: `fitzone-membership-invoice-${normalizedInvoice.invoiceNumber}.pdf`,
-                    content: invoicePdf,
-                  }
-                : null,
-              membershipCard,
-            ).catch((err) => console.error("[PAYMENT_EMAIL]", err));
-            void sendAdminSubscriptionNotification({
-              customerName: userRecord.name ?? "—",
-              customerEmail: userRecord.email,
-              planName: activatedData.membership?.name ?? "الباقة",
-              offerTitle: activatedData.offer?.title ?? null,
-              endDate,
-              amount: transaction.amount,
-              paymentMethod: transaction.paymentMethod,
-              invoiceNumber: normalizedInvoice?.invoiceNumber ?? `MBR-${existing.membershipId.slice(-8).toUpperCase()}`,
-            }).catch((err) => console.error("[PAYMENT_ADMIN_EMAIL]", err));
-          }
-        }
-      }
+      // Execute post-activation reconciliation with row-lock exact-once guarantee
+      await runPaidMembershipPostActivationReconciliation({
+        transactionId,
+        userId: existing.userId,
+        userMembershipId: existing.membershipId,
+        membershipData,
+        paymentAmount: transaction.amount,
+        paymentMethod: transaction.paymentMethod,
+        paidAt: transaction.paidAt,
+        transactionMetadata: transaction.metadata,
+      });
     }
 
     if (existing?.orderId) {
@@ -1406,6 +1052,7 @@ export async function updatePaymentTransactionStatus(
         }
       }
     }
+  }
   // end if (status === "paid")
 
   return mapPaymentTransaction(transaction);
@@ -1587,4 +1234,212 @@ export async function unlockPendingReferralReward(subscribedUserId: string) {
       },
     });
   }
+}
+
+/**
+ * Verified Paymob Payment Recovery Input
+ *
+ * Used for manual recovery of Paymob payments where webhook was missed/failed
+ * but payment was verified as successful through Paymob dashboard/API.
+ *
+ * ALL fields must match exactly or recovery is rejected as unsafe.
+ */
+export type VerifiedPaymobRecoveryInput = {
+  paymentTransactionId: string;
+  paymobTransactionId: string;
+  expectedAmount: number;
+  expectedCurrency: string;
+  expectedFitZoneReference: string;
+  expectedMerchantOrderId: string;
+};
+
+/**
+ * Recover a verified Paymob payment with atomic validation and activation.
+ *
+ * CRITICAL SAFETY:
+ * - Validates ALL payment details match expected values
+ * - Uses SHARED activation helper (same logic as normal payment)
+ * - Atomic claim: payment -> paid in ONE transaction with activation
+ * - ALWAYS calls reconciliation (even if already paid/active) to handle crash-window
+ * - Reconciliation is idempotent via row-lock + completion marker
+ *
+ * WHEN TO USE:
+ * - Paymob dashboard shows "success" but webhook never arrived
+ * - Customer paid but membership not activated
+ * - ALL payment details manually verified through Paymob dashboard
+ *
+ * DO NOT USE FOR:
+ * - Unverified payments
+ * - Refunded/disputed payments
+ * - Payments where amount/currency don't match exactly
+ */
+export async function recoverVerifiedPaymobPayment(input: VerifiedPaymobRecoveryInput) {
+  const {
+    paymentTransactionId,
+    paymobTransactionId,
+    expectedAmount,
+    expectedCurrency,
+    expectedFitZoneReference,
+    expectedMerchantOrderId,
+  } = input;
+
+  // 1. Atomic verification, payment claim, and activation in ONE transaction
+  const result = await db.$transaction(async (tx) => {
+    // Load payment
+    const payment = await tx.paymentTransaction.findUnique({
+      where: { id: paymentTransactionId },
+    });
+
+    if (!payment) {
+      throw new Error(`Payment transaction ${paymentTransactionId} not found`);
+    }
+
+    if (!payment.membershipId) {
+      throw new Error("Recovery only supports membership payments");
+    }
+
+    // Validate amount and currency match exactly
+    if (payment.amount !== expectedAmount || payment.currency.toUpperCase() !== expectedCurrency.toUpperCase()) {
+      throw new Error(
+        `Recovery rejected: amount or currency mismatch (expected ${expectedAmount} ${expectedCurrency}, found ${payment.amount} ${payment.currency})`
+      );
+    }
+
+    // Validate FitZone reference matches
+    if (payment.referenceCode !== expectedFitZoneReference) {
+      throw new Error(
+        `Recovery rejected: FitZone reference mismatch (expected ${expectedFitZoneReference}, found ${payment.referenceCode})`
+      );
+    }
+
+    // Validate merchant order ID matches
+    const metadata = parseJson(payment.metadata);
+    const merchantOrderId = metadata?.merchantOrderId as string | undefined;
+    if (merchantOrderId !== expectedMerchantOrderId) {
+      throw new Error(
+        `Recovery rejected: merchant order ID mismatch (expected ${expectedMerchantOrderId}, found ${merchantOrderId ?? "none"})`
+      );
+    }
+
+    // Check for conflicting external reference
+    if (payment.externalReference && payment.externalReference !== paymobTransactionId) {
+      throw new Error(
+        `Recovery rejected: Paymob transaction ID ${paymobTransactionId} conflicts with existing evidence ${payment.externalReference}`
+      );
+    }
+
+    // Check for duplicate paid payment for same membership
+    const duplicatePaid = await tx.paymentTransaction.findFirst({
+      where: {
+        membershipId: payment.membershipId,
+        status: "paid",
+        id: { not: paymentTransactionId },
+      },
+    });
+    if (duplicatePaid) {
+      throw new Error(
+        `Recovery rejected: duplicate paid payment exists for membership ${payment.membershipId} (payment ${duplicatePaid.id})`
+      );
+    }
+
+    // Check for duplicate active membership
+    const membership = await tx.userMembership.findUnique({
+      where: { id: payment.membershipId },
+      select: {
+        id: true,
+        userId: true,
+        membershipId: true,
+        status: true,
+      },
+    });
+
+    if (!membership) {
+      throw new Error(`Membership ${payment.membershipId} not found`);
+    }
+
+    if (membership.status !== "pending_payment" && membership.status !== "active") {
+      throw new Error(
+        `Recovery rejected: membership ${payment.membershipId} is not recoverable (status: ${membership.status})`
+      );
+    }
+
+    const duplicateActive = await tx.userMembership.findFirst({
+      where: {
+        userId: membership.userId,
+        membershipId: membership.membershipId,
+        status: "active",
+        id: { not: payment.membershipId },
+      },
+    });
+    if (duplicateActive) {
+      throw new Error(
+        `Recovery rejected: duplicate active membership exists for user ${membership.userId} / plan ${membership.membershipId}`
+      );
+    }
+
+    // Atomic claim: mark payment as paid (idempotent if already paid)
+    let alreadyPaid = false;
+    if (payment.status === "paid" && payment.externalReference === paymobTransactionId) {
+      alreadyPaid = true;
+    } else {
+      const claimed = await tx.paymentTransaction.updateMany({
+        where: {
+          id: paymentTransactionId,
+          status: { in: ["pending", "pending_payment", "processing", "requires_action"] },
+        },
+        data: {
+          status: "paid",
+          paidAt: new Date(),
+          externalReference: paymobTransactionId,
+          metadata: stringifyJson({
+            ...(metadata ?? {}),
+            verifiedPaymobRecovery: true,
+            recoveredAt: new Date().toISOString(),
+            recoveredPaymobTxId: paymobTransactionId,
+          }),
+        },
+      });
+
+      if (claimed.count === 0) {
+        throw new Error(`Payment ${paymentTransactionId} already processed or in terminal state`);
+      }
+    }
+
+    // Use SHARED activation helper (same logic as normal payment)
+    const activation = await activatePaidMembershipTx(tx, paymentTransactionId, payment.membershipId);
+
+    if (!activation.success || !activation.membershipData) {
+      throw new Error(`Membership ${payment.membershipId} activation failed`);
+    }
+
+    // Refresh payment data
+    const updatedPayment = await tx.paymentTransaction.findUnique({
+      where: { id: paymentTransactionId },
+    });
+
+    return {
+      alreadyPaid,
+      transaction: updatedPayment!,
+      membershipData: activation.membershipData,
+    };
+  });
+
+  // Record analytics event (fire-and-forget)
+  void recordMembershipActivatedEvent(result.transaction.membershipId!, paymentTransactionId).catch(() => null);
+
+  // CRITICAL: ALWAYS call reconciliation, even if payment/membership were already activated
+  // The reconciliation helper has its own row-lock + completion marker to ensure exact-once
+  // This handles the crash-window case where activation succeeded but reconciliation failed
+  await runPaidMembershipPostActivationReconciliation({
+    transactionId: paymentTransactionId,
+    userId: result.transaction.userId,
+    userMembershipId: result.transaction.membershipId!,
+    membershipData: result.membershipData,
+    paymentAmount: result.transaction.amount,
+    paymentMethod: result.transaction.paymentMethod,
+    paidAt: result.transaction.paidAt,
+    transactionMetadata: result.transaction.metadata,
+  });
+
+  return mapPaymentTransaction(result.transaction);
 }
