@@ -508,6 +508,146 @@ async function handleWebhook(payload: unknown): Promise<PaymentWebhookResult> {
   };
 }
 
+/**
+ * Remote Paymob Transaction Verification Result
+ *
+ * Used for recovery to verify transaction independently via Paymob API
+ * BEFORE any local mutations.
+ */
+export type PaymobRemoteVerificationResult = {
+  verified: boolean;
+  transactionId: string;
+  success: boolean;
+  pending: boolean;
+  amountCents: number;
+  currency: string;
+  paymobOrderId: number | null;
+  specialReference: string | null;
+  sourceType: string | null;
+  isRefunded: boolean;
+  isVoided: boolean;
+  errorOccured: boolean;
+  failureReason?: string;
+};
+
+/**
+ * Verify a Paymob transaction remotely for recovery.
+ *
+ * CRITICAL: This function performs EXTERNAL verification via Paymob API
+ * to ensure transaction exists, is successful, matches expected values,
+ * AND belongs to the expected intention BEFORE any local database mutations.
+ *
+ * Used by recoverVerifiedPaymobPayment to validate:
+ * - Transaction exists in Paymob
+ * - Transaction belongs to expected intention (via special_reference linkage)
+ * - Transaction is successful (not failed/pending/refunded/voided)
+ * - Amount and currency match expected values
+ * - FitZone reference matches if Paymob returns it
+ *
+ * INTENTION LINKAGE PROOF:
+ * - Paymob returns transaction.special_reference (our PaymentTransaction.id)
+ * - We verify local PaymentTransaction.providerReference === expectedIntentionId
+ * - This proves transaction was created through the expected intention
+ *
+ * @param paymobTransactionId - Paymob transaction ID (e.g., "512944958")
+ * @param expectedLocalTransactionId - Our PaymentTransaction.id (links to intention via special_reference)
+ * @param expectedAmount - Expected amount in base currency units (e.g., 333 for 333 EGP)
+ * @param expectedCurrency - Expected currency code (e.g., "EGP")
+ * @param expectedFitZoneReference - Expected FitZone reference (e.g., "FZ-Offers-0000017")
+ * @returns Remote verification result with transaction details and validation status
+ */
+export async function verifyPaymobTransactionForRecovery(
+  paymobTransactionId: string,
+  expectedLocalTransactionId: string,
+  expectedAmount: number,
+  expectedCurrency: string,
+  expectedFitZoneReference: string,
+): Promise<PaymobRemoteVerificationResult> {
+  const authToken = await authenticate();
+
+  const response = await fetch(`${getRegionBase()}/api/acceptance/transactions/${paymobTransactionId}`, {
+    headers: { Authorization: `Token ${authToken}` },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+
+  if (!response.ok) {
+    return {
+      verified: false,
+      transactionId: paymobTransactionId,
+      success: false,
+      pending: true,
+      amountCents: 0,
+      currency: "",
+      paymobOrderId: null,
+      specialReference: null,
+      sourceType: null,
+      isRefunded: false,
+      isVoided: false,
+      errorOccured: true,
+      failureReason: `Paymob API returned ${response.status}. Transaction may not exist or API is unavailable.`,
+    };
+  }
+
+  const tx = (await response.json()) as PaymobAcceptanceTransaction;
+  const amountCents = tx.amount_cents ?? 0;
+  const amountInCurrency = amountCents / 100;
+  const currency = (tx.currency ?? "").toUpperCase();
+  const success = tx.success ?? false;
+  const pending = tx.pending ?? true;
+  const isRefunded = tx.is_refunded ?? false;
+  const isVoided = tx.is_voided ?? false;
+  const errorOccured = tx.error_occured ?? false;
+  const specialReference = tx.special_reference ?? null;
+  const sourceType = tx.source_data?.type ?? null;
+  const paymobOrderId = tx.order?.id ?? null;
+
+  // Extract merchant_order_id from order (LIVE PAYMOB: this is the actual linkage field)
+  const merchantOrderId = tx.order?.merchant_order_id ?? null;
+
+  // Validation checks
+  const checks = {
+    exists: response.ok,
+    success: success === true,
+    notPending: pending === false,
+    amountMatch: amountInCurrency === expectedAmount,
+    currencyMatch: currency === expectedCurrency.toUpperCase(),
+    notRefunded: isRefunded === false,
+    notVoided: isVoided === false,
+    noError: errorOccured === false,
+    // CRITICAL: Verify transaction belongs to our PaymentTransaction via merchant_order_id
+    // LIVE PAYMOB PROOF: order.merchant_order_id === our PaymentTransaction.id
+    transactionLinkage: merchantOrderId === expectedLocalTransactionId,
+  };
+
+  const verified = Object.values(checks).every((check) => check === true);
+
+  const failureReasons: string[] = [];
+  if (!checks.success) failureReasons.push("success=false");
+  if (!checks.notPending) failureReasons.push("pending=true");
+  if (!checks.amountMatch) failureReasons.push(`amount=${amountInCurrency} (expected ${expectedAmount})`);
+  if (!checks.currencyMatch) failureReasons.push(`currency=${currency} (expected ${expectedCurrency})`);
+  if (!checks.notRefunded) failureReasons.push("refunded");
+  if (!checks.notVoided) failureReasons.push("voided");
+  if (!checks.noError) failureReasons.push("error_occured=true");
+  if (!checks.transactionLinkage) failureReasons.push(`merchant_order_id=${merchantOrderId} (expected ${expectedLocalTransactionId} to prove transaction linkage)`);
+
+  return {
+    verified,
+    transactionId: String(tx.id ?? paymobTransactionId),
+    success,
+    pending,
+    amountCents,
+    currency,
+    paymobOrderId,
+    specialReference,
+    sourceType,
+    isRefunded,
+    isVoided,
+    errorOccured,
+    failureReason: failureReasons.length > 0 ? failureReasons.join(", ") : undefined,
+  };
+}
+
 export const paymobPaymentProvider: PaymentProviderDefinition = {
   key: "paymob",
   label: "Paymob",

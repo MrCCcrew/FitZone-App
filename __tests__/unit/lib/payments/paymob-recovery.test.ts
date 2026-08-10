@@ -1,12 +1,23 @@
 /**
  * Paymob Payment Recovery Tests
  *
- * Tests for recoverVerifiedPaymobPayment() - atomic verified payment recovery.
+ * Tests for recoverVerifiedPaymobPayment() - atomic verified payment recovery
+ * with remote Paymob verification.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { db } from "@/lib/db";
 import { recoverVerifiedPaymobPayment, type VerifiedPaymobRecoveryInput } from "@/lib/payments/service";
+import * as paymobProvider from "@/lib/payments/providers/paymob";
+
+// Mock Paymob remote verification
+vi.mock("@/lib/payments/providers/paymob", async () => {
+  const actual = await vi.importActual("@/lib/payments/providers/paymob");
+  return {
+    ...actual,
+    verifyPaymobTransactionForRecovery: vi.fn(),
+  };
+});
 
 describe("Paymob Payment Recovery", () => {
   let testUserId: string;
@@ -58,7 +69,7 @@ describe("Paymob Payment Recovery", () => {
       },
     });
 
-    // Create pending payment transaction
+    // Create pending payment transaction with intention ID
     testPaymentId = `payment-${timestamp}`;
     await db.paymentTransaction.create({
       data: {
@@ -73,11 +84,28 @@ describe("Paymob Payment Recovery", () => {
         currency: "EGP",
         status: "pending",
         paymentMethod: "wallet",
-        metadata: JSON.stringify({
-          merchantOrderId: "cmsnfbxww00eg1lfbyd755ef5",
-        }),
+        providerReference: "pi_live_test_intention_123",
       },
     });
+
+    // Mock successful Paymob verification for all tests by default
+    // LIVE PAYMOB RESPONSE: merchant_order_id (not special_reference) proves linkage
+    vi.mocked(paymobProvider.verifyPaymobTransactionForRecovery).mockImplementation(
+      async (paymobTxId, localTxId) => ({
+        verified: true,
+        transactionId: "512944958",
+        success: true,
+        pending: false,
+        amountCents: 33300,
+        currency: "EGP",
+        paymobOrderId: 584723754,
+        specialReference: null, // LIVE PAYMOB: special_reference is NULL
+        sourceType: "wallet",
+        isRefunded: false,
+        isVoided: false,
+        errorOccured: false,
+      })
+    );
   });
 
   afterEach(async () => {
@@ -94,7 +122,7 @@ describe("Paymob Payment Recovery", () => {
       expectedAmount: 333,
       expectedCurrency: "EGP",
       expectedFitZoneReference: "FZ-Offers-0000017",
-      expectedMerchantOrderId: "cmsnfbxww00eg1lfbyd755ef5",
+      expectedIntentionId: "pi_live_test_intention_123",
     };
 
     const result = await recoverVerifiedPaymobPayment(input);
@@ -120,7 +148,7 @@ describe("Paymob Payment Recovery", () => {
       expectedAmount: 500, // Wrong amount
       expectedCurrency: "EGP",
       expectedFitZoneReference: "FZ-Offers-0000017",
-      expectedMerchantOrderId: "cmsnfbxww00eg1lfbyd755ef5",
+      expectedIntentionId: "pi_live_test_intention_123",
     };
 
     await expect(recoverVerifiedPaymobPayment(input)).rejects.toThrow("amount or currency mismatch");
@@ -139,7 +167,7 @@ describe("Paymob Payment Recovery", () => {
       expectedAmount: 333,
       expectedCurrency: "USD", // Wrong currency
       expectedFitZoneReference: "FZ-Offers-0000017",
-      expectedMerchantOrderId: "cmsnfbxww00eg1lfbyd755ef5",
+      expectedIntentionId: "pi_live_test_intention_123",
     };
 
     await expect(recoverVerifiedPaymobPayment(input)).rejects.toThrow("amount or currency mismatch");
@@ -155,7 +183,7 @@ describe("Paymob Payment Recovery", () => {
       expectedAmount: 333,
       expectedCurrency: "EGP",
       expectedFitZoneReference: "FZ-Offers-9999999", // Wrong reference
-      expectedMerchantOrderId: "cmsnfbxww00eg1lfbyd755ef5",
+      expectedIntentionId: "pi_live_test_intention_123",
     };
 
     await expect(recoverVerifiedPaymobPayment(input)).rejects.toThrow("FitZone reference mismatch");
@@ -164,17 +192,17 @@ describe("Paymob Payment Recovery", () => {
     expect(payment?.status).toBe("pending");
   });
 
-  it("5. merchant order ID mismatch rejected", async () => {
+  it("5. intention ID mismatch rejected", async () => {
     const input: VerifiedPaymobRecoveryInput = {
       paymentTransactionId: testPaymentId,
       paymobTransactionId: "512944958",
       expectedAmount: 333,
       expectedCurrency: "EGP",
       expectedFitZoneReference: "FZ-Offers-0000017",
-      expectedMerchantOrderId: "wrong-merchant-order", // Wrong merchant order
+      expectedIntentionId: "pi_live_wrong_intention", // Wrong intention
     };
 
-    await expect(recoverVerifiedPaymobPayment(input)).rejects.toThrow("merchant order ID mismatch");
+    await expect(recoverVerifiedPaymobPayment(input)).rejects.toThrow("intention mismatch");
 
     const payment = await db.paymentTransaction.findUnique({ where: { id: testPaymentId } });
     expect(payment?.status).toBe("pending");
@@ -206,7 +234,7 @@ describe("Paymob Payment Recovery", () => {
       expectedAmount: 333,
       expectedCurrency: "EGP",
       expectedFitZoneReference: "FZ-Offers-0000017",
-      expectedMerchantOrderId: "cmsnfbxww00eg1lfbyd755ef5",
+      expectedIntentionId: "pi_live_test_intention_123",
     };
 
     await expect(recoverVerifiedPaymobPayment(input)).rejects.toThrow("duplicate paid payment");
@@ -239,7 +267,7 @@ describe("Paymob Payment Recovery", () => {
       expectedAmount: 333,
       expectedCurrency: "EGP",
       expectedFitZoneReference: "FZ-Offers-0000017",
-      expectedMerchantOrderId: "cmsnfbxww00eg1lfbyd755ef5",
+      expectedIntentionId: "pi_live_test_intention_123",
     };
 
     await expect(recoverVerifiedPaymobPayment(input)).rejects.toThrow("duplicate active membership");
@@ -257,7 +285,7 @@ describe("Paymob Payment Recovery", () => {
       expectedAmount: 333,
       expectedCurrency: "EGP",
       expectedFitZoneReference: "FZ-Offers-0000017",
-      expectedMerchantOrderId: "cmsnfbxww00eg1lfbyd755ef5",
+      expectedIntentionId: "pi_live_test_intention_123",
     };
 
     // First recovery
@@ -295,7 +323,7 @@ describe("Paymob Payment Recovery", () => {
       expectedAmount: 333,
       expectedCurrency: "EGP",
       expectedFitZoneReference: "FZ-Offers-0000017",
-      expectedMerchantOrderId: "cmsnfbxww00eg1lfbyd755ef5",
+      expectedIntentionId: "pi_live_test_intention_123",
     };
 
     await expect(recoverVerifiedPaymobPayment(input)).rejects.toThrow("conflicts with existing evidence");
@@ -318,7 +346,7 @@ describe("Paymob Payment Recovery", () => {
       expectedAmount: 333,
       expectedCurrency: "EGP",
       expectedFitZoneReference: "FZ-Offers-0000017",
-      expectedMerchantOrderId: "cmsnfbxww00eg1lfbyd755ef5",
+      expectedIntentionId: "pi_live_test_intention_123",
     };
 
     await expect(recoverVerifiedPaymobPayment(input)).rejects.toThrow("not recoverable");
@@ -330,5 +358,256 @@ describe("Paymob Payment Recovery", () => {
 
     const membership = await db.userMembership.findUnique({ where: { id: testUserMembershipId } });
     expect(membership?.status).toBe("cancelled"); // Unchanged
+  });
+
+  it("11. wrong intention ID rejected", async () => {
+    const input: VerifiedPaymobRecoveryInput = {
+      paymentTransactionId: testPaymentId,
+      paymobTransactionId: "512944958",
+      expectedAmount: 333,
+      expectedCurrency: "EGP",
+      expectedFitZoneReference: "FZ-Offers-0000017",
+      expectedIntentionId: "pi_live_wrong_intention", // Wrong intention
+    };
+
+    await expect(recoverVerifiedPaymobPayment(input)).rejects.toThrow("intention mismatch");
+
+    const payment = await db.paymentTransaction.findUnique({ where: { id: testPaymentId } });
+    expect(payment?.status).toBe("pending");
+  });
+
+  it("12. merchant_order_id mismatch rejected", async () => {
+    // Mock Paymob returning wrong merchant_order_id (belongs to different payment)
+    vi.mocked(paymobProvider.verifyPaymobTransactionForRecovery).mockResolvedValueOnce({
+      verified: false,
+      transactionId: "512944958",
+      success: true,
+      pending: false,
+      amountCents: 33300,
+      currency: "EGP",
+      paymobOrderId: 584723754,
+      specialReference: null, // LIVE PAYMOB: null
+      sourceType: "wallet",
+      isRefunded: false,
+      isVoided: false,
+      errorOccured: false,
+      failureReason: `merchant_order_id=different-payment-id (expected ${testPaymentId} to prove transaction linkage)`,
+    });
+
+    const input: VerifiedPaymobRecoveryInput = {
+      paymentTransactionId: testPaymentId,
+      paymobTransactionId: "512944958",
+      expectedAmount: 333,
+      expectedCurrency: "EGP",
+      expectedFitZoneReference: "FZ-Offers-0000017",
+      expectedIntentionId: "pi_live_test_intention_123",
+    };
+
+    await expect(recoverVerifiedPaymobPayment(input)).rejects.toThrow("Paymob remote verification failed");
+
+    // Verify NO local mutations occurred
+    const payment = await db.paymentTransaction.findUnique({ where: { id: testPaymentId } });
+    expect(payment?.status).toBe("pending");
+    expect(payment?.externalReference).toBeNull();
+  });
+
+  it("13. remote verification failure prevents recovery", async () => {
+    // Mock failed remote verification (transaction not successful)
+    vi.mocked(paymobProvider.verifyPaymobTransactionForRecovery).mockResolvedValueOnce({
+      verified: false,
+      transactionId: "512944958",
+      success: false,
+      pending: true,
+      amountCents: 33300,
+      currency: "EGP",
+      paymobOrderId: 584723754,
+      specialReference: "FZ-Offers-0000017",
+      sourceType: "wallet",
+      isRefunded: false,
+      isVoided: false,
+      errorOccured: false,
+      failureReason: "success=false, pending=true",
+    });
+
+    const input: VerifiedPaymobRecoveryInput = {
+      paymentTransactionId: testPaymentId,
+      paymobTransactionId: "512944958",
+      expectedAmount: 333,
+      expectedCurrency: "EGP",
+      expectedFitZoneReference: "FZ-Offers-0000017",
+      expectedIntentionId: "pi_live_test_intention_123",
+    };
+
+    await expect(recoverVerifiedPaymobPayment(input)).rejects.toThrow("Paymob remote verification failed");
+
+    // Verify NO local mutations occurred
+    const payment = await db.paymentTransaction.findUnique({ where: { id: testPaymentId } });
+    expect(payment?.status).toBe("pending");
+    expect(payment?.externalReference).toBeNull();
+
+    const membership = await db.userMembership.findUnique({ where: { id: testUserMembershipId } });
+    expect(membership?.status).toBe("pending_payment");
+  });
+
+  it("13. refunded transaction rejected", async () => {
+    vi.mocked(paymobProvider.verifyPaymobTransactionForRecovery).mockResolvedValueOnce({
+      verified: false,
+      transactionId: "512944958",
+      success: true,
+      pending: false,
+      amountCents: 33300,
+      currency: "EGP",
+      paymobOrderId: 584723754,
+      specialReference: "FZ-Offers-0000017",
+      sourceType: "wallet",
+      isRefunded: true, // Refunded
+      isVoided: false,
+      errorOccured: false,
+      failureReason: "refunded",
+    });
+
+    const input: VerifiedPaymobRecoveryInput = {
+      paymentTransactionId: testPaymentId,
+      paymobTransactionId: "512944958",
+      expectedAmount: 333,
+      expectedCurrency: "EGP",
+      expectedFitZoneReference: "FZ-Offers-0000017",
+      expectedIntentionId: "pi_live_test_intention_123",
+    };
+
+    await expect(recoverVerifiedPaymobPayment(input)).rejects.toThrow("Paymob remote verification failed");
+
+    const payment = await db.paymentTransaction.findUnique({ where: { id: testPaymentId } });
+    expect(payment?.status).toBe("pending");
+  });
+
+  it("14. voided transaction rejected", async () => {
+    vi.mocked(paymobProvider.verifyPaymobTransactionForRecovery).mockResolvedValueOnce({
+      verified: false,
+      transactionId: "512944958",
+      success: true,
+      pending: false,
+      amountCents: 33300,
+      currency: "EGP",
+      paymobOrderId: 584723754,
+      specialReference: "FZ-Offers-0000017",
+      sourceType: "wallet",
+      isRefunded: false,
+      isVoided: true, // Voided
+      errorOccured: false,
+      failureReason: "voided",
+    });
+
+    const input: VerifiedPaymobRecoveryInput = {
+      paymentTransactionId: testPaymentId,
+      paymobTransactionId: "512944958",
+      expectedAmount: 333,
+      expectedCurrency: "EGP",
+      expectedFitZoneReference: "FZ-Offers-0000017",
+      expectedIntentionId: "pi_live_test_intention_123",
+    };
+
+    await expect(recoverVerifiedPaymobPayment(input)).rejects.toThrow("Paymob remote verification failed");
+
+    const payment = await db.paymentTransaction.findUnique({ where: { id: testPaymentId } });
+    expect(payment?.status).toBe("pending");
+  });
+
+  it("15. remote amount mismatch rejected", async () => {
+    vi.mocked(paymobProvider.verifyPaymobTransactionForRecovery).mockResolvedValueOnce({
+      verified: false,
+      transactionId: "512944958",
+      success: true,
+      pending: false,
+      amountCents: 50000, // Wrong amount (500 instead of 333)
+      currency: "EGP",
+      paymobOrderId: 584723754,
+      specialReference: "FZ-Offers-0000017",
+      sourceType: "wallet",
+      isRefunded: false,
+      isVoided: false,
+      errorOccured: false,
+      failureReason: "amount=500 (expected 333)",
+    });
+
+    const input: VerifiedPaymobRecoveryInput = {
+      paymentTransactionId: testPaymentId,
+      paymobTransactionId: "512944958",
+      expectedAmount: 333,
+      expectedCurrency: "EGP",
+      expectedFitZoneReference: "FZ-Offers-0000017",
+      expectedIntentionId: "pi_live_test_intention_123",
+    };
+
+    await expect(recoverVerifiedPaymobPayment(input)).rejects.toThrow("Paymob remote verification failed");
+
+    const payment = await db.paymentTransaction.findUnique({ where: { id: testPaymentId } });
+    expect(payment?.status).toBe("pending");
+  });
+
+  it("16. remote currency mismatch rejected", async () => {
+    vi.mocked(paymobProvider.verifyPaymobTransactionForRecovery).mockResolvedValueOnce({
+      verified: false,
+      transactionId: "512944958",
+      success: true,
+      pending: false,
+      amountCents: 33300,
+      currency: "USD", // Wrong currency
+      paymobOrderId: 584723754,
+      specialReference: "FZ-Offers-0000017",
+      sourceType: "wallet",
+      isRefunded: false,
+      isVoided: false,
+      errorOccured: false,
+      failureReason: "currency=USD (expected EGP)",
+    });
+
+    const input: VerifiedPaymobRecoveryInput = {
+      paymentTransactionId: testPaymentId,
+      paymobTransactionId: "512944958",
+      expectedAmount: 333,
+      expectedCurrency: "EGP",
+      expectedFitZoneReference: "FZ-Offers-0000017",
+      expectedIntentionId: "pi_live_test_intention_123",
+    };
+
+    await expect(recoverVerifiedPaymobPayment(input)).rejects.toThrow("Paymob remote verification failed");
+
+    const payment = await db.paymentTransaction.findUnique({ where: { id: testPaymentId } });
+    expect(payment?.status).toBe("pending");
+  });
+
+  it("17. missing provider reference (intention ID) rejected", async () => {
+    // Create payment without providerReference
+    const noIntentionPaymentId = `payment-no-intention-${Date.now()}`;
+    await db.paymentTransaction.create({
+      data: {
+        id: noIntentionPaymentId,
+        userId: testUserId,
+        membershipId: testUserMembershipId,
+        referenceCode: "FZ-Test-9999",
+        purpose: "subscription",
+        businessUnit: "club",
+        provider: "paymob",
+        amount: 333,
+        currency: "EGP",
+        status: "pending",
+        paymentMethod: "wallet",
+        providerReference: null, // No intention ID
+      },
+    });
+
+    const input: VerifiedPaymobRecoveryInput = {
+      paymentTransactionId: noIntentionPaymentId,
+      paymobTransactionId: "512944958",
+      expectedAmount: 333,
+      expectedCurrency: "EGP",
+      expectedFitZoneReference: "FZ-Test-9999",
+      expectedIntentionId: "pi_live_test_intention_123",
+    };
+
+    await expect(recoverVerifiedPaymobPayment(input)).rejects.toThrow("intention mismatch");
+
+    await db.paymentTransaction.deleteMany({ where: { id: noIntentionPaymentId } });
   });
 });

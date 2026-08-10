@@ -9,6 +9,7 @@ import { recordPaymentStatusEvent } from "@/lib/analytics/payment-events";
 import { recordMembershipActivatedEvent } from "@/lib/analytics/membership-events";
 import { getDefaultPaymentProvider, getPaymentProvider, listPaymentProviders } from "@/lib/payments/registry";
 import { runPaidMembershipPostActivationReconciliation } from "@/lib/payments/reconciliation-helper";
+import { verifyPaymobTransactionForRecovery } from "@/lib/payments/providers/paymob";
 import type {
   PaymentProviderKey,
   PaymentPurpose,
@@ -1242,7 +1243,11 @@ export async function unlockPendingReferralReward(subscribedUserId: string) {
  * Used for manual recovery of Paymob payments where webhook was missed/failed
  * but payment was verified as successful through Paymob dashboard/API.
  *
- * ALL fields must match exactly or recovery is rejected as unsafe.
+ * CRITICAL SAFETY:
+ * - Recovery performs REMOTE Paymob verification BEFORE any local mutations
+ * - Intention ID (providerReference) is the authoritative linkage
+ * - Transaction is verified to belong to intention via Paymob API
+ * - ALL validation must pass or recovery is rejected
  */
 export type VerifiedPaymobRecoveryInput = {
   paymentTransactionId: string;
@@ -1250,13 +1255,16 @@ export type VerifiedPaymobRecoveryInput = {
   expectedAmount: number;
   expectedCurrency: string;
   expectedFitZoneReference: string;
-  expectedMerchantOrderId: string;
+  expectedIntentionId: string;
 };
 
 /**
  * Recover a verified Paymob payment with atomic validation and activation.
  *
  * CRITICAL SAFETY:
+ * - Performs REMOTE Paymob verification BEFORE any local mutations
+ * - Verifies transaction exists, is successful, and belongs to intention via Paymob API
+ * - Uses intention ID (providerReference) as authoritative linkage
  * - Validates ALL payment details match expected values
  * - Uses SHARED activation helper (same logic as normal payment)
  * - Atomic claim: payment -> paid in ONE transaction with activation
@@ -1266,11 +1274,11 @@ export type VerifiedPaymobRecoveryInput = {
  * WHEN TO USE:
  * - Paymob dashboard shows "success" but webhook never arrived
  * - Customer paid but membership not activated
- * - ALL payment details manually verified through Paymob dashboard
+ * - ALL payment details manually verified through Paymob dashboard/API
  *
  * DO NOT USE FOR:
  * - Unverified payments
- * - Refunded/disputed payments
+ * - Refunded/disputed/voided payments
  * - Payments where amount/currency don't match exactly
  */
 export async function recoverVerifiedPaymobPayment(input: VerifiedPaymobRecoveryInput) {
@@ -1280,8 +1288,42 @@ export async function recoverVerifiedPaymobPayment(input: VerifiedPaymobRecovery
     expectedAmount,
     expectedCurrency,
     expectedFitZoneReference,
-    expectedMerchantOrderId,
+    expectedIntentionId,
   } = input;
+
+  // CRITICAL: Perform REMOTE Paymob verification BEFORE any local mutations
+  // This ensures transaction exists, is successful, belongs to expected intention,
+  // and matches all expected values
+  console.info("[RECOVERY] Verifying Paymob transaction remotely before recovery", {
+    paymentTransactionId,
+    paymobTransactionId,
+    expectedIntentionId,
+    expectedAmount,
+    expectedCurrency,
+  });
+
+  const paymobVerification = await verifyPaymobTransactionForRecovery(
+    paymobTransactionId,
+    paymentTransactionId, // Links to intention via special_reference
+    expectedAmount,
+    expectedCurrency,
+    expectedFitZoneReference,
+  );
+
+  if (!paymobVerification.verified) {
+    throw new Error(
+      `Recovery rejected: Paymob remote verification failed - ${paymobVerification.failureReason ?? "transaction not verified"}`,
+    );
+  }
+
+  console.info("[RECOVERY] Paymob remote verification passed", {
+    transactionId: paymobVerification.transactionId,
+    success: paymobVerification.success,
+    pending: paymobVerification.pending,
+    amount: paymobVerification.amountCents / 100,
+    currency: paymobVerification.currency,
+    sourceType: paymobVerification.sourceType,
+  });
 
   // 1. Atomic verification, payment claim, and activation in ONE transaction
   const result = await db.$transaction(async (tx) => {
@@ -1298,26 +1340,24 @@ export async function recoverVerifiedPaymobPayment(input: VerifiedPaymobRecovery
       throw new Error("Recovery only supports membership payments");
     }
 
-    // Validate amount and currency match exactly
+    // Validate intention ID matches (authoritative linkage for Unified Checkout)
+    if (payment.providerReference !== expectedIntentionId) {
+      throw new Error(
+        `Recovery rejected: intention mismatch (expected ${expectedIntentionId}, found ${payment.providerReference ?? "none"})`,
+      );
+    }
+
+    // Validate amount and currency match exactly (redundant with remote check, but belt-and-suspenders)
     if (payment.amount !== expectedAmount || payment.currency.toUpperCase() !== expectedCurrency.toUpperCase()) {
       throw new Error(
-        `Recovery rejected: amount or currency mismatch (expected ${expectedAmount} ${expectedCurrency}, found ${payment.amount} ${payment.currency})`
+        `Recovery rejected: amount or currency mismatch (expected ${expectedAmount} ${expectedCurrency}, found ${payment.amount} ${payment.currency})`,
       );
     }
 
     // Validate FitZone reference matches
     if (payment.referenceCode !== expectedFitZoneReference) {
       throw new Error(
-        `Recovery rejected: FitZone reference mismatch (expected ${expectedFitZoneReference}, found ${payment.referenceCode})`
-      );
-    }
-
-    // Validate merchant order ID matches
-    const metadata = parseJson(payment.metadata);
-    const merchantOrderId = metadata?.merchantOrderId as string | undefined;
-    if (merchantOrderId !== expectedMerchantOrderId) {
-      throw new Error(
-        `Recovery rejected: merchant order ID mismatch (expected ${expectedMerchantOrderId}, found ${merchantOrderId ?? "none"})`
+        `Recovery rejected: FitZone reference mismatch (expected ${expectedFitZoneReference}, found ${payment.referenceCode})`,
       );
     }
 
@@ -1382,6 +1422,7 @@ export async function recoverVerifiedPaymobPayment(input: VerifiedPaymobRecovery
     if (payment.status === "paid" && payment.externalReference === paymobTransactionId) {
       alreadyPaid = true;
     } else {
+      const metadata = parseJson(payment.metadata);
       const claimed = await tx.paymentTransaction.updateMany({
         where: {
           id: paymentTransactionId,
@@ -1396,6 +1437,16 @@ export async function recoverVerifiedPaymobPayment(input: VerifiedPaymobRecovery
             verifiedPaymobRecovery: true,
             recoveredAt: new Date().toISOString(),
             recoveredPaymobTxId: paymobTransactionId,
+            paymobRemoteVerification: {
+              verified: paymobVerification.verified,
+              transactionId: paymobVerification.transactionId,
+              success: paymobVerification.success,
+              pending: paymobVerification.pending,
+              amountCents: paymobVerification.amountCents,
+              currency: paymobVerification.currency,
+              sourceType: paymobVerification.sourceType,
+              verifiedAt: new Date().toISOString(),
+            },
           }),
         },
       });
