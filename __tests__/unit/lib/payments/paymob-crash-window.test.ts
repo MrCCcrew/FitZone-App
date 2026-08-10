@@ -5,9 +5,19 @@
  * Retry must repair reconciliation without duplicating financial effects.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { db } from "@/lib/db";
 import { recoverVerifiedPaymobPayment, type VerifiedPaymobRecoveryInput } from "@/lib/payments/service";
+import * as paymobProvider from "@/lib/payments/providers/paymob";
+
+// Mock Paymob remote verification
+vi.mock("@/lib/payments/providers/paymob", async () => {
+  const actual = await vi.importActual("@/lib/payments/providers/paymob");
+  return {
+    ...actual,
+    verifyPaymobTransactionForRecovery: vi.fn(),
+  };
+});
 
 describe("Payment Crash-Window Recovery", () => {
   let testUserId: string;
@@ -106,11 +116,28 @@ describe("Payment Crash-Window Recovery", () => {
         currency: "EGP",
         status: "pending",
         paymentMethod: "paymob",
-        metadata: JSON.stringify({
-          merchantOrderId: testPaymentId,
-        }),
+        providerReference: `pi_live_test_intention_${timestamp}`, // Unique per test run
       },
     });
+
+    // Mock successful Paymob verification
+    // LIVE PAYMOB RESPONSE: merchant_order_id proves linkage, special_reference is NULL
+    vi.mocked(paymobProvider.verifyPaymobTransactionForRecovery).mockImplementation(
+      async (paymobTxId, localTxId) => ({
+        verified: true,
+        transactionId: "999888777",
+        success: true,
+        pending: false,
+        amountCents: 45000,
+        currency: "EGP",
+        paymobOrderId: 584723754,
+        specialReference: null, // LIVE PAYMOB: NULL
+        sourceType: "paymob",
+        isRefunded: false,
+        isVoided: false,
+        errorOccured: false,
+      })
+    );
   });
 
   afterEach(async () => {
@@ -134,15 +161,14 @@ describe("Payment Crash-Window Recovery", () => {
   });
 
   it("repairs pre-existing crash-window: paid+active but unreconciled", async () => {
+    const payment = await db.paymentTransaction.findUnique({ where: { id: testPaymentId } });
     const input: VerifiedPaymobRecoveryInput = {
       paymentTransactionId: testPaymentId,
       paymobTransactionId: "999888777",
       expectedAmount: 450,
       expectedCurrency: "EGP",
-      expectedFitZoneReference: (await db.paymentTransaction.findUnique({
-        where: { id: testPaymentId },
-      }))!.referenceCode!,
-      expectedMerchantOrderId: testPaymentId,
+      expectedFitZoneReference: payment!.referenceCode!,
+      expectedIntentionId: payment!.providerReference!,
     };
 
     // PHASE A: Manually simulate pre-existing crash-window state
@@ -242,15 +268,14 @@ describe("Payment Crash-Window Recovery", () => {
       },
     });
 
+    const payment = await db.paymentTransaction.findUnique({ where: { id: testPaymentId } });
     const input: VerifiedPaymobRecoveryInput = {
       paymentTransactionId: testPaymentId,
       paymobTransactionId: "999888777",
       expectedAmount: 450,
       expectedCurrency: "EGP",
-      expectedFitZoneReference: (await db.paymentTransaction.findUnique({
-        where: { id: testPaymentId },
-      }))!.referenceCode!,
-      expectedMerchantOrderId: testPaymentId,
+      expectedFitZoneReference: payment!.referenceCode!,
+      expectedIntentionId: payment!.providerReference!,
     };
 
     // PHASE A: First recovery attempt - activation succeeds, reconciliation fails

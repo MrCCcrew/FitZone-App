@@ -5,10 +5,20 @@
  * with proper idempotency for both normal payment and recovery flows.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { db } from "@/lib/db";
 import { recoverVerifiedPaymobPayment, type VerifiedPaymobRecoveryInput } from "@/lib/payments/service";
 import { runPaidMembershipPostActivationReconciliation } from "@/lib/payments/reconciliation-helper";
+import * as paymobProvider from "@/lib/payments/providers/paymob";
+
+// Mock Paymob remote verification
+vi.mock("@/lib/payments/providers/paymob", async () => {
+  const actual = await vi.importActual("@/lib/payments/providers/paymob");
+  return {
+    ...actual,
+    verifyPaymobTransactionForRecovery: vi.fn(),
+  };
+});
 
 describe("Payment Post-Activation Reconciliation", () => {
   let testUserId: string;
@@ -105,11 +115,28 @@ describe("Payment Post-Activation Reconciliation", () => {
         currency: "EGP",
         status: "pending",
         paymentMethod: "paymob",
-        metadata: JSON.stringify({
-          merchantOrderId: testPaymentId,
-        }),
+        providerReference: `pi_live_test_intention_${timestamp}`, // Unique per test run
       },
     });
+
+    // Mock successful Paymob verification
+    // LIVE PAYMOB RESPONSE: merchant_order_id proves linkage, special_reference is NULL
+    vi.mocked(paymobProvider.verifyPaymobTransactionForRecovery).mockImplementation(
+      async (paymobTxId, localTxId) => ({
+        verified: true,
+        transactionId: "999888777",
+        success: true,
+        pending: false,
+        amountCents: 45000,
+        currency: "EGP",
+        paymobOrderId: 584723754,
+        specialReference: null, // LIVE PAYMOB: NULL
+        sourceType: "wallet",
+        isRefunded: false,
+        isVoided: false,
+        errorOccured: false,
+      })
+    );
   });
 
   afterEach(async () => {
@@ -134,7 +161,9 @@ describe("Payment Post-Activation Reconciliation", () => {
       expectedFitZoneReference: (await db.paymentTransaction.findUnique({
         where: { id: testPaymentId },
       }))!.referenceCode!,
-      expectedMerchantOrderId: testPaymentId,
+      expectedIntentionId: (await db.paymentTransaction.findUnique({
+        where: { id: testPaymentId },
+      }))!.providerReference!,
     };
 
     await recoverVerifiedPaymobPayment(input);
@@ -172,7 +201,9 @@ describe("Payment Post-Activation Reconciliation", () => {
       expectedFitZoneReference: (await db.paymentTransaction.findUnique({
         where: { id: testPaymentId },
       }))!.referenceCode!,
-      expectedMerchantOrderId: testPaymentId,
+      expectedIntentionId: (await db.paymentTransaction.findUnique({
+        where: { id: testPaymentId },
+      }))!.providerReference!,
     };
 
     // First execution
@@ -208,7 +239,7 @@ describe("Payment Post-Activation Reconciliation", () => {
         data: {
           status: "paid",
           paidAt: new Date(),
-          externalReference: "999888777",
+          externalReference: `999888777-${Date.now()}`, // Unique per test run
         },
       });
 
