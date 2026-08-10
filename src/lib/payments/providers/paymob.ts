@@ -566,7 +566,7 @@ export async function verifyPaymobTransactionForRecovery(
   const authToken = await authenticate();
 
   const response = await fetch(`${getRegionBase()}/api/acceptance/transactions/${paymobTransactionId}`, {
-    headers: { Authorization: `Token ${authToken}` },
+    headers: { Authorization: `Bearer ${authToken}` },
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
 
