@@ -78,5 +78,5 @@ export type PaymentProviderDefinition = {
     metadata?: string | null;
     providerPayload?: string | null;
   }): Promise<PaymentVerificationResult>;
-  handleWebhook?(payload: unknown, headers: Headers): Promise<PaymentWebhookResult>;
+  handleWebhook?(payload: unknown, headers: Headers, queryHmac?: string | null): Promise<PaymentWebhookResult>;
 };

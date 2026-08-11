@@ -456,56 +456,120 @@ async function verifyTransaction(transaction: {
   };
 }
 
-async function handleWebhook(payload: unknown): Promise<PaymentWebhookResult> {
+async function handleWebhook(
+  payload: unknown,
+  headers: Headers,
+  queryHmac?: string | null,
+): Promise<PaymentWebhookResult> {
   if (!payload || typeof payload !== "object") {
     return { ok: false, message: "invalid_payload" };
   }
 
-  const body = payload as PaymobWebhookBody;
+  const body = payload as any;
 
-  if (body.type !== "TRANSACTION" || !body.obj) {
+  // Detect payload format
+  const isNestedFormat = body.type === "TRANSACTION" && body.obj;
+  const isFlatFormat = body.id && body.merchant_order_id;
+
+  if (!isNestedFormat && !isFlatFormat) {
     return { ok: false, message: "Unsupported Paymob webhook payload." };
   }
 
-  const providedHmac = String(body.hmac ?? "").trim();
+  // Extract HMAC (query param takes priority)
+  const providedHmac = String(queryHmac || body.hmac || "").trim();
   if (!providedHmac) {
     return { ok: false, code: "MISSING_HMAC", message: "Paymob webhook HMAC is required." };
   }
-  const expected = computePaymobHmac(body.obj, requireSecret("PAYMOB_HMAC_SECRET"));
-  if (!verifyHmac(providedHmac, expected)) {
-    return { ok: false, code: "INVALID_HMAC", message: "Paymob webhook HMAC verification failed." };
+
+  // Handle nested format (Acceptance API)
+  if (isNestedFormat) {
+    const expected = computePaymobHmac(body.obj, requireSecret("PAYMOB_HMAC_SECRET"));
+    if (!verifyHmac(providedHmac, expected)) {
+      return { ok: false, code: "INVALID_HMAC", message: "Paymob webhook HMAC verification failed." };
+    }
+
+    const transactionId = body.obj.order?.merchant_order_id ?? body.obj.special_reference ?? null;
+    if (!transactionId) {
+      return { ok: false, message: "Paymob webhook did not include merchant_order_id." };
+    }
+
+    const status = mapAcceptanceStatus(body.obj);
+    console.info("[PAYMOB] Webhook received (nested)", {
+      transactionId,
+      paymobOrderId: body.obj.order?.id ?? null,
+      paymobTransactionId: body.obj.id ?? null,
+      status,
+    });
+
+    return {
+      ok: true,
+      transactionId,
+      status,
+      providerReference: body.obj.order?.id != null ? String(body.obj.order.id) : null,
+      externalReference: body.obj.id != null ? String(body.obj.id) : null,
+      message: "Paymob webhook received successfully.",
+      payload: {
+        webhookType: body.type,
+        success: body.obj.success ?? false,
+        pending: body.obj.pending ?? true,
+        sourceType: body.obj.source_data?.type ?? null,
+        sourceSubtype: body.obj.source_data?.sub_type ?? null,
+      },
+    };
   }
 
-  const transactionId = body.obj.order?.merchant_order_id ?? body.obj.special_reference ?? null;
-  if (!transactionId) {
-    return { ok: false, message: "Paymob webhook did not include merchant_order_id." };
+  // Handle flat format (Unified Checkout)
+  if (isFlatFormat) {
+    const expected = computePaymobHmac(body, requireSecret("PAYMOB_HMAC_SECRET"));
+    if (!verifyHmac(providedHmac, expected)) {
+      return { ok: false, code: "INVALID_HMAC", message: "Paymob webhook HMAC verification failed." };
+    }
+
+    const transactionId = String(body.merchant_order_id ?? "").trim();
+    if (!transactionId) {
+      return { ok: false, message: "Paymob webhook did not include merchant_order_id." };
+    }
+
+    // Parse boolean fields (handle both boolean and string values)
+    const success = body.success === true || body.success === "true";
+    const pending = body.pending === true || body.pending === "true";
+    const errorOccured = body.error_occured === true || body.error_occured === "true";
+
+    const status = mapAcceptanceStatus({
+      id: body.id ? Number(body.id) : undefined,
+      success,
+      pending,
+      error_occured: errorOccured,
+    });
+
+    console.info("[PAYMOB] Webhook received (flat)", {
+      transactionId,
+      paymobTransactionId: body.id,
+      status,
+      success,
+      pending,
+    });
+
+    return {
+      ok: true,
+      transactionId,
+      status,
+      providerReference: null, // Flat format doesn't include order.id
+      externalReference: body.id ? String(body.id) : null,
+      message: "Paymob Unified Checkout callback received.",
+      payload: {
+        webhookType: "UNIFIED_CHECKOUT",
+        success,
+        pending,
+        sourceType: body.source_data_type ?? null,
+        sourceSubtype: body.source_data_sub_type ?? null,
+        txnResponseCode: body.txn_response_code ?? null,
+        acqResponseCode: body.acq_response_code ?? null,
+      },
+    };
   }
 
-  const status = mapAcceptanceStatus(body.obj);
-  console.info("[PAYMOB] Webhook received", {
-    transactionId,
-    paymobOrderId: body.obj.order?.id ?? null,
-    paymobTransactionId: body.obj.id ?? null,
-    status,
-    sourceType: body.obj.source_data?.type ?? null,
-    sourceSubtype: body.obj.source_data?.sub_type ?? null,
-  });
-
-  return {
-    ok: true,
-    transactionId,
-    status,
-    providerReference: body.obj.order?.id != null ? String(body.obj.order.id) : null,
-    externalReference: body.obj.id != null ? String(body.obj.id) : null,
-    message: "Paymob webhook received successfully.",
-    payload: {
-      webhookType: body.type,
-      success: body.obj.success ?? false,
-      pending: body.obj.pending ?? true,
-      sourceType: body.obj.source_data?.type ?? null,
-      sourceSubtype: body.obj.source_data?.sub_type ?? null,
-    },
-  };
+  return { ok: false, message: "Unknown webhook format." };
 }
 
 /**
