@@ -57,7 +57,12 @@ export async function POST(req: Request, context: { params: Promise<{ provider: 
 
     const rawText = await req.text();
     const payload = parseWebhookPayload(rawText, req.headers.get("content-type"));
-    const result = await provider.handleWebhook(payload, req.headers);
+
+    // Extract HMAC from query params (Paymob Unified Checkout sends it here)
+    const url = new URL(req.url);
+    const queryHmac = url.searchParams.get("hmac");
+
+    const result = await provider.handleWebhook(payload, req.headers, queryHmac);
 
     if (!result.ok || !result.transactionId) {
       console.warn(`[WEBHOOK:${providerKey}] Ignored`, result.message);
