@@ -2,6 +2,24 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { sendOnePush } from "@/lib/push";
 
+function parseJson(value: string | null | undefined) {
+  if (!value) return null;
+  try {
+    return JSON.parse(value) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+function stringifyJson(value: Record<string, unknown> | null | undefined) {
+  if (!value || Object.keys(value).length === 0) return null;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return null;
+  }
+}
+
 // ─── Called by cron every 5 min ───────────────────────────────────────────────
 // */5 * * * * curl -s "https://fitzoneland.com/api/cron/cancel-pending-payments?secret=YOUR_SECRET" >> /var/log/fitzone-cron.log
 //
@@ -92,8 +110,61 @@ export async function GET(req: Request) {
         // ── 2. Get bookings with schedules ────────────────────────────────────
         const bookings = await tx.booking.findMany({
           where: { userMembershipId: m.id },
-          select: { id: true, scheduleId: true, status: true },
+          select: {
+            id: true,
+            scheduleId: true,
+            status: true,
+            schedule: {
+              select: {
+                classId: true,
+                date: true,
+                time: true,
+              },
+            },
+          },
         });
+
+        // ── 2a. Save booking snapshot to PaymentTransaction metadata for late-payment recovery ──
+        if (bookings.length > 0) {
+          const paymentTx = await tx.paymentTransaction.findFirst({
+            where: {
+              membershipId: m.id,
+              status: { in: ["pending", "requires_action"] },
+            },
+            select: { id: true, metadata: true },
+          });
+
+          if (paymentTx) {
+            const existingMetadata = parseJson(paymentTx.metadata) ?? {};
+
+            const bookingSnapshot = bookings.map((b) => ({
+              scheduleId: b.scheduleId,
+              classId: b.schedule.classId,
+              date: b.schedule.date.toISOString(),
+              time: b.schedule.time,
+              status: b.status,
+            }));
+
+            const updatedMetadata = stringifyJson({
+              ...existingMetadata,
+              deletedBookingsSnapshot: {
+                userMembershipId: m.id,
+                bookings: bookingSnapshot,
+                deletedAt: new Date().toISOString(),
+                reason: "timeout_cleanup",
+              },
+            });
+
+            if (updatedMetadata) {
+              await tx.paymentTransaction.update({
+                where: { id: paymentTx.id },
+                data: { metadata: updatedMetadata },
+              });
+
+              console.log(`[CLEANUP] Saved booking snapshot (${bookings.length} bookings) for recovery`);
+            }
+          }
+        }
 
         // ── 3. Cancel payment transactions ────────────────────────────────────
         await tx.paymentTransaction.updateMany({
