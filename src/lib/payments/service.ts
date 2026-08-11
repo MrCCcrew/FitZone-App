@@ -681,20 +681,6 @@ export async function updatePaymentTransactionStatus(
     },
   });
 
-  // Claim a successful payment transition before any side effect. This makes
-  // duplicate provider webhooks harmless, including wallet credits.
-  if (status === "paid" && existing?.status !== "paid") {
-    const claimed = await db.paymentTransaction.updateMany({
-      where: { id: transactionId, status: { in: ["pending", "pending_payment", "processing", "requires_action"] } },
-      data: { status: "paid", paidAt: new Date() },
-    });
-    if (claimed.count === 0) {
-      const current = await db.paymentTransaction.findUnique({ where: { id: transactionId } });
-      if (!current) throw new Error("معاملة الدفع غير موجودة.");
-      return mapPaymentTransaction(current);
-    }
-  }
-
   const previousStatus = existing?.status;
   const wasOpen = previousStatus === "pending" || previousStatus === "processing" || previousStatus === "requires_action";
   if (wasOpen && (status === "paid" || status === "failed" || status === "cancelled" || status === "expired")) {
@@ -1257,6 +1243,124 @@ export type VerifiedPaymobRecoveryInput = {
   expectedFitZoneReference: string;
   expectedIntentionId: string;
 };
+
+/**
+ * Recovery function for payments already marked "paid" but with pending memberships.
+ * This handles the bug where PaymentTransaction.status="paid" but
+ * UserMembership.status="pending_payment" due to the deleted redundant claim bug.
+ *
+ * WHEN TO USE:
+ * - PaymentTransaction.status = "paid"
+ * - UserMembership.status = "pending_payment"
+ * - Payment already verified and confirmed
+ * - Just need to activate the membership + run reconciliation
+ *
+ * SAFETY:
+ * - Does NOT modify payment status (already paid)
+ * - Uses existing activatePaidMembershipTx (atomic + idempotent)
+ * - Runs post-activation reconciliation exactly once
+ * - Idempotent: safe to retry
+ */
+export async function recoverPaidMembershipActivation(
+  paymentTransactionId: string
+): Promise<ReturnType<typeof mapPaymentTransaction>> {
+  const payment = await db.paymentTransaction.findUnique({
+    where: { id: paymentTransactionId },
+  });
+
+  if (!payment) {
+    throw new Error("Payment transaction not found");
+  }
+
+  if (payment.status !== "paid") {
+    throw new Error(
+      `Recovery rejected: Payment status is "${payment.status}", expected "paid"`
+    );
+  }
+
+  if (!payment.membershipId) {
+    throw new Error("Recovery rejected: No membership linked to this payment");
+  }
+
+  const membership = await db.userMembership.findUnique({
+    where: { id: payment.membershipId },
+    select: { status: true },
+  });
+
+  if (!membership) {
+    throw new Error("Recovery rejected: Membership not found");
+  }
+
+  if (membership.status === "active") {
+    console.info(
+      `[RECOVERY] Membership ${payment.membershipId} already active - idempotent return`
+    );
+    return mapPaymentTransaction(payment);
+  }
+
+  if (membership.status !== "pending_payment") {
+    throw new Error(
+      `Recovery rejected: Membership status is "${membership.status}", expected "pending_payment"`
+    );
+  }
+
+  console.info(`[RECOVERY] Activating paid membership ${payment.membershipId} for payment ${paymentTransactionId}`);
+
+  // Activate membership atomically
+  let activationSucceeded = false;
+  let membershipData: {
+    status: string;
+    startDate: Date;
+    offerId: string | null;
+    membership: {
+      name: string;
+      nameEn: string | null;
+      duration: number;
+      walletBonus: number;
+      productRewards: string | null;
+    };
+    offer: { title: string } | null;
+  } | null = null;
+
+  await db.$transaction(async (tx) => {
+    const result = await activatePaidMembershipTx(
+      tx,
+      paymentTransactionId,
+      payment.membershipId!
+    );
+    activationSucceeded = result.success;
+    membershipData = result.membershipData;
+  });
+
+  if (!activationSucceeded || !membershipData) {
+    throw new Error("Recovery failed: Membership activation unsuccessful");
+  }
+
+  console.info(`[RECOVERY] Membership activated, running post-activation reconciliation`);
+
+  // Run post-activation reconciliation (commissions, rewards, notifications, etc.)
+  await runPaidMembershipPostActivationReconciliation({
+    transactionId: paymentTransactionId,
+    userId: payment.userId,
+    userMembershipId: payment.membershipId,
+    membershipData,
+    paymentAmount: payment.amount,
+    paymentMethod: payment.paymentMethod,
+    paidAt: payment.paidAt,
+    transactionMetadata: payment.metadata,
+  });
+
+  void recordMembershipActivatedEvent(payment.membershipId, paymentTransactionId).catch(
+    () => null
+  );
+
+  const recovered = await db.paymentTransaction.findUnique({
+    where: { id: paymentTransactionId },
+  });
+
+  console.info(`[RECOVERY] Successfully recovered payment ${paymentTransactionId}`);
+  return mapPaymentTransaction(recovered!);
+}
 
 /**
  * Recover a verified Paymob payment with atomic validation and activation.
