@@ -64,12 +64,13 @@ export async function POST(req: Request, context: { params: Promise<{ provider: 
       return NextResponse.json({ received: true });
     }
 
+    // Save webhook metadata (references and payload)
     if (result.providerReference || result.externalReference || result.payload) {
       await db.paymentTransaction.update({
         where: { id: result.transactionId },
         data: {
-          providerReference: result.providerReference ?? undefined,
-          externalReference: result.externalReference ?? undefined,
+          providerReference: result.providerReference || undefined,
+          externalReference: result.externalReference || undefined,
           providerPayload: result.payload ? JSON.stringify(result.payload) : undefined,
         },
       }).catch((error: unknown) => {
@@ -77,12 +78,28 @@ export async function POST(req: Request, context: { params: Promise<{ provider: 
       });
     }
 
-    if (result.status === "paid" || result.status === "failed") {
+    // Reload transaction to get saved externalReference
+    const updated = await db.paymentTransaction.findUnique({
+      where: { id: result.transactionId },
+      select: { externalReference: true, status: true },
+    });
+
+    // Always verify if we have externalReference (enables server-side Paymob API verification)
+    if (updated?.externalReference) {
       await verifyPaymentTransaction(result.transactionId).catch(async (error: unknown) => {
         console.error(`[WEBHOOK:${providerKey}] Verification after webhook failed`, error);
-        await updatePaymentTransactionStatus(result.transactionId!, result.status!, result.message ?? null).catch(() => null);
+        // Fallback: trust webhook status only if verification fails
+        if (result.status === "paid" || result.status === "failed") {
+          await updatePaymentTransactionStatus(result.transactionId!, result.status!, result.message ?? null).catch(() => null);
+        }
+      });
+    } else if (result.status === "paid" || result.status === "failed") {
+      // No externalReference: trust webhook status (legacy/fallback)
+      await updatePaymentTransactionStatus(result.transactionId, result.status, result.message ?? null).catch((error: unknown) => {
+        console.error(`[WEBHOOK:${providerKey}] Failed to update status from webhook`, error);
       });
     } else if (result.status === "cancelled" || result.status === "expired") {
+      // Terminal states: update immediately
       await updatePaymentTransactionStatus(result.transactionId, result.status, result.message ?? null).catch((error: unknown) => {
         console.error(`[WEBHOOK:${providerKey}] Failed to persist terminal state`, error);
       });
