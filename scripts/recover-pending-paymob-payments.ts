@@ -15,7 +15,7 @@
  */
 
 import { db } from "@/lib/db";
-import { verifyPaymentTransaction, recoverPaidMembershipActivation } from "@/lib/payments/service";
+import { verifyPaymentTransaction, recoverPaidMembershipActivation } from "@/lib/payments/recovery-service";
 
 const DRY_RUN = !process.argv.includes("--apply");
 const SINCE_DATE = process.argv.find(arg => arg.startsWith("--since="))?.split("=")[1];
