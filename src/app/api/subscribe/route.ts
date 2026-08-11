@@ -1225,6 +1225,11 @@ export async function POST(req: Request) {
             endDate: invoiceDetails.endDate.toISOString(),
             issuedAt: invoiceDetails.issuedAt?.toISOString() ?? null,
           },
+          // Recovery data: preserve user's original schedule selection for late-payment booking recovery
+          bookingRecoveryData: scheduleIds && scheduleIds.length > 0 ? {
+            selectedScheduleIds: scheduleIds,
+            createdAt: new Date().toISOString(),
+          } : undefined,
         },
       });
       checkoutUrl = transaction.checkoutUrl ?? null;
