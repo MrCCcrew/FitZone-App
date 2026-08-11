@@ -1,6 +1,11 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { db } from "@/lib/db";
-import { recoverPaidMembershipActivation } from "@/lib/payments/service";
+import { recoverPaidMembershipActivation } from "@/lib/payments/recovery-service";
+
+// Mock accounting journal to bypass GL account requirements in test DB
+vi.mock("@/lib/accounting-service", () => ({
+  postSubscriptionJournal: vi.fn().mockResolvedValue(null),
+}));
 
 describe("Paid Membership Recovery Integration Tests", { timeout: 90000 }, () => {
   let testPaymentId: string;
