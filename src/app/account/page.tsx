@@ -207,7 +207,7 @@ async function getAccountData(userId: string) {
         const attendedCount = membership.bookings.filter((booking) => booking.status === "attended").length;
         const totalSessions = membership.totalSessions ?? membership.membership.sessionsCount ?? membership.membership.maxClasses;
         const sessionsRemaining =
-          totalSessions == null || totalSessions < 0 ? null : Math.max(0, totalSessions - membership.bookings.length);
+          totalSessions == null || totalSessions < 0 ? null : Math.max(0, totalSessions - attendedCount);
         const productRewards = parseJsonArray<{ productId?: string; quantity?: number }>(membership.productRewardsUsed).map((reward) => ({
           productId: reward.productId ?? "",
           quantity: reward.quantity ?? 0,
