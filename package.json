@@ -78,6 +78,7 @@
     "@types/web-push": "^3.6.4",
     "@vitest/coverage-v8": "^4.1.9",
     "autocannon": "^8.0.0",
+    "server-only": "^0.0.1",
     "vitest": "^4.1.9"
   },
   "browserslist": {
