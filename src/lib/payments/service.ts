@@ -1245,6 +1245,160 @@ export type VerifiedPaymobRecoveryInput = {
 };
 
 /**
+ * Private helper: Restore deleted bookings from payment metadata during late payment recovery.
+ * NON-FATAL: Recovery succeeds even if booking restoration fails.
+ */
+async function restoreBookingsFromMetadata(
+  userId: string,
+  userMembershipId: string,
+  paymentMetadata: string | null
+): Promise<void> {
+  try {
+    // 1. Check if bookings already exist
+    const existingBookingsCount = await db.booking.count({
+      where: { userMembershipId },
+    });
+
+    if (existingBookingsCount > 0) {
+      console.info(`[BOOKING_RECOVERY] Membership ${userMembershipId} already has ${existingBookingsCount} bookings - skip restoration`);
+      return;
+    }
+
+    // 2. Parse metadata safely
+    const metadata = parseJson(paymentMetadata);
+    if (!metadata) {
+      console.info(`[BOOKING_RECOVERY] No metadata available for booking recovery`);
+      return;
+    }
+
+    // 3. Get schedule IDs - prefer snapshot, fallback to original selection
+    let scheduleIdsToRestore: string[] = [];
+
+    const snapshot = metadata.deletedBookingsSnapshot as {
+      bookings?: Array<{ scheduleId: string }>;
+    } | undefined;
+
+    if (snapshot?.bookings && Array.isArray(snapshot.bookings)) {
+      scheduleIdsToRestore = snapshot.bookings.map((b) => b.scheduleId);
+      console.info(`[BOOKING_RECOVERY] Found ${scheduleIdsToRestore.length} bookings in deletedBookingsSnapshot`);
+    } else {
+      const recoveryData = metadata.bookingRecoveryData as {
+        selectedScheduleIds?: string[];
+      } | undefined;
+
+      if (recoveryData?.selectedScheduleIds && Array.isArray(recoveryData.selectedScheduleIds)) {
+        scheduleIdsToRestore = recoveryData.selectedScheduleIds;
+        console.info(`[BOOKING_RECOVERY] Found ${scheduleIdsToRestore.length} scheduleIds in bookingRecoveryData`);
+      }
+    }
+
+    if (scheduleIdsToRestore.length === 0) {
+      console.info(`[BOOKING_RECOVERY] No schedule data found in metadata`);
+      return;
+    }
+
+    // 4. Get valid future schedules with available spots
+    const now = new Date();
+    const validSchedules = await db.schedule.findMany({
+      where: {
+        id: { in: scheduleIdsToRestore },
+        date: { gte: now },
+        availableSpots: { gt: 0 },
+      },
+      select: {
+        id: true,
+        availableSpots: true,
+        date: true,
+        time: true,
+        classId: true,
+        class: { select: { price: true } },
+      },
+    });
+
+    if (validSchedules.length === 0) {
+      console.info(`[BOOKING_RECOVERY] No valid future schedules with available spots found`);
+      return;
+    }
+
+    console.info(`[BOOKING_RECOVERY] Restoring ${validSchedules.length} bookings (${scheduleIdsToRestore.length - validSchedules.length} skipped - full/past/missing)`);
+
+    let restoredCount = 0;
+    let skippedCount = 0;
+
+    // 5. Restore each booking with row-level locking
+    for (const schedule of validSchedules) {
+      try {
+        await db.$transaction(async (tx) => {
+          // LOCK -> DUPLICATE CHECK -> SPOT CHECK -> CREATE -> DECREMENT
+
+          // Step 1: Lock schedule row first (forces serialization)
+          await tx.$queryRaw`
+            SELECT \`id\`, \`availableSpots\`
+            FROM \`Schedule\`
+            WHERE \`id\` = ${schedule.id}
+            FOR UPDATE
+          `;
+
+          // Step 2: Check for existing booking AFTER acquiring lock
+          const existing = await tx.booking.findFirst({
+            where: {
+              userId,
+              scheduleId: schedule.id,
+              userMembershipId,
+            },
+          });
+
+          if (existing) {
+            console.info(`[BOOKING_RECOVERY] Booking already exists for schedule ${schedule.id} - skip`);
+            skippedCount++;
+            return;
+          }
+
+          // Step 3: Check spot availability AFTER lock
+          const currentSchedule = await tx.schedule.findUnique({
+            where: { id: schedule.id },
+            select: { availableSpots: true },
+          });
+
+          if (!currentSchedule || currentSchedule.availableSpots <= 0) {
+            console.info(`[BOOKING_RECOVERY] Schedule ${schedule.id} no longer has spots - skip`);
+            skippedCount++;
+            return;
+          }
+
+          // Step 4: Create booking
+          await tx.booking.create({
+            data: {
+              userId,
+              scheduleId: schedule.id,
+              userMembershipId,
+              status: "confirmed",
+              paidAmount: schedule.class.price,
+            },
+          });
+
+          // Step 5: Decrement available spots
+          await tx.schedule.update({
+            where: { id: schedule.id },
+            data: { availableSpots: { decrement: 1 } },
+          });
+
+          restoredCount++;
+        });
+      } catch (error: any) {
+        console.error(`[BOOKING_RECOVERY] Failed to restore booking for schedule ${schedule.id}:`, error.message);
+        skippedCount++;
+      }
+    }
+
+    console.info(`[BOOKING_RECOVERY] Restoration complete: ${restoredCount} restored, ${skippedCount} skipped`);
+  } catch (error: any) {
+    // NON-FATAL: Log error but don't throw - payment recovery must succeed
+    console.error(`[BOOKING_RECOVERY] Booking restoration failed (non-fatal):`, error.message);
+  }
+}
+
+/**
  * Recovery function for payments already marked "paid" but with pending memberships.
  * This handles the bug where PaymentTransaction.status="paid" but
  * UserMembership.status="pending_payment" due to the deleted redundant claim bug.
@@ -1336,7 +1490,12 @@ export async function recoverPaidMembershipActivation(
     throw new Error("Recovery failed: Membership activation unsuccessful");
   }
 
-  console.info(`[RECOVERY] Membership activated, running post-activation reconciliation`);
+  console.info(`[RECOVERY] Membership activated, attempting booking restoration`);
+
+  // Restore bookings from metadata if they were deleted during timeout cleanup
+  await restoreBookingsFromMetadata(payment.userId, payment.membershipId, payment.metadata);
+
+  console.info(`[RECOVERY] Running post-activation reconciliation`);
 
   // Run post-activation reconciliation (commissions, rewards, notifications, etc.)
   await runPaidMembershipPostActivationReconciliation({
