@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/app-session";
 import { db } from "@/lib/db";
-import { getStoreCampaignSettings } from "@/app/api/admin/store-gift-campaign/route";
+import { getStoreCampaignSettings } from "@/lib/store-gift-campaign";
 
 export const dynamic = "force-dynamic";
 

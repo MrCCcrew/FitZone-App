@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import type { StoreGiftCampaignSettings } from "@/app/api/admin/store-gift-campaign/route";
+import type { StoreGiftCampaignSettings } from "@/lib/store-gift-campaign";
 
 // ── Claims Log ────────────────────────────────────────────────────────────────
 type ClaimRow = {
