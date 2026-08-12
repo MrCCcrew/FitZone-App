@@ -2,7 +2,7 @@
 import { getCurrentAppUser } from "@/lib/app-session";
 import { db } from "@/lib/db";
 import { createPaymentTransaction, restorePaymentBalanceAdjustments, unlockPendingReferralReward } from "@/lib/payments/service";
-import { getStoreCampaignSettings } from "@/app/api/admin/store-gift-campaign/route";
+import { getStoreCampaignSettings } from "@/lib/store-gift-campaign";
 import { cookies } from "next/headers";
 import { sendStoreOrderEmail, sendAdminOrderNotification } from "@/lib/email";
 import { generateStoreOrderInvoicePdf } from "@/lib/store-order-invoice";
