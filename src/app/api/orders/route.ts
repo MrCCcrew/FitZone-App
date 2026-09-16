@@ -7,14 +7,23 @@ import { cookies } from "next/headers";
 import { sendStoreOrderEmail, sendAdminOrderNotification } from "@/lib/email";
 import { generateStoreOrderInvoicePdf } from "@/lib/store-order-invoice";
 import { recordCheckoutStarted } from "@/lib/analytics/checkout-events";
-import { reserveOrderInventory, releaseOrderReservation } from "@/lib/inventory-service";
+import {
+  reserveOrderInventoryOwnedFirst,
+  releaseOrderInventoryAllocations,
+} from "@/lib/order-inventory-allocation-service";
+import {
+  grantStoreGiftClaimAtomic,
+  type StoreGiftRewardType,
+} from "@/lib/store-gift-reward-service";
 
 const GAME_COOKIE = "fitzone-game-token";
 
 type OrderItemInput = {
   productId: string;
   quantity: number;
+  variantId?: string | null;
   size?: string | null;
+  color?: string | null;
 };
 
 type DeliverySnapshot = {
@@ -35,74 +44,79 @@ function sanitizeMethod(value: unknown) {
 
 async function tryGrantStoreGiftCampaign(
   userId: string,
-  order: { id: string; subtotal: number; businessUnit: string },
+  order: {
+    id: string;
+    subtotal: number;
+    businessUnit: string;
+  },
 ) {
-  if (order.businessUnit !== "store") return;
+  if (order.businessUnit !== "store") {
+    return;
+  }
+
   try {
-    const settings = await getStoreCampaignSettings();
-    if (!settings.isActive) return;
-    const now = new Date();
-    if (settings.startsAt && new Date(settings.startsAt) > now) return;
-    if (settings.endsAt && new Date(settings.endsAt) < now) return;
-    if (order.subtotal < settings.minStoreCartSubtotal) return;
+    const settings =
+      await getStoreCampaignSettings();
 
-    const dbx = db as any;
-    const claimCount = await dbx.storeGiftCampaignClaim.count({
-      where: { userId, status: { in: ["earned", "claimed"] } },
-    });
-    if (claimCount >= settings.maxClaimsPerUser) return;
-
-    // Guard: no duplicate claim for same order
-    const dup = await dbx.storeGiftCampaignClaim.findFirst({
-      where: { storeOrderId: order.id },
-    });
-    if (dup) return;
-
-    const rewardValue =
-      settings.rewardType === "wallet" ? settings.rewardWalletAmount
-      : settings.rewardType === "points" ? settings.rewardPoints
-      : settings.rewardType === "discount" ? settings.discountAmount
-      : null;
-
-    const claim = await dbx.storeGiftCampaignClaim.create({
-      data: {
-        userId,
-        storeOrderId: order.id,
-        rewardType: settings.rewardType,
-        rewardValue,
-        rewardProductId: settings.rewardProductId ?? null,
-        status: "earned",
-        source: "store_cart_threshold",
-      },
-    });
-
-    // Immediately credit wallet or points
-    if (settings.rewardType === "wallet" && settings.rewardWalletAmount > 0) {
-      await db.wallet.upsert({
-        where: { userId },
-        create: { userId, balance: settings.rewardWalletAmount },
-        update: { balance: { increment: settings.rewardWalletAmount } },
-      });
-      await dbx.storeGiftCampaignClaim.update({
-        where: { id: claim.id },
-        data: { status: "claimed", claimedAt: new Date() },
-      });
-    } else if (settings.rewardType === "points" && settings.rewardPoints > 0) {
-      const rp = await db.rewardPoints.upsert({
-        where: { userId },
-        create: { userId, points: settings.rewardPoints, tier: "bronze" },
-        update: { points: { increment: settings.rewardPoints } },
-      });
-      await db.rewardHistory.create({
-        data: { rewardId: rp.id, points: settings.rewardPoints, reason: "store_gift_campaign" },
-      });
-      await dbx.storeGiftCampaignClaim.update({
-        where: { id: claim.id },
-        data: { status: "claimed", claimedAt: new Date() },
-      });
+    if (!settings.isActive) {
+      return;
     }
+
+    const now = new Date();
+
+    if (
+      settings.startsAt &&
+      new Date(settings.startsAt) > now
+    ) {
+      return;
+    }
+
+    if (
+      settings.endsAt &&
+      new Date(settings.endsAt) < now
+    ) {
+      return;
+    }
+
+    if (
+      order.subtotal <
+      settings.minStoreCartSubtotal
+    ) {
+      return;
+    }
+
+    await grantStoreGiftClaimAtomic({
+      userId,
+      storeOrderId: order.id,
+      source:
+        "store_cart_threshold",
+
+      maxClaimsPerUser:
+        settings.maxClaimsPerUser,
+
+      rewardType:
+        settings.rewardType as StoreGiftRewardType,
+
+      rewardWalletAmount:
+        settings.rewardWalletAmount,
+
+      rewardPoints:
+        settings.rewardPoints,
+
+      discountAmount:
+        settings.discountAmount,
+
+      rewardProductId:
+        settings.rewardProductId ?? null,
+    });
   } catch (err) {
-    console.error("[STORE_GIFT_CAMPAIGN] auto-grant failed:", err);
+    // Preserve order creation behavior:
+    // gift failure must not break an otherwise valid store order.
+    // The gift transaction itself is fully rolled back.
+    console.error(
+      "[STORE_GIFT_CAMPAIGN] auto-grant failed:",
+      err,
+    );
   }
 }
 
@@ -140,11 +154,63 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "بعض المنتجات لم تعد متاحة." }, { status: 400 });
     }
 
+    const activeVariants = await db.productVariant.findMany({
+      where: {
+        productId: { in: products.map((product) => product.id) },
+        isActive: true,
+      },
+      select: {
+        id: true,
+        productId: true,
+        size: true,
+        color: true,
+      },
+    });
+
+    const variantsByProduct = new Map<string, typeof activeVariants>();
+
+    for (const variant of activeVariants) {
+      const list = variantsByProduct.get(variant.productId) ?? [];
+      list.push(variant);
+      variantsByProduct.set(variant.productId, list);
+    }
+
+    for (const item of items) {
+      const productVariants =
+        variantsByProduct.get(item.productId) ?? [];
+
+      if (productVariants.length > 0 && !item.variantId) {
+        return NextResponse.json(
+          {
+            error:
+              "يرجى إعادة اختيار المقاس أو اللون للمنتج قبل إتمام الطلب.",
+          },
+          { status: 400 },
+        );
+      }
+
+      if (item.variantId) {
+        const variant = productVariants.find(
+          (entry) => entry.id === item.variantId,
+        );
+
+        if (!variant) {
+          return NextResponse.json(
+            { error: "الخيار المحدد للمنتج لم يعد متاحًا." },
+            { status: 400 },
+          );
+        }
+
+        item.size = variant.size ?? null;
+        item.color = variant.color ?? null;
+      }
+    }
+
     for (const item of items) {
       const product = products.find((entry) => entry.id === item.productId);
-      if (!product || (product.trackInventory && product.stock < item.quantity)) {
+      if (!product) {
         return NextResponse.json(
-          { error: `الكمية غير متاحة للمنتج ${product?.name ?? ""}`.trim() },
+          { error: "بعض المنتجات لم تعد متاحة." },
           { status: 400 },
         );
       }
@@ -281,16 +347,26 @@ export async function POST(req: Request) {
             create: items.map((item) => {
               const product = products.find((entry) => entry.id === item.productId)!;
               if (giftProductIds.has(product.id)) {
-                return { productId: product.id, quantity: item.quantity, price: 0, vatAmount: 0, size: item.size ?? null };
+                return {
+                  productId: product.id,
+                  variantId: item.variantId ?? null,
+                  quantity: item.quantity,
+                  price: 0,
+                  vatAmount: 0,
+                  size: item.size ?? null,
+                  color: item.color ?? null,
+                };
               }
               const itemPrice = product.vatEnabled ? Math.round(product.price * (1 + VAT_RATE) * 100) / 100 : product.price;
               const vatAmount = product.vatEnabled ? Math.round(product.price * VAT_RATE * 100) / 100 : 0;
               return {
                 productId: product.id,
+                variantId: item.variantId ?? null,
                 quantity: item.quantity,
                 price: itemPrice,
                 vatAmount,
                 size: item.size ?? null,
+                color: item.color ?? null,
                 // Phase 2C: costPrice captured at payment confirmation
               };
             }),
@@ -300,12 +376,8 @@ export async function POST(req: Request) {
       });
 
       // 2. Reserve inventory (reservedStock += quantity, stock unchanged)
-      await reserveOrderInventory(
+      await reserveOrderInventoryOwnedFirst(
         tx,
-        items.map((item) => ({
-          productId: item.productId,
-          quantity: item.quantity,
-        })),
         newOrder.id
       );
 
@@ -388,12 +460,8 @@ export async function POST(req: Request) {
         // Phase 2C: Payment transaction creation failed - release reservation
         await db.$transaction(async (tx) => {
           // Release inventory reservation (reservedStock -= quantity, stock unchanged)
-          await releaseOrderReservation(
+          await releaseOrderInventoryAllocations(
             tx,
-            order.items.map((item) => ({
-              productId: item.productId,
-              quantity: item.quantity,
-            })),
             order.id
           );
 
@@ -546,88 +614,42 @@ export async function PATCH(req: Request) {
     await db.$transaction(async (tx) => {
       if (order.status === "pending") {
         // Pending order: release reservation (reservedStock -= quantity)
-        await releaseOrderReservation(
+        await releaseOrderInventoryAllocations(
           tx,
-          order.items.map((item) => ({
-            productId: item.productId,
-            quantity: item.quantity,
-          })),
           order.id
         );
       } else if (order.status === "confirmed" && order.inventoryDeducted) {
-        // Phase 2D: Confirmed order return with historical COGS and WAC recalculation
-        const productData = new Map<string, { quantity: number; totalCost: number; items: typeof order.items }>();
+        const {
+          returnOrderInventoryAllocations,
+        } = await import(
+          "@/lib/order-inventory-allocation-service"
+        );
 
-        for (const item of order.items) {
-          const current = productData.get(item.productId) || { quantity: 0, totalCost: 0, items: [] };
-          const itemCost = (item.costPrice ?? 0) * item.quantity; // Use historical snapshot
-          productData.set(item.productId, {
-            quantity: current.quantity + item.quantity,
-            totalCost: current.totalCost + itemCost,
-            items: [...current.items, item],
-          });
-        }
+        const returnResults =
+          await returnOrderInventoryAllocations(
+            tx,
+            order.id
+          );
 
-        for (const [productId, data] of productData) {
-          const product = await tx.product.findUnique({
-            where: { id: productId },
-            select: { id: true, name: true, stock: true, trackInventory: true, averageCost: true },
-          });
+        try {
+          const {
+            postAllocatedReturnJournal,
+          } = await import(
+            "@/lib/accounting-service"
+          );
 
-          if (!product || !product.trackInventory) continue;
-
-          const returnQuantity = data.quantity;
-          const returnUnitCost = data.totalCost / returnQuantity; // Weighted average of returned items
-
-          const stockBefore = product.stock;
-          const stockAfter = stockBefore + returnQuantity;
-          const avgBefore = product.averageCost;
-
-          // Phase 2D: Recalculate WAC including returned goods at historical cost
-          const newAvg = stockAfter > 0
-            ? (stockBefore * avgBefore + returnQuantity * returnUnitCost) / stockAfter
-            : returnUnitCost;
-
-          await tx.product.update({
-            where: { id: productId },
-            data: {
-              stock: stockAfter,
-              averageCost: newAvg,
-            },
-          });
-
-          await tx.inventoryMovement.create({
-            data: {
-              productId,
-              type: "return",
-              quantityChange: returnQuantity,
-              quantityBefore: stockBefore,
-              quantityAfter: stockAfter,
-              unitCost: returnUnitCost, // Historical cost from OrderItem.costPrice
-              averageCostBefore: avgBefore,
-              averageCostAfter: newAvg, // Phase 2D: WAC recalculated
-              referenceType: "Order",
-              referenceId: order.id,
-              reason: "إرجاع - إلغاء طلب من العميل",
-            },
-          });
-        }
-
-        // Phase 4: Post GL return journal if confirmed order
-        if (order.status === "confirmed" && order.inventoryDeducted) {
-          try {
-            const { postReturnJournal } = await import("@/lib/accounting-service");
-            const returnItems = Array.from(productData.entries()).map(([productId, data]) => ({
-              productId,
-              quantity: data.quantity,
-              returnCost: data.totalCost / data.quantity,
-            }));
-
-            await postReturnJournal(tx, order.id, order.total, returnItems, order.paymentMethod);
-          } catch (err) {
-            console.error("[GL_RETURN_JOURNAL]", err);
-            // Don't block cancellation if GL fails
-          }
+          await postAllocatedReturnJournal(
+            tx,
+            order.id,
+            order.total,
+            returnResults,
+            order.paymentMethod
+          );
+        } catch (err) {
+          console.error(
+            "[GL_ALLOCATED_RETURN_JOURNAL]",
+            err
+          );
         }
       }
 

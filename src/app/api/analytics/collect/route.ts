@@ -2,8 +2,13 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { z } from "zod";
 import { db } from "@/lib/db";
+import { getCurrentAppUser } from "@/lib/app-session";
 import { applyRateLimit, getClientIp } from "@/lib/rate-limit";
-import { isAnalyticsBot, sanitizeAnalyticsPath } from "@/lib/analytics/privacy";
+import {
+  getAnalyticsRequestContext,
+  isAnalyticsBot,
+  sanitizeAnalyticsPath,
+} from "@/lib/analytics/privacy";
 import { ANALYTICS_SESSION_COOKIE, ANALYTICS_VISITOR_COOKIE, getOrCreateAnalyticsSession, getOrCreateAnalyticsVisitor } from "@/lib/analytics/visitor-session";
 
 const bodySchema = z.object({ eventName: z.enum(["page_view", "heartbeat", "page_leave"]), path: z.string().max(600), pageTitle: z.string().max(160).optional(), referrer: z.string().max(600).optional() });
@@ -35,10 +40,17 @@ export async function POST(req: Request) {
     const pageView = await db.analyticsPageView.findFirst({ where: { sessionId: session.id, path, exitedAt: null } });
     if (!pageView) return NextResponse.json({ ignored: true });
 
-    const elapsedSeconds = Math.floor((now.getTime() - session.lastActivityAt.getTime()) / 1000);
-    const delta = elapsedSeconds >= MIN_ACTIVE_DELTA_SECONDS
-      ? Math.min(Math.max(elapsedSeconds, 0), MAX_ACTIVE_DELTA_SECONDS)
-      : 0;
+    const elapsedSeconds = Math.floor(
+      (now.getTime() - session.lastActivityAt.getTime()) / 1000,
+    );
+
+    // page_leave is a trusted server-timed close event, so preserve even
+    // short final active periods. The 60-second cap still protects against
+    // stale or delayed browser delivery.
+    const delta = Math.min(
+      Math.max(elapsedSeconds, 0),
+      MAX_ACTIVE_DELTA_SECONDS,
+    );
 
     const closed = await db.$transaction(async (tx) => {
       const result = await tx.analyticsPageView.updateMany({
@@ -75,14 +87,42 @@ export async function POST(req: Request) {
     ]);
     return NextResponse.json({ ok: true });
   }
-  const visitorResult = await getOrCreateAnalyticsVisitor(store.get(ANALYTICS_VISITOR_COOKIE.name)?.value);
-  const sessionResult = await getOrCreateAnalyticsSession(store.get(ANALYTICS_SESSION_COOKIE.name)?.value, visitorResult.visitor.id, undefined, now);
+  const requestContext = getAnalyticsRequestContext(req.headers);
+
+  // Authentication is resolved server-side only. Never trust a userId
+  // supplied by the analytics request body.
+  const currentUser = await getCurrentAppUser().catch(() => null);
+  const authenticatedUserId = currentUser?.id ?? null;
+
+  const visitorResult = await getOrCreateAnalyticsVisitor(
+    store.get(ANALYTICS_VISITOR_COOKIE.name)?.value,
+    authenticatedUserId,
+    requestContext,
+  );
+
+  const sessionResult = await getOrCreateAnalyticsSession(
+    store.get(ANALYTICS_SESSION_COOKIE.name)?.value,
+    visitorResult.visitor.id,
+    authenticatedUserId,
+    now,
+    requestContext,
+  );
   const open = await db.analyticsPageView.findFirst({ where: { sessionId: sessionResult.session.id, exitedAt: null }, orderBy: { enteredAt: "desc" } });
   let reused = false;
   if (open?.path === path && now.getTime() - open.enteredAt.getTime() < STRICT_WINDOW_MS) reused = true;
   else {
     if (open) await db.analyticsPageView.update({ where: { id: open.id }, data: { exitedAt: now } });
-    await db.analyticsPageView.create({ data: { sessionId: sessionResult.session.id, visitorId: visitorResult.visitor.id, path, pageTitle: parsed.data.pageTitle?.slice(0, 160), referrerPath: sanitizeAnalyticsPath(parsed.data.referrer ?? "") ?? undefined } });
+    await db.analyticsPageView.create({
+      data: {
+        sessionId: sessionResult.session.id,
+        visitorId: visitorResult.visitor.id,
+        ...(authenticatedUserId ? { userId: authenticatedUserId } : {}),
+        path,
+        pageTitle: parsed.data.pageTitle?.slice(0, 160),
+        referrerPath:
+          sanitizeAnalyticsPath(parsed.data.referrer ?? "") ?? undefined,
+      },
+    });
   }
   if (!reused) await db.analyticsSession.update({ where: { id: sessionResult.session.id }, data: { lastActivityAt: now, landingPage: sessionResult.session.landingPage ?? path, exitPage: path, pageViewCount: { increment: 1 }, isBounce: sessionResult.session.pageViewCount === 0 } });
   const response = new NextResponse(null, { status: 204 });

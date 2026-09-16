@@ -32,7 +32,7 @@ Do not upload:
 ```env
 DATABASE_URL="mysql://DB_USER:DB_PASSWORD@HOST:3306/DATABASE_NAME"
 DB_CONNECTION_LIMIT="5"
-AUTH_SECRET="***REMOVED***"
+AUTH_SECRET="<SET_IN_ENV_NOT_GIT>"
 AUTH_TRUST_HOST="true"
 NODE_ENV="production"
 R2_ENDPOINT="https://<account-id>.r2.cloudflarestorage.com"
@@ -40,7 +40,7 @@ R2_ACCESS_KEY_ID="replace-me"
 R2_SECRET_ACCESS_KEY="replace-me"
 R2_BUCKET_NAME="fitzone-images"
 R2_PUBLIC_URL="https://cdn.your-domain.com"
-SETUP_TOKEN="***REMOVED***"
+SETUP_TOKEN="<SET_IN_ENV_NOT_GIT>"
 ```
 
 Notes:
@@ -70,7 +70,7 @@ npx tsx prisma/seed-admin.ts
 Before running it, set:
 
 ```env
-ADMIN_PASSWORD="***REMOVED***"
+ADMIN_PASSWORD="<SET_SECURELY_NOT_GIT>"
 ```
 
 Alternative option:
@@ -83,7 +83,7 @@ Content-Type: application/json
 
 {
   "token": "YOUR_SETUP_TOKEN",
-  "password": "***REMOVED***"
+  "password": "<SET_SECURELY_NOT_GIT>"
 }
 ```
 

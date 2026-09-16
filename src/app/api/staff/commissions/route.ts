@@ -9,8 +9,8 @@ export async function GET() {
     return NextResponse.json({ error: "غير مصرح." }, { status: 403 });
   }
 
-  const commissions = await db.agentCommission.findMany({
-    where: { agentUserId: user.id },
+  const commissions = await db.staffCommission.findMany({
+    where: { staffUserId: user.id },
     include: {
       userMembership: {
         include: {
@@ -30,8 +30,8 @@ export async function GET() {
       status: c.status,
       settledAt: c.settledAt?.toISOString() ?? null,
       createdAt: c.createdAt.toISOString(),
-      customerName: c.userMembership.user.name ?? "—",
-      membershipName: c.userMembership.membership.name,
+      customerName: c.userMembership?.user?.name ?? "—",
+      membershipName: c.userMembership?.membership?.name ?? "—",
     })),
   });
 }

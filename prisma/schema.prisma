@@ -83,96 +83,135 @@ model PasswordResetToken {
 // ─── User ─────────────────────────────────────────────────────────────────────
 
 model User {
-  id            String    @id @default(cuid())
-  name          String?
-  email         String?   @unique
-  emailVerified DateTime?
-  phone         String?
-  gender        String?   // single_graduated | married_new | married_with_kids | student
-  birthDate     DateTime?
-  governorate   String?
-  address       String?
-  password      String?
-  role          String    @default("member") // member | trainer | staff | admin
-  jobTitle      String?
-  adminAccess   Boolean   @default(false)
-  adminPermissions String? @db.LongText // JSON array of AdminFeature keys
-  isActive      Boolean   @default(true)
-  discountType  String    @default("fixed") // fixed | percentage
-  discountValue Float     @default(0)
-  maxDiscount   Float?
-  commissionRate Float    @default(0)
-  commissionType String   @default("percentage") // percentage | fixed
-  avatar        String?
-  pendingApproval   Boolean   @default(false) // set true when trainer creates a customer pending admin/head_coach approval
-  pendingPartnerRef String? // affiliate link token stored at registration, cleared after first paid subscription
-  pendingAgentRef   String? // sales agent referral code stored at registration, cleared after first paid subscription
-  pendingStaffRef    String? // staff referral link token stored at registration, cleared after first paid subscription
-  pendingTrainerRef  String? // trainer referral link token stored at registration, cleared after first paid subscription
-  pendingNutritionRef String? // nutritionist referral link token stored at registration, cleared after first paid subscription
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id                      String    @id @default(cuid())
+  name                    String?
+  email                   String?   @unique
+  emailVerified           DateTime?
+  phone                   String?
+  gender                  String? // single_graduated | married_new | married_with_kids | student
+  birthDate               DateTime?
+  governorate             String?
+  address                 String?
+  password                String?
+  role                    String    @default("member") // member | trainer | staff | admin
+  jobTitle                String?
+  adminAccess             Boolean   @default(false)
+  adminPermissions        String?   @db.LongText // JSON array of AdminFeature keys
+  isActive                Boolean   @default(true)
+  suspendedAt             DateTime?
+  suspensionReason        String?   @db.Text
+  discountType            String    @default("fixed") // fixed | percentage
+  discountValue           Float     @default(0)
+  maxDiscount             Float?
+  commissionRate          Float     @default(0)
+  commissionType          String    @default("percentage") // referral commission: percentage | fixed
+  marketingCommissionRate Float     @default(0)
+  marketingCommissionType String    @default("percentage") // marketing conversion: percentage | fixed
+  avatar                  String?
+  pendingApproval         Boolean   @default(false) // set true when trainer creates a customer pending admin/head_coach approval
+  pendingPartnerRef       String? // affiliate link token stored at registration, cleared after first paid subscription
+  pendingAgentRef         String? // sales agent referral code stored at registration, cleared after first paid subscription
+  pendingStaffRef         String? // staff referral link token stored at registration, cleared after first paid subscription
+  pendingTrainerRef       String? // trainer referral link token stored at registration, cleared after first paid subscription
+  pendingNutritionRef     String? // nutritionist referral link token stored at registration, cleared after first paid subscription
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
 
   // NextAuth relations
   accounts Account[]
   sessions Session[]
 
   // App relations
-  memberships   UserMembership[]
-  bookings      Booking[]
-  orders        Order[]
-  paymentTransactions PaymentTransaction[]
-  wallet        Wallet?
-  rewardPoints  RewardPoints?
-  referral      Referral?
-  notifications Notification[]
-  complaints    Complaint[]
-  testimonials  Testimonial[]
-  productReviews ProductReview[]
-  handledChatSessions ChatSession[]  @relation("AssignedSupport")
-  supportPresence     SupportPresence?
-  auditLogs           AuditLog[]     @relation("AuditActor")
-  coachProfile        CoachProfile?
-  pushSubscriptions   PushSubscription[]
-  pushCampaigns       PushCampaign[]     @relation("CampaignAdmin")
-  trainerProfile             Trainer?                    @relation("TrainerAccount")
-  trainerDiscountCodesTarget TrainerDiscountCode[]        @relation("TrainerCodeTarget")
-  staffDiscountCodesIssued   StaffDiscountCode[]          @relation("StaffCodeIssuer")
-  staffDiscountCodesTarget   StaffDiscountCode[]          @relation("StaffCodeTarget")
-  attributedMemberships      UserMembership[]             @relation("MembershipSalesAgent")
-  agentCommissions           AgentCommission[]            @relation("AgentCommissionUser")
-  partnerProfile             Partner?                    @relation("PartnerAccount")
-  privateApplications        PrivateSessionApplication[] @relation("PrivateApplicationUser")
-  attendancePasses           AttendancePass[]
-  attendanceCheckIns         AttendanceCheckIn[]         @relation("AttendanceMember")
-  scannedAttendanceCheckIns  AttendanceCheckIn[]         @relation("AttendanceScannedBy")
-  salesAgent                 SalesAgent?
-  salesAgentReferral         SalesAgentReferral?
-  contractsManager           ContractsManager?
-  recordedAttendanceLogs     TrainerAttendanceLog[]      @relation("AttendanceRecorder")
-  staffReferralLinks         StaffReferralLink[]         @relation("StaffLinks")
-  staffCommissions           StaffCommission[]           @relation("StaffCommissions")
-  trainerReferralLinks       TrainerReferralLink[]       @relation("TrainerLinks")
-  trainerCommissions         TrainerCommission[]         @relation("TrainerCommissions")
-  nutritionReferralLinks     NutritionReferralLink[]     @relation("NutritionLinks")
-  nutritionCommissions       NutritionCommission[]       @relation("NutritionCommissions")
-  healthResponses            HealthResponse[]            @relation("HealthResponses")
-  nutritionistProfile        NutritionistProfile?        @relation("NutritionistAccount")
-  analyticsVisitors          AnalyticsVisitor[]
-  analyticsSessions          AnalyticsSession[]
-  analyticsPageViews         AnalyticsPageView[]
-  analyticsEvents            AnalyticsEvent[]
-  nutritionSessions          NutritionSession[]          @relation("NutritionSessionUser")
-  orderStatusHistory         OrderStatusHistory[]        @relation("OrderStatusPerformer")
-  inventoryMovementsPerformed InventoryMovement[]        @relation("InventoryMovementPerformer")
-  inventoryReceiptsPerformed  InventoryReceipt[]         @relation("InventoryReceiptPerformer")
-  storeCampaignClaims        StoreGiftCampaignClaim[]
-  freeGiftsSessions          StoreFreeGiftsSession[]
-  blogPendingPosts           BlogPendingPost[]
-  blogPostReviews            BlogPendingPost[]          @relation("BlogReviewer")
-  coachChatSessions          ChatSession[]              @relation("CoachChatOwner")
-  voiceMonthlyQuotas         VoiceMonthlyQuota[]        @relation("VoiceQuotaUser")
-  voiceRealtimeSessions      VoiceRealtimeSession[]     @relation("VoiceSessionUser")
+  memberships                    UserMembership[]
+  bookings                       Booking[]
+  classExchangeRequests          ClassExchangeRequest[]
+  orders                         Order[]
+  paymentTransactions            PaymentTransaction[]
+  wallet                         Wallet?
+  rewardPoints                   RewardPoints?
+  referral                       Referral?
+  notifications                  Notification[]
+  complaints                     Complaint[]
+  testimonials                   Testimonial[]
+  productReviews                 ProductReview[]
+  handledChatSessions            ChatSession[]               @relation("AssignedSupport")
+  supportPresence                SupportPresence?
+  auditLogs                      AuditLog[]                  @relation("AuditActor")
+  coachProfile                   CoachProfile?
+  employeeProfile                EmployeeProfile?
+  employeeAttendanceRecorded     EmployeeAttendance[]        @relation("EmployeeAttendanceRecorder")
+  attendancePeriodsLocked        AttendancePeriod[]          @relation("AttendancePeriodLocker")
+  attendancePeriodsUnlocked      AttendancePeriod[]          @relation("AttendancePeriodUnlocker")
+  pushSubscriptions              PushSubscription[]
+  pushCampaigns                  PushCampaign[]              @relation("CampaignAdmin")
+  trainerProfile                 Trainer?                    @relation("TrainerAccount")
+  trainerDiscountCodesTarget     TrainerDiscountCode[]       @relation("TrainerCodeTarget")
+  staffDiscountCodesIssued       StaffDiscountCode[]         @relation("StaffCodeIssuer")
+  staffDiscountCodesTarget       StaffDiscountCode[]         @relation("StaffCodeTarget")
+  attributedMemberships          UserMembership[]            @relation("MembershipSalesAgent")
+  agentCommissions               AgentCommission[]           @relation("AgentCommissionUser")
+  partnerProfile                 Partner?                    @relation("PartnerAccount")
+  privateApplications            PrivateSessionApplication[] @relation("PrivateApplicationUser")
+  attendancePasses               AttendancePass[]
+  attendanceCheckIns             AttendanceCheckIn[]         @relation("AttendanceMember")
+  scannedAttendanceCheckIns      AttendanceCheckIn[]         @relation("AttendanceScannedBy")
+  salesAgent                     SalesAgent?
+  salesAgentReferral             SalesAgentReferral?
+  contractsManager               ContractsManager?
+  recordedAttendanceLogs         TrainerAttendanceLog[]      @relation("AttendanceRecorder")
+  recordedCoachClassAttendances  CoachClassAttendance[]      @relation("CoachClassAttendanceRecorder")
+  staffReferralLinks             StaffReferralLink[]         @relation("StaffLinks")
+  staffCommissions               StaffCommission[]           @relation("StaffCommissions")
+  trainerReferralLinks           TrainerReferralLink[]       @relation("TrainerLinks")
+  trainerCommissions             TrainerCommission[]         @relation("TrainerCommissions")
+  nutritionReferralLinks         NutritionReferralLink[]     @relation("NutritionLinks")
+  nutritionCommissions           NutritionCommission[]       @relation("NutritionCommissions")
+  marketingConversionsAsCustomer MarketingConversion[]       @relation("MarketingConversionCustomer")
+  marketingConversionsAssigned   MarketingConversion[]       @relation("MarketingConversionAssignee")
+  marketingCommissions           MarketingCommission[]       @relation("MarketingCommissionStaff")
+  healthResponses                HealthResponse[]            @relation("HealthResponses")
+  nutritionistProfile            NutritionistProfile?        @relation("NutritionistAccount")
+  analyticsVisitors              AnalyticsVisitor[]
+  analyticsSessions              AnalyticsSession[]
+  analyticsPageViews             AnalyticsPageView[]
+  analyticsEvents                AnalyticsEvent[]
+  nutritionSessions              NutritionSession[]          @relation("NutritionSessionUser")
+  orderStatusHistory             OrderStatusHistory[]        @relation("OrderStatusPerformer")
+  inventoryMovementsPerformed    InventoryMovement[]         @relation("InventoryMovementPerformer")
+  inventoryReceiptsPerformed     InventoryReceipt[]          @relation("InventoryReceiptPerformer")
+  storeCampaignClaims            StoreGiftCampaignClaim[]
+  freeGiftsSessions              StoreFreeGiftsSession[]
+  blogPendingPosts               BlogPendingPost[]
+  blogPostReviews                BlogPendingPost[]           @relation("BlogReviewer")
+  coachChatSessions              ChatSession[]               @relation("CoachChatOwner")
+  voiceMonthlyQuotas             VoiceMonthlyQuota[]         @relation("VoiceQuotaUser")
+  voiceRealtimeSessions          VoiceRealtimeSession[]      @relation("VoiceSessionUser")
+  friendOfferGroupsCreated       FriendOfferGroup[]          @relation("FriendOfferGroupCreator")
+  friendOfferParticipants        FriendOfferParticipant[]
+
+  purchaseInvoicesCreated                PurchaseInvoice[]                @relation("PurchaseInvoiceCreator")
+  purchaseInvoicesPosted                 PurchaseInvoice[]                @relation("PurchaseInvoicePoster")
+  purchaseInvoicesCancelled              PurchaseInvoice[]                @relation("PurchaseInvoiceCanceller")
+  supplierPaymentsCreated                SupplierPayment[]                @relation("SupplierPaymentCreator")
+  supplierPaymentsPosted                 SupplierPayment[]                @relation("SupplierPaymentPoster")
+  supplierPaymentsCancelled              SupplierPayment[]                @relation("SupplierPaymentCanceller")
+  employeeCompensationTermsCreated       EmployeeCompensationTerm[]       @relation("EmployeeCompensationTermCreator")
+  employeePayrollEligibilityTermsCreated EmployeePayrollEligibilityTerm[] @relation("EmployeePayrollEligibilityTermCreator")
+  coachCompensationTermsCreated          CoachCompensationTerm[]          @relation("CoachCompensationTermCreator")
+  coachClassCompensationTermsCreated     CoachClassCompensationTerm[]     @relation("CoachClassCompensationTermCreator")
+  fixedClassEarningsCalculated           FixedClassEarning[]              @relation("FixedClassEarningCalculator")
+  fixedClassEarningsFinalized            FixedClassEarning[]              @relation("FixedClassEarningFinalizer")
+  employeeLoansCreated                   EmployeeLoan[]                   @relation("EmployeeLoanCreator")
+  employeeLoansApproved                  EmployeeLoan[]                   @relation("EmployeeLoanApprover")
+  employeeLoansCancelled                 EmployeeLoan[]                   @relation("EmployeeLoanCanceller")
+  employeeLoanInstallmentsApproved       EmployeeLoanInstallment[]        @relation("EmployeeLoanInstallmentApprover")
+  employeeLoanInstallmentsCancelled      EmployeeLoanInstallment[]        @relation("EmployeeLoanInstallmentCanceller")
+  payrollAdjustmentsCreated              PayrollAdjustment[]              @relation("PayrollAdjustmentCreator")
+  payrollAdjustmentsApproved             PayrollAdjustment[]              @relation("PayrollAdjustmentApprover")
+  payrollAdjustmentsCancelled            PayrollAdjustment[]              @relation("PayrollAdjustmentCanceller")
+  attendanceDeductionPoliciesCreated     AttendanceDeductionPolicy[]      @relation("AttendanceDeductionPolicyCreator")
+  attendanceDeductionsCalculated         AttendanceDeduction[]            @relation("AttendanceDeductionCalculator")
+  attendanceDeductionsFinalized          AttendanceDeduction[]            @relation("AttendanceDeductionFinalizer")
 }
 
 model AuditLog {
@@ -195,112 +234,1148 @@ model AuditLog {
   @@index([targetType, createdAt])
 }
 
+// ─── Employee / HR Core ───────────────────────────────────────────────────────
+//
+// User remains the authoritative identity/login/permission source.
+// EmployeeProfile adds employment-domain data without duplicating accounts.
+//
+// Department and Position are independent catalogs intentionally:
+// a future position may be reused across departments without changing schema.
+// Payroll/compensation economics are intentionally NOT stored here because
+// salary and commission terms require effective-dated historical configuration.
+
+model Department {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  name        String
+  nameEn      String?
+  description String?  @db.Text
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  employees EmployeeProfile[]
+
+  @@index([isActive, sortOrder])
+}
+
+model Position {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  name        String
+  nameEn      String?
+  description String?  @db.Text
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  employees                     EmployeeProfile[]
+  referralCommissionPolicyRates ReferralCommissionPolicyRate[]
+  payrollPolicies               PositionPayrollPolicy[]
+  employeePositionTerms         EmployeePositionTerm[]
+
+  @@index([isActive, sortOrder])
+}
+
+// ─── Position Payroll Settings ────────────────────────────────────────────────
+//
+// Effective-dated Admin → Payroll Settings by Job Title.
+//
+// NULL means that a setting does not apply to that Position.
+// No historical rows are backfilled by this foundation.
+//
+// Coach percentage fields are basis points:
+// 10000 = 100%, 2500 = 25%, 2250 = 22.5%.
+//
+// Head Coach weekly rule is stored in minutes to avoid floating-point hours.
+// Current approved business defaults are:
+// monthly base = 32h = 1920m
+// weekly minimum = 5h = 300m
+// weekly cap = 8h = 480m
+//
+// These numbers are DATA / settings, never calculation constants.
+model PositionPayrollPolicy {
+  id         String @id @default(cuid())
+  positionId String
+
+  effectiveFrom DateTime  @db.Date
+  effectiveTo   DateTime? @db.Date
+
+  // CYCLE 10 — Job Title fixed monthly salary.
+  fixedSalaryMinor Int?
+
+  // CYCLE 04 — default fixed amount per assigned class/month.
+  defaultFixedClassMonthlyMinor Int?
+
+  // Coach percentages.
+  traineeClassCommissionBps    Int?
+  privateSessionCommissionBps  Int?
+  coachMembershipCommissionBps Int?
+
+  // CYCLE 07 — only applicable to Head Coach / Owner.
+  headCoachMonthlyBaseMinutes Int?
+  headCoachWeeklyMinMinutes   Int?
+  headCoachWeeklyCapMinutes   Int?
+
+  currency String @default("EGP")
+
+  isActive Boolean @default(true)
+  notes    String? @db.Text
+
+  createdById String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  position Position @relation(fields: [positionId], references: [id], onDelete: Restrict)
+
+  @@unique([positionId, effectiveFrom])
+  @@index([positionId, effectiveFrom, effectiveTo, isActive])
+  @@index([createdById, createdAt])
+}
+
+model EmployeeProfile {
+  id           String  @id @default(cuid())
+  userId       String? @unique
+  employeeCode String  @unique
+
+  // HR identity is authoritative even when the employee has no login account.
+  name   String
+  phone  String?
+  avatar String?
+
+  departmentId String?
+  positionId   String?
+
+  hireDate          DateTime?
+  employmentEndDate DateTime?
+
+  // active | inactive | on_leave | terminated
+  employmentStatus String @default("active")
+
+  // Controls participation in payroll without changing login/access identity.
+  payrollEnabled Boolean @default(true)
+
+  notes String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user                           User?                            @relation(fields: [userId], references: [id], onDelete: Restrict)
+  department                     Department?                      @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  position                       Position?                        @relation(fields: [positionId], references: [id], onDelete: Restrict)
+  attendance                     EmployeeAttendance[]
+  trainerProfile                 Trainer?                         @relation("TrainerEmployeeProfile")
+  scheduledCoachClassAttendances CoachClassAttendance[]           @relation("CoachClassScheduledEmployee")
+  actualCoachClassAttendances    CoachClassAttendance[]           @relation("CoachClassActualEmployee")
+  compensationTerms              EmployeeCompensationTerm[]
+  positionTerms                  EmployeePositionTerm[]
+  payrollEligibilityTerms        EmployeePayrollEligibilityTerm[]
+  coachCompensationTerms         CoachCompensationTerm[]
+  coachClassCompensationTerms    CoachClassCompensationTerm[]
+  fixedClassEarnings             FixedClassEarning[]
+  employeeLoans                  EmployeeLoan[]
+  payrollAdjustments             PayrollAdjustment[]
+  attendanceDeductionPolicies    AttendanceDeductionPolicy[]
+  attendanceDeductions           AttendanceDeduction[]
+  payrollRunEmployees            PayrollRunEmployee[]
+
+  @@index([departmentId, employmentStatus])
+  @@index([positionId, employmentStatus])
+  @@index([employmentStatus, payrollEnabled])
+}
+
+// ─── Employee Position History ───────────────────────────────────────────────
+//
+// Historical Job Title assignment.
+//
+// EmployeeProfile.positionId remains the CURRENT operational position.
+// Payroll/history must use this effective-dated source once a historical
+// assignment has been explicitly established.
+//
+// No automatic historical backfill is performed.
+model EmployeePositionTerm {
+  id         String @id @default(cuid())
+  employeeId String
+  positionId String
+
+  effectiveFrom DateTime  @db.Date
+  effectiveTo   DateTime? @db.Date
+
+  notes       String? @db.Text
+  createdById String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee EmployeeProfile @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  position Position        @relation(fields: [positionId], references: [id], onDelete: Restrict)
+
+  @@unique([employeeId, effectiveFrom])
+  @@index([employeeId, effectiveFrom, effectiveTo])
+  @@index([positionId, effectiveFrom, effectiveTo])
+  @@index([createdById, createdAt])
+}
+
+// ─── Payroll Eligibility History ──────────────────────────────────────────────
+//
+// EmployeeProfile.payrollEnabled remains the CURRENT operational switch used by
+// non-payroll workflows.
+//
+// Historical payroll participation is authoritative here and effective-dated.
+// Payroll calculations must never infer past eligibility from the current
+// EmployeeProfile.payrollEnabled value.
+//
+// No historical rows are backfilled automatically.
+//
+model EmployeePayrollEligibilityTerm {
+  id         String @id @default(cuid())
+  employeeId String
+
+  effectiveFrom DateTime  @db.Date
+  effectiveTo   DateTime? @db.Date
+
+  enabled Boolean
+
+  notes       String? @db.Text
+  createdById String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee  EmployeeProfile @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  createdBy User?           @relation("EmployeePayrollEligibilityTermCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([employeeId, effectiveFrom])
+  @@index([employeeId, effectiveFrom, effectiveTo], map: "EPET_employee_dates_idx")
+  @@index([enabled, effectiveFrom, effectiveTo], map: "EPET_enabled_dates_idx")
+  @@index([createdById, createdAt], map: "EPET_creator_date_idx")
+}
+
+// ─── Compensation Configuration ───────────────────────────────────────────────
+//
+// Compensation configuration is effective-dated and independent from:
+// - EmployeeProfile identity
+// - login/User authorization
+// - commission accrual ledgers
+// - CommissionPayout settlement
+// - Payroll aggregation
+//
+// Money is stored in minor units.
+// Percentage rates are stored in basis points:
+//   10000 = 100%
+//    2250 = 22.5%
+//
+// Date overlap is intentionally enforced transactionally in the service layer.
+// No historical term is silently rewritten when a new term becomes effective.
+
+model EmployeeCompensationTerm {
+  id         String @id @default(cuid())
+  employeeId String
+
+  effectiveFrom DateTime  @db.Date
+  effectiveTo   DateTime? @db.Date
+
+  // Explicit monthly fixed salary. Zero is valid but must be chosen explicitly
+  // when the term is created; there is no business default in the schema.
+  fixedSalaryMinor Int
+
+  currency String @default("EGP")
+
+  notes       String? @db.Text
+  createdById String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee  EmployeeProfile @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  createdBy User?           @relation("EmployeeCompensationTermCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([employeeId, effectiveFrom])
+  @@index([employeeId, effectiveFrom, effectiveTo])
+  @@index([createdById, createdAt])
+}
+
+model CoachCompensationTerm {
+  id         String @id @default(cuid())
+  employeeId String
+
+  effectiveFrom DateTime  @db.Date
+  effectiveTo   DateTime? @db.Date
+
+  // normal | leader | head_coach
+  coachLevel String
+
+  // Default monthly amount for one assigned fixed class.
+  // A class-specific override may be supplied by CoachClassCompensationTerm.
+  defaultFixedClassMonthlyMinor Int
+
+  // Basis points (10000 = 100%).
+  traineeClassCommissionBps    Int
+  privateSessionCommissionBps  Int
+  coachMembershipCommissionBps Int
+
+  currency String @default("EGP")
+
+  notes       String? @db.Text
+  createdById String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee                     EmployeeProfile               @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  createdBy                    User?                         @relation("CoachCompensationTermCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  fixedClassEarningOccurrences FixedClassEarningOccurrence[]
+
+  @@unique([employeeId, effectiveFrom])
+  @@index([employeeId, effectiveFrom, effectiveTo])
+  @@index([coachLevel, effectiveFrom])
+  @@index([createdById, createdAt])
+}
+
+model CoachClassCompensationTerm {
+  id         String @id @default(cuid())
+  employeeId String
+  classId    String
+
+  effectiveFrom DateTime  @db.Date
+  effectiveTo   DateTime? @db.Date
+
+  // Monthly fixed amount for this specific class.
+  monthlyAmountMinor Int
+
+  currency String @default("EGP")
+
+  notes       String? @db.Text
+  createdById String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee                     EmployeeProfile               @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  class                        Class                         @relation(fields: [classId], references: [id], onDelete: Restrict)
+  createdBy                    User?                         @relation("CoachClassCompensationTermCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  fixedClassEarningOccurrences FixedClassEarningOccurrence[]
+
+  @@unique([employeeId, classId, effectiveFrom])
+  @@index([employeeId, classId, effectiveFrom, effectiveTo])
+  @@index([classId, effectiveFrom])
+  @@index([createdById, createdAt])
+}
+
+// ─── Employee Attendance ──────────────────────────────────────────────────────
+//
+// General employee attendance is intentionally independent from:
+// - AttendancePass / AttendanceCheckIn (customer attendance)
+// - TrainerAttendanceLog (legacy daily trainer attendance)
+// - future CoachClassAttendance (class-specific coach attendance)
+//
+// attendanceDate is a DATE-like calendar anchor.
+// scheduledStartTime / scheduledEndTime are Cairo wall-clock HH:mm values.
+// checkInAt / checkOutAt are real instants.
+
+model EmployeeAttendance {
+  id             String   @id @default(cuid())
+  employeeId     String
+  attendanceDate DateTime @db.Date
+
+  // present | absent | late | excused | sick_leave |
+  // vacation | official_holiday | day_off
+  status String
+
+  scheduledStartTime String?
+  scheduledEndTime   String?
+
+  checkInAt  DateTime?
+  checkOutAt DateTime?
+
+  lateMinutes Int @default(0)
+
+  notes        String? @db.Text
+  recordedById String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee   EmployeeProfile @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  recordedBy User?           @relation("EmployeeAttendanceRecorder", fields: [recordedById], references: [id], onDelete: SetNull)
+
+  @@unique([employeeId, attendanceDate])
+  @@index([attendanceDate, status])
+  @@index([employeeId, attendanceDate])
+  @@index([recordedById, attendanceDate])
+}
+
+// One row per payroll/attendance calendar month.
+// Lock enforcement and elevated override are implemented in the service layer.
+// Mandatory lock/unlock audit history is stored transactionally in AuditLog.
+model AttendancePeriod {
+  id       String @id @default(cuid())
+  monthKey String @unique // YYYY-MM
+
+  // open | locked
+  status String @default("open")
+
+  lockedAt   DateTime?
+  lockedById String?
+
+  // Most recent elevated unlock/override metadata.
+  // Complete history remains in mandatory transactional AuditLog.
+  unlockedAt   DateTime?
+  unlockedById String?
+  unlockReason String?   @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lockedBy   User? @relation("AttendancePeriodLocker", fields: [lockedById], references: [id], onDelete: SetNull)
+  unlockedBy User? @relation("AttendancePeriodUnlocker", fields: [unlockedById], references: [id], onDelete: SetNull)
+
+  @@index([status, monthKey])
+  @@index([lockedById, lockedAt])
+  @@index([unlockedById, unlockedAt])
+}
+
+// ─── Attendance Deduction Policy / Payroll Source ────────────────────────────
+//
+// EmployeeAttendance remains historical evidence only.
+// This cycle converts attendance evidence into payroll deductions using:
+// - effective-dated EmployeeCompensationTerm
+// - effective-dated employee-specific AttendanceDeductionPolicy
+//
+// No payroll payment or accounting posting occurs here.
+//
+
+model AttendanceDeductionPolicy {
+  id         String @id @default(cuid())
+  employeeId String
+
+  effectiveFrom DateTime  @db.Date
+  effectiveTo   DateTime? @db.Date
+
+  // Explicit divisor chosen by management. No business default.
+  salaryDivisorDays Int
+
+  // Explicit standard workday duration. No implicit 8-hour rule.
+  workdayMinutes Int
+
+  // 10000 = 1.0x daily salary rate per absence.
+  absenceMultiplierBps Int
+
+  lateDeductionEnabled Boolean @default(false)
+  lateGraceMinutes     Int     @default(0)
+
+  // 10000 = normal derived minute rate.
+  lateMultiplierBps Int @default(10000)
+
+  notes       String? @db.Text
+  createdById String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee  EmployeeProfile @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  createdBy User?           @relation("AttendanceDeductionPolicyCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  deductions AttendanceDeduction[]
+
+  @@unique([employeeId, effectiveFrom])
+  @@index([employeeId, effectiveFrom, effectiveTo])
+  @@index([createdById, createdAt])
+}
+
+model AttendanceDeduction {
+  id         String @id @default(cuid())
+  employeeId String
+  monthKey   String
+
+  // blocked | calculated | finalized
+  status String @default("blocked")
+
+  currency String @default("EGP")
+
+  employeeCodeSnapshot String
+  employeeNameSnapshot String
+
+  compensationTermIdSnapshot String?
+  policyIdSnapshot           String?
+
+  fixedSalaryMinorSnapshot Int @default(0)
+
+  salaryDivisorDaysSnapshot    Int?
+  workdayMinutesSnapshot       Int?
+  absenceMultiplierBpsSnapshot Int?
+
+  lateDeductionEnabledSnapshot Boolean?
+  lateGraceMinutesSnapshot     Int?
+  lateMultiplierBpsSnapshot    Int?
+
+  absenceCount          Int @default(0)
+  totalLateMinutes      Int @default(0)
+  deductibleLateMinutes Int @default(0)
+
+  absenceDeductionMinor Int @default(0)
+  lateDeductionMinor    Int @default(0)
+  totalDeductionMinor   Int @default(0)
+
+  blockReason String? @db.Text
+
+  calculatedAt   DateTime?
+  calculatedById String?
+
+  finalizedAt   DateTime?
+  finalizedById String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee EmployeeProfile @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  policySnapshot AttendanceDeductionPolicy? @relation(fields: [policyIdSnapshot], references: [id], onDelete: SetNull)
+
+  calculatedBy User? @relation("AttendanceDeductionCalculator", fields: [calculatedById], references: [id], onDelete: SetNull)
+  finalizedBy  User? @relation("AttendanceDeductionFinalizer", fields: [finalizedById], references: [id], onDelete: SetNull)
+
+  occurrences AttendanceDeductionOccurrence[]
+
+  @@unique([employeeId, monthKey])
+  @@index([monthKey, status])
+  @@index([employeeId, monthKey])
+  @@index([policyIdSnapshot])
+  @@index([calculatedById, calculatedAt])
+  @@index([finalizedById, finalizedAt])
+}
+
+model AttendanceDeductionOccurrence {
+  id          String @id @default(cuid())
+  deductionId String
+
+  attendanceId String
+
+  attendanceDate DateTime @db.Date
+  statusSnapshot String
+
+  // Effective-dated economics resolved on this exact attendance date.
+  compensationTermIdSnapshot String?
+  policyIdSnapshot           String?
+
+  fixedSalaryMinorSnapshot Int?
+  currencySnapshot         String?
+
+  salaryDivisorDaysSnapshot    Int?
+  workdayMinutesSnapshot       Int?
+  absenceMultiplierBpsSnapshot Int?
+
+  lateDeductionEnabledSnapshot Boolean?
+  lateGraceMinutesSnapshot     Int?
+  lateMultiplierBpsSnapshot    Int?
+
+  lateMinutesSnapshot   Int @default(0)
+  deductibleLateMinutes Int @default(0)
+  deductionMinor        Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  deduction AttendanceDeduction @relation(fields: [deductionId], references: [id], onDelete: Restrict)
+
+  @@unique([deductionId, attendanceId])
+  @@index([attendanceId])
+  @@index([attendanceDate])
+}
+
+// ─── Payroll Adjustments / Employee Loans ────────────────────────────────────
+//
+// Independent source cycles for future Payroll aggregation.
+//
+// Important boundaries:
+// - EmployeeAttendance remains attendance evidence only.
+// - EmployeeCompensationTerm remains effective-dated salary configuration.
+// - These records do NOT create accounting journals or salary payments.
+// - Final Payroll will consume approved/finalized source rows only.
+//
+
+model EmployeeLoan {
+  id         String @id @default(cuid())
+  employeeId String
+
+  // Immutable principal approved for the employee.
+  principalMinor Int
+  currency       String @default("EGP")
+
+  // YYYY-MM: first payroll month in which an installment may be deducted.
+  startMonthKey String
+
+  // draft | active | completed | cancelled
+  status String @default("draft")
+
+  reason String  @db.Text
+  notes  String? @db.Text
+
+  approvedAt   DateTime?
+  approvedById String?
+
+  cancelledAt        DateTime?
+  cancelledById      String?
+  cancellationReason String?   @db.Text
+
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  employee EmployeeProfile @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  createdBy   User  @relation("EmployeeLoanCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  approvedBy  User? @relation("EmployeeLoanApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  cancelledBy User? @relation("EmployeeLoanCanceller", fields: [cancelledById], references: [id], onDelete: SetNull)
+
+  installments EmployeeLoanInstallment[]
+
+  @@index([employeeId, status])
+  @@index([startMonthKey, status])
+  @@index([approvedById, approvedAt])
+  @@index([createdById, createdAt])
+}
+
+model EmployeeLoanInstallment {
+  id     String @id @default(cuid())
+  loanId String
+
+  // Payroll calendar month YYYY-MM.
+  monthKey String
+
+  amountMinor Int
+  currency    String @default("EGP")
+
+  // scheduled | approved | applied | cancelled
+  //
+  // "applied" is reserved for the future Payroll cycle.
+  // This foundation does not mark installments applied.
+  status String @default("scheduled")
+
+  approvedAt   DateTime?
+  approvedById String?
+
+  appliedAt    DateTime?
+  payrollRunId String?
+
+  cancelledAt        DateTime?
+  cancelledById      String?
+  cancellationReason String?   @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  loan EmployeeLoan @relation(fields: [loanId], references: [id], onDelete: Restrict)
+
+  approvedBy  User? @relation("EmployeeLoanInstallmentApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  cancelledBy User? @relation("EmployeeLoanInstallmentCanceller", fields: [cancelledById], references: [id], onDelete: SetNull)
+
+  @@unique([loanId, monthKey])
+  @@index([monthKey, status])
+  @@index([approvedById, approvedAt])
+  @@index([payrollRunId])
+}
+
+model PayrollAdjustment {
+  id         String @id @default(cuid())
+  employeeId String
+
+  // Payroll calendar month YYYY-MM.
+  monthKey String
+
+  // deduction | earning
+  direction String
+
+  // manual | attendance | correction | other
+  //
+  // attendance is reserved for the later automated attendance-deduction
+  // cycle. Manual API must not impersonate automated attendance sources.
+  sourceType String @default("manual")
+
+  sourceRefId String?
+
+  amountMinor Int
+  currency    String @default("EGP")
+
+  reason String  @db.Text
+  notes  String? @db.Text
+
+  // draft | approved | applied | cancelled
+  status String @default("draft")
+
+  approvedAt   DateTime?
+  approvedById String?
+
+  appliedAt    DateTime?
+  payrollRunId String?
+
+  cancelledAt        DateTime?
+  cancelledById      String?
+  cancellationReason String?   @db.Text
+
+  createdById String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee EmployeeProfile @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  createdBy   User  @relation("PayrollAdjustmentCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  approvedBy  User? @relation("PayrollAdjustmentApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  cancelledBy User? @relation("PayrollAdjustmentCanceller", fields: [cancelledById], references: [id], onDelete: SetNull)
+
+  @@index([monthKey, status])
+  @@index([employeeId, monthKey])
+  @@index([direction, monthKey])
+  @@index([sourceType, sourceRefId])
+  @@index([approvedById, approvedAt])
+  @@index([payrollRunId])
+  @@index([createdById, createdAt])
+}
+
+// ─── Payroll Run ──────────────────────────────────────────────────────────────
+//
+// Payroll is an aggregation boundary.
+//
+// It does NOT recalculate or settle existing earning cycles.
+//
+// Variable earning/deduction sources are consumed only when their
+// authoritative source state is finalized/approved.
+//
+// Fixed salary is the only base-pay exception: it is snapshotted directly
+// from EmployeeCompensationTerm only when the month has an unambiguous
+// compensation term. Mid-month salary ambiguity must block calculation.
+//
+// CommissionPayout / CommissionPayoutItem are intentionally NOT payroll
+// sources. They remain authoritative commission-settlement records.
+//
+
+model PayrollRun {
+  id       String @id @default(cuid())
+  monthKey String @unique
+
+  // draft | blocked | calculated | finalized
+  status String @default("draft")
+
+  currency String @default("EGP")
+
+  employeeCount        Int @default(0)
+  blockedEmployeeCount Int @default(0)
+
+  totalGrossEarningsMinor Int @default(0)
+  totalDeductionsMinor    Int @default(0)
+  totalNetPayMinor        Int @default(0)
+
+  calculatedAt   DateTime?
+  calculatedById String?
+
+  finalizedAt   DateTime?
+  finalizedById String?
+
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  employees PayrollRunEmployee[]
+
+  @@index([status, monthKey])
+  @@index([createdAt])
+  @@index([calculatedById, calculatedAt])
+  @@index([finalizedById, finalizedAt])
+}
+
+model PayrollRunEmployee {
+  id           String @id @default(cuid())
+  payrollRunId String
+  employeeId   String
+
+  employeeCodeSnapshot String
+  employeeNameSnapshot String
+
+  // blocked | calculated
+  status      String  @default("blocked")
+  blockReason String? @db.Text
+
+  currency String @default("EGP")
+
+  // Base salary snapshot.
+  //
+  // salarySourceSnapshot:
+  // - legacy_compensation_term
+  // - position_payroll_policy
+  //
+  // Nullable preserves historical PayrollRunEmployee rows created before
+  // position-based salary ownership was introduced. No historical backfill.
+  salarySourceSnapshot            String?
+  compensationTermIdSnapshot      String?
+  positionTermIdSnapshot          String?
+  positionIdSnapshot              String?
+  positionPayrollPolicyIdSnapshot String?
+
+  fixedSalaryMinor Int @default(0)
+
+  // Finalized earning sources.
+  fixedClassEarningMinor      Int @default(0)
+  traineeClassEarningMinor    Int @default(0)
+  coachMembershipEarningMinor Int @default(0)
+  privateSessionEarningMinor  Int @default(0)
+
+  // Employee referral commissions included and settled through this payroll run.
+  referralCommissionEarningMinor Int @default(0)
+
+  // Approved manual/correction earnings.
+  adjustmentEarningMinor Int @default(0)
+
+  grossEarningsMinor Int @default(0)
+
+  // Finalized / approved deduction sources.
+  attendanceDeductionMinor     Int @default(0)
+  headCoachHoursDeductionMinor Int @default(0)
+  loanDeductionMinor           Int @default(0)
+  adjustmentDeductionMinor     Int @default(0)
+
+  totalDeductionsMinor Int @default(0)
+  netPayMinor          Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  payrollRun PayrollRun      @relation(fields: [payrollRunId], references: [id], onDelete: Restrict)
+  employee   EmployeeProfile @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  items PayrollRunItem[]
+
+  @@unique([payrollRunId, employeeId])
+  @@index([employeeId])
+  @@index([payrollRunId])
+}
+
+model PayrollRunItem {
+  id                   String @id @default(cuid())
+  payrollRunEmployeeId String
+
+  // fixed_salary
+  // fixed_class
+  // trainee_class
+  // coach_membership
+  // private_session
+  // staff_referral
+  // attendance_deduction
+  // head_coach_hours_deduction
+  // loan_installment
+  // payroll_adjustment
+  sourceType String
+
+  // Source PK when one exists.
+  // For fixed_salary this is EmployeeCompensationTerm.id.
+  sourceId String
+
+  // earning | deduction
+  direction String
+
+  amountMinor Int
+  currency    String @default("EGP")
+
+  // Historical source state captured by Payroll.
+  sourceStatusSnapshot String?
+
+  // Human-readable frozen source label / reason.
+  labelSnapshot String? @db.Text
+
+  // Optional immutable JSON evidence.
+  metadataSnapshot String? @db.LongText
+
+  createdAt DateTime @default(now())
+
+  payrollRunEmployee PayrollRunEmployee @relation(fields: [payrollRunEmployeeId], references: [id], onDelete: Restrict)
+
+  @@unique([payrollRunEmployeeId, sourceType, sourceId])
+  @@index([sourceType, sourceId])
+  @@index([payrollRunEmployeeId])
+}
+
 // ─── Membership ───────────────────────────────────────────────────────────────
 
 model Membership {
-  id          String  @id @default(cuid())
-  name        String
-  nameEn      String?
-  kind        String  @default("subscription") // subscription | package
-  price       Float
-  priceBefore Float?
-  priceAfter  Float?
-  image       String?
-  sortOrder   Int     @default(0)
-  duration    Int     // days
-  cycle       String? // monthly | quarterly | semi_annual | annual | custom
-  sessionsCount Int?  // عدد الحصص للاشتراك
-  features    String  @db.Text // JSON array stored as string
-  featuresEn  String? @db.Text
-  classSessions String? @db.LongText // JSON: class-specific sessions
+  id             String  @id @default(cuid())
+  name           String
+  nameEn         String?
+  kind           String  @default("subscription") // subscription | package
+  price          Float
+  priceBefore    Float?
+  priceAfter     Float?
+  image          String?
+  sortOrder      Int     @default(0)
+  duration       Int // days
+  cycle          String? // monthly | quarterly | semi_annual | annual | custom
+  sessionsCount  Int? // عدد الحصص للاشتراك
+  features       String  @db.Text // JSON array stored as string
+  featuresEn     String? @db.Text
+  classSessions  String? @db.LongText // JSON: class-specific sessions
   productRewards String? @db.LongText // JSON: product benefits for packages
-  maxClasses  Int     @default(-1) // -1 = unlimited
-  minMonths   Int?    // for custom kind: minimum selectable months
-  maxMonths   Int?    // for custom kind: maximum selectable months
-  discountPct Float?  // for custom kind: discount percentage (e.g. 50 = 50%)
-  walletBonus Float   @default(0)
-  gift        String?
-  giftEn      String?
-  subtitle    String? @db.Text
-  isFeatured  Boolean @default(false)
-  isActive    Boolean @default(true)
+  maxClasses     Int     @default(-1) // -1 = unlimited
+  minMonths      Int? // for custom kind: minimum selectable months
+  maxMonths      Int? // for custom kind: maximum selectable months
+  discountPct    Float? // for custom kind: discount percentage (e.g. 50 = 50%)
+  walletBonus    Float   @default(0)
+  gift           String?
+  giftEn         String?
+  subtitle       String? @db.Text
+  isFeatured     Boolean @default(false)
+  isActive       Boolean @default(true)
 
-  userMemberships  UserMembership[]
-  recommendedFor   ChatSession[]
-  offers           Offer[]
-  goals            MembershipGoal[]
+  // When enabled, checkout must explicitly capture the coach who owns the
+  // Coach Membership economics. This is independent from referral/sales attribution.
+  coachMembershipEnabled Boolean @default(false)
+
+  userMemberships UserMembership[]
+  recommendedFor  ChatSession[]
+  offers          Offer[]
+  goals           MembershipGoal[]
 }
 
 model UserMembership {
-  id           String   @id @default(cuid())
-  userId       String
-  membershipId String
-  startDate    DateTime @default(now())
-  endDate      DateTime
-  status       String   @default("active") // active | expired | cancelled | pending_payment
-  pendingExpiresAt DateTime? // When pending_payment expires (60 min from creation)
-  paymentAmount Float   @default(0)
-  paymentMethod String? // cash | free | wallet | card | instapay | offer
-  offerTitle    String?
-  offerId       String?
-  totalSessions Int?
+  id                        String    @id @default(cuid())
+  userId                    String
+  membershipId              String
+  startDate                 DateTime  @default(now())
+  endDate                   DateTime
+  status                    String    @default("active") // active | expired | cancelled | pending_payment
+  activatedAt               DateTime? // Immutable first real activation timestamp; never set for unpaid checkout attempts
+  pendingExpiresAt          DateTime? // When pending_payment expires (60 min from creation)
+  paymentAmount             Float     @default(0)
+  paymentMethod             String? // cash | free | wallet | card | instapay | offer
+  offerTitle                String?
+  offerId                   String?
+  totalSessions             Int?
+  // Immutable purchase-time class entitlement. This is the canonical source
+  // of truth for which exact classes this membership may use after purchase.
+  eligibilitySnapshot       String?   @db.LongText
+  // Immutable approved booking pattern captured when schedules are selected.
+  // It may contain a compatibility copy of eligibility, but it is not the
+  // canonical entitlement source for new memberships.
+  bookingPatternSnapshot    String?   @db.LongText
   // Immutable purchase-time terms for offer subscriptions. Null means a legacy
   // membership and intentionally preserves its historical behaviour.
-  offerSnapshot String? @db.LongText
-  allowedClassTypesSnapshot String? @db.LongText // JSON class type keys; null = no offer restriction
-  snapshotDurationDays Int?
-  snapshotOriginalPrice Float?
-  snapshotFinalPrice Float?
-  productRewardsUsed String? @db.LongText
+  offerSnapshot             String?   @db.LongText
+  allowedClassTypesSnapshot String?   @db.LongText // JSON class type keys; null = no offer restriction
+  snapshotDurationDays      Int?
+  snapshotOriginalPrice     Float?
+  snapshotFinalPrice        Float?
+  productRewardsUsed        String?   @db.LongText
+
+  // Immutable purchase-time commission economics.
+  // New memberships must use this snapshot as the authoritative source for
+  // commission rates/bases after checkout instead of re-reading mutable config.
+  commissionSnapshot String? @db.LongText
+
+  // Exact-once marker for membership-related commission accrual.
+  // Written only after the complete accrual/referral-consumption transaction succeeds.
+  commissionAccruedAt DateTime?
+
   salesAgentUserId String?
   salesCodeType    String?
 
-  partnerId       String?
-  partnerCodeId   String?
-  affiliateLinkId String?
-  salesAgentId    String?  // SalesAgent.id if subscribed via agent referral link
-  staffReferralLinkId      String? // StaffReferralLink.id if subscribed via staff referral link
-  trainerReferralLinkId    String? // TrainerReferralLink.id if subscribed via trainer referral link
-  nutritionReferralLinkId  String? // NutritionReferralLink.id if subscribed via nutritionist referral link
+  partnerId               String?
+  partnerCodeId           String?
+  affiliateLinkId         String?
+  salesAgentId            String? // SalesAgent.id if subscribed via agent referral link
+  staffReferralLinkId     String? // StaffReferralLink.id if subscribed via staff referral link
+  trainerReferralLinkId   String? // TrainerReferralLink.id if subscribed via trainer referral link
+  nutritionReferralLinkId String? // NutritionReferralLink.id if subscribed via nutritionist referral link
 
-  user          User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  membership    Membership            @relation(fields: [membershipId], references: [id])
-  offer         Offer?                @relation(fields: [offerId], references: [id], onDelete: SetNull)
-  salesAgent    User?                 @relation("MembershipSalesAgent", fields: [salesAgentUserId], references: [id], onDelete: SetNull)
-  partner       Partner?              @relation(fields: [partnerId], references: [id], onDelete: SetNull)
-  partnerCode   PartnerCode?          @relation(fields: [partnerCodeId], references: [id], onDelete: SetNull)
-  affiliateLink PartnerAffiliateLink? @relation(fields: [affiliateLinkId], references: [id], onDelete: SetNull)
-  refAgent      SalesAgent?           @relation(fields: [salesAgentId], references: [id], onDelete: SetNull)
-  staffReferralLink      StaffReferralLink?      @relation(fields: [staffReferralLinkId], references: [id], onDelete: SetNull)
-  trainerReferralLink    TrainerReferralLink?    @relation(fields: [trainerReferralLinkId], references: [id], onDelete: SetNull)
-  nutritionReferralLink  NutritionReferralLink?  @relation(fields: [nutritionReferralLinkId], references: [id], onDelete: SetNull)
-  bookings      Booking[]
-  attendancePass      AttendancePass?
-  attendanceCheckIns  AttendanceCheckIn[]
-  partnerCommission   PartnerCommission?
-  agentCommission     AgentCommission?
-  salesAgentCommission SalesAgentCommission?
-  staffCommission      StaffCommission?
-  trainerCommission    TrainerCommission?
-  nutritionCommission  NutritionCommission?
+  // Immutable Coach Membership ownership/economics captured at checkout.
+  // Never infer these fields from trainerReferralLinkId, discount codes,
+  // SalesAgent attribution, mutable Trainer, or mutable compensation terms.
+  coachMembershipTrainerIdSnapshot    String?
+  coachMembershipTrainerNameSnapshot  String?
+  coachMembershipEmployeeIdSnapshot   String?
+  coachMembershipEmployeeCodeSnapshot String?
+  coachMembershipEmployeeNameSnapshot String?
+
+  // Frozen Coach Membership commission ownership.
+  // legacy_coach_compensation_term | position_payroll_policy
+  coachMembershipCommissionSourceSnapshot        String?
+  coachMembershipCompensationTermIdSnapshot      String?
+  coachMembershipPositionTermIdSnapshot          String?
+  coachMembershipPositionIdSnapshot              String?
+  coachMembershipPositionPayrollPolicyIdSnapshot String?
+
+  coachMembershipCommissionBpsSnapshot Int?
+  coachMembershipCurrencySnapshot      String?
+
+  user                   User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  membership             Membership                @relation(fields: [membershipId], references: [id])
+  offer                  Offer?                    @relation(fields: [offerId], references: [id], onDelete: SetNull)
+  salesAgent             User?                     @relation("MembershipSalesAgent", fields: [salesAgentUserId], references: [id], onDelete: SetNull)
+  partner                Partner?                  @relation(fields: [partnerId], references: [id], onDelete: SetNull)
+  partnerCode            PartnerCode?              @relation(fields: [partnerCodeId], references: [id], onDelete: SetNull)
+  affiliateLink          PartnerAffiliateLink?     @relation(fields: [affiliateLinkId], references: [id], onDelete: SetNull)
+  refAgent               SalesAgent?               @relation(fields: [salesAgentId], references: [id], onDelete: SetNull)
+  staffReferralLink      StaffReferralLink?        @relation(fields: [staffReferralLinkId], references: [id], onDelete: SetNull)
+  trainerReferralLink    TrainerReferralLink?      @relation(fields: [trainerReferralLinkId], references: [id], onDelete: SetNull)
+  nutritionReferralLink  NutritionReferralLink?    @relation(fields: [nutritionReferralLinkId], references: [id], onDelete: SetNull)
+  bookings               Booking[]
+  classExchanges         MembershipClassExchange[]
+  classExchangeRequests  ClassExchangeRequest[]
+  attendancePass         AttendancePass?
+  attendanceCheckIns     AttendanceCheckIn[]
+  partnerCommission      PartnerCommission?
+  agentCommission        AgentCommission?
+  salesAgentCommission   SalesAgentCommission?
+  staffCommission        StaffCommission?
+  trainerCommission      TrainerCommission?
+  nutritionCommission    NutritionCommission?
+  marketingConversion    MarketingConversion?
+  marketingCommission    MarketingCommission?
+  friendOfferParticipant FriendOfferParticipant?
 
   @@index([partnerId])
   @@index([salesAgentUserId])
   @@index([salesAgentId])
 }
 
+// ─── Coach Membership Earning ────────────────────────────────────────────────
+//
+// Independent payroll earning cycle.
+// Source boundary is exactly one economically-finalized UserMembership.
+// Historical identity/economics are scalar snapshots intentionally without FKs.
+// Payroll must aggregate finalized rows only.
+
+model CoachMembershipEarning {
+  id               String @id @default(cuid())
+  userMembershipId String @unique
+
+  monthKey String
+
+  trainerIdSnapshot   String?
+  trainerNameSnapshot String?
+
+  employeeIdSnapshot   String
+  employeeCodeSnapshot String
+  employeeNameSnapshot String
+
+  // Frozen commission ownership.
+  // legacy_coach_compensation_term | position_payroll_policy
+  commissionSourceSnapshot String?
+
+  coachCompensationTermIdSnapshot String?
+  positionTermIdSnapshot          String?
+  positionIdSnapshot              String?
+  positionPayrollPolicyIdSnapshot String?
+
+  paymentAmountMinor    Int
+  commissionRateBps     Int
+  commissionAmountMinor Int
+
+  // Gym economic share frozen at accrual.
+  // NULL = historical row created before gym-share tracking existed.
+  // New rows: paymentAmountMinor - commissionAmountMinor.
+  gymShareAmountMinor Int?
+
+  currency String @default("EGP")
+
+  status      String  @default("calculated") // calculated | finalized
+  blockReason String?
+
+  calculatedAt   DateTime @default(now())
+  calculatedById String?
+
+  finalizedAt   DateTime?
+  finalizedById String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([monthKey, status])
+  @@index([employeeIdSnapshot, monthKey])
+  @@index([trainerIdSnapshot, monthKey])
+  @@index([positionIdSnapshot, monthKey])
+  @@index([positionPayrollPolicyIdSnapshot])
+}
+
+// ─── Marketing Conversion / Closing Commission ───────────────────────────────
+
+model MarketingConversion {
+  id                  String @id @default(cuid())
+  customerId          String
+  assignedStaffUserId String
+  status              String @default("open") // open | checkout_locked | converted | cancelled
+
+  // Exactly one active marketing conversion per customer.
+  // When open/checkout_locked => activeKey = customerId.
+  // When converted/cancelled => activeKey = null.
+  // MySQL UNIQUE permits multiple NULL values.
+  activeKey String? @unique
+
+  userMembershipId         String? @unique
+  friendOfferParticipantId String? @unique
+
+  commissionTypeSnapshot String?
+  commissionRateSnapshot Float?
+  commissionBaseSnapshot Float?
+
+  assignedAt       DateTime  @default(now())
+  checkoutLockedAt DateTime?
+  convertedAt      DateTime?
+  cancelledAt      DateTime?
+
+  createdByUserId String?
+  notes           String?  @db.Text
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  customer               User                    @relation("MarketingConversionCustomer", fields: [customerId], references: [id], onDelete: Cascade)
+  assignedStaff          User                    @relation("MarketingConversionAssignee", fields: [assignedStaffUserId], references: [id], onDelete: Restrict)
+  userMembership         UserMembership?         @relation(fields: [userMembershipId], references: [id], onDelete: SetNull)
+  friendOfferParticipant FriendOfferParticipant? @relation(fields: [friendOfferParticipantId], references: [id], onDelete: SetNull)
+  commission             MarketingCommission?
+
+  @@index([customerId, status])
+  @@index([assignedStaffUserId, status])
+  @@index([createdAt])
+}
+
+model MarketingCommission {
+  id                    String @id @default(cuid())
+  marketingConversionId String @unique
+  staffUserId           String
+  userMembershipId      String @unique
+
+  amount Float
+
+  status    String    @default("earned") // earned | settled
+  settledAt DateTime?
+
+  commissionTypeSnapshot String
+  commissionRateSnapshot Float
+  commissionBaseSnapshot Float
+
+  createdAt DateTime @default(now())
+
+  conversion     MarketingConversion @relation(fields: [marketingConversionId], references: [id], onDelete: Restrict)
+  staffUser      User                @relation("MarketingCommissionStaff", fields: [staffUserId], references: [id], onDelete: Restrict)
+  userMembership UserMembership      @relation(fields: [userMembershipId], references: [id], onDelete: Restrict)
+
+  @@index([staffUserId, status])
+  @@index([createdAt])
+}
+
 model AttendancePass {
-  id                          String   @id @default(cuid())
+  id                          String    @id @default(cuid())
   userId                      String
-  userMembershipId            String?  @unique
-  privateSessionApplicationId String?  @unique
-  code                        String   @unique
-  kind                        String   // membership | private_session
-  status                      String   @default("active") // active | inactive | revoked | expired
+  userMembershipId            String?   @unique
+  privateSessionApplicationId String?   @unique
+  code                        String    @unique
+  kind                        String // membership | private_session
+  status                      String    @default("active") // active | inactive | revoked | expired
   label                       String?
   lastUsedAt                  DateTime?
-  createdAt                   DateTime @default(now())
-  updatedAt                   DateTime @updatedAt
+  createdAt                   DateTime  @default(now())
+  updatedAt                   DateTime  @updatedAt
 
   user                      User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
   userMembership            UserMembership?            @relation(fields: [userMembershipId], references: [id], onDelete: SetNull)
@@ -319,16 +1394,16 @@ model AttendanceCheckIn {
   bookingId                   String?  @unique
   scheduleId                  String?
   scannedByUserId             String?
-  checkInType                 String   // class | private | mini_private
+  checkInType                 String // class | private | mini_private
   notes                       String?  @db.Text
   createdAt                   DateTime @default(now())
 
-  pass                      AttendancePass              @relation(fields: [passId], references: [id], onDelete: Cascade)
-  user                      User                        @relation("AttendanceMember", fields: [userId], references: [id], onDelete: Cascade)
-  userMembership            UserMembership?             @relation(fields: [userMembershipId], references: [id], onDelete: SetNull)
-  privateSessionApplication PrivateSessionApplication?  @relation(fields: [privateSessionApplicationId], references: [id], onDelete: SetNull)
-  booking                   Booking?                    @relation(fields: [bookingId], references: [id], onDelete: SetNull)
-  scannedBy                 User?                       @relation("AttendanceScannedBy", fields: [scannedByUserId], references: [id], onDelete: SetNull)
+  pass                      AttendancePass             @relation(fields: [passId], references: [id], onDelete: Cascade)
+  user                      User                       @relation("AttendanceMember", fields: [userId], references: [id], onDelete: Cascade)
+  userMembership            UserMembership?            @relation(fields: [userMembershipId], references: [id], onDelete: SetNull)
+  privateSessionApplication PrivateSessionApplication? @relation(fields: [privateSessionApplicationId], references: [id], onDelete: SetNull)
+  booking                   Booking?                   @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  scannedBy                 User?                      @relation("AttendanceScannedBy", fields: [scannedByUserId], references: [id], onDelete: SetNull)
 
   @@index([userId, createdAt])
   @@index([scheduleId, createdAt])
@@ -338,44 +1413,52 @@ model AttendanceCheckIn {
 // ─── Trainer ──────────────────────────────────────────────────────────────────
 
 model Trainer {
-  id             String  @id @default(cuid())
-  userId         String? @unique
-  name           String
-  nameEn         String?
-  specialty      String
-  specialtyEn    String?
-  bio            String?
-  bioEn          String? @db.Text
-  certifications String? @db.Text // JSON array
+  id     String  @id @default(cuid())
+  userId String? @unique
+
+  // Optional direct HR identity link.
+  // Existing trainers are intentionally NOT backfilled automatically.
+  employeeId       String? @unique
+  name             String
+  nameEn           String?
+  specialty        String
+  specialtyEn      String?
+  bio              String?
+  bioEn            String? @db.Text
+  certifications   String? @db.Text // JSON array
   certificationsEn String? @db.Text // JSON array
   certificateFiles String? @db.LongText // JSON array of image URLs
-  rating         Float   @default(5.0)
-  sessionsCount  Int     @default(0)
-  image          String?
-  isActive          Boolean @default(true)
-  showOnHome        Boolean @default(true)
-  sortOrder         Int     @default(0)
-  canSendGifts      Boolean @default(false)
-  giftMonthlyLimit  Int     @default(4)
-  canAddClasses     Boolean @default(false)
-  canAddBookings    Boolean @default(false)
+  rating           Float   @default(5.0)
+  sessionsCount    Int     @default(0)
+  image            String?
+  isActive         Boolean @default(true)
+  showOnHome       Boolean @default(true)
+  sortOrder        Int     @default(0)
+  canSendGifts     Boolean @default(false)
+  giftMonthlyLimit Int     @default(4)
+  canAddClasses    Boolean @default(false)
+  canAddBookings   Boolean @default(false)
 
-  user                  User?                      @relation("TrainerAccount", fields: [userId], references: [id], onDelete: SetNull)
-  classes               Class[]
-  discountCodes         TrainerDiscountCode[]
-  privateApplications   PrivateSessionApplication[]
-  attendanceLogs        TrainerAttendanceLog[]
+  user                User?                       @relation("TrainerAccount", fields: [userId], references: [id], onDelete: SetNull)
+  employee            EmployeeProfile?            @relation("TrainerEmployeeProfile", fields: [employeeId], references: [id], onDelete: SetNull)
+  classes             Class[]
+  discountCodes       TrainerDiscountCode[]
+  privateApplications PrivateSessionApplication[]
+  attendanceLogs      TrainerAttendanceLog[]
+
+  scheduledCoachClassAttendances CoachClassAttendance[] @relation("CoachClassScheduledTrainer")
+  actualCoachClassAttendances    CoachClassAttendance[] @relation("CoachClassActualTrainer")
 }
 
 model TrainerAttendanceLog {
-  id           String    @id @default(cuid())
+  id           String   @id @default(cuid())
   trainerId    String
-  date         DateTime  @db.Date
-  status       String    // present | absent | late
-  notes        String?   @db.Text
+  date         DateTime @db.Date
+  status       String // present | absent | late
+  notes        String?  @db.Text
   recordedById String?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   trainer    Trainer @relation(fields: [trainerId], references: [id], onDelete: Cascade)
   recordedBy User?   @relation("AttendanceRecorder", fields: [recordedById], references: [id], onDelete: SetNull)
@@ -385,115 +1468,352 @@ model TrainerAttendanceLog {
   @@index([date])
 }
 
+// ─── Coach Class Attendance ───────────────────────────────────────────────────
+//
+// Payroll-critical historical fact for one logical class occurrence.
+//
+// Never derive historical trainer/class identity later from mutable Class or
+// Schedule rows. Snapshot fields remain authoritative even if those source
+// records are edited or deleted.
+//
+// occurrenceKey:
+//   <sourceClassIdSnapshot>:<YYYY-MM-DD>:<HH:mm>
+//
+// scheduled* = coach originally assigned to the class occurrence.
+// actual*    = coach who actually delivered it.
+//
+// status:
+// present | absent | substitute | excused | cancelled
+model CoachClassAttendance {
+  id String @id @default(cuid())
+
+  // Mutable source references only. Historical truth lives in snapshots.
+  scheduleId String? @unique
+  classId    String?
+
+  sourceClassIdSnapshot String
+  occurrenceKey         String @unique
+
+  scheduleDate DateTime @db.Date
+  scheduleTime String
+
+  classNameSnapshot       String
+  classTypeKeySnapshot    String?
+  classTypeNameSnapshot   String?
+  durationMinutesSnapshot Int
+
+  scheduledTrainerId           String?
+  scheduledTrainerNameSnapshot String
+
+  scheduledEmployeeId           String?
+  scheduledEmployeeCodeSnapshot String?
+  scheduledEmployeeNameSnapshot String?
+
+  actualTrainerId           String?
+  actualTrainerNameSnapshot String?
+
+  actualEmployeeId           String?
+  actualEmployeeCodeSnapshot String?
+  actualEmployeeNameSnapshot String?
+
+  status String
+
+  notes        String? @db.Text
+  recordedById String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  schedule Schedule? @relation(fields: [scheduleId], references: [id], onDelete: SetNull)
+  class    Class?    @relation(fields: [classId], references: [id], onDelete: SetNull)
+
+  scheduledTrainer Trainer? @relation("CoachClassScheduledTrainer", fields: [scheduledTrainerId], references: [id], onDelete: SetNull)
+
+  actualTrainer Trainer? @relation("CoachClassActualTrainer", fields: [actualTrainerId], references: [id], onDelete: SetNull)
+
+  scheduledEmployee EmployeeProfile? @relation("CoachClassScheduledEmployee", fields: [scheduledEmployeeId], references: [id], onDelete: SetNull)
+
+  actualEmployee EmployeeProfile? @relation("CoachClassActualEmployee", fields: [actualEmployeeId], references: [id], onDelete: SetNull)
+
+  recordedBy                   User?                         @relation("CoachClassAttendanceRecorder", fields: [recordedById], references: [id], onDelete: SetNull)
+  fixedClassEarningOccurrences FixedClassEarningOccurrence[]
+
+  @@index([scheduleDate, status])
+  @@index([classId, scheduleDate])
+  @@index([scheduledTrainerId, scheduleDate])
+  @@index([actualTrainerId, scheduleDate])
+  @@index([scheduledEmployeeId, scheduleDate])
+  @@index([actualEmployeeId, scheduleDate])
+  @@index([recordedById, scheduleDate])
+}
+
 // ─── Class ────────────────────────────────────────────────────────────────────
 
-model Class {
-  id          String  @id @default(cuid())
-  name        String
-  nameEn      String?
-  description String?
-  descriptionEn String? @db.Text
-  trainerId   String
-  category    String? // القسم الرئيسي
-  categoryEn  String?
-  type        String  // cardio | strength | yoga | boxing | swimming | dance
-  typeEn      String?
-  subType     String? // التصنيف الفرعي
-  subTypeEn   String?
-  duration    Int     // minutes
-  intensity   String  // low | medium | high | extreme
-  maxSpots    Int     @default(15)
-  price       Float   @default(0)
-  image       String?
-  showTrainerName Boolean @default(true)
-  isActive    Boolean @default(true)
+model ClassType {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  nameAr    String
+  nameEn    String?
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  trainer   Trainer    @relation(fields: [trainerId], references: [id])
-  schedules Schedule[]
-  allowedInOffers OfferAllowedClass[]
+  classes           Class[]
+  offerAllowedTypes OfferAllowedClassType[]
+  aliases           ClassTypeAlias[]
+}
+
+model ClassTypeAlias {
+  id          String   @id @default(cuid())
+  classTypeId String
+  alias       String
+  createdAt   DateTime @default(now())
+
+  classType ClassType @relation(fields: [classTypeId], references: [id], onDelete: Cascade)
+
+  @@unique([alias])
+  @@index([classTypeId])
+}
+
+model Class {
+  id              String  @id @default(cuid())
+  name            String
+  nameEn          String?
+  description     String?
+  descriptionEn   String? @db.Text
+  trainerId       String
+  category        String? // القسم الرئيسي
+  categoryEn      String?
+  type            String // legacy display/business key during ClassType migration
+  typeEn          String?
+  classTypeId     String?
+  subType         String? // التصنيف الفرعي
+  subTypeEn       String?
+  duration        Int // minutes
+  intensity       String // low | medium | high | extreme
+  maxSpots        Int     @default(15)
+  price           Float   @default(0)
+  image           String?
+  showTrainerName Boolean @default(true)
+  isActive        Boolean @default(true)
+
+  trainer                     Trainer                      @relation(fields: [trainerId], references: [id])
+  classType                   ClassType?                   @relation(fields: [classTypeId], references: [id], onDelete: SetNull)
+  schedules                   Schedule[]
+  coachClassAttendances       CoachClassAttendance[]
+  allowedInOffers             OfferAllowedClass[]
+  coachClassCompensationTerms CoachClassCompensationTerm[]
+  fixedClassEarnings          FixedClassEarning[]
+
+  @@index([classTypeId])
 }
 
 model Schedule {
   id             String   @id @default(cuid())
   classId        String
   date           DateTime
-  time           String   // "06:00"
+  time           String // "06:00"
   availableSpots Int
   isActive       Boolean  @default(true)
 
-  class    Class     @relation(fields: [classId], references: [id], onDelete: Cascade)
-  bookings Booking[]
+  class                        Class                         @relation(fields: [classId], references: [id], onDelete: Cascade)
+  bookings                     Booking[]
+  rescheduleTargets            BookingRescheduleRequest[]
+  classExchangeRequests        ClassExchangeRequest[]
+  coachClassAttendance         CoachClassAttendance?
+  fixedClassEarningOccurrences FixedClassEarningOccurrence[]
+
+  @@unique([classId, date, time], map: "Schedule_classId_date_time_key")
 }
 
 // ─── Booking ──────────────────────────────────────────────────────────────────
 
 model Booking {
-  id            String    @id @default(cuid())
-  userId        String
-  scheduleId    String
+  id               String    @id @default(cuid())
+  userId           String
+  scheduleId       String
   userMembershipId String?
-  status        String    @default("confirmed") // confirmed | cancelled | attended | noshow
-  paidAmount    Float     @default(0)
-  paymentMethod String    @default("wallet") // wallet | card | cash
-  reminderSentAt DateTime?
-  createdAt     DateTime  @default(now())
+  status           String    @default("confirmed") // confirmed | cancelled | attended | noshow
+  paidAmount       Float     @default(0)
+  paymentMethod    String    @default("wallet") // wallet | card | cash
+  reminderSentAt   DateTime?
 
-  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  schedule Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
-  userMembership UserMembership? @relation(fields: [userMembershipId], references: [id], onDelete: SetNull)
-  attendanceCheckIn AttendanceCheckIn?
+  // Number of membership entitlement units consumed by this physical booking.
+  // Historical and ordinary bookings remain exactly one unit by default.
+  // Values > 1 are reserved for explicit administrative exchange flows.
+  entitlementUnits Int @default(1)
+
+  // System-created entitlement recovery booking.
+  // Does NOT extend the contractual membership endDate.
+  isMakeup     Boolean  @default(false)
+  makeupReason String?
+  createdAt    DateTime @default(now())
+
+  user               User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  schedule           Schedule                   @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  userMembership     UserMembership?            @relation(fields: [userMembershipId], references: [id], onDelete: SetNull)
+  attendanceCheckIn  AttendanceCheckIn?
+  rescheduleRequests BookingRescheduleRequest[]
+  classExchange      MembershipClassExchange?
 
   @@index([userMembershipId])
+  @@index([userMembershipId, isMakeup, status])
+}
+
+// ─── Administrative Class Exchange ────────────────────────────────────────────
+//
+// One physical Booking may intentionally consume more than one membership
+// entitlement unit. This audit row records the explicit administrative reason
+// and actor without modifying the purchased membership entitlement snapshots.
+//
+model MembershipClassExchange {
+  id               String    @id @default(cuid())
+  userMembershipId String
+  bookingId        String    @unique
+  entitlementUnits Int       @default(2)
+  status           String    @default("active") // active | reversed
+  reason           String?   @db.Text
+  createdByUserId  String
+  createdAt        DateTime  @default(now())
+  reversedAt       DateTime?
+  reversedByUserId String?
+
+  userMembership UserMembership @relation(fields: [userMembershipId], references: [id], onDelete: Cascade)
+  booking        Booking        @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([userMembershipId, status])
+  @@index([createdByUserId, createdAt])
+}
+
+// ─── Gym Booking Reschedule Request ───────────────────────────────────────────
+
+// ─── Customer Class Exchange Request ─────────────────────────────────────────
+//
+// Request-only workflow. Creating a request MUST NOT cancel bookings,
+// consume entitlement units, or reserve the target seat.
+// Actual exchange execution remains an administrator-only action.
+//
+model ClassExchangeRequest {
+  id               String  @id @default(cuid())
+  userId           String
+  userMembershipId String
+  targetScheduleId String
+  note             String? @db.Text
+
+  // pending | approved | rejected | cancelled
+  status String @default("pending")
+
+  // Allows one pending request per membership while still permitting
+  // unlimited sequential exchanges after each request is reviewed.
+  pendingKey String? @unique
+
+  requestedAt      DateTime  @default(now())
+  reviewedAt       DateTime?
+  reviewedByUserId String?
+  rejectionReason  String?   @db.Text
+
+  // Audit snapshot of the two ordinary future bookings explicitly
+  // selected by the administrator when approving this request.
+  sourceBookingIds String? @db.LongText
+
+  archivedAt       DateTime?
+  archivedByUserId String?
+
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userMembership UserMembership @relation(fields: [userMembershipId], references: [id], onDelete: Cascade)
+  targetSchedule Schedule       @relation(fields: [targetScheduleId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userMembershipId])
+  @@index([targetScheduleId])
+  @@index([status])
+  @@index([requestedAt])
+}
+
+model BookingRescheduleRequest {
+  id               String @id @default(cuid())
+  bookingId        String
+  targetScheduleId String
+
+  // upcoming_change | past_absence_makeup
+  requestType   String  @default("upcoming_change")
+  absenceReason String? @db.Text
+
+  // pending | approved | rejected | cancelled
+  status String @default("pending")
+
+  // Contains bookingId only while status=pending.
+  // Null after review so the same booking may create another request later.
+  pendingKey String? @unique
+
+  requestedAt      DateTime  @default(now())
+  reviewedAt       DateTime?
+  reviewedByUserId String?
+  rejectionReason  String?   @db.Text
+  archivedAt       DateTime?
+  archivedByUserId String?
+
+  booking        Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  targetSchedule Schedule @relation(fields: [targetScheduleId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId])
+  @@index([targetScheduleId])
+  @@index([status])
+  @@index([requestedAt])
 }
 
 // ─── Product & Order ──────────────────────────────────────────────────────────
 
 model Product {
-  id          String  @id @default(cuid())
-  name        String
-  nameEn      String?
-  description String? @db.Text
-  descriptionEn String? @db.Text
-  price       Float
-  oldPrice    Float?
-  category    String
-  stock       Int     @default(0)
-  reservedStock Int   @default(0) // Phase 2C: pending order reservations
-  sku         String? @unique
-  barcode     String?
-  unitLabel   String?
-  trackInventory   Boolean @default(true)
-  averageCost      Float   @default(0)
-  lastPurchaseCost Float   @default(0)
-  costPrice        Float?  // buying/purchase price — admin only, never sent to client
-  reorderLevel     Int     @default(0)
-  images      String? @db.Text // JSON array of URLs
-  sizes       String? @db.Text // JSON array (legacy, kept for compatibility)
-  colors      String? @db.Text // JSON array (legacy, kept for compatibility)
-  faqs            String? @db.Text // JSON: [{q,a}]
-  whoShouldBuy    String? @db.Text // JSON: [{title,desc,suitable}]
-  importantInfo   String? @db.Text
-  disclaimer      String? @db.Text
-  editorialReview String? @db.Text
-  isActive        Boolean @default(true)
-  isFeatured      Boolean @default(false)
-  isNew           Boolean @default(false)
-  isBestSeller    Boolean @default(false)
-  isSpecialOffer  Boolean @default(false)
-  vatEnabled      Boolean @default(false)
+  id               String    @id @default(cuid())
+  name             String
+  nameEn           String?
+  description      String?   @db.Text
+  descriptionEn    String?   @db.Text
+  price            Float
+  oldPrice         Float?
+  category         String
+  stock            Int       @default(0)
+  reservedStock    Int       @default(0) // Phase 2C: pending order reservations
+  sku              String?   @unique
+  barcode          String?
+  unitLabel        String?
+  trackInventory   Boolean   @default(true)
+  averageCost      Float     @default(0)
+  lastPurchaseCost Float     @default(0)
+  costPrice        Float? // buying/purchase price — admin only, never sent to client
+  reorderLevel     Int       @default(0)
+  images           String?   @db.Text // JSON array of URLs
+  sizes            String?   @db.Text // JSON array (legacy, kept for compatibility)
+  colors           String?   @db.Text // JSON array (legacy, kept for compatibility)
+  faqs             String?   @db.Text // JSON: [{q,a}]
+  whoShouldBuy     String?   @db.Text // JSON: [{title,desc,suitable}]
+  importantInfo    String?   @db.Text
+  disclaimer       String?   @db.Text
+  editorialReview  String?   @db.Text
+  isActive         Boolean   @default(true)
+  isFeatured       Boolean   @default(false)
+  isNew            Boolean   @default(false)
+  isBestSeller     Boolean   @default(false)
+  isSpecialOffer   Boolean   @default(false)
+  vatEnabled       Boolean   @default(false)
   // Supplier (admin-only — never exposed to customers)
-  supplierId      String?
-  displayPriority Int       @default(0) // Higher number = appears first
-  deletedAt       DateTime? // soft delete
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt @default(now())
+  supplierId       String?
+  displayPriority  Int       @default(0) // Higher number = appears first
+  deletedAt        DateTime? // soft delete
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @default(now()) @updatedAt
 
-  supplier     Supplier?              @relation(fields: [supplierId], references: [id], onDelete: SetNull)
-  orderItems   OrderItem[]
-  reviews      ProductReview[]
-  variants     ProductVariant[]
-  stockMovements      InventoryMovement[]    @relation("InventoryProduct")
-  receiptItems        InventoryReceiptItem[] @relation("InventoryReceiptProduct")
+  supplier             Supplier?              @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  orderItems           OrderItem[]
+  reviews              ProductReview[]
+  variants             ProductVariant[]
+  stockMovements       InventoryMovement[]    @relation("InventoryProduct")
+  receiptItems         InventoryReceiptItem[] @relation("InventoryReceiptProduct")
+  purchaseInvoiceItems PurchaseInvoiceItem[]  @relation("PurchaseInvoiceItemProduct")
+  consignmentLots      ConsignmentLot[]
+  consignmentMovements ConsignmentMovement[]
 
   @@index([supplierId])
   @@index([category, isActive])
@@ -517,45 +1837,46 @@ model ProductReview {
 }
 
 model Order {
-  id            String   @id @default(cuid())
-  userId        String
-  businessUnit  String   @default("store") // store | club
-  subtotal      Float    @default(0)
-  discountTotal Float    @default(0)
-  shippingFee   Float    @default(0)
-  total         Float
+  id                    String    @id @default(cuid())
+  userId                String
+  businessUnit          String    @default("store") // store | club
+  subtotal              Float     @default(0)
+  discountTotal         Float     @default(0)
+  shippingFee           Float     @default(0)
+  total                 Float
   // pending | confirmed | preparing | ready_to_ship | shipped_to_courier | in_transit | delivered | cancelled | returned
-  status        String   @default("pending")
-  deliveryOptionId String?
-  deliveryLabel String?
+  status                String    @default("pending")
+  deliveryOptionId      String?
+  deliveryLabel         String?
   estimatedDeliveryDays Int?
-  isClubPickup  Boolean  @default(false)
-  recipientName String?
-  recipientPhone String?
-  governorate   String?  // Egyptian governorate
-  city          String?
-  address       String?
-  notes         String?  @db.Text
-  adminNotes    String?  @db.Text // internal — never sent to customer
-  paymentMethod String   @default("card")
+  isClubPickup          Boolean   @default(false)
+  recipientName         String?
+  recipientPhone        String?
+  governorate           String? // Egyptian governorate
+  city                  String?
+  address               String?
+  notes                 String?   @db.Text
+  adminNotes            String?   @db.Text // internal — never sent to customer
+  paymentMethod         String    @default("card")
   // Delivery company link (replaces simple deliveryOption for full tracking)
-  deliveryCompanyId String?
-  trackingNumber    String?
-  inventoryDeducted Boolean  @default(false) // guard: stock deducted once only
-  confirmedAt   DateTime? // Immutable: set once when sale completed (inventory converted + payment confirmed)
-  cancelledAt   DateTime?
-  deliveredAt   DateTime?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt @default(now())
+  deliveryCompanyId     String?
+  trackingNumber        String?
+  inventoryDeducted     Boolean   @default(false) // guard: stock deducted once only
+  confirmedAt           DateTime? // Immutable: set once when sale completed (inventory converted + payment confirmed)
+  cancelledAt           DateTime?
+  deliveredAt           DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @default(now()) @updatedAt
 
-  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  deliveryOption DeliveryOption? @relation(fields: [deliveryOptionId], references: [id], onDelete: SetNull)
-  deliveryCompany DeliveryCompany? @relation("OrderDeliveryCompany", fields: [deliveryCompanyId], references: [id], onDelete: SetNull)
-  items          OrderItem[]
-  paymentTransactions PaymentTransaction[]
-  statusHistory  OrderStatusHistory[]
-  storeCampaignClaims StoreGiftCampaignClaim[] @relation("OrderGiftClaims")
-  freeGiftsSession    StoreFreeGiftsSession?   @relation("OrderFreeGiftsSession")
+  user                 User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deliveryOption       DeliveryOption?            @relation(fields: [deliveryOptionId], references: [id], onDelete: SetNull)
+  deliveryCompany      DeliveryCompany?           @relation("OrderDeliveryCompany", fields: [deliveryCompanyId], references: [id], onDelete: SetNull)
+  items                OrderItem[]
+  paymentTransactions  PaymentTransaction[]
+  statusHistory        OrderStatusHistory[]
+  storeCampaignClaims  StoreGiftCampaignClaim[]   @relation("OrderGiftClaims")
+  freeGiftsSession     StoreFreeGiftsSession?     @relation("OrderFreeGiftsSession")
+  inventoryAllocations OrderInventoryAllocation[]
 
   @@index([status, createdAt])
   @@index([userId, createdAt])
@@ -570,17 +1891,42 @@ model OrderItem {
   variantId String? // FK to ProductVariant if applicable
   quantity  Int
   price     Float
-  costPrice Float?  // snapshot of cost at time of order (admin only)
+  costPrice Float? // snapshot of cost at time of order (admin only)
   vatAmount Float   @default(0)
   size      String?
   color     String?
 
-  order   Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product Product        @relation(fields: [productId], references: [id])
-  variant ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  order       Order                      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product     Product                    @relation(fields: [productId], references: [id])
+  variant     ProductVariant?            @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  allocations OrderInventoryAllocation[]
 
   @@index([orderId])
   @@index([productId])
+}
+
+model OrderInventoryAllocation {
+  id               String   @id @default(cuid())
+  orderId          String
+  orderItemId      String
+  // owned | consignment
+  source           String
+  consignmentLotId String?
+  quantity         Int
+  unitCost         Decimal? @db.Decimal(18, 2)
+  // reserved | sold | released | returned
+  status           String   @default("reserved")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  order          Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderItem      OrderItem       @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  consignmentLot ConsignmentLot? @relation(fields: [consignmentLotId], references: [id], onDelete: Restrict)
+
+  @@index([orderId, status])
+  @@index([orderItemId, status])
+  @@index([consignmentLotId, status])
+  @@index([source, status])
 }
 
 model PaymentTransaction {
@@ -590,9 +1936,9 @@ model PaymentTransaction {
   membershipId      String?
   offerId           String?
   referenceCode     String?   @unique
-  purpose           String    // order | membership | wallet_topup
+  purpose           String // order | membership | wallet_topup
   businessUnit      String    @default("store") // store | club
-  provider          String    // manual | paymob | paytabs | custom
+  provider          String // manual | paymob | paytabs | custom
   providerReference String?   @unique
   externalReference String?   @unique
   amount            Float
@@ -611,9 +1957,10 @@ model PaymentTransaction {
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
-  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  order           Order?           @relation(fields: [orderId], references: [id], onDelete: SetNull)
-  analyticsEvents AnalyticsEvent[]
+  user                   User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  order                  Order?                  @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  analyticsEvents        AnalyticsEvent[]
+  friendOfferParticipant FriendOfferParticipant?
 
   @@index([userId, status])
   @@index([orderId])
@@ -641,7 +1988,7 @@ model WalletTransaction {
   id          String   @id @default(cuid())
   walletId    String
   amount      Float
-  type        String   // credit | debit
+  type        String // credit | debit
   description String?
   createdAt   DateTime @default(now())
 
@@ -651,10 +1998,10 @@ model WalletTransaction {
 // ─── Rewards ──────────────────────────────────────────────────────────────────
 
 model RewardPoints {
-  id      String @id @default(cuid())
-  userId  String @unique
-  points  Int    @default(0)
-  tier    String @default("bronze") // bronze | silver | gold | platinum
+  id     String @id @default(cuid())
+  userId String @unique
+  points Int    @default(0)
+  tier   String @default("bronze") // bronze | silver | gold | platinum
 
   user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   history RewardHistory[]
@@ -673,12 +2020,12 @@ model RewardHistory {
 // ─── Referral ─────────────────────────────────────────────────────────────────
 
 model Referral {
-  id                       String @id @default(cuid())
-  userId                   String @unique
-  code                     String @unique
-  totalEarned              Float  @default(0)
-  referredCount            Int    @default(0)
-  subscriptionActivatedCount Int  @default(0)
+  id                         String @id @default(cuid())
+  userId                     String @unique
+  code                       String @unique
+  totalEarned                Float  @default(0)
+  referredCount              Int    @default(0)
+  subscriptionActivatedCount Int    @default(0)
 
   user   User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   usages ReferralUsage[]
@@ -689,7 +2036,7 @@ model ReferralUsage {
   referralId              String
   referredUserId          String    @unique
   rewardGiven             Boolean   @default(false)
-  rewardType              String?   // points | wallet
+  rewardType              String? // points | wallet
   rewardValue             Float?
   subscriptionActivated   Boolean   @default(false)
   subscriptionActivatedAt DateTime?
@@ -701,20 +2048,20 @@ model ReferralUsage {
 // ─── Discount Code ─────────────────────────────────────────────────────────────
 
 model DiscountCode {
-  id            String   @id @default(cuid())
-  code          String   @unique
+  id            String    @id @default(cuid())
+  code          String    @unique
   description   String?
   descriptionEn String?
-  type          String   @default("percentage") // percentage | fixed
+  type          String    @default("percentage") // percentage | fixed
   value         Float
   minAmount     Float?
   maxUses       Int?
-  usedCount     Int      @default(0)
-  scope         String   @default("all") // subscriptions | store | all
+  usedCount     Int       @default(0)
+  scope         String    @default("all") // subscriptions | store | all
   expiresAt     DateTime?
-  isActive      Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   usages DiscountCodeUsage[]
 }
@@ -737,7 +2084,7 @@ model StoreGiftCampaignClaim {
   userId          String
   storeOrderId    String?
   campaignKey     String    @default("default")
-  rewardType      String    // wallet | points | discount | free_product | free_shipping
+  rewardType      String // wallet | points | discount | free_product | free_shipping
   rewardValue     Float?
   rewardProductId String?
   // pending | earned | claimed | cancelled
@@ -750,32 +2097,32 @@ model StoreGiftCampaignClaim {
   user       User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   storeOrder Order? @relation("OrderGiftClaims", fields: [storeOrderId], references: [id], onDelete: SetNull)
 
+  @@unique([storeOrderId], map: "StoreGiftCampaignClaim_storeOrderId_key")
   @@index([userId])
-  @@index([storeOrderId])
 }
 
 // ─── Store Free Gifts Game Session ────────────────────────────────────────────
 
 model StoreFreeGiftsSession {
-  id               String    @id @default(cuid())
-  token            String    @unique @default(cuid())
-  userId           String?
-  step             Int       @default(1) // 1=spin 2=cards 3=products
-  spinsDone        Int       @default(0)
-  spinRewardType   String?
-  spinRewardValue  Float?
-  spinSlotIndex    Int?
-  spinLabelAr      String?
-  cardsDone        Int       @default(0)
-  cardsData        String    @db.Text // JSON: [{type,value,labelAr,revealed}]
-  selectedProductIds String  @db.Text // JSON string[]
-  giftSlotsCount   Int       @default(3)
-  status           String    @default("active") // active | confirmed | expired
-  expiresAt        DateTime?
-  confirmedAt      DateTime?
-  storeOrderId     String?   @unique
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  id                 String    @id @default(cuid())
+  token              String    @unique @default(cuid())
+  userId             String?
+  step               Int       @default(1) // 1=spin 2=cards 3=products
+  spinsDone          Int       @default(0)
+  spinRewardType     String?
+  spinRewardValue    Float?
+  spinSlotIndex      Int?
+  spinLabelAr        String?
+  cardsDone          Int       @default(0)
+  cardsData          String    @db.Text // JSON: [{type,value,labelAr,revealed}]
+  selectedProductIds String    @db.Text // JSON string[]
+  giftSlotsCount     Int       @default(3)
+  status             String    @default("active") // active | confirmed | expired
+  expiresAt          DateTime?
+  confirmedAt        DateTime?
+  storeOrderId       String?   @unique
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   user       User?  @relation(fields: [userId], references: [id], onDelete: Cascade)
   storeOrder Order? @relation("OrderFreeGiftsSession", fields: [storeOrderId], references: [id], onDelete: SetNull)
@@ -801,49 +2148,53 @@ model Notification {
 // ─── Offer ────────────────────────────────────────────────────────────────────
 
 model Offer {
-  id                 String      @id @default(cuid())
-  title              String
-  titleEn            String?
-  type               String      @default("percentage") // percentage | fixed | special
-  discount           Float
-  description        String?     @db.Text
-  descriptionEn      String?     @db.Text
-  appliesTo          String? @db.Text
-  appliesToEn        String? @db.Text
-  expiresAt          DateTime
-  isActive           Boolean     @default(true)
-  membershipId       String?
-  specialPrice       Float?
-  maxSubscribers     Int?
-  currentSubscribers Int         @default(0)
-  image              String?
-  showOnHome              Boolean     @default(false)
-  showMaxSubscribers      Boolean     @default(true)
-  showCurrentSubscribers  Boolean     @default(true)
-  sessionsCount           Int?
-  durationDays            Int?
-  priceBefore             Float?
-  features                String?     @db.Text // JSON array of feature strings (Arabic)
-  featuresEn              String?     @db.Text // JSON array of feature strings (English)
+  id                     String   @id @default(cuid())
+  title                  String
+  titleEn                String?
+  type                   String   @default("percentage") // percentage | fixed | special
+  discount               Float
+  description            String?  @db.Text
+  descriptionEn          String?  @db.Text
+  appliesTo              String?  @db.Text
+  appliesToEn            String?  @db.Text
+  expiresAt              DateTime
+  isActive               Boolean  @default(true)
+  membershipId           String?
+  specialPrice           Float?
+  maxSubscribers         Int?
+  currentSubscribers     Int      @default(0)
+  image                  String?
+  showOnHome             Boolean  @default(false)
+  showMaxSubscribers     Boolean  @default(true)
+  showCurrentSubscribers Boolean  @default(true)
+  sessionsCount          Int?
+  durationDays           Int?
+  priceBefore            Float?
+  features               String?  @db.Text // JSON array of feature strings (Arabic)
+  featuresEn             String?  @db.Text // JSON array of feature strings (English)
 
-  membership Membership? @relation(fields: [membershipId], references: [id])
-  userMemberships UserMembership[]
+  membership        Membership?             @relation(fields: [membershipId], references: [id])
+  userMemberships   UserMembership[]
   allowedClassTypes OfferAllowedClassType[]
-  allowedClasses OfferAllowedClass[]
+  allowedClasses    OfferAllowedClass[]
+  friendOfferConfig FriendOfferConfig?
 }
 
 // Class types are currently represented by Class.type (there is no ClassType
 // catalogue model). Store the normalized type key here so offers can be edited
 // independently without changing the existing membership class configuration.
 model OfferAllowedClassType {
-  id        String @id @default(cuid())
-  offerId   String
-  classType String
+  id          String  @id @default(cuid())
+  offerId     String
+  classType   String
+  classTypeId String?
 
-  offer Offer @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  offer   Offer      @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  typeRef ClassType? @relation(fields: [classTypeId], references: [id], onDelete: SetNull)
 
   @@unique([offerId, classType])
   @@index([classType])
+  @@index([classTypeId])
 }
 
 // Direct relationship between Offer and specific Class instances
@@ -876,23 +2227,23 @@ model ProductCategory {
 }
 
 model ClubGoal {
-  id          String   @id @default(cuid())
-  name        String
-  nameEn      String?
-  slug        String   @unique
-  description String?  @db.Text
-  descriptionEn String? @db.Text
-  image       String?
-  kind        String   @default("standard") // standard | games_root | games_adults | games_children
-  parentId    String?
-  sortOrder   Int      @default(0)
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            String   @id @default(cuid())
+  name          String
+  nameEn        String?
+  slug          String   @unique
+  description   String?  @db.Text
+  descriptionEn String?  @db.Text
+  image         String?
+  kind          String   @default("standard") // standard | games_root | games_adults | games_children
+  parentId      String?
+  sortOrder     Int      @default(0)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  parent      ClubGoal?         @relation("GoalHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
-  children    ClubGoal[]        @relation("GoalHierarchy")
-  classRules  GoalClassRule[]
+  parent          ClubGoal?        @relation("GoalHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children        ClubGoal[]       @relation("GoalHierarchy")
+  classRules      GoalClassRule[]
   membershipGoals MembershipGoal[]
 }
 
@@ -910,17 +2261,17 @@ model MembershipGoal {
 }
 
 model HealthQuestion {
-  id           String   @id @default(cuid())
-  title        String
-  titleEn      String?
-  slug         String   @unique
-  prompt       String
-  promptEn     String?  @db.Text
-  isActive     Boolean  @default(true)
-  allowReason  Boolean  @default(false) // show reason text field when client answers Yes
-  sortOrder    Int      @default(0)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id          String   @id @default(cuid())
+  title       String
+  titleEn     String?
+  slug        String   @unique
+  prompt      String
+  promptEn    String?  @db.Text
+  isActive    Boolean  @default(true)
+  allowReason Boolean  @default(false) // show reason text field when client answers Yes
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   restrictions HealthQuestionRestriction[]
   responses    HealthResponse[]
@@ -930,7 +2281,7 @@ model HealthResponse {
   id         String   @id @default(cuid())
   userId     String
   questionId String
-  answer     Boolean  // true = yes, false = no
+  answer     Boolean // true = yes, false = no
   reason     String?  @db.Text
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
@@ -955,18 +2306,17 @@ model HealthQuestionRestriction {
 }
 
 model GoalClassRule {
-  id         String   @id @default(cuid())
-  goalId     String
-  classType  String
-  rule       String   @default("recommended") // recommended | blocked | optional
-  notes      String?  @db.Text
-  createdAt  DateTime @default(now())
+  id        String   @id @default(cuid())
+  goalId    String
+  classType String
+  rule      String   @default("recommended") // recommended | blocked | optional
+  notes     String?  @db.Text
+  createdAt DateTime @default(now())
 
   goal ClubGoal @relation(fields: [goalId], references: [id], onDelete: Cascade)
 
   @@unique([goalId, classType, rule])
 }
-
 
 model DeliveryOption {
   id                 String   @id @default(cuid())
@@ -988,40 +2338,60 @@ model DeliveryOption {
 }
 
 model InventoryReceipt {
-  id              String   @id @default(cuid())
-  referenceNumber String?  @unique
-  invoiceNumber   String?  // supplier's invoice number
-  invoiceDate     DateTime? // date on the supplier's invoice
-  supplierId      String?  // FK to Supplier model (replaces free-text supplierName)
-  supplierName    String?  // kept for legacy / manual entry
-  notes           String?  @db.Text
-  receivedAt      DateTime @default(now())
-  status          String   @default("posted") // draft | posted | cancelled
-  totalCost       Float    @default(0)
+  id                String    @id @default(cuid())
+  referenceNumber   String?   @unique
+  invoiceNumber     String? // supplier's invoice number
+  invoiceDate       DateTime? // date on the supplier's invoice
+  supplierId        String? // FK to Supplier model (replaces free-text supplierName)
+  supplierName      String? // kept for legacy / manual entry
+  notes             String?   @db.Text
+  receivedAt        DateTime  @default(now())
+  status            String    @default("posted") // draft | posted | cancelled
+  totalCost         Float     @default(0)
   performedByUserId String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  purchaseInvoiceId String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
-  supplier    Supplier?              @relation(fields: [supplierId], references: [id], onDelete: SetNull)
-  performedBy User?                  @relation("InventoryReceiptPerformer", fields: [performedByUserId], references: [id], onDelete: SetNull)
-  items       InventoryReceiptItem[]
+  supplier           Supplier?                            @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  performedBy        User?                                @relation("InventoryReceiptPerformer", fields: [performedByUserId], references: [id], onDelete: SetNull)
+  purchaseInvoice    PurchaseInvoice?                     @relation(fields: [purchaseInvoiceId], references: [id], onDelete: Restrict)
+  items              InventoryReceiptItem[]
+  invoiceLinkHistory InventoryReceiptInvoiceLinkHistory[]
 
   @@index([supplierId])
+  @@index([purchaseInvoiceId])
   @@index([status, createdAt])
 }
 
+model InventoryReceiptInvoiceLinkHistory {
+  id                    String   @id @default(cuid())
+  receiptId             String
+  fromPurchaseInvoiceId String?
+  toPurchaseInvoiceId   String
+  actorUserId           String?
+  reason                String   @db.Text
+  createdAt             DateTime @default(now())
+
+  receipt InventoryReceipt @relation(fields: [receiptId], references: [id], onDelete: Restrict)
+
+  @@index([receiptId, createdAt])
+  @@index([fromPurchaseInvoiceId])
+  @@index([toPurchaseInvoiceId])
+}
+
 model InventoryReceiptItem {
-  id         String   @id @default(cuid())
-  receiptId  String
-  productId  String
-  variantId  String?  // FK to ProductVariant if applicable
-  quantity   Int
-  unitCost   Float
-  totalCost  Float
+  id           String   @id @default(cuid())
+  receiptId    String
+  productId    String
+  variantId    String? // FK to ProductVariant if applicable
+  quantity     Int
+  unitCost     Float
+  totalCost    Float
   sellingPrice Float? // suggested selling price at time of purchase
-  sku        String?  // snapshot of SKU
-  notes      String?  @db.Text
-  createdAt  DateTime @default(now())
+  sku          String? // snapshot of SKU
+  notes        String?  @db.Text
+  createdAt    DateTime @default(now())
 
   receipt InventoryReceipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
   product Product          @relation("InventoryReceiptProduct", fields: [productId], references: [id], onDelete: Cascade)
@@ -1034,16 +2404,16 @@ model InventoryReceiptItem {
 model InventoryMovement {
   id                String   @id @default(cuid())
   productId         String
-  variantId         String?  // FK to ProductVariant (optional)
+  variantId         String? // FK to ProductVariant (optional)
   // purchase | sale | adjustment | return | damage | order_deduction | order_restore
   type              String
-  quantityChange    Int      // positive = in, negative = out
+  quantityChange    Int // positive = in, negative = out
   quantityBefore    Int
   quantityAfter     Int
   unitCost          Float?
   averageCostBefore Float?
   averageCostAfter  Float?
-  referenceType     String?  // Order | InventoryReceipt | manual
+  referenceType     String? // Order | InventoryReceipt | manual
   referenceId       String?
   reason            String?  @db.Text // mandatory for adjustment/damage
   performedByUserId String?
@@ -1110,22 +2480,22 @@ model Complaint {
 }
 
 model ChatSession {
-  id                    String   @id @default(cuid())
-  userId                String?
-  visitorName           String?
-  visitorPhone          String?
-  status                String   @default("open") // open | live | resolved
-  mode                  String   @default("bot") // bot | live
-  context               String?  @db.LongText // JSON string for questionnaire state
-  assignedToId          String?
+  id                      String   @id @default(cuid())
+  userId                  String?
+  visitorName             String?
+  visitorPhone            String?
+  status                  String   @default("open") // open | live | resolved
+  mode                    String   @default("bot") // bot | live
+  context                 String?  @db.LongText // JSON string for questionnaire state
+  assignedToId            String?
   recommendedMembershipId String?
-  lastMessageAt         DateTime @default(now())
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  lastMessageAt           DateTime @default(now())
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
 
-  assignedTo            User?       @relation("AssignedSupport", fields: [assignedToId], references: [id])
-  user                  User?       @relation("CoachChatOwner", fields: [userId], references: [id], onDelete: SetNull)
-  recommendedMembership Membership? @relation(fields: [recommendedMembershipId], references: [id])
+  assignedTo            User?                  @relation("AssignedSupport", fields: [assignedToId], references: [id])
+  user                  User?                  @relation("CoachChatOwner", fields: [userId], references: [id], onDelete: SetNull)
+  recommendedMembership Membership?            @relation(fields: [recommendedMembershipId], references: [id])
   messages              ChatMessage[]
   voiceRealtimeSessions VoiceRealtimeSession[]
 
@@ -1135,7 +2505,7 @@ model ChatSession {
 model ChatMessage {
   id         String   @id @default(cuid())
   sessionId  String
-  senderType String   // user | bot | admin | staff | system
+  senderType String // user | bot | admin | staff | system
   senderName String?
   content    String   @db.Text
   metadata   String?  @db.LongText
@@ -1173,11 +2543,11 @@ model PushCampaign {
   title         String
   body          String   @db.Text
   url           String?
-  audience      String   @default("all")   // all | active | inactive | selected
-  selectedUsers String?  @db.LongText      // JSON array of user IDs
+  audience      String   @default("all") // all | active | inactive | selected
+  selectedUsers String?  @db.LongText // JSON array of user IDs
   sentCount     Int      @default(0)
   failedCount   Int      @default(0)
-  status        String   @default("done")  // done | partial | failed
+  status        String   @default("done") // done | partial | failed
   createdAt     DateTime @default(now())
   createdBy     String?
 
@@ -1196,34 +2566,34 @@ model SiteContent {
 }
 
 model ChatKnowledgeEntry {
-  id        String   @id @default(cuid())
-  title     String
-  category  String   @default("general")
-  keywords  String
-  answer    String
-  priority  Int      @default(0)
-  isActive  Boolean  @default(true)
+  id                String                 @id @default(cuid())
+  title             String
+  category          String                 @default("general")
+  keywords          String
+  answer            String
+  priority          Int                    @default(0)
+  isActive          Boolean                @default(true)
   // Optional governance fields. Defaults preserve every existing entry's behavior.
-  isMandatory       Boolean   @default(false)
-  allowParaphrasing Boolean   @default(true)
+  isMandatory       Boolean                @default(false)
+  allowParaphrasing Boolean                @default(true)
   validFrom         DateTime?
   validUntil        DateTime?
   lastReviewedAt    DateTime?
-  sourceType        String    @default("admin")
-  status            String    @default("published")
-  canonicalQuestion String?   @db.Text
-  language          String    @default("ar") @db.VarChar(12)
+  sourceType        String                 @default("admin")
+  status            String                 @default("published")
+  canonicalQuestion String?                @db.Text
+  language          String                 @default("ar") @db.VarChar(12)
   privacyClass      KnowledgePrivacyClass?
   answerSource      KnowledgeAnswerSource?
-  sourceReference   String?   @db.VarChar(500)
-  sourceVersion     String?   @db.VarChar(191)
+  sourceReference   String?                @db.VarChar(500)
+  sourceVersion     String?                @db.VarChar(191)
   confidence        Float?
-  approved          Boolean   @default(false)
+  approved          Boolean                @default(false)
   expiresAt         DateTime?
   lastUsedAt        DateTime?
-  usageCount        Int       @default(0)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  usageCount        Int                    @default(0)
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
 
   aliases ChatKnowledgeAlias[]
 
@@ -1257,14 +2627,14 @@ model CoachKnowledgeSourceVersion {
 }
 
 model VoiceMonthlyQuota {
-  id                  String   @id @default(cuid())
-  userId              String
-  periodKey           String   @db.Char(7)
-  entitlementSeconds  Int
-  usedSeconds         Int      @default(0)
-  reservedSeconds     Int      @default(0)
-  updatedAt           DateTime @updatedAt
-  createdAt           DateTime @default(now())
+  id                 String   @id @default(cuid())
+  userId             String
+  periodKey          String   @db.Char(7)
+  entitlementSeconds Int
+  usedSeconds        Int      @default(0)
+  reservedSeconds    Int      @default(0)
+  updatedAt          DateTime @updatedAt
+  createdAt          DateTime @default(now())
 
   user     User                   @relation("VoiceQuotaUser", fields: [userId], references: [id], onDelete: Cascade)
   sessions VoiceRealtimeSession[]
@@ -1274,24 +2644,24 @@ model VoiceMonthlyQuota {
 }
 
 model VoiceRealtimeSession {
-  id                  String                 @id @default(cuid())
-  voiceSessionId      String                 @unique @db.Char(64)
-  userId              String
-  chatSessionId       String?
-  quotaId             String
-  startedAt           DateTime               @default(now())
-  connectedAt         DateTime?
-  lastHeartbeatAt     DateTime?
-  lastActivityAt      DateTime?
-  billingCursorAt     DateTime?
-  expiresAt           DateTime
-  finalizedAt         DateTime?
-  billableSeconds     Int                    @default(0)
-  reservedSeconds     Int
-  status              VoiceSessionStatus    @default(active)
-  terminationReason   VoiceTerminationReason?
-  createdAt           DateTime               @default(now())
-  updatedAt           DateTime               @updatedAt
+  id                String                  @id @default(cuid())
+  voiceSessionId    String                  @unique @db.Char(64)
+  userId            String
+  chatSessionId     String?
+  quotaId           String
+  startedAt         DateTime                @default(now())
+  connectedAt       DateTime?
+  lastHeartbeatAt   DateTime?
+  lastActivityAt    DateTime?
+  billingCursorAt   DateTime?
+  expiresAt         DateTime
+  finalizedAt       DateTime?
+  billableSeconds   Int                     @default(0)
+  reservedSeconds   Int
+  status            VoiceSessionStatus      @default(active)
+  terminationReason VoiceTerminationReason?
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
 
   user        User              @relation("VoiceSessionUser", fields: [userId], references: [id], onDelete: Cascade)
   chatSession ChatSession?      @relation(fields: [chatSessionId], references: [id], onDelete: SetNull)
@@ -1310,12 +2680,12 @@ model CoachProfile {
   id                  String    @id @default(cuid())
   userId              String?   @unique
   guestSessionId      String?   @unique
-  primaryGoal         String?   // weight-loss | muscle-gain | toning | general-fitness
-  trainingLevel       String?   // beginner | intermediate | advanced
-  preferredDays       Int?      // weekly sessions preference
-  preferredClassTypes String? @db.Text  // JSON array of class type strings
+  primaryGoal         String? // weight-loss | muscle-gain | toning | general-fitness
+  trainingLevel       String? // beginner | intermediate | advanced
+  preferredDays       Int? // weekly sessions preference
+  preferredClassTypes String?   @db.Text // JSON array of class type strings
   injuries            String?   @db.Text
-  nutritionStyle      String?   // poor | average | good
+  nutritionStyle      String? // poor | average | good
   targetWeight        Float?
   currentWeight       Float?
   height              Float?
@@ -1326,8 +2696,8 @@ model CoachProfile {
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
-  user      User?           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  checkIns  CoachCheckIn[]
+  user     User?          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  checkIns CoachCheckIn[]
 }
 
 model CoachCheckIn {
@@ -1335,8 +2705,8 @@ model CoachCheckIn {
   coachProfileId String
   weight         Float?
   waist          Float?
-  energyLevel    Int?     // 1-5 scale
-  adherenceScore Int?     // 0-100 (% of planned sessions completed)
+  energyLevel    Int? // 1-5 scale
+  adherenceScore Int? // 0-100 (% of planned sessions completed)
   notes          String?  @db.Text
   createdAt      DateTime @default(now())
 
@@ -1344,23 +2714,23 @@ model CoachCheckIn {
 }
 
 model CoachEventLog {
-  id        String   @id @default(cuid())
-  sessionId String
-  intent    String
-  usedAI    Boolean  @default(false)
-  handoff   Boolean  @default(false)
-  outcome   String?  // food_check | class_suggested | membership_recommended | check_in | handoff | unknown
-  sourceType String? // live_site_data | mandatory_knowledge | knowledge_base | general_fitness | safe_fallback | mixed
-  toolNames  String? @db.Text // bounded, read-only tool names as JSON
-  durationMs Int?
-  fallbackUsed Boolean @default(false)
-  errorCode String?
-  createdAt DateTime @default(now())
+  id           String   @id @default(cuid())
+  sessionId    String
+  intent       String
+  usedAI       Boolean  @default(false)
+  handoff      Boolean  @default(false)
+  outcome      String? // food_check | class_suggested | membership_recommended | check_in | handoff | unknown
+  sourceType   String? // live_site_data | mandatory_knowledge | knowledge_base | general_fitness | safe_fallback | mixed
+  toolNames    String?  @db.Text // bounded, read-only tool names as JSON
+  durationMs   Int?
+  fallbackUsed Boolean  @default(false)
+  errorCode    String?
+  createdAt    DateTime @default(now())
 }
 
 model QuickReply {
   id        String   @id @default(cuid())
-  label     String   // short label shown as button
+  label     String // short label shown as button
   content   String   @db.Text // full reply text
   sortOrder Int      @default(0)
   createdAt DateTime @default(now())
@@ -1368,17 +2738,17 @@ model QuickReply {
 }
 
 model Testimonial {
-  id          String   @id @default(cuid())
-  userId      String
-  displayName String?
+  id            String   @id @default(cuid())
+  userId        String
+  displayName   String?
   displayNameEn String?
-  content     String
-  contentEn   String?  @db.Text
-  rating      Int      @default(5)
-  status      String   @default("pending") // pending | approved | rejected
-  adminNote   String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  content       String
+  contentEn     String?  @db.Text
+  rating        Int      @default(5)
+  status        String   @default("pending") // pending | approved | rejected
+  adminNote     String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
@@ -1392,11 +2762,11 @@ model TrainerDiscountCode {
   targetUserId  String
   discountType  String    @default("percentage") // percentage | fixed
   discountValue Float
-  maxDiscount   Float?    // cap in EGP for percentage type
+  maxDiscount   Float? // cap in EGP for percentage type
   note          String?
   isUsed        Boolean   @default(false)
   usedAt        DateTime?
-  monthYear     String    // "2026-04" — for monthly limit (4/month per trainer)
+  monthYear     String // "2026-04" — for monthly limit (4/month per trainer)
   createdAt     DateTime  @default(now())
 
   trainer    Trainer @relation(fields: [trainerId], references: [id], onDelete: Cascade)
@@ -1430,21 +2800,21 @@ model StaffDiscountCode {
 // ─── Private Session Applications ─────────────────────────────────────────────
 
 model PrivateSessionApplication {
-  id          String    @id @default(cuid())
-  userId      String
-  trainerId   String
-  type        String    @default("private") // private | mini_private
-  status      String    @default("pending") // pending | approved | rejected | paid | cancelled
+  id        String @id @default(cuid())
+  userId    String
+  trainerId String
+  type      String @default("private") // private | mini_private
+  status    String @default("pending") // pending | approved | rejected | paid | cancelled
 
   // Application form
-  goalsJson           String?  @db.Text      // JSON array of goals
-  injuries            String?  @db.Text
-  availability        String?  @db.Text      // JSON
-  notes               String?  @db.Text
-  applicationFormJson String?  @db.LongText  // Full 11-section application JSON
+  goalsJson           String? @db.Text // JSON array of goals
+  injuries            String? @db.Text
+  availability        String? @db.Text // JSON
+  notes               String? @db.Text
+  applicationFormJson String? @db.LongText // Full 11-section application JSON
 
   // Trainer response
-  trainerNote  String?  @db.Text
+  trainerNote  String? @db.Text
   trainerPrice Float?
 
   // Session terms (set at approval)
@@ -1452,8 +2822,8 @@ model PrivateSessionApplication {
   durationDays  Int?
 
   // Scheduling (set at approval; client selects one)
-  trainerSlots String?  @db.Text  // JSON: ["الأحد 10 صباحاً", "الاثنين 6 مساءً"]
-  selectedSlot String?            // Client-chosen slot text
+  trainerSlots String? @db.Text // JSON: ["الأحد 10 صباحاً", "الاثنين 6 مساءً"]
+  selectedSlot String? // Client-chosen slot text
 
   // Payment
   paymentTransactionId String?
@@ -1463,9 +2833,9 @@ model PrivateSessionApplication {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user    User    @relation("PrivateApplicationUser", fields: [userId], references: [id], onDelete: Cascade)
-  trainer Trainer @relation(fields: [trainerId], references: [id], onDelete: Cascade)
-  attendancePass AttendancePass?
+  user               User                @relation("PrivateApplicationUser", fields: [userId], references: [id], onDelete: Cascade)
+  trainer            Trainer             @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  attendancePass     AttendancePass?
   attendanceCheckIns AttendanceCheckIn[]
 
   @@index([userId])
@@ -1475,27 +2845,27 @@ model PrivateSessionApplication {
 // ─── Partner / Affiliate System ───────────────────────────────────────────────
 
 model Partner {
-  id               String   @id @default(cuid())
-  userId           String   @unique
-  name             String
-  nameEn           String?
-  category         String   // beauty_center | salon | pharmacy | clinic | physiotherapy | nutrition | nursery | education | clothing | other | spa | restaurant | sports | supplement | services
-  logoUrl          String?
-  websiteUrl       String?
-  contactPhone     String?
-  commissionRate   Float    @default(10)   // percentage or fixed EGP amount
-  commissionType   String   @default("percentage") // percentage | fixed
-  contractStartDate DateTime?
-  contractEndDate   DateTime?
-  referralDiscountRate Float?   // % gym discount client gets when signing up via partner referral link
-  memberBenefitCode String?  @unique // code gym members show at partner's location to get partner discount
-  memberBenefitRate Float?   // % discount at partner's business for active gym members
-  isActive         Boolean  @default(true)
-  showOnPublicPage Boolean  @default(true)
-  notes            String?  @db.Text
-  createdAt        DateTime @default(now())
-  managerId             String?  // ContractsManager.id who manages this partner
-  managerCommissionType String?  // "percentage_of_partner" | "fixed"
+  id                    String    @id @default(cuid())
+  userId                String    @unique
+  name                  String
+  nameEn                String?
+  category              String // beauty_center | salon | pharmacy | clinic | physiotherapy | nutrition | nursery | education | clothing | other | spa | restaurant | sports | supplement | services
+  logoUrl               String?
+  websiteUrl            String?
+  contactPhone          String?
+  commissionRate        Float     @default(10) // percentage or fixed EGP amount
+  commissionType        String    @default("percentage") // percentage | fixed
+  contractStartDate     DateTime?
+  contractEndDate       DateTime?
+  referralDiscountRate  Float? // % gym discount client gets when signing up via partner referral link
+  memberBenefitCode     String?   @unique // code gym members show at partner's location to get partner discount
+  memberBenefitRate     Float? // % discount at partner's business for active gym members
+  isActive              Boolean   @default(true)
+  showOnPublicPage      Boolean   @default(true)
+  notes                 String?   @db.Text
+  createdAt             DateTime  @default(now())
+  managerId             String? // ContractsManager.id who manages this partner
+  managerCommissionType String? // "percentage_of_partner" | "fixed"
   managerCommissionRate Float?
 
   user               User                       @relation("PartnerAccount", fields: [userId], references: [id], onDelete: Cascade)
@@ -1516,7 +2886,7 @@ model PartnerCode {
   code          String    @unique
   discountType  String    @default("percentage") // percentage | fixed
   discountValue Float
-  maxUsage      Int?      // null = unlimited
+  maxUsage      Int? // null = unlimited
   usageCount    Int       @default(0)
   isActive      Boolean   @default(true)
   expiresAt     DateTime?
@@ -1530,15 +2900,15 @@ model PartnerCode {
 }
 
 model PartnerAffiliateLink {
-  id           String   @id @default(cuid())
-  partnerId    String
-  token        String   @unique // short slug used in ?ref=TOKEN
-  label        String?
-  clickCount   Int      @default(0)
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
+  id         String   @id @default(cuid())
+  partnerId  String
+  token      String   @unique // short slug used in ?ref=TOKEN
+  label      String?
+  clickCount Int      @default(0)
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
 
-  partner         Partner        @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  partner         Partner          @relation(fields: [partnerId], references: [id], onDelete: Cascade)
   userMemberships UserMembership[]
 
   @@index([partnerId])
@@ -1555,8 +2925,8 @@ model PartnerCommission {
   notes            String?
   createdAt        DateTime  @default(now())
 
-  partner        Partner        @relation(fields: [partnerId], references: [id], onDelete: Cascade)
-  userMembership UserMembership @relation(fields: [userMembershipId], references: [id], onDelete: Cascade)
+  partner           Partner                   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  userMembership    UserMembership            @relation(fields: [userMembershipId], references: [id], onDelete: Cascade)
   managerCommission ManagerPartnerCommission?
 
   @@index([partnerId, status])
@@ -1602,23 +2972,23 @@ model SalesAgent {
   id                  String   @id @default(cuid())
   userId              String   @unique
   name                String
-  referralCode        String   @unique  // short code e.g. "FZ-ABCD1234"
+  referralCode        String   @unique // short code e.g. "FZ-ABCD1234"
   commissionRate      Float    @default(0)
   commissionType      String   @default("percentage") // percentage | fixed
   clientDiscountType  String   @default("percentage") // discount client gets on subscription
   clientDiscountValue Float    @default(0)
   maxClientDiscount   Float?
   isActive            Boolean  @default(true)
-  managerId           String?  // ContractsManager.id who created/manages this agent
+  managerId           String? // ContractsManager.id who created/manages this agent
   notes               String?  @db.Text
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
-  user         User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  manager      ContractsManager?      @relation("ManagedAgents", fields: [managerId], references: [id], onDelete: SetNull)
-  commissions  SalesAgentCommission[]
-  referrals    SalesAgentReferral[]
-  memberships  UserMembership[]
+  user        User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  manager     ContractsManager?      @relation("ManagedAgents", fields: [managerId], references: [id], onDelete: SetNull)
+  commissions SalesAgentCommission[]
+  referrals   SalesAgentReferral[]
+  memberships UserMembership[]
 
   @@index([referralCode])
   @@index([userId])
@@ -1626,12 +2996,12 @@ model SalesAgent {
 }
 
 model SalesAgentReferral {
-  id          String     @id @default(cuid())
+  id          String    @id @default(cuid())
   agentId     String
-  userId      String     @unique  // the referred user (one user can only be referred once)
-  convertedAt DateTime?           // when they first subscribed
-  totalSpent  Float      @default(0)
-  createdAt   DateTime   @default(now())
+  userId      String    @unique // the referred user (one user can only be referred once)
+  convertedAt DateTime? // when they first subscribed
+  totalSpent  Float     @default(0)
+  createdAt   DateTime  @default(now())
 
   agent SalesAgent @relation(fields: [agentId], references: [id], onDelete: Cascade)
   user  User       @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -1640,16 +3010,16 @@ model SalesAgentReferral {
 }
 
 model SalesAgentCommission {
-  id               String     @id @default(cuid())
+  id               String    @id @default(cuid())
   agentId          String
-  userMembershipId String     @unique
+  userMembershipId String    @unique
   amount           Float
-  status           String     @default("earned") // earned | settled
+  status           String    @default("earned") // earned | settled
   settledAt        DateTime?
-  createdAt        DateTime   @default(now())
+  createdAt        DateTime  @default(now())
 
-  agent             SalesAgent        @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  userMembership    UserMembership    @relation(fields: [userMembershipId], references: [id], onDelete: Cascade)
+  agent             SalesAgent         @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  userMembership    UserMembership     @relation(fields: [userMembershipId], references: [id], onDelete: Cascade)
   managerCommission ManagerCommission?
 
   @@index([agentId, status])
@@ -1669,9 +3039,9 @@ model ContractsManager {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  agents      SalesAgent[]        @relation("ManagedAgents")
-  commissions ManagerCommission[]
+  user               User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agents             SalesAgent[]               @relation("ManagedAgents")
+  commissions        ManagerCommission[]
   managedPartners    Partner[]                  @relation("ManagedPartners")
   partnerCommissions ManagerPartnerCommission[]
 
@@ -1681,8 +3051,8 @@ model ContractsManager {
 model ManagerCommission {
   id                String    @id @default(cuid())
   managerId         String
-  agentCommissionId String?   @unique   // linked to SalesAgentCommission when type=percentage_of_agents
-  userMembershipId  String?             // soft ref to UserMembership
+  agentCommissionId String?   @unique // linked to SalesAgentCommission when type=percentage_of_agents
+  userMembershipId  String? // soft ref to UserMembership
   amount            Float
   status            String    @default("earned") // earned | settled
   settledAt         DateTime?
@@ -1719,30 +3089,105 @@ model StaffCommission {
   staffReferralLinkId String?
   userMembershipId    String?   @unique
   amount              Float
-  status              String    @default("earned") // earned | settled
+  status              String    @default("earned") // earned | settled | ineligible
   settledAt           DateTime?
-  createdAt           DateTime  @default(now())
+
+  // Canonical settlement ownership for NEW settlements after C16 cutover.
+  //
+  // null/null = open commission or historical legacy settlement
+  // payroll/<PayrollRun.id> = settled through payroll
+  // payout/<CommissionPayout.id> = settled through commission payout
+  //
+  // The StaffCommission row itself is the serialization boundary.
+  // Payroll finalize and CommissionPayout settlement must lock this row
+  // before claiming it, preventing the same commission from being paid twice.
+  settlementOwnerType String?
+  settlementOwnerId   String?
+
+  // Immutable economic earning date.
+  // New commission rows snapshot UserMembership.activatedAt.
+  // Historical rows remain null unless independently evidenced.
+  earnedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  // Referral policy/classification snapshots.
+  // Nullable preserves all historical rows without backfill.
+  customerClassificationSnapshot    String?
+  previousMembershipIdSnapshot      String?
+  previousMembershipEndDateSnapshot DateTime?
+  gapDaysSnapshot                   Int?
+  referralPolicyIdSnapshot          String?
+  positionIdSnapshot                String?
+  positionCodeSnapshot              String?
+  commissionRateBpsSnapshot         Int?
+  commissionBaseMinorSnapshot       Int?
+  commissionAmountMinorSnapshot     Int?
 
   staffUser         User               @relation("StaffCommissions", fields: [staffUserId], references: [id], onDelete: Cascade)
-  staffReferralLink StaffReferralLink?  @relation(fields: [staffReferralLinkId], references: [id], onDelete: SetNull)
-  userMembership    UserMembership?     @relation(fields: [userMembershipId], references: [id], onDelete: SetNull)
+  staffReferralLink StaffReferralLink? @relation(fields: [staffReferralLinkId], references: [id], onDelete: SetNull)
+  userMembership    UserMembership?    @relation(fields: [userMembershipId], references: [id], onDelete: SetNull)
 
   @@index([staffUserId, status])
+  @@index([staffUserId, status, createdAt])
+  @@index([staffUserId, status, earnedAt])
+  @@index([settlementOwnerType, settlementOwnerId])
+  @@index([customerClassificationSnapshot, createdAt])
   @@index([createdAt])
+}
+
+model ReferralCommissionPolicy {
+  id String @id @default(cuid())
+
+  effectiveFrom DateTime  @db.Date
+  effectiveTo   DateTime? @db.Date
+
+  minimumShortTermGapDays Int
+  shortTermMaxMonths      Int
+  underMinimumGapBps      Int
+  shortTermBps            Int
+
+  isActive Boolean @default(true)
+  notes    String? @db.Text
+
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  rates ReferralCommissionPolicyRate[]
+
+  @@unique([effectiveFrom])
+  @@index([effectiveFrom, effectiveTo, isActive])
+}
+
+model ReferralCommissionPolicyRate {
+  id String @id @default(cuid())
+
+  policyId   String
+  positionId String
+
+  newCustomerBps Int
+  longTermBps    Int
+
+  policy   ReferralCommissionPolicy @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  position Position                 @relation(fields: [positionId], references: [id], onDelete: Restrict)
+
+  @@unique([policyId, positionId])
+  @@index([positionId])
 }
 
 // ─── Trainer Referral Links & Commissions ─────────────────────────────────────
 
 model TrainerReferralLink {
   id         String   @id @default(cuid())
-  userId     String   // trainer's user ID
+  userId     String // trainer's user ID
   token      String   @unique
   label      String?
   clickCount Int      @default(0)
   isActive   Boolean  @default(true)
   createdAt  DateTime @default(now())
 
-  user        User               @relation("TrainerLinks", fields: [userId], references: [id], onDelete: Cascade)
+  user        User                @relation("TrainerLinks", fields: [userId], references: [id], onDelete: Cascade)
   memberships UserMembership[]
   commissions TrainerCommission[]
 
@@ -1759,9 +3204,9 @@ model TrainerCommission {
   settledAt             DateTime?
   createdAt             DateTime  @default(now())
 
-  trainerUser         User                @relation("TrainerCommissions", fields: [trainerUserId], references: [id], onDelete: Cascade)
+  trainerUser         User                 @relation("TrainerCommissions", fields: [trainerUserId], references: [id], onDelete: Cascade)
   trainerReferralLink TrainerReferralLink? @relation(fields: [trainerReferralLinkId], references: [id], onDelete: SetNull)
-  userMembership      UserMembership?     @relation(fields: [userMembershipId], references: [id], onDelete: SetNull)
+  userMembership      UserMembership?      @relation(fields: [userMembershipId], references: [id], onDelete: SetNull)
 
   @@index([trainerUserId, status])
   @@index([createdAt])
@@ -1771,7 +3216,7 @@ model TrainerCommission {
 
 model NutritionReferralLink {
   id         String   @id @default(cuid())
-  userId     String   // nutritionist's user ID
+  userId     String // nutritionist's user ID
   token      String   @unique
   label      String?
   clickCount Int      @default(0)
@@ -1797,9 +3242,9 @@ model NutritionCommission {
   createdAt               DateTime  @default(now())
 
   nutritionistUser      User                   @relation("NutritionCommissions", fields: [nutritionistUserId], references: [id], onDelete: Cascade)
-  nutritionReferralLink NutritionReferralLink?  @relation(fields: [nutritionReferralLinkId], references: [id], onDelete: SetNull)
-  userMembership        UserMembership?         @relation(fields: [userMembershipId], references: [id], onDelete: SetNull)
-  nutritionSession      NutritionSession?       @relation(fields: [nutritionSessionId], references: [id], onDelete: SetNull)
+  nutritionReferralLink NutritionReferralLink? @relation(fields: [nutritionReferralLinkId], references: [id], onDelete: SetNull)
+  userMembership        UserMembership?        @relation(fields: [userMembershipId], references: [id], onDelete: SetNull)
+  nutritionSession      NutritionSession?      @relation(fields: [nutritionSessionId], references: [id], onDelete: SetNull)
 
   @@index([nutritionistUserId, status])
   @@index([createdAt])
@@ -1808,16 +3253,16 @@ model NutritionCommission {
 // ─── Nutrition Doctor ─────────────────────────────────────────────────────────
 
 model NutritionistProfile {
-  id        String   @id @default(cuid())
-  userId    String   @unique
-  name      String
-  bio       String?  @db.Text
-  image     String?
-  isActive  Boolean  @default(true)
+  id         String  @id @default(cuid())
+  userId     String  @unique
+  name       String
+  bio        String? @db.Text
+  image      String?
+  isActive   Boolean @default(true)
   showOnHome Boolean @default(true)
 
   // Pre-set available slots (JSON: [{label:"الأحد 10 صباحاً", day:"الأحد", time:"10:00"}])
-  slotsJson String?  @db.Text
+  slotsJson String? @db.Text
 
   // Booking form questions (JSON: [{id, label, type, required, options?}])
   questionsJson String? @db.Text
@@ -1826,33 +3271,33 @@ model NutritionistProfile {
   consultationFee       Float @default(400) // كشف - non-member
   consultationFeeMember Float @default(300) // كشف - gym member
   followupFee           Float @default(100) // إعادة كشف - non-member
-  followupFeeMember     Float @default(50)  // إعادة كشف - gym member
+  followupFeeMember     Float @default(50) // إعادة كشف - gym member
 
   // Referral commission settings (editable by admin)
-  commissionRate Float @default(0)
+  commissionRate Float  @default(0)
   commissionType String @default("percentage") // percentage | fixed
 
   // Session commission settings (editable by admin)
-  sessionCommissionRate Float @default(0)
+  sessionCommissionRate Float  @default(0)
   sessionCommissionType String @default("percentage") // percentage | fixed
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user                  User               @relation("NutritionistAccount", fields: [userId], references: [id], onDelete: Cascade)
-  sessions              NutritionSession[]
+  user     User               @relation("NutritionistAccount", fields: [userId], references: [id], onDelete: Cascade)
+  sessions NutritionSession[]
 
   @@index([isActive])
 }
 
 model NutritionSession {
-  id             String  @id @default(cuid())
+  id             String @id @default(cuid())
   userId         String
   nutritionistId String
   // consultation | followup
-  type           String  @default("consultation")
+  type           String @default("consultation")
   // pending | awaiting_slot | approved | paid | completed | rejected | cancelled
-  status         String  @default("pending")
+  status         String @default("pending")
 
   isGymMember Boolean @default(false)
   price       Float
@@ -1863,7 +3308,7 @@ model NutritionSession {
   // Scheduling
   // Flow A: client picks from doctor's pre-set slots on submission
   // Flow B: doctor proposes slots after reviewing the request → client picks
-  selectedSlot  String?          // client-chosen slot label
+  selectedSlot  String? // client-chosen slot label
   proposedSlots String? @db.Text // JSON array: doctor proposes after review
 
   // Doctor response
@@ -1876,8 +3321,8 @@ model NutritionSession {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user         User                @relation("NutritionSessionUser", fields: [userId], references: [id], onDelete: Cascade)
-  nutritionist NutritionistProfile @relation(fields: [nutritionistId], references: [id], onDelete: Cascade)
+  user               User                  @relation("NutritionSessionUser", fields: [userId], references: [id], onDelete: Cascade)
+  nutritionist       NutritionistProfile   @relation(fields: [nutritionistId], references: [id], onDelete: Cascade)
   rescheduleRequests RescheduleRequest[]
   commissions        NutritionCommission[]
 
@@ -1887,26 +3332,26 @@ model NutritionSession {
 }
 
 model RescheduleRequest {
-  id                String   @id @default(cuid())
-  sessionId         String
+  id          String @id @default(cuid())
+  sessionId   String
   // doctor_initiated | client_initiated
-  initiatedBy       String   @default("doctor_initiated")
+  initiatedBy String @default("doctor_initiated")
   // pending_client | client_accepted | client_rejected | client_wants_refund | refund_approved | refund_rejected | completed | cancelled
-  status            String   @default("pending_client")
+  status      String @default("pending_client")
 
   // Doctor's proposed new slot
-  proposedNewSlot   String?
-  doctorReason      String?  @db.Text
+  proposedNewSlot String?
+  doctorReason    String? @db.Text
 
   // Client's response
-  clientResponse    String?  // accept | reject | refund
-  clientChosenSlot  String?  // if client picks different slot
-  clientReason      String?  @db.Text
+  clientResponse   String? // accept | reject | refund
+  clientChosenSlot String? // if client picks different slot
+  clientReason     String? @db.Text
 
   // Refund tracking
   refundAmount      Float?
-  refundStatus      String?  // pending | approved | rejected | completed
-  refundApprovedBy  String?  // doctor/admin userId
+  refundStatus      String? // pending | approved | rejected | completed
+  refundApprovedBy  String? // doctor/admin userId
   refundApprovedAt  DateTime?
   refundCompletedAt DateTime?
 
@@ -1920,37 +3365,37 @@ model RescheduleRequest {
 }
 
 model BlogPendingPost {
-  id          String   @id @default(cuid())
-  submittedBy String   // userId of contracts_manager who submitted
+  id          String @id @default(cuid())
+  submittedBy String // userId of contracts_manager who submitted
   // pending | approved | rejected
-  status      String   @default("pending")
+  status      String @default("pending")
 
   // Post data (same structure as BlogPost in site_content.blog.posts)
-  title       String   @db.Text
-  titleEn     String?  @db.Text
-  category    String
-  categoryEn  String?
-  author      String
-  authorEn    String?
-  date        String
-  dateEn      String?
-  readTime    String
-  readTimeEn  String?
-  featured    Boolean  @default(false)
-  summary     String   @db.Text
-  summaryEn   String?  @db.Text
-  content     String   @db.LongText
-  contentEn   String?  @db.LongText
-  coverImage  String   @db.Text
-  videoUrl    String   @db.Text
+  title      String  @db.Text
+  titleEn    String? @db.Text
+  category   String
+  categoryEn String?
+  author     String
+  authorEn   String?
+  date       String
+  dateEn     String?
+  readTime   String
+  readTimeEn String?
+  featured   Boolean @default(false)
+  summary    String  @db.Text
+  summaryEn  String? @db.Text
+  content    String  @db.LongText
+  contentEn  String? @db.LongText
+  coverImage String  @db.Text
+  videoUrl   String  @db.Text
 
   // If editing existing post
   existingPostId String? // ID from site_content.blog.posts array
 
   // Admin response
-  reviewedBy  String?
-  reviewedAt  DateTime?
-  rejectReason String? @db.Text
+  reviewedBy   String?
+  reviewedAt   DateTime?
+  rejectReason String?   @db.Text
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1965,23 +3410,241 @@ model BlogPendingPost {
 // ─── Supplier (Vendor) — admin-only, never exposed to customers ───────────────
 
 model Supplier {
-  id             String    @id @default(cuid())
-  name           String    // internal name — never shown to customers
+  id             String  @id @default(cuid())
+  name           String // internal name — never shown to customers
+  code           String? @unique
   phone          String?
-  address        String?   @db.Text
-  notes          String?   @db.Text
-  isActive       Boolean   @default(true)
-  commissionRate Float?    // optional: profit margin / commission rate
-  commissionType String?   // percentage | fixed
-  deletedAt      DateTime? // soft delete
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  address        String? @db.Text
+  notes          String? @db.Text
+  isActive       Boolean @default(true)
+  commissionRate Float? // optional: profit margin / commission rate
+  commissionType String? // percentage | fixed
 
-  products  Product[]
-  receipts  InventoryReceipt[]
+  // Supplier commercial defaults.
+  // These are defaults only; invoice-level terms remain authoritative.
+  defaultPaymentTerms  String? // cash | credit | mixed
+  creditDays           Int?
+  creditLimit          Decimal? @db.Decimal(18, 2)
+  supportsConsignment  Boolean  @default(false)
+  supportsPrivateLabel Boolean  @default(false)
+
+  deletedAt DateTime? // soft delete
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  products             Product[]
+  receipts             InventoryReceipt[]
+  purchaseInvoices     PurchaseInvoice[]
+  payments             SupplierPayment[]
+  consignmentReceipts  ConsignmentReceipt[]
+  consignmentLots      ConsignmentLot[]
+  consignmentMovements ConsignmentMovement[]
 
   @@index([isActive])
   @@index([deletedAt])
+}
+
+// ─── Supplier Purchases / Accounts Payable ────────────────────────────────────
+
+model PurchaseInvoice {
+  id            String    @id @default(cuid())
+  supplierId    String
+  invoiceNumber String?
+  invoiceDate   DateTime
+  dueDate       DateTime?
+  paymentTerms  String? // cash | credit | mixed
+  supplyType    String    @default("purchase") // purchase | consignment
+  subtotal      Decimal   @db.Decimal(18, 2)
+  totalAmount   Decimal   @db.Decimal(18, 2)
+  status        String    @default("draft") // draft | posted | cancelled
+  notes         String?   @db.Text
+
+  createdByUserId   String?
+  postedByUserId    String?
+  cancelledByUserId String?
+  postedAt          DateTime?
+  cancelledAt       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  supplier            Supplier                    @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  items               PurchaseInvoiceItem[]
+  allocations         SupplierPaymentAllocation[]
+  receipts            InventoryReceipt[]
+  consignmentReceipts ConsignmentReceipt[]
+
+  createdBy   User? @relation("PurchaseInvoiceCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  postedBy    User? @relation("PurchaseInvoicePoster", fields: [postedByUserId], references: [id], onDelete: SetNull)
+  cancelledBy User? @relation("PurchaseInvoiceCanceller", fields: [cancelledByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([supplierId, invoiceNumber])
+  @@index([supplierId, status, invoiceDate])
+  @@index([status, dueDate])
+  @@index([createdByUserId])
+  @@index([postedByUserId])
+  @@index([cancelledByUserId])
+}
+
+model PurchaseInvoiceItem {
+  id                String   @id @default(cuid())
+  purchaseInvoiceId String
+  productId         String?
+  variantId         String?
+  description       String
+  sku               String?
+  quantity          Int
+  unitCost          Decimal  @db.Decimal(18, 2)
+  totalCost         Decimal  @db.Decimal(18, 2)
+  createdAt         DateTime @default(now())
+
+  purchaseInvoice PurchaseInvoice @relation(fields: [purchaseInvoiceId], references: [id], onDelete: Cascade)
+  product         Product?        @relation("PurchaseInvoiceItemProduct", fields: [productId], references: [id], onDelete: SetNull)
+  variant         ProductVariant? @relation("PurchaseInvoiceItemVariant", fields: [variantId], references: [id], onDelete: SetNull)
+
+  @@index([purchaseInvoiceId])
+  @@index([productId])
+  @@index([variantId])
+}
+
+// ─── Consignment Inventory ──────────────────────────────────────────────────
+//
+// Consignment stock is supplier-owned stock held physically by FitZone.
+//
+// IMPORTANT:
+// - Does NOT mutate Product.stock or Product.reservedStock.
+// - Does NOT participate in Product.averageCost / WAC.
+// - Does NOT create InventoryMovement.
+// - Does NOT create Inventory Asset / Accounts Payable journals on receipt.
+// - Sale allocation and supplier liability are intentionally deferred to Phase 3.
+//
+
+model ConsignmentReceipt {
+  id                String   @id @default(cuid())
+  referenceNumber   String?  @unique
+  supplierId        String
+  purchaseInvoiceId String?
+  receivedAt        DateTime @default(now())
+  status            String   @default("posted") // posted | cancelled
+  totalDeclaredCost Decimal  @default(0) @db.Decimal(18, 2)
+  notes             String?  @db.Text
+  performedByUserId String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  supplier        Supplier         @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  purchaseInvoice PurchaseInvoice? @relation(fields: [purchaseInvoiceId], references: [id], onDelete: Restrict)
+  lots            ConsignmentLot[]
+
+  @@index([supplierId, status, receivedAt])
+  @@index([purchaseInvoiceId])
+}
+
+model ConsignmentLot {
+  id                String   @id @default(cuid())
+  receiptId         String
+  supplierId        String
+  productId         String
+  variantId         String?
+  sku               String?
+  quantityReceived  Int
+  quantityAvailable Int
+  quantityReserved  Int      @default(0)
+  quantitySold      Int      @default(0)
+  quantityReturned  Int      @default(0)
+  unitCost          Decimal  @db.Decimal(18, 2)
+  status            String   @default("open") // open | depleted | returned | cancelled
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  receipt     ConsignmentReceipt         @relation(fields: [receiptId], references: [id], onDelete: Restrict)
+  supplier    Supplier                   @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  product     Product                    @relation(fields: [productId], references: [id], onDelete: Restrict)
+  variant     ProductVariant?            @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  movements   ConsignmentMovement[]
+  allocations OrderInventoryAllocation[]
+
+  @@index([receiptId])
+  @@index([supplierId, status])
+  @@index([productId, status])
+  @@index([variantId, status])
+}
+
+model ConsignmentMovement {
+  id             String   @id @default(cuid())
+  lotId          String
+  supplierId     String
+  productId      String
+  variantId      String?
+  // RECEIVE | RETURN_TO_SUPPLIER | ADJUSTMENT | SALE | SALE_REVERSAL
+  type           String
+  quantityChange Int
+  quantityBefore Int
+  quantityAfter  Int
+  unitCost       Decimal? @db.Decimal(18, 2)
+  referenceType  String?
+  referenceId    String?
+  reason         String?  @db.Text
+  notes          String?  @db.Text
+  actorUserId    String?
+  createdAt      DateTime @default(now())
+
+  lot      ConsignmentLot  @relation(fields: [lotId], references: [id], onDelete: Restrict)
+  supplier Supplier        @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  product  Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
+  variant  ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+
+  @@index([lotId, createdAt])
+  @@index([supplierId, createdAt])
+  @@index([productId, createdAt])
+  @@index([variantId, createdAt])
+  @@index([type, createdAt])
+  @@index([referenceType, referenceId])
+}
+
+model SupplierPayment {
+  id              String   @id @default(cuid())
+  supplierId      String
+  amount          Decimal  @db.Decimal(18, 2)
+  paymentDate     DateTime
+  paymentMethod   String
+  referenceNumber String?
+  status          String   @default("draft") // draft | posted | cancelled
+  notes           String?  @db.Text
+
+  createdByUserId   String?
+  postedByUserId    String?
+  cancelledByUserId String?
+  postedAt          DateTime?
+  cancelledAt       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  supplier    Supplier                    @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  allocations SupplierPaymentAllocation[]
+
+  createdBy   User? @relation("SupplierPaymentCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  postedBy    User? @relation("SupplierPaymentPoster", fields: [postedByUserId], references: [id], onDelete: SetNull)
+  cancelledBy User? @relation("SupplierPaymentCanceller", fields: [cancelledByUserId], references: [id], onDelete: SetNull)
+
+  @@index([supplierId, status, paymentDate])
+  @@index([referenceNumber])
+  @@index([createdByUserId])
+  @@index([postedByUserId])
+  @@index([cancelledByUserId])
+}
+
+model SupplierPaymentAllocation {
+  id                String   @id @default(cuid())
+  supplierPaymentId String
+  purchaseInvoiceId String
+  amount            Decimal  @db.Decimal(18, 2)
+  createdAt         DateTime @default(now())
+
+  supplierPayment SupplierPayment @relation(fields: [supplierPaymentId], references: [id], onDelete: Cascade)
+  purchaseInvoice PurchaseInvoice @relation(fields: [purchaseInvoiceId], references: [id], onDelete: Restrict)
+
+  @@unique([supplierPaymentId, purchaseInvoiceId])
+  @@index([purchaseInvoiceId])
 }
 
 // ─── Product Variants ─────────────────────────────────────────────────────────
@@ -1994,17 +3657,20 @@ model ProductVariant {
   sku       String?  @unique
   barcode   String?
   stock     Int      @default(0)
-  price     Float?   // override product base price (null = use product price)
-  costPrice Float?   // buying cost for this specific variant
-  image     String?  // variant-specific image URL
+  price     Float? // override product base price (null = use product price)
+  costPrice Float? // buying cost for this specific variant
+  image     String? // variant-specific image URL
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  product      Product                @relation(fields: [productId], references: [id], onDelete: Cascade)
-  orderItems   OrderItem[]
-  receiptItems InventoryReceiptItem[] @relation("ReceiptItemVariant")
-  movements    InventoryMovement[]    @relation("VariantMovement")
+  product              Product                @relation(fields: [productId], references: [id], onDelete: Cascade)
+  orderItems           OrderItem[]
+  receiptItems         InventoryReceiptItem[] @relation("ReceiptItemVariant")
+  movements            InventoryMovement[]    @relation("VariantMovement")
+  purchaseInvoiceItems PurchaseInvoiceItem[]  @relation("PurchaseInvoiceItemVariant")
+  consignmentLots      ConsignmentLot[]
+  consignmentMovements ConsignmentMovement[]
 
   @@index([productId, isActive])
   @@index([sku])
@@ -2015,7 +3681,7 @@ model ProductVariant {
 model OrderStatusHistory {
   id                String   @id @default(cuid())
   orderId           String
-  fromStatus        String?  // null on first entry
+  fromStatus        String? // null on first entry
   toStatus          String
   notes             String?  @db.Text
   performedByUserId String?
@@ -2037,9 +3703,9 @@ model DeliveryCompany {
   phone           String?
   contactPerson   String?
   defaultFee      Float     @default(0)
-  estimatedDays   String?   // e.g. "2-3 أيام عمل"
+  estimatedDays   String? // e.g. "2-3 أيام عمل"
   supportsCOD     Boolean   @default(true)
-  codFeeType      String?   // percentage | fixed | null (no extra fee)
+  codFeeType      String? // percentage | fixed | null (no extra fee)
   codFeeValue     Float?
   collectsPayment Boolean   @default(true) // does company collect cash from customer?
   isActive        Boolean   @default(true)
@@ -2059,9 +3725,9 @@ model DeliveryCompany {
 model DeliveryZone {
   id            String   @id @default(cuid())
   companyId     String
-  governorate   String   // e.g. "القاهرة", "الجيزة", "الإسكندرية"
+  governorate   String // e.g. "القاهرة", "الجيزة", "الإسكندرية"
   fee           Float
-  estimatedDays String?  // overrides company default for this zone
+  estimatedDays String? // overrides company default for this zone
   isActive      Boolean  @default(true)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -2110,10 +3776,10 @@ model AnalyticsVisitor {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  user       User?                 @relation(fields: [userId], references: [id], onDelete: SetNull)
-  sessions   AnalyticsSession[]
-  pageViews  AnalyticsPageView[]
-  events     AnalyticsEvent[]
+  user      User?               @relation(fields: [userId], references: [id], onDelete: SetNull)
+  sessions  AnalyticsSession[]
+  pageViews AnalyticsPageView[]
+  events    AnalyticsEvent[]
 
   @@index([firstSeenAt])
   @@index([lastSeenAt])
@@ -2122,31 +3788,31 @@ model AnalyticsVisitor {
 }
 
 model AnalyticsSession {
-  id                 String   @id @default(cuid())
-  visitorId          String
-  userId             String?
-  startedAt          DateTime @default(now())
-  lastActivityAt     DateTime @default(now())
-  endedAt            DateTime?
-  durationSeconds    Int      @default(0)
-  landingPage        String?
-  exitPage           String?
-  referrer           String?
-  utmSource          String?
-  utmMedium          String?
-  utmCampaign        String?
-  deviceType         String?
-  countryCode        String?
-  city               String?
-  pageViewCount      Int      @default(0)
-  isBounce           Boolean  @default(true)
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  id              String    @id @default(cuid())
+  visitorId       String
+  userId          String?
+  startedAt       DateTime  @default(now())
+  lastActivityAt  DateTime  @default(now())
+  endedAt         DateTime?
+  durationSeconds Int       @default(0)
+  landingPage     String?
+  exitPage        String?
+  referrer        String?
+  utmSource       String?
+  utmMedium       String?
+  utmCampaign     String?
+  deviceType      String?
+  countryCode     String?
+  city            String?
+  pageViewCount   Int       @default(0)
+  isBounce        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  visitor    AnalyticsVisitor    @relation(fields: [visitorId], references: [id], onDelete: Cascade)
-  user       User?               @relation(fields: [userId], references: [id], onDelete: SetNull)
-  pageViews  AnalyticsPageView[]
-  events     AnalyticsEvent[]
+  visitor   AnalyticsVisitor    @relation(fields: [visitorId], references: [id], onDelete: Cascade)
+  user      User?               @relation(fields: [userId], references: [id], onDelete: SetNull)
+  pageViews AnalyticsPageView[]
+  events    AnalyticsEvent[]
 
   @@index([visitorId])
   @@index([userId])
@@ -2155,21 +3821,21 @@ model AnalyticsSession {
 }
 
 model AnalyticsPageView {
-  id              String   @id @default(cuid())
+  id              String    @id @default(cuid())
   sessionId       String
   visitorId       String
   userId          String?
   path            String
   pageTitle       String?
-  enteredAt       DateTime @default(now())
+  enteredAt       DateTime  @default(now())
   exitedAt        DateTime?
-  durationSeconds Int      @default(0)
+  durationSeconds Int       @default(0)
   referrerPath    String?
-  createdAt       DateTime @default(now())
+  createdAt       DateTime  @default(now())
 
-  session  AnalyticsSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  visitor  AnalyticsVisitor @relation(fields: [visitorId], references: [id], onDelete: Cascade)
-  user     User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
+  session AnalyticsSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  visitor AnalyticsVisitor @relation(fields: [visitorId], references: [id], onDelete: Cascade)
+  user    User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([sessionId])
   @@index([visitorId])
@@ -2215,8 +3881,8 @@ model AnalyticsEvent {
 model GLAccount {
   id        String   @id @default(cuid())
   code      String   @unique // e.g. "1010", "4010", "5010"
-  name      String   // e.g. "Inventory Asset", "Sales Revenue", "COGS"
-  type      String   // asset | liability | equity | revenue | expense
+  name      String // e.g. "Inventory Asset", "Sales Revenue", "COGS"
+  type      String // asset | liability | equity | revenue | expense
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2228,18 +3894,18 @@ model GLAccount {
 
 model Journal {
   id                String   @id @default(cuid())
-  referenceType     String   // Order | InventoryReceipt | Adjustment
-  referenceId       String   // FK to source document
+  referenceType     String // Order | InventoryReceipt | Adjustment
+  referenceId       String // FK to source document
   description       String   @db.Text
   date              DateTime @default(now())
   status            String   @default("posted") // draft | posted | reversed
-  reversalJournalId String?  // FK to Journal that reverses this
+  reversalJournalId String? // FK to Journal that reverses this
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
   entries    JournalEntry[]
-  reversalOf Journal?        @relation("JournalReversal", fields: [reversalJournalId], references: [id], onDelete: SetNull)
-  reversals  Journal[]       @relation("JournalReversal")
+  reversalOf Journal?       @relation("JournalReversal", fields: [reversalJournalId], references: [id], onDelete: SetNull)
+  reversals  Journal[]      @relation("JournalReversal")
 
   @@unique([referenceType, referenceId])
   @@index([status, date])
@@ -2260,4 +3926,449 @@ model JournalEntry {
   @@index([journalId])
   @@index([accountId])
   @@index([createdAt])
+}
+
+// ─── Commission Settlement / Payout Ledger ───────────────────────────────────
+//
+// Cutover:
+// Existing historical settled/withdrawn commission rows remain untouched.
+// Every NEW settlement after cutover must be represented by one payout and
+// exact payout items.
+//
+model CommissionPayout {
+  id              String  @id @default(cuid())
+  beneficiaryType String
+  beneficiaryId   String
+  totalAmount     Decimal @db.Decimal(18, 2)
+  currency        String  @default("EGP")
+
+  status           String  @default("paid")
+  paymentMethod    String?
+  paymentReference String?
+  receiptUrl       String? @db.Text
+  notes            String? @db.Text
+
+  // Optional originating business document,
+  // e.g. PartnerWithdrawalRequest.
+  sourceType String?
+  sourceId   String?
+
+  requestedAt DateTime?
+  approvedAt  DateTime?
+  paidAt      DateTime?
+
+  // Soft actor reference: payout history must survive later user changes.
+  createdByUserId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items CommissionPayoutItem[]
+
+  @@unique([sourceType, sourceId])
+  @@index([beneficiaryType, beneficiaryId])
+  @@index([status, paidAt])
+}
+
+model CommissionPayoutItem {
+  id       String @id @default(cuid())
+  payoutId String
+
+  // partner | agent_user | sales_agent | manager |
+  // manager_partner | staff | trainer | nutrition
+  commissionType String
+  commissionId   String
+  amount         Decimal @db.Decimal(18, 2)
+
+  createdAt DateTime @default(now())
+
+  payout CommissionPayout @relation(fields: [payoutId], references: [id], onDelete: Cascade)
+
+  // One commission can belong to one payout only.
+  @@unique([commissionType, commissionId])
+  @@index([payoutId])
+}
+
+model FriendOfferConfig {
+  id                String   @id @default(cuid())
+  offerId           String   @unique
+  requiredMembers   Int      @default(2)
+  inviteExpiryHours Int      @default(24)
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  offer  Offer              @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  groups FriendOfferGroup[]
+
+  @@index([isActive])
+}
+
+model FriendOfferGroup {
+  id                  String    @id @default(cuid())
+  configId            String
+  creatorUserId       String
+  inviteToken         String    @unique
+  status              String    @default("waiting") // waiting | ready | finalizing | completed | expired | cancelled
+  priceSnapshotMinor  Int
+  offerTermsSnapshot  String?   @db.LongText
+  eligibilitySnapshot String?   @db.LongText
+  matchingEnabled     Boolean   @default(false)
+  expiresAt           DateTime
+  finalizingAt        DateTime?
+  completedAt         DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  config       FriendOfferConfig        @relation(fields: [configId], references: [id], onDelete: Cascade)
+  creator      User                     @relation("FriendOfferGroupCreator", fields: [creatorUserId], references: [id], onDelete: Cascade)
+  participants FriendOfferParticipant[]
+
+  @@index([configId, status])
+  @@index([creatorUserId])
+  @@index([expiresAt])
+  @@index([matchingEnabled, status])
+}
+
+model FriendOfferParticipant {
+  id                   String    @id @default(cuid())
+  groupId              String
+  userId               String
+  userMembershipId     String?   @unique
+  paymentTransactionId String?   @unique
+  role                 String    @default("invited") // creator | invited
+  status               String    @default("joined") // joined | checkout_started | paid | activated | cancelled
+  shareAmountMinor     Int
+  paidAt               DateTime?
+  attributionSnapshot  String?   @db.LongText
+  joinedAt             DateTime  @default(now())
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  group               FriendOfferGroup     @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userMembership      UserMembership?      @relation(fields: [userMembershipId], references: [id], onDelete: SetNull)
+  paymentTransaction  PaymentTransaction?  @relation(fields: [paymentTransactionId], references: [id], onDelete: SetNull)
+  marketingConversion MarketingConversion?
+
+  @@unique([groupId, userId])
+  @@index([userId])
+  @@index([groupId, status])
+}
+
+// ─── Fixed Class Earnings ─────────────────────────────────────────────────────
+//
+// Independent payroll earning cycle for coach fixed-class compensation.
+// Source of truth:
+// - Schedule occurrence
+// - CoachClassAttendance historical snapshots
+// - effective-dated CoachCompensationTerm / CoachClassCompensationTerm
+//
+// This cycle does NOT settle commissions and does NOT create payroll payments.
+// Final payroll later aggregates finalized earning cycles only.
+//
+
+model FixedClassEarning {
+  id String @id @default(cuid())
+
+  monthKey   String
+  employeeId String
+  classId    String
+
+  // draft | blocked | calculated | finalized
+  status String @default("draft")
+
+  currency String @default("EGP")
+
+  scheduledSessions  Int @default(0)
+  payableSessions    Int @default(0)
+  presentSessions    Int @default(0)
+  absentSessions     Int @default(0)
+  excusedSessions    Int @default(0)
+  cancelledSessions  Int @default(0)
+  substituteSessions Int @default(0)
+  unrecordedSessions Int @default(0)
+
+  grossAmountMinor      Int @default(0)
+  absenceDeductionMinor Int @default(0)
+  earnedAmountMinor     Int @default(0)
+
+  blockReason String? @db.Text
+
+  calculatedAt   DateTime?
+  calculatedById String?
+
+  finalizedAt   DateTime?
+  finalizedById String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee EmployeeProfile @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  class    Class           @relation(fields: [classId], references: [id], onDelete: Restrict)
+
+  calculatedBy User? @relation("FixedClassEarningCalculator", fields: [calculatedById], references: [id], onDelete: SetNull)
+  finalizedBy  User? @relation("FixedClassEarningFinalizer", fields: [finalizedById], references: [id], onDelete: SetNull)
+
+  occurrences FixedClassEarningOccurrence[]
+
+  @@unique([monthKey, employeeId, classId])
+  @@index([monthKey, status])
+  @@index([employeeId, monthKey])
+  @@index([classId, monthKey])
+  @@index([calculatedById, calculatedAt])
+  @@index([finalizedById, finalizedAt])
+}
+
+model FixedClassEarningOccurrence {
+  id        String @id @default(cuid())
+  earningId String
+
+  scheduleId   String?
+  attendanceId String?
+
+  occurrenceKey String
+
+  occurrenceDate DateTime @db.Date
+  occurrenceTime String
+
+  sourceClassIdSnapshot String
+  classNameSnapshot     String
+
+  scheduledTrainerIdSnapshot   String?
+  scheduledTrainerNameSnapshot String
+
+  scheduledEmployeeIdSnapshot   String?
+  scheduledEmployeeCodeSnapshot String?
+  scheduledEmployeeNameSnapshot String?
+
+  actualTrainerIdSnapshot   String?
+  actualTrainerNameSnapshot String?
+
+  actualEmployeeIdSnapshot   String?
+  actualEmployeeCodeSnapshot String?
+  actualEmployeeNameSnapshot String?
+
+  // present | absent | substitute | excused | cancelled | unrecorded
+  attendanceStatus String
+
+  // coach_default (legacy) | position_payroll_policy | class_override | none
+  compensationSource String
+
+  coachCompensationTermId String?
+  classCompensationTermId String?
+
+  // Position-policy ownership is frozen per occurrence.
+  // Nullable preserves historical rows without inventing a backfill.
+  positionTermIdSnapshot          String?
+  positionIdSnapshot              String?
+  positionPayrollPolicyIdSnapshot String?
+
+  monthlyAmountMinor   Int @default(0)
+  eligibleSessionCount Int @default(0)
+  sessionValueMinor    Int @default(0)
+  deductionMinor       Int @default(0)
+  earningMinor         Int @default(0)
+
+  createdAt DateTime @default(now())
+
+  earning FixedClassEarning @relation(fields: [earningId], references: [id], onDelete: Cascade)
+
+  schedule   Schedule?             @relation(fields: [scheduleId], references: [id], onDelete: SetNull)
+  attendance CoachClassAttendance? @relation(fields: [attendanceId], references: [id], onDelete: SetNull)
+
+  coachCompensationTerm CoachCompensationTerm?      @relation(fields: [coachCompensationTermId], references: [id], onDelete: SetNull)
+  classCompensationTerm CoachClassCompensationTerm? @relation(fields: [classCompensationTermId], references: [id], onDelete: SetNull)
+
+  @@unique([earningId, occurrenceKey])
+  @@index([occurrenceDate, attendanceStatus])
+  @@index([scheduleId])
+  @@index([attendanceId])
+  @@index([coachCompensationTermId])
+  @@index([classCompensationTermId])
+  @@index([positionIdSnapshot])
+  @@index([positionPayrollPolicyIdSnapshot])
+}
+
+//
+// Trainee Class Earning
+//
+// Independent attendance-based coach earning cycle.
+//
+// Authoritative source boundary:
+//   AttendanceCheckIn.id
+//
+// Historical source identifiers and snapshots are intentionally stored as
+// scalar facts instead of mutable/cascading relations. Booking, Schedule,
+// Class, trainer or membership changes must not rewrite historical payroll
+// evidence.
+//
+// TrainerCommission remains the membership referral commission system and
+// MUST NOT be reused for this attendance-based earning.
+//
+
+model TraineeClassEarning {
+  id String @id @default(cuid())
+
+  // Exact-once business source boundary.
+  attendanceCheckInId String @unique
+
+  // Cairo payroll month of the attended class.
+  monthKey String
+
+  // Historical source identifiers.
+  userMembershipId String?
+  bookingId        String?
+  scheduleId       String?
+
+  // Historical occurrence evidence.
+  occurrenceKey  String?
+  attendanceDate DateTime @db.Date
+  attendanceTime String?
+
+  // Customer snapshot.
+  customerId           String
+  customerNameSnapshot String?
+
+  // Class snapshot.
+  classId           String?
+  classNameSnapshot String?
+
+  // Actual coach snapshot.
+  actualTrainerId           String?
+  actualTrainerNameSnapshot String?
+
+  actualEmployeeId           String?
+  actualEmployeeCodeSnapshot String?
+  actualEmployeeNameSnapshot String?
+
+  // Frozen commission ownership.
+  // legacy_coach_compensation_term | position_payroll_policy
+  commissionSourceSnapshot String?
+
+  // Historical legacy source, when applicable.
+  coachCompensationTermId String?
+
+  // Position-policy source, when applicable.
+  positionTermIdSnapshot          String?
+  positionIdSnapshot              String?
+  positionPayrollPolicyIdSnapshot String?
+
+  // Frozen economic inputs.
+  paymentAmountMinor       Int  @default(0)
+  totalSessionsSnapshot    Int?
+  entitlementUnitsSnapshot Int?
+
+  // Frozen calculation outputs.
+  unitValueMinor        Int  @default(0)
+  commissionBaseMinor   Int  @default(0)
+  commissionRateBps     Int?
+  commissionAmountMinor Int  @default(0)
+
+  currency String @default("EGP")
+
+  // blocked | calculated | finalized
+  status      String  @default("blocked")
+  blockReason String?
+
+  calculatedAt   DateTime?
+  calculatedById String?
+
+  finalizedAt   DateTime?
+  finalizedById String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([monthKey, status])
+  @@index([actualEmployeeId, monthKey])
+  @@index([userMembershipId])
+  @@index([bookingId])
+  @@index([scheduleId])
+  @@index([occurrenceKey])
+  @@index([coachCompensationTermId])
+  @@index([positionIdSnapshot, monthKey])
+  @@index([positionPayrollPolicyIdSnapshot])
+  @@index([calculatedById])
+  @@index([finalizedById])
+}
+
+// ─── Private Session Earnings ─────────────────────────────────────────────────
+//
+// Independent payroll earning cycle for paid private / mini-private sessions.
+//
+// Source of truth:
+// - PrivateSessionApplication.id is the exact-once business boundary.
+// - PaymentTransaction is the paid economic evidence.
+// - Trainer / Employee / CoachCompensationTerm identities and economics are
+//   frozen when the paid application is accrued.
+//
+// This cycle does NOT create TrainerCommission / CommissionPayout records.
+// Final payroll later aggregates finalized earning cycles only.
+
+model PrivateSessionEarning {
+  id String @id @default(cuid())
+
+  // Exact-once paid private-session business source.
+  privateSessionApplicationId String @unique
+
+  monthKey String
+
+  // Historical application/customer evidence.
+  privateSessionType    String
+  customerIdSnapshot    String
+  customerNameSnapshot  String?
+  sessionsCountSnapshot Int?
+
+  // Historical paid transaction evidence.
+  paymentTransactionIdSnapshot String
+  paymentAmountMinor           Int
+  currency                     String @default("EGP")
+
+  // Historical coach / HR ownership.
+  trainerIdSnapshot   String
+  trainerNameSnapshot String
+
+  employeeIdSnapshot   String?
+  employeeCodeSnapshot String?
+  employeeNameSnapshot String?
+
+  coachCompensationTermIdSnapshot String?
+
+  // Frozen commission ownership.
+  // legacy_coach_compensation_term | position_payroll_policy
+  commissionSourceSnapshot String?
+
+  positionTermIdSnapshot          String?
+  positionIdSnapshot              String?
+  positionPayrollPolicyIdSnapshot String?
+
+  commissionRateBps     Int?
+  commissionAmountMinor Int  @default(0)
+
+  // Coach + Gym must equal the paid economic consideration.
+  // Nullable preserves historical rows without inventing a backfill.
+  gymShareAmountMinor Int?
+
+  // blocked | calculated | finalized
+  status      String  @default("blocked")
+  blockReason String? @db.Text
+
+  calculatedAt   DateTime?
+  calculatedById String?
+
+  finalizedAt   DateTime?
+  finalizedById String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([monthKey, status])
+  @@index([employeeIdSnapshot, monthKey])
+  @@index([trainerIdSnapshot, monthKey])
+  @@index([paymentTransactionIdSnapshot])
+  @@index([positionIdSnapshot, monthKey])
+  @@index([positionPayrollPolicyIdSnapshot])
+  @@index([calculatedById])
+  @@index([finalizedById])
 }

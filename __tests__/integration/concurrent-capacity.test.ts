@@ -1,25 +1,29 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { PrismaClient } from "@prisma/client";
+import { applyMembershipBookingPlanTx } from "@/lib/payments/membership-booking-plan";
 
 const db = new PrismaClient();
 
 describe("Concurrent Booking Capacity", () => {
-  let user1Id: string;
-  let user2Id: string;
-  let trainerId: string;
-  let classId: string;
-  let scheduleId: string;
-  let membershipId: string;
-  let userMembership1Id: string;
-  let userMembership2Id: string;
+  let user1Id = "";
+  let user2Id = "";
+  let trainerId = "";
+  let classId = "";
+  let scheduleId = "";
+  let membershipId = "";
+  let userMembership1Id = "";
+  let userMembership2Id = "";
+  let startDate: Date;
+  let endDate: Date;
 
   beforeAll(async () => {
-    // Create users
+    const suffix = Date.now();
+
     const user1 = await db.user.create({
       data: {
-        name: "User 1",
-        email: `concurrent-user1-${Date.now()}@fitzone.test`,
-        phone: "01111111111",
+        name: "Capacity User 1",
+        email: `capacity-user1-${suffix}@fitzone.test`,
+        phone: `011${String(suffix).slice(-8)}`,
         password: "hashed",
         role: "customer",
       },
@@ -28,82 +32,85 @@ describe("Concurrent Booking Capacity", () => {
 
     const user2 = await db.user.create({
       data: {
-        name: "User 2",
-        email: `concurrent-user2-${Date.now()}@fitzone.test`,
-        phone: "01222222222",
+        name: "Capacity User 2",
+        email: `capacity-user2-${suffix}@fitzone.test`,
+        phone: `012${String(suffix + 1).slice(-8)}`,
         password: "hashed",
         role: "customer",
       },
     });
     user2Id = user2.id;
 
-    // Create trainer
     const trainer = await db.trainer.create({
       data: {
         userId: user1Id,
         name: "Capacity Trainer",
-        specialty: "Test",
-        bio: "Test",
+        specialty: "fitness",
+        bio: "integration test",
         isActive: true,
       },
     });
     trainerId = trainer.id;
 
-    // Create class
     const gymClass = await db.class.create({
       data: {
-        name: "Limited Capacity Class",
-        trainerId: trainerId,
-        type: "yoga",
+        name: "Single Spot Capacity Class",
+        trainerId,
+        type: "fitness",
         duration: 60,
         intensity: "medium",
-        maxSpots: 1, // Only 1 spot!
+        maxSpots: 1,
         price: 100,
         isActive: true,
       },
     });
     classId = gymClass.id;
 
-    // Create schedule with 1 available spot
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
+    const scheduleDate = new Date();
+    scheduleDate.setUTCDate(scheduleDate.getUTCDate() + 1);
+    scheduleDate.setUTCHours(0, 0, 0, 0);
 
     const schedule = await db.schedule.create({
       data: {
-        classId: classId,
-        date: tomorrow,
-        time: "10:00",
-        availableSpots: 1, // Only 1 spot
+        classId,
+        date: scheduleDate,
+        time: "18:00",
+        availableSpots: 1,
         isActive: true,
       },
     });
     scheduleId = schedule.id;
 
-    // Create membership
     const membership = await db.membership.create({
       data: {
-        name: "Test Membership",
-        price: 500,
+        name: "Single Session Capacity Membership",
+        price: 100,
         duration: 30,
-        sessionsCount: 10,
+        sessionsCount: 1,
         kind: "subscription",
         isActive: true,
         features: "[]",
+        classSessions: JSON.stringify([
+          {
+            classId,
+            classType: "fitness",
+            sessions: 1,
+          },
+        ]),
       },
     });
     membershipId = membership.id;
 
-    // Create user memberships
-    const now = new Date();
-    const endDate = new Date(now);
-    endDate.setDate(endDate.getDate() + 30);
+    startDate = new Date();
+    endDate = new Date(startDate);
+    endDate.setUTCDate(endDate.getUTCDate() + 30);
 
     const um1 = await db.userMembership.create({
       data: {
         userId: user1Id,
-        membershipId: membershipId,
-        totalSessions: 10,
-        startDate: now,
+        membershipId,
+        totalSessions: 1,
+        startDate,
         endDate,
         status: "active",
       },
@@ -113,9 +120,9 @@ describe("Concurrent Booking Capacity", () => {
     const um2 = await db.userMembership.create({
       data: {
         userId: user2Id,
-        membershipId: membershipId,
-        totalSessions: 10,
-        startDate: now,
+        membershipId,
+        totalSessions: 1,
+        startDate,
         endDate,
         status: "active",
       },
@@ -124,76 +131,87 @@ describe("Concurrent Booking Capacity", () => {
   });
 
   afterAll(async () => {
-    await db.booking.deleteMany({
-      where: { scheduleId: scheduleId },
-    });
-    await db.userMembership.deleteMany({
-      where: { id: { in: [userMembership1Id, userMembership2Id] } },
-    });
-    await db.membership.delete({ where: { id: membershipId } });
-    await db.schedule.delete({ where: { id: scheduleId } });
-    await db.class.delete({ where: { id: classId } });
-    await db.trainer.delete({ where: { id: trainerId } });
-    await db.user.deleteMany({
-      where: { id: { in: [user1Id, user2Id] } },
-    });
+    if (scheduleId) {
+      await db.booking.deleteMany({ where: { scheduleId } });
+    }
+    if (userMembership1Id || userMembership2Id) {
+      await db.userMembership.deleteMany({
+        where: {
+          id: {
+            in: [userMembership1Id, userMembership2Id].filter(Boolean),
+          },
+        },
+      });
+    }
+    if (membershipId) {
+      await db.membership.deleteMany({ where: { id: membershipId } });
+    }
+    if (scheduleId) {
+      await db.schedule.deleteMany({ where: { id: scheduleId } });
+    }
+    if (classId) {
+      await db.class.deleteMany({ where: { id: classId } });
+    }
+    if (trainerId) {
+      await db.trainer.deleteMany({ where: { id: trainerId } });
+    }
+    if (user1Id || user2Id) {
+      await db.user.deleteMany({
+        where: { id: { in: [user1Id, user2Id].filter(Boolean) } },
+      });
+    }
     await db.$disconnect();
   });
 
-  it("handles concurrent booking attempts for last spot", async () => {
-    // Simulate two concurrent booking attempts
-    const booking1Promise = db.booking.create({
-      data: {
-        userId: user1Id,
-        scheduleId: scheduleId,
-        userMembershipId: userMembership1Id,
-        status: "confirmed",
-        paidAmount: 100,
-      },
-    }).then(async (booking) => {
-      // Atomically decrement
-      await db.schedule.update({
-        where: { id: scheduleId },
-        data: { availableSpots: { decrement: 1 } },
-      });
-      return booking;
-    }).catch((e) => ({ error: e.message }));
+  it("allows only one real booking for the final available spot", async () => {
+    const attempt = (userId: string, userMembershipId: string) =>
+      db.$transaction(
+        async (tx) =>
+          applyMembershipBookingPlanTx({
+            tx,
+            userId,
+            userMembershipId,
+            startDate,
+            endDate,
+            source: {
+              type: "membership",
+              id: membershipId,
+            },
+            selectedScheduleIds: [scheduleId],
+            plan: {
+              kind: "standard",
+              sessionsCount: 1,
+              duration: 30,
+            },
+          }),
+        { timeout: 15000 },
+      );
 
-    const booking2Promise = db.booking.create({
-      data: {
-        userId: user2Id,
-        scheduleId: scheduleId,
-        userMembershipId: userMembership2Id,
-        status: "confirmed",
-        paidAmount: 100,
-      },
-    }).then(async (booking) => {
-      // Atomically decrement
-      await db.schedule.update({
-        where: { id: scheduleId },
-        data: { availableSpots: { decrement: 1 } },
-      });
-      return booking;
-    }).catch((e) => ({ error: e.message }));
+    const results = await Promise.allSettled([
+      attempt(user1Id, userMembership1Id),
+      attempt(user2Id, userMembership2Id),
+    ]);
 
-    const [result1, result2] = await Promise.all([booking1Promise, booking2Promise]);
+    const fulfilled = results.filter((result) => result.status === "fulfilled");
+    const rejected = results.filter((result) => result.status === "rejected");
 
-    // Both bookings succeeded because no pre-check
-    // (This shows the race condition in current code)
-    const finalSchedule = await db.schedule.findUnique({
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+
+    const finalSchedule = await db.schedule.findUniqueOrThrow({
       where: { id: scheduleId },
+      select: { availableSpots: true },
     });
 
     const bookingCount = await db.booking.count({
-      where: { scheduleId: scheduleId, status: "confirmed" },
+      where: {
+        scheduleId,
+        status: { in: ["confirmed", "attended", "noshow"] },
+      },
     });
 
-    // Current behavior: atomic decrement prevents negative but allows overbooking
-    // Both bookings succeed, availableSpots becomes -1 or 0
-    expect(bookingCount).toBeGreaterThanOrEqual(1);
-
-    // NOTE: This test documents current behavior (potential overbooking)
-    // Future fix would add transaction with SELECT FOR UPDATE or unique constraint
-    console.log(`Final spots: ${finalSchedule!.availableSpots}, Bookings: ${bookingCount}`);
+    expect(bookingCount).toBe(1);
+    expect(finalSchedule.availableSpots).toBe(0);
+    expect(finalSchedule.availableSpots).toBeGreaterThanOrEqual(0);
   });
 });

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildFinalRecording, buildRealtimeSessionUpdate, canSubmitMessage, classifyRealtimeError, createRealtimeToolOutputEvents, detectVoicePlatform, inspectLocalRecording, messageFingerprint, realtimeEventLabel, realtimeMicrophoneConstraints, realtimeTurnDetection, recorderMimeCandidates, selectSupportedRecorderMime, shouldAutoPlayMessageTts, shouldReuseTtsAudio, shouldShowMessageTts, stopMediaRecorder } from "@/components/LiveChatWidget";
+import { buildFinalRecording, buildRealtimeSessionUpdate, canSubmitMessage, classifyRealtimeError, createRealtimeToolOutputEvents, shouldCreateRealtimeResponseForSpeech, detectVoicePlatform, inspectLocalRecording, messageFingerprint, realtimeEventLabel, realtimeMicrophoneConstraints, realtimeTurnDetection, recorderMimeCandidates, selectSupportedRecorderMime, shouldAutoPlayMessageTts, shouldReuseTtsAudio, shouldShowMessageTts, stopMediaRecorder } from "@/components/LiveChatWidget";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -42,12 +42,38 @@ describe("Realtime playback routing", () => {
   it("uses iOS-safe microphone constraints and explicit server VAD", () => {
     expect(realtimeMicrophoneConstraints).toEqual({ echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 });
     expect(realtimeMicrophoneConstraints).not.toHaveProperty("sampleRate");
-    expect(realtimeTurnDetection).toEqual({ type: "server_vad", threshold: 0.25, prefix_padding_ms: 500, silence_duration_ms: 900, create_response: true, interrupt_response: false });
+    expect(realtimeTurnDetection).toEqual({ type: "server_vad", threshold: 0.25, prefix_padding_ms: 500, silence_duration_ms: 900, create_response: false, interrupt_response: false });
   });
 
   it("identifies iPhone Safari without treating iOS Chrome as Safari", () => {
     expect(detectVoicePlatform("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) Version/17.0 Mobile/15E148 Safari/604.1")).toMatchObject({ isIOS: true, isSafari: true });
     expect(detectVoicePlatform("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) CriOS/120.0 Mobile/15E148 Safari/604.1")).toMatchObject({ isIOS: true, isSafari: false });
+  });
+
+  it("creates a manual response only for a real completed speech turn", () => {
+    expect(shouldCreateRealtimeResponseForSpeech({
+      speechStartedAt: 1000,
+      speechStoppedAt: 1500,
+      responseActive: false,
+    })).toBe(true);
+
+    expect(shouldCreateRealtimeResponseForSpeech({
+      speechStartedAt: 1000,
+      speechStoppedAt: 1120,
+      responseActive: false,
+    })).toBe(false);
+
+    expect(shouldCreateRealtimeResponseForSpeech({
+      speechStartedAt: 1000,
+      speechStoppedAt: 1500,
+      responseActive: true,
+    })).toBe(false);
+
+    expect(shouldCreateRealtimeResponseForSpeech({
+      speechStartedAt: 0,
+      speechStoppedAt: 1500,
+      responseActive: false,
+    })).toBe(false);
   });
 
   it("returns function output under the original call id before requesting a response", () => {

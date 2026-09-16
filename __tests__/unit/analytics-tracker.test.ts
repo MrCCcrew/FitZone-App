@@ -1,10 +1,59 @@
 import { describe, expect, it, vi } from "vitest";
-import { createPageLeaveGuard, getAnalyticsPath, sendAnalyticsPageLeave } from "@/components/analytics/AnalyticsTracker";
+import {
+  createPageLeaveGuard,
+  getAnalyticsPath,
+  sendAnalyticsPageLeave,
+  shouldCloseAnalyticsPageOnVisibility,
+  shouldRestartAnalyticsPageOnVisibility,
+} from "@/components/analytics/AnalyticsTracker";
 
 describe("analytics tracker", () => {
   it("keeps safe navigation paths and removes sensitive query values", () => {
     expect(getAnalyticsPath("/offers", "token=x&email=a@b.com&page=2")).toBe("/offers?page=2");
     expect(getAnalyticsPath("/offers", "page=3")).toBe("/offers?page=3");
+  });
+
+  it("closes the active page when the document becomes hidden", () => {
+    expect(
+      shouldCloseAnalyticsPageOnVisibility("hidden", "/classes"),
+    ).toBe(true);
+
+    expect(
+      shouldCloseAnalyticsPageOnVisibility("visible", "/classes"),
+    ).toBe(false);
+
+    expect(
+      shouldCloseAnalyticsPageOnVisibility("hidden", null),
+    ).toBe(false);
+  });
+
+  it("starts a new active page period when returning from hidden state", () => {
+    expect(
+      shouldRestartAnalyticsPageOnVisibility({
+        visibilityState: "visible",
+        currentPath: null,
+        desiredPath: "/classes",
+        effectPath: "/classes",
+      }),
+    ).toBe(true);
+
+    expect(
+      shouldRestartAnalyticsPageOnVisibility({
+        visibilityState: "visible",
+        currentPath: "/classes",
+        desiredPath: "/classes",
+        effectPath: "/classes",
+      }),
+    ).toBe(false);
+
+    expect(
+      shouldRestartAnalyticsPageOnVisibility({
+        visibilityState: "hidden",
+        currentPath: null,
+        desiredPath: "/classes",
+        effectPath: "/classes",
+      }),
+    ).toBe(false);
   });
 
   it("sends each page leave once, so duplicate pagehide and cleanup calls cannot duplicate it", async () => {

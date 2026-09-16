@@ -34,48 +34,40 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ logs });
 }
 
-// POST /api/admin/trainer-attendance  { trainerId, date, status, notes }
-export async function POST(req: NextRequest) {
+// Legacy daily trainer attendance is historical/read-only.
+// New coach attendance mutations must use /api/admin/coach-class-attendance.
+export async function POST(_req: NextRequest) {
   const auth = await requireAdminFeature("trainers");
+
   if ("error" in auth) return auth.error;
 
-  const body = await req.json();
-  const { trainerId, date, status, notes } = body as {
-    trainerId: string;
-    date: string;
-    status: string;
-    notes?: string;
-  };
-
-  if (!trainerId || !date || !status) {
-    return NextResponse.json({ error: "trainerId و date و status مطلوبون" }, { status: 400 });
-  }
-  if (!["present", "absent", "late"].includes(status)) {
-    return NextResponse.json({ error: "status غير صحيح" }, { status: 400 });
-  }
-
-  const dateObj = new Date(date);
-  if (isNaN(dateObj.getTime())) {
-    return NextResponse.json({ error: "تاريخ غير صحيح" }, { status: 400 });
-  }
-
-  const log = await (db as any).trainerAttendanceLog.upsert({
-    where: { trainerId_date: { trainerId, date: dateObj } },
-    create: { trainerId, date: dateObj, status, notes: notes ?? null, recordedById: auth.session.user.id },
-    update: { status, notes: notes ?? null, recordedById: auth.session.user.id },
-  });
-
-  return NextResponse.json({ log });
+  return NextResponse.json(
+    {
+      error:
+        "نظام حضور المدربين القديم أصبح للقراءة التاريخية فقط. استخدم حضور المدربين للحصص.",
+      code: "LEGACY_TRAINER_ATTENDANCE_READ_ONLY",
+    },
+    {
+      status: 410,
+    },
+  );
 }
 
-// DELETE /api/admin/trainer-attendance?id=X
-export async function DELETE(req: NextRequest) {
+// Historical records are intentionally preserved.
+// Deletion through the legacy attendance endpoint is disabled.
+export async function DELETE(_req: NextRequest) {
   const auth = await requireAdminFeature("trainers");
+
   if ("error" in auth) return auth.error;
 
-  const id = new URL(req.url).searchParams.get("id");
-  if (!id) return NextResponse.json({ error: "id مطلوب" }, { status: 400 });
-
-  await (db as any).trainerAttendanceLog.delete({ where: { id } });
-  return NextResponse.json({ ok: true });
+  return NextResponse.json(
+    {
+      error:
+        "سجلات حضور المدربين القديمة محفوظة تاريخيًا ولا يمكن حذفها من النظام القديم.",
+      code: "LEGACY_TRAINER_ATTENDANCE_READ_ONLY",
+    },
+    {
+      status: 410,
+    },
+  );
 }

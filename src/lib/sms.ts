@@ -1,3 +1,5 @@
+import { assertExternalSideEffectsAllowed } from "@/lib/staging-safety";
+
 // SMS / WhatsApp reminders via Twilio REST API (no SDK needed)
 // Required env vars:
 //   TWILIO_ACCOUNT_SID   – your Twilio Account SID
@@ -16,6 +18,15 @@ function twilioEnabled() {
 }
 
 export async function sendSms(toPhone: string, message: string): Promise<boolean> {
+  if (process.env.APP_ENV === "staging") {
+    try {
+      assertExternalSideEffectsAllowed("Twilio SMS/WhatsApp");
+    } catch (error) {
+      console.warn(String(error));
+      return false;
+    }
+  }
+
   if (!twilioEnabled()) {
     console.warn("[SMS] Twilio not configured — skipping reminder to", toPhone);
     return false;

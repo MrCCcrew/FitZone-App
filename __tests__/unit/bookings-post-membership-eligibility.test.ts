@@ -4,12 +4,14 @@ const mocks = vi.hoisted(() => ({
   getCurrentAppUser: vi.fn(),
   findSchedule: vi.fn(),
   findExistingBooking: vi.fn(),
+  findMembershipBookings: vi.fn(),
   findMemberships: vi.fn(),
   countBookings: vi.fn(),
   createBooking: vi.fn(),
   updateSchedule: vi.fn(),
   createNotification: vi.fn(),
   resolveEligibility: vi.fn(),
+  findHealthResponses: vi.fn(),
 }));
 
 vi.mock("@/lib/app-session", () => ({ getCurrentAppUser: mocks.getCurrentAppUser }));
@@ -18,11 +20,13 @@ vi.mock("@/lib/db", () => ({
     schedule: { findUnique: mocks.findSchedule, update: mocks.updateSchedule },
     booking: {
       findFirst: mocks.findExistingBooking,
+      findMany: mocks.findMembershipBookings,
       count: mocks.countBookings,
       create: mocks.createBooking,
     },
     userMembership: { findMany: mocks.findMemberships },
     notification: { create: mocks.createNotification },
+    healthResponse: { findMany: mocks.findHealthResponses },
   },
 }));
 vi.mock("@/lib/membership-class-eligibility", () => ({
@@ -61,12 +65,13 @@ function request() {
   });
 }
 
-function eligible(overrides: Partial<{ unrestricted: boolean; allowedClassIds: string[]; eligibleMembershipIds: string[] }> = {}) {
+function eligible(overrides: Partial<{ unrestricted: boolean; allowedClassIds: string[]; eligibleMembershipIds: string[]; membershipIdsByClass: Record<string, string[]> }> = {}) {
   return {
     hasEligibleMembership: true,
     unrestricted: false,
     allowedClassIds: [classId],
     eligibleMembershipIds: ["membership-1"],
+    membershipIdsByClass: { [classId]: ["membership-1"] },
     ...overrides,
   };
 }
@@ -77,12 +82,14 @@ describe("POST /api/bookings membership eligibility", () => {
     mocks.getCurrentAppUser.mockResolvedValue({ id: "user-1" });
     mocks.findSchedule.mockResolvedValue(schedule);
     mocks.findExistingBooking.mockResolvedValue(null);
+    mocks.findMembershipBookings.mockResolvedValue([]);
     mocks.findMemberships.mockResolvedValue([membership("membership-1")]);
     mocks.countBookings.mockResolvedValue(0);
     mocks.createBooking.mockResolvedValue({ id: "booking-1" });
     mocks.updateSchedule.mockResolvedValue({});
     mocks.createNotification.mockResolvedValue({});
     mocks.resolveEligibility.mockResolvedValue(eligible());
+    mocks.findHealthResponses.mockResolvedValue([]);
   });
 
   it("allows a class included by a restricted membership", async () => {
@@ -113,7 +120,10 @@ describe("POST /api/bookings membership eligibility", () => {
     const first = membership("membership-first", "active", JSON.stringify([{ classId: "class-boxing" }]));
     const second = membership("membership-second");
     mocks.findMemberships.mockResolvedValue([first, second]);
-    mocks.resolveEligibility.mockResolvedValue(eligible({ eligibleMembershipIds: [first.id, second.id] }));
+    mocks.resolveEligibility.mockResolvedValue(eligible({
+      eligibleMembershipIds: [second.id],
+      membershipIdsByClass: { [classId]: [second.id] },
+    }));
 
     const response = await POST(request());
 
@@ -130,7 +140,8 @@ describe("POST /api/bookings membership eligibility", () => {
     mocks.resolveEligibility.mockResolvedValue(eligible({
       unrestricted: true,
       allowedClassIds: [],
-      eligibleMembershipIds: [restricted.id, unrestricted.id],
+      eligibleMembershipIds: [unrestricted.id],
+      membershipIdsByClass: { [classId]: [unrestricted.id] },
     }));
 
     const response = await POST(request());
@@ -148,6 +159,7 @@ describe("POST /api/bookings membership eligibility", () => {
       unrestricted: false,
       allowedClassIds: [],
       eligibleMembershipIds: [],
+      membershipIdsByClass: {},
     });
 
     const response = await POST(request());

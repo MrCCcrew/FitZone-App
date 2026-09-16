@@ -52,8 +52,29 @@ export async function PATCH(req: Request) {
     const body = (await req.json()) as { id?: string; status?: string; notes?: string };
     if (!body.id) return NextResponse.json({ error: "معرّف العمولة مطلوب." }, { status: 400 });
 
+    const existing = await db.partnerCommission.findUnique({
+      where: { id: body.id },
+      select: { id: true, status: true, withdrawnAt: true },
+    });
+
+    if (!existing) {
+      return NextResponse.json({ error: "العمولة غير موجودة." }, { status: 404 });
+    }
+
+    // A withdrawn commission is settled financial history.
+    // Never reopen it through a generic status PATCH.
+    if (existing.status === "withdrawn" && body.status === "pending") {
+      return NextResponse.json(
+        { error: "لا يمكن إعادة العمولة المسحوبة إلى معلقة من هذه الشاشة." },
+        { status: 409 },
+      );
+    }
+
     const data: Record<string, unknown> = {};
-    if (body.status === "withdrawn") { data.status = "withdrawn"; data.withdrawnAt = new Date(); }
+    if (body.status === "withdrawn" && existing.status !== "withdrawn") {
+      data.status = "withdrawn";
+      data.withdrawnAt = new Date();
+    }
     else if (body.status === "pending") { data.status = "pending"; data.withdrawnAt = null; }
     if (body.notes !== undefined) data.notes = body.notes.trim() || null;
 

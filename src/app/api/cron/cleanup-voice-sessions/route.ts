@@ -4,6 +4,13 @@ import { cleanupStaleVoiceSessions, voiceQuotaEnabled } from "@/lib/ai-coach/voi
 // Run every minute or two. finalizeVoiceSession owns the atomic active ->
 // finalized transition, so concurrent cron runs and client finalization are safe.
 export async function GET(req: Request) {
+  if (process.env.APP_ENV === "staging") {
+    return Response.json(
+      { error: "Cron disabled in staging" },
+      { status: 403 }
+    );
+  }
+
   if (!voiceQuotaEnabled()) return NextResponse.json({ ok: true, disabled: true });
   const secret = process.env.CRON_SECRET;
   if (!secret) return NextResponse.json({ error: "Cron not configured" }, { status: 503 });

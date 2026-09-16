@@ -1,52 +1,121 @@
 ﻿import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { transactionalPaymentFindUnique, transactionalWalletUpsert, transactionalWalletTransactionCreate } = vi.hoisted(() => ({
+const {
+  transactionalPaymentFindUnique,
+  transactionalPaymentUpdate,
+  transactionalPaymentUpdateMany,
+  transactionalUserMembershipUpdateMany,
+  transactionalBookingFindMany,
+  transactionalBookingUpdateMany,
+  transactionalScheduleUpdate,
+  transactionalWalletUpsert,
+  transactionalWalletTransactionCreate,
+  transactionalPrivateSessionFindUnique,
+  transactionalPrivateSessionUpdateMany,
+  accruePrivateSessionEarningTxMock,
+} = vi.hoisted(() => ({
   transactionalPaymentFindUnique: vi.fn(),
+  transactionalPaymentUpdate: vi.fn(),
+  transactionalPaymentUpdateMany: vi.fn().mockResolvedValue({ count: 1 }),
+  transactionalUserMembershipUpdateMany: vi
+    .fn()
+    .mockResolvedValue({ count: 1 }),
+  transactionalBookingFindMany: vi.fn().mockResolvedValue([]),
+  transactionalBookingUpdateMany: vi.fn(),
+  transactionalScheduleUpdate: vi.fn(),
   transactionalWalletUpsert: vi.fn().mockResolvedValue({ id: "w1" }),
   transactionalWalletTransactionCreate: vi.fn(),
+  transactionalPrivateSessionFindUnique: vi.fn(),
+  transactionalPrivateSessionUpdateMany: vi.fn(),
+  accruePrivateSessionEarningTxMock: vi.fn().mockResolvedValue({
+    id: "earning-1",
+    status: "calculated",
+  }),
 }));
 
 // ─── Mock all external dependencies before importing service ──────────────────
 
 vi.mock("@/lib/db", () => ({
+  asDbTransactionClient: (tx: unknown) => tx,
   db: {
-    paymentTransaction: { findUnique: vi.fn(), update: vi.fn(), updateMany: vi.fn().mockResolvedValue({ count: 1 }), findMany: vi.fn() },
-    userMembership:     { findUnique: vi.fn(), updateMany: vi.fn() },
-    booking:            { findMany: vi.fn().mockResolvedValue([]), updateMany: vi.fn() },
-    schedule:           { update: vi.fn() },
-    wallet:             { upsert: vi.fn().mockResolvedValue({ id: "w1" }), update: vi.fn() },
-    walletTransaction:  { create: vi.fn() },
-    rewardPoints:       { upsert: vi.fn().mockResolvedValue({ id: "rp1" }) },
-    rewardHistory:      { create: vi.fn() },
-    notification:       { create: vi.fn().mockResolvedValue({ id: "n1" }) },
-    user:               { findUnique: vi.fn() },
-    referralUsage:      { findUnique: vi.fn().mockResolvedValue(null), update: vi.fn() },
-    referral:           { update: vi.fn() },
-    partner:            { findUnique: vi.fn() },
-    partnerCommission:  { upsert: vi.fn() },
-    offer:              { update: vi.fn() },
-    product:            { findUnique: vi.fn(), update: vi.fn() },
-    inventoryMovement:  { create: vi.fn() },
-    order:              { findUnique: vi.fn(), update: vi.fn() },
+    paymentTransaction: {
+      findUnique: vi.fn(),
+      update: vi.fn(),
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      findMany: vi.fn(),
+    },
+    userMembership: { findUnique: vi.fn(), updateMany: vi.fn() },
+    booking: { findMany: vi.fn().mockResolvedValue([]), updateMany: vi.fn() },
+    schedule: { update: vi.fn() },
+    wallet: {
+      upsert: vi.fn().mockResolvedValue({ id: "w1" }),
+      update: vi.fn(),
+    },
+    walletTransaction: { create: vi.fn() },
+    rewardPoints: { upsert: vi.fn().mockResolvedValue({ id: "rp1" }) },
+    rewardHistory: { create: vi.fn() },
+    notification: { create: vi.fn().mockResolvedValue({ id: "n1" }) },
+    user: { findUnique: vi.fn() },
+    referralUsage: {
+      findUnique: vi.fn().mockResolvedValue(null),
+      update: vi.fn(),
+    },
+    referral: { update: vi.fn() },
+    partner: { findUnique: vi.fn() },
+    partnerCommission: { upsert: vi.fn() },
+    offer: { update: vi.fn() },
+    product: { findUnique: vi.fn(), update: vi.fn() },
+    inventoryMovement: { create: vi.fn() },
+    order: { findUnique: vi.fn(), update: vi.fn() },
     privateSessionApplication: { findUnique: vi.fn(), updateMany: vi.fn() },
-    nutritionSession:   { updateMany: vi.fn() },
-    siteContent:        { findUnique: vi.fn().mockResolvedValue(null) },
-    $transaction: vi.fn().mockImplementation(async (cb: (tx: unknown) => unknown) =>
-      cb({
-        paymentTransaction: { findUnique: transactionalPaymentFindUnique, update: vi.fn(), updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
-        wallet:             { upsert: transactionalWalletUpsert, update: vi.fn() },
-        walletTransaction:  { create: transactionalWalletTransactionCreate },
-        rewardPoints:       { upsert: vi.fn().mockResolvedValue({ id: "rp1" }) },
-        rewardHistory:      { create: vi.fn() },
-      })
-    ),
+    nutritionSession: { updateMany: vi.fn() },
+    siteContent: { findUnique: vi.fn().mockResolvedValue(null) },
+    $transaction: vi
+      .fn()
+      .mockImplementation(async (cb: (tx: unknown) => unknown) =>
+        cb({
+          paymentTransaction: {
+            findUnique: transactionalPaymentFindUnique,
+            update: transactionalPaymentUpdate,
+            updateMany: transactionalPaymentUpdateMany,
+          },
+          userMembership: {
+            updateMany: transactionalUserMembershipUpdateMany,
+          },
+          booking: {
+            findMany: transactionalBookingFindMany,
+            updateMany: transactionalBookingUpdateMany,
+          },
+          schedule: {
+            update: transactionalScheduleUpdate,
+          },
+          wallet: { upsert: transactionalWalletUpsert, update: vi.fn() },
+          walletTransaction: { create: transactionalWalletTransactionCreate },
+          privateSessionApplication: {
+            findUnique: transactionalPrivateSessionFindUnique,
+            updateMany: transactionalPrivateSessionUpdateMany,
+          },
+          rewardPoints: { upsert: vi.fn().mockResolvedValue({ id: "rp1" }) },
+          rewardHistory: { create: vi.fn() },
+        }),
+      ),
   },
+}));
+
+vi.mock("@/lib/employees/private-session-earning-service", () => ({
+  accruePrivateSessionEarningTx: accruePrivateSessionEarningTxMock,
+}));
+
+vi.mock("@/lib/accounting-service", () => ({
+  postWalletTopupJournal: vi.fn().mockResolvedValue(null),
+  postPromotionalWalletCreditJournal: vi.fn().mockResolvedValue(null),
+  postPromotionalPointsGrantJournal: vi.fn().mockResolvedValue(null),
 }));
 
 vi.mock("@/lib/attendance", () => ({
   ensureMembershipAttendancePass: vi.fn().mockResolvedValue(null),
-  ensurePrivateAttendancePass:    vi.fn().mockResolvedValue(null),
-  buildAttendancePayload:         vi.fn().mockReturnValue("qr"),
+  ensurePrivateAttendancePass: vi.fn().mockResolvedValue(null),
+  buildAttendancePayload: vi.fn().mockReturnValue("qr"),
 }));
 
 vi.mock("@/lib/email", () => ({
@@ -62,9 +131,11 @@ vi.mock("@/lib/membership-invoice", () => ({
 }));
 
 vi.mock("@/lib/payments/registry", () => ({
-  getPaymentProvider:       vi.fn().mockReturnValue(null),
-  getDefaultPaymentProvider: vi.fn().mockReturnValue({ key: "paymob", enabled: true }),
-  listPaymentProviders:     vi.fn().mockReturnValue([]),
+  getPaymentProvider: vi.fn().mockReturnValue(null),
+  getDefaultPaymentProvider: vi
+    .fn()
+    .mockReturnValue({ key: "paymob", enabled: true }),
+  listPaymentProviders: vi.fn().mockReturnValue([]),
 }));
 
 import { db } from "@/lib/db";
@@ -102,7 +173,14 @@ const BASE_TX = {
 
 // Minimal select-shape returned by the first findUnique (with select clause)
 function pendingSelect(overrides: Record<string, unknown> = {}) {
-  return { status: "pending_payment", metadata: null, membershipId: null, orderId: null, userId: "u1", ...overrides };
+  return {
+    status: "pending_payment",
+    metadata: null,
+    membershipId: null,
+    orderId: null,
+    userId: "u1",
+    ...overrides,
+  };
 }
 
 // ─── Idempotency ──────────────────────────────────────────────────────────────
@@ -111,12 +189,18 @@ describe("updatePaymentTransactionStatus — idempotency (paid → paid)", () =>
   beforeEach(() => vi.clearAllMocks());
 
   it("does NOT call db.update when transaction is already paid", async () => {
-    const paidSelect = { status: "paid", metadata: null, membershipId: null, orderId: null, userId: "u1" };
-    const paidFull   = { ...BASE_TX, status: "paid", paidAt: new Date() };
+    const paidSelect = {
+      status: "paid",
+      metadata: null,
+      membershipId: null,
+      orderId: null,
+      userId: "u1",
+    };
+    const paidFull = { ...BASE_TX, status: "paid", paidAt: new Date() };
 
     vi.mocked(db.paymentTransaction.findUnique)
-      .mockResolvedValueOnce(paidSelect as never)  // first call (select)
-      .mockResolvedValueOnce(paidFull as never);   // second call (full, for return value)
+      .mockResolvedValueOnce(paidSelect as never) // first call (select)
+      .mockResolvedValueOnce(paidFull as never); // second call (full, for return value)
 
     const result = await updatePaymentTransactionStatus("tx-001", "paid");
 
@@ -125,15 +209,95 @@ describe("updatePaymentTransactionStatus — idempotency (paid → paid)", () =>
     expect(result.id).toBe("tx-001");
   });
 
+  it("repairs missing private-session earning on paid retry", async () => {
+    const paidAt = new Date("2026-09-09T12:00:00.000Z");
+
+    const paidSelect = {
+      status: "paid",
+      metadata: JSON.stringify({
+        privateSessionApplicationId: "private-app-1",
+      }),
+      membershipId: null,
+      orderId: null,
+      userId: "u1",
+      purpose: "private_session",
+    };
+
+    const paidFull = {
+      ...BASE_TX,
+      status: "paid",
+      purpose: "private_session",
+      paidAt,
+      metadata: JSON.stringify({
+        privateSessionApplicationId: "private-app-1",
+      }),
+    };
+
+    vi.mocked(db.paymentTransaction.findUnique)
+      .mockResolvedValueOnce(paidSelect as never)
+      .mockResolvedValueOnce(paidFull as never);
+
+    transactionalPrivateSessionFindUnique.mockResolvedValue({
+      status: "paid",
+      paymentTransactionId: "tx-001",
+      durationDays: 30,
+    });
+
+    accruePrivateSessionEarningTxMock.mockResolvedValue({
+      id: "earning-1",
+      status: "calculated",
+    });
+
+    const result = await updatePaymentTransactionStatus("tx-001", "paid");
+
+    expect(result.status).toBe("paid");
+
+    expect(transactionalPrivateSessionFindUnique).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          id: "private-app-1",
+        },
+      }),
+    );
+
+    expect(transactionalPrivateSessionUpdateMany).not.toHaveBeenCalled();
+
+    expect(accruePrivateSessionEarningTxMock).toHaveBeenCalledOnce();
+
+    expect(accruePrivateSessionEarningTxMock).toHaveBeenCalledWith(
+      expect.anything(),
+      {
+        privateSessionApplicationId: "private-app-1",
+      },
+    );
+  });
+
   it("still processes when transitioning from pending_payment → paid", async () => {
     const updatedTx = { ...BASE_TX, status: "paid", paidAt: new Date() };
-    vi.mocked(db.paymentTransaction.findUnique).mockResolvedValueOnce(pendingSelect() as never);
-    vi.mocked(db.paymentTransaction.update).mockResolvedValue(updatedTx as never);
+    vi.mocked(db.paymentTransaction.findUnique).mockResolvedValueOnce(
+      pendingSelect() as never,
+    );
+
+    vi.mocked(db.paymentTransaction.update).mockResolvedValue(
+      updatedTx as never,
+    );
+
     vi.mocked(db.user.findUnique).mockResolvedValue(null);
 
     const result = await updatePaymentTransactionStatus("tx-001", "paid");
 
-    expect(db.paymentTransaction.update).toHaveBeenCalledOnce();
+    expect(db.paymentTransaction.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          id: "tx-001",
+        },
+        data: expect.objectContaining({
+          status: "paid",
+          paidAt: expect.any(Date),
+        }),
+      }),
+    );
+
     expect(result.status).toBe("paid");
   });
 });
@@ -142,21 +306,32 @@ describe("wallet top-up payment", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("credits the wallet once when a paid webhook is repeated", async () => {
-    const paidTopup = { ...BASE_TX, purpose: "wallet_topup", status: "paid", amount: 100, paidAt: new Date() };
+    const paidTopup = {
+      ...BASE_TX,
+      purpose: "wallet_topup",
+      status: "paid",
+      amount: 100,
+      paidAt: new Date(),
+    };
     vi.mocked(db.paymentTransaction.findUnique)
-      .mockResolvedValueOnce(pendingSelect({ purpose: "wallet_topup" }) as never)
+      .mockResolvedValueOnce(
+        pendingSelect({ purpose: "wallet_topup" }) as never,
+      )
       .mockResolvedValueOnce(paidTopup as never)
       .mockResolvedValueOnce(paidTopup as never)
       .mockResolvedValueOnce(paidTopup as never);
-    vi.mocked(db.paymentTransaction.update).mockResolvedValue(paidTopup as never);
+    vi.mocked(db.paymentTransaction.update).mockResolvedValue(
+      paidTopup as never,
+    );
     transactionalPaymentFindUnique.mockResolvedValue(paidTopup);
 
     await updatePaymentTransactionStatus("tx-001", "paid");
     await updatePaymentTransactionStatus("tx-001", "paid");
 
-    expect(db.$transaction).toHaveBeenCalledOnce();
     expect(transactionalWalletTransactionCreate).toHaveBeenCalledOnce();
-    expect(transactionalWalletUpsert).toHaveBeenCalledWith(expect.objectContaining({ update: { balance: { increment: 100 } } }));
+    expect(transactionalWalletUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({ update: { balance: { increment: 100 } } }),
+    );
   });
 });
 
@@ -167,15 +342,27 @@ describe("updatePaymentTransactionStatus — status transitions", () => {
 
   it("sets paidAt when transitioning to 'paid'", async () => {
     const updatedTx = { ...BASE_TX, status: "paid", paidAt: new Date() };
-    vi.mocked(db.paymentTransaction.findUnique).mockResolvedValueOnce(pendingSelect() as never);
-    vi.mocked(db.paymentTransaction.update).mockResolvedValue(updatedTx as never);
+    vi.mocked(db.paymentTransaction.findUnique).mockResolvedValueOnce(
+      pendingSelect() as never,
+    );
+
+    vi.mocked(db.paymentTransaction.update).mockResolvedValue(
+      updatedTx as never,
+    );
+
     vi.mocked(db.user.findUnique).mockResolvedValue(null);
 
     await updatePaymentTransactionStatus("tx-001", "paid");
 
     expect(db.paymentTransaction.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ status: "paid", paidAt: expect.any(Date) }),
+        where: {
+          id: "tx-001",
+        },
+        data: expect.objectContaining({
+          status: "paid",
+          paidAt: expect.any(Date),
+        }),
       }),
     );
   });
@@ -185,14 +372,21 @@ describe("updatePaymentTransactionStatus — status transitions", () => {
     vi.mocked(db.paymentTransaction.findUnique)
       .mockResolvedValueOnce(pendingSelect() as never)
       .mockResolvedValueOnce(failedTx as never);
-    vi.mocked(db.paymentTransaction.update).mockResolvedValue(failedTx as never);
-    vi.mocked(db.booking.findMany).mockResolvedValue([]);
+    transactionalPaymentFindUnique.mockResolvedValue({
+      ...BASE_TX,
+      status: "pending_payment",
+    });
+    transactionalPaymentUpdate.mockResolvedValue(failedTx);
+    transactionalBookingFindMany.mockResolvedValue([]);
 
     await updatePaymentTransactionStatus("tx-001", "failed");
 
-    expect(db.paymentTransaction.update).toHaveBeenCalledWith(
+    expect(transactionalPaymentUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ status: "failed", failedAt: expect.any(Date) }),
+        data: expect.objectContaining({
+          status: "failed",
+          failedAt: expect.any(Date),
+        }),
       }),
     );
   });
@@ -204,21 +398,31 @@ describe("updatePaymentTransactionStatus — 'failed' cancels pending membership
   beforeEach(() => vi.clearAllMocks());
 
   it("calls userMembership.updateMany to expire pending membership on failure", async () => {
-    const failedTx = { ...BASE_TX, status: "failed", membershipId: "m1", failedAt: new Date() };
+    const failedTx = {
+      ...BASE_TX,
+      status: "failed",
+      membershipId: "m1",
+      failedAt: new Date(),
+    };
 
     vi.mocked(db.paymentTransaction.findUnique)
       .mockResolvedValueOnce(pendingSelect({ membershipId: "m1" }) as never)
       .mockResolvedValueOnce(failedTx as never);
-    vi.mocked(db.paymentTransaction.update).mockResolvedValue(failedTx as never);
-    vi.mocked(db.userMembership.updateMany).mockResolvedValue({ count: 1 } as never);
-    vi.mocked(db.booking.findMany).mockResolvedValue([]);
+    transactionalPaymentFindUnique.mockResolvedValue({
+      ...BASE_TX,
+      status: "pending_payment",
+      membershipId: "m1",
+    });
+    transactionalPaymentUpdate.mockResolvedValue(failedTx);
+    transactionalUserMembershipUpdateMany.mockResolvedValue({ count: 1 });
+    transactionalBookingFindMany.mockResolvedValue([]);
 
     await updatePaymentTransactionStatus("tx-001", "failed");
 
-    expect(db.userMembership.updateMany).toHaveBeenCalledWith(
+    expect(transactionalUserMembershipUpdateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "m1", status: "pending_payment" },
-        data:  { status: "expired" },
+        data: { status: "expired" },
       }),
     );
   });
@@ -229,7 +433,9 @@ describe("updatePaymentTransactionStatus — 'failed' cancels pending membership
     vi.mocked(db.paymentTransaction.findUnique)
       .mockResolvedValueOnce(pendingSelect() as never)
       .mockResolvedValueOnce(failedTx as never);
-    vi.mocked(db.paymentTransaction.update).mockResolvedValue(failedTx as never);
+    vi.mocked(db.paymentTransaction.update).mockResolvedValue(
+      failedTx as never,
+    );
 
     await updatePaymentTransactionStatus("tx-001", "failed");
 
@@ -237,27 +443,40 @@ describe("updatePaymentTransactionStatus — 'failed' cancels pending membership
   });
 
   it("cancels confirmed bookings and restores schedule spots on failure", async () => {
-    const failedTx = { ...BASE_TX, status: "failed", membershipId: "m1", failedAt: new Date() };
-    const pendingBookings = [{ id: "b1", scheduleId: "s1" }, { id: "b2", scheduleId: "s1" }];
+    const failedTx = {
+      ...BASE_TX,
+      status: "failed",
+      membershipId: "m1",
+      failedAt: new Date(),
+    };
+    const pendingBookings = [
+      { id: "b1", scheduleId: "s1" },
+      { id: "b2", scheduleId: "s1" },
+    ];
 
     vi.mocked(db.paymentTransaction.findUnique)
       .mockResolvedValueOnce(pendingSelect({ membershipId: "m1" }) as never)
       .mockResolvedValueOnce(failedTx as never);
-    vi.mocked(db.paymentTransaction.update).mockResolvedValue(failedTx as never);
-    vi.mocked(db.userMembership.updateMany).mockResolvedValue({ count: 1 } as never);
-    vi.mocked(db.booking.findMany).mockResolvedValue(pendingBookings as never);
-    vi.mocked(db.booking.updateMany).mockResolvedValue({ count: 2 } as never);
-    vi.mocked(db.schedule.update).mockResolvedValue({} as never);
+    transactionalPaymentFindUnique.mockResolvedValue({
+      ...BASE_TX,
+      status: "pending_payment",
+      membershipId: "m1",
+    });
+    transactionalPaymentUpdate.mockResolvedValue(failedTx);
+    transactionalUserMembershipUpdateMany.mockResolvedValue({ count: 1 });
+    transactionalBookingFindMany.mockResolvedValue(pendingBookings);
+    transactionalBookingUpdateMany.mockResolvedValue({ count: 2 });
+    transactionalScheduleUpdate.mockResolvedValue({});
 
     await updatePaymentTransactionStatus("tx-001", "failed");
 
-    expect(db.booking.updateMany).toHaveBeenCalledWith(
+    expect(transactionalBookingUpdateMany).toHaveBeenCalledWith(
       expect.objectContaining({ data: { status: "cancelled" } }),
     );
-    expect(db.schedule.update).toHaveBeenCalledWith(
+    expect(transactionalScheduleUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "s1" },
-        data: { availableSpots: { increment: 1 } },
+        data: { availableSpots: { increment: 2 } },
       }),
     );
   });

@@ -1,5 +1,6 @@
 export type Section =
   | "overview"
+  | "approvals"
   | "analytics"
   | "accounting"
   | "settings"
@@ -7,6 +8,7 @@ export type Section =
   | "blog-pending"
   | "knowledge"
   | "subscriptions"
+  | "friend-matching"
   | "packages"
   | "goals"
   | "delivery"
@@ -14,6 +16,7 @@ export type Section =
   | "payments"
   | "classes"
   | "trainers"
+  | "employees"
   | "partners"
   | "contracts"
   | "referrals"
@@ -51,6 +54,8 @@ export interface AdminEmployee {
   maxDiscount?: number | null;
   commissionRate: number;
   commissionType: string;
+  marketingCommissionRate: number;
+  marketingCommissionType: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -76,12 +81,42 @@ export interface Customer {
   phone: string;
   email: string;
   plan: string;
-  status: "active" | "suspended" | "expired";
+  status:
+    | "active"
+    | "suspended"
+    | "pending_payment"
+    | "cancelled"
+    | "expired"
+    | "unsubscribed";
   joinDate: string;
   points: number;
   balance: number;
   avatar: string;
   pendingApproval?: boolean;
+
+  originalReferrer?: {
+    type:
+      | "staff"
+      | "trainer"
+      | "nutrition"
+      | "sales_agent"
+      | "sales_user"
+      | "partner";
+    id: string;
+    name: string;
+  } | null;
+
+  marketingConversion?: {
+    id: string;
+    status: "open" | "checkout_locked" | "converted" | "cancelled";
+    assignedAt: string;
+    assignedStaff: {
+      id: string;
+      name: string;
+      email: string | null;
+    };
+  } | null;
+
   memberships?: CustomerMembershipReport[];
 }
 
@@ -94,11 +129,19 @@ export interface CustomerMembershipReport {
   endDate: string;
   sessionsTotal: number | null;
   sessionsUsed: number;
+  sessionsReserved: number;
   sessionsRemaining: number | null;
   paymentAmount: number;
   paymentMethod: string | null;
+  paymentStatus?: string | null;
+  paymentProvider?: string | null;
+  paymentPaidAt?: string | null;
   offerTitle?: string | null;
-  productRewards?: Array<{ productId: string; productName?: string; quantity: number }>;
+  productRewards?: Array<{
+    productId: string;
+    productName?: string;
+    quantity: number;
+  }>;
 }
 
 export interface Plan {
@@ -114,8 +157,18 @@ export interface Plan {
   duration: number;
   cycle?: "monthly" | "quarterly" | "semi_annual" | "annual" | "custom";
   sessionsCount?: number | null;
-  classSessions?: Array<{ classId: string; className?: string; classType?: string; sessions: number }>;
-  productRewards?: Array<{ productId: string; productName?: string; quantity: number }>;
+  classSessions?: Array<{
+    classId?: string;
+    classTypeId?: string;
+    className?: string;
+    classType?: string;
+    sessions: number;
+  }>;
+  productRewards?: Array<{
+    productId: string;
+    productName?: string;
+    quantity: number;
+  }>;
   features: string[];
   featuresEn?: string[];
   active: boolean;
@@ -124,6 +177,11 @@ export interface Plan {
   subtitle?: string | null;
   giftEn?: string | null;
   isFeatured?: boolean;
+
+  // Explicit business classification.
+  // Does not imply Trainer referral or discount attribution.
+  coachMembershipEnabled?: boolean;
+
   minMonths?: number | null;
   maxMonths?: number | null;
   discountPct?: number | null;
@@ -156,7 +214,11 @@ export interface Offer {
   features?: string[];
   featuresEn?: string[];
   allowedClassTypes?: string[];
+  allowedClassTypeIds?: string[];
   allowedClassIds?: string[];
+  friendOfferEnabled?: boolean;
+  friendRequiredMembers?: number;
+  friendInviteExpiryHours?: number;
 }
 
 export interface GymClass {
@@ -172,6 +234,7 @@ export interface GymClass {
   category?: string | null;
   categoryEn?: string | null;
   type: string;
+  classTypeId?: string | null;
   typeEn?: string | null;
   subType?: string | null;
   subTypeEn?: string | null;
@@ -204,7 +267,12 @@ export interface Partner {
   showOnPublicPage: boolean;
   notes?: string | null;
   createdAt: string;
-  linkedUser: { id: string; name: string; email: string; phone?: string | null } | null;
+  linkedUser: {
+    id: string;
+    name: string;
+    email: string;
+    phone?: string | null;
+  } | null;
   codesCount: number;
   linksCount: number;
   totalCommissionPending: number;
@@ -323,6 +391,17 @@ export interface Product {
   supplierId?: string | null;
   supplierName?: string | null;
   costPrice?: number | null;
+  variants?: Array<{
+    id: string;
+    size?: string | null;
+    color?: string | null;
+    sku?: string | null;
+    barcode?: string | null;
+    stock: number;
+    costPrice?: number | null;
+    price?: number | null;
+    isActive: boolean;
+  }>;
   barcode?: string | null;
   displayPriority?: number;
   isFeatured?: boolean;
@@ -458,7 +537,11 @@ export interface HealthQuestion {
   allowReason?: boolean;
   sortOrder: number;
   restrictedClassTypes?: string[];
-  restrictions?: Array<{ id: string; classType: string; notes?: string | null }>;
+  restrictions?: Array<{
+    id: string;
+    classType: string;
+    notes?: string | null;
+  }>;
 }
 
 export interface HealthSurveyResponse {
@@ -484,7 +567,12 @@ export interface SalesAgentRow {
   managerName: string | null;
   notes: string | null;
   createdAt: string;
-  user: { id: string; name: string | null; email: string | null; phone: string | null };
+  user: {
+    id: string;
+    name: string | null;
+    email: string | null;
+    phone: string | null;
+  };
   referralsCount: number;
   convertedCount: number;
   totalEarned: number;
@@ -515,7 +603,12 @@ export interface ContractsManagerRow {
   isActive: boolean;
   notes: string | null;
   createdAt: string;
-  user: { id: string; name: string | null; email: string | null; phone: string | null };
+  user: {
+    id: string;
+    name: string | null;
+    email: string | null;
+    phone: string | null;
+  };
   agentsCount: number;
   totalAgentEarned: number;
   pendingCommission: number;
@@ -576,7 +669,12 @@ export interface ChatSession {
   mode: "bot" | "live";
   lastMessageAt: string;
   createdAt: string;
-  assignedTo?: { id: string; name?: string | null; email?: string | null; role?: string | null } | null;
+  assignedTo?: {
+    id: string;
+    name?: string | null;
+    email?: string | null;
+    role?: string | null;
+  } | null;
   recommendedMembership?: { id: string; name: string; price: number } | null;
   messages: ChatMessage[];
 }
@@ -643,7 +741,7 @@ export interface StaffCommissionRow {
   customerEmail: string | null;
   membershipName: string | null;
   amount: number;
-  status: "earned" | "settled";
+  status: "earned" | "settled" | "ineligible";
   settledAt: string | null;
   createdAt: string;
 }
@@ -697,7 +795,12 @@ export interface NutritionistProfileRow {
   sessionCommissionRate: number;
   sessionCommissionType: string;
   createdAt: string;
-  linkedUser: { id: string; name: string | null; email: string | null; phone: string | null } | null;
+  linkedUser: {
+    id: string;
+    name: string | null;
+    email: string | null;
+    phone: string | null;
+  } | null;
 }
 
 export interface NutritionSessionRow {
@@ -712,6 +815,12 @@ export interface NutritionSessionRow {
   doctorNote: string | null;
   paidAt: string | null;
   createdAt: string;
-  user: { id: string; name: string | null; email: string | null; phone: string | null; avatar: string | null };
+  user: {
+    id: string;
+    name: string | null;
+    email: string | null;
+    phone: string | null;
+    avatar: string | null;
+  };
   nutritionist: { id: string; name: string };
 }

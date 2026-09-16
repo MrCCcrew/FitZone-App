@@ -1,0 +1,2922 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum VoiceSessionStatus {
+  active
+  finalized
+}
+
+enum VoiceTerminationReason {
+  user_ended
+  quota_exhausted
+  max_duration
+  expired
+  heartbeat_timeout
+  connection_failed
+  cleanup
+  authorization_failed
+}
+
+enum KnowledgePrivacyClass {
+  STATIC
+  DYNAMIC
+  PERSONAL
+}
+
+enum KnowledgeAnswerSource {
+  ADMIN
+  TOOL_TEMPLATE
+  OPENAI_SUGGESTION
+}
+
+// ─── Auth (NextAuth v5) ───────────────────────────────────────────────────────
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model PasswordResetToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ─── User ─────────────────────────────────────────────────────────────────────
+
+model User {
+  id                      String    @id @default(cuid())
+  name                    String?
+  email                   String?   @unique
+  emailVerified           DateTime?
+  phone                   String?
+  gender                  String? // single_graduated | married_new | married_with_kids | student
+  birthDate               DateTime?
+  governorate             String?
+  address                 String?
+  password                String?
+  role                    String    @default("member") // member | trainer | staff | admin
+  jobTitle                String?
+  adminAccess             Boolean   @default(false)
+  adminPermissions        String?   @db.LongText // JSON array of AdminFeature keys
+  isActive                Boolean   @default(true)
+  suspendedAt             DateTime?
+  suspensionReason        String?   @db.Text
+  discountType            String    @default("fixed") // fixed | percentage
+  discountValue           Float     @default(0)
+  maxDiscount             Float?
+  commissionRate          Float     @default(0)
+  commissionType          String    @default("percentage") // referral commission: percentage | fixed
+  marketingCommissionRate Float     @default(0)
+  marketingCommissionType String    @default("percentage") // marketing conversion: percentage | fixed
+  avatar                  String?
+  pendingApproval         Boolean   @default(false) // set true when trainer creates a customer pending admin/head_coach approval
+  pendingPartnerRef       String? // affiliate link token stored at registration, cleared after first paid subscription
+  pendingAgentRef         String? // sales agent referral code stored at registration, cleared after first paid subscription
+  pendingStaffRef         String? // staff referral link token stored at registration, cleared after first paid subscription
+  pendingTrainerRef       String? // trainer referral link token stored at registration, cleared after first paid subscription
+  pendingNutritionRef     String? // nutritionist referral link token stored at registration, cleared after first paid subscription
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  // NextAuth relations
+  accounts Account[]
+  sessions Session[]
+
+  // App relations
+  memberships                    UserMembership[]
+  bookings                       Booking[]
+  classExchangeRequests          ClassExchangeRequest[]
+  orders                         Order[]
+  paymentTransactions            PaymentTransaction[]
+  wallet                         Wallet?
+  rewardPoints                   RewardPoints?
+  referral                       Referral?
+  notifications                  Notification[]
+  complaints                     Complaint[]
+  testimonials                   Testimonial[]
+  productReviews                 ProductReview[]
+  handledChatSessions            ChatSession[]               @relation("AssignedSupport")
+  supportPresence                SupportPresence?
+  auditLogs                      AuditLog[]                  @relation("AuditActor")
+  coachProfile                   CoachProfile?
+  pushSubscriptions              PushSubscription[]
+  pushCampaigns                  PushCampaign[]              @relation("CampaignAdmin")
+  trainerProfile                 Trainer?                    @relation("TrainerAccount")
+  trainerDiscountCodesTarget     TrainerDiscountCode[]       @relation("TrainerCodeTarget")
+  staffDiscountCodesIssued       StaffDiscountCode[]         @relation("StaffCodeIssuer")
+  staffDiscountCodesTarget       StaffDiscountCode[]         @relation("StaffCodeTarget")
+  attributedMemberships          UserMembership[]            @relation("MembershipSalesAgent")
+  agentCommissions               AgentCommission[]           @relation("AgentCommissionUser")
+  partnerProfile                 Partner?                    @relation("PartnerAccount")
+  privateApplications            PrivateSessionApplication[] @relation("PrivateApplicationUser")
+  attendancePasses               AttendancePass[]
+  attendanceCheckIns             AttendanceCheckIn[]         @relation("AttendanceMember")
+  scannedAttendanceCheckIns      AttendanceCheckIn[]         @relation("AttendanceScannedBy")
+  salesAgent                     SalesAgent?
+  salesAgentReferral             SalesAgentReferral?
+  contractsManager               ContractsManager?
+  recordedAttendanceLogs         TrainerAttendanceLog[]      @relation("AttendanceRecorder")
+  staffReferralLinks             StaffReferralLink[]         @relation("StaffLinks")
+  staffCommissions               StaffCommission[]           @relation("StaffCommissions")
+  trainerReferralLinks           TrainerReferralLink[]       @relation("TrainerLinks")
+  trainerCommissions             TrainerCommission[]         @relation("TrainerCommissions")
+  nutritionReferralLinks         NutritionReferralLink[]     @relation("NutritionLinks")
+  nutritionCommissions           NutritionCommission[]       @relation("NutritionCommissions")
+  marketingConversionsAsCustomer MarketingConversion[]       @relation("MarketingConversionCustomer")
+  marketingConversionsAssigned   MarketingConversion[]       @relation("MarketingConversionAssignee")
+  marketingCommissions           MarketingCommission[]       @relation("MarketingCommissionStaff")
+  healthResponses                HealthResponse[]            @relation("HealthResponses")
+  nutritionistProfile            NutritionistProfile?        @relation("NutritionistAccount")
+  analyticsVisitors              AnalyticsVisitor[]
+  analyticsSessions              AnalyticsSession[]
+  analyticsPageViews             AnalyticsPageView[]
+  analyticsEvents                AnalyticsEvent[]
+  nutritionSessions              NutritionSession[]          @relation("NutritionSessionUser")
+  orderStatusHistory             OrderStatusHistory[]        @relation("OrderStatusPerformer")
+  inventoryMovementsPerformed    InventoryMovement[]         @relation("InventoryMovementPerformer")
+  inventoryReceiptsPerformed     InventoryReceipt[]          @relation("InventoryReceiptPerformer")
+  storeCampaignClaims            StoreGiftCampaignClaim[]
+  freeGiftsSessions              StoreFreeGiftsSession[]
+  blogPendingPosts               BlogPendingPost[]
+  blogPostReviews                BlogPendingPost[]           @relation("BlogReviewer")
+  coachChatSessions              ChatSession[]               @relation("CoachChatOwner")
+  voiceMonthlyQuotas             VoiceMonthlyQuota[]         @relation("VoiceQuotaUser")
+  voiceRealtimeSessions          VoiceRealtimeSession[]      @relation("VoiceSessionUser")
+  friendOfferGroupsCreated       FriendOfferGroup[]          @relation("FriendOfferGroupCreator")
+  friendOfferParticipants        FriendOfferParticipant[]
+
+  purchaseInvoicesCreated   PurchaseInvoice[] @relation("PurchaseInvoiceCreator")
+  purchaseInvoicesPosted    PurchaseInvoice[] @relation("PurchaseInvoicePoster")
+  purchaseInvoicesCancelled PurchaseInvoice[] @relation("PurchaseInvoiceCanceller")
+  supplierPaymentsCreated   SupplierPayment[] @relation("SupplierPaymentCreator")
+  supplierPaymentsPosted    SupplierPayment[] @relation("SupplierPaymentPoster")
+  supplierPaymentsCancelled SupplierPayment[] @relation("SupplierPaymentCanceller")
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  actorUserId String?
+  actorName   String?
+  actorEmail  String?
+  actorRole   String?
+  action      String
+  targetType  String
+  targetId    String?
+  details     String?  @db.LongText
+  ipAddress   String?
+  userAgent   String?  @db.Text
+  createdAt   DateTime @default(now())
+
+  actor User? @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([actorUserId, createdAt])
+  @@index([targetType, createdAt])
+}
+
+// ─── Membership ───────────────────────────────────────────────────────────────
+
+model Membership {
+  id             String  @id @default(cuid())
+  name           String
+  nameEn         String?
+  kind           String  @default("subscription") // subscription | package
+  price          Float
+  priceBefore    Float?
+  priceAfter     Float?
+  image          String?
+  sortOrder      Int     @default(0)
+  duration       Int // days
+  cycle          String? // monthly | quarterly | semi_annual | annual | custom
+  sessionsCount  Int? // عدد الحصص للاشتراك
+  features       String  @db.Text // JSON array stored as string
+  featuresEn     String? @db.Text
+  classSessions  String? @db.LongText // JSON: class-specific sessions
+  productRewards String? @db.LongText // JSON: product benefits for packages
+  maxClasses     Int     @default(-1) // -1 = unlimited
+  minMonths      Int? // for custom kind: minimum selectable months
+  maxMonths      Int? // for custom kind: maximum selectable months
+  discountPct    Float? // for custom kind: discount percentage (e.g. 50 = 50%)
+  walletBonus    Float   @default(0)
+  gift           String?
+  giftEn         String?
+  subtitle       String? @db.Text
+  isFeatured     Boolean @default(false)
+  isActive       Boolean @default(true)
+
+  userMemberships UserMembership[]
+  recommendedFor  ChatSession[]
+  offers          Offer[]
+  goals           MembershipGoal[]
+}
+
+model UserMembership {
+  id                        String    @id @default(cuid())
+  userId                    String
+  membershipId              String
+  startDate                 DateTime  @default(now())
+  endDate                   DateTime
+  status                    String    @default("active") // active | expired | cancelled | pending_payment
+  activatedAt               DateTime? // Immutable first real activation timestamp; never set for unpaid checkout attempts
+  pendingExpiresAt          DateTime? // When pending_payment expires (60 min from creation)
+  paymentAmount             Float     @default(0)
+  paymentMethod             String? // cash | free | wallet | card | instapay | offer
+  offerTitle                String?
+  offerId                   String?
+  totalSessions             Int?
+  // Immutable purchase-time class entitlement. This is the canonical source
+  // of truth for which exact classes this membership may use after purchase.
+  eligibilitySnapshot       String?   @db.LongText
+  // Immutable approved booking pattern captured when schedules are selected.
+  // It may contain a compatibility copy of eligibility, but it is not the
+  // canonical entitlement source for new memberships.
+  bookingPatternSnapshot    String?   @db.LongText
+  // Immutable purchase-time terms for offer subscriptions. Null means a legacy
+  // membership and intentionally preserves its historical behaviour.
+  offerSnapshot             String?   @db.LongText
+  allowedClassTypesSnapshot String?   @db.LongText // JSON class type keys; null = no offer restriction
+  snapshotDurationDays      Int?
+  snapshotOriginalPrice     Float?
+  snapshotFinalPrice        Float?
+  productRewardsUsed        String?   @db.LongText
+
+  // Immutable purchase-time commission economics.
+  // New memberships must use this snapshot as the authoritative source for
+  // commission rates/bases after checkout instead of re-reading mutable config.
+  commissionSnapshot String? @db.LongText
+
+  // Exact-once marker for membership-related commission accrual.
+  // Written only after the complete accrual/referral-consumption transaction succeeds.
+  commissionAccruedAt DateTime?
+
+  salesAgentUserId String?
+  salesCodeType    String?
+
+  partnerId               String?
+  partnerCodeId           String?
+  affiliateLinkId         String?
+  salesAgentId            String? // SalesAgent.id if subscribed via agent referral link
+  staffReferralLinkId     String? // StaffReferralLink.id if subscribed via staff referral link
+  trainerReferralLinkId   String? // TrainerReferralLink.id if subscribed via trainer referral link
+  nutritionReferralLinkId String? // NutritionReferralLink.id if subscribed via nutritionist referral link
+
+  user                   User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  membership             Membership                @relation(fields: [membershipId], references: [id])
+  offer                  Offer?                    @relation(fields: [offerId], references: [id], onDelete: SetNull)
+  salesAgent             User?                     @relation("MembershipSalesAgent", fields: [salesAgentUserId], references: [id], onDelete: SetNull)
+  partner                Partner?                  @relation(fields: [partnerId], references: [id], onDelete: SetNull)
+  partnerCode            PartnerCode?              @relation(fields: [partnerCodeId], references: [id], onDelete: SetNull)
+  affiliateLink          PartnerAffiliateLink?     @relation(fields: [affiliateLinkId], references: [id], onDelete: SetNull)
+  refAgent               SalesAgent?               @relation(fields: [salesAgentId], references: [id], onDelete: SetNull)
+  staffReferralLink      StaffReferralLink?        @relation(fields: [staffReferralLinkId], references: [id], onDelete: SetNull)
+  trainerReferralLink    TrainerReferralLink?      @relation(fields: [trainerReferralLinkId], references: [id], onDelete: SetNull)
+  nutritionReferralLink  NutritionReferralLink?    @relation(fields: [nutritionReferralLinkId], references: [id], onDelete: SetNull)
+  bookings               Booking[]
+  classExchanges         MembershipClassExchange[]
+  classExchangeRequests  ClassExchangeRequest[]
+  attendancePass         AttendancePass?
+  attendanceCheckIns     AttendanceCheckIn[]
+  partnerCommission      PartnerCommission?
+  agentCommission        AgentCommission?
+  salesAgentCommission   SalesAgentCommission?
+  staffCommission        StaffCommission?
+  trainerCommission      TrainerCommission?
+  nutritionCommission    NutritionCommission?
+  marketingConversion    MarketingConversion?
+  marketingCommission    MarketingCommission?
+  friendOfferParticipant FriendOfferParticipant?
+
+  @@index([partnerId])
+  @@index([salesAgentUserId])
+  @@index([salesAgentId])
+}
+
+// ─── Marketing Conversion / Closing Commission ───────────────────────────────
+
+model MarketingConversion {
+  id                  String @id @default(cuid())
+  customerId          String
+  assignedStaffUserId String
+  status              String @default("open") // open | checkout_locked | converted | cancelled
+
+  // Exactly one active marketing conversion per customer.
+  // When open/checkout_locked => activeKey = customerId.
+  // When converted/cancelled => activeKey = null.
+  // MySQL UNIQUE permits multiple NULL values.
+  activeKey String? @unique
+
+  userMembershipId         String? @unique
+  friendOfferParticipantId String? @unique
+
+  commissionTypeSnapshot String?
+  commissionRateSnapshot Float?
+  commissionBaseSnapshot Float?
+
+  assignedAt       DateTime  @default(now())
+  checkoutLockedAt DateTime?
+  convertedAt      DateTime?
+  cancelledAt      DateTime?
+
+  createdByUserId String?
+  notes           String?  @db.Text
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  customer       User                 @relation("MarketingConversionCustomer", fields: [customerId], references: [id], onDelete: Cascade)
+  assignedStaff  User                 @relation("MarketingConversionAssignee", fields: [assignedStaffUserId], references: [id], onDelete: Restrict)
+  userMembership UserMembership?      @relation(fields: [userMembershipId], references: [id], onDelete: SetNull)
+  friendOfferParticipant FriendOfferParticipant? @relation(fields: [friendOfferParticipantId], references: [id], onDelete: SetNull)
+  commission     MarketingCommission?
+
+  @@index([customerId, status])
+  @@index([assignedStaffUserId, status])
+  @@index([createdAt])
+}
+
+model MarketingCommission {
+  id                    String @id @default(cuid())
+  marketingConversionId String @unique
+  staffUserId           String
+  userMembershipId      String @unique
+
+  amount Float
+
+  status    String    @default("earned") // earned | settled
+  settledAt DateTime?
+
+  commissionTypeSnapshot String
+  commissionRateSnapshot Float
+  commissionBaseSnapshot Float
+
+  createdAt DateTime @default(now())
+
+  conversion     MarketingConversion @relation(fields: [marketingConversionId], references: [id], onDelete: Restrict)
+  staffUser      User                @relation("MarketingCommissionStaff", fields: [staffUserId], references: [id], onDelete: Restrict)
+  userMembership UserMembership      @relation(fields: [userMembershipId], references: [id], onDelete: Restrict)
+
+  @@index([staffUserId, status])
+  @@index([createdAt])
+}
+
+model AttendancePass {
+  id                          String    @id @default(cuid())
+  userId                      String
+  userMembershipId            String?   @unique
+  privateSessionApplicationId String?   @unique
+  code                        String    @unique
+  kind                        String // membership | private_session
+  status                      String    @default("active") // active | inactive | revoked | expired
+  label                       String?
+  lastUsedAt                  DateTime?
+  createdAt                   DateTime  @default(now())
+  updatedAt                   DateTime  @updatedAt
+
+  user                      User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userMembership            UserMembership?            @relation(fields: [userMembershipId], references: [id], onDelete: SetNull)
+  privateSessionApplication PrivateSessionApplication? @relation(fields: [privateSessionApplicationId], references: [id], onDelete: SetNull)
+  checkIns                  AttendanceCheckIn[]
+
+  @@index([userId, status])
+}
+
+model AttendanceCheckIn {
+  id                          String   @id @default(cuid())
+  passId                      String
+  userId                      String
+  userMembershipId            String?
+  privateSessionApplicationId String?
+  bookingId                   String?  @unique
+  scheduleId                  String?
+  scannedByUserId             String?
+  checkInType                 String // class | private | mini_private
+  notes                       String?  @db.Text
+  createdAt                   DateTime @default(now())
+
+  pass                      AttendancePass             @relation(fields: [passId], references: [id], onDelete: Cascade)
+  user                      User                       @relation("AttendanceMember", fields: [userId], references: [id], onDelete: Cascade)
+  userMembership            UserMembership?            @relation(fields: [userMembershipId], references: [id], onDelete: SetNull)
+  privateSessionApplication PrivateSessionApplication? @relation(fields: [privateSessionApplicationId], references: [id], onDelete: SetNull)
+  booking                   Booking?                   @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  scannedBy                 User?                      @relation("AttendanceScannedBy", fields: [scannedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([scheduleId, createdAt])
+  @@index([scannedByUserId, createdAt])
+}
+
+// ─── Trainer ──────────────────────────────────────────────────────────────────
+
+model Trainer {
+  id               String  @id @default(cuid())
+  userId           String? @unique
+  name             String
+  nameEn           String?
+  specialty        String
+  specialtyEn      String?
+  bio              String?
+  bioEn            String? @db.Text
+  certifications   String? @db.Text // JSON array
+  certificationsEn String? @db.Text // JSON array
+  certificateFiles String? @db.LongText // JSON array of image URLs
+  rating           Float   @default(5.0)
+  sessionsCount    Int     @default(0)
+  image            String?
+  isActive         Boolean @default(true)
+  showOnHome       Boolean @default(true)
+  sortOrder        Int     @default(0)
+  canSendGifts     Boolean @default(false)
+  giftMonthlyLimit Int     @default(4)
+  canAddClasses    Boolean @default(false)
+  canAddBookings   Boolean @default(false)
+
+  user                User?                       @relation("TrainerAccount", fields: [userId], references: [id], onDelete: SetNull)
+  classes             Class[]
+  discountCodes       TrainerDiscountCode[]
+  privateApplications PrivateSessionApplication[]
+  attendanceLogs      TrainerAttendanceLog[]
+}
+
+model TrainerAttendanceLog {
+  id           String   @id @default(cuid())
+  trainerId    String
+  date         DateTime @db.Date
+  status       String // present | absent | late
+  notes        String?  @db.Text
+  recordedById String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  trainer    Trainer @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  recordedBy User?   @relation("AttendanceRecorder", fields: [recordedById], references: [id], onDelete: SetNull)
+
+  @@unique([trainerId, date])
+  @@index([trainerId, date])
+  @@index([date])
+}
+
+// ─── Class ────────────────────────────────────────────────────────────────────
+
+model ClassType {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  nameAr    String
+  nameEn    String?
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  classes           Class[]
+  offerAllowedTypes OfferAllowedClassType[]
+  aliases           ClassTypeAlias[]
+}
+
+model ClassTypeAlias {
+  id          String   @id @default(cuid())
+  classTypeId String
+  alias       String
+  createdAt   DateTime @default(now())
+
+  classType ClassType @relation(fields: [classTypeId], references: [id], onDelete: Cascade)
+
+  @@unique([alias])
+  @@index([classTypeId])
+}
+
+model Class {
+  id              String  @id @default(cuid())
+  name            String
+  nameEn          String?
+  description     String?
+  descriptionEn   String? @db.Text
+  trainerId       String
+  category        String? // القسم الرئيسي
+  categoryEn      String?
+  type            String // legacy display/business key during ClassType migration
+  typeEn          String?
+  classTypeId     String?
+  subType         String? // التصنيف الفرعي
+  subTypeEn       String?
+  duration        Int // minutes
+  intensity       String // low | medium | high | extreme
+  maxSpots        Int     @default(15)
+  price           Float   @default(0)
+  image           String?
+  showTrainerName Boolean @default(true)
+  isActive        Boolean @default(true)
+
+  trainer         Trainer             @relation(fields: [trainerId], references: [id])
+  classType       ClassType?          @relation(fields: [classTypeId], references: [id], onDelete: SetNull)
+  schedules       Schedule[]
+  allowedInOffers OfferAllowedClass[]
+
+  @@index([classTypeId])
+}
+
+model Schedule {
+  id             String   @id @default(cuid())
+  classId        String
+  date           DateTime
+  time           String // "06:00"
+  availableSpots Int
+  isActive       Boolean  @default(true)
+
+  class                 Class                      @relation(fields: [classId], references: [id], onDelete: Cascade)
+  bookings              Booking[]
+  rescheduleTargets     BookingRescheduleRequest[]
+  classExchangeRequests ClassExchangeRequest[]
+
+  @@unique([classId, date, time], map: "Schedule_classId_date_time_key")
+}
+
+// ─── Booking ──────────────────────────────────────────────────────────────────
+
+model Booking {
+  id               String    @id @default(cuid())
+  userId           String
+  scheduleId       String
+  userMembershipId String?
+  status           String    @default("confirmed") // confirmed | cancelled | attended | noshow
+  paidAmount       Float     @default(0)
+  paymentMethod    String    @default("wallet") // wallet | card | cash
+  reminderSentAt   DateTime?
+
+  // Number of membership entitlement units consumed by this physical booking.
+  // Historical and ordinary bookings remain exactly one unit by default.
+  // Values > 1 are reserved for explicit administrative exchange flows.
+  entitlementUnits Int @default(1)
+
+  // System-created entitlement recovery booking.
+  // Does NOT extend the contractual membership endDate.
+  isMakeup     Boolean  @default(false)
+  makeupReason String?
+  createdAt    DateTime @default(now())
+
+  user               User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  schedule           Schedule                   @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  userMembership     UserMembership?            @relation(fields: [userMembershipId], references: [id], onDelete: SetNull)
+  attendanceCheckIn  AttendanceCheckIn?
+  rescheduleRequests BookingRescheduleRequest[]
+  classExchange      MembershipClassExchange?
+
+  @@index([userMembershipId])
+  @@index([userMembershipId, isMakeup, status])
+}
+
+// ─── Administrative Class Exchange ────────────────────────────────────────────
+//
+// One physical Booking may intentionally consume more than one membership
+// entitlement unit. This audit row records the explicit administrative reason
+// and actor without modifying the purchased membership entitlement snapshots.
+//
+model MembershipClassExchange {
+  id               String    @id @default(cuid())
+  userMembershipId String
+  bookingId        String    @unique
+  entitlementUnits Int       @default(2)
+  status           String    @default("active") // active | reversed
+  reason           String?   @db.Text
+  createdByUserId  String
+  createdAt        DateTime  @default(now())
+  reversedAt       DateTime?
+  reversedByUserId String?
+
+  userMembership UserMembership @relation(fields: [userMembershipId], references: [id], onDelete: Cascade)
+  booking        Booking        @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([userMembershipId, status])
+  @@index([createdByUserId, createdAt])
+}
+
+// ─── Gym Booking Reschedule Request ───────────────────────────────────────────
+
+// ─── Customer Class Exchange Request ─────────────────────────────────────────
+//
+// Request-only workflow. Creating a request MUST NOT cancel bookings,
+// consume entitlement units, or reserve the target seat.
+// Actual exchange execution remains an administrator-only action.
+//
+model ClassExchangeRequest {
+  id               String  @id @default(cuid())
+  userId           String
+  userMembershipId String
+  targetScheduleId String
+  note             String? @db.Text
+
+  // pending | approved | rejected | cancelled
+  status String @default("pending")
+
+  // Allows one pending request per membership while still permitting
+  // unlimited sequential exchanges after each request is reviewed.
+  pendingKey String? @unique
+
+  requestedAt      DateTime  @default(now())
+  reviewedAt       DateTime?
+  reviewedByUserId String?
+  rejectionReason  String?   @db.Text
+
+  // Audit snapshot of the two ordinary future bookings explicitly
+  // selected by the administrator when approving this request.
+  sourceBookingIds String? @db.LongText
+
+  archivedAt       DateTime?
+  archivedByUserId String?
+
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userMembership UserMembership @relation(fields: [userMembershipId], references: [id], onDelete: Cascade)
+  targetSchedule Schedule       @relation(fields: [targetScheduleId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userMembershipId])
+  @@index([targetScheduleId])
+  @@index([status])
+  @@index([requestedAt])
+}
+
+model BookingRescheduleRequest {
+  id               String @id @default(cuid())
+  bookingId        String
+  targetScheduleId String
+
+  // upcoming_change | past_absence_makeup
+  requestType   String  @default("upcoming_change")
+  absenceReason String? @db.Text
+
+  // pending | approved | rejected | cancelled
+  status String @default("pending")
+
+  // Contains bookingId only while status=pending.
+  // Null after review so the same booking may create another request later.
+  pendingKey String? @unique
+
+  requestedAt      DateTime  @default(now())
+  reviewedAt       DateTime?
+  reviewedByUserId String?
+  rejectionReason  String?   @db.Text
+  archivedAt       DateTime?
+  archivedByUserId String?
+
+  booking        Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  targetSchedule Schedule @relation(fields: [targetScheduleId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId])
+  @@index([targetScheduleId])
+  @@index([status])
+  @@index([requestedAt])
+}
+
+// ─── Product & Order ──────────────────────────────────────────────────────────
+
+model Product {
+  id               String    @id @default(cuid())
+  name             String
+  nameEn           String?
+  description      String?   @db.Text
+  descriptionEn    String?   @db.Text
+  price            Float
+  oldPrice         Float?
+  category         String
+  stock            Int       @default(0)
+  reservedStock    Int       @default(0) // Phase 2C: pending order reservations
+  sku              String?   @unique
+  barcode          String?
+  unitLabel        String?
+  trackInventory   Boolean   @default(true)
+  averageCost      Float     @default(0)
+  lastPurchaseCost Float     @default(0)
+  costPrice        Float? // buying/purchase price — admin only, never sent to client
+  reorderLevel     Int       @default(0)
+  images           String?   @db.Text // JSON array of URLs
+  sizes            String?   @db.Text // JSON array (legacy, kept for compatibility)
+  colors           String?   @db.Text // JSON array (legacy, kept for compatibility)
+  faqs             String?   @db.Text // JSON: [{q,a}]
+  whoShouldBuy     String?   @db.Text // JSON: [{title,desc,suitable}]
+  importantInfo    String?   @db.Text
+  disclaimer       String?   @db.Text
+  editorialReview  String?   @db.Text
+  isActive         Boolean   @default(true)
+  isFeatured       Boolean   @default(false)
+  isNew            Boolean   @default(false)
+  isBestSeller     Boolean   @default(false)
+  isSpecialOffer   Boolean   @default(false)
+  vatEnabled       Boolean   @default(false)
+  // Supplier (admin-only — never exposed to customers)
+  supplierId       String?
+  displayPriority  Int       @default(0) // Higher number = appears first
+  deletedAt        DateTime? // soft delete
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @default(now()) @updatedAt
+
+  supplier             Supplier?              @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  orderItems           OrderItem[]
+  reviews              ProductReview[]
+  variants             ProductVariant[]
+  stockMovements       InventoryMovement[]    @relation("InventoryProduct")
+  receiptItems         InventoryReceiptItem[] @relation("InventoryReceiptProduct")
+  purchaseInvoiceItems PurchaseInvoiceItem[]  @relation("PurchaseInvoiceItemProduct")
+  consignmentLots      ConsignmentLot[]
+  consignmentMovements ConsignmentMovement[]
+
+  @@index([supplierId])
+  @@index([category, isActive])
+  @@index([deletedAt])
+  @@index([displayPriority])
+}
+
+model ProductReview {
+  id        String   @id @default(cuid())
+  productId String
+  userId    String
+  rating    Int
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, userId])
+}
+
+model Order {
+  id                    String    @id @default(cuid())
+  userId                String
+  businessUnit          String    @default("store") // store | club
+  subtotal              Float     @default(0)
+  discountTotal         Float     @default(0)
+  shippingFee           Float     @default(0)
+  total                 Float
+  // pending | confirmed | preparing | ready_to_ship | shipped_to_courier | in_transit | delivered | cancelled | returned
+  status                String    @default("pending")
+  deliveryOptionId      String?
+  deliveryLabel         String?
+  estimatedDeliveryDays Int?
+  isClubPickup          Boolean   @default(false)
+  recipientName         String?
+  recipientPhone        String?
+  governorate           String? // Egyptian governorate
+  city                  String?
+  address               String?
+  notes                 String?   @db.Text
+  adminNotes            String?   @db.Text // internal — never sent to customer
+  paymentMethod         String    @default("card")
+  // Delivery company link (replaces simple deliveryOption for full tracking)
+  deliveryCompanyId     String?
+  trackingNumber        String?
+  inventoryDeducted     Boolean   @default(false) // guard: stock deducted once only
+  confirmedAt           DateTime? // Immutable: set once when sale completed (inventory converted + payment confirmed)
+  cancelledAt           DateTime?
+  deliveredAt           DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @default(now()) @updatedAt
+
+  user                 User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deliveryOption       DeliveryOption?            @relation(fields: [deliveryOptionId], references: [id], onDelete: SetNull)
+  deliveryCompany      DeliveryCompany?           @relation("OrderDeliveryCompany", fields: [deliveryCompanyId], references: [id], onDelete: SetNull)
+  items                OrderItem[]
+  paymentTransactions  PaymentTransaction[]
+  statusHistory        OrderStatusHistory[]
+  storeCampaignClaims  StoreGiftCampaignClaim[]   @relation("OrderGiftClaims")
+  freeGiftsSession     StoreFreeGiftsSession?     @relation("OrderFreeGiftsSession")
+  inventoryAllocations OrderInventoryAllocation[]
+
+  @@index([status, createdAt])
+  @@index([userId, createdAt])
+  @@index([deliveryCompanyId])
+  @@index([confirmedAt])
+}
+
+model OrderItem {
+  id        String  @id @default(cuid())
+  orderId   String
+  productId String
+  variantId String? // FK to ProductVariant if applicable
+  quantity  Int
+  price     Float
+  costPrice Float? // snapshot of cost at time of order (admin only)
+  vatAmount Float   @default(0)
+  size      String?
+  color     String?
+
+  order       Order                      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product     Product                    @relation(fields: [productId], references: [id])
+  variant     ProductVariant?            @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  allocations OrderInventoryAllocation[]
+
+  @@index([orderId])
+  @@index([productId])
+}
+
+model OrderInventoryAllocation {
+  id               String   @id @default(cuid())
+  orderId          String
+  orderItemId      String
+  // owned | consignment
+  source           String
+  consignmentLotId String?
+  quantity         Int
+  unitCost         Decimal? @db.Decimal(18, 2)
+  // reserved | sold | released | returned
+  status           String   @default("reserved")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  order          Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderItem      OrderItem       @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  consignmentLot ConsignmentLot? @relation(fields: [consignmentLotId], references: [id], onDelete: Restrict)
+
+  @@index([orderId, status])
+  @@index([orderItemId, status])
+  @@index([consignmentLotId, status])
+  @@index([source, status])
+}
+
+model PaymentTransaction {
+  id                String    @id @default(cuid())
+  userId            String
+  orderId           String?
+  membershipId      String?
+  offerId           String?
+  referenceCode     String?   @unique
+  purpose           String // order | membership | wallet_topup
+  businessUnit      String    @default("store") // store | club
+  provider          String // manual | paymob | paytabs | custom
+  providerReference String?   @unique
+  externalReference String?   @unique
+  amount            Float
+  currency          String    @default("EGP")
+  status            String    @default("pending") // pending | requires_action | paid | failed | cancelled | expired
+  paymentMethod     String    @default("card")
+  checkoutUrl       String?   @db.Text
+  iframeUrl         String?   @db.Text
+  returnUrl         String?   @db.Text
+  cancelUrl         String?   @db.Text
+  providerPayload   String?   @db.LongText
+  metadata          String?   @db.LongText
+  expiresAt         DateTime?
+  paidAt            DateTime?
+  failedAt          DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  user                   User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  order                  Order?                  @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  analyticsEvents        AnalyticsEvent[]
+  friendOfferParticipant FriendOfferParticipant?
+
+  @@index([userId, status])
+  @@index([orderId])
+  @@index([provider, status])
+}
+
+model PaymentReferenceCounter {
+  key       String   @id
+  value     Int      @default(0)
+  updatedAt DateTime @updatedAt
+}
+
+// ─── Wallet ───────────────────────────────────────────────────────────────────
+
+model Wallet {
+  id      String @id @default(cuid())
+  userId  String @unique
+  balance Float  @default(0)
+
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions WalletTransaction[]
+}
+
+model WalletTransaction {
+  id          String   @id @default(cuid())
+  walletId    String
+  amount      Float
+  type        String // credit | debit
+  description String?
+  createdAt   DateTime @default(now())
+
+  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+}
+
+// ─── Rewards ──────────────────────────────────────────────────────────────────
+
+model RewardPoints {
+  id     String @id @default(cuid())
+  userId String @unique
+  points Int    @default(0)
+  tier   String @default("bronze") // bronze | silver | gold | platinum
+
+  user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  history RewardHistory[]
+}
+
+model RewardHistory {
+  id        String   @id @default(cuid())
+  rewardId  String
+  points    Int
+  reason    String
+  createdAt DateTime @default(now())
+
+  reward RewardPoints @relation(fields: [rewardId], references: [id], onDelete: Cascade)
+}
+
+// ─── Referral ─────────────────────────────────────────────────────────────────
+
+model Referral {
+  id                         String @id @default(cuid())
+  userId                     String @unique
+  code                       String @unique
+  totalEarned                Float  @default(0)
+  referredCount              Int    @default(0)
+  subscriptionActivatedCount Int    @default(0)
+
+  user   User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  usages ReferralUsage[]
+}
+
+model ReferralUsage {
+  id                      String    @id @default(cuid())
+  referralId              String
+  referredUserId          String    @unique
+  rewardGiven             Boolean   @default(false)
+  rewardType              String? // points | wallet
+  rewardValue             Float?
+  subscriptionActivated   Boolean   @default(false)
+  subscriptionActivatedAt DateTime?
+  createdAt               DateTime  @default(now())
+
+  referral Referral @relation(fields: [referralId], references: [id], onDelete: Cascade)
+}
+
+// ─── Discount Code ─────────────────────────────────────────────────────────────
+
+model DiscountCode {
+  id            String    @id @default(cuid())
+  code          String    @unique
+  description   String?
+  descriptionEn String?
+  type          String    @default("percentage") // percentage | fixed
+  value         Float
+  minAmount     Float?
+  maxUses       Int?
+  usedCount     Int       @default(0)
+  scope         String    @default("all") // subscriptions | store | all
+  expiresAt     DateTime?
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  usages DiscountCodeUsage[]
+}
+
+model DiscountCodeUsage {
+  id             String   @id @default(cuid())
+  discountCodeId String
+  userId         String
+  membershipId   String?
+  discountAmount Float
+  createdAt      DateTime @default(now())
+
+  discountCode DiscountCode @relation(fields: [discountCodeId], references: [id], onDelete: Cascade)
+}
+
+// ─── Store Gift Campaign ──────────────────────────────────────────────────────
+
+model StoreGiftCampaignClaim {
+  id              String    @id @default(cuid())
+  userId          String
+  storeOrderId    String?
+  campaignKey     String    @default("default")
+  rewardType      String // wallet | points | discount | free_product | free_shipping
+  rewardValue     Float?
+  rewardProductId String?
+  // pending | earned | claimed | cancelled
+  status          String    @default("pending")
+  // store_cart_threshold | store_referral | store_order
+  source          String    @default("store_cart_threshold")
+  createdAt       DateTime  @default(now())
+  claimedAt       DateTime?
+
+  user       User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  storeOrder Order? @relation("OrderGiftClaims", fields: [storeOrderId], references: [id], onDelete: SetNull)
+
+  @@unique([storeOrderId], map: "StoreGiftCampaignClaim_storeOrderId_key")
+  @@index([userId])
+}
+
+// ─── Store Free Gifts Game Session ────────────────────────────────────────────
+
+model StoreFreeGiftsSession {
+  id                 String    @id @default(cuid())
+  token              String    @unique @default(cuid())
+  userId             String?
+  step               Int       @default(1) // 1=spin 2=cards 3=products
+  spinsDone          Int       @default(0)
+  spinRewardType     String?
+  spinRewardValue    Float?
+  spinSlotIndex      Int?
+  spinLabelAr        String?
+  cardsDone          Int       @default(0)
+  cardsData          String    @db.Text // JSON: [{type,value,labelAr,revealed}]
+  selectedProductIds String    @db.Text // JSON string[]
+  giftSlotsCount     Int       @default(3)
+  status             String    @default("active") // active | confirmed | expired
+  expiresAt          DateTime?
+  confirmedAt        DateTime?
+  storeOrderId       String?   @unique
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  user       User?  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  storeOrder Order? @relation("OrderFreeGiftsSession", fields: [storeOrderId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([token])
+}
+
+// ─── Notification ─────────────────────────────────────────────────────────────
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  body      String
+  type      String   @default("info") // info | success | warning | error
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ─── Offer ────────────────────────────────────────────────────────────────────
+
+model Offer {
+  id                     String   @id @default(cuid())
+  title                  String
+  titleEn                String?
+  type                   String   @default("percentage") // percentage | fixed | special
+  discount               Float
+  description            String?  @db.Text
+  descriptionEn          String?  @db.Text
+  appliesTo              String?  @db.Text
+  appliesToEn            String?  @db.Text
+  expiresAt              DateTime
+  isActive               Boolean  @default(true)
+  membershipId           String?
+  specialPrice           Float?
+  maxSubscribers         Int?
+  currentSubscribers     Int      @default(0)
+  image                  String?
+  showOnHome             Boolean  @default(false)
+  showMaxSubscribers     Boolean  @default(true)
+  showCurrentSubscribers Boolean  @default(true)
+  sessionsCount          Int?
+  durationDays           Int?
+  priceBefore            Float?
+  features               String?  @db.Text // JSON array of feature strings (Arabic)
+  featuresEn             String?  @db.Text // JSON array of feature strings (English)
+
+  membership        Membership?             @relation(fields: [membershipId], references: [id])
+  userMemberships   UserMembership[]
+  allowedClassTypes OfferAllowedClassType[]
+  allowedClasses    OfferAllowedClass[]
+  friendOfferConfig FriendOfferConfig?
+}
+
+// Class types are currently represented by Class.type (there is no ClassType
+// catalogue model). Store the normalized type key here so offers can be edited
+// independently without changing the existing membership class configuration.
+model OfferAllowedClassType {
+  id          String  @id @default(cuid())
+  offerId     String
+  classType   String
+  classTypeId String?
+
+  offer   Offer      @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  typeRef ClassType? @relation(fields: [classTypeId], references: [id], onDelete: SetNull)
+
+  @@unique([offerId, classType])
+  @@index([classType])
+  @@index([classTypeId])
+}
+
+// Direct relationship between Offer and specific Class instances
+// Replaces classType-based filtering with specific classId filtering
+model OfferAllowedClass {
+  id        String   @id @default(cuid())
+  offerId   String
+  classId   String
+  createdAt DateTime @default(now())
+
+  offer Offer @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  class Class @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  @@unique([offerId, classId])
+  @@index([offerId])
+  @@index([classId])
+}
+
+model ProductCategory {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  label     String
+  labelEn   String?
+  sizeType  String   @default("none") // none | clothing | shoes
+  icon      String?
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ClubGoal {
+  id            String   @id @default(cuid())
+  name          String
+  nameEn        String?
+  slug          String   @unique
+  description   String?  @db.Text
+  descriptionEn String?  @db.Text
+  image         String?
+  kind          String   @default("standard") // standard | games_root | games_adults | games_children
+  parentId      String?
+  sortOrder     Int      @default(0)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  parent          ClubGoal?        @relation("GoalHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children        ClubGoal[]       @relation("GoalHierarchy")
+  classRules      GoalClassRule[]
+  membershipGoals MembershipGoal[]
+}
+
+model MembershipGoal {
+  id           String   @id @default(cuid())
+  membershipId String
+  goalId       String
+  createdAt    DateTime @default(now())
+
+  membership Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  goal       ClubGoal   @relation(fields: [goalId], references: [id], onDelete: Cascade)
+
+  @@unique([membershipId, goalId])
+  @@index([goalId])
+}
+
+model HealthQuestion {
+  id          String   @id @default(cuid())
+  title       String
+  titleEn     String?
+  slug        String   @unique
+  prompt      String
+  promptEn    String?  @db.Text
+  isActive    Boolean  @default(true)
+  allowReason Boolean  @default(false) // show reason text field when client answers Yes
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  restrictions HealthQuestionRestriction[]
+  responses    HealthResponse[]
+}
+
+model HealthResponse {
+  id         String   @id @default(cuid())
+  userId     String
+  questionId String
+  answer     Boolean // true = yes, false = no
+  reason     String?  @db.Text
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user     User           @relation("HealthResponses", fields: [userId], references: [id], onDelete: Cascade)
+  question HealthQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, questionId])
+  @@index([userId])
+}
+
+model HealthQuestionRestriction {
+  id         String   @id @default(cuid())
+  questionId String
+  classType  String
+  notes      String?  @db.Text
+  createdAt  DateTime @default(now())
+
+  question HealthQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([questionId, classType])
+}
+
+model GoalClassRule {
+  id        String   @id @default(cuid())
+  goalId    String
+  classType String
+  rule      String   @default("recommended") // recommended | blocked | optional
+  notes     String?  @db.Text
+  createdAt DateTime @default(now())
+
+  goal ClubGoal @relation(fields: [goalId], references: [id], onDelete: Cascade)
+
+  @@unique([goalId, classType, rule])
+}
+
+model DeliveryOption {
+  id                 String   @id @default(cuid())
+  name               String
+  nameEn             String?
+  type               String   @default("courier") // courier | pickup
+  description        String?  @db.Text
+  descriptionEn      String?  @db.Text
+  fee                Float    @default(0)
+  estimatedDaysMin   Int?
+  estimatedDaysMax   Int?
+  isActive           Boolean  @default(true)
+  showCashOnDelivery Boolean  @default(false)
+  sortOrder          Int      @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  orders Order[]
+}
+
+model InventoryReceipt {
+  id                String    @id @default(cuid())
+  referenceNumber   String?   @unique
+  invoiceNumber     String? // supplier's invoice number
+  invoiceDate       DateTime? // date on the supplier's invoice
+  supplierId        String? // FK to Supplier model (replaces free-text supplierName)
+  supplierName      String? // kept for legacy / manual entry
+  notes             String?   @db.Text
+  receivedAt        DateTime  @default(now())
+  status            String    @default("posted") // draft | posted | cancelled
+  totalCost         Float     @default(0)
+  performedByUserId String?
+  purchaseInvoiceId String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  supplier           Supplier?                            @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  performedBy        User?                                @relation("InventoryReceiptPerformer", fields: [performedByUserId], references: [id], onDelete: SetNull)
+  purchaseInvoice    PurchaseInvoice?                     @relation(fields: [purchaseInvoiceId], references: [id], onDelete: Restrict)
+  items              InventoryReceiptItem[]
+  invoiceLinkHistory InventoryReceiptInvoiceLinkHistory[]
+
+  @@index([supplierId])
+  @@index([purchaseInvoiceId])
+  @@index([status, createdAt])
+}
+
+model InventoryReceiptInvoiceLinkHistory {
+  id                    String   @id @default(cuid())
+  receiptId             String
+  fromPurchaseInvoiceId String?
+  toPurchaseInvoiceId   String
+  actorUserId           String?
+  reason                String   @db.Text
+  createdAt             DateTime @default(now())
+
+  receipt InventoryReceipt @relation(fields: [receiptId], references: [id], onDelete: Restrict)
+
+  @@index([receiptId, createdAt])
+  @@index([fromPurchaseInvoiceId])
+  @@index([toPurchaseInvoiceId])
+}
+
+model InventoryReceiptItem {
+  id           String   @id @default(cuid())
+  receiptId    String
+  productId    String
+  variantId    String? // FK to ProductVariant if applicable
+  quantity     Int
+  unitCost     Float
+  totalCost    Float
+  sellingPrice Float? // suggested selling price at time of purchase
+  sku          String? // snapshot of SKU
+  notes        String?  @db.Text
+  createdAt    DateTime @default(now())
+
+  receipt InventoryReceipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  product Product          @relation("InventoryReceiptProduct", fields: [productId], references: [id], onDelete: Cascade)
+  variant ProductVariant?  @relation("ReceiptItemVariant", fields: [variantId], references: [id], onDelete: SetNull)
+
+  @@index([receiptId])
+  @@index([productId])
+}
+
+model InventoryMovement {
+  id                String   @id @default(cuid())
+  productId         String
+  variantId         String? // FK to ProductVariant (optional)
+  // purchase | sale | adjustment | return | damage | order_deduction | order_restore
+  type              String
+  quantityChange    Int // positive = in, negative = out
+  quantityBefore    Int
+  quantityAfter     Int
+  unitCost          Float?
+  averageCostBefore Float?
+  averageCostAfter  Float?
+  referenceType     String? // Order | InventoryReceipt | manual
+  referenceId       String?
+  reason            String?  @db.Text // mandatory for adjustment/damage
+  performedByUserId String?
+  notes             String?  @db.Text
+  createdAt         DateTime @default(now())
+
+  product     Product         @relation("InventoryProduct", fields: [productId], references: [id], onDelete: Cascade)
+  variant     ProductVariant? @relation("VariantMovement", fields: [variantId], references: [id], onDelete: SetNull)
+  performedBy User?           @relation("InventoryMovementPerformer", fields: [performedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([productId, createdAt])
+  @@index([variantId, createdAt])
+  @@index([type, createdAt])
+}
+
+// ─── Complaint ────────────────────────────────────────────────────────────────
+
+model AccountingExpense {
+  id              String   @id @default(cuid())
+  businessUnit    String   @default("store") // store | club
+  category        String   @default("general")
+  label           String
+  description     String?  @db.Text
+  amount          Float
+  vendor          String?
+  referenceNumber String?
+  expenseDate     DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([businessUnit, expenseDate])
+  @@index([category, expenseDate])
+}
+
+model AccountingFeeRule {
+  id               String   @id @default(cuid())
+  businessUnit     String   @default("both") // store | club | both
+  category         String   @default("platform") // platform | external_service | other
+  label            String
+  appliesToPurpose String   @default("all") // all | order | membership | wallet_topup | booking
+  provider         String?
+  paymentMethod    String?
+  rateType         String   @default("percentage") // percentage | fixed
+  rateValue        Float
+  notes            String?  @db.Text
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([businessUnit, isActive])
+}
+
+model Complaint {
+  id        String   @id @default(cuid())
+  userId    String
+  subject   String
+  message   String
+  status    String   @default("open") // open | in-progress | resolved | closed
+  adminNote String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model ChatSession {
+  id                      String   @id @default(cuid())
+  userId                  String?
+  visitorName             String?
+  visitorPhone            String?
+  status                  String   @default("open") // open | live | resolved
+  mode                    String   @default("bot") // bot | live
+  context                 String?  @db.LongText // JSON string for questionnaire state
+  assignedToId            String?
+  recommendedMembershipId String?
+  lastMessageAt           DateTime @default(now())
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  assignedTo            User?                  @relation("AssignedSupport", fields: [assignedToId], references: [id])
+  user                  User?                  @relation("CoachChatOwner", fields: [userId], references: [id], onDelete: SetNull)
+  recommendedMembership Membership?            @relation(fields: [recommendedMembershipId], references: [id])
+  messages              ChatMessage[]
+  voiceRealtimeSessions VoiceRealtimeSession[]
+
+  @@index([userId, createdAt])
+}
+
+model ChatMessage {
+  id         String   @id @default(cuid())
+  sessionId  String
+  senderType String // user | bot | admin | staff | system
+  senderName String?
+  content    String   @db.Text
+  metadata   String?  @db.LongText
+  createdAt  DateTime @default(now())
+
+  session ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+}
+
+model SupportPresence {
+  id         String   @id @default(cuid())
+  userId     String   @unique
+  isOnline   Boolean  @default(false)
+  lastSeenAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ─── Web Push ─────────────────────────────────────────────────────────────────
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String?
+  endpoint  String   @unique @db.VarChar(512)
+  p256dh    String   @db.Text
+  auth      String
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+}
+
+model PushCampaign {
+  id            String   @id @default(cuid())
+  title         String
+  body          String   @db.Text
+  url           String?
+  audience      String   @default("all") // all | active | inactive | selected
+  selectedUsers String?  @db.LongText // JSON array of user IDs
+  sentCount     Int      @default(0)
+  failedCount   Int      @default(0)
+  status        String   @default("done") // done | partial | failed
+  createdAt     DateTime @default(now())
+  createdBy     String?
+
+  admin User? @relation("CampaignAdmin", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+}
+
+// ─── SiteContent ──────────────────────────────────────────────────────────────
+
+model SiteContent {
+  id        String   @id @default(cuid())
+  section   String   @unique // hero | contact | trainers | blog | announcements | about
+  content   String   @db.LongText // JSON string
+  updatedAt DateTime @updatedAt
+}
+
+model ChatKnowledgeEntry {
+  id                String                 @id @default(cuid())
+  title             String
+  category          String                 @default("general")
+  keywords          String
+  answer            String
+  priority          Int                    @default(0)
+  isActive          Boolean                @default(true)
+  // Optional governance fields. Defaults preserve every existing entry's behavior.
+  isMandatory       Boolean                @default(false)
+  allowParaphrasing Boolean                @default(true)
+  validFrom         DateTime?
+  validUntil        DateTime?
+  lastReviewedAt    DateTime?
+  sourceType        String                 @default("admin")
+  status            String                 @default("published")
+  canonicalQuestion String?                @db.Text
+  language          String                 @default("ar") @db.VarChar(12)
+  privacyClass      KnowledgePrivacyClass?
+  answerSource      KnowledgeAnswerSource?
+  sourceReference   String?                @db.VarChar(500)
+  sourceVersion     String?                @db.VarChar(191)
+  confidence        Float?
+  approved          Boolean                @default(false)
+  expiresAt         DateTime?
+  lastUsedAt        DateTime?
+  usageCount        Int                    @default(0)
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+
+  aliases ChatKnowledgeAlias[]
+
+  @@index([approved, privacyClass, language, expiresAt])
+}
+
+model ChatKnowledgeAlias {
+  id                     String   @id @default(cuid())
+  knowledgeEntryId       String
+  normalizedQuestion     String   @db.VarChar(500)
+  normalizedQuestionHash String   @db.Char(64)
+  language               String   @default("ar") @db.VarChar(12)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  knowledgeEntry ChatKnowledgeEntry @relation(fields: [knowledgeEntryId], references: [id], onDelete: Cascade)
+
+  @@unique([normalizedQuestionHash, language])
+  @@index([knowledgeEntryId])
+  @@index([normalizedQuestionHash, language])
+}
+
+model CoachKnowledgeSourceVersion {
+  id              String   @id @default(cuid())
+  sourceType      String   @db.VarChar(191)
+  sourceReference String   @db.VarChar(500)
+  sourceVersion   String   @db.VarChar(191)
+  updatedAt       DateTime @updatedAt
+
+  @@unique([sourceType, sourceReference])
+}
+
+model VoiceMonthlyQuota {
+  id                 String   @id @default(cuid())
+  userId             String
+  periodKey          String   @db.Char(7)
+  entitlementSeconds Int
+  usedSeconds        Int      @default(0)
+  reservedSeconds    Int      @default(0)
+  updatedAt          DateTime @updatedAt
+  createdAt          DateTime @default(now())
+
+  user     User                   @relation("VoiceQuotaUser", fields: [userId], references: [id], onDelete: Cascade)
+  sessions VoiceRealtimeSession[]
+
+  @@unique([userId, periodKey])
+  @@index([periodKey, updatedAt])
+}
+
+model VoiceRealtimeSession {
+  id                String                  @id @default(cuid())
+  voiceSessionId    String                  @unique @db.Char(64)
+  userId            String
+  chatSessionId     String?
+  quotaId           String
+  startedAt         DateTime                @default(now())
+  connectedAt       DateTime?
+  lastHeartbeatAt   DateTime?
+  lastActivityAt    DateTime?
+  billingCursorAt   DateTime?
+  expiresAt         DateTime
+  finalizedAt       DateTime?
+  billableSeconds   Int                     @default(0)
+  reservedSeconds   Int
+  status            VoiceSessionStatus      @default(active)
+  terminationReason VoiceTerminationReason?
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+
+  user        User              @relation("VoiceSessionUser", fields: [userId], references: [id], onDelete: Cascade)
+  chatSession ChatSession?      @relation(fields: [chatSessionId], references: [id], onDelete: SetNull)
+  quota       VoiceMonthlyQuota @relation(fields: [quotaId], references: [id], onDelete: Restrict)
+
+  @@index([userId, status])
+  @@index([status, expiresAt])
+  @@index([status, lastHeartbeatAt])
+  @@index([quotaId, status])
+  @@index([chatSessionId, status])
+}
+
+// ─── AI Coach ─────────────────────────────────────────────────────────────────
+
+model CoachProfile {
+  id                  String    @id @default(cuid())
+  userId              String?   @unique
+  guestSessionId      String?   @unique
+  primaryGoal         String? // weight-loss | muscle-gain | toning | general-fitness
+  trainingLevel       String? // beginner | intermediate | advanced
+  preferredDays       Int? // weekly sessions preference
+  preferredClassTypes String?   @db.Text // JSON array of class type strings
+  injuries            String?   @db.Text
+  nutritionStyle      String? // poor | average | good
+  targetWeight        Float?
+  currentWeight       Float?
+  height              Float?
+  age                 Int?
+  notes               String?   @db.Text
+  lastAssessmentAt    DateTime?
+  lastCheckInAt       DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  user     User?          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  checkIns CoachCheckIn[]
+}
+
+model CoachCheckIn {
+  id             String   @id @default(cuid())
+  coachProfileId String
+  weight         Float?
+  waist          Float?
+  energyLevel    Int? // 1-5 scale
+  adherenceScore Int? // 0-100 (% of planned sessions completed)
+  notes          String?  @db.Text
+  createdAt      DateTime @default(now())
+
+  coachProfile CoachProfile @relation(fields: [coachProfileId], references: [id], onDelete: Cascade)
+}
+
+model CoachEventLog {
+  id           String   @id @default(cuid())
+  sessionId    String
+  intent       String
+  usedAI       Boolean  @default(false)
+  handoff      Boolean  @default(false)
+  outcome      String? // food_check | class_suggested | membership_recommended | check_in | handoff | unknown
+  sourceType   String? // live_site_data | mandatory_knowledge | knowledge_base | general_fitness | safe_fallback | mixed
+  toolNames    String?  @db.Text // bounded, read-only tool names as JSON
+  durationMs   Int?
+  fallbackUsed Boolean  @default(false)
+  errorCode    String?
+  createdAt    DateTime @default(now())
+}
+
+model QuickReply {
+  id        String   @id @default(cuid())
+  label     String // short label shown as button
+  content   String   @db.Text // full reply text
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Testimonial {
+  id            String   @id @default(cuid())
+  userId        String
+  displayName   String?
+  displayNameEn String?
+  content       String
+  contentEn     String?  @db.Text
+  rating        Int      @default(5)
+  status        String   @default("pending") // pending | approved | rejected
+  adminNote     String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ─── Trainer Discount Codes ────────────────────────────────────────────────────
+
+model TrainerDiscountCode {
+  id            String    @id @default(cuid())
+  trainerId     String
+  code          String    @unique
+  targetUserId  String
+  discountType  String    @default("percentage") // percentage | fixed
+  discountValue Float
+  maxDiscount   Float? // cap in EGP for percentage type
+  note          String?
+  isUsed        Boolean   @default(false)
+  usedAt        DateTime?
+  monthYear     String // "2026-04" — for monthly limit (4/month per trainer)
+  createdAt     DateTime  @default(now())
+
+  trainer    Trainer @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  targetUser User    @relation("TrainerCodeTarget", fields: [targetUserId], references: [id], onDelete: Cascade)
+
+  @@index([trainerId, monthYear])
+  @@index([code])
+}
+
+model StaffDiscountCode {
+  id            String    @id @default(cuid())
+  staffUserId   String
+  code          String    @unique
+  targetUserId  String
+  discountType  String    @default("percentage") // percentage | fixed
+  discountValue Float
+  maxDiscount   Float?
+  note          String?
+  isUsed        Boolean   @default(false)
+  usedAt        DateTime?
+  monthYear     String
+  createdAt     DateTime  @default(now())
+
+  staff      User @relation("StaffCodeIssuer", fields: [staffUserId], references: [id], onDelete: Cascade)
+  targetUser User @relation("StaffCodeTarget", fields: [targetUserId], references: [id], onDelete: Cascade)
+
+  @@index([staffUserId, monthYear])
+  @@index([code])
+}
+
+// ─── Private Session Applications ─────────────────────────────────────────────
+
+model PrivateSessionApplication {
+  id        String @id @default(cuid())
+  userId    String
+  trainerId String
+  type      String @default("private") // private | mini_private
+  status    String @default("pending") // pending | approved | rejected | paid | cancelled
+
+  // Application form
+  goalsJson           String? @db.Text // JSON array of goals
+  injuries            String? @db.Text
+  availability        String? @db.Text // JSON
+  notes               String? @db.Text
+  applicationFormJson String? @db.LongText // Full 11-section application JSON
+
+  // Trainer response
+  trainerNote  String? @db.Text
+  trainerPrice Float?
+
+  // Session terms (set at approval)
+  sessionsCount Int?
+  durationDays  Int?
+
+  // Scheduling (set at approval; client selects one)
+  trainerSlots String? @db.Text // JSON: ["الأحد 10 صباحاً", "الاثنين 6 مساءً"]
+  selectedSlot String? // Client-chosen slot text
+
+  // Payment
+  paymentTransactionId String?
+  paidAt               DateTime?
+  expiresAt            DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user               User                @relation("PrivateApplicationUser", fields: [userId], references: [id], onDelete: Cascade)
+  trainer            Trainer             @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  attendancePass     AttendancePass?
+  attendanceCheckIns AttendanceCheckIn[]
+
+  @@index([userId])
+  @@index([trainerId])
+}
+
+// ─── Partner / Affiliate System ───────────────────────────────────────────────
+
+model Partner {
+  id                    String    @id @default(cuid())
+  userId                String    @unique
+  name                  String
+  nameEn                String?
+  category              String // beauty_center | salon | pharmacy | clinic | physiotherapy | nutrition | nursery | education | clothing | other | spa | restaurant | sports | supplement | services
+  logoUrl               String?
+  websiteUrl            String?
+  contactPhone          String?
+  commissionRate        Float     @default(10) // percentage or fixed EGP amount
+  commissionType        String    @default("percentage") // percentage | fixed
+  contractStartDate     DateTime?
+  contractEndDate       DateTime?
+  referralDiscountRate  Float? // % gym discount client gets when signing up via partner referral link
+  memberBenefitCode     String?   @unique // code gym members show at partner's location to get partner discount
+  memberBenefitRate     Float? // % discount at partner's business for active gym members
+  isActive              Boolean   @default(true)
+  showOnPublicPage      Boolean   @default(true)
+  notes                 String?   @db.Text
+  createdAt             DateTime  @default(now())
+  managerId             String? // ContractsManager.id who manages this partner
+  managerCommissionType String? // "percentage_of_partner" | "fixed"
+  managerCommissionRate Float?
+
+  user               User                       @relation("PartnerAccount", fields: [userId], references: [id], onDelete: Cascade)
+  codes              PartnerCode[]
+  affiliateLinks     PartnerAffiliateLink[]
+  commissions        PartnerCommission[]
+  userMemberships    UserMembership[]
+  withdrawalRequests PartnerWithdrawalRequest[]
+  manager            ContractsManager?          @relation("ManagedPartners", fields: [managerId], references: [id], onDelete: SetNull)
+
+  @@index([isActive])
+  @@index([managerId])
+}
+
+model PartnerCode {
+  id            String    @id @default(cuid())
+  partnerId     String
+  code          String    @unique
+  discountType  String    @default("percentage") // percentage | fixed
+  discountValue Float
+  maxUsage      Int? // null = unlimited
+  usageCount    Int       @default(0)
+  isActive      Boolean   @default(true)
+  expiresAt     DateTime?
+  createdAt     DateTime  @default(now())
+
+  partner         Partner          @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  userMemberships UserMembership[]
+
+  @@index([partnerId])
+  @@index([code])
+}
+
+model PartnerAffiliateLink {
+  id         String   @id @default(cuid())
+  partnerId  String
+  token      String   @unique // short slug used in ?ref=TOKEN
+  label      String?
+  clickCount Int      @default(0)
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  partner         Partner          @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  userMemberships UserMembership[]
+
+  @@index([partnerId])
+  @@index([token])
+}
+
+model PartnerCommission {
+  id               String    @id @default(cuid())
+  partnerId        String
+  userMembershipId String    @unique
+  amount           Float
+  status           String    @default("pending") // pending | withdrawn
+  withdrawnAt      DateTime?
+  notes            String?
+  createdAt        DateTime  @default(now())
+
+  partner           Partner                   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  userMembership    UserMembership            @relation(fields: [userMembershipId], references: [id], onDelete: Cascade)
+  managerCommission ManagerPartnerCommission?
+
+  @@index([partnerId, status])
+  @@index([createdAt])
+}
+
+model AgentCommission {
+  id               String    @id @default(cuid())
+  agentUserId      String
+  userMembershipId String    @unique
+  amount           Float
+  status           String    @default("earned") // earned | settled
+  settledAt        DateTime?
+  createdAt        DateTime  @default(now())
+
+  agentUser      User           @relation("AgentCommissionUser", fields: [agentUserId], references: [id], onDelete: Cascade)
+  userMembership UserMembership @relation(fields: [userMembershipId], references: [id], onDelete: Cascade)
+
+  @@index([agentUserId, status])
+  @@index([createdAt])
+}
+
+model PartnerWithdrawalRequest {
+  id          String    @id @default(cuid())
+  partnerId   String
+  amount      Float
+  status      String    @default("pending") // pending | approved | rejected
+  adminNotes  String?
+  receiptUrl  String?
+  createdAt   DateTime  @default(now())
+  processedAt DateTime?
+
+  partner Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  @@index([partnerId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// ─── Sales Agent / Contracts System ──────────────────────────────────────────
+
+model SalesAgent {
+  id                  String   @id @default(cuid())
+  userId              String   @unique
+  name                String
+  referralCode        String   @unique // short code e.g. "FZ-ABCD1234"
+  commissionRate      Float    @default(0)
+  commissionType      String   @default("percentage") // percentage | fixed
+  clientDiscountType  String   @default("percentage") // discount client gets on subscription
+  clientDiscountValue Float    @default(0)
+  maxClientDiscount   Float?
+  isActive            Boolean  @default(true)
+  managerId           String? // ContractsManager.id who created/manages this agent
+  notes               String?  @db.Text
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  user        User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  manager     ContractsManager?      @relation("ManagedAgents", fields: [managerId], references: [id], onDelete: SetNull)
+  commissions SalesAgentCommission[]
+  referrals   SalesAgentReferral[]
+  memberships UserMembership[]
+
+  @@index([referralCode])
+  @@index([userId])
+  @@index([managerId])
+}
+
+model SalesAgentReferral {
+  id          String    @id @default(cuid())
+  agentId     String
+  userId      String    @unique // the referred user (one user can only be referred once)
+  convertedAt DateTime? // when they first subscribed
+  totalSpent  Float     @default(0)
+  createdAt   DateTime  @default(now())
+
+  agent SalesAgent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  user  User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([agentId])
+}
+
+model SalesAgentCommission {
+  id               String    @id @default(cuid())
+  agentId          String
+  userMembershipId String    @unique
+  amount           Float
+  status           String    @default("earned") // earned | settled
+  settledAt        DateTime?
+  createdAt        DateTime  @default(now())
+
+  agent             SalesAgent         @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  userMembership    UserMembership     @relation(fields: [userMembershipId], references: [id], onDelete: Cascade)
+  managerCommission ManagerCommission?
+
+  @@index([agentId, status])
+  @@index([createdAt])
+}
+
+// ─── Contracts Manager System ─────────────────────────────────────────────────
+
+model ContractsManager {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  name           String
+  commissionType String   @default("percentage_of_agents") // percentage_of_agents | percentage_of_revenue | fixed
+  commissionRate Float    @default(0)
+  isActive       Boolean  @default(true)
+  notes          String?  @db.Text
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user               User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agents             SalesAgent[]               @relation("ManagedAgents")
+  commissions        ManagerCommission[]
+  managedPartners    Partner[]                  @relation("ManagedPartners")
+  partnerCommissions ManagerPartnerCommission[]
+
+  @@index([userId])
+}
+
+model ManagerCommission {
+  id                String    @id @default(cuid())
+  managerId         String
+  agentCommissionId String?   @unique // linked to SalesAgentCommission when type=percentage_of_agents
+  userMembershipId  String? // soft ref to UserMembership
+  amount            Float
+  status            String    @default("earned") // earned | settled
+  settledAt         DateTime?
+  createdAt         DateTime  @default(now())
+
+  manager         ContractsManager      @relation(fields: [managerId], references: [id], onDelete: Cascade)
+  agentCommission SalesAgentCommission? @relation(fields: [agentCommissionId], references: [id], onDelete: SetNull)
+
+  @@index([managerId, status])
+  @@index([createdAt])
+}
+
+// ─── Staff Referral Links ─────────────────────────────────────────────────────
+
+model StaffReferralLink {
+  id         String   @id @default(cuid())
+  userId     String
+  token      String   @unique
+  label      String?
+  clickCount Int      @default(0)
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  user        User              @relation("StaffLinks", fields: [userId], references: [id], onDelete: Cascade)
+  memberships UserMembership[]
+  commissions StaffCommission[]
+
+  @@index([userId])
+}
+
+model StaffCommission {
+  id                  String    @id @default(cuid())
+  staffUserId         String
+  staffReferralLinkId String?
+  userMembershipId    String?   @unique
+  amount              Float
+  status              String    @default("earned") // earned | settled
+  settledAt           DateTime?
+  createdAt           DateTime  @default(now())
+
+  staffUser         User               @relation("StaffCommissions", fields: [staffUserId], references: [id], onDelete: Cascade)
+  staffReferralLink StaffReferralLink? @relation(fields: [staffReferralLinkId], references: [id], onDelete: SetNull)
+  userMembership    UserMembership?    @relation(fields: [userMembershipId], references: [id], onDelete: SetNull)
+
+  @@index([staffUserId, status])
+  @@index([createdAt])
+}
+
+// ─── Trainer Referral Links & Commissions ─────────────────────────────────────
+
+model TrainerReferralLink {
+  id         String   @id @default(cuid())
+  userId     String // trainer's user ID
+  token      String   @unique
+  label      String?
+  clickCount Int      @default(0)
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  user        User                @relation("TrainerLinks", fields: [userId], references: [id], onDelete: Cascade)
+  memberships UserMembership[]
+  commissions TrainerCommission[]
+
+  @@index([userId])
+}
+
+model TrainerCommission {
+  id                    String    @id @default(cuid())
+  trainerUserId         String
+  trainerReferralLinkId String?
+  userMembershipId      String?   @unique
+  amount                Float
+  status                String    @default("earned") // earned | settled
+  settledAt             DateTime?
+  createdAt             DateTime  @default(now())
+
+  trainerUser         User                 @relation("TrainerCommissions", fields: [trainerUserId], references: [id], onDelete: Cascade)
+  trainerReferralLink TrainerReferralLink? @relation(fields: [trainerReferralLinkId], references: [id], onDelete: SetNull)
+  userMembership      UserMembership?      @relation(fields: [userMembershipId], references: [id], onDelete: SetNull)
+
+  @@index([trainerUserId, status])
+  @@index([createdAt])
+}
+
+// ─── Nutritionist Referral Links & Commissions ───────────────────────────────
+
+model NutritionReferralLink {
+  id         String   @id @default(cuid())
+  userId     String // nutritionist's user ID
+  token      String   @unique
+  label      String?
+  clickCount Int      @default(0)
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  user        User                  @relation("NutritionLinks", fields: [userId], references: [id], onDelete: Cascade)
+  memberships UserMembership[]
+  commissions NutritionCommission[]
+
+  @@index([userId])
+}
+
+model NutritionCommission {
+  id                      String    @id @default(cuid())
+  nutritionistUserId      String
+  nutritionReferralLinkId String?
+  userMembershipId        String?   @unique
+  nutritionSessionId      String?   @unique
+  amount                  Float
+  status                  String    @default("earned") // earned | settled
+  settledAt               DateTime?
+  createdAt               DateTime  @default(now())
+
+  nutritionistUser      User                   @relation("NutritionCommissions", fields: [nutritionistUserId], references: [id], onDelete: Cascade)
+  nutritionReferralLink NutritionReferralLink? @relation(fields: [nutritionReferralLinkId], references: [id], onDelete: SetNull)
+  userMembership        UserMembership?        @relation(fields: [userMembershipId], references: [id], onDelete: SetNull)
+  nutritionSession      NutritionSession?      @relation(fields: [nutritionSessionId], references: [id], onDelete: SetNull)
+
+  @@index([nutritionistUserId, status])
+  @@index([createdAt])
+}
+
+// ─── Nutrition Doctor ─────────────────────────────────────────────────────────
+
+model NutritionistProfile {
+  id         String  @id @default(cuid())
+  userId     String  @unique
+  name       String
+  bio        String? @db.Text
+  image      String?
+  isActive   Boolean @default(true)
+  showOnHome Boolean @default(true)
+
+  // Pre-set available slots (JSON: [{label:"الأحد 10 صباحاً", day:"الأحد", time:"10:00"}])
+  slotsJson String? @db.Text
+
+  // Booking form questions (JSON: [{id, label, type, required, options?}])
+  questionsJson String? @db.Text
+
+  // Pricing (editable by admin)
+  consultationFee       Float @default(400) // كشف - non-member
+  consultationFeeMember Float @default(300) // كشف - gym member
+  followupFee           Float @default(100) // إعادة كشف - non-member
+  followupFeeMember     Float @default(50) // إعادة كشف - gym member
+
+  // Referral commission settings (editable by admin)
+  commissionRate Float  @default(0)
+  commissionType String @default("percentage") // percentage | fixed
+
+  // Session commission settings (editable by admin)
+  sessionCommissionRate Float  @default(0)
+  sessionCommissionType String @default("percentage") // percentage | fixed
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user     User               @relation("NutritionistAccount", fields: [userId], references: [id], onDelete: Cascade)
+  sessions NutritionSession[]
+
+  @@index([isActive])
+}
+
+model NutritionSession {
+  id             String @id @default(cuid())
+  userId         String
+  nutritionistId String
+  // consultation | followup
+  type           String @default("consultation")
+  // pending | awaiting_slot | approved | paid | completed | rejected | cancelled
+  status         String @default("pending")
+
+  isGymMember Boolean @default(false)
+  price       Float
+
+  // Full form data (JSON)
+  formJson String? @db.LongText
+
+  // Scheduling
+  // Flow A: client picks from doctor's pre-set slots on submission
+  // Flow B: doctor proposes slots after reviewing the request → client picks
+  selectedSlot  String? // client-chosen slot label
+  proposedSlots String? @db.Text // JSON array: doctor proposes after review
+
+  // Doctor response
+  doctorNote String? @db.Text
+
+  // Payment
+  paymentTransactionId String?
+  paidAt               DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user               User                  @relation("NutritionSessionUser", fields: [userId], references: [id], onDelete: Cascade)
+  nutritionist       NutritionistProfile   @relation(fields: [nutritionistId], references: [id], onDelete: Cascade)
+  rescheduleRequests RescheduleRequest[]
+  commissions        NutritionCommission[]
+
+  @@index([userId])
+  @@index([nutritionistId])
+  @@index([status])
+}
+
+model RescheduleRequest {
+  id          String @id @default(cuid())
+  sessionId   String
+  // doctor_initiated | client_initiated
+  initiatedBy String @default("doctor_initiated")
+  // pending_client | client_accepted | client_rejected | client_wants_refund | refund_approved | refund_rejected | completed | cancelled
+  status      String @default("pending_client")
+
+  // Doctor's proposed new slot
+  proposedNewSlot String?
+  doctorReason    String? @db.Text
+
+  // Client's response
+  clientResponse   String? // accept | reject | refund
+  clientChosenSlot String? // if client picks different slot
+  clientReason     String? @db.Text
+
+  // Refund tracking
+  refundAmount      Float?
+  refundStatus      String? // pending | approved | rejected | completed
+  refundApprovedBy  String? // doctor/admin userId
+  refundApprovedAt  DateTime?
+  refundCompletedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  session NutritionSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([status])
+}
+
+model BlogPendingPost {
+  id          String @id @default(cuid())
+  submittedBy String // userId of contracts_manager who submitted
+  // pending | approved | rejected
+  status      String @default("pending")
+
+  // Post data (same structure as BlogPost in site_content.blog.posts)
+  title      String  @db.Text
+  titleEn    String? @db.Text
+  category   String
+  categoryEn String?
+  author     String
+  authorEn   String?
+  date       String
+  dateEn     String?
+  readTime   String
+  readTimeEn String?
+  featured   Boolean @default(false)
+  summary    String  @db.Text
+  summaryEn  String? @db.Text
+  content    String  @db.LongText
+  contentEn  String? @db.LongText
+  coverImage String  @db.Text
+  videoUrl   String  @db.Text
+
+  // If editing existing post
+  existingPostId String? // ID from site_content.blog.posts array
+
+  // Admin response
+  reviewedBy   String?
+  reviewedAt   DateTime?
+  rejectReason String?   @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  submitter User  @relation(fields: [submittedBy], references: [id], onDelete: Cascade)
+  reviewer  User? @relation("BlogReviewer", fields: [reviewedBy], references: [id], onDelete: SetNull)
+
+  @@index([submittedBy])
+  @@index([status])
+}
+
+// ─── Supplier (Vendor) — admin-only, never exposed to customers ───────────────
+
+model Supplier {
+  id             String  @id @default(cuid())
+  name           String // internal name — never shown to customers
+  code           String? @unique
+  phone          String?
+  address        String? @db.Text
+  notes          String? @db.Text
+  isActive       Boolean @default(true)
+  commissionRate Float? // optional: profit margin / commission rate
+  commissionType String? // percentage | fixed
+
+  // Supplier commercial defaults.
+  // These are defaults only; invoice-level terms remain authoritative.
+  defaultPaymentTerms  String? // cash | credit | mixed
+  creditDays           Int?
+  creditLimit          Decimal? @db.Decimal(18, 2)
+  supportsConsignment  Boolean  @default(false)
+  supportsPrivateLabel Boolean  @default(false)
+
+  deletedAt DateTime? // soft delete
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  products             Product[]
+  receipts             InventoryReceipt[]
+  purchaseInvoices     PurchaseInvoice[]
+  payments             SupplierPayment[]
+  consignmentReceipts  ConsignmentReceipt[]
+  consignmentLots      ConsignmentLot[]
+  consignmentMovements ConsignmentMovement[]
+
+  @@index([isActive])
+  @@index([deletedAt])
+}
+
+// ─── Supplier Purchases / Accounts Payable ────────────────────────────────────
+
+model PurchaseInvoice {
+  id            String    @id @default(cuid())
+  supplierId    String
+  invoiceNumber String?
+  invoiceDate   DateTime
+  dueDate       DateTime?
+  paymentTerms  String? // cash | credit | mixed
+  supplyType    String    @default("purchase") // purchase | consignment
+  subtotal      Decimal   @db.Decimal(18, 2)
+  totalAmount   Decimal   @db.Decimal(18, 2)
+  status        String    @default("draft") // draft | posted | cancelled
+  notes         String?   @db.Text
+
+  createdByUserId   String?
+  postedByUserId    String?
+  cancelledByUserId String?
+  postedAt          DateTime?
+  cancelledAt       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  supplier            Supplier                    @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  items               PurchaseInvoiceItem[]
+  allocations         SupplierPaymentAllocation[]
+  receipts            InventoryReceipt[]
+  consignmentReceipts ConsignmentReceipt[]
+
+  createdBy   User? @relation("PurchaseInvoiceCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  postedBy    User? @relation("PurchaseInvoicePoster", fields: [postedByUserId], references: [id], onDelete: SetNull)
+  cancelledBy User? @relation("PurchaseInvoiceCanceller", fields: [cancelledByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([supplierId, invoiceNumber])
+  @@index([supplierId, status, invoiceDate])
+  @@index([status, dueDate])
+  @@index([createdByUserId])
+  @@index([postedByUserId])
+  @@index([cancelledByUserId])
+}
+
+model PurchaseInvoiceItem {
+  id                String   @id @default(cuid())
+  purchaseInvoiceId String
+  productId         String?
+  variantId         String?
+  description       String
+  sku               String?
+  quantity          Int
+  unitCost          Decimal  @db.Decimal(18, 2)
+  totalCost         Decimal  @db.Decimal(18, 2)
+  createdAt         DateTime @default(now())
+
+  purchaseInvoice PurchaseInvoice @relation(fields: [purchaseInvoiceId], references: [id], onDelete: Cascade)
+  product         Product?        @relation("PurchaseInvoiceItemProduct", fields: [productId], references: [id], onDelete: SetNull)
+  variant         ProductVariant? @relation("PurchaseInvoiceItemVariant", fields: [variantId], references: [id], onDelete: SetNull)
+
+  @@index([purchaseInvoiceId])
+  @@index([productId])
+  @@index([variantId])
+}
+
+// ─── Consignment Inventory ──────────────────────────────────────────────────
+//
+// Consignment stock is supplier-owned stock held physically by FitZone.
+//
+// IMPORTANT:
+// - Does NOT mutate Product.stock or Product.reservedStock.
+// - Does NOT participate in Product.averageCost / WAC.
+// - Does NOT create InventoryMovement.
+// - Does NOT create Inventory Asset / Accounts Payable journals on receipt.
+// - Sale allocation and supplier liability are intentionally deferred to Phase 3.
+//
+
+model ConsignmentReceipt {
+  id                String   @id @default(cuid())
+  referenceNumber   String?  @unique
+  supplierId        String
+  purchaseInvoiceId String?
+  receivedAt        DateTime @default(now())
+  status            String   @default("posted") // posted | cancelled
+  totalDeclaredCost Decimal  @default(0) @db.Decimal(18, 2)
+  notes             String?  @db.Text
+  performedByUserId String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  supplier        Supplier         @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  purchaseInvoice PurchaseInvoice? @relation(fields: [purchaseInvoiceId], references: [id], onDelete: Restrict)
+  lots            ConsignmentLot[]
+
+  @@index([supplierId, status, receivedAt])
+  @@index([purchaseInvoiceId])
+}
+
+model ConsignmentLot {
+  id                String   @id @default(cuid())
+  receiptId         String
+  supplierId        String
+  productId         String
+  variantId         String?
+  sku               String?
+  quantityReceived  Int
+  quantityAvailable Int
+  quantityReserved  Int      @default(0)
+  quantitySold      Int      @default(0)
+  quantityReturned  Int      @default(0)
+  unitCost          Decimal  @db.Decimal(18, 2)
+  status            String   @default("open") // open | depleted | returned | cancelled
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  receipt     ConsignmentReceipt         @relation(fields: [receiptId], references: [id], onDelete: Restrict)
+  supplier    Supplier                   @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  product     Product                    @relation(fields: [productId], references: [id], onDelete: Restrict)
+  variant     ProductVariant?            @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  movements   ConsignmentMovement[]
+  allocations OrderInventoryAllocation[]
+
+  @@index([receiptId])
+  @@index([supplierId, status])
+  @@index([productId, status])
+  @@index([variantId, status])
+}
+
+model ConsignmentMovement {
+  id             String   @id @default(cuid())
+  lotId          String
+  supplierId     String
+  productId      String
+  variantId      String?
+  // RECEIVE | RETURN_TO_SUPPLIER | ADJUSTMENT | SALE | SALE_REVERSAL
+  type           String
+  quantityChange Int
+  quantityBefore Int
+  quantityAfter  Int
+  unitCost       Decimal? @db.Decimal(18, 2)
+  referenceType  String?
+  referenceId    String?
+  reason         String?  @db.Text
+  notes          String?  @db.Text
+  actorUserId    String?
+  createdAt      DateTime @default(now())
+
+  lot      ConsignmentLot  @relation(fields: [lotId], references: [id], onDelete: Restrict)
+  supplier Supplier        @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  product  Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
+  variant  ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+
+  @@index([lotId, createdAt])
+  @@index([supplierId, createdAt])
+  @@index([productId, createdAt])
+  @@index([variantId, createdAt])
+  @@index([type, createdAt])
+  @@index([referenceType, referenceId])
+}
+
+model SupplierPayment {
+  id              String   @id @default(cuid())
+  supplierId      String
+  amount          Decimal  @db.Decimal(18, 2)
+  paymentDate     DateTime
+  paymentMethod   String
+  referenceNumber String?
+  status          String   @default("draft") // draft | posted | cancelled
+  notes           String?  @db.Text
+
+  createdByUserId   String?
+  postedByUserId    String?
+  cancelledByUserId String?
+  postedAt          DateTime?
+  cancelledAt       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  supplier    Supplier                    @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  allocations SupplierPaymentAllocation[]
+
+  createdBy   User? @relation("SupplierPaymentCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  postedBy    User? @relation("SupplierPaymentPoster", fields: [postedByUserId], references: [id], onDelete: SetNull)
+  cancelledBy User? @relation("SupplierPaymentCanceller", fields: [cancelledByUserId], references: [id], onDelete: SetNull)
+
+  @@index([supplierId, status, paymentDate])
+  @@index([referenceNumber])
+  @@index([createdByUserId])
+  @@index([postedByUserId])
+  @@index([cancelledByUserId])
+}
+
+model SupplierPaymentAllocation {
+  id                String   @id @default(cuid())
+  supplierPaymentId String
+  purchaseInvoiceId String
+  amount            Decimal  @db.Decimal(18, 2)
+  createdAt         DateTime @default(now())
+
+  supplierPayment SupplierPayment @relation(fields: [supplierPaymentId], references: [id], onDelete: Cascade)
+  purchaseInvoice PurchaseInvoice @relation(fields: [purchaseInvoiceId], references: [id], onDelete: Restrict)
+
+  @@unique([supplierPaymentId, purchaseInvoiceId])
+  @@index([purchaseInvoiceId])
+}
+
+// ─── Product Variants ─────────────────────────────────────────────────────────
+
+model ProductVariant {
+  id        String   @id @default(cuid())
+  productId String
+  size      String?
+  color     String?
+  sku       String?  @unique
+  barcode   String?
+  stock     Int      @default(0)
+  price     Float? // override product base price (null = use product price)
+  costPrice Float? // buying cost for this specific variant
+  image     String? // variant-specific image URL
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  product              Product                @relation(fields: [productId], references: [id], onDelete: Cascade)
+  orderItems           OrderItem[]
+  receiptItems         InventoryReceiptItem[] @relation("ReceiptItemVariant")
+  movements            InventoryMovement[]    @relation("VariantMovement")
+  purchaseInvoiceItems PurchaseInvoiceItem[]  @relation("PurchaseInvoiceItemVariant")
+  consignmentLots      ConsignmentLot[]
+  consignmentMovements ConsignmentMovement[]
+
+  @@index([productId, isActive])
+  @@index([sku])
+}
+
+// ─── Order Status History (Timeline) ─────────────────────────────────────────
+
+model OrderStatusHistory {
+  id                String   @id @default(cuid())
+  orderId           String
+  fromStatus        String? // null on first entry
+  toStatus          String
+  notes             String?  @db.Text
+  performedByUserId String?
+  createdAt         DateTime @default(now())
+
+  order       Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  performedBy User? @relation("OrderStatusPerformer", fields: [performedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([orderId, createdAt])
+}
+
+// ─── Delivery Companies ───────────────────────────────────────────────────────
+
+model DeliveryCompany {
+  id              String    @id @default(cuid())
+  name            String
+  // courier | pickup | internal_courier
+  type            String    @default("courier")
+  phone           String?
+  contactPerson   String?
+  defaultFee      Float     @default(0)
+  estimatedDays   String? // e.g. "2-3 أيام عمل"
+  supportsCOD     Boolean   @default(true)
+  codFeeType      String? // percentage | fixed | null (no extra fee)
+  codFeeValue     Float?
+  collectsPayment Boolean   @default(true) // does company collect cash from customer?
+  isActive        Boolean   @default(true)
+  notes           String?   @db.Text
+  deletedAt       DateTime? // soft delete
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  zones  DeliveryZone[]
+  orders Order[]        @relation("OrderDeliveryCompany")
+
+  @@index([isActive])
+}
+
+// ─── Delivery Zones (price per governorate) ───────────────────────────────────
+
+model DeliveryZone {
+  id            String   @id @default(cuid())
+  companyId     String
+  governorate   String // e.g. "القاهرة", "الجيزة", "الإسكندرية"
+  fee           Float
+  estimatedDays String? // overrides company default for this zone
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  company DeliveryCompany @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, governorate])
+  @@index([companyId, isActive])
+}
+
+// ─── Manager–Partner Commission ───────────────────────────────────────────────
+
+model ManagerPartnerCommission {
+  id                  String    @id @default(cuid())
+  managerId           String
+  partnerCommissionId String?   @unique
+  userMembershipId    String?
+  amount              Float
+  status              String    @default("earned") // earned | settled
+  settledAt           DateTime?
+  createdAt           DateTime  @default(now())
+
+  manager           ContractsManager   @relation(fields: [managerId], references: [id], onDelete: Cascade)
+  partnerCommission PartnerCommission? @relation(fields: [partnerCommissionId], references: [id], onDelete: SetNull)
+
+  @@index([managerId, status])
+  @@index([createdAt])
+}
+
+// ─── First-party privacy-preserving analytics ───────────────────────────────
+
+model AnalyticsVisitor {
+  id              String   @id @default(cuid())
+  anonymousId     String   @unique
+  userId          String?
+  firstSeenAt     DateTime @default(now())
+  lastSeenAt      DateTime @default(now())
+  countryCode     String?
+  countryName     String?
+  region          String?
+  city            String?
+  deviceType      String?
+  browser         String?
+  operatingSystem String?
+  isBot           Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user      User?               @relation(fields: [userId], references: [id], onDelete: SetNull)
+  sessions  AnalyticsSession[]
+  pageViews AnalyticsPageView[]
+  events    AnalyticsEvent[]
+
+  @@index([firstSeenAt])
+  @@index([lastSeenAt])
+  @@index([userId])
+  @@index([countryCode])
+}
+
+model AnalyticsSession {
+  id              String    @id @default(cuid())
+  visitorId       String
+  userId          String?
+  startedAt       DateTime  @default(now())
+  lastActivityAt  DateTime  @default(now())
+  endedAt         DateTime?
+  durationSeconds Int       @default(0)
+  landingPage     String?
+  exitPage        String?
+  referrer        String?
+  utmSource       String?
+  utmMedium       String?
+  utmCampaign     String?
+  deviceType      String?
+  countryCode     String?
+  city            String?
+  pageViewCount   Int       @default(0)
+  isBounce        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  visitor   AnalyticsVisitor    @relation(fields: [visitorId], references: [id], onDelete: Cascade)
+  user      User?               @relation(fields: [userId], references: [id], onDelete: SetNull)
+  pageViews AnalyticsPageView[]
+  events    AnalyticsEvent[]
+
+  @@index([visitorId])
+  @@index([userId])
+  @@index([startedAt])
+  @@index([countryCode])
+}
+
+model AnalyticsPageView {
+  id              String    @id @default(cuid())
+  sessionId       String
+  visitorId       String
+  userId          String?
+  path            String
+  pageTitle       String?
+  enteredAt       DateTime  @default(now())
+  exitedAt        DateTime?
+  durationSeconds Int       @default(0)
+  referrerPath    String?
+  createdAt       DateTime  @default(now())
+
+  session AnalyticsSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  visitor AnalyticsVisitor @relation(fields: [visitorId], references: [id], onDelete: Cascade)
+  user    User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([sessionId])
+  @@index([visitorId])
+  @@index([userId])
+  @@index([path])
+  @@index([createdAt])
+}
+
+model AnalyticsEvent {
+  id                   String   @id @default(cuid())
+  sessionId            String?
+  visitorId            String?
+  userId               String?
+  paymentTransactionId String?
+  eventName            String
+  eventCategory        String
+  pagePath             String
+  entityType           String?
+  entityId             String?
+  entityName           String?
+  metadata             Json?
+  createdAt            DateTime @default(now())
+
+  session            AnalyticsSession?   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  visitor            AnalyticsVisitor?   @relation(fields: [visitorId], references: [id], onDelete: Cascade)
+  user               User?               @relation(fields: [userId], references: [id], onDelete: SetNull)
+  paymentTransaction PaymentTransaction? @relation(fields: [paymentTransactionId], references: [id], onDelete: SetNull)
+
+  @@unique([paymentTransactionId, eventName])
+  @@index([sessionId])
+  @@index([visitorId])
+  @@index([userId])
+  @@index([eventName])
+  @@index([eventCategory])
+  @@index([pagePath])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@index([paymentTransactionId])
+}
+
+// ─── Phase 4: General Ledger / Accounting ─────────────────────────────────────
+
+model GLAccount {
+  id        String   @id @default(cuid())
+  code      String   @unique // e.g. "1010", "4010", "5010"
+  name      String // e.g. "Inventory Asset", "Sales Revenue", "COGS"
+  type      String // asset | liability | equity | revenue | expense
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  entries JournalEntry[]
+
+  @@index([type, isActive])
+}
+
+model Journal {
+  id                String   @id @default(cuid())
+  referenceType     String // Order | InventoryReceipt | Adjustment
+  referenceId       String // FK to source document
+  description       String   @db.Text
+  date              DateTime @default(now())
+  status            String   @default("posted") // draft | posted | reversed
+  reversalJournalId String? // FK to Journal that reverses this
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  entries    JournalEntry[]
+  reversalOf Journal?       @relation("JournalReversal", fields: [reversalJournalId], references: [id], onDelete: SetNull)
+  reversals  Journal[]      @relation("JournalReversal")
+
+  @@unique([referenceType, referenceId])
+  @@index([status, date])
+}
+
+model JournalEntry {
+  id          String   @id @default(cuid())
+  journalId   String
+  accountId   String
+  debit       Decimal  @default(0) @db.Decimal(18, 2) // EGP with 2 decimals (piastres)
+  credit      Decimal  @default(0) @db.Decimal(18, 2)
+  description String?  @db.Text
+  createdAt   DateTime @default(now())
+
+  journal Journal   @relation(fields: [journalId], references: [id], onDelete: Cascade)
+  account GLAccount @relation(fields: [accountId], references: [id])
+
+  @@index([journalId])
+  @@index([accountId])
+  @@index([createdAt])
+}
+
+// ─── Commission Settlement / Payout Ledger ───────────────────────────────────
+//
+// Cutover:
+// Existing historical settled/withdrawn commission rows remain untouched.
+// Every NEW settlement after cutover must be represented by one payout and
+// exact payout items.
+//
+model CommissionPayout {
+  id              String  @id @default(cuid())
+  beneficiaryType String
+  beneficiaryId   String
+  totalAmount     Decimal @db.Decimal(18, 2)
+  currency        String  @default("EGP")
+
+  status           String  @default("paid")
+  paymentMethod    String?
+  paymentReference String?
+  receiptUrl       String? @db.Text
+  notes            String? @db.Text
+
+  // Optional originating business document,
+  // e.g. PartnerWithdrawalRequest.
+  sourceType String?
+  sourceId   String?
+
+  requestedAt DateTime?
+  approvedAt  DateTime?
+  paidAt      DateTime?
+
+  // Soft actor reference: payout history must survive later user changes.
+  createdByUserId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items CommissionPayoutItem[]
+
+  @@unique([sourceType, sourceId])
+  @@index([beneficiaryType, beneficiaryId])
+  @@index([status, paidAt])
+}
+
+model CommissionPayoutItem {
+  id       String @id @default(cuid())
+  payoutId String
+
+  // partner | agent_user | sales_agent | manager |
+  // manager_partner | staff | trainer | nutrition
+  commissionType String
+  commissionId   String
+  amount         Decimal @db.Decimal(18, 2)
+
+  createdAt DateTime @default(now())
+
+  payout CommissionPayout @relation(fields: [payoutId], references: [id], onDelete: Cascade)
+
+  // One commission can belong to one payout only.
+  @@unique([commissionType, commissionId])
+  @@index([payoutId])
+}
+
+model FriendOfferConfig {
+  id                String   @id @default(cuid())
+  offerId           String   @unique
+  requiredMembers   Int      @default(2)
+  inviteExpiryHours Int      @default(24)
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  offer  Offer              @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  groups FriendOfferGroup[]
+
+  @@index([isActive])
+}
+
+model FriendOfferGroup {
+  id                  String    @id @default(cuid())
+  configId            String
+  creatorUserId       String
+  inviteToken         String    @unique
+  status              String    @default("waiting") // waiting | ready | finalizing | completed | expired | cancelled
+  priceSnapshotMinor  Int
+  offerTermsSnapshot  String?   @db.LongText
+  eligibilitySnapshot String?   @db.LongText
+  matchingEnabled     Boolean   @default(false)
+  expiresAt           DateTime
+  finalizingAt        DateTime?
+  completedAt         DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  config       FriendOfferConfig        @relation(fields: [configId], references: [id], onDelete: Cascade)
+  creator      User                     @relation("FriendOfferGroupCreator", fields: [creatorUserId], references: [id], onDelete: Cascade)
+  participants FriendOfferParticipant[]
+
+  @@index([configId, status])
+  @@index([creatorUserId])
+  @@index([expiresAt])
+  @@index([matchingEnabled, status])
+}
+
+model FriendOfferParticipant {
+  id                   String    @id @default(cuid())
+  groupId              String
+  userId               String
+  userMembershipId     String?   @unique
+  paymentTransactionId String?   @unique
+  role                 String    @default("invited") // creator | invited
+  status               String    @default("joined") // joined | checkout_started | paid | activated | cancelled
+  shareAmountMinor     Int
+  paidAt               DateTime?
+  attributionSnapshot  String?   @db.LongText
+  joinedAt             DateTime  @default(now())
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  group              FriendOfferGroup    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userMembership     UserMembership?     @relation(fields: [userMembershipId], references: [id], onDelete: SetNull)
+  paymentTransaction PaymentTransaction? @relation(fields: [paymentTransactionId], references: [id], onDelete: SetNull)
+  marketingConversion MarketingConversion?
+
+  @@unique([groupId, userId])
+  @@index([userId])
+  @@index([groupId, status])
+}

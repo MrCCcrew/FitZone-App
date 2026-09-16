@@ -23,6 +23,7 @@ function normalizeAllowedClassTypes(value: unknown): string[] {
   return [...new Set(value.map((item) => String(item).trim().toLowerCase()).filter(Boolean))];
 }
 
+
 function mapOffer(
   offer: {
     id: string;
@@ -49,9 +50,14 @@ function mapOffer(
     priceBefore?: number | null;
     features?: string | null;
     featuresEn?: string | null;
-    allowedClassTypes?: Array<{ classType: string }>;
+    allowedClassTypes?: Array<{ classType: string; classTypeId: string | null }>;
     allowedClasses?: Array<{ classId: string }>;
     membership?: { name: string } | null;
+    friendOfferConfig?: {
+      requiredMembers: number;
+      inviteExpiryHours: number;
+      isActive: boolean;
+    } | null;
   },
 ) {
   const parseFeatures = (raw: string | null | undefined): string[] => {
@@ -85,7 +91,13 @@ function mapOffer(
     features: parseFeatures(offer.features),
     featuresEn: parseFeatures(offer.featuresEn),
     allowedClassTypes: offer.allowedClassTypes?.map((item) => item.classType) ?? [],
+    allowedClassTypeIds: offer.allowedClassTypes
+      ?.map((item) => item.classTypeId)
+      .filter((id): id is string => Boolean(id)) ?? [],
     allowedClassIds: offer.allowedClasses?.map((item) => item.classId) ?? [],
+    friendOfferEnabled: offer.friendOfferConfig?.isActive === true,
+    friendRequiredMembers: offer.friendOfferConfig?.requiredMembers ?? 2,
+    friendInviteExpiryHours: offer.friendOfferConfig?.inviteExpiryHours ?? 24,
   };
 }
 
@@ -96,8 +108,15 @@ export async function GET() {
   const offers = await db.offer.findMany({
     include: {
       membership: { select: { name: true } },
-      allowedClassTypes: { select: { classType: true } },
+      allowedClassTypes: { select: { classType: true, classTypeId: true } },
       allowedClasses: { select: { classId: true } }, // NEW
+      friendOfferConfig: {
+        select: {
+          requiredMembers: true,
+          inviteExpiryHours: true,
+          isActive: true,
+        },
+      },
     },
     orderBy: [{ showOnHome: "desc" }, { expiresAt: "asc" }],
   });
@@ -119,14 +138,57 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "يرجى إدخال عنوان العرض ووقت انتهائه." }, { status: 400 });
     }
 
+    const friendOfferEnabled = body.friendOfferEnabled === true;
+    const friendRequiredMembers = Number(body.friendRequiredMembers ?? 2);
+    const friendInviteExpiryHours = Number(body.friendInviteExpiryHours ?? 24);
+
+    if (friendOfferEnabled && type !== "special") {
+      return NextResponse.json(
+        { error: "عرض الصحاب يجب أن يكون من نوع عرض خاص." },
+        { status: 400 },
+      );
+    }
+
+    if (
+      friendOfferEnabled &&
+      (!Number.isInteger(friendRequiredMembers) || friendRequiredMembers < 2)
+    ) {
+      return NextResponse.json(
+        { error: "عدد مشتركات عرض الصحاب يجب أن يكون 2 على الأقل." },
+        { status: 400 },
+      );
+    }
+
+    if (
+      friendOfferEnabled &&
+      (!Number.isInteger(friendInviteExpiryHours) ||
+        friendInviteExpiryHours < 1)
+    ) {
+      return NextResponse.json(
+        { error: "صلاحية رابط الدعوة يجب أن تكون ساعة واحدة على الأقل." },
+        { status: 400 },
+      );
+    }
+
     if (type === "special" && (body.specialPrice == null || Number(body.specialPrice) <= 0)) {
       return NextResponse.json({ error: "أدخلي قيمة الاشتراك الخاصة بالعرض." }, { status: 400 });
     }
 
-    // Branch based on offer type
-    const isSpecialOffer = type === "special";
-    const allowedClassTypes = normalizeAllowedClassTypes(body.allowedClassTypes);
     const allowedClassIds = normalizeAllowedClassTypes(body.allowedClassIds);
+    if (allowedClassIds.length > 0) {
+      const found = await db.class.findMany({
+        where: { id: { in: allowedClassIds } },
+        select: { id: true },
+      });
+      const foundIds = new Set(found.map((row) => row.id));
+      const missing = allowedClassIds.filter((id) => !foundIds.has(id));
+      if (missing.length > 0) {
+        return NextResponse.json(
+          { error: "يوجد كلاس محدد غير موجود." },
+          { status: 400 },
+        );
+      }
+    }
 
     const created = await db.offer.create({
       data: {
@@ -153,18 +215,31 @@ export async function POST(req: Request) {
         priceBefore: body.priceBefore != null && body.priceBefore !== "" ? Number(body.priceBefore) : null,
         features: Array.isArray(body.features) && body.features.length > 0 ? JSON.stringify(body.features) : null,
         featuresEn: Array.isArray(body.featuresEn) && body.featuresEn.length > 0 ? JSON.stringify(body.featuresEn) : null,
-        // Special offers: ONLY class types
-        ...(isSpecialOffer ? {
-          allowedClassTypes: { create: allowedClassTypes.map((classType) => ({ classType })) },
-        } : {
-          // Non-special offers: direct class links (if provided)
-          allowedClasses: allowedClassIds.length > 0 ? { create: allowedClassIds.map((classId) => ({ classId })) } : undefined,
-        }),
+        // Exact classes are authoritative for every offer type.
+        allowedClasses: allowedClassIds.length > 0
+          ? { create: allowedClassIds.map((classId) => ({ classId })) }
+          : undefined,
+        friendOfferConfig: friendOfferEnabled
+          ? {
+              create: {
+                requiredMembers: friendRequiredMembers,
+                inviteExpiryHours: friendInviteExpiryHours,
+                isActive: true,
+              },
+            }
+          : undefined,
       },
       include: {
         membership: { select: { name: true } },
-        allowedClassTypes: { select: { classType: true } },
+        allowedClassTypes: { select: { classType: true, classTypeId: true } },
         allowedClasses: { select: { classId: true } },
+        friendOfferConfig: {
+          select: {
+            requiredMembers: true,
+            inviteExpiryHours: true,
+            isActive: true,
+          },
+        },
       },
     });
 
@@ -199,10 +274,59 @@ export async function PATCH(req: Request) {
 
     const currentType = normalizeOfferType(current.type);
     const newType = body.type !== undefined ? normalizeOfferType(String(body.type)) : currentType;
-    const finalType = newType; // Type after update
-    const isSpecialOffer = finalType === "special";
 
     const data: Record<string, unknown> = {};
+
+    if (body.friendOfferEnabled !== undefined) {
+      const friendOfferEnabled = body.friendOfferEnabled === true;
+      const friendRequiredMembers = Number(body.friendRequiredMembers ?? 2);
+      const friendInviteExpiryHours = Number(
+        body.friendInviteExpiryHours ?? 24,
+      );
+
+      if (friendOfferEnabled && newType !== "special") {
+        return NextResponse.json(
+          { error: "عرض الصحاب يجب أن يكون من نوع عرض خاص." },
+          { status: 400 },
+        );
+      }
+
+      if (
+        friendOfferEnabled &&
+        (!Number.isInteger(friendRequiredMembers) || friendRequiredMembers < 2)
+      ) {
+        return NextResponse.json(
+          { error: "عدد مشتركات عرض الصحاب يجب أن يكون 2 على الأقل." },
+          { status: 400 },
+        );
+      }
+
+      if (
+        friendOfferEnabled &&
+        (!Number.isInteger(friendInviteExpiryHours) ||
+          friendInviteExpiryHours < 1)
+      ) {
+        return NextResponse.json(
+          { error: "صلاحية رابط الدعوة يجب أن تكون ساعة واحدة على الأقل." },
+          { status: 400 },
+        );
+      }
+
+      data.friendOfferConfig = {
+        upsert: {
+          create: {
+            requiredMembers: friendRequiredMembers,
+            inviteExpiryHours: friendInviteExpiryHours,
+            isActive: friendOfferEnabled,
+          },
+          update: {
+            requiredMembers: friendRequiredMembers,
+            inviteExpiryHours: friendInviteExpiryHours,
+            isActive: friendOfferEnabled,
+          },
+        },
+      };
+    }
 
     if (body.title !== undefined) data.title = String(body.title).trim();
     if (body.titleEn !== undefined) data.titleEn = String(body.titleEn).trim() || null;
@@ -242,29 +366,28 @@ export async function PATCH(req: Request) {
       data.featuresEn = Array.isArray(body.featuresEn) && body.featuresEn.length > 0 ? JSON.stringify(body.featuresEn) : null;
     }
 
-    // Branch based on final offer type
-    if (isSpecialOffer) {
-      // Special offer: update class types only
-      if (body.allowedClassTypes !== undefined) {
-        const allowedClassTypes = normalizeAllowedClassTypes(body.allowedClassTypes);
-        data.allowedClassTypes = {
-          deleteMany: {},
-          create: allowedClassTypes.map((classType) => ({ classType })),
-        };
+    // Exact Class IDs are the authoritative configuration for all offers.
+    if (body.allowedClassIds !== undefined) {
+      const allowedClassIds = normalizeAllowedClassTypes(body.allowedClassIds);
+      if (allowedClassIds.length > 0) {
+        const found = await db.class.findMany({
+          where: { id: { in: allowedClassIds } },
+          select: { id: true },
+        });
+        const foundIds = new Set(found.map((row) => row.id));
+        const missing = allowedClassIds.filter((classId) => !foundIds.has(classId));
+        if (missing.length > 0) {
+          return NextResponse.json(
+            { error: "يوجد كلاس محدد غير موجود." },
+            { status: 400 },
+          );
+        }
       }
-      // If transitioning from non-special → special, delete direct links
-      if (currentType !== "special") {
-        data.allowedClasses = { deleteMany: {} };
-      }
-    } else {
-      // Non-special offer: update direct class links
-      if (body.allowedClassIds !== undefined) {
-        const allowedClassIds = normalizeAllowedClassTypes(body.allowedClassIds);
-        data.allowedClasses = {
-          deleteMany: {},
-          create: allowedClassIds.map((classId) => ({ classId })),
-        };
-      }
+
+      data.allowedClasses = {
+        deleteMany: {},
+        create: allowedClassIds.map((classId) => ({ classId })),
+      };
     }
 
     const updated = await db.offer.update({
@@ -272,8 +395,15 @@ export async function PATCH(req: Request) {
       data,
       include: {
         membership: { select: { name: true } },
-        allowedClassTypes: { select: { classType: true } },
+        allowedClassTypes: { select: { classType: true, classTypeId: true } },
         allowedClasses: { select: { classId: true } },
+        friendOfferConfig: {
+          select: {
+            requiredMembers: true,
+            inviteExpiryHours: true,
+            isActive: true,
+          },
+        },
       },
     });
 

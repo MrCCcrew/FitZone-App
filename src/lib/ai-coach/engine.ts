@@ -364,8 +364,8 @@ async function buildDeterministicReply(args: {
     if (exactSharedKnowledge) return { intent: "faq", text: exactSharedKnowledge.answer, facts: [], quickActions: [], sourceType: "knowledge_base", confidence: exactSharedKnowledge.confidence ?? 1, metadata: { usedTools: [], fallbackUsed: false, sharedKnowledge: "exact" } };
   }
   const resolvedToolMessage = typeof understanding?.extractedEntities.searchTerm === "string" ? understanding.extractedEntities.searchTerm : typeof understanding?.extractedEntities.className === "string" ? understanding.extractedEntities.className : understanding?.listAll ? "" : userMessage;
-  const scheduleDate = understanding?.temporalFilter.date;
-  const toolContext = await getCoachToolContext({ intent, message: resolvedToolMessage, lang, userId: user?.id ?? null, sort: understanding?.sort, temporalFilter: scheduleDate === "today" || scheduleDate === "tomorrow" ? { date: scheduleDate } : undefined, catalogType: understanding?.extractedEntities.catalogType === "package" ? "package" : "membership" });
+  const scheduleTemporalFilter = understanding?.temporalFilter;
+  const toolContext = await getCoachToolContext({ intent, message: resolvedToolMessage, lang, userId: user?.id ?? null, sort: understanding?.sort, temporalFilter: scheduleTemporalFilter && Object.keys(scheduleTemporalFilter).length ? scheduleTemporalFilter : undefined, catalogType: understanding?.extractedEntities.catalogType === "package" ? "package" : "membership" });
   const snapshot = toolContext.snapshot;
   const profile = snapshot.coachProfile;
   const attendance = snapshot.account.attendanceStats;

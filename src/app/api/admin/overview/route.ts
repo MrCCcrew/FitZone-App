@@ -1,82 +1,307 @@
 import { NextResponse } from "next/server";
 import { requireAdminFeature } from "@/lib/admin-guard";
 import { db } from "@/lib/db";
+import { localMonthUtcRange } from "@/lib/analytics/admin-filters";
 
 async function checkAdmin() {
   const guard = await requireAdminFeature("overview");
   return "error" in guard ? guard.error : null;
 }
 
-const MONTHS_AR = ["يناير","فبراير","مارس","إبريل","مايو","يونيو","يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر"];
+const MONTHS_AR = [
+  "يناير","فبراير","مارس","إبريل","مايو","يونيو",
+  "يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر",
+];
+
+type RevenuePeriod = {
+  from: Date;
+  to: Date;
+};
+
+async function getOperationalRevenue(period: RevenuePeriod) {
+  const [
+    storeSales,
+    storeReturns,
+    memberships,
+    bookings,
+  ] = await Promise.all([
+    db.order.aggregate({
+      where: {
+        businessUnit: "store",
+        confirmedAt: {
+          not: null,
+          gte: period.from,
+          lt: period.to,
+        },
+        inventoryDeducted: true,
+        status: {
+          in: ["confirmed", "preparing", "delivered"],
+        },
+      },
+      _sum: { total: true },
+    }),
+
+    db.order.aggregate({
+      where: {
+        businessUnit: "store",
+        status: "cancelled",
+        cancelledAt: {
+          not: null,
+          gte: period.from,
+          lt: period.to,
+        },
+        inventoryDeducted: true,
+      },
+      _sum: { total: true },
+    }),
+
+    db.userMembership.aggregate({
+      where: {
+        status: { in: ["active", "expired"] },
+        startDate: {
+          gte: period.from,
+          lt: period.to,
+        },
+      },
+      _sum: { paymentAmount: true },
+    }),
+
+    db.booking.aggregate({
+      where: {
+        status: { in: ["confirmed", "attended"] },
+        createdAt: {
+          gte: period.from,
+          lt: period.to,
+        },
+      },
+      _sum: { paidAmount: true },
+    }),
+  ]);
+
+  const storeGrossRevenue = storeSales._sum.total ?? 0;
+  const storeReturnsTotal = storeReturns._sum.total ?? 0;
+  const storeRevenue = storeGrossRevenue - storeReturnsTotal;
+
+  const membershipRevenue =
+    memberships._sum.paymentAmount ?? 0;
+
+  const bookingRevenue =
+    bookings._sum.paidAmount ?? 0;
+
+  const clubRevenue =
+    membershipRevenue + bookingRevenue;
+
+  return {
+    storeRevenue,
+    membershipRevenue,
+    bookingRevenue,
+    clubRevenue,
+    totalRevenue: storeRevenue + clubRevenue,
+  };
+}
 
 export async function GET() {
-  const err = await checkAdmin(); if (err) return err;
+  const err = await checkAdmin();
+  if (err) return err;
 
-  const now  = new Date();
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const totalMembers = await db.user.count({ where: { role: "member" } });
-  const activeMembers = await db.userMembership.count({ where: { status: "active", endDate: { gt: now } } });
-  const pendingOrders = await db.order.count({ where: { status: "pending" } });
-  const totalClasses = await db.class.count();
-  const totalProducts = await db.product.count({ where: { isActive: true } });
-  const openComplaints = await db.complaint.count({ where: { status: { in: ["open", "in-progress"] } } });
-  const monthlyRevenue = await db.order.aggregate({
-    where: { status: { in: ["confirmed","delivered"] }, createdAt: { gte: startOfMonth } },
-    _sum: { total: true },
-  });
-  const recentOrders = await db.order.findMany({
-    orderBy: { createdAt: "desc" },
-    take: 3,
-    include: { user: { select: { name: true } } },
-  });
-  const recentUsers = await db.user.findMany({
-    where: { role: "member" },
-    orderBy: { createdAt: "desc" },
-    take: 3,
-  });
-  const recentComplaints = await db.complaint.findMany({
-    orderBy: { createdAt: "desc" },
-    take: 3,
-    include: { user: { select: { name: true } } },
-  });
+  const now = new Date();
 
-  // Monthly revenue for last 6 months
-  const monthlyData: { month: string; revenue: number }[] = [];
-  for (let i = 0; i < 6; i += 1) {
-    const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
-    const dEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-    const agg = await db.order.aggregate({
-      where: { status: { in: ["confirmed","delivered"] }, createdAt: { gte: d, lte: dEnd } },
-      _sum: { total: true },
-    });
-    monthlyData.push({ month: MONTHS_AR[d.getMonth()], revenue: agg._sum.total ?? 0 });
+  const dashboardTimezone = "Africa/Cairo";
+
+  const currentLocalParts = new Intl.DateTimeFormat("en-US", {
+    timeZone: dashboardTimezone,
+    year: "numeric",
+    month: "numeric",
+  }).formatToParts(now);
+
+  const currentYear = Number(
+    currentLocalParts.find((part) => part.type === "year")?.value,
+  );
+
+  const currentMonth = Number(
+    currentLocalParts.find((part) => part.type === "month")?.value,
+  );
+
+  if (!currentYear || !currentMonth) {
+    throw new Error("invalid_dashboard_local_date");
   }
 
-  // Membership plan distribution
-  const memberships = await db.membership.findMany({ where: { isActive: true } });
-  const planDist: { name: string; count: number }[] = [];
-  for (const membership of memberships) {
-    const count = await db.userMembership.count({ where: { membershipId: membership.id, status: "active" } });
-    planDist.push({ name: membership.name, count });
-  }
+  const currentPeriod = localMonthUtcRange(
+    currentYear,
+    currentMonth,
+    dashboardTimezone,
+  );
 
-  // Activity log from recent events
-  const activity = [
-    ...recentUsers.map(u => ({ type: "member", text: `عضو جديد: ${u.name ?? u.email}`, time: u.createdAt })),
-    ...recentOrders.map(o => ({ type: "order",  text: `طلب جديد من ${o.user.name ?? "—"} (${o.total.toLocaleString("ar-EG")} ج.م)`, time: o.createdAt })),
-    ...recentComplaints.map(c => ({ type: "complaint", text: `شكوى من ${c.user.name ?? "—"}: ${c.subject}`, time: c.createdAt })),
-  ].sort((a, b) => b.time.getTime() - a.time.getTime()).slice(0, 8);
-
-  return NextResponse.json({
+  const [
     totalMembers,
-    activeMembers,
+    activeSubscriptions,
     pendingOrders,
     totalClasses,
     totalProducts,
     openComplaints,
-    monthlyRevenue: monthlyRevenue._sum.total ?? 0,
+    currentRevenue,
+    recentOrders,
+    recentUsers,
+    recentComplaints,
+  ] = await Promise.all([
+    db.user.count({
+      where: { role: "member" },
+    }),
+
+    db.userMembership.count({
+      where: {
+        status: "active",
+        endDate: { gt: now },
+      },
+    }),
+
+    db.order.count({
+      where: { status: "pending" },
+    }),
+
+    db.class.count(),
+
+    db.product.count({
+      where: { isActive: true },
+    }),
+
+    db.complaint.count({
+      where: {
+        status: { in: ["open", "in-progress"] },
+      },
+    }),
+
+    getOperationalRevenue(currentPeriod),
+
+    db.order.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 3,
+      include: {
+        user: { select: { name: true } },
+      },
+    }),
+
+    db.user.findMany({
+      where: { role: "member" },
+      orderBy: { createdAt: "desc" },
+      take: 3,
+    }),
+
+    db.complaint.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 3,
+      include: {
+        user: { select: { name: true } },
+      },
+    }),
+  ]);
+
+  // Last 6 complete/current calendar months.
+  const monthlyData: {
+    month: string;
+    revenue: number;
+  }[] = [];
+
+  for (let i = 5; i >= 0; i -= 1) {
+    const monthCursor = new Date(
+      Date.UTC(currentYear, currentMonth - 1 - i, 1),
+    );
+
+    const year = monthCursor.getUTCFullYear();
+    const month = monthCursor.getUTCMonth() + 1;
+
+    const period = localMonthUtcRange(
+      year,
+      month,
+      dashboardTimezone,
+    );
+
+    const revenue = await getOperationalRevenue(period);
+
+    monthlyData.push({
+      month: MONTHS_AR[month - 1],
+      revenue: revenue.totalRevenue,
+    });
+  }
+
+  // Source of truth: live UserMembership rows.
+  // Do NOT exclude a live subscription just because the plan itself
+  // was later disabled for new sales.
+  const activeMembershipRows = await db.userMembership.findMany({
+    where: {
+      status: "active",
+      endDate: { gt: now },
+    },
+    select: {
+      membershipId: true,
+      membership: {
+        select: { name: true },
+      },
+    },
+  });
+
+  const distributionMap = new Map<string, number>();
+
+  for (const row of activeMembershipRows) {
+    const name = row.membership.name;
+    distributionMap.set(name, (distributionMap.get(name) ?? 0) + 1);
+  }
+
+  const planDistribution = [...distributionMap.entries()]
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count);
+
+  const activity = [
+    ...recentUsers.map((user) => ({
+      type: "member",
+      text: `عضو جديد: ${user.name ?? user.email}`,
+      time: user.createdAt,
+    })),
+
+    ...recentOrders.map((order) => ({
+      type: "order",
+      text: `طلب جديد من ${order.user.name ?? "—"} (${order.total.toLocaleString("ar-EG")} ج.م)`,
+      time: order.createdAt,
+    })),
+
+    ...recentComplaints.map((complaint) => ({
+      type: "complaint",
+      text: `شكوى من ${complaint.user.name ?? "—"}: ${complaint.subject}`,
+      time: complaint.createdAt,
+    })),
+  ]
+    .sort((a, b) => b.time.getTime() - a.time.getTime())
+    .slice(0, 8);
+
+  return NextResponse.json({
+    totalMembers,
+
+    // This is deliberately named as subscriptions, not people.
+    activeMembers: activeSubscriptions,
+
+    pendingOrders,
+    totalClasses,
+    totalProducts,
+    openComplaints,
+
+    monthlyRevenue: currentRevenue.totalRevenue,
+
+    revenueBreakdown: {
+      clubRevenue: currentRevenue.clubRevenue,
+      membershipRevenue:
+        currentRevenue.membershipRevenue,
+      bookingRevenue:
+        currentRevenue.bookingRevenue,
+      storeRevenue:
+        currentRevenue.storeRevenue,
+    },
+
     monthlyData,
-    planDistribution: planDist,
-    activity: activity.map(a => ({ ...a, time: a.time.toISOString() })),
+    planDistribution,
+
+    activity: activity.map((entry) => ({
+      ...entry,
+      time: entry.time.toISOString(),
+    })),
   });
 }

@@ -7,24 +7,39 @@ const mocks = vi.hoisted(() => ({
   findSchedule: vi.fn(),
   findMemberships: vi.fn(),
   updateBooking: vi.fn(),
+  updateBookingMany: vi.fn(),
   updateSchedule: vi.fn(),
+  updateRescheduleRequestMany: vi.fn(),
   createNotification: vi.fn(),
+  findPendingRescheduleRequest: vi.fn(),
+  createRescheduleRequest: vi.fn(),
   transaction: vi.fn(),
   findAdmins: vi.fn(),
   findUser: vi.fn(),
   resolveEligibility: vi.fn(),
   canBookClass: vi.fn(),
+  findHealthResponses: vi.fn(),
 }));
 
 vi.mock("@/lib/app-session", () => ({ getCurrentAppUser: mocks.getCurrentAppUser }));
 vi.mock("@/lib/booking-operational", () => ({ isBookingOperational: mocks.isBookingOperational }));
 vi.mock("@/lib/db", () => ({
   db: {
-    booking: { findFirst: mocks.findBooking, update: mocks.updateBooking },
+    booking: {
+      findFirst: mocks.findBooking,
+      update: mocks.updateBooking,
+      updateMany: mocks.updateBookingMany,
+    },
     schedule: { findUnique: mocks.findSchedule, update: mocks.updateSchedule },
     userMembership: { findMany: mocks.findMemberships },
     notification: { create: mocks.createNotification },
     user: { findMany: mocks.findAdmins, findUnique: mocks.findUser },
+    healthResponse: { findMany: mocks.findHealthResponses },
+    bookingRescheduleRequest: {
+      findUnique: mocks.findPendingRescheduleRequest,
+      create: mocks.createRescheduleRequest,
+      updateMany: mocks.updateRescheduleRequestMany,
+    },
     $transaction: mocks.transaction,
   },
 }));
@@ -90,13 +105,18 @@ describe("PATCH /api/bookings membership eligibility", () => {
     mocks.findSchedule.mockResolvedValue(newSchedule);
     mocks.findMemberships.mockResolvedValue([membership("membership-current")]);
     mocks.updateBooking.mockResolvedValue({});
+    mocks.updateBookingMany.mockResolvedValue({ count: 1 });
     mocks.updateSchedule.mockResolvedValue({});
+    mocks.updateRescheduleRequestMany.mockResolvedValue({ count: 0 });
     mocks.createNotification.mockResolvedValue({});
     mocks.transaction.mockResolvedValue([]);
     mocks.findAdmins.mockResolvedValue([]);
     mocks.findUser.mockResolvedValue({ name: "Member" });
+    mocks.findPendingRescheduleRequest.mockResolvedValue(null);
+    mocks.createRescheduleRequest.mockResolvedValue({ id: "request-1" });
     mocks.resolveEligibility.mockResolvedValue(eligible());
     mocks.canBookClass.mockImplementation((candidate) => candidate.id === "membership-current");
+    mocks.findHealthResponses.mockResolvedValue([]);
   });
 
   it("keeps the current membership when it permits the new class", async () => {
@@ -108,9 +128,22 @@ describe("PATCH /api/bookings membership eligibility", () => {
       classes: [newClass],
       memberships: [expect.objectContaining({ id: "membership-current" })],
     }));
-    expect(mocks.updateBooking).toHaveBeenCalledWith(expect.objectContaining({
-      data: { scheduleId: newSchedule.id, userMembershipId: "membership-current" },
+    const body = await response.json();
+    expect(body).toEqual(expect.objectContaining({
+      success: true,
+      pendingApproval: true,
+      requestId: "request-1",
     }));
+    expect(mocks.createRescheduleRequest).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        bookingId: "booking-1",
+        targetScheduleId: newSchedule.id,
+        status: "pending",
+        pendingKey: "booking-1",
+      }),
+    }));
+    expect(mocks.updateBooking).not.toHaveBeenCalled();
+    expect(mocks.updateSchedule).not.toHaveBeenCalled();
   });
 
   it("rejects a class not included in restricted memberships", async () => {
@@ -133,9 +166,11 @@ describe("PATCH /api/bookings membership eligibility", () => {
     const response = await PATCH(request());
 
     expect(response.status).toBe(200);
-    expect(mocks.updateBooking).toHaveBeenCalledWith(expect.objectContaining({
-      data: { scheduleId: newSchedule.id, userMembershipId: second.id },
-    }));
+    const body = await response.json();
+    expect(body.pendingApproval).toBe(true);
+    expect(mocks.createRescheduleRequest).toHaveBeenCalled();
+    expect(mocks.updateBooking).not.toHaveBeenCalled();
+    expect(mocks.updateSchedule).not.toHaveBeenCalled();
   });
 
   it("uses an unrestricted membership when it is the eligible membership", async () => {
@@ -152,9 +187,11 @@ describe("PATCH /api/bookings membership eligibility", () => {
     const response = await PATCH(request());
 
     expect(response.status).toBe(200);
-    expect(mocks.updateBooking).toHaveBeenCalledWith(expect.objectContaining({
-      data: { scheduleId: newSchedule.id, userMembershipId: unrestricted.id },
-    }));
+    const body = await response.json();
+    expect(body.pendingApproval).toBe(true);
+    expect(mocks.createRescheduleRequest).toHaveBeenCalled();
+    expect(mocks.updateBooking).not.toHaveBeenCalled();
+    expect(mocks.updateSchedule).not.toHaveBeenCalled();
   });
 
   it.each(["pending_payment", "expired", "cancelled"])("does not let a %s membership grant eligibility", async () => {
@@ -171,6 +208,57 @@ describe("PATCH /api/bookings membership eligibility", () => {
     expect(response.status).toBe(400);
     expect((await response.json()).code).toBe("NO_ELIGIBLE_MEMBERSHIP");
     expect(mocks.updateBooking).not.toHaveBeenCalled();
+  });
+
+
+  it("rejects creating a second pending reschedule request", async () => {
+    mocks.findPendingRescheduleRequest.mockResolvedValue({
+      id: "existing-request",
+      targetSchedule: newSchedule,
+    });
+
+    const response = await PATCH(request());
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.code).toBe("RESCHEDULE_ALREADY_PENDING");
+    expect(mocks.createRescheduleRequest).not.toHaveBeenCalled();
+    expect(mocks.updateBooking).not.toHaveBeenCalled();
+    expect(mocks.updateSchedule).not.toHaveBeenCalled();
+  });
+
+  it("restores the seat only once when the same booking is cancelled concurrently", async () => {
+    const cancelRequest = () =>
+      new Request("http://localhost/api/bookings", {
+        method: "PATCH",
+        body: JSON.stringify({ bookingId: "booking-1" }),
+      });
+
+    mocks.updateBookingMany
+      .mockResolvedValueOnce({ count: 1 })
+      .mockResolvedValueOnce({ count: 0 });
+
+    mocks.transaction.mockImplementation(async (callback) =>
+      callback({
+        booking: { updateMany: mocks.updateBookingMany },
+        schedule: { update: mocks.updateSchedule },
+        bookingRescheduleRequest: {
+          updateMany: mocks.updateRescheduleRequestMany,
+        },
+        notification: { create: mocks.createNotification },
+      }),
+    );
+
+    const responses = await Promise.all([
+      PATCH(cancelRequest()),
+      PATCH(cancelRequest()),
+    ]);
+
+    expect(responses.map((response) => response.status).sort()).toEqual([200, 409]);
+    expect(mocks.updateBookingMany).toHaveBeenCalledTimes(2);
+    expect(mocks.updateSchedule).toHaveBeenCalledTimes(1);
+    expect(mocks.updateRescheduleRequestMany).toHaveBeenCalledTimes(1);
+    expect(mocks.createNotification).toHaveBeenCalledTimes(1);
   });
 
   it("does not change membershipId when the schedule is unchanged", async () => {

@@ -1,0 +1,172 @@
+import { NextResponse } from "next/server";
+import { requireAdminFeature } from "@/lib/admin-guard";
+import { db } from "@/lib/db";
+
+export const dynamic = "force-dynamic";
+
+export async function GET() {
+  const guard = await requireAdminFeature("memberships");
+  if ("error" in guard) return guard.error;
+
+  try {
+    const groups = await db.friendOfferGroup.findMany({
+      where: {
+        matchingEnabled: true,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+      include: {
+        config: {
+          select: {
+            requiredMembers: true,
+            inviteExpiryHours: true,
+            offer: {
+              select: {
+                id: true,
+                title: true,
+                titleEn: true,
+              },
+            },
+          },
+        },
+        creator: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true,
+          },
+        },
+        participants: {
+          orderBy: {
+            joinedAt: "asc",
+          },
+          select: {
+            id: true,
+            userId: true,
+            role: true,
+            status: true,
+            shareAmountMinor: true,
+            paidAt: true,
+            joinedAt: true,
+            paymentTransactionId: true,
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                phone: true,
+              },
+            },
+            paymentTransaction: {
+              select: {
+                id: true,
+                status: true,
+                amount: true,
+                provider: true,
+                createdAt: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const now = new Date();
+
+    const rows = groups.map((group) => {
+      const activeParticipants = group.participants.filter(
+        (participant) => participant.status !== "cancelled",
+      );
+
+      const joinedCount = activeParticipants.length;
+      const remainingPlaces = Math.max(
+        0,
+        group.config.requiredMembers - joinedCount,
+      );
+
+      const paidCount = activeParticipants.filter(
+        (participant) =>
+          participant.status === "paid" ||
+          participant.status === "activated" ||
+          participant.paymentTransaction?.status === "paid",
+      ).length;
+
+      const hasEconomicCommitment = activeParticipants.some(
+        (participant) =>
+          participant.status === "paid" ||
+          participant.status === "activated" ||
+          participant.paymentTransaction?.status === "paid",
+      );
+
+      const isTimeExpired = group.expiresAt.getTime() <= now.getTime();
+
+      return {
+        id: group.id,
+        token: group.inviteToken,
+        status: group.status,
+        matchingEnabled: group.matchingEnabled,
+        createdAt: group.createdAt.toISOString(),
+        expiresAt: group.expiresAt.toISOString(),
+        isTimeExpired,
+        hasEconomicCommitment,
+        priceSnapshotMinor: group.priceSnapshotMinor,
+
+        offer: {
+          id: group.config.offer.id,
+          title: group.config.offer.title,
+          titleEn: group.config.offer.titleEn,
+        },
+
+        creator: {
+          id: group.creator.id,
+          name: group.creator.name,
+          email: group.creator.email,
+          phone: group.creator.phone,
+        },
+
+        requiredMembers: group.config.requiredMembers,
+        joinedCount,
+        remainingPlaces,
+        paidCount,
+
+        participants: group.participants.map((participant) => ({
+          id: participant.id,
+          userId: participant.userId,
+          role: participant.role,
+          status: participant.status,
+          shareAmountMinor: participant.shareAmountMinor,
+          paidAt: participant.paidAt?.toISOString() ?? null,
+          joinedAt: participant.joinedAt.toISOString(),
+          paymentTransactionId: participant.paymentTransactionId,
+          user: {
+            id: participant.user.id,
+            name: participant.user.name,
+            email: participant.user.email,
+            phone: participant.user.phone,
+          },
+          payment: participant.paymentTransaction
+            ? {
+                id: participant.paymentTransaction.id,
+                status: participant.paymentTransaction.status,
+                amount: participant.paymentTransaction.amount,
+                provider: participant.paymentTransaction.provider,
+                createdAt:
+                  participant.paymentTransaction.createdAt.toISOString(),
+              }
+            : null,
+        })),
+      };
+    });
+
+    return NextResponse.json({ groups: rows });
+  } catch (error) {
+    console.error("[ADMIN_FRIEND_MATCHING_GET]", error);
+
+    return NextResponse.json(
+      { error: "تعذر تحميل طلبات عرض الصحاب." },
+      { status: 500 },
+    );
+  }
+}

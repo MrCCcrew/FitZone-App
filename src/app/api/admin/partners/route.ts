@@ -260,11 +260,34 @@ export async function DELETE(req: Request) {
     const partner = await db.partner.findUnique({ where: { id }, select: { userId: true, name: true } });
     if (!partner) return NextResponse.json({ error: "الشريك غير موجود." }, { status: 404 });
 
-    await db.partner.delete({ where: { id } });
-    await db.user.delete({ where: { id: partner.userId } }).catch(() => null);
+    // Financial-history protection:
+    // Partner commissions / withdrawals / attributed memberships are historical
+    // financial records. Never hard-delete the partner once created.
+    await db.$transaction([
+      db.partner.update({
+        where: { id },
+        data: {
+          isActive: false,
+          showOnPublicPage: false,
+        },
+      }),
+      db.user.update({
+        where: { id: partner.userId },
+        data: {
+          isActive: false,
+          adminAccess: false,
+        },
+      }),
+    ]);
 
-    void logAudit({ action: "delete", targetType: "partner", targetId: id, details: { name: partner.name } });
-    return NextResponse.json({ success: true });
+    void logAudit({
+      action: "deactivate",
+      targetType: "partner",
+      targetId: id,
+      details: { name: partner.name, reason: "financial_history_protection" },
+    });
+
+    return NextResponse.json({ success: true, deactivated: true });
   } catch (err) {
     console.error("[ADMIN_PARTNERS_DELETE]", err);
     return NextResponse.json({ error: "تعذر حذف الشريك." }, { status: 500 });

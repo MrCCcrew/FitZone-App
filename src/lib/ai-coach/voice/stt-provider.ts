@@ -1,3 +1,4 @@
+import { assertExternalSideEffectsAllowed } from "@/lib/staging-safety";
 import { normalizeEgyptianTranscript } from "@/lib/ai-coach/voice/dialect-normalizer";
 import { voiceDebugEnabled } from "@/lib/ai-coach/voice/config";
 import type { SpeechToTextProvider } from "@/lib/ai-coach/voice/types";
@@ -38,6 +39,7 @@ function sanitizeProviderError(body: unknown) {
 }
 
 export const openAiSttProvider: SpeechToTextProvider = { async transcribe({ audio, filename, localeHint }) {
+  assertExternalSideEffectsAllowed("OpenAI STT");
   if (!process.env.OPENAI_API_KEY) throw new SttProviderError("STT_NOT_CONFIGURED");
   const model = configuredModel();
   const audioBuffer = await audio.arrayBuffer();

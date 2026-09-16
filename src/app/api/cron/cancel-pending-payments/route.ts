@@ -1,176 +1,180 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { sendOnePush } from "@/lib/push";
+import { cleanupExpiredPendingMembership } from "@/lib/payments/pending-membership-cleanup";
+import { expireEndedActiveMembershipsTx } from "@/lib/membership-lifecycle";
+import { extendRecurringSchedules } from "@/lib/schedule-maintenance";
 
-// ─── Called by cron every 5 min ───────────────────────────────────────────────
-// */5 * * * * curl -s "https://fitzoneland.com/api/cron/cancel-pending-payments?secret=YOUR_SECRET" >> /var/log/fitzone-cron.log
-//
-// Logic:
-//   - pending_payment memberships where pendingExpiresAt <= now → cancel membership, delete bookings, restore spots
-//   - Legacy records with pendingExpiresAt=null are SKIPPED (require manual review)
-//
-// Race condition protection: cron and webhook compete atomically via updateMany
-// with status=pending_payment condition. First one wins (count > 0), second gets count=0.
-
+// Called every 5 minutes in production.
+// Staging MUST never execute the real cleanup cron.
 export async function GET(req: Request) {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) return NextResponse.json({ error: "Cron not configured" }, { status: 503 });
+  if (process.env.APP_ENV === "staging") {
+    return Response.json(
+      { error: "Cron disabled in staging" },
+      { status: 403 },
+    );
+  }
 
-  const provided = new URL(req.url).searchParams.get("secret") ?? "";
-  if (provided !== secret) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const secret = process.env.CRON_SECRET;
+
+  if (!secret) {
+    return NextResponse.json(
+      { error: "Cron not configured" },
+      { status: 503 },
+    );
+  }
+
+  /*
+   * Support the secure header used by server cron.
+   * Keep the old query-string method temporarily for backward compatibility.
+   */
+  const url = new URL(req.url);
+
+  const provided =
+    req.headers.get("x-cron-secret") ??
+    url.searchParams.get("secret") ??
+    "";
+
+  if (provided !== secret) {
+    return NextResponse.json(
+      { error: "Unauthorized" },
+      { status: 401 },
+    );
+  }
 
   const now = new Date();
 
-  // ── Fetch pending_payment memberships with pendingExpiresAt set ──────────
+  /*
+   * First materialize/reconcile entitlement.
+   *
+   * This must run BEFORE contractual expiration so an under-entitled
+   * membership can receive its specifically marked make-up booking first.
+   * The lifecycle step can then expire the membership normally while
+   * preserving its attendance pass only when a confirmed make-up exists.
+   */
+  const scheduleMaintenance =
+    await extendRecurringSchedules(now);
+
+  /*
+   * Contractual expiration remains authoritative.
+   * A make-up booking does not extend endDate or reactivate membership.
+   */
+  const expiration = await db.$transaction((tx) =>
+    expireEndedActiveMembershipsTx(tx, now),
+  );
+
   const pending = await db.userMembership.findMany({
     where: {
       status: "pending_payment",
-      pendingExpiresAt: { lte: now }, // Only process expired ones with explicit timeout
+      pendingExpiresAt: {
+        lte: now,
+      },
     },
     select: {
       id: true,
-      userId: true,
-      pendingExpiresAt: true,
-      user: { select: { id: true, name: true } },
-      membership: { select: { name: true } },
     },
   });
 
   if (pending.length === 0) {
-    return NextResponse.json({ ok: true, cancelled: 0 });
+    return NextResponse.json({
+      ok: true,
+      found: 0,
+      cancelled: 0,
+      expiredMemberships: expiration.expired,
+      expiredAttendancePasses: expiration.attendancePassesExpired,
+      scheduleMaintenance,
+    });
   }
 
   let cancelled = 0;
+  let skipped = 0;
+  const failures: string[] = [];
 
-  for (const m of pending) {
-    if (!m.pendingExpiresAt) {
-      // Legacy record without explicit timeout - skip automatic cleanup
-      console.log(`[CLEANUP] Membership ${m.id} has no pendingExpiresAt - skipping (manual review required)`);
-      continue;
-    }
-
-    const userId = m.user.id;
-    const planName = m.membership.name;
-
+  for (const membership of pending) {
     try {
-      await db.$transaction(async (tx) => {
-        // ── 1. Race condition protection: atomic status change ───────────────
-        // Check for any paid transactions BEFORE cancelling
-        const paidTx = await tx.paymentTransaction.findFirst({
-          where: {
-            membershipId: m.id,
-            status: "paid",
-          },
-          select: { id: true },
-        });
+      const result = await cleanupExpiredPendingMembership(
+        membership.id,
+        now,
+      );
 
-        if (paidTx) {
-          console.log(`[CLEANUP] Membership ${m.id} has paid transaction - skipping cleanup`);
-          return;
-        }
+      if (!result.cleaned) {
+        skipped++;
 
-        // Atomic cancellation: cron vs webhook race
-        const cancelResult = await tx.userMembership.updateMany({
-          where: {
-            id: m.id,
-            status: "pending_payment", // atomic condition - only one wins
-          },
-          data: {
-            status: "cancelled",
-            pendingExpiresAt: null, // Clear timeout on cancellation
-          },
-        });
-
-        if (cancelResult.count === 0) {
-          // Webhook already activated it OR another cron instance won
-          console.log(`[CLEANUP] Membership ${m.id} already processed (webhook won or duplicate cron)`);
-          return;
-        }
-
-        console.log(`[CLEANUP] Cron won race for membership ${m.id} - proceeding with cleanup`);
-
-        // ── 2. Get bookings with schedules ────────────────────────────────────
-        const bookings = await tx.booking.findMany({
-          where: { userMembershipId: m.id },
-          select: { id: true, scheduleId: true, status: true },
-        });
-
-        // ── 3. Cancel payment transactions ────────────────────────────────────
-        await tx.paymentTransaction.updateMany({
-          where: {
-            membershipId: m.id,
-            status: { in: ["pending", "requires_action"] },
-          },
-          data: { status: "cancelled" },
-        });
-
-        // ── 4. Delete bookings ────────────────────────────────────────────────
-        await tx.booking.deleteMany({
-          where: { userMembershipId: m.id },
-        });
-
-        // ── 5. Restore spots (grouped by schedule, with capacity protection) ──
-        // Group bookings by scheduleId to update each schedule only once
-        const spotRestorations = new Map<string, number>();
-        for (const booking of bookings) {
-          if (booking.status === "confirmed") {
-            const current = spotRestorations.get(booking.scheduleId) ?? 0;
-            spotRestorations.set(booking.scheduleId, current + 1);
-          }
-        }
-
-        for (const [scheduleId, count] of spotRestorations) {
-          const schedule = await tx.schedule.findUnique({
-            where: { id: scheduleId },
-            select: { availableSpots: true, class: { select: { maxSpots: true } } },
-          });
-
-          if (schedule) {
-            const newSpots = schedule.availableSpots + count;
-            const capacity = schedule.class.maxSpots;
-
-            await tx.schedule.update({
-              where: { id: scheduleId },
-              data: {
-                availableSpots: Math.min(newSpots, capacity), // never exceed capacity
-              },
-            });
-          }
-        }
-
-        // ── 6. Notify user ────────────────────────────────────────────────────
-        await tx.notification.create({
-          data: {
-            userId,
-            title: "❌ تم إلغاء اشتراكك تلقائيًا",
-            body: `تم إلغاء اشتراك "${planName}" لعدم إتمام الدفع خلال 60 دقيقة. يمكنك الاشتراك مرة أخرى في أي وقت.`,
-            type: "error",
-          },
-        });
-      });
-
-      // Send push notification outside transaction (non-critical)
-      const subs = await db.pushSubscription.findMany({ where: { userId } });
-      for (const sub of subs) {
-        const res = await sendOnePush(
-          { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
-          {
-            title: "❌ تم إلغاء اشتراكك",
-            body: `"${planName}" — لم يتم الدفع خلال 60 دقيقة، تم الإلغاء تلقائيًا.`,
-            url: "/account?tab=membership",
-          },
+        console.info(
+          `[CLEANUP] Membership ${membership.id} skipped: ${result.reason}`,
         );
-        if (res.expired) {
-          await db.pushSubscription.delete({ where: { endpoint: sub.endpoint } }).catch(() => null);
-        }
+
+        continue;
       }
 
       cancelled++;
-    } catch (err) {
-      console.error(`[CLEANUP] Failed to cancel membership ${m.id}:`, err);
+
+      // Push notification is intentionally outside the DB transaction.
+      try {
+        const subscriptions = await db.pushSubscription.findMany({
+          where: {
+            userId: result.userId,
+          },
+        });
+
+        for (const subscription of subscriptions) {
+          const pushResult = await sendOnePush(
+            {
+              endpoint: subscription.endpoint,
+              keys: {
+                p256dh: subscription.p256dh,
+                auth: subscription.auth,
+              },
+            },
+            {
+              title: "❌ تم إلغاء اشتراكك",
+              body:
+                `"${result.planName}" — لم يتم الدفع خلال 60 دقيقة، ` +
+                "تم الإلغاء تلقائيًا.",
+              url: "/account?tab=membership",
+            },
+          );
+
+          if (pushResult.expired) {
+            await db.pushSubscription
+              .delete({
+                where: {
+                  endpoint: subscription.endpoint,
+                },
+              })
+              .catch(() => null);
+          }
+        }
+      } catch (pushError) {
+        console.error(
+          `[CLEANUP_PUSH] Membership ${membership.id}:`,
+          pushError,
+        );
+      }
+    } catch (error) {
+      failures.push(membership.id);
+
+      console.error(
+        `[CLEANUP] Failed membership ${membership.id}:`,
+        error,
+      );
     }
   }
 
-  console.log(`[CLEANUP] Processed ${pending.length} pending memberships, cancelled ${cancelled}`);
-  return NextResponse.json({ ok: true, cancelled });
+  console.info(
+    `[CLEANUP] Found ${pending.length}, ` +
+    `cancelled ${cancelled}, skipped ${skipped}, failed ${failures.length}`,
+  );
+
+  return NextResponse.json({
+    ok: failures.length === 0,
+    found: pending.length,
+    cancelled,
+    skipped,
+    failed: failures.length,
+    failedMembershipIds: failures,
+    expiredMemberships: expiration.expired,
+    expiredAttendancePasses: expiration.attendancePassesExpired,
+    scheduleMaintenance,
+  });
 }

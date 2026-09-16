@@ -1,24 +1,44 @@
 #!/bin/bash
-# FitZone - Send appointment reminders via Web Push (runs every 30 min via cron)
-#
-# Setup (on server, run: crontab -e) and add:
-#   */30 * * * * /var/www/fitzone/scripts/send-reminders.sh >> /var/www/fitzone/logs/reminders.log 2>&1
+set -euo pipefail
 
+# FitZone - Send appointment reminders via Web Push
+# Runs every 30 minutes from Linux cron.
+
+APP_DIR="/var/www/fitzone"
 APP_URL="https://fitzoneland.com"
-CRON_SECRET="96f8f29d1c40f697079bbbf841b807adec5ab002d51708071c930f6b918089de"
+ENV_FILE="${APP_DIR}/.env"
 LOG_PREFIX="[$(date '+%Y-%m-%d %H:%M:%S')]"
 
-mkdir -p /var/www/fitzone/logs
+if [ ! -r "$ENV_FILE" ]; then
+  echo "$LOG_PREFIX ERROR: FitZone environment file is not readable"
+  exit 1
+fi
+
+set -a
+. "$ENV_FILE"
+set +a
+
+if [ -z "${CRON_SECRET:-}" ]; then
+  echo "$LOG_PREFIX ERROR: CRON_SECRET is not configured"
+  exit 1
+fi
+
+mkdir -p "${APP_DIR}/logs"
 
 echo "$LOG_PREFIX Sending appointment reminders..."
 
-RESPONSE=$(curl -s -o /tmp/reminder_response.txt -w "%{http_code}" \
-  "${APP_URL}/api/cron/send-reminders?secret=${CRON_SECRET}")
+RESPONSE="$(
+  curl -sS \
+    -o /tmp/fitzone_reminder_response.txt \
+    -w "%{http_code}" \
+    "${APP_URL}/api/cron/send-reminders?secret=${CRON_SECRET}"
+)"
 
-BODY=$(cat /tmp/reminder_response.txt)
+BODY="$(cat /tmp/fitzone_reminder_response.txt 2>/dev/null || true)"
 
 if [ "$RESPONSE" = "200" ]; then
   echo "$LOG_PREFIX SUCCESS: $BODY"
 else
   echo "$LOG_PREFIX FAILED (HTTP $RESPONSE): $BODY"
+  exit 1
 fi

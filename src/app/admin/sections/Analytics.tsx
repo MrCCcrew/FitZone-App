@@ -5,8 +5,81 @@ import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContai
 import { analyticsDisplayNumber, analyticsQuery, analyticsSectionErrorLabels, loadAdminAnalytics, normalizeAnalyticsFilters, resolveAdminAnalyticsLoad, type AnalyticsFilters } from "@/lib/analytics/admin-client";
 import { AdminCard, AdminEmptyState, AdminSectionShell } from "./shared";
 
-type Overview = { traffic: { visitors: number; sessions: number; pageViews: number; bounceRate: number; averageSessionDuration: number }; business: { checkoutStarted: number; paymentSucceeded: number; membershipActivated: number }; revenue: { successfulPaymentValue: number | null; averageSuccessfulPaymentValue: number | null; currencyBreakdown: { currency: string; value: number; payments: number; averageValue: number }[] } };
-type Traffic = { daily: { date: string; visitors: number; sessions: number; pageViews: number; averageDuration: number; bounceRate: number }[]; topPages: { path: string; views: number; uniqueVisitors: number; averageDuration: number; exits: number }[]; landingPages: { path: string; count: number }[]; exitPages: { path: string; count: number }[]; topReferrers: { referrer: string; count: number }[] };
+type Overview = {
+  traffic: {
+    visitors: number;
+    sessions: number;
+    pageViews: number;
+    bounceRate: number;
+    averageSessionDuration: number;
+  };
+  business: {
+    checkoutStarted: number;
+    paymentSucceeded: number;
+    membershipActivated: number;
+  };
+  aiCoach: {
+    opens: number;
+    uniqueVisitorsOpened: number;
+    messages: number;
+    uniqueVisitorsMessaged: number;
+    responses: number;
+    errors: number;
+    responseSuccessRate: number;
+    voice: {
+      available: boolean;
+      sessionsStarted: number;
+      sessionsConnected: number;
+      uniqueUsers: number;
+      sessionsFinalized: number;
+      totalBillableSeconds: number;
+      averageBillableSeconds: number;
+      connectionRate: number;
+      terminationReasons: {
+        reason: string;
+        count: number;
+      }[];
+    };
+  };
+  revenue: {
+    successfulPaymentValue: number | null;
+    averageSuccessfulPaymentValue: number | null;
+    currencyBreakdown: {
+      currency: string;
+      value: number;
+      payments: number;
+      averageValue: number;
+    }[];
+  };
+};
+type TrafficBreakdown = {
+  name: string;
+  visitors: number;
+};
+
+type Traffic = {
+  daily: {
+    date: string;
+    visitors: number;
+    sessions: number;
+    pageViews: number;
+    averageDuration: number;
+    bounceRate: number;
+  }[];
+  topPages: {
+    path: string;
+    views: number;
+    uniqueVisitors: number;
+    averageDuration: number;
+    exits: number;
+  }[];
+  landingPages: { path: string; count: number }[];
+  exitPages: { path: string; count: number }[];
+  topReferrers: { referrer: string; count: number }[];
+  deviceBreakdown: TrafficBreakdown[];
+  browserBreakdown: TrafficBreakdown[];
+  countryBreakdown: TrafficBreakdown[];
+};
 type Events = { totalsByEventName: { eventName: string; count: number }[]; topEntities: { entityType: string | null; entityName: string | null; count: number; successfulValue: number }[]; paymentMethodBreakdown: { paymentMethodType: string; count: number }[]; failureCategoryBreakdown: { failureCategory: string; count: number }[] };
 type Conversions = { definition: string; membershipFunnel: { views: number; checkoutStarted: number; paymentSucceeded: number; membershipActivated: number; viewToCheckoutRate: number; checkoutToPaymentRate: number; paymentToActivationRate: number }; storeFunnel: { checkoutStarted: number; paymentSucceeded: number; totalRate: number } };
 
@@ -30,6 +103,10 @@ const eventLabel = (eventName: string) => ({
   payment_succeeded: "الدفع الناجح",
   payment_failed: "فشل الدفع",
   membership_activated: "تفعيل العضوية",
+  ai_coach_open: "فتح AI Coach",
+  ai_coach_message: "رسالة إلى AI Coach",
+  ai_coach_response: "رد AI Coach",
+  ai_coach_error: "خطأ AI Coach",
 }[eventName] ?? eventName);
 
 const entityTypeLabel = (entityType: string | null) => ({
@@ -37,6 +114,7 @@ const entityTypeLabel = (entityType: string | null) => ({
   package: "باقة",
   offer: "عرض",
   order: "طلب متجر",
+  ai_coach: "AI Coach",
 }[entityType ?? ""] ?? "—");
 
 const paymentMethodLabel = (paymentMethod: string) => ({
@@ -46,6 +124,18 @@ const paymentMethodLabel = (paymentMethod: string) => ({
   cash: "نقدًا",
   unknown: "غير معروف",
 }[paymentMethod] ?? paymentMethod);
+
+const voiceTerminationLabel = (reason: string) => ({
+  user_ended: "إنهاء بواسطة المستخدم",
+  quota_exhausted: "انتهاء الرصيد الصوتي",
+  max_duration: "الحد الأقصى للمدة",
+  expired: "انتهاء الجلسة",
+  heartbeat_timeout: "انقطاع الاتصال",
+  connection_failed: "فشل الاتصال",
+  authorization_failed: "فشل التحقق",
+  cleanup: "تنظيف تلقائي",
+  active: "ما زالت نشطة",
+}[reason] ?? reason);
 
 const failureCategoryLabel = (category: string) => ({
   cancelled: "ملغي",
@@ -89,8 +179,134 @@ export default function Analytics() {
     {errors.map((error) => <div key={error} className="rounded-xl border border-amber-400/30 bg-amber-400/10 p-3 text-sm text-amber-100">{error}</div>)}
     {loading && !overview ? <AdminCard className="h-52 animate-pulse bg-white/10"><span className="sr-only">جارٍ التحميل</span></AdminCard> : <>
       {overview ? <><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><Metric label="الزوار" value={count(overview.traffic.visitors)} /><Metric label="الجلسات" value={count(overview.traffic.sessions)} /><Metric label="مشاهدات الصفحة" value={count(overview.traffic.pageViews)} /><Metric label="معدل الارتداد" value={rate(overview.traffic.bounceRate)} /><Metric label="متوسط الجلسة" value={duration(overview.traffic.averageSessionDuration)} /><Metric label="بدء الدفع" value={count(overview.business.checkoutStarted)} /><Metric label="دفع ناجح" value={count(overview.business.paymentSucceeded)} /><Metric label="عضويات مفعلة" value={count(overview.business.membershipActivated)} /></div><div className="grid gap-4 lg:grid-cols-2">{overview.revenue.currencyBreakdown.length ? overview.revenue.currencyBreakdown.map((entry) => <Metric key={entry.currency} label={`إيراد ناجح (${entry.currency})`} value={`${count(analyticsDisplayNumber(entry.value))} ${entry.currency}`} hint={`المتوسط: ${count(analyticsDisplayNumber(entry.averageValue))} ${entry.currency}`} />) : <AdminCard><AdminEmptyState title="لا توجد إيرادات" description="لا توجد مدفوعات ناجحة ضمن الفترة." /></AdminCard>}</div></> : null}
+      {overview?.aiCoach ? (
+        <AdminCard>
+          <div className="mb-4">
+            <h3 className="text-lg font-black text-[#fff4f8]">استخدام AI Coach</h3>
+            <p className="mt-1 text-xs text-[#d7aabd]">
+              فتح المساعد، الرسائل الفعلية، الردود والأخطاء ضمن الفترة المختارة.
+            </p>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <Metric
+              label="مرات فتح المساعد"
+              value={count(overview.aiCoach.opens)}
+              hint={`${count(overview.aiCoach.uniqueVisitorsOpened)} مستخدم/جلسة فريدة`}
+            />
+
+            <Metric
+              label="الرسائل المرسلة"
+              value={count(overview.aiCoach.messages)}
+              hint={`${count(overview.aiCoach.uniqueVisitorsMessaged)} مستخدم/جلسة أرسلوا فعليًا`}
+            />
+
+            <Metric
+              label="ردود AI"
+              value={count(overview.aiCoach.responses)}
+              hint={`نسبة نجاح الردود ${rate(overview.aiCoach.responseSuccessRate)}`}
+            />
+
+            <Metric
+              label="أخطاء AI"
+              value={count(overview.aiCoach.errors)}
+              hint="أخطاء فعلية أثناء توليد الرد"
+            />
+          </div>
+        </AdminCard>
+      ) : null}
+
+      {overview?.aiCoach.voice.available ? (
+        <>
+          <AdminCard>
+            <div className="mb-4">
+              <h3 className="text-lg font-black text-[#fff4f8]">
+                المحادثة الصوتية المباشرة
+              </h3>
+              <p className="mt-1 text-xs text-[#d7aabd]">
+                مبنية على جلسات Realtime الفعلية المسجلة على السيرفر، وليس على تقديرات من المتصفح.
+              </p>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <Metric
+                label="جلسات بدأت"
+                value={count(overview.aiCoach.voice.sessionsStarted)}
+                hint={`${count(overview.aiCoach.voice.uniqueUsers)} مستخدم فريد`}
+              />
+
+              <Metric
+                label="اتصال فعلي"
+                value={count(overview.aiCoach.voice.sessionsConnected)}
+                hint={`نسبة الاتصال ${rate(overview.aiCoach.voice.connectionRate)}`}
+              />
+
+              <Metric
+                label="جلسات منتهية"
+                value={count(overview.aiCoach.voice.sessionsFinalized)}
+              />
+
+              <Metric
+                label="إجمالي الوقت الصوتي"
+                value={duration(overview.aiCoach.voice.totalBillableSeconds)}
+                hint={`المتوسط ${duration(overview.aiCoach.voice.averageBillableSeconds)}`}
+              />
+            </div>
+          </AdminCard>
+
+          <SimpleTable
+            title="أسباب انتهاء المحادثات الصوتية"
+            columns={["السبب", "العدد"]}
+            rows={overview.aiCoach.voice.terminationReasons.map((entry) => [
+              voiceTerminationLabel(entry.reason),
+              count(entry.count),
+            ])}
+          />
+        </>
+      ) : overview?.aiCoach.voice ? (
+        <AdminCard>
+          <h3 className="font-black text-[#fff4f8]">
+            المحادثة الصوتية المباشرة
+          </h3>
+          <p className="mt-2 text-sm text-[#d7aabd]">
+            إحصائيات الصوت غير معروضة أثناء استخدام فلتر المصدر لأن جلسات Realtime لا تحمل مصدرًا تسويقيًا موثوقًا.
+          </p>
+        </AdminCard>
+      ) : null}
+
       {traffic ? <AdminCard><h3 className="mb-4 font-black">الزيارات اليومية</h3><div className="h-72" dir="ltr"><ResponsiveContainer><LineChart data={traffic.daily}><CartesianGrid strokeDasharray="3 3" stroke="#ffffff22" /><XAxis dataKey="date" /><YAxis /><Tooltip /><Legend /><Line type="monotone" dataKey="visitors" name="الزوار" stroke="#ff4f93" /><Line type="monotone" dataKey="sessions" name="الجلسات" stroke="#f8b94d" /><Line type="monotone" dataKey="pageViews" name="مشاهدات الصفحة" stroke="#8b5cf6" /></LineChart></ResponsiveContainer></div></AdminCard> : null}
       {conversions ? <div className="grid gap-4 lg:grid-cols-2"><AdminCard><h3 className="font-black">مسار العضوية</h3><p className="mt-1 text-xs text-[#d7aabd]">مسار التحويل المبني على الأحداث</p><div className="h-64" dir="ltr"><ResponsiveContainer><BarChart data={funnel}><XAxis dataKey="name" /><YAxis /><Tooltip /><Bar dataKey="count" name="العدد" fill="#ff4f93" radius={[8,8,0,0]} /></BarChart></ResponsiveContainer></div><div className="grid grid-cols-3 gap-2 text-center text-xs"><span>من المشاهدة إلى بدء الدفع {rate(conversions.membershipFunnel.viewToCheckoutRate)}</span><span>من بدء الدفع إلى نجاح الدفع {rate(conversions.membershipFunnel.checkoutToPaymentRate)}</span><span>من نجاح الدفع إلى تفعيل العضوية {rate(conversions.membershipFunnel.paymentToActivationRate)}</span></div></AdminCard><AdminCard><h3 className="font-black">مسار المتجر المنفصل</h3><p className="mt-4 text-sm">بدء طلب المتجر: <b>{count(conversions.storeFunnel.checkoutStarted)}</b></p><p className="mt-2 text-sm">نجاح دفع طلب المتجر: <b>{count(conversions.storeFunnel.paymentSucceeded)}</b></p><p className="mt-2 text-xs text-[#d7aabd]">التحويل: {rate(conversions.storeFunnel.totalRate)}</p></AdminCard></div> : null}
+      {traffic ? (
+        <div className="grid gap-4 xl:grid-cols-3">
+          <SimpleTable
+            title="الأجهزة"
+            columns={["الجهاز", "الزوار"]}
+            rows={traffic.deviceBreakdown.map((entry) => [
+              entry.name === "Unknown" ? "غير معروف" : entry.name,
+              count(entry.visitors),
+            ])}
+          />
+
+          <SimpleTable
+            title="المتصفحات"
+            columns={["المتصفح", "الزوار"]}
+            rows={traffic.browserBreakdown.map((entry) => [
+              entry.name === "Unknown" ? "غير معروف" : entry.name,
+              count(entry.visitors),
+            ])}
+          />
+
+          <SimpleTable
+            title="الدول"
+            columns={["الدولة", "الزوار"]}
+            rows={traffic.countryBreakdown.map((entry) => [
+              entry.name === "Unknown" ? "غير معروف" : entry.name,
+              count(entry.visitors),
+            ])}
+          />
+        </div>
+      ) : null}
+
       {traffic ? <div className="grid gap-4 xl:grid-cols-2"><SimpleTable title="أهم الصفحات" columns={["المسار","المشاهدات","زوار فريدون","متوسط المدة","الخروج"]} rows={traffic.topPages.map((entry) => [entry.path, count(entry.views), count(entry.uniqueVisitors), duration(entry.averageDuration), count(entry.exits)])} /><SimpleTable title="صفحات الدخول" columns={["المسار","العدد"]} rows={traffic.landingPages.map((entry) => [entry.path, count(entry.count)])} /><SimpleTable title="صفحات الخروج" columns={["المسار","العدد"]} rows={traffic.exitPages.map((entry) => [entry.path, count(entry.count)])} /><SimpleTable title="أهم المراجع" columns={["المرجع","العدد"]} rows={traffic.topReferrers.map((entry) => [entry.referrer, count(entry.count)])} /></div> : null}
       {events ? <div className="grid gap-4 xl:grid-cols-2"><SimpleTable title="إجمالي الأحداث" columns={["الحدث","العدد"]} rows={events.totalsByEventName.map((entry) => [eventLabel(entry.eventName), count(entry.count)])} /><SimpleTable title="أهم الكيانات" columns={["النوع","الاسم","العدد","قيمة ناجحة"]} rows={events.topEntities.map((entry) => [entityTypeLabel(entry.entityType), entry.entityName ?? "—", count(entry.count), count(entry.successfulValue)])} /><SimpleTable title="طرق الدفع" columns={["الطريقة","العدد"]} rows={events.paymentMethodBreakdown.map((entry) => [paymentMethodLabel(entry.paymentMethodType), count(entry.count)])} /><SimpleTable title="فئات الفشل" columns={["الفئة","العدد"]} rows={events.failureCategoryBreakdown.map((entry) => [failureCategoryLabel(entry.failureCategory), count(entry.count)])} /></div> : null}
     </>}

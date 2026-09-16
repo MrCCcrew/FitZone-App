@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { db, asDbTransactionClient } from "@/lib/db";
+import { settleCommissionsTx } from "@/lib/commissions/commission-settlement-service";
 import { requireAdminFeature } from "@/lib/admin-guard";
 import { randomBytes } from "crypto";
 
@@ -136,14 +137,51 @@ export async function PATCH(req: NextRequest) {
   const { id, action } = body;
 
   if (action === "settle") {
-    // Settle all earned commissions for a staff user
-    const staffUserId = body.staffUserId;
-    if (!staffUserId) return NextResponse.json({ error: "staffUserId مطلوب" }, { status: 400 });
-    await dbx.staffCommission.updateMany({
+    /* COMMISSION_SETTLEMENT_PHASE_A_STAFF */
+
+    const canSettle =
+      auth.role === "admin" ||
+      (auth.role === "staff" && auth.permissions?.includes("settings"));
+
+    if (!canSettle) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const staffUserId =
+      typeof body.staffUserId === "string" ? body.staffUserId.trim() : "";
+
+    if (!staffUserId) {
+      return NextResponse.json(
+        { error: "staffUserId مطلوب" },
+        { status: 400 },
+      );
+    }
+
+    const eligible = await dbx.staffCommission.findMany({
       where: { staffUserId, status: "earned" },
-      data: { status: "settled", settledAt: new Date() },
+      select: { id: true },
     });
-    return NextResponse.json({ ok: true });
+
+    if (!eligible.length) {
+      return NextResponse.json({ ok: true, settledCount: 0 });
+    }
+
+    const result = await db.$transaction(async (tx) =>
+      settleCommissionsTx(asDbTransactionClient(tx), {
+        commissionType: "staff",
+        beneficiaryId: staffUserId,
+        commissionIds: eligible.map((row: { id: string }) => row.id),
+        actorUserId: auth.session.user.id,
+        paymentMethod: "admin_manual",
+        notes: "تسوية عمولات إحالة الموظف",
+      }),
+    );
+
+    return NextResponse.json({
+      ok: true,
+      settledCount: result.payout.items.length,
+      payoutId: result.payout.id,
+    });
   }
 
   if (!id) return NextResponse.json({ error: "id مطلوب" }, { status: 400 });

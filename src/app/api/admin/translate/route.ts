@@ -1,24 +1,39 @@
 import { NextResponse } from "next/server";
 import { getAdminSession } from "@/lib/admin-session";
+import { translateArabicToEnglish } from "@/lib/translation-service";
 
 export async function POST(req: Request) {
   const session = await getAdminSession();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  if (!session) {
+    return NextResponse.json(
+      { error: "Unauthorized" },
+      { status: 401 },
+    );
+  }
 
   try {
-    const { text } = (await req.json()) as { text?: string };
-    if (!text?.trim()) return NextResponse.json({ error: "النص فارغ." }, { status: 400 });
+    const { text } = (await req.json()) as {
+      text?: string;
+    };
 
-    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=ar&tl=en&dt=t&q=${encodeURIComponent(text.trim())}`;
-    const response = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
-    if (!response.ok) throw new Error(`translate API ${response.status}`);
+    if (!text?.trim()) {
+      return NextResponse.json(
+        { error: "النص فارغ." },
+        { status: 400 },
+      );
+    }
 
-    const data = (await response.json()) as [[string, string][], ...unknown[]];
-    const translated = data[0].map(([t]) => t).join("").trim();
+    const translated =
+      await translateArabicToEnglish(text);
 
     return NextResponse.json({ translated });
   } catch (error) {
     console.error("[TRANSLATE]", error);
-    return NextResponse.json({ error: "تعذر الترجمة الآن." }, { status: 500 });
+
+    return NextResponse.json(
+      { error: "تعذر الترجمة الآن." },
+      { status: 500 },
+    );
   }
 }

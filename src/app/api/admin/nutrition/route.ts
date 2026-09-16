@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAdminFeature } from "@/lib/admin-guard";
-import { db } from "@/lib/db";
+import { db, asDbTransactionClient } from "@/lib/db";
+import { settleCommissionsTx } from "@/lib/commissions/commission-settlement-service";
 import { logAudit } from "@/lib/audit-context";
 import { clearPublicApiCache } from "@/lib/public-cache";
 
@@ -262,18 +263,92 @@ export async function POST(req: Request) {
 
 // PATCH /api/admin/nutrition — manage sessions (approve, reject, propose slots, complete)
 export async function PATCH(req: Request) {
-  const { error, userId } = await checkAdmin();
+  const { error, role, userId } = await checkAdmin();
   if (error) return error;
 
   const body = await req.json() as {
-    sessionId: string;
-    action: "approve" | "reject" | "propose_slots" | "complete" | "cancel";
+    sessionId?: string;
+    action:
+      | "approve"
+      | "reject"
+      | "propose_slots"
+      | "complete"
+      | "cancel"
+      | "settle_commissions";
     proposedSlots?: string[];
     doctorNote?: string;
+    nutritionistUserId?: string;
+    commissionIds?: string[];
   };
 
+  // Nutrition commission settlement.
+  // Only earned commissions may transition to settled, so repeated requests
+  // cannot rewrite settledAt for commissions that were already settled.
+  if (body.action === "settle_commissions") {
+    if (role !== "admin") {
+      return NextResponse.json(
+        { error: "Forbidden" },
+        { status: 403 },
+      );
+    }
+
+    const nutritionistUserId = body.nutritionistUserId?.trim();
+
+    if (!nutritionistUserId) {
+      return NextResponse.json(
+        { error: "nutritionistUserId مطلوب" },
+        { status: 400 },
+      );
+    }
+
+    const ids = Array.isArray(body.commissionIds)
+      ? body.commissionIds.filter(
+          (id): id is string =>
+            typeof id === "string" && id.trim().length > 0,
+        )
+      : [];
+
+    /* COMMISSION_SETTLEMENT_PHASE_A_NUTRITION */
+
+    const eligible = await (db as any).nutritionCommission.findMany({
+      where: {
+        nutritionistUserId,
+        status: "earned",
+        ...(ids.length ? { id: { in: ids } } : {}),
+      },
+      select: { id: true },
+    });
+
+    if (!eligible.length) {
+      return NextResponse.json({
+        ok: true,
+        settledCount: 0,
+      });
+    }
+
+    const result = await db.$transaction(async (tx) =>
+      settleCommissionsTx(asDbTransactionClient(tx), {
+        commissionType: "nutrition",
+        beneficiaryId: nutritionistUserId,
+        commissionIds: eligible.map((row: { id: string }) => row.id),
+        actorUserId: userId,
+        paymentMethod: "admin_manual",
+        notes: "تسوية عمولات أخصائي التغذية",
+      }),
+    );
+
+    return NextResponse.json({
+      ok: true,
+      settledCount: result.payout.items.length,
+      payoutId: result.payout.id,
+    });
+  }
+
   if (!body.sessionId || !body.action) {
-    return NextResponse.json({ error: "sessionId و action مطلوبان" }, { status: 400 });
+    return NextResponse.json(
+      { error: "sessionId و action مطلوبان" },
+      { status: 400 },
+    );
   }
 
   const session = await db.nutritionSession.findUnique({ where: { id: body.sessionId } });

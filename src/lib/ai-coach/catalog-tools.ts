@@ -1,8 +1,10 @@
 import { db } from "@/lib/db";
+import { sumMembershipBookingUnits } from "@/lib/membership-session-units";
 import { activePublicOfferWhere } from "@/lib/offers";
-import { cairoDayWindow, visibleClassScheduleWhere, visibleMembershipWhere, visibleProductWhere, visibleScheduleWhere, visibleTrainerWhere } from "@/lib/public-catalog";
+import { visibleClassScheduleWhere, visibleMembershipWhere, visibleProductWhere, visibleScheduleWhere, visibleTrainerWhere } from "@/lib/public-catalog";
 import { requestedOfferSubtype } from "@/lib/ai-coach/site-taxonomy";
 import { scheduleReadState } from "@/lib/ai-coach/catalog-read-status";
+import { scheduleTemporalDayWindow, type ScheduleTemporalFilter } from "@/lib/ai-coach/schedule-temporal";
 
 const MAX = 8;
 const MEMBERSHIP_MAX = 50;
@@ -145,11 +147,45 @@ export async function getVisibleNutritionist() {
 export async function getOfferDetails(idOrName: string) { return (await searchActiveOffers(idOrName)).find((row) => row.id === idOrName || norm(row.title) === norm(idOrName)) ?? null; }
 export async function getMembershipDetails(idOrName: string) { return (await searchAvailableMemberships(idOrName)).find((row) => row.id === idOrName || norm(row.name) === norm(idOrName)) ?? null; }
 
-export async function searchClassSchedule(query = "", filters?: { date?: "today" | "tomorrow" }) {
+export async function searchClassSchedule(query = "", filters?: ScheduleTemporalFilter) {
   const now = new Date();
-  const rows = await db.class.findMany({ where: visibleClassScheduleWhere(now), take: MAX, include: { trainer: { select: { name: true } }, schedules: { where: visibleScheduleWhere(now), orderBy: [{ date: "asc" }, { time: "asc" }], take: 5 } } });
-  const dayWindow = filters?.date ? cairoDayWindow(now, filters.date === "tomorrow" ? 1 : 0) : null;
-  return rows.filter((row) => looselyMatches(`${row.name} ${row.type} ${row.category ?? ""} ${row.subType ?? ""}`, query)).map((row) => ({ name: row.name, type: row.type, category: row.category, trainer: row.trainer.name, schedules: row.schedules.filter((s) => !dayWindow || (s.date >= dayWindow.from && s.date < dayWindow.to)).map((s) => ({ date: s.date, time: s.time, availableSpots: s.availableSpots })) })).filter((row) => row.schedules.length > 0 || !filters?.date);
+  const dayWindow = scheduleTemporalDayWindow(now, filters);
+  const scheduleWhere = dayWindow
+    ? { ...visibleScheduleWhere(now), date: { gte: dayWindow.from, lte: dayWindow.to } }
+    : visibleScheduleWhere(now);
+
+  const rows = await db.class.findMany({
+    where: visibleClassScheduleWhere(now),
+    take: MAX,
+    include: {
+      trainer: { select: { name: true } },
+      schedules: {
+        where: scheduleWhere,
+        orderBy: [{ date: "asc" }, { time: "asc" }],
+        ...(dayWindow ? {} : { take: 5 }),
+      },
+    },
+  });
+
+  return rows
+    .filter((row) =>
+      looselyMatches(
+        `${row.name} ${row.type} ${row.category ?? ""} ${row.subType ?? ""}`,
+        query,
+      ),
+    )
+    .map((row) => ({
+      name: row.name,
+      type: row.type,
+      category: row.category,
+      trainer: row.trainer.name,
+      schedules: row.schedules.map((s) => ({
+        date: s.date,
+        time: s.time,
+        availableSpots: s.availableSpots,
+      })),
+    }))
+    .filter((row) => row.schedules.length > 0 || !dayWindow);
 }
 
 /** Read-only diagnostic used only to phrase an empty public schedule accurately. */
@@ -170,7 +206,25 @@ export async function getAuthenticatedCustomerMembership(userId: string | null) 
   if (!row) return null;
   const snapshot = json<Record<string, unknown> | null>(row.offerSnapshot, null);
   const allowed = json<string[] | null>(row.allowedClassTypesSnapshot, null);
-  const used = await db.booking.count({ where: { userMembershipId: row.id, status: { in: ["confirmed", "attended"] } } });
+  const entitlementBookings =
+    await db.booking.findMany({
+      where: {
+        userMembershipId: row.id,
+        status: {
+          in: ["confirmed", "attended"],
+        },
+      },
+      select: {
+        status: true,
+        entitlementUnits: true,
+      },
+    });
+
+  const used =
+    sumMembershipBookingUnits(
+      entitlementBookings,
+      ["confirmed", "attended"],
+    );
   return { name: row.membership.name, status: row.status, startDate: row.startDate, endDate: row.endDate, remainingSessions: row.totalSessions == null ? null : Math.max(0, row.totalSessions - used), allowedClassTypes: allowed, offerTitle: row.offerTitle, paidPrice: row.snapshotFinalPrice ?? row.paymentAmount, features: (snapshot?.features as string[] | undefined) ?? json<string[]>(row.membership.features, []), snapshot };
 }
 

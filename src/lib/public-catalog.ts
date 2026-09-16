@@ -2,7 +2,10 @@ import type { Prisma } from "@prisma/client";
 
 /** Single source of truth for customer-visible catalog records. */
 export const visibleMembershipWhere = (): Prisma.MembershipWhereInput => ({ isActive: true });
-export const visibleProductWhere = (): Prisma.ProductWhereInput => ({ isActive: true, deletedAt: null, OR: [{ trackInventory: false }, { stock: { gt: 0 } }] });
+export const visibleProductWhere = (): Prisma.ProductWhereInput => ({
+  isActive: true,
+  deletedAt: null,
+});
 /** The public trainers page shows all active trainers; homepage placement is a separate concern. */
 export const visibleTrainerWhere = (): Prisma.TrainerWhereInput => ({ isActive: true });
 

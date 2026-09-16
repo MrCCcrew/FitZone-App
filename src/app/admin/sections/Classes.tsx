@@ -13,6 +13,20 @@ type ApiTrainer = {
   specialtyEn?: string | null;
 };
 
+type AdminClassType = {
+  id: string;
+  key: string;
+  nameAr: string;
+  nameEn?: string | null;
+  isActive: boolean;
+  sortOrder: number;
+  aliases: string[];
+  _count: {
+    classes: number;
+    offerAllowedTypes: number;
+  };
+};
+
 const DAYS = [
   "السبت",
   "الأحد",
@@ -102,6 +116,7 @@ type ClassModalState = {
   category: string;
   categoryEn: string;
   type: string;
+  classTypeId: string | null;
   typeEn: string;
   subType: string;
   subTypeEn: string;
@@ -133,6 +148,7 @@ const EMPTY_MODAL: ClassModalState = {
   category: "التخسيس",
   categoryEn: "",
   type: "strength",
+  classTypeId: null,
   typeEn: "",
   subType: "",
   subTypeEn: "",
@@ -146,7 +162,7 @@ const EMPTY_MODAL: ClassModalState = {
   customType: "",
   subTypePreset: "",
   customSubType: "",
-  trialEnabled: true,
+  trialEnabled: false,
   trialPrice: 50,
 };
 
@@ -163,6 +179,41 @@ function normalizeTypeLabel(type: string) {
 
 function resolveTypeColor(type: string) {
   return TYPE_COLOR_MAP[type.toLowerCase()] ?? "bg-white/10 text-white/75 border-white/15";
+}
+
+
+function classTypeMatchesLabel(
+  classType: AdminClassType,
+  label: string,
+) {
+  const wanted = label.trim().toLowerCase();
+  if (!wanted) return false;
+
+  return (
+    classType.nameAr.trim().toLowerCase() === wanted ||
+    (classType.nameEn ?? "").trim().toLowerCase() === wanted ||
+    classType.aliases.some(
+      (alias) => alias.trim().toLowerCase() === wanted,
+    )
+  );
+}
+
+function preferredClassTypeForCategory(
+  category: string,
+  classTypes: AdminClassType[],
+) {
+  const active = classTypes.filter((item) => item.isActive);
+  const preferredLabels = CATEGORY_TYPE_MAP[category] ?? [];
+
+  for (const label of preferredLabels) {
+    const found = active.find((item) =>
+      classTypeMatchesLabel(item, label),
+    );
+
+    if (found) return found;
+  }
+
+  return active[0] ?? null;
 }
 
 function createModalState(item?: GymClass, allClasses: GymClass[] = []) {
@@ -199,6 +250,7 @@ function createModalState(item?: GymClass, allClasses: GymClass[] = []) {
     customCategory: categoryKnown ? "" : category,
     typePreset: hasPreset ? item.type : "custom",
     customType: hasPreset ? "" : item.type,
+    classTypeId: item.classTypeId ?? null,
     subType: item.subType ?? "",
     subTypeEn: item.subTypeEn ?? "",
     typeEn: item.typeEn ?? "",
@@ -206,7 +258,7 @@ function createModalState(item?: GymClass, allClasses: GymClass[] = []) {
     descriptionEn: item.descriptionEn ?? "",
     subTypePreset: subTypeKnown ? item.subType ?? "" : (item.subType ? "custom" : ""),
     customSubType: subTypeKnown ? "" : item.subType ?? "",
-    trialEnabled: item.trialEnabled ?? true,
+    trialEnabled: item.trialEnabled ?? false,
     trialPrice: item.trialPrice ?? 50,
   };
 }
@@ -252,6 +304,7 @@ function Modal({
 export default function Classes() {
   const [classes, setClasses] = useState<GymClass[]>([]);
   const [trainers, setTrainers] = useState<ApiTrainer[]>([]);
+  const [classTypes, setClassTypes] = useState<AdminClassType[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [view, setView] = useState<"schedule" | "list">("schedule");
@@ -261,6 +314,17 @@ export default function Classes() {
   const [modal, setModal] = useState<ClassModalState | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
   const [canAddClasses, setCanAddClasses] = useState(true);
+  const [canManageClassTypes, setCanManageClassTypes] = useState(false);
+
+  const [classTypeManagerOpen, setClassTypeManagerOpen] = useState(false);
+  const [classTypeManagerSaving, setClassTypeManagerSaving] = useState(false);
+
+  const [newClassTypeAr, setNewClassTypeAr] = useState("");
+  const [newClassTypeEn, setNewClassTypeEn] = useState("");
+
+  const [editingClassTypeId, setEditingClassTypeId] = useState<string | null>(null);
+  const [editingClassTypeAr, setEditingClassTypeAr] = useState("");
+  const [editingClassTypeEn, setEditingClassTypeEn] = useState("");
   const [transferModal, setTransferModal] = useState(false);
   const [transferFrom, setTransferFrom] = useState("");
   const [transferTo, setTransferTo] = useState<string[]>([]);
@@ -274,18 +338,33 @@ export default function Classes() {
   const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await fetch("/api/admin/classes", { cache: "no-store" });
+      const [response, classTypesResponse] = await Promise.all([
+        fetch("/api/admin/classes", { cache: "no-store" }),
+        fetch("/api/admin/class-types", { cache: "no-store" }),
+      ]);
+
       const payload = (await response.json()) as {
         classes?: GymClass[];
         trainers?: ApiTrainer[];
         userRole?: string;
         canAddClasses?: boolean;
+        canManageClassTypes?: boolean;
       };
+
+      const classTypesPayload =
+        await classTypesResponse.json().catch(() => []);
 
       setClasses(Array.isArray(payload.classes) ? payload.classes : []);
       setTrainers(Array.isArray(payload.trainers) ? payload.trainers : []);
+      setClassTypes(
+        Array.isArray(classTypesPayload)
+          ? classTypesPayload
+          : [],
+      );
+
       if (payload.userRole) setUserRole(payload.userRole);
       if (payload.canAddClasses !== undefined) setCanAddClasses(payload.canAddClasses);
+      setCanManageClassTypes(payload.canManageClassTypes === true);
     } finally {
       setLoading(false);
     }
@@ -327,33 +406,54 @@ export default function Classes() {
 
   const availableTypes = useMemo(() => {
     if (!modal) return [];
+
     const category =
       modal.categoryPreset === "custom"
         ? modal.customCategory.trim()
         : modal.categoryPreset.trim();
-    const mapped = CATEGORY_TYPE_MAP[category] ?? [];
-    const fromClasses = Array.from(
-      new Set(
-        classes
-          .filter((item) => (category ? item.category === category : true))
-          .map((item) => item.type)
-          .filter(Boolean),
-      ),
+
+    const preferredLabels = CATEGORY_TYPE_MAP[category] ?? [];
+
+    const visible = classTypes.filter(
+      (item) =>
+        item.isActive ||
+        item.id === modal.classTypeId,
     );
-    if (mapped.length > 0) {
-      const extra = fromClasses.filter((t) => !mapped.includes(t));
-      return [...mapped, ...extra];
-    }
-    if (fromClasses.length > 0) return fromClasses;
-    return Array.from(new Set(classes.map((item) => item.type).filter(Boolean)));
-  }, [modal?.categoryPreset, modal?.customCategory, classes]);
+
+    return [...visible].sort((a, b) => {
+      const rank = (item: AdminClassType) => {
+        const index = preferredLabels.findIndex((label) =>
+          classTypeMatchesLabel(item, label),
+        );
+
+        return index === -1
+          ? Number.MAX_SAFE_INTEGER
+          : index;
+      };
+
+      const aRank = rank(a);
+      const bRank = rank(b);
+
+      if (aRank !== bRank) return aRank - bRank;
+      if (a.sortOrder !== b.sortOrder) {
+        return a.sortOrder - b.sortOrder;
+      }
+
+      return a.nameAr.localeCompare(b.nameAr, "ar");
+    });
+  }, [
+    modal?.categoryPreset,
+    modal?.customCategory,
+    modal?.classTypeId,
+    classTypes,
+  ]);
 
   const availableSubTypes = useMemo(() => {
     if (!modal) return [];
     const typeLabel =
-      modal.typePreset === "custom"
+      modal.classTypeId === null
         ? modal.customType.trim()
-        : modal.typePreset.trim();
+        : modal.type.trim();
     const mapped = TYPE_SUBTYPE_MAP[typeLabel] ?? [];
     const fromClasses = Array.from(
       new Set(
@@ -410,10 +510,16 @@ export default function Classes() {
       modal.categoryPreset === "custom"
         ? modal.customCategory.trim()
         : modal.categoryPreset.trim();
+    const selectedClassType =
+      modal.classTypeId
+        ? classTypes.find(
+            (item) => item.id === modal.classTypeId,
+          ) ?? null
+        : null;
+
     const resolvedType =
-      modal.typePreset === "custom"
-        ? modal.customType.trim()
-        : modal.typePreset.trim();
+      selectedClassType?.nameAr ??
+      modal.customType.trim();
     const resolvedSubType =
       modal.subTypePreset === "custom"
         ? modal.customSubType.trim()
@@ -451,7 +557,10 @@ export default function Classes() {
         category: resolvedCategory,
         categoryEn: modal.categoryEn.trim() || null,
         type: resolvedType,
-        typeEn: modal.typeEn.trim() || null,
+        classTypeId: modal.classTypeId,
+        typeEn:
+          selectedClassType?.nameEn ??
+          (modal.typeEn.trim() || null),
         subType: resolvedSubType,
         subTypeEn: modal.subTypeEn.trim() || null,
         duration: Number(modal.duration) || 60,
@@ -463,7 +572,7 @@ export default function Classes() {
         time: modal.time,
         trainer: selectedTrainer?.name ?? modal.trainer,
         trialEnabled: modal.trialEnabled,
-        trialPrice: Number(modal.trialPrice) || 50,
+        trialPrice: Number(modal.trialPrice),
       };
 
       if (isEdit) {
@@ -613,6 +722,161 @@ export default function Classes() {
     }
   }
 
+  const createManagedClassType = async () => {
+    if (!canManageClassTypes) return;
+
+    const nameAr = newClassTypeAr.trim();
+    if (!nameAr) {
+      alert("اكتب اسم النوع العربي.");
+      return;
+    }
+
+    setClassTypeManagerSaving(true);
+
+    try {
+      const response = await fetch("/api/admin/class-types", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          nameAr,
+          nameEn: newClassTypeEn.trim() || null,
+        }),
+      });
+
+      const data = (await response.json().catch(() => ({}))) as {
+        error?: string;
+      };
+
+      if (!response.ok) {
+        alert(data.error ?? "تعذر إنشاء نوع الكلاس.");
+        return;
+      }
+
+      setNewClassTypeAr("");
+      setNewClassTypeEn("");
+
+      await fetchAll();
+    } finally {
+      setClassTypeManagerSaving(false);
+    }
+  };
+
+  const startEditingClassType = (item: AdminClassType) => {
+    setEditingClassTypeId(item.id);
+    setEditingClassTypeAr(item.nameAr);
+    setEditingClassTypeEn(item.nameEn ?? "");
+  };
+
+  const cancelEditingClassType = () => {
+    setEditingClassTypeId(null);
+    setEditingClassTypeAr("");
+    setEditingClassTypeEn("");
+  };
+
+  const saveManagedClassTypeRename = async () => {
+    if (!canManageClassTypes || !editingClassTypeId) return;
+
+    const nameAr = editingClassTypeAr.trim();
+
+    if (!nameAr) {
+      alert("اسم النوع العربي مطلوب.");
+      return;
+    }
+
+    setClassTypeManagerSaving(true);
+
+    try {
+      const response = await fetch("/api/admin/class-types", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          id: editingClassTypeId,
+          nameAr,
+          nameEn: editingClassTypeEn.trim() || null,
+        }),
+      });
+
+      const data = (await response.json().catch(() => ({}))) as {
+        id?: string;
+        nameAr?: string;
+        nameEn?: string | null;
+        error?: string;
+      };
+
+      if (!response.ok) {
+        alert(data.error ?? "تعذر تعديل نوع الكلاس.");
+        return;
+      }
+
+      const renamedId = editingClassTypeId;
+
+      setModal((current) => {
+        if (!current || current.classTypeId !== renamedId) {
+          return current;
+        }
+
+        return {
+          ...current,
+          type: data.nameAr ?? current.type,
+          typePreset: data.nameAr ?? current.typePreset,
+          typeEn: data.nameEn ?? "",
+        };
+      });
+
+      cancelEditingClassType();
+
+      await fetchAll();
+    } finally {
+      setClassTypeManagerSaving(false);
+    }
+  };
+
+  const toggleManagedClassTypeActive = async (
+    item: AdminClassType,
+  ) => {
+    if (!canManageClassTypes) return;
+
+    const nextActive = !item.isActive;
+
+    const message = nextActive
+      ? `إعادة تفعيل نوع "${item.nameAr}"؟`
+      : `تعطيل نوع "${item.nameAr}"؟\n\nلن يتم حذف الكلاسات أو العروض المرتبطة به.`;
+
+    if (!confirm(message)) return;
+
+    setClassTypeManagerSaving(true);
+
+    try {
+      const response = await fetch("/api/admin/class-types", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          id: item.id,
+          isActive: nextActive,
+        }),
+      });
+
+      const data = (await response.json().catch(() => ({}))) as {
+        error?: string;
+      };
+
+      if (!response.ok) {
+        alert(data.error ?? "تعذر تغيير حالة نوع الكلاس.");
+        return;
+      }
+
+      await fetchAll();
+    } finally {
+      setClassTypeManagerSaving(false);
+    }
+  };
+
   const toggleSelect = (id: string) =>
     setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
@@ -665,6 +929,14 @@ export default function Classes() {
         </div>
 
         <div className="flex gap-2">
+          {canManageClassTypes ? (
+            <button
+              onClick={() => setClassTypeManagerOpen(true)}
+              className="rounded-2xl border border-violet-400/35 bg-violet-500/15 px-4 py-3 text-sm font-bold text-violet-200 transition hover:bg-violet-500/25"
+            >
+              ⚙ إدارة أنواع الكلاسات
+            </button>
+          ) : null}
           {userRole === "admin" || userRole === "staff" ? (
             <button
               onClick={() => { setTransferFrom(""); setTransferTo([]); setTransferModal(true); }}
@@ -683,7 +955,31 @@ export default function Classes() {
           )}
           {(userRole !== "trainer" || canAddClasses) && (
             <button
-              onClick={() => setModal(createModalState(undefined, classes))}
+              onClick={() => {
+                const next = createModalState(
+                  undefined,
+                  classes,
+                );
+
+                const preferredType =
+                  preferredClassTypeForCategory(
+                    next.categoryPreset,
+                    classTypes,
+                  );
+
+                setModal({
+                  ...next,
+                  classTypeId:
+                    preferredType?.id ?? null,
+                  typePreset:
+                    preferredType?.nameAr ?? "custom",
+                  type:
+                    preferredType?.nameAr ?? "",
+                  typeEn:
+                    preferredType?.nameEn ?? "",
+                  customType: "",
+                });
+              }}
               className="rounded-2xl bg-fuchsia-600 px-5 py-3 text-sm font-black text-white transition hover:bg-fuchsia-500"
             >
               + إضافة كلاس جديد
@@ -1143,6 +1439,204 @@ export default function Classes() {
         </Modal>
       )}
 
+      {classTypeManagerOpen && canManageClassTypes ? (
+        <Modal
+          title="إدارة أنواع الكلاسات"
+          onClose={() => {
+            setClassTypeManagerOpen(false);
+            cancelEditingClassType();
+          }}
+        >
+          <div className="space-y-5">
+            <div className="rounded-2xl border border-violet-400/20 bg-violet-500/10 p-4">
+              <div className="mb-3 text-sm font-black text-white">
+                إضافة نوع جديد
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <input
+                  value={newClassTypeAr}
+                  onChange={(event) =>
+                    setNewClassTypeAr(event.target.value)
+                  }
+                  className={INPUT}
+                  placeholder="الاسم العربي"
+                />
+
+                <input
+                  value={newClassTypeEn}
+                  onChange={(event) =>
+                    setNewClassTypeEn(event.target.value)
+                  }
+                  className={INPUT}
+                  placeholder="English name — optional"
+                  dir="ltr"
+                />
+              </div>
+
+              <div className="mt-3 flex justify-end">
+                <button
+                  onClick={() => void createManagedClassType()}
+                  disabled={
+                    classTypeManagerSaving ||
+                    !newClassTypeAr.trim()
+                  }
+                  className="rounded-xl bg-violet-600 px-5 py-2.5 text-sm font-black text-white transition hover:bg-violet-500 disabled:opacity-40"
+                >
+                  + إنشاء النوع
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              {classTypes.map((item) => {
+                const editing =
+                  editingClassTypeId === item.id;
+
+                return (
+                  <div
+                    key={item.id}
+                    className={`rounded-2xl border p-4 ${
+                      item.isActive
+                        ? "border-white/10 bg-white/5"
+                        : "border-red-400/20 bg-red-500/5"
+                    }`}
+                  >
+                    {editing ? (
+                      <div className="space-y-3">
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <input
+                            value={editingClassTypeAr}
+                            onChange={(event) =>
+                              setEditingClassTypeAr(
+                                event.target.value,
+                              )
+                            }
+                            className={INPUT}
+                            placeholder="الاسم العربي"
+                          />
+
+                          <input
+                            value={editingClassTypeEn}
+                            onChange={(event) =>
+                              setEditingClassTypeEn(
+                                event.target.value,
+                              )
+                            }
+                            className={INPUT}
+                            placeholder="English name"
+                            dir="ltr"
+                          />
+                        </div>
+
+                        <div className="flex justify-end gap-2">
+                          <button
+                            onClick={cancelEditingClassType}
+                            disabled={classTypeManagerSaving}
+                            className="rounded-xl border border-white/15 px-4 py-2 text-xs font-bold text-white/70"
+                          >
+                            إلغاء
+                          </button>
+
+                          <button
+                            onClick={() =>
+                              void saveManagedClassTypeRename()
+                            }
+                            disabled={
+                              classTypeManagerSaving ||
+                              !editingClassTypeAr.trim()
+                            }
+                            className="rounded-xl bg-fuchsia-600 px-4 py-2 text-xs font-black text-white disabled:opacity-40"
+                          >
+                            حفظ الاسم
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-black text-white">
+                              {item.nameAr}
+                            </span>
+
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                                item.isActive
+                                  ? "bg-emerald-500/15 text-emerald-300"
+                                  : "bg-red-500/15 text-red-300"
+                              }`}
+                            >
+                              {item.isActive
+                                ? "نشط"
+                                : "غير نشط"}
+                            </span>
+                          </div>
+
+                          {item.nameEn ? (
+                            <div
+                              className="mt-1 text-xs text-white/45"
+                              dir="ltr"
+                            >
+                              {item.nameEn}
+                            </div>
+                          ) : null}
+
+                          <div className="mt-2 text-[11px] text-white/40">
+                            الكلاسات: {item._count.classes}
+                            {" • "}
+                            العروض: {item._count.offerAllowedTypes}
+                          </div>
+
+                          <div className="mt-1 text-[10px] text-white/25">
+                            key: {item.key}
+                          </div>
+                        </div>
+
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() =>
+                              startEditingClassType(item)
+                            }
+                            disabled={classTypeManagerSaving}
+                            className="rounded-xl border border-white/15 px-3 py-2 text-xs font-bold text-white/75 hover:bg-white/10"
+                          >
+                            تعديل الاسم
+                          </button>
+
+                          <button
+                            onClick={() =>
+                              void toggleManagedClassTypeActive(
+                                item,
+                              )
+                            }
+                            disabled={classTypeManagerSaving}
+                            className={`rounded-xl px-3 py-2 text-xs font-bold ${
+                              item.isActive
+                                ? "bg-red-500/15 text-red-300 hover:bg-red-500/25"
+                                : "bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25"
+                            }`}
+                          >
+                            {item.isActive
+                              ? "تعطيل"
+                              : "إعادة تفعيل"}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="rounded-xl border border-white/10 bg-black/15 p-3 text-xs leading-6 text-white/45">
+              تعطيل النوع لا يحذف أي كلاس أو عرض أو سجل تاريخي.
+              الهوية الداخلية ID / key لا تتغير عند تعديل الاسم.
+            </div>
+          </div>
+        </Modal>
+      ) : null}
+
       {modal ? (
         <Modal title={modal.id ? "تعديل الكلاس" : "إضافة كلاس جديد"} onClose={() => setModal(null)}>
           <div className="grid gap-4 md:grid-cols-2">
@@ -1193,15 +1687,43 @@ export default function Classes() {
               </select>
             </Field>
 
-            <Field label="نوع القسم" hint="يمكنك اختيار نوع جاهز أو كتابة نوع جديد">
+            <Field
+              label="نوع القسم"
+              hint="الاختيار مرتبط بالهوية الثابتة للنوع، ويمكنك إنشاء نوع جديد"
+            >
               <select
-                value={modal.typePreset}
+                value={modal.classTypeId ?? "custom"}
                 onChange={(event) => {
-                  const preset = event.target.value;
+                  const value = event.target.value;
+
+                  if (value === "custom") {
+                    setModal({
+                      ...modal,
+                      classTypeId: null,
+                      typePreset: "custom",
+                      type: modal.customType,
+                      typeEn: "",
+                      subTypePreset: "",
+                      subType: "",
+                      customSubType: "",
+                    });
+                    return;
+                  }
+
+                  const selectedType =
+                    classTypes.find(
+                      (item) => item.id === value,
+                    );
+
+                  if (!selectedType) return;
+
                   setModal({
                     ...modal,
-                    typePreset: preset,
-                    type: preset === "custom" ? modal.customType : preset,
+                    classTypeId: selectedType.id,
+                    typePreset: selectedType.nameAr,
+                    type: selectedType.nameAr,
+                    typeEn: selectedType.nameEn ?? "",
+                    customType: "",
                     subTypePreset: "",
                     subType: "",
                     customSubType: "",
@@ -1210,13 +1732,29 @@ export default function Classes() {
                 className={INPUT}
               >
                 {availableTypes.map((type) => (
-                  <option key={type} value={type} className="bg-[#2a0f1f]">
-                    {type}
+                  <option
+                    key={type.id}
+                    value={type.id}
+                    className="bg-[#2a0f1f]"
+                  >
+                    {type.nameAr}
+                    {!type.isActive ? " — غير نشط" : ""}
                   </option>
                 ))}
-                <option value="custom" className="bg-[#2a0f1f]">
-                  نوع جديد
-                </option>
+
+                {canManageClassTypes ? (
+                  <option value="custom" className="bg-[#2a0f1f]">
+                    + نوع جديد
+                  </option>
+                ) : modal.classTypeId === null ? (
+                  <option
+                    value="custom"
+                    disabled
+                    className="bg-[#2a0f1f]"
+                  >
+                    نوع غير مربوط — تواصل مع المدير
+                  </option>
+                ) : null}
               </select>
             </Field>
 
@@ -1227,12 +1765,22 @@ export default function Classes() {
                   setModal({
                     ...modal,
                     customType: event.target.value,
-                    type: modal.typePreset === "custom" ? event.target.value : modal.type,
+                    type:
+                      modal.classTypeId === null
+                        ? event.target.value
+                        : modal.type,
+                    classTypeId:
+                      modal.classTypeId === null
+                        ? null
+                        : modal.classTypeId,
                   })
                 }
                 className={INPUT}
                 placeholder="اكتب النوع إذا اخترت نوع جديد"
-                disabled={modal.typePreset !== "custom"}
+                disabled={
+                  modal.classTypeId !== null ||
+                  !canManageClassTypes
+                }
               />
             </Field>
 
@@ -1244,8 +1792,19 @@ export default function Classes() {
                   className={`${INPUT} flex-1`}
                   placeholder="Example: CrossFit"
                   dir="ltr"
+                  disabled={modal.classTypeId !== null}
                 />
-                <TranslateButton from={modal.type} onTranslated={(t) => setModal({ ...modal, typeEn: t })} />
+                {modal.classTypeId === null ? (
+                  <TranslateButton
+                    from={modal.type}
+                    onTranslated={(t) =>
+                      setModal({
+                        ...modal,
+                        typeEn: t,
+                      })
+                    }
+                  />
+                ) : null}
               </div>
             </Field>
 
@@ -1445,7 +2004,7 @@ export default function Classes() {
                   min="0"
                   step="10"
                   value={modal.trialPrice}
-                  onChange={(e) => setModal({ ...modal, trialPrice: Number(e.target.value) || 50 })}
+                  onChange={(e) => setModal({ ...modal, trialPrice: Number(e.target.value) })}
                   className={INPUT + " max-w-[120px]"}
                 />
               </div>
@@ -1459,25 +2018,27 @@ export default function Classes() {
                 onChange={(event) => {
                   const preset = event.target.value;
                   const nextCategory = preset === "custom" ? modal.customCategory : preset;
-                  const mappedTypes = CATEGORY_TYPE_MAP[nextCategory] ?? [];
-                  const classTypes = Array.from(
-                    new Set(
-                      classes
-                        .filter((item) => item.category === nextCategory)
-                        .map((item) => item.type)
-                        .filter(Boolean),
-                    ),
-                  );
-                  const allTypes = mappedTypes.length > 0 ? mappedTypes : classTypes;
-                  const nextType = allTypes[0] ?? "";
+                  const preferredType =
+                    preferredClassTypeForCategory(
+                      nextCategory,
+                      classTypes,
+                    );
+
                   setModal({
                     ...modal,
                     categoryPreset: preset,
                     category: nextCategory,
                     name: nextCategory,
-                    typePreset: nextType || "custom",
-                    type: nextType,
-                    customType: nextType ? "" : modal.customType,
+                    typePreset:
+                      preferredType?.nameAr ?? "custom",
+                    type:
+                      preferredType?.nameAr ?? "",
+                    classTypeId:
+                      preferredType?.id ?? null,
+                    typeEn:
+                      preferredType?.nameEn ?? "",
+                    customType:
+                      preferredType ? "" : modal.customType,
                     subTypePreset: "",
                     subType: "",
                     customSubType: "",

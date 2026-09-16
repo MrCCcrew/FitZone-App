@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { randomBytes } from "crypto";
 import { requireAdminFeature } from "@/lib/admin-guard";
-import { db } from "@/lib/db";
+import { db, asDbTransactionClient } from "@/lib/db";
+import { settleCommissionsTx } from "@/lib/commissions/commission-settlement-service";
 import { logAudit } from "@/lib/audit-context";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -538,7 +539,7 @@ export async function POST(req: Request) {
 
 // ─── PATCH ───────────────────────────────────────────────────────────────────
 export async function PATCH(req: Request) {
-  const { error, role } = await checkAccess();
+  const { error, role, userId } = await checkAccess();
   if (error) return error;
 
   const body = (await req.json()) as {
@@ -569,13 +570,74 @@ export async function PATCH(req: Request) {
 
   // Settle manager commissions
   if (body.action === "settle_manager_commissions") {
-    if (role !== "admin") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    if (!body.managerId) return NextResponse.json({ error: "معرّف المدير مطلوب." }, { status: 400 });
-    const ids = Array.isArray(body.managerCommissionIds) ? body.managerCommissionIds : [];
-    await dbx.managerCommission.updateMany({
-      where: { managerId: body.managerId, ...(ids.length ? { id: { in: ids } } : { status: "earned" }) },
-      data: { status: "settled", settledAt: new Date() },
+    /* COMMISSION_SETTLEMENT_PHASE_B1_CONTRACTS */
+
+    if (role !== "admin") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    if (!body.managerId) {
+      return NextResponse.json(
+        { error: "معرّف المدير مطلوب." },
+        { status: 400 },
+      );
+    }
+
+    const ids = Array.isArray(body.managerCommissionIds)
+      ? body.managerCommissionIds
+      : [];
+
+    // Preserve existing rule exactly:
+    // IDs restrict ManagerCommission only.
+    // ManagerPartnerCommission always settles all earned rows for the manager.
+    const [managerRows, partnerRows] = await Promise.all([
+      dbx.managerCommission.findMany({
+        where: {
+          managerId: body.managerId,
+          status: "earned",
+          ...(ids.length ? { id: { in: ids } } : {}),
+        },
+        select: { id: true },
+      }),
+      dbx.managerPartnerCommission.findMany({
+        where: {
+          managerId: body.managerId,
+          status: "earned",
+        },
+        select: { id: true },
+      }),
+    ]);
+
+    if (!managerRows.length && !partnerRows.length) {
+      return NextResponse.json({ success: true });
+    }
+
+    await db.$transaction(async (tx) => {
+      const dbtx = asDbTransactionClient(tx);
+
+      if (managerRows.length) {
+        await settleCommissionsTx(dbtx, {
+          commissionType: "manager",
+          beneficiaryId: body.managerId!,
+          commissionIds: managerRows.map((row: { id: string }) => row.id),
+          actorUserId: userId,
+          paymentMethod: "admin_manual",
+          notes: "تسوية عمولات مدير العقود",
+        });
+      }
+
+      if (partnerRows.length) {
+        await settleCommissionsTx(dbtx, {
+          commissionType: "manager_partner",
+          beneficiaryId: body.managerId!,
+          commissionIds: partnerRows.map((row: { id: string }) => row.id),
+          actorUserId: userId,
+          paymentMethod: "admin_manual",
+          notes: "تسوية عمولات مدير العقود من الشركاء",
+        });
+      }
     });
+
     return NextResponse.json({ success: true });
   }
 
@@ -621,10 +683,49 @@ export async function PATCH(req: Request) {
     if (!manager) return NextResponse.json({ error: "المدير غير موجود." }, { status: 404 });
 
     if (body.action === "settle_commissions") {
-      await dbx.managerCommission.updateMany({
-        where: { managerId: manager.id, status: "earned" },
-        data: { status: "settled", settledAt: new Date() },
+      /* COMMISSION_SETTLEMENT_PHASE_B1_MANAGER_LEGACY */
+
+      const [managerRows, partnerRows] = await Promise.all([
+        dbx.managerCommission.findMany({
+          where: { managerId: manager.id, status: "earned" },
+          select: { id: true },
+        }),
+        dbx.managerPartnerCommission.findMany({
+          where: { managerId: manager.id, status: "earned" },
+          select: { id: true },
+        }),
+      ]);
+
+      if (!managerRows.length && !partnerRows.length) {
+        return NextResponse.json({ success: true });
+      }
+
+      await db.$transaction(async (tx) => {
+        const dbtx = asDbTransactionClient(tx);
+
+        if (managerRows.length) {
+          await settleCommissionsTx(dbtx, {
+            commissionType: "manager",
+            beneficiaryId: manager.id,
+            commissionIds: managerRows.map((row: { id: string }) => row.id),
+            actorUserId: userId,
+            paymentMethod: "admin_manual",
+            notes: "تسوية عمولات مدير العقود",
+          });
+        }
+
+        if (partnerRows.length) {
+          await settleCommissionsTx(dbtx, {
+            commissionType: "manager_partner",
+            beneficiaryId: manager.id,
+            commissionIds: partnerRows.map((row: { id: string }) => row.id),
+            actorUserId: userId,
+            paymentMethod: "admin_manual",
+            notes: "تسوية عمولات مدير العقود من الشركاء",
+          });
+        }
       });
+
       return NextResponse.json({ success: true });
     }
 
@@ -654,12 +755,38 @@ export async function PATCH(req: Request) {
   if (!agent) return NextResponse.json({ error: "المندوب غير موجود." }, { status: 404 });
 
   if (body.action === "settle_commissions") {
-    if (role !== "admin") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    /* COMMISSION_SETTLEMENT_PHASE_B1_SALES_AGENT */
+
+    if (role !== "admin") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const ids = Array.isArray(body.commissionIds) ? body.commissionIds : [];
-    await dbx.salesAgentCommission.updateMany({
-      where: { agentId: agent.id, ...(ids.length ? { id: { in: ids } } : { status: "earned" }) },
-      data: { status: "settled", settledAt: new Date() },
+
+    const eligible = await dbx.salesAgentCommission.findMany({
+      where: {
+        agentId: agent.id,
+        status: "earned",
+        ...(ids.length ? { id: { in: ids } } : {}),
+      },
+      select: { id: true },
     });
+
+    if (!eligible.length) {
+      return NextResponse.json({ success: true });
+    }
+
+    await db.$transaction(async (tx) =>
+      settleCommissionsTx(asDbTransactionClient(tx), {
+        commissionType: "sales_agent",
+        beneficiaryId: agent.id,
+        commissionIds: eligible.map((row: { id: string }) => row.id),
+        actorUserId: userId,
+        paymentMethod: "admin_manual",
+        notes: "تسوية عمولات مندوب العقود",
+      }),
+    );
+
     return NextResponse.json({ success: true });
   }
 
@@ -698,17 +825,41 @@ export async function DELETE(req: Request) {
   if (body.managerId) {
     const manager = await dbx.contractsManager.findUnique({ where: { id: body.managerId } });
     if (!manager) return NextResponse.json({ error: "المدير غير موجود." }, { status: 404 });
-    await dbx.contractsManager.delete({ where: { id: body.managerId } });
-    await db.user.update({ where: { id: manager.userId as string }, data: { adminAccess: false, role: "member" } });
-    return NextResponse.json({ success: true });
+
+    // ManagerCommission and ManagerPartnerCommission are financial history.
+    // Deactivate instead of deleting the manager and cascading history away.
+    await db.$transaction([
+      dbx.contractsManager.update({
+        where: { id: body.managerId },
+        data: { isActive: false },
+      }),
+      db.user.update({
+        where: { id: manager.userId as string },
+        data: { adminAccess: false, isActive: false },
+      }),
+    ]);
+
+    return NextResponse.json({ success: true, deactivated: true });
   }
 
   if (body.agentId) {
     const agent = await dbx.salesAgent.findUnique({ where: { id: body.agentId } });
     if (!agent) return NextResponse.json({ error: "المندوب غير موجود." }, { status: 404 });
-    await dbx.salesAgent.delete({ where: { id: body.agentId } });
-    await db.user.update({ where: { id: agent.userId as string }, data: { adminAccess: false, role: "member" } });
-    return NextResponse.json({ success: true });
+
+    // SalesAgentCommission / ManagerCommission / referral conversions are
+    // historical financial records. Never hard-delete the agent.
+    await db.$transaction([
+      dbx.salesAgent.update({
+        where: { id: body.agentId },
+        data: { isActive: false },
+      }),
+      db.user.update({
+        where: { id: agent.userId as string },
+        data: { adminAccess: false, isActive: false },
+      }),
+    ]);
+
+    return NextResponse.json({ success: true, deactivated: true });
   }
 
   return NextResponse.json({ error: "معرّف المندوب أو المدير مطلوب." }, { status: 400 });

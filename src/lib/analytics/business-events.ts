@@ -11,6 +11,10 @@ export const BUSINESS_ANALYTICS_EVENTS = [
   "payment_succeeded",
   "payment_failed",
   "membership_activated",
+  "ai_coach_open",
+  "ai_coach_message",
+  "ai_coach_response",
+  "ai_coach_error",
 ] as const;
 
 export type BusinessAnalyticsEventName = (typeof BUSINESS_ANALYTICS_EVENTS)[number];
@@ -33,6 +37,10 @@ const EVENT_METADATA_KEYS: Record<BusinessAnalyticsEventName, readonly string[]>
   payment_succeeded: ["paymentMethodType"],
   payment_failed: ["failureCategory"],
   membership_activated: [],
+  ai_coach_open: [],
+  ai_coach_message: ["messageLength", "inputMode"],
+  ai_coach_response: ["responseTimeMs", "success"],
+  ai_coach_error: ["inputMode", "success"],
 };
 
 const inputSchema = z.object({
@@ -87,7 +95,19 @@ function sanitizeMetadata(eventName: BusinessAnalyticsEventName, value: Record<s
 }
 
 function validateEvent(input: z.output<typeof inputSchema>): string | null {
-  const entityRequired = ["subscription_viewed", "package_viewed", "offer_viewed", "checkout_started", "payment_succeeded", "payment_failed", "membership_activated"] as const;
+  const entityRequired = [
+    "subscription_viewed",
+    "package_viewed",
+    "offer_viewed",
+    "checkout_started",
+    "payment_succeeded",
+    "payment_failed",
+    "membership_activated",
+    "ai_coach_open",
+    "ai_coach_message",
+    "ai_coach_response",
+    "ai_coach_error",
+  ] as const;
   if (entityRequired.includes(input.eventName) && (!input.entityId || !isSafeEntityId(input.entityId))) return "invalid_entity_id";
 
   const requiredTypes: Partial<Record<BusinessAnalyticsEventName, readonly string[]>> = {
@@ -96,6 +116,10 @@ function validateEvent(input: z.output<typeof inputSchema>): string | null {
     offer_viewed: ["offer"],
     checkout_started: ["subscription", "package", "offer", "order"],
     membership_activated: ["subscription", "package", "offer"],
+    ai_coach_open: ["ai_coach"],
+    ai_coach_message: ["ai_coach"],
+    ai_coach_response: ["ai_coach"],
+    ai_coach_error: ["ai_coach"],
   };
   const permittedTypes = requiredTypes[input.eventName];
   if (permittedTypes && !permittedTypes.includes(input.entityType ?? "")) return "invalid_entity_type";
@@ -127,49 +151,142 @@ export async function recordBusinessAnalyticsEvent(input: unknown): Promise<Reco
         if (!visitor || !session || session.visitorId !== visitor.id) { visitor = null; session = null; }
       }
     }
-    const paymentAllowed = ["checkout_started", "payment_succeeded", "payment_failed", "membership_activated"].includes(parsed.data.eventName);
-    if (parsed.data.paymentTransactionId && !paymentAllowed) return invalid("payment_context_not_allowed");
-    const payment = parsed.data.paymentTransactionId
-      ? await db.paymentTransaction.findUnique({ where: { id: parsed.data.paymentTransactionId }, select: { id: true } })
-      : null;
-    if (parsed.data.paymentTransactionId && !payment) return invalid("invalid_payment_transaction");
-    if (!visitor && !parsed.data.userId && !payment) return invalid("missing_analytics_context");
-    if (payment && ["payment_succeeded", "payment_failed", "membership_activated"].includes(parsed.data.eventName)) {
-      const existing = await db.analyticsEvent.findFirst({ where: { paymentTransactionId: payment.id, eventName: parsed.data.eventName }, select: { id: true } });
-      if (existing) return invalid("duplicate");
+    const paymentAllowed = [
+      "checkout_started",
+      "payment_succeeded",
+      "payment_failed",
+      "membership_activated",
+    ].includes(parsed.data.eventName);
+
+    const paymentTransactionId = parsed.data.paymentTransactionId;
+
+    if (paymentTransactionId && !paymentAllowed) {
+      return invalid("payment_context_not_allowed");
     }
 
-    const eventMetadata = sanitizeMetadata(parsed.data.eventName, parsed.data.metadata);
+    const aiCoachContext =
+      parsed.data.entityType === "ai_coach" &&
+      Boolean(parsed.data.entityId) &&
+      [
+        "ai_coach_open",
+        "ai_coach_message",
+        "ai_coach_response",
+        "ai_coach_error",
+      ].includes(parsed.data.eventName);
+
+    if (!visitor && !parsed.data.userId && !paymentTransactionId && !aiCoachContext) {
+      return invalid("missing_analytics_context");
+    }
+
+    const eventMetadata = sanitizeMetadata(
+      parsed.data.eventName,
+      parsed.data.metadata,
+    );
+
     const metadata = {
       ...(eventMetadata ?? {}),
-      ...(parsed.data.value !== undefined ? { value: parsed.data.value } : {}),
-      ...(parsed.data.currency ? { currency: parsed.data.currency } : {}),
-      ...(parsed.data.eventName === "payment_succeeded" ? { success: true } : {}),
-      ...(parsed.data.eventName === "payment_failed" ? { success: false } : {}),
-      ...(parsed.data.eventName === "membership_activated" ? { success: true } : {}),
+      ...(parsed.data.value !== undefined
+        ? { value: parsed.data.value }
+        : {}),
+      ...(parsed.data.currency
+        ? { currency: parsed.data.currency }
+        : {}),
+      ...(parsed.data.eventName === "payment_succeeded"
+        ? { success: true }
+        : {}),
+      ...(parsed.data.eventName === "payment_failed"
+        ? { success: false }
+        : {}),
+      ...(parsed.data.eventName === "membership_activated"
+        ? { success: true }
+        : {}),
     };
-    const event = await db.analyticsEvent.create({
-      data: {
-        ...(visitor ? { visitorId: visitor.id } : {}),
-        ...(session ? { sessionId: session.id } : {}),
-        ...(payment ? { paymentTransactionId: payment.id } : {}),
-        ...(parsed.data.userId ? { userId: parsed.data.userId } : {}),
-        eventName: parsed.data.eventName,
-        eventCategory: parsed.data.category ?? "business",
-        pagePath: "/",
-        entityType: parsed.data.entityType,
-        entityId: parsed.data.entityId,
-        entityName: sanitizeEntityName(parsed.data.entityName),
-        ...(Object.keys(metadata).length ? { metadata } : {}),
-      },
+
+    const buildEventData = (paymentId?: string) => ({
+      ...(visitor ? { visitorId: visitor.id } : {}),
+      ...(session ? { sessionId: session.id } : {}),
+      ...(paymentId ? { paymentTransactionId: paymentId } : {}),
+      ...(parsed.data.userId ? { userId: parsed.data.userId } : {}),
+      eventName: parsed.data.eventName,
+      eventCategory: parsed.data.category ?? "business",
+      pagePath: "/",
+      entityType: parsed.data.entityType,
+      entityId: parsed.data.entityId,
+      entityName: sanitizeEntityName(parsed.data.entityName),
+      ...(Object.keys(metadata).length ? { metadata } : {}),
     });
-    return { recorded: true, ignored: false, eventId: event.id };
+
+    /*
+     * Payment-linked analytics must keep the referenced payment alive for
+     * the complete duplicate-check + event-create operation.
+     *
+     * FOR UPDATE serializes all payment-linked analytics for this payment
+     * and prevents a concurrent delete/update from invalidating the foreign
+     * key between validation and AnalyticsEvent.create().
+     */
+    if (paymentTransactionId) {
+      return await db.$transaction(
+        async (tx) => {
+          const lockedPayment = await tx.$queryRaw<Array<{ id: string }>>`
+            SELECT \`id\`
+            FROM \`PaymentTransaction\`
+            WHERE \`id\` = ${paymentTransactionId}
+            FOR UPDATE
+          `;
+
+          if (lockedPayment.length !== 1) {
+            return invalid("invalid_payment_transaction");
+          }
+
+          /*
+           * The database invariant is unique(paymentTransactionId, eventName),
+           * therefore EVERY payment-linked event follows the same duplicate
+           * semantics, including checkout_started.
+           */
+          const existing = await tx.analyticsEvent.findFirst({
+            where: {
+              paymentTransactionId,
+              eventName: parsed.data.eventName,
+            },
+            select: { id: true },
+          });
+
+          if (existing) {
+            return invalid("duplicate");
+          }
+
+          const event = await tx.analyticsEvent.create({
+            data: buildEventData(paymentTransactionId),
+          });
+
+          return {
+            recorded: true,
+            ignored: false,
+            eventId: event.id,
+          };
+        },
+        {
+          timeout: 10000,
+        },
+      );
+    }
+
+    const event = await db.analyticsEvent.create({
+      data: buildEventData(),
+    });
+
+    return {
+      recorded: true,
+      ignored: false,
+      eventId: event.id,
+    };
   } catch (error) {
     if (
       (error as { code?: string })?.code === "P2002" &&
-      Boolean(parsed.data.paymentTransactionId) &&
-      ["payment_succeeded", "payment_failed", "membership_activated"].includes(parsed.data.eventName)
-    ) return invalid("duplicate");
+      Boolean(parsed.data.paymentTransactionId)
+    ) {
+      return invalid("duplicate");
+    }
     console.error("[BUSINESS_ANALYTICS_RECORD_FAILED]", error instanceof Error ? error.message : "unknown_error");
     return { recorded: false, ignored: false, reason: "analytics_error" };
   }

@@ -18,16 +18,41 @@ vi.mock("@/lib/admin-session", () => ({
 vi.mock("@/lib/db", () => ({
   db: {
     attendancePass: { findUnique: vi.fn() },
-    booking: { findFirst: vi.fn(), update: vi.fn(), deleteMany: vi.fn() },
+    booking: { findFirst: vi.fn(), findUnique: vi.fn(), update: vi.fn(), deleteMany: vi.fn() },
     schedule: { update: vi.fn() },
     notification: { create: vi.fn().mockResolvedValue({ id: "notif1" }) },
     $transaction: vi.fn().mockImplementation(async (cb) =>
       cb({
-        booking: { update: vi.fn().mockResolvedValue({ id: "b1" }) },
-        attendanceCheckIn: { create: vi.fn().mockResolvedValue({ id: "check1" }), count: vi.fn().mockResolvedValue(1) },
-        attendancePass: { update: vi.fn().mockResolvedValue({ id: "pass1" }) },
-        userMembership: { update: vi.fn().mockResolvedValue({ id: "m1" }) },
-        notification: { create: vi.fn().mockResolvedValue({ id: "notif1" }) },
+        $queryRaw: vi.fn().mockResolvedValue([]),
+        booking: {
+          update: vi.fn().mockResolvedValue({ id: "b1" }),
+          updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+          count: vi.fn().mockResolvedValue(0),
+        },
+        attendanceCheckIn: {
+          create: vi.fn().mockResolvedValue({ id: "check1" }),
+          count: vi.fn().mockResolvedValue(1),
+          findMany: vi.fn().mockResolvedValue([
+            {
+              booking: {
+                entitlementUnits: null,
+              },
+            },
+          ]),
+        },
+        attendancePass: {
+          update: vi.fn().mockResolvedValue({ id: "pass1" }),
+        },
+        userMembership: {
+          update: vi.fn().mockResolvedValue({ id: "m1" }),
+          updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+          findUnique: vi.fn().mockResolvedValue({
+            status: "active",
+          }),
+        },
+        notification: {
+          create: vi.fn().mockResolvedValue({ id: "notif1" }),
+        },
       })
     ),
   },
@@ -49,7 +74,7 @@ vi.mock("@/lib/booking-operational", () => ({
 import { POST as attendancePOST } from "@/app/api/admin/attendance/route";
 import { POST as bookingsPOST, PATCH as bookingsPATCH, DELETE as bookingsDELETE } from "@/app/api/admin/bookings/route";
 import { db } from "@/lib/db";
-import { extractAttendanceCode } from "@/lib/attendance";
+import { extractAttendanceCode, ensureMembershipAttendancePass } from "@/lib/attendance";
 import { requireAdminFeature } from "@/lib/admin-guard";
 import { requireAdminPermission } from "@/lib/admin-authorization-server";
 import { getAdminSession } from "@/lib/admin-session";
@@ -120,6 +145,37 @@ describe("Admin Permissions - Attendance & Bookings", () => {
         },
       } as any);
 
+      vi.mocked(db.booking.findUnique).mockResolvedValue({
+        id: "b1",
+        userId: "user1",
+        userMembershipId: "m1",
+        scheduleId: "s1",
+        status: "confirmed",
+        isMakeup: false,
+        user: { name: "Client" },
+        userMembership: {
+          status: "active",
+          totalSessions: 10,
+          membership: {
+            name: "Basic",
+            sessionsCount: 10,
+          },
+        },
+        schedule: {
+          date: new Date(Date.now() - 24 * 60 * 60 * 1000),
+          time: "18:00",
+          class: {
+            name: "Zumba",
+            trainer: { name: "Trainer 1" },
+          },
+        },
+      } as any);
+
+      vi.mocked(ensureMembershipAttendancePass).mockResolvedValue({
+        id: "pass1",
+        status: "active",
+      } as any);
+
       const req = new Request("http://localhost/api/admin/attendance", {
         method: "POST",
         body: JSON.stringify({ scanValue: "PASS123", scheduleId: "s1", mode: "class" }),
@@ -180,6 +236,163 @@ describe("Admin Permissions - Attendance & Bookings", () => {
 
       // If we got past role check, error will be about missing data (not 403)
       expect(response.status).not.toBe(403);
+    });
+
+    it("rejects manual attendance for a future class without changing the booking", async () => {
+      mockRequireAdminFeature.mockResolvedValue(
+        mockAdminFeatureAccess("admin", "admin1"),
+      );
+
+      const tomorrow = new Date();
+      tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+      tomorrow.setUTCHours(0, 0, 0, 0);
+
+      vi.mocked(db.booking.findUnique).mockResolvedValue({
+        id: "future-booking",
+        userId: "member1",
+        scheduleId: "future-schedule",
+        userMembershipId: "membership1",
+        status: "confirmed",
+        isMakeup: false,
+        schedule: {
+          id: "future-schedule",
+          date: tomorrow,
+          time: "23:00",
+          class: {
+            id: "class1",
+            name: "Future Class",
+            trainer: { name: "Trainer 1" },
+          },
+        },
+        user: { id: "member1", name: "Test Member" },
+        userMembership: {
+          status: "active",
+          totalSessions: 10,
+          membership: { sessionsCount: 10 },
+        },
+      } as any);
+
+      const transactionBefore = vi.mocked(db.$transaction).mock.calls.length;
+
+      const req = new Request("http://localhost/api/admin/bookings", {
+        method: "PATCH",
+        body: JSON.stringify({
+          bookingId: "future-booking",
+          action: "attended",
+        }),
+      });
+
+      const response = (await bookingsPATCH(req))!;
+      const json = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(json.error).toContain("لم يبدأ موعدها بعد");
+      expect(vi.mocked(db.$transaction).mock.calls.length).toBe(transactionBefore);
+    });
+
+    it("manual attendance creates exactly one AttendanceCheckIn for a valid past booking", async () => {
+      mockRequireAdminFeature.mockResolvedValue(
+        mockAdminFeatureAccess("admin", "admin1"),
+      );
+
+      const yesterday = new Date();
+      yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+      yesterday.setUTCHours(0, 0, 0, 0);
+
+      vi.mocked(db.booking.findUnique).mockResolvedValue({
+        id: "past-booking",
+        userId: "member1",
+        scheduleId: "past-schedule",
+        userMembershipId: "membership1",
+        status: "confirmed",
+        isMakeup: false,
+        schedule: {
+          id: "past-schedule",
+          date: yesterday,
+          time: "10:00",
+          class: {
+            id: "class1",
+            name: "Past Class",
+            trainer: { name: "Trainer 1" },
+          },
+        },
+        user: { id: "member1", name: "Test Member" },
+        userMembership: {
+          status: "active",
+          totalSessions: 10,
+          membership: { sessionsCount: 10 },
+        },
+      } as any);
+
+      vi.mocked(ensureMembershipAttendancePass).mockResolvedValue({
+        id: "pass1",
+        status: "active",
+      } as any);
+
+      const updateMany = vi.fn().mockResolvedValue({ count: 1 });
+      const createCheckIn = vi.fn().mockResolvedValue({ id: "check1" });
+      const countCheckIns = vi.fn().mockResolvedValue(1);
+      const updatePass = vi.fn().mockResolvedValue({ id: "pass1" });
+      const updateMembership = vi.fn().mockResolvedValue({ id: "membership1" });
+      const createNotification = vi.fn().mockResolvedValue({ id: "notif1" });
+
+      (db.$transaction as any).mockImplementationOnce(async (cb: any) =>
+        cb({
+          booking: {
+            updateMany,
+            count: vi.fn().mockResolvedValue(0),
+          },
+          attendanceCheckIn: {
+            create: createCheckIn,
+            count: countCheckIns,
+            findMany: vi.fn().mockResolvedValue([
+              {
+                booking: {
+                  entitlementUnits: null,
+                },
+              },
+            ]),
+          },
+          attendancePass: { update: updatePass },
+          userMembership: {
+            update: updateMembership,
+            updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+            findUnique: vi.fn().mockResolvedValue({
+              status: "active",
+            }),
+          },
+          notification: { create: createNotification },
+        }),
+      );
+
+      const req = new Request("http://localhost/api/admin/bookings", {
+        method: "PATCH",
+        body: JSON.stringify({
+          bookingId: "past-booking",
+          action: "attended",
+        }),
+      });
+
+      const response = (await bookingsPATCH(req))!;
+      const json = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(json.success).toBe(true);
+      expect(json.sessionsRemaining).toBe(9);
+
+      expect(updateMany).toHaveBeenCalledTimes(1);
+      expect(createCheckIn).toHaveBeenCalledTimes(1);
+
+      expect(createCheckIn).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          passId: "pass1",
+          userId: "member1",
+          userMembershipId: "membership1",
+          bookingId: "past-booking",
+          scheduleId: "past-schedule",
+          checkInType: "class",
+        }),
+      });
     });
 
     it("rejects non-admin (403)", async () => {
@@ -339,6 +552,37 @@ describe("Admin Permissions - Attendance & Bookings", () => {
           class: { name: "Boxing", trainer: { name: "Trainer 3" } },
           time: "17:00",
         },
+      } as any);
+
+      vi.mocked(db.booking.findUnique).mockResolvedValue({
+        id: "b3",
+        userId: "user3",
+        userMembershipId: "m3",
+        scheduleId: "s3",
+        status: "confirmed",
+        isMakeup: false,
+        user: { name: "Client 3" },
+        userMembership: {
+          status: "active",
+          totalSessions: 15,
+          membership: {
+            name: "Gold",
+            sessionsCount: 15,
+          },
+        },
+        schedule: {
+          date: new Date(Date.now() - 24 * 60 * 60 * 1000),
+          time: "17:00",
+          class: {
+            name: "Boxing",
+            trainer: { name: "Trainer 3" },
+          },
+        },
+      } as any);
+
+      vi.mocked(ensureMembershipAttendancePass).mockResolvedValue({
+        id: "pass3",
+        status: "active",
       } as any);
 
       const { isBookingOperational } = await import("@/lib/booking-operational");

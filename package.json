@@ -31,7 +31,10 @@
     "test:load": "node tests/load/homepage.mjs && node tests/load/public-api.mjs && node tests/load/store.mjs",
     "test:load:home": "node tests/load/homepage.mjs",
     "test:load:public": "node tests/load/public-api.mjs",
-    "test:load:store": "node tests/load/store.mjs"
+    "test:load:store": "node tests/load/store.mjs",
+    "test:db": "node scripts/run-test-env.mjs",
+    "check:prisma-contract": "node scripts/check-prisma-contract.mjs",
+    "build:release": "prisma generate && node scripts/check-prisma-contract.mjs && next build"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1018.0",

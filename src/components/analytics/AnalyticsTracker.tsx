@@ -29,6 +29,27 @@ export function createPageLeaveGuard(send: LeaveSender) {
   };
 }
 
+export function shouldCloseAnalyticsPageOnVisibility(
+  visibilityState: DocumentVisibilityState,
+  currentPath: string | null,
+) {
+  return visibilityState !== "visible" && Boolean(currentPath);
+}
+
+export function shouldRestartAnalyticsPageOnVisibility(input: {
+  visibilityState: DocumentVisibilityState;
+  currentPath: string | null;
+  desiredPath: string | null;
+  effectPath: string | null;
+}) {
+  return (
+    input.visibilityState === "visible" &&
+    Boolean(input.effectPath) &&
+    input.desiredPath === input.effectPath &&
+    input.currentPath === null
+  );
+}
+
 export async function sendAnalyticsPageLeave(path: string, pageHide = false) {
   const payload = JSON.stringify({ eventName: "page_leave", path });
 
@@ -88,9 +109,61 @@ export default function AnalyticsTracker() {
         timer = window.setInterval(sendHeartbeat, 30_000);
       }
     };
+    let visibilityClose: Promise<void> | null = null;
+
+    const restartVisiblePage = async () => {
+      if (visibilityClose) {
+        await visibilityClose;
+        visibilityClose = null;
+      }
+
+      if (
+        disposed ||
+        document.visibilityState !== "visible" ||
+        !nextPath ||
+        desiredPath.current !== nextPath
+      ) {
+        return;
+      }
+
+      if (currentTrackedPath.current === nextPath) {
+        startHeartbeat();
+        return;
+      }
+
+      // A hidden page was closed as an active-view period. Returning to the
+      // same route begins a new active PageView so hidden time is never
+      // counted as engagement.
+      leaveGuard.current.resetForNewPage();
+      await beginPageView();
+    };
+
     const onVisibilityChange = () => {
       stopHeartbeat();
-      if (document.visibilityState === "visible" && currentTrackedPath.current === nextPath) startHeartbeat();
+
+      if (
+        shouldCloseAnalyticsPageOnVisibility(
+          document.visibilityState,
+          currentTrackedPath.current,
+        )
+      ) {
+        const activePath = currentTrackedPath.current!;
+
+        currentTrackedPath.current = null;
+        visibilityClose = leaveGuard.current.send(activePath);
+        return;
+      }
+
+      if (
+        shouldRestartAnalyticsPageOnVisibility({
+          visibilityState: document.visibilityState,
+          currentPath: currentTrackedPath.current,
+          desiredPath: desiredPath.current,
+          effectPath: nextPath,
+        })
+      ) {
+        void restartVisiblePage();
+      }
     };
     const onPageHide = () => {
       const activePath = currentTrackedPath.current;

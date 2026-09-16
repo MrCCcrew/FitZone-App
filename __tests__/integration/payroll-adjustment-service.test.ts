@@ -1,0 +1,776 @@
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+
+import type { PrismaClient, User } from "@prisma/client";
+
+let db: PrismaClient;
+
+let actor: User;
+
+let activeEmployeeId: string;
+let disabledEmployeeId: string;
+
+const stamp = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+const ids: string[] = [];
+
+beforeAll(async () => {
+  const mod = await import("@/lib/db");
+
+  db = mod.db as PrismaClient;
+
+  const database = await db.$queryRawUnsafe<Array<{ db: string }>>(
+    "SELECT DATABASE() AS db",
+  );
+
+  if (database[0]?.db !== "fitzone_test") {
+    throw new Error("REFUSING_NON_TEST_DB");
+  }
+
+  actor = await db.user.create({
+    data: {
+      email: `payroll-adjustment-${stamp}@example.test`,
+      name: "Payroll Adjustment Test Actor",
+      role: "super_admin",
+    },
+  });
+
+  const active = await db.employeeProfile.create({
+    data: {
+      employeeCode: `PAL-${stamp}`.slice(0, 40),
+      name: "Payroll Loan Employee",
+      employmentStatus: "active",
+      payrollEnabled: true,
+    },
+  });
+
+  activeEmployeeId = active.id;
+
+  const disabled = await db.employeeProfile.create({
+    data: {
+      employeeCode: `PAD-${stamp}`.slice(0, 40),
+      name: "Payroll Disabled Employee",
+      employmentStatus: "active",
+      payrollEnabled: false,
+    },
+  });
+
+  disabledEmployeeId = disabled.id;
+});
+
+afterAll(async () => {
+  if (!db) return;
+
+  await db.payrollRun.deleteMany({
+    where: {
+      monthKey: {
+        in: ["2058-01", "2058-03"],
+      },
+    },
+  });
+
+  await db.auditLog.deleteMany({
+    where: {
+      actorUserId: actor?.id,
+    },
+  });
+
+  await db.employeeLoanInstallment.deleteMany({
+    where: {
+      loan: {
+        employeeId: {
+          in: [activeEmployeeId, disabledEmployeeId],
+        },
+      },
+    },
+  });
+
+  await db.employeeLoan.deleteMany({
+    where: {
+      employeeId: {
+        in: [activeEmployeeId, disabledEmployeeId],
+      },
+    },
+  });
+
+  await db.payrollAdjustment.deleteMany({
+    where: {
+      employeeId: {
+        in: [activeEmployeeId, disabledEmployeeId],
+      },
+    },
+  });
+
+  await db.employeeProfile.deleteMany({
+    where: {
+      id: {
+        in: [activeEmployeeId, disabledEmployeeId].filter(Boolean),
+      },
+    },
+  });
+
+  if (actor?.id) {
+    await db.user.delete({
+      where: {
+        id: actor.id,
+      },
+    });
+  }
+});
+
+describe("Payroll adjustment service — real fitzone_test", () => {
+  const getService = () => import("@/lib/employees/payroll-adjustment-service");
+
+  const actorInput = () => ({
+    userId: actor.id,
+    name: actor.name,
+    email: actor.email,
+    role: actor.role,
+  });
+
+  it("creates draft employee loan with audit", async () => {
+    const { saveEmployeeLoan } = await getService();
+
+    const loan = await saveEmployeeLoan(
+      {
+        employeeId: activeEmployeeId,
+        principalMinor: 100000,
+        currency: "EGP",
+        startMonthKey: "2035-01",
+        reason: "اختبار سلفة",
+      },
+      actorInput(),
+    );
+
+    ids.push(loan.id);
+
+    expect(loan.status).toBe("draft");
+
+    expect(loan.principalMinor).toBe(100000);
+
+    expect(
+      await db.auditLog.count({
+        where: {
+          targetType: "EmployeeLoan",
+          targetId: loan.id,
+          action: "employee_loan_create",
+        },
+      }),
+    ).toBe(1);
+  });
+
+  it("rejects payroll-disabled employee", async () => {
+    const { saveEmployeeLoan } = await getService();
+
+    await expect(
+      saveEmployeeLoan(
+        {
+          employeeId: disabledEmployeeId,
+          principalMinor: 50000,
+          startMonthKey: "2035-01",
+          reason: "اختبار سلفة",
+        },
+        actorInput(),
+      ),
+    ).rejects.toThrow("PAYROLL_ADJUSTMENT_EMPLOYEE_PAYROLL_DISABLED");
+  });
+
+  it("rejects invalid or zero money", async () => {
+    const { saveEmployeeLoan } = await getService();
+
+    await expect(
+      saveEmployeeLoan(
+        {
+          employeeId: activeEmployeeId,
+          principalMinor: 0,
+          startMonthKey: "2035-01",
+          reason: "اختبار",
+        },
+        actorInput(),
+      ),
+    ).rejects.toThrow("PAYROLL_ADJUSTMENT_INVALID_LOAN_PRINCIPAL");
+  });
+
+  it("does not allow installments to exceed principal", async () => {
+    const { saveEmployeeLoan, saveLoanInstallment } = await getService();
+
+    const loan = await saveEmployeeLoan(
+      {
+        employeeId: activeEmployeeId,
+        principalMinor: 10000,
+        startMonthKey: "2035-02",
+        reason: "سلفة اختبار أقساط",
+      },
+      actorInput(),
+    );
+
+    ids.push(loan.id);
+
+    await saveLoanInstallment(
+      {
+        loanId: loan.id,
+        monthKey: "2035-02",
+        amountMinor: 6000,
+      },
+      actorInput(),
+    );
+
+    await expect(
+      saveLoanInstallment(
+        {
+          loanId: loan.id,
+          monthKey: "2035-03",
+          amountMinor: 5000,
+        },
+        actorInput(),
+      ),
+    ).rejects.toThrow("EMPLOYEE_LOAN_INSTALLMENTS_EXCEED_PRINCIPAL");
+  });
+
+  it("rejects installment before loan start month", async () => {
+    const { saveEmployeeLoan, saveLoanInstallment } = await getService();
+
+    const loan = await saveEmployeeLoan(
+      {
+        employeeId: activeEmployeeId,
+        principalMinor: 10000,
+        startMonthKey: "2035-04",
+        reason: "سلفة تاريخ",
+      },
+      actorInput(),
+    );
+
+    ids.push(loan.id);
+
+    await expect(
+      saveLoanInstallment(
+        {
+          loanId: loan.id,
+          monthKey: "2035-03",
+          amountMinor: 10000,
+        },
+        actorInput(),
+      ),
+    ).rejects.toThrow("EMPLOYEE_LOAN_INSTALLMENT_BEFORE_START_MONTH");
+  });
+
+  it("requires installments to exactly cover principal before approval", async () => {
+    const { saveEmployeeLoan, saveLoanInstallment, approveEmployeeLoan } =
+      await getService();
+
+    const loan = await saveEmployeeLoan(
+      {
+        employeeId: activeEmployeeId,
+        principalMinor: 10000,
+        startMonthKey: "2035-05",
+        reason: "سلفة غير مكتملة",
+      },
+      actorInput(),
+    );
+
+    ids.push(loan.id);
+
+    await saveLoanInstallment(
+      {
+        loanId: loan.id,
+        monthKey: "2035-05",
+        amountMinor: 5000,
+      },
+      actorInput(),
+    );
+
+    await expect(approveEmployeeLoan(loan.id, actorInput())).rejects.toThrow(
+      "EMPLOYEE_LOAN_INSTALLMENTS_MUST_EQUAL_PRINCIPAL",
+    );
+  });
+
+  it("approves loan and installments atomically", async () => {
+    const { saveEmployeeLoan, saveLoanInstallment, approveEmployeeLoan } =
+      await getService();
+
+    const loan = await saveEmployeeLoan(
+      {
+        employeeId: activeEmployeeId,
+        principalMinor: 12000,
+        startMonthKey: "2035-06",
+        reason: "سلفة مكتملة",
+      },
+      actorInput(),
+    );
+
+    ids.push(loan.id);
+
+    await saveLoanInstallment(
+      {
+        loanId: loan.id,
+        monthKey: "2035-06",
+        amountMinor: 6000,
+      },
+      actorInput(),
+    );
+
+    await saveLoanInstallment(
+      {
+        loanId: loan.id,
+        monthKey: "2035-07",
+        amountMinor: 6000,
+      },
+      actorInput(),
+    );
+
+    const approved = await approveEmployeeLoan(loan.id, actorInput());
+
+    expect(approved.status).toBe("active");
+
+    expect(
+      approved.installments.every((row) => row.status === "approved"),
+    ).toBe(true);
+
+    expect(
+      await db.auditLog.count({
+        where: {
+          targetId: loan.id,
+          action: "employee_loan_approve",
+        },
+      }),
+    ).toBe(1);
+  });
+
+  it("does not allow editing approved loan", async () => {
+    const { saveEmployeeLoan, saveLoanInstallment, approveEmployeeLoan } =
+      await getService();
+
+    const loan = await saveEmployeeLoan(
+      {
+        employeeId: activeEmployeeId,
+        principalMinor: 9000,
+        startMonthKey: "2035-08",
+        reason: "سلفة غير قابلة للتعديل",
+      },
+      actorInput(),
+    );
+
+    ids.push(loan.id);
+
+    await saveLoanInstallment(
+      {
+        loanId: loan.id,
+        monthKey: "2035-08",
+        amountMinor: 9000,
+      },
+      actorInput(),
+    );
+
+    await approveEmployeeLoan(loan.id, actorInput());
+
+    await expect(
+      saveEmployeeLoan(
+        {
+          loanId: loan.id,
+          employeeId: activeEmployeeId,
+          principalMinor: 8000,
+          startMonthKey: "2035-08",
+          reason: "تغيير غير مسموح",
+        },
+        actorInput(),
+      ),
+    ).rejects.toThrow("EMPLOYEE_LOAN_NOT_EDITABLE");
+  });
+
+  it("cancels non-applied loan with audit", async () => {
+    const {
+      saveEmployeeLoan,
+      saveLoanInstallment,
+      approveEmployeeLoan,
+      cancelEmployeeLoan,
+    } = await getService();
+
+    const loan = await saveEmployeeLoan(
+      {
+        employeeId: activeEmployeeId,
+        principalMinor: 7000,
+        startMonthKey: "2035-09",
+        reason: "سلفة للإلغاء",
+      },
+      actorInput(),
+    );
+
+    ids.push(loan.id);
+
+    await saveLoanInstallment(
+      {
+        loanId: loan.id,
+        monthKey: "2035-09",
+        amountMinor: 7000,
+      },
+      actorInput(),
+    );
+
+    await approveEmployeeLoan(loan.id, actorInput());
+
+    const cancelled = await cancelEmployeeLoan(
+      loan.id,
+      "إلغاء معتمد للاختبار",
+      actorInput(),
+    );
+
+    expect(cancelled.status).toBe("cancelled");
+
+    const installment = await db.employeeLoanInstallment.findFirstOrThrow({
+      where: {
+        loanId: loan.id,
+      },
+    });
+
+    expect(installment.status).toBe("cancelled");
+  });
+
+  it("blocks loan cancellation once installment is applied", async () => {
+    const {
+      saveEmployeeLoan,
+      saveLoanInstallment,
+      approveEmployeeLoan,
+      cancelEmployeeLoan,
+    } = await getService();
+
+    const loan = await saveEmployeeLoan(
+      {
+        employeeId: activeEmployeeId,
+        principalMinor: 4000,
+        startMonthKey: "2035-10",
+        reason: "سلفة مطبقة",
+      },
+      actorInput(),
+    );
+
+    ids.push(loan.id);
+
+    const installment = await saveLoanInstallment(
+      {
+        loanId: loan.id,
+        monthKey: "2035-10",
+        amountMinor: 4000,
+      },
+      actorInput(),
+    );
+
+    await approveEmployeeLoan(loan.id, actorInput());
+
+    await db.employeeLoanInstallment.update({
+      where: {
+        id: installment.id,
+      },
+      data: {
+        status: "applied",
+        appliedAt: new Date(),
+        payrollRunId: `TEST-RUN-${stamp}`,
+      },
+    });
+
+    await expect(
+      cancelEmployeeLoan(loan.id, "محاولة إلغاء", actorInput()),
+    ).rejects.toThrow("EMPLOYEE_LOAN_HAS_APPLIED_INSTALLMENTS");
+  });
+
+  it("creates manual payroll deduction and audit", async () => {
+    const { savePayrollAdjustment } = await getService();
+
+    const adjustment = await savePayrollAdjustment(
+      {
+        employeeId: activeEmployeeId,
+        monthKey: "2035-11",
+        direction: "deduction",
+        sourceType: "manual",
+        amountMinor: 1500,
+        reason: "خصم إداري اختبار",
+      },
+      actorInput(),
+    );
+
+    expect(adjustment.status).toBe("draft");
+
+    expect(adjustment.direction).toBe("deduction");
+
+    expect(
+      await db.auditLog.count({
+        where: {
+          targetId: adjustment.id,
+          action: "payroll_adjustment_create",
+        },
+      }),
+    ).toBe(1);
+  });
+
+  it("rejects attendance impersonation from manual service", async () => {
+    const { savePayrollAdjustment } = await getService();
+
+    await expect(
+      savePayrollAdjustment(
+        {
+          employeeId: activeEmployeeId,
+          monthKey: "2035-12",
+          direction: "deduction",
+          sourceType: "attendance" as never,
+          amountMinor: 1000,
+          reason: "غير مسموح",
+        },
+        actorInput(),
+      ),
+    ).rejects.toThrow("PAYROLL_ADJUSTMENT_INVALID_MANUAL_SOURCE_TYPE");
+  });
+
+  it("approves adjustment and freezes financial edit", async () => {
+    const { savePayrollAdjustment, approvePayrollAdjustment } =
+      await getService();
+
+    const adjustment = await savePayrollAdjustment(
+      {
+        employeeId: activeEmployeeId,
+        monthKey: "2036-01",
+        direction: "earning",
+        amountMinor: 2500,
+        reason: "إضافة اختبار",
+      },
+      actorInput(),
+    );
+
+    const approved = await approvePayrollAdjustment(
+      adjustment.id,
+      actorInput(),
+    );
+
+    expect(approved.status).toBe("approved");
+
+    await expect(
+      savePayrollAdjustment(
+        {
+          adjustmentId: adjustment.id,
+          employeeId: activeEmployeeId,
+          monthKey: "2036-01",
+          direction: "earning",
+          amountMinor: 3000,
+          reason: "تعديل غير مسموح",
+        },
+        actorInput(),
+      ),
+    ).rejects.toThrow("PAYROLL_ADJUSTMENT_NOT_EDITABLE");
+  });
+
+  it("cancels approved adjustment before payroll application", async () => {
+    const {
+      savePayrollAdjustment,
+      approvePayrollAdjustment,
+      cancelPayrollAdjustment,
+    } = await getService();
+
+    const adjustment = await savePayrollAdjustment(
+      {
+        employeeId: activeEmployeeId,
+        monthKey: "2036-02",
+        direction: "deduction",
+        amountMinor: 1200,
+        reason: "خصم للإلغاء",
+      },
+      actorInput(),
+    );
+
+    await approvePayrollAdjustment(adjustment.id, actorInput());
+
+    const cancelled = await cancelPayrollAdjustment(
+      adjustment.id,
+      "إلغاء الخصم للاختبار",
+      actorInput(),
+    );
+
+    expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("blocks cancellation after payroll application", async () => {
+    const {
+      savePayrollAdjustment,
+      approvePayrollAdjustment,
+      cancelPayrollAdjustment,
+    } = await getService();
+
+    const adjustment = await savePayrollAdjustment(
+      {
+        employeeId: activeEmployeeId,
+        monthKey: "2036-03",
+        direction: "deduction",
+        amountMinor: 1100,
+        reason: "خصم مطبق",
+      },
+      actorInput(),
+    );
+
+    await approvePayrollAdjustment(adjustment.id, actorInput());
+
+    await db.payrollAdjustment.update({
+      where: {
+        id: adjustment.id,
+      },
+      data: {
+        status: "applied",
+        appliedAt: new Date(),
+        payrollRunId: `TEST-RUN-${stamp}`,
+      },
+    });
+
+    await expect(
+      cancelPayrollAdjustment(adjustment.id, "محاولة إلغاء", actorInput()),
+    ).rejects.toThrow("PAYROLL_ADJUSTMENT_APPLIED_IMMUTABLE");
+  });
+
+  it("blocks adjustment approval in finalized payroll month", async () => {
+    const { savePayrollAdjustment, approvePayrollAdjustment } =
+      await getService();
+
+    const monthKey = "2058-01";
+
+    const adjustment = await savePayrollAdjustment(
+      {
+        employeeId: activeEmployeeId,
+        monthKey,
+        direction: "earning",
+        amountMinor: 1000,
+        reason: "Finalized payroll month test",
+      },
+      actorInput(),
+    );
+
+    await db.payrollRun.create({
+      data: {
+        monthKey,
+        status: "finalized",
+        currency: "EGP",
+        employeeCount: 0,
+        blockedEmployeeCount: 0,
+        totalGrossEarningsMinor: 0,
+        totalDeductionsMinor: 0,
+        totalNetPayMinor: 0,
+        finalizedAt: new Date(),
+        finalizedById: actor.id,
+        createdById: actor.id,
+      },
+    });
+
+    await expect(
+      approvePayrollAdjustment(adjustment.id, actorInput()),
+    ).rejects.toThrow("PAYROLL_MONTH_FINALIZED_IMMUTABLE");
+
+    const unchanged = await db.payrollAdjustment.findUniqueOrThrow({
+      where: {
+        id: adjustment.id,
+      },
+    });
+
+    expect(unchanged.status).toBe("draft");
+    expect(unchanged.approvedAt).toBeNull();
+    expect(unchanged.approvedById).toBeNull();
+  });
+
+  it("blocks loan approval when any installment month is finalized", async () => {
+    const { saveEmployeeLoan, saveLoanInstallment, approveEmployeeLoan } =
+      await getService();
+
+    const loan = await saveEmployeeLoan(
+      {
+        employeeId: activeEmployeeId,
+        principalMinor: 10000,
+        currency: "EGP",
+        startMonthKey: "2058-02",
+        reason: "Finalized payroll installment test",
+      },
+      actorInput(),
+    );
+
+    ids.push(loan.id);
+
+    await saveLoanInstallment(
+      {
+        loanId: loan.id,
+        monthKey: "2058-02",
+        amountMinor: 5000,
+      },
+      actorInput(),
+    );
+
+    await saveLoanInstallment(
+      {
+        loanId: loan.id,
+        monthKey: "2058-03",
+        amountMinor: 5000,
+      },
+      actorInput(),
+    );
+
+    await db.payrollRun.create({
+      data: {
+        monthKey: "2058-03",
+        status: "finalized",
+        currency: "EGP",
+        employeeCount: 0,
+        blockedEmployeeCount: 0,
+        totalGrossEarningsMinor: 0,
+        totalDeductionsMinor: 0,
+        totalNetPayMinor: 0,
+        finalizedAt: new Date(),
+        finalizedById: actor.id,
+        createdById: actor.id,
+      },
+    });
+
+    await expect(approveEmployeeLoan(loan.id, actorInput())).rejects.toThrow(
+      "PAYROLL_MONTH_FINALIZED_IMMUTABLE",
+    );
+
+    const unchanged = await db.employeeLoan.findUniqueOrThrow({
+      where: {
+        id: loan.id,
+      },
+      include: {
+        installments: {
+          orderBy: {
+            monthKey: "asc",
+          },
+        },
+      },
+    });
+
+    expect(unchanged.status).toBe("draft");
+    expect(unchanged.approvedAt).toBeNull();
+
+    expect(unchanged.installments.map((row) => row.status)).toEqual([
+      "scheduled",
+      "scheduled",
+    ]);
+  });
+
+  it("keeps approval idempotent without duplicate audit", async () => {
+    const { savePayrollAdjustment, approvePayrollAdjustment } =
+      await getService();
+
+    const adjustment = await savePayrollAdjustment(
+      {
+        employeeId: activeEmployeeId,
+        monthKey: "2036-04",
+        direction: "earning",
+        amountMinor: 1000,
+        reason: "اختبار idempotency",
+      },
+      actorInput(),
+    );
+
+    await approvePayrollAdjustment(adjustment.id, actorInput());
+
+    await approvePayrollAdjustment(adjustment.id, actorInput());
+
+    expect(
+      await db.auditLog.count({
+        where: {
+          targetId: adjustment.id,
+          action: "payroll_adjustment_approve",
+        },
+      }),
+    ).toBe(1);
+  });
+});

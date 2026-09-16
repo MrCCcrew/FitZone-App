@@ -5,7 +5,7 @@
 ```env
 DATABASE_URL="mysql://DB_USER:DB_PASSWORD@HOST:3306/DATABASE_NAME"
 DB_CONNECTION_LIMIT="5"
-AUTH_SECRET="***REMOVED***"
+AUTH_SECRET="<SET_IN_ENV_NOT_GIT>"
 AUTH_TRUST_HOST="true"
 NODE_ENV="production"
 R2_ENDPOINT="https://<account-id>.r2.cloudflarestorage.com"
@@ -13,7 +13,7 @@ R2_ACCESS_KEY_ID="replace-me"
 R2_SECRET_ACCESS_KEY="replace-me"
 R2_BUCKET_NAME="fitzone-images"
 R2_PUBLIC_URL="https://cdn.your-domain.com"
-SETUP_TOKEN="***REMOVED***"
+SETUP_TOKEN="<SET_IN_ENV_NOT_GIT>"
 ```
 
 Replace `DB_USER`, `DB_PASSWORD`, `HOST`, and `DATABASE_NAME` with your real Hostinger MySQL credentials.
@@ -37,6 +37,6 @@ Use `npx prisma db push` for the initial MySQL schema creation because this proj
 
 1. Set all production environment variables in Hostinger before the first build.
 2. Run `npx prisma db push` against the production database once.
-3. Run `npx tsx prisma/seed-admin.ts` if you need to create the first admin from script, or call `POST /api/setup` once with `{ "token": "YOUR_SETUP_TOKEN", "password": "***REMOVED***" }`.
+3. Run `npx tsx prisma/seed-admin.ts` if you need to create the first admin from script, or call `POST /api/setup` once with `{ "token": "YOUR_SETUP_TOKEN", "password": "<SET_SECURELY_NOT_GIT>" }`.
 4. Remove or rotate `SETUP_TOKEN` after initial admin creation.
 5. Upload product images only after `R2_PUBLIC_URL` is working publicly.

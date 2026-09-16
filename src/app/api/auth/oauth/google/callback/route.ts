@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createPendingOAuthToken, findExistingOAuthUser, getAppBaseUrl } from "@/lib/oauth";
 import { APP_SESSION_COOKIE, createAppSessionToken, getAppSessionCookieOptions } from "@/lib/app-session";
+import { assertExternalSideEffectsAllowed } from "@/lib/staging-safety";
 
 export async function GET(req: NextRequest) {
   const base = getAppBaseUrl();
@@ -14,6 +15,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
+    assertExternalSideEffectsAllowed("Google OAuth");
     const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },

@@ -3,14 +3,20 @@
 import { useEffect, useState, type ComponentType } from "react";
 import { useRouter } from "next/navigation";
 import type { Section } from "./types";
-import { canAccessAdminSection, getDefaultAdminSection, isAdminRole } from "@/lib/admin-permissions";
+import {
+  canAccessAdminSection,
+  getDefaultAdminSection,
+  isAdminRole,
+} from "@/lib/admin-permissions";
 import Overview from "./sections/Overview";
+import Approvals from "./sections/Approvals";
 import Analytics from "./sections/Analytics";
 import Accounting from "./sections/Accounting";
 import PagesContent from "./sections/PagesContent";
 import BlogPending from "./sections/BlogPending";
 import ChatKnowledge from "./sections/ChatKnowledge";
 import Subscriptions from "./sections/Subscriptions";
+import FriendMatching from "./sections/FriendMatching";
 import Packages from "./sections/Packages";
 import Goals from "./sections/Goals";
 import DeliveryOptions from "./sections/DeliveryOptions";
@@ -18,6 +24,7 @@ import HealthQuestions from "./sections/HealthQuestions";
 import Payments from "./sections/Payments";
 import Classes from "./sections/Classes";
 import Trainers from "./sections/Trainers";
+import EmployeesHR from "./sections/EmployeesHR";
 import Nutrition from "./sections/Nutrition";
 import Bookings from "./sections/Bookings";
 import Products from "./sections/Products";
@@ -41,19 +48,45 @@ import StoreGiftCampaign from "./sections/StoreGiftCampaign";
 import { StoreFreeGiftsGameSection } from "./sections/StoreFreeGiftsGame";
 
 const PROTECTED_SECTIONS = ["payments", "database"] as const;
-const AFFILIATE_MARKETING_SECTIONS: Section[] = ["rewards", "partners", "contracts", "discounts"];
-const STORE_SECTIONS: Section[] = ["products", "orders", "inventory", "suppliers", "delivery-companies", "delivery", "store-campaigns", "store-free-gifts"];
-const GYM_SECTIONS: Section[] = ["subscriptions", "packages", "goals", "health", "classes", "trainers", "bookings"];
+const AFFILIATE_MARKETING_SECTIONS: Section[] = [
+  "rewards",
+  "partners",
+  "contracts",
+  "discounts",
+];
+const STORE_SECTIONS: Section[] = [
+  "products",
+  "orders",
+  "inventory",
+  "suppliers",
+  "delivery-companies",
+  "delivery",
+  "store-campaigns",
+  "store-free-gifts",
+];
+const GYM_SECTIONS: Section[] = [
+  "subscriptions",
+  "friend-matching",
+  "packages",
+  "goals",
+  "health",
+  "classes",
+  "trainers",
+  "employees",
+  "bookings",
+];
 
 const NAV: { id: Section; label: string; icon: string }[] = [
   { id: "settings", label: "الإعدادات والصلاحيات", icon: "⚙️" },
   { id: "overview", label: "لوحة التحكم", icon: "📊" },
+  { id: "approvals", label: "الطلبات والموافقات", icon: "🔔" },
   { id: "analytics", label: "تحليلات الموقع", icon: "📈" },
   { id: "accounting", label: "الحسابات والتقارير", icon: "💼" },
   { id: "pages", label: "الصفحات والمحتوى", icon: "📄" },
   { id: "blog-pending", label: "طلبات نشر المدونة", icon: "📝" },
   { id: "knowledge", label: "قاعدة معرفة البوت", icon: "KB" },
   { id: "subscriptions", label: "الاشتراكات والعروض", icon: "🎟️" },
+  { id: "friend-matching", label: "طلبات عرض الصحاب", icon: "👭" },
   { id: "packages", label: "الباقات", icon: "🎁" },
   { id: "goals", label: "الأهداف", icon: "🎯" },
   { id: "delivery", label: "خيارات التوصيل", icon: "🔧" },
@@ -61,6 +94,7 @@ const NAV: { id: Section; label: string; icon: string }[] = [
   { id: "payments", label: "المدفوعات", icon: "💳" },
   { id: "classes", label: "الكلاسات والجدول", icon: "🏋️" },
   { id: "trainers", label: "المدربات", icon: "👩‍🏫" },
+  { id: "employees", label: "الموظفون والموارد البشرية", icon: "🧑‍💼" },
   { id: "products", label: "المنتجات", icon: "🛍️" },
   { id: "orders", label: "الطلبات", icon: "📋" },
   { id: "inventory", label: "المخزون والمشتريات", icon: "📦" },
@@ -77,11 +111,19 @@ const NAV: { id: Section; label: string; icon: string }[] = [
   { id: "rewards", label: "المكافآت والإحالة", icon: "🎁" },
   { id: "partners", label: "الشركاء والعمولات", icon: "🤝" },
   { id: "contracts", label: "التعاقدات والمناديب", icon: "📋" },
-  { id: "push",    label: "الإشعارات الفورية",  icon: "🔔" },
+  { id: "push", label: "الإشعارات الفورية", icon: "🔔" },
 ];
 
-const NUTRITION_NAV_ITEM = { id: "nutrition", label: "دكتورة التغذية", icon: "🥗" } as const;
-const BOOKINGS_NAV_ITEM = { id: "bookings", label: "الحجوزات", icon: "📆" } as const;
+const NUTRITION_NAV_ITEM = {
+  id: "nutrition",
+  label: "دكتورة التغذية",
+  icon: "🥗",
+} as const;
+const BOOKINGS_NAV_ITEM = {
+  id: "bookings",
+  label: "الحجوزات",
+  icon: "📆",
+} as const;
 if (!NAV.find((item) => item.id === "database")) {
   NAV.push({ id: "database", label: "إدارة قاعدة البيانات", icon: "🧰" });
 }
@@ -95,12 +137,14 @@ if (trainersInsertAt >= 0) {
 const TITLES: Record<string, string> = {
   settings: "إدارة الإعدادات والصلاحيات",
   overview: "لوحة التحكم",
+  approvals: "الطلبات والموافقات",
   analytics: "تحليلات الموقع",
   accounting: "الحسابات وتقارير المتجر والجيم",
   pages: "إدارة الصفحات والمحتوى",
   "blog-pending": "طلبات نشر المقالات",
   knowledge: "قاعدة معرفة البوت",
   subscriptions: "إدارة الاشتراكات والعروض",
+  "friend-matching": "طلبات عرض الصحاب",
   packages: "إدارة الباقات",
   goals: "إدارة الأهداف",
   delivery: "إدارة شركات التوصيل",
@@ -108,6 +152,7 @@ const TITLES: Record<string, string> = {
   payments: "المدفوعات",
   classes: "إدارة الكلاسات والجدول",
   trainers: "إدارة المدربات",
+  employees: "إدارة الموظفين والموارد البشرية",
   nutrition: "إدارة دكتورة التغذية",
   bookings: "إدارة الحجوزات",
   products: "إدارة المنتجات",
@@ -127,18 +172,20 @@ const TITLES: Record<string, string> = {
   partners: "الشركاء والعمولات",
   contracts: "التعاقدات والمناديب",
   database: "إدارة قاعدة البيانات",
-  push:     "الإشعارات الفورية (Web Push)",
+  push: "الإشعارات الفورية (Web Push)",
 };
 
 const SECTIONS: Record<string, ComponentType> = {
   settings: Settings,
   overview: Overview,
+  approvals: Approvals,
   analytics: Analytics,
   accounting: Accounting,
   pages: PagesContent,
   "blog-pending": BlogPending,
   knowledge: ChatKnowledge,
   subscriptions: Subscriptions,
+  "friend-matching": FriendMatching,
   packages: Packages,
   goals: Goals,
   delivery: DeliveryOptions,
@@ -146,6 +193,7 @@ const SECTIONS: Record<string, ComponentType> = {
   payments: Payments,
   classes: Classes,
   trainers: Trainers,
+  employees: EmployeesHR,
   nutrition: Nutrition,
   bookings: Bookings,
   products: Products,
@@ -163,7 +211,7 @@ const SECTIONS: Record<string, ComponentType> = {
   discounts: DiscountCodes,
   rewards: RewardSettings,
   database: DatabaseMaintenance,
-  push:     PushNotifications,
+  push: PushNotifications,
   contracts: Contracts,
 };
 
@@ -176,8 +224,12 @@ type AdminSessionUser = {
   permissions?: string[];
 };
 
-function isProtectedSection(section: Section): section is (typeof PROTECTED_SECTIONS)[number] {
-  return PROTECTED_SECTIONS.includes(section as (typeof PROTECTED_SECTIONS)[number]);
+function isProtectedSection(
+  section: Section,
+): section is (typeof PROTECTED_SECTIONS)[number] {
+  return PROTECTED_SECTIONS.includes(
+    section as (typeof PROTECTED_SECTIONS)[number],
+  );
 }
 
 function MasterPasswordGate({
@@ -207,7 +259,9 @@ function MasterPasswordGate({
         </div>
 
         <div className="mt-5">
-          <label className="mb-2 block text-xs font-bold text-[#d7aabd]">كلمة مرور الماستر</label>
+          <label className="mb-2 block text-xs font-bold text-[#d7aabd]">
+            كلمة مرور الماستر
+          </label>
           <input
             type="password"
             value={password}
@@ -244,10 +298,15 @@ function MasterPasswordGate({
 
 export default function AdminPanel() {
   const router = useRouter();
-  const [session, setSession] = useState<{ user?: AdminSessionUser } | null>(null);
-  const [status, setStatus] = useState<"loading" | "authenticated" | "unauthenticated">("loading");
+  const [session, setSession] = useState<{ user?: AdminSessionUser } | null>(
+    null,
+  );
+  const [status, setStatus] = useState<
+    "loading" | "authenticated" | "unauthenticated"
+  >("loading");
   const [active, setActive] = useState<Section>("overview");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [approvalPendingCount, setApprovalPendingCount] = useState(0);
   const [affiliateOpen, setAffiliateOpen] = useState(false);
   const [storeOpen, setStoreOpen] = useState(false);
   const [gymOpen, setGymOpen] = useState(false);
@@ -261,9 +320,15 @@ export default function AdminPanel() {
   const role = session?.user?.role;
   const permissions = session?.user?.permissions;
   const defaultSection = getDefaultAdminSection(role, permissions);
-  const allowedNav = NAV.filter((item) => canAccessAdminSection(role, permissions, item.id));
-  const affiliateNav = allowedNav.filter((item) => AFFILIATE_MARKETING_SECTIONS.includes(item.id));
-  const storeNav = allowedNav.filter((item) => STORE_SECTIONS.includes(item.id));
+  const allowedNav = NAV.filter((item) =>
+    canAccessAdminSection(role, permissions, item.id),
+  );
+  const affiliateNav = allowedNav.filter((item) =>
+    AFFILIATE_MARKETING_SECTIONS.includes(item.id),
+  );
+  const storeNav = allowedNav.filter((item) =>
+    STORE_SECTIONS.includes(item.id),
+  );
   const gymNav = allowedNav.filter((item) => GYM_SECTIONS.includes(item.id));
   const mainNav = allowedNav.filter(
     (item) =>
@@ -271,20 +336,25 @@ export default function AdminPanel() {
       !STORE_SECTIONS.includes(item.id) &&
       !GYM_SECTIONS.includes(item.id),
   );
-  const safeActive = canAccessAdminSection(role, permissions, active) ? active : defaultSection;
+  const safeActive = canAccessAdminSection(role, permissions, active)
+    ? active
+    : defaultSection;
   const affiliateActive = AFFILIATE_MARKETING_SECTIONS.includes(safeActive);
   const storeActive = STORE_SECTIONS.includes(safeActive);
   const gymActive = GYM_SECTIONS.includes(safeActive);
   const ActiveSection = SECTIONS[safeActive];
   const protectedActive = isProtectedSection(safeActive);
-  const isSafeActiveUnlocked = !protectedActive || unlockedSections.includes(safeActive);
+  const isSafeActiveUnlocked =
+    !protectedActive || unlockedSections.includes(safeActive);
 
   useEffect(() => {
     let cancelled = false;
 
     const loadSession = async () => {
       try {
-        const response = await fetch("/api/admin/session", { cache: "no-store" });
+        const response = await fetch("/api/admin/session", {
+          cache: "no-store",
+        });
         if (!response.ok) {
           if (!cancelled) {
             setSession(null);
@@ -304,13 +374,58 @@ export default function AdminPanel() {
           setStatus("unauthenticated");
         }
       }
-    }
+    };
 
     void loadSession();
     return () => {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (status !== "authenticated" || !isAdminRole(role)) {
+      setApprovalPendingCount(0);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadApprovalCount = async () => {
+      try {
+        const response = await fetch("/api/admin/action-center", {
+          cache: "no-store",
+        });
+
+        if (!response.ok) return;
+
+        const payload = (await response.json().catch(() => ({}))) as {
+          pendingCount?: number;
+        };
+
+        if (!cancelled) {
+          setApprovalPendingCount(
+            typeof payload.pendingCount === "number" ? payload.pendingCount : 0,
+          );
+        }
+      } catch {
+        // Badge failure must never break the admin panel.
+      }
+    };
+
+    void loadApprovalCount();
+
+    const timer = window.setInterval(() => void loadApprovalCount(), 60_000);
+
+    const refresh = () => void loadApprovalCount();
+
+    window.addEventListener("fitzone-admin-approvals-refresh", refresh);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      window.removeEventListener("fitzone-admin-approvals-refresh", refresh);
+    };
+  }, [role, status]);
 
   useEffect(() => {
     if (status !== "authenticated" || !isAdminRole(role)) return;
@@ -320,21 +435,29 @@ export default function AdminPanel() {
     const loadMasterAccess = async () => {
       setLoadingMasterAccess(true);
       try {
-        const response = await fetch("/api/admin/master-access", { cache: "no-store" });
+        const response = await fetch("/api/admin/master-access", {
+          cache: "no-store",
+        });
         if (!response.ok) {
           if (!cancelled) setUnlockedSections([]);
           return;
         }
-        const payload = (await response.json()) as { unlockedSections?: string[] };
+        const payload = (await response.json()) as {
+          unlockedSections?: string[];
+        };
         if (!cancelled) {
-          setUnlockedSections(Array.isArray(payload.unlockedSections) ? payload.unlockedSections : []);
+          setUnlockedSections(
+            Array.isArray(payload.unlockedSections)
+              ? payload.unlockedSections
+              : [],
+          );
         }
       } catch {
         if (!cancelled) setUnlockedSections([]);
       } finally {
         if (!cancelled) setLoadingMasterAccess(false);
       }
-    }
+    };
 
     void loadMasterAccess();
     return () => {
@@ -367,6 +490,32 @@ export default function AdminPanel() {
   };
 
   useEffect(() => {
+    const handleExternalNavigation = (event: Event) => {
+      const customEvent = event as CustomEvent<{
+        section?: Section;
+      }>;
+
+      const section = customEvent.detail?.section;
+
+      if (!section) return;
+      if (!canAccessAdminSection(role, permissions, section)) return;
+
+      setMasterError(null);
+      setActive(section);
+      setSidebarOpen(false);
+    };
+
+    window.addEventListener("fitzone-admin-navigate", handleExternalNavigation);
+
+    return () => {
+      window.removeEventListener(
+        "fitzone-admin-navigate",
+        handleExternalNavigation,
+      );
+    };
+  }, [permissions, role]);
+
+  useEffect(() => {
     if (affiliateActive) setAffiliateOpen(true);
   }, [affiliateActive]);
 
@@ -393,13 +542,18 @@ export default function AdminPanel() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ password: masterPassword, section: safeActive }),
       });
-      const payload = (await response.json()) as { error?: string; unlockedSections?: string[] };
+      const payload = (await response.json()) as {
+        error?: string;
+        unlockedSections?: string[];
+      };
       if (!response.ok) {
         setMasterError(payload.error ?? "تعذر التحقق من كلمة المرور الرئيسية.");
         return;
       }
 
-      setUnlockedSections(Array.isArray(payload.unlockedSections) ? payload.unlockedSections : []);
+      setUnlockedSections(
+        Array.isArray(payload.unlockedSections) ? payload.unlockedSections : [],
+      );
       setMasterPassword("");
       setMasterError(null);
     } catch {
@@ -430,7 +584,9 @@ export default function AdminPanel() {
       >
         <div className="text-center">
           <div className="mb-3 text-3xl">⌛</div>
-          <div className="text-sm text-[#d7aabd]">جارٍ تحميل لوحة الإدارة...</div>
+          <div className="text-sm text-[#d7aabd]">
+            جارٍ تحميل لوحة الإدارة...
+          </div>
         </div>
       </div>
     );
@@ -444,7 +600,9 @@ export default function AdminPanel() {
       >
         <div className="text-center">
           <div className="mb-3 text-3xl">🔒</div>
-          <div className="text-sm text-[#d7aabd]">جارٍ التحقق من صلاحيات الدخول...</div>
+          <div className="text-sm text-[#d7aabd]">
+            جارٍ التحقق من صلاحيات الدخول...
+          </div>
         </div>
       </div>
     );
@@ -459,7 +617,12 @@ export default function AdminPanel() {
       dir="rtl"
       className="admin-theme flex min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top,rgba(255,140,190,0.22),transparent_34%),radial-gradient(circle_at_bottom_left,rgba(255,186,216,0.16),transparent_30%),linear-gradient(180deg,#2a0f1b_0%,#391320_48%,#4a1b2d_100%)] text-[#fff4f8] lg:h-screen"
     >
-      {sidebarOpen && <div className="fixed inset-0 z-30 bg-black/60 lg:hidden" onClick={() => setSidebarOpen(false)} />}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 z-30 bg-black/60 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
 
       <aside
         className={`fixed inset-y-0 right-0 z-40 flex w-72 flex-col border-l border-[rgba(255,188,219,0.16)] bg-[rgba(41,13,25,0.82)] backdrop-blur-xl transition-transform duration-300 ease-in-out lg:static ${
@@ -470,9 +633,14 @@ export default function AdminPanel() {
           <div className="flex items-center gap-1.5" dir="ltr">
             <span className="text-xl font-black text-red-500">FIT</span>
             <span className="text-xl font-black text-pink-300">ZONE</span>
-            <span className="rounded-full bg-pink-500/12 px-1.5 py-0.5 text-[10px] font-bold text-pink-200">ADMIN</span>
+            <span className="rounded-full bg-pink-500/12 px-1.5 py-0.5 text-[10px] font-bold text-pink-200">
+              ADMIN
+            </span>
           </div>
-          <button onClick={() => setSidebarOpen(false)} className="text-gray-500 transition-colors hover:text-white lg:hidden">
+          <button
+            onClick={() => setSidebarOpen(false)}
+            className="text-gray-500 transition-colors hover:text-white lg:hidden"
+          >
             ×
           </button>
         </div>
@@ -483,8 +651,12 @@ export default function AdminPanel() {
               {adminInitial}
             </div>
             <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-bold text-[#fff7fb]">{adminName}</div>
-              <div className="truncate text-xs text-[#d7aabd]">{adminEmail}</div>
+              <div className="truncate text-sm font-bold text-[#fff7fb]">
+                {adminName}
+              </div>
+              <div className="truncate text-xs text-[#d7aabd]">
+                {adminEmail}
+              </div>
             </div>
           </div>
         </div>
@@ -503,6 +675,11 @@ export default function AdminPanel() {
               <span className="flex items-center gap-3">
                 <span className="text-base">{item.icon}</span>
                 <span className="flex-1">{item.label}</span>
+                {item.id === "approvals" && approvalPendingCount > 0 ? (
+                  <span className="min-w-6 rounded-full bg-rose-500 px-2 py-0.5 text-center text-[10px] font-black text-white shadow-lg">
+                    {approvalPendingCount > 99 ? "99+" : approvalPendingCount}
+                  </span>
+                ) : null}
               </span>
             </button>
           ))}
@@ -521,7 +698,11 @@ export default function AdminPanel() {
                 <span className="flex items-center gap-3">
                   <span className="text-base">🏋️</span>
                   <span className="flex-1">إدارة الجيم</span>
-                  <span className={`text-xs transition-transform ${gymOpen ? "rotate-180" : ""}`}>⌄</span>
+                  <span
+                    className={`text-xs transition-transform ${gymOpen ? "rotate-180" : ""}`}
+                  >
+                    ⌄
+                  </span>
                 </span>
               </button>
               {gymOpen && (
@@ -561,7 +742,11 @@ export default function AdminPanel() {
                 <span className="flex items-center gap-3">
                   <span className="text-base">🛒</span>
                   <span className="flex-1">المتجر</span>
-                  <span className={`text-xs transition-transform ${storeOpen ? "rotate-180" : ""}`}>⌄</span>
+                  <span
+                    className={`text-xs transition-transform ${storeOpen ? "rotate-180" : ""}`}
+                  >
+                    ⌄
+                  </span>
                 </span>
               </button>
               {storeOpen && (
@@ -601,7 +786,11 @@ export default function AdminPanel() {
                 <span className="flex items-center gap-3">
                   <span className="text-base">📣</span>
                   <span className="flex-1">التسويق بالعمولة</span>
-                  <span className={`text-xs transition-transform ${affiliateOpen ? "rotate-180" : ""}`}>⌄</span>
+                  <span
+                    className={`text-xs transition-transform ${affiliateOpen ? "rotate-180" : ""}`}
+                  >
+                    ⌄
+                  </span>
                 </span>
               </button>
               {affiliateOpen && (
@@ -650,11 +839,16 @@ export default function AdminPanel() {
       <div className="flex flex-1 flex-col overflow-hidden">
         <header className="flex items-center justify-between border-b border-[#ffbcdb]/20 bg-[#14060d]/92 px-6 py-4 backdrop-blur-xl">
           <div className="flex items-center gap-3">
-            <button onClick={() => setSidebarOpen(true)} className="text-gray-400 transition-colors hover:text-white lg:hidden">
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="text-gray-400 transition-colors hover:text-white lg:hidden"
+            >
               ☰
             </button>
             <div>
-              <div className="text-lg font-black text-[#fff7fb]">{TITLES[safeActive]}</div>
+              <div className="text-lg font-black text-[#fff7fb]">
+                {TITLES[safeActive]}
+              </div>
               <div className="text-xs text-[#d7aabd]">فيت زون - بني سويف</div>
             </div>
           </div>
@@ -681,7 +875,21 @@ export default function AdminPanel() {
           ) : safeActive === "partners" ? (
             <Partners viewMode={role === "partner" ? "partner" : "admin"} />
           ) : safeActive === "settings" ? (
-            <Settings userRole={role ?? "staff"} permissions={permissions ?? []} />
+            <Settings
+              userRole={role ?? "staff"}
+              permissions={permissions ?? []}
+            />
+          ) : safeActive === "employees" ? (
+            <EmployeesHR
+              userRole={role ?? "staff"}
+              permissions={permissions ?? []}
+            />
+          ) : safeActive === "inventory" ? (
+            <Inventory
+              onNavigateSection={(section) =>
+                navigate(section)
+              }
+            />
           ) : (
             <ActiveSection />
           )}

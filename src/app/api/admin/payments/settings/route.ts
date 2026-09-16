@@ -1,3 +1,4 @@
+import { assertExternalSideEffectsAllowed } from "@/lib/staging-safety";
 import { NextResponse } from "next/server";
 import { requireAdminFeature, requireAdminMasterAccess } from "@/lib/admin-guard";
 import { db } from "@/lib/db";
@@ -235,6 +236,7 @@ export async function POST(req: Request) {
 
     if (issues.length === 0) {
       try {
+        assertExternalSideEffectsAllowed("Paymob admin validation");
         const response = await fetch("https://accept.paymob.com/api/auth/tokens", {
           method: "POST",
           headers: {

@@ -96,6 +96,30 @@ export function canStartRealtimeConnection(input: { enabled: boolean; state: str
 
 export const hasRealtimeResponseOutput = (audioStarted: boolean) => audioStarted;
 
+export function setRealtimeMicrophoneEnabled(
+  stream: MediaStream | null,
+  enabled: boolean,
+) {
+  stream?.getAudioTracks().forEach((track) => {
+    if (track.readyState === "live") track.enabled = enabled;
+  });
+}
+
+export function shouldCreateRealtimeResponseForSpeech(input: {
+  speechStartedAt: number;
+  speechStoppedAt: number;
+  responseActive: boolean;
+  minimumSpeechMs?: number;
+}) {
+  const minimumSpeechMs = input.minimumSpeechMs ?? 350;
+  return (
+    input.speechStartedAt > 0 &&
+    input.speechStoppedAt >= input.speechStartedAt &&
+    input.speechStoppedAt - input.speechStartedAt >= minimumSpeechMs &&
+    !input.responseActive
+  );
+}
+
 export const shouldShowMessageTts = (realtimeCallActive: boolean) => !realtimeCallActive;
 
 export type VoiceCapabilities = { voiceEnabled: boolean; realtimeEnabled: boolean; recorderEnabled: boolean; ttsEnabled: boolean };
@@ -183,7 +207,7 @@ export const realtimeTurnDetection = {
   threshold: 0.25,
   prefix_padding_ms: 500,
   silence_duration_ms: 900,
-  create_response: true,
+  create_response: false,
   // Keep the first release non-barge-in. Speaker echo must never cancel a reply.
   interrupt_response: false,
 } as const;
@@ -412,7 +436,11 @@ export default function LiveChatWidget() {
   const activeDataChannelRef = useRef<RTCDataChannel | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const speechStartedRef = useRef(false);
+  const speechStartedAtRef = useRef(0);
+  const realtimeResponseActiveRef = useRef(false);
+  const responseHadToolCallRef = useRef(false);
   const vadFallbackTimerRef = useRef<number | null>(null);
+  const assistantAudioCooldownTimerRef = useRef<number | null>(null);
   const remoteAudioPlayAttemptRef = useRef(false);
   const realtimeEventSequenceRef = useRef<string[]>([]);
   const realtimeSessionReadyRef = useRef(false);
@@ -746,6 +774,7 @@ export default function LiveChatWidget() {
           visitorName: name,
           visitorPhone: phone,
           lang,
+          inputMode: source,
         }),
       });
 
@@ -805,6 +834,13 @@ export default function LiveChatWidget() {
     realtimeChannelRef.current = null; activeDataChannelRef.current = null;
     realtimeAudioRef.current?.pause(); if (realtimeAudioRef.current) realtimeAudioRef.current.srcObject = null;
     speechStartedRef.current = false;
+    speechStartedAtRef.current = 0;
+    realtimeResponseActiveRef.current = false;
+    responseHadToolCallRef.current = false;
+    if (assistantAudioCooldownTimerRef.current) {
+      window.clearTimeout(assistantAudioCooldownTimerRef.current);
+      assistantAudioCooldownTimerRef.current = null;
+    }
     realtimeEventSequenceRef.current = [];
     realtimeSessionReadyRef.current = false;
     realtimeSessionUpdateSentRef.current = false;
@@ -880,6 +916,7 @@ export default function LiveChatWidget() {
       const stream = await microphonePromise; realtimeStreamRef.current = stream;
       const microphoneTrack = stream.getAudioTracks()[0];
       if (!microphoneTrack) throw new Error();
+      microphoneTrack.enabled = false;
       if (voiceDebugEnabled) console.info("[AI_COACH_REALTIME_MIC]", { readyState: microphoneTrack.readyState, enabled: microphoneTrack.enabled, muted: microphoneTrack.muted, ...microphoneTrack.getSettings() });
       setDebug({ trackState: microphoneTrack.readyState, trackMuted: microphoneTrack.muted });
       const playRemoteAudio = () => {
@@ -912,7 +949,14 @@ export default function LiveChatWidget() {
         if (data.type === "session.created") setRealtimeState("initializing");
         if (data.type === "session.updated") {
           realtimeSessionReadyRef.current = true;
-          setRealtimeState("listening");
+          if (
+            realtimePeerRef.current === peer &&
+            explicitUserConnectRef.current &&
+            microphoneTrack.readyState === "live"
+          ) {
+            microphoneTrack.enabled = true;
+            setRealtimeState("listening");
+          }
           const voiceSessionId = realtimeVoiceSessionIdRef.current;
           if (voiceSessionId && !realtimeHeartbeatTimerRef.current) {
             const heartbeat = () => fetch("/api/chat/voice/realtime/heartbeat", {
@@ -927,6 +971,7 @@ export default function LiveChatWidget() {
           }
         }
         if (data.type === "response.function_call_arguments.done" && data.name && data.call_id && realtimeSessionReadyRef.current) {
+          responseHadToolCallRef.current = true;
           let args: Record<string, unknown> = {}; try { args = JSON.parse(data.arguments ?? "{}"); } catch { /* server rejects malformed args */ }
           const toolResponse = await fetch("/api/chat/voice/realtime/tool", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId: id, voiceSessionId: realtimeVoiceSessionIdRef.current ?? undefined, name: data.name, arguments: args, lang }) });
           const toolData = await toolResponse.json().catch(() => ({})) as { result?: unknown; errorCode?: unknown };
@@ -959,24 +1004,91 @@ export default function LiveChatWidget() {
           // Tool results are applied through the Realtime response; never reload the full chat session here.
         }
         if (data.type === "input_audio_buffer.speech_started") {
-          // With non-barge-in VAD a short detection while output is playing is commonly speaker echo.
+          // Ignore likely speaker echo while assistant audio is playing.
           if (assistantAudioStartedRef.current) return;
           speechStartedRef.current = true;
+          speechStartedAtRef.current = Date.now();
           if (vadFallbackTimerRef.current) window.clearTimeout(vadFallbackTimerRef.current);
           setManualVoiceFallback(false);
           if (realtimeSessionReadyRef.current) setRealtimeState("listening");
         }
-        if (data.type === "input_audio_buffer.speech_stopped" && realtimeSessionReadyRef.current) setRealtimeState("thinking");
-        if (data.type === "response.created" && realtimeSessionReadyRef.current) { recordVoiceDiagnostic("responseCreateCount"); responseHasOutputRef.current = false; assistantAudioStartedRef.current = false; setRealtimeState("thinking"); }
+        if (data.type === "input_audio_buffer.speech_stopped" && realtimeSessionReadyRef.current) {
+          const shouldRespond = shouldCreateRealtimeResponseForSpeech({
+            speechStartedAt: speechStartedAtRef.current,
+            speechStoppedAt: Date.now(),
+            responseActive: realtimeResponseActiveRef.current,
+          });
+
+          speechStartedRef.current = false;
+          speechStartedAtRef.current = 0;
+
+          if (
+            shouldRespond &&
+            channel.readyState === "open" &&
+            !assistantAudioStartedRef.current
+          ) {
+            setRealtimeState("thinking");
+            channel.send(JSON.stringify({ type: "response.create" }));
+          } else if (!realtimeResponseActiveRef.current) {
+            setRealtimeState("listening");
+          }
+        }
+        if (data.type === "response.created" && realtimeSessionReadyRef.current) {
+          recordVoiceDiagnostic("responseCreateCount");
+          realtimeResponseActiveRef.current = true;
+          responseHasOutputRef.current = false;
+          responseHadToolCallRef.current = false;
+          assistantAudioStartedRef.current = false;
+          setRealtimeState("thinking");
+        }
         if ((data.type === "response.output_audio.delta" || data.type === "response.audio.delta") && realtimeSessionReadyRef.current) {
-          responseHasOutputRef.current = true; assistantAudioStartedRef.current = true; setRealtimeState("assistant_speaking"); void playRemoteAudio();
+          responseHasOutputRef.current = true;
+          assistantAudioStartedRef.current = true;
+          setRealtimeMicrophoneEnabled(realtimeStreamRef.current, false);
+          setRealtimeState("assistant_speaking");
+          void playRemoteAudio();
           const action = pendingUiActionsRef.current;
           if (action && !navigationPerformedRef.current) { navigationPerformedRef.current = true; pendingUiActionsRef.current = null; void dispatchCoachUiActions(action); }
         }
-        if (data.type === "response.done" && realtimeSessionReadyRef.current) {
+        if (
+          (data.type === "response.output_audio.done" || data.type === "response.audio.done") &&
+          realtimeSessionReadyRef.current
+        ) {
           assistantAudioStartedRef.current = false;
-          if (hasRealtimeResponseOutput(responseHasOutputRef.current)) setRealtimeState("listening");
-          else { setRealtimeState("error"); setError(t("سمعتك، لكن حصلت مشكلة وأنا بجهز الرد. جربي مرة ثانية.", "I heard you, but had trouble preparing the reply. Please try again.")); }
+
+          if (assistantAudioCooldownTimerRef.current) {
+            window.clearTimeout(assistantAudioCooldownTimerRef.current);
+          }
+
+          assistantAudioCooldownTimerRef.current = window.setTimeout(() => {
+            assistantAudioCooldownTimerRef.current = null;
+
+            if (
+              realtimeSessionReadyRef.current &&
+              explicitUserConnectRef.current &&
+              !realtimeResponseActiveRef.current
+            ) {
+              setRealtimeMicrophoneEnabled(realtimeStreamRef.current, true);
+              setRealtimeState("listening");
+            }
+          }, 650);
+        }
+
+        if (data.type === "response.done" && realtimeSessionReadyRef.current) {
+          realtimeResponseActiveRef.current = false;
+          if (
+            hasRealtimeResponseOutput(responseHasOutputRef.current) ||
+            responseHadToolCallRef.current
+          ) {
+            setRealtimeState("listening");
+          } else {
+            setRealtimeState("error");
+            setError(t(
+              "سمعتك، لكن حصلت مشكلة وأنا بجهز الرد. جربي مرة ثانية.",
+              "I heard you, but had trouble preparing the reply. Please try again."
+            ));
+          }
+          responseHadToolCallRef.current = false;
         }
         if (data.type === "error") {
           const error = data.error;
@@ -1030,7 +1142,17 @@ export default function LiveChatWidget() {
         data-tour="ai-coach"
         onClick={() => {
           setOpen((value) => { if (value) endRealtime(); return !value; });
-          ensureSession().catch(() => {});
+          void ensureSession()
+            .then((id) => {
+              if (!id) return;
+
+              return fetch("/api/analytics/ai-coach/open", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ sessionId: id }),
+              }).catch(() => null);
+            })
+            .catch(() => null);
         }}
         style={{
           position: "fixed",

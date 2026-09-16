@@ -1,4 +1,5 @@
 import webpush from "web-push";
+import { assertExternalSideEffectsAllowed } from "@/lib/staging-safety";
 
 const VAPID_PUBLIC_KEY  = process.env.VAPID_PUBLIC_KEY  ?? "";
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY ?? "";
@@ -28,6 +29,7 @@ export async function sendOnePush(
   payload: PushPayload,
 ): Promise<{ ok: boolean; expired: boolean }> {
   try {
+    assertExternalSideEffectsAllowed("Web Push");
     await webpush.sendNotification(
       { endpoint: sub.endpoint, keys: sub.keys },
       JSON.stringify(payload),

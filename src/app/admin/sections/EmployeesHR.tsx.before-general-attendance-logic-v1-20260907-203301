@@ -1,0 +1,1806 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { AdminCard, AdminEmptyState, AdminSectionShell } from "./shared";
+
+type EmploymentStatus = "active" | "inactive" | "on_leave" | "terminated";
+
+type Department = {
+  id: string;
+  code: string;
+  name: string;
+  nameEn: string | null;
+  description: string | null;
+  isActive: boolean;
+  sortOrder: number;
+  employeesCount?: number;
+};
+
+type Position = {
+  id: string;
+  code: string;
+  name: string;
+  nameEn: string | null;
+  description: string | null;
+  isActive: boolean;
+  sortOrder: number;
+  employeesCount?: number;
+};
+
+type Employee = {
+  id: string;
+  employeeCode: string;
+  name: string;
+  phone: string | null;
+  avatar: string | null;
+
+  userId: string | null;
+  hasLoginAccount: boolean;
+
+  departmentId: string | null;
+  positionId: string | null;
+
+  hireDate: string | null;
+  employmentEndDate: string | null;
+  employmentStatus: EmploymentStatus;
+  payrollEnabled: boolean;
+  notes: string | null;
+
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    phone: string | null;
+    role: string;
+    jobTitle: string | null;
+    adminAccess: boolean;
+    isActive: boolean;
+    avatar: string | null;
+  } | null;
+
+  department: Department | null;
+  position: Position | null;
+
+  createdAt: string;
+  updatedAt: string;
+};
+
+type EmployeeForm = {
+  id?: string;
+
+  employeeCode: string;
+  name: string;
+  phone: string;
+  avatar: string;
+
+  departmentId: string;
+  positionId: string;
+
+  hireDate: string;
+  employmentEndDate: string;
+  employmentStatus: EmploymentStatus;
+  payrollEnabled: boolean;
+  notes: string;
+};
+
+type TrainerLinkRow = {
+  id: string;
+  name: string;
+  nameEn: string | null;
+  specialty: string;
+  specialtyEn: string | null;
+  image: string | null;
+  active: boolean;
+  employeeId: string | null;
+  linked: boolean;
+  employee: {
+    id: string;
+    employeeCode: string;
+    name: string;
+    phone: string | null;
+    employmentStatus: string;
+    payrollEnabled: boolean;
+    department: {
+      id: string;
+      code: string;
+      name: string;
+      isActive: boolean;
+    } | null;
+    position: {
+      id: string;
+      code: string;
+      name: string;
+      isActive: boolean;
+    } | null;
+  } | null;
+};
+
+type TrainerLinkForm = {
+  trainerId: string;
+  employeeId: string;
+};
+
+type CatalogKind = "department" | "position";
+
+type CatalogForm = {
+  kind: CatalogKind;
+  id?: string;
+  code: string;
+  name: string;
+  nameEn: string;
+  description: string;
+  sortOrder: string;
+  isActive: boolean;
+};
+
+const EMPTY_CATALOG_FORM = (kind: CatalogKind): CatalogForm => ({
+  kind,
+  code: "",
+  name: "",
+  nameEn: "",
+  description: "",
+  sortOrder: "0",
+  isActive: true,
+});
+
+const EMPTY_FORM: EmployeeForm = {
+  employeeCode: "",
+  name: "",
+  phone: "",
+  avatar: "",
+  departmentId: "",
+  positionId: "",
+  hireDate: "",
+  employmentEndDate: "",
+  employmentStatus: "active",
+  payrollEnabled: true,
+  notes: "",
+};
+
+const STATUS_LABELS: Record<EmploymentStatus, string> = {
+  active: "نشط",
+  inactive: "غير نشط",
+  on_leave: "إجازة",
+  terminated: "منتهي",
+};
+
+function dateInputValue(value: string | null | undefined) {
+  if (!value) return "";
+  return value.slice(0, 10);
+}
+
+async function readJson(response: Response) {
+  return response.json().catch(() => ({}));
+}
+
+export default function EmployeesHR() {
+  const [activeTab, setActiveTab] = useState<
+    "employees" | "catalogs" | "trainer-links"
+  >("employees");
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [positions, setPositions] = useState<Position[]>([]);
+
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState("");
+  const [departmentId, setDepartmentId] = useState("");
+  const [positionId, setPositionId] = useState("");
+
+  const [form, setForm] = useState<EmployeeForm | null>(null);
+  const [catalogForm, setCatalogForm] = useState<CatalogForm | null>(null);
+  const [trainerLinks, setTrainerLinks] = useState<TrainerLinkRow[]>([]);
+  const [trainerLinkForm, setTrainerLinkForm] =
+    useState<TrainerLinkForm | null>(null);
+  const [unlinkTrainerId, setUnlinkTrainerId] = useState<string | null>(null);
+  const [unlinkReason, setUnlinkReason] = useState("");
+
+  const activeDepartments = useMemo(
+    () => departments.filter((item) => item.isActive),
+    [departments],
+  );
+
+  const activePositions = useMemo(
+    () => positions.filter((item) => item.isActive),
+    [positions],
+  );
+
+  const loadCatalogs = useCallback(async () => {
+    const [departmentResponse, positionResponse] = await Promise.all([
+      fetch("/api/admin/departments", { cache: "no-store" }),
+      fetch("/api/admin/positions", { cache: "no-store" }),
+    ]);
+
+    const departmentPayload = await readJson(departmentResponse);
+    const positionPayload = await readJson(positionResponse);
+
+    if (!departmentResponse.ok) {
+      throw new Error(departmentPayload.error || "تعذر تحميل الأقسام.");
+    }
+
+    if (!positionResponse.ok) {
+      throw new Error(positionPayload.error || "تعذر تحميل المسميات الوظيفية.");
+    }
+
+    setDepartments(
+      Array.isArray(departmentPayload.departments)
+        ? departmentPayload.departments
+        : [],
+    );
+
+    setPositions(
+      Array.isArray(positionPayload.positions) ? positionPayload.positions : [],
+    );
+  }, []);
+
+  const loadTrainerLinks = useCallback(async () => {
+    const response = await fetch("/api/admin/employees/trainer-link", {
+      cache: "no-store",
+    });
+
+    const payload = await readJson(response);
+
+    if (!response.ok) {
+      throw new Error(payload.error || "تعذر تحميل روابط المدربين.");
+    }
+
+    setTrainerLinks(Array.isArray(payload.trainers) ? payload.trainers : []);
+  }, []);
+
+  const loadEmployees = useCallback(async () => {
+    const params = new URLSearchParams();
+
+    if (search.trim()) {
+      params.set("search", search.trim());
+    }
+
+    if (status) {
+      params.set("status", status);
+    }
+
+    if (departmentId) {
+      params.set("departmentId", departmentId);
+    }
+
+    if (positionId) {
+      params.set("positionId", positionId);
+    }
+
+    const response = await fetch(`/api/admin/employees?${params.toString()}`, {
+      cache: "no-store",
+    });
+
+    const payload = await readJson(response);
+
+    if (!response.ok) {
+      throw new Error(payload.error || "تعذر تحميل الموظفين.");
+    }
+
+    setEmployees(Array.isArray(payload.employees) ? payload.employees : []);
+  }, [search, status, departmentId, positionId]);
+
+  const reload = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      await Promise.all([loadCatalogs(), loadEmployees(), loadTrainerLinks()]);
+    } catch (loadError) {
+      setError(
+        loadError instanceof Error
+          ? loadError.message
+          : "تعذر تحميل بيانات الموارد البشرية.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [loadCatalogs, loadEmployees, loadTrainerLinks]);
+
+  useEffect(() => {
+    void reload();
+  }, [reload]);
+
+  const openCreate = () => {
+    setError(null);
+    setMessage(null);
+    setForm({ ...EMPTY_FORM });
+  };
+
+  const openEdit = (employee: Employee) => {
+    setError(null);
+    setMessage(null);
+
+    setForm({
+      id: employee.id,
+
+      employeeCode: employee.employeeCode,
+      name: employee.name,
+      phone: employee.phone ?? "",
+      avatar: employee.avatar ?? "",
+
+      departmentId: employee.departmentId ?? "",
+      positionId: employee.positionId ?? "",
+
+      hireDate: dateInputValue(employee.hireDate),
+      employmentEndDate: dateInputValue(employee.employmentEndDate),
+      employmentStatus: employee.employmentStatus,
+      payrollEnabled: employee.payrollEnabled,
+      notes: employee.notes ?? "",
+    });
+  };
+
+  const saveEmployee = async () => {
+    if (!form) return;
+
+    if (!form.name.trim()) {
+      setError("اسم الموظف مطلوب.");
+      return;
+    }
+
+    if (!form.id && !form.employeeCode.trim()) {
+      setError("كود الموظف مطلوب.");
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+    setMessage(null);
+
+    try {
+      const isEdit = Boolean(form.id);
+
+      const body: Record<string, unknown> = {
+        name: form.name.trim(),
+        phone: form.phone.trim() || null,
+        avatar: form.avatar.trim() || null,
+
+        departmentId: form.departmentId || null,
+        positionId: form.positionId || null,
+
+        hireDate: form.hireDate || null,
+        employmentEndDate: form.employmentEndDate || null,
+
+        employmentStatus: form.employmentStatus,
+        payrollEnabled: form.payrollEnabled,
+        notes: form.notes.trim() || null,
+      };
+
+      if (isEdit) {
+        body.id = form.id;
+      } else {
+        body.employeeCode = form.employeeCode.trim();
+      }
+
+      const response = await fetch("/api/admin/employees", {
+        method: isEdit ? "PATCH" : "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      });
+
+      const payload = await readJson(response);
+
+      if (!response.ok) {
+        throw new Error(
+          payload.error ||
+            (isEdit ? "تعذر تحديث ملف الموظف." : "تعذر إنشاء ملف الموظف."),
+        );
+      }
+
+      setForm(null);
+      setMessage(isEdit ? "تم تحديث ملف الموظف." : "تم إنشاء ملف الموظف.");
+
+      await loadEmployees();
+    } catch (saveError) {
+      setError(
+        saveError instanceof Error ? saveError.message : "تعذر حفظ ملف الموظف.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openTrainerLink = (trainer: TrainerLinkRow) => {
+    setError(null);
+    setMessage(null);
+
+    setTrainerLinkForm({
+      trainerId: trainer.id,
+      employeeId: trainer.employeeId ?? "",
+    });
+  };
+
+  const saveTrainerLink = async () => {
+    if (!trainerLinkForm) return;
+
+    if (!trainerLinkForm.employeeId) {
+      setError("اختر الموظف المطلوب ربطه.");
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+    setMessage(null);
+
+    try {
+      const response = await fetch("/api/admin/employees/trainer-link", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          trainerId: trainerLinkForm.trainerId,
+          employeeId: trainerLinkForm.employeeId,
+        }),
+      });
+
+      const payload = await readJson(response);
+
+      if (!response.ok) {
+        throw new Error(payload.error || "تعذر ربط المدرب بالموظف.");
+      }
+
+      setTrainerLinkForm(null);
+      setMessage("تم حفظ ربط المدرب بالموظف.");
+
+      await loadTrainerLinks();
+    } catch (linkError) {
+      setError(
+        linkError instanceof Error ? linkError.message : "تعذر حفظ الربط.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const confirmUnlinkTrainer = async () => {
+    if (!unlinkTrainerId) return;
+
+    if (unlinkReason.trim().length < 3) {
+      setError("سبب إلغاء الربط مطلوب، 3 أحرف على الأقل.");
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+    setMessage(null);
+
+    try {
+      const response = await fetch("/api/admin/employees/trainer-link", {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          trainerId: unlinkTrainerId,
+          reason: unlinkReason.trim(),
+        }),
+      });
+
+      const payload = await readJson(response);
+
+      if (!response.ok) {
+        throw new Error(payload.error || "تعذر إلغاء الربط.");
+      }
+
+      setUnlinkTrainerId(null);
+      setUnlinkReason("");
+      setMessage("تم إلغاء ربط المدرب بالموظف.");
+
+      await loadTrainerLinks();
+    } catch (unlinkError) {
+      setError(
+        unlinkError instanceof Error
+          ? unlinkError.message
+          : "تعذر إلغاء الربط.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openCatalogCreate = (kind: CatalogKind) => {
+    setError(null);
+    setMessage(null);
+    setCatalogForm(EMPTY_CATALOG_FORM(kind));
+  };
+
+  const openCatalogEdit = (kind: CatalogKind, item: Department | Position) => {
+    setError(null);
+    setMessage(null);
+
+    setCatalogForm({
+      kind,
+      id: item.id,
+      code: item.code,
+      name: item.name,
+      nameEn: item.nameEn ?? "",
+      description: item.description ?? "",
+      sortOrder: String(item.sortOrder ?? 0),
+      isActive: item.isActive,
+    });
+  };
+
+  const saveCatalog = async () => {
+    if (!catalogForm) return;
+
+    if (!catalogForm.name.trim()) {
+      setError(
+        catalogForm.kind === "department"
+          ? "اسم القسم مطلوب."
+          : "اسم المسمى الوظيفي مطلوب.",
+      );
+      return;
+    }
+
+    if (!catalogForm.id && !catalogForm.code.trim()) {
+      setError(
+        catalogForm.kind === "department"
+          ? "كود القسم مطلوب."
+          : "كود المسمى الوظيفي مطلوب.",
+      );
+      return;
+    }
+
+    const numericSortOrder = Number(catalogForm.sortOrder);
+
+    if (!Number.isInteger(numericSortOrder)) {
+      setError("الترتيب يجب أن يكون رقمًا صحيحًا.");
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+    setMessage(null);
+
+    try {
+      const isEdit = Boolean(catalogForm.id);
+      const endpoint =
+        catalogForm.kind === "department"
+          ? "/api/admin/departments"
+          : "/api/admin/positions";
+
+      const body: Record<string, unknown> = {
+        name: catalogForm.name.trim(),
+        nameEn: catalogForm.nameEn.trim() || null,
+        description: catalogForm.description.trim() || null,
+        sortOrder: numericSortOrder,
+        isActive: catalogForm.isActive,
+      };
+
+      if (isEdit) {
+        body.id = catalogForm.id;
+      } else {
+        body.code = catalogForm.code.trim();
+      }
+
+      const response = await fetch(endpoint, {
+        method: isEdit ? "PATCH" : "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      });
+
+      const payload = await readJson(response);
+
+      if (!response.ok) {
+        throw new Error(payload.error || "تعذر حفظ البيانات.");
+      }
+
+      setCatalogForm(null);
+
+      setMessage(
+        catalogForm.kind === "department"
+          ? isEdit
+            ? "تم تحديث القسم."
+            : "تم إنشاء القسم."
+          : isEdit
+            ? "تم تحديث المسمى الوظيفي."
+            : "تم إنشاء المسمى الوظيفي.",
+      );
+
+      await loadCatalogs();
+    } catch (catalogError) {
+      setError(
+        catalogError instanceof Error
+          ? catalogError.message
+          : "تعذر حفظ البيانات.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <AdminSectionShell
+      title="الموظفون والموارد البشرية"
+      subtitle="ملفات الموظفين المستقلة عن حسابات الدخول، مع الأقسام والمسميات والحالة الوظيفية."
+      actions={
+        activeTab === "employees" ? (
+          <button
+            type="button"
+            onClick={openCreate}
+            className="rounded-xl bg-pink-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-pink-500"
+          >
+            + إضافة موظف
+          </button>
+        ) : null
+      }
+    >
+      <div className="space-y-5">
+        <div className="flex flex-wrap gap-2 border-b border-white/10 pb-2">
+          <button
+            type="button"
+            onClick={() => setActiveTab("employees")}
+            className={`rounded-xl px-4 py-2 text-sm font-bold ${
+              activeTab === "employees"
+                ? "bg-pink-600 text-white"
+                : "bg-white/5 text-gray-400 hover:text-white"
+            }`}
+          >
+            الموظفون
+          </button>
+
+          <button
+            type="button"
+            disabled
+            className="rounded-xl bg-white/5 px-4 py-2 text-sm font-bold text-gray-500"
+          >
+            الحضور العام
+          </button>
+
+          <button
+            type="button"
+            disabled
+            className="rounded-xl bg-white/5 px-4 py-2 text-sm font-bold text-gray-500"
+          >
+            حضور المدربين للحصص
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab("catalogs")}
+            className={`rounded-xl px-4 py-2 text-sm font-bold ${
+              activeTab === "catalogs"
+                ? "bg-pink-600 text-white"
+                : "bg-white/5 text-gray-400 hover:text-white"
+            }`}
+          >
+            الأقسام والمسميات
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab("trainer-links")}
+            className={`rounded-xl px-4 py-2 text-sm font-bold ${
+              activeTab === "trainer-links"
+                ? "bg-pink-600 text-white"
+                : "bg-white/5 text-gray-400 hover:text-white"
+            }`}
+          >
+            ربط المدربين
+          </button>
+        </div>
+
+        {error && (
+          <div className="rounded-xl border border-red-500/20 bg-red-950/30 px-4 py-3 text-sm font-bold text-red-300">
+            {error}
+          </div>
+        )}
+
+        {message && (
+          <div className="rounded-xl border border-emerald-500/20 bg-emerald-950/30 px-4 py-3 text-sm font-bold text-emerald-300">
+            {message}
+          </div>
+        )}
+
+        {activeTab === "employees" && (
+          <>
+            <AdminCard>
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                <input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      void loadEmployees();
+                    }
+                  }}
+                  placeholder="بحث بالاسم أو الكود أو الهاتف..."
+                  className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none placeholder:text-gray-600"
+                />
+
+                <select
+                  value={status}
+                  onChange={(event) => setStatus(event.target.value)}
+                  className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white"
+                >
+                  <option value="">كل الحالات</option>
+                  <option value="active">نشط</option>
+                  <option value="inactive">غير نشط</option>
+                  <option value="on_leave">إجازة</option>
+                  <option value="terminated">منتهي</option>
+                </select>
+
+                <select
+                  value={departmentId}
+                  onChange={(event) => setDepartmentId(event.target.value)}
+                  className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white"
+                >
+                  <option value="">كل الأقسام</option>
+                  {departments.map((department) => (
+                    <option key={department.id} value={department.id}>
+                      {department.name}
+                      {!department.isActive ? " - غير نشط" : ""}
+                    </option>
+                  ))}
+                </select>
+
+                <select
+                  value={positionId}
+                  onChange={(event) => setPositionId(event.target.value)}
+                  className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white"
+                >
+                  <option value="">كل المسميات</option>
+                  {positions.map((position) => (
+                    <option key={position.id} value={position.id}>
+                      {position.name}
+                      {!position.isActive ? " - غير نشط" : ""}
+                    </option>
+                  ))}
+                </select>
+
+                <button
+                  type="button"
+                  onClick={() => void loadEmployees()}
+                  className="rounded-xl bg-gray-800 px-4 py-2 text-sm font-bold text-gray-200 hover:bg-gray-700"
+                >
+                  تطبيق الفلاتر
+                </button>
+              </div>
+            </AdminCard>
+
+            {loading ? (
+              <div className="py-12 text-center text-sm text-gray-500">
+                جارٍ تحميل الموظفين...
+              </div>
+            ) : employees.length === 0 ? (
+              <AdminEmptyState
+                title="لا توجد ملفات موظفين"
+                description="يمكنك إنشاء أول ملف موظف من زر إضافة موظف."
+              />
+            ) : (
+              <div className="overflow-x-auto rounded-2xl border border-white/10">
+                <table className="w-full min-w-[1100px] text-right text-sm">
+                  <thead className="border-b border-white/10 bg-white/5 text-xs text-gray-400">
+                    <tr>
+                      <th className="px-4 py-3">الموظف</th>
+                      <th className="px-4 py-3">الكود</th>
+                      <th className="px-4 py-3">القسم</th>
+                      <th className="px-4 py-3">المسمى</th>
+                      <th className="px-4 py-3">تاريخ التعيين</th>
+                      <th className="px-4 py-3">الحالة</th>
+                      <th className="px-4 py-3">الرواتب</th>
+                      <th className="px-4 py-3">حساب دخول</th>
+                      <th className="px-4 py-3"></th>
+                    </tr>
+                  </thead>
+
+                  <tbody className="divide-y divide-white/5">
+                    {employees.map((employee) => (
+                      <tr key={employee.id} className="hover:bg-white/[0.03]">
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-3">
+                            {employee.avatar ? (
+                              <img
+                                src={employee.avatar}
+                                alt=""
+                                className="h-10 w-10 rounded-full object-cover"
+                              />
+                            ) : (
+                              <div className="grid h-10 w-10 place-items-center rounded-full bg-pink-950/50 text-sm font-black text-pink-300">
+                                {employee.name.slice(0, 1)}
+                              </div>
+                            )}
+
+                            <div>
+                              <div className="font-bold text-white">
+                                {employee.name}
+                              </div>
+
+                              <div className="text-xs text-gray-500">
+                                {employee.phone || "بدون هاتف"}
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+
+                        <td className="px-4 py-3 font-mono text-xs font-bold text-pink-300">
+                          {employee.employeeCode}
+                        </td>
+
+                        <td className="px-4 py-3 text-gray-300">
+                          {employee.department?.name ?? "—"}
+                        </td>
+
+                        <td className="px-4 py-3 text-gray-300">
+                          {employee.position?.name ?? "—"}
+                        </td>
+
+                        <td className="px-4 py-3 text-gray-400">
+                          {employee.hireDate
+                            ? employee.hireDate.slice(0, 10)
+                            : "—"}
+                        </td>
+
+                        <td className="px-4 py-3">
+                          <span
+                            className={`rounded-full px-2 py-1 text-xs font-bold ${
+                              employee.employmentStatus === "active"
+                                ? "bg-emerald-900/30 text-emerald-300"
+                                : employee.employmentStatus === "on_leave"
+                                  ? "bg-yellow-900/30 text-yellow-300"
+                                  : employee.employmentStatus === "terminated"
+                                    ? "bg-red-900/30 text-red-300"
+                                    : "bg-gray-800 text-gray-400"
+                            }`}
+                          >
+                            {STATUS_LABELS[employee.employmentStatus]}
+                          </span>
+                        </td>
+
+                        <td className="px-4 py-3">
+                          {employee.payrollEnabled ? (
+                            <span className="text-emerald-300">مفعل</span>
+                          ) : (
+                            <span className="text-gray-500">غير مفعل</span>
+                          )}
+                        </td>
+
+                        <td className="px-4 py-3">
+                          {employee.hasLoginAccount ? (
+                            <div>
+                              <div className="font-bold text-blue-300">
+                                مرتبط
+                              </div>
+
+                              <div className="max-w-[180px] truncate text-xs text-gray-500">
+                                {employee.user?.email ?? "—"}
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-gray-500">بدون Login</span>
+                          )}
+                        </td>
+
+                        <td className="px-4 py-3">
+                          <button
+                            type="button"
+                            onClick={() => openEdit(employee)}
+                            className="rounded-lg bg-white/5 px-3 py-1.5 text-xs font-bold text-pink-300 hover:bg-white/10"
+                          >
+                            تعديل
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        )}
+
+        {activeTab === "catalogs" && (
+          <div className="grid gap-5 xl:grid-cols-2">
+            <AdminCard>
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="font-black text-white">الأقسام</h3>
+                  <p className="mt-1 text-xs text-gray-500">
+                    الأقسام التنظيمية للموظفين.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => openCatalogCreate("department")}
+                  className="rounded-xl bg-pink-600 px-3 py-2 text-xs font-bold text-white hover:bg-pink-500"
+                >
+                  + قسم
+                </button>
+              </div>
+
+              {departments.length === 0 ? (
+                <div className="py-8 text-center text-sm text-gray-500">
+                  لا توجد أقسام.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {departments.map((department) => (
+                    <div
+                      key={department.id}
+                      className="rounded-xl border border-white/10 bg-black/15 p-3"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-bold text-white">
+                              {department.name}
+                            </span>
+
+                            <span className="font-mono text-[11px] text-pink-300">
+                              {department.code}
+                            </span>
+
+                            {!department.isActive && (
+                              <span className="rounded-full bg-gray-800 px-2 py-0.5 text-[10px] font-bold text-gray-400">
+                                غير نشط
+                              </span>
+                            )}
+                          </div>
+
+                          {department.nameEn && (
+                            <div className="mt-1 text-xs text-gray-500">
+                              {department.nameEn}
+                            </div>
+                          )}
+
+                          {department.description && (
+                            <div className="mt-2 text-xs leading-5 text-gray-400">
+                              {department.description}
+                            </div>
+                          )}
+
+                          <div className="mt-2 text-[11px] text-gray-600">
+                            الموظفون: {department.employeesCount ?? 0}
+                            {" · "}
+                            الترتيب: {department.sortOrder}
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            openCatalogEdit("department", department)
+                          }
+                          className="rounded-lg bg-white/5 px-3 py-1.5 text-xs font-bold text-pink-300 hover:bg-white/10"
+                        >
+                          تعديل
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </AdminCard>
+
+            <AdminCard>
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="font-black text-white">المسميات الوظيفية</h3>
+                  <p className="mt-1 text-xs text-gray-500">
+                    المسميات مستقلة عن الأقسام.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => openCatalogCreate("position")}
+                  className="rounded-xl bg-pink-600 px-3 py-2 text-xs font-bold text-white hover:bg-pink-500"
+                >
+                  + مسمى
+                </button>
+              </div>
+
+              {positions.length === 0 ? (
+                <div className="py-8 text-center text-sm text-gray-500">
+                  لا توجد مسميات وظيفية.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {positions.map((position) => (
+                    <div
+                      key={position.id}
+                      className="rounded-xl border border-white/10 bg-black/15 p-3"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-bold text-white">
+                              {position.name}
+                            </span>
+
+                            <span className="font-mono text-[11px] text-pink-300">
+                              {position.code}
+                            </span>
+
+                            {!position.isActive && (
+                              <span className="rounded-full bg-gray-800 px-2 py-0.5 text-[10px] font-bold text-gray-400">
+                                غير نشط
+                              </span>
+                            )}
+                          </div>
+
+                          {position.nameEn && (
+                            <div className="mt-1 text-xs text-gray-500">
+                              {position.nameEn}
+                            </div>
+                          )}
+
+                          {position.description && (
+                            <div className="mt-2 text-xs leading-5 text-gray-400">
+                              {position.description}
+                            </div>
+                          )}
+
+                          <div className="mt-2 text-[11px] text-gray-600">
+                            الموظفون: {position.employeesCount ?? 0}
+                            {" · "}
+                            الترتيب: {position.sortOrder}
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => openCatalogEdit("position", position)}
+                          className="rounded-lg bg-white/5 px-3 py-1.5 text-xs font-bold text-pink-300 hover:bg-white/10"
+                        >
+                          تعديل
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </AdminCard>
+          </div>
+        )}
+
+        {activeTab === "trainer-links" && (
+          <AdminCard>
+            <div className="mb-5">
+              <h3 className="font-black text-white">
+                ربط المدربين بملفات الموظفين
+              </h3>
+
+              <p className="mt-1 text-xs leading-6 text-gray-500">
+                الربط يدوي وصريح فقط. لا يتم أي ربط تلقائي بالاسم أو بحساب
+                الدخول.
+              </p>
+            </div>
+
+            {trainerLinks.length === 0 ? (
+              <div className="py-10 text-center text-sm text-gray-500">
+                لا توجد مدربين.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {trainerLinks.map((trainer) => (
+                  <div
+                    key={trainer.id}
+                    className="rounded-2xl border border-white/10 bg-black/15 p-4"
+                  >
+                    <div className="flex flex-col gap-4 xl:flex-row xl:items-center">
+                      <div className="flex min-w-[240px] items-center gap-3">
+                        {trainer.image ? (
+                          <img
+                            src={trainer.image}
+                            alt=""
+                            className="h-12 w-12 rounded-full object-cover"
+                          />
+                        ) : (
+                          <div className="grid h-12 w-12 place-items-center rounded-full bg-pink-950/40 font-black text-pink-300">
+                            {trainer.name.slice(0, 1)}
+                          </div>
+                        )}
+
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-black text-white">
+                              {trainer.name}
+                            </span>
+
+                            {!trainer.active && (
+                              <span className="rounded-full bg-gray-800 px-2 py-0.5 text-[10px] font-bold text-gray-400">
+                                غير نشط
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="mt-1 text-xs text-gray-500">
+                            {trainer.specialty}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex-1">
+                        {trainer.employee ? (
+                          <div className="rounded-xl border border-emerald-500/15 bg-emerald-950/20 px-4 py-3">
+                            <div className="text-[11px] font-bold text-emerald-400">
+                              مرتبط بملف موظف
+                            </div>
+
+                            <div className="mt-1 font-bold text-white">
+                              {trainer.employee.name}
+                            </div>
+
+                            <div className="mt-1 text-xs text-gray-500">
+                              {trainer.employee.employeeCode}
+
+                              {trainer.employee.department?.name
+                                ? ` · ${trainer.employee.department.name}`
+                                : ""}
+
+                              {trainer.employee.position?.name
+                                ? ` · ${trainer.employee.position.name}`
+                                : ""}
+                            </div>
+
+                            <div className="mt-1 text-[11px] text-gray-600">
+                              Payroll:{" "}
+                              {trainer.employee.payrollEnabled
+                                ? "مفعل"
+                                : "غير مفعل"}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="rounded-xl border border-yellow-500/15 bg-yellow-950/10 px-4 py-3 text-sm font-bold text-yellow-300">
+                            غير مرتبط بملف موظف
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex shrink-0 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => openTrainerLink(trainer)}
+                          className="rounded-xl bg-pink-600 px-3 py-2 text-xs font-bold text-white hover:bg-pink-500"
+                        >
+                          {trainer.linked ? "تغيير الربط" : "ربط بموظف"}
+                        </button>
+
+                        {trainer.linked && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setError(null);
+                              setMessage(null);
+                              setUnlinkTrainerId(trainer.id);
+                              setUnlinkReason("");
+                            }}
+                            className="rounded-xl border border-red-500/20 px-3 py-2 text-xs font-bold text-red-300 hover:bg-red-950/20"
+                          >
+                            إلغاء الربط
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </AdminCard>
+        )}
+      </div>
+
+      {trainerLinkForm && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/75 p-4">
+          <div className="mx-auto my-10 w-full max-w-lg rounded-3xl border border-white/10 bg-[#180b12] p-6 shadow-2xl">
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-black text-white">
+                  ربط المدرب بملف موظف
+                </h3>
+
+                <p className="mt-1 text-xs leading-6 text-gray-500">
+                  العملية لا تنشئ أو تعدل حساب Login أو Role أو صلاحيات.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setTrainerLinkForm(null)}
+                className="text-xl text-gray-500 hover:text-white"
+              >
+                ×
+              </button>
+            </div>
+
+            <label className="block space-y-1">
+              <span className="text-xs font-bold text-gray-400">
+                ملف الموظف
+              </span>
+
+              <select
+                value={trainerLinkForm.employeeId}
+                onChange={(event) =>
+                  setTrainerLinkForm({
+                    ...trainerLinkForm,
+                    employeeId: event.target.value,
+                  })
+                }
+                className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white"
+              >
+                <option value="">اختر الموظف</option>
+
+                {employees
+                  .filter((employee) => {
+                    const claimedByAnotherTrainer = trainerLinks.some(
+                      (trainer) =>
+                        trainer.employeeId === employee.id &&
+                        trainer.id !== trainerLinkForm.trainerId,
+                    );
+
+                    return !claimedByAnotherTrainer;
+                  })
+                  .map((employee) => (
+                    <option key={employee.id} value={employee.id}>
+                      {employee.employeeCode} - {employee.name}
+                    </option>
+                  ))}
+              </select>
+            </label>
+
+            <div className="mt-3 rounded-xl border border-blue-500/15 bg-blue-950/20 px-4 py-3 text-xs leading-6 text-blue-300">
+              الموظف المرتبط بمدرب آخر لن يظهر في الاختيارات. والـbackend يعيد
+              التحقق من ذلك عند الحفظ.
+            </div>
+
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={() => void saveTrainerLink()}
+                disabled={saving}
+                className="flex-1 rounded-xl bg-pink-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-pink-500 disabled:opacity-50"
+              >
+                {saving ? "جارٍ الحفظ..." : "حفظ الربط"}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setTrainerLinkForm(null)}
+                disabled={saving}
+                className="flex-1 rounded-xl border border-white/10 px-4 py-2.5 text-sm font-bold text-gray-300 hover:bg-white/5"
+              >
+                إلغاء
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {unlinkTrainerId && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/75 p-4">
+          <div className="mx-auto my-10 w-full max-w-lg rounded-3xl border border-white/10 bg-[#180b12] p-6 shadow-2xl">
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-black text-white">
+                  إلغاء ربط المدرب
+                </h3>
+
+                <p className="mt-1 text-xs leading-6 text-gray-500">
+                  السبب إلزامي، ويتم تسجيل فك الربط في Audit Log.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setUnlinkTrainerId(null);
+                  setUnlinkReason("");
+                }}
+                className="text-xl text-gray-500 hover:text-white"
+              >
+                ×
+              </button>
+            </div>
+
+            <label className="block space-y-1">
+              <span className="text-xs font-bold text-gray-400">
+                سبب إلغاء الربط
+              </span>
+
+              <textarea
+                rows={4}
+                value={unlinkReason}
+                onChange={(event) => setUnlinkReason(event.target.value)}
+                placeholder="مثال: تم ربط المدرب بملف موظف غير صحيح"
+                className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white"
+              />
+            </label>
+
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={() => void confirmUnlinkTrainer()}
+                disabled={saving}
+                className="flex-1 rounded-xl bg-red-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-red-600 disabled:opacity-50"
+              >
+                {saving ? "جارٍ التنفيذ..." : "تأكيد إلغاء الربط"}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setUnlinkTrainerId(null);
+                  setUnlinkReason("");
+                }}
+                disabled={saving}
+                className="flex-1 rounded-xl border border-white/10 px-4 py-2.5 text-sm font-bold text-gray-300 hover:bg-white/5"
+              >
+                إلغاء
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {catalogForm && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/75 p-4">
+          <div className="mx-auto my-8 w-full max-w-xl rounded-3xl border border-white/10 bg-[#180b12] p-6 shadow-2xl">
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-black text-white">
+                  {catalogForm.kind === "department"
+                    ? catalogForm.id
+                      ? "تعديل القسم"
+                      : "إضافة قسم"
+                    : catalogForm.id
+                      ? "تعديل المسمى الوظيفي"
+                      : "إضافة مسمى وظيفي"}
+                </h3>
+
+                <p className="mt-1 text-xs text-gray-500">
+                  الكود ثابت بعد الإنشاء ولا يتم حذف السجل، ويمكن إيقافه بدلًا
+                  من ذلك.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setCatalogForm(null)}
+                className="text-xl text-gray-500 hover:text-white"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <label className="block space-y-1">
+                <span className="text-xs font-bold text-gray-400">الكود</span>
+
+                <input
+                  value={catalogForm.code}
+                  disabled={Boolean(catalogForm.id)}
+                  onChange={(event) =>
+                    setCatalogForm({
+                      ...catalogForm,
+                      code: event.target.value,
+                    })
+                  }
+                  className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white disabled:cursor-not-allowed disabled:opacity-50"
+                />
+              </label>
+
+              <label className="block space-y-1">
+                <span className="text-xs font-bold text-gray-400">الاسم</span>
+
+                <input
+                  value={catalogForm.name}
+                  onChange={(event) =>
+                    setCatalogForm({
+                      ...catalogForm,
+                      name: event.target.value,
+                    })
+                  }
+                  className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white"
+                />
+              </label>
+
+              <label className="block space-y-1">
+                <span className="text-xs font-bold text-gray-400">
+                  الاسم بالإنجليزية
+                </span>
+
+                <input
+                  value={catalogForm.nameEn}
+                  onChange={(event) =>
+                    setCatalogForm({
+                      ...catalogForm,
+                      nameEn: event.target.value,
+                    })
+                  }
+                  className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white"
+                />
+              </label>
+
+              <label className="block space-y-1">
+                <span className="text-xs font-bold text-gray-400">الوصف</span>
+
+                <textarea
+                  rows={3}
+                  value={catalogForm.description}
+                  onChange={(event) =>
+                    setCatalogForm({
+                      ...catalogForm,
+                      description: event.target.value,
+                    })
+                  }
+                  className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white"
+                />
+              </label>
+
+              <label className="block space-y-1">
+                <span className="text-xs font-bold text-gray-400">الترتيب</span>
+
+                <input
+                  type="number"
+                  step="1"
+                  value={catalogForm.sortOrder}
+                  onChange={(event) =>
+                    setCatalogForm({
+                      ...catalogForm,
+                      sortOrder: event.target.value,
+                    })
+                  }
+                  className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white"
+                />
+              </label>
+
+              <label className="flex items-center gap-3 rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+                <input
+                  type="checkbox"
+                  checked={catalogForm.isActive}
+                  onChange={(event) =>
+                    setCatalogForm({
+                      ...catalogForm,
+                      isActive: event.target.checked,
+                    })
+                  }
+                />
+
+                <div>
+                  <div className="text-sm font-bold text-white">نشط</div>
+
+                  <div className="text-xs text-gray-500">
+                    عند الإيقاف يظل السجل محفوظًا تاريخيًا.
+                  </div>
+                </div>
+              </label>
+            </div>
+
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={() => void saveCatalog()}
+                disabled={saving}
+                className="flex-1 rounded-xl bg-pink-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-pink-500 disabled:opacity-50"
+              >
+                {saving ? "جارٍ الحفظ..." : "حفظ"}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setCatalogForm(null)}
+                disabled={saving}
+                className="flex-1 rounded-xl border border-white/10 px-4 py-2.5 text-sm font-bold text-gray-300 hover:bg-white/5"
+              >
+                إلغاء
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {form && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/75 p-4">
+          <div className="mx-auto my-8 w-full max-w-3xl rounded-3xl border border-white/10 bg-[#180b12] p-6 shadow-2xl">
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-black text-white">
+                  {form.id ? "تعديل ملف الموظف" : "إضافة موظف"}
+                </h3>
+
+                <p className="mt-1 text-xs leading-6 text-gray-500">
+                  ملف HR مستقل عن حساب الدخول والصلاحيات.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setForm(null)}
+                className="text-xl text-gray-500 hover:text-white"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="space-y-1">
+                <span className="text-xs font-bold text-gray-400">
+                  كود الموظف
+                </span>
+
+                <input
+                  value={form.employeeCode}
+                  disabled={Boolean(form.id)}
+                  onChange={(event) =>
+                    setForm({
+                      ...form,
+                      employeeCode: event.target.value,
+                    })
+                  }
+                  placeholder="EMP-001"
+                  className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white disabled:cursor-not-allowed disabled:opacity-50"
+                />
+
+                {form.id && (
+                  <div className="text-[11px] text-gray-600">
+                    كود الموظف ثابت بعد الإنشاء.
+                  </div>
+                )}
+              </label>
+
+              <label className="space-y-1">
+                <span className="text-xs font-bold text-gray-400">
+                  اسم الموظف
+                </span>
+
+                <input
+                  value={form.name}
+                  onChange={(event) =>
+                    setForm({
+                      ...form,
+                      name: event.target.value,
+                    })
+                  }
+                  className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white"
+                />
+              </label>
+
+              <label className="space-y-1">
+                <span className="text-xs font-bold text-gray-400">الهاتف</span>
+
+                <input
+                  value={form.phone}
+                  onChange={(event) =>
+                    setForm({
+                      ...form,
+                      phone: event.target.value,
+                    })
+                  }
+                  className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white"
+                />
+              </label>
+
+              <label className="space-y-1">
+                <span className="text-xs font-bold text-gray-400">
+                  رابط الصورة
+                </span>
+
+                <input
+                  value={form.avatar}
+                  onChange={(event) =>
+                    setForm({
+                      ...form,
+                      avatar: event.target.value,
+                    })
+                  }
+                  className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white"
+                />
+              </label>
+
+              <label className="space-y-1">
+                <span className="text-xs font-bold text-gray-400">القسم</span>
+
+                <select
+                  value={form.departmentId}
+                  onChange={(event) =>
+                    setForm({
+                      ...form,
+                      departmentId: event.target.value,
+                    })
+                  }
+                  className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white"
+                >
+                  <option value="">بدون قسم</option>
+
+                  {activeDepartments.map((department) => (
+                    <option key={department.id} value={department.id}>
+                      {department.name}
+                    </option>
+                  ))}
+
+                  {form.departmentId &&
+                    !activeDepartments.some(
+                      (item) => item.id === form.departmentId,
+                    ) &&
+                    departments
+                      .filter((item) => item.id === form.departmentId)
+                      .map((department) => (
+                        <option key={department.id} value={department.id}>
+                          {department.name} - غير نشط
+                        </option>
+                      ))}
+                </select>
+              </label>
+
+              <label className="space-y-1">
+                <span className="text-xs font-bold text-gray-400">
+                  المسمى الوظيفي
+                </span>
+
+                <select
+                  value={form.positionId}
+                  onChange={(event) =>
+                    setForm({
+                      ...form,
+                      positionId: event.target.value,
+                    })
+                  }
+                  className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white"
+                >
+                  <option value="">بدون مسمى</option>
+
+                  {activePositions.map((position) => (
+                    <option key={position.id} value={position.id}>
+                      {position.name}
+                    </option>
+                  ))}
+
+                  {form.positionId &&
+                    !activePositions.some(
+                      (item) => item.id === form.positionId,
+                    ) &&
+                    positions
+                      .filter((item) => item.id === form.positionId)
+                      .map((position) => (
+                        <option key={position.id} value={position.id}>
+                          {position.name} - غير نشط
+                        </option>
+                      ))}
+                </select>
+              </label>
+
+              <label className="space-y-1">
+                <span className="text-xs font-bold text-gray-400">
+                  تاريخ التعيين
+                </span>
+
+                <input
+                  type="date"
+                  value={form.hireDate}
+                  onChange={(event) =>
+                    setForm({
+                      ...form,
+                      hireDate: event.target.value,
+                    })
+                  }
+                  className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white"
+                />
+              </label>
+
+              <label className="space-y-1">
+                <span className="text-xs font-bold text-gray-400">
+                  تاريخ انتهاء العمل
+                </span>
+
+                <input
+                  type="date"
+                  value={form.employmentEndDate}
+                  onChange={(event) =>
+                    setForm({
+                      ...form,
+                      employmentEndDate: event.target.value,
+                    })
+                  }
+                  className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white"
+                />
+              </label>
+
+              <label className="space-y-1">
+                <span className="text-xs font-bold text-gray-400">
+                  الحالة الوظيفية
+                </span>
+
+                <select
+                  value={form.employmentStatus}
+                  onChange={(event) =>
+                    setForm({
+                      ...form,
+                      employmentStatus: event.target.value as EmploymentStatus,
+                    })
+                  }
+                  className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white"
+                >
+                  <option value="active">نشط</option>
+                  <option value="inactive">غير نشط</option>
+                  <option value="on_leave">إجازة</option>
+                  <option value="terminated">منتهي</option>
+                </select>
+              </label>
+
+              <label className="flex items-center gap-3 rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+                <input
+                  type="checkbox"
+                  checked={form.payrollEnabled}
+                  onChange={(event) =>
+                    setForm({
+                      ...form,
+                      payrollEnabled: event.target.checked,
+                    })
+                  }
+                />
+
+                <div>
+                  <div className="text-sm font-bold text-white">
+                    يدخل في الرواتب
+                  </div>
+
+                  <div className="text-xs text-gray-500">
+                    يحدد أهلية الموظف لدورة Payroll لاحقًا.
+                  </div>
+                </div>
+              </label>
+
+              <label className="space-y-1 md:col-span-2">
+                <span className="text-xs font-bold text-gray-400">ملاحظات</span>
+
+                <textarea
+                  rows={4}
+                  value={form.notes}
+                  onChange={(event) =>
+                    setForm({
+                      ...form,
+                      notes: event.target.value,
+                    })
+                  }
+                  className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white"
+                />
+              </label>
+            </div>
+
+            {form.id && (
+              <div className="mt-4 rounded-xl border border-blue-500/20 bg-blue-950/20 px-4 py-3 text-xs leading-6 text-blue-300">
+                ربط أو إلغاء ربط حساب الدخول لا يتم من شاشة تعديل ملف HR. سيتم
+                تنفيذه كعملية مستقلة وآمنة.
+              </div>
+            )}
+
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={() => void saveEmployee()}
+                disabled={saving}
+                className="flex-1 rounded-xl bg-pink-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-pink-500 disabled:opacity-50"
+              >
+                {saving
+                  ? "جارٍ الحفظ..."
+                  : form.id
+                    ? "حفظ التعديلات"
+                    : "إنشاء الموظف"}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setForm(null)}
+                disabled={saving}
+                className="flex-1 rounded-xl border border-white/10 px-4 py-2.5 text-sm font-bold text-gray-300 hover:bg-white/5"
+              >
+                إلغاء
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </AdminSectionShell>
+  );
+}

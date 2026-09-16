@@ -9,6 +9,7 @@ interface Settings {
   pointValueEGP: number;
   referralRewardType: "points" | "wallet";
   referralRewardValue: number;
+  walletTopupBonusPercent: number;
   tierThresholds: { silver: number; gold: number; platinum: number };
   onboardingProfilePoints: number;
   onboardingEmailPoints: number;
@@ -35,6 +36,7 @@ export default function RewardSettings() {
     pointValueEGP: 0.1,
     referralRewardType: "wallet",
     referralRewardValue: 50,
+    walletTopupBonusPercent: 15,
     tierThresholds: { silver: 500, gold: 1500, platinum: 5000 },
     onboardingProfilePoints: 80,
     onboardingEmailPoints: 20,
@@ -176,6 +178,38 @@ export default function RewardSettings() {
                   <label className={LABEL}>فيتزونات إضافية للمُحال (عند التسجيل)</label>
                   <input className={INPUT} type="number" min="0" value={settings.pointsPerReferral}
                     onChange={set("pointsPerReferral")} />
+                </div>
+              </div>
+            </div>
+
+            <div className="h-px bg-[rgba(255,188,219,0.12)]" />
+
+            {/* Wallet Top-up Bonus */}
+            <div>
+              <h3 className="mb-3 text-base font-black text-[#fff4f8]">
+                💰 بونص شحن المحفظة
+              </h3>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label className={LABEL}>
+                    نسبة البونص على كل شحنة (%)
+                  </label>
+
+                  <input
+                    className={INPUT}
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.01"
+                    value={settings.walletTopupBonusPercent}
+                    onChange={set("walletTopupBonusPercent")}
+                  />
+
+                  <p className="mt-2 text-xs text-[#a07080]">
+                    مثال: شحن 100 جنيه مع بونص 15% يضيف 115 جنيه للمحفظة.
+                    النسبة تُثبّت وقت إنشاء عملية الدفع ولا تتغير بعد ذلك.
+                  </p>
                 </div>
               </div>
             </div>

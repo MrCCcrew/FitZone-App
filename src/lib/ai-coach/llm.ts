@@ -1,3 +1,4 @@
+import { assertExternalSideEffectsAllowed } from "@/lib/staging-safety";
 import type { CoachIntent, CoachKnowledgeEntry, CoachLang } from "@/lib/ai-coach/types";
 import type { CanonicalIntent } from "@/lib/ai-coach/understanding";
 
@@ -20,6 +21,7 @@ export async function phraseCoachReply(input: {
   allowGeneralFitness?: boolean;
 }) {
   if (!isEnabled()) return null;
+  assertExternalSideEffectsAllowed("OpenAI AI Coach");
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs());
@@ -79,6 +81,7 @@ const CLASSIFIER_INTENTS: CanonicalIntent[] = ["general_fitness", "workout_recom
 /** Optional semantic classifier. Its JSON is validated and may only select the fixed allowlist. */
 export async function classifyCoachIntent(input: { message: string; lastIntent?: string }): Promise<{ intent: CanonicalIntent; confidence: number; entities: Record<string, string>; listAll: boolean } | null> {
   if (!isEnabled()) return null;
+  assertExternalSideEffectsAllowed("OpenAI AI Coach classifier");
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), Math.min(timeoutMs(), 3500));
   try {

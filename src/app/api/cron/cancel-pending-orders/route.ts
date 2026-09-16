@@ -12,6 +12,13 @@ import { releaseOrderReservation } from "@/lib/inventory-service";
  */
 
 export async function GET(req: Request) {
+  if (process.env.APP_ENV === "staging") {
+    return Response.json(
+      { error: "Cron disabled in staging" },
+      { status: 403 }
+    );
+  }
+
   const secret = process.env.CRON_SECRET;
   if (!secret) {
     return NextResponse.json({ error: "Cron not configured" }, { status: 503 });

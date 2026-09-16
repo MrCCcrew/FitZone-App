@@ -13,14 +13,73 @@ function day(value: Date, timezone: string) { return new Intl.DateTimeFormat("en
 function metadataValue(metadata: Metadata, key: string) { const value = metadata?.[key]; return typeof value === "string" ? value.slice(0, 80) : undefined; }
 function add(map: Map<string, number>, key: string, value = 1) { map.set(key, (map.get(key) ?? 0) + value); }
 function ordered(map: Map<string, number>) { return [...map].map(([key, count]) => ({ key, count })).sort((a, b) => b.count - a.count).slice(0, TOP_LIMIT); }
+function pageViewActorKey(entry: {
+  visitorId: string;
+  userId?: string | null;
+  visitor?: { userId?: string | null } | null;
+}) {
+  const userId = entry.userId ?? entry.visitor?.userId;
+  return userId ? `user:${userId}` : `visitor:${entry.visitorId}`;
+}
+
 
 async function loadBase(filters: AdminAnalyticsFilters) {
   const range = dateRange(filters);
   const eventWhere = { createdAt: range, ...(filters.eventName ? { eventName: filters.eventName } : {}), ...(filters.entityType ? { entityType: filters.entityType } : {}) };
   const [pageViews, sessions, events] = await Promise.all([
-    db.analyticsPageView.findMany({ where: { enteredAt: range }, select: { visitorId: true, sessionId: true, path: true, enteredAt: true, durationSeconds: true, exitedAt: true } }),
-    db.analyticsSession.findMany({ where: { OR: [{ startedAt: range }, { lastActivityAt: range }] }, select: { id: true, startedAt: true, durationSeconds: true, pageViewCount: true, isBounce: true, landingPage: true, exitPage: true, referrer: true, visitorId: true } }),
-    db.analyticsEvent.findMany({ where: eventWhere, select: { eventName: true, entityType: true, entityId: true, entityName: true, metadata: true, createdAt: true } }),
+    db.analyticsPageView.findMany({
+      where: { enteredAt: range },
+      select: {
+        visitorId: true,
+        userId: true,
+        sessionId: true,
+        path: true,
+        enteredAt: true,
+        durationSeconds: true,
+        exitedAt: true,
+        visitor: {
+          select: {
+            userId: true,
+            countryCode: true,
+            countryName: true,
+            deviceType: true,
+            browser: true,
+          },
+        },
+      },
+    }),
+    db.analyticsSession.findMany({
+      where: {
+        OR: [
+          { startedAt: range },
+          { lastActivityAt: range },
+        ],
+      },
+      select: {
+        id: true,
+        startedAt: true,
+        durationSeconds: true,
+        pageViewCount: true,
+        isBounce: true,
+        landingPage: true,
+        exitPage: true,
+        referrer: true,
+        visitorId: true,
+      },
+    }),
+    db.analyticsEvent.findMany({
+      where: eventWhere,
+      select: {
+        eventName: true,
+        entityType: true,
+        entityId: true,
+        entityName: true,
+        metadata: true,
+        createdAt: true,
+        visitorId: true,
+        userId: true,
+      },
+    }),
   ]);
   const filteredEvents = filters.source ? events.filter((event) => metadataValue(event.metadata as Metadata, "source") === filters.source) : events;
   return { pageViews, sessions, events: filteredEvents };
@@ -28,38 +87,234 @@ async function loadBase(filters: AdminAnalyticsFilters) {
 
 export async function getAnalyticsOverview(filters: AdminAnalyticsFilters) {
   const { pageViews, sessions, events } = await loadBase(filters);
+
+  // Financial truth comes from persisted paid transactions,
+  // never from analytics events which may be missing historically.
+  const paidTransactions = await db.paymentTransaction.findMany({
+    where: {
+      status: "paid",
+      purpose: { in: ["membership", "order"] },
+      paidAt: dateRange(filters),
+    },
+    select: {
+      id: true,
+      amount: true,
+      currency: true,
+    },
+  });
+
+  const voiceSessions = filters.source
+    ? []
+    : await db.voiceRealtimeSession.findMany({
+        where: {
+          startedAt: dateRange(filters),
+        },
+        select: {
+          userId: true,
+          startedAt: true,
+          connectedAt: true,
+          finalizedAt: true,
+          billableSeconds: true,
+          terminationReason: true,
+        },
+      });
   const count = (name: string) => events.filter((event) => event.eventName === name).length;
   const views = events.filter((event) => VIEW_EVENTS.has(event.eventName)).length;
-  const succeeded = count("payment_succeeded");
+  // Event success remains for behavioral funnel only.
+  const trackedSucceeded = count("payment_succeeded");
   const activated = count("membership_activated");
   const checkout = count("checkout_started");
+
+  // Financial payment count/value comes from PaymentTransaction.
+  const succeeded = paidTransactions.length;
+
   const currencies = new Map<string, { currency: string; value: number; payments: number }>();
-  for (const event of events.filter((entry) => entry.eventName === "payment_succeeded")) {
-    const metadata = event.metadata as Metadata;
-    const currency = metadataValue(metadata, "currency") ?? "UNKNOWN";
-    const current = currencies.get(currency) ?? { currency, value: 0, payments: 0 };
-    current.value += numeric(metadata?.value); current.payments += 1; currencies.set(currency, current);
+
+  for (const tx of paidTransactions) {
+    const currency = tx.currency || "UNKNOWN";
+    const current =
+      currencies.get(currency) ??
+      { currency, value: 0, payments: 0 };
+
+    current.value += Number(tx.amount || 0);
+    current.payments += 1;
+    currencies.set(currency, current);
   }
-  const currencyBreakdown = [...currencies.values()].map((entry) => ({ ...entry, averageValue: entry.payments ? entry.value / entry.payments : 0 }));
+  const currencyBreakdown = [...currencies.values()].map((entry) => ({
+    ...entry,
+    averageValue: entry.payments ? entry.value / entry.payments : 0,
+  }));
+
+  const aiEvents = events.filter(
+    (event) => event.entityType === "ai_coach",
+  );
+
+  const aiActorKey = (event: (typeof aiEvents)[number]) =>
+    event.userId
+      ? `user:${event.userId}`
+      : event.visitorId
+        ? `visitor:${event.visitorId}`
+        : event.entityId
+          ? `chat-session:${event.entityId}`
+          : null;
+
+  const uniqueAiActors = (eventName: string) =>
+    new Set(
+      aiEvents
+        .filter((event) => event.eventName === eventName)
+        .map(aiActorKey)
+        .filter((value): value is string => Boolean(value)),
+    ).size;
+
+  const aiOpens = aiEvents.filter(
+    (event) => event.eventName === "ai_coach_open",
+  ).length;
+
+  const aiMessages = aiEvents.filter(
+    (event) => event.eventName === "ai_coach_message",
+  ).length;
+
+  const aiResponses = aiEvents.filter(
+    (event) => event.eventName === "ai_coach_response",
+  ).length;
+
+  const aiErrors = aiEvents.filter(
+    (event) => event.eventName === "ai_coach_error",
+  ).length;
+
+  const voiceStarted = voiceSessions.length;
+  const voiceConnected = voiceSessions.filter(
+    (entry) => entry.connectedAt !== null,
+  ).length;
+  const voiceFinalized = voiceSessions.filter(
+    (entry) => entry.finalizedAt !== null,
+  ).length;
+  const voiceTotalSeconds = voiceSessions.reduce(
+    (sum, entry) => sum + Math.max(0, entry.billableSeconds),
+    0,
+  );
+
+  const voiceTerminationMap = new Map<string, number>();
+  for (const entry of voiceSessions) {
+    const reason = entry.terminationReason ?? "active";
+    voiceTerminationMap.set(
+      reason,
+      (voiceTerminationMap.get(reason) ?? 0) + 1,
+    );
+  }
+
+  const voiceTerminationReasons = [...voiceTerminationMap.entries()]
+    .map(([reason, count]) => ({ reason, count }))
+    .sort((a, b) => b.count - a.count);
+
   return {
-    traffic: { visitors: new Set(pageViews.map((entry) => entry.visitorId)).size, sessions: sessions.length, pageViews: pageViews.length, uniquePageViews: new Set(pageViews.map((entry) => `${entry.visitorId}:${entry.path}`)).size, averageSessionDuration: sessions.length ? sessions.reduce((sum, entry) => sum + entry.durationSeconds, 0) / sessions.length : 0, averagePageViewDuration: pageViews.length ? pageViews.reduce((sum, entry) => sum + entry.durationSeconds, 0) / pageViews.length : 0, bounceRate: safeRate(sessions.filter((entry) => entry.isBounce).length, sessions.length) },
+    traffic: { visitors: new Set(pageViews.map(pageViewActorKey)).size, sessions: sessions.length, pageViews: pageViews.length, uniquePageViews: new Set(pageViews.map((entry) => `${pageViewActorKey(entry)}:${entry.path}`)).size, averageSessionDuration: sessions.length ? sessions.reduce((sum, entry) => sum + entry.durationSeconds, 0) / sessions.length : 0, averagePageViewDuration: pageViews.length ? pageViews.reduce((sum, entry) => sum + entry.durationSeconds, 0) / pageViews.length : 0, bounceRate: safeRate(sessions.filter((entry) => entry.isBounce).length, sessions.length) },
     business: { subscriptionViews: count("subscription_viewed"), packageViews: count("package_viewed"), offerViews: count("offer_viewed"), checkoutStarted: checkout, paymentSucceeded: succeeded, paymentFailed: count("payment_failed"), membershipActivated: activated },
+    aiCoach: {
+      opens: aiOpens,
+      uniqueVisitorsOpened: uniqueAiActors("ai_coach_open"),
+      messages: aiMessages,
+      uniqueVisitorsMessaged: uniqueAiActors("ai_coach_message"),
+      responses: aiResponses,
+      errors: aiErrors,
+      responseSuccessRate: safeRate(aiResponses, aiMessages),
+      voice: {
+        available: !filters.source,
+        sessionsStarted: voiceStarted,
+        sessionsConnected: voiceConnected,
+        uniqueUsers: new Set(
+          voiceSessions.map((entry) => entry.userId),
+        ).size,
+        sessionsFinalized: voiceFinalized,
+        totalBillableSeconds: voiceTotalSeconds,
+        averageBillableSeconds: voiceFinalized
+          ? voiceTotalSeconds / voiceFinalized
+          : 0,
+        connectionRate: safeRate(
+          voiceConnected,
+          voiceStarted,
+        ),
+        terminationReasons: voiceTerminationReasons,
+      },
+    },
     revenue: { successfulPaymentValue: currencyBreakdown.length === 1 ? currencyBreakdown[0]!.value : null, currencyBreakdown, averageSuccessfulPaymentValue: currencyBreakdown.length === 1 ? currencyBreakdown[0]!.averageValue : null },
-    conversion: { viewToCheckoutRate: safeRate(checkout, views), checkoutToPaymentRate: safeRate(succeeded, checkout), paymentToActivationRate: safeRate(activated, succeeded), overallViewToActivationRate: safeRate(activated, views) },
+    conversion: { viewToCheckoutRate: safeRate(checkout, views), checkoutToPaymentRate: safeRate(trackedSucceeded, checkout), paymentToActivationRate: safeRate(activated, trackedSucceeded), overallViewToActivationRate: safeRate(activated, views) },
   };
 }
 
 export async function getAnalyticsTraffic(filters: AdminAnalyticsFilters) {
   const { pageViews, sessions } = await loadBase(filters);
   const daily = new Map<string, { date: string; visitors: Set<string>; sessions: number; pageViews: number; duration: number; bounces: number }>();
-  for (const entry of pageViews) { const key = day(entry.enteredAt, filters.timezone); const bucket = daily.get(key) ?? { date: key, visitors: new Set(), sessions: 0, pageViews: 0, duration: 0, bounces: 0 }; bucket.visitors.add(entry.visitorId); bucket.pageViews++; bucket.duration += entry.durationSeconds; daily.set(key, bucket); }
+  for (const entry of pageViews) { const key = day(entry.enteredAt, filters.timezone); const bucket = daily.get(key) ?? { date: key, visitors: new Set(), sessions: 0, pageViews: 0, duration: 0, bounces: 0 }; bucket.visitors.add(pageViewActorKey(entry)); bucket.pageViews++; bucket.duration += entry.durationSeconds; daily.set(key, bucket); }
   for (const entry of sessions) { const key = day(entry.startedAt, filters.timezone); const bucket = daily.get(key) ?? { date: key, visitors: new Set(), sessions: 0, pageViews: 0, duration: 0, bounces: 0 }; bucket.sessions++; bucket.bounces += entry.isBounce ? 1 : 0; daily.set(key, bucket); }
   const pages = new Map<string, { path: string; views: number; visitors: Set<string>; duration: number; exits: number }>();
-  for (const entry of pageViews) { const path = sanitizeAnalyticsPath(entry.path) ?? "/"; const item = pages.get(path) ?? { path, views: 0, visitors: new Set(), duration: 0, exits: 0 }; item.views++; item.visitors.add(entry.visitorId); item.duration += entry.durationSeconds; item.exits += entry.exitedAt ? 1 : 0; pages.set(path, item); }
+  for (const entry of pageViews) { const path = sanitizeAnalyticsPath(entry.path) ?? "/"; const item = pages.get(path) ?? { path, views: 0, visitors: new Set(), duration: 0, exits: 0 }; item.views++; item.visitors.add(pageViewActorKey(entry)); item.duration += entry.durationSeconds; item.exits += entry.exitedAt ? 1 : 0; pages.set(path, item); }
   const top = [...pages.values()].map((item) => ({ path: item.path, views: item.views, uniqueVisitors: item.visitors.size, averageDuration: item.views ? item.duration / item.views : 0, exits: item.exits })).sort((a, b) => b.views - a.views).slice(0, TOP_LIMIT);
   const landing = new Map<string, number>(), exit = new Map<string, number>(), referrer = new Map<string, number>();
   for (const entry of sessions) { if (entry.landingPage) add(landing, sanitizeAnalyticsPath(entry.landingPage) ?? "/"); if (entry.exitPage) add(exit, sanitizeAnalyticsPath(entry.exitPage) ?? "/"); if (entry.referrer) add(referrer, sanitizeAnalyticsPath(entry.referrer) ?? "external"); }
-  return { daily: [...daily.values()].map((entry) => ({ date: entry.date, visitors: entry.visitors.size, sessions: entry.sessions, pageViews: entry.pageViews, averageDuration: entry.pageViews ? entry.duration / entry.pageViews : 0, bounceRate: safeRate(entry.bounces, entry.sessions) })).sort((a, b) => a.date.localeCompare(b.date)), topPages: top, landingPages: ordered(landing).map(({ key, count }) => ({ path: key, count })), exitPages: ordered(exit).map(({ key, count }) => ({ path: key, count })), topReferrers: ordered(referrer).map(({ key, count }) => ({ referrer: key, count })), deviceBreakdown: [], browserBreakdown: [], countryBreakdown: [] };
+  const devices = new Map<string, Set<string>>();
+  const browsers = new Map<string, Set<string>>();
+  const countries = new Map<string, Set<string>>();
+
+  for (const entry of pageViews) {
+    const visitor = entry.visitor;
+
+    const device = visitor?.deviceType ?? "Unknown";
+    const browser = visitor?.browser ?? "Unknown";
+    const country =
+      visitor?.countryName ??
+      visitor?.countryCode ??
+      "Unknown";
+
+    if (!devices.has(device)) devices.set(device, new Set());
+    devices.get(device)!.add(pageViewActorKey(entry));
+
+    if (!browsers.has(browser)) browsers.set(browser, new Set());
+    browsers.get(browser)!.add(pageViewActorKey(entry));
+
+    if (!countries.has(country)) countries.set(country, new Set());
+    countries.get(country)!.add(pageViewActorKey(entry));
+  }
+
+  const breakdown = (map: Map<string, Set<string>>) =>
+    [...map.entries()]
+      .map(([name, visitors]) => ({
+        name,
+        visitors: visitors.size,
+      }))
+      .sort((a, b) => b.visitors - a.visitors)
+      .slice(0, TOP_LIMIT);
+
+  return {
+    daily: [...daily.values()]
+      .map((entry) => ({
+        date: entry.date,
+        visitors: entry.visitors.size,
+        sessions: entry.sessions,
+        pageViews: entry.pageViews,
+        averageDuration: entry.pageViews
+          ? entry.duration / entry.pageViews
+          : 0,
+        bounceRate: safeRate(entry.bounces, entry.sessions),
+      }))
+      .sort((a, b) => a.date.localeCompare(b.date)),
+    topPages: top,
+    landingPages: ordered(landing).map(({ key, count }) => ({
+      path: key,
+      count,
+    })),
+    exitPages: ordered(exit).map(({ key, count }) => ({
+      path: key,
+      count,
+    })),
+    topReferrers: ordered(referrer).map(({ key, count }) => ({
+      referrer: key,
+      count,
+    })),
+    deviceBreakdown: breakdown(devices),
+    browserBreakdown: breakdown(browsers),
+    countryBreakdown: breakdown(countries),
+  };
 }
 
 export async function getAnalyticsEvents(filters: AdminAnalyticsFilters) {

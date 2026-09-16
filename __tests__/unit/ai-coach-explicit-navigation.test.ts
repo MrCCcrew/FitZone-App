@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { detectExplicitNavigationTarget } from "@/lib/ai-coach/intents";
 import { understandCoachMessage } from "@/lib/ai-coach/understanding";
 import { COACH_PAGES, pageAction } from "@/lib/ai-coach/page-registry";
-import { canStartRealtimeConnection, createRealtimeToolOutputEvents, hasRealtimeResponseOutput, isClientVoiceDebugEnabled, logClientVoiceDebug, realtimeMicrophoneConstraints, realtimeTurnDetection } from "@/components/LiveChatWidget";
+import { canStartRealtimeConnection, createRealtimeToolOutputEvents, hasRealtimeResponseOutput, shouldCreateRealtimeResponseForSpeech, isClientVoiceDebugEnabled, logClientVoiceDebug, realtimeMicrophoneConstraints, realtimeTurnDetection } from "@/components/LiveChatWidget";
 
 describe("AI Coach explicit Arabic navigation", () => {
   const cases = [
@@ -77,7 +77,7 @@ describe("AI Coach explicit Arabic navigation", () => {
   });
 
   it("uses one non-barge-in server VAD cycle and echo-safe microphone processing", () => {
-    expect(realtimeTurnDetection).toMatchObject({ type: "server_vad", create_response: true, interrupt_response: false });
+    expect(realtimeTurnDetection).toMatchObject({ type: "server_vad", create_response: false, interrupt_response: false });
     expect(realtimeMicrophoneConstraints).toMatchObject({ echoCancellation: true, noiseSuppression: true, autoGainControl: true });
     // Function output is the only case where the client asks the server for a final reply.
     expect(createRealtimeToolOutputEvents("tool-1", { allowed: true }).filter((event) => event.type === "response.create")).toHaveLength(1);

@@ -1,15 +1,24 @@
 import { NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/app-session";
-import { db } from "@/lib/db";
+import { asDbTransactionClient, db } from "@/lib/db";
 import { ensurePrivateAttendancePass } from "@/lib/attendance";
 import { createPaymentTransaction } from "@/lib/payments/service";
+import { accruePrivateSessionEarningTx } from "@/lib/employees/private-session-earning-service";
 
 export async function POST(req: Request) {
   const user = await getCurrentAppUser();
-  if (!user?.id) return NextResponse.json({ error: "يجب تسجيل الدخول أولاً." }, { status: 401 });
+  if (!user?.id)
+    return NextResponse.json(
+      { error: "يجب تسجيل الدخول أولاً." },
+      { status: 401 },
+    );
 
-  const body = (await req.json()) as { applicationId?: string; paymentMethod?: string };
-  if (!body.applicationId) return NextResponse.json({ error: "معرّف الطلب مطلوب." }, { status: 400 });
+  const body = (await req.json()) as {
+    applicationId?: string;
+    paymentMethod?: string;
+  };
+  if (!body.applicationId)
+    return NextResponse.json({ error: "معرّف الطلب مطلوب." }, { status: 400 });
 
   const app = await db.privateSessionApplication.findUnique({
     where: { id: body.applicationId },
@@ -19,20 +28,39 @@ export async function POST(req: Request) {
     },
   });
 
-  if (!app) return NextResponse.json({ error: "الطلب غير موجود." }, { status: 404 });
-  if (app.userId !== user.id) return NextResponse.json({ error: "غير مصرح." }, { status: 403 });
-  if (app.status !== "approved") return NextResponse.json({ error: "لم تتم الموافقة على هذا الطلب بعد." }, { status: 400 });
-  if (!app.trainerPrice || app.trainerPrice <= 0) return NextResponse.json({ error: "لم يتم تحديد سعر لهذا الطلب." }, { status: 400 });
+  if (!app)
+    return NextResponse.json({ error: "الطلب غير موجود." }, { status: 404 });
+  if (app.userId !== user.id)
+    return NextResponse.json({ error: "غير مصرح." }, { status: 403 });
+  if (app.status !== "approved")
+    return NextResponse.json(
+      { error: "لم تتم الموافقة على هذا الطلب بعد." },
+      { status: 400 },
+    );
+  if (!app.trainerPrice || app.trainerPrice <= 0)
+    return NextResponse.json(
+      { error: "لم يتم تحديد سعر لهذا الطلب." },
+      { status: 400 },
+    );
 
-  const appExt = app as typeof app & { trainerSlots?: string | null; selectedSlot?: string | null };
-  const slots: string[] = appExt.trainerSlots ? (JSON.parse(appExt.trainerSlots) as string[]) : [];
+  const appExt = app as typeof app & {
+    trainerSlots?: string | null;
+    selectedSlot?: string | null;
+  };
+  const slots: string[] = appExt.trainerSlots
+    ? (JSON.parse(appExt.trainerSlots) as string[])
+    : [];
   if (slots.length > 0 && !appExt.selectedSlot) {
-    return NextResponse.json({ error: "يرجى اختيار موعد من المواعيد المتاحة قبل إتمام الدفع." }, { status: 400 });
+    return NextResponse.json(
+      { error: "يرجى اختيار موعد من المواعيد المتاحة قبل إتمام الدفع." },
+      { status: 400 },
+    );
   }
 
   const label = app.type === "mini_private" ? "ميني برايفيت" : "برايفيت";
   const description = `${label} مع المدربة ${app.trainer.name}`;
-  const origin = req.headers.get("origin") ?? process.env.NEXT_PUBLIC_APP_URL ?? "";
+  const origin =
+    req.headers.get("origin") ?? process.env.NEXT_PUBLIC_APP_URL ?? "";
 
   try {
     const result = await createPaymentTransaction({
@@ -44,27 +72,55 @@ export async function POST(req: Request) {
       paymentMethod: "paymob",
       returnUrl: `${origin}/account?tab=myPrivateSessions`,
       cancelUrl: `${origin}/account?tab=myPrivateSessions`,
-      customer: { name: app.user.name, email: app.user.email, phone: app.user.phone },
-      metadata: { privateSessionApplicationId: app.id, type: app.type, trainerId: app.trainer.id },
+      customer: {
+        name: app.user.name,
+        email: app.user.email,
+        phone: app.user.phone,
+      },
+      metadata: {
+        privateSessionApplicationId: app.id,
+        type: app.type,
+        trainerId: app.trainer.id,
+      },
     });
+
+    // If payment succeeds immediately, finalize the private-session
+    // business state and payroll earning in one database transaction.
+    if (result.status === "paid") {
+      const paidAt = new Date();
+
+      const durationDays = (app as Record<string, unknown>).durationDays as
+        number | null | undefined;
+
+      const expiresAt = durationDays
+        ? new Date(paidAt.getTime() + durationDays * 24 * 60 * 60 * 1000)
+        : null;
+
+      await db.$transaction(async (tx) => {
+        await tx.privateSessionApplication.update({
+          where: { id: app.id },
+          data: {
+            status: "paid",
+            paymentTransactionId: result.id,
+            paidAt,
+            ...(expiresAt ? { expiresAt } : {}),
+          },
+        });
+
+        await accruePrivateSessionEarningTx(asDbTransactionClient(tx), {
+          privateSessionApplicationId: app.id,
+        });
+      });
+
+      await ensurePrivateAttendancePass(app.id).catch(() => null);
+
+      return NextResponse.json({ success: true });
+    }
 
     await db.privateSessionApplication.update({
       where: { id: app.id },
       data: { paymentTransactionId: result.id },
     });
-
-    // If payment succeeds immediately (e.g. wallet-only), mark as paid
-    if (result.status === "paid") {
-      const paidAt = new Date();
-      const durationDays = (app as Record<string, unknown>).durationDays as number | null | undefined;
-      const expiresAt = durationDays ? new Date(paidAt.getTime() + durationDays * 24 * 60 * 60 * 1000) : null;
-      await db.privateSessionApplication.update({
-        where: { id: app.id },
-        data: { status: "paid", paidAt, ...(expiresAt ? { expiresAt } : {}) },
-      });
-      await ensurePrivateAttendancePass(app.id).catch(() => null);
-      return NextResponse.json({ success: true });
-    }
 
     return NextResponse.json({
       redirectUrl: result.checkoutUrl ?? result.iframeUrl ?? null,
@@ -72,7 +128,10 @@ export async function POST(req: Request) {
     });
   } catch (err) {
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "حدث خطأ أثناء تهيئة الدفع." },
+      {
+        error:
+          err instanceof Error ? err.message : "حدث خطأ أثناء تهيئة الدفع.",
+      },
       { status: 500 },
     );
   }

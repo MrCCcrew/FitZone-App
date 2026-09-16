@@ -18,11 +18,15 @@ function isStandaloneMode() {
 }
 
 export default function PwaInstallPrompt() {
+  /* PWA_HYDRATION_MOUNT_GUARD */
+  const [mounted, setMounted] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [dismissed, setDismissed] = useState(false);
   const [showIosHelp, setShowIosHelp] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
+
     if (typeof window === "undefined") return;
 
     if ("serviceWorker" in navigator) {
@@ -39,9 +43,10 @@ export default function PwaInstallPrompt() {
   }, []);
 
   const visible = useMemo(() => {
+    if (!mounted) return false;
     if (dismissed || isStandaloneMode()) return false;
     return Boolean(deferredPrompt) || isIosDevice();
-  }, [deferredPrompt, dismissed]);
+  }, [deferredPrompt, dismissed, mounted]);
 
   async function installApp() {
     if (deferredPrompt) {

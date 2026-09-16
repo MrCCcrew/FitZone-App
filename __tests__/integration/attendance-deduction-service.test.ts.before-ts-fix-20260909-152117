@@ -1,0 +1,534 @@
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+
+import type { PrismaClient, User } from "@prisma/client";
+
+let db: PrismaClient;
+let actor: User;
+let employeeId: string;
+
+const stamp = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+beforeAll(async () => {
+  const mod = await import("@/lib/db");
+
+  db = mod.db as PrismaClient;
+
+  const current = await db.$queryRawUnsafe<Array<{ db: string }>>(
+    "SELECT DATABASE() AS db",
+  );
+
+  if (current[0]?.db !== "fitzone_test") {
+    throw new Error("REFUSING_NON_TEST_DB");
+  }
+
+  actor = await db.user.create({
+    data: {
+      email: `attendance-deduction-${stamp}@example.test`,
+      name: "Attendance Deduction Actor",
+      role: "super_admin",
+    },
+  });
+
+  const employee = await db.employeeProfile.create({
+    data: {
+      employeeCode: `ADE-${stamp}`.slice(0, 40),
+      name: "Attendance Deduction Employee",
+      employmentStatus: "active",
+      payrollEnabled: true,
+    },
+  });
+
+  employeeId = employee.id;
+});
+
+afterAll(async () => {
+  if (!db) return;
+
+  await db.attendanceDeductionOccurrence.deleteMany({
+    where: {
+      deduction: {
+        employeeId,
+      },
+    },
+  });
+
+  await db.attendanceDeduction.deleteMany({
+    where: {
+      employeeId,
+    },
+  });
+
+  await db.employeeAttendance.deleteMany({
+    where: {
+      employeeId,
+    },
+  });
+
+  await db.attendanceDeductionPolicy.deleteMany({
+    where: {
+      employeeId,
+    },
+  });
+
+  await db.employeeCompensationTerm.deleteMany({
+    where: {
+      employeeId,
+    },
+  });
+
+  await db.auditLog.deleteMany({
+    where: {
+      actorUserId: actor?.id,
+    },
+  });
+
+  if (employeeId) {
+    await db.employeeProfile.delete({
+      where: {
+        id: employeeId,
+      },
+    });
+  }
+
+  if (actor?.id) {
+    await db.user.delete({
+      where: {
+        id: actor.id,
+      },
+    });
+  }
+});
+
+describe("AttendanceDeductionService — real fitzone_test", () => {
+  const service = () => import("@/lib/employees/attendance-deduction-service");
+
+  const actorInput = () => ({
+    userId: actor.id,
+    name: actor.name,
+    email: actor.email,
+    role: actor.role,
+  });
+
+  async function cleanMonth(monthKey: string) {
+    const rows = await db.attendanceDeduction.findMany({
+      where: {
+        employeeId,
+        monthKey,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    await db.attendanceDeductionOccurrence.deleteMany({
+      where: {
+        deductionId: {
+          in: rows.map((r) => r.id),
+        },
+      },
+    });
+
+    await db.attendanceDeduction.deleteMany({
+      where: {
+        employeeId,
+        monthKey,
+      },
+    });
+
+    const [year, month] = monthKey.split("-").map(Number);
+
+    const start = new Date(
+      `${year}-${String(month).padStart(2, "0")}-01T00:00:00.000Z`,
+    );
+
+    const next =
+      month === 12
+        ? new Date(`${year + 1}-01-01T00:00:00.000Z`)
+        : new Date(
+            `${year}-${String(month + 1).padStart(2, "0")}-01T00:00:00.000Z`,
+          );
+
+    await db.employeeAttendance.deleteMany({
+      where: {
+        employeeId,
+        attendanceDate: {
+          gte: start,
+          lt: next,
+        },
+      },
+    });
+  }
+
+  it("creates effective-dated policy with audit", async () => {
+    const { saveAttendanceDeductionPolicy } = await service();
+
+    const policy = await saveAttendanceDeductionPolicy(
+      {
+        employeeId,
+        effectiveFrom: "2040-01-01",
+        salaryDivisorDays: 30,
+        workdayMinutes: 480,
+        absenceMultiplierBps: 10000,
+        lateDeductionEnabled: true,
+        lateGraceMinutes: 15,
+        lateMultiplierBps: 10000,
+      },
+      actorInput(),
+    );
+
+    expect(policy.salaryDivisorDays).toBe(30);
+
+    expect(
+      await db.auditLog.count({
+        where: {
+          action: "attendance_deduction_policy_create",
+          targetId: policy.id,
+        },
+      }),
+    ).toBe(1);
+  });
+
+  it("rejects overlapping policy", async () => {
+    const { saveAttendanceDeductionPolicy } = await service();
+
+    await expect(
+      saveAttendanceDeductionPolicy(
+        {
+          employeeId,
+          effectiveFrom: "2040-06-01",
+          salaryDivisorDays: 26,
+          workdayMinutes: 480,
+          absenceMultiplierBps: 10000,
+          lateDeductionEnabled: false,
+          lateGraceMinutes: 0,
+          lateMultiplierBps: 10000,
+        },
+        actorInput(),
+      ),
+    ).rejects.toThrow("ATTENDANCE_DEDUCTION_POLICY_OVERLAP");
+  });
+
+  it("calculates absence and lateness deterministically", async () => {
+    const { calculateAttendanceDeduction } = await service();
+
+    await cleanMonth("2040-02");
+
+    await db.employeeCompensationTerm.create({
+      data: {
+        employeeId,
+        effectiveFrom: new Date("2040-01-01T00:00:00.000Z"),
+        fixedSalaryMinor: 300000,
+        currency: "EGP",
+        createdById: actor.id,
+      },
+    });
+
+    await db.employeeAttendance.createMany({
+      data: [
+        {
+          employeeId,
+          attendanceDate: new Date("2040-02-05T00:00:00.000Z"),
+          status: "absent",
+          lateMinutes: 0,
+          recordedById: actor.id,
+        },
+        {
+          employeeId,
+          attendanceDate: new Date("2040-02-06T00:00:00.000Z"),
+          status: "late",
+          lateMinutes: 75,
+          recordedById: actor.id,
+        },
+        {
+          employeeId,
+          attendanceDate: new Date("2040-02-07T00:00:00.000Z"),
+          status: "excused",
+          lateMinutes: 0,
+          recordedById: actor.id,
+        },
+      ],
+    });
+
+    const result = await calculateAttendanceDeduction(
+      employeeId,
+      "2040-02",
+      actorInput(),
+    );
+
+    // 300000 / 30 = 10000 minor per day.
+    expect(result.absenceDeductionMinor).toBe(10000);
+
+    // 75 - 15 grace = 60 minutes.
+    // 10000 / 480 * 60 = 1250.
+    expect(result.lateDeductionMinor).toBe(1250);
+
+    expect(result.totalDeductionMinor).toBe(11250);
+
+    expect(result.absenceCount).toBe(1);
+
+    expect(result.deductibleLateMinutes).toBe(60);
+
+    expect(result.occurrences).toHaveLength(3);
+  });
+
+  it("does not deduct excused/vacation/day_off/holiday", async () => {
+    const { calculateAttendanceDeduction } = await service();
+
+    await cleanMonth("2040-03");
+
+    await db.employeeAttendance.createMany({
+      data: [
+        "excused",
+        "sick_leave",
+        "vacation",
+        "official_holiday",
+        "day_off",
+        "present",
+      ].map((status, index) => ({
+        employeeId,
+        attendanceDate: new Date(
+          `2040-03-${String(index + 1).padStart(2, "0")}T00:00:00.000Z`,
+        ),
+        status,
+        lateMinutes: 0,
+        recordedById: actor.id,
+      })),
+    });
+
+    const result = await calculateAttendanceDeduction(
+      employeeId,
+      "2040-03",
+      actorInput(),
+    );
+
+    expect(result.totalDeductionMinor).toBe(0);
+  });
+
+  it("blocks when compensation term missing", async () => {
+    const { calculateAttendanceDeduction } = await service();
+
+    await cleanMonth("2039-01");
+
+    await db.employeeAttendance.create({
+      data: {
+        employeeId,
+        attendanceDate: new Date("2039-01-10T00:00:00.000Z"),
+        status: "absent",
+        recordedById: actor.id,
+      },
+    });
+
+    const result = await calculateAttendanceDeduction(
+      employeeId,
+      "2039-01",
+      actorInput(),
+    );
+
+    expect(result.status).toBe("blocked");
+
+    expect(result.blockReason).toContain("MISSING_COMPENSATION_TERM");
+  });
+
+  it("supports mid-month compensation and policy changes", async () => {
+    const { saveAttendanceDeductionPolicy, calculateAttendanceDeduction } =
+      await service();
+
+    await cleanMonth("2041-01");
+
+    await db.employeeCompensationTerm.createMany({
+      data: [
+        {
+          employeeId,
+          effectiveFrom: new Date("2041-01-01T00:00:00.000Z"),
+          effectiveTo: new Date("2041-01-15T00:00:00.000Z"),
+          fixedSalaryMinor: 300000,
+          currency: "EGP",
+          createdById: actor.id,
+        },
+        {
+          employeeId,
+          effectiveFrom: new Date("2041-01-16T00:00:00.000Z"),
+          fixedSalaryMinor: 600000,
+          currency: "EGP",
+          createdById: actor.id,
+        },
+      ],
+    });
+
+    await saveAttendanceDeductionPolicy(
+      {
+        employeeId,
+        effectiveFrom: "2041-01-01",
+        effectiveTo: "2041-01-15",
+        salaryDivisorDays: 30,
+        workdayMinutes: 480,
+        absenceMultiplierBps: 10000,
+        lateDeductionEnabled: false,
+        lateGraceMinutes: 0,
+        lateMultiplierBps: 10000,
+      },
+      actorInput(),
+    );
+
+    await saveAttendanceDeductionPolicy(
+      {
+        employeeId,
+        effectiveFrom: "2041-01-16",
+        salaryDivisorDays: 30,
+        workdayMinutes: 480,
+        absenceMultiplierBps: 20000,
+        lateDeductionEnabled: false,
+        lateGraceMinutes: 0,
+        lateMultiplierBps: 10000,
+      },
+      actorInput(),
+    );
+
+    await db.employeeAttendance.createMany({
+      data: [
+        {
+          employeeId,
+          attendanceDate: new Date("2041-01-10T00:00:00.000Z"),
+          status: "absent",
+          recordedById: actor.id,
+        },
+        {
+          employeeId,
+          attendanceDate: new Date("2041-01-20T00:00:00.000Z"),
+          status: "absent",
+          recordedById: actor.id,
+        },
+      ],
+    });
+
+    const result = await calculateAttendanceDeduction(
+      employeeId,
+      "2041-01",
+      actorInput(),
+    );
+
+    // Jan 10:
+    // 300000 / 30 * 1 = 10000
+    //
+    // Jan 20:
+    // 600000 / 30 * 2 = 40000
+    expect(result.totalDeductionMinor).toBe(50000);
+
+    expect(result.compensationTermIdSnapshot).toBeNull();
+
+    expect(result.policyIdSnapshot).toBeNull();
+
+    expect(result.occurrences).toHaveLength(2);
+
+    expect(result.occurrences[0].fixedSalaryMinorSnapshot).toBe(300000);
+
+    expect(result.occurrences[1].fixedSalaryMinorSnapshot).toBe(600000);
+
+    expect(result.occurrences[0].absenceMultiplierBpsSnapshot).toBe(10000);
+
+    expect(result.occurrences[1].absenceMultiplierBpsSnapshot).toBe(20000);
+  });
+
+  it("recalculation replaces occurrences rather than duplicating", async () => {
+    const { calculateAttendanceDeduction } = await service();
+
+    const first = await calculateAttendanceDeduction(
+      employeeId,
+      "2040-02",
+      actorInput(),
+    );
+
+    const second = await calculateAttendanceDeduction(
+      employeeId,
+      "2040-02",
+      actorInput(),
+    );
+
+    expect(second.id).toBe(first.id);
+
+    expect(
+      await db.attendanceDeductionOccurrence.count({
+        where: {
+          deductionId: second.id,
+        },
+      }),
+    ).toBe(3);
+  });
+
+  it("finalizes calculated deduction and becomes immutable", async () => {
+    const { calculateAttendanceDeduction, finalizeAttendanceDeduction } =
+      await service();
+
+    await calculateAttendanceDeduction(employeeId, "2040-03", actorInput());
+
+    const finalized = await finalizeAttendanceDeduction(
+      employeeId,
+      "2040-03",
+      actorInput(),
+    );
+
+    expect(finalized.status).toBe("finalized");
+
+    await expect(
+      calculateAttendanceDeduction(employeeId, "2040-03", actorInput()),
+    ).rejects.toThrow("ATTENDANCE_DEDUCTION_FINALIZED_IMMUTABLE");
+  });
+
+  it("finalization is idempotent", async () => {
+    const { finalizeAttendanceDeduction } = await service();
+
+    const a = await finalizeAttendanceDeduction(
+      employeeId,
+      "2040-03",
+      actorInput(),
+    );
+
+    const b = await finalizeAttendanceDeduction(
+      employeeId,
+      "2040-03",
+      actorInput(),
+    );
+
+    expect(b.id).toBe(a.id);
+
+    expect(
+      await db.auditLog.count({
+        where: {
+          targetId: a.id,
+          action: "attendance_deduction_finalize",
+        },
+      }),
+    ).toBe(1);
+  });
+
+  it("mandatory audit failure rolls back calculation", async () => {
+    const { calculateAttendanceDeduction } = await service();
+
+    await cleanMonth("2040-04");
+
+    await db.employeeAttendance.create({
+      data: {
+        employeeId,
+        attendanceDate: new Date("2040-04-01T00:00:00.000Z"),
+        status: "absent",
+        recordedById: actor.id,
+      },
+    });
+
+    await expect(
+      calculateAttendanceDeduction(employeeId, "2040-04", {
+        ...actorInput(),
+        name: "X".repeat(1000),
+      }),
+    ).rejects.toThrow();
+
+    expect(
+      await db.attendanceDeduction.count({
+        where: {
+          employeeId,
+          monthKey: "2040-04",
+        },
+      }),
+    ).toBe(0);
+  });
+});

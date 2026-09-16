@@ -1,8 +1,10 @@
 import { redirect } from "next/navigation";
 import { getCurrentAppUser } from "@/lib/app-session";
 import { db } from "@/lib/db";
+import { sumMembershipBookingUnits } from "@/lib/membership-session-units";
 import AccountClient from "./AccountClient";
 import { getRewardSettings } from "@/lib/reward-settings";
+import { classifyCustomerLifecycle, wasMembershipEverActivated } from "@/lib/customer-lifecycle";
 
 export const dynamic = "force-dynamic";
 
@@ -25,12 +27,64 @@ function parseJsonArray<T>(value: string | null | undefined) {
   }
 }
 
+function normalizeOptionalStringArray(value: unknown): string[] | undefined {
+  if (value == null) return undefined;
+
+  if (Array.isArray(value)) {
+    return value.filter(
+      (item): item is string => typeof item === "string",
+    );
+  }
+
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+
+      return Array.isArray(parsed)
+        ? parsed.filter(
+            (item): item is string => typeof item === "string",
+          )
+        : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  return undefined;
+}
+
 function offerSnapshot(value: string | null | undefined) {
-  try { return value ? JSON.parse(value) as { features?: string[]; durationDays?: number; allowedClassTypes?: string[] } : null; } catch { return null; }
+  if (!value) return null;
+
+  try {
+    const parsed = JSON.parse(value) as {
+      features?: unknown;
+      durationDays?: unknown;
+      allowedClassTypes?: unknown;
+    };
+
+    return {
+      features: normalizeOptionalStringArray(parsed.features),
+      durationDays:
+        typeof parsed.durationDays === "number"
+          ? parsed.durationDays
+          : undefined,
+      allowedClassTypes:
+        normalizeOptionalStringArray(parsed.allowedClassTypes),
+    };
+  } catch {
+    return null;
+  }
 }
 
 function snapshotClassSessions(value: string | null | undefined) {
-  return offerSnapshot(value)?.allowedClassTypes?.map((classType) => ({ classId: classType, classType, sessions: 0 })) ?? null;
+  return (
+    offerSnapshot(value)?.allowedClassTypes?.map((classType) => ({
+      classId: classType,
+      classType,
+      sessions: 0,
+    })) ?? null
+  );
 }
 
 async function getAccountData(userId: string) {
@@ -55,7 +109,29 @@ async function getAccountData(userId: string) {
         rewardPoints: { include: { history: { orderBy: { createdAt: "desc" }, take: 20 } } },
         referral: { include: { usages: { select: { id: true, rewardGiven: true } } } },
         bookings: {
-          include: { schedule: { include: { class: { include: { trainer: true } } } } },
+          include: {
+            schedule: {
+              include: {
+                class: {
+                  include: { trainer: true },
+                },
+              },
+            },
+            rescheduleRequests: {
+              where: { status: "pending" },
+              include: {
+                targetSchedule: {
+                  include: {
+                    class: {
+                      include: { trainer: true },
+                    },
+                  },
+                },
+              },
+              orderBy: { requestedAt: "desc" },
+              take: 1,
+            },
+          },
           orderBy: { createdAt: "desc" },
           take: 20,
         },
@@ -133,12 +209,62 @@ async function getAccountData(userId: string) {
     const pendingPaymentTx = pendingPaymentMembership
       ? (pendingTxMap.get(pendingPaymentMembership.id) ?? null)
       : null;
-    const classesUsed = user.bookings.filter(
-      (booking) =>
-        booking.status === "attended" &&
-        activeMembership &&
-        new Date(booking.createdAt) >= new Date(activeMembership.startDate),
-    ).length;
+
+    const paidMembershipIds = new Set(
+      (
+        await db.paymentTransaction.findMany({
+          where: {
+            membershipId: { in: user.memberships.map((m) => m.id) },
+            status: "paid",
+          },
+          select: { membershipId: true },
+        })
+      )
+        .map((tx) => tx.membershipId)
+        .filter((id): id is string => Boolean(id)),
+    );
+
+    const attendancePassMembershipIds = new Set(
+      (
+        user.memberships.length > 0
+          ? await db.attendancePass.findMany({
+              where: {
+                userMembershipId: {
+                  in: user.memberships.map((membership) => membership.id),
+                },
+              },
+              select: {
+                userMembershipId: true,
+              },
+            })
+          : []
+      )
+        .map((pass) => pass.userMembershipId)
+        .filter((id): id is string => Boolean(id)),
+    );
+
+    const lifecycleStatus = classifyCustomerLifecycle({
+      suspendedAt: user.suspendedAt,
+      now: now24,
+      memberships: user.memberships.map((membership) => ({
+        status: membership.status,
+        startDate: membership.startDate,
+        endDate: membership.endDate,
+        pendingExpiresAt: membership.pendingExpiresAt,
+        activatedAt: membership.activatedAt,
+        legacyActivationEvidence:
+          paidMembershipIds.has(membership.id) ||
+          attendancePassMembershipIds.has(membership.id) ||
+          membership.bookings.some((booking) => booking.status === "attended"),
+      })),
+    });
+    const classesUsed =
+      activeMembership
+        ? sumMembershipBookingUnits(
+            activeMembership.bookings,
+            ["attended"],
+          )
+        : 0;
 
     const productRewardIds = Array.from(
       new Set(
@@ -158,6 +284,7 @@ async function getAccountData(userId: string) {
     const rewardProductMap = new Map(rewardProducts.map((product) => [product.id, product]));
 
     return {
+      lifecycleStatus,
       user: {
         id: user.id,
         name: user.name ?? "عضو",
@@ -197,17 +324,45 @@ async function getAccountData(userId: string) {
         // Also hide admin-cancelled memberships that were never paid (paymentMethod is empty).
         .filter((membership) => {
           if (expiredPendingIds.has(membership.id)) return false;
-          // Admin cancelled a never-paid membership → remove from customer view entirely
-          if (membership.status === "cancelled" && !membership.paymentMethod) return false;
-          return true;
+
+          const isLivePending =
+            membership.status === "pending_payment" &&
+            membership.pendingExpiresAt != null &&
+            membership.pendingExpiresAt.getTime() > now24.getTime();
+
+          if (isLivePending) return true;
+
+          return wasMembershipEverActivated({
+            status: membership.status,
+            startDate: membership.startDate,
+            endDate: membership.endDate,
+            pendingExpiresAt: membership.pendingExpiresAt,
+            activatedAt: membership.activatedAt,
+            legacyActivationEvidence:
+              paidMembershipIds.has(membership.id) ||
+              attendancePassMembershipIds.has(membership.id) ||
+              membership.bookings.some((booking) => booking.status === "attended"),
+          });
         })
         .map((membership) => {
         const snapshot = offerSnapshot(membership.offerSnapshot);
         const features = snapshot?.features ?? parseFeatures(membership.membership.features);
-        const attendedCount = membership.bookings.filter((booking) => booking.status === "attended").length;
+        const attendedCount =
+          sumMembershipBookingUnits(
+            membership.bookings,
+            ["attended"],
+          );
+
+        const reservedCount =
+          sumMembershipBookingUnits(
+            membership.bookings,
+            ["confirmed"],
+          );
         const totalSessions = membership.totalSessions ?? membership.membership.sessionsCount ?? membership.membership.maxClasses;
         const sessionsRemaining =
-          totalSessions == null || totalSessions < 0 ? null : Math.max(0, totalSessions - membership.bookings.length);
+          totalSessions == null || totalSessions < 0
+            ? null
+            : Math.max(0, totalSessions - attendedCount - reservedCount);
         const productRewards = parseJsonArray<{ productId?: string; quantity?: number }>(membership.productRewardsUsed).map((reward) => ({
           productId: reward.productId ?? "",
           quantity: reward.quantity ?? 0,
@@ -241,6 +396,7 @@ async function getAccountData(userId: string) {
           maxClasses: membership.membership.maxClasses,
           totalSessions,
           classesUsed: attendedCount,
+          sessionsReserved: reservedCount,
           sessionsRemaining,
           bookedCount: membership.bookings.length,
           checkoutUrl: isExpiredPending ? null : (pendingTx?.checkoutUrl ?? null),
@@ -318,10 +474,14 @@ async function getAccountData(userId: string) {
         // Hide bookings tied to expired-pending or non-active memberships
         .filter((booking) => {
           if (!booking.userMembershipId) return true; // standalone booking
+
+          // Keep historical booking records visible to the customer.
+          // Only a currently confirmed booking requires an active membership.
+          if (booking.status !== "confirmed") return true;
+
           if (expiredPendingIds.has(booking.userMembershipId)) return false;
-          // Find the membership
           const membership = user.memberships.find((m) => m.id === booking.userMembershipId);
-          return membership?.status === "active"; // only show if membership is active
+          return membership?.status === "active";
         })
         .map((booking) => ({
           id: booking.id,
@@ -334,6 +494,31 @@ async function getAccountData(userId: string) {
           status: booking.status,
           type: booking.schedule.class.type,
           userMembershipId: booking.userMembershipId ?? null,
+          pendingReschedule: booking.rescheduleRequests[0]
+            ? {
+                id: booking.rescheduleRequests[0].id,
+                requestType: booking.rescheduleRequests[0].requestType,
+                absenceReason: booking.rescheduleRequests[0].absenceReason,
+                requestedAt:
+                  booking.rescheduleRequests[0].requestedAt.toISOString(),
+                targetSchedule: {
+                  id: booking.rescheduleRequests[0].targetSchedule.id,
+                  classId:
+                    booking.rescheduleRequests[0].targetSchedule.classId,
+                  className:
+                    booking.rescheduleRequests[0].targetSchedule.class.name,
+                  trainerName:
+                    booking.rescheduleRequests[0].targetSchedule.class.trainer?.name ??
+                    "",
+                  date:
+                    booking.rescheduleRequests[0].targetSchedule.date.toISOString(),
+                  time:
+                    booking.rescheduleRequests[0].targetSchedule.time,
+                  type:
+                    booking.rescheduleRequests[0].targetSchedule.class.type,
+                },
+              }
+            : null,
         })),
       orders: user.orders.map((order) => ({
         id: order.id,

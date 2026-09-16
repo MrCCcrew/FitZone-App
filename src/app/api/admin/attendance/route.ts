@@ -11,6 +11,10 @@ import {
   isPrivateApplicationEligibleForAttendance,
 } from "@/lib/attendance";
 import { isBookingOperational } from "@/lib/booking-operational";
+import {
+  consumePrivateSession,
+  markClassAttendance,
+} from "@/lib/attendance-service";
 import { logAudit } from "@/lib/audit-context";
 
 function startOfDay(value: Date) {
@@ -200,30 +204,30 @@ export async function POST(req: Request) {
     },
   });
 
-  if (!pass || pass.status !== "active" || !pass.user.isActive) {
+  if (!pass || !pass.user.isActive) {
     return NextResponse.json({ error: "هذا الكود غير متاح للحضور." }, { status: 404 });
   }
 
   if (pass.userMembership) {
     if (mode !== "class") {
-      return NextResponse.json({ error: "هذا الكود خاص بحضور الكلاسات فقط." }, { status: 400 });
+      return NextResponse.json(
+        { error: "هذا الكود خاص بحضور الكلاسات فقط." },
+        { status: 400 },
+      );
     }
+
     if (!body.scheduleId) {
-      return NextResponse.json({ error: "يجب اختيار الكلاس أو الموعد قبل المسح." }, { status: 400 });
-    }
-    if (!isMembershipEligibleForAttendance(pass.userMembership)) {
-      return NextResponse.json({ error: "هذا الاشتراك غير مؤهل للحضور بالمسح." }, { status: 400 });
-    }
-
-    // Enforce subscription duration — expire immediately if endDate has passed
-    if (new Date() > new Date(pass.userMembership.endDate)) {
-      await Promise.all([
-        db.attendancePass.update({ where: { id: pass.id }, data: { status: "expired" } }),
-        db.userMembership.update({ where: { id: pass.userMembership.id }, data: { status: "expired" } }),
-      ]).catch(() => null);
-      return NextResponse.json({ error: "انتهت مدة الاشتراك." }, { status: 400 });
+      return NextResponse.json(
+        { error: "يجب اختيار الكلاس أو الموعد قبل المسح." },
+        { status: 400 },
+      );
     }
 
+    /*
+     * The route only resolves which booking the scanned pass + selected
+     * schedule refers to. All attendance business rules live in
+     * markClassAttendance().
+     */
     const booking = await db.booking.findFirst({
       where: {
         userId: pass.userId,
@@ -231,197 +235,171 @@ export async function POST(req: Request) {
         scheduleId: body.scheduleId,
         status: { in: ["confirmed", "attended"] },
       },
-      include: {
-        userMembership: { select: { status: true } },
-        schedule: {
-          include: {
-            class: { include: { trainer: true } },
-          },
-        },
+      select: {
+        id: true,
       },
     });
 
     if (!booking) {
-      return NextResponse.json({ error: "لا يوجد حجز مطابق لهذا العميل في هذا الكلاس." }, { status: 404 });
-    }
-
-    // Check booking operational status (membership must be active)
-    if (!isBookingOperational(booking)) {
       return NextResponse.json(
-        { error: "لا يمكن تسجيل الحضور. الاشتراك المرتبط بهذا الحجز غير نشط." },
-        { status: 400 }
+        { error: "لا يوجد حجز مطابق لهذا العميل في هذا الكلاس." },
+        { status: 404 },
       );
     }
 
-    if (booking.status === "attended") {
+    const attendanceResult = await markClassAttendance({
+      bookingId: booking.id,
+      scannedByUserId: guard.session.id,
+      source: attendanceSource,
+    });
+
+    if (!attendanceResult.ok) {
+      switch (attendanceResult.code) {
+        case "FUTURE_SESSION":
+          return NextResponse.json(
+            { error: "لا يمكن تسجيل حضور حصة لم يبدأ موعدها بعد." },
+            { status: 400 },
+          );
+
+        case "BOOKING_NOT_FOUND":
+          return NextResponse.json(
+            { error: "لا يوجد حجز مطابق لهذا العميل في هذا الكلاس." },
+            { status: 404 },
+          );
+
+        case "BOOKING_STATUS_CHANGED":
+          return NextResponse.json(
+            {
+              error: "تم تغيير حالة الحجز أثناء تسجيل الحضور. حاول المسح مرة أخرى.",
+              code: "BOOKING_STATUS_CHANGED",
+            },
+            { status: 409 },
+          );
+
+        case "ATTENDANCE_PASS_UNAVAILABLE":
+        case "ATTENDANCE_PASS_NOT_ACTIVE":
+          return NextResponse.json(
+            { error: "هذا الكود غير متاح للحضور." },
+            { status: 404 },
+          );
+
+        case "BOOKING_NOT_OPERATIONAL":
+          return NextResponse.json(
+            { error: "لا يمكن تسجيل الحضور. الاشتراك المرتبط بهذا الحجز غير نشط." },
+            { status: 400 },
+          );
+
+        case "MEMBERSHIP_REQUIRED":
+        case "BOOKING_NOT_CONFIRMED":
+        default:
+          return NextResponse.json(
+            { error: "لا يمكن تسجيل الحضور لهذا الحجز." },
+            { status: 400 },
+          );
+      }
+    }
+
+    if (attendanceResult.status === "already_attended") {
       return NextResponse.json({
         success: true,
         alreadyCheckedIn: true,
         result: {
           type: "class",
-          customerName: pass.user.name ?? "Member",
-          className: booking.schedule.class.name,
-          trainerName: booking.schedule.class.trainer.name,
-          time: booking.schedule.time,
+          customerName: attendanceResult.customerName,
+          className: attendanceResult.className,
+          trainerName: attendanceResult.trainerName,
+          time: attendanceResult.time,
         },
       });
     }
 
-    const sessionLimit =
-      pass.userMembership!.totalSessions ??
-      pass.userMembership!.membership.sessionsCount ??
-      null;
-
-    const checkIn = await db.$transaction(async (tx) => {
-      await tx.booking.update({
-        where: { id: booking.id },
-        data: { status: "attended" },
-      });
-
-      const created = await tx.attendanceCheckIn.create({
-        data: {
-          passId: pass.id,
-          userId: pass.userId,
-          userMembershipId: pass.userMembership!.id,
-          bookingId: booking.id,
-          scheduleId: booking.scheduleId,
-          scannedByUserId: guard.session.id,
-          checkInType: "class",
-        },
-      });
-
-      // Auto-expire membership when all allocated sessions are used
-      let sessionsUsed = 0;
-      let membershipExpired = false;
-      if (sessionLimit != null && sessionLimit > 0) {
-        sessionsUsed = await tx.attendanceCheckIn.count({
-          where: { userMembershipId: pass.userMembership!.id },
-        });
-        if (sessionsUsed >= sessionLimit) {
-          membershipExpired = true;
-          await tx.attendancePass.update({
-            where: { id: pass.id },
-            data: { status: "expired", lastUsedAt: new Date() },
-          });
-          await tx.userMembership.update({
-            where: { id: pass.userMembership!.id },
-            data: { status: "expired" },
-          });
-        }
-      }
-
-      if (!membershipExpired) {
-        await tx.attendancePass.update({
-          where: { id: pass.id },
-          data: { lastUsedAt: new Date() },
-        });
-      }
-
-      const notificationBody = membershipExpired
-        ? `تم تسجيل حضورك في ${booking.schedule.class.name} الساعة ${booking.schedule.time}. لقد استهلكتِ جميع حصصك — انتهى اشتراكك.`
-        : `تم تسجيل حضورك في ${booking.schedule.class.name} الساعة ${booking.schedule.time}.`;
-
-      await tx.notification.create({
-        data: {
-          userId: pass.userId,
-          title: membershipExpired
-            ? `✅ آخر حصة — ${booking.schedule.class.name}`
-            : `تم تسجيل حضور ${booking.schedule.class.name}`,
-          body: notificationBody,
-          type: "success",
-        },
-      }).catch(() => null);
-
-      return { created, sessionsUsed, membershipExpired };
+    void logAudit({
+      action:
+        attendanceSource === "qr"
+          ? "qr_attendance"
+          : "manual_attendance",
+      targetType: "booking",
+      targetId: attendanceResult.bookingId,
     });
-    void logAudit({ action: attendanceSource === "qr" ? "qr_attendance" : "manual_attendance", targetType: "booking", targetId: booking.id });
 
     return NextResponse.json({
       success: true,
-      membershipExpired: checkIn.membershipExpired,
-      sessionsRemaining: sessionLimit != null ? Math.max(0, sessionLimit - checkIn.sessionsUsed) : null,
+      membershipExpired: attendanceResult.membershipExpired,
+      sessionsRemaining: attendanceResult.sessionsRemaining,
       result: {
-        id: checkIn.created.id,
+        id: attendanceResult.checkInId,
         type: "class",
-        customerName: pass.user.name ?? "Member",
-        className: booking.schedule.class.name,
-        trainerName: booking.schedule.class.trainer.name,
-        time: booking.schedule.time,
+        customerName: attendanceResult.customerName,
+        className: attendanceResult.className,
+        trainerName: attendanceResult.trainerName,
+        time: attendanceResult.time,
       },
     });
   }
 
   if (!pass.privateSessionApplication) {
-    return NextResponse.json({ error: "تعذر تحديد نوع الحضور لهذا الكود." }, { status: 400 });
+    return NextResponse.json(
+      { error: "تعذر تحديد نوع الحضور لهذا الكود." },
+      { status: 400 },
+    );
   }
 
   if (mode !== "private") {
-    return NextResponse.json({ error: "هذا الكود خاص بالبرايفيت أو الميني برايفيت." }, { status: 400 });
+    return NextResponse.json(
+      { error: "هذا الكود خاص بالبرايفيت أو الميني برايفيت." },
+      { status: 400 },
+    );
   }
 
-  if (!isPrivateApplicationEligibleForAttendance(pass.privateSessionApplication)) {
-    const isExpired = pass.privateSessionApplication.expiresAt && new Date() > pass.privateSessionApplication.expiresAt;
-    if (isExpired) {
-      await db.attendancePass.update({ where: { id: pass.id }, data: { status: "expired" } }).catch(() => null);
-      return NextResponse.json({ error: "انتهت مدة الجلسات الخاصة." }, { status: 400 });
-    }
-    return NextResponse.json({ error: "هذا الطلب غير مؤهل للحضور بعد." }, { status: 400 });
-  }
-
-  const usedCount = pass.privateSessionApplication.attendanceCheckIns.length;
-  const remainingBefore = getPrivateSessionsRemaining(usedCount, pass.privateSessionApplication.sessionsCount);
-
-  if (remainingBefore <= 0) {
-    await db.attendancePass.update({
-      where: { id: pass.id },
-      data: { status: "expired" },
-    }).catch(() => null);
-
-    return NextResponse.json({ error: "تم استهلاك كل الجلسات المتاحة لهذا الطلب." }, { status: 400 });
-  }
-
-  const checkIn = await db.$transaction(async (tx) => {
-    const created = await tx.attendanceCheckIn.create({
-      data: {
-        passId: pass.id,
-        userId: pass.userId,
-        privateSessionApplicationId: pass.privateSessionApplication!.id,
-        scannedByUserId: guard.session.id,
-        checkInType: pass.privateSessionApplication!.type === "mini_private" ? "mini_private" : "private",
-      },
-    });
-
-    await tx.attendancePass.update({
-      where: { id: pass.id },
-      data: {
-        lastUsedAt: new Date(),
-        status: remainingBefore - 1 <= 0 ? "expired" : "active",
-      },
-    });
-
-    await tx.notification.create({
-      data: {
-        userId: pass.userId,
-        title:
-          pass.privateSessionApplication!.type === "mini_private"
-            ? "تم تسجيل حضور جلسة ميني برايفيت"
-            : "تم تسجيل حضور جلسة برايفيت",
-        body: `تم تسجيل حضورك مع المدربة ${pass.privateSessionApplication!.trainer.name}.`,
-        type: "success",
-      },
-    }).catch(() => null);
-
-    return created;
+  const privateResult = await consumePrivateSession({
+    passId: pass.id,
+    scannedByUserId: guard.session.id,
   });
+
+  if (!privateResult.ok) {
+    switch (privateResult.code) {
+      case "PRIVATE_APPLICATION_EXPIRED":
+        return NextResponse.json(
+          { error: "انتهت مدة الجلسات الخاصة." },
+          { status: 400 },
+        );
+
+      case "PRIVATE_SESSIONS_EXHAUSTED":
+        return NextResponse.json(
+          { error: "تم استهلاك كل الجلسات المتاحة لهذا الطلب." },
+          { status: 400 },
+        );
+
+      case "PRIVATE_APPLICATION_NOT_ELIGIBLE":
+        return NextResponse.json(
+          { error: "هذا الطلب غير مؤهل للحضور بعد." },
+          { status: 400 },
+        );
+
+      case "PASS_NOT_FOUND":
+      case "PASS_NOT_ACTIVE":
+        return NextResponse.json(
+          { error: "هذا الكود غير متاح للحضور." },
+          { status: 404 },
+        );
+
+      case "PRIVATE_APPLICATION_NOT_FOUND":
+      default:
+        return NextResponse.json(
+          { error: "تعذر تحديد نوع الحضور لهذا الكود." },
+          { status: 400 },
+        );
+    }
+  }
 
   return NextResponse.json({
     success: true,
     result: {
-      id: checkIn.id,
-      type: pass.privateSessionApplication.type,
-      customerName: pass.user.name ?? "Member",
-      trainerName: pass.privateSessionApplication.trainer.name,
-      remainingSessions: remainingBefore - 1,
+      id: privateResult.checkInId,
+      type: privateResult.type,
+      customerName: privateResult.customerName,
+      trainerName: privateResult.trainerName,
+      remainingSessions: privateResult.remainingSessions,
     },
   });
 }

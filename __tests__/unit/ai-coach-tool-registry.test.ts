@@ -79,6 +79,34 @@ describe("AI Coach read-only tool registry", () => {
     expect(mocks.classes).toHaveBeenCalledWith("كيك بوكس");
   });
 
+  it("passes weekday filtering separately from the class search term", async () => {
+    await getCoachToolContext({
+      intent: "schedule_lookup",
+      message: "مواعيد التخسيس يوم السبت؟",
+      lang: "ar",
+      userId: null,
+      temporalFilter: { weekday: "saturday" },
+    });
+
+    expect(mocks.classes).toHaveBeenCalledWith("التخسيس", {
+      weekday: "saturday",
+    });
+  });
+
+  it("passes an empty class search term for a weekday-only schedule question", async () => {
+    await getCoachToolContext({
+      intent: "schedule_lookup",
+      message: "إيه المواعيد المتاحة يوم السبت؟",
+      lang: "ar",
+      userId: null,
+      temporalFilter: { weekday: "saturday" },
+    });
+
+    expect(mocks.classes).toHaveBeenCalledWith("", {
+      weekday: "saturday",
+    });
+  });
+
   it("reports tool_error rather than success_empty when a product query throws", async () => {
     mocks.products.mockRejectedValue(new Error("database unavailable"));
     const result = await getCoachToolContext({ intent: "product_help", message: "إيه الموجود في المتجر؟", lang: "ar", userId: null });

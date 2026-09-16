@@ -6,7 +6,9 @@ import { createPaymentTransaction, restorePaymentBalanceAdjustments } from "@/li
 type OrderItemInput = {
   productId: string;
   quantity: number;
+  variantId?: string | null;
   size?: string | null;
+  color?: string | null;
 };
 
 function resolvePaymentMethod(value: unknown) {
@@ -52,11 +54,91 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "بعض المنتجات لم تعد متاحة." }, { status: 400 });
     }
 
+    const activeVariants = await db.productVariant.findMany({
+      where: {
+        productId: { in: products.map((product) => product.id) },
+        isActive: true,
+      },
+      select: {
+        id: true,
+        productId: true,
+        size: true,
+        color: true,
+      },
+    });
+
+    const variantsByProduct = new Map<string, typeof activeVariants>();
+
+    for (const variant of activeVariants) {
+      const list = variantsByProduct.get(variant.productId) ?? [];
+      list.push(variant);
+      variantsByProduct.set(variant.productId, list);
+    }
+
     for (const item of items) {
-      const product = products.find((entry) => entry.id === item.productId);
-      if (!product || product.stock < item.quantity) {
+      const productVariants =
+        variantsByProduct.get(item.productId) ?? [];
+
+      if (productVariants.length > 0 && !item.variantId) {
         return NextResponse.json(
-          { error: `الكمية غير متاحة للمنتج ${product?.name ?? ""}`.trim() },
+          {
+            error:
+              "يرجى إعادة اختيار المقاس أو اللون للمنتج قبل إتمام الطلب.",
+          },
+          { status: 400 },
+        );
+      }
+
+      if (
+        item.variantId &&
+        !productVariants.some(
+          (variant) => variant.id === item.variantId
+        )
+      ) {
+        return NextResponse.json(
+          { error: "الخيار المحدد للمنتج لم يعد متاحًا." },
+          { status: 400 },
+        );
+      }
+    }
+
+    const {
+      getSaleableStockForItems,
+      getSaleableItemKey,
+    } = await import("@/lib/saleable-stock-service");
+
+    const saleableStock =
+      await getSaleableStockForItems(
+        items.map((item) => ({
+          productId: item.productId,
+          variantId: item.variantId ?? null,
+        }))
+      );
+
+    for (const item of items) {
+      const product =
+        products.find((entry) => entry.id === item.productId);
+
+      if (!product) {
+        return NextResponse.json(
+          { error: "بعض المنتجات لم تعد متاحة." },
+          { status: 400 },
+        );
+      }
+
+      const snapshot = saleableStock.get(
+        getSaleableItemKey(
+          product.id,
+          item.variantId ?? null,
+        ),
+      );
+
+      if (
+        product.trackInventory &&
+        (!snapshot || snapshot.totalAvailable < item.quantity)
+      ) {
+        return NextResponse.json(
+          { error: `الكمية غير متاحة للمنتج ${product.name}` },
           { status: 400 },
         );
       }

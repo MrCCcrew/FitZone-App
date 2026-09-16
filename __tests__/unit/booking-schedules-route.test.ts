@@ -57,6 +57,11 @@ function eligibility(overrides: Partial<{ hasEligibleMembership: boolean; unrest
     unrestricted: false,
     allowedClassIds: ["yoga"],
     eligibleMembershipIds: ["membership-1"],
+    membershipIdsByClass: {
+      yoga: ["membership-1"],
+      boxing: ["membership-1"],
+      dance: ["membership-1"],
+    },
     ...overrides,
   };
 }
@@ -142,6 +147,7 @@ describe("GET /api/me/booking-schedules", () => {
       id: "historic-booking",
       scheduleId: "schedule-removed-class",
       status: "attended",
+      rescheduleRequests: [],
       schedule: {
         classId: "removed-class",
         date: new Date("2020-01-01T00:00:00.000Z"),

@@ -82,21 +82,70 @@ function buildPrivatePassLabel(application: PrivateApplicationWithTrainer) {
   return application.trainer?.name ? `${typeLabel} - ${application.trainer.name}` : typeLabel;
 }
 
-export async function ensureMembershipAttendancePass(userMembershipId: string) {
-  const existing = await db.attendancePass.findUnique({
-    where: { userMembershipId },
-    include: { userMembership: { include: { membership: true } } },
-  });
-
-  if (existing) return existing;
-
+export async function ensureMembershipAttendancePass(
+  userMembershipId: string,
+  options?: {
+    allowExpiredMakeup?: boolean;
+  },
+) {
   const membership = await db.userMembership.findUnique({
     where: { id: userMembershipId },
-    include: { membership: true },
+    include: {
+      membership: true,
+      bookings: {
+        where: {
+          isMakeup: true,
+          status: "confirmed",
+        },
+        select: {
+          id: true,
+        },
+      },
+    },
   });
 
-  if (!membership || !isMembershipEligibleForAttendance(membership)) {
+  if (!membership) {
     return null;
+  }
+
+  const normalEligible =
+    isMembershipEligibleForAttendance(membership);
+
+  const makeupEligible =
+    options?.allowExpiredMakeup === true &&
+    membership.status === "expired" &&
+    membership.bookings.length > 0;
+
+  if (!normalEligible && !makeupEligible) {
+    return null;
+  }
+
+  const existing = await db.attendancePass.findUnique({
+    where: { userMembershipId },
+    include: {
+      userMembership: {
+        include: { membership: true },
+      },
+    },
+  });
+
+  if (existing) {
+    if (
+      makeupEligible &&
+      existing.status === "expired"
+    ) {
+      return db.attendancePass.update({
+        where: { id: existing.id },
+        data: { status: "active" },
+        include: {
+          userMembership: {
+            include: { membership: true },
+          },
+        },
+      });
+    }
+
+    return existing;
   }
 
   return db.attendancePass.create({
@@ -108,7 +157,11 @@ export async function ensureMembershipAttendancePass(userMembershipId: string) {
       status: "active",
       label: buildMembershipPassLabel(membership),
     },
-    include: { userMembership: { include: { membership: true } } },
+    include: {
+      userMembership: {
+        include: { membership: true },
+      },
+    },
   });
 }
 

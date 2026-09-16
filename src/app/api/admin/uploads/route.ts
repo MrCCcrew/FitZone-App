@@ -4,7 +4,13 @@ import { NextResponse } from "next/server";
 import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { getAdminSession } from "@/lib/admin-session";
 import { applySensitiveRateLimit, getClientIp } from "@/lib/rate-limit";
-import { getMissingR2Env, getR2Client, R2_BUCKET, R2_PUBLIC_CACHE_CONTROL, R2_PUBLIC_URL } from "@/lib/r2";
+import {
+  getMissingR2Env,
+  getR2Client,
+  R2_BUCKET,
+  R2_PUBLIC_CACHE_CONTROL,
+  R2_PUBLIC_URL,
+} from "@/lib/r2";
 
 const MAX_FILE_SIZE = 100 * 1024 * 1024;
 const ALLOWED_TYPES = new Set([
@@ -17,7 +23,14 @@ const ALLOWED_TYPES = new Set([
   "video/webm",
   "video/quicktime",
 ]);
-const DANGEROUS_EXTENSIONS = new Set([".exe", ".js", ".sh", ".php", ".html", ".svg"]);
+const DANGEROUS_EXTENSIONS = new Set([
+  ".exe",
+  ".js",
+  ".sh",
+  ".php",
+  ".html",
+  ".svg",
+]);
 const ALLOWED_EXTENSIONS_BY_TYPE: Record<string, string[]> = {
   "image/jpeg": [".jpg", ".jpeg"],
   "image/png": [".png"],
@@ -37,6 +50,7 @@ const ALLOWED_FOLDERS = new Set([
   "pages",
   "blog",
   "partners",
+  "employees",
   "general",
 ]);
 
@@ -72,15 +86,27 @@ export async function POST(req: Request) {
   try {
     const adminSession = await getAdminSession();
     if (!adminSession) {
-      return NextResponse.json({ error: "يجب تسجيل دخول الأدمن أولًا." }, { status: 401 });
+      return NextResponse.json(
+        { error: "يجب تسجيل دخول الأدمن أولًا." },
+        { status: 401 },
+      );
     }
 
     const clientIp = getClientIp(req);
-    const limit = await applySensitiveRateLimit(`admin-upload:${adminSession.id}:${clientIp}`, 20, 10 * 60 * 1000);
+    const limit = await applySensitiveRateLimit(
+      `admin-upload:${adminSession.id}:${clientIp}`,
+      20,
+      10 * 60 * 1000,
+    );
     if (!limit.ok) {
       return NextResponse.json(
         { error: "عدد محاولات الرفع كبير جدًا. حاول مرة أخرى بعد قليل." },
-        { status: 429, headers: { "Retry-After": String(Math.ceil(limit.retryAfterMs / 1000)) } },
+        {
+          status: 429,
+          headers: {
+            "Retry-After": String(Math.ceil(limit.retryAfterMs / 1000)),
+          },
+        },
       );
     }
 
@@ -99,12 +125,18 @@ export async function POST(req: Request) {
     const folder = normalizeFolder(formData.get("folder"));
 
     if (!(file instanceof File)) {
-      return NextResponse.json({ error: "لم يتم اختيار ملف للرفع." }, { status: 400 });
+      return NextResponse.json(
+        { error: "لم يتم اختيار ملف للرفع." },
+        { status: 400 },
+      );
     }
 
     if (!ALLOWED_TYPES.has(file.type)) {
       return NextResponse.json(
-        { error: "نوع الملف غير مدعوم. ارفعي JPG أو PNG أو WEBP أو AVIF أو GIF أو MP4 أو WEBM أو MOV." },
+        {
+          error:
+            "نوع الملف غير مدعوم. ارفعي JPG أو PNG أو WEBP أو AVIF أو GIF أو MP4 أو WEBM أو MOV.",
+        },
         { status: 400 },
       );
     }
@@ -125,7 +157,10 @@ export async function POST(req: Request) {
 
     const extension = getExtension(file.name, file.type);
     if (!extension) {
-      return NextResponse.json({ error: "امتداد الملف غير صالح." }, { status: 400 });
+      return NextResponse.json(
+        { error: "امتداد الملف غير صالح." },
+        { status: 400 },
+      );
     }
 
     const fileName = `${Date.now()}-${randomUUID()}${extension}`;
@@ -148,10 +183,14 @@ export async function POST(req: Request) {
       folder,
     });
   } catch (error) {
-    console.error("[ADMIN_UPLOAD]", error instanceof Error ? error.message : "unknown");
+    console.error(
+      "[ADMIN_UPLOAD]",
+      error instanceof Error ? error.message : "unknown",
+    );
     return NextResponse.json(
       {
-        error: "تعذر رفع الملف الآن. تأكدي من إعدادات التخزين أو حجم الملف ثم حاولي مرة أخرى.",
+        error:
+          "تعذر رفع الملف الآن. تأكدي من إعدادات التخزين أو حجم الملف ثم حاولي مرة أخرى.",
       },
       { status: 500 },
     );

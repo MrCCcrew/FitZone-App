@@ -1,0 +1,1127 @@
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { PrismaClient } from "@prisma/client";
+
+const raw = process.env.DATABASE_URL;
+
+if (!raw) {
+  throw new Error("REFUSING: DATABASE_URL missing");
+}
+
+const url = new URL(raw);
+
+if (
+  process.env.APP_ENV !== "test" ||
+  url.hostname !== "127.0.0.1" ||
+  decodeURIComponent(url.username) !== "fitzone_test_user" ||
+  url.pathname !== "/fitzone_test"
+) {
+  throw new Error(
+    "REFUSING: supplier AP integration requires fitzone_test as fitzone_test_user on 127.0.0.1",
+  );
+}
+
+const db = new PrismaClient();
+
+let supplier1Id: string;
+let supplier2Id: string;
+let testProductId: string;
+
+async function createLinkedReceipt(invoiceId: string) {
+  const invoice = await db.purchaseInvoice.findUniqueOrThrow({
+    where: { id: invoiceId },
+    select: {
+      id: true,
+      supplierId: true,
+      totalAmount: true,
+    },
+  });
+
+  const total = Number(invoice.totalAmount);
+
+  return db.inventoryReceipt.create({
+    data: {
+      referenceNumber: `TEST-AP-R-${invoice.id}`,
+      supplierId: invoice.supplierId,
+      purchaseInvoiceId: invoice.id,
+      status: "posted",
+      totalCost: total,
+      items: {
+        create: [
+          {
+            productId: testProductId,
+            quantity: 1,
+            unitCost: total,
+            totalCost: total,
+          },
+        ],
+      },
+    },
+    include: {
+      items: true,
+    },
+  });
+}
+
+async function cleanup() {
+  await db.journalEntry.deleteMany({
+    where: {
+      journal: {
+        referenceType: {
+          in: [
+            "PurchaseInvoice",
+            "SupplierPayment",
+            "PurchaseInvoiceReversal",
+            "SupplierPaymentReversal",
+          ],
+        },
+      },
+    },
+  });
+
+  await db.journal.deleteMany({
+    where: {
+      referenceType: {
+        in: [
+          "PurchaseInvoice",
+          "SupplierPayment",
+          "PurchaseInvoiceReversal",
+          "SupplierPaymentReversal",
+        ],
+      },
+    },
+  });
+
+  await db.supplierPaymentAllocation.deleteMany({});
+  await db.supplierPayment.deleteMany({});
+
+  await db.inventoryReceipt.deleteMany({
+    where: {
+      referenceNumber: {
+        startsWith: "TEST-AP-R-",
+      },
+    },
+  });
+
+  await db.purchaseInvoiceItem.deleteMany({});
+  await db.purchaseInvoice.deleteMany({});
+
+  await db.product.deleteMany({
+    where: {
+      name: "Supplier AP Receipt Test Product",
+    },
+  });
+
+  await db.supplier.deleteMany({
+    where: {
+      code: {
+        in: ["TEST-AP-001", "TEST-AP-002"],
+      },
+    },
+  });
+}
+
+beforeAll(async () => {
+  await cleanup();
+
+  const s1 = await db.supplier.create({
+    data: {
+      name: "Supplier AP Test 1",
+      code: "TEST-AP-001",
+      isActive: true,
+      defaultPaymentTerms: "credit",
+    },
+  });
+
+  const s2 = await db.supplier.create({
+    data: {
+      name: "Supplier AP Test 2",
+      code: "TEST-AP-002",
+      isActive: true,
+      defaultPaymentTerms: "credit",
+    },
+  });
+
+  supplier1Id = s1.id;
+  supplier2Id = s2.id;
+
+  const product = await db.product.create({
+    data: {
+      name: "Supplier AP Receipt Test Product",
+      price: 1000,
+      stock: 0,
+      trackInventory: true,
+      averageCost: 0,
+      costPrice: 0,
+      isActive: true,
+      category: "test",
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  testProductId = product.id;
+});
+
+afterAll(async () => {
+  await cleanup();
+  await db.$disconnect();
+});
+
+describe("Supplier AP Service — real fitzone_test integration", () => {
+  it("creates purchase invoice draft with server-calculated total", async () => {
+    const { createPurchaseInvoiceDraft } =
+      await import("@/lib/supplier-ap-service");
+
+    const invoice = await createPurchaseInvoiceDraft({
+      supplierId: supplier1Id,
+      invoiceNumber: "TST-INV-001",
+      invoiceDate: new Date("2026-08-29T00:00:00Z"),
+      paymentTerms: "credit",
+      items: [
+        {
+          description: "Item A",
+          quantity: 2,
+          unitCost: 100,
+        },
+        {
+          description: "Item B",
+          quantity: 1,
+          unitCost: 50.5,
+        },
+      ],
+    });
+
+    expect(invoice.status).toBe("draft");
+    expect(Number(invoice.totalAmount)).toBe(250.5);
+    expect(Number(invoice.subtotal)).toBe(250.5);
+    expect(invoice.items).toHaveLength(2);
+  });
+
+  it("posts purchase invoice to Inventory / AP and is idempotent", async () => {
+    const { createPurchaseInvoiceDraft, postPurchaseInvoice } =
+      await import("@/lib/supplier-ap-service");
+
+    const invoice = await createPurchaseInvoiceDraft({
+      supplierId: supplier1Id,
+      invoiceNumber: "TST-INV-002",
+      invoiceDate: new Date("2026-08-29T00:00:00Z"),
+      paymentTerms: "credit",
+      items: [
+        {
+          description: "Inventory purchase",
+          quantity: 1,
+          unitCost: 300,
+        },
+      ],
+    });
+
+    await createLinkedReceipt(invoice.id);
+
+    const first = await postPurchaseInvoice(invoice.id);
+    const second = await postPurchaseInvoice(invoice.id);
+
+    expect(first.alreadyPosted).toBe(false);
+    expect(second.alreadyPosted).toBe(true);
+
+    const journal = await db.journal.findUniqueOrThrow({
+      where: {
+        referenceType_referenceId: {
+          referenceType: "PurchaseInvoice",
+          referenceId: invoice.id,
+        },
+      },
+      include: {
+        entries: {
+          include: {
+            account: true,
+          },
+        },
+      },
+    });
+
+    expect(journal.status).toBe("posted");
+
+    const inventory = journal.entries.find((e) => e.account.code === "1010");
+    const ap = journal.entries.find((e) => e.account.code === "2010");
+
+    expect(Number(inventory?.debit)).toBe(300);
+    expect(Number(inventory?.credit)).toBe(0);
+
+    expect(Number(ap?.debit)).toBe(0);
+    expect(Number(ap?.credit)).toBe(300);
+
+    expect(
+      await db.journal.count({
+        where: {
+          referenceType: "PurchaseInvoice",
+          referenceId: invoice.id,
+        },
+      }),
+    ).toBe(1);
+  });
+
+  it("supports partial payment and derives invoice balance correctly", async () => {
+    const {
+      createPurchaseInvoiceDraft,
+      postPurchaseInvoice,
+      createSupplierPaymentDraft,
+      postSupplierPayment,
+      getPurchaseInvoiceBalance,
+    } = await import("@/lib/supplier-ap-service");
+
+    const invoice = await createPurchaseInvoiceDraft({
+      supplierId: supplier1Id,
+      invoiceNumber: "TST-INV-003",
+      invoiceDate: new Date("2026-08-29T00:00:00Z"),
+      paymentTerms: "credit",
+      items: [
+        {
+          description: "Partial payment item",
+          quantity: 1,
+          unitCost: 500,
+        },
+      ],
+    });
+
+    await createLinkedReceipt(invoice.id);
+    await postPurchaseInvoice(invoice.id);
+
+    const payment = await createSupplierPaymentDraft({
+      supplierId: supplier1Id,
+      amount: 200,
+      paymentDate: new Date("2026-08-29T00:00:00Z"),
+      paymentMethod: "cash",
+      allocations: [
+        {
+          purchaseInvoiceId: invoice.id,
+          amount: 200,
+        },
+      ],
+    });
+
+    await postSupplierPayment(payment.id);
+
+    const balance = await getPurchaseInvoiceBalance(invoice.id);
+
+    expect(balance.totalAmount).toBe(500);
+    expect(balance.paidAmount).toBe(200);
+    expect(balance.outstandingAmount).toBe(300);
+    expect(balance.paymentStatus).toBe("partially_paid");
+
+    const journal = await db.journal.findUniqueOrThrow({
+      where: {
+        referenceType_referenceId: {
+          referenceType: "SupplierPayment",
+          referenceId: payment.id,
+        },
+      },
+      include: {
+        entries: {
+          include: {
+            account: true,
+          },
+        },
+      },
+    });
+
+    const ap = journal.entries.find((e) => e.account.code === "2010");
+    const cash = journal.entries.find((e) => e.account.code === "1020");
+
+    expect(Number(ap?.debit)).toBe(200);
+    expect(Number(cash?.credit)).toBe(200);
+  });
+
+  it("supports multiple payments until invoice is fully paid", async () => {
+    const {
+      createPurchaseInvoiceDraft,
+      postPurchaseInvoice,
+      createSupplierPaymentDraft,
+      postSupplierPayment,
+      getPurchaseInvoiceBalance,
+    } = await import("@/lib/supplier-ap-service");
+
+    const invoice = await createPurchaseInvoiceDraft({
+      supplierId: supplier1Id,
+      invoiceNumber: "TST-INV-004",
+      invoiceDate: new Date("2026-08-29T00:00:00Z"),
+      items: [
+        {
+          description: "Full settlement item",
+          quantity: 1,
+          unitCost: 400,
+        },
+      ],
+    });
+
+    await createLinkedReceipt(invoice.id);
+    await postPurchaseInvoice(invoice.id);
+
+    const p1 = await createSupplierPaymentDraft({
+      supplierId: supplier1Id,
+      amount: 150,
+      paymentDate: new Date(),
+      paymentMethod: "cash",
+      allocations: [
+        {
+          purchaseInvoiceId: invoice.id,
+          amount: 150,
+        },
+      ],
+    });
+
+    await postSupplierPayment(p1.id);
+
+    const p2 = await createSupplierPaymentDraft({
+      supplierId: supplier1Id,
+      amount: 250,
+      paymentDate: new Date(),
+      paymentMethod: "cash",
+      allocations: [
+        {
+          purchaseInvoiceId: invoice.id,
+          amount: 250,
+        },
+      ],
+    });
+
+    await postSupplierPayment(p2.id);
+
+    const balance = await getPurchaseInvoiceBalance(invoice.id);
+
+    expect(balance.paidAmount).toBe(400);
+    expect(balance.outstandingAmount).toBe(0);
+    expect(balance.paymentStatus).toBe("paid");
+  });
+
+  it("blocks overpayment", async () => {
+    const {
+      createPurchaseInvoiceDraft,
+      postPurchaseInvoice,
+      createSupplierPaymentDraft,
+      postSupplierPayment,
+    } = await import("@/lib/supplier-ap-service");
+
+    const invoice = await createPurchaseInvoiceDraft({
+      supplierId: supplier1Id,
+      invoiceNumber: "TST-INV-005",
+      invoiceDate: new Date(),
+      items: [
+        {
+          description: "Overpayment protection",
+          quantity: 1,
+          unitCost: 100,
+        },
+      ],
+    });
+
+    await createLinkedReceipt(invoice.id);
+    await postPurchaseInvoice(invoice.id);
+
+    const payment = await createSupplierPaymentDraft({
+      supplierId: supplier1Id,
+      amount: 101,
+      paymentDate: new Date(),
+      paymentMethod: "cash",
+      allocations: [
+        {
+          purchaseInvoiceId: invoice.id,
+          amount: 101,
+        },
+      ],
+    });
+
+    await expect(postSupplierPayment(payment.id)).rejects.toThrow(
+      /outstanding balance/i,
+    );
+
+    const saved = await db.supplierPayment.findUniqueOrThrow({
+      where: { id: payment.id },
+    });
+
+    expect(saved.status).toBe("draft");
+
+    expect(
+      await db.journal.count({
+        where: {
+          referenceType: "SupplierPayment",
+          referenceId: payment.id,
+        },
+      }),
+    ).toBe(0);
+  });
+
+  it("blocks cross-supplier allocation", async () => {
+    const {
+      createPurchaseInvoiceDraft,
+      postPurchaseInvoice,
+      createSupplierPaymentDraft,
+    } = await import("@/lib/supplier-ap-service");
+
+    const invoice = await createPurchaseInvoiceDraft({
+      supplierId: supplier1Id,
+      invoiceNumber: "TST-INV-006",
+      invoiceDate: new Date(),
+      items: [
+        {
+          description: "Cross supplier protection",
+          quantity: 1,
+          unitCost: 100,
+        },
+      ],
+    });
+
+    await createLinkedReceipt(invoice.id);
+    await postPurchaseInvoice(invoice.id);
+
+    await expect(
+      createSupplierPaymentDraft({
+        supplierId: supplier2Id,
+        amount: 100,
+        paymentDate: new Date(),
+        paymentMethod: "cash",
+        allocations: [
+          {
+            purchaseInvoiceId: invoice.id,
+            amount: 100,
+          },
+        ],
+      }),
+    ).rejects.toThrow(/cross-supplier/i);
+  });
+
+  it("rejects unsupported supplier payment account mapping safely", async () => {
+    const {
+      createPurchaseInvoiceDraft,
+      postPurchaseInvoice,
+      createSupplierPaymentDraft,
+      postSupplierPayment,
+    } = await import("@/lib/supplier-ap-service");
+
+    const invoice = await createPurchaseInvoiceDraft({
+      supplierId: supplier1Id,
+      invoiceNumber: "TST-INV-007",
+      invoiceDate: new Date(),
+      items: [
+        {
+          description: "Bank mapping safety",
+          quantity: 1,
+          unitCost: 100,
+        },
+      ],
+    });
+
+    await createLinkedReceipt(invoice.id);
+    await postPurchaseInvoice(invoice.id);
+
+    const payment = await createSupplierPaymentDraft({
+      supplierId: supplier1Id,
+      amount: 100,
+      paymentDate: new Date(),
+      paymentMethod: "bank",
+      allocations: [
+        {
+          purchaseInvoiceId: invoice.id,
+          amount: 100,
+        },
+      ],
+    });
+
+    await expect(postSupplierPayment(payment.id)).rejects.toThrow(
+      /Only cash is enabled/i,
+    );
+
+    const saved = await db.supplierPayment.findUniqueOrThrow({
+      where: { id: payment.id },
+    });
+
+    expect(saved.status).toBe("draft");
+  });
+
+  it("blocks invoice cancellation while a posted payment exists", async () => {
+    const {
+      createPurchaseInvoiceDraft,
+      postPurchaseInvoice,
+      createSupplierPaymentDraft,
+      postSupplierPayment,
+      cancelPurchaseInvoice,
+    } = await import("@/lib/supplier-ap-service");
+
+    const invoice = await createPurchaseInvoiceDraft({
+      supplierId: supplier1Id,
+      invoiceNumber: "TST-INV-008",
+      invoiceDate: new Date(),
+      items: [
+        {
+          description: "Cancellation protection",
+          quantity: 1,
+          unitCost: 100,
+        },
+      ],
+    });
+
+    await createLinkedReceipt(invoice.id);
+    await postPurchaseInvoice(invoice.id);
+
+    const payment = await createSupplierPaymentDraft({
+      supplierId: supplier1Id,
+      amount: 50,
+      paymentDate: new Date(),
+      paymentMethod: "cash",
+      allocations: [
+        {
+          purchaseInvoiceId: invoice.id,
+          amount: 50,
+        },
+      ],
+    });
+
+    await postSupplierPayment(payment.id);
+
+    await expect(cancelPurchaseInvoice(invoice.id)).rejects.toThrow(
+      /posted supplier payments/i,
+    );
+  });
+
+  it("cancels supplier payment via accounting reversal and restores outstanding balance", async () => {
+    const {
+      createPurchaseInvoiceDraft,
+      postPurchaseInvoice,
+      createSupplierPaymentDraft,
+      postSupplierPayment,
+      cancelSupplierPayment,
+      getPurchaseInvoiceBalance,
+    } = await import("@/lib/supplier-ap-service");
+
+    const invoice = await createPurchaseInvoiceDraft({
+      supplierId: supplier1Id,
+      invoiceNumber: "TST-INV-009",
+      invoiceDate: new Date(),
+      items: [
+        {
+          description: "Payment reversal",
+          quantity: 1,
+          unitCost: 250,
+        },
+      ],
+    });
+
+    await createLinkedReceipt(invoice.id);
+    await postPurchaseInvoice(invoice.id);
+
+    const payment = await createSupplierPaymentDraft({
+      supplierId: supplier1Id,
+      amount: 100,
+      paymentDate: new Date(),
+      paymentMethod: "cash",
+      allocations: [
+        {
+          purchaseInvoiceId: invoice.id,
+          amount: 100,
+        },
+      ],
+    });
+
+    await postSupplierPayment(payment.id);
+
+    const before = await getPurchaseInvoiceBalance(invoice.id);
+
+    expect(before.paidAmount).toBe(100);
+    expect(before.outstandingAmount).toBe(150);
+
+    await cancelSupplierPayment(payment.id);
+
+    const after = await getPurchaseInvoiceBalance(invoice.id);
+
+    expect(after.paidAmount).toBe(0);
+    expect(after.outstandingAmount).toBe(250);
+    expect(after.paymentStatus).toBe("unpaid");
+
+    const savedPayment = await db.supplierPayment.findUniqueOrThrow({
+      where: { id: payment.id },
+    });
+
+    expect(savedPayment.status).toBe("cancelled");
+
+    const originalJournal = await db.journal.findUniqueOrThrow({
+      where: {
+        referenceType_referenceId: {
+          referenceType: "SupplierPayment",
+          referenceId: payment.id,
+        },
+      },
+    });
+
+    expect(originalJournal.status).toBe("reversed");
+    expect(originalJournal.reversalJournalId).toBeNull();
+
+    const reversalJournal = await db.journal.findUniqueOrThrow({
+      where: {
+        referenceType_referenceId: {
+          referenceType: "SupplierPaymentReversal",
+          referenceId: payment.id,
+        },
+      },
+      include: {
+        entries: {
+          include: {
+            account: true,
+          },
+        },
+      },
+    });
+
+    expect(reversalJournal.status).toBe("posted");
+    expect(reversalJournal.reversalJournalId).toBe(originalJournal.id);
+
+    const reversalAp = reversalJournal.entries.find(
+      (e) => e.account.code === "2010",
+    );
+    const reversalCash = reversalJournal.entries.find(
+      (e) => e.account.code === "1020",
+    );
+
+    expect(Number(reversalAp?.debit)).toBe(0);
+    expect(Number(reversalAp?.credit)).toBe(100);
+
+    expect(Number(reversalCash?.debit)).toBe(100);
+    expect(Number(reversalCash?.credit)).toBe(0);
+  });
+});
+
+describe("Supplier AP Service — inventory receipt linkage guards", () => {
+  it("blocks posting a purchase invoice without a linked inventory receipt", async () => {
+    const { createPurchaseInvoiceDraft, postPurchaseInvoice } =
+      await import("@/lib/supplier-ap-service");
+
+    const invoice = await createPurchaseInvoiceDraft({
+      supplierId: supplier1Id,
+      invoiceNumber: "TST-GUARD-NO-RECEIPT",
+      invoiceDate: new Date(),
+      items: [
+        {
+          description: "Missing receipt protection",
+          quantity: 1,
+          unitCost: 100,
+        },
+      ],
+    });
+
+    await expect(postPurchaseInvoice(invoice.id)).rejects.toThrow(
+      /without at least one linked inventory receipt/i,
+    );
+
+    const saved = await db.purchaseInvoice.findUniqueOrThrow({
+      where: { id: invoice.id },
+    });
+
+    expect(saved.status).toBe("draft");
+
+    expect(
+      await db.journal.count({
+        where: {
+          referenceType: "PurchaseInvoice",
+          referenceId: invoice.id,
+        },
+      }),
+    ).toBe(0);
+  });
+
+  it("blocks posting when a linked inventory receipt belongs to another supplier", async () => {
+    const { createPurchaseInvoiceDraft, postPurchaseInvoice } =
+      await import("@/lib/supplier-ap-service");
+
+    const invoice = await createPurchaseInvoiceDraft({
+      supplierId: supplier1Id,
+      invoiceNumber: "TST-GUARD-SUPPLIER",
+      invoiceDate: new Date(),
+      items: [
+        {
+          description: "Supplier mismatch protection",
+          quantity: 1,
+          unitCost: 100,
+        },
+      ],
+    });
+
+    await db.inventoryReceipt.create({
+      data: {
+        referenceNumber: `TEST-AP-R-${invoice.id}`,
+        supplierId: supplier2Id,
+        purchaseInvoiceId: invoice.id,
+        status: "posted",
+        totalCost: 100,
+        items: {
+          create: [
+            {
+              productId: testProductId,
+              quantity: 1,
+              unitCost: 100,
+              totalCost: 100,
+            },
+          ],
+        },
+      },
+    });
+
+    await expect(postPurchaseInvoice(invoice.id)).rejects.toThrow(
+      /different supplier/i,
+    );
+
+    expect(
+      await db.journal.count({
+        where: {
+          referenceType: "PurchaseInvoice",
+          referenceId: invoice.id,
+        },
+      }),
+    ).toBe(0);
+  });
+
+  it("blocks posting when a linked inventory receipt is cancelled", async () => {
+    const { createPurchaseInvoiceDraft, postPurchaseInvoice } =
+      await import("@/lib/supplier-ap-service");
+
+    const invoice = await createPurchaseInvoiceDraft({
+      supplierId: supplier1Id,
+      invoiceNumber: "TST-GUARD-CANCELLED-RECEIPT",
+      invoiceDate: new Date(),
+      items: [
+        {
+          description: "Cancelled receipt protection",
+          quantity: 1,
+          unitCost: 100,
+        },
+      ],
+    });
+
+    await db.inventoryReceipt.create({
+      data: {
+        referenceNumber: `TEST-AP-R-${invoice.id}`,
+        supplierId: supplier1Id,
+        purchaseInvoiceId: invoice.id,
+        status: "cancelled",
+        totalCost: 100,
+        items: {
+          create: [
+            {
+              productId: testProductId,
+              quantity: 1,
+              unitCost: 100,
+              totalCost: 100,
+            },
+          ],
+        },
+      },
+    });
+
+    await expect(postPurchaseInvoice(invoice.id)).rejects.toThrow(
+      /is not posted/i,
+    );
+
+    expect(
+      await db.journal.count({
+        where: {
+          referenceType: "PurchaseInvoice",
+          referenceId: invoice.id,
+        },
+      }),
+    ).toBe(0);
+  });
+
+  it("blocks posting when linked inventory receipt totals do not equal the invoice", async () => {
+    const { createPurchaseInvoiceDraft, postPurchaseInvoice } =
+      await import("@/lib/supplier-ap-service");
+
+    const invoice = await createPurchaseInvoiceDraft({
+      supplierId: supplier1Id,
+      invoiceNumber: "TST-GUARD-TOTAL",
+      invoiceDate: new Date(),
+      items: [
+        {
+          description: "Receipt total mismatch protection",
+          quantity: 1,
+          unitCost: 100,
+        },
+      ],
+    });
+
+    await db.inventoryReceipt.create({
+      data: {
+        referenceNumber: `TEST-AP-R-${invoice.id}`,
+        supplierId: supplier1Id,
+        purchaseInvoiceId: invoice.id,
+        status: "posted",
+        totalCost: 90,
+        items: {
+          create: [
+            {
+              productId: testProductId,
+              quantity: 1,
+              unitCost: 90,
+              totalCost: 90,
+            },
+          ],
+        },
+      },
+    });
+
+    await expect(postPurchaseInvoice(invoice.id)).rejects.toThrow(
+      /linked inventory receipts total mismatch/i,
+    );
+
+    expect(
+      await db.journal.count({
+        where: {
+          referenceType: "PurchaseInvoice",
+          referenceId: invoice.id,
+        },
+      }),
+    ).toBe(0);
+  });
+
+  it("posts only the financial journal and does not change stock or WAC", async () => {
+    const { createPurchaseInvoiceDraft, postPurchaseInvoice } =
+      await import("@/lib/supplier-ap-service");
+
+    await db.product.update({
+      where: { id: testProductId },
+      data: {
+        stock: 7,
+        averageCost: 42.5,
+        lastPurchaseCost: 50,
+      },
+    });
+
+    const before = await db.product.findUniqueOrThrow({
+      where: { id: testProductId },
+      select: {
+        stock: true,
+        averageCost: true,
+        lastPurchaseCost: true,
+      },
+    });
+
+    const invoice = await createPurchaseInvoiceDraft({
+      supplierId: supplier1Id,
+      invoiceNumber: "TST-GUARD-NO-DOUBLE-STOCK",
+      invoiceDate: new Date(),
+      items: [
+        {
+          description: "No double stock",
+          quantity: 1,
+          unitCost: 100,
+        },
+      ],
+    });
+
+    await createLinkedReceipt(invoice.id);
+
+    await postPurchaseInvoice(invoice.id);
+
+    const after = await db.product.findUniqueOrThrow({
+      where: { id: testProductId },
+      select: {
+        stock: true,
+        averageCost: true,
+        lastPurchaseCost: true,
+      },
+    });
+
+    expect(after.stock).toBe(before.stock);
+    expect(after.averageCost).toBe(before.averageCost);
+    expect(after.lastPurchaseCost).toBe(before.lastPurchaseCost);
+
+    expect(
+      await db.inventoryMovement.count({
+        where: {
+          referenceType: "PurchaseInvoice",
+          referenceId: invoice.id,
+        },
+      }),
+    ).toBe(0);
+
+    expect(
+      await db.journal.count({
+        where: {
+          referenceType: "PurchaseInvoice",
+          referenceId: invoice.id,
+        },
+      }),
+    ).toBe(1);
+  });
+});
+
+describe("Supplier AP Service — concurrency protection", () => {
+  it("prevents concurrent overpayment across two different payments", async () => {
+    const {
+      createPurchaseInvoiceDraft,
+      postPurchaseInvoice,
+      createSupplierPaymentDraft,
+      postSupplierPayment,
+      getPurchaseInvoiceBalance,
+    } = await import("@/lib/supplier-ap-service");
+
+    const invoice = await createPurchaseInvoiceDraft({
+      supplierId: supplier1Id,
+      invoiceNumber: "TST-CONC-001",
+      invoiceDate: new Date(),
+      items: [
+        {
+          description: "Concurrent overpayment protection",
+          quantity: 1,
+          unitCost: 100,
+        },
+      ],
+    });
+
+    await createLinkedReceipt(invoice.id);
+    await postPurchaseInvoice(invoice.id);
+
+    const p1 = await createSupplierPaymentDraft({
+      supplierId: supplier1Id,
+      amount: 70,
+      paymentDate: new Date(),
+      paymentMethod: "cash",
+      allocations: [
+        {
+          purchaseInvoiceId: invoice.id,
+          amount: 70,
+        },
+      ],
+    });
+
+    const p2 = await createSupplierPaymentDraft({
+      supplierId: supplier1Id,
+      amount: 70,
+      paymentDate: new Date(),
+      paymentMethod: "cash",
+      allocations: [
+        {
+          purchaseInvoiceId: invoice.id,
+          amount: 70,
+        },
+      ],
+    });
+
+    const results = await Promise.allSettled([
+      postSupplierPayment(p1.id),
+      postSupplierPayment(p2.id),
+    ]);
+
+    const fulfilled = results.filter((result) => result.status === "fulfilled");
+
+    const rejected = results.filter((result) => result.status === "rejected");
+
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+
+    const payments = await db.supplierPayment.findMany({
+      where: {
+        id: {
+          in: [p1.id, p2.id],
+        },
+      },
+      orderBy: {
+        id: "asc",
+      },
+    });
+
+    expect(
+      payments.filter((payment) => payment.status === "posted"),
+    ).toHaveLength(1);
+
+    expect(
+      payments.filter((payment) => payment.status === "draft"),
+    ).toHaveLength(1);
+
+    const balance = await getPurchaseInvoiceBalance(invoice.id);
+
+    expect(balance.totalAmount).toBe(100);
+    expect(balance.paidAmount).toBe(70);
+    expect(balance.outstandingAmount).toBe(30);
+    expect(balance.paymentStatus).toBe("partially_paid");
+
+    const paymentJournalCount = await db.journal.count({
+      where: {
+        referenceType: "SupplierPayment",
+        referenceId: {
+          in: [p1.id, p2.id],
+        },
+      },
+    });
+
+    expect(paymentJournalCount).toBe(1);
+  });
+
+  it("posting the same payment concurrently creates exactly one journal", async () => {
+    const {
+      createPurchaseInvoiceDraft,
+      postPurchaseInvoice,
+      createSupplierPaymentDraft,
+      postSupplierPayment,
+      getPurchaseInvoiceBalance,
+    } = await import("@/lib/supplier-ap-service");
+
+    const invoice = await createPurchaseInvoiceDraft({
+      supplierId: supplier1Id,
+      invoiceNumber: "TST-CONC-002",
+      invoiceDate: new Date(),
+      items: [
+        {
+          description: "Concurrent same-payment posting",
+          quantity: 1,
+          unitCost: 120,
+        },
+      ],
+    });
+
+    await createLinkedReceipt(invoice.id);
+    await postPurchaseInvoice(invoice.id);
+
+    const payment = await createSupplierPaymentDraft({
+      supplierId: supplier1Id,
+      amount: 120,
+      paymentDate: new Date(),
+      paymentMethod: "cash",
+      allocations: [
+        {
+          purchaseInvoiceId: invoice.id,
+          amount: 120,
+        },
+      ],
+    });
+
+    const results = await Promise.allSettled([
+      postSupplierPayment(payment.id),
+      postSupplierPayment(payment.id),
+    ]);
+
+    expect(
+      results.filter((result) => result.status === "fulfilled"),
+    ).toHaveLength(2);
+
+    const journalCount = await db.journal.count({
+      where: {
+        referenceType: "SupplierPayment",
+        referenceId: payment.id,
+      },
+    });
+
+    expect(journalCount).toBe(1);
+
+    const saved = await db.supplierPayment.findUniqueOrThrow({
+      where: {
+        id: payment.id,
+      },
+    });
+
+    expect(saved.status).toBe("posted");
+
+    const balance = await getPurchaseInvoiceBalance(invoice.id);
+
+    expect(balance.paidAmount).toBe(120);
+    expect(balance.outstandingAmount).toBe(0);
+    expect(balance.paymentStatus).toBe("paid");
+  });
+});

@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { findOrCreateOAuthUser, generateAppleClientSecret, getAppBaseUrl, verifyAppleIdToken } from "@/lib/oauth";
 import { APP_SESSION_COOKIE, createAppSessionToken, getAppSessionCookieOptions } from "@/lib/app-session";
+import { assertExternalSideEffectsAllowed } from "@/lib/staging-safety";
 
 export async function POST(req: NextRequest) {
   const base = getAppBaseUrl();
 
   try {
+    assertExternalSideEffectsAllowed("Apple OAuth");
     const formData = await req.formData();
     const code = formData.get("code") as string | null;
     const state = formData.get("state") as string | null;

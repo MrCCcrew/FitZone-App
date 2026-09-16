@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import QRCode from "qrcode";
 import { getCurrentAppUser } from "@/lib/app-session";
 import { db } from "@/lib/db";
+import { sumMembershipBookingUnits } from "@/lib/membership-session-units";
 import {
   buildAttendancePayload,
   ensureMembershipAttendancePass,
@@ -22,12 +23,33 @@ export async function GET() {
 
   const [activeMembership, privateApplications] = await Promise.all([
     db.userMembership.findFirst({
-      where: { userId: user.id, status: "active" },
+      where: {
+        userId: user.id,
+        OR: [
+          { status: "active" },
+          {
+            status: "expired",
+            bookings: {
+              some: {
+                isMakeup: true,
+                status: "confirmed",
+              },
+            },
+          },
+        ],
+      },
       include: {
         membership: true,
         bookings: {
-          where: { status: { in: ["confirmed", "attended"] } },
-          select: { id: true },
+          where: {
+            status: "confirmed",
+          },
+          select: {
+              id: true,
+              isMakeup: true,
+              status: true,
+              entitlementUnits: true,
+            },
         },
       },
       orderBy: { startDate: "desc" },
@@ -54,8 +76,26 @@ export async function GET() {
     privateType?: string | null;
   }> = [];
 
-  if (activeMembership && isMembershipEligibleForAttendance(activeMembership)) {
-    const pass = await ensureMembershipAttendancePass(activeMembership.id);
+  const hasPendingMakeup =
+    activeMembership?.bookings.some(
+      (booking) => booking.isMakeup === true,
+    ) ?? false;
+
+  const attendanceEligible =
+    Boolean(activeMembership) &&
+    (
+      isMembershipEligibleForAttendance(activeMembership!) ||
+      (
+        activeMembership!.status === "expired" &&
+        hasPendingMakeup
+      )
+    );
+
+  if (activeMembership && attendanceEligible) {
+    const pass = await ensureMembershipAttendancePass(
+      activeMembership.id,
+      { allowExpiredMakeup: true },
+    );
     if (pass) {
       const payload = buildAttendancePayload(pass.code);
       const qrDataUrl = await QRCode.toDataURL(payload, {
@@ -72,9 +112,17 @@ export async function GET() {
         payload,
         qrDataUrl,
         remainingSessions:
-          activeMembership.totalSessions == null || activeMembership.totalSessions < 0
-            ? null
-            : Math.max(0, activeMembership.totalSessions - activeMembership.bookings.length),
+          activeMembership.totalSessions == null ||
+            activeMembership.totalSessions < 0
+              ? null
+              : Math.max(
+                  0,
+                  activeMembership.totalSessions -
+                    sumMembershipBookingUnits(
+                      activeMembership.bookings,
+                      ["confirmed"],
+                    ),
+                ),
       });
     }
   }

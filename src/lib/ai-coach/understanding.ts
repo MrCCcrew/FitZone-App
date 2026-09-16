@@ -1,4 +1,5 @@
 import { extractCatalogSearchQuery, normalizeCatalogText } from "@/lib/catalog-query";
+import { extractScheduleTemporalFilter, stripScheduleTemporalTerms, type ScheduleTemporalFilter } from "@/lib/ai-coach/schedule-temporal";
 import { findCoachPage } from "@/lib/ai-coach/page-registry";
 import { detectCoachIntent, detectExplicitNavigationTarget } from "@/lib/ai-coach/intents";
 import { isSiteTourRequest } from "@/lib/ai-coach/site-tour";
@@ -10,7 +11,7 @@ import type { CoachIntent, CoachLang } from "@/lib/ai-coach/types";
 export type CanonicalIntent = "general_fitness" | "workout_recommendation" | "nutrition_general" | "nutritionist_service" | "partner_info" | "goals_list" | "trainer_recommendation" | "exercise_explanation" | "offer_lookup" | "membership_lookup" | "membership_pricing" | "product_lookup" | "class_schedule" | "trainer_lookup" | "club_information" | "site_navigation" | "site_tour" | "account_summary" | "account_membership" | "account_bookings" | "account_wallet" | "account_points" | "support_request" | "privacy_guard" | "forbidden_write_action" | "medical_safety" | "out_of_scope" | "clarification_required";
 
 export type CoachDomain = "memberships" | "packages" | "products" | "classes" | "offers" | "account" | "site" | null;
-export type CoachUnderstanding = { intent: CanonicalIntent; confidence: number; extractedEntities: Record<string, string | number | boolean>; normalizedQuery: string; requestedAction: "answer" | "navigate" | "read_account" | "forbidden"; requiresAuthentication: boolean; allowedTools: string[]; requiresModel: boolean; listAll: boolean; legacyIntent: CoachIntent; domain: CoachDomain; operation: "list" | "search" | "filter" | "sort" | "open" | "read" | "forbidden" | "clarify"; sort: "price_asc" | null; temporalFilter: Record<string, string>; contextReference: boolean; safetyFlags: string[]; };
+export type CoachUnderstanding = { intent: CanonicalIntent; confidence: number; extractedEntities: Record<string, string | number | boolean>; normalizedQuery: string; requestedAction: "answer" | "navigate" | "read_account" | "forbidden"; requiresAuthentication: boolean; allowedTools: string[]; requiresModel: boolean; listAll: boolean; legacyIntent: CoachIntent; domain: CoachDomain; operation: "list" | "search" | "filter" | "sort" | "open" | "read" | "forbidden" | "clarify"; sort: "price_asc" | null; temporalFilter: ScheduleTemporalFilter; contextReference: boolean; safetyFlags: string[]; };
 
 const WRITE_REQUEST = /(?:احذف|امسح|عدل|غي[ّ]?ر|زود|اضف|فع[ّ]?ل|انشئ|ادفع|نفذ|delete|remove|edit|change|add|activate|pay)\s*(?:لي|رصيد|نقاط|اشتراك|عضوية|سعر|عرض|منتج|جدول|صلاح)/i;
 const OTHER_USER = /(?:مستخدم|عميل|شخص)\s*(?:تاني|آخر|اخر)|(?:اعرض|وريني|اكشف|اعرف|معرفه|جلب)\s+بيانات\s+\S+|بيانات\s+(?:العميل\s+\S+|المستخدمين|العملاء)|(?:رصيد|اشتراك|حجوزات|حساب|نقاط)\s+(?:احمد|محمد|ساره|مني|خالد|صاحبي|المستخدم\s*رقم\s*\d+)|(?:another|other)\s+(?:user|customer)/i;
@@ -64,7 +65,7 @@ export async function understandCoachMessage(message: string, _lang: CoachLang, 
   const membershipGoal = extractMembershipGoal(message);
   if (membershipGoal && /اشتراك|باقه|باقة|عضوي|اعرض.*(?:اشتراك|باقه|باقة)/i.test(text)) return result("membership_lookup", .99, text, { goal: membershipGoal, searchTerm: goalSearchTerms(membershipGoal) });
   if (membershipGoal && context?.lastIntent === "membership_recommendation") return result("membership_lookup", .99, text, { goal: membershipGoal, searchTerm: goalSearchTerms(membershipGoal) });
-  if (/خس|خساره الوزن|خسارة الوزن|قيمي اكلي|نظميلي اكلي|افضل وجبه بعد التمرين|زيادة لياقتي|ازيد لياقتي|اتمرن ازاي|تمرن ازاي|مبتدئ|مبتدئة|weight loss|fitness|workout/i.test(message) && !/(منتج|منتجات|متجر|الشوب|شوب|store|shop|protein)/i.test(message)) return result("general_fitness", .9, text);
+  if (/خس|خساره الوزن|خسارة الوزن|قيمي اكلي|نظميلي اكلي|افضل وجبه بعد التمرين|زيادة لياقتي|ازيد لياقتي|اتمرن ازاي|تمرن ازاي|مبتدئ|مبتدئة|weight loss|fitness|workout/i.test(message) && !/(منتج|منتجات|متجر|الشوب|شوب|store|shop|protein)/i.test(message) && !/(مواعيد|ميعاد|الجدول|الكلاسات|حصص|schedule|classes)/i.test(message)) return result("general_fitness", .9, text);
   if (/رصيدي|محفظتي|wallet/i.test(text)) return result("account_wallet", .99, text);
   if (/نقاطي|rewards?|points?/i.test(text)) return result("account_points", .99, text);
   if (/حجوزاتي|my bookings/i.test(text)) return result("account_bookings", .99, text);
@@ -85,11 +86,13 @@ export async function understandCoachMessage(message: string, _lang: CoachLang, 
   // A request to show schedule data is an answer/tool request, not navigation.
   // CRITICAL: "المواعيد" is NOT a class name — it's a request for schedule list
   if (/(?:مواعيد|ميعاد|الجدول|الكلاسات|حصص|schedule|classes)/i.test(text) && !/(?:افتحي|افتح|وديني|روحي|روح|وريني\s+الجدول|open|navigate)/i.test(text)) {
-    const q = extractCatalogSearchQuery("class", message);
+    const temporalFilter = extractScheduleTemporalFilter(message);
+    const scheduleQuery = stripScheduleTemporalTerms(message);
+    const q = extractCatalogSearchQuery("class", scheduleQuery);
     // "إيه المواعيد المتاحة" must be list-all without className filter
     const isScheduleListRequest = /(?:ايه|إيه|ما)\s+(?:ال)?(?:مواعيد|المواعيد)|(?:المواعيد|مواعيد)\s+(?:المتاحه|المتاحة|القادمه|القادمة)/i.test(message);
-    if (isScheduleListRequest) return result("class_schedule", .97, text, {}, true, { temporalFilter: /النهارده|اليوم|today/i.test(text) ? { date: "today" } : /بكره|بكرا|tomorrow/i.test(text) ? { date: "tomorrow" } : {} });
-    return result("class_schedule", .97, text, q.searchTerm ? { className: q.searchTerm } : {}, q.isListAll, { temporalFilter: /النهارده|اليوم|today/i.test(text) ? { date: "today" } : /بكره|بكرا|tomorrow/i.test(text) ? { date: "tomorrow" } : {} });
+    if (isScheduleListRequest) return result("class_schedule", .97, text, {}, true, { temporalFilter });
+    return result("class_schedule", .97, text, q.searchTerm ? { className: q.searchTerm } : {}, q.isListAll, { temporalFilter });
   }
   // Explicit navigation uses a fixed precedence and never inherits stale context.
   const explicitNavigationTarget = detectExplicitNavigationTarget(message);

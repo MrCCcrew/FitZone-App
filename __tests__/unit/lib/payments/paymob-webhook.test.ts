@@ -257,12 +257,12 @@ describe("paymob handleWebhook — payment status mapping", () => {
     expect(result.transactionId).toBe("fallback-tx-id");
   });
 
-  it("includes order.id as providerReference and obj.id as externalReference", async () => {
+  it("preserves canonical providerReference and uses obj.id as externalReference", async () => {
     const result = await paymobPaymentProvider.handleWebhook!(
       { type: "TRANSACTION", obj: baseTxObj, hmac: computeHmac(baseTxObj) },
       new Headers(),
     );
-    expect(result.providerReference).toBe("111222");
+    expect(result.providerReference).toBeNull();
     expect(result.externalReference).toBe("987654");
   });
 

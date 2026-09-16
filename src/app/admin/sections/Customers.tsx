@@ -21,10 +21,25 @@ const STATUS_CONFIG: Record<
     badgeClass: "bg-amber-500/15 text-amber-300",
     dotClass: "bg-amber-400",
   },
+  pending_payment: {
+    label: "قيد الدفع",
+    badgeClass: "bg-sky-500/15 text-sky-300",
+    dotClass: "bg-sky-400",
+  },
+  cancelled: {
+    label: "ملغي",
+    badgeClass: "bg-orange-500/15 text-orange-300",
+    dotClass: "bg-orange-400",
+  },
   expired: {
     label: "منتهي",
     badgeClass: "bg-rose-500/15 text-rose-300",
     dotClass: "bg-rose-400",
+  },
+  unsubscribed: {
+    label: "غير مشترك",
+    badgeClass: "bg-gray-500/15 text-gray-300",
+    dotClass: "bg-gray-400",
   },
 };
 
@@ -43,9 +58,80 @@ const PAYMENT_LABELS: Record<string, string> = {
   instapay: "إنستا باي",
   offer: "عرض خاص",
   manual_pending: "قيد الدفع",
+  paymob: "Paymob",
 };
 
+function formatPaymentState(membership: CustomerMembershipReport) {
+  const status = membership.paymentStatus;
+  const provider = membership.paymentProvider ?? membership.paymentMethod;
+  const method = formatPaymentMethod(provider);
+
+  if (status === "paid" && membership.paymentPaidAt) {
+    return `${method} — مدفوع`;
+  }
+
+  if (status === "pending" || status === "requires_action") {
+    return `${method} — قيد الدفع`;
+  }
+
+  if (status === "cancelled") {
+    return `${method} — لم يتم الدفع (ملغاة)`;
+  }
+
+  if (status === "failed") {
+    return `${method} — فشل الدفع`;
+  }
+
+  if (status === "expired") {
+    return `${method} — انتهت محاولة الدفع`;
+  }
+
+  if (provider === "paymob" || membership.paymentMethod === "paymob") {
+    return "Paymob — لا يوجد دفع ناجح مؤكد";
+  }
+
+  return formatPaymentMethod(membership.paymentMethod);
+}
+
 type NewCustomer = Omit<Customer, "id"> & { password?: string; trainerRefToken?: string };
+
+type ExchangeScheduleOption = {
+  id: string;
+  date: string;
+  time: string;
+  availableSpots: number;
+  isActive?: boolean;
+  class?: {
+    id: string;
+    name: string;
+  } | null;
+};
+
+type ExchangeSourceBooking = {
+  id: string;
+  scheduleId: string;
+  date: string;
+  time: string;
+  className: string;
+};
+
+type ExchangeDayBooking = {
+  id: string;
+  scheduleId: string;
+  date: string;
+  time: string;
+  className: string;
+  entitlementUnits: number;
+  isMakeup: boolean;
+  eligibleAsExchangeSource: boolean;
+};
+
+  type ClassExchangeModalState = {
+  membership: CustomerMembershipReport;
+  scheduleId: string;
+    sourceBookingIds: string[];
+  reason: string;
+};
 
 const EMPTY_CUSTOMER: NewCustomer = {
   name: "",
@@ -310,7 +396,7 @@ function openPrintWindow(customers: Customer[]) {
                     <td>${membership.sessionsRemaining ?? "—"}</td>
                     <td>${products}</td>
                     <td>${membership.paymentAmount}</td>
-                    <td>${formatPaymentMethod(membership.paymentMethod)}</td>
+                    <td>${formatPaymentState(membership)}</td>
                     <td>${membership.offerTitle ?? "—"}</td>
                   </tr>
                 `;
@@ -338,6 +424,31 @@ export default function Customers() {
   const [search, setSearch] = useState("");
   const [planFilter, setPlanFilter] = useState("الكل");
   const [statusFilter, setStatusFilter] = useState("الكل");
+  const [joinDateFrom, setJoinDateFrom] = useState("");
+  const [joinDateTo, setJoinDateTo] = useState("");
+
+  const [canManageMarketing, setCanManageMarketing] = useState(false);
+  const [canExecuteClassExchange, setCanExecuteClassExchange] =
+    useState(false);
+
+  const [marketingStaff, setMarketingStaff] = useState<
+    Array<{
+      id: string;
+      name: string;
+      email: string | null;
+      jobTitle?: string | null;
+      marketingCommissionRate?: number;
+      marketingCommissionType?: string;
+    }>
+  >([]);
+
+  const [marketingModal, setMarketingModal] = useState<{
+    customer: Customer;
+    assignedStaffUserId: string;
+  } | null>(null);
+
+  const [marketingWorking, setMarketingWorking] = useState(false);
+  const [marketingError, setMarketingError] = useState<string | null>(null);
   const [viewCustomer, setViewCustomer] = useState<Customer | null>(null);
   const [editCustomer, setEditCustomer] = useState<(Customer & { password?: string }) | NewCustomer | null>(null);
   const [wpEdit, setWpEdit] = useState<{ userId: string; balance: number; points: number } | null>(null);
@@ -347,6 +458,41 @@ export default function Customers() {
   const [trainerLinks, setTrainerLinks] = useState<{ id: string; token: string; label: string | null }[]>([]);
   const [surveyResponses, setSurveyResponses] = useState<HealthSurveyResponse[]>([]);
   const [surveyLoading, setSurveyLoading] = useState(false);
+  const [classExchangeModal, setClassExchangeModal] =
+    useState<ClassExchangeModalState | null>(null);
+  const [
+    classExchangeSourceBookings,
+    setClassExchangeSourceBookings,
+  ] = useState<ExchangeSourceBooking[]>([]);
+
+  const [
+    classExchangeSourcesLoading,
+    setClassExchangeSourcesLoading,
+  ] = useState(false);
+
+  const [
+    classExchangeDayBookings,
+    setClassExchangeDayBookings,
+  ] = useState<ExchangeDayBooking[]>([]);
+
+  const [
+    classExchangeSourceSearch,
+    setClassExchangeSourceSearch,
+  ] = useState("");
+
+  const [
+    classExchangeScheduleSearch,
+    setClassExchangeScheduleSearch,
+  ] = useState("");
+
+  const [classExchangeSchedules, setClassExchangeSchedules] =
+    useState<ExchangeScheduleOption[]>([]);
+  const [classExchangeSchedulesLoading, setClassExchangeSchedulesLoading] =
+    useState(false);
+  const [classExchangeWorking, setClassExchangeWorking] =
+    useState(false);
+  const [classExchangeError, setClassExchangeError] =
+    useState<string | null>(null);
 
   const loadCustomers = useCallback(async () => {
     setLoading(true);
@@ -356,6 +502,10 @@ export default function Customers() {
       if (payload && typeof payload === "object" && "customers" in payload) {
         setCustomers(Array.isArray(payload.customers) ? payload.customers : []);
         if (payload.userRole) setUserRole(payload.userRole);
+        setCanManageMarketing(payload.canManageMarketing === true);
+        setCanExecuteClassExchange(
+          payload.canExecuteClassExchange === true,
+        );
       } else {
         setCustomers(Array.isArray(payload) ? payload : []);
       }
@@ -381,15 +531,556 @@ export default function Customers() {
 
   const planOptions = useMemo(() => Array.from(new Set(customers.map((customer) => customer.plan))), [customers]);
 
+  const loadMarketingStaff = useCallback(async () => {
+    if (!canManageMarketing) {
+      setMarketingStaff([]);
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        "/api/admin/marketing-conversions",
+        { cache: "no-store" },
+      );
+
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        setMarketingStaff([]);
+        return;
+      }
+
+      const rows =
+        Array.isArray(payload)
+          ? payload
+          : Array.isArray(payload.staff)
+            ? payload.staff
+            : Array.isArray(payload.employees)
+              ? payload.employees
+              : Array.isArray(payload.marketingStaff)
+                ? payload.marketingStaff
+                : [];
+
+      setMarketingStaff(
+        rows.filter(
+          (
+            item: unknown,
+          ): item is {
+            id: string;
+            name: string;
+            email: string | null;
+            jobTitle?: string | null;
+            marketingCommissionRate?: number;
+            marketingCommissionType?: string;
+          } =>
+            Boolean(
+              item &&
+                typeof item === "object" &&
+                typeof (item as { id?: unknown }).id === "string" &&
+                typeof (item as { name?: unknown }).name === "string",
+            ),
+        ),
+      );
+    } catch {
+      setMarketingStaff([]);
+    }
+  }, [canManageMarketing]);
+
+  useEffect(() => {
+    void loadMarketingStaff();
+  }, [loadMarketingStaff]);
+
+  const openMarketingAssignment = useCallback(
+    (customer: Customer) => {
+      setMarketingError(null);
+      setMarketingModal({
+        customer,
+        assignedStaffUserId:
+          customer.marketingConversion?.assignedStaff.id ?? "",
+      });
+    },
+    [],
+  );
+
+  const saveMarketingAssignment = useCallback(async () => {
+    if (
+      !marketingModal ||
+      !marketingModal.assignedStaffUserId
+    ) {
+      setMarketingError("اختر موظف/موظفة التسويق أولاً.");
+      return;
+    }
+
+    setMarketingWorking(true);
+    setMarketingError(null);
+
+    try {
+      const conversion =
+        marketingModal.customer.marketingConversion;
+
+      const response = await fetch(
+        "/api/admin/marketing-conversions",
+        {
+          method: conversion ? "PATCH" : "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(
+            conversion
+              ? {
+                  id: conversion.id,
+                  conversionId: conversion.id,
+                  action: "reassign",
+                  assignedStaffUserId:
+                    marketingModal.assignedStaffUserId,
+                }
+              : {
+                  customerId: marketingModal.customer.id,
+                  assignedStaffUserId:
+                    marketingModal.assignedStaffUserId,
+                },
+          ),
+        },
+      );
+
+      const payload = await response
+        .json()
+        .catch(() => ({}));
+
+      if (!response.ok) {
+        setMarketingError(
+          payload.error ??
+            "تعذر حفظ متابعة التسويق.",
+        );
+        return;
+      }
+
+      setMarketingModal(null);
+      await loadCustomers();
+      await loadMarketingStaff();
+    } catch {
+      setMarketingError(
+        "تعذر الاتصال بخدمة متابعة التسويق.",
+      );
+    } finally {
+      setMarketingWorking(false);
+    }
+  }, [
+    loadCustomers,
+    loadMarketingStaff,
+    marketingModal,
+  ]);
+
+  const cancelMarketingAssignment = useCallback(
+    async (customer: Customer) => {
+      const conversion =
+        customer.marketingConversion;
+
+      if (!conversion) return;
+
+      const confirmed = window.confirm(
+        `إلغاء متابعة التسويق الحالية للعميل ${customer.name}؟\n\nلن يتم حذف التاريخ السابق.`,
+      );
+
+      if (!confirmed) return;
+
+      setMarketingWorking(true);
+
+      try {
+        const response = await fetch(
+          "/api/admin/marketing-conversions",
+          {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              id: conversion.id,
+              conversionId: conversion.id,
+              action: "cancel",
+            }),
+          },
+        );
+
+        const payload = await response
+          .json()
+          .catch(() => ({}));
+
+        if (!response.ok) {
+          window.alert(
+            payload.error ??
+              "تعذر إلغاء متابعة التسويق.",
+          );
+          return;
+        }
+
+        if (
+          marketingModal?.customer.id ===
+          customer.id
+        ) {
+          setMarketingModal(null);
+        }
+
+        await loadCustomers();
+      } finally {
+        setMarketingWorking(false);
+      }
+    },
+    [loadCustomers, marketingModal],
+  );
+
+  const loadClassExchangeSources =
+    useCallback(
+      async (
+        membershipId: string,
+      ) => {
+        setClassExchangeSourcesLoading(
+          true,
+        );
+
+        try {
+          const response =
+            await fetch(
+              `/api/admin/class-exchanges?userMembershipId=${encodeURIComponent(
+                membershipId,
+              )}`,
+              {
+                cache:
+                  "no-store",
+              },
+            );
+
+          const payload =
+            await response
+              .json()
+              .catch(
+                () => ({}),
+              );
+
+          if (!response.ok) {
+            setClassExchangeSourceBookings(
+              [],
+            );
+
+            setClassExchangeError(
+              payload?.error ??
+                "تعذر تحميل الحجوزات المستقبلية.",
+            );
+
+            return;
+          }
+
+          setClassExchangeSourceBookings(
+            Array.isArray(
+              payload?.sourceBookings,
+            )
+              ? payload.sourceBookings
+              : [],
+          );
+
+          setClassExchangeDayBookings(
+            Array.isArray(
+              payload?.dayBookings,
+            )
+              ? payload.dayBookings
+              : [],
+          );
+        } catch {
+          setClassExchangeSourceBookings(
+            [],
+          );
+
+          setClassExchangeError(
+            "تعذر تحميل الحجوزات المستقبلية.",
+          );
+        } finally {
+          setClassExchangeSourcesLoading(
+            false,
+          );
+        }
+      },
+      [],
+    );
+
+  const loadClassExchangeSchedules =
+    useCallback(async () => {
+      setClassExchangeSchedulesLoading(true);
+      setClassExchangeError(null);
+
+      try {
+        const response = await fetch(
+          "/api/admin/schedules",
+          {
+            cache: "no-store",
+          },
+        );
+
+        const payload =
+          await response.json().catch(() => []);
+
+        if (!response.ok) {
+          setClassExchangeSchedules([]);
+          setClassExchangeError(
+            payload?.error ??
+              "تعذر تحميل المواعيد المتاحة.",
+          );
+          return;
+        }
+
+        const list =
+          Array.isArray(payload)
+            ? payload
+            : [];
+
+        setClassExchangeSchedules(
+          list
+            .filter(
+              (
+                item,
+              ): item is ExchangeScheduleOption =>
+                Boolean(
+                  item &&
+                    typeof item === "object" &&
+                    typeof item.id === "string" &&
+                    typeof item.date === "string" &&
+                    typeof item.time === "string" &&
+                    typeof item.availableSpots ===
+                      "number",
+                ),
+            )
+            .filter(
+              (item) =>
+                item.isActive !== false &&
+                item.availableSpots > 0,
+            ),
+        );
+      } catch {
+        setClassExchangeSchedules([]);
+        setClassExchangeError(
+          "تعذر تحميل المواعيد المتاحة.",
+        );
+      } finally {
+        setClassExchangeSchedulesLoading(false);
+      }
+    }, []);
+
+  const openClassExchange =
+    useCallback(
+      (
+        membership:
+          CustomerMembershipReport,
+      ) => {
+        setClassExchangeModal({
+          membership,
+          scheduleId: "",
+          sourceBookingIds: [],
+          reason: "",
+        });
+
+        setClassExchangeError(null);
+
+        setClassExchangeSourceBookings(
+          [],
+        );
+
+        setClassExchangeDayBookings([]);
+        setClassExchangeSourceSearch("");
+        setClassExchangeScheduleSearch("");
+
+        void loadClassExchangeSources(
+          membership.id,
+        );
+
+        void loadClassExchangeSchedules();
+      },
+      [
+          loadClassExchangeSchedules,
+          loadClassExchangeSources,
+        ],
+    );
+
+  const refreshViewedCustomer =
+    useCallback(
+      async (customerId: string) => {
+        const response = await fetch(
+          "/api/admin/customers",
+          {
+            cache: "no-store",
+          },
+        );
+
+        const payload =
+          await response.json().catch(() => ({}));
+
+        const list: Customer[] =
+          Array.isArray(payload)
+            ? payload
+            : Array.isArray(payload?.customers)
+              ? payload.customers
+              : [];
+
+        setCustomers(list);
+
+        const refreshed =
+          list.find(
+            (customer) =>
+              customer.id === customerId,
+          ) ?? null;
+
+        setViewCustomer(refreshed);
+      },
+      [],
+    );
+
+  const submitClassExchange =
+    useCallback(async () => {
+      if (
+        !classExchangeModal ||
+        !viewCustomer
+      ) {
+        return;
+      }
+
+      if (
+        !classExchangeModal.scheduleId
+      ) {
+        setClassExchangeError(
+          "يرجى اختيار الموعد.",
+        );
+        return;
+      }
+
+      if (
+        classExchangeModal.reason.trim()
+          .length < 3
+      ) {
+        setClassExchangeError(
+          "يرجى كتابة سبب الحجز الاستثنائي.",
+        );
+        return;
+      }
+
+      if (
+        classExchangeModal
+          .sourceBookingIds.length !==
+        2
+      ) {
+        setClassExchangeError(
+          "اختر حصتين مستقبليتين بالضبط سيتم استبدالهما.",
+        );
+        return;
+      }
+
+      const confirmed =
+        window.confirm(
+          `سيتم إلغاء الحصتين المستقبليتين المحددتين وإعادة مقعديهما، ثم حجز كلاس واحد خارج اشتراك "${classExchangeModal.membership.name}" مقابل حصتين. هل تريد المتابعة؟`,
+        );
+
+      if (!confirmed) {
+        return;
+      }
+
+      setClassExchangeWorking(true);
+      setClassExchangeError(null);
+
+      try {
+        const response = await fetch(
+          "/api/admin/class-exchanges",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+            body: JSON.stringify({
+              userMembershipId:
+                classExchangeModal
+                  .membership.id,
+              scheduleId:
+                classExchangeModal
+                  .scheduleId,
+              sourceBookingIds:
+                  classExchangeModal
+                    .sourceBookingIds,
+                reason:
+                classExchangeModal
+                  .reason.trim(),
+            }),
+          },
+        );
+
+        const payload =
+          await response.json().catch(
+            () => ({}),
+          );
+
+        if (!response.ok) {
+          setClassExchangeError(
+            payload?.error ??
+              "تعذر إنشاء الحجز الاستثنائي.",
+          );
+          return;
+        }
+
+        const customerId =
+          viewCustomer.id;
+
+        setClassExchangeModal(null);
+
+        await refreshViewedCustomer(
+          customerId,
+        );
+
+        window.alert(
+          `تم إنشاء الحجز الاستثنائي بنجاح وخصم حصتين. الرصيد المتبقي: ${payload.remainingUnitsAfter ?? "—"}.`,
+        );
+      } catch {
+        setClassExchangeError(
+          "تعذر إنشاء الحجز الاستثنائي. تحقق من الاتصال وحاول مرة أخرى.",
+        );
+      } finally {
+        setClassExchangeWorking(false);
+      }
+    }, [
+      classExchangeModal,
+      refreshViewedCustomer,
+      viewCustomer,
+    ]);
+
+
   const filteredCustomers = useMemo(() => {
     return customers.filter((customer) => {
       const text = `${customer.name} ${customer.phone} ${customer.email}`.toLowerCase();
       const matchesSearch = !search.trim() || text.includes(search.toLowerCase());
       const matchesPlan = planFilter === "الكل" || customer.plan === planFilter;
-      const matchesStatus = statusFilter === "الكل" || customer.status === statusFilter;
-      return matchesSearch && matchesPlan && matchesStatus;
+      const matchesStatus =
+        statusFilter === "الكل" ||
+        customer.status === statusFilter;
+
+      const matchesFrom =
+        !joinDateFrom ||
+        customer.joinDate >= joinDateFrom;
+
+      const matchesTo =
+        !joinDateTo ||
+        customer.joinDate <= joinDateTo;
+
+      return (
+        matchesSearch &&
+        matchesPlan &&
+        matchesStatus &&
+        matchesFrom &&
+        matchesTo
+      );
     });
-  }, [customers, planFilter, search, statusFilter]);
+  }, [
+    customers,
+    joinDateFrom,
+    joinDateTo,
+    planFilter,
+    search,
+    statusFilter,
+  ]);
 
   const saveCustomer = async () => {
     if (!editCustomer) return;
@@ -512,15 +1203,8 @@ export default function Customers() {
     }
   };
 
-  const exportCsv = () => {
-    const csv = buildCsv(filteredCustomers);
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `customers-report-${new Date().toISOString().slice(0, 10)}.csv`;
-    link.click();
-    window.URL.revokeObjectURL(url);
+  const exportExcel = () => {
+    window.location.href = "/api/admin/customers/export";
   };
 
   const exportPdf = () => {
@@ -567,7 +1251,7 @@ export default function Customers() {
       actions={
         <div className="flex flex-wrap gap-2">
           <button
-            onClick={exportCsv}
+            onClick={exportExcel}
             className="rounded-xl bg-white/10 px-4 py-2 text-sm font-bold text-[#fff4f8] transition-colors hover:bg-white/20"
           >
             تصدير Excel
@@ -665,8 +1349,50 @@ export default function Customers() {
             <option value="الكل">كل الحالات</option>
             <option value="active">نشط</option>
             <option value="suspended">موقوف</option>
+            <option value="pending_payment">قيد الدفع</option>
+            <option value="cancelled">ملغي</option>
             <option value="expired">منتهي</option>
+            <option value="unsubscribed">غير مشترك</option>
           </select>
+
+          <label className="flex items-center gap-2 text-xs text-[#d7aabd]">
+            <span>من</span>
+            <input
+              type="date"
+              value={joinDateFrom}
+              onChange={(event) =>
+                setJoinDateFrom(event.target.value)
+              }
+              className={INPUT}
+              aria-label="تاريخ التسجيل من"
+            />
+          </label>
+
+          <label className="flex items-center gap-2 text-xs text-[#d7aabd]">
+            <span>إلى</span>
+            <input
+              type="date"
+              value={joinDateTo}
+              onChange={(event) =>
+                setJoinDateTo(event.target.value)
+              }
+              className={INPUT}
+              aria-label="تاريخ التسجيل إلى"
+            />
+          </label>
+
+          {(joinDateFrom || joinDateTo) && (
+            <button
+              type="button"
+              onClick={() => {
+                setJoinDateFrom("");
+                setJoinDateTo("");
+              }}
+              className="rounded-xl border border-gray-700 bg-gray-800 px-3 py-2 text-xs text-[#d7aabd] transition-colors hover:bg-gray-700"
+            >
+              مسح التاريخ
+            </button>
+          )}
         </div>
       </AdminCard>
 
@@ -690,8 +1416,260 @@ export default function Customers() {
             />
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[980px] text-sm">
+          <>
+            {/* Mobile customer cards — presentation only.
+                Uses the same filteredCustomers and existing callbacks as desktop. */}
+            <div className="space-y-3 p-3 md:hidden">
+              {filteredCustomers.map((customer) => {
+                const status = STATUS_CONFIG[customer.status];
+
+                return (
+                  <div
+                    key={`mobile-${customer.id}`}
+                    className="rounded-2xl border border-[rgba(255,188,219,0.12)] bg-black/15 p-4"
+                  >
+                    <div className="flex items-start gap-3">
+                      <CustomerAvatar
+                        avatar={customer.avatar}
+                        name={customer.name}
+                        size={46}
+                      />
+
+                      <div className="min-w-0 flex-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setViewCustomer(customer);
+                            void loadSurvey(customer.id);
+                          }}
+                          className="block max-w-full truncate text-right font-black text-[#fff4f8] transition-colors hover:text-[#ffd166]"
+                        >
+                          {customer.name}
+                        </button>
+
+                        <div
+                          className="mt-1 truncate text-xs text-[#d7aabd]"
+                          dir="ltr"
+                        >
+                          {customer.phone}
+                        </div>
+
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <span
+                            className={`inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-[11px] font-bold ${status.badgeClass}`}
+                          >
+                            <span
+                              className={`h-1.5 w-1.5 rounded-full ${status.dotClass}`}
+                            />
+                            {status.label}
+                          </span>
+
+                          <span
+                            className={`text-xs font-bold ${PLAN_COLORS[customer.plan] ?? "text-[#d7aabd]"}`}
+                          >
+                            {customer.plan}
+                          </span>
+
+                          {customer.pendingApproval && (
+                            <span className="rounded-full bg-amber-500/15 px-2 py-1 text-[10px] font-bold text-amber-300">
+                              بانتظار الموافقة
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-2 gap-2">
+                      <div className="rounded-xl bg-white/[0.03] p-3">
+                        <div className="text-[10px] text-[#d7aabd]">
+                          تاريخ الانضمام
+                        </div>
+                        <div className="mt-1 text-xs font-bold text-[#fff4f8]">
+                          {customer.joinDate}
+                        </div>
+                      </div>
+
+                      <div className="rounded-xl bg-white/[0.03] p-3">
+                        <div className="text-[10px] text-[#d7aabd]">
+                          المحيل الأصلي
+                        </div>
+
+                        {customer.originalReferrer ? (
+                          <>
+                            <div className="mt-1 truncate text-xs font-bold text-[#ffd166]">
+                              {customer.originalReferrer.name}
+                            </div>
+                            <div className="mt-1 text-[9px] text-[#d7aabd]">
+                              {{
+                                staff: "موظف",
+                                trainer: "مدرب",
+                                nutrition: "تغذية",
+                                sales_agent: "مندوب مبيعات",
+                                sales_user: "مبيعات",
+                                partner: "شريك",
+                              }[customer.originalReferrer.type]}
+                            </div>
+                          </>
+                        ) : (
+                          <div className="mt-1 text-xs text-gray-500">
+                            مباشر
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="mt-2 rounded-xl border border-white/[0.05] bg-white/[0.025] p-3">
+                      <div className="mb-2 text-[10px] text-[#d7aabd]">
+                        متابعة التسويق
+                      </div>
+
+                      {customer.marketingConversion ? (
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-bold text-emerald-300">
+                              {
+                                customer.marketingConversion
+                                  .assignedStaff.name
+                              }
+                            </div>
+                            <div className="mt-0.5 text-[9px] text-[#d7aabd]">
+                              متابعة مفتوحة
+                            </div>
+                          </div>
+
+                          {canManageMarketing && (
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  openMarketingAssignment(customer)
+                                }
+                                className="rounded-lg bg-sky-500/10 px-3 py-2 text-[10px] font-bold text-sky-300 hover:bg-sky-500/20"
+                              >
+                                إعادة تعيين
+                              </button>
+
+                              <button
+                                type="button"
+                                disabled={marketingWorking}
+                                onClick={() =>
+                                  void cancelMarketingAssignment(customer)
+                                }
+                                className="rounded-lg bg-rose-500/10 px-3 py-2 text-[10px] font-bold text-rose-300 hover:bg-rose-500/20 disabled:opacity-50"
+                              >
+                                إلغاء
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      ) : canManageMarketing ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            openMarketingAssignment(customer)
+                          }
+                          className="w-full rounded-lg bg-emerald-500/10 px-3 py-2 text-xs font-bold text-emerald-300 hover:bg-emerald-500/20"
+                        >
+                          تعيين متابعة
+                        </button>
+                      ) : (
+                        <span className="text-xs text-gray-500">
+                          غير معيّن
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      <div className="rounded-xl bg-white/[0.03] p-3 text-center">
+                        <div className="text-[10px] text-[#d7aabd]">
+                          الفيتزونات
+                        </div>
+                        <div className="mt-1 font-black text-[#ffd166]">
+                          {customer.points.toLocaleString("ar-EG")}
+                        </div>
+                      </div>
+
+                      <div className="rounded-xl bg-white/[0.03] p-3 text-center">
+                        <div className="text-[10px] text-[#d7aabd]">
+                          الرصيد
+                        </div>
+                        <div className="mt-1 font-black text-[#8bc5ff]">
+                          {customer.balance.toLocaleString("ar-EG")} ج.م
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setViewCustomer(customer);
+                          void loadSurvey(customer.id);
+                        }}
+                        className="rounded-xl bg-white/5 px-3 py-2.5 text-xs font-bold text-[#fff4f8] transition-colors hover:bg-white/10"
+                      >
+                        عرض
+                      </button>
+
+                      {userRole !== "trainer" && (
+                        <button
+                          type="button"
+                          onClick={() => setEditCustomer(customer)}
+                          className="rounded-xl bg-white/5 px-3 py-2.5 text-xs font-bold text-[#ffd166] transition-colors hover:bg-white/10"
+                        >
+                          تعديل
+                        </button>
+                      )}
+
+                      {userRole !== "trainer" &&
+                        (customer.status === "active" ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void updateStatus(
+                                customer.id,
+                                "suspended",
+                                customer.plan,
+                              )
+                            }
+                            className="rounded-xl bg-amber-500/10 px-3 py-2.5 text-xs font-bold text-amber-300 transition-colors hover:bg-amber-500/20"
+                          >
+                            إيقاف
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void updateStatus(
+                                customer.id,
+                                "active",
+                                customer.plan,
+                              )
+                            }
+                            className="rounded-xl bg-emerald-500/10 px-3 py-2.5 text-xs font-bold text-emerald-300 transition-colors hover:bg-emerald-500/20"
+                          >
+                            تفعيل
+                          </button>
+                        ))}
+
+                      {userRole !== "trainer" && (
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDelete(customer)}
+                          className="rounded-xl bg-rose-500/10 px-3 py-2.5 text-xs font-bold text-rose-300 transition-colors hover:bg-rose-500/20"
+                        >
+                          حذف
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Existing desktop table — unchanged */}
+            <div className="hidden overflow-x-auto md:block">
+              <table className="w-full min-w-[1320px] text-sm">
               <thead>
                 <tr className="border-b border-[rgba(255,188,219,0.12)] text-right text-xs text-[#d7aabd]">
                   {[
@@ -700,6 +1678,8 @@ export default function Customers() {
                     "الباقة",
                     "الحالة",
                     "تاريخ الانضمام",
+                    "المحيل الأصلي",
+                    "متابعة التسويق",
                     "الفيتزونات",
                     "الرصيد",
                     "الإجراءات",
@@ -750,7 +1730,95 @@ export default function Customers() {
                           {status.label}
                         </span>
                       </td>
-                      <td className="px-5 py-4 text-[#d7aabd]">{customer.joinDate}</td>
+                      <td className="px-5 py-4 text-[#d7aabd]">
+                        {customer.joinDate}
+                      </td>
+
+                      <td className="px-5 py-4">
+                        {customer.originalReferrer ? (
+                          <div>
+                            <div className="font-bold text-[#fff4f8]">
+                              {customer.originalReferrer.name}
+                            </div>
+                            <div className="mt-1 text-[10px] text-[#d7aabd]">
+                              {{
+                                staff: "موظف",
+                                trainer: "مدرب",
+                                nutrition: "تغذية",
+                                sales_agent: "مندوب مبيعات",
+                                sales_user: "مبيعات",
+                                partner: "شريك",
+                              }[customer.originalReferrer.type]}
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-gray-500">
+                            مباشر
+                          </span>
+                        )}
+                      </td>
+
+                      <td className="px-5 py-4">
+                        {customer.marketingConversion ? (
+                          <div className="space-y-2">
+                            <div>
+                              <div className="font-bold text-emerald-300">
+                                {
+                                  customer.marketingConversion
+                                    .assignedStaff.name
+                                }
+                              </div>
+                              <div className="mt-1 text-[10px] text-[#d7aabd]">
+                                متابعة مفتوحة
+                              </div>
+                            </div>
+
+                            {canManageMarketing && (
+                              <div className="flex flex-wrap gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    openMarketingAssignment(
+                                      customer,
+                                    )
+                                  }
+                                  className="rounded-lg bg-sky-500/10 px-2 py-1 text-[10px] font-bold text-sky-300 hover:bg-sky-500/20"
+                                >
+                                  إعادة تعيين
+                                </button>
+
+                                <button
+                                  type="button"
+                                  disabled={marketingWorking}
+                                  onClick={() =>
+                                    void cancelMarketingAssignment(
+                                      customer,
+                                    )
+                                  }
+                                  className="rounded-lg bg-rose-500/10 px-2 py-1 text-[10px] font-bold text-rose-300 hover:bg-rose-500/20 disabled:opacity-50"
+                                >
+                                  إلغاء
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        ) : canManageMarketing ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              openMarketingAssignment(customer)
+                            }
+                            className="rounded-lg bg-emerald-500/10 px-3 py-2 text-xs font-bold text-emerald-300 hover:bg-emerald-500/20"
+                          >
+                            تعيين متابعة
+                          </button>
+                        ) : (
+                          <span className="text-xs text-gray-500">
+                            غير معيّن
+                          </span>
+                        )}
+                      </td>
+
                       <td className="px-5 py-4 font-bold text-[#ffd166]">
                         {customer.points.toLocaleString("ar-EG")}
                       </td>
@@ -802,10 +1870,139 @@ export default function Customers() {
                   );
                 })}
               </tbody>
-            </table>
-          </div>
+              </table>
+            </div>
+          </>
         )}
       </AdminCard>
+
+      {marketingModal && canManageMarketing && (
+        <Modal
+          title={
+            marketingModal.customer.marketingConversion
+              ? "إعادة تعيين متابعة التسويق"
+              : "تعيين متابعة التسويق"
+          }
+          onClose={() => {
+            if (!marketingWorking) {
+              setMarketingModal(null);
+              setMarketingError(null);
+            }
+          }}
+        >
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-[rgba(255,188,219,0.12)] bg-black/15 p-4">
+              <div className="text-xs text-[#d7aabd]">
+                العميل
+              </div>
+              <div className="mt-1 font-black text-[#fff4f8]">
+                {marketingModal.customer.name}
+              </div>
+
+              {marketingModal.customer.originalReferrer && (
+                <div className="mt-3 text-xs text-[#d7aabd]">
+                  المحيل الأصلي:
+                  {" "}
+                  <span className="font-bold text-[#ffd166]">
+                    {
+                      marketingModal.customer
+                        .originalReferrer.name
+                    }
+                  </span>
+                </div>
+              )}
+
+              <div className="mt-2 text-[11px] text-gray-500">
+                تعيين موظف التسويق لا يغيّر المحيل الأصلي أو
+                عمولته.
+              </div>
+            </div>
+
+            <label className="block">
+              <div className="mb-2 text-sm font-bold text-[#fff4f8]">
+                موظف/موظفة التسويق
+              </div>
+
+              <select
+                value={
+                  marketingModal.assignedStaffUserId
+                }
+                disabled={marketingWorking}
+                onChange={(event) =>
+                  setMarketingModal((current) =>
+                    current
+                      ? {
+                          ...current,
+                          assignedStaffUserId:
+                            event.target.value,
+                        }
+                      : current,
+                  )
+                }
+                className={`${INPUT} w-full`}
+              >
+                <option value="">
+                  اختر الموظف
+                </option>
+
+                {marketingStaff.map((staff) => (
+                  <option
+                    key={staff.id}
+                    value={staff.id}
+                  >
+                    {staff.name}
+                    {staff.jobTitle
+                      ? ` — ${staff.jobTitle}`
+                      : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            {marketingStaff.length === 0 && (
+              <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-300">
+                لا يوجد موظفون متاحون للتعيين حاليًا.
+              </div>
+            )}
+
+            {marketingError && (
+              <div className="rounded-xl border border-rose-500/20 bg-rose-500/10 p-3 text-sm text-rose-300">
+                {marketingError}
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                disabled={marketingWorking}
+                onClick={() => {
+                  setMarketingModal(null);
+                  setMarketingError(null);
+                }}
+                className="rounded-xl bg-white/5 px-4 py-2 text-sm text-[#d7aabd] hover:bg-white/10 disabled:opacity-50"
+              >
+                إلغاء
+              </button>
+
+              <button
+                type="button"
+                disabled={
+                  marketingWorking ||
+                  !marketingModal.assignedStaffUserId
+                }
+                onClick={() =>
+                  void saveMarketingAssignment()
+                }
+                className="rounded-xl bg-emerald-500/15 px-4 py-2 text-sm font-bold text-emerald-300 hover:bg-emerald-500/25 disabled:opacity-50"
+              >
+                {marketingWorking
+                  ? "جارٍ الحفظ..."
+                  : "حفظ"}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       {viewCustomer && (
         <Modal title="ملف العميل" onClose={() => setViewCustomer(null)}>
@@ -947,18 +2144,22 @@ export default function Customers() {
                         </div>
                       </div>
 
-                      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                      <div className="mt-4 grid gap-3 sm:grid-cols-4">
                         <div className="rounded-xl bg-black/30 px-3 py-2 text-center">
                           <div className="text-sm font-bold text-[#ffd166]">{membership.sessionsTotal ?? "غير محدود"}</div>
                           <div className="mt-1 text-[11px] text-[#d7aabd]">الحصص المتاحة</div>
                         </div>
                         <div className="rounded-xl bg-black/30 px-3 py-2 text-center">
                           <div className="text-sm font-bold text-[#8bc5ff]">{membership.sessionsUsed}</div>
-                          <div className="mt-1 text-[11px] text-[#d7aabd]">الحصص المستخدمة</div>
+                          <div className="mt-1 text-[11px] text-[#d7aabd]">تم الحضور</div>
+                        </div>
+                        <div className="rounded-xl bg-black/30 px-3 py-2 text-center">
+                          <div className="text-sm font-bold text-[#8bc5ff]">{membership.sessionsReserved}</div>
+                          <div className="mt-1 text-[11px] text-[#d7aabd]">محجوزة</div>
                         </div>
                         <div className="rounded-xl bg-black/30 px-3 py-2 text-center">
                           <div className="text-sm font-bold text-[#fff4f8]">{membership.sessionsRemaining ?? "—"}</div>
-                          <div className="mt-1 text-[11px] text-[#d7aabd]">المتبقي</div>
+                          <div className="mt-1 text-[11px] text-[#d7aabd]">متاح للحجز</div>
                         </div>
                       </div>
 
@@ -968,8 +2169,8 @@ export default function Customers() {
                           <div className="mt-1 text-[11px] text-[#d7aabd]">قيمة الدفع</div>
                         </div>
                         <div className="rounded-xl bg-black/30 px-3 py-2 text-center">
-                          <div className="text-sm font-bold text-[#fff4f8]">{formatPaymentMethod(membership.paymentMethod)}</div>
-                          <div className="mt-1 text-[11px] text-[#d7aabd]">طريقة الدفع</div>
+                          <div className="text-sm font-bold text-[#fff4f8]">{formatPaymentState(membership)}</div>
+                          <div className="mt-1 text-[11px] text-[#d7aabd]">حالة وطريقة الدفع</div>
                         </div>
                         <div className="rounded-xl bg-black/30 px-3 py-2 text-center">
                           <div className="text-sm font-bold text-[#fff4f8]">{membership.offerTitle ?? "—"}</div>
@@ -985,6 +2186,29 @@ export default function Customers() {
                               .join("، ")
                           : "—"}
                       </div>
+
+                      {canExecuteClassExchange &&
+                       membership.status === "active" &&
+                      membership.sessionsTotal !== null ? (
+                        <div className="mt-4">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              openClassExchange(
+                                membership,
+                              )
+                            }
+                            disabled={false}
+                            className="w-full rounded-xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 text-sm font-black text-amber-200 transition-colors hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            استبدال كلاس — مقابل حصتين
+                          </button>
+
+                          <div className="mt-2 text-center text-[11px] text-[#d7aabd]">
+                            يمكن استبدال حصتين مستقبليتين بكلاس واحد خارج الاشتراك
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                   ))}
                 </div>
@@ -995,6 +2219,476 @@ export default function Customers() {
                 </div>
               )}
             </div>
+
+            {classExchangeModal ? (
+              <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+                <button
+                  type="button"
+                  aria-label="إغلاق"
+                  className="absolute inset-0 bg-black/75 backdrop-blur-sm"
+                  onClick={() => {
+                    if (!classExchangeWorking) {
+                      setClassExchangeModal(null);
+                    }
+                  }}
+                />
+
+                <div className="relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-[26px] border border-[rgba(255,188,219,0.18)] bg-[rgba(56,18,34,0.98)] p-6 shadow-[0_24px_70px_rgba(17,5,10,0.48)]">
+                  <div className="mb-5 flex items-start justify-between gap-4">
+                    <div>
+                      <h3 className="text-lg font-black text-[#fff4f8]">
+                        حجز استثنائي
+                      </h3>
+
+                      <div className="mt-1 text-xs text-[#d7aabd]">
+                        {classExchangeModal.membership.name}
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={classExchangeWorking}
+                      onClick={() =>
+                        setClassExchangeModal(null)
+                      }
+                      className="text-2xl leading-none text-[#d7aabd] hover:text-white disabled:opacity-40"
+                    >
+                      ×
+                    </button>
+                  </div>
+
+                  <div className="mb-5 rounded-2xl border border-amber-400/25 bg-amber-500/10 p-4">
+                    {(() => {
+                      const required = 2;
+
+                      return (
+                        <>
+                          <div className="text-sm font-black text-amber-200">
+                            اختر الحصتين المستقبليتين اللتين سيتم استبدالهما
+                          </div>
+
+                          <div className="mt-2 text-xs text-[#d7aabd]">
+                            الحجوزات السابقة أو المحضورة لا تتأثر.
+                          </div>
+
+                          <div className="mt-3">
+                            <input
+                              type="search"
+                              value={classExchangeSourceSearch}
+                              onChange={(event) =>
+                                setClassExchangeSourceSearch(
+                                  event.target.value,
+                                )
+                              }
+                              placeholder="بحث باسم الكلاس أو التاريخ أو الموعد..."
+                              className={`${INPUT} mb-3`}
+                            />
+
+                            <div className="max-h-64 space-y-2 overflow-y-auto">
+                              {classExchangeSourcesLoading ? (
+                                <div className="text-xs text-[#d7aabd]">
+                                  جاري تحميل الحجوزات المستقبلية...
+                                </div>
+                              ) : classExchangeSourceBookings.length === 0 ? (
+                                <div className="text-xs text-rose-300">
+                                  لا توجد حجوزات مستقبلية صالحة للاستبدال.
+                                </div>
+                              ) : (
+                                classExchangeSourceBookings
+                                  .filter((booking) => {
+                                    const query =
+                                      classExchangeSourceSearch
+                                        .trim()
+                                        .toLowerCase();
+
+                                    if (!query) return true;
+
+                                    return [
+                                      booking.className,
+                                      booking.date,
+                                      formatDate(booking.date),
+                                      booking.time,
+                                    ]
+                                      .join(" ")
+                                      .toLowerCase()
+                                      .includes(query);
+                                  })
+                                  .map((booking) => {
+                                    const selected =
+                                      classExchangeModal
+                                        .sourceBookingIds
+                                        .includes(booking.id);
+
+                                    const targetSchedule =
+                                      classExchangeSchedules.find(
+                                        (schedule) =>
+                                          schedule.id ===
+                                          classExchangeModal.scheduleId,
+                                      );
+
+                                    const sourceDay =
+                                      new Intl.DateTimeFormat(
+                                        "en-CA",
+                                        {
+                                          timeZone: "Africa/Cairo",
+                                          year: "numeric",
+                                          month: "2-digit",
+                                          day: "2-digit",
+                                        },
+                                      ).format(new Date(booking.date));
+
+                                    const targetDay =
+                                      targetSchedule
+                                        ? new Intl.DateTimeFormat(
+                                            "en-CA",
+                                            {
+                                              timeZone: "Africa/Cairo",
+                                              year: "numeric",
+                                              month: "2-digit",
+                                              day: "2-digit",
+                                            },
+                                          ).format(
+                                            new Date(
+                                              targetSchedule.date,
+                                            ),
+                                          )
+                                        : null;
+
+                                    const sameTargetDay =
+                                      Boolean(
+                                        targetDay &&
+                                        sourceDay === targetDay,
+                                      );
+
+                                    return (
+                                      <button
+                                        key={booking.id}
+                                        type="button"
+                                        disabled={
+                                          classExchangeWorking ||
+                                          (
+                                            !selected &&
+                                            classExchangeModal
+                                              .sourceBookingIds
+                                              .length >=
+                                              required
+                                          )
+                                        }
+                                        onClick={() =>
+                                          setClassExchangeModal(
+                                            (current) => {
+                                              if (!current) {
+                                                return current;
+                                              }
+
+                                              return {
+                                                ...current,
+                                                sourceBookingIds:
+                                                  selected
+                                                    ? current
+                                                        .sourceBookingIds
+                                                        .filter(
+                                                          (id: string) =>
+                                                            id !==
+                                                            booking.id,
+                                                        )
+                                                    : [
+                                                        ...current
+                                                          .sourceBookingIds,
+                                                        booking.id,
+                                                      ],
+                                              };
+                                            },
+                                          )
+                                        }
+                                        className={`w-full rounded-xl border px-3 py-3 text-right text-sm ${
+                                          selected
+                                            ? "border-emerald-400/50 bg-emerald-500/15 text-emerald-100"
+                                            : sameTargetDay
+                                              ? "border-amber-400/40 bg-amber-500/10 text-amber-100"
+                                              : "border-white/10 bg-black/20 text-[#f6dbe7]"
+                                        } disabled:cursor-not-allowed disabled:opacity-40`}
+                                      >
+                                        <div className="flex flex-wrap items-center gap-2">
+                                          <div className="font-black">
+                                            {selected ? "✓ " : ""}
+                                            {booking.className}
+                                          </div>
+
+                                          {sameTargetDay ? (
+                                            <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-black text-amber-200">
+                                              نفس يوم الكلاس المطلوب
+                                            </span>
+                                          ) : null}
+                                        </div>
+
+                                        <div className="mt-1 text-xs opacity-80">
+                                          {formatDate(
+                                            booking.date,
+                                          )}
+                                          {" • "}
+                                          {booking.time}
+                                        </div>
+                                      </button>
+                                    );
+                                  })
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="mt-3 text-xs font-bold text-amber-100">
+                            تم اختيار{" "}
+                            {
+                              classExchangeModal
+                                .sourceBookingIds
+                                .length
+                            }
+                            {" من "}
+                            {required}
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </div>
+
+                  <div className="space-y-4">
+                    <div>
+                      <label className="mb-2 block text-xs font-bold text-[#d7aabd]">
+                        اختيار الكلاس والموعد
+                      </label>
+
+                      <input
+                        type="search"
+                        value={classExchangeScheduleSearch}
+                        onChange={(event) =>
+                          setClassExchangeScheduleSearch(
+                            event.target.value,
+                          )
+                        }
+                        placeholder="بحث باسم الكلاس أو التاريخ أو الموعد..."
+                        className={`${INPUT} mb-3`}
+                      />
+
+                      {classExchangeSchedulesLoading ? (
+                        <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-6 text-center text-xs text-[#d7aabd]">
+                          جاري تحميل المواعيد...
+                        </div>
+                      ) : (
+                        <div className="max-h-80 space-y-2 overflow-y-auto">
+                          {classExchangeSchedules
+                            .filter((schedule) => {
+                              const query =
+                                classExchangeScheduleSearch
+                                  .trim()
+                                  .toLowerCase();
+
+                              if (!query) return true;
+
+                              return [
+                                schedule.class?.name ?? "",
+                                schedule.date,
+                                formatDate(schedule.date),
+                                schedule.time,
+                              ]
+                                .join(" ")
+                                .toLowerCase()
+                                .includes(query);
+                            })
+                            .map((schedule) => {
+                              const targetDay =
+                                new Intl.DateTimeFormat(
+                                  "en-CA",
+                                  {
+                                    timeZone: "Africa/Cairo",
+                                    year: "numeric",
+                                    month: "2-digit",
+                                    day: "2-digit",
+                                  },
+                                ).format(
+                                  new Date(schedule.date),
+                                );
+
+                              const sameDayBookings =
+                                classExchangeDayBookings.filter(
+                                  (booking) =>
+                                    new Intl.DateTimeFormat(
+                                      "en-CA",
+                                      {
+                                        timeZone:
+                                          "Africa/Cairo",
+                                        year: "numeric",
+                                        month: "2-digit",
+                                        day: "2-digit",
+                                      },
+                                    ).format(
+                                      new Date(booking.date),
+                                    ) === targetDay,
+                                );
+
+                              const selected =
+                                classExchangeModal.scheduleId ===
+                                schedule.id;
+
+                              return (
+                                <button
+                                  key={schedule.id}
+                                  type="button"
+                                  disabled={classExchangeWorking}
+                                  onClick={() =>
+                                    setClassExchangeModal(
+                                      (current) =>
+                                        current
+                                          ? {
+                                              ...current,
+                                              scheduleId:
+                                                schedule.id,
+                                            }
+                                          : current,
+                                    )
+                                  }
+                                  className={`w-full rounded-xl border p-3 text-right transition-colors ${
+                                    selected
+                                      ? "border-pink-400 bg-pink-500/15"
+                                      : sameDayBookings.length >= 2
+                                        ? "border-amber-400/30 bg-amber-500/10"
+                                        : "border-white/10 bg-black/20 hover:bg-white/5"
+                                  }`}
+                                >
+                                  <div className="flex flex-wrap items-start justify-between gap-2">
+                                    <div>
+                                      <div className="font-black text-white">
+                                        {schedule.class?.name ??
+                                          "كلاس"}
+                                      </div>
+
+                                      <div className="mt-1 text-xs text-[#d7aabd]">
+                                        {formatDate(
+                                          schedule.date,
+                                        )}{" "}
+                                        • {schedule.time} •{" "}
+                                        {schedule.availableSpots}{" "}
+                                        مقاعد
+                                      </div>
+                                    </div>
+
+                                    <span
+                                      className={`rounded-full px-2.5 py-1 text-[11px] font-black ${
+                                        sameDayBookings.length >= 2
+                                          ? "bg-amber-500/20 text-amber-200"
+                                          : sameDayBookings.length === 1
+                                            ? "bg-sky-500/15 text-sky-200"
+                                            : "bg-emerald-500/15 text-emerald-200"
+                                      }`}
+                                    >
+                                      {sameDayBookings.length} حصة في اليوم
+                                    </span>
+                                  </div>
+
+                                  {sameDayBookings.length > 0 ? (
+                                    <div className="mt-3 rounded-lg border border-white/10 bg-black/20 p-2 text-xs text-[#d7aabd]">
+                                      {sameDayBookings.map(
+                                        (booking) => (
+                                          <div key={booking.id}>
+                                            {booking.className} —{" "}
+                                            {booking.time}
+                                          </div>
+                                        ),
+                                      )}
+                                    </div>
+                                  ) : null}
+
+                                  {sameDayBookings.length >= 2 ? (
+                                    <div className="mt-2 rounded-lg border border-amber-400/20 bg-amber-500/10 p-2 text-xs font-bold leading-5 text-amber-200">
+                                      هذا اليوم فيه حصتان بالفعل.
+                                      إذا أرادت العميلة هذا الكلاس،
+                                      اختاري الحصتين الموجودتين في
+                                      نفس اليوم من القائمة بالأعلى.
+                                    </div>
+                                  ) : null}
+                                </button>
+                              );
+                            })}
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-xs font-bold text-[#d7aabd]">
+                        سبب الحجز الاستثنائي
+                      </label>
+
+                      <textarea
+                        rows={4}
+                        maxLength={1000}
+                        value={classExchangeModal.reason}
+                        onChange={(event) =>
+                          setClassExchangeModal(
+                            (current) =>
+                              current
+                                ? {
+                                    ...current,
+                                    reason:
+                                      event.target.value,
+                                  }
+                                : current,
+                          )
+                        }
+                        disabled={classExchangeWorking}
+                        placeholder="مثال: طلبت العميلة كلاسًا غير مشمول في اشتراكها مقابل خصم حصتين."
+                        className={`${INPUT} min-h-[110px] resize-y`}
+                      />
+
+                      <div className="mt-1 text-left text-[10px] text-[#d7aabd]">
+                        {classExchangeModal.reason.length}/1000
+                      </div>
+                    </div>
+
+                    {classExchangeError ? (
+                      <div className="rounded-xl border border-rose-400/25 bg-rose-500/10 px-4 py-3 text-sm font-bold text-rose-200">
+                        {classExchangeError}
+                      </div>
+                    ) : null}
+
+                    <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-xs leading-6 text-[#d7aabd]">
+                      النظام سيمنع العملية إذا كان الكلاس مشمولًا أصلًا،
+                      أو يوجد اشتراك آخر يسمح بالحجز الطبيعي وله رصيد،
+                      أو لا يوجد رصيد حصتين، أو الموعد غير صالح أو ممتلئ.
+                    </div>
+
+                    <div className="flex gap-3">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void submitClassExchange()
+                        }
+                        disabled={
+                          classExchangeWorking ||
+                          classExchangeSchedulesLoading ||
+                          !classExchangeModal.scheduleId ||
+                          classExchangeModal.reason.trim().length < 3
+                        }
+                        className="flex-1 rounded-xl bg-[#ff4f93] px-4 py-3 text-sm font-black text-white transition-colors hover:bg-[#ff2f7d] disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        {classExchangeWorking
+                          ? "جارٍ تنفيذ الحجز..."
+                          : "تأكيد الاستبدال"}
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={classExchangeWorking}
+                        onClick={() =>
+                          setClassExchangeModal(null)
+                        }
+                        className="rounded-xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-bold text-gray-300 hover:bg-white/10 disabled:opacity-40"
+                      >
+                        إلغاء
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
 
             {/* Health Survey Results */}
             <div className="rounded-2xl border border-[rgba(255,188,219,0.12)] bg-black/10 p-4">
@@ -1185,7 +2879,10 @@ export default function Customers() {
                 >
                   <option value="active">نشط</option>
                   <option value="suspended">موقوف</option>
-                  <option value="expired">منتهي</option>
+                  <option value="pending_payment" disabled>قيد الدفع — تلقائي</option>
+                  <option value="cancelled" disabled>ملغي — تلقائي</option>
+                  <option value="expired" disabled>منتهي — تلقائي</option>
+                  <option value="unsubscribed" disabled>غير مشترك — تلقائي</option>
                 </select>
               </Field>
               {/* Points & balance: only editable for NEW customers here.

@@ -1,0 +1,1005 @@
+import type { Prisma } from "@prisma/client";
+
+import { asDbTransactionClient, db } from "@/lib/db";
+
+type Tx = Prisma.TransactionClient;
+
+export type PayrollAdjustmentActor = {
+  userId: string;
+  name?: string | null;
+  email?: string | null;
+  role?: string | null;
+  ipAddress?: string | null;
+  userAgent?: string | null;
+};
+
+export type SaveEmployeeLoanInput = {
+  loanId?: string | null;
+  employeeId: string;
+  principalMinor: number;
+  currency?: string | null;
+  startMonthKey: string;
+  reason: string;
+  notes?: string | null;
+};
+
+export type SaveLoanInstallmentInput = {
+  installmentId?: string | null;
+  loanId: string;
+  monthKey: string;
+  amountMinor: number;
+};
+
+export type SavePayrollAdjustmentInput = {
+  adjustmentId?: string | null;
+  employeeId: string;
+  monthKey: string;
+  direction: "deduction" | "earning";
+  sourceType?: "manual" | "correction" | "other";
+  sourceRefId?: string | null;
+  amountMinor: number;
+  currency?: string | null;
+  reason: string;
+  notes?: string | null;
+};
+
+function assertActor(actor: PayrollAdjustmentActor) {
+  if (!actor.userId?.trim()) {
+    throw new Error("PAYROLL_ADJUSTMENT_ACTOR_REQUIRED");
+  }
+}
+
+function assertMonthKey(value: string, field: string) {
+  if (typeof value !== "string" || !/^\d{4}-(0[1-9]|1[0-2])$/.test(value)) {
+    throw new Error(`PAYROLL_ADJUSTMENT_INVALID_${field}`);
+  }
+
+  return value;
+}
+
+function assertPositiveMoney(value: number, field: string) {
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new Error(`PAYROLL_ADJUSTMENT_INVALID_${field}`);
+  }
+}
+
+function normalizeCurrency(value?: string | null) {
+  const currency = (value?.trim() || "EGP").toUpperCase();
+
+  if (!/^[A-Z]{3}$/.test(currency)) {
+    throw new Error("PAYROLL_ADJUSTMENT_INVALID_CURRENCY");
+  }
+
+  return currency;
+}
+
+function requiredReason(value: string | null | undefined, code: string) {
+  const reason = value?.trim() || "";
+
+  if (reason.length < 3) {
+    throw new Error(code);
+  }
+
+  return reason;
+}
+
+function normalizeNotes(value?: string | null) {
+  const notes = value?.trim() || "";
+  return notes || null;
+}
+
+async function writeMandatoryAudit(
+  tx: Tx,
+  actor: PayrollAdjustmentActor,
+  input: {
+    action: string;
+    targetType: string;
+    targetId: string;
+    details: Record<string, unknown>;
+  },
+) {
+  await tx.auditLog.create({
+    data: {
+      actorUserId: actor.userId,
+      actorName: actor.name ?? null,
+      actorEmail: actor.email ?? null,
+      actorRole: actor.role ?? null,
+      ipAddress: actor.ipAddress ?? null,
+      userAgent: actor.userAgent ?? null,
+      action: input.action,
+      targetType: input.targetType,
+      targetId: input.targetId,
+      details: JSON.stringify(input.details),
+    },
+  });
+}
+
+async function assertPayrollEmployee(tx: Tx, employeeId: string) {
+  const employee = await tx.employeeProfile.findUnique({
+    where: {
+      id: employeeId,
+    },
+    select: {
+      id: true,
+      employeeCode: true,
+      name: true,
+      employmentStatus: true,
+      payrollEnabled: true,
+    },
+  });
+
+  if (!employee) {
+    throw new Error("PAYROLL_ADJUSTMENT_EMPLOYEE_NOT_FOUND");
+  }
+
+  if (employee.employmentStatus !== "active") {
+    throw new Error("PAYROLL_ADJUSTMENT_EMPLOYEE_NOT_ACTIVE");
+  }
+
+  if (!employee.payrollEnabled) {
+    throw new Error("PAYROLL_ADJUSTMENT_EMPLOYEE_PAYROLL_DISABLED");
+  }
+
+  return employee;
+}
+
+async function lockLoan(tx: Tx, loanId: string) {
+  const rows = await tx.$queryRaw<
+    Array<{
+      id: string;
+      status: string;
+    }>
+  >`
+    SELECT id, status
+    FROM EmployeeLoan
+    WHERE id = ${loanId}
+    FOR UPDATE
+  `;
+
+  if (!rows[0]) {
+    throw new Error("EMPLOYEE_LOAN_NOT_FOUND");
+  }
+
+  return rows[0];
+}
+
+async function lockAdjustment(tx: Tx, adjustmentId: string) {
+  const rows = await tx.$queryRaw<
+    Array<{
+      id: string;
+      status: string;
+    }>
+  >`
+    SELECT id, status
+    FROM PayrollAdjustment
+    WHERE id = ${adjustmentId}
+    FOR UPDATE
+  `;
+
+  if (!rows[0]) {
+    throw new Error("PAYROLL_ADJUSTMENT_NOT_FOUND");
+  }
+
+  return rows[0];
+}
+
+async function lockPayrollRunsForMonths(tx: Tx, monthKeys: string[]) {
+  const keys = [...new Set(monthKeys.filter(Boolean))].sort();
+
+  const locked: Array<{
+    monthKey: string;
+    status: string;
+  }> = [];
+
+  for (const monthKey of keys) {
+    const rows = await tx.$queryRaw<
+      Array<{
+        monthKey: string;
+        status: string;
+      }>
+    >`
+      SELECT monthKey, status
+      FROM PayrollRun
+      WHERE monthKey = ${monthKey}
+      FOR UPDATE
+    `;
+
+    if (rows[0]) {
+      locked.push(rows[0]);
+    }
+  }
+
+  return locked;
+}
+
+function assertNoFinalizedPayrollRun(
+  rows: Array<{
+    monthKey: string;
+    status: string;
+  }>,
+) {
+  const finalized = rows.find((row) => row.status === "finalized");
+
+  if (finalized) {
+    throw new Error("PAYROLL_MONTH_FINALIZED_IMMUTABLE");
+  }
+}
+
+async function loadOpenLoanMonthKeys(tx: Tx, loanId: string) {
+  const rows = await tx.employeeLoanInstallment.findMany({
+    where: {
+      loanId,
+      status: {
+        not: "cancelled",
+      },
+    },
+    select: {
+      monthKey: true,
+    },
+    orderBy: {
+      monthKey: "asc",
+    },
+  });
+
+  return rows.map((row) => row.monthKey);
+}
+
+function sameMonthKeys(left: string[], right: string[]) {
+  const a = [...new Set(left)].sort();
+  const b = [...new Set(right)].sort();
+
+  return a.length === b.length && a.every((value, index) => value === b[index]);
+}
+
+export async function saveEmployeeLoan(
+  input: SaveEmployeeLoanInput,
+  actor: PayrollAdjustmentActor,
+) {
+  assertActor(actor);
+
+  if (!input.employeeId?.trim()) {
+    throw new Error("EMPLOYEE_LOAN_EMPLOYEE_REQUIRED");
+  }
+
+  assertPositiveMoney(input.principalMinor, "LOAN_PRINCIPAL");
+
+  const startMonthKey = assertMonthKey(input.startMonthKey, "START_MONTH");
+
+  const currency = normalizeCurrency(input.currency);
+
+  const reason = requiredReason(input.reason, "EMPLOYEE_LOAN_REASON_REQUIRED");
+
+  const notes = normalizeNotes(input.notes);
+
+  return db.$transaction(async (rawTx) => {
+    const tx = asDbTransactionClient(rawTx);
+
+    const employee = await assertPayrollEmployee(tx, input.employeeId);
+
+    const existing = input.loanId
+      ? await tx.employeeLoan.findUnique({
+          where: {
+            id: input.loanId,
+          },
+        })
+      : null;
+
+    if (input.loanId && !existing) {
+      throw new Error("EMPLOYEE_LOAN_NOT_FOUND");
+    }
+
+    if (existing && existing.employeeId !== input.employeeId) {
+      throw new Error("EMPLOYEE_LOAN_EMPLOYEE_IMMUTABLE");
+    }
+
+    if (existing && existing.status !== "draft") {
+      throw new Error("EMPLOYEE_LOAN_NOT_EDITABLE");
+    }
+
+    const before = existing
+      ? {
+          principalMinor: existing.principalMinor,
+          currency: existing.currency,
+          startMonthKey: existing.startMonthKey,
+          reason: existing.reason,
+          notes: existing.notes,
+          status: existing.status,
+        }
+      : null;
+
+    const loan = existing
+      ? await tx.employeeLoan.update({
+          where: {
+            id: existing.id,
+          },
+          data: {
+            principalMinor: input.principalMinor,
+            currency,
+            startMonthKey,
+            reason,
+            notes,
+          },
+        })
+      : await tx.employeeLoan.create({
+          data: {
+            employeeId: input.employeeId,
+            principalMinor: input.principalMinor,
+            currency,
+            startMonthKey,
+            status: "draft",
+            reason,
+            notes,
+            createdById: actor.userId,
+          },
+        });
+
+    await writeMandatoryAudit(tx, actor, {
+      action: existing ? "employee_loan_update" : "employee_loan_create",
+      targetType: "EmployeeLoan",
+      targetId: loan.id,
+      details: {
+        employeeId: employee.id,
+        employeeCode: employee.employeeCode,
+        before,
+        after: {
+          principalMinor: loan.principalMinor,
+          currency: loan.currency,
+          startMonthKey: loan.startMonthKey,
+          reason: loan.reason,
+          notes: loan.notes,
+          status: loan.status,
+        },
+      },
+    });
+
+    return loan;
+  });
+}
+
+export async function saveLoanInstallment(
+  input: SaveLoanInstallmentInput,
+  actor: PayrollAdjustmentActor,
+) {
+  assertActor(actor);
+
+  assertPositiveMoney(input.amountMinor, "INSTALLMENT_AMOUNT");
+
+  const monthKey = assertMonthKey(input.monthKey, "INSTALLMENT_MONTH");
+
+  return db.$transaction(async (rawTx) => {
+    const tx = asDbTransactionClient(rawTx);
+
+    const locked = await lockLoan(tx, input.loanId);
+
+    if (locked.status !== "draft") {
+      throw new Error("EMPLOYEE_LOAN_INSTALLMENTS_NOT_EDITABLE");
+    }
+
+    const loan = await tx.employeeLoan.findUnique({
+      where: {
+        id: input.loanId,
+      },
+    });
+
+    if (!loan) {
+      throw new Error("EMPLOYEE_LOAN_NOT_FOUND");
+    }
+
+    if (monthKey < loan.startMonthKey) {
+      throw new Error("EMPLOYEE_LOAN_INSTALLMENT_BEFORE_START_MONTH");
+    }
+
+    const existing = input.installmentId
+      ? await tx.employeeLoanInstallment.findUnique({
+          where: {
+            id: input.installmentId,
+          },
+        })
+      : null;
+
+    if (input.installmentId && !existing) {
+      throw new Error("EMPLOYEE_LOAN_INSTALLMENT_NOT_FOUND");
+    }
+
+    if (existing && existing.loanId !== input.loanId) {
+      throw new Error("EMPLOYEE_LOAN_INSTALLMENT_LOAN_IMMUTABLE");
+    }
+
+    if (existing && existing.status !== "scheduled") {
+      throw new Error("EMPLOYEE_LOAN_INSTALLMENT_NOT_EDITABLE");
+    }
+
+    const duplicate = await tx.employeeLoanInstallment.findFirst({
+      where: {
+        loanId: input.loanId,
+        monthKey,
+        ...(existing
+          ? {
+              id: {
+                not: existing.id,
+              },
+            }
+          : {}),
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (duplicate) {
+      throw new Error("EMPLOYEE_LOAN_INSTALLMENT_MONTH_DUPLICATE");
+    }
+
+    const aggregate = await tx.employeeLoanInstallment.aggregate({
+      where: {
+        loanId: input.loanId,
+        status: {
+          not: "cancelled",
+        },
+        ...(existing
+          ? {
+              id: {
+                not: existing.id,
+              },
+            }
+          : {}),
+      },
+      _sum: {
+        amountMinor: true,
+      },
+    });
+
+    const otherTotal = aggregate._sum.amountMinor ?? 0;
+
+    if (otherTotal + input.amountMinor > loan.principalMinor) {
+      throw new Error("EMPLOYEE_LOAN_INSTALLMENTS_EXCEED_PRINCIPAL");
+    }
+
+    const installment = existing
+      ? await tx.employeeLoanInstallment.update({
+          where: {
+            id: existing.id,
+          },
+          data: {
+            monthKey,
+            amountMinor: input.amountMinor,
+            currency: loan.currency,
+          },
+        })
+      : await tx.employeeLoanInstallment.create({
+          data: {
+            loanId: input.loanId,
+            monthKey,
+            amountMinor: input.amountMinor,
+            currency: loan.currency,
+            status: "scheduled",
+          },
+        });
+
+    await writeMandatoryAudit(tx, actor, {
+      action: existing
+        ? "employee_loan_installment_update"
+        : "employee_loan_installment_create",
+      targetType: "EmployeeLoanInstallment",
+      targetId: installment.id,
+      details: {
+        loanId: loan.id,
+        monthKey: installment.monthKey,
+        amountMinor: installment.amountMinor,
+        currency: installment.currency,
+      },
+    });
+
+    return installment;
+  });
+}
+
+export async function approveEmployeeLoan(
+  loanId: string,
+  actor: PayrollAdjustmentActor,
+) {
+  assertActor(actor);
+
+  return db.$transaction(async (rawTx) => {
+    const tx = asDbTransactionClient(rawTx);
+
+    const initialMonthKeys = await loadOpenLoanMonthKeys(tx, loanId);
+
+    const payrollRuns = await lockPayrollRunsForMonths(tx, initialMonthKeys);
+
+    assertNoFinalizedPayrollRun(payrollRuns);
+
+    const locked = await lockLoan(tx, loanId);
+
+    const lockedMonthKeys = await loadOpenLoanMonthKeys(tx, loanId);
+
+    if (!sameMonthKeys(initialMonthKeys, lockedMonthKeys)) {
+      throw new Error("EMPLOYEE_LOAN_CONCURRENT_INSTALLMENT_CHANGE");
+    }
+
+    if (locked.status === "active") {
+      return tx.employeeLoan.findUniqueOrThrow({
+        where: {
+          id: loanId,
+        },
+        include: {
+          installments: true,
+        },
+      });
+    }
+
+    if (locked.status !== "draft") {
+      throw new Error("EMPLOYEE_LOAN_NOT_APPROVABLE");
+    }
+
+    const loan = await tx.employeeLoan.findUniqueOrThrow({
+      where: {
+        id: loanId,
+      },
+      include: {
+        employee: {
+          select: {
+            id: true,
+            employeeCode: true,
+            employmentStatus: true,
+            payrollEnabled: true,
+          },
+        },
+        installments: {
+          where: {
+            status: {
+              not: "cancelled",
+            },
+          },
+          orderBy: {
+            monthKey: "asc",
+          },
+        },
+      },
+    });
+
+    if (loan.employee.employmentStatus !== "active") {
+      throw new Error("PAYROLL_ADJUSTMENT_EMPLOYEE_NOT_ACTIVE");
+    }
+
+    if (!loan.employee.payrollEnabled) {
+      throw new Error("PAYROLL_ADJUSTMENT_EMPLOYEE_PAYROLL_DISABLED");
+    }
+
+    if (loan.installments.length === 0) {
+      throw new Error("EMPLOYEE_LOAN_INSTALLMENTS_REQUIRED");
+    }
+
+    const total = loan.installments.reduce(
+      (sum, row) => sum + row.amountMinor,
+      0,
+    );
+
+    if (total !== loan.principalMinor) {
+      throw new Error("EMPLOYEE_LOAN_INSTALLMENTS_MUST_EQUAL_PRINCIPAL");
+    }
+
+    const now = new Date();
+
+    await tx.employeeLoanInstallment.updateMany({
+      where: {
+        loanId,
+        status: "scheduled",
+      },
+      data: {
+        status: "approved",
+        approvedAt: now,
+        approvedById: actor.userId,
+      },
+    });
+
+    const approved = await tx.employeeLoan.update({
+      where: {
+        id: loanId,
+      },
+      data: {
+        status: "active",
+        approvedAt: now,
+        approvedById: actor.userId,
+      },
+      include: {
+        installments: {
+          orderBy: {
+            monthKey: "asc",
+          },
+        },
+      },
+    });
+
+    await writeMandatoryAudit(tx, actor, {
+      action: "employee_loan_approve",
+      targetType: "EmployeeLoan",
+      targetId: approved.id,
+      details: {
+        employeeId: approved.employeeId,
+        principalMinor: approved.principalMinor,
+        currency: approved.currency,
+        installmentCount: approved.installments.length,
+        installmentTotalMinor: total,
+      },
+    });
+
+    return approved;
+  });
+}
+
+export async function cancelEmployeeLoan(
+  loanId: string,
+  cancellationReason: string,
+  actor: PayrollAdjustmentActor,
+) {
+  assertActor(actor);
+
+  const reason = requiredReason(
+    cancellationReason,
+    "EMPLOYEE_LOAN_CANCELLATION_REASON_REQUIRED",
+  );
+
+  return db.$transaction(async (rawTx) => {
+    const tx = asDbTransactionClient(rawTx);
+
+    const initialMonthKeys = await loadOpenLoanMonthKeys(tx, loanId);
+
+    await lockPayrollRunsForMonths(tx, initialMonthKeys);
+
+    const locked = await lockLoan(tx, loanId);
+
+    const lockedMonthKeys = await loadOpenLoanMonthKeys(tx, loanId);
+
+    if (!sameMonthKeys(initialMonthKeys, lockedMonthKeys)) {
+      throw new Error("EMPLOYEE_LOAN_CONCURRENT_INSTALLMENT_CHANGE");
+    }
+
+    if (locked.status === "cancelled") {
+      return tx.employeeLoan.findUniqueOrThrow({
+        where: {
+          id: loanId,
+        },
+      });
+    }
+
+    if (locked.status === "completed") {
+      throw new Error("EMPLOYEE_LOAN_COMPLETED_IMMUTABLE");
+    }
+
+    const applied = await tx.employeeLoanInstallment.findFirst({
+      where: {
+        loanId,
+        status: "applied",
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (applied) {
+      throw new Error("EMPLOYEE_LOAN_HAS_APPLIED_INSTALLMENTS");
+    }
+
+    const now = new Date();
+
+    await tx.employeeLoanInstallment.updateMany({
+      where: {
+        loanId,
+        status: {
+          in: ["scheduled", "approved"],
+        },
+      },
+      data: {
+        status: "cancelled",
+        cancelledAt: now,
+        cancelledById: actor.userId,
+        cancellationReason: reason,
+      },
+    });
+
+    const cancelled = await tx.employeeLoan.update({
+      where: {
+        id: loanId,
+      },
+      data: {
+        status: "cancelled",
+        cancelledAt: now,
+        cancelledById: actor.userId,
+        cancellationReason: reason,
+      },
+    });
+
+    await writeMandatoryAudit(tx, actor, {
+      action: "employee_loan_cancel",
+      targetType: "EmployeeLoan",
+      targetId: cancelled.id,
+      details: {
+        cancellationReason: reason,
+        previousStatus: locked.status,
+      },
+    });
+
+    return cancelled;
+  });
+}
+
+export async function savePayrollAdjustment(
+  input: SavePayrollAdjustmentInput,
+  actor: PayrollAdjustmentActor,
+) {
+  assertActor(actor);
+
+  if (!input.employeeId?.trim()) {
+    throw new Error("PAYROLL_ADJUSTMENT_EMPLOYEE_REQUIRED");
+  }
+
+  const monthKey = assertMonthKey(input.monthKey, "MONTH");
+
+  if (input.direction !== "deduction" && input.direction !== "earning") {
+    throw new Error("PAYROLL_ADJUSTMENT_INVALID_DIRECTION");
+  }
+
+  const sourceType = input.sourceType ?? "manual";
+
+  if (!["manual", "correction", "other"].includes(sourceType)) {
+    throw new Error("PAYROLL_ADJUSTMENT_INVALID_MANUAL_SOURCE_TYPE");
+  }
+
+  assertPositiveMoney(input.amountMinor, "AMOUNT");
+
+  const currency = normalizeCurrency(input.currency);
+
+  const reason = requiredReason(
+    input.reason,
+    "PAYROLL_ADJUSTMENT_REASON_REQUIRED",
+  );
+
+  const notes = normalizeNotes(input.notes);
+
+  return db.$transaction(async (rawTx) => {
+    const tx = asDbTransactionClient(rawTx);
+
+    const employee = await assertPayrollEmployee(tx, input.employeeId);
+
+    const existing = input.adjustmentId
+      ? await tx.payrollAdjustment.findUnique({
+          where: {
+            id: input.adjustmentId,
+          },
+        })
+      : null;
+
+    if (input.adjustmentId && !existing) {
+      throw new Error("PAYROLL_ADJUSTMENT_NOT_FOUND");
+    }
+
+    if (existing && existing.employeeId !== input.employeeId) {
+      throw new Error("PAYROLL_ADJUSTMENT_EMPLOYEE_IMMUTABLE");
+    }
+
+    if (existing && existing.status !== "draft") {
+      throw new Error("PAYROLL_ADJUSTMENT_NOT_EDITABLE");
+    }
+
+    const adjustment = existing
+      ? await tx.payrollAdjustment.update({
+          where: {
+            id: existing.id,
+          },
+          data: {
+            monthKey,
+            direction: input.direction,
+            sourceType,
+            sourceRefId: input.sourceRefId?.trim() || null,
+            amountMinor: input.amountMinor,
+            currency,
+            reason,
+            notes,
+          },
+        })
+      : await tx.payrollAdjustment.create({
+          data: {
+            employeeId: input.employeeId,
+            monthKey,
+            direction: input.direction,
+            sourceType,
+            sourceRefId: input.sourceRefId?.trim() || null,
+            amountMinor: input.amountMinor,
+            currency,
+            reason,
+            notes,
+            status: "draft",
+            createdById: actor.userId,
+          },
+        });
+
+    await writeMandatoryAudit(tx, actor, {
+      action: existing
+        ? "payroll_adjustment_update"
+        : "payroll_adjustment_create",
+      targetType: "PayrollAdjustment",
+      targetId: adjustment.id,
+      details: {
+        employeeId: employee.id,
+        employeeCode: employee.employeeCode,
+        monthKey: adjustment.monthKey,
+        direction: adjustment.direction,
+        sourceType: adjustment.sourceType,
+        amountMinor: adjustment.amountMinor,
+        currency: adjustment.currency,
+        reason: adjustment.reason,
+      },
+    });
+
+    return adjustment;
+  });
+}
+
+export async function approvePayrollAdjustment(
+  adjustmentId: string,
+  actor: PayrollAdjustmentActor,
+) {
+  assertActor(actor);
+
+  return db.$transaction(async (rawTx) => {
+    const tx = asDbTransactionClient(rawTx);
+
+    const initial = await tx.payrollAdjustment.findUnique({
+      where: {
+        id: adjustmentId,
+      },
+      select: {
+        monthKey: true,
+      },
+    });
+
+    if (!initial) {
+      throw new Error("PAYROLL_ADJUSTMENT_NOT_FOUND");
+    }
+
+    const payrollRuns = await lockPayrollRunsForMonths(tx, [initial.monthKey]);
+
+    assertNoFinalizedPayrollRun(payrollRuns);
+
+    const locked = await lockAdjustment(tx, adjustmentId);
+
+    const current = await tx.payrollAdjustment.findUniqueOrThrow({
+      where: {
+        id: adjustmentId,
+      },
+      select: {
+        monthKey: true,
+      },
+    });
+
+    if (current.monthKey !== initial.monthKey) {
+      throw new Error("PAYROLL_ADJUSTMENT_CONCURRENT_MONTH_CHANGE");
+    }
+
+    if (locked.status === "approved") {
+      return tx.payrollAdjustment.findUniqueOrThrow({
+        where: {
+          id: adjustmentId,
+        },
+      });
+    }
+
+    if (locked.status !== "draft") {
+      throw new Error("PAYROLL_ADJUSTMENT_NOT_APPROVABLE");
+    }
+
+    const now = new Date();
+
+    const approved = await tx.payrollAdjustment.update({
+      where: {
+        id: adjustmentId,
+      },
+      data: {
+        status: "approved",
+        approvedAt: now,
+        approvedById: actor.userId,
+      },
+    });
+
+    await writeMandatoryAudit(tx, actor, {
+      action: "payroll_adjustment_approve",
+      targetType: "PayrollAdjustment",
+      targetId: approved.id,
+      details: {
+        employeeId: approved.employeeId,
+        monthKey: approved.monthKey,
+        direction: approved.direction,
+        amountMinor: approved.amountMinor,
+        currency: approved.currency,
+      },
+    });
+
+    return approved;
+  });
+}
+
+export async function cancelPayrollAdjustment(
+  adjustmentId: string,
+  cancellationReason: string,
+  actor: PayrollAdjustmentActor,
+) {
+  assertActor(actor);
+
+  const reason = requiredReason(
+    cancellationReason,
+    "PAYROLL_ADJUSTMENT_CANCELLATION_REASON_REQUIRED",
+  );
+
+  return db.$transaction(async (rawTx) => {
+    const tx = asDbTransactionClient(rawTx);
+
+    const initial = await tx.payrollAdjustment.findUnique({
+      where: {
+        id: adjustmentId,
+      },
+      select: {
+        monthKey: true,
+      },
+    });
+
+    if (!initial) {
+      throw new Error("PAYROLL_ADJUSTMENT_NOT_FOUND");
+    }
+
+    await lockPayrollRunsForMonths(tx, [initial.monthKey]);
+
+    const locked = await lockAdjustment(tx, adjustmentId);
+
+    const current = await tx.payrollAdjustment.findUniqueOrThrow({
+      where: {
+        id: adjustmentId,
+      },
+      select: {
+        monthKey: true,
+      },
+    });
+
+    if (current.monthKey !== initial.monthKey) {
+      throw new Error("PAYROLL_ADJUSTMENT_CONCURRENT_MONTH_CHANGE");
+    }
+
+    if (locked.status === "cancelled") {
+      return tx.payrollAdjustment.findUniqueOrThrow({
+        where: {
+          id: adjustmentId,
+        },
+      });
+    }
+
+    if (locked.status === "applied") {
+      throw new Error("PAYROLL_ADJUSTMENT_APPLIED_IMMUTABLE");
+    }
+
+    const now = new Date();
+
+    const cancelled = await tx.payrollAdjustment.update({
+      where: {
+        id: adjustmentId,
+      },
+      data: {
+        status: "cancelled",
+        cancelledAt: now,
+        cancelledById: actor.userId,
+        cancellationReason: reason,
+      },
+    });
+
+    await writeMandatoryAudit(tx, actor, {
+      action: "payroll_adjustment_cancel",
+      targetType: "PayrollAdjustment",
+      targetId: cancelled.id,
+      details: {
+        previousStatus: locked.status,
+        cancellationReason: reason,
+      },
+    });
+
+    return cancelled;
+  });
+}

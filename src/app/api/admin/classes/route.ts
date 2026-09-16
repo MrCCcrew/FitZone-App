@@ -1,17 +1,14 @@
 import { NextResponse } from "next/server";
 import { requireAdminFeature } from "@/lib/admin-guard";
+import { canManageClassTypes } from "@/lib/admin-permissions";
 import { db } from "@/lib/db";
 import { clearPublicApiCache } from "@/lib/public-cache";
-
-const DAYS_AR = [
-  "الأحد",
-  "الاثنين",
-  "الثلاثاء",
-  "الأربعاء",
-  "الخميس",
-  "الجمعة",
-  "السبت",
-];
+import { resolveOrCreateClassType } from "@/lib/class-type-catalog";
+import {
+  DAYS_AR,
+  ensureRecurringScheduleForClass,
+  reconcileFrozenMembershipsForClass,
+} from "@/lib/schedule-maintenance";
 
 async function checkAdmin() {
   const guard = await requireAdminFeature("classes");
@@ -31,27 +28,58 @@ async function getTrainerProfileId(userId: string): Promise<string | null> {
   return t?.id ?? null;
 }
 
-function getNextOccurrences(dayName: string, time: string, maxSpots: number, count = 8) {
-  const dayIndex = DAYS_AR.indexOf(dayName);
-  if (dayIndex === -1) return [];
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+async function validateClassTypeSelection(input: {
+  classTypeId?: string | null;
+  allowCreate: boolean;
+  currentClassTypeId?: string | null;
+}): Promise<NextResponse | null> {
+  const classTypeId = String(input.classTypeId ?? "").trim();
 
-  let date = new Date(today);
-  while (date.getDay() !== dayIndex) {
-    date = new Date(date.getTime() + 24 * 60 * 60 * 1000);
+  if (!classTypeId) {
+    if (!input.allowCreate) {
+      return NextResponse.json(
+        {
+          error:
+            "يجب اختيار نوع كلاس موجود. إنشاء أنواع جديدة متاح للمدير فقط.",
+        },
+        { status: 403 },
+      );
+    }
+
+    return null;
   }
 
-  return Array.from({ length: count }, () => {
-    const result = {
-      date: new Date(date),
-      time,
-      availableSpots: maxSpots,
-    };
-    date = new Date(date.getTime() + 7 * 24 * 60 * 60 * 1000);
-    return result;
+  const selected = await db.classType.findUnique({
+    where: { id: classTypeId },
+    select: {
+      id: true,
+      isActive: true,
+    },
   });
+
+  if (!selected) {
+    return NextResponse.json(
+      { error: "نوع الكلاس المحدد غير موجود." },
+      { status: 404 },
+    );
+  }
+
+  const keepingCurrent =
+    Boolean(input.currentClassTypeId) &&
+    input.currentClassTypeId === selected.id;
+
+  if (!selected.isActive && !keepingCurrent) {
+    return NextResponse.json(
+      {
+        error:
+          "نوع الكلاس المحدد غير نشط ولا يمكن استخدامه في تعيين جديد.",
+      },
+      { status: 409 },
+    );
+  }
+
+  return null;
 }
 
 async function upsertTrialConfig(classId: string, trialEnabled: boolean, trialPrice: number) {
@@ -95,6 +123,7 @@ export async function GET() {
       where: trainerIdFilter ? { trainerId: trainerIdFilter } : undefined,
       include: {
         trainer: true,
+        classType: true,
         schedules: { where: { isActive: true }, take: 10, orderBy: { date: "asc" } },
       },
       orderBy: { name: "asc" },
@@ -132,13 +161,15 @@ export async function GET() {
       categoryEn: item.categoryEn ?? "",
       type: item.type,
       typeEn: item.typeEn ?? "",
+      classTypeId: item.classTypeId,
+      classTypeKey: item.classType?.key ?? null,
       subType: item.subType ?? "",
       subTypeEn: item.subTypeEn ?? "",
       intensity: item.intensity,
       price: item.price,
       showTrainerName: item.showTrainerName ?? true,
       active: item.isActive,
-      trialEnabled: cfg?.trialEnabled ?? true,
+      trialEnabled: cfg?.trialEnabled ?? false,
       trialPrice: cfg?.trialPrice ?? 50,
     };
   });
@@ -154,6 +185,7 @@ export async function GET() {
     })),
     userRole: guard.role,
     canAddClasses,
+    canManageClassTypes: canManageClassTypes(guard.role),
   });
 }
 
@@ -177,6 +209,7 @@ export async function POST(request: Request) {
       categoryEn?: string;
       type?: string;
       typeEn?: string;
+      classTypeId?: string;
       subType?: string;
       subTypeEn?: string;
       duration?: number;
@@ -202,6 +235,23 @@ export async function POST(request: Request) {
     }
 
     const maxSpots = Number(body.maxSpots ?? 15);
+
+    const classTypeSelectionError =
+      await validateClassTypeSelection({
+        classTypeId: body.classTypeId,
+        allowCreate: canManageClassTypes(guard.role),
+      });
+
+    if (classTypeSelectionError) {
+      return classTypeSelectionError;
+    }
+
+    const resolvedClassType = await resolveOrCreateClassType({
+      classTypeId: body.classTypeId,
+      label: type || "strength",
+      labelEn: body.typeEn,
+    });
+
     const created = await db.class.create({
       data: {
         name,
@@ -211,8 +261,9 @@ export async function POST(request: Request) {
         trainerId,
         category: category || null,
         categoryEn: body.categoryEn?.trim() || null,
-        type: type || "strength",
-        typeEn: body.typeEn?.trim() || null,
+        type: resolvedClassType.nameAr,
+        typeEn: resolvedClassType.nameEn ?? (body.typeEn?.trim() || null),
+        classTypeId: resolvedClassType.id,
         subType: subType || null,
         subTypeEn: body.subTypeEn?.trim() || null,
         duration: Number(body.duration ?? 60),
@@ -226,22 +277,20 @@ export async function POST(request: Request) {
     });
 
     if (body.day && body.time) {
-      const occurrences = getNextOccurrences(body.day, body.time, maxSpots);
-      if (occurrences.length > 0) {
-        await db.schedule.createMany({
-          data: occurrences.map((occurrence) => ({
-            classId: created.id,
-            date: occurrence.date,
-            time: occurrence.time,
-            availableSpots: occurrence.availableSpots,
-            isActive: true,
-          })),
-        });
-      }
+      await ensureRecurringScheduleForClass({
+        classId: created.id,
+        dayName: body.day,
+        time: body.time,
+        maxSpots,
+      });
+
+      await reconcileFrozenMembershipsForClass(
+        created.id,
+      );
     }
 
     // Persist trial settings in siteContent
-    await upsertTrialConfig(created.id, body.trialEnabled ?? true, Number(body.trialPrice ?? 50));
+    await upsertTrialConfig(created.id, body.trialEnabled === true, Number(body.trialPrice ?? 0));
 
     clearPublicApiCache();
     return NextResponse.json({
@@ -261,14 +310,15 @@ export async function POST(request: Request) {
       categoryEn: created.categoryEn ?? "",
       type: created.type,
       typeEn: created.typeEn ?? "",
+      classTypeId: created.classTypeId,
       subType: created.subType ?? "",
       subTypeEn: created.subTypeEn ?? "",
       intensity: created.intensity,
       price: created.price,
       showTrainerName: created.showTrainerName ?? true,
       active: created.isActive,
-      trialEnabled: body.trialEnabled ?? true,
-      trialPrice: Number(body.trialPrice ?? 50),
+      trialEnabled: body.trialEnabled === true,
+      trialPrice: Number(body.trialPrice ?? 0),
     });
   } catch {
     return NextResponse.json({ error: "تعذر حفظ الكلاس الآن." }, { status: 500 });
@@ -304,6 +354,7 @@ export async function PATCH(request: Request) {
       categoryEn?: string;
       type?: string;
       typeEn?: string;
+      classTypeId?: string;
       subType?: string;
       subTypeEn?: string;
       intensity?: string;
@@ -321,12 +372,30 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: "معرّف الكلاس مطلوب." }, { status: 400 });
     }
 
-    // Trainers can only edit their own classes
-    if (ownTrainerId) {
-      const cls = await db.class.findUnique({ where: { id: body.id }, select: { trainerId: true } });
-      if (!cls || cls.trainerId !== ownTrainerId) {
-        return NextResponse.json({ error: "لا يمكنك تعديل كلاس لا يخصك." }, { status: 403 });
-      }
+    const currentClass = await db.class.findUnique({
+      where: { id: body.id },
+      select: {
+        trainerId: true,
+        classTypeId: true,
+      },
+    });
+
+    if (!currentClass) {
+      return NextResponse.json(
+        { error: "الكلاس غير موجود." },
+        { status: 404 },
+      );
+    }
+
+    // Trainers can only edit their own classes.
+    if (
+      ownTrainerId &&
+      currentClass.trainerId !== ownTrainerId
+    ) {
+      return NextResponse.json(
+        { error: "لا يمكنك تعديل كلاس لا يخصك." },
+        { status: 403 },
+      );
     }
 
     const data: Record<string, unknown> = {};
@@ -338,8 +407,30 @@ export async function PATCH(request: Request) {
     if (body.trainerId !== undefined && !ownTrainerId) data.trainerId = body.trainerId;
     if (body.category !== undefined) data.category = body.category?.trim() || null;
     if (body.categoryEn !== undefined) data.categoryEn = body.categoryEn?.trim() || null;
-    if (body.type !== undefined) data.type = body.type.trim() || "strength";
-    if (body.typeEn !== undefined) data.typeEn = body.typeEn?.trim() || null;
+    if (body.type !== undefined || body.classTypeId !== undefined) {
+      const classTypeSelectionError =
+        await validateClassTypeSelection({
+          classTypeId: body.classTypeId,
+          allowCreate: canManageClassTypes(guard.role),
+          currentClassTypeId: currentClass.classTypeId,
+        });
+
+      if (classTypeSelectionError) {
+        return classTypeSelectionError;
+      }
+
+      const resolvedClassType = await resolveOrCreateClassType({
+        classTypeId: body.classTypeId,
+        label: body.type?.trim() || "strength",
+        labelEn: body.typeEn,
+      });
+
+      data.classTypeId = resolvedClassType.id;
+      data.type = resolvedClassType.nameAr;
+      data.typeEn = resolvedClassType.nameEn ?? (body.typeEn?.trim() || null);
+    } else if (body.typeEn !== undefined) {
+      data.typeEn = body.typeEn?.trim() || null;
+    }
     if (body.subType !== undefined) data.subType = body.subType?.trim() || null;
     if (body.subTypeEn !== undefined) data.subTypeEn = body.subTypeEn?.trim() || null;
     if (body.intensity !== undefined) data.intensity = body.intensity;
@@ -357,7 +448,7 @@ export async function PATCH(request: Request) {
       const existing = await db.siteContent.findUnique({ where: { section: "trial_classes_config" } });
       let cfg: Record<string, { trialEnabled: boolean; trialPrice: number }> = {};
       if (existing) { try { cfg = JSON.parse(existing.content) as typeof cfg; } catch { /* ignore */ } }
-      const prev = cfg[body.id] ?? { trialEnabled: true, trialPrice: 50 };
+      const prev = cfg[body.id] ?? { trialEnabled: false, trialPrice: 0 };
       cfg[body.id] = {
         trialEnabled: body.trialEnabled ?? prev.trialEnabled,
         trialPrice: body.trialPrice !== undefined ? Number(body.trialPrice) : prev.trialPrice,
@@ -370,28 +461,85 @@ export async function PATCH(request: Request) {
     }
 
     if (body.day && body.time) {
-      const current = await db.class.findUnique({ where: { id: body.id } });
+      const current = await db.class.findUnique({
+        where: { id: body.id },
+        select: {
+          id: true,
+          maxSpots: true,
+        },
+      });
+
       if (current) {
+        /*
+         * Schedule.date is a Cairo calendar-date anchor stored at UTC midnight.
+         * Delete only future/current unbooked generated inventory.
+         *
+         * Booked rows are preserved as immutable operational history.
+         */
+        const cairoParts = new Intl.DateTimeFormat(
+          "en-CA",
+          {
+            timeZone: "Africa/Cairo",
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+          },
+        )
+          .formatToParts(new Date())
+          .reduce<Record<string, string>>(
+            (acc, part) => {
+              if (
+                part.type === "year" ||
+                part.type === "month" ||
+                part.type === "day"
+              ) {
+                acc[part.type] = part.value;
+              }
+              return acc;
+            },
+            {},
+          );
+
+        const cairoTodayAnchor = new Date(
+          `${cairoParts.year}-${cairoParts.month}-${cairoParts.day}T00:00:00.000Z`,
+        );
+
         await db.schedule.deleteMany({
           where: {
             classId: body.id,
-            date: { gte: new Date() },
-            bookings: { none: {} },
+            date: {
+              gte: cairoTodayAnchor,
+            },
+            bookings: {
+              none: {},
+            },
           },
         });
 
-        const occurrences = getNextOccurrences(body.day, body.time, current.maxSpots);
-        if (occurrences.length > 0) {
-          await db.schedule.createMany({
-            data: occurrences.map((occurrence) => ({
-              classId: body.id!,
-              date: occurrence.date,
-              time: occurrence.time,
-              availableSpots: occurrence.availableSpots,
-              isActive: true,
-            })),
-          });
-        }
+        /*
+         * Idempotent recurring generation.
+         *
+         * The shared service:
+         * - locks per class
+         * - re-reads inventory under the lock
+         * - never recreates an existing logical
+         *   classId + date + time occurrence
+         * - preserves booked historical/future rows
+         */
+        await ensureRecurringScheduleForClass({
+          classId: body.id,
+          dayName: body.day,
+          time: body.time,
+          maxSpots: current.maxSpots,
+        });
+
+        /*
+         * Reconcile even when zero schedules were created.
+         * This also heals memberships left temporarily under-entitled.
+         */
+        await reconcileFrozenMembershipsForClass(
+          body.id,
+        );
       }
     }
 

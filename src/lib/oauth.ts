@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import { db } from "./db";
 import { sendVerificationEmail } from "./email";
+import { assertExternalSideEffectsAllowed } from "@/lib/staging-safety";
 
 export function getAppBaseUrl(): string {
   return (process.env.NEXTAUTH_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "https://fitzoneland.com").replace(/\/$/, "");
@@ -199,6 +200,7 @@ export async function verifyAppleIdToken(
     };
 
     // Fetch Apple's public keys
+    assertExternalSideEffectsAllowed("Apple public key fetch");
     const keysRes = await fetch("https://appleid.apple.com/auth/keys", { cache: "no-store" });
     const { keys } = (await keysRes.json()) as { keys: JsonWebKey[] };
     const jwk = keys.find((k) => (k as Record<string, unknown>).kid === header.kid);

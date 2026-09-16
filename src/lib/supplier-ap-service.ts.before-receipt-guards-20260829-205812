@@ -1,0 +1,717 @@
+import { Prisma } from "@prisma/client";
+import { db } from "@/lib/db";
+import { postJournal, reverseJournal } from "@/lib/accounting-service";
+
+type TransactionClient = Parameters<Parameters<typeof db.$transaction>[0]>[0];
+
+const AP_ACCOUNT = "2010";
+const INVENTORY_ACCOUNT = "1010";
+const CASH_ACCOUNT = "1020";
+
+const VALID_PAYMENT_TERMS = new Set(["cash", "credit", "mixed"]);
+
+function toMinor(value: number): number {
+  return Math.round(value * 100);
+}
+
+function fromMinor(value: number): number {
+  return value / 100;
+}
+
+function requirePositiveMoney(value: number, field: string): number {
+  if (!Number.isFinite(value) || toMinor(value) <= 0) {
+    throw new Error(`${field} must be greater than zero`);
+  }
+
+  return fromMinor(toMinor(value));
+}
+
+function normalizePaymentTerms(value?: string | null): string | null {
+  if (value == null || value.trim() === "") return null;
+
+  const normalized = value.trim().toLowerCase();
+
+  if (!VALID_PAYMENT_TERMS.has(normalized)) {
+    throw new Error(`Invalid payment terms: ${value}`);
+  }
+
+  return normalized;
+}
+
+function mapSupplierPaymentAccount(method: string): string {
+  const normalized = method.trim().toLowerCase();
+
+  if (normalized === "cash") {
+    return CASH_ACCOUNT;
+  }
+
+  throw new Error(
+    `Unsupported supplier payment method "${method}". ` +
+      `Only cash is enabled until the correct bank GL account is configured.`,
+  );
+}
+
+async function lockPurchaseInvoice(tx: TransactionClient, invoiceId: string) {
+  await tx.$queryRaw(
+    Prisma.sql`
+      SELECT id
+      FROM PurchaseInvoice
+      WHERE id = ${invoiceId}
+      FOR UPDATE
+    `,
+  );
+}
+
+async function lockSupplierPayment(tx: TransactionClient, paymentId: string) {
+  await tx.$queryRaw(
+    Prisma.sql`
+      SELECT id
+      FROM SupplierPayment
+      WHERE id = ${paymentId}
+      FOR UPDATE
+    `,
+  );
+}
+
+async function lockPurchaseInvoices(
+  tx: TransactionClient,
+  invoiceIds: string[],
+) {
+  const ids = [...new Set(invoiceIds)].sort();
+
+  if (!ids.length) return;
+
+  await tx.$queryRaw(
+    Prisma.sql`
+      SELECT id
+      FROM PurchaseInvoice
+      WHERE id IN (${Prisma.join(ids)})
+      ORDER BY id
+      FOR UPDATE
+    `,
+  );
+}
+
+export async function createPurchaseInvoiceDraft(input: {
+  supplierId: string;
+  invoiceNumber?: string | null;
+  invoiceDate: Date;
+  dueDate?: Date | null;
+  paymentTerms?: string | null;
+  notes?: string | null;
+  createdByUserId?: string | null;
+  items: Array<{
+    description: string;
+    quantity: number;
+    unitCost: number;
+  }>;
+}) {
+  if (!input.items.length) {
+    throw new Error("Purchase invoice must contain at least one item");
+  }
+
+  const normalizedItems = input.items.map((item) => {
+    const description = item.description.trim();
+
+    if (!description) {
+      throw new Error("Purchase invoice item description is required");
+    }
+
+    if (!Number.isInteger(item.quantity) || item.quantity <= 0) {
+      throw new Error(
+        "Purchase invoice item quantity must be a positive integer",
+      );
+    }
+
+    const unitCost = requirePositiveMoney(item.unitCost, "unitCost");
+    const totalCostMinor = toMinor(unitCost) * item.quantity;
+
+    return {
+      description,
+      quantity: item.quantity,
+      unitCost,
+      totalCost: fromMinor(totalCostMinor),
+    };
+  });
+
+  const totalMinor = normalizedItems.reduce(
+    (sum, item) => sum + toMinor(item.totalCost),
+    0,
+  );
+
+  if (totalMinor <= 0) {
+    throw new Error("Purchase invoice total must be greater than zero");
+  }
+
+  const paymentTerms = normalizePaymentTerms(input.paymentTerms);
+
+  return db.$transaction(async (tx) => {
+    const supplier = await tx.supplier.findFirst({
+      where: {
+        id: input.supplierId,
+        isActive: true,
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+
+    if (!supplier) {
+      throw new Error("Supplier not found or inactive");
+    }
+
+    return tx.purchaseInvoice.create({
+      data: {
+        supplierId: supplier.id,
+        invoiceNumber: input.invoiceNumber?.trim() || null,
+        invoiceDate: input.invoiceDate,
+        dueDate: input.dueDate ?? null,
+        paymentTerms,
+        subtotal: new Prisma.Decimal(fromMinor(totalMinor)),
+        totalAmount: new Prisma.Decimal(fromMinor(totalMinor)),
+        status: "draft",
+        notes: input.notes?.trim() || null,
+        createdByUserId: input.createdByUserId ?? null,
+
+        items: {
+          create: normalizedItems.map((item) => ({
+            description: item.description,
+            quantity: item.quantity,
+            unitCost: new Prisma.Decimal(item.unitCost),
+            totalCost: new Prisma.Decimal(item.totalCost),
+          })),
+        },
+      },
+      include: { items: true },
+    });
+  });
+}
+
+export async function postPurchaseInvoice(
+  invoiceId: string,
+  actorUserId?: string | null,
+) {
+  return db.$transaction(async (tx) => {
+    await lockPurchaseInvoice(tx, invoiceId);
+
+    const invoice = await tx.purchaseInvoice.findUnique({
+      where: { id: invoiceId },
+      include: { items: true },
+    });
+
+    if (!invoice) {
+      throw new Error("Purchase invoice not found");
+    }
+
+    if (invoice.status === "posted") {
+      return { invoiceId, alreadyPosted: true };
+    }
+
+    if (invoice.status !== "draft") {
+      throw new Error(
+        `Purchase invoice cannot be posted from status ${invoice.status}`,
+      );
+    }
+
+    if (!invoice.items.length) {
+      throw new Error("Purchase invoice has no items");
+    }
+
+    const itemTotalMinor = invoice.items.reduce(
+      (sum, item) => sum + toMinor(Number(item.totalCost)),
+      0,
+    );
+
+    const invoiceTotalMinor = toMinor(Number(invoice.totalAmount));
+
+    if (invoiceTotalMinor <= 0) {
+      throw new Error("Purchase invoice total must be greater than zero");
+    }
+
+    if (itemTotalMinor !== invoiceTotalMinor) {
+      throw new Error(
+        `Purchase invoice total mismatch: items=${fromMinor(itemTotalMinor)} invoice=${fromMinor(invoiceTotalMinor)}`,
+      );
+    }
+
+    await postJournal(
+      tx,
+      "PurchaseInvoice",
+      invoice.id,
+      `Supplier purchase invoice #${invoice.id.slice(-8)}`,
+      [
+        {
+          accountCode: INVENTORY_ACCOUNT,
+          debit: fromMinor(invoiceTotalMinor),
+          credit: 0,
+          description: "Inventory purchase",
+        },
+        {
+          accountCode: AP_ACCOUNT,
+          debit: 0,
+          credit: fromMinor(invoiceTotalMinor),
+          description: "Accounts payable - supplier",
+        },
+      ],
+    );
+
+    await tx.purchaseInvoice.update({
+      where: { id: invoice.id },
+      data: {
+        status: "posted",
+        postedByUserId: actorUserId ?? null,
+        postedAt: new Date(),
+      },
+    });
+
+    return { invoiceId: invoice.id, alreadyPosted: false };
+  });
+}
+
+export async function createSupplierPaymentDraft(input: {
+  supplierId: string;
+  amount: number;
+  paymentDate: Date;
+  paymentMethod: string;
+  referenceNumber?: string | null;
+  notes?: string | null;
+  createdByUserId?: string | null;
+  allocations: Array<{
+    purchaseInvoiceId: string;
+    amount: number;
+  }>;
+}) {
+  const amount = requirePositiveMoney(input.amount, "payment amount");
+
+  if (!input.paymentMethod.trim()) {
+    throw new Error("Supplier payment method is required");
+  }
+
+  if (!input.allocations.length) {
+    throw new Error(
+      "Supplier payment requires allocations until supplier advances are implemented",
+    );
+  }
+
+  const seen = new Set<string>();
+
+  const allocations = input.allocations.map((allocation) => {
+    if (seen.has(allocation.purchaseInvoiceId)) {
+      throw new Error("Duplicate invoice allocation in supplier payment");
+    }
+
+    seen.add(allocation.purchaseInvoiceId);
+
+    return {
+      purchaseInvoiceId: allocation.purchaseInvoiceId,
+      amount: requirePositiveMoney(allocation.amount, "allocation amount"),
+    };
+  });
+
+  const allocatedMinor = allocations.reduce(
+    (sum, allocation) => sum + toMinor(allocation.amount),
+    0,
+  );
+
+  if (allocatedMinor !== toMinor(amount)) {
+    throw new Error(
+      "Supplier payment must be fully allocated until supplier advances are implemented",
+    );
+  }
+
+  return db.$transaction(async (tx) => {
+    const supplier = await tx.supplier.findFirst({
+      where: {
+        id: input.supplierId,
+        isActive: true,
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+
+    if (!supplier) {
+      throw new Error("Supplier not found or inactive");
+    }
+
+    await lockPurchaseInvoices(
+      tx,
+      allocations.map((allocation) => allocation.purchaseInvoiceId),
+    );
+
+    const invoices = await tx.purchaseInvoice.findMany({
+      where: {
+        id: {
+          in: allocations.map((allocation) => allocation.purchaseInvoiceId),
+        },
+      },
+      select: {
+        id: true,
+        supplierId: true,
+        status: true,
+      },
+    });
+
+    if (invoices.length !== allocations.length) {
+      throw new Error("One or more purchase invoices do not exist");
+    }
+
+    for (const invoice of invoices) {
+      if (invoice.supplierId !== supplier.id) {
+        throw new Error("Cross-supplier payment allocation is not allowed");
+      }
+
+      if (invoice.status !== "posted") {
+        throw new Error(
+          "Supplier payments can only be allocated to posted invoices",
+        );
+      }
+    }
+
+    return tx.supplierPayment.create({
+      data: {
+        supplierId: supplier.id,
+        amount: new Prisma.Decimal(amount),
+        paymentDate: input.paymentDate,
+        paymentMethod: input.paymentMethod.trim().toLowerCase(),
+        referenceNumber: input.referenceNumber?.trim() || null,
+        status: "draft",
+        notes: input.notes?.trim() || null,
+        createdByUserId: input.createdByUserId ?? null,
+
+        allocations: {
+          create: allocations.map((allocation) => ({
+            purchaseInvoiceId: allocation.purchaseInvoiceId,
+            amount: new Prisma.Decimal(allocation.amount),
+          })),
+        },
+      },
+      include: { allocations: true },
+    });
+  });
+}
+
+export async function postSupplierPayment(
+  paymentId: string,
+  actorUserId?: string | null,
+) {
+  return db.$transaction(
+    async (tx) => {
+      await lockSupplierPayment(tx, paymentId);
+
+      const payment = await tx.supplierPayment.findUnique({
+        where: { id: paymentId },
+        include: { allocations: true },
+      });
+
+      if (!payment) {
+        throw new Error("Supplier payment not found");
+      }
+
+      if (payment.status === "posted") {
+        return { paymentId, alreadyPosted: true };
+      }
+
+      if (payment.status !== "draft") {
+        throw new Error(
+          `Supplier payment cannot be posted from status ${payment.status}`,
+        );
+      }
+
+      const paymentMinor = toMinor(Number(payment.amount));
+
+      if (paymentMinor <= 0) {
+        throw new Error("Supplier payment amount must be greater than zero");
+      }
+
+      if (!payment.allocations.length) {
+        throw new Error(
+          "Supplier payment requires allocations until supplier advances are implemented",
+        );
+      }
+
+      const invoiceIds = payment.allocations.map(
+        (allocation) => allocation.purchaseInvoiceId,
+      );
+
+      await lockPurchaseInvoices(tx, invoiceIds);
+
+      const invoices = await tx.purchaseInvoice.findMany({
+        where: { id: { in: invoiceIds } },
+        select: {
+          id: true,
+          supplierId: true,
+          status: true,
+          totalAmount: true,
+        },
+      });
+
+      if (invoices.length !== new Set(invoiceIds).size) {
+        throw new Error("One or more allocated purchase invoices do not exist");
+      }
+
+      const invoiceMap = new Map(
+        invoices.map((invoice) => [invoice.id, invoice]),
+      );
+
+      const paymentAllocatedMinor = payment.allocations.reduce(
+        (sum, allocation) => sum + toMinor(Number(allocation.amount)),
+        0,
+      );
+
+      if (paymentAllocatedMinor !== paymentMinor) {
+        throw new Error(
+          "Supplier payment must be fully allocated until supplier advances are implemented",
+        );
+      }
+
+      for (const allocation of payment.allocations) {
+        const invoice = invoiceMap.get(allocation.purchaseInvoiceId);
+
+        if (!invoice) {
+          throw new Error("Allocated purchase invoice not found");
+        }
+
+        if (invoice.supplierId !== payment.supplierId) {
+          throw new Error("Cross-supplier payment allocation is not allowed");
+        }
+
+        if (invoice.status !== "posted") {
+          throw new Error(
+            "Payment allocation target must be a posted purchase invoice",
+          );
+        }
+
+        const prior = await tx.supplierPaymentAllocation.aggregate({
+          where: {
+            purchaseInvoiceId: invoice.id,
+            supplierPayment: {
+              status: "posted",
+              id: { not: payment.id },
+            },
+          },
+          _sum: { amount: true },
+        });
+
+        const previouslyPaidMinor = toMinor(Number(prior._sum.amount ?? 0));
+        const invoiceTotalMinor = toMinor(Number(invoice.totalAmount));
+        const outstandingMinor = invoiceTotalMinor - previouslyPaidMinor;
+        const allocationMinor = toMinor(Number(allocation.amount));
+
+        if (outstandingMinor <= 0) {
+          throw new Error("Purchase invoice is already fully paid");
+        }
+
+        if (allocationMinor > outstandingMinor) {
+          throw new Error(
+            `Allocation exceeds purchase invoice outstanding balance`,
+          );
+        }
+      }
+
+      const paymentAccount = mapSupplierPaymentAccount(payment.paymentMethod);
+
+      await postJournal(
+        tx,
+        "SupplierPayment",
+        payment.id,
+        `Supplier payment #${payment.id.slice(-8)}`,
+        [
+          {
+            accountCode: AP_ACCOUNT,
+            debit: fromMinor(paymentMinor),
+            credit: 0,
+            description: "Accounts payable settlement",
+          },
+          {
+            accountCode: paymentAccount,
+            debit: 0,
+            credit: fromMinor(paymentMinor),
+            description: "Supplier payment",
+          },
+        ],
+      );
+
+      await tx.supplierPayment.update({
+        where: { id: payment.id },
+        data: {
+          status: "posted",
+          postedByUserId: actorUserId ?? null,
+          postedAt: new Date(),
+        },
+      });
+
+      return { paymentId: payment.id, alreadyPosted: false };
+    },
+    {
+      isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
+    },
+  );
+}
+
+export async function cancelSupplierPayment(
+  paymentId: string,
+  actorUserId?: string | null,
+) {
+  return db.$transaction(async (tx) => {
+    await lockSupplierPayment(tx, paymentId);
+
+    const payment = await tx.supplierPayment.findUnique({
+      where: { id: paymentId },
+    });
+
+    if (!payment) {
+      throw new Error("Supplier payment not found");
+    }
+
+    if (payment.status === "cancelled") {
+      return { paymentId, alreadyCancelled: true };
+    }
+
+    if (payment.status !== "posted") {
+      throw new Error("Only posted supplier payments can be cancelled");
+    }
+
+    const journal = await tx.journal.findUnique({
+      where: {
+        referenceType_referenceId: {
+          referenceType: "SupplierPayment",
+          referenceId: payment.id,
+        },
+      },
+      select: { id: true },
+    });
+
+    if (!journal) {
+      throw new Error("Supplier payment journal not found");
+    }
+
+    await reverseJournal(tx, journal.id);
+
+    await tx.supplierPayment.update({
+      where: { id: payment.id },
+      data: {
+        status: "cancelled",
+        cancelledByUserId: actorUserId ?? null,
+        cancelledAt: new Date(),
+      },
+    });
+
+    return { paymentId: payment.id, alreadyCancelled: false };
+  });
+}
+
+export async function cancelPurchaseInvoice(
+  invoiceId: string,
+  actorUserId?: string | null,
+) {
+  return db.$transaction(async (tx) => {
+    await lockPurchaseInvoice(tx, invoiceId);
+
+    const invoice = await tx.purchaseInvoice.findUnique({
+      where: { id: invoiceId },
+    });
+
+    if (!invoice) {
+      throw new Error("Purchase invoice not found");
+    }
+
+    if (invoice.status === "cancelled") {
+      return { invoiceId, alreadyCancelled: true };
+    }
+
+    if (invoice.status !== "posted") {
+      throw new Error("Only posted purchase invoices can be cancelled");
+    }
+
+    const postedAllocations = await tx.supplierPaymentAllocation.count({
+      where: {
+        purchaseInvoiceId: invoice.id,
+        supplierPayment: {
+          status: "posted",
+        },
+      },
+    });
+
+    if (postedAllocations > 0) {
+      throw new Error(
+        "Purchase invoice cannot be cancelled while posted supplier payments are allocated to it",
+      );
+    }
+
+    const journal = await tx.journal.findUnique({
+      where: {
+        referenceType_referenceId: {
+          referenceType: "PurchaseInvoice",
+          referenceId: invoice.id,
+        },
+      },
+      select: { id: true },
+    });
+
+    if (!journal) {
+      throw new Error("Purchase invoice journal not found");
+    }
+
+    await reverseJournal(tx, journal.id);
+
+    await tx.purchaseInvoice.update({
+      where: { id: invoice.id },
+      data: {
+        status: "cancelled",
+        cancelledByUserId: actorUserId ?? null,
+        cancelledAt: new Date(),
+      },
+    });
+
+    return { invoiceId: invoice.id, alreadyCancelled: false };
+  });
+}
+
+export async function getPurchaseInvoiceBalance(invoiceId: string) {
+  const invoice = await db.purchaseInvoice.findUnique({
+    where: { id: invoiceId },
+    select: {
+      id: true,
+      supplierId: true,
+      status: true,
+      totalAmount: true,
+    },
+  });
+
+  if (!invoice) {
+    throw new Error("Purchase invoice not found");
+  }
+
+  const paid = await db.supplierPaymentAllocation.aggregate({
+    where: {
+      purchaseInvoiceId: invoice.id,
+      supplierPayment: {
+        status: "posted",
+      },
+    },
+    _sum: { amount: true },
+  });
+
+  const totalMinor = toMinor(Number(invoice.totalAmount));
+  const paidMinor = toMinor(Number(paid._sum.amount ?? 0));
+  const outstandingMinor = totalMinor - paidMinor;
+
+  let paymentStatus: "unpaid" | "partially_paid" | "paid";
+
+  if (paidMinor <= 0) {
+    paymentStatus = "unpaid";
+  } else if (outstandingMinor <= 0) {
+    paymentStatus = "paid";
+  } else {
+    paymentStatus = "partially_paid";
+  }
+
+  return {
+    invoiceId: invoice.id,
+    supplierId: invoice.supplierId,
+    documentStatus: invoice.status,
+    totalAmount: fromMinor(totalMinor),
+    paidAmount: fromMinor(paidMinor),
+    outstandingAmount: fromMinor(outstandingMinor),
+    paymentStatus,
+  };
+}

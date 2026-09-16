@@ -1,0 +1,585 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+
+type EligibilityEmployee = {
+  id: string;
+  employeeCode: string;
+  name: string;
+  employmentStatus: string;
+  payrollEnabled: boolean;
+  hireDate: string | null;
+  employmentEndDate: string | null;
+};
+
+type EligibilityTerm = {
+  id: string;
+  employeeId: string;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  enabled: boolean;
+  notes: string | null;
+  createdById: string | null;
+  employee?: EligibilityEmployee;
+};
+
+type EligibilityForm = {
+  termId?: string;
+  employeeId: string;
+  effectiveFrom: string;
+  effectiveTo: string;
+  enabled: boolean;
+  notes: string;
+  editReason: string;
+};
+
+function dateOnly(value: string | null | undefined) {
+  if (!value) return "";
+  return value.slice(0, 10);
+}
+
+function errorLabel(code: string) {
+  switch (code) {
+    case "PAYROLL_ELIGIBILITY_TERM_OVERLAP":
+      return "الفترة تتداخل مع فترة أهلية أخرى لنفس الموظف.";
+
+    case "PAYROLL_ELIGIBILITY_EDIT_REASON_REQUIRED":
+      return "سبب التعديل مطلوب ويجب ألا يقل عن 3 أحرف.";
+
+    case "PAYROLL_ELIGIBILITY_EFFECTIVE_TO_BEFORE_FROM":
+      return "تاريخ النهاية لا يمكن أن يسبق تاريخ البداية.";
+
+    case "PAYROLL_ELIGIBILITY_TERM_EMPLOYEE_IMMUTABLE":
+      return "لا يمكن تغيير الموظف المرتبط بالفترة.";
+
+    case "PAYROLL_ELIGIBILITY_EMPLOYEE_NOT_FOUND":
+      return "الموظف غير موجود.";
+
+    case "PAYROLL_ELIGIBILITY_TERM_NOT_FOUND":
+      return "فترة الأهلية غير موجودة.";
+
+    default:
+      return code || "حدث خطأ غير متوقع.";
+  }
+}
+
+export default function PayrollEligibilityTab({
+  canManage,
+}: {
+  canManage: boolean;
+}) {
+  const [employees, setEmployees] = useState<EligibilityEmployee[]>([]);
+  const [terms, setTerms] = useState<EligibilityTerm[]>([]);
+
+  const [employeeId, setEmployeeId] = useState("");
+
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+
+  const [form, setForm] = useState<EligibilityForm | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+
+    try {
+      const params = new URLSearchParams();
+
+      if (employeeId) {
+        params.set("employeeId", employeeId);
+      }
+
+      const response = await fetch(
+        `/api/admin/payroll-eligibility${
+          params.size ? `?${params.toString()}` : ""
+        }`,
+        {
+          cache: "no-store",
+        },
+      );
+
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload?.error || "تعذر تحميل أهلية الرواتب.");
+      }
+
+      setEmployees(payload.employees || []);
+      setTerms(payload.terms || []);
+    } catch (loadError) {
+      setError(
+        loadError instanceof Error
+          ? errorLabel(loadError.message)
+          : "تعذر تحميل أهلية الرواتب.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [employeeId]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const selectedEmployee = useMemo(
+    () => employees.find((employee) => employee.id === employeeId) || null,
+    [employeeId, employees],
+  );
+
+  const openCreate = () => {
+    setError("");
+    setSuccess("");
+
+    setForm({
+      employeeId,
+      effectiveFrom: "",
+      effectiveTo: "",
+      enabled: true,
+      notes: "",
+      editReason: "",
+    });
+  };
+
+  const openEdit = (term: EligibilityTerm) => {
+    setError("");
+    setSuccess("");
+
+    setForm({
+      termId: term.id,
+      employeeId: term.employeeId,
+      effectiveFrom: dateOnly(term.effectiveFrom),
+      effectiveTo: dateOnly(term.effectiveTo),
+      enabled: term.enabled,
+      notes: term.notes || "",
+      editReason: "",
+    });
+  };
+
+  const save = async () => {
+    if (!form || !canManage) return;
+
+    setError("");
+    setSuccess("");
+
+    if (!form.employeeId) {
+      setError("اختر الموظف.");
+      return;
+    }
+
+    if (!form.effectiveFrom) {
+      setError("تاريخ بداية السريان مطلوب.");
+      return;
+    }
+
+    if (form.termId && form.editReason.trim().length < 3) {
+      setError("سبب التعديل مطلوب ويجب ألا يقل عن 3 أحرف.");
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      const body: Record<string, unknown> = {
+        employeeId: form.employeeId,
+        effectiveFrom: form.effectiveFrom,
+        effectiveTo: form.effectiveTo || null,
+        enabled: form.enabled,
+        notes: form.notes.trim() || null,
+      };
+
+      if (form.termId) {
+        body.termId = form.termId;
+        body.editReason = form.editReason.trim();
+      }
+
+      const response = await fetch("/api/admin/payroll-eligibility", {
+        method: form.termId ? "PATCH" : "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      });
+
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload?.error || "تعذر حفظ فترة الأهلية.");
+      }
+
+      setForm(null);
+
+      setSuccess(
+        form.termId
+          ? "تم تعديل فترة أهلية الرواتب."
+          : "تمت إضافة فترة أهلية الرواتب.",
+      );
+
+      await load();
+    } catch (saveError) {
+      setError(
+        saveError instanceof Error
+          ? errorLabel(saveError.message)
+          : "تعذر حفظ فترة الأهلية.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <>
+      <div className="space-y-5">
+        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+          <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
+            <div>
+              <h3 className="text-lg font-black text-white">
+                أهلية الموظفين لمسير الرواتب
+              </h3>
+
+              <p className="mt-1 max-w-3xl text-xs leading-6 text-gray-400">
+                هذه الشاشة هي المصدر التاريخي المعتمد لدخول الموظف في Payroll.
+                خانة "يدخل في الرواتب" داخل ملف الموظف هي مفتاح تشغيلي حالي فقط
+                ولا تغيّر التاريخ المالي تلقائيًا.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => void load()}
+                disabled={loading}
+                className="rounded-xl border border-white/10 px-4 py-2 text-sm font-bold text-gray-300 hover:bg-white/5 disabled:opacity-50"
+              >
+                {loading ? "جاري التحميل..." : "تحديث"}
+              </button>
+
+              {canManage && (
+                <button
+                  type="button"
+                  onClick={openCreate}
+                  className="rounded-xl bg-pink-600 px-4 py-2 text-sm font-bold text-white hover:bg-pink-500"
+                >
+                  إضافة فترة أهلية
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-5 grid gap-4 md:grid-cols-2">
+            <label className="space-y-1">
+              <span className="text-xs font-bold text-gray-400">الموظف</span>
+
+              <select
+                value={employeeId}
+                onChange={(event) => setEmployeeId(event.target.value)}
+                className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white"
+              >
+                <option value="">كل الموظفين</option>
+
+                {employees.map((employee) => (
+                  <option key={employee.id} value={employee.id}>
+                    {employee.employeeCode} - {employee.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            {selectedEmployee && (
+              <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-xs leading-6 text-gray-400">
+                <div>
+                  الحالة الوظيفية:{" "}
+                  <span className="font-bold text-white">
+                    {selectedEmployee.employmentStatus}
+                  </span>
+                </div>
+
+                <div>
+                  المفتاح التشغيلي الحالي:{" "}
+                  <span
+                    className={
+                      selectedEmployee.payrollEnabled
+                        ? "font-bold text-emerald-300"
+                        : "font-bold text-red-300"
+                    }
+                  >
+                    {selectedEmployee.payrollEnabled ? "مفعّل" : "موقوف"}
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {error && (
+          <div className="rounded-xl border border-red-500/20 bg-red-950/20 px-4 py-3 text-sm text-red-300">
+            {error}
+          </div>
+        )}
+
+        {success && (
+          <div className="rounded-xl border border-emerald-500/20 bg-emerald-950/20 px-4 py-3 text-sm text-emerald-300">
+            {success}
+          </div>
+        )}
+
+        <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]">
+          {loading && terms.length === 0 ? (
+            <div className="p-8 text-center text-sm text-gray-500">
+              جاري تحميل فترات الأهلية...
+            </div>
+          ) : terms.length === 0 ? (
+            <div className="p-8 text-center">
+              <div className="font-bold text-gray-300">
+                لا توجد فترات أهلية مسجلة.
+              </div>
+
+              <div className="mt-2 text-xs leading-6 text-gray-500">
+                لا يتم إنشاء تاريخ تلقائي من قيمة payrollEnabled الحالية. يجب
+                إدخال الفترة بناءً على المستند أو القرار الإداري الصحيح.
+              </div>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[900px] text-right text-sm">
+                <thead className="bg-white/[0.04] text-xs text-gray-400">
+                  <tr>
+                    <th className="px-4 py-3">الموظف</th>
+                    <th className="px-4 py-3">من</th>
+                    <th className="px-4 py-3">إلى</th>
+                    <th className="px-4 py-3">الأهلية</th>
+                    <th className="px-4 py-3">ملاحظات</th>
+
+                    {canManage && <th className="px-4 py-3">إجراء</th>}
+                  </tr>
+                </thead>
+
+                <tbody className="divide-y divide-white/5">
+                  {terms.map((term) => (
+                    <tr key={term.id} className="text-gray-200">
+                      <td className="px-4 py-3">
+                        <div className="font-bold text-white">
+                          {term.employee?.name || "—"}
+                        </div>
+
+                        <div className="text-xs text-gray-500">
+                          {term.employee?.employeeCode || term.employeeId}
+                        </div>
+                      </td>
+
+                      <td className="px-4 py-3">
+                        {dateOnly(term.effectiveFrom)}
+                      </td>
+
+                      <td className="px-4 py-3">
+                        {dateOnly(term.effectiveTo) || "مفتوحة"}
+                      </td>
+
+                      <td className="px-4 py-3">
+                        <span
+                          className={
+                            term.enabled
+                              ? "rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-bold text-emerald-300"
+                              : "rounded-full bg-red-500/10 px-3 py-1 text-xs font-bold text-red-300"
+                          }
+                        >
+                          {term.enabled ? "مؤهل" : "غير مؤهل"}
+                        </span>
+                      </td>
+
+                      <td className="max-w-[320px] px-4 py-3 text-xs text-gray-400">
+                        {term.notes || "—"}
+                      </td>
+
+                      {canManage && (
+                        <td className="px-4 py-3">
+                          <button
+                            type="button"
+                            onClick={() => openEdit(term)}
+                            className="rounded-lg border border-white/10 px-3 py-1.5 text-xs font-bold text-gray-300 hover:bg-white/5"
+                          >
+                            تعديل
+                          </button>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {form && canManage && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/75 p-4">
+          <div className="mx-auto my-8 w-full max-w-2xl rounded-3xl border border-white/10 bg-[#180b12] p-6 shadow-2xl">
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-black text-white">
+                  {form.termId
+                    ? "تعديل فترة أهلية الرواتب"
+                    : "إضافة فترة أهلية الرواتب"}
+                </h3>
+
+                <p className="mt-1 text-xs leading-6 text-gray-500">
+                  الفترات المالية مؤرخة، ولا يمكن أن تتداخل لنفس الموظف.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setForm(null)}
+                className="text-xl text-gray-500 hover:text-white"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="space-y-1 md:col-span-2">
+                <span className="text-xs font-bold text-gray-400">الموظف</span>
+
+                <select
+                  value={form.employeeId}
+                  disabled={Boolean(form.termId)}
+                  onChange={(event) =>
+                    setForm({
+                      ...form,
+                      employeeId: event.target.value,
+                    })
+                  }
+                  className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white disabled:opacity-50"
+                >
+                  <option value="">اختر الموظف</option>
+
+                  {employees.map((employee) => (
+                    <option key={employee.id} value={employee.id}>
+                      {employee.employeeCode} - {employee.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="space-y-1">
+                <span className="text-xs font-bold text-gray-400">ساري من</span>
+
+                <input
+                  type="date"
+                  value={form.effectiveFrom}
+                  onChange={(event) =>
+                    setForm({
+                      ...form,
+                      effectiveFrom: event.target.value,
+                    })
+                  }
+                  className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white"
+                />
+              </label>
+
+              <label className="space-y-1">
+                <span className="text-xs font-bold text-gray-400">
+                  ساري إلى
+                </span>
+
+                <input
+                  type="date"
+                  value={form.effectiveTo}
+                  onChange={(event) =>
+                    setForm({
+                      ...form,
+                      effectiveTo: event.target.value,
+                    })
+                  }
+                  className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white"
+                />
+              </label>
+
+              <label className="flex items-center gap-3 rounded-xl border border-white/10 bg-black/20 px-4 py-3 md:col-span-2">
+                <input
+                  type="checkbox"
+                  checked={form.enabled}
+                  onChange={(event) =>
+                    setForm({
+                      ...form,
+                      enabled: event.target.checked,
+                    })
+                  }
+                />
+
+                <div>
+                  <div className="text-sm font-bold text-white">
+                    مؤهل لمسير الرواتب خلال هذه الفترة
+                  </div>
+
+                  <div className="text-xs text-gray-500">
+                    إلغاء التحديد يعني استبعاده ماليًا خلال الفترة المحددة.
+                  </div>
+                </div>
+              </label>
+
+              <label className="space-y-1 md:col-span-2">
+                <span className="text-xs font-bold text-gray-400">ملاحظات</span>
+
+                <textarea
+                  rows={3}
+                  value={form.notes}
+                  onChange={(event) =>
+                    setForm({
+                      ...form,
+                      notes: event.target.value,
+                    })
+                  }
+                  className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white"
+                />
+              </label>
+
+              {form.termId && (
+                <label className="space-y-1 md:col-span-2">
+                  <span className="text-xs font-bold text-red-300">
+                    سبب التعديل *
+                  </span>
+
+                  <textarea
+                    rows={2}
+                    value={form.editReason}
+                    onChange={(event) =>
+                      setForm({
+                        ...form,
+                        editReason: event.target.value,
+                      })
+                    }
+                    placeholder="اكتب سببًا واضحًا للتعديل..."
+                    className="w-full rounded-xl border border-red-500/20 bg-black/20 px-3 py-2 text-sm text-white"
+                  />
+                </label>
+              )}
+            </div>
+
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={() => void save()}
+                disabled={saving}
+                className="flex-1 rounded-xl bg-pink-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-pink-500 disabled:opacity-50"
+              >
+                {saving ? "جاري الحفظ..." : "حفظ"}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setForm(null)}
+                disabled={saving}
+                className="flex-1 rounded-xl border border-white/10 px-4 py-2.5 text-sm font-bold text-gray-300 hover:bg-white/5"
+              >
+                إلغاء
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}

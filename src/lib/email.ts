@@ -1,9 +1,12 @@
 ﻿import nodemailer from "nodemailer";
+import { assertExternalSideEffectsAllowed } from "@/lib/staging-safety";
 import type { MembershipInvoiceDetails } from "@/lib/membership-invoice";
 import type { MembershipCardAttachment } from "@/lib/membership-card";
 import type { StoreOrderInvoiceDetails } from "@/lib/store-order-invoice";
 
 function getTransporter() {
+  assertExternalSideEffectsAllowed("email/SMTP");
+
   return nodemailer.createTransport({
     host: process.env.SMTP_HOST ?? "smtp.hostinger.com",
     port: Number(process.env.SMTP_PORT ?? 465),

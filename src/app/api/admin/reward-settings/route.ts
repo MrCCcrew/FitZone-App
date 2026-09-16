@@ -18,6 +18,25 @@ export async function PUT(req: Request) {
   try {
     const body = await req.json() as Record<string, unknown>;
     const current = await getRewardSettings();
+
+    /* WALLET_TOPUP_BONUS_SETTINGS_VALIDATION */
+    if ("walletTopupBonusPercent" in body) {
+      const walletTopupBonusPercent = Number(body.walletTopupBonusPercent);
+
+      if (
+        !Number.isFinite(walletTopupBonusPercent) ||
+        walletTopupBonusPercent < 0 ||
+        walletTopupBonusPercent > 100
+      ) {
+        return NextResponse.json(
+          { error: "نسبة بونص شحن المحفظة يجب أن تكون بين 0 و100." },
+          { status: 400 },
+        );
+      }
+
+      body.walletTopupBonusPercent = walletTopupBonusPercent;
+    }
+
     const merged = { ...current, ...body };
 
     await db.siteContent.upsert({

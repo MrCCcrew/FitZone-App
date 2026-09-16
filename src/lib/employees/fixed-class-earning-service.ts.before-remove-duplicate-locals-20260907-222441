@@ -1,0 +1,929 @@
+import type { Prisma } from "@prisma/client";
+
+import { asDbTransactionClient, db } from "@/lib/db";
+import {
+  cairoDateStartInstant,
+  scheduleCalendarDateKey,
+} from "@/lib/fitzone-time";
+
+type Tx = ReturnType<typeof asDbTransactionClient>;
+
+export type FixedClassEarningActor = {
+  userId: string;
+  name?: string | null;
+  email?: string | null;
+  role?: string | null;
+  ipAddress?: string | null;
+  userAgent?: string | null;
+};
+
+export type CalculateFixedClassEarningInput = {
+  monthKey: string;
+  employeeId: string;
+  classId: string;
+};
+
+export type FinalizeFixedClassEarningInput = {
+  earningId: string;
+};
+
+type CompensationSelection = {
+  source: "coach_default" | "class_override";
+  monthlyAmountMinor: number;
+  currency: string;
+  coachCompensationTermId: string | null;
+  classCompensationTermId: string | null;
+};
+
+function assertActor(actor: FixedClassEarningActor) {
+  if (!actor.userId?.trim()) {
+    throw new Error("FIXED_CLASS_EARNING_ACTOR_REQUIRED");
+  }
+}
+
+function parseMonthRange(monthKey: string) {
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(monthKey)) {
+    throw new Error("FIXED_CLASS_EARNING_INVALID_MONTH");
+  }
+
+  const [year, month] = monthKey.split("-").map(Number);
+
+  const nextMonth =
+    month === 12
+      ? `${year + 1}-01`
+      : `${year}-${String(month + 1).padStart(2, "0")}`;
+
+  return {
+    from: cairoDateStartInstant(`${monthKey}-01`),
+    to: cairoDateStartInstant(`${nextMonth}-01`),
+    fromDateKey: `${monthKey}-01`,
+    toDateKey: `${nextMonth}-01`,
+  };
+}
+
+function dateKey(value: Date) {
+  return scheduleCalendarDateKey(value);
+}
+
+function termMatchesDate(
+  term: {
+    effectiveFrom: Date;
+    effectiveTo: Date | null;
+  },
+  occurrenceDateKey: string,
+) {
+  const from = dateKey(term.effectiveFrom);
+  const to = term.effectiveTo ? dateKey(term.effectiveTo) : null;
+
+  return from <= occurrenceDateKey && (!to || to >= occurrenceDateKey);
+}
+
+function normalizeCurrency(value: string) {
+  return value.trim().toUpperCase();
+}
+
+async function writeMandatoryAudit(
+  tx: Tx,
+  actor: FixedClassEarningActor,
+  input: {
+    action: string;
+    targetId: string;
+    details: Record<string, unknown>;
+  },
+) {
+  await tx.auditLog.create({
+    data: {
+      actorUserId: actor.userId,
+      actorName: actor.name ?? null,
+      actorEmail: actor.email ?? null,
+      actorRole: actor.role ?? null,
+      ipAddress: actor.ipAddress ?? null,
+      userAgent: actor.userAgent ?? null,
+      action: input.action,
+      targetType: "FixedClassEarning",
+      targetId: input.targetId,
+      details: JSON.stringify(input.details),
+    },
+  });
+}
+
+function selectCompensation(
+  occurrenceDateKey: string,
+  coachTerms: Array<{
+    id: string;
+    effectiveFrom: Date;
+    effectiveTo: Date | null;
+    defaultFixedClassMonthlyMinor: number;
+    currency: string;
+  }>,
+  classTerms: Array<{
+    id: string;
+    effectiveFrom: Date;
+    effectiveTo: Date | null;
+    monthlyAmountMinor: number;
+    currency: string;
+  }>,
+): CompensationSelection | null {
+  const matchingClass = classTerms.filter((term) =>
+    termMatchesDate(term, occurrenceDateKey),
+  );
+
+  if (matchingClass.length > 1) {
+    throw new Error("FIXED_CLASS_EARNING_AMBIGUOUS_CLASS_COMPENSATION");
+  }
+
+  if (matchingClass.length === 1) {
+    const term = matchingClass[0];
+
+    return {
+      source: "class_override",
+      monthlyAmountMinor: term.monthlyAmountMinor,
+      currency: normalizeCurrency(term.currency),
+      coachCompensationTermId: null,
+      classCompensationTermId: term.id,
+    };
+  }
+
+  const matchingCoach = coachTerms.filter((term) =>
+    termMatchesDate(term, occurrenceDateKey),
+  );
+
+  if (matchingCoach.length > 1) {
+    throw new Error("FIXED_CLASS_EARNING_AMBIGUOUS_COACH_COMPENSATION");
+  }
+
+  if (matchingCoach.length === 1) {
+    const term = matchingCoach[0];
+
+    return {
+      source: "coach_default",
+      monthlyAmountMinor: term.defaultFixedClassMonthlyMinor,
+      currency: normalizeCurrency(term.currency),
+      coachCompensationTermId: term.id,
+      classCompensationTermId: null,
+    };
+  }
+
+  return null;
+}
+
+function buildBlockReason(reasons: Set<string>) {
+  if (reasons.size === 0) return null;
+
+  return [...reasons].sort().join(",");
+}
+
+async function loadLockedEarning(
+  tx: Tx,
+  monthKey: string,
+  employeeId: string,
+  classId: string,
+) {
+  const rows = await tx.$queryRawUnsafe<
+    Array<{
+      id: string;
+      status: string;
+    }>
+  >(
+    `
+      SELECT id, status
+      FROM FixedClassEarning
+      WHERE monthKey = ?
+        AND employeeId = ?
+        AND classId = ?
+      LIMIT 1
+      FOR UPDATE
+    `,
+    monthKey,
+    employeeId,
+    classId,
+  );
+
+  return rows[0] ?? null;
+}
+
+async function loadLockedEarningById(tx: Tx, earningId: string) {
+  const rows = await tx.$queryRawUnsafe<
+    Array<{
+      id: string;
+      status: string;
+    }>
+  >(
+    `
+      SELECT id, status
+      FROM FixedClassEarning
+      WHERE id = ?
+      LIMIT 1
+      FOR UPDATE
+    `,
+    earningId,
+  );
+
+  return rows[0] ?? null;
+}
+
+export async function calculateFixedClassEarning(
+  input: CalculateFixedClassEarningInput,
+  actor: FixedClassEarningActor,
+) {
+  assertActor(actor);
+
+  const employeeId = input.employeeId?.trim();
+  const classId = input.classId?.trim();
+
+  if (!employeeId) {
+    throw new Error("FIXED_CLASS_EARNING_EMPLOYEE_REQUIRED");
+  }
+
+  if (!classId) {
+    throw new Error("FIXED_CLASS_EARNING_CLASS_REQUIRED");
+  }
+
+  const range = parseMonthRange(input.monthKey);
+
+  return db.$transaction(async (rawTx) => {
+    const tx = asDbTransactionClient(rawTx);
+
+    const employee = await tx.employeeProfile.findUnique({
+      where: {
+        id: employeeId,
+      },
+      select: {
+        id: true,
+        employeeCode: true,
+        name: true,
+        payrollEnabled: true,
+        employmentStatus: true,
+      },
+    });
+
+    if (!employee) {
+      throw new Error("FIXED_CLASS_EARNING_EMPLOYEE_NOT_FOUND");
+    }
+
+    const classRow = await tx.class.findUnique({
+      where: {
+        id: classId,
+      },
+      select: {
+        id: true,
+        name: true,
+        trainer: {
+          select: {
+            id: true,
+            name: true,
+            employeeId: true,
+          },
+        },
+      },
+    });
+
+    if (!classRow) {
+      throw new Error("FIXED_CLASS_EARNING_CLASS_NOT_FOUND");
+    }
+
+    /*
+     * Reservation + row lock:
+     * - unique(monthKey, employeeId, classId) is the business boundary.
+     * - upsert makes repeated calculation idempotent.
+     * - FOR UPDATE serializes recalculation/finalization for this row.
+     */
+    await tx.fixedClassEarning.upsert({
+      where: {
+        monthKey_employeeId_classId: {
+          monthKey: input.monthKey,
+          employeeId,
+          classId,
+        },
+      },
+      create: {
+        monthKey: input.monthKey,
+        employeeId,
+        classId,
+        status: "draft",
+        currency: "EGP",
+      },
+      update: {},
+    });
+
+    const locked = await loadLockedEarning(
+      tx,
+      input.monthKey,
+      employeeId,
+      classId,
+    );
+
+    if (!locked) {
+      throw new Error("FIXED_CLASS_EARNING_RESERVATION_MISSING");
+    }
+
+    if (locked.status === "finalized") {
+      throw new Error("FIXED_CLASS_EARNING_FINALIZED");
+    }
+
+    /*
+     * Occurrence source is intentionally a UNION:
+     *
+     * 1. Current active Schedule rows provide current expected inventory.
+     * 2. CoachClassAttendance provides payroll-critical historical facts.
+     *
+     * Attendance snapshots survive Schedule deletion and remain authoritative.
+     * A recreated Schedule with the same logical occurrenceKey is deduplicated
+     * against the historical attendance instead of becoming "unrecorded".
+     */
+    const [schedules, historicalAttendances] = await Promise.all([
+      tx.schedule.findMany({
+        where: {
+          classId,
+          isActive: true,
+          date: {
+            gte: range.from,
+            lt: range.to,
+          },
+        },
+        include: {
+          class: {
+            select: {
+              id: true,
+              name: true,
+              duration: true,
+              trainer: {
+                select: {
+                  id: true,
+                  name: true,
+                  employeeId: true,
+                  employee: {
+                    select: {
+                      id: true,
+                      employeeCode: true,
+                      name: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        orderBy: [
+          {
+            date: "asc",
+          },
+          {
+            time: "asc",
+          },
+        ],
+      }),
+
+      tx.coachClassAttendance.findMany({
+        where: {
+          sourceClassIdSnapshot: classId,
+          scheduledEmployeeId: employeeId,
+          scheduleDate: {
+            gte: range.from,
+            lt: range.to,
+          },
+        },
+        orderBy: [
+          {
+            scheduleDate: "asc",
+          },
+          {
+            scheduleTime: "asc",
+          },
+        ],
+      }),
+    ]);
+
+    const [coachTerms, classTerms] = await Promise.all([
+      tx.coachCompensationTerm.findMany({
+        where: {
+          employeeId,
+          effectiveFrom: {
+            lt: range.to,
+          },
+          OR: [
+            {
+              effectiveTo: null,
+            },
+            {
+              effectiveTo: {
+                gte: range.from,
+              },
+            },
+          ],
+        },
+        orderBy: {
+          effectiveFrom: "asc",
+        },
+      }),
+
+      tx.coachClassCompensationTerm.findMany({
+        where: {
+          employeeId,
+          classId,
+          effectiveFrom: {
+            lt: range.to,
+          },
+          OR: [
+            {
+              effectiveTo: null,
+            },
+            {
+              effectiveTo: {
+                gte: range.from,
+              },
+            },
+          ],
+        },
+        orderBy: {
+          effectiveFrom: "asc",
+        },
+      }),
+    ]);
+
+    type PreparedOccurrence = {
+      schedule: (typeof schedules)[number] | null;
+      attendance: (typeof historicalAttendances)[number] | null;
+      occurrenceDateKey: string;
+      occurrenceKey: string;
+      status: string;
+    };
+
+    const attendanceByOccurrence = new Map(
+      historicalAttendances.map((attendance) => [
+        attendance.occurrenceKey,
+        attendance,
+      ]),
+    );
+
+    const preparedByOccurrence = new Map<string, PreparedOccurrence>();
+
+    /*
+     * Start with current Schedule inventory.
+     *
+     * If a historical attendance exists for the same logical occurrence,
+     * its employee/status/snapshots win even when the current Schedule was
+     * recreated after the original source row had been deleted.
+     */
+    for (const schedule of schedules) {
+      const occurrenceDateKey = dateKey(schedule.date);
+
+      const occurrenceKey = [classId, occurrenceDateKey, schedule.time].join(
+        ":",
+      );
+
+      const attendance = attendanceByOccurrence.get(occurrenceKey) ?? null;
+
+      if (!attendance && schedule.class.trainer.employeeId !== employeeId) {
+        continue;
+      }
+
+      preparedByOccurrence.set(occurrenceKey, {
+        schedule,
+        attendance,
+        occurrenceDateKey,
+        occurrenceKey,
+        status: attendance?.status ?? "unrecorded",
+      });
+    }
+
+    /*
+     * Add historical facts whose mutable Schedule source no longer exists.
+     * Do not overwrite an already merged current+historical occurrence.
+     */
+    for (const attendance of historicalAttendances) {
+      if (preparedByOccurrence.has(attendance.occurrenceKey)) {
+        continue;
+      }
+
+      preparedByOccurrence.set(attendance.occurrenceKey, {
+        schedule: null,
+        attendance,
+        occurrenceDateKey: dateKey(attendance.scheduleDate),
+        occurrenceKey: attendance.occurrenceKey,
+        status: attendance.status,
+      });
+    }
+
+    /*
+     * Deterministic ordering is payroll-critical because any minor-unit
+     * remainder is allocated by occurrence order.
+     */
+    const prepared = [...preparedByOccurrence.values()].sort((a, b) => {
+      const dateCompare = a.occurrenceDateKey.localeCompare(
+        b.occurrenceDateKey,
+      );
+
+      if (dateCompare !== 0) {
+        return dateCompare;
+      }
+
+      const aTime = a.attendance?.scheduleTime ?? a.schedule?.time ?? "";
+
+      const bTime = b.attendance?.scheduleTime ?? b.schedule?.time ?? "";
+
+      const timeCompare = aTime.localeCompare(bTime);
+
+      if (timeCompare !== 0) {
+        return timeCompare;
+      }
+
+      return a.occurrenceKey.localeCompare(b.occurrenceKey);
+    });
+
+    const scheduledSessions = prepared.length;
+
+    const payableRows = prepared.filter((row) => row.status !== "cancelled");
+
+    const payableSessions = payableRows.length;
+
+    const payableOrdinal = new Map<string, number>();
+
+    payableRows.forEach((row, index) => {
+      payableOrdinal.set(row.occurrenceKey, index);
+    });
+
+    const reasons = new Set<string>();
+
+    let presentSessions = 0;
+    let absentSessions = 0;
+    let excusedSessions = 0;
+    let cancelledSessions = 0;
+    let substituteSessions = 0;
+    let unrecordedSessions = 0;
+
+    const occurrenceData: Array<Prisma.FixedClassEarningOccurrenceCreateManyInput> =
+      [];
+
+    const currencies = new Set<string>();
+
+    for (const row of prepared) {
+      switch (row.status) {
+        case "present":
+          presentSessions += 1;
+          break;
+        case "absent":
+          absentSessions += 1;
+          break;
+        case "excused":
+          excusedSessions += 1;
+          break;
+        case "cancelled":
+          cancelledSessions += 1;
+          break;
+        case "substitute":
+          substituteSessions += 1;
+          reasons.add("SUBSTITUTE_POLICY_REQUIRED");
+          break;
+        case "unrecorded":
+          unrecordedSessions += 1;
+          reasons.add("UNRECORDED_ATTENDANCE");
+          break;
+        default:
+          reasons.add(`UNKNOWN_ATTENDANCE_STATUS:${row.status}`);
+          break;
+      }
+
+      const compensation =
+        row.status === "cancelled"
+          ? null
+          : selectCompensation(row.occurrenceDateKey, coachTerms, classTerms);
+
+      if (row.status !== "cancelled" && !compensation) {
+        reasons.add("MISSING_COMPENSATION");
+      }
+
+      if (compensation) {
+        currencies.add(compensation.currency);
+      }
+
+      const ordinal = payableOrdinal.get(row.occurrenceKey) ?? -1;
+
+      let sessionValueMinor = 0;
+
+      if (compensation && payableSessions > 0 && ordinal >= 0) {
+        const base = Math.floor(
+          compensation.monthlyAmountMinor / payableSessions,
+        );
+
+        const remainder = compensation.monthlyAmountMinor % payableSessions;
+
+        sessionValueMinor = base + (ordinal < remainder ? 1 : 0);
+      }
+
+      const deductionMinor = row.status === "absent" ? sessionValueMinor : 0;
+
+      const earningMinor =
+        row.status === "present" || row.status === "excused"
+          ? sessionValueMinor
+          : 0;
+
+      const attendance = row.attendance;
+      const schedule = row.schedule;
+
+      const attendance = row.attendance;
+      const schedule = row.schedule;
+
+      const occurrenceDate = attendance?.scheduleDate ?? schedule?.date;
+
+      const occurrenceTime = attendance?.scheduleTime ?? schedule?.time;
+
+      if (!occurrenceDate || !occurrenceTime) {
+        throw new Error("FIXED_CLASS_EARNING_OCCURRENCE_SOURCE_INVALID");
+      }
+
+      occurrenceData.push({
+        earningId: locked.id,
+
+        /*
+         * Prefer the current matching Schedule reference when one exists.
+         * Otherwise retain the historical mutable reference if it still exists.
+         * For a genuinely deleted Schedule this remains null.
+         */
+        scheduleId: schedule?.id ?? attendance?.scheduleId ?? null,
+
+        attendanceId: attendance?.id ?? null,
+
+        occurrenceKey: row.occurrenceKey,
+
+        occurrenceDate,
+        occurrenceTime,
+
+        sourceClassIdSnapshot:
+          attendance?.sourceClassIdSnapshot ??
+          schedule?.class.id ??
+          classRow.id,
+
+        classNameSnapshot:
+          attendance?.classNameSnapshot ??
+          schedule?.class.name ??
+          classRow.name,
+
+        scheduledTrainerIdSnapshot:
+          attendance?.scheduledTrainerId ?? schedule?.class.trainer.id ?? null,
+
+        scheduledTrainerNameSnapshot:
+          attendance?.scheduledTrainerNameSnapshot ??
+          schedule?.class.trainer.name ??
+          classRow.trainer.name,
+
+        scheduledEmployeeIdSnapshot:
+          attendance?.scheduledEmployeeId ??
+          schedule?.class.trainer.employeeId ??
+          employee.id,
+
+        scheduledEmployeeCodeSnapshot:
+          attendance?.scheduledEmployeeCodeSnapshot ??
+          schedule?.class.trainer.employee?.employeeCode ??
+          employee.employeeCode,
+
+        scheduledEmployeeNameSnapshot:
+          attendance?.scheduledEmployeeNameSnapshot ??
+          schedule?.class.trainer.employee?.name ??
+          employee.name,
+
+        actualTrainerIdSnapshot: attendance?.actualTrainerId ?? null,
+
+        actualTrainerNameSnapshot:
+          attendance?.actualTrainerNameSnapshot ?? null,
+
+        actualEmployeeIdSnapshot: attendance?.actualEmployeeId ?? null,
+
+        actualEmployeeCodeSnapshot:
+          attendance?.actualEmployeeCodeSnapshot ?? null,
+
+        actualEmployeeNameSnapshot:
+          attendance?.actualEmployeeNameSnapshot ?? null,
+
+        attendanceStatus: row.status,
+
+        compensationSource: compensation?.source ?? "none",
+
+        coachCompensationTermId: compensation?.coachCompensationTermId ?? null,
+
+        classCompensationTermId: compensation?.classCompensationTermId ?? null,
+
+        monthlyAmountMinor: compensation?.monthlyAmountMinor ?? 0,
+
+        eligibleSessionCount: payableSessions,
+
+        sessionValueMinor,
+        deductionMinor,
+        earningMinor,
+      });
+    }
+
+    if (currencies.size > 1) {
+      reasons.add("COMPENSATION_CURRENCY_MISMATCH");
+    }
+
+    const blockReason = buildBlockReason(reasons);
+
+    const status = blockReason ? "blocked" : "calculated";
+
+    const currency = currencies.size === 1 ? [...currencies][0] : "EGP";
+
+    /*
+     * For blocked calculations we retain occurrence evidence and snapshots,
+     * but no payable monetary result is exposed as calculated earnings.
+     */
+    const grossAmountMinor =
+      status === "calculated"
+        ? occurrenceData.reduce(
+            (sum, row) => sum + Number(row.sessionValueMinor),
+            0,
+          )
+        : 0;
+
+    const absenceDeductionMinor =
+      status === "calculated"
+        ? occurrenceData.reduce(
+            (sum, row) => sum + Number(row.deductionMinor),
+            0,
+          )
+        : 0;
+
+    const earnedAmountMinor =
+      status === "calculated" ? grossAmountMinor - absenceDeductionMinor : 0;
+
+    await tx.fixedClassEarningOccurrence.deleteMany({
+      where: {
+        earningId: locked.id,
+      },
+    });
+
+    if (occurrenceData.length > 0) {
+      await tx.fixedClassEarningOccurrence.createMany({
+        data: occurrenceData,
+      });
+    }
+
+    const updated = await tx.fixedClassEarning.update({
+      where: {
+        id: locked.id,
+      },
+      data: {
+        status,
+        currency,
+
+        scheduledSessions,
+        payableSessions,
+
+        presentSessions,
+        absentSessions,
+        excusedSessions,
+        cancelledSessions,
+        substituteSessions,
+        unrecordedSessions,
+
+        grossAmountMinor,
+        absenceDeductionMinor,
+        earnedAmountMinor,
+
+        blockReason,
+
+        calculatedAt: new Date(),
+        calculatedById: actor.userId,
+
+        finalizedAt: null,
+        finalizedById: null,
+      },
+      include: {
+        occurrences: {
+          orderBy: [
+            {
+              occurrenceDate: "asc",
+            },
+            {
+              occurrenceTime: "asc",
+            },
+          ],
+        },
+      },
+    });
+
+    await writeMandatoryAudit(tx, actor, {
+      action: "fixed_class_earning_calculate",
+      targetId: updated.id,
+      details: {
+        monthKey: input.monthKey,
+        employeeId,
+        classId,
+        status,
+
+        scheduledSessions,
+        payableSessions,
+
+        presentSessions,
+        absentSessions,
+        excusedSessions,
+        cancelledSessions,
+        substituteSessions,
+        unrecordedSessions,
+
+        grossAmountMinor,
+        absenceDeductionMinor,
+        earnedAmountMinor,
+
+        blockReason,
+      },
+    });
+
+    return updated;
+  });
+}
+
+export async function finalizeFixedClassEarning(
+  input: FinalizeFixedClassEarningInput,
+  actor: FixedClassEarningActor,
+) {
+  assertActor(actor);
+
+  const earningId = input.earningId?.trim();
+
+  if (!earningId) {
+    throw new Error("FIXED_CLASS_EARNING_ID_REQUIRED");
+  }
+
+  return db.$transaction(async (rawTx) => {
+    const tx = asDbTransactionClient(rawTx);
+
+    const locked = await loadLockedEarningById(tx, earningId);
+
+    if (!locked) {
+      throw new Error("FIXED_CLASS_EARNING_NOT_FOUND");
+    }
+
+    if (locked.status === "finalized") {
+      return tx.fixedClassEarning.findUniqueOrThrow({
+        where: {
+          id: earningId,
+        },
+        include: {
+          occurrences: {
+            orderBy: [
+              {
+                occurrenceDate: "asc",
+              },
+              {
+                occurrenceTime: "asc",
+              },
+            ],
+          },
+        },
+      });
+    }
+
+    if (locked.status !== "calculated") {
+      throw new Error("FIXED_CLASS_EARNING_NOT_CALCULATED");
+    }
+
+    const before = await tx.fixedClassEarning.findUniqueOrThrow({
+      where: {
+        id: earningId,
+      },
+    });
+
+    const finalized = await tx.fixedClassEarning.update({
+      where: {
+        id: earningId,
+      },
+      data: {
+        status: "finalized",
+        finalizedAt: new Date(),
+        finalizedById: actor.userId,
+      },
+      include: {
+        occurrences: {
+          orderBy: [
+            {
+              occurrenceDate: "asc",
+            },
+            {
+              occurrenceTime: "asc",
+            },
+          ],
+        },
+      },
+    });
+
+    await writeMandatoryAudit(tx, actor, {
+      action: "fixed_class_earning_finalize",
+      targetId: earningId,
+      details: {
+        before: {
+          status: before.status,
+          grossAmountMinor: before.grossAmountMinor,
+          absenceDeductionMinor: before.absenceDeductionMinor,
+          earnedAmountMinor: before.earnedAmountMinor,
+        },
+        after: {
+          status: finalized.status,
+          finalizedAt: finalized.finalizedAt,
+        },
+      },
+    });
+
+    return finalized;
+  });
+}

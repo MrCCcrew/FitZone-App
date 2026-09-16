@@ -113,6 +113,15 @@ export async function deleteMembershipAndLinkedClientData(
     select: { id: true },
   });
 
+  // UserMembership is a historical purchase/financial record.
+  // Once a plan has ever been purchased, deleting the plan must not cascade
+  // into customer memberships, referral attribution or commission history.
+  if (linkedMemberships.length > 0) {
+    throw new Error(
+      "لا يمكن حذف هذه الباقة لأنها مستخدمة في اشتراكات عملاء تاريخية. قم بتعطيلها بدل الحذف.",
+    );
+  }
+
   const membershipCleanup = await cleanupUserMembershipRecords(
     tx,
     linkedMemberships.map((membership) => membership.id),

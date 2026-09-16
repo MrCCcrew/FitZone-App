@@ -38,6 +38,91 @@ type ScheduleOption = {
   class: { id: string; name: string };
 };
 
+type BookingRescheduleRequestRow = {
+  id: string;
+  status: string;
+  requestType: "upcoming_change" | "past_absence_makeup";
+  absenceReason: string | null;
+  requestedAt: string;
+  reviewedAt: string | null;
+  reviewedByUserId: string | null;
+  reviewedByName: string | null;
+  rejectionReason: string | null;
+  archivedAt: string | null;
+  archivedByUserId: string | null;
+  booking: {
+    id: string;
+    status: string;
+    userMembershipId: string | null;
+    userMembershipStatus: string | null;
+    user: {
+      id: string;
+      name: string;
+      email: string;
+      phone: string;
+    };
+    currentSchedule: {
+      id: string;
+      date: string;
+      time: string;
+      availableSpots: number;
+      class: {
+        id: string;
+        name: string;
+        trainer: string;
+      };
+    };
+  };
+  targetSchedule: {
+    id: string;
+    date: string;
+    time: string;
+    availableSpots: number;
+    isActive: boolean;
+    class: {
+      id: string;
+      name: string;
+      trainer: string;
+    };
+  };
+};
+
+type ClassExchangeRequestRow = {
+  id: string;
+  status: string;
+  note: string | null;
+  requestedAt: string;
+  reviewedAt: string | null;
+  reviewedByUserId: string | null;
+  rejectionReason: string | null;
+  archivedAt: string | null;
+  archivedByUserId: string | null;
+  sourceBookingIds: string[];
+  user: {
+    id: string;
+    name: string | null;
+    email: string | null;
+    phone: string | null;
+  };
+  membership: {
+    id: string;
+    name: string;
+    status: string;
+  };
+  targetSchedule: {
+    id: string;
+    date: string;
+    time: string;
+    availableSpots: number;
+    isActive: boolean;
+    class: {
+      id: string;
+      name: string;
+      trainer: string;
+    };
+  };
+};
+
 type CustomerOption = {
   id: string;
   name: string;
@@ -195,6 +280,57 @@ function Modal({
 
 export default function Bookings() {
   const [bookings, setBookings] = useState<BookingRow[]>([]);
+  const [rescheduleRequests, setRescheduleRequests] =
+    useState<BookingRescheduleRequestRow[]>([]);
+  const [rescheduleRequestsLoading, setRescheduleRequestsLoading] =
+    useState(true);
+  const [rescheduleRequestWorkingId, setRescheduleRequestWorkingId] =
+    useState<string | null>(null);
+  const [rescheduleStatusFilter, setRescheduleStatusFilter] =
+    useState<"all" | "pending" | "approved" | "rejected" | "cancelled" | "archived">("all");
+  const [exchangeRequests, setExchangeRequests] =
+    useState<ClassExchangeRequestRow[]>([]);
+  const [exchangeRequestsLoading, setExchangeRequestsLoading] =
+    useState(true);
+  const [exchangeRequestWorkingId, setExchangeRequestWorkingId] =
+    useState<string | null>(null);
+  const [exchangeStatusFilter, setExchangeStatusFilter] =
+    useState<
+      "all" |
+      "pending" |
+      "approved" |
+      "rejected" |
+      "archived"
+    >("all");
+  const [exchangeReviewRequest, setExchangeReviewRequest] =
+    useState<ClassExchangeRequestRow | null>(null);
+  const [exchangeSourceBookings, setExchangeSourceBookings] =
+    useState<Array<{
+      id: string;
+      scheduleId: string;
+      date: string;
+      time: string;
+      className: string;
+    }>>([]);
+  const [selectedExchangeSourceIds, setSelectedExchangeSourceIds] =
+    useState<string[]>([]);
+  const [exchangeSourcesLoading, setExchangeSourcesLoading] =
+    useState(false);
+
+  const [exchangeDayBookings, setExchangeDayBookings] =
+    useState<Array<{
+      id: string;
+      scheduleId: string;
+      date: string;
+      time: string;
+      className: string;
+      entitlementUnits: number;
+      isMakeup: boolean;
+      eligibleAsExchangeSource: boolean;
+    }>>([]);
+
+  const [exchangeSourceSearch, setExchangeSourceSearch] =
+    useState("");
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [schedules, setSchedules] = useState<ScheduleOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -255,6 +391,57 @@ export default function Bookings() {
       setLoading(false);
     }
   }, [dateFrom, dateTo, query, statusFilter]);
+
+  const loadRescheduleRequests = useCallback(async () => {
+    setRescheduleRequestsLoading(true);
+    try {
+      const response = await fetch(
+        rescheduleStatusFilter === "archived"
+          ? "/api/admin/booking-reschedule-requests?archived=1"
+          : "/api/admin/booking-reschedule-requests",
+        { cache: "no-store" },
+      );
+      const payload = await response.json().catch(() => []);
+
+      if (!response.ok) {
+        setRescheduleRequests([]);
+        return;
+      }
+
+      setRescheduleRequests(
+        Array.isArray(payload) ? payload : [],
+      );
+    } finally {
+      setRescheduleRequestsLoading(false);
+    }
+  }, [rescheduleStatusFilter]);
+
+  const loadExchangeRequests = useCallback(async () => {
+    setExchangeRequestsLoading(true);
+
+    try {
+      const response = await fetch(
+        exchangeStatusFilter === "archived"
+          ? "/api/admin/class-exchange-requests?archived=1"
+          : "/api/admin/class-exchange-requests",
+        { cache: "no-store" },
+      );
+
+      const payload =
+        await response.json().catch(() => []);
+
+      if (!response.ok) {
+        setExchangeRequests([]);
+        return;
+      }
+
+      setExchangeRequests(
+        Array.isArray(payload) ? payload : [],
+      );
+    } finally {
+      setExchangeRequestsLoading(false);
+    }
+  }, [exchangeStatusFilter]);
 
   const loadCustomers = useCallback(async () => {
     const response = await fetch("/api/admin/customers", { cache: "no-store" });
@@ -588,6 +775,14 @@ export default function Bookings() {
   }, [loadBookings]);
 
   useEffect(() => {
+    void loadRescheduleRequests();
+  }, [loadRescheduleRequests]);
+
+  useEffect(() => {
+    void loadExchangeRequests();
+  }, [loadExchangeRequests]);
+
+  useEffect(() => {
     void (async () => {
       const res = await fetch("/api/admin/session", { cache: "no-store" });
       const data = await res.json().catch(() => ({})) as { user?: { role?: string; permissions?: string[] } };
@@ -674,8 +869,8 @@ export default function Bookings() {
 
   useEffect(() => () => stopCamera(), [stopCamera]);
 
-  const handleDelete = async (bookingId: string) => {
-    const confirmed = window.confirm("هل تريد حذف هذا الحجز نهائياً؟ لا يمكن التراجع.");
+  const handleCancelBooking = async (bookingId: string) => {
+    const confirmed = window.confirm("هل تريد إلغاء هذا الحجز؟ سيظل محفوظًا في سجل الحجوزات.");
     if (!confirmed) return;
     setWorking(true);
     try {
@@ -686,7 +881,7 @@ export default function Bookings() {
       });
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
-        window.alert(payload.error ?? "تعذر حذف الحجز.");
+        window.alert(payload.error ?? "تعذر إلغاء الحجز.");
         return;
       }
       await loadBookings();
@@ -695,9 +890,9 @@ export default function Bookings() {
     }
   };
 
-  const handleBulkDelete = async () => {
+  const handleBulkCancel = async () => {
     if (selectedIds.size === 0) return;
-    const confirmed = window.confirm(`هل تريد حذف ${selectedIds.size} حجز نهائياً؟ لا يمكن التراجع.`);
+    const confirmed = window.confirm(`هل تريد إلغاء ${selectedIds.size} حجز؟ ستظل الحجوزات محفوظة في السجل.`);
     if (!confirmed) return;
     setWorking(true);
     try {
@@ -729,6 +924,317 @@ export default function Bookings() {
       await loadBookings();
     } finally {
       setWorking(false);
+    }
+  };
+
+  const openExchangeReview = async (
+    request: ClassExchangeRequestRow,
+  ) => {
+    setExchangeReviewRequest(request);
+    setSelectedExchangeSourceIds([]);
+    setExchangeSourceBookings([]);
+    setExchangeDayBookings([]);
+    setExchangeSourceSearch("");
+    setExchangeSourcesLoading(true);
+
+    try {
+      const response = await fetch(
+        `/api/admin/class-exchanges?userMembershipId=${encodeURIComponent(
+          request.membership.id,
+        )}`,
+        { cache: "no-store" },
+      );
+
+      const payload =
+        await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        window.alert(
+          payload.error ??
+            "تعذر تحميل الحصص المتاحة للاستبدال.",
+        );
+        return;
+      }
+
+      setExchangeSourceBookings(
+        Array.isArray(payload.sourceBookings)
+          ? payload.sourceBookings
+          : [],
+      );
+
+      setExchangeDayBookings(
+        Array.isArray(payload.dayBookings)
+          ? payload.dayBookings
+          : [],
+      );
+    } finally {
+      setExchangeSourcesLoading(false);
+    }
+  };
+
+  const toggleExchangeSource = (bookingId: string) => {
+    setSelectedExchangeSourceIds((current) => {
+      if (current.includes(bookingId)) {
+        return current.filter((id) => id !== bookingId);
+      }
+
+      if (current.length >= 2) {
+        return current;
+      }
+
+      return [...current, bookingId];
+    });
+  };
+
+  const handleExchangeRequestDecision = async (
+    request: ClassExchangeRequestRow,
+    decision: "approve" | "reject",
+  ) => {
+    if (!canReviewClassExchanges) {
+      window.alert("ليس لديك صلاحية قبول أو رفض طلبات استبدال الكلاسات.");
+      return;
+    }
+
+    if (exchangeRequestWorkingId) return;
+
+    let rejectionReason: string | undefined;
+
+    if (decision === "reject") {
+      const reason = window.prompt(
+        "سبب رفض طلب الاستبدال (اختياري):",
+        "",
+      );
+
+      if (reason === null) return;
+      rejectionReason = reason.trim() || undefined;
+    } else {
+      if (selectedExchangeSourceIds.length !== 2) {
+        window.alert(
+          "يجب اختيار حصتين مستقبليتين بالضبط قبل الموافقة.",
+        );
+        return;
+      }
+
+      if (
+        !window.confirm(
+          "تأكيد الاستبدال؟ سيتم إلغاء الحصتين المحددتين وإنشاء حجز الكلاس المطلوب مقابل حصتين.",
+        )
+      ) {
+        return;
+      }
+    }
+
+    setExchangeRequestWorkingId(request.id);
+
+    try {
+      const response = await fetch(
+        "/api/admin/class-exchange-requests",
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            requestId: request.id,
+            decision,
+            sourceBookingIds:
+              decision === "approve"
+                ? selectedExchangeSourceIds
+                : undefined,
+            rejectionReason,
+          }),
+        },
+      );
+
+      const payload =
+        await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        window.alert(
+          payload.error ??
+            "تعذر مراجعة طلب الاستبدال.",
+        );
+        return;
+      }
+
+      setExchangeReviewRequest(null);
+      setSelectedExchangeSourceIds([]);
+      setExchangeSourceBookings([]);
+
+      await Promise.all([
+        loadExchangeRequests(),
+        loadBookings(),
+      ]);
+
+      window.dispatchEvent(
+        new CustomEvent(
+          "fitzone-admin-approvals-refresh",
+        ),
+      );
+    } finally {
+      setExchangeRequestWorkingId(null);
+    }
+  };
+
+  const handleExchangeArchiveAction = async (
+    requestId: string,
+    action: "archive" | "restore",
+  ) => {
+    if (exchangeRequestWorkingId) return;
+
+    const message =
+      action === "archive"
+        ? "هل تريد أرشفة طلب الاستبدال؟ سيظل محفوظًا ويمكن استعادته لاحقًا."
+        : "هل تريد استعادة طلب الاستبدال إلى السجل؟";
+
+    if (!window.confirm(message)) return;
+
+    setExchangeRequestWorkingId(requestId);
+
+    try {
+      const response = await fetch(
+        "/api/admin/class-exchange-requests",
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            requestId,
+            action,
+          }),
+        },
+      );
+
+      const payload =
+        await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        window.alert(
+          payload.error ??
+            (action === "archive"
+              ? "تعذر أرشفة طلب الاستبدال."
+              : "تعذر استعادة طلب الاستبدال."),
+        );
+        return;
+      }
+
+      await loadExchangeRequests();
+
+      window.dispatchEvent(
+        new CustomEvent(
+          "fitzone-admin-approvals-refresh",
+        ),
+      );
+    } finally {
+      setExchangeRequestWorkingId(null);
+    }
+  };
+
+  const deleteArchivedExchangeRequest = async (
+    requestId: string,
+  ) => {
+    if (exchangeRequestWorkingId) return;
+
+    if (
+      !window.confirm(
+        "حذف نهائي لطلب الاستبدال المؤرشف؟\n\nلن يمكن استعادة الطلب بعد الحذف.",
+      )
+    ) {
+      return;
+    }
+
+    setExchangeRequestWorkingId(requestId);
+
+    try {
+      const response = await fetch(
+        "/api/admin/class-exchange-requests",
+        {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            requestId,
+          }),
+        },
+      );
+
+      const payload =
+        await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        window.alert(
+          payload.error ??
+            "تعذر حذف طلب الاستبدال المؤرشف.",
+        );
+        return;
+      }
+
+      await loadExchangeRequests();
+    } finally {
+      setExchangeRequestWorkingId(null);
+    }
+  };
+
+  const handleRescheduleRequestDecision = async (
+    requestId: string,
+    decision: "approve" | "reject",
+  ) => {
+    if (rescheduleRequestWorkingId) return;
+
+    let rejectionReason: string | undefined;
+
+    if (decision === "reject") {
+      const reason = window.prompt(
+        "سبب الرفض (اختياري):",
+        "",
+      );
+
+      if (reason === null) return;
+      rejectionReason = reason.trim() || undefined;
+    } else {
+      const confirmed = window.confirm(
+        "هل تريد الموافقة على تغيير الموعد؟ سيتم نقل نفس الحجز إلى الموعد الجديد وتحديث المقاعد.",
+      );
+
+      if (!confirmed) return;
+    }
+
+    setRescheduleRequestWorkingId(requestId);
+
+    try {
+      const response = await fetch(
+        "/api/admin/booking-reschedule-requests",
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            requestId,
+            decision,
+            rejectionReason,
+          }),
+        },
+      );
+
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        window.alert(
+          payload.error ??
+            "تعذر مراجعة طلب تغيير الموعد.",
+        );
+        return;
+      }
+
+      await Promise.all([
+        loadBookings(),
+        loadRescheduleRequests(),
+      ]);
+    } finally {
+      setRescheduleRequestWorkingId(null);
     }
   };
 
@@ -793,6 +1299,7 @@ export default function Bookings() {
   const permissionUser = { role: userRole ?? "", permissions: userPermissions };
   const canCreateBooking = hasAdminPermission(permissionUser, "bookings_create");
   const canRescheduleBooking = hasAdminPermission(permissionUser, "bookings_reschedule");
+  const canReviewClassExchanges = hasAdminPermission(permissionUser, "class_exchanges_review");
   const canCancelBooking = hasAdminPermission(permissionUser, "bookings_cancel");
   const canDeleteBooking = hasAdminPermission(permissionUser, "bookings_delete");
   const canBulkDelete = hasAdminPermission(permissionUser, "bookings_bulk_delete");
@@ -869,7 +1376,12 @@ export default function Bookings() {
       actions={
         <div className="flex flex-wrap gap-2">
           <button
-            onClick={() => loadBookings()}
+            onClick={() => {
+              void Promise.all([
+                loadBookings(),
+                loadRescheduleRequests(),
+              ]);
+            }}
             className="rounded-xl bg-white/10 px-4 py-2 text-sm font-bold text-[#fff4f8] transition-colors hover:bg-white/20"
           >
             تحديث
@@ -1152,6 +1664,941 @@ export default function Bookings() {
         </AdminCard>
       )}
 
+      {exchangeReviewRequest &&
+      canReviewClassExchanges && (
+        <Modal
+          title={`اعتماد طلب استبدال - ${
+            exchangeReviewRequest.user.name ||
+            exchangeReviewRequest.user.email ||
+            "عميلة"
+          }`}
+          onClose={() => {
+            setExchangeReviewRequest(null);
+            setExchangeSourceBookings([]);
+            setSelectedExchangeSourceIds([]);
+          }}
+        >
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-violet-400/20 bg-violet-500/10 p-4 text-sm text-violet-100">
+              <div className="font-black">
+                الكلاس المطلوب:{" "}
+                {exchangeReviewRequest.targetSchedule.class.name}
+              </div>
+              <div className="mt-1 text-xs">
+                {formatDay(exchangeReviewRequest.targetSchedule.date)}{" "}
+                {formatDate(exchangeReviewRequest.targetSchedule.date)} —{" "}
+                {formatTime12Hour(
+                  exchangeReviewRequest.targetSchedule.time,
+                  { meridiem: "en" },
+                )}
+              </div>
+              <div className="mt-2 text-xs text-violet-200">
+                اختاري حصتين مستقبليتين بالضبط من نفس الاشتراك. لن يتم تنفيذ أي تغيير إلا عند الضغط على اعتماد الاستبدال.
+              </div>
+            </div>
+
+            {(() => {
+              const targetDayKey =
+                new Intl.DateTimeFormat(
+                  "en-CA",
+                  {
+                    timeZone:
+                      "Africa/Cairo",
+                    year: "numeric",
+                    month: "2-digit",
+                    day: "2-digit",
+                  },
+                ).format(
+                  new Date(
+                    exchangeReviewRequest.targetSchedule.date,
+                  ),
+                );
+
+              const targetDayBookings =
+                exchangeDayBookings.filter(
+                  (booking) =>
+                    new Intl.DateTimeFormat(
+                      "en-CA",
+                      {
+                        timeZone:
+                          "Africa/Cairo",
+                        year: "numeric",
+                        month: "2-digit",
+                        day: "2-digit",
+                      },
+                    ).format(
+                      new Date(
+                        booking.date,
+                      ),
+                    ) === targetDayKey,
+                );
+
+              return (
+                <div
+                  className={`rounded-xl border px-4 py-3 text-sm ${
+                    targetDayBookings.length >= 2
+                      ? "border-amber-400/30 bg-amber-500/10 text-amber-100"
+                      : "border-emerald-400/20 bg-emerald-500/10 text-emerald-100"
+                  }`}
+                >
+                  <div className="font-black">
+                    لدى العميلة{" "}
+                    {targetDayBookings.length}{" "}
+                    حصة في يوم الكلاس المطلوب
+                  </div>
+
+                  {targetDayBookings.length > 0 ? (
+                    <div className="mt-2 space-y-1 text-xs">
+                      {targetDayBookings.map(
+                        (booking) => (
+                          <div key={booking.id}>
+                            {booking.className} —{" "}
+                            {formatTime12Hour(
+                              booking.time,
+                              {
+                                meridiem:
+                                  "en",
+                              },
+                            )}
+                          </div>
+                        ),
+                      )}
+                    </div>
+                  ) : null}
+
+                  {targetDayBookings.length >= 2 ? (
+                    <div className="mt-2 text-xs font-bold">
+                      إذا كانت العميلة تريد هذا الموعد،
+                      اختاري الحصتين الموجودتين في نفس
+                      اليوم كمصدر للاستبدال.
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })()}
+
+            <input
+              type="search"
+              value={exchangeSourceSearch}
+              onChange={(event) =>
+                setExchangeSourceSearch(
+                  event.target.value,
+                )
+              }
+              placeholder="بحث باسم الكلاس أو التاريخ أو الموعد..."
+              className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none placeholder:text-[#9e7f8d] focus:border-violet-400"
+            />
+
+            {exchangeSourcesLoading ? (
+              <div className="py-8 text-center text-sm text-[#d7aabd]">
+                جارٍ تحميل الحصص المتاحة...
+              </div>
+            ) : exchangeSourceBookings.length < 2 ? (
+              <div className="rounded-2xl border border-rose-400/20 bg-rose-500/10 p-4 text-sm text-rose-200">
+                لا توجد حصتان مستقبليتان مؤهلتان كافيتان لتنفيذ هذا الاستبدال.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {exchangeSourceBookings
+                  .filter((booking) => {
+                    const query =
+                      exchangeSourceSearch
+                        .trim()
+                        .toLowerCase();
+
+                    if (!query) return true;
+
+                    return [
+                      booking.className,
+                      booking.date,
+                      formatDate(booking.date),
+                      formatDay(booking.date),
+                      booking.time,
+                      formatTime12Hour(
+                        booking.time,
+                        {
+                          meridiem: "en",
+                        },
+                      ),
+                    ]
+                      .join(" ")
+                      .toLowerCase()
+                      .includes(query);
+                  })
+                  .map((booking) => {
+                  const selected =
+                    selectedExchangeSourceIds.includes(
+                      booking.id,
+                    );
+
+                  const bookingDayKey =
+                    new Intl.DateTimeFormat(
+                      "en-CA",
+                      {
+                        timeZone:
+                          "Africa/Cairo",
+                        year: "numeric",
+                        month: "2-digit",
+                        day: "2-digit",
+                      },
+                    ).format(
+                      new Date(
+                        booking.date,
+                      ),
+                    );
+
+                  const targetDayKey =
+                    new Intl.DateTimeFormat(
+                      "en-CA",
+                      {
+                        timeZone:
+                          "Africa/Cairo",
+                        year: "numeric",
+                        month: "2-digit",
+                        day: "2-digit",
+                      },
+                    ).format(
+                      new Date(
+                        exchangeReviewRequest.targetSchedule.date,
+                      ),
+                    );
+
+                  const sameTargetDay =
+                    bookingDayKey === targetDayKey;
+
+                  return (
+                    <button
+                      key={booking.id}
+                      type="button"
+                      onClick={() =>
+                        toggleExchangeSource(
+                          booking.id,
+                        )
+                      }
+                      className={`w-full rounded-2xl border p-4 text-right transition-colors ${
+                        selected
+                          ? "border-violet-400 bg-violet-500/15"
+                          : "border-white/10 bg-white/5 hover:bg-white/10"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="font-black text-white">
+                            {booking.className}
+                          </div>
+                          <div className="mt-1 text-xs text-[#d7aabd]">
+                            {sameTargetDay ? (
+                              <span className="ml-2 rounded-full bg-amber-500/20 px-2 py-0.5 font-black text-amber-200">
+                                نفس يوم الكلاس المطلوب
+                              </span>
+                            ) : null}
+                            {formatDay(booking.date)}{" "}
+                            {formatDate(booking.date)} —{" "}
+                            {formatTime12Hour(
+                              booking.time,
+                              { meridiem: "en" },
+                            )}
+                          </div>
+                        </div>
+
+                        <div
+                          className={`rounded-full px-3 py-1 text-xs font-black ${
+                            selected
+                              ? "bg-violet-500 text-white"
+                              : "bg-white/10 text-[#d7aabd]"
+                          }`}
+                        >
+                          {selected ? "تم الاختيار" : "اختيار"}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className="rounded-xl bg-black/20 px-4 py-3 text-sm text-[#d7aabd]">
+              تم اختيار{" "}
+              <span className="font-black text-white">
+                {selectedExchangeSourceIds.length}
+              </span>{" "}
+              من 2
+            </div>
+
+            <div className="flex flex-wrap gap-3">
+              <button
+                type="button"
+                disabled={
+                  selectedExchangeSourceIds.length !== 2 ||
+                  Boolean(exchangeRequestWorkingId)
+                }
+                onClick={() =>
+                  void handleExchangeRequestDecision(
+                    exchangeReviewRequest,
+                    "approve",
+                  )
+                }
+                className="rounded-xl bg-violet-600 px-5 py-2.5 text-sm font-black text-white hover:bg-violet-700 disabled:opacity-40"
+              >
+                {exchangeRequestWorkingId ===
+                exchangeReviewRequest.id
+                  ? "جارٍ التنفيذ..."
+                  : "اعتماد الاستبدال"}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setExchangeReviewRequest(null);
+                  setExchangeSourceBookings([]);
+                  setExchangeDayBookings([]);
+                  setExchangeSourceSearch("");
+                  setSelectedExchangeSourceIds([]);
+                }}
+                disabled={Boolean(exchangeRequestWorkingId)}
+                className="rounded-xl border border-white/15 px-5 py-2.5 text-sm font-bold text-[#d7aabd] hover:bg-white/5 disabled:opacity-40"
+              >
+                إغلاق
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {permsLoaded && canRescheduleBooking && (() => {
+        const visibleExchangeRequests =
+          exchangeStatusFilter === "all" ||
+          exchangeStatusFilter === "archived"
+            ? exchangeRequests
+            : exchangeRequests.filter(
+                (request) =>
+                  request.status === exchangeStatusFilter,
+              );
+
+        const exchangeStatusLabel = (status: string) =>
+          ({
+            pending: "قيد المراجعة",
+            approved: "تم الاستبدال",
+            rejected: "مرفوض",
+          } as Record<string, string>)[status] ?? status;
+
+        return (
+          <AdminCard>
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-base font-black text-[#fff4f8]">
+                    طلبات استبدال الكلاسات
+                  </h3>
+                  <p className="mt-1 text-sm text-[#d7aabd]">
+                    طلبات العميلات لاستبدال حصتين مستقبليتين بكلاس واحد خارج الاشتراك.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="rounded-full bg-violet-500/15 px-3 py-1 text-xs font-black text-violet-200">
+                    {visibleExchangeRequests.length} طلب
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={() => void loadExchangeRequests()}
+                    disabled={exchangeRequestsLoading}
+                    className="rounded-xl bg-white/10 px-4 py-2 text-xs font-bold text-[#fff4f8] hover:bg-white/20 disabled:opacity-50"
+                  >
+                    تحديث
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {[
+                  ["all", "الكل"],
+                  ["pending", "قيد المراجعة"],
+                  ["approved", "تم الاستبدال"],
+                  ["rejected", "مرفوض"],
+                  ["archived", "المؤرشفة"],
+                ].map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() =>
+                      setExchangeStatusFilter(
+                        value as typeof exchangeStatusFilter,
+                      )
+                    }
+                    className={`rounded-xl px-3 py-2 text-xs font-black ${
+                      exchangeStatusFilter === value
+                        ? "bg-violet-600 text-white"
+                        : "bg-white/10 text-[#d7aabd] hover:bg-white/15"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {exchangeRequestsLoading ? (
+                <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-8 text-center text-sm text-[#d7aabd]">
+                  جارٍ تحميل طلبات الاستبدال...
+                </div>
+              ) : visibleExchangeRequests.length === 0 ? (
+                <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-8 text-center text-sm text-[#d7aabd]">
+                  لا توجد طلبات استبدال في هذا التصنيف.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {visibleExchangeRequests.map((request) => (
+                    <div
+                      key={request.id}
+                      className="rounded-2xl border border-white/10 bg-black/20 p-4"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-4">
+                        <div className="space-y-1">
+                          <div className="font-black text-white">
+                            {request.user.name ||
+                              request.user.email ||
+                              "عميلة"}
+                          </div>
+
+                          <div className="text-xs text-[#d7aabd]">
+                            الاشتراك: {request.membership.name}
+                          </div>
+
+                          <div className="text-sm font-bold text-violet-200">
+                            الكلاس المطلوب:{" "}
+                            {request.targetSchedule.class.name}
+                          </div>
+
+                          <div className="text-xs text-[#d7aabd]">
+                            {formatDay(request.targetSchedule.date)}{" "}
+                            {formatDate(request.targetSchedule.date)} —{" "}
+                            {formatTime12Hour(
+                              request.targetSchedule.time,
+                              { meridiem: "en" },
+                            )}
+                          </div>
+
+                          {request.note ? (
+                            <div className="mt-2 rounded-xl bg-white/5 p-2 text-xs text-gray-300">
+                              ملاحظة العميلة: {request.note}
+                            </div>
+                          ) : null}
+                        </div>
+
+                        <div className="flex flex-col items-end gap-2">
+                          <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-black text-white">
+                            {exchangeStatusLabel(request.status)}
+                          </span>
+
+                          {request.status === "pending" &&
+                          canReviewClassExchanges && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void openExchangeReview(request)
+                                }
+                                disabled={Boolean(exchangeRequestWorkingId)}
+                                className="rounded-xl bg-violet-600 px-4 py-2 text-xs font-black text-white hover:bg-violet-700 disabled:opacity-50"
+                              >
+                                اختيار الحصتين والموافقة
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void handleExchangeRequestDecision(
+                                    request,
+                                    "reject",
+                                  )
+                                }
+                                disabled={Boolean(exchangeRequestWorkingId)}
+                                className="text-xs font-bold text-rose-300 hover:text-rose-200 disabled:opacity-50"
+                              >
+                                رفض الطلب
+                              </button>
+                            </>
+                          )}
+
+                          {request.status !== "pending" &&
+                          !request.archivedAt ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void handleExchangeArchiveAction(
+                                  request.id,
+                                  "archive",
+                                )
+                              }
+                              disabled={Boolean(exchangeRequestWorkingId)}
+                              className="text-xs font-bold text-amber-300 hover:text-amber-200 disabled:opacity-50"
+                            >
+                              أرشفة
+                            </button>
+                          ) : null}
+
+                          {request.archivedAt ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void handleExchangeArchiveAction(
+                                    request.id,
+                                    "restore",
+                                  )
+                                }
+                                disabled={Boolean(exchangeRequestWorkingId)}
+                                className="text-xs font-bold text-sky-300 hover:text-sky-200 disabled:opacity-50"
+                              >
+                                استعادة
+                              </button>
+
+                              {exchangeStatusFilter === "archived" ? (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    void deleteArchivedExchangeRequest(
+                                      request.id,
+                                    )
+                                  }
+                                  disabled={Boolean(exchangeRequestWorkingId)}
+                                  className="text-xs font-bold text-rose-300 hover:text-rose-200 disabled:opacity-50"
+                                >
+                                  حذف نهائي
+                                </button>
+                              ) : null}
+                            </>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </AdminCard>
+        );
+      })()}
+
+      {permsLoaded && canRescheduleBooking && (() => {
+        const visibleRescheduleRequests =
+          rescheduleStatusFilter === "all"
+            ? rescheduleRequests
+            : rescheduleStatusFilter === "archived"
+              ? rescheduleRequests
+              : rescheduleRequests.filter(
+                  (request) => request.status === rescheduleStatusFilter,
+                );
+
+        const statusLabel = (status: string) =>
+          ({
+            pending: "قيد المراجعة",
+            approved: "تمت الموافقة",
+            rejected: "مرفوض",
+            cancelled: "ملغي",
+          } as Record<string, string>)[status] ?? status;
+
+        const statusClass = (status: string) =>
+          ({
+            pending: "bg-amber-500/15 text-amber-200",
+            approved: "bg-emerald-500/15 text-emerald-200",
+            rejected: "bg-rose-500/15 text-rose-200",
+            cancelled: "bg-slate-500/20 text-slate-300",
+          } as Record<string, string>)[status] ??
+          "bg-white/10 text-white";
+
+        const archiveRequest = async (
+          requestId: string,
+          action: "archive" | "restore",
+        ) => {
+          if (rescheduleRequestWorkingId) return;
+
+          const message =
+            action === "archive"
+              ? "هل تريد أرشفة هذا الطلب؟ سيظل محفوظًا ويمكن استعادته لاحقًا."
+              : "هل تريد استعادة هذا الطلب إلى السجل؟";
+
+          if (!window.confirm(message)) return;
+
+          setRescheduleRequestWorkingId(requestId);
+
+          try {
+            const response = await fetch(
+              "/api/admin/booking-reschedule-requests",
+              {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ requestId, action }),
+              },
+            );
+
+            const payload = await response.json().catch(() => ({}));
+
+            if (!response.ok) {
+              window.alert(
+                payload.error ??
+                  (action === "archive"
+                    ? "تعذر أرشفة الطلب."
+                    : "تعذر استعادة الطلب."),
+              );
+              return;
+            }
+
+            await loadRescheduleRequests();
+            window.dispatchEvent(
+              new CustomEvent("fitzone-admin-approvals-refresh"),
+            );
+          } finally {
+            setRescheduleRequestWorkingId(null);
+          }
+        };
+
+
+        const deleteArchivedRequest = async (
+          requestId: string,
+        ) => {
+          if (rescheduleRequestWorkingId) return;
+
+          if (
+            !window.confirm(
+              "حذف نهائي لهذا الطلب المؤرشف؟\n\nلن يمكن استعادة الطلب بعد الحذف.",
+            )
+          ) {
+            return;
+          }
+
+          setRescheduleRequestWorkingId(requestId);
+
+          try {
+            const response = await fetch(
+              "/api/admin/booking-reschedule-requests",
+              {
+                method: "DELETE",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  requestId,
+                }),
+              },
+            );
+
+            const payload =
+              await response.json().catch(
+                () => ({}),
+              );
+
+            if (!response.ok) {
+              window.alert(
+                payload.error ??
+                  "تعذر حذف الطلب المؤرشف.",
+              );
+              return;
+            }
+
+            await loadRescheduleRequests();
+
+            window.dispatchEvent(
+              new CustomEvent(
+                "fitzone-admin-approvals-refresh",
+              ),
+            );
+          } finally {
+            setRescheduleRequestWorkingId(null);
+          }
+        };
+
+        return (
+        <AdminCard>
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="text-base font-black text-[#fff4f8]">
+                  سجل طلبات تغيير المواعيد والتعويضات
+                </h3>
+                <p className="mt-1 text-sm text-[#d7aabd]">
+                  جميع طلبات العميلات الحالية والسابقة وقرارات الإدارة.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="rounded-full bg-amber-500/15 px-3 py-1 text-xs font-black text-amber-200">
+                  {visibleRescheduleRequests.length} طلب
+                </span>
+
+                <button
+                  type="button"
+                  onClick={() => void loadRescheduleRequests()}
+                  disabled={rescheduleRequestsLoading}
+                  className="rounded-xl bg-white/10 px-4 py-2 text-xs font-bold text-[#fff4f8] transition-colors hover:bg-white/20 disabled:opacity-50"
+                >
+                  تحديث الطلبات
+                </button>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {[
+                ["all", "الكل"],
+                ["pending", "قيد المراجعة"],
+                ["approved", "تمت الموافقة"],
+                ["rejected", "مرفوض"],
+                ["cancelled", "ملغي"],
+                ["archived", "المؤرشفة"],
+              ].map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() =>
+                    setRescheduleStatusFilter(
+                      value as typeof rescheduleStatusFilter,
+                    )
+                  }
+                  className={`rounded-xl px-3 py-2 text-xs font-black transition-colors ${
+                    rescheduleStatusFilter === value
+                      ? "bg-pink-500 text-white"
+                      : "bg-white/10 text-[#d7aabd] hover:bg-white/15"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {rescheduleRequestsLoading ? (
+              <div className="rounded-2xl border border-[rgba(255,188,219,0.14)] bg-black/20 px-4 py-8 text-center text-sm text-[#d7aabd]">
+                جارٍ تحميل طلبات تغيير المواعيد...
+              </div>
+            ) : visibleRescheduleRequests.length === 0 ? (
+              <div className="rounded-2xl border border-[rgba(255,188,219,0.14)] bg-black/20 px-4 py-8 text-center text-sm text-[#d7aabd]">
+                لا توجد طلبات في هذا التصنيف.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {visibleRescheduleRequests.map((request) => {
+                  const busy =
+                    rescheduleRequestWorkingId === request.id;
+
+                  return (
+                    <div
+                      key={request.id}
+                      className="rounded-2xl border border-amber-500/20 bg-amber-500/[0.06] p-4"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-4">
+                        <div>
+                          <div className="font-black text-[#fff4f8]">
+                            {request.booking.user.name}
+                          </div>
+                          <div className="mt-1 text-xs text-[#d7aabd]">
+                            {request.booking.user.phone}
+                          </div>
+                          <div className="mt-1 text-[11px] text-[#b98ea0]">
+                            Booking ID: {request.booking.id}
+                          </div>
+                          <div className="mt-1 text-[11px] text-[#b98ea0]">
+                            الطلب: {formatDateTime(request.requestedAt)}
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2">
+                          <span className={`rounded-full px-3 py-1 text-xs font-bold ${statusClass(request.status)}`}>
+                            {request.archivedAt
+                              ? "مؤرشف"
+                              : statusLabel(request.status)}
+                          </span>
+                          <span
+                            className={`rounded-full px-3 py-1 text-xs font-black ${
+                              request.requestType === "past_absence_makeup"
+                                ? "bg-orange-500/20 text-orange-200"
+                                : "bg-violet-500/20 text-violet-200"
+                            }`}
+                          >
+                            {request.requestType === "past_absence_makeup"
+                              ? "تعويض حصة سابقة"
+                              : "تغيير موعد قادم"}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_auto_1fr] lg:items-center">
+                        <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                          <div className="text-[11px] font-bold text-[#b98ea0]">
+                            {request.requestType === "past_absence_makeup"
+                              ? "الحصة السابقة التي لم يتم حضورها"
+                              : "الموعد الحالي"}
+                          </div>
+                          <div className="mt-1 font-black text-[#fff4f8]">
+                            {request.booking.currentSchedule.class.name}
+                          </div>
+                          <div className="mt-1 text-xs text-[#d7aabd]">
+                            {formatDay(
+                              request.booking.currentSchedule.date,
+                            )}{" "}
+                            •{" "}
+                            {formatDate(
+                              request.booking.currentSchedule.date,
+                            )}{" "}
+                            •{" "}
+                            {formatTime12Hour(
+                              request.booking.currentSchedule.time,
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="text-center text-xl font-black text-[#ff9fc5]">
+                          ←
+                        </div>
+
+                        <div className="rounded-xl border border-pink-400/20 bg-pink-500/[0.08] p-3">
+                          <div className="text-[11px] font-bold text-pink-200">
+                            {request.requestType === "past_absence_makeup"
+                              ? "الموعد التعويضي المطلوب"
+                              : "الموعد المطلوب"}
+                          </div>
+                          <div className="mt-1 font-black text-[#fff4f8]">
+                            {request.targetSchedule.class.name}
+                          </div>
+                          <div className="mt-1 text-xs text-[#d7aabd]">
+                            {formatDay(
+                              request.targetSchedule.date,
+                            )}{" "}
+                            •{" "}
+                            {formatDate(
+                              request.targetSchedule.date,
+                            )}{" "}
+                            •{" "}
+                            {formatTime12Hour(
+                              request.targetSchedule.time,
+                            )}
+                          </div>
+                          <div className="mt-1 text-[11px] text-[#b98ea0]">
+                            المقاعد المتاحة حاليًا:{" "}
+                            {request.targetSchedule.availableSpots}
+                          </div>
+                        </div>
+                      </div>
+
+                      {request.status !== "pending" && (
+                        <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-3 text-xs text-[#d7aabd]">
+                          <div>
+                            القرار: <span className="font-black text-white">{statusLabel(request.status)}</span>
+                          </div>
+                          {request.reviewedAt && (
+                            <div className="mt-1">
+                              تاريخ القرار: {formatDateTime(request.reviewedAt)}
+                            </div>
+                          )}
+                          {request.reviewedByName && (
+                            <div className="mt-1">
+                              تمت المراجعة بواسطة: <span className="font-bold text-white">{request.reviewedByName}</span>
+                            </div>
+                          )}
+                          {request.rejectionReason && (
+                            <div className="mt-2 rounded-lg bg-rose-500/10 p-2 text-rose-100">
+                              سبب الرفض: {request.rejectionReason}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {request.requestType === "past_absence_makeup" && (
+                        <div className="mt-4 rounded-xl border border-orange-400/20 bg-orange-500/[0.08] p-3">
+                          <div className="text-[11px] font-black text-orange-200">
+                            سبب عدم الحضور
+                          </div>
+                          <div className="mt-1 whitespace-pre-wrap text-sm leading-6 text-[#fff4f8]">
+                            {request.absenceReason || "لم يتم إدخال سبب"}
+                          </div>
+                          <div className="mt-2 text-[11px] font-bold text-orange-200/80">
+                            طلب التعويض استثنائي ويخضع لقرار الإدارة وإمكانية التعويض.
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        {request.status === "pending" && (
+                          <>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void handleRescheduleRequestDecision(
+                              request.id,
+                              "approve",
+                            )
+                          }
+                          disabled={busy}
+                          className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-black text-white transition-colors hover:bg-emerald-500 disabled:opacity-50"
+                        >
+                          {busy ? "جارٍ التنفيذ..." : "موافقة"}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void handleRescheduleRequestDecision(
+                              request.id,
+                              "reject",
+                            )
+                          }
+                          disabled={busy}
+                          className="rounded-xl bg-rose-600 px-4 py-2 text-xs font-black text-white transition-colors hover:bg-rose-500 disabled:opacity-50"
+                        >
+                          رفض
+                        </button>
+                          </>
+                        )}
+
+                        {request.status !== "pending" && !request.archivedAt && (
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => void archiveRequest(request.id, "archive")}
+                            className="rounded-xl bg-slate-600 px-4 py-2 text-xs font-black text-white transition-colors hover:bg-slate-500 disabled:opacity-50"
+                          >
+                            أرشفة
+                          </button>
+                        )}
+
+                        {request.archivedAt && (
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => void archiveRequest(request.id, "restore")}
+                            className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-black text-white transition-colors hover:bg-blue-500 disabled:opacity-50"
+                          >
+                            استعادة
+                          </button>
+                        )}
+                      
+                          {request.archivedAt &&
+                          rescheduleStatusFilter === "archived" ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void deleteArchivedRequest(
+                                  request.id,
+                                )
+                              }
+                              disabled={busy}
+                              className="rounded-xl border border-red-500/40 bg-red-500/15 px-4 py-2 text-xs font-black text-red-200 transition-colors hover:bg-red-500/25 disabled:opacity-50"
+                            >
+                              {busy
+                                ? "جارٍ الحذف..."
+                                : "حذف نهائي"}
+                            </button>
+                          ) : null}
+</div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </AdminCard>
+        );
+      })()}
+
       <AdminCard className="overflow-hidden p-0">
         {loading ? (
           <div className="flex h-56 items-center justify-center text-sm text-[#d7aabd]">جارٍ تحميل الحجوزات...</div>
@@ -1168,11 +2615,11 @@ export default function Bookings() {
                   تم تحديد {selectedIds.size} حجز
                 </span>
                 <button
-                  onClick={() => void handleBulkDelete()}
+                  onClick={() => void handleBulkCancel()}
                   disabled={working}
                   className="rounded-xl bg-rose-600 px-4 py-2 text-xs font-black text-white transition-colors hover:bg-rose-500 disabled:opacity-50"
                 >
-                  {working ? "جارٍ الحذف..." : `حذف المحدد (${selectedIds.size})`}
+                  {working ? "جارٍ الإلغاء..." : `إلغاء المحدد (${selectedIds.size})`}
                 </button>
               </div>
             )}
@@ -1248,7 +2695,7 @@ export default function Bookings() {
                       <td className="px-5 py-4">
                         {canRescheduleBooking || canCancelBooking || canDeleteBooking || canManualAttendance ? (
                           <div className="flex flex-wrap gap-2">
-                            {canRescheduleBooking && <button
+                            {canRescheduleBooking && booking.status === "confirmed" && !isPendingPayment && <button
                               onClick={() => setRescheduleModal(booking)}
                               className="rounded-lg bg-white/5 px-3 py-2 text-xs text-[#fff4f8] transition-colors hover:bg-white/10"
                             >
@@ -1264,7 +2711,7 @@ export default function Bookings() {
                                 تسجيل حضور
                               </button>
                             )}
-                            {canCancelBooking && booking.status !== "cancelled" && (
+                            {canCancelBooking && booking.status === "confirmed" && (
                               <button
                                 onClick={() => void handleAction(booking.id, "cancel")}
                                 disabled={working}
@@ -1273,7 +2720,7 @@ export default function Bookings() {
                                 إلغاء
                               </button>
                             )}
-                            {canCancelBooking && booking.status === "cancelled" && (
+                            {canCancelBooking && booking.status === "cancelled" && (!booking.membership || booking.membership.status === "active") && (
                               <button
                                 onClick={() => void handleAction(booking.id, "confirm")}
                                 disabled={working}
@@ -1283,11 +2730,11 @@ export default function Bookings() {
                               </button>
                             )}
                             {canDeleteBooking && <button
-                              onClick={() => void handleDelete(booking.id)}
+                              onClick={() => void handleCancelBooking(booking.id)}
                               disabled={working}
                               className="rounded-lg bg-rose-900/30 px-3 py-2 text-xs text-rose-400 transition-colors hover:bg-rose-900/50 disabled:opacity-50"
                             >
-                              حذف
+                              إلغاء الحجز
                             </button>}
                           </div>
                         ) : (

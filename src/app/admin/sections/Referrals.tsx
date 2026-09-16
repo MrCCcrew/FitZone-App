@@ -256,8 +256,20 @@ export default function Referrals({ userRole }: { userRole?: string }) {
                       <td className="px-4 py-3 text-gray-300">{c.membershipName ?? "—"}</td>
                       <td className="px-4 py-3 font-bold text-emerald-300">{c.amount.toFixed(2)} ج.م</td>
                       <td className="px-4 py-3">
-                        <span className={`rounded-full px-2 py-0.5 font-bold ${c.status === "earned" ? "bg-yellow-900/40 text-yellow-300" : "bg-emerald-900/40 text-emerald-300"}`}>
-                          {c.status === "earned" ? "معلق" : "محصّل"}
+                        <span
+                          className={`rounded-full px-2 py-0.5 font-bold ${
+                            c.status === "earned"
+                              ? "bg-yellow-900/40 text-yellow-300"
+                              : c.status === "settled"
+                                ? "bg-emerald-900/40 text-emerald-300"
+                                : "bg-gray-800 text-gray-300"
+                          }`}
+                        >
+                          {c.status === "earned"
+                            ? "مستحقة"
+                            : c.status === "settled"
+                              ? "مُسوَّاة"
+                              : "إحالة غير مستحقة"}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-gray-500">{c.createdAt.slice(0, 10)}</td>

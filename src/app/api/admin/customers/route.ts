@@ -5,6 +5,8 @@ import { db } from "@/lib/db";
 import { logAudit } from "@/lib/audit-context";
 import { getRewardSettings, calcTier } from "@/lib/reward-settings";
 import { recordMembershipActivatedEvent } from "@/lib/analytics/membership-events";
+import { classifyCustomerLifecycle, wasMembershipEverActivated } from "@/lib/customer-lifecycle";
+import { hasAdminPermission } from "@/lib/admin-authorization";
 
 async function checkAdmin() {
   const guard = await requireAdminFeature("customers");
@@ -28,36 +30,50 @@ type CustomerPayload = {
   phone?: string;
   password?: string;
   plan?: string;
-  status?: "active" | "suspended" | "expired";
+  status?: "active" | "suspended" | "pending_payment" | "cancelled" | "expired" | "unsubscribed";
   points?: number;
   balance?: number;
   trainerRefToken?: string; // trainer referral link token to attach to this customer
 };
-
-function buildStatus(user: {
-  memberships: { status: string; endDate: Date }[];
-}): "active" | "expired" | "suspended" {
-  const latest = user.memberships[0];
-  if (!latest) return "expired";
-  if (latest.status === "cancelled") return "suspended";
-
-  const active = user.memberships.find((membership) => membership.status === "active");
-  if (!active) return "expired";
-  if (active.endDate < new Date()) return "expired";
-  return "active";
-}
 
 type CustomerMembershipRow = {
   id: string;
   status: string;
   startDate: Date;
   endDate: Date;
+  pendingExpiresAt: Date | null;
+  activatedAt: Date | null;
   paymentAmount: number;
   paymentMethod: string | null;
   offerTitle: string | null;
   totalSessions: number | null;
   productRewardsUsed: string | null;
   membership: { name: string; kind: string; sessionsCount: number | null };
+
+  salesAgent: { id: string; name: string | null } | null;
+  partner: { id: string; name: string } | null;
+  refAgent: { id: string; name: string } | null;
+
+  staffReferralLink: {
+    id: string;
+    user: { id: string; name: string | null };
+  } | null;
+
+  trainerReferralLink: {
+    id: string;
+    user: { id: string; name: string | null };
+  } | null;
+
+  nutritionReferralLink: {
+    id: string;
+    user: { id: string; name: string | null };
+  } | null;
+};
+
+type CustomerPaymentState = {
+  status: string;
+  provider: string;
+  paidAt: Date | null;
 };
 
 type CustomerSummary = {
@@ -68,17 +84,154 @@ type CustomerSummary = {
   avatar: string | null;
   pendingApproval: boolean;
   createdAt: Date;
+  suspendedAt: Date | null;
   memberships: CustomerMembershipRow[];
   wallet: { balance: number } | null;
   rewardPoints: { points: number } | null;
+  marketingConversionsAsCustomer: Array<{
+    id: string;
+    status: string;
+    assignedAt: Date;
+    assignedStaff: {
+      id: string;
+      name: string | null;
+      email: string | null;
+    };
+  }>;
 };
+
+function resolveOriginalReferrer(
+  memberships: CustomerMembershipRow[],
+) {
+  /*
+   * UserMembership has no createdAt field.
+   * Therefore the safest available historical ordering is startDate.
+   * Attribution itself is read only from the persisted membership relations;
+   * pending referral tokens are never used here.
+   */
+  const attributed = memberships
+    .filter(
+      (membership) =>
+        membership.staffReferralLink ||
+        membership.trainerReferralLink ||
+        membership.nutritionReferralLink ||
+        membership.refAgent ||
+        membership.salesAgent ||
+        membership.partner,
+    )
+    .slice()
+    .sort(
+      (a, b) =>
+        a.startDate.getTime() -
+        b.startDate.getTime(),
+    );
+
+  const membership = attributed[0];
+  if (!membership) return null;
+
+  if (membership.staffReferralLink) {
+    return {
+      type: "staff" as const,
+      id: membership.staffReferralLink.user.id,
+      name: membership.staffReferralLink.user.name ?? "—",
+    };
+  }
+
+  if (membership.trainerReferralLink) {
+    return {
+      type: "trainer" as const,
+      id: membership.trainerReferralLink.user.id,
+      name: membership.trainerReferralLink.user.name ?? "—",
+    };
+  }
+
+  if (membership.nutritionReferralLink) {
+    return {
+      type: "nutrition" as const,
+      id: membership.nutritionReferralLink.user.id,
+      name: membership.nutritionReferralLink.user.name ?? "—",
+    };
+  }
+
+  if (membership.refAgent) {
+    return {
+      type: "sales_agent" as const,
+      id: membership.refAgent.id,
+      name: membership.refAgent.name,
+    };
+  }
+
+  if (membership.salesAgent) {
+    return {
+      type: "sales_user" as const,
+      id: membership.salesAgent.id,
+      name: membership.salesAgent.name ?? "—",
+    };
+  }
+
+  if (membership.partner) {
+    return {
+      type: "partner" as const,
+      id: membership.partner.id,
+      name: membership.partner.name,
+    };
+  }
+
+  return null;
+}
 
 function mapCustomer(
   user: CustomerSummary,
-  bookingCounts: Map<string, { used: number }>,
+  bookingCounts: Map<string, { used: number; reserved: number }>,
   productNames: Map<string, string>,
+  paymentStates: Map<string, CustomerPaymentState> = new Map(),
+  attendancePassMembershipIds: Set<string> = new Set(),
 ) {
-  const latestMembership = user.memberships[0];
+  const now = new Date();
+
+  const lifecycleMemberships = user.memberships.map((membership) => ({
+    status: membership.status,
+    startDate: membership.startDate,
+    endDate: membership.endDate,
+    pendingExpiresAt: membership.pendingExpiresAt,
+    activatedAt: membership.activatedAt,
+    legacyActivationEvidence:
+      paymentStates.get(membership.id)?.status === "paid" ||
+      (bookingCounts.get(membership.id)?.used ?? 0) > 0 ||
+      attendancePassMembershipIds.has(membership.id),
+  }));
+
+  const status = classifyCustomerLifecycle({
+    suspendedAt: user.suspendedAt,
+    memberships: lifecycleMemberships,
+    now,
+  });
+
+  const displayMembership =
+    user.memberships.find(
+      (membership) =>
+        membership.status === "active" &&
+        membership.endDate.getTime() >= now.getTime(),
+    ) ??
+    user.memberships.find(
+      (membership) =>
+        membership.status === "pending_payment" &&
+        membership.pendingExpiresAt != null &&
+        membership.pendingExpiresAt.getTime() > now.getTime(),
+    ) ??
+    user.memberships.find((membership) =>
+      wasMembershipEverActivated({
+        status: membership.status,
+        startDate: membership.startDate,
+        endDate: membership.endDate,
+        pendingExpiresAt: membership.pendingExpiresAt,
+        activatedAt: membership.activatedAt,
+        legacyActivationEvidence:
+          paymentStates.get(membership.id)?.status === "paid" ||
+          (bookingCounts.get(membership.id)?.used ?? 0) > 0 ||
+          attendancePassMembershipIds.has(membership.id),
+      }),
+    );
 
   return {
     id: user.id,
@@ -87,16 +240,41 @@ function mapCustomer(
     phone: user.phone ?? "—",
     avatar: user.avatar ?? "ع",
     pendingApproval: user.pendingApproval,
-    plan: latestMembership?.membership.name ?? "بدون اشتراك",
-    status: buildStatus(user),
+    plan: displayMembership?.membership.name ?? "بدون اشتراك",
+    status,
     joinDate: user.createdAt.toISOString().slice(0, 10),
     points: user.rewardPoints?.points ?? 0,
     balance: user.wallet?.balance ?? 0,
+
+    originalReferrer: resolveOriginalReferrer(user.memberships),
+
+    marketingConversion:
+      user.marketingConversionsAsCustomer[0]
+        ? {
+            id: user.marketingConversionsAsCustomer[0].id,
+            status: user.marketingConversionsAsCustomer[0].status,
+            assignedAt:
+              user.marketingConversionsAsCustomer[0].assignedAt.toISOString(),
+            assignedStaff: {
+              id: user.marketingConversionsAsCustomer[0].assignedStaff.id,
+              name:
+                user.marketingConversionsAsCustomer[0].assignedStaff.name ??
+                "—",
+              email:
+                user.marketingConversionsAsCustomer[0].assignedStaff.email ??
+                null,
+            },
+          }
+        : null,
+
     memberships: user.memberships.map((membership) => {
       const totalSessions = membership.totalSessions ?? membership.membership.sessionsCount ?? null;
       const usedSessions = bookingCounts.get(membership.id)?.used ?? 0;
+      const reservedSessions = bookingCounts.get(membership.id)?.reserved ?? 0;
       const remainingSessions =
-        totalSessions !== null ? Math.max(totalSessions - usedSessions, 0) : null;
+        totalSessions !== null
+          ? Math.max(totalSessions - usedSessions - reservedSessions, 0)
+          : null;
 
       let productRewards: Array<{ productId: string; productName?: string; quantity: number }> = [];
       if (membership.productRewardsUsed) {
@@ -128,9 +306,14 @@ function mapCustomer(
         endDate: membership.endDate.toISOString(),
         sessionsTotal: totalSessions,
         sessionsUsed: usedSessions,
+        sessionsReserved: reservedSessions,
         sessionsRemaining: remainingSessions,
         paymentAmount: membership.paymentAmount ?? 0,
         paymentMethod: membership.paymentMethod ?? null,
+        paymentStatus: paymentStates.get(membership.id)?.status ?? null,
+        paymentProvider: paymentStates.get(membership.id)?.provider ?? null,
+        paymentPaidAt:
+          paymentStates.get(membership.id)?.paidAt?.toISOString() ?? null,
         offerTitle: membership.offerTitle ?? null,
         productRewards,
       };
@@ -140,20 +323,36 @@ function mapCustomer(
 
 async function applyMembership(userId: string, planName?: string, status?: CustomerPayload["status"]) {
   if (status === "suspended") {
-    await db.userMembership.updateMany({
-      where: { userId, status: "active" },
-      data: { status: "cancelled" },
+    await db.user.update({
+      where: { id: userId },
+      data: {
+        suspendedAt: new Date(),
+        suspensionReason: "admin_customer_suspension",
+      },
     });
     return;
   }
 
-  if (status === "expired") {
-    await db.userMembership.updateMany({
-      where: { userId, status: "active" },
-      data: { status: "expired" },
-    });
+  /*
+   * active is the only lifecycle value allowed to initiate/change a
+   * membership from this screen.
+   *
+   * pending_payment / cancelled / expired / unsubscribed are derived states.
+   * Saving profile data while one of those states is displayed must NEVER
+   * rewrite UserMembership.status.
+   */
+  if (status !== "active") {
     return;
   }
+
+  // Explicitly choosing Active also removes an administrative suspension.
+  await db.user.update({
+    where: { id: userId },
+    data: {
+      suspendedAt: null,
+      suspensionReason: null,
+    },
+  });
 
   let nextPlanName = planName;
 
@@ -203,6 +402,7 @@ async function applyMembership(userId: string, planName?: string, status?: Custo
       startDate,
       endDate,
       status: "active",
+      activatedAt: startDate,
     },
   });
 
@@ -296,6 +496,25 @@ export async function GET() {
       pendingApproval: false,
       bookings: { some: { schedule: { class: { trainerId } } } },
     };
+  } else if (
+    userRole === "staff" &&
+    hasAdminPermission(
+      {
+        role: guard.role,
+        permissions: guard.permissions,
+      },
+      "customer_followup_assigned_only",
+    )
+  ) {
+    extraFilter = {
+      pendingApproval: false,
+      marketingConversionsAsCustomer: {
+        some: {
+          assignedStaffUserId: guard.session.user.id,
+          activeKey: { not: null },
+        },
+      },
+    };
   }
 
   try {
@@ -304,31 +523,154 @@ export async function GET() {
       orderBy: { createdAt: "desc" },
       include: {
         memberships: {
-          include: { membership: true },
+          include: {
+            membership: true,
+            salesAgent: { select: { id: true, name: true } },
+            partner: { select: { id: true, name: true } },
+            refAgent: { select: { id: true, name: true } },
+            staffReferralLink: {
+              select: {
+                id: true,
+                user: { select: { id: true, name: true } },
+              },
+            },
+            trainerReferralLink: {
+              select: {
+                id: true,
+                user: { select: { id: true, name: true } },
+              },
+            },
+            nutritionReferralLink: {
+              select: {
+                id: true,
+                user: { select: { id: true, name: true } },
+              },
+            },
+          },
           orderBy: { startDate: "desc" },
         },
         wallet: true,
         rewardPoints: true,
+
+        marketingConversionsAsCustomer: {
+          where: {
+            activeKey: {
+              not: null,
+            },
+          },
+          orderBy: {
+            assignedAt: "desc",
+          },
+          take: 1,
+          include: {
+            assignedStaff: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
+          },
+        },
       },
     });
 
     const membershipIds = users.flatMap((user) => user.memberships.map((membership) => membership.id));
 
+    const paymentTransactions = membershipIds.length
+      ? await db.paymentTransaction.findMany({
+          where: {
+            membershipId: { in: membershipIds },
+          },
+          select: {
+            membershipId: true,
+            status: true,
+            provider: true,
+            paidAt: true,
+            createdAt: true,
+          },
+          orderBy: {
+            createdAt: "desc",
+          },
+        })
+      : [];
+
+    const paymentStates = new Map<string, CustomerPaymentState>();
+
+    for (const transaction of paymentTransactions) {
+      if (!transaction.membershipId) continue;
+
+      const existing = paymentStates.get(transaction.membershipId);
+
+      /*
+       * A confirmed paid transaction is authoritative for the membership.
+       * This matches pending-payment cleanup, which never cancels a
+       * membership when any paid transaction already exists.
+       *
+       * Otherwise the query is newest-first, so keep the latest attempt.
+       */
+      if (existing?.status === "paid") continue;
+      if (existing && transaction.status !== "paid") continue;
+
+      paymentStates.set(transaction.membershipId, {
+        status: transaction.status,
+        provider: transaction.provider,
+        paidAt: transaction.paidAt,
+      });
+    }
+
+    const attendancePassRows = membershipIds.length
+      ? await db.attendancePass.findMany({
+          where: {
+            userMembershipId: { in: membershipIds },
+          },
+          select: {
+            userMembershipId: true,
+          },
+        })
+      : [];
+
+    const attendancePassMembershipIds = new Set(
+      attendancePassRows
+        .map((row) => row.userMembershipId)
+        .filter((id): id is string => Boolean(id)),
+    );
+
     const bookingCountsRaw = membershipIds.length
       ? await db.booking.groupBy({
           by: ["userMembershipId", "status"],
           where: { userMembershipId: { in: membershipIds } },
-          _count: { _all: true },
+          _sum: { entitlementUnits: true },
         })
       : [];
 
-    const bookingCounts = new Map<string, { used: number }>();
+    const bookingCounts = new Map<string, { used: number; reserved: number }>();
     for (const row of bookingCountsRaw) {
       const membershipId = row.userMembershipId ?? "";
       if (!membershipId) continue;
-      const used = row.status === "confirmed" || row.status === "attended" ? row._count._all : 0;
-      const current = bookingCounts.get(membershipId) ?? { used: 0 };
-      bookingCounts.set(membershipId, { used: current.used + used });
+
+      const entitlementUnits =
+        row._sum.entitlementUnits ?? 0;
+
+      const used =
+        row.status === "attended"
+          ? entitlementUnits
+          : 0;
+
+      const reserved =
+        row.status === "confirmed"
+          ? entitlementUnits
+          : 0;
+
+      const current = bookingCounts.get(membershipId) ?? {
+        used: 0,
+        reserved: 0,
+      };
+
+      bookingCounts.set(membershipId, {
+        used: current.used + used,
+        reserved: current.reserved + reserved,
+      });
     }
 
     const rewardsIds = new Set<string>();
@@ -350,8 +692,33 @@ export async function GET() {
     const productNames = new Map(products.map((product) => [product.id, product.name]));
 
     return NextResponse.json({
-      customers: users.map((user) => mapCustomer(user, bookingCounts, productNames)),
+      customers: users.map((user) =>
+        mapCustomer(
+          user,
+          bookingCounts,
+          productNames,
+          paymentStates,
+          attendancePassMembershipIds,
+        ),
+      ),
       userRole,
+      canExecuteClassExchange:
+        hasAdminPermission(
+          {
+            role: guard.role,
+            permissions: guard.permissions,
+          },
+          "class_exchanges_execute",
+        ),
+      canManageMarketing:
+        guard.role === "admin" ||
+        hasAdminPermission(
+          {
+            role: guard.role,
+            permissions: guard.permissions,
+          },
+          "marketing_conversions_manage",
+        ),
     });
   } catch (error) {
     console.error("[ADMIN_CUSTOMERS_GET]", error);
@@ -432,7 +799,7 @@ export async function POST(req: Request) {
         data: { rewardId: rewardRecord.id, points: SIGNUP_BONUS, reason: "onboarding_email_verified" },
       });
       await applyWalletAndRewards(user.id, balance ?? 0, undefined);
-      await applyMembership(user.id, plan, status ?? "expired");
+      await applyMembership(user.id, plan, status ?? "unsubscribed");
       await db.notification.create({
         data: {
           userId: user.id,
@@ -462,9 +829,56 @@ export async function POST(req: Request) {
     const created = await db.user.findUnique({
       where: { id: user.id },
       include: {
-        memberships: { include: { membership: true }, orderBy: { startDate: "desc" } },
+        memberships: {
+          include: {
+            membership: true,
+            salesAgent: { select: { id: true, name: true } },
+            partner: { select: { id: true, name: true } },
+            refAgent: { select: { id: true, name: true } },
+            staffReferralLink: {
+              select: {
+                id: true,
+                user: { select: { id: true, name: true } },
+              },
+            },
+            trainerReferralLink: {
+              select: {
+                id: true,
+                user: { select: { id: true, name: true } },
+              },
+            },
+            nutritionReferralLink: {
+              select: {
+                id: true,
+                user: { select: { id: true, name: true } },
+              },
+            },
+          },
+          orderBy: { startDate: "desc" },
+        },
         wallet: true,
         rewardPoints: true,
+        marketingConversionsAsCustomer: {
+          where: {
+            activeKey: {
+              not: null,
+            },
+          },
+          orderBy: {
+            assignedAt: "desc",
+          },
+          take: 1,
+          include: {
+            assignedStaff: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
+          },
+        },
+
       },
     });
 
@@ -499,8 +913,74 @@ export async function PATCH(req: Request) {
       }
 
       if (action === "reject") {
+        const candidate = await db.user.findUnique({
+          where: { id },
+          select: {
+            pendingApproval: true,
+            _count: {
+              select: {
+                memberships: true,
+                paymentTransactions: true,
+                orders: true,
+                agentCommissions: true,
+                staffCommissions: true,
+                trainerCommissions: true,
+                nutritionCommissions: true,
+              },
+            },
+            partnerProfile: { select: { id: true } },
+            salesAgent: { select: { id: true } },
+            contractsManager: { select: { id: true } },
+          },
+        });
+
+        if (!candidate) {
+          return NextResponse.json(
+            { error: "العميل غير موجود" },
+            { status: 404 },
+          );
+        }
+
+        if (!candidate.pendingApproval) {
+          return NextResponse.json(
+            { error: "لا يمكن رفض حساب تم اعتماده أو خرج من حالة انتظار الموافقة." },
+            { status: 409 },
+          );
+        }
+
+        const hasFinancialHistory =
+          candidate._count.memberships > 0 ||
+          candidate._count.paymentTransactions > 0 ||
+          candidate._count.orders > 0 ||
+          candidate._count.agentCommissions > 0 ||
+          candidate._count.staffCommissions > 0 ||
+          candidate._count.trainerCommissions > 0 ||
+          candidate._count.nutritionCommissions > 0 ||
+          Boolean(
+            candidate.partnerProfile ||
+            candidate.salesAgent ||
+            candidate.contractsManager
+          );
+
+        if (hasFinancialHistory) {
+          return NextResponse.json(
+            {
+              error:
+                "لا يمكن حذف هذا الحساب لأنه مرتبط بسجل مالي أو عمولات محفوظة.",
+            },
+            { status: 409 },
+          );
+        }
+
         await db.user.delete({ where: { id } });
-        void logAudit({ action: "delete", targetType: "customer", targetId: id, details: { reason: "rejected_by_approver" } });
+
+        void logAudit({
+          action: "delete",
+          targetType: "customer",
+          targetId: id,
+          details: { reason: "rejected_by_approver" },
+        });
+
         return NextResponse.json({ success: true });
       }
 
@@ -537,9 +1017,56 @@ export async function PATCH(req: Request) {
       const approved = await db.user.findUnique({
         where: { id },
         include: {
-          memberships: { include: { membership: true }, orderBy: { startDate: "desc" } },
+          memberships: {
+          include: {
+            membership: true,
+            salesAgent: { select: { id: true, name: true } },
+            partner: { select: { id: true, name: true } },
+            refAgent: { select: { id: true, name: true } },
+            staffReferralLink: {
+              select: {
+                id: true,
+                user: { select: { id: true, name: true } },
+              },
+            },
+            trainerReferralLink: {
+              select: {
+                id: true,
+                user: { select: { id: true, name: true } },
+              },
+            },
+            nutritionReferralLink: {
+              select: {
+                id: true,
+                user: { select: { id: true, name: true } },
+              },
+            },
+          },
+          orderBy: { startDate: "desc" },
+        },
           wallet: true,
           rewardPoints: true,
+        marketingConversionsAsCustomer: {
+          where: {
+            activeKey: {
+              not: null,
+            },
+          },
+          orderBy: {
+            assignedAt: "desc",
+          },
+          take: 1,
+          include: {
+            assignedStaff: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
+          },
+        },
+
         },
       });
       return NextResponse.json(approved ? mapCustomer(approved, new Map(), new Map()) : null);
@@ -575,9 +1102,56 @@ export async function PATCH(req: Request) {
     const user = await db.user.findUnique({
       where: { id },
       include: {
-        memberships: { include: { membership: true }, orderBy: { startDate: "desc" } },
+        memberships: {
+          include: {
+            membership: true,
+            salesAgent: { select: { id: true, name: true } },
+            partner: { select: { id: true, name: true } },
+            refAgent: { select: { id: true, name: true } },
+            staffReferralLink: {
+              select: {
+                id: true,
+                user: { select: { id: true, name: true } },
+              },
+            },
+            trainerReferralLink: {
+              select: {
+                id: true,
+                user: { select: { id: true, name: true } },
+              },
+            },
+            nutritionReferralLink: {
+              select: {
+                id: true,
+                user: { select: { id: true, name: true } },
+              },
+            },
+          },
+          orderBy: { startDate: "desc" },
+        },
         wallet: true,
         rewardPoints: true,
+        marketingConversionsAsCustomer: {
+          where: {
+            activeKey: {
+              not: null,
+            },
+          },
+          orderBy: {
+            assignedAt: "desc",
+          },
+          take: 1,
+          include: {
+            assignedStaff: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
+          },
+        },
+
       },
     });
 
@@ -599,9 +1173,77 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: "معرّف العميل مطلوب" }, { status: 400 });
     }
 
-    const u = await db.user.findUnique({ where: { id }, select: { name: true, email: true } });
+    const u = await db.user.findUnique({
+      where: { id },
+      select: {
+        name: true,
+        email: true,
+        _count: {
+          select: {
+            memberships: true,
+            paymentTransactions: true,
+            orders: true,
+            agentCommissions: true,
+            staffCommissions: true,
+            trainerCommissions: true,
+            nutritionCommissions: true,
+          },
+        },
+        partnerProfile: { select: { id: true } },
+        salesAgent: { select: { id: true } },
+        contractsManager: { select: { id: true } },
+      },
+    });
+
+    if (!u) {
+      return NextResponse.json({ error: "العميل غير موجود" }, { status: 404 });
+    }
+
+    const hasHistory =
+      u._count.memberships > 0 ||
+      u._count.paymentTransactions > 0 ||
+      u._count.orders > 0 ||
+      u._count.agentCommissions > 0 ||
+      u._count.staffCommissions > 0 ||
+      u._count.trainerCommissions > 0 ||
+      u._count.nutritionCommissions > 0 ||
+      Boolean(u.partnerProfile || u.salesAgent || u.contractsManager);
+
+    if (hasHistory) {
+      await db.user.update({
+        where: { id },
+        data: {
+          isActive: false,
+          adminAccess: false,
+        },
+      });
+
+      void logAudit({
+        action: "deactivate",
+        targetType: "customer",
+        targetId: id,
+        details: {
+          name: u.name,
+          email: u.email,
+          reason: "financial_history_protection",
+        },
+      });
+
+      return NextResponse.json({
+        success: true,
+        deactivated: true,
+      });
+    }
+
     await db.user.delete({ where: { id } });
-    void logAudit({ action: "delete", targetType: "customer", targetId: id, details: { name: u?.name, email: u?.email } });
+
+    void logAudit({
+      action: "delete",
+      targetType: "customer",
+      targetId: id,
+      details: { name: u.name, email: u.email },
+    });
+
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("[ADMIN_CUSTOMERS_DELETE]", error);

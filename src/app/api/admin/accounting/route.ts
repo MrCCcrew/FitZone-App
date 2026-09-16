@@ -19,17 +19,24 @@ function round2(value: number) {
 }
 
 async function getPointValue() {
-  const record = await db.siteContent.findUnique({ where: { section: "reward_settings" } });
+  const record = await db.siteContent.findUnique({
+    where: { section: "reward_settings" },
+  });
   if (!record) return 0.1;
   try {
     const parsed = JSON.parse(record.content) as { pointValueEGP?: number };
-    return typeof parsed.pointValueEGP === "number" ? parsed.pointValueEGP : 0.1;
+    return typeof parsed.pointValueEGP === "number"
+      ? parsed.pointValueEGP
+      : 0.1;
   } catch {
     return 0.1;
   }
 }
 
-function normalizeUnit(value: unknown, fallback: BusinessUnit = "store"): BusinessUnit {
+function normalizeUnit(
+  value: unknown,
+  fallback: BusinessUnit = "store",
+): BusinessUnit {
   return value === "club" ? "club" : fallback;
 }
 
@@ -47,14 +54,27 @@ function matchesFeeRule(
     paymentMethod?: string | null;
   },
 ) {
-  if (!(rule.businessUnit === "both" || rule.businessUnit === entry.businessUnit)) return false;
-  if (!(rule.appliesToPurpose === "all" || rule.appliesToPurpose === entry.purpose)) return false;
+  if (!(
+    rule.businessUnit === "both" || rule.businessUnit === entry.businessUnit
+  ))
+    return false;
+  if (!(
+    rule.appliesToPurpose === "all" || rule.appliesToPurpose === entry.purpose
+  ))
+    return false;
   if (rule.provider && rule.provider !== (entry.provider ?? null)) return false;
-  if (rule.paymentMethod && rule.paymentMethod !== (entry.paymentMethod ?? null)) return false;
+  if (
+    rule.paymentMethod &&
+    rule.paymentMethod !== (entry.paymentMethod ?? null)
+  )
+    return false;
   return true;
 }
 
-function calcRuleAmount(rule: { rateType: string; rateValue: number }, baseAmount: number) {
+function calcRuleAmount(
+  rule: { rateType: string; rateValue: number },
+  baseAmount: number,
+) {
   if (rule.rateType === "fixed") return round2(rule.rateValue);
   return round2((baseAmount * rule.rateValue) / 100);
 }
@@ -72,7 +92,7 @@ export async function GET(request: Request) {
     expenses,
     orders,
     cancelledOrders,
-    receipts,
+    purchaseInvoices,
     orderMovements,
     memberships,
     bookings,
@@ -82,6 +102,7 @@ export async function GET(request: Request) {
     pointValueEGP,
     partnerCommissions,
     agentCommissions,
+    staffCommissions,
     salesAgentCommissions,
     managerCommissions,
     managerPartnerCommissions,
@@ -109,7 +130,7 @@ export async function GET(request: Request) {
       where: {
         businessUnit: "store",
         confirmedAt: { not: null }, // Must have completion event timestamp
-        inventoryDeducted: true,    // Must have converted stock
+        inventoryDeducted: true, // Must have converted stock
         status: { in: ["confirmed", "preparing", "delivered"] },
         ...createDateRangeFilter("confirmedAt", from, to), // EVENT-BASED recognition
       },
@@ -142,8 +163,8 @@ export async function GET(request: Request) {
       where: {
         businessUnit: "store",
         status: "cancelled",
-        cancelledAt: { not: null },   // Must have cancellation event timestamp
-        inventoryDeducted: true,      // Must have been a completed sale (excludes pre-payment cancellations)
+        cancelledAt: { not: null }, // Must have cancellation event timestamp
+        inventoryDeducted: true, // Must have been a completed sale (excludes pre-payment cancellations)
         ...createDateRangeFilter("cancelledAt", from, to), // EVENT-BASED recognition
       },
       include: {
@@ -152,19 +173,35 @@ export async function GET(request: Request) {
       },
       orderBy: { cancelledAt: "desc" },
     }),
-    db.inventoryReceipt.findMany({
+    db.purchaseInvoice.findMany({
       where: {
-        status: "posted", // Only financially valid posted receipts
-        ...createDateRangeFilter("receivedAt", from, to),
+        status: "posted",
+        ...createDateRangeFilter("invoiceDate", from, to),
       },
       include: {
-        items: {
+        supplier: {
+          select: {
+            name: true,
+          },
+        },
+        receipts: {
+          where: {
+            status: "posted",
+          },
           include: {
-            product: { select: { name: true } },
+            items: {
+              include: {
+                product: {
+                  select: {
+                    name: true,
+                  },
+                },
+              },
+            },
           },
         },
       },
-      orderBy: { receivedAt: "desc" },
+      orderBy: [{ invoiceDate: "desc" }, { createdAt: "desc" }],
     }),
     // Inventory movements will be fetched AFTER orders to ensure COGS integrity
     // (see COGS calculation below - movements must be reconciled to actual store orders)
@@ -176,7 +213,14 @@ export async function GET(request: Request) {
       },
       include: {
         user: { select: { name: true } },
-        membership: { select: { name: true, walletBonus: true, price: true, priceAfter: true } },
+        membership: {
+          select: {
+            name: true,
+            walletBonus: true,
+            price: true,
+            priceAfter: true,
+          },
+        },
       },
       orderBy: { startDate: "desc" },
     }),
@@ -232,12 +276,44 @@ export async function GET(request: Request) {
       },
       select: { amount: true, status: true },
     }),
+    db.staffCommission.findMany({
+      where: createDateRangeFilter("createdAt", from, to),
+      select: {
+        id: true,
+        staffUserId: true,
+        amount: true,
+        status: true,
+        settledAt: true,
+        createdAt: true,
+        staffUser: {
+          select: { id: true, name: true, email: true },
+        },
+        userMembership: {
+          select: {
+            user: { select: { name: true, email: true } },
+            membership: { select: { name: true } },
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 300,
+    }),
     dbx.salesAgentCommission.findMany({
       where: createDateRangeFilter("createdAt", from, to),
       include: {
-        agent: { select: { id: true, name: true, managerId: true, manager: { select: { id: true, name: true } } } },
+        agent: {
+          select: {
+            id: true,
+            name: true,
+            managerId: true,
+            manager: { select: { id: true, name: true } },
+          },
+        },
         userMembership: {
-          include: { user: { select: { name: true, email: true } }, membership: { select: { name: true } } },
+          include: {
+            user: { select: { name: true, email: true } },
+            membership: { select: { name: true } },
+          },
         },
       },
       orderBy: { createdAt: "desc" },
@@ -251,7 +327,10 @@ export async function GET(request: Request) {
           include: {
             agent: { select: { id: true, name: true } },
             userMembership: {
-              include: { user: { select: { name: true, email: true } }, membership: { select: { name: true } } },
+              include: {
+                user: { select: { name: true, email: true } },
+                membership: { select: { name: true } },
+              },
             },
           },
         },
@@ -267,7 +346,10 @@ export async function GET(request: Request) {
           include: {
             partner: { select: { id: true, name: true } },
             userMembership: {
-              include: { user: { select: { name: true, email: true } }, membership: { select: { name: true } } },
+              include: {
+                user: { select: { name: true, email: true } },
+                membership: { select: { name: true } },
+              },
             },
           },
         },
@@ -280,14 +362,18 @@ export async function GET(request: Request) {
         user: { select: { id: true, name: true, email: true, phone: true } },
         agents: {
           include: {
-            user: { select: { id: true, name: true, email: true, phone: true } },
+            user: {
+              select: { id: true, name: true, email: true, phone: true },
+            },
             commissions: { select: { amount: true, status: true } },
           },
           orderBy: { createdAt: "desc" },
         },
         managedPartners: {
           include: {
-            user: { select: { id: true, name: true, email: true, phone: true } },
+            user: {
+              select: { id: true, name: true, email: true, phone: true },
+            },
             commissions: { select: { amount: true, status: true } },
           },
           orderBy: { createdAt: "desc" },
@@ -299,13 +385,19 @@ export async function GET(request: Request) {
     }),
   ]);
 
-  const storeExpenses = expenses.filter((expense) => expense.businessUnit === "store");
-  const clubExpenses = expenses.filter((expense) => expense.businessUnit === "club");
+  const storeExpenses = expenses.filter(
+    (expense) => expense.businessUnit === "store",
+  );
+  const clubExpenses = expenses.filter(
+    (expense) => expense.businessUnit === "club",
+  );
   const activeFeeRules = feeRules.filter((rule) => rule.isActive);
 
   const storeOrderRows = orders.map((order) => {
     const payment = order.paymentTransactions[0] ?? null;
-    const vatTotal = round2(order.items.reduce((sum, item) => sum + (item.vatAmount ?? 0), 0));
+    const vatTotal = round2(
+      order.items.reduce((sum, item) => sum + (item.vatAmount ?? 0), 0),
+    );
     return {
       id: order.id,
       date: order.confirmedAt!.toISOString(), // Sale event timestamp (confirmed! because query filters confirmedAt NOT NULL)
@@ -321,12 +413,27 @@ export async function GET(request: Request) {
     };
   });
 
-  const storeGrossSales = round2(storeOrderRows.reduce((sum, order) => sum + order.total, 0));
-  const storeVatCollected = round2(storeOrderRows.reduce((sum, order) => sum + order.vatTotal, 0));
-  const storeShippingRevenue = round2(storeOrderRows.reduce((sum, order) => sum + order.shippingFee, 0));
-  const storeDiscounts = round2(orders.reduce((sum, order) => sum + order.discountTotal, 0));
-  const storePurchaseInvoicesTotal = round2(receipts.reduce((sum, receipt) => sum + receipt.totalCost, 0));
-  const storeExpensesTotal = round2(storeExpenses.reduce((sum, expense) => sum + expense.amount, 0));
+  const storeGrossSales = round2(
+    storeOrderRows.reduce((sum, order) => sum + order.total, 0),
+  );
+  const storeVatCollected = round2(
+    storeOrderRows.reduce((sum, order) => sum + order.vatTotal, 0),
+  );
+  const storeShippingRevenue = round2(
+    storeOrderRows.reduce((sum, order) => sum + order.shippingFee, 0),
+  );
+  const storeDiscounts = round2(
+    orders.reduce((sum, order) => sum + order.discountTotal, 0),
+  );
+  const storePurchaseInvoicesTotal = round2(
+    purchaseInvoices.reduce(
+      (sum, invoice) => sum + Number(invoice.totalAmount),
+      0,
+    ),
+  );
+  const storeExpensesTotal = round2(
+    storeExpenses.reduce((sum, expense) => sum + expense.amount, 0),
+  );
 
   // Returns: cancelled orders that were previously completed sales
   const storeReturnRows = cancelledOrders.map((order) => ({
@@ -337,7 +444,9 @@ export async function GET(request: Request) {
     paymentMethod: order.paymentMethod,
     total: order.total,
   }));
-  const storeReturnsTotal = round2(storeReturnRows.reduce((sum, r) => sum + r.total, 0));
+  const storeReturnsTotal = round2(
+    storeReturnRows.reduce((sum, r) => sum + r.total, 0),
+  );
 
   // Net sales = gross sales - returns
   const storeSalesRevenue = round2(storeGrossSales - storeReturnsTotal);
@@ -368,9 +477,13 @@ export async function GET(request: Request) {
         amount: calcRuleAmount(rule, order.total),
       })),
   );
-  const storeFeeTotal = round2(storeFeeEntries.reduce((sum, item) => sum + item.amount, 0));
+  const storeFeeTotal = round2(
+    storeFeeEntries.reduce((sum, item) => sum + item.amount, 0),
+  );
   const storeGrossProfit = round2(storeSalesRevenue - storeCOGS);
-  const storeNetProfit = round2(storeGrossProfit - storeExpensesTotal - storeFeeTotal);
+  const storeNetProfit = round2(
+    storeGrossProfit - storeExpensesTotal - storeFeeTotal,
+  );
 
   const membershipRows = memberships.map((membership) => ({
     id: membership.id,
@@ -393,22 +506,39 @@ export async function GET(request: Request) {
     status: booking.status,
   }));
 
-  const membershipRevenue = round2(membershipRows.reduce((sum, row) => sum + row.paymentAmount, 0));
-  const bookingRevenue = round2(bookingRows.reduce((sum, row) => sum + row.paidAmount, 0));
+  const membershipRevenue = round2(
+    membershipRows.reduce((sum, row) => sum + row.paymentAmount, 0),
+  );
+  const bookingRevenue = round2(
+    bookingRows.reduce((sum, row) => sum + row.paidAmount, 0),
+  );
   const clubRevenue = round2(membershipRevenue + bookingRevenue);
-  const walletBonusCost = round2(membershipRows.reduce((sum, row) => sum + row.walletBonus, 0));
+  const walletBonusCost = round2(
+    membershipRows.reduce((sum, row) => sum + row.walletBonus, 0),
+  );
 
   // Wallet topups: money collected but not yet earned (deferred liability)
-  const walletTopupRows = paymentTransactions.filter((tx) => tx.purpose === "wallet_topup");
-  const walletTopupCollected = round2(walletTopupRows.reduce((sum, tx) => sum + tx.amount, 0));
-  const pointsLiability = round2(rewardPoints.reduce((sum, reward) => sum + reward.points * pointValueEGP, 0));
+  const walletTopupRows = paymentTransactions.filter(
+    (tx) => tx.purpose === "wallet_topup",
+  );
+  const walletTopupCollected = round2(
+    walletTopupRows.reduce((sum, tx) => sum + tx.amount, 0),
+  );
+  const pointsLiability = round2(
+    rewardPoints.reduce(
+      (sum, reward) => sum + reward.points * pointValueEGP,
+      0,
+    ),
+  );
   const redeemedPointsCost = round2(
     rewardHistory.reduce((sum, row) => {
       if (row.points >= 0) return sum;
       return sum + Math.abs(row.points) * pointValueEGP;
     }, 0),
   );
-  const clubExpensesTotal = round2(clubExpenses.reduce((sum, expense) => sum + expense.amount, 0));
+  const clubExpensesTotal = round2(
+    clubExpenses.reduce((sum, expense) => sum + expense.amount, 0),
+  );
 
   const clubFeeSourceEntries = [
     ...membershipRows.map((row) => ({
@@ -453,36 +583,96 @@ export async function GET(request: Request) {
         amount: calcRuleAmount(rule, entry.amount),
       })),
   );
-  const clubFeeTotal = round2(clubFeeEntries.reduce((sum, item) => sum + item.amount, 0));
+  const clubFeeTotal = round2(
+    clubFeeEntries.reduce((sum, item) => sum + item.amount, 0),
+  );
 
   // Partner commissions — earned in this period (accrual basis)
-  const partnerCommissionsPending = round2(partnerCommissions.filter(c => c.status === "pending").reduce((s, c) => s + c.amount, 0));
-  const partnerCommissionsWithdrawn = round2(partnerCommissions.filter(c => c.status === "withdrawn").reduce((s, c) => s + c.amount, 0));
-  const partnerCommissionsTotal = round2(partnerCommissionsPending + partnerCommissionsWithdrawn);
+  const partnerCommissionsPending = round2(
+    partnerCommissions
+      .filter((c) => c.status === "pending")
+      .reduce((s, c) => s + c.amount, 0),
+  );
+  const partnerCommissionsWithdrawn = round2(
+    partnerCommissions
+      .filter((c) => c.status === "withdrawn")
+      .reduce((s, c) => s + c.amount, 0),
+  );
+  const partnerCommissionsTotal = round2(
+    partnerCommissionsPending + partnerCommissionsWithdrawn,
+  );
 
   // Agent commissions (staff / trainer) — earned in this period
-  const agentCommissionsPending = round2(agentCommissions.filter(c => c.status === "earned").reduce((s, c) => s + c.amount, 0));
-  const agentCommissionsSettled = round2(agentCommissions.filter(c => c.status === "settled").reduce((s, c) => s + c.amount, 0));
-  const agentCommissionsTotal = round2(agentCommissionsPending + agentCommissionsSettled);
+  const agentCommissionsPending = round2(
+    agentCommissions
+      .filter((c) => c.status === "earned")
+      .reduce((s, c) => s + c.amount, 0),
+  );
+  const agentCommissionsSettled = round2(
+    agentCommissions
+      .filter((c) => c.status === "settled")
+      .reduce((s, c) => s + c.amount, 0),
+  );
+  const agentCommissionsTotal = round2(
+    agentCommissionsPending + agentCommissionsSettled,
+  );
+
+  const staffCommissionsPending = round2(
+    staffCommissions
+      .filter((c) => c.status === "earned")
+      .reduce((s, c) => s + c.amount, 0),
+  );
+
+  const staffCommissionsSettled = round2(
+    staffCommissions
+      .filter((c) => c.status === "settled")
+      .reduce((s, c) => s + c.amount, 0),
+  );
+
+  const staffCommissionsTotal = round2(
+    staffCommissionsPending + staffCommissionsSettled,
+  );
+
+  const employeeCommissionsPending = round2(
+    agentCommissionsPending + staffCommissionsPending,
+  );
+
+  const employeeCommissionsSettled = round2(
+    agentCommissionsSettled + staffCommissionsSettled,
+  );
+
+  const employeeCommissionsTotal = round2(
+    employeeCommissionsPending + employeeCommissionsSettled,
+  );
 
   // Discounts granted on club memberships (memo only — already reflected in paymentAmount)
-  const clubDiscountsGranted = round2(memberships.reduce((sum, m) => {
-    const originalPrice = m.membership.priceAfter && m.membership.priceAfter > 0
-      ? m.membership.priceAfter
-      : m.membership.price;
-    const discount = originalPrice - m.paymentAmount;
-    return sum + (discount > 0 ? discount : 0);
-  }, 0));
+  const clubDiscountsGranted = round2(
+    memberships.reduce((sum, m) => {
+      const originalPrice =
+        m.membership.priceAfter && m.membership.priceAfter > 0
+          ? m.membership.priceAfter
+          : m.membership.price;
+      const discount = originalPrice - m.paymentAmount;
+      return sum + (discount > 0 ? discount : 0);
+    }, 0),
+  );
 
-  const clubGrossProfit = round2(clubRevenue - walletBonusCost - redeemedPointsCost);
-  const clubNetProfit = round2(clubGrossProfit - clubExpensesTotal - clubFeeTotal - partnerCommissionsTotal - agentCommissionsTotal);
+  const clubGrossProfit = round2(
+    clubRevenue - walletBonusCost - redeemedPointsCost,
+  );
+  const clubNetProfit = round2(
+    clubGrossProfit -
+      clubExpensesTotal -
+      clubFeeTotal -
+      partnerCommissionsTotal -
+      employeeCommissionsTotal,
+  );
 
-  const salesAgentCommissionRows = (salesAgentCommissions as any[]).map((c) => ({
+  const staffCommissionRows = (staffCommissions as any[]).map((c) => ({
     id: c.id,
-    agentId: c.agentId,
-    agentName: c.agent?.name ?? "",
-    managerId: c.agent?.managerId ?? null,
-    managerName: c.agent?.manager?.name ?? null,
+    staffUserId: c.staffUserId,
+    staffName: c.staffUser?.name ?? "",
+    staffEmail: c.staffUser?.email ?? "",
     customerName: c.userMembership?.user?.name ?? "",
     customerEmail: c.userMembership?.user?.email ?? "",
     membershipName: c.userMembership?.membership?.name ?? "",
@@ -490,7 +680,25 @@ export async function GET(request: Request) {
     status: c.status,
     settledAt: c.settledAt?.toISOString() ?? null,
     createdAt: c.createdAt.toISOString(),
+    source: "staffReferral",
   }));
+
+  const salesAgentCommissionRows = (salesAgentCommissions as any[]).map(
+    (c) => ({
+      id: c.id,
+      agentId: c.agentId,
+      agentName: c.agent?.name ?? "",
+      managerId: c.agent?.managerId ?? null,
+      managerName: c.agent?.manager?.name ?? null,
+      customerName: c.userMembership?.user?.name ?? "",
+      customerEmail: c.userMembership?.user?.email ?? "",
+      membershipName: c.userMembership?.membership?.name ?? "",
+      amount: c.amount,
+      status: c.status,
+      settledAt: c.settledAt?.toISOString() ?? null,
+      createdAt: c.createdAt.toISOString(),
+    }),
+  );
   const managerCommissionRows = (managerCommissions as any[]).map((c) => ({
     id: c.id,
     managerId: c.managerId,
@@ -505,20 +713,23 @@ export async function GET(request: Request) {
     createdAt: c.createdAt.toISOString(),
     source: "agent",
   }));
-  const managerPartnerCommissionRows = (managerPartnerCommissions as any[]).map((c) => ({
-    id: c.id,
-    managerId: c.managerId,
-    managerName: c.manager?.name ?? "",
-    partnerName: c.partnerCommission?.partner?.name ?? null,
-    customerName: c.partnerCommission?.userMembership?.user?.name ?? null,
-    customerEmail: c.partnerCommission?.userMembership?.user?.email ?? null,
-    membershipName: c.partnerCommission?.userMembership?.membership?.name ?? null,
-    amount: c.amount,
-    status: c.status,
-    settledAt: c.settledAt?.toISOString() ?? null,
-    createdAt: c.createdAt.toISOString(),
-    source: "partner",
-  }));
+  const managerPartnerCommissionRows = (managerPartnerCommissions as any[]).map(
+    (c) => ({
+      id: c.id,
+      managerId: c.managerId,
+      managerName: c.manager?.name ?? "",
+      partnerName: c.partnerCommission?.partner?.name ?? null,
+      customerName: c.partnerCommission?.userMembership?.user?.name ?? null,
+      customerEmail: c.partnerCommission?.userMembership?.user?.email ?? null,
+      membershipName:
+        c.partnerCommission?.userMembership?.membership?.name ?? null,
+      amount: c.amount,
+      status: c.status,
+      settledAt: c.settledAt?.toISOString() ?? null,
+      createdAt: c.createdAt.toISOString(),
+      source: "partner",
+    }),
+  );
   const managerRows = (contractsManagers as any[]).map((m) => ({
     id: m.id,
     name: m.name,
@@ -529,22 +740,56 @@ export async function GET(request: Request) {
       name: a.name,
       email: a.user?.email ?? "",
       phone: a.user?.phone ?? null,
-      totalEarned: round2((a.commissions ?? []).reduce((s: number, c: any) => s + c.amount, 0)),
-      pendingCommission: round2((a.commissions ?? []).filter((c: any) => c.status === "earned").reduce((s: number, c: any) => s + c.amount, 0)),
-      settledCommission: round2((a.commissions ?? []).filter((c: any) => c.status === "settled").reduce((s: number, c: any) => s + c.amount, 0)),
+      totalEarned: round2(
+        (a.commissions ?? []).reduce((s: number, c: any) => s + c.amount, 0),
+      ),
+      pendingCommission: round2(
+        (a.commissions ?? [])
+          .filter((c: any) => c.status === "earned")
+          .reduce((s: number, c: any) => s + c.amount, 0),
+      ),
+      settledCommission: round2(
+        (a.commissions ?? [])
+          .filter((c: any) => c.status === "settled")
+          .reduce((s: number, c: any) => s + c.amount, 0),
+      ),
     })),
     partners: (m.managedPartners ?? []).map((p: any) => ({
       id: p.id,
       name: p.name,
       email: p.user?.email ?? "",
       phone: p.user?.phone ?? p.contactPhone ?? null,
-      totalCommissionPending: round2((p.commissions ?? []).filter((c: any) => c.status === "pending").reduce((s: number, c: any) => s + c.amount, 0)),
-      totalCommissionPaid: round2((p.commissions ?? []).filter((c: any) => c.status === "withdrawn").reduce((s: number, c: any) => s + c.amount, 0)),
+      totalCommissionPending: round2(
+        (p.commissions ?? [])
+          .filter((c: any) => c.status === "pending")
+          .reduce((s: number, c: any) => s + c.amount, 0),
+      ),
+      totalCommissionPaid: round2(
+        (p.commissions ?? [])
+          .filter((c: any) => c.status === "withdrawn")
+          .reduce((s: number, c: any) => s + c.amount, 0),
+      ),
     })),
-    pendingCommission: round2((m.commissions ?? []).filter((c: any) => c.status === "earned").reduce((s: number, c: any) => s + c.amount, 0)),
-    settledCommission: round2((m.commissions ?? []).filter((c: any) => c.status === "settled").reduce((s: number, c: any) => s + c.amount, 0)),
-    pendingPartnerCommission: round2((m.partnerCommissions ?? []).filter((c: any) => c.status === "earned").reduce((s: number, c: any) => s + c.amount, 0)),
-    settledPartnerCommission: round2((m.partnerCommissions ?? []).filter((c: any) => c.status === "settled").reduce((s: number, c: any) => s + c.amount, 0)),
+    pendingCommission: round2(
+      (m.commissions ?? [])
+        .filter((c: any) => c.status === "earned")
+        .reduce((s: number, c: any) => s + c.amount, 0),
+    ),
+    settledCommission: round2(
+      (m.commissions ?? [])
+        .filter((c: any) => c.status === "settled")
+        .reduce((s: number, c: any) => s + c.amount, 0),
+    ),
+    pendingPartnerCommission: round2(
+      (m.partnerCommissions ?? [])
+        .filter((c: any) => c.status === "earned")
+        .reduce((s: number, c: any) => s + c.amount, 0),
+    ),
+    settledPartnerCommission: round2(
+      (m.partnerCommissions ?? [])
+        .filter((c: any) => c.status === "settled")
+        .reduce((s: number, c: any) => s + c.amount, 0),
+    ),
   }));
 
   const payload = {
@@ -596,23 +841,26 @@ export async function GET(request: Request) {
         netProfit: storeNetProfit,
         orderCount: storeOrderRows.length,
         returnCount: storeReturnRows.length,
-        purchaseInvoiceCount: receipts.length,
-        historicalNullConfirmedAtCount: accountingMetrics.historicalNullConfirmedAtCount, // Orders excluded from accounting (missing event timestamp)
+        purchaseInvoiceCount: purchaseInvoices.length,
+        historicalNullConfirmedAtCount:
+          accountingMetrics.historicalNullConfirmedAtCount, // Orders excluded from accounting (missing event timestamp)
       },
       sales: storeOrderRows,
       returns: storeReturnRows,
-      purchases: receipts.map((receipt) => ({
-        id: receipt.id,
-        date: receipt.receivedAt.toISOString(),
-        referenceNumber: receipt.referenceNumber,
-        supplierName: receipt.supplierName,
-        totalCost: receipt.totalCost,
-        items: receipt.items.map((item) => ({
-          productName: item.product.name,
-          quantity: item.quantity,
-          unitCost: item.unitCost,
-          totalCost: item.totalCost,
-        })),
+      purchases: purchaseInvoices.map((invoice) => ({
+        id: invoice.id,
+        date: invoice.invoiceDate.toISOString(),
+        referenceNumber: invoice.invoiceNumber,
+        supplierName: invoice.supplier.name,
+        totalCost: Number(invoice.totalAmount),
+        items: invoice.receipts.flatMap((receipt) =>
+          receipt.items.map((item) => ({
+            productName: item.product.name,
+            quantity: item.quantity,
+            unitCost: item.unitCost,
+            totalCost: item.totalCost,
+          })),
+        ),
       })),
       expenses: storeExpenses.map((expense) => ({
         id: expense.id,
@@ -641,6 +889,12 @@ export async function GET(request: Request) {
         agentCommissionsPending,
         agentCommissionsSettled,
         agentCommissionsTotal,
+        staffCommissionsPending,
+        staffCommissionsSettled,
+        staffCommissionsTotal,
+        employeeCommissionsPending,
+        employeeCommissionsSettled,
+        employeeCommissionsTotal,
         clubDiscountsGranted,
         grossProfit: clubGrossProfit,
         netProfit: clubNetProfit,
@@ -664,15 +918,40 @@ export async function GET(request: Request) {
         redeemedPointsCost,
       },
       feeBreakdown: clubFeeEntries,
+      staffCommissions: staffCommissionRows,
     },
     contracts: {
       summary: {
-        salesAgentPending: round2(salesAgentCommissionRows.filter((c) => c.status === "earned").reduce((s, c) => s + c.amount, 0)),
-        salesAgentSettled: round2(salesAgentCommissionRows.filter((c) => c.status === "settled").reduce((s, c) => s + c.amount, 0)),
-        managerAgentPending: round2(managerCommissionRows.filter((c) => c.status === "earned").reduce((s, c) => s + c.amount, 0)),
-        managerAgentSettled: round2(managerCommissionRows.filter((c) => c.status === "settled").reduce((s, c) => s + c.amount, 0)),
-        managerPartnerPending: round2(managerPartnerCommissionRows.filter((c) => c.status === "earned").reduce((s, c) => s + c.amount, 0)),
-        managerPartnerSettled: round2(managerPartnerCommissionRows.filter((c) => c.status === "settled").reduce((s, c) => s + c.amount, 0)),
+        salesAgentPending: round2(
+          salesAgentCommissionRows
+            .filter((c) => c.status === "earned")
+            .reduce((s, c) => s + c.amount, 0),
+        ),
+        salesAgentSettled: round2(
+          salesAgentCommissionRows
+            .filter((c) => c.status === "settled")
+            .reduce((s, c) => s + c.amount, 0),
+        ),
+        managerAgentPending: round2(
+          managerCommissionRows
+            .filter((c) => c.status === "earned")
+            .reduce((s, c) => s + c.amount, 0),
+        ),
+        managerAgentSettled: round2(
+          managerCommissionRows
+            .filter((c) => c.status === "settled")
+            .reduce((s, c) => s + c.amount, 0),
+        ),
+        managerPartnerPending: round2(
+          managerPartnerCommissionRows
+            .filter((c) => c.status === "earned")
+            .reduce((s, c) => s + c.amount, 0),
+        ),
+        managerPartnerSettled: round2(
+          managerPartnerCommissionRows
+            .filter((c) => c.status === "settled")
+            .reduce((s, c) => s + c.amount, 0),
+        ),
       },
       salesAgentCommissions: salesAgentCommissionRows,
       managerCommissions: managerCommissionRows,
@@ -703,8 +982,12 @@ export async function POST(request: Request) {
         description: payload.description ? String(payload.description) : null,
         amount: Number(payload.amount ?? 0),
         vendor: payload.vendor ? String(payload.vendor) : null,
-        referenceNumber: payload.referenceNumber ? String(payload.referenceNumber) : null,
-        expenseDate: payload.expenseDate ? new Date(String(payload.expenseDate)) : new Date(),
+        referenceNumber: payload.referenceNumber
+          ? String(payload.referenceNumber)
+          : null,
+        expenseDate: payload.expenseDate
+          ? new Date(String(payload.expenseDate))
+          : new Date(),
       },
     });
     return NextResponse.json({ success: true, id: expense.id });
@@ -714,13 +997,21 @@ export async function POST(request: Request) {
     const payload = body.payload ?? {};
     const rule = await db.accountingFeeRule.create({
       data: {
-        businessUnit: payload.businessUnit === "club" || payload.businessUnit === "both" ? String(payload.businessUnit) : "store",
+        businessUnit:
+          payload.businessUnit === "club" || payload.businessUnit === "both"
+            ? String(payload.businessUnit)
+            : "store",
         category:
-          payload.category === "external_service" || payload.category === "other" ? String(payload.category) : "platform",
+          payload.category === "external_service" ||
+          payload.category === "other"
+            ? String(payload.category)
+            : "platform",
         label: String(payload.label ?? "").trim(),
         appliesToPurpose: String(payload.appliesToPurpose ?? "all"),
         provider: payload.provider ? String(payload.provider) : null,
-        paymentMethod: payload.paymentMethod ? String(payload.paymentMethod) : null,
+        paymentMethod: payload.paymentMethod
+          ? String(payload.paymentMethod)
+          : null,
         rateType: payload.rateType === "fixed" ? "fixed" : "percentage",
         rateValue: Number(payload.rateValue ?? 0),
         notes: payload.notes ? String(payload.notes) : null,
@@ -730,7 +1021,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true, id: rule.id });
   }
 
-  return NextResponse.json({ error: "نوع العملية غير مدعوم." }, { status: 400 });
+  return NextResponse.json(
+    { error: "نوع العملية غير مدعوم." },
+    { status: 400 },
+  );
 }
 
 export async function PATCH(request: Request) {
@@ -752,15 +1046,34 @@ export async function PATCH(request: Request) {
     await db.accountingExpense.update({
       where: { id: body.id },
       data: {
-        businessUnit: payload.businessUnit ? normalizeUnit(payload.businessUnit) : undefined,
+        businessUnit: payload.businessUnit
+          ? normalizeUnit(payload.businessUnit)
+          : undefined,
         category: payload.category ? String(payload.category) : undefined,
         label: payload.label ? String(payload.label).trim() : undefined,
-        description: payload.description === undefined ? undefined : payload.description ? String(payload.description) : null,
-        amount: payload.amount === undefined ? undefined : Number(payload.amount),
-        vendor: payload.vendor === undefined ? undefined : payload.vendor ? String(payload.vendor) : null,
+        description:
+          payload.description === undefined
+            ? undefined
+            : payload.description
+              ? String(payload.description)
+              : null,
+        amount:
+          payload.amount === undefined ? undefined : Number(payload.amount),
+        vendor:
+          payload.vendor === undefined
+            ? undefined
+            : payload.vendor
+              ? String(payload.vendor)
+              : null,
         referenceNumber:
-          payload.referenceNumber === undefined ? undefined : payload.referenceNumber ? String(payload.referenceNumber) : null,
-        expenseDate: payload.expenseDate ? new Date(String(payload.expenseDate)) : undefined,
+          payload.referenceNumber === undefined
+            ? undefined
+            : payload.referenceNumber
+              ? String(payload.referenceNumber)
+              : null,
+        expenseDate: payload.expenseDate
+          ? new Date(String(payload.expenseDate))
+          : undefined,
       },
     });
     return NextResponse.json({ success: true });
@@ -780,37 +1093,136 @@ export async function PATCH(request: Request) {
         category:
           payload.category === undefined
             ? undefined
-            : payload.category === "external_service" || payload.category === "other"
+            : payload.category === "external_service" ||
+                payload.category === "other"
               ? String(payload.category)
               : "platform",
         label: payload.label ? String(payload.label).trim() : undefined,
-        appliesToPurpose: payload.appliesToPurpose ? String(payload.appliesToPurpose) : undefined,
-        provider: payload.provider === undefined ? undefined : payload.provider ? String(payload.provider) : null,
-        paymentMethod: payload.paymentMethod === undefined ? undefined : payload.paymentMethod ? String(payload.paymentMethod) : null,
-        rateType: payload.rateType === undefined ? undefined : payload.rateType === "fixed" ? "fixed" : "percentage",
-        rateValue: payload.rateValue === undefined ? undefined : Number(payload.rateValue),
-        notes: payload.notes === undefined ? undefined : payload.notes ? String(payload.notes) : null,
-        isActive: payload.isActive === undefined ? undefined : Boolean(payload.isActive),
+        appliesToPurpose: payload.appliesToPurpose
+          ? String(payload.appliesToPurpose)
+          : undefined,
+        provider:
+          payload.provider === undefined
+            ? undefined
+            : payload.provider
+              ? String(payload.provider)
+              : null,
+        paymentMethod:
+          payload.paymentMethod === undefined
+            ? undefined
+            : payload.paymentMethod
+              ? String(payload.paymentMethod)
+              : null,
+        rateType:
+          payload.rateType === undefined
+            ? undefined
+            : payload.rateType === "fixed"
+              ? "fixed"
+              : "percentage",
+        rateValue:
+          payload.rateValue === undefined
+            ? undefined
+            : Number(payload.rateValue),
+        notes:
+          payload.notes === undefined
+            ? undefined
+            : payload.notes
+              ? String(payload.notes)
+              : null,
+        isActive:
+          payload.isActive === undefined
+            ? undefined
+            : Boolean(payload.isActive),
       },
     });
     return NextResponse.json({ success: true });
   }
 
-  return NextResponse.json({ error: "نوع العملية غير مدعوم." }, { status: 400 });
+  return NextResponse.json(
+    { error: "نوع العملية غير مدعوم." },
+    { status: 400 },
+  );
 }
 
 export async function DELETE(request: Request) {
   const guard = await requireAdminFeature("accounting");
   if ("error" in guard) return guard.error;
   const body = (await request.json()) as { entityType?: string; id?: string };
-  if (!body.id) return NextResponse.json({ error: "المعرف مطلوب." }, { status: 400 });
+  if (!body.id)
+    return NextResponse.json({ error: "المعرف مطلوب." }, { status: 400 });
   if (body.entityType === "expense") {
     await db.accountingExpense.delete({ where: { id: body.id } });
     return NextResponse.json({ success: true });
   }
   if (body.entityType === "userMembership") {
+    const [
+      partnerCommission,
+      agentCommission,
+      salesAgentCommission,
+      staffCommission,
+      trainerCommission,
+      nutritionCommission,
+      managerCommissionCount,
+      managerPartnerCommissionCount,
+    ] = await Promise.all([
+      db.partnerCommission.findUnique({
+        where: { userMembershipId: body.id },
+        select: { id: true },
+      }),
+      db.agentCommission.findUnique({
+        where: { userMembershipId: body.id },
+        select: { id: true },
+      }),
+      db.salesAgentCommission.findUnique({
+        where: { userMembershipId: body.id },
+        select: { id: true },
+      }),
+      db.staffCommission.findUnique({
+        where: { userMembershipId: body.id },
+        select: { id: true },
+      }),
+      db.trainerCommission.findUnique({
+        where: { userMembershipId: body.id },
+        select: { id: true },
+      }),
+      db.nutritionCommission.findFirst({
+        where: { userMembershipId: body.id },
+        select: { id: true },
+      }),
+      (db as any).managerCommission.count({
+        where: { userMembershipId: body.id },
+      }),
+      (db as any).managerPartnerCommission.count({
+        where: { userMembershipId: body.id },
+      }),
+    ]);
+
+    const hasCommissionHistory =
+      Boolean(
+        partnerCommission ||
+        agentCommission ||
+        salesAgentCommission ||
+        staffCommission ||
+        trainerCommission ||
+        nutritionCommission,
+      ) ||
+      managerCommissionCount > 0 ||
+      managerPartnerCommissionCount > 0;
+
+    if (hasCommissionHistory) {
+      return NextResponse.json(
+        {
+          error: "لا يمكن حذف هذا الاشتراك لأنه مرتبط بسجل عمولات مالي محفوظ.",
+        },
+        { status: 409 },
+      );
+    }
+
     await db.userMembership.delete({ where: { id: body.id } });
     return NextResponse.json({ success: true });
   }
-  return NextResponse.json({ error: "نوع العملية غير مدعوم." }, { status: 400 });
+  return NextResponse.json(
+    { error: "نوع العملية غير مدعوم." },
+    { status: 400 },
+  );
 }

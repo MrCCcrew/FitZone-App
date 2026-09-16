@@ -1,0 +1,23 @@
+"use client";
+
+import { AdminSectionShell } from "./shared";
+
+export default function EmployeesHR() {
+  return (
+    <AdminSectionShell
+      title="الموظفون والموارد البشرية"
+      subtitle="إدارة ملفات الموظفين والحضور العام وحضور المدربين وربط المدربين بالموظفين."
+    >
+      <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
+        <div className="text-sm font-bold text-white">
+          قسم الموارد البشرية جاهز للربط بالأنظمة الجديدة.
+        </div>
+
+        <div className="mt-3 text-sm leading-7 text-gray-400">
+          سيتم بناء التابات هنا تدريجيًا: الموظفون، الحضور العام، حضور المدربين
+          للحصص، الأقسام والمسميات الوظيفية، وربط المدربين بالموظفين.
+        </div>
+      </div>
+    </AdminSectionShell>
+  );
+}

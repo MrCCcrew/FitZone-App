@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 import { db } from "@/lib/db";
+import type { AnalyticsRequestContext } from "@/lib/analytics/privacy";
 
 const THIRTY_MINUTES_MS = 30 * 60 * 1000;
 const ONE_YEAR_SECONDS = 60 * 60 * 24 * 365;
@@ -26,29 +27,94 @@ function isUuid(value: unknown): value is string {
   return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
-export async function getOrCreateAnalyticsVisitor(visitorCookie: string | null | undefined, authenticatedUserId?: string | null) {
+export async function getOrCreateAnalyticsVisitor(
+  visitorCookie: string | null | undefined,
+  authenticatedUserId?: string | null,
+  context: AnalyticsRequestContext = {},
+) {
   const userId = authenticatedUserId ?? undefined;
   const anonymousId = isUuid(visitorCookie) ? visitorCookie : randomUUID();
-  const existing = await db.analyticsVisitor.findUnique({ where: { anonymousId } });
+
+  const contextData = {
+    ...(context.countryCode ? { countryCode: context.countryCode } : {}),
+    ...(context.countryName ? { countryName: context.countryName } : {}),
+    ...(context.region ? { region: context.region } : {}),
+    ...(context.city ? { city: context.city } : {}),
+    ...(context.deviceType ? { deviceType: context.deviceType } : {}),
+    ...(context.browser ? { browser: context.browser } : {}),
+    ...(context.operatingSystem
+      ? { operatingSystem: context.operatingSystem }
+      : {}),
+  };
+
+  const existing = await db.analyticsVisitor.findUnique({
+    where: { anonymousId },
+  });
+
   if (existing) {
     const visitor = await db.analyticsVisitor.update({
       where: { id: existing.id },
-      data: { lastSeenAt: new Date(), ...(userId ? { userId } : {}) },
+      data: {
+        lastSeenAt: new Date(),
+        ...(userId ? { userId } : {}),
+        ...contextData,
+      },
     });
+
     return { visitor, anonymousId, created: false };
   }
-  const visitor = await db.analyticsVisitor.create({ data: { anonymousId, ...(userId ? { userId } : {}) } });
+
+  const visitor = await db.analyticsVisitor.create({
+    data: {
+      anonymousId,
+      ...(userId ? { userId } : {}),
+      ...contextData,
+    },
+  });
+
   return { visitor, anonymousId, created: true };
 }
 
-export async function getOrCreateAnalyticsSession(sessionCookie: string | null | undefined, visitorId: string, authenticatedUserId?: string | null, now = new Date()) {
+export async function getOrCreateAnalyticsSession(
+  sessionCookie: string | null | undefined,
+  visitorId: string,
+  authenticatedUserId?: string | null,
+  now = new Date(),
+  context: AnalyticsRequestContext = {},
+) {
   const userId = authenticatedUserId ?? undefined;
-  const existing = sessionCookie ? await db.analyticsSession.findUnique({ where: { id: sessionCookie } }) : null;
-  if (existing && existing.visitorId === visitorId && now.getTime() - existing.lastActivityAt.getTime() < THIRTY_MINUTES_MS) {
-    const session = await db.analyticsSession.update({ where: { id: existing.id }, data: { lastActivityAt: now, ...(userId ? { userId } : {}) } });
+
+  const existing = sessionCookie
+    ? await db.analyticsSession.findUnique({ where: { id: sessionCookie } })
+    : null;
+
+  if (
+    existing &&
+    existing.visitorId === visitorId &&
+    now.getTime() - existing.lastActivityAt.getTime() < THIRTY_MINUTES_MS
+  ) {
+    const session = await db.analyticsSession.update({
+      where: { id: existing.id },
+      data: {
+        lastActivityAt: now,
+        ...(userId ? { userId } : {}),
+      },
+    });
+
     return { session, created: false };
   }
-  const session = await db.analyticsSession.create({ data: { visitorId, lastActivityAt: now, ...(userId ? { userId } : {}) } });
+
+  const session = await db.analyticsSession.create({
+    data: {
+      visitorId,
+      lastActivityAt: now,
+      ...(userId ? { userId } : {}),
+      ...(context.deviceType ? { deviceType: context.deviceType } : {}),
+      ...(context.countryCode ? { countryCode: context.countryCode } : {}),
+      ...(context.city ? { city: context.city } : {}),
+    },
+  });
+
   return { session, created: true };
 }
 

@@ -1,30 +1,37 @@
 /**
  * Booking Operational Validation
  *
- * A booking is operationally valid only when:
- * 1. Its status is "confirmed" or "attended"
- * 2. AND either:
- *    a) It's not linked to a membership (standalone paid booking), OR
- *    b) Its linked membership has status="active"
+ * Normal membership booking:
+ *   membership must be active.
  *
- * Bookings linked to pending_payment, cancelled, or expired memberships
- * are treated as non-operational reservations.
+ * Make-up entitlement booking:
+ *   may remain operational after the contractual membership endDate,
+ *   even when the membership itself is expired.
+ *
+ * This does NOT reactivate or extend the membership.
  */
-
 export function isBookingOperational(booking: {
   status: string;
+  isMakeup?: boolean;
   userMembership?: { status: string } | null;
 }): boolean {
-  // Must be in confirmed or attended state
-  if (booking.status !== "confirmed" && booking.status !== "attended") {
+  if (
+    booking.status !== "confirmed" &&
+    booking.status !== "attended"
+  ) {
     return false;
   }
 
-  // If linked to a membership, it must be active
-  if (booking.userMembership) {
-    return booking.userMembership.status === "active";
+  if (!booking.userMembership) {
+    return true;
   }
 
-  // Standalone booking (no membership) is operational
-  return true;
+  if (booking.userMembership.status === "active") {
+    return true;
+  }
+
+  return (
+    booking.isMakeup === true &&
+    booking.userMembership.status === "expired"
+  );
 }

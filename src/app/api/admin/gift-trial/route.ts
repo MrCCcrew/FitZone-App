@@ -120,6 +120,7 @@ export async function POST(req: Request) {
         startDate: scheduleDate,
         endDate,
         status: "active",
+        activatedAt: new Date(),
         paymentAmount: 0,
         paymentMethod: "gift",
         totalSessions: 1,

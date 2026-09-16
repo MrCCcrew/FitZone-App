@@ -1,0 +1,437 @@
+import type { Prisma } from "@prisma/client";
+import { db, asDbTransactionClient } from "@/lib/db";
+import {
+  cairoCalendarDateKey,
+  cairoDateStartInstant,
+} from "@/lib/fitzone-time";
+
+export const EMPLOYEE_ATTENDANCE_STATUSES = [
+  "present",
+  "absent",
+  "late",
+  "excused",
+  "sick_leave",
+  "vacation",
+  "official_holiday",
+  "day_off",
+] as const;
+
+export type EmployeeAttendanceStatus =
+  (typeof EMPLOYEE_ATTENDANCE_STATUSES)[number];
+
+type Tx = Prisma.TransactionClient;
+
+type ActorSnapshot = {
+  userId: string;
+  name?: string | null;
+  email?: string | null;
+  role?: string | null;
+  ipAddress?: string | null;
+  userAgent?: string | null;
+};
+
+export type SaveEmployeeAttendanceInput = {
+  employeeId: string;
+  date: string;
+  status: EmployeeAttendanceStatus;
+  scheduledStartTime?: string | null;
+  scheduledEndTime?: string | null;
+  checkInAt?: Date | string | null;
+  checkOutAt?: Date | string | null;
+  lateMinutes?: number;
+  notes?: string | null;
+  editReason?: string | null;
+};
+
+function assertDateKey(value: string) {
+  const instant = cairoDateStartInstant(value);
+
+  if (cairoCalendarDateKey(instant) !== value) {
+    throw new Error("EMPLOYEE_ATTENDANCE_INVALID_DATE");
+  }
+
+  return instant;
+}
+
+function monthKeyFromDate(date: string) {
+  assertDateKey(date);
+  return date.slice(0, 7);
+}
+
+function normalizeTime(value: string | null | undefined, field: string) {
+  if (value == null || value.trim() === "") return null;
+
+  const trimmed = value.trim();
+
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(trimmed)) {
+    throw new Error(`EMPLOYEE_ATTENDANCE_INVALID_${field}`);
+  }
+
+  return trimmed;
+}
+
+function normalizeInstant(
+  value: Date | string | null | undefined,
+  field: string,
+) {
+  if (value == null || value === "") return null;
+
+  const parsed =
+    value instanceof Date ? new Date(value.getTime()) : new Date(value);
+
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error(`EMPLOYEE_ATTENDANCE_INVALID_${field}`);
+  }
+
+  return parsed;
+}
+
+function normalizeNotes(value: string | null | undefined) {
+  if (value == null) return null;
+
+  const trimmed = value.trim();
+
+  return trimmed ? trimmed : null;
+}
+
+function validateStatus(
+  status: string,
+): asserts status is EmployeeAttendanceStatus {
+  if (
+    !EMPLOYEE_ATTENDANCE_STATUSES.includes(status as EmployeeAttendanceStatus)
+  ) {
+    throw new Error("EMPLOYEE_ATTENDANCE_INVALID_STATUS");
+  }
+}
+
+async function assertEmployeeExists(tx: Tx, employeeId: string) {
+  const employee = await tx.employeeProfile.findUnique({
+    where: { id: employeeId },
+    select: {
+      id: true,
+      employeeCode: true,
+      name: true,
+      employmentStatus: true,
+    },
+  });
+
+  if (!employee) {
+    throw new Error("EMPLOYEE_ATTENDANCE_EMPLOYEE_NOT_FOUND");
+  }
+
+  return employee;
+}
+
+async function assertPeriodOpen(tx: Tx, monthKey: string) {
+  const period = await tx.attendancePeriod.findUnique({
+    where: { monthKey },
+    select: {
+      id: true,
+      status: true,
+      lockedAt: true,
+    },
+  });
+
+  if (period?.status === "locked") {
+    throw new Error("EMPLOYEE_ATTENDANCE_PERIOD_LOCKED");
+  }
+
+  return period;
+}
+
+async function writeMandatoryAudit(
+  tx: Tx,
+  actor: ActorSnapshot,
+  input: {
+    action: string;
+    targetType: string;
+    targetId?: string | null;
+    details: Record<string, unknown>;
+  },
+) {
+  await tx.auditLog.create({
+    data: {
+      actorUserId: actor.userId,
+      actorName: actor.name ?? null,
+      actorEmail: actor.email ?? null,
+      actorRole: actor.role ?? null,
+      ipAddress: actor.ipAddress ?? null,
+      userAgent: actor.userAgent ?? null,
+      action: input.action,
+      targetType: input.targetType,
+      targetId: input.targetId ?? null,
+      details: JSON.stringify(input.details),
+    },
+  });
+}
+
+export async function saveEmployeeAttendance(
+  input: SaveEmployeeAttendanceInput,
+  actor: ActorSnapshot,
+) {
+  if (!input.employeeId?.trim()) {
+    throw new Error("EMPLOYEE_ATTENDANCE_EMPLOYEE_REQUIRED");
+  }
+
+  if (!actor.userId?.trim()) {
+    throw new Error("EMPLOYEE_ATTENDANCE_ACTOR_REQUIRED");
+  }
+
+  validateStatus(input.status);
+
+  const attendanceDate = assertDateKey(input.date);
+  const monthKey = monthKeyFromDate(input.date);
+
+  const scheduledStartTime = normalizeTime(
+    input.scheduledStartTime,
+    "SCHEDULED_START_TIME",
+  );
+
+  const scheduledEndTime = normalizeTime(
+    input.scheduledEndTime,
+    "SCHEDULED_END_TIME",
+  );
+
+  const checkInAt = normalizeInstant(input.checkInAt, "CHECK_IN");
+
+  const checkOutAt = normalizeInstant(input.checkOutAt, "CHECK_OUT");
+
+  const lateMinutes = input.lateMinutes ?? 0;
+
+  if (!Number.isInteger(lateMinutes) || lateMinutes < 0) {
+    throw new Error("EMPLOYEE_ATTENDANCE_INVALID_LATE_MINUTES");
+  }
+
+  if (checkInAt && checkOutAt && checkOutAt.getTime() < checkInAt.getTime()) {
+    throw new Error("EMPLOYEE_ATTENDANCE_CHECKOUT_BEFORE_CHECKIN");
+  }
+
+  const notes = normalizeNotes(input.notes);
+
+  return db.$transaction(async (rawTx) => {
+    const tx = asDbTransactionClient(rawTx);
+
+    const employee = await assertEmployeeExists(tx, input.employeeId);
+
+    await assertPeriodOpen(tx, monthKey);
+
+    const existing = await tx.employeeAttendance.findUnique({
+      where: {
+        employeeId_attendanceDate: {
+          employeeId: input.employeeId,
+          attendanceDate,
+        },
+      },
+    });
+
+    const editReason = input.editReason?.trim() || null;
+
+    if (existing && (!editReason || editReason.length < 3)) {
+      throw new Error("EMPLOYEE_ATTENDANCE_EDIT_REASON_REQUIRED");
+    }
+
+    const data = {
+      status: input.status,
+      scheduledStartTime,
+      scheduledEndTime,
+      checkInAt,
+      checkOutAt,
+      lateMinutes,
+      notes,
+      recordedById: actor.userId,
+    };
+
+    const attendance = existing
+      ? await tx.employeeAttendance.update({
+          where: { id: existing.id },
+          data,
+        })
+      : await tx.employeeAttendance.create({
+          data: {
+            employeeId: input.employeeId,
+            attendanceDate,
+            ...data,
+          },
+        });
+
+    await writeMandatoryAudit(tx, actor, {
+      action: existing
+        ? "employee_attendance_update"
+        : "employee_attendance_create",
+      targetType: "EmployeeAttendance",
+      targetId: attendance.id,
+      details: {
+        employeeId: employee.id,
+        employeeCode: employee.employeeCode,
+        date: input.date,
+        monthKey,
+        editReason,
+        before: existing
+          ? {
+              status: existing.status,
+              scheduledStartTime: existing.scheduledStartTime,
+              scheduledEndTime: existing.scheduledEndTime,
+              checkInAt: existing.checkInAt,
+              checkOutAt: existing.checkOutAt,
+              lateMinutes: existing.lateMinutes,
+              notes: existing.notes,
+            }
+          : null,
+        after: {
+          status: attendance.status,
+          scheduledStartTime: attendance.scheduledStartTime,
+          scheduledEndTime: attendance.scheduledEndTime,
+          checkInAt: attendance.checkInAt,
+          checkOutAt: attendance.checkOutAt,
+          lateMinutes: attendance.lateMinutes,
+          notes: attendance.notes,
+        },
+      },
+    });
+
+    return attendance;
+  });
+}
+
+export async function lockAttendancePeriod(
+  monthKey: string,
+  actor: ActorSnapshot,
+) {
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(monthKey)) {
+    throw new Error("EMPLOYEE_ATTENDANCE_INVALID_MONTH");
+  }
+
+  if (!actor.userId?.trim()) {
+    throw new Error("EMPLOYEE_ATTENDANCE_ACTOR_REQUIRED");
+  }
+
+  return db.$transaction(async (rawTx) => {
+    const tx = asDbTransactionClient(rawTx);
+
+    const current = await tx.attendancePeriod.findUnique({
+      where: { monthKey },
+    });
+
+    if (current?.status === "locked") {
+      return {
+        period: current,
+        idempotent: true,
+      };
+    }
+
+    const now = new Date();
+
+    const period = current
+      ? await tx.attendancePeriod.update({
+          where: { id: current.id },
+          data: {
+            status: "locked",
+            lockedAt: now,
+            lockedById: actor.userId,
+          },
+        })
+      : await tx.attendancePeriod.create({
+          data: {
+            monthKey,
+            status: "locked",
+            lockedAt: now,
+            lockedById: actor.userId,
+          },
+        });
+
+    await writeMandatoryAudit(tx, actor, {
+      action: "employee_attendance_period_lock",
+      targetType: "AttendancePeriod",
+      targetId: period.id,
+      details: {
+        monthKey,
+        previousStatus: current?.status ?? null,
+        status: "locked",
+      },
+    });
+
+    return {
+      period,
+      idempotent: false,
+    };
+  });
+}
+
+export async function unlockAttendancePeriod(
+  monthKey: string,
+  reason: string,
+  actor: ActorSnapshot,
+) {
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(monthKey)) {
+    throw new Error("EMPLOYEE_ATTENDANCE_INVALID_MONTH");
+  }
+
+  if (!actor.userId?.trim()) {
+    throw new Error("EMPLOYEE_ATTENDANCE_ACTOR_REQUIRED");
+  }
+
+  const cleanReason = reason?.trim();
+
+  if (!cleanReason || cleanReason.length < 3) {
+    throw new Error("EMPLOYEE_ATTENDANCE_UNLOCK_REASON_REQUIRED");
+  }
+
+  return db.$transaction(async (rawTx) => {
+    const tx = asDbTransactionClient(rawTx);
+
+    const periodRows = await tx.$queryRaw<
+      Array<{
+        id: string;
+        status: string;
+      }>
+    >`
+      SELECT id, status
+      FROM AttendancePeriod
+      WHERE monthKey = ${monthKey}
+      FOR UPDATE
+    `;
+
+    const current = periodRows[0];
+
+    if (!current || current.status !== "locked") {
+      throw new Error("EMPLOYEE_ATTENDANCE_PERIOD_NOT_LOCKED");
+    }
+
+    const finalizedDeductionCount = await tx.attendanceDeduction.count({
+      where: {
+        monthKey,
+        status: "finalized",
+      },
+    });
+
+    if (finalizedDeductionCount > 0) {
+      throw new Error("EMPLOYEE_ATTENDANCE_PERIOD_HAS_FINALIZED_DEDUCTION");
+    }
+
+    const now = new Date();
+
+    const period = await tx.attendancePeriod.update({
+      where: { id: current.id },
+      data: {
+        status: "open",
+        unlockedAt: now,
+        unlockedById: actor.userId,
+        unlockReason: cleanReason,
+      },
+    });
+
+    await writeMandatoryAudit(tx, actor, {
+      action: "employee_attendance_period_unlock_override",
+      targetType: "AttendancePeriod",
+      targetId: period.id,
+      details: {
+        monthKey,
+        previousStatus: current.status,
+        status: "open",
+        reason: cleanReason,
+      },
+    });
+
+    return period;
+  });
+}

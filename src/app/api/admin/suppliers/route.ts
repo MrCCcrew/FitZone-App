@@ -11,10 +11,23 @@ async function checkAdmin() {
 }
 
 function fmt(s: {
-  id: string; name: string; phone: string | null; address: string | null;
-  notes: string | null; isActive: boolean; commissionRate: number | null;
-  commissionType: string | null; deletedAt: Date | null;
-  createdAt: Date; updatedAt: Date;
+  id: string;
+  name: string;
+  phone: string | null;
+  address: string | null;
+  notes: string | null;
+  isActive: boolean;
+  commissionRate: number | null;
+  commissionType: string | null;
+  deletedAt: Date | null;
+  code: string | null;
+  defaultPaymentTerms: string | null;
+  creditDays: number | null;
+  creditLimit: unknown;
+  supportsConsignment: boolean;
+  supportsPrivateLabel: boolean;
+  createdAt: Date;
+  updatedAt: Date;
   _count?: { products: number; receipts: number };
 }) {
   return {
@@ -26,6 +39,12 @@ function fmt(s: {
     isActive: s.isActive,
     commissionRate: s.commissionRate,
     commissionType: s.commissionType,
+    code: s.code,
+    defaultPaymentTerms: s.defaultPaymentTerms,
+    creditDays: s.creditDays,
+    creditLimit: s.creditLimit == null ? null : Number(s.creditLimit),
+    supportsConsignment: s.supportsConsignment,
+    supportsPrivateLabel: s.supportsPrivateLabel,
     deletedAt: s.deletedAt?.toISOString() ?? null,
     createdAt: s.createdAt.toISOString(),
     updatedAt: s.updatedAt.toISOString(),
@@ -56,7 +75,7 @@ export async function POST(req: Request) {
   const { error } = await checkAdmin();
   if (error) return error;
 
-  const body = await req.json() as {
+  const body = (await req.json()) as {
     id?: string;
     name: string;
     phone?: string;
@@ -65,10 +84,51 @@ export async function POST(req: Request) {
     isActive?: boolean;
     commissionRate?: number;
     commissionType?: string;
+    code?: string;
+    defaultPaymentTerms?: string;
+    creditDays?: number;
+    creditLimit?: number;
+    supportsConsignment?: boolean;
+    supportsPrivateLabel?: boolean;
   };
 
   if (!body.name?.trim()) {
     return NextResponse.json({ error: "اسم المورد مطلوب" }, { status: 400 });
+  }
+
+  const allowedPaymentTerms = new Set(["cash", "credit", "mixed"]);
+
+  if (
+    body.defaultPaymentTerms != null &&
+    body.defaultPaymentTerms.trim() !== "" &&
+    !allowedPaymentTerms.has(body.defaultPaymentTerms.trim().toLowerCase())
+  ) {
+    return NextResponse.json(
+      { error: "شروط السداد يجب أن تكون cash أو credit أو mixed" },
+      { status: 400 },
+    );
+  }
+
+  if (
+    body.creditDays != null &&
+    (!Number.isFinite(Number(body.creditDays)) ||
+      Number(body.creditDays) < 0 ||
+      !Number.isInteger(Number(body.creditDays)))
+  ) {
+    return NextResponse.json(
+      { error: "عدد أيام الائتمان يجب أن يكون رقمًا صحيحًا غير سالب" },
+      { status: 400 },
+    );
+  }
+
+  if (
+    body.creditLimit != null &&
+    (!Number.isFinite(Number(body.creditLimit)) || Number(body.creditLimit) < 0)
+  ) {
+    return NextResponse.json(
+      { error: "حد الائتمان يجب أن يكون رقمًا غير سالب" },
+      { status: 400 },
+    );
   }
 
   const data = {
@@ -79,6 +139,12 @@ export async function POST(req: Request) {
     isActive: body.isActive ?? true,
     commissionRate: body.commissionRate ?? null,
     commissionType: body.commissionType ?? null,
+    code: body.code?.trim() || null,
+    defaultPaymentTerms: body.defaultPaymentTerms?.trim().toLowerCase() || null,
+    creditDays: body.creditDays == null ? null : Number(body.creditDays),
+    creditLimit: body.creditLimit == null ? null : Number(body.creditLimit),
+    supportsConsignment: body.supportsConsignment ?? false,
+    supportsPrivateLabel: body.supportsPrivateLabel ?? false,
   };
 
   let supplier;
@@ -88,13 +154,21 @@ export async function POST(req: Request) {
       data,
       include: { _count: { select: { products: true, receipts: true } } },
     });
-    await logAudit({ action: "update_supplier", targetType: "Supplier", targetId: supplier.id });
+    await logAudit({
+      action: "update_supplier",
+      targetType: "Supplier",
+      targetId: supplier.id,
+    });
   } else {
     supplier = await db.supplier.create({
       data,
       include: { _count: { select: { products: true, receipts: true } } },
     });
-    await logAudit({ action: "create_supplier", targetType: "Supplier", targetId: supplier.id });
+    await logAudit({
+      action: "create_supplier",
+      targetType: "Supplier",
+      targetId: supplier.id,
+    });
   }
 
   return NextResponse.json({ supplier: fmt(supplier) });
@@ -109,14 +183,52 @@ export async function DELETE(req: Request) {
   const id = searchParams.get("id");
   if (!id) return NextResponse.json({ error: "id مطلوب" }, { status: 400 });
 
-  const supplier = await db.supplier.findUnique({ where: { id } });
-  if (!supplier) return NextResponse.json({ error: "المورد غير موجود" }, { status: 404 });
+  const supplier = await db.supplier.findUnique({
+    where: { id },
+    include: {
+      _count: {
+        select: {
+          purchaseInvoices: true,
+          payments: true,
+        },
+      },
+    },
+  });
 
-  // Soft delete — unlink from products first to keep data clean
-  await db.product.updateMany({ where: { supplierId: id }, data: { supplierId: null } });
-  await db.supplier.update({ where: { id }, data: { deletedAt: new Date(), isActive: false } });
+  if (!supplier) {
+    return NextResponse.json({ error: "المورد غير موجود" }, { status: 404 });
+  }
 
-  await logAudit({ action: "delete_supplier", targetType: "Supplier", targetId: id });
+  if (supplier._count.purchaseInvoices > 0 || supplier._count.payments > 0) {
+    return NextResponse.json(
+      {
+        error:
+          "لا يمكن حذف المورد لوجود مستندات مالية مرتبطة به. يمكن إلغاء تنشيطه بدلًا من ذلك.",
+      },
+      { status: 400 },
+    );
+  }
+
+  await db.$transaction(async (tx) => {
+    await tx.product.updateMany({
+      where: { supplierId: id },
+      data: { supplierId: null },
+    });
+
+    await tx.supplier.update({
+      where: { id },
+      data: {
+        deletedAt: new Date(),
+        isActive: false,
+      },
+    });
+  });
+
+  await logAudit({
+    action: "delete_supplier",
+    targetType: "Supplier",
+    targetId: id,
+  });
   return NextResponse.json({ ok: true });
 }
 
@@ -125,8 +237,9 @@ export async function PATCH(req: Request) {
   const { error } = await checkAdmin();
   if (error) return error;
 
-  const body = await req.json() as { id: string; isActive: boolean };
-  if (!body.id) return NextResponse.json({ error: "id مطلوب" }, { status: 400 });
+  const body = (await req.json()) as { id: string; isActive: boolean };
+  if (!body.id)
+    return NextResponse.json({ error: "id مطلوب" }, { status: 400 });
 
   const supplier = await db.supplier.update({
     where: { id: body.id },
@@ -134,6 +247,10 @@ export async function PATCH(req: Request) {
     include: { _count: { select: { products: true, receipts: true } } },
   });
 
-  await logAudit({ action: body.isActive ? "activate_supplier" : "deactivate_supplier", targetType: "Supplier", targetId: body.id });
+  await logAudit({
+    action: body.isActive ? "activate_supplier" : "deactivate_supplier",
+    targetType: "Supplier",
+    targetId: body.id,
+  });
   return NextResponse.json({ supplier: fmt(supplier) });
 }

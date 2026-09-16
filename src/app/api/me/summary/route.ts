@@ -41,17 +41,53 @@ export async function GET() {
         wallet: true,
         rewardPoints: true,
         referral: true,
-        memberships: {
-          where: { status: "active" },
-          include: { membership: true, offer: { select: { title: true } } },
-          orderBy: { startDate: "desc" },
-          take: 1,
-        },
         bookings: {
           where: { status: "confirmed" },
           orderBy: { createdAt: "desc" },
           take: 1,
           include: { schedule: true },
+        },
+        memberships: {
+          where: {
+            OR: [
+              { status: "active" },
+              {
+                status: "expired",
+                bookings: {
+                  some: {
+                    status: "confirmed",
+                    isMakeup: true,
+                  },
+                },
+              },
+            ],
+          },
+          include: {
+            membership: true,
+            offer: { select: { title: true } },
+            bookings: {
+              where: {
+                status: "confirmed",
+                isMakeup: true,
+              },
+              select: {
+                id: true,
+                schedule: {
+                  select: {
+                    date: true,
+                    time: true,
+                  },
+                },
+              },
+              orderBy: {
+                schedule: {
+                  date: "asc",
+                },
+              },
+            },
+          },
+          orderBy: { startDate: "desc" },
+          take: 1,
         },
       },
     });
@@ -78,8 +114,17 @@ export async function GET() {
       return NextResponse.json({ authenticated: false }, { headers: { "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate" } });
     }
 
-    const activeMembership = user.memberships[0];
-    const upcomingBooking = user.bookings[0];
+    const currentMembership =
+      user.memberships[0];
+
+    const upcomingBooking =
+      user.bookings[0];
+
+    const pendingMakeups =
+      currentMembership?.bookings ?? [];
+
+    const nextMakeup =
+      pendingMakeups[0] ?? null;
 
     return NextResponse.json({
       authenticated: true,
@@ -94,14 +139,39 @@ export async function GET() {
       rewardTier: user.rewardPoints?.tier ?? "bronze",
       referralCode: user.referral?.code ?? null,
       referralEarned: user.referral?.totalEarned ?? 0,
-      membership: activeMembership
+      membership: currentMembership
         ? {
-            name: activeMembership.offerTitle || activeMembership.offer?.title || activeMembership.membership.name,
-            status: activeMembership.status,
-            endDate: activeMembership.endDate.toISOString(),
+            name:
+              currentMembership.offerTitle ||
+              currentMembership.offer?.title ||
+              currentMembership.membership.name,
+            status:
+              currentMembership.status,
+            endDate:
+              currentMembership.endDate.toISOString(),
           }
         : null,
-      upcomingBookingDate: upcomingBooking?.schedule.date.toISOString() ?? null,
+
+      makeupEntitlement:
+        pendingMakeups.length > 0
+          ? {
+              pending: true,
+              remaining:
+                pendingMakeups.length,
+              nextBookingDate:
+                nextMakeup
+                  ? nextMakeup.schedule.date.toISOString()
+                  : null,
+              nextBookingTime:
+                nextMakeup?.schedule.time ??
+                null,
+            }
+          : null,
+
+      upcomingBookingDate:
+        upcomingBooking?.schedule.date.toISOString() ??
+        nextMakeup?.schedule.date.toISOString() ??
+        null,
     }, { headers: { "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate" } });
   } catch (error) {
     console.error("[ME_SUMMARY]", error);

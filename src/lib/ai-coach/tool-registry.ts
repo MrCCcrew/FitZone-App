@@ -3,6 +3,7 @@ import { getAuthenticatedCustomerMembership, getVisibleNutritionist, searchActiv
 import { classifyCatalogDomain } from "@/lib/ai-coach/site-taxonomy";
 import { isCoachToolsEnabled } from "@/lib/ai-coach/config";
 import { extractCatalogSearchQuery } from "@/lib/catalog-query";
+import { stripScheduleTemporalTerms, type ScheduleTemporalFilter } from "@/lib/ai-coach/schedule-temporal";
 import type { CoachIntent, CoachLang, CoachSiteSnapshot } from "@/lib/ai-coach/types";
 
 export type CoachToolName = "getKnowledge" | "searchMemberships" | "searchPackages" | "searchOffers" | "searchProducts" | "searchClassSchedule" | "searchTrainers" | "searchPartners" | "searchGoals" | "getNutritionistService" | "getCurrentMembership" | "getAccountSummary";
@@ -42,7 +43,7 @@ export function selectCoachTools(intent: CoachIntent, message: string, authentic
 }
 
 /** Read-only orchestration boundary. It accepts no client userId and never exposes raw Prisma access to the model. */
-export async function getCoachToolContext(args: { intent: CoachIntent; message: string; lang: CoachLang; userId: string | null; sort?: "price_asc" | null; temporalFilter?: { date?: "today" | "tomorrow" }; catalogType?: "membership" | "package"; duration?: "monthly" | "quarterly" | "semiannual" | "annual" }) {
+export async function getCoachToolContext(args: { intent: CoachIntent; message: string; lang: CoachLang; userId: string | null; sort?: "price_asc" | null; temporalFilter?: ScheduleTemporalFilter; catalogType?: "membership" | "package"; duration?: "monthly" | "quarterly" | "semiannual" | "annual" }) {
   const snapshot = emptySnapshot(Boolean(args.userId));
   const usedTools: CoachToolName[] = ["getKnowledge"];
   const toolStatuses: Partial<Record<CoachToolName, CoachToolStatus>> = {};
@@ -81,7 +82,8 @@ export async function getCoachToolContext(args: { intent: CoachIntent; message: 
         resultCounts[tool] = rows.length;
       }
       if (tool === "searchClassSchedule") {
-        const rows = args.temporalFilter ? await searchClassSchedule(extractCatalogSearchQuery("class", args.message).searchTerm, args.temporalFilter) : await searchClassSchedule(extractCatalogSearchQuery("class", args.message).searchTerm);
+        const classQuery = extractCatalogSearchQuery("class", stripScheduleTemporalTerms(args.message)).searchTerm;
+        const rows = args.temporalFilter ? await searchClassSchedule(classQuery, args.temporalFilter) : await searchClassSchedule(classQuery);
         snapshot.classes = rows.map((row, index) => ({ id: `${row.name}-${index}`, name: row.name, description: "", trainer: row.trainer, trainerSpecialty: "", category: row.category, type: row.type, subType: null, duration: "", schedules: row.schedules.map((schedule, scheduleIndex) => ({ id: `${index}-${scheduleIndex}`, date: schedule.date.toISOString(), time: schedule.time, availableSpots: schedule.availableSpots })) }));
         resultCounts[tool] = rows.length;
       }

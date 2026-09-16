@@ -1,0 +1,5 @@
+-- AlterTable
+ALTER TABLE `EmployeeProfile` ADD COLUMN `avatar` VARCHAR(191) NULL,
+    ADD COLUMN `name` VARCHAR(191) NOT NULL,
+    ADD COLUMN `phone` VARCHAR(191) NULL,
+    MODIFY `userId` VARCHAR(191) NULL;

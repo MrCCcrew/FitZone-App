@@ -35,7 +35,24 @@ export async function GET() {
   const [products, categories] = await Promise.all([
     db.product.findMany({
       where: { deletedAt: null },
-      include: { supplier: { select: { id: true, name: true } } },
+      include: {
+        supplier: { select: { id: true, name: true } },
+        variants: {
+          where: { isActive: true },
+          select: {
+            id: true,
+            size: true,
+            color: true,
+            sku: true,
+            barcode: true,
+            stock: true,
+            costPrice: true,
+            price: true,
+            isActive: true,
+          },
+          orderBy: [{ size: "asc" }, { color: "asc" }],
+        },
+      },
       orderBy: { name: "asc" },
     }),
     db.productCategory.findMany(),
@@ -82,6 +99,17 @@ export async function GET() {
         supplierId: product.supplierId ?? null,
         supplierName: product.supplier?.name ?? null,
         costPrice: product.costPrice ?? null,
+        variants: product.variants.map((variant) => ({
+          id: variant.id,
+          size: variant.size,
+          color: variant.color,
+          sku: variant.sku,
+          barcode: variant.barcode,
+          stock: variant.stock,
+          costPrice: variant.costPrice,
+          price: variant.price,
+          isActive: variant.isActive,
+        })),
         barcode: product.barcode ?? null,
         isFeatured: product.isFeatured ?? false,
         isNew: product.isNew ?? false,

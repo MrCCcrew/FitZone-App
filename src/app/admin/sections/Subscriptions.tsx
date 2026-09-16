@@ -33,6 +33,7 @@ const EMPTY_PLAN: Omit<PlanDraft, "id" | "membersCount"> = {
   image: "",
   sortOrder: 0,
   subtitle: null,
+  coachMembershipEnabled: false,
   discountType: "percentage",
   discountValue: null,
   minMonths: null,
@@ -65,6 +66,9 @@ const EMPTY_OFFER: Omit<Offer, "id" | "usedCount" | "currentSubscribers"> = {
   featuresEn: [],
   allowedClassTypes: [],
   allowedClassIds: [],
+  friendOfferEnabled: false,
+  friendRequiredMembers: 2,
+  friendInviteExpiryHours: 24,
 };
 
 const CYCLE_LABELS: Record<NonNullable<Plan["cycle"]>, string> = {
@@ -74,32 +78,6 @@ const CYCLE_LABELS: Record<NonNullable<Plan["cycle"]>, string> = {
   annual: "سنوي",
   custom: "مخصص",
 };
-
-function getLinkedClassTypes(
-  classSessions: Plan["classSessions"] | null | undefined,
-  classes: GymClass[],
-): Set<string> {
-  if (!classSessions?.length) return new Set();
-  const linkedIds = new Set(classSessions.map((cs) => cs.classId));
-  const types = new Set<string>();
-  classes.forEach((c) => {
-    if (linkedIds.has(c.id)) types.add(c.type);
-  });
-  return types;
-}
-
-function toggleClassType(
-  type: string,
-  classesOfType: GymClass[],
-  current: Plan["classSessions"] | null | undefined,
-): Array<{ classId: string; className?: string; classType?: string; sessions: number }> {
-  const existing = current ?? [];
-  const typeIds = new Set(classesOfType.map((c) => c.id));
-  const linkedIds = new Set(existing.map((cs) => cs.classId));
-  const isLinked = classesOfType.some((c) => linkedIds.has(c.id));
-  if (isLinked) return existing.filter((cs) => !typeIds.has(cs.classId));
-  return [...existing, ...classesOfType.map((c) => ({ classId: c.id, className: c.name, classType: type, sessions: 1 }))];
-}
 
 function Modal({
   title,
@@ -113,12 +91,13 @@ function Modal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
-      <div
-        className="relative max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-[26px] border border-[rgba(255,188,219,0.16)] bg-[rgba(56,18,34,0.94)] p-6 shadow-[0_24px_70px_rgba(17,5,10,0.38)]"
-      >
+      <div className="relative max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-[26px] border border-[rgba(255,188,219,0.16)] bg-[rgba(56,18,34,0.94)] p-6 shadow-[0_24px_70px_rgba(17,5,10,0.38)]">
         <div className="mb-5 flex items-center justify-between">
           <h3 className="text-lg font-black text-[#fff4f8]">{title}</h3>
-          <button onClick={onClose} className="text-2xl leading-none text-[#d7aabd] transition-colors hover:text-white">
+          <button
+            onClick={onClose}
+            className="text-2xl leading-none text-[#d7aabd] transition-colors hover:text-white"
+          >
             ×
           </button>
         </div>
@@ -141,7 +120,9 @@ function Field({
     <label className="block space-y-2">
       <div>
         <div className="text-sm font-bold text-[#fff4f8]">{label}</div>
-        {hint ? <div className="mt-1 text-xs leading-6 text-[#d7aabd]">{hint}</div> : null}
+        {hint ? (
+          <div className="mt-1 text-xs leading-6 text-[#d7aabd]">{hint}</div>
+        ) : null}
       </div>
       {children}
     </label>
@@ -153,7 +134,9 @@ export default function Subscriptions() {
   const [allPlans, setAllPlans] = useState<Plan[]>([]);
   const [offers, setOffers] = useState<Offer[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
-  const [products, setProducts] = useState<Array<{ id: string; name: string }>>([]);
+  const [products, setProducts] = useState<Array<{ id: string; name: string }>>(
+    [],
+  );
   const [gymClasses, setGymClasses] = useState<GymClass[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -161,19 +144,33 @@ export default function Subscriptions() {
   const [featureInputEn, setFeatureInputEn] = useState("");
   const [offerFeatureInput, setOfferFeatureInput] = useState("");
   const [offerFeatureInputEn, setOfferFeatureInputEn] = useState("");
-  const [productRewardDraft, setProductRewardDraft] = useState<{ productId: string; quantity: number }>({
+  const [productRewardDraft, setProductRewardDraft] = useState<{
+    productId: string;
+    quantity: number;
+  }>({
     productId: "",
     quantity: 1,
   });
   const [uploadingImage, setUploadingImage] = useState(false);
   const [uploadingPlanImage, setUploadingPlanImage] = useState(false);
-  const [planModal, setPlanModal] = useState<PlanDraft | typeof EMPTY_PLAN | null>(null);
-  const [offerModal, setOfferModal] = useState<Offer | typeof EMPTY_OFFER | null>(null);
+  const [planModal, setPlanModal] = useState<
+    PlanDraft | typeof EMPTY_PLAN | null
+  >(null);
+  const [offerModal, setOfferModal] = useState<
+    Offer | typeof EMPTY_OFFER | null
+  >(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [plansResponse, allPlansResponse, offersResponse, goalsResponse, productsResponse, classesResponse] = await Promise.all([
+      const [
+        plansResponse,
+        allPlansResponse,
+        offersResponse,
+        goalsResponse,
+        productsResponse,
+        classesResponse,
+      ] = await Promise.all([
         fetch("/api/admin/memberships", { cache: "no-store" }),
         fetch("/api/admin/memberships", { cache: "no-store" }),
         fetch("/api/admin/offers", { cache: "no-store" }),
@@ -187,19 +184,39 @@ export default function Subscriptions() {
       const offersPayload = await offersResponse.json();
       const goalsPayload = await goalsResponse.json();
       const productsPayload = await productsResponse.json().catch(() => []);
-      const classesPayload = await classesResponse.json().catch(() => ({ classes: [] }));
-      setPlans(Array.isArray(plansPayload) ? plansPayload.filter((p: Plan) => p.kind === "subscription") : []);
+      const classesPayload = await classesResponse
+        .json()
+        .catch(() => ({ classes: [] }));
+      setPlans(
+        Array.isArray(plansPayload)
+          ? plansPayload.filter((p: Plan) => p.kind === "subscription")
+          : [],
+      );
       setAllPlans(Array.isArray(allPlansPayload) ? allPlansPayload : []);
       setOffers(Array.isArray(offersPayload) ? offersPayload : []);
-      setGoals(Array.isArray(goalsPayload) ? goalsPayload.filter((goal) => goal.active) : []);
+      setGoals(
+        Array.isArray(goalsPayload)
+          ? goalsPayload.filter((goal) => goal.active)
+          : [],
+      );
       setProducts(
         Array.isArray(productsPayload)
           ? productsPayload
-              .filter((item: { id?: string; name?: string; active?: boolean }) => item?.id && item?.name && item?.active !== false)
-              .map((item: { id: string; name: string }) => ({ id: item.id, name: item.name }))
+              .filter(
+                (item: { id?: string; name?: string; active?: boolean }) =>
+                  item?.id && item?.name && item?.active !== false,
+              )
+              .map((item: { id: string; name: string }) => ({
+                id: item.id,
+                name: item.name,
+              }))
           : [],
       );
-      setGymClasses(Array.isArray(classesPayload?.classes) ? classesPayload.classes.filter((c: GymClass) => c.active) : []);
+      setGymClasses(
+        Array.isArray(classesPayload?.classes)
+          ? classesPayload.classes.filter((c: GymClass) => c.active)
+          : [],
+      );
     } finally {
       setLoading(false);
     }
@@ -218,47 +235,118 @@ export default function Subscriptions() {
     [allPlans],
   );
 
-  const goalLookup = useMemo(() => new Map(goals.map((goal) => [goal.id, goal.name])), [goals]);
+  const goalLookup = useMemo(
+    () => new Map(goals.map((goal) => [goal.id, goal.name])),
+    [goals],
+  );
 
   const uniqueClassTypes = useMemo(() => {
-    const typeMap = new Map<string, { type: string; classes: GymClass[] }>();
+    const typeMap = new Map<
+      string,
+      { classTypeId: string | null; type: string; classes: GymClass[] }
+    >();
+
     gymClasses.forEach((cls) => {
       if (!cls.type) return;
-      if (!typeMap.has(cls.type)) typeMap.set(cls.type, { type: cls.type, classes: [] });
-      typeMap.get(cls.type)!.classes.push(cls);
+
+      const key = cls.classTypeId
+        ? `id:${cls.classTypeId}`
+        : `legacy:${cls.type}`;
+
+      if (!typeMap.has(key)) {
+        typeMap.set(key, {
+          classTypeId: cls.classTypeId ?? null,
+          type: cls.type,
+          classes: [],
+        });
+      }
+
+      typeMap.get(key)!.classes.push(cls);
     });
+
     return Array.from(typeMap.values());
+  }, [gymClasses]);
+
+  const classSelectionGroups = useMemo(() => {
+    const groupMap = new Map<
+      string,
+      { key: string; name: string; type: string; classes: GymClass[] }
+    >();
+
+    gymClasses
+      .filter((cls) => cls.active)
+      .forEach((cls) => {
+        const key = `${cls.classTypeId ?? `legacy:${cls.type}`}::${cls.name}`;
+
+        if (!groupMap.has(key)) {
+          groupMap.set(key, {
+            key,
+            name: cls.name,
+            type: cls.type,
+            classes: [],
+          });
+        }
+
+        groupMap.get(key)!.classes.push(cls);
+      });
+
+    return Array.from(groupMap.values());
   }, [gymClasses]);
 
   const addFeature = () => {
     if (!planModal || !featureInput.trim()) return;
-    setPlanModal({ ...planModal, features: [...(planModal.features ?? []), featureInput.trim()] });
+    setPlanModal({
+      ...planModal,
+      features: [...(planModal.features ?? []), featureInput.trim()],
+    });
     setFeatureInput("");
   };
 
   const addFeatureEn = () => {
     if (!planModal || !featureInputEn.trim()) return;
-    setPlanModal({ ...planModal, featuresEn: [...(planModal.featuresEn ?? []), featureInputEn.trim()] });
+    setPlanModal({
+      ...planModal,
+      featuresEn: [...(planModal.featuresEn ?? []), featureInputEn.trim()],
+    });
     setFeatureInputEn("");
   };
 
   const addOfferFeature = () => {
     if (!offerModal || !offerFeatureInput.trim()) return;
-    setOfferModal({ ...offerModal, features: [...(offerModal.features ?? []), offerFeatureInput.trim()] });
+    setOfferModal({
+      ...offerModal,
+      features: [...(offerModal.features ?? []), offerFeatureInput.trim()],
+    });
     setOfferFeatureInput("");
   };
 
   const addOfferFeatureEn = () => {
     if (!offerModal || !offerFeatureInputEn.trim()) return;
-    setOfferModal({ ...offerModal, featuresEn: [...(offerModal.featuresEn ?? []), offerFeatureInputEn.trim()] });
+    setOfferModal({
+      ...offerModal,
+      featuresEn: [
+        ...(offerModal.featuresEn ?? []),
+        offerFeatureInputEn.trim(),
+      ],
+    });
     setOfferFeatureInputEn("");
   };
 
   const addProductReward = () => {
-    if (!planModal || !productRewardDraft.productId || productRewardDraft.quantity <= 0) return;
+    if (
+      !planModal ||
+      !productRewardDraft.productId ||
+      productRewardDraft.quantity <= 0
+    )
+      return;
     const existing = planModal.productRewards ?? [];
-    const next = existing.filter((item) => item.productId !== productRewardDraft.productId);
-    next.push({ productId: productRewardDraft.productId, quantity: productRewardDraft.quantity });
+    const next = existing.filter(
+      (item) => item.productId !== productRewardDraft.productId,
+    );
+    next.push({
+      productId: productRewardDraft.productId,
+      quantity: productRewardDraft.quantity,
+    });
     setPlanModal({ ...planModal, productRewards: next });
     setProductRewardDraft({ productId: "", quantity: 1 });
   };
@@ -267,7 +355,9 @@ export default function Subscriptions() {
     if (!planModal) return;
     setPlanModal({
       ...planModal,
-      productRewards: (planModal.productRewards ?? []).filter((item) => item.productId !== productId),
+      productRewards: (planModal.productRewards ?? []).filter(
+        (item) => item.productId !== productId,
+      ),
     });
   };
 
@@ -276,21 +366,31 @@ export default function Subscriptions() {
     const current = planModal.goalIds ?? [];
     setPlanModal({
       ...planModal,
-      goalIds: current.includes(goalId) ? current.filter((id) => id !== goalId) : [...current, goalId],
+      goalIds: current.includes(goalId)
+        ? current.filter((id) => id !== goalId)
+        : [...current, goalId],
     });
   };
 
-  const computeDiscountedPrice = (price: number, type?: "percentage" | "fixed", value?: number | null) => {
+  const computeDiscountedPrice = (
+    price: number,
+    type?: "percentage" | "fixed",
+    value?: number | null,
+  ) => {
     if (!value || value <= 0) return { priceBefore: null, priceAfter: null };
     const base = Number(price || 0);
     if (base <= 0) return { priceBefore: null, priceAfter: null };
     const discounted =
-      type === "fixed" ? base - value : base * (1 - Math.min(Math.max(value, 0), 100) / 100);
+      type === "fixed"
+        ? base - value
+        : base * (1 - Math.min(Math.max(value, 0), 100) / 100);
     const safe = Math.max(0, Number(discounted.toFixed(2)));
     return { priceBefore: base, priceAfter: safe };
   };
 
-  const deriveDiscount = (plan: Plan): { discountType: "percentage" | "fixed"; discountValue: number | null } => {
+  const deriveDiscount = (
+    plan: Plan,
+  ): { discountType: "percentage" | "fixed"; discountValue: number | null } => {
     if (!plan.priceBefore || !plan.priceAfter) {
       return { discountType: "percentage", discountValue: null };
     }
@@ -298,12 +398,19 @@ export default function Subscriptions() {
       return { discountType: "percentage", discountValue: null };
     }
     const percent = Math.round((1 - plan.priceAfter / plan.priceBefore) * 100);
-    return { discountType: "percentage", discountValue: Number.isFinite(percent) ? percent : null };
+    return {
+      discountType: "percentage",
+      discountValue: Number.isFinite(percent) ? percent : null,
+    };
   };
 
   const withDiscountDraft = (plan: Plan): PlanDraft => {
     const derived = deriveDiscount(plan);
-    return { ...plan, discountType: derived.discountType, discountValue: derived.discountValue };
+    return {
+      ...plan,
+      discountType: derived.discountType,
+      discountValue: derived.discountValue,
+    };
   };
 
   const savePlan = async () => {
@@ -311,7 +418,11 @@ export default function Subscriptions() {
     setSaving(true);
     try {
       const isEdit = "id" in planModal && Boolean(planModal.id);
-      const discount = computeDiscountedPrice(planModal.price, planModal.discountType, planModal.discountValue);
+      const discount = computeDiscountedPrice(
+        planModal.price,
+        planModal.discountType,
+        planModal.discountValue,
+      );
       const payload = {
         ...planModal,
         kind: "subscription",
@@ -321,7 +432,10 @@ export default function Subscriptions() {
       const response = await fetch("/api/admin/memberships", {
         method: isEdit ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...payload, kind: planModal.kind ?? "subscription" }),
+        body: JSON.stringify({
+          ...payload,
+          kind: planModal.kind ?? "subscription",
+        }),
       });
 
       if (!response.ok) {
@@ -334,7 +448,9 @@ export default function Subscriptions() {
       setPlanModal(null);
       setFeatureInput("");
     } catch {
-      window.alert("تعذر حفظ الاشتراك. تحقق من الاتصال بالإنترنت وحاول مجدداً.");
+      window.alert(
+        "تعذر حفظ الاشتراك. تحقق من الاتصال بالإنترنت وحاول مجدداً.",
+      );
     } finally {
       setSaving(false);
     }
@@ -450,7 +566,9 @@ export default function Subscriptions() {
         return;
       }
 
-      setPlanModal((current) => (current ? { ...current, image: payload.url } : current));
+      setPlanModal((current) =>
+        current ? { ...current, image: payload.url } : current,
+      );
     } finally {
       setUploadingPlanImage(false);
     }
@@ -473,7 +591,9 @@ export default function Subscriptions() {
         return;
       }
 
-      setOfferModal((current) => (current ? { ...current, image: payload.url } : current));
+      setOfferModal((current) =>
+        current ? { ...current, image: payload.url } : current,
+      );
     } finally {
       setUploadingImage(false);
     }
@@ -481,22 +601,36 @@ export default function Subscriptions() {
 
   if (loading) {
     return (
-      <AdminSectionShell title="الاشتراكات والعروض" subtitle="إدارة الاشتراكات والعروض الخاصة والخصومات.">
+      <AdminSectionShell
+        title="الاشتراكات والعروض"
+        subtitle="إدارة الاشتراكات والعروض الخاصة والخصومات."
+      >
         <AdminCard className="flex h-64 items-center justify-center">
-          <div className="text-sm text-[#d7aabd]">جاري تحميل الاشتراكات والعروض...</div>
+          <div className="text-sm text-[#d7aabd]">
+            جاري تحميل الاشتراكات والعروض...
+          </div>
         </AdminCard>
       </AdminSectionShell>
     );
   }
 
   return (
-    <AdminSectionShell title="الاشتراكات والعروض" subtitle="أنشئ اشتراكات العضوية والعروض الخاصة وخصص ظهورها في الصفحة الرئيسية.">
+    <AdminSectionShell
+      title="الاشتراكات والعروض"
+      subtitle="أنشئ اشتراكات العضوية والعروض الخاصة وخصص ظهورها في الصفحة الرئيسية."
+    >
       <AdminCard>
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h3 className="text-lg font-black text-[#fff4f8]">اشتراكات النادي</h3>
+            <h3 className="text-lg font-black text-[#fff4f8]">
+              اشتراكات النادي
+            </h3>
             <p className="mt-1 text-sm text-[#d7aabd]">
-              {plans.length.toLocaleString("ar-EG")} اشتراك - {plans.filter((plan) => plan.active).length.toLocaleString("ar-EG")} اشتراك نشط
+              {plans.length.toLocaleString("ar-EG")} اشتراك -{" "}
+              {plans
+                .filter((plan) => plan.active)
+                .length.toLocaleString("ar-EG")}{" "}
+              اشتراك نشط
             </p>
           </div>
           <button
@@ -508,7 +642,10 @@ export default function Subscriptions() {
         </div>
 
         {plans.length === 0 ? (
-          <AdminEmptyState title="لا توجد اشتراكات بعد" description="ابدئي بإضافة أول اشتراك ليظهر في صفحة الاشتراكات ولوحة الإدارة." />
+          <AdminEmptyState
+            title="لا توجد اشتراكات بعد"
+            description="ابدئي بإضافة أول اشتراك ليظهر في صفحة الاشتراكات ولوحة الإدارة."
+          />
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             {plans.map((plan) => (
@@ -534,8 +671,12 @@ export default function Subscriptions() {
                 <div className="mb-4 flex items-start justify-between gap-3">
                   <div>
                     <div className="font-black text-[#fff4f8]">{plan.name}</div>
-                    <div className="mt-1 text-xs text-[#d7aabd]">{CYCLE_LABELS[plan.cycle ?? "monthly"]}</div>
-                    <div className="mt-1 text-xs text-[#d7aabd]">ترتيب: {plan.sortOrder ?? 0}</div>
+                    <div className="mt-1 text-xs text-[#d7aabd]">
+                      {CYCLE_LABELS[plan.cycle ?? "monthly"]}
+                    </div>
+                    <div className="mt-1 text-xs text-[#d7aabd]">
+                      ترتيب: {plan.sortOrder ?? 0}
+                    </div>
                   </div>
                   <button
                     onClick={() => void togglePlan(plan.id, plan.active)}
@@ -549,27 +690,42 @@ export default function Subscriptions() {
                   </button>
                 </div>
 
-                <div className="text-2xl font-black text-[#ffd166]">{(plan.priceAfter ?? plan.price).toLocaleString("ar-EG")}</div>
+                <div className="text-2xl font-black text-[#ffd166]">
+                  {(plan.priceAfter ?? plan.price).toLocaleString("ar-EG")}
+                </div>
                 <div className="text-xs text-[#d7aabd]">ج.م</div>
-                {plan.priceBefore && plan.priceBefore > (plan.priceAfter ?? plan.price) ? (
+                {plan.priceBefore &&
+                plan.priceBefore > (plan.priceAfter ?? plan.price) ? (
                   <div className="mt-1 text-xs text-[#d7aabd] line-through">
                     {plan.priceBefore.toLocaleString("ar-EG")} ج.م
                   </div>
                 ) : null}
                 <div className="mt-2 text-xs text-[#d7aabd]">
-                  {plan.sessionsCount ? `عدد الحصص: ${plan.sessionsCount}` : "عدد الحصص غير محدد"}
+                  {plan.sessionsCount
+                    ? `عدد الحصص: ${plan.sessionsCount}`
+                    : "عدد الحصص غير محدد"}
                 </div>
-                <div className="mt-1 text-xs text-[#d7aabd]">مدة التدريب: {plan.duration} يوم</div>
-                <div className="mt-1 text-xs text-[#d7aabd]">{plan.membersCount.toLocaleString("ar-EG")} مشتركة نشطة</div>
+                <div className="mt-1 text-xs text-[#d7aabd]">
+                  مدة التدريب: {plan.duration} يوم
+                </div>
+                <div className="mt-1 text-xs text-[#d7aabd]">
+                  {plan.membersCount.toLocaleString("ar-EG")} مشتركة نشطة
+                </div>
                 {plan.goalIds?.length ? (
                   <div className="mt-2 text-xs text-[#d7aabd]">
-                    الأهداف: {plan.goalIds.map((goalId) => goalLookup.get(goalId) ?? "هدف").join("، ")}
+                    الأهداف:{" "}
+                    {plan.goalIds
+                      .map((goalId) => goalLookup.get(goalId) ?? "هدف")
+                      .join("، ")}
                   </div>
                 ) : null}
 
                 <ul className="mt-4 space-y-2">
                   {plan.features.map((feature, index) => (
-                    <li key={`${plan.id}-${index}`} className="flex items-start gap-2 text-xs text-[#fff4f8]">
+                    <li
+                      key={`${plan.id}-${index}`}
+                      className="flex items-start gap-2 text-xs text-[#fff4f8]"
+                    >
                       <span className="mt-0.5 text-[#ff97bf]">✓</span>
                       <span>{feature}</span>
                     </li>
@@ -599,27 +755,58 @@ export default function Subscriptions() {
       <AdminCard>
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h3 className="text-lg font-black text-[#fff4f8]">العروض والخصومات</h3>
+            <h3 className="text-lg font-black text-[#fff4f8]">
+              العروض والخصومات
+            </h3>
             <p className="mt-1 text-sm text-[#d7aabd]">
-              {offers.filter((offer) => offer.active).length.toLocaleString("ar-EG")} عروض نشطة -{" "}
-              {offers.filter((offer) => offer.type === "special").length.toLocaleString("ar-EG")} عروض خاصة
+              {offers
+                .filter((offer) => offer.active)
+                .length.toLocaleString("ar-EG")}{" "}
+              عروض نشطة -{" "}
+              {offers
+                .filter((offer) => offer.type === "special")
+                .length.toLocaleString("ar-EG")}{" "}
+              عروض خاصة
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <button
-              onClick={() => setPlanModal({ ...EMPTY_PLAN, kind: "custom", minMonths: 3, maxMonths: 6, discountPct: 50 })}
+              onClick={() =>
+                setPlanModal({
+                  ...EMPTY_PLAN,
+                  kind: "custom",
+                  minMonths: 3,
+                  maxMonths: 6,
+                  discountPct: 50,
+                })
+              }
               className="rounded-xl bg-[#ff4f93] px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-[#ff2f7d]"
             >
               + إضافة عرض تخصيص
             </button>
             <button
-              onClick={() => setOfferModal({ ...EMPTY_OFFER, type: "percentage", title: "", discount: 10, validUntil: "" })}
+              onClick={() =>
+                setOfferModal({
+                  ...EMPTY_OFFER,
+                  type: "percentage",
+                  title: "",
+                  discount: 10,
+                  validUntil: "",
+                })
+              }
               className="rounded-xl bg-[#ffd166] px-4 py-2 text-sm font-bold text-black transition-colors hover:bg-[#ffcc55]"
             >
               + إضافة عرض عادي
             </button>
             <button
-              onClick={() => setOfferModal({ ...EMPTY_OFFER, type: "special", title: "عرض خاص", validUntil: "" })}
+              onClick={() =>
+                setOfferModal({
+                  ...EMPTY_OFFER,
+                  type: "special",
+                  title: "عرض خاص",
+                  validUntil: "",
+                })
+              }
               className="rounded-xl bg-[#c026d3] px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-[#d946ef]"
             >
               + إضافة عرض خاص
@@ -630,76 +817,95 @@ export default function Subscriptions() {
         {/* Custom plans (عروض التخصيص) */}
         {allPlans.filter((p) => p.kind === "custom").length > 0 && (
           <div className="mb-6">
-            <h4 className="mb-3 text-sm font-black text-[#ff97bf]">عروض التخصيص (اختيار الشهور)</h4>
+            <h4 className="mb-3 text-sm font-black text-[#ff97bf]">
+              عروض التخصيص (اختيار الشهور)
+            </h4>
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {allPlans.filter((p) => p.kind === "custom").map((plan) => (
-                <div
-                  key={plan.id}
-                  className={`rounded-[20px] border p-4 ${
-                    plan.active
-                      ? "border-[rgba(255,79,147,0.25)] bg-[rgba(255,79,147,0.06)]"
-                      : "border-[rgba(255,188,219,0.08)] bg-black/10 opacity-65"
-                  }`}
-                >
-                  {plan.image ? (
-                    <img
-                      src={plan.image}
-                      alt={plan.name}
-                      className="mb-3 h-28 w-full rounded-xl border border-[rgba(255,188,219,0.14)] object-cover"
-                    />
-                  ) : (
-                    <div className="mb-3 flex h-28 items-center justify-center rounded-xl border border-dashed border-[rgba(255,188,219,0.18)] text-xs text-[#d7aabd]">
-                      بدون صورة
-                    </div>
-                  )}
-                  <div className="mb-3 flex items-start justify-between gap-2">
-                    <div>
-                      <div className="font-black text-[#fff4f8]">{plan.name}</div>
-                      {plan.nameEn ? <div className="mt-0.5 text-xs text-[#d7aabd]">{plan.nameEn}</div> : null}
-                      <div className="mt-1 text-xs text-[#d7aabd]">
-                        {plan.minMonths ?? 3} – {plan.maxMonths ?? 6} شهور
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => void togglePlan(plan.id, plan.active)}
-                      className={`relative h-5 w-10 shrink-0 rounded-full transition-colors ${plan.active ? "bg-[#ff4f93]" : "bg-white/15"}`}
-                    >
-                      <span
-                        className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${
-                          plan.active ? "right-0.5" : "left-0.5"
-                        }`}
+              {allPlans
+                .filter((p) => p.kind === "custom")
+                .map((plan) => (
+                  <div
+                    key={plan.id}
+                    className={`rounded-[20px] border p-4 ${
+                      plan.active
+                        ? "border-[rgba(255,79,147,0.25)] bg-[rgba(255,79,147,0.06)]"
+                        : "border-[rgba(255,188,219,0.08)] bg-black/10 opacity-65"
+                    }`}
+                  >
+                    {plan.image ? (
+                      <img
+                        src={plan.image}
+                        alt={plan.name}
+                        className="mb-3 h-28 w-full rounded-xl border border-[rgba(255,188,219,0.14)] object-cover"
                       />
-                    </button>
+                    ) : (
+                      <div className="mb-3 flex h-28 items-center justify-center rounded-xl border border-dashed border-[rgba(255,188,219,0.18)] text-xs text-[#d7aabd]">
+                        بدون صورة
+                      </div>
+                    )}
+                    <div className="mb-3 flex items-start justify-between gap-2">
+                      <div>
+                        <div className="font-black text-[#fff4f8]">
+                          {plan.name}
+                        </div>
+                        {plan.nameEn ? (
+                          <div className="mt-0.5 text-xs text-[#d7aabd]">
+                            {plan.nameEn}
+                          </div>
+                        ) : null}
+                        <div className="mt-1 text-xs text-[#d7aabd]">
+                          {plan.minMonths ?? 3} – {plan.maxMonths ?? 6} شهور
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => void togglePlan(plan.id, plan.active)}
+                        className={`relative h-5 w-10 shrink-0 rounded-full transition-colors ${plan.active ? "bg-[#ff4f93]" : "bg-white/15"}`}
+                      >
+                        <span
+                          className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${
+                            plan.active ? "right-0.5" : "left-0.5"
+                          }`}
+                        />
+                      </button>
+                    </div>
+                    <div className="text-xl font-black text-[#ffd166]">
+                      {plan.price.toLocaleString("ar-EG")}
+                    </div>
+                    <div className="text-xs text-[#d7aabd]">ج.م / شهر</div>
+                    {plan.discountPct ? (
+                      <div className="mt-1 text-xs text-[#4ade80]">
+                        خصم {plan.discountPct}%
+                      </div>
+                    ) : null}
+                    <div className="mt-1 text-xs text-[#d7aabd]">
+                      {plan.membersCount.toLocaleString("ar-EG")} مشتركة نشطة
+                    </div>
+                    <div className="mt-4 flex gap-2">
+                      <button
+                        onClick={() => setPlanModal(withDiscountDraft(plan))}
+                        className="flex-1 rounded-lg bg-white/5 px-3 py-2 text-xs font-bold text-[#fff4f8] transition-colors hover:bg-white/10"
+                      >
+                        تعديل
+                      </button>
+                      <button
+                        onClick={() => void deletePlan(plan.id)}
+                        className="rounded-lg bg-rose-500/10 px-3 py-2 text-xs font-bold text-rose-300 transition-colors hover:bg-rose-500/20"
+                      >
+                        حذف
+                      </button>
+                    </div>
                   </div>
-                  <div className="text-xl font-black text-[#ffd166]">{plan.price.toLocaleString("ar-EG")}</div>
-                  <div className="text-xs text-[#d7aabd]">ج.م / شهر</div>
-                  {plan.discountPct ? (
-                    <div className="mt-1 text-xs text-[#4ade80]">خصم {plan.discountPct}%</div>
-                  ) : null}
-                  <div className="mt-1 text-xs text-[#d7aabd]">{plan.membersCount.toLocaleString("ar-EG")} مشتركة نشطة</div>
-                  <div className="mt-4 flex gap-2">
-                    <button
-                      onClick={() => setPlanModal(withDiscountDraft(plan))}
-                      className="flex-1 rounded-lg bg-white/5 px-3 py-2 text-xs font-bold text-[#fff4f8] transition-colors hover:bg-white/10"
-                    >
-                      تعديل
-                    </button>
-                    <button
-                      onClick={() => void deletePlan(plan.id)}
-                      className="rounded-lg bg-rose-500/10 px-3 py-2 text-xs font-bold text-rose-300 transition-colors hover:bg-rose-500/20"
-                    >
-                      حذف
-                    </button>
-                  </div>
-                </div>
-              ))}
+                ))}
             </div>
             <hr className="mt-6 border-[rgba(255,188,219,0.12)]" />
           </div>
         )}
 
         {offers.length === 0 ? (
-          <AdminEmptyState title="لا توجد عروض بعد" description="أضف عرضًا عاديًا أو عرضًا خاصًا مع صورة ومدة وعدد مشتركين ليظهر للعميل بشكل مميز." />
+          <AdminEmptyState
+            title="لا توجد عروض بعد"
+            description="أضف عرضًا عاديًا أو عرضًا خاصًا مع صورة ومدة وعدد مشتركين ليظهر للعميل بشكل مميز."
+          />
         ) : (
           <div className="space-y-4">
             {offers.map((offer) => {
@@ -710,7 +916,10 @@ export default function Subscriptions() {
                   : null;
 
               return (
-                <div key={offer.id} className="rounded-[24px] border border-[rgba(255,188,219,0.14)] bg-black/15 p-5">
+                <div
+                  key={offer.id}
+                  className="rounded-[24px] border border-[rgba(255,188,219,0.14)] bg-black/15 p-5"
+                >
                   <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                     <div className="flex flex-1 gap-4">
                       {offer.image ? (
@@ -727,7 +936,9 @@ export default function Subscriptions() {
 
                       <div className="min-w-0 flex-1">
                         <div className="mb-2 flex flex-wrap items-center gap-2">
-                          <h4 className="text-base font-black text-[#fff4f8]">{offer.title}</h4>
+                          <h4 className="text-base font-black text-[#fff4f8]">
+                            {offer.title}
+                          </h4>
                           <span
                             className={`rounded-full px-3 py-1 text-xs font-bold ${
                               offer.type === "special"
@@ -737,7 +948,11 @@ export default function Subscriptions() {
                                   : "bg-[#8bc5ff]/15 text-[#8bc5ff]"
                             }`}
                           >
-                            {offer.type === "special" ? "عرض خاص" : offer.type === "fixed" ? "خصم بمبلغ ثابت" : "خصم بنسبة"}
+                            {offer.type === "special"
+                              ? "عرض خاص"
+                              : offer.type === "fixed"
+                                ? "خصم بمبلغ ثابت"
+                                : "خصم بنسبة"}
                           </span>
                           {offer.showOnHome ? (
                             <span className="rounded-full bg-[#ff4f93]/15 px-3 py-1 text-xs font-bold text-[#ff97bf]">
@@ -746,24 +961,49 @@ export default function Subscriptions() {
                           ) : null}
                         </div>
 
-                        <p className="text-sm leading-7 text-[#d7aabd]">{offer.description || offer.appliesTo || "بدون وصف إضافي"}</p>
+                        <p className="text-sm leading-7 text-[#d7aabd]">
+                          {offer.description ||
+                            offer.appliesTo ||
+                            "بدون وصف إضافي"}
+                        </p>
                         <div className="mt-3 flex flex-wrap gap-4 text-xs text-[#d7aabd]">
-                          <span>ينتهي: {new Date(offer.validUntil).toLocaleString("ar-EG")}</span>
+                          <span>
+                            ينتهي:{" "}
+                            {new Date(offer.validUntil).toLocaleString("ar-EG")}
+                          </span>
                           {offer.type === "special" ? (
                             <>
-                              <span>السعر الخاص: {Number(offer.specialPrice || 0).toLocaleString("ar-EG")} ج.م</span>
-                              <span>المشتركات الحالية: {currentSubscribers.toLocaleString("ar-EG")}</span>
-                              {remaining != null ? <span>المتبقي: {remaining.toLocaleString("ar-EG")}</span> : null}
+                              <span>
+                                السعر الخاص:{" "}
+                                {Number(offer.specialPrice || 0).toLocaleString(
+                                  "ar-EG",
+                                )}{" "}
+                                ج.م
+                              </span>
+                              <span>
+                                المشتركات الحالية:{" "}
+                                {currentSubscribers.toLocaleString("ar-EG")}
+                              </span>
+                              {remaining != null ? (
+                                <span>
+                                  المتبقي: {remaining.toLocaleString("ar-EG")}
+                                </span>
+                              ) : null}
                               <span>
                                 الباقة أو الاشتراك:{" "}
                                 {offer.membershipId
-                                  ? planOptions.find((plan) => plan.id === offer.membershipId)?.label ?? "مرتبط باشتراك"
+                                  ? (planOptions.find(
+                                      (plan) => plan.id === offer.membershipId,
+                                    )?.label ?? "مرتبط باشتراك")
                                   : "غير مرتبط"}
                               </span>
                             </>
                           ) : (
                             <span>
-                              قيمة الخصم: {offer.type === "percentage" ? `${offer.discount}%` : `${offer.discount} ج.م`}
+                              قيمة الخصم:{" "}
+                              {offer.type === "percentage"
+                                ? `${offer.discount}%`
+                                : `${offer.discount} ج.م`}
                             </span>
                           )}
                         </div>
@@ -806,31 +1046,64 @@ export default function Subscriptions() {
         <Modal
           title={
             "id" in planModal && planModal.id
-              ? planModal.kind === "custom" ? "تعديل عرض التخصيص" : "تعديل الاشتراك"
-              : planModal.kind === "custom" ? "إضافة عرض تخصيص" : "إضافة اشتراك"
+              ? planModal.kind === "custom"
+                ? "تعديل عرض التخصيص"
+                : "تعديل الاشتراك"
+              : planModal.kind === "custom"
+                ? "إضافة عرض تخصيص"
+                : "إضافة اشتراك"
           }
-          onClose={() => { setPlanModal(null); setFeatureInput(""); setFeatureInputEn(""); }}
+          onClose={() => {
+            setPlanModal(null);
+            setFeatureInput("");
+            setFeatureInputEn("");
+          }}
         >
           <div className="space-y-4">
             <Field label="اسم الاشتراك">
-              <input value={planModal.name} onChange={(event) => setPlanModal({ ...planModal, name: event.target.value })} className={INPUT} />
+              <input
+                value={planModal.name}
+                onChange={(event) =>
+                  setPlanModal({ ...planModal, name: event.target.value })
+                }
+                className={INPUT}
+              />
             </Field>
 
-            <Field label="اسم الاشتراك بالإنجليزية" hint="اختياري، يظهر عند اختيار اللغة الإنجليزية.">
+            <Field
+              label="اسم الاشتراك بالإنجليزية"
+              hint="اختياري، يظهر عند اختيار اللغة الإنجليزية."
+            >
               <div className="flex gap-2">
                 <input
                   value={planModal.nameEn ?? ""}
-                  onChange={(event) => setPlanModal({ ...planModal, nameEn: event.target.value })}
+                  onChange={(event) =>
+                    setPlanModal({ ...planModal, nameEn: event.target.value })
+                  }
                   className={`${INPUT} flex-1`}
                   dir="ltr"
                   placeholder="Example: Monthly Membership"
                 />
-                <TranslateButton from={planModal.name} onTranslated={(t) => setPlanModal({ ...planModal, nameEn: t })} />
+                <TranslateButton
+                  from={planModal.name}
+                  onTranslated={(t) =>
+                    setPlanModal({ ...planModal, nameEn: t })
+                  }
+                />
               </div>
             </Field>
 
             <Field label="نوع الاشتراك">
-              <select value={planModal.kind ?? "subscription"} onChange={(e) => setPlanModal({ ...planModal, kind: e.target.value as Plan["kind"] })} className={INPUT}>
+              <select
+                value={planModal.kind ?? "subscription"}
+                onChange={(e) =>
+                  setPlanModal({
+                    ...planModal,
+                    kind: e.target.value as Plan["kind"],
+                  })
+                }
+                className={INPUT}
+              >
                 <option value="subscription">اشتراك عادي</option>
                 <option value="custom">عرض تخصيص (اختيار الشهور)</option>
               </select>
@@ -839,27 +1112,95 @@ export default function Subscriptions() {
             {planModal.kind === "custom" ? (
               <div className="grid gap-4 sm:grid-cols-3">
                 <Field label="سعر الشهر الواحد (ج.م)">
-                  <input type="number" value={planModal.price} onChange={(e) => setPlanModal({ ...planModal, price: Number(e.target.value) })} className={INPUT} dir="ltr" />
+                  <input
+                    type="number"
+                    value={planModal.price}
+                    onChange={(e) =>
+                      setPlanModal({
+                        ...planModal,
+                        price: Number(e.target.value),
+                      })
+                    }
+                    className={INPUT}
+                    dir="ltr"
+                  />
                 </Field>
                 <Field label="الحد الأدنى للشهور">
-                  <input type="number" min={1} value={planModal.minMonths ?? 3} onChange={(e) => setPlanModal({ ...planModal, minMonths: Number(e.target.value) })} className={INPUT} dir="ltr" />
+                  <input
+                    type="number"
+                    min={1}
+                    value={planModal.minMonths ?? 3}
+                    onChange={(e) =>
+                      setPlanModal({
+                        ...planModal,
+                        minMonths: Number(e.target.value),
+                      })
+                    }
+                    className={INPUT}
+                    dir="ltr"
+                  />
                 </Field>
                 <Field label="الحد الأقصى للشهور">
-                  <input type="number" min={1} value={planModal.maxMonths ?? 6} onChange={(e) => setPlanModal({ ...planModal, maxMonths: Number(e.target.value) })} className={INPUT} dir="ltr" />
+                  <input
+                    type="number"
+                    min={1}
+                    value={planModal.maxMonths ?? 6}
+                    onChange={(e) =>
+                      setPlanModal({
+                        ...planModal,
+                        maxMonths: Number(e.target.value),
+                      })
+                    }
+                    className={INPUT}
+                    dir="ltr"
+                  />
                 </Field>
                 <Field label="نسبة الخصم %" hint="مثال: 50 تعني خصم 50%">
-                  <input type="number" min={0} max={100} value={planModal.discountPct ?? 0} onChange={(e) => setPlanModal({ ...planModal, discountPct: Number(e.target.value) })} className={INPUT} dir="ltr" />
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={planModal.discountPct ?? 0}
+                    onChange={(e) =>
+                      setPlanModal({
+                        ...planModal,
+                        discountPct: Number(e.target.value),
+                      })
+                    }
+                    className={INPUT}
+                    dir="ltr"
+                  />
                 </Field>
               </div>
             ) : (
               <>
                 <div className="grid gap-4 sm:grid-cols-3">
                   <Field label="السعر">
-                    <input type="number" value={planModal.price} onChange={(event) => setPlanModal({ ...planModal, price: Number(event.target.value) })} className={INPUT} dir="ltr" />
+                    <input
+                      type="number"
+                      value={planModal.price}
+                      onChange={(event) =>
+                        setPlanModal({
+                          ...planModal,
+                          price: Number(event.target.value),
+                        })
+                      }
+                      className={INPUT}
+                      dir="ltr"
+                    />
                   </Field>
 
                   <Field label="الدورة">
-                    <select value={planModal.cycle ?? "monthly"} onChange={(event) => setPlanModal({ ...planModal, cycle: event.target.value as Plan["cycle"] })} className={INPUT}>
+                    <select
+                      value={planModal.cycle ?? "monthly"}
+                      onChange={(event) =>
+                        setPlanModal({
+                          ...planModal,
+                          cycle: event.target.value as Plan["cycle"],
+                        })
+                      }
+                      className={INPUT}
+                    >
                       <option value="monthly">شهري</option>
                       <option value="quarterly">ربع سنوي</option>
                       <option value="semi_annual">نصف سنوي</option>
@@ -873,7 +1214,10 @@ export default function Subscriptions() {
                       type="number"
                       value={planModal.sortOrder ?? 0}
                       onChange={(event) =>
-                        setPlanModal({ ...planModal, sortOrder: Number(event.target.value) })
+                        setPlanModal({
+                          ...planModal,
+                          sortOrder: Number(event.target.value),
+                        })
                       }
                       className={INPUT}
                       dir="ltr"
@@ -882,11 +1226,18 @@ export default function Subscriptions() {
                 </div>
 
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <Field label="نوع الخصم" hint="اختاري نسبة مئوية أو مبلغ ثابت.">
+                  <Field
+                    label="نوع الخصم"
+                    hint="اختاري نسبة مئوية أو مبلغ ثابت."
+                  >
                     <select
                       value={planModal.discountType ?? "percentage"}
                       onChange={(event) =>
-                        setPlanModal({ ...planModal, discountType: event.target.value as "percentage" | "fixed" })
+                        setPlanModal({
+                          ...planModal,
+                          discountType: event.target.value as
+                            "percentage" | "fixed",
+                        })
                       }
                       className={INPUT}
                     >
@@ -894,14 +1245,20 @@ export default function Subscriptions() {
                       <option value="fixed">مبلغ ثابت</option>
                     </select>
                   </Field>
-                  <Field label="قيمة الخصم" hint="اتركيها فارغة إذا لا يوجد خصم.">
+                  <Field
+                    label="قيمة الخصم"
+                    hint="اتركيها فارغة إذا لا يوجد خصم."
+                  >
                     <input
                       type="number"
                       value={planModal.discountValue ?? ""}
                       onChange={(event) =>
                         setPlanModal({
                           ...planModal,
-                          discountValue: event.target.value === "" ? null : Number(event.target.value),
+                          discountValue:
+                            event.target.value === ""
+                              ? null
+                              : Number(event.target.value),
                         })
                       }
                       className={INPUT}
@@ -912,7 +1269,10 @@ export default function Subscriptions() {
               </>
             )}
 
-            <Field label="صورة الاشتراك" hint="المقاس المثالي: 1020 × 720 بكسل بنسبة 1.4:1، وهو نفس مقاس صور العروض حتى تظهر الباقات بنفس التصميم والتناسق.">
+            <Field
+              label="صورة الاشتراك"
+              hint="المقاس المثالي: 1020 × 720 بكسل بنسبة 1.4:1، وهو نفس مقاس صور العروض حتى تظهر الباقات بنفس التصميم والتناسق."
+            >
               <div className="flex flex-wrap gap-2">
                 <input
                   type="file"
@@ -925,15 +1285,24 @@ export default function Subscriptions() {
                 />
                 <input
                   value={planModal.image ?? ""}
-                  onChange={(event) => setPlanModal({ ...planModal, image: event.target.value })}
+                  onChange={(event) =>
+                    setPlanModal({ ...planModal, image: event.target.value })
+                  }
                   className={INPUT}
                   placeholder="أو ضع رابط الصورة المباشر"
                 />
               </div>
-              {uploadingPlanImage ? <div className="text-xs text-[#d7aabd]">جاري رفع صورة الاشتراك...</div> : null}
+              {uploadingPlanImage ? (
+                <div className="text-xs text-[#d7aabd]">
+                  جاري رفع صورة الاشتراك...
+                </div>
+              ) : null}
               {planModal.image ? (
                 <div className="mt-2 overflow-hidden rounded-2xl border border-[rgba(255,188,219,0.14)]">
-                  <div className="relative w-full" style={{ aspectRatio: "1.4 / 1" }}>
+                  <div
+                    className="relative w-full"
+                    style={{ aspectRatio: "1.4 / 1" }}
+                  >
                     <img
                       src={planModal.image}
                       alt="صورة الاشتراك"
@@ -947,7 +1316,11 @@ export default function Subscriptions() {
             {planModal.discountValue && planModal.discountValue > 0 ? (
               <div className="rounded-xl border border-[rgba(255,188,219,0.18)] bg-black/20 p-4 text-sm text-[#fff4f8]">
                 السعر بعد الخصم:{" "}
-                {computeDiscountedPrice(planModal.price, planModal.discountType, planModal.discountValue).priceAfter?.toLocaleString("ar-EG") ??
+                {computeDiscountedPrice(
+                  planModal.price,
+                  planModal.discountType,
+                  planModal.discountValue,
+                ).priceAfter?.toLocaleString("ar-EG") ??
                   planModal.price.toLocaleString("ar-EG")}{" "}
                 ج.م
               </div>
@@ -955,53 +1328,172 @@ export default function Subscriptions() {
 
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="عدد الحصص">
-                <input type="number" value={planModal.sessionsCount ?? ""} onChange={(event) => setPlanModal({ ...planModal, sessionsCount: event.target.value ? Number(event.target.value) : null })} className={INPUT} dir="ltr" />
+                <input
+                  type="number"
+                  value={planModal.sessionsCount ?? ""}
+                  onChange={(event) =>
+                    setPlanModal({
+                      ...planModal,
+                      sessionsCount: event.target.value
+                        ? Number(event.target.value)
+                        : null,
+                    })
+                  }
+                  className={INPUT}
+                  dir="ltr"
+                />
               </Field>
               <Field label="مدة التدريب (بالأيام)">
-                <input type="number" value={planModal.duration} onChange={(event) => setPlanModal({ ...planModal, duration: Number(event.target.value) })} className={INPUT} dir="ltr" />
+                <input
+                  type="number"
+                  value={planModal.duration}
+                  onChange={(event) =>
+                    setPlanModal({
+                      ...planModal,
+                      duration: Number(event.target.value),
+                    })
+                  }
+                  className={INPUT}
+                  dir="ltr"
+                />
               </Field>
             </div>
 
             <Field
-              label="كلاسات مرتبطة بالجدول"
-              hint="اختر نوع الكلاس الذي يظهر في جدول اختيار الأيام عند الاشتراك. إذا لم تختر شيئًا ستظهر جميع الكلاسات."
+              label="الكلاسات المسموحة"
+              hint="اختاري الكلاسات المحددة التي يشملها الاشتراك أو الباقة. نوع الكلاس للتصنيف فقط ولا يفتح كلاسات أخرى من نفس النوع."
             >
-              {uniqueClassTypes.length === 0 ? (
-                <div className="text-xs text-[#d7aabd]">لا توجد كلاسات مضافة في النظام حتى الآن.</div>
+              {gymClasses.length === 0 ? (
+                <div className="text-xs text-[#d7aabd]">
+                  لا توجد كلاسات مضافة في النظام حتى الآن.
+                </div>
               ) : (
                 <>
                   <div className="grid gap-2 sm:grid-cols-2">
-                    {(() => {
-                      const linkedTypes = getLinkedClassTypes(planModal.classSessions, gymClasses);
-                      return uniqueClassTypes.map(({ type, classes: typeClasses }) => {
-                        const isActive = linkedTypes.has(type);
-                        return (
-                          <button
-                            key={type}
-                            type="button"
-                            onClick={() =>
-                              setPlanModal({
-                                ...planModal,
-                                classSessions: toggleClassType(type, typeClasses, planModal.classSessions),
-                              })
-                            }
-                            className={`flex items-center justify-between rounded-xl border px-4 py-3 text-xs font-bold transition-colors ${
-                              isActive
-                                ? "border-[#ff4f93] bg-[#ff4f93]/10 text-[#fff4f8]"
-                                : "border-[rgba(255,188,219,0.12)] bg-black/15 text-[#d7aabd]"
-                            }`}
-                          >
-                            <span>
-                              {getClassTypeArabicLabel(type)}
-                              <span className="mr-1 font-normal opacity-60">({typeClasses.length})</span>
-                            </span>
-                            {isActive ? <span className="text-[#ff4f93]">✓</span> : null}
-                          </button>
-                        );
-                      });
-                    })()}
+                    {planModal.kind === "package"
+                      ? gymClasses
+                          .filter((cls) => cls.active)
+                          .map((cls) => {
+                            const current = planModal.classSessions ?? [];
+                            const selected = current.some(
+                              (item) => item.classId === cls.id,
+                            );
+                            return (
+                              <button
+                                key={cls.id}
+                                type="button"
+                                onClick={() =>
+                                  setPlanModal({
+                                    ...planModal,
+                                    classSessions: selected
+                                      ? current.filter(
+                                          (item) => item.classId !== cls.id,
+                                        )
+                                      : [
+                                          ...current,
+                                          {
+                                            classId: cls.id,
+                                            className: cls.name,
+                                            classType: cls.type,
+                                            sessions: 1,
+                                          },
+                                        ],
+                                  })
+                                }
+                                className={`flex items-center justify-between rounded-xl border px-4 py-3 text-xs font-bold transition-colors ${
+                                  selected
+                                    ? "border-[#ff4f93] bg-[#ff4f93]/10 text-[#fff4f8]"
+                                    : "border-[rgba(255,188,219,0.12)] bg-black/15 text-[#d7aabd]"
+                                }`}
+                              >
+                                <span>
+                                  {cls.name}
+                                  <span className="mr-1 font-normal opacity-60">
+                                    ({getClassTypeArabicLabel(cls.type)} -{" "}
+                                    {cls.day}{" "}
+                                    {formatTime12Hour(cls.time, {
+                                      meridiem: "ar",
+                                    })}
+                                    )
+                                  </span>
+                                </span>
+                                {selected ? (
+                                  <span className="text-[#ff4f93]">✓</span>
+                                ) : null}
+                              </button>
+                            );
+                          })
+                      : classSelectionGroups.map((group) => {
+                          const current = planModal.classSessions ?? [];
+                          const groupIds = new Set(
+                            group.classes.map((cls) => cls.id),
+                          );
+                          const selectedCount = current.filter(
+                            (item) =>
+                              item.classId && groupIds.has(item.classId),
+                          ).length;
+                          const fullySelected =
+                            group.classes.length > 0 &&
+                            selectedCount === group.classes.length;
+                          const partiallySelected =
+                            selectedCount > 0 && !fullySelected;
+                          const visuallySelected =
+                            fullySelected || partiallySelected;
+
+                          return (
+                            <button
+                              key={group.key}
+                              type="button"
+                              onClick={() => {
+                                const outsideGroup = current.filter(
+                                  (item) =>
+                                    !item.classId ||
+                                    !groupIds.has(item.classId),
+                                );
+
+                                setPlanModal({
+                                  ...planModal,
+                                  classSessions: fullySelected
+                                    ? outsideGroup
+                                    : [
+                                        ...outsideGroup,
+                                        ...group.classes.map((cls) => ({
+                                          classId: cls.id,
+                                          className: cls.name,
+                                          classType: cls.type,
+                                          sessions: 1,
+                                        })),
+                                      ],
+                                });
+                              }}
+                              className={`flex items-center justify-between rounded-xl border px-4 py-3 text-xs font-bold transition-colors ${
+                                visuallySelected
+                                  ? "border-[#ff4f93] bg-[#ff4f93]/10 text-[#fff4f8]"
+                                  : "border-[rgba(255,188,219,0.12)] bg-black/15 text-[#d7aabd]"
+                              }`}
+                            >
+                              <span>
+                                {group.name}
+                                <span className="mr-1 font-normal opacity-60">
+                                  ({getClassTypeArabicLabel(group.type)})
+                                </span>
+                              </span>
+
+                              {fullySelected ? (
+                                <span className="text-[#ff4f93]">✓</span>
+                              ) : partiallySelected ? (
+                                <span
+                                  className="text-[#ff4f93]"
+                                  title="بعض المواعيد فقط محددة في البيانات الحالية"
+                                >
+                                  ◐
+                                </span>
+                              ) : null}
+                            </button>
+                          );
+                        })}
                   </div>
-                  {!(planModal.classSessions?.length) && (
+                  {!planModal.classSessions?.length && (
                     <div className="mt-2 rounded-xl border border-[rgba(255,188,219,0.1)] bg-black/20 px-4 py-2 text-xs text-[#d7aabd]">
                       ⚠️ لم يتم تحديد أي كلاس - لن يتمكن العميل من حجز أي كلاس
                     </div>
@@ -1010,7 +1502,10 @@ export default function Subscriptions() {
               )}
             </Field>
 
-            <Field label="الأهداف المرتبطة" hint="اختاري الأهداف التي يظهر معها هذا الاشتراك في رحلة الاختيار.">
+            <Field
+              label="الأهداف المرتبطة"
+              hint="اختاري الأهداف التي يظهر معها هذا الاشتراك في رحلة الاختيار."
+            >
               <div className="grid gap-2 sm:grid-cols-2">
                 {goals.map((goal) => {
                   const active = planModal.goalIds?.includes(goal.id);
@@ -1033,25 +1528,50 @@ export default function Subscriptions() {
               </div>
             </Field>
 
-            <Field label="مميزات الاشتراك" hint="أضف كل ميزة ثم اضغط زر الإضافة لتظهر ضمن قائمة الاشتراك.">
+            <Field
+              label="مميزات الاشتراك"
+              hint="أضف كل ميزة ثم اضغط زر الإضافة لتظهر ضمن قائمة الاشتراك."
+            >
               <div className="mb-3 flex gap-2">
-                <input value={featureInput} onChange={(event) => setFeatureInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addFeature(); } }} placeholder="مثال: متابعة شهرية مع المدربة" className={INPUT} />
-                <button type="button" onClick={addFeature} className="rounded-lg bg-[#ff4f93] px-4 text-sm font-black text-white transition-colors hover:bg-[#ff2f7d]">
+                <input
+                  value={featureInput}
+                  onChange={(event) => setFeatureInput(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      addFeature();
+                    }
+                  }}
+                  placeholder="مثال: متابعة شهرية مع المدربة"
+                  className={INPUT}
+                />
+                <button
+                  type="button"
+                  onClick={addFeature}
+                  className="rounded-lg bg-[#ff4f93] px-4 text-sm font-black text-white transition-colors hover:bg-[#ff2f7d]"
+                >
                   +
                 </button>
               </div>
 
               <div className="space-y-2">
                 {(planModal.features ?? []).map((feature, index) => (
-                  <div key={`${feature}-${index}`} className="flex items-center gap-2 rounded-xl border border-[rgba(255,188,219,0.12)] bg-black/15 px-4 py-3">
+                  <div
+                    key={`${feature}-${index}`}
+                    className="flex items-center gap-2 rounded-xl border border-[rgba(255,188,219,0.12)] bg-black/15 px-4 py-3"
+                  >
                     <span className="text-[#ff97bf]">✓</span>
-                    <span className="flex-1 text-sm text-[#fff4f8]">{feature}</span>
+                    <span className="flex-1 text-sm text-[#fff4f8]">
+                      {feature}
+                    </span>
                     <button
                       type="button"
                       onClick={() =>
                         setPlanModal({
                           ...planModal,
-                          features: planModal.features.filter((_, currentIndex) => currentIndex !== index),
+                          features: planModal.features.filter(
+                            (_, currentIndex) => currentIndex !== index,
+                          ),
                         })
                       }
                       className="text-[#d7aabd] transition-colors hover:text-rose-300"
@@ -1063,30 +1583,70 @@ export default function Subscriptions() {
               </div>
             </Field>
 
-            <Field label="مميزات الاشتراك بالإنجليزية" hint="اختياري، تُعرض للعميل عند اختيار اللغة الإنجليزية.">
+            <Field
+              label="مميزات الاشتراك بالإنجليزية"
+              hint="اختياري، تُعرض للعميل عند اختيار اللغة الإنجليزية."
+            >
               <div className="mb-2 flex gap-2">
                 <TranslateButton
                   from={(planModal.features ?? []).join("\n")}
-                  onTranslated={(t) => setPlanModal({ ...planModal, featuresEn: t.split("\n").map((s) => s.trim()).filter(Boolean) })}
+                  onTranslated={(t) =>
+                    setPlanModal({
+                      ...planModal,
+                      featuresEn: t
+                        .split("\n")
+                        .map((s) => s.trim())
+                        .filter(Boolean),
+                    })
+                  }
                 />
               </div>
               <div className="mb-3 flex gap-2">
                 <input
                   value={featureInputEn}
                   onChange={(event) => setFeatureInputEn(event.target.value)}
-                  onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addFeatureEn(); } }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      addFeatureEn();
+                    }
+                  }}
                   placeholder="Example: Monthly follow-up with trainer"
                   className={INPUT}
                   dir="ltr"
                 />
-                <button type="button" onClick={addFeatureEn} className="rounded-lg bg-[#ff4f93] px-4 text-sm font-black text-white transition-colors hover:bg-[#ff2f7d]">+</button>
+                <button
+                  type="button"
+                  onClick={addFeatureEn}
+                  className="rounded-lg bg-[#ff4f93] px-4 text-sm font-black text-white transition-colors hover:bg-[#ff2f7d]"
+                >
+                  +
+                </button>
               </div>
               <div className="space-y-2">
                 {(planModal.featuresEn ?? []).map((feature, index) => (
-                  <div key={`en-${index}`} className="flex items-center gap-2 rounded-xl border border-[rgba(255,188,219,0.12)] bg-black/15 px-4 py-3">
+                  <div
+                    key={`en-${index}`}
+                    className="flex items-center gap-2 rounded-xl border border-[rgba(255,188,219,0.12)] bg-black/15 px-4 py-3"
+                  >
                     <span className="text-[#ff97bf]">✓</span>
-                    <span className="flex-1 text-sm text-[#fff4f8]" dir="ltr">{feature}</span>
-                    <button type="button" onClick={() => setPlanModal({ ...planModal, featuresEn: (planModal.featuresEn ?? []).filter((_, i) => i !== index) })} className="text-[#d7aabd] transition-colors hover:text-rose-300">×</button>
+                    <span className="flex-1 text-sm text-[#fff4f8]" dir="ltr">
+                      {feature}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setPlanModal({
+                          ...planModal,
+                          featuresEn: (planModal.featuresEn ?? []).filter(
+                            (_, i) => i !== index,
+                          ),
+                        })
+                      }
+                      className="text-[#d7aabd] transition-colors hover:text-rose-300"
+                    >
+                      ×
+                    </button>
                   </div>
                 ))}
               </div>
@@ -1100,7 +1660,10 @@ export default function Subscriptions() {
                 <select
                   value={productRewardDraft.productId}
                   onChange={(event) =>
-                    setProductRewardDraft({ ...productRewardDraft, productId: event.target.value })
+                    setProductRewardDraft({
+                      ...productRewardDraft,
+                      productId: event.target.value,
+                    })
                   }
                   className={INPUT}
                 >
@@ -1116,7 +1679,10 @@ export default function Subscriptions() {
                   min={1}
                   value={productRewardDraft.quantity}
                   onChange={(event) =>
-                    setProductRewardDraft({ ...productRewardDraft, quantity: Number(event.target.value) })
+                    setProductRewardDraft({
+                      ...productRewardDraft,
+                      quantity: Number(event.target.value),
+                    })
                   }
                   className={`${INPUT} w-32`}
                   dir="ltr"
@@ -1136,8 +1702,11 @@ export default function Subscriptions() {
                     className="flex items-center justify-between rounded-xl border border-[rgba(255,188,219,0.12)] bg-black/15 px-4 py-3 text-sm text-[#fff4f8]"
                   >
                     <div>
-                      {products.find((item) => item.id === entry.productId)?.name ?? "منتج"}
-                      <span className="mr-2 text-xs text-[#d7aabd]">({entry.quantity} قطعة)</span>
+                      {products.find((item) => item.id === entry.productId)
+                        ?.name ?? "منتج"}
+                      <span className="mr-2 text-xs text-[#d7aabd]">
+                        ({entry.quantity} قطعة)
+                      </span>
                     </div>
                     <button
                       type="button"
@@ -1155,14 +1724,46 @@ export default function Subscriptions() {
               <input
                 type="checkbox"
                 checked={planModal.isFeatured === true}
-                onChange={(e) => setPlanModal({ ...planModal, isFeatured: e.target.checked })}
+                onChange={(e) =>
+                  setPlanModal({ ...planModal, isFeatured: e.target.checked })
+                }
                 className="accent-amber-400 h-4 w-4"
               />
               <div>
                 <div className="font-bold">⭐ اشتراك مميز (Open Time)</div>
-                <div className="text-xs text-[#d7aabd] mt-0.5">يظهر بشكل بارز في الصفحة الرئيسية مع اختيار تاريخ البداية</div>
+                <div className="text-xs text-[#d7aabd] mt-0.5">
+                  يظهر بشكل بارز في الصفحة الرئيسية مع اختيار تاريخ البداية
+                </div>
               </div>
             </label>
+
+            {planModal.kind === "subscription" && (
+              <label className="flex items-start gap-3 rounded-xl border border-gray-700 bg-gray-800/60 p-4">
+                <input
+                  type="checkbox"
+                  checked={planModal.coachMembershipEnabled === true}
+                  onChange={(e) =>
+                    setPlanModal({
+                      ...planModal,
+                      coachMembershipEnabled: e.target.checked,
+                    })
+                  }
+                  className="mt-1 h-4 w-4"
+                />
+
+                <span>
+                  <span className="block text-sm font-semibold text-white">
+                    اشتراك مدرب — Coach Membership
+                  </span>
+
+                  <span className="mt-1 block text-xs leading-5 text-gray-400">
+                    يتطلب من العميل اختيار مدرب عند الاشتراك، ويتم تجميد هوية
+                    المدرب والموظف ونسبة Coach Membership وقت الشراء. هذا النظام
+                    مستقل عن روابط الإحالة وأكواد الخصم.
+                  </span>
+                </span>
+              </label>
+            )}
 
             {planModal.isFeatured && (
               <Field label="نص وصف الاشتراك المميز (الجملة الظاهرة تحت الاسم)">
@@ -1171,12 +1772,18 @@ export default function Subscriptions() {
                   rows={2}
                   placeholder={`مثال: احضري كلاسات بلا حدود خلال ${planModal.duration ?? 24} يومًا كاملة`}
                   value={planModal.subtitle ?? ""}
-                  onChange={(e) => setPlanModal({ ...planModal, subtitle: e.target.value })}
+                  onChange={(e) =>
+                    setPlanModal({ ...planModal, subtitle: e.target.value })
+                  }
                 />
               </Field>
             )}
 
-            <button onClick={() => void savePlan()} disabled={saving} className="w-full rounded-xl bg-[#ff4f93] py-3 text-sm font-black text-white transition-colors hover:bg-[#ff2f7d] disabled:opacity-50">
+            <button
+              onClick={() => void savePlan()}
+              disabled={saving}
+              className="w-full rounded-xl bg-[#ff4f93] py-3 text-sm font-black text-white transition-colors hover:bg-[#ff2f7d] disabled:opacity-50"
+            >
               {saving ? "جاري حفظ الاشتراك..." : "حفظ الاشتراك"}
             </button>
           </div>
@@ -1184,10 +1791,38 @@ export default function Subscriptions() {
       ) : null}
 
       {offerModal ? (
-        <Modal title={"id" in offerModal && offerModal.id ? "تعديل العرض" : offerModal.type === "special" ? "إضافة عرض خاص" : "إضافة عرض عادي"} onClose={() => { setOfferModal(null); setOfferFeatureInput(""); setOfferFeatureInputEn(""); }}>
+        <Modal
+          title={
+            "id" in offerModal && offerModal.id
+              ? "تعديل العرض"
+              : offerModal.type === "special"
+                ? "إضافة عرض خاص"
+                : "إضافة عرض عادي"
+          }
+          onClose={() => {
+            setOfferModal(null);
+            setOfferFeatureInput("");
+            setOfferFeatureInputEn("");
+          }}
+        >
           <div className="space-y-4">
             <Field label="نوع العرض">
-              <select value={offerModal.type} onChange={(event) => setOfferModal({ ...offerModal, type: event.target.value as Offer["type"] })} className={INPUT}>
+              <select
+                value={offerModal.type}
+                onChange={(event) => {
+                  const nextType = event.target.value as Offer["type"];
+
+                  setOfferModal({
+                    ...offerModal,
+                    type: nextType,
+                    friendOfferEnabled:
+                      nextType === "special"
+                        ? offerModal.friendOfferEnabled
+                        : false,
+                  });
+                }}
+                className={INPUT}
+              >
                 <option value="special">عرض خاص</option>
                 <option value="percentage">خصم بنسبة</option>
                 <option value="fixed">خصم بمبلغ ثابت</option>
@@ -1195,34 +1830,95 @@ export default function Subscriptions() {
             </Field>
 
             <Field label="عنوان العرض (عربي)">
-              <input value={offerModal.title} onChange={(event) => setOfferModal({ ...offerModal, title: event.target.value })} className={INPUT} placeholder="مثال: عرض الصيف" />
+              <input
+                value={offerModal.title}
+                onChange={(event) =>
+                  setOfferModal({ ...offerModal, title: event.target.value })
+                }
+                className={INPUT}
+                placeholder="مثال: عرض الصيف"
+              />
             </Field>
 
             <Field label="عنوان العرض (إنجليزي — Title EN)">
               <div className="flex gap-2">
-                <input value={offerModal.titleEn ?? ""} onChange={(event) => setOfferModal({ ...offerModal, titleEn: event.target.value })} className={`${INPUT} flex-1`} placeholder="e.g. Summer Offer" dir="ltr" />
-                <TranslateButton from={offerModal.title} onTranslated={(t) => setOfferModal((prev) => prev ? { ...prev, titleEn: t } : prev)} />
+                <input
+                  value={offerModal.titleEn ?? ""}
+                  onChange={(event) =>
+                    setOfferModal({
+                      ...offerModal,
+                      titleEn: event.target.value,
+                    })
+                  }
+                  className={`${INPUT} flex-1`}
+                  placeholder="e.g. Summer Offer"
+                  dir="ltr"
+                />
+                <TranslateButton
+                  from={offerModal.title}
+                  onTranslated={(t) =>
+                    setOfferModal((prev) =>
+                      prev ? { ...prev, titleEn: t } : prev,
+                    )
+                  }
+                />
               </div>
             </Field>
 
-            <Field label="وصف مختصر (عربي)" hint="يظهر هذا النص للعميل داخل الصفحة الرئيسية وصفحة الاشتراكات إن فُعّل العرض هناك.">
-              <textarea value={offerModal.description ?? ""} onChange={(event) => setOfferModal({ ...offerModal, description: event.target.value })} className={`${INPUT} min-h-24 resize-y`} placeholder="صف العرض بشكل مختصر ومقنع." />
+            <Field
+              label="وصف مختصر (عربي)"
+              hint="يظهر هذا النص للعميل داخل الصفحة الرئيسية وصفحة الاشتراكات إن فُعّل العرض هناك."
+            >
+              <textarea
+                value={offerModal.description ?? ""}
+                onChange={(event) =>
+                  setOfferModal({
+                    ...offerModal,
+                    description: event.target.value,
+                  })
+                }
+                className={`${INPUT} min-h-24 resize-y`}
+                placeholder="صف العرض بشكل مختصر ومقنع."
+              />
             </Field>
 
             <Field label="وصف مختصر (إنجليزي — Description EN)">
               <div className="space-y-1">
-                <textarea value={offerModal.descriptionEn ?? ""} onChange={(event) => setOfferModal({ ...offerModal, descriptionEn: event.target.value })} className={`${INPUT} min-h-20 resize-y`} placeholder="e.g. Describe the offer briefly." dir="ltr" />
-                <TranslateButton from={offerModal.description ?? ""} onTranslated={(t) => setOfferModal((prev) => prev ? { ...prev, descriptionEn: t } : prev)} />
+                <textarea
+                  value={offerModal.descriptionEn ?? ""}
+                  onChange={(event) =>
+                    setOfferModal({
+                      ...offerModal,
+                      descriptionEn: event.target.value,
+                    })
+                  }
+                  className={`${INPUT} min-h-20 resize-y`}
+                  placeholder="e.g. Describe the offer briefly."
+                  dir="ltr"
+                />
+                <TranslateButton
+                  from={offerModal.description ?? ""}
+                  onTranslated={(t) =>
+                    setOfferModal((prev) =>
+                      prev ? { ...prev, descriptionEn: t } : prev,
+                    )
+                  }
+                />
               </div>
             </Field>
 
             {offerModal.type === "special" ? (
               <>
-                <Field label="الاشتراك المرتبط" hint="اختياري. يمكنك تركه فارغًا لو كان العرض الخاص غير مرتبط باشتراك محدد.">
+                <Field
+                  label="الاشتراك المرتبط"
+                  hint="اختياري. يمكنك تركه فارغًا لو كان العرض الخاص غير مرتبط باشتراك محدد."
+                >
                   <select
                     value={offerModal.membershipId ?? ""}
                     onChange={(event) => {
-                      const selected = plans.find((plan) => plan.id === event.target.value);
+                      const selected = plans.find(
+                        (plan) => plan.id === event.target.value,
+                      );
                       setOfferModal({
                         ...offerModal,
                         membershipId: event.target.value || null,
@@ -1241,115 +1937,256 @@ export default function Subscriptions() {
                 </Field>
 
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <Field label="السعر الأصلي (قبل الخصم)" hint="اختياري — يظهر مشطوبًا بجانب سعر العرض">
-                    <input type="number" value={offerModal.priceBefore ?? ""} onChange={(event) => setOfferModal({ ...offerModal, priceBefore: event.target.value ? Number(event.target.value) : null })} className={INPUT} dir="ltr" placeholder="مثال: 500" />
+                  <Field
+                    label="السعر الأصلي (قبل الخصم)"
+                    hint="اختياري — يظهر مشطوبًا بجانب سعر العرض"
+                  >
+                    <input
+                      type="number"
+                      value={offerModal.priceBefore ?? ""}
+                      onChange={(event) =>
+                        setOfferModal({
+                          ...offerModal,
+                          priceBefore: event.target.value
+                            ? Number(event.target.value)
+                            : null,
+                        })
+                      }
+                      className={INPUT}
+                      dir="ltr"
+                      placeholder="مثال: 500"
+                    />
                   </Field>
                   <Field label="سعر العرض الخاص (بعد الخصم)">
-                    <input type="number" value={offerModal.specialPrice ?? 0} onChange={(event) => setOfferModal({ ...offerModal, specialPrice: Number(event.target.value) })} className={INPUT} dir="ltr" />
+                    <input
+                      type="number"
+                      value={offerModal.specialPrice ?? 0}
+                      onChange={(event) =>
+                        setOfferModal({
+                          ...offerModal,
+                          specialPrice: Number(event.target.value),
+                        })
+                      }
+                      className={INPUT}
+                      dir="ltr"
+                    />
                   </Field>
                 </div>
+                <div className="rounded-2xl border border-[rgba(255,188,219,0.16)] bg-black/20 p-4">
+                  <label className="flex cursor-pointer items-start gap-3 text-sm text-[#fff4f8]">
+                    <input
+                      type="checkbox"
+                      checked={offerModal.friendOfferEnabled === true}
+                      onChange={(event) =>
+                        setOfferModal({
+                          ...offerModal,
+                          friendOfferEnabled: event.target.checked,
+                        })
+                      }
+                      className="mt-1 h-4 w-4 accent-[#ff4f93]"
+                    />
+
+                    <div>
+                      <div className="font-black">تفعيل عرض الصحاب</div>
+                      <div className="mt-1 text-xs leading-6 text-[#d7aabd]">
+                        يتم تقسيم إجمالي سعر العرض على المشتركات، ولا يتم تفعيل
+                        الاشتراك إلا بعد اكتمال المجموعة والدفع.
+                      </div>
+                    </div>
+                  </label>
+
+                  {offerModal.friendOfferEnabled ? (
+                    <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                      <Field label="عدد المشتركات المطلوبة">
+                        <input
+                          type="number"
+                          min={2}
+                          value={offerModal.friendRequiredMembers ?? 2}
+                          onChange={(event) =>
+                            setOfferModal({
+                              ...offerModal,
+                              friendRequiredMembers: Math.max(
+                                2,
+                                Number(event.target.value) || 2,
+                              ),
+                            })
+                          }
+                          className={INPUT}
+                          dir="ltr"
+                        />
+                      </Field>
+
+                      <Field label="صلاحية رابط الدعوة بالساعات">
+                        <input
+                          type="number"
+                          min={1}
+                          value={offerModal.friendInviteExpiryHours ?? 24}
+                          onChange={(event) =>
+                            setOfferModal({
+                              ...offerModal,
+                              friendInviteExpiryHours: Math.max(
+                                1,
+                                Number(event.target.value) || 24,
+                              ),
+                            })
+                          }
+                          className={INPUT}
+                          dir="ltr"
+                        />
+                      </Field>
+                    </div>
+                  ) : null}
+                </div>
+
                 <Field label="الحد الأقصى للمشتركات">
-                  <input type="number" value={offerModal.maxSubscribers ?? 0} onChange={(event) => setOfferModal({ ...offerModal, maxSubscribers: Number(event.target.value) })} className={INPUT} dir="ltr" />
+                  <input
+                    type="number"
+                    value={offerModal.maxSubscribers ?? 0}
+                    onChange={(event) =>
+                      setOfferModal({
+                        ...offerModal,
+                        maxSubscribers: Number(event.target.value),
+                      })
+                    }
+                    className={INPUT}
+                    dir="ltr"
+                  />
                 </Field>
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <Field label="عدد الحصص" hint="اتركيه فارغًا إذا كان العرض بدون حصص محددة">
-                    <input type="number" value={offerModal.sessionsCount ?? ""} onChange={(event) => setOfferModal({ ...offerModal, sessionsCount: event.target.value ? Number(event.target.value) : null })} className={INPUT} dir="ltr" placeholder="مثال: 12" />
+                  <Field
+                    label="عدد الحصص"
+                    hint="اتركيه فارغًا إذا كان العرض بدون حصص محددة"
+                  >
+                    <input
+                      type="number"
+                      value={offerModal.sessionsCount ?? ""}
+                      onChange={(event) =>
+                        setOfferModal({
+                          ...offerModal,
+                          sessionsCount: event.target.value
+                            ? Number(event.target.value)
+                            : null,
+                        })
+                      }
+                      className={INPUT}
+                      dir="ltr"
+                      placeholder="مثال: 12"
+                    />
                   </Field>
-                  <Field label="مدة العرض (بالأيام)" hint="اتركيه فارغًا لاستخدام القيمة الافتراضية (30 يوم)">
-                    <input type="number" value={offerModal.durationDays ?? ""} onChange={(event) => setOfferModal({ ...offerModal, durationDays: event.target.value ? Number(event.target.value) : null })} className={INPUT} dir="ltr" placeholder="مثال: 30" />
+                  <Field
+                    label="مدة العرض (بالأيام)"
+                    hint="اتركيه فارغًا لاستخدام القيمة الافتراضية (30 يوم)"
+                  >
+                    <input
+                      type="number"
+                      value={offerModal.durationDays ?? ""}
+                      onChange={(event) =>
+                        setOfferModal({
+                          ...offerModal,
+                          durationDays: event.target.value
+                            ? Number(event.target.value)
+                            : null,
+                        })
+                      }
+                      className={INPUT}
+                      dir="ltr"
+                      placeholder="مثال: 30"
+                    />
                   </Field>
                 </div>
-                {offerModal.type === "special" ? (
-                  <Field label="أنواع الكلاسات المتاحة" hint="اختاري أنواع الكلاسات التي يتمكن العميل من حجزها ضمن هذا العرض. ترك القائمة فارغة يعني عدم السماح بأي كلاس.">
-                    {uniqueClassTypes.length === 0 ? (
-                      <div className="text-xs text-[#d7aabd]">لا توجد كلاسات مضافة في النظام حتى الآن.</div>
-                    ) : (
-                      <>
-                        <div className="grid gap-2 sm:grid-cols-2">
-                          {uniqueClassTypes.map(({ type, classes: typeClasses }) => {
-                            const selected = (offerModal.allowedClassTypes ?? []).includes(type);
-                            return (
-                              <button
-                                key={type}
-                                type="button"
-                                onClick={() => {
-                                  const current = offerModal.allowedClassTypes ?? [];
-                                  setOfferModal({
-                                    ...offerModal,
-                                    allowedClassTypes: selected
-                                      ? current.filter((t) => t !== type)
-                                      : [...current, type],
-                                  });
-                                }}
-                                className={`flex items-center justify-between rounded-xl border px-4 py-3 text-xs font-bold transition-colors ${
-                                  selected
-                                    ? "border-[#ff4f93] bg-[#ff4f93]/10 text-[#fff4f8]"
-                                    : "border-[rgba(255,188,219,0.12)] bg-black/15 text-[#d7aabd]"
-                                }`}
-                              >
-                                <span>
-                                  {getClassTypeArabicLabel(type)}
-                                  <span className="mr-1 font-normal opacity-60">({typeClasses.length})</span>
-                                </span>
-                                {selected ? <span className="text-[#ff4f93]">✓</span> : null}
-                              </button>
-                            );
-                          })}
-                        </div>
-                        {!(offerModal.allowedClassTypes?.length) && (
-                          <div className="mt-2 rounded-xl border border-[rgba(255,188,219,0.1)] bg-black/20 px-4 py-2 text-xs text-[#d7aabd]">
-                            ⚠️ لم يتم تحديد أي نوع - لن يتمكن العميل من حجز أي كلاس
-                          </div>
-                        )}
-                      </>
-                    )}
-                  </Field>
-                ) : (
-                  <Field label="الكلاسات المتاحة" hint="اختاري الحصص الفردية التي يتمكن العميل من حجزها ضمن هذا العرض.">
-                    {gymClasses.length === 0 ? (
-                      <div className="text-xs text-[#d7aabd]">لا توجد كلاسات مضافة في النظام حتى الآن.</div>
-                    ) : (
+                <Field
+                  label="الكلاسات المتاحة"
+                  hint="اختاري الكلاسات المحددة التي يتمكن العميل من حجزها ضمن هذا العرض. النوع للتصنيف فقط ولا يمنح صلاحية لكلاسات أخرى."
+                >
+                  {gymClasses.length === 0 ? (
+                    <div className="text-xs text-[#d7aabd]">
+                      لا توجد كلاسات مضافة في النظام حتى الآن.
+                    </div>
+                  ) : (
+                    <>
                       <div className="grid gap-2 sm:grid-cols-2">
-                        {gymClasses.filter((cls) => cls.active).map((cls) => {
-                          const selected = (offerModal.allowedClassIds ?? []).includes(cls.id);
+                        {classSelectionGroups.map((group) => {
+                          const current = offerModal.allowedClassIds ?? [];
+                          const groupIds = new Set(
+                            group.classes.map((cls) => cls.id),
+                          );
+                          const selectedCount = current.filter((id) =>
+                            groupIds.has(id),
+                          ).length;
+                          const fullySelected =
+                            group.classes.length > 0 &&
+                            selectedCount === group.classes.length;
+                          const partiallySelected =
+                            selectedCount > 0 && !fullySelected;
+                          const visuallySelected =
+                            fullySelected || partiallySelected;
+
                           return (
                             <button
-                              key={cls.id}
+                              key={group.key}
                               type="button"
                               onClick={() => {
-                                const current = offerModal.allowedClassIds ?? [];
+                                const outsideGroup = current.filter(
+                                  (id) => !groupIds.has(id),
+                                );
+
                                 setOfferModal({
                                   ...offerModal,
-                                  allowedClassIds: selected
-                                    ? current.filter((id) => id !== cls.id)
-                                    : [...current, cls.id],
+                                  allowedClassIds: fullySelected
+                                    ? outsideGroup
+                                    : [
+                                        ...outsideGroup,
+                                        ...group.classes.map((cls) => cls.id),
+                                      ],
                                 });
                               }}
                               className={`flex items-center justify-between rounded-xl border px-4 py-3 text-xs font-bold transition-colors ${
-                                selected
+                                visuallySelected
                                   ? "border-[#ff4f93] bg-[#ff4f93]/10 text-[#fff4f8]"
                                   : "border-[rgba(255,188,219,0.12)] bg-black/15 text-[#d7aabd]"
                               }`}
                             >
                               <span>
-                                {cls.name}
+                                {group.name}
                                 <span className="mr-1 font-normal opacity-60">
-                                  ({getClassTypeArabicLabel(cls.type)} - {cls.day} {formatTime12Hour(cls.time, { meridiem: "ar" })})
+                                  ({getClassTypeArabicLabel(group.type)})
                                 </span>
                               </span>
-                              {selected ? <span className="text-[#ff4f93]">✓</span> : null}
+
+                              {fullySelected ? (
+                                <span className="text-[#ff4f93]">✓</span>
+                              ) : partiallySelected ? (
+                                <span
+                                  className="text-[#ff4f93]"
+                                  title="بعض المواعيد فقط محددة في البيانات الحالية"
+                                >
+                                  ◐
+                                </span>
+                              ) : null}
                             </button>
                           );
                         })}
                       </div>
-                    )}
-                  </Field>
-                )}
+                      {(offerModal.allowedClassIds?.length ?? 0) === 0 ? (
+                        <div className="mt-2 rounded-xl border border-[rgba(255,188,219,0.1)] bg-black/20 px-4 py-2 text-xs text-[#d7aabd]">
+                          ⚠️ لم يتم تحديد أي كلاس - لن يتمكن العميل من حجز أي
+                          كلاس
+                        </div>
+                      ) : null}
+                    </>
+                  )}
+                </Field>
+
                 <label className="flex items-center gap-3 rounded-2xl border border-[rgba(255,188,219,0.12)] bg-black/15 px-4 py-3 text-sm text-[#fff4f8]">
                   <input
                     type="checkbox"
                     checked={offerModal.showMaxSubscribers !== false}
-                    onChange={(event) => setOfferModal({ ...offerModal, showMaxSubscribers: event.target.checked })}
+                    onChange={(event) =>
+                      setOfferModal({
+                        ...offerModal,
+                        showMaxSubscribers: event.target.checked,
+                      })
+                    }
                   />
                   إظهار عدد المقاعد المتبقية داخل الموقع
                 </label>
@@ -1357,32 +2194,63 @@ export default function Subscriptions() {
                   <input
                     type="checkbox"
                     checked={offerModal.showCurrentSubscribers !== false}
-                    onChange={(event) => setOfferModal({ ...offerModal, showCurrentSubscribers: event.target.checked })}
+                    onChange={(event) =>
+                      setOfferModal({
+                        ...offerModal,
+                        showCurrentSubscribers: event.target.checked,
+                      })
+                    }
                   />
                   إظهار عدد المشتركات الحاليات داخل الموقع
                 </label>
 
-                <Field label="مميزات العرض" hint="أضف كل ميزة ثم اضغط زر الإضافة لتظهر ضمن قائمة العرض الخاص.">
+                <Field
+                  label="مميزات العرض"
+                  hint="أضف كل ميزة ثم اضغط زر الإضافة لتظهر ضمن قائمة العرض الخاص."
+                >
                   <div className="mb-3 flex gap-2">
                     <input
                       value={offerFeatureInput}
-                      onChange={(event) => setOfferFeatureInput(event.target.value)}
-                      onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addOfferFeature(); } }}
+                      onChange={(event) =>
+                        setOfferFeatureInput(event.target.value)
+                      }
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          addOfferFeature();
+                        }
+                      }}
                       placeholder="مثال: دخول غير محدود لجميع الكلاسات"
                       className={INPUT}
                     />
-                    <button type="button" onClick={addOfferFeature} className="rounded-lg bg-[#ff4f93] px-4 text-sm font-black text-white transition-colors hover:bg-[#ff2f7d]">
+                    <button
+                      type="button"
+                      onClick={addOfferFeature}
+                      className="rounded-lg bg-[#ff4f93] px-4 text-sm font-black text-white transition-colors hover:bg-[#ff2f7d]"
+                    >
                       +
                     </button>
                   </div>
                   <div className="space-y-2">
                     {(offerModal.features ?? []).map((feature, index) => (
-                      <div key={`${feature}-${index}`} className="flex items-center gap-2 rounded-xl border border-[rgba(255,188,219,0.12)] bg-black/15 px-4 py-3">
+                      <div
+                        key={`${feature}-${index}`}
+                        className="flex items-center gap-2 rounded-xl border border-[rgba(255,188,219,0.12)] bg-black/15 px-4 py-3"
+                      >
                         <span className="text-[#ff97bf]">✓</span>
-                        <span className="flex-1 text-sm text-[#fff4f8]">{feature}</span>
+                        <span className="flex-1 text-sm text-[#fff4f8]">
+                          {feature}
+                        </span>
                         <button
                           type="button"
-                          onClick={() => setOfferModal({ ...offerModal, features: (offerModal.features ?? []).filter((_, i) => i !== index) })}
+                          onClick={() =>
+                            setOfferModal({
+                              ...offerModal,
+                              features: (offerModal.features ?? []).filter(
+                                (_, i) => i !== index,
+                              ),
+                            })
+                          }
                           className="text-[#d7aabd] transition-colors hover:text-rose-300"
                         >
                           ×
@@ -1392,30 +2260,75 @@ export default function Subscriptions() {
                   </div>
                 </Field>
 
-                <Field label="مميزات العرض بالإنجليزية" hint="اختياري، تُعرض للعميل عند اختيار اللغة الإنجليزية.">
+                <Field
+                  label="مميزات العرض بالإنجليزية"
+                  hint="اختياري، تُعرض للعميل عند اختيار اللغة الإنجليزية."
+                >
                   <div className="mb-2 flex gap-2">
                     <TranslateButton
                       from={(offerModal.features ?? []).join("\n")}
-                      onTranslated={(t) => setOfferModal({ ...offerModal, featuresEn: t.split("\n").map((s) => s.trim()).filter(Boolean) })}
+                      onTranslated={(t) =>
+                        setOfferModal({
+                          ...offerModal,
+                          featuresEn: t
+                            .split("\n")
+                            .map((s) => s.trim())
+                            .filter(Boolean),
+                        })
+                      }
                     />
                   </div>
                   <div className="mb-3 flex gap-2">
                     <input
                       value={offerFeatureInputEn}
-                      onChange={(event) => setOfferFeatureInputEn(event.target.value)}
-                      onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addOfferFeatureEn(); } }}
+                      onChange={(event) =>
+                        setOfferFeatureInputEn(event.target.value)
+                      }
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          addOfferFeatureEn();
+                        }
+                      }}
                       placeholder="Example: Unlimited access to all classes"
                       className={INPUT}
                       dir="ltr"
                     />
-                    <button type="button" onClick={addOfferFeatureEn} className="rounded-lg bg-[#ff4f93] px-4 text-sm font-black text-white transition-colors hover:bg-[#ff2f7d]">+</button>
+                    <button
+                      type="button"
+                      onClick={addOfferFeatureEn}
+                      className="rounded-lg bg-[#ff4f93] px-4 text-sm font-black text-white transition-colors hover:bg-[#ff2f7d]"
+                    >
+                      +
+                    </button>
                   </div>
                   <div className="space-y-2">
                     {(offerModal.featuresEn ?? []).map((feature, index) => (
-                      <div key={`en-${index}`} className="flex items-center gap-2 rounded-xl border border-[rgba(255,188,219,0.12)] bg-black/15 px-4 py-3">
+                      <div
+                        key={`en-${index}`}
+                        className="flex items-center gap-2 rounded-xl border border-[rgba(255,188,219,0.12)] bg-black/15 px-4 py-3"
+                      >
                         <span className="text-[#ff97bf]">✓</span>
-                        <span className="flex-1 text-sm text-[#fff4f8]" dir="ltr">{feature}</span>
-                        <button type="button" onClick={() => setOfferModal({ ...offerModal, featuresEn: (offerModal.featuresEn ?? []).filter((_, i) => i !== index) })} className="text-[#d7aabd] transition-colors hover:text-rose-300">×</button>
+                        <span
+                          className="flex-1 text-sm text-[#fff4f8]"
+                          dir="ltr"
+                        >
+                          {feature}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setOfferModal({
+                              ...offerModal,
+                              featuresEn: (offerModal.featuresEn ?? []).filter(
+                                (_, i) => i !== index,
+                              ),
+                            })
+                          }
+                          className="text-[#d7aabd] transition-colors hover:text-rose-300"
+                        >
+                          ×
+                        </button>
                       </div>
                     ))}
                   </div>
@@ -1425,34 +2338,121 @@ export default function Subscriptions() {
               <>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Field label="قيمة الخصم">
-                    <input type="number" value={offerModal.discount} onChange={(event) => setOfferModal({ ...offerModal, discount: Number(event.target.value) })} className={INPUT} dir="ltr" />
+                    <input
+                      type="number"
+                      value={offerModal.discount}
+                      onChange={(event) =>
+                        setOfferModal({
+                          ...offerModal,
+                          discount: Number(event.target.value),
+                        })
+                      }
+                      className={INPUT}
+                      dir="ltr"
+                    />
                   </Field>
                   <Field label="ينطبق على (عربي)">
-                    <input value={offerModal.appliesTo} onChange={(event) => setOfferModal({ ...offerModal, appliesTo: event.target.value })} className={INPUT} placeholder="مثال: جميع الاشتراكات أو فئة محددة" />
+                    <input
+                      value={offerModal.appliesTo}
+                      onChange={(event) =>
+                        setOfferModal({
+                          ...offerModal,
+                          appliesTo: event.target.value,
+                        })
+                      }
+                      className={INPUT}
+                      placeholder="مثال: جميع الاشتراكات أو فئة محددة"
+                    />
                   </Field>
                   <Field label="ينطبق على (إنجليزي — Applies To EN)">
                     <div className="flex gap-2">
-                      <input value={offerModal.appliesToEn ?? ""} onChange={(event) => setOfferModal({ ...offerModal, appliesToEn: event.target.value })} className={`${INPUT} flex-1`} placeholder="e.g. All memberships" dir="ltr" />
-                      <TranslateButton from={offerModal.appliesTo} onTranslated={(t) => setOfferModal((prev) => prev ? { ...prev, appliesToEn: t } : prev)} />
+                      <input
+                        value={offerModal.appliesToEn ?? ""}
+                        onChange={(event) =>
+                          setOfferModal({
+                            ...offerModal,
+                            appliesToEn: event.target.value,
+                          })
+                        }
+                        className={`${INPUT} flex-1`}
+                        placeholder="e.g. All memberships"
+                        dir="ltr"
+                      />
+                      <TranslateButton
+                        from={offerModal.appliesTo}
+                        onTranslated={(t) =>
+                          setOfferModal((prev) =>
+                            prev ? { ...prev, appliesToEn: t } : prev,
+                          )
+                        }
+                      />
                     </div>
                   </Field>
                 </div>
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <Field label="عدد الحصص" hint="اتركيه فارغًا إذا كان العرض بدون حصص محددة">
-                    <input type="number" value={offerModal.sessionsCount ?? ""} onChange={(event) => setOfferModal({ ...offerModal, sessionsCount: event.target.value ? Number(event.target.value) : null })} className={INPUT} dir="ltr" placeholder="مثال: 12" />
+                  <Field
+                    label="عدد الحصص"
+                    hint="اتركيه فارغًا إذا كان العرض بدون حصص محددة"
+                  >
+                    <input
+                      type="number"
+                      value={offerModal.sessionsCount ?? ""}
+                      onChange={(event) =>
+                        setOfferModal({
+                          ...offerModal,
+                          sessionsCount: event.target.value
+                            ? Number(event.target.value)
+                            : null,
+                        })
+                      }
+                      className={INPUT}
+                      dir="ltr"
+                      placeholder="مثال: 12"
+                    />
                   </Field>
-                  <Field label="مدة العرض (بالأيام)" hint="اتركيه فارغًا لاستخدام القيمة الافتراضية">
-                    <input type="number" value={offerModal.durationDays ?? ""} onChange={(event) => setOfferModal({ ...offerModal, durationDays: event.target.value ? Number(event.target.value) : null })} className={INPUT} dir="ltr" placeholder="مثال: 30" />
+                  <Field
+                    label="مدة العرض (بالأيام)"
+                    hint="اتركيه فارغًا لاستخدام القيمة الافتراضية"
+                  >
+                    <input
+                      type="number"
+                      value={offerModal.durationDays ?? ""}
+                      onChange={(event) =>
+                        setOfferModal({
+                          ...offerModal,
+                          durationDays: event.target.value
+                            ? Number(event.target.value)
+                            : null,
+                        })
+                      }
+                      className={INPUT}
+                      dir="ltr"
+                      placeholder="مثال: 30"
+                    />
                   </Field>
                 </div>
               </>
             )}
 
             <Field label="ينتهي العرض في">
-              <input type="datetime-local" value={offerModal.validUntil} onChange={(event) => setOfferModal({ ...offerModal, validUntil: event.target.value })} className={INPUT} dir="ltr" />
+              <input
+                type="datetime-local"
+                value={offerModal.validUntil}
+                onChange={(event) =>
+                  setOfferModal({
+                    ...offerModal,
+                    validUntil: event.target.value,
+                  })
+                }
+                className={INPUT}
+                dir="ltr"
+              />
             </Field>
 
-            <Field label="صورة العرض" hint="المقاس المثالي: 1020 × 720 بكسل (نسبة 1.4:1) — تملأ مساحة العرض كاملاً بدون قص ولا مسافات.">
+            <Field
+              label="صورة العرض"
+              hint="المقاس المثالي: 1020 × 720 بكسل (نسبة 1.4:1) — تملأ مساحة العرض كاملاً بدون قص ولا مسافات."
+            >
               <div className="space-y-3">
                 <input
                   type="file"
@@ -1465,14 +2465,40 @@ export default function Subscriptions() {
                   }}
                   className={INPUT}
                 />
-                <input value={offerModal.image ?? ""} onChange={(event) => setOfferModal({ ...offerModal, image: event.target.value })} className={INPUT} placeholder="أو ضع رابط الصورة المباشر" />
-                {uploadingImage ? <div className="text-xs text-[#d7aabd]">جاري رفع صورة العرض...</div> : null}
-                {offerModal.image ? <img src={offerModal.image} alt="صورة العرض" className="h-44 w-full rounded-2xl border border-[rgba(255,188,219,0.14)] object-cover" /> : null}
+                <input
+                  value={offerModal.image ?? ""}
+                  onChange={(event) =>
+                    setOfferModal({ ...offerModal, image: event.target.value })
+                  }
+                  className={INPUT}
+                  placeholder="أو ضع رابط الصورة المباشر"
+                />
+                {uploadingImage ? (
+                  <div className="text-xs text-[#d7aabd]">
+                    جاري رفع صورة العرض...
+                  </div>
+                ) : null}
+                {offerModal.image ? (
+                  <img
+                    src={offerModal.image}
+                    alt="صورة العرض"
+                    className="h-44 w-full rounded-2xl border border-[rgba(255,188,219,0.14)] object-cover"
+                  />
+                ) : null}
               </div>
             </Field>
 
             <label className="flex items-center gap-3 rounded-2xl border border-[rgba(255,188,219,0.12)] bg-black/15 px-4 py-3 text-sm text-[#fff4f8]">
-              <input type="checkbox" checked={offerModal.showOnHome} onChange={(event) => setOfferModal({ ...offerModal, showOnHome: event.target.checked })} />
+              <input
+                type="checkbox"
+                checked={offerModal.showOnHome}
+                onChange={(event) =>
+                  setOfferModal({
+                    ...offerModal,
+                    showOnHome: event.target.checked,
+                  })
+                }
+              />
               إظهار هذا العرض بشكل مميز في الصفحة الرئيسية
             </label>
 
@@ -1480,10 +2506,16 @@ export default function Subscriptions() {
               onClick={() => void saveOffer()}
               disabled={saving || uploadingImage}
               className={`w-full rounded-xl py-3 text-sm font-black transition-colors disabled:opacity-50 ${
-                offerModal.type === "special" ? "bg-[#c026d3] text-white hover:bg-[#d946ef]" : "bg-[#ffd166] text-black hover:bg-[#ffcc55]"
+                offerModal.type === "special"
+                  ? "bg-[#c026d3] text-white hover:bg-[#d946ef]"
+                  : "bg-[#ffd166] text-black hover:bg-[#ffcc55]"
               }`}
             >
-              {saving ? "جاري حفظ العرض..." : offerModal.type === "special" ? "حفظ العرض الخاص" : "حفظ العرض"}
+              {saving
+                ? "جاري حفظ العرض..."
+                : offerModal.type === "special"
+                  ? "حفظ العرض الخاص"
+                  : "حفظ العرض"}
             </button>
           </div>
         </Modal>

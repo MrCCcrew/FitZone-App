@@ -28,6 +28,13 @@ interface AccountData {
     hasPassword: boolean;
     avatar: string | null;
   };
+  lifecycleStatus:
+    | "active"
+    | "suspended"
+    | "pending_payment"
+    | "cancelled"
+    | "expired"
+    | "unsubscribed";
   membership: {
     id: string;
     plan: string;
@@ -68,6 +75,7 @@ interface AccountData {
     maxClasses: number;
     totalSessions: number | null;
     classesUsed: number;
+    sessionsReserved: number;
     sessionsRemaining: number | null;
     bookedCount: number;
     checkoutUrl: string | null;
@@ -118,6 +126,21 @@ interface AccountData {
     status: string;
     type: string;
     userMembershipId: string | null;
+    pendingReschedule: {
+      id: string;
+      requestType: string;
+      absenceReason: string | null;
+      requestedAt: string;
+      targetSchedule: {
+        id: string;
+        classId: string;
+        className: string;
+        trainerName: string;
+        date: string;
+        time: string;
+        type: string;
+      };
+    } | null;
   }[];
   orders: {
     id: string;
@@ -213,13 +236,15 @@ const STATUS_MAP: Record<string, { label: string; color: string }> = {
   cancelled:        { label: "ملغي",             color: "bg-red-500/20 text-red-400" },
   noshow:           { label: "لم تحضر",          color: "bg-gray-500/20 text-gray-400" },
   pending:          { label: "معلق",             color: "bg-yellow-500/20 text-yellow-400" },
-  pending_payment:  { label: "بانتظار الدفع",    color: "bg-amber-500/20 text-amber-300" },
+  pending_payment:  { label: "قيد الدفع",         color: "bg-amber-500/20 text-amber-300" },
   approved:         { label: "مقبول",            color: "bg-emerald-500/20 text-emerald-400" },
   rejected:         { label: "مرفوض",            color: "bg-red-500/20 text-red-400" },
   paid:             { label: "مدفوع",            color: "bg-blue-500/20 text-blue-400" },
   in_transit:       { label: "قيد الشحن",        color: "bg-purple-500/20 text-purple-400" },
   delivered:        { label: "تم التسليم",       color: "bg-green-500/20 text-green-400" },
   active:           { label: "نشط",              color: "bg-green-500/20 text-green-400" },
+  suspended:        { label: "موقوف",             color: "bg-amber-500/20 text-amber-300" },
+  unsubscribed:     { label: "غير مشترك",         color: "bg-gray-500/20 text-gray-300" },
   expired:          { label: "منتهي",            color: "bg-red-500/20 text-red-400" },
   requires_action:  { label: "تتطلب إجراء",      color: "bg-orange-500/20 text-orange-400" },
   failed:           { label: "فشل الدفع",        color: "bg-red-500/20 text-red-400" },
@@ -1945,7 +1970,7 @@ function AccountMembershipTab({
               {STATUS_MAP[currentMembership.status]?.label ?? currentMembership.status}
             </span>
           </div>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
             <div className="bg-black/40 rounded-xl p-3 text-center">
               <div className="text-yellow-400 font-black text-lg">{Math.max(0, differenceInDays(new Date(currentMembership.endDate), new Date()))}</div>
               <div className="text-gray-500 text-xs">{t("أيام متبقية", "Days left")}</div>
@@ -1955,8 +1980,12 @@ function AccountMembershipTab({
               <div className="text-gray-500 text-xs">{t("حصص حضرتها", "Attended sessions")}</div>
             </div>
             <div className="bg-black/40 rounded-xl p-3 text-center">
+              <div className="text-blue-300 font-black text-lg">{currentMembership.sessionsReserved}</div>
+              <div className="text-gray-500 text-xs">{t("محجوزة", "Reserved")}</div>
+            </div>
+            <div className="bg-black/40 rounded-xl p-3 text-center">
               <div className="text-green-400 font-black text-lg">{currentMembership.sessionsRemaining == null ? "∞" : currentMembership.sessionsRemaining}</div>
-              <div className="text-gray-500 text-xs">{t("المتبقي", "Remaining")}</div>
+              <div className="text-gray-500 text-xs">{t("متاح للحجز", "Available to book")}</div>
             </div>
             <div className="bg-black/40 rounded-xl p-3 text-center">
               <div className="text-pink-300 font-black text-lg">{formatMoney(currentMembership.paymentAmount, lang)}</div>
@@ -2192,41 +2221,15 @@ function BookingsTabLegacy({ bookings }: { bookings: AccountData["bookings"] }) 
       .then((data: AccountData["bookings"]) => { if (Array.isArray(data)) setItems(data); })
       .catch(() => {});
   }, []);
-  const [cancellingId, setCancellingId] = useState<string | null>(null);
   const today = new Date();
   const upcoming = items.filter((b) => new Date(b.date) >= today && b.status === "confirmed");
   const past     = items.filter((b) => new Date(b.date) < today  || b.status === "attended" || b.status === "cancelled");
   const shown    = filter === "upcoming" ? upcoming : past;
   const TYPE_EMOJI: Record<string, string> = { cardio: "🏃", strength: "🏋️", yoga: "🧘", boxing: "🥊", swimming: "🏊", dance: "💃" };
-  const cancelBooking = async (bookingId: string) => {
-    if (cancellingId) return;
-    setCancellingId(bookingId);
-    try {
-      const res = await fetch("/api/bookings", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bookingId }),
-      });
-      const data = await res.json() as { error?: string };
-      if (!res.ok) {
-        alert(data.error ?? t("تعذر إلغاء الحجز حاليًا.", "Could not cancel the booking right now."));
-        return;
-      }
-      setItems((current) =>
-        current.map((item) =>
-          item.id === bookingId ? { ...item, status: "cancelled" } : item,
-        ),
-      );
-    } catch {
-      alert(t("حدث خطأ أثناء إلغاء الحجز.", "An error occurred while cancelling the booking."));
-    } finally {
-      setCancellingId(null);
-    }
-  };
   return (
     <div className="space-y-4">
       <div className="bg-pink-500/10 border border-pink-400/20 rounded-2xl p-4 text-xs text-pink-100">
-        {t("لتعديل الموعد: ألغِ الحجز الحالي ثم احجزي موعدًا آخر من صفحة الجدول الأسبوعي عبر القائمة الرئيسية.", "To change your booking, cancel the current one and book another slot from the weekly schedule page through the main menu.")}
+        {t("لتعديل الموعد، استخدمي طلب تغيير الموعد. إلغاء الحجز يتم من خلال الإدارة فقط.", "To change your booking, use the reschedule request. Booking cancellation is available through administration only.")}
       </div>
       {/* Tabs */}
       <div className="flex gap-2">
@@ -2260,15 +2263,6 @@ function BookingsTabLegacy({ bookings }: { bookings: AccountData["bookings"] }) 
                 <span className={`text-xs px-2.5 py-1 rounded-full font-bold ${STATUS_MAP[b.status]?.color ?? "bg-gray-700 text-gray-300"}`}>
                   {STATUS_MAP[b.status]?.label ?? b.status}
                 </span>
-                {b.status === "confirmed" && (
-                  <button
-                    onClick={() => cancelBooking(b.id)}
-                    disabled={cancellingId === b.id}
-                    className="text-red-500 hover:text-red-400 text-xs font-medium transition-colors disabled:opacity-50"
-                  >
-                    {cancellingId === b.id ? t("جارٍ الإلغاء...", "Cancelling...") : t("إلغاء الحجز", "Cancel booking")}
-                  </button>
-                )}
               </div>
             </div>
           ))}
@@ -2293,9 +2287,41 @@ function BookingsTab({ bookings }: {
       .then((data: AccountData["bookings"]) => { if (Array.isArray(data)) setItems(data); })
       .catch(() => {});
   }, []);
-  const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [editingBooking, setEditingBooking] = useState<AccountData["bookings"][number] | null>(null);
   const [selectedScheduleId, setSelectedScheduleId] = useState<string | null>(null);
+
+  const [exchangeBooking, setExchangeBooking] =
+    useState<AccountData["bookings"][number] | null>(null);
+  const [exchangeScheduleId, setExchangeScheduleId] =
+    useState<string | null>(null);
+  const [exchangeNote, setExchangeNote] = useState("");
+  const [exchangeSubmitting, setExchangeSubmitting] = useState(false);
+  const [exchangeError, setExchangeError] = useState<string | null>(null);
+  const [exchangeSuccess, setExchangeSuccess] = useState<string | null>(null);
+  const [exchangeScheduleLoading, setExchangeScheduleLoading] = useState(false);
+  const [exchangeScheduleEntries, setExchangeScheduleEntries] = useState<Array<{
+    id: string;
+    classId: string;
+    className: string;
+    trainer: string;
+    type: string;
+    subType: string | null;
+    date: string;
+    time: string;
+    availableSpots: number;
+    sameDayBookingCount: number;
+    customerSelectable: boolean;
+    sameDayBookings: Array<{
+      id: string;
+      scheduleId: string;
+      className: string;
+      date: string;
+      time: string;
+    }>;
+  }>>([]);
+  const [exchangeScheduleSearch, setExchangeScheduleSearch] =
+    useState("");
+  const [absenceReason, setAbsenceReason] = useState("");
   const [updateError, setUpdateError] = useState<string | null>(null);
   const [updateSuccess, setUpdateSuccess] = useState<string | null>(null);
   const [updating, setUpdating] = useState(false);
@@ -2311,11 +2337,48 @@ function BookingsTab({ bookings }: {
     time: string;
     day: string;
     availableSpots: number;
+    alreadyBooked: boolean;
   }>>([]);
 
-  const today = new Date();
-  const upcoming = items.filter((b) => new Date(b.date) >= today && b.status === "confirmed");
-  const past = items.filter((b) => new Date(b.date) < today || b.status === "attended" || b.status === "cancelled");
+  const now = new Date();
+
+  const bookingDateTime = (booking: AccountData["bookings"][number]) => {
+    const date = new Date(booking.date);
+    const [hour, minute] = booking.time.split(":").map((value) => Number(value));
+    date.setHours(
+      Number.isNaN(hour) ? 0 : hour,
+      Number.isNaN(minute) ? 0 : minute,
+      0,
+      0,
+    );
+    return date;
+  };
+
+  const upcoming = items
+    .filter(
+      (b) =>
+        b.status === "confirmed" &&
+        bookingDateTime(b).getTime() >= now.getTime(),
+    )
+    .sort(
+      (a, b) =>
+        bookingDateTime(a).getTime() -
+        bookingDateTime(b).getTime(),
+    );
+
+  const past = items
+    .filter(
+      (b) =>
+        bookingDateTime(b).getTime() < now.getTime() ||
+        b.status === "attended" ||
+        b.status === "cancelled",
+    )
+    .sort(
+      (a, b) =>
+        bookingDateTime(b).getTime() -
+        bookingDateTime(a).getTime(),
+    );
+
   const shown = filter === "upcoming" ? upcoming : past;
   const TYPE_EMOJI: Record<string, string> = { cardio: "🏃", strength: "🏋️", yoga: "🧘", boxing: "🥊", swimming: "🏊", dance: "💃" };
 
@@ -2337,19 +2400,27 @@ function BookingsTab({ bookings }: {
           date: string;
           time: string;
           availableSpots: number;
+          alreadyBooked?: boolean;
         }>).map((schedule) => ({
           ...schedule,
           subType: schedule.subType ?? null,
+          alreadyBooked: Boolean(schedule.alreadyBooked),
           day: format(new Date(schedule.date), "EEEE", { locale: lang === "en" ? enUS : ar }),
         })).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-        // Keep only the nearest upcoming slot per (day, time, className)
+        // Reschedule picker: remove unusable targets first, then keep
+        // the nearest genuinely available slot per recurring pattern.
+        const availableEntries = entries.filter(
+          (r) => !r.alreadyBooked && r.availableSpots > 0,
+        );
+
         const seen = new Set<string>();
-        const deduped = entries.filter((r) => {
+        const deduped = availableEntries.filter((r) => {
           const key = `${r.day}|${r.time}|${r.className}`;
           if (seen.has(key)) return false;
           seen.add(key);
           return true;
         });
+
         setScheduleEntries(deduped);
       } catch {
         if (mounted) setScheduleEntries([]);
@@ -2408,35 +2479,211 @@ function BookingsTab({ bookings }: {
     return true;
   };
 
-  const cancelBooking = async (bookingId: string) => {
-    if (cancellingId) return;
-    setCancellingId(bookingId);
+  const isPastBooking = (booking: AccountData["bookings"][number]) =>
+    toScheduleDateTime(booking.date, booking.time) <= new Date();
+
+  const canRequestPastMakeup = (
+    booking: AccountData["bookings"][number],
+  ) =>
+    isPastBooking(booking) &&
+    ["confirmed", "noshow"].includes(booking.status) &&
+    !booking.pendingReschedule;
+
+  const filteredExchangeScheduleEntries =
+    useMemo(() => {
+      const query =
+        exchangeScheduleSearch
+          .trim()
+          .toLocaleLowerCase(
+            lang === "en" ? "en-US" : "ar-EG",
+          );
+
+      if (!query) {
+        return exchangeScheduleEntries;
+      }
+
+      return exchangeScheduleEntries.filter(
+        (entry) => {
+          const dateLabel =
+            new Intl.DateTimeFormat(
+              lang === "en"
+                ? "en-US"
+                : "ar-EG",
+              {
+                weekday: "long",
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+              },
+            ).format(
+              new Date(entry.date),
+            );
+
+          const timeLabel =
+            formatTime12Hour(
+              entry.time,
+              {
+                meridiem: "en",
+              },
+            );
+
+          const sameDayClassNames =
+            entry.sameDayBookings
+              .map(
+                (booking) =>
+                  booking.className,
+              )
+              .join(" ");
+
+          return [
+            entry.className,
+            entry.trainer,
+            entry.date,
+            dateLabel,
+            entry.time,
+            timeLabel,
+            sameDayClassNames,
+          ]
+            .join(" ")
+            .toLocaleLowerCase(
+              lang === "en"
+                ? "en-US"
+                : "ar-EG",
+            )
+            .includes(query);
+        },
+      );
+    }, [
+      exchangeScheduleEntries,
+      exchangeScheduleSearch,
+      lang,
+    ]);
+
+  const openExchangeModal = async (
+    booking: AccountData["bookings"][number],
+  ) => {
+    if (!booking.userMembershipId) return;
+
+    setExchangeBooking(booking);
+    setExchangeScheduleId(null);
+    setExchangeNote("");
+    setExchangeError(null);
+    setExchangeSuccess(null);
+    setExchangeScheduleEntries([]);
+    setExchangeScheduleSearch("");
+    setExchangeScheduleLoading(true);
+
     try {
-      const res = await fetch("/api/bookings", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bookingId }),
-      });
-      const data = (await res.json()) as { error?: string };
+      const res = await fetch(
+        `/api/me/class-exchange-schedules?userMembershipId=${encodeURIComponent(
+          booking.userMembershipId,
+        )}`,
+        { cache: "no-store" },
+      );
+
+      const data = (await res.json()) as {
+        schedules?: typeof exchangeScheduleEntries;
+        error?: string;
+      };
+
       if (!res.ok) {
-        alert(data.error ?? t("تعذر إلغاء الحجز حاليًا.", "Unable to cancel the booking right now."));
+        setExchangeError(
+          data.error ??
+            t(
+              "تعذر تحميل مواعيد الاستبدال.",
+              "Unable to load exchange schedules.",
+            ),
+        );
         return;
       }
-      setItems((current) =>
-        current.map((item) =>
-          item.id === bookingId ? { ...item, status: "cancelled" } : item,
+
+      setExchangeScheduleEntries(
+        Array.isArray(data.schedules)
+          ? data.schedules
+          : [],
+      );
+    } catch {
+      setExchangeError(
+        t(
+          "حدث خطأ أثناء تحميل مواعيد الاستبدال.",
+          "An error occurred while loading exchange schedules.",
+        ),
+      );
+    } finally {
+      setExchangeScheduleLoading(false);
+    }
+  };
+
+  const submitExchangeRequest = async () => {
+    if (
+      !exchangeBooking ||
+      !exchangeBooking.userMembershipId ||
+      !exchangeScheduleId
+    ) {
+      return;
+    }
+
+    setExchangeSubmitting(true);
+    setExchangeError(null);
+    setExchangeSuccess(null);
+
+    try {
+      const res = await fetch(
+        "/api/me/class-exchange-requests",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            userMembershipId:
+              exchangeBooking.userMembershipId,
+            targetScheduleId:
+              exchangeScheduleId,
+            note:
+              exchangeNote.trim() || undefined,
+          }),
+        },
+      );
+
+      const data = (await res.json()) as {
+        error?: string;
+        requestId?: string;
+      };
+
+      if (!res.ok) {
+        setExchangeError(
+          data.error ??
+            t(
+              "تعذر إرسال طلب الاستبدال حاليًا.",
+              "Unable to submit the exchange request right now.",
+            ),
+        );
+        return;
+      }
+
+      setExchangeSuccess(
+        t(
+          "تم إرسال طلب الاستبدال للإدارة للمراجعة. لن يتم خصم أو إلغاء أي حصة قبل موافقة الإدارة.",
+          "Your exchange request was sent for admin review. No session will be deducted or cancelled before admin approval.",
         ),
       );
     } catch {
-      alert(t("حدث خطأ أثناء إلغاء الحجز.", "An error occurred while cancelling the booking."));
+      setExchangeError(
+        t(
+          "حدث خطأ أثناء إرسال طلب الاستبدال.",
+          "An error occurred while submitting the exchange request.",
+        ),
+      );
     } finally {
-      setCancellingId(null);
+      setExchangeSubmitting(false);
     }
   };
 
   const openEditModal = (booking: AccountData["bookings"][number]) => {
     setEditingBooking(booking);
     setSelectedScheduleId(booking.scheduleId);
+    setAbsenceReason("");
     setUpdateError(null);
     setUpdateSuccess(null);
   };
@@ -2449,7 +2696,16 @@ function BookingsTab({ bookings }: {
       const res = await fetch("/api/bookings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bookingId: editingBooking.id, scheduleId: selectedScheduleId }),
+        body: JSON.stringify({
+          bookingId: editingBooking.id,
+          scheduleId: selectedScheduleId,
+          requestType: isPastBooking(editingBooking)
+            ? "past_absence_makeup"
+            : "upcoming_change",
+          absenceReason: isPastBooking(editingBooking)
+            ? absenceReason.trim()
+            : undefined,
+        }),
       });
       const data = (await res.json()) as { error?: string };
       if (!res.ok) {
@@ -2458,25 +2714,55 @@ function BookingsTab({ bookings }: {
       }
 
       const selected = scheduleEntries.find((entry) => entry.id === selectedScheduleId);
+
       if (selected) {
         setItems((current) =>
           current.map((item) =>
             item.id === editingBooking.id
               ? {
                   ...item,
-                  scheduleId: selected.id,
-                  classId: selected.classId,
-                  className: selected.className,
-                  trainerName: selected.trainer,
-                  date: selected.date,
-                  time: selected.time,
-                  type: selected.type,
+                  pendingReschedule: {
+                    requestType: isPastBooking(editingBooking)
+                      ? "past_absence_makeup"
+                      : "upcoming_change",
+                    absenceReason: isPastBooking(editingBooking)
+                      ? absenceReason.trim()
+                      : null,
+                    id:
+                      typeof data === "object" &&
+                      data !== null &&
+                      "requestId" in data &&
+                      typeof data.requestId === "string"
+                        ? data.requestId
+                        : "pending",
+                    requestedAt: new Date().toISOString(),
+                    targetSchedule: {
+                      id: selected.id,
+                      classId: selected.classId,
+                      className: selected.className,
+                      trainerName: selected.trainer,
+                      date: selected.date,
+                      time: selected.time,
+                      type: selected.type,
+                    },
+                  },
                 }
               : item,
           ),
         );
       }
-      setUpdateSuccess(t("تم تحديث الموعد بنجاح.", "Booking updated successfully."));
+
+      setUpdateSuccess(
+        isPastBooking(editingBooking)
+          ? t(
+              "تم إرسال طلب تعويض الحصة السابقة للإدارة للمراجعة. إرسال الطلب لا يعني الموافقة عليه.",
+              "Your missed-class makeup request was sent for admin review. Submission does not guarantee approval.",
+            )
+          : t(
+              "تم إرسال طلب تغيير الموعد للإدارة للمراجعة.",
+              "Your reschedule request was sent for admin approval.",
+            ),
+      );
       setTimeout(() => {
         setEditingBooking(null);
         setUpdateSuccess(null);
@@ -2491,7 +2777,7 @@ function BookingsTab({ bookings }: {
   return (
     <div className="space-y-6">
       <div className="bg-pink-500/10 border border-pink-400/20 rounded-2xl p-4 text-xs text-pink-100">
-        {t("يمكنك تعديل أو إلغاء موعد الحجز من هنا. لا يمكن التعديل قبل الموعد بأقل من 4 ساعات.", "You can update or cancel your booking from here. Bookings cannot be edited less than 4 hours before the class.")}
+        {t("يمكنك طلب تغيير موعد الحجز من هنا. إلغاء الحجز يتم من خلال الإدارة فقط، وتغيير الموعد لا يتم إلا بعد موافقة الإدارة ولا يمكن إرسال الطلب قبل الموعد بأقل من 4 ساعات.", "You can request a booking reschedule here. Booking cancellation is available through administration only. A reschedule is applied only after admin approval and cannot be requested less than 4 hours before the class.")}
       </div>
 
       <div className="flex gap-2">
@@ -2529,6 +2815,26 @@ function BookingsTab({ bookings }: {
                   <div className="text-gray-500 text-xs mt-1">
                     {format(new Date(b.date), "EEEE d MMMM", { locale: lang === "en" ? enUS : ar })} {formatTime12Hour(b.time, { meridiem: "en" })}
                   </div>
+
+                  {b.pendingReschedule && (
+                    <div className="mt-2 rounded-xl border border-amber-400/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+                      <div className="font-bold">
+                        {t("طلب تغيير الموعد قيد مراجعة الإدارة", "Reschedule request pending admin review")}
+                      </div>
+                      <div className="mt-1 opacity-90">
+                        {t("الموعد المطلوب", "Requested slot")}:{" "}
+                        {format(
+                          new Date(b.pendingReschedule.targetSchedule.date),
+                          "EEEE d MMMM",
+                          { locale: lang === "en" ? enUS : ar },
+                        )}{" "}
+                        {formatTime12Hour(
+                          b.pendingReschedule.targetSchedule.time,
+                          { meridiem: "en" },
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <div className="flex flex-col items-end gap-2">
                   <span className={`text-xs px-2.5 py-1 rounded-full font-bold ${STATUS_MAP[b.status]?.color ?? "bg-gray-700 text-gray-300"}`}>
@@ -2542,28 +2848,371 @@ function BookingsTab({ bookings }: {
                         } as Record<string, string>)[b.status] ?? b.status
                       : STATUS_MAP[b.status]?.label ?? b.status}
                   </span>
-                  {b.status === "confirmed" && (
+                  {b.status === "confirmed" && !isPastBooking(b) && (
                     <>
                       <button
-                        onClick={() => cancelBooking(b.id)}
-                        disabled={cancellingId === b.id}
-                        className="text-red-500 hover:text-red-400 text-xs font-medium transition-colors disabled:opacity-50"
-                      >
-                        {cancellingId === b.id ? t("جاري الإلغاء...", "Cancelling...") : t("إلغاء الحجز", "Cancel booking")}
-                      </button>
-                      <button
                         onClick={() => openEditModal(b)}
-                        disabled={!editable}
+                        disabled={!editable || Boolean(b.pendingReschedule)}
                         className="text-xs font-medium text-pink-200 hover:text-white transition-colors disabled:opacity-40"
                       >
-                        {t("تعديل الموعد", "Edit booking")}
+                        {b.pendingReschedule
+                          ? t("طلب التغيير قيد المراجعة", "Reschedule pending")
+                          : t("طلب تغيير الموعد", "Request reschedule")}
                       </button>
+                      {b.userMembershipId && (
+                        <button
+                          onClick={() => void openExchangeModal(b)}
+                          className="text-xs font-bold text-violet-200 hover:text-white transition-colors"
+                        >
+                          {t("طلب استبدال كلاس", "Request class exchange")}
+                        </button>
+                      )}
                     </>
                   )}
+
+                  {canRequestPastMakeup(b) && (
+                    <button
+                      onClick={() => openEditModal(b)}
+                      className="text-xs font-bold text-amber-200 hover:text-amber-100 transition-colors"
+                    >
+                      {t("طلب تعويض الحصة", "Request missed-class makeup")}
+                    </button>
+                  )}
+
+                  {isPastBooking(b) &&
+                    ["confirmed", "noshow"].includes(b.status) &&
+                    b.pendingReschedule && (
+                      <button
+                        disabled
+                        className="text-xs font-medium text-amber-200 opacity-60"
+                      >
+                        {t("طلب التعويض قيد المراجعة", "Makeup request pending")}
+                      </button>
+                    )}
                 </div>
               </div>
             );
           })}
+        </div>
+      )}
+
+      {exchangeBooking && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 310,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+            background: "rgba(0,0,0,.78)",
+            backdropFilter: "blur(8px)",
+          }}
+        >
+          <div
+            style={{
+              background: "#111",
+              borderRadius: 22,
+              maxWidth: 920,
+              width: "100%",
+              boxShadow: "0 24px 60px rgba(0,0,0,.6)",
+              border: "1px solid rgba(255,255,255,.12)",
+              maxHeight: "92vh",
+              display: "flex",
+              flexDirection: "column",
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                padding: "20px 24px 16px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                flexShrink: 0,
+                borderBottom: "1px solid rgba(255,255,255,.08)",
+              }}
+            >
+              <div>
+                <h3 style={{ color: "#fff", fontWeight: 900, fontSize: 18 }}>
+                  {t("طلب استبدال كلاس", "Request Class Exchange")}
+                </h3>
+                <p style={{ color: "#c9b9c1", fontSize: 13, marginTop: 4 }}>
+                  {t(
+                    "اختاري الكلاس المطلوب. الإدارة ستراجع الطلب وتحدد الحصتين اللتين سيتم استبدالهما.",
+                    "Choose the requested class. Administration will review the request and select the two sessions to be exchanged.",
+                  )}
+                </p>
+              </div>
+
+              <button
+                onClick={() => {
+                  setExchangeBooking(null);
+                  setExchangeScheduleId(null);
+                  setExchangeNote("");
+                  setExchangeError(null);
+                  setExchangeSuccess(null);
+                  setExchangeScheduleEntries([]);
+                  setExchangeScheduleSearch("");
+                }}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "#c9b9c1",
+                  fontSize: 26,
+                  cursor: "pointer",
+                  lineHeight: 1,
+                  padding: "0 4px",
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={{ overflowY: "auto", flex: 1, padding: "16px 24px" }}>
+              <div className="mb-4 rounded-xl border border-violet-400/30 bg-violet-500/10 p-3 text-sm leading-6 text-violet-100">
+                {t(
+                  "إرسال الطلب لا يخصم ولا يلغي أي حصة. عند موافقة الإدارة فقط سيتم اختيار حصتين مستقبليتين واستبدالهما بالكلاس المطلوب.",
+                  "Submitting the request does not deduct or cancel any session. Only after admin approval will two future sessions be selected and exchanged for the requested class.",
+                )}
+              </div>
+
+              {exchangeScheduleLoading ? (
+                <div className="py-8 text-center text-sm text-gray-400">
+                  {t("جارٍ تحميل المواعيد...", "Loading schedules...")}
+                </div>
+              ) : exchangeScheduleEntries.length === 0 ? (
+                <div className="py-8 text-center text-sm text-gray-400">
+                  {t(
+                    "لا توجد حاليًا مواعيد خارج الاشتراك متاحة للاستبدال.",
+                    "There are currently no outside-membership schedules available for exchange.",
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="sticky top-0 z-10 bg-[#111] pb-2">
+                    <input
+                      type="search"
+                      value={exchangeScheduleSearch}
+                      onChange={(event) =>
+                        setExchangeScheduleSearch(
+                          event.target.value,
+                        )
+                      }
+                      placeholder={t(
+                        "ابحثي باسم الكلاس أو التاريخ أو الموعد...",
+                        "Search by class, date, or time...",
+                      )}
+                      className="w-full rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-white outline-none placeholder:text-gray-500 focus:border-violet-400"
+                    />
+                  </div>
+
+                  {filteredExchangeScheduleEntries.length === 0 ? (
+                    <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-8 text-center text-sm text-gray-400">
+                      {t(
+                        "لا توجد نتائج مطابقة للبحث.",
+                        "No schedules match your search.",
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {filteredExchangeScheduleEntries.map((entry) => {
+                        const blocked =
+                          !entry.customerSelectable ||
+                          entry.sameDayBookingCount >= 2;
+
+                        return (
+                          <label
+                            key={entry.id}
+                            className={`block rounded-2xl border p-4 transition-colors ${
+                              blocked
+                                ? "cursor-not-allowed border-red-500/30 bg-red-950/20"
+                                : exchangeScheduleId === entry.id
+                                  ? "cursor-pointer border-violet-400 bg-violet-500/15"
+                                  : "cursor-pointer border-white/10 bg-white/5 hover:bg-white/10"
+                            }`}
+                          >
+                            <div className="flex items-start gap-3">
+                              <input
+                                type="radio"
+                                name="exchangeSchedule"
+                                value={entry.id}
+                                disabled={blocked}
+                                checked={
+                                  exchangeScheduleId === entry.id
+                                }
+                                onChange={() =>
+                                  setExchangeScheduleId(
+                                    entry.id,
+                                  )
+                                }
+                                className="mt-1"
+                              />
+
+                              <div className="min-w-0 flex-1">
+                                <div className="flex flex-wrap items-start justify-between gap-2">
+                                  <div>
+                                    <div className="font-black text-white">
+                                      {entry.className}
+                                    </div>
+
+                                    <div className="mt-1 text-xs text-gray-400">
+                                      {entry.trainer
+                                        ? `${entry.trainer} · `
+                                        : ""}
+                                      {format(
+                                        new Date(
+                                          entry.date,
+                                        ),
+                                        "EEEE d MMMM yyyy",
+                                        {
+                                          locale:
+                                            lang === "en"
+                                              ? enUS
+                                              : ar,
+                                        },
+                                      )}{" "}
+                                      ·{" "}
+                                      {formatTime12Hour(
+                                        entry.time,
+                                        {
+                                          meridiem:
+                                            "en",
+                                        },
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  <span
+                                    className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-black ${
+                                      entry.sameDayBookingCount >= 2
+                                        ? "bg-red-500/20 text-red-200"
+                                        : entry.sameDayBookingCount === 1
+                                          ? "bg-amber-500/20 text-amber-200"
+                                          : "bg-emerald-500/15 text-emerald-200"
+                                    }`}
+                                  >
+                                    {t(
+                                      `عندك ${entry.sameDayBookingCount} حصة في هذا اليوم`,
+                                      `${entry.sameDayBookingCount} session(s) already booked that day`,
+                                    )}
+                                  </span>
+                                </div>
+
+                                {entry.sameDayBookings.length > 0 ? (
+                                  <div className="mt-3 rounded-xl border border-white/10 bg-black/20 p-3">
+                                    <div className="mb-2 text-[11px] font-bold text-gray-400">
+                                      {t(
+                                        "حصصك الحالية في نفس اليوم:",
+                                        "Your existing sessions that day:",
+                                      )}
+                                    </div>
+
+                                    <div className="space-y-1.5">
+                                      {entry.sameDayBookings.map(
+                                        (booking) => (
+                                          <div
+                                            key={
+                                              booking.id
+                                            }
+                                            className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-200"
+                                          >
+                                            <span className="font-bold">
+                                              {
+                                                booking.className
+                                              }
+                                            </span>
+                                            <span className="text-gray-400">
+                                              {formatTime12Hour(
+                                                booking.time,
+                                                {
+                                                  meridiem:
+                                                    "en",
+                                                },
+                                              )}
+                                            </span>
+                                          </div>
+                                        ),
+                                      )}
+                                    </div>
+                                  </div>
+                                ) : null}
+
+                                {blocked ? (
+                                  <div className="mt-3 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs font-bold leading-5 text-red-200">
+                                    {t(
+                                      "لا يمكنك اختيار هذا اليوم لأن لديك حصتين بالفعل. اختاري يومًا آخر، أو تواصلي مع الإدارة إذا كنتِ تريدين استبدال حصتي هذا اليوم بالكلاس المطلوب.",
+                                      "You cannot select this day because you already have two sessions. Choose another day, or contact administration if you want to replace those two sessions with this class.",
+                                    )}
+                                  </div>
+                                ) : null}
+                              </div>
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="mt-5">
+                <label className="mb-2 block text-sm font-bold text-white">
+                  {t("ملاحظة للإدارة (اختياري)", "Note to administration (optional)")}
+                </label>
+                <textarea
+                  value={exchangeNote}
+                  onChange={(e) => setExchangeNote(e.target.value)}
+                  maxLength={1000}
+                  rows={3}
+                  className="w-full rounded-xl border border-gray-700 bg-gray-900 px-4 py-3 text-sm text-white outline-none focus:border-violet-400"
+                />
+              </div>
+
+              {exchangeError && (
+                <div className="mt-4 text-sm font-bold text-red-400">
+                  {exchangeError}
+                </div>
+              )}
+
+              {exchangeSuccess && (
+                <div className="mt-4 text-sm font-bold text-green-400">
+                  {exchangeSuccess}
+                </div>
+              )}
+
+              <div className="mt-5 flex gap-3">
+                <button
+                  onClick={() => void submitExchangeRequest()}
+                  disabled={
+                    !exchangeScheduleId ||
+                    exchangeSubmitting ||
+                    Boolean(exchangeSuccess)
+                  }
+                  className="rounded-xl bg-violet-600 px-5 py-2 text-sm font-bold text-white transition-colors hover:bg-violet-700 disabled:opacity-50"
+                >
+                  {exchangeSubmitting
+                    ? t("جارٍ الإرسال...", "Sending...")
+                    : t("إرسال طلب الاستبدال", "Send exchange request")}
+                </button>
+
+                <button
+                  onClick={() => {
+                    setExchangeBooking(null);
+                    setExchangeScheduleId(null);
+                    setExchangeNote("");
+                    setExchangeError(null);
+                    setExchangeSuccess(null);
+                    setExchangeScheduleEntries([]);
+                  }}
+                  className="rounded-xl border border-violet-300/40 px-5 py-2 text-sm font-bold text-violet-200 transition-colors hover:bg-violet-500/10"
+                >
+                  {t("إغلاق", "Close")}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -2572,18 +3221,50 @@ function BookingsTab({ bookings }: {
           <div style={{ background: "#111", borderRadius: 22, maxWidth: 920, width: "100%", boxShadow: "0 24px 60px rgba(0,0,0,.6)", border: "1px solid rgba(255,255,255,.12)", maxHeight: "92vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
             <div style={{ padding: "20px 24px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0, borderBottom: "1px solid rgba(255,255,255,.08)" }}>
               <div>
-                <h3 style={{ color: "#fff", fontWeight: 900, fontSize: 18 }}>{t("تعديل موعد الحجز", "Reschedule Booking")}</h3>
+                <h3 style={{ color: "#fff", fontWeight: 900, fontSize: 18 }}>
+                  {editingBooking && isPastBooking(editingBooking)
+                    ? t("طلب تعويض حصة سابقة", "Request Missed-Class Makeup")
+                    : t("طلب تغيير موعد الحجز", "Request Booking Reschedule")}
+                </h3>
                 <p style={{ color: "#c9b9c1", fontSize: 13, marginTop: 4 }}>
-                  {t("تعديل", "Editing")}: {editingBooking.className}
+                  {t("طلب تغيير", "Reschedule request")}: {editingBooking.className}
                 </p>
               </div>
               <button
-                onClick={() => { setEditingBooking(null); setSelectedScheduleId(null); setUpdateError(null); }}
+                onClick={() => { setEditingBooking(null); setSelectedScheduleId(null); setAbsenceReason(""); setUpdateError(null); }}
                 style={{ background: "none", border: "none", color: "#c9b9c1", fontSize: 26, cursor: "pointer", lineHeight: 1, padding: "0 4px" }}
               >×</button>
             </div>
 
         <div style={{ overflowY: "auto", flex: 1, padding: "16px 24px" }}>
+
+        {editingBooking && isPastBooking(editingBooking) && (
+          <div className="mb-4 space-y-3">
+            <div className="rounded-xl border border-amber-400/30 bg-amber-500/10 p-3 text-sm font-bold leading-6 text-amber-100">
+              {t(
+                "طلب تعويض الحصة السابقة يخضع لمراجعة الإدارة حسب سبب الغياب وإمكانية التعويض وتوافر المواعيد. إرسال الطلب لا يعني الموافقة عليه.",
+                "A missed-class makeup request is subject to admin review, the reason for absence, scheduling feasibility, and availability. Submission does not guarantee approval.",
+              )}
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm font-bold text-white">
+                {t("سبب عدم الحضور", "Reason for absence")}
+              </label>
+              <textarea
+                value={absenceReason}
+                onChange={(event) => setAbsenceReason(event.target.value)}
+                maxLength={1000}
+                rows={3}
+                placeholder={t(
+                  "اكتبي سبب عدم حضور الحصة السابقة...",
+                  "Explain why you missed the previous class...",
+                )}
+                className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none focus:border-amber-400/50"
+              />
+            </div>
+          </div>
+        )}
 
         {scheduleLoading ? (
           <div className="text-center text-gray-400 py-10">{t("جاري تحميل الجدول...", "Loading schedule...")}</div>
@@ -2636,7 +3317,12 @@ function BookingsTab({ bookings }: {
                                     const now = new Date();
                                     const sameDay = entryDate.toDateString() === now.toDateString();
                                     const tooSoon = sameDay && entryDate.getTime() - now.getTime() < 60 * 60 * 1000;
-                                    const disabled = entry.availableSpots <= 0 || entryDate <= now || tooSoon || !editingBooking;
+                                    const disabled =
+                                      entry.availableSpots <= 0 ||
+                                      entry.alreadyBooked ||
+                                      entryDate <= now ||
+                                      tooSoon ||
+                                      !editingBooking;
                                     const selected = selectedScheduleId === entry.id;
                                     const current = editingBooking?.scheduleId === entry.id;
                                     return (
@@ -2654,6 +3340,16 @@ function BookingsTab({ bookings }: {
                                           {entry.type}
                                           {entry.subType ? ` - ${entry.subType}` : ""}
                                         </div>
+                                        {entry.availableSpots <= 0 && (
+                                          <div className="schedule-item-tag" style={{ fontWeight: 900 }}>
+                                            {t("ممتلئ - لا توجد أماكن", "Full - no spots available")}
+                                          </div>
+                                        )}
+                                        {entry.alreadyBooked && !current && (
+                                          <div className="schedule-item-tag" style={{ fontWeight: 900 }}>
+                                            {t("محجوز بالفعل", "Already booked")}
+                                          </div>
+                                        )}
                                         {current && <div className="schedule-item-tag">{t("موعدك الحالي", "Current slot")}</div>}
                                       </button>
                                     );
@@ -2706,7 +3402,12 @@ function BookingsTab({ bookings }: {
                                     const now = new Date();
                                     const sameDay = entryDate.toDateString() === now.toDateString();
                                     const tooSoon = sameDay && entryDate.getTime() - now.getTime() < 60 * 60 * 1000;
-                                    const disabled = entry.availableSpots <= 0 || entryDate <= now || tooSoon || !editingBooking;
+                                    const disabled =
+                                      entry.availableSpots <= 0 ||
+                                      entry.alreadyBooked ||
+                                      entryDate <= now ||
+                                      tooSoon ||
+                                      !editingBooking;
                                     const selected = selectedScheduleId === entry.id;
                                     const current = editingBooking?.scheduleId === entry.id;
                                     return (
@@ -2724,6 +3425,16 @@ function BookingsTab({ bookings }: {
                                           {entry.type}
                                           {entry.subType ? ` - ${entry.subType}` : ""}
                                         </div>
+                                        {entry.availableSpots <= 0 && (
+                                          <div className="schedule-item-tag" style={{ fontWeight: 900 }}>
+                                            {t("ممتلئ - لا توجد أماكن", "Full - no spots available")}
+                                          </div>
+                                        )}
+                                        {entry.alreadyBooked && !current && (
+                                          <div className="schedule-item-tag" style={{ fontWeight: 900 }}>
+                                            {t("محجوز بالفعل", "Already booked")}
+                                          </div>
+                                        )}
                                         {current && <div className="schedule-item-tag">{t("موعدك الحالي", "Current slot")}</div>}
                                       </button>
                                     );
@@ -2752,15 +3463,27 @@ function BookingsTab({ bookings }: {
             <button
               className="rounded-xl bg-red-600 text-white font-bold px-5 py-2 text-sm transition-colors hover:bg-red-700 disabled:opacity-50"
               onClick={() => void saveScheduleChange()}
-              disabled={!selectedScheduleId || updating || selectedScheduleId === editingBooking?.scheduleId}
+              disabled={
+                !selectedScheduleId ||
+                updating ||
+                selectedScheduleId === editingBooking?.scheduleId ||
+                (Boolean(editingBooking) &&
+                  isPastBooking(editingBooking) &&
+                  absenceReason.trim().length < 3)
+              }
             >
-              {updating ? t("جارٍ الحفظ...", "Saving...") : t("تحديث الموعد", "Update booking")}
+              {updating
+                ? t("جارٍ الإرسال...", "Sending...")
+                : editingBooking && isPastBooking(editingBooking)
+                  ? t("إرسال طلب التعويض", "Send makeup request")
+                  : t("إرسال طلب تغيير الموعد", "Send reschedule request")}
             </button>
             <button
               className="rounded-xl border border-pink-300/40 text-pink-200 px-5 py-2 text-sm font-bold transition-colors hover:bg-pink-500/10"
               onClick={() => {
                 setEditingBooking(null);
                 setSelectedScheduleId(null);
+                setAbsenceReason("");
                 setUpdateError(null);
                 setUpdateSuccess(null);
               }}
@@ -2944,6 +3667,66 @@ function AccountOrdersTab({ orders }: { orders: AccountData["orders"] }) {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
 
+  const [paymentRetryId, setPaymentRetryId] = useState<string | null>(null);
+
+  const continueOrderPayment = async (orderId: string) => {
+    if (paymentRetryId) return;
+
+    setPaymentRetryId(orderId);
+
+    try {
+      const res = await fetch("/api/orders/retry-payment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId }),
+      });
+
+      const data = await res.json() as {
+        success?: boolean;
+        paid?: boolean;
+        checkoutUrl?: string | null;
+        error?: string;
+      };
+
+      if (!res.ok) {
+        alert(
+          data.error ??
+            t(
+              "تعذر استكمال الدفع حاليًا.",
+              "Unable to continue payment right now.",
+            ),
+        );
+        return;
+      }
+
+      if (data.paid) {
+        window.location.reload();
+        return;
+      }
+
+      if (!data.checkoutUrl) {
+        alert(
+          t(
+            "تعذر تجهيز رابط الدفع حاليًا.",
+            "Unable to prepare the payment link right now.",
+          ),
+        );
+        return;
+      }
+
+      window.location.assign(data.checkoutUrl);
+    } catch {
+      alert(
+        t(
+          "حدث خطأ أثناء تجهيز الدفع. لم يتم إنشاء طلب جديد.",
+          "An error occurred while preparing payment. No new order was created.",
+        ),
+      );
+    } finally {
+      setPaymentRetryId(null);
+    }
+  };
+
   const cancelOrder = async (orderId: string) => {
     if (cancellingId) return;
     setCancellingId(orderId);
@@ -3096,10 +3879,19 @@ function AccountOrdersTab({ orders }: { orders: AccountData["orders"] }) {
               </div>
 
               <div className="flex items-center gap-3 flex-wrap">
-                {order.checkoutUrl && order.paymentStatus !== "paid" && order.status !== "cancelled" ? (
-                  <a href={order.checkoutUrl} className="rounded-xl bg-pink-600 px-4 py-2 text-sm font-black text-white hover:bg-pink-500">
-                    {t("استكمال الدفع", "Continue payment")}
-                  </a>
+                {order.paymentMethod === "paymob" &&
+                order.paymentStatus !== "paid" &&
+                order.status === "pending" ? (
+                  <button
+                    type="button"
+                    onClick={() => void continueOrderPayment(order.id)}
+                    disabled={paymentRetryId === order.id}
+                    className="rounded-xl bg-pink-600 px-4 py-2 text-sm font-black text-white hover:bg-pink-500 disabled:opacity-50"
+                  >
+                    {paymentRetryId === order.id
+                      ? t("جارٍ تجهيز الدفع...", "Preparing payment...")
+                      : t("استكمال الدفع", "Continue payment")}
+                  </button>
                 ) : null}
                 {["pending", "confirmed"].includes(order.status) ? (
                   <button
@@ -4497,7 +5289,7 @@ function AgentCommissionsTab() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/staff/commissions").then((r) => r.json()).then((json) => {
+    fetch("/api/me/commissions", { cache: "no-store" }).then((r) => r.json()).then((json) => {
       setCommissions(Array.isArray(json.commissions) ? json.commissions : []);
     }).catch(() => {}).finally(() => setLoading(false));
   }, []);
@@ -4542,8 +5334,20 @@ function AgentCommissionsTab() {
                     <td className="py-2.5 px-3 text-[#d7aabd]">{c.membershipName}</td>
                     <td className="py-2.5 px-3 font-bold text-pink-300">{c.amount.toFixed(0)} ج.م</td>
                     <td className="py-2.5 px-3">
-                      <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${c.status === "settled" ? "bg-emerald-900/40 text-emerald-300" : "bg-yellow-900/40 text-yellow-300"}`}>
-                        {c.status === "settled" ? t("تم الصرف", "Settled") : t("مستحقة", "Pending")}
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-xs font-bold ${
+                          c.status === "settled"
+                            ? "bg-emerald-900/40 text-emerald-300"
+                            : c.status === "ineligible"
+                              ? "bg-gray-800 text-gray-300"
+                              : "bg-yellow-900/40 text-yellow-300"
+                        }`}
+                      >
+                        {c.status === "settled"
+                          ? t("تم الصرف", "Settled")
+                          : c.status === "ineligible"
+                            ? t("إحالة غير مستحقة", "Referral not eligible")
+                            : t("مستحقة", "Pending")}
                       </span>
                     </td>
                     <td className="py-2.5 px-3 text-[#d7aabd]">{new Date(c.createdAt).toLocaleDateString("ar-EG")}</td>
@@ -5226,31 +6030,138 @@ function NutritionTab() {
 }
 
 // ─── Main Component ────────────────────────────────────────────────────────────
+
+type FriendBookingSchedule = {
+  id: string;
+  classId: string;
+  className: string;
+  trainer: string;
+  type: string;
+  subType: string | null;
+  date: string;
+  time: string;
+  availableSpots: number;
+  alreadyBooked: boolean;
+};
+
+type AccountFriendOffer = {
+  participantId: string;
+  role: string;
+  participantStatus: string;
+  shareAmountMinor: number;
+  paidAt: string | null;
+  membership: {
+    id: string;
+    status: string;
+    bookingConfigured: boolean;
+    sessionsCount: number | null;
+    durationDays: number;
+    bookingPolicy: {
+      maxSessionsPerDay: number;
+      minRequiredSelection: number | null;
+      minSessionsPerWeek: number | null;
+      requireSingleCalendarDay: boolean;
+      requireDistinctClassesPerDay: boolean;
+    };
+  } | null;
+  payment: {
+    id: string;
+    status: string;
+    checkoutUrl: string | null;
+    amount: number;
+  } | null;
+  group: {
+    id: string;
+    token: string;
+    status: string;
+    matchingEnabled: boolean;
+    requiredMembers: number;
+    joinedCount: number;
+    remainingPlaces: number;
+    expiresAt: string;
+  };
+  offer: {
+    id: string;
+    title: string;
+    titleEn: string | null;
+  };
+};
+
 export default function AccountClient({ data }: { data: AccountData }) {
   const { lang } = useLang();
   const t = (arText: string, enText: string) => (lang === "ar" ? arText : enText);
   const searchParams = useSearchParams();
   const requestedTab = searchParams.get("tab");
+  const [hasMyCommissions, setHasMyCommissions] = useState(false);
+
   const availableTabs = useMemo(() => {
     const role = data.user.role;
-    const isNutritionist = role === "nutritionist" || !!(data.user.adminPermissions as string[] | undefined)?.includes("nutrition");
+    const isNutritionist =
+      role === "nutritionist" ||
+      !!(data.user.adminPermissions as string[] | undefined)?.includes("nutrition");
+
     if (role === "admin") return TABS;
-    // nutritionist role or staff with nutrition permission: only sees nutritionistProfile among special tabs
-    if (isNutritionist)
-      return TABS.filter((tab) => !["trainerProfile", "trainerDiscountCodes", "privateSessions", "staffDiscountCodes", "agentCommissions"].includes(tab.id));
-    // trainer: sees trainer-specific tabs + agentCommissions, NOT staff-specific
-    if (role === "trainer") return TABS.filter((tab) => !["staffDiscountCodes", "nutritionistProfile"].includes(tab.id));
-    // staff: sees staff-specific tabs + agentCommissions, NOT trainer-specific
-    if (role === "staff") return TABS.filter((tab) => !["trainerProfile", "trainerDiscountCodes", "privateSessions", "nutritionistProfile"].includes(tab.id));
-    // member / other: hide all staff and trainer specific tabs
-    return TABS.filter((tab) => !["trainerProfile", "nutritionistProfile", "trainerDiscountCodes", "privateSessions", "staffDiscountCodes", "agentCommissions"].includes(tab.id));
-  }, [data.user.role, data.user.adminPermissions]);
+
+    let tabs: Array<(typeof TABS)[number]> = [...TABS];
+
+    if (isNutritionist) {
+      tabs = TABS.filter(
+        (tab) =>
+          !["trainerProfile", "trainerDiscountCodes", "privateSessions", "staffDiscountCodes"].includes(tab.id)
+      );
+    } else if (role === "trainer") {
+      tabs = TABS.filter(
+        (tab) => !["staffDiscountCodes", "nutritionistProfile"].includes(tab.id)
+      );
+    } else if (role === "staff") {
+      tabs = TABS.filter(
+        (tab) =>
+          !["trainerProfile", "trainerDiscountCodes", "privateSessions", "nutritionistProfile"].includes(tab.id)
+      );
+    } else {
+      tabs = TABS.filter(
+        (tab) =>
+          !["trainerProfile", "nutritionistProfile", "trainerDiscountCodes", "privateSessions", "staffDiscountCodes"].includes(tab.id)
+      );
+    }
+
+    const alwaysShowCommissionTab =
+      role === "staff" || role === "trainer";
+
+    if (!alwaysShowCommissionTab && !hasMyCommissions) {
+      tabs = tabs.filter((tab) => tab.id !== "agentCommissions");
+    }
+
+    return tabs;
+  }, [data.user.role, data.user.adminPermissions, hasMyCommissions]);
   const resolveTab = (value: string | null): TabId => (availableTabs.some((tab) => tab.id === value) ? (value as TabId) : "profile");
   const [activeTab, setActiveTab]     = useState<TabId>(resolveTab(requestedTab));
   const [loggingOut, setLoggingOut]   = useState(false);
   const [congratsMsg, setCongratsMsg] = useState<string | null>(null);
   const [ctaDismissed, setCtaDismissed] = useState(false);
   const [pointValueEGP, setPointValueEGP] = useState<number | null>(null);
+  const [friendOffers, setFriendOffers] = useState<AccountFriendOffer[]>([]);
+  const [friendOffersLoading, setFriendOffersLoading] = useState(true);
+  const [friendCheckoutId, setFriendCheckoutId] = useState<string | null>(null);
+  const [friendOfferError, setFriendOfferError] = useState<string | null>(null);
+  const [friendCancelId, setFriendCancelId] =
+    useState<string | null>(null);
+  const [friendScheduleOffer, setFriendScheduleOffer] = useState<AccountFriendOffer | null>(null);
+  const [friendSchedules, setFriendSchedules] = useState<FriendBookingSchedule[]>([]);
+  const [friendScheduleSelection, setFriendScheduleSelection] = useState<string[]>([]);
+  const [friendSchedulesLoading, setFriendSchedulesLoading] = useState(false);
+  const [friendScheduleSaving, setFriendScheduleSaving] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/me/commissions", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        setHasMyCommissions(
+          Array.isArray(d?.commissions) && d.commissions.length > 0
+        );
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     fetch("/api/me/checkout-options", { cache: "no-store" })
@@ -5258,6 +6169,421 @@ export default function AccountClient({ data }: { data: AccountData }) {
       .then((d: { pointValueEGP: number }) => setPointValueEGP(d.pointValueEGP))
       .catch(() => {});
   }, []);
+
+  const loadFriendOffers = async () => {
+    setFriendOffersLoading(true);
+
+    try {
+      const response = await fetch("/api/me/friend-offers", {
+        cache: "no-store",
+      });
+
+      const payload = (await response.json().catch(() => ({}))) as {
+        offers?: AccountFriendOffer[];
+      };
+
+      if (response.ok) {
+        setFriendOffers(
+          Array.isArray(payload.offers) ? payload.offers : [],
+        );
+      }
+    } catch {
+      // Friend-offer card failure must not break the account page.
+    } finally {
+      setFriendOffersLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadFriendOffers();
+  }, []);
+
+
+  const openFriendSchedulePicker = async (
+    friendOffer: AccountFriendOffer,
+  ) => {
+    if (!friendOffer.membership?.id) return;
+
+    setFriendScheduleOffer(friendOffer);
+    setFriendSchedules([]);
+    setFriendScheduleSelection([]);
+    setFriendOfferError(null);
+    setFriendSchedulesLoading(true);
+
+    try {
+      const response = await fetch(
+        "/api/me/booking-schedules",
+        { cache: "no-store" },
+      );
+
+      const payload = (await response.json().catch(() => ({}))) as {
+        schedules?: FriendBookingSchedule[];
+        error?: string;
+      };
+
+      if (!response.ok) {
+        throw new Error(
+          payload.error || "تعذر تحميل المواعيد.",
+        );
+      }
+
+      const available = Array.isArray(payload.schedules)
+        ? payload.schedules
+            .filter(
+              (schedule) =>
+                !schedule.alreadyBooked &&
+                schedule.availableSpots > 0,
+            )
+            .sort((a, b) => {
+              const dateA = new Date(a.date).getTime();
+              const dateB = new Date(b.date).getTime();
+
+              if (dateA !== dateB) {
+                return dateA - dateB;
+              }
+
+              return a.time.localeCompare(b.time);
+            })
+        : [];
+
+      /*
+       * Same seed-slot rule used by the normal subscription UI:
+       * keep only the nearest upcoming occurrence for each
+       * recurring (weekday + time + class) pattern.
+       *
+       * The server booking engine will freeze this first selection
+       * into bookingPatternSnapshot and expand the recurrence.
+       */
+      const seenPatterns = new Set<string>();
+
+      const nearestSeedSchedules = available.filter(
+        (schedule) => {
+          const date = new Date(schedule.date);
+
+          if (Number.isNaN(date.getTime())) {
+            return false;
+          }
+
+          const key = [
+            date.getDay(),
+            schedule.time,
+            schedule.className,
+          ].join("|");
+
+          if (seenPatterns.has(key)) {
+            return false;
+          }
+
+          seenPatterns.add(key);
+          return true;
+        },
+      );
+
+      setFriendSchedules(nearestSeedSchedules);
+    } catch (error) {
+      setFriendOfferError(
+        error instanceof Error
+          ? error.message
+          : "تعذر تحميل المواعيد.",
+      );
+    } finally {
+      setFriendSchedulesLoading(false);
+    }
+  };
+
+  const toggleFriendSchedule = (scheduleId: string) => {
+    const policy =
+      friendScheduleOffer?.membership?.bookingPolicy ?? null;
+
+    const target = friendSchedules.find(
+      (schedule) => schedule.id === scheduleId,
+    );
+
+    if (!target) return;
+
+    setFriendOfferError(null);
+
+    setFriendScheduleSelection((current) => {
+      if (current.includes(scheduleId)) {
+        return current.filter((id) => id !== scheduleId);
+      }
+
+      const targetDate = new Date(target.date);
+      const targetDayKey = Number.isNaN(targetDate.getTime())
+        ? target.date
+        : targetDate.toISOString().slice(0, 10);
+
+      const sameTimeConflict = current.some((id) => {
+        const selected = friendSchedules.find(
+          (schedule) => schedule.id === id,
+        );
+
+        if (!selected) return false;
+
+        const selectedDate = new Date(selected.date);
+        const selectedDayKey = Number.isNaN(selectedDate.getTime())
+          ? selected.date
+          : selectedDate.toISOString().slice(0, 10);
+
+        return (
+          selectedDayKey === targetDayKey &&
+          selected.time === target.time
+        );
+      });
+
+      if (sameTimeConflict) {
+        setFriendOfferError(
+          t(
+            "لا يمكن اختيار حصتين في نفس اليوم ونفس التوقيت.",
+            "You cannot choose two classes at the same day and time.",
+          ),
+        );
+        return current;
+      }
+
+      if (policy) {
+        const sameDayCount = current.filter((id) => {
+          const selected = friendSchedules.find(
+            (schedule) => schedule.id === id,
+          );
+
+          if (!selected) return false;
+
+          const selectedDate = new Date(selected.date);
+          const selectedDayKey = Number.isNaN(selectedDate.getTime())
+            ? selected.date
+            : selectedDate.toISOString().slice(0, 10);
+
+          return selectedDayKey === targetDayKey;
+        }).length;
+
+        if (sameDayCount >= policy.maxSessionsPerDay) {
+          setFriendOfferError(
+            t(
+              `الحد الأقصى ${policy.maxSessionsPerDay} حصة في اليوم الواحد.`,
+              `Maximum ${policy.maxSessionsPerDay} sessions per day.`,
+            ),
+          );
+          return current;
+        }
+
+        const required = policy.minRequiredSelection;
+
+        if (
+          required != null &&
+          current.length >= required
+        ) {
+          setFriendOfferError(
+            t(
+              `المطلوب اختيار ${required} موعد فقط لهذا الاشتراك.`,
+              `Please choose only ${required} schedules for this membership.`,
+            ),
+          );
+          return current;
+        }
+      }
+
+      return [...current, scheduleId];
+    });
+  };
+
+  const saveFriendSchedule = async () => {
+    if (
+      !friendScheduleOffer?.membership?.id ||
+      friendScheduleSaving
+    ) {
+      return;
+    }
+
+    const required =
+      friendScheduleOffer.membership.bookingPolicy
+        .minRequiredSelection;
+
+    if (
+      required != null &&
+      friendScheduleSelection.length !== required
+    ) {
+      setFriendOfferError(
+        t(
+          `اختاري ${required} موعد بالضبط قبل تأكيد الجدول.`,
+          `Choose exactly ${required} schedules before confirming.`,
+        ),
+      );
+      return;
+    }
+
+    setFriendScheduleSaving(true);
+    setFriendOfferError(null);
+
+    try {
+      const response = await fetch(
+        "/api/me/friend-offers/schedule",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            userMembershipId:
+              friendScheduleOffer.membership.id,
+            selectedScheduleIds:
+              friendScheduleSelection,
+          }),
+        },
+      );
+
+      const payload = (await response.json().catch(() => ({}))) as {
+        success?: boolean;
+        error?: string;
+      };
+
+      if (!response.ok || !payload.success) {
+        throw new Error(
+          payload.error || "تعذر تثبيت المواعيد.",
+        );
+      }
+
+      setFriendScheduleOffer(null);
+      setFriendScheduleSelection([]);
+      await loadFriendOffers();
+
+      window.location.reload();
+    } catch (error) {
+      setFriendOfferError(
+        error instanceof Error
+          ? error.message
+          : "تعذر تثبيت المواعيد.",
+      );
+    } finally {
+      setFriendScheduleSaving(false);
+    }
+  };
+
+  const cancelFriendOfferInvite = async (
+    friendOffer: AccountFriendOffer,
+  ) => {
+    if (friendCancelId) return;
+
+    if (
+      !window.confirm(
+        t(
+          "هل تريدين إلغاء دعوة عرض الصحاب؟",
+          "Cancel this Friends Offer invitation?",
+        ),
+      )
+    ) {
+      return;
+    }
+
+    setFriendCancelId(
+      friendOffer.participantId,
+    );
+    setFriendOfferError(null);
+
+    try {
+      const response = await fetch(
+        "/api/me/friend-offers",
+        {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            participantId:
+              friendOffer.participantId,
+          }),
+        },
+      );
+
+      const payload =
+        await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        setFriendOfferError(
+          payload.error ||
+            t(
+              "تعذر إلغاء الدعوة.",
+              "Could not cancel the invitation.",
+            ),
+        );
+        return;
+      }
+
+      await loadFriendOffers();
+    } catch (error) {
+      console.error(
+        "[ACCOUNT_FRIEND_OFFER_CANCEL]",
+        error,
+      );
+
+      setFriendOfferError(
+        t(
+          "تعذر إلغاء الدعوة.",
+          "Could not cancel the invitation.",
+        ),
+      );
+    } finally {
+      setFriendCancelId(null);
+    }
+  };
+
+  const startFriendCheckout = async (
+    friendOffer: AccountFriendOffer,
+  ) => {
+    if (friendCheckoutId) return;
+
+    setFriendCheckoutId(friendOffer.participantId);
+    setFriendOfferError(null);
+
+    try {
+      const returnUrl = `${window.location.origin}/account`;
+      const cancelUrl = `${window.location.origin}/account`;
+
+      const response = await fetch("/api/friend-offers/checkout", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          token: friendOffer.group.token,
+          returnUrl,
+          cancelUrl,
+        }),
+      });
+
+      const payload = (await response.json().catch(() => ({}))) as {
+        success?: boolean;
+        status?: string;
+        checkoutUrl?: string | null;
+        error?: string;
+      };
+
+      if (!response.ok || !payload.success) {
+        throw new Error(
+          payload.error || "تعذر بدء دفع عرض الصحاب.",
+        );
+      }
+
+      if (payload.status === "paid") {
+        await loadFriendOffers();
+        return;
+      }
+
+      if (!payload.checkoutUrl) {
+        throw new Error("رابط الدفع غير متاح حاليًا.");
+      }
+
+      window.location.assign(payload.checkoutUrl);
+    } catch (error) {
+      setFriendOfferError(
+        error instanceof Error
+          ? error.message
+          : "تعذر بدء دفع عرض الصحاب.",
+      );
+    } finally {
+      setFriendCheckoutId(null);
+    }
+  };
 
   const scrollToProfileForm = () => {
     setCtaDismissed(true);
@@ -5278,6 +6604,15 @@ export default function AccountClient({ data }: { data: AccountData }) {
     try {
       await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin", cache: "no-store" });
     } finally {
+      /*
+       * Cart contents must never leak to the next authenticated user
+       * on the same browser/device.
+       */
+      try {
+        window.localStorage.removeItem("fitzone:cart");
+        window.dispatchEvent(new Event("fitzone-cart-updated"));
+      } catch {}
+
       window.location.replace(`/?logout=${Date.now()}`);
     }
   };
@@ -5285,8 +6620,33 @@ export default function AccountClient({ data }: { data: AccountData }) {
   const membershipDaysLeft = data.membership
     ? Math.max(0, differenceInDays(new Date(data.membership.endDate), new Date()))
     : 0;
+  const lifecycleLabel =
+    lang === "en"
+      ? ({
+          active: "Active",
+          suspended: "Suspended",
+          pending_payment: "Pending payment",
+          cancelled: "Cancelled",
+          expired: "Expired",
+          unsubscribed: "Not subscribed",
+        } as Record<string, string>)[data.lifecycleStatus] ?? data.lifecycleStatus
+      : STATUS_MAP[data.lifecycleStatus]?.label ?? "غير مشترك";
+
+  const lifecycleTextColor =
+    ({
+      active: "text-green-400",
+      suspended: "text-amber-300",
+      pending_payment: "text-amber-300",
+      cancelled: "text-red-400",
+      expired: "text-red-400",
+      unsubscribed: "text-gray-400",
+    } as Record<string, string>)[data.lifecycleStatus] ?? "text-gray-400";
+
   const membershipActionLabel = !data.membership
-    ? t("اشترك الآن", "Subscribe now")
+    ? data.lifecycleStatus === "pending_payment" ||
+      data.lifecycleStatus === "suspended"
+      ? undefined
+      : t("اشترك الآن", "Subscribe now")
     : membershipDaysLeft <= 0
       ? t("تجديد الاشتراك", "Renew membership")
       : undefined;
@@ -5384,8 +6744,8 @@ export default function AccountClient({ data }: { data: AccountData }) {
             <StatCard
               icon="📅"
               label={t("أيام الاشتراك", "Membership days")}
-              value={!data.membership ? t("غير مشترك", "Not subscribed") : membershipDaysLeft > 0 ? `${formatMoney(membershipDaysLeft, lang)} ${t("يوم", "days")}` : t("منتهي", "Expired")}
-              color={!data.membership ? "text-gray-400" : membershipDaysLeft > 7 ? "text-green-400" : "text-red-400"}
+              value={!data.membership ? lifecycleLabel : membershipDaysLeft > 0 ? `${formatMoney(membershipDaysLeft, lang)} ${t("يوم", "days")}` : t("منتهي", "Expired")}
+              color={!data.membership ? lifecycleTextColor : membershipDaysLeft > 7 ? "text-green-400" : "text-red-400"}
               actionLabel={membershipActionLabel}
               actionHref={membershipActionLabel ? "/?page=memberships" : undefined}
             />
@@ -5393,6 +6753,216 @@ export default function AccountClient({ data }: { data: AccountData }) {
           </div>
         </div>
       </div>
+
+      {friendScheduleOffer ? (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
+          <div className="max-h-[88vh] w-full max-w-2xl overflow-y-auto rounded-3xl border border-[#ffbcdb]/20 bg-[#2a0f1b] p-5 shadow-2xl">
+            <div className="mb-4 flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-black text-white">
+                  {t(
+                    "اختاري مواعيد اشتراكك",
+                    "Choose your membership schedule",
+                  )}
+                </h3>
+                <p className="mt-1 text-sm text-[#d7aabd]">
+                  {t(
+                    "اختيارك الأول سيحدد نمط الحجز المتكرر لهذا الاشتراك.",
+                    "Your first selection will define the recurring booking pattern for this membership.",
+                  )}
+                </p>
+
+                <div className="mt-2 text-sm font-bold text-pink-200">
+                  {t("المواعيد المختارة", "Selected schedules")}:{" "}
+                  {friendScheduleSelection.length}
+                  {friendScheduleOffer.membership?.bookingPolicy
+                    ?.minRequiredSelection != null
+                    ? ` / ${friendScheduleOffer.membership.bookingPolicy.minRequiredSelection}`
+                    : ""}
+                </div>
+
+                {friendScheduleOffer.membership ? (
+                  <div className="mt-3 rounded-2xl border border-sky-300/20 bg-sky-500/10 p-3 text-sm text-sky-100">
+                    <div className="font-black">
+                      {t("شروط اختيار المواعيد", "Schedule rules")}
+                    </div>
+
+                    <ul className="mt-2 space-y-1">
+                      {friendScheduleOffer.membership.sessionsCount != null ? (
+                        <li>
+                          •{" "}
+                          {t(
+                            `إجمالي الاشتراك ${friendScheduleOffer.membership.sessionsCount} حصة خلال ${friendScheduleOffer.membership.durationDays} يوم.`,
+                            `This membership includes ${friendScheduleOffer.membership.sessionsCount} sessions over ${friendScheduleOffer.membership.durationDays} days.`,
+                          )}
+                        </li>
+                      ) : null}
+
+                      {friendScheduleOffer.membership.bookingPolicy
+                        .minRequiredSelection != null ? (
+                        <li>
+                          •{" "}
+                          {t(
+                            `اختاري ${friendScheduleOffer.membership.bookingPolicy.minRequiredSelection} موعد كجدول أسبوعي متكرر.`,
+                            `Choose ${friendScheduleOffer.membership.bookingPolicy.minRequiredSelection} schedules as your recurring weekly pattern.`,
+                          )}
+                        </li>
+                      ) : null}
+
+                      <li>
+                        •{" "}
+                        {t(
+                          `الحد الأقصى ${friendScheduleOffer.membership.bookingPolicy.maxSessionsPerDay} حصة في اليوم الواحد.`,
+                          `Maximum ${friendScheduleOffer.membership.bookingPolicy.maxSessionsPerDay} sessions per day.`,
+                        )}
+                      </li>
+
+                      <li>
+                        •{" "}
+                        {t(
+                          "لا يمكن اختيار حصتين في نفس اليوم ونفس التوقيت.",
+                          "You cannot choose two classes at the same day and time.",
+                        )}
+                      </li>
+
+                      <li>
+                        •{" "}
+                        {t(
+                          "اختيارك الأول يثبت نمط الحجز المتكرر لباقي مدة الاشتراك.",
+                          "Your first selection locks the recurring schedule pattern for the rest of the membership.",
+                        )}
+                      </li>
+                    </ul>
+                  </div>
+                ) : null}
+
+                {friendOfferError ? (
+                  <div className="mt-3 rounded-xl border border-red-300/25 bg-red-500/10 px-3 py-2 text-sm font-bold text-red-200">
+                    {friendOfferError}
+                  </div>
+                ) : null}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setFriendScheduleOffer(null)}
+                className="rounded-xl px-3 py-2 text-[#d7aabd] hover:bg-white/5"
+              >
+                ✕
+              </button>
+            </div>
+
+            {friendSchedulesLoading ? (
+              <div className="py-10 text-center text-[#d7aabd]">
+                {t("جارٍ تحميل المواعيد...", "Loading schedules...")}
+              </div>
+            ) : friendSchedules.length === 0 ? (
+              <div className="rounded-2xl border border-amber-300/20 bg-amber-500/10 p-4 text-sm text-amber-200">
+                {t(
+                  "لا توجد مواعيد متاحة حاليًا لهذا الاشتراك.",
+                  "No eligible schedules are currently available.",
+                )}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {friendSchedules.map((schedule) => {
+                  const selected =
+                    friendScheduleSelection.includes(
+                      schedule.id,
+                    );
+
+                  return (
+                    <button
+                      type="button"
+                      key={schedule.id}
+                      onClick={() =>
+                        toggleFriendSchedule(schedule.id)
+                      }
+                      aria-pressed={selected}
+                      className={`relative w-full rounded-2xl border p-4 text-start transition ${
+                        selected
+                          ? "border-pink-300 bg-pink-500/25 ring-2 ring-pink-400/70"
+                          : "border-[#ffbcdb]/15 bg-white/[0.03] hover:bg-white/[0.06]"
+                      }`}
+                    >
+                      {selected ? (
+                        <div className="absolute left-3 top-3 rounded-full bg-pink-500 px-2 py-1 text-xs font-black text-white">
+                          ✓ {t("تم الاختيار", "Selected")}
+                        </div>
+                      ) : null}
+
+                      <div className="font-black text-white">
+                        {schedule.className}
+                      </div>
+
+                      <div className="mt-1 text-sm text-[#d7aabd]">
+                        {new Date(
+                          schedule.date,
+                        ).toLocaleDateString(
+                          lang === "ar"
+                            ? "ar-EG"
+                            : "en-US",
+                        )}{" "}
+                        —{" "}
+                          {formatTime12Hour(
+                            schedule.time,
+                            {
+                              locale:
+                                lang === "ar"
+                                  ? "ar-EG"
+                                  : "en-US",
+                            },
+                          )}
+                      </div>
+
+                      {schedule.trainer ? (
+                        <div className="mt-1 text-xs text-[#a98997]">
+                          {schedule.trainer}
+                        </div>
+                      ) : null}
+
+                      <div className="mt-2 text-xs text-emerald-300">
+                        {t("أماكن متاحة", "Available spots")}:{" "}
+                        {schedule.availableSpots}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className="sticky bottom-0 z-10 mt-5 flex gap-2 border-t border-[#ffbcdb]/15 bg-[#2a0f1b]/95 pt-4 pb-1 backdrop-blur">
+              <button
+                type="button"
+                onClick={() => setFriendScheduleOffer(null)}
+                className="flex-1 rounded-2xl border border-[#ffbcdb]/20 px-4 py-3 text-sm font-bold text-[#d7aabd]"
+              >
+                {t("إلغاء", "Cancel")}
+              </button>
+
+              <button
+                type="button"
+                disabled={
+                  friendScheduleSaving ||
+                  friendScheduleSelection.length === 0
+                }
+                onClick={() => void saveFriendSchedule()}
+                className="flex-1 rounded-2xl bg-gradient-to-r from-pink-600 to-fuchsia-600 px-4 py-3 text-sm font-black text-white disabled:opacity-50"
+              >
+                {friendScheduleSaving
+                  ? t(
+                      "جارٍ تثبيت الجدول...",
+                      "Saving schedule...",
+                    )
+                  : t(
+                      "تأكيد المواعيد",
+                      "Confirm schedules",
+                    )}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {/* ── Congrats Popup ── */}
       {congratsMsg && (
@@ -5435,6 +7005,201 @@ export default function AccountClient({ data }: { data: AccountData }) {
 
       {/* ── Body ── */}
       <div className="max-w-7xl mx-auto px-4 py-6 w-full">
+        {/* Pending Friend Offer */}
+        {friendOffers.length > 0 && (
+          <div className="mb-5 space-y-3">
+            {friendOffers.map((friendOffer) => {
+              const isActivated =
+                friendOffer.participantStatus === "activated";
+
+              const isPaid =
+                !isActivated &&
+                (friendOffer.participantStatus === "paid" ||
+                  friendOffer.payment?.status === "paid");
+
+              const checkoutStarted =
+                friendOffer.participantStatus ===
+                  "checkout_started" ||
+                friendOffer.payment?.status === "pending" ||
+                friendOffer.payment?.status ===
+                  "requires_action";
+
+              return (
+                <div
+                  key={friendOffer.participantId}
+                  className="rounded-[24px] border border-pink-300/20 bg-[linear-gradient(135deg,rgba(190,24,93,0.22),rgba(91,33,182,0.14))] p-5 shadow-[0_18px_55px_rgba(17,5,10,0.22)]"
+                >
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-xl">👭</span>
+
+                        <h2 className="text-lg font-black text-[#fff7fb]">
+                          {friendOffer.role === "creator"
+                            ? t(
+                                "عرض الصحاب الخاص بك",
+                                "Your Friends Offer",
+                              )
+                            : t(
+                                "تم اختيارك كشريكة في عرض الصحاب",
+                                "You were matched to a Friends Offer",
+                              )}
+                        </h2>
+                      </div>
+
+                      <div className="mt-2 font-bold text-pink-100">
+                        {lang === "en" &&
+                        friendOffer.offer.titleEn
+                          ? friendOffer.offer.titleEn
+                          : friendOffer.offer.title}
+                      </div>
+
+                      <div className="mt-3 flex flex-wrap gap-2 text-sm">
+                        <span className="rounded-xl bg-white/7 px-3 py-2 text-[#f6dbe7]">
+                          {t("حصتك", "Your share")}:{" "}
+                          <strong className="text-white">
+                            {(
+                              friendOffer.shareAmountMinor / 100
+                            ).toLocaleString(
+                              lang === "ar"
+                                ? "ar-EG"
+                                : "en-US",
+                            )}{" "}
+                            {t("ج.م", "EGP")}
+                          </strong>
+                        </span>
+
+                        <span className="rounded-xl bg-white/7 px-3 py-2 text-[#f6dbe7]">
+                          {t("المجموعة", "Group")}:{" "}
+                          <strong className="text-white">
+                            {friendOffer.group.joinedCount} /{" "}
+                            {friendOffer.group.requiredMembers}
+                          </strong>
+                        </span>
+                      </div>
+
+                      {isPaid ? (
+                        <div className="mt-3 text-sm font-bold text-emerald-300">
+                          ✓{" "}
+                          {t(
+                            friendOffer.group.remainingPlaces > 0
+                              ? "تم دفع حصتك. في انتظار اكتمال باقي المجموعة."
+                              : "تم دفع حصتك. في انتظار إتمام دفع باقي المشاركات والتفعيل.",
+                            friendOffer.group.remainingPlaces > 0
+                              ? "Your share is paid. Waiting for the rest of the group."
+                              : "Your share is paid. Waiting for the remaining payments and activation.",
+                          )}
+                        </div>
+                      ) : null}
+
+                      {isActivated ? (
+                        <div className="mt-3 text-sm font-bold text-emerald-300">
+                          ✓{" "}
+                          {t(
+                            "تم تفعيل اشتراك عرض الصحاب.",
+                            "Your Friends Offer membership is active.",
+                          )}
+                        </div>
+                      ) : null}
+
+                      {friendOffer.participantStatus === "activated" &&
+                      friendOffer.membership?.status === "active" &&
+                      !friendOffer.membership.bookingConfigured ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void openFriendSchedulePicker(
+                              friendOffer,
+                            )
+                          }
+                          className="mt-4 rounded-2xl border border-sky-300/30 bg-sky-500/10 px-4 py-2.5 text-sm font-black text-sky-200 transition hover:bg-sky-500/20"
+                        >
+                          {t(
+                            "اختاري مواعيد اشتراكك",
+                            "Choose your membership schedule",
+                          )}
+                        </button>
+                      ) : null}
+                    </div>
+
+                    {!isPaid ? (
+                      <div className="flex shrink-0 flex-col gap-2">
+                          {friendOffer.role === "creator" &&
+                          ["waiting", "ready"].includes(
+                            friendOffer.group.status,
+                          ) &&
+                          !checkoutStarted &&
+                          !isActivated ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void cancelFriendOfferInvite(
+                                  friendOffer,
+                                )
+                              }
+                              disabled={
+                                friendCancelId ===
+                                friendOffer.participantId
+                              }
+                              className="rounded-2xl border border-red-400/30 bg-red-500/10 px-5 py-2.5 text-sm font-black text-red-200 transition hover:bg-red-500/20 disabled:opacity-50"
+                            >
+                              {friendCancelId ===
+                              friendOffer.participantId
+                                ? t(
+                                    "جارٍ الإلغاء...",
+                                    "Cancelling...",
+                                  )
+                                : t(
+                                    "إلغاء الدعوة",
+                                    "Cancel invitation",
+                                  )}
+                            </button>
+                          ) : null}
+
+                        <button
+                        type="button"
+                        disabled={
+                          friendCheckoutId ===
+                          friendOffer.participantId
+                        }
+                        onClick={() =>
+                          void startFriendCheckout(friendOffer)
+                        }
+                        className="shrink-0 rounded-2xl bg-gradient-to-r from-pink-600 to-fuchsia-600 px-5 py-3 text-sm font-black text-white shadow-[0_10px_30px_rgba(190,24,93,0.3)] transition hover:brightness-110 disabled:opacity-50"
+                      >
+                        {friendCheckoutId ===
+                        friendOffer.participantId
+                          ? t(
+                              "جارٍ تجهيز الدفع...",
+                              "Preparing payment...",
+                            )
+                          : checkoutStarted
+                            ? t(
+                                "استكمال الدفع",
+                                "Continue payment",
+                              )
+                            : t(
+                                "ادفعي حصتك",
+                                "Pay your share",
+                              )}
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })}
+
+            {friendOfferError ? (
+              <div className="rounded-xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                {friendOfferError}
+              </div>
+            ) : null}
+          </div>
+        )}
+
+        {friendOffersLoading ? null : null}
+
         {/* Onboarding card — shown above tabs */}
         <OnboardingCard data={data} onRewardClaimed={setCongratsMsg} />
 

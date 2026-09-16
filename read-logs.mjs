@@ -1,4 +1,5 @@
-const TOKEN = "***REMOVED***";
+const TOKEN = process.env.HOSTINGER_API_TOKEN;
+if (!TOKEN) throw new Error("HOSTINGER_API_TOKEN is required");
 const USERNAME = "u952525674";
 const PASS = "MrCCcrew@1985";
 

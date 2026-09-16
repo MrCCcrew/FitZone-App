@@ -8,7 +8,11 @@ const globalForPrisma = globalThis as unknown as {
 };
 
 function getConnectionLimit() {
-  const raw = Number(process.env.DB_CONNECTION_LIMIT ?? process.env.PRISMA_CONNECTION_LIMIT ?? "");
+  const raw = Number(
+    process.env.DB_CONNECTION_LIMIT ??
+      process.env.PRISMA_CONNECTION_LIMIT ??
+      "",
+  );
   if (Number.isFinite(raw) && raw > 0) {
     return Math.min(Math.max(Math.floor(raw), 1), 10);
   }
@@ -44,6 +48,42 @@ function getAdapter() {
   const url = new URL(normalizeDatabaseUrl(databaseUrl));
   const database = url.pathname.replace(/^\//, "");
 
+  /*
+   * ENVIRONMENT DATABASE SAFETY
+   *
+   * The source code is intentionally identical in Staging and Production.
+   * Environment variables decide which database is allowed:
+   *
+   * - APP_ENV=staging  => fitzone_staging only
+   * - NODE_ENV=production (and not staging) => fitzone_prod only
+   *
+   * This prevents an accidental deployment/config mix from connecting one
+   * environment to the other environment's database.
+   */
+  if (process.env.APP_ENV === "test") {
+    if (
+      database !== "fitzone_test" ||
+      url.hostname !== "127.0.0.1" ||
+      decodeURIComponent(url.username) !== "fitzone_test_user"
+    ) {
+      throw new Error(
+        `[TEST_SAFETY] Refusing database connection to "${database}" as "${decodeURIComponent(url.username)}" at "${url.hostname}". Expected fitzone_test as fitzone_test_user on 127.0.0.1.`,
+      );
+    }
+  } else if (process.env.APP_ENV === "staging") {
+    if (database !== "fitzone_staging") {
+      throw new Error(
+        `[STAGING_SAFETY] Refusing database connection to "${database}". Expected "fitzone_staging".`,
+      );
+    }
+  } else if (process.env.NODE_ENV === "production") {
+    if (database !== "fitzone_prod") {
+      throw new Error(
+        `[PRODUCTION_SAFETY] Refusing database connection to "${database}". Expected "fitzone_prod".`,
+      );
+    }
+  }
+
   const adapter = new PrismaMariaDb({
     host: url.hostname,
     port: url.port ? Number(url.port) : 3306,
@@ -69,9 +109,20 @@ const basePrisma =
 
 globalForPrisma.prisma = basePrisma;
 
-const AUDITABLE_OPERATIONS = new Set(["create", "update", "delete", "upsert", "createMany", "updateMany", "deleteMany"]);
+const AUDITABLE_OPERATIONS = new Set([
+  "create",
+  "update",
+  "delete",
+  "upsert",
+  "createMany",
+  "updateMany",
+  "deleteMany",
+]);
 
-function normalizeAuditValue(value: unknown, seen = new WeakSet<object>()): unknown {
+function normalizeAuditValue(
+  value: unknown,
+  seen = new WeakSet<object>(),
+): unknown {
   if (value == null) return value;
   if (value instanceof Date) return value.toISOString();
   if (typeof value === "bigint") return value.toString();
@@ -85,7 +136,10 @@ function normalizeAuditValue(value: unknown, seen = new WeakSet<object>()): unkn
   }
 
   const protoName = Object.getPrototypeOf(value)?.constructor?.name ?? "";
-  if (protoName === "Decimal" && "toString" in (value as Record<string, unknown>)) {
+  if (
+    protoName === "Decimal" &&
+    "toString" in (value as Record<string, unknown>)
+  ) {
     return String(value);
   }
 
@@ -117,7 +171,11 @@ export const db = basePrisma.$extends({
       async $allOperations({ model, operation, args, query }) {
         const result = await query(args);
 
-        if (!model || model === "AuditLog" || !AUDITABLE_OPERATIONS.has(operation)) {
+        if (
+          !model ||
+          model === "AuditLog" ||
+          !AUDITABLE_OPERATIONS.has(operation)
+        ) {
           return result;
         }
 
@@ -128,8 +186,14 @@ export const db = basePrisma.$extends({
           const targetId =
             typeof result === "object" && result !== null && "id" in result
               ? String((result as { id?: string | number }).id ?? "")
-              : args && typeof args === "object" && "where" in args && (args as { where?: { id?: string | number } }).where?.id != null
-                ? String((args as { where?: { id?: string | number } }).where?.id)
+              : args &&
+                  typeof args === "object" &&
+                  "where" in args &&
+                  (args as { where?: { id?: string | number } }).where?.id !=
+                    null
+                ? String(
+                    (args as { where?: { id?: string | number } }).where?.id,
+                  )
                 : null;
 
           await basePrisma.auditLog.create({
@@ -158,3 +222,20 @@ export const db = basePrisma.$extends({
     },
   },
 });
+
+/**
+ * Prisma extension transaction typing bridge.
+ *
+ * Runtime note:
+ * interactive transaction callbacks from the extended `db` client expose the
+ * normal Prisma transaction API, but Prisma's generated TypeScript types for
+ * extended clients are not structurally assignable to Prisma.TransactionClient.
+ *
+ * Keep that generated-type incompatibility isolated HERE rather than spreading
+ * casts across business services.
+ */
+export function asDbTransactionClient(
+  tx: unknown,
+): import("@prisma/client").Prisma.TransactionClient {
+  return tx as import("@prisma/client").Prisma.TransactionClient;
+}

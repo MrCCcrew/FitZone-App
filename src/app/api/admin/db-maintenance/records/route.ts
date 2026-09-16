@@ -323,16 +323,33 @@ export async function POST(req: Request) {
     }
 
     if (action === "delete") {
+      // Never allow the generic maintenance console to destroy financial
+      // attribution/history or records that can cascade into commissions.
+      const protectedFinancialTypes = new Set([
+        "memberships",
+        "plans",
+        "users",
+        "partners",
+        "partnerCommissions",
+        "partnerWithdrawals",
+      ]);
+
+      if (protectedFinancialTypes.has(type)) {
+        return NextResponse.json(
+          {
+            message:
+              "هذا السجل محمي لأنه قد يحتوي أو يرتبط بتاريخ مالي/عمولات. استخدم التعطيل أو الإجراء المتخصص بدل الحذف.",
+          },
+          { status: 409 },
+        );
+      }
+
       if (type === "transactions") await db.paymentTransaction.delete({ where: { id } });
       if (type === "orders") await db.order.delete({ where: { id } });
-      if (type === "memberships") await db.userMembership.delete({ where: { id } });
       if (type === "plans") await db.membership.delete({ where: { id } });
       if (type === "offers") await db.offer.delete({ where: { id } });
-      if (type === "users") await db.user.delete({ where: { id } });
       if (type === "inventoryMovements") await db.inventoryMovement.delete({ where: { id } });
-      if (type === "partners") await db.partner.delete({ where: { id } });
-      if (type === "partnerCommissions") await db.partnerCommission.delete({ where: { id } });
-      if (type === "partnerWithdrawals") await db.partnerWithdrawalRequest.delete({ where: { id } });
+
       return NextResponse.json({ message: "تم حذف السجل بنجاح." });
     }
 
@@ -341,7 +358,22 @@ export async function POST(req: Request) {
       if (!status) return NextResponse.json({ message: "الحالة مطلوبة." }, { status: 400 });
       if (type === "transactions") await db.paymentTransaction.update({ where: { id }, data: { status } });
       if (type === "orders") await db.order.update({ where: { id }, data: { status } });
-      if (type === "memberships") await db.userMembership.update({ where: { id }, data: { status } });
+      if (type === "memberships") {
+        const currentMembership = await db.userMembership.findUnique({
+          where: { id },
+          select: { activatedAt: true },
+        });
+
+        await db.userMembership.update({
+          where: { id },
+          data: {
+            status,
+            ...(status === "active" && currentMembership?.activatedAt == null
+              ? { activatedAt: new Date() }
+              : {}),
+          },
+        });
+      }
       if (type === "offers") await db.offer.update({ where: { id }, data: { isActive: status === "active" } });
       if (type === "plans") await db.membership.update({ where: { id }, data: { isActive: status === "active" } });
       return NextResponse.json({ message: "تم تحديث الحالة بنجاح." });
@@ -413,10 +445,21 @@ export async function POST(req: Request) {
       }
 
       if (type === "memberships") {
+        const nextMembershipStatus =
+          typeof payload.status === "string" ? payload.status : undefined;
+
+        const currentMembership = await db.userMembership.findUnique({
+          where: { id },
+          select: { activatedAt: true },
+        });
+
         await db.userMembership.update({
           where: { id },
           data: {
-            status: typeof payload.status === "string" ? payload.status : undefined,
+            status: nextMembershipStatus,
+            ...(nextMembershipStatus === "active" && currentMembership?.activatedAt == null
+              ? { activatedAt: new Date() }
+              : {}),
             endDate: typeof payload.endDate === "string" ? new Date(payload.endDate) : undefined,
           },
         });

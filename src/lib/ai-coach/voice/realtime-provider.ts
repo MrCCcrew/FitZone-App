@@ -25,7 +25,11 @@ function instructions(lang: "ar" | "en") {
 السرعة طبيعية. توقفي قليلًا بين السعر واسم الباقة، ولا تقرئي قوائم طويلة: عند كثرة النتائج اذكري أهم 3 ثم أخبريها أن الباقي ظاهر على الشاشة.
 النطق: FitZone = فيت زون، Kick Boxing = كيك بوكس، Pilates = بيلاتس، Yoga = يوجا. لا تنطقي URLs أو metadata، وانطقي الأسعار والمواعيد بالمصري بوضوح.
 لا تكشفي بيانات أي شخص آخر، ولا تنفذي كتابة أو دفع أو تعديل أو SQL أو صلاحيات. ارفضي تلك الطلبات بوضوح.
-للأسعار والعروض والمنتجات والكلاسات والحساب والروابط استخدمي فقط أداة FitZone المناسبة. لا تخترعي بيانات حية. الأدوات للقراءة فقط، ومرري السؤال كما فهمتيه في query.
+للأسعار والعروض والمنتجات والكلاسات والحساب والروابط استخدمي فقط أداة FitZone المناسبة. لا تخترعي بيانات حية. الأدوات للقراءة فقط.
+عند استدعاء أي أداة بحث، انسخي طلب العميلة نفسه في query بأقرب صيغة حرفية ممكنة ولا تعيدي تفسيره ولا تضيفي اسم كلاس أو اشتراك لم تذكره العميلة.
+حافظي دائمًا على كلمات الوقت واليوم مثل اليوم وبكرة والسبت والأحد داخل query.
+إذا كان السؤال عامًا مثل "إيه أسعار الاشتراكات؟" فلا تخترعي نوع اشتراك أو اسم باقة؛ ارسلي السؤال العام كما هو.
+أجيبي فقط على آخر كلام قالته العميلة، ولا تكملي من نفسك باختيار أو سؤال جديد لم تطلبه.
 FitZone، كيك بوكس، بيلاتس، يوجا، كاراتيه، جمباز. لا تذكري زرًا إلا إذا كان ظاهرًا.`;
 }
 
@@ -41,8 +45,15 @@ export const openAiRealtimeProvider: RealtimeVoiceProvider = {
           type: "realtime", model, output_modalities: ["audio"], instructions: instructions(lang), reasoning: { effort: "low" },
           // One VAD mode only. The server creates exactly one response per completed turn.
           // Barge-in starts disabled so normal speaker echo cannot cancel output.
-          audio: { input: { turn_detection: { type: "server_vad", threshold: 0.25, prefix_padding_ms: 500, silence_duration_ms: 900, create_response: true, interrupt_response: false } }, output: { voice } },
-          tools: realtimeToolDefinitions.map(([name, description]) => ({ type: "function", name, description, parameters: { type: "object", properties: { query: { type: "string", maxLength: 1800 }, pageId: { type: "string", maxLength: 64 } }, additionalProperties: false } })),
+          audio: { input: { turn_detection: { type: "server_vad", threshold: 0.25, prefix_padding_ms: 500, silence_duration_ms: 900, create_response: false, interrupt_response: false } }, output: { voice } },
+          tools: realtimeToolDefinitions.map(([name, description]) => ({ type: "function", name, description, parameters: { type: "object", properties: {
+            query: {
+              type: "string",
+              maxLength: 1800,
+              description: "Copy the user's latest request as literally as possible. Preserve weekday/date/class/membership terms. Never invent a filter or entity the user did not say."
+            },
+            pageId: { type: "string", maxLength: 64 }
+          }, additionalProperties: false } })),
           tool_choice: "auto", tracing: null,
         },
       }), signal: AbortSignal.timeout(10_000),

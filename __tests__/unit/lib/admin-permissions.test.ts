@@ -11,7 +11,17 @@ import {
 
 describe("isAdminRole", () => {
   it("accepts all valid admin roles", () => {
-    const valid = ["admin","staff","trainer","accountant","partner","contracts_manager","agent","head_coach","nutritionist"];
+    const valid = [
+      "admin",
+      "staff",
+      "trainer",
+      "accountant",
+      "partner",
+      "contracts_manager",
+      "agent",
+      "head_coach",
+      "nutritionist",
+    ];
     for (const role of valid) {
       expect(isAdminRole(role), `expected "${role}" to be valid`).toBe(true);
     }
@@ -40,19 +50,31 @@ describe("normalizeAdminPermissions", () => {
     expect(restricted.length).toBe(ADMIN_FEATURES.length);
   });
   it("explicit permission list used for non-admin roles", () => {
-    const perms = normalizeAdminPermissions("staff", ["memberships", "bookings"]);
+    const perms = normalizeAdminPermissions("staff", [
+      "memberships",
+      "bookings",
+    ]);
     expect(perms).toContain("memberships");
     expect(perms).toContain("bookings");
     expect(perms).not.toContain("accounting");
   });
   it("filters out invalid feature names from explicit list", () => {
-    const perms = normalizeAdminPermissions("staff", ["memberships", "invalid_feature" as never, "payments" as never]);
+    const perms = normalizeAdminPermissions("staff", [
+      "memberships",
+      "invalid_feature" as never,
+      "payments" as never,
+    ]);
     expect(perms).toContain("memberships");
     expect(perms).not.toContain("invalid_feature");
     expect(perms).not.toContain("payments");
   });
   it("trainer cannot receive blocked features even if explicitly listed", () => {
-    const perms = normalizeAdminPermissions("trainer", ["classes","discounts","settings","accounting"]);
+    const perms = normalizeAdminPermissions("trainer", [
+      "classes",
+      "discounts",
+      "settings",
+      "accounting",
+    ]);
     expect(perms).toContain("classes");
     expect(perms).not.toContain("discounts");
     expect(perms).not.toContain("settings");
@@ -87,14 +109,23 @@ describe("normalizeAdminPermissions", () => {
     expect(perms).not.toContain("settings");
     expect(perms).not.toContain("memberships");
   });
-  it("partner only gets partners", () => {
-    expect(normalizeAdminPermissions("partner", undefined)).toEqual(["partners"]);
+  it("partner gets approvals plus partners", () => {
+    expect(normalizeAdminPermissions("partner", undefined)).toEqual([
+      "approvals",
+      "partners",
+    ]);
   });
-  it("nutritionist only gets nutrition", () => {
-    expect(normalizeAdminPermissions("nutritionist", undefined)).toEqual(["nutrition"]);
+  it("nutritionist gets approvals plus nutrition", () => {
+    expect(normalizeAdminPermissions("nutritionist", undefined)).toEqual([
+      "approvals",
+      "nutrition",
+    ]);
   });
-  it("agent only gets contracts", () => {
-    expect(normalizeAdminPermissions("agent", undefined)).toEqual(["contracts"]);
+  it("agent gets approvals plus contracts", () => {
+    expect(normalizeAdminPermissions("agent", undefined)).toEqual([
+      "approvals",
+      "contracts",
+    ]);
   });
   it("head_coach gets trainers + classes + discounts but not settings", () => {
     const perms = normalizeAdminPermissions("head_coach", undefined);
@@ -115,13 +146,20 @@ describe("normalizeAdminPermissions", () => {
 describe("canAccessAdminFeature", () => {
   it("admin can access every defined feature", () => {
     for (const feature of ADMIN_FEATURES) {
-      expect(canAccessAdminFeature("admin", [], feature), `admin should access "${feature}"`).toBe(true);
+      expect(
+        canAccessAdminFeature("admin", [], feature),
+        `admin should access "${feature}"`,
+      ).toBe(true);
     }
   });
   it("trainer cannot access discounts, settings, or accounting", () => {
-    expect(canAccessAdminFeature("trainer", undefined, "discounts")).toBe(false);
+    expect(canAccessAdminFeature("trainer", undefined, "discounts")).toBe(
+      false,
+    );
     expect(canAccessAdminFeature("trainer", undefined, "settings")).toBe(false);
-    expect(canAccessAdminFeature("trainer", undefined, "accounting")).toBe(false);
+    expect(canAccessAdminFeature("trainer", undefined, "accounting")).toBe(
+      false,
+    );
   });
   it("trainer can access classes, trainers, bookings, customers", () => {
     expect(canAccessAdminFeature("trainer", undefined, "classes")).toBe(true);
@@ -130,12 +168,18 @@ describe("canAccessAdminFeature", () => {
     expect(canAccessAdminFeature("trainer", undefined, "customers")).toBe(true);
   });
   it("explicit permissions override role template", () => {
-    expect(canAccessAdminFeature("staff", ["accounting"], "accounting")).toBe(true);
-    expect(canAccessAdminFeature("staff", ["accounting"], "memberships")).toBe(false);
+    expect(canAccessAdminFeature("staff", ["accounting"], "accounting")).toBe(
+      true,
+    );
+    expect(canAccessAdminFeature("staff", ["accounting"], "memberships")).toBe(
+      false,
+    );
   });
   it("requires analytics_view for staff while granting it to full admins", () => {
     expect(canAccessAdminFeature("staff", [], "analytics_view")).toBe(false);
-    expect(canAccessAdminFeature("staff", ["analytics_view"], "analytics_view")).toBe(true);
+    expect(
+      canAccessAdminFeature("staff", ["analytics_view"], "analytics_view"),
+    ).toBe(true);
     expect(canAccessAdminFeature("admin", [], "analytics_view")).toBe(true);
   });
   it("unknown role cannot access anything", () => {
@@ -151,33 +195,56 @@ describe("canAccessAdminFeature", () => {
 describe("canAccessAdminSection", () => {
   it("shows the analytics section only with analytics_view", () => {
     expect(canAccessAdminSection("staff", [], "analytics")).toBe(false);
-    expect(canAccessAdminSection("staff", ["analytics_view"], "analytics")).toBe(true);
+    expect(
+      canAccessAdminSection("staff", ["analytics_view"], "analytics"),
+    ).toBe(true);
     expect(canAccessAdminSection("admin", [], "analytics")).toBe(true);
   });
   it("admin can access all major sections", () => {
-    const sections = ["overview","accounting","settings","subscriptions","classes","products","orders","customers"] as const;
+    const sections = [
+      "overview",
+      "accounting",
+      "settings",
+      "subscriptions",
+      "classes",
+      "products",
+      "orders",
+      "customers",
+    ] as const;
     for (const section of sections) {
       expect(canAccessAdminSection("admin", [], section)).toBe(true);
     }
   });
   it("staff with referrals can access settings section (special rule)", () => {
-    expect(canAccessAdminSection("staff", ["referrals"], "settings")).toBe(true);
+    expect(canAccessAdminSection("staff", ["referrals"], "settings")).toBe(
+      true,
+    );
   });
   it("staff without settings or referrals cannot access settings", () => {
-    expect(canAccessAdminSection("staff", ["memberships","classes"], "settings")).toBe(false);
+    expect(
+      canAccessAdminSection("staff", ["memberships", "classes"], "settings"),
+    ).toBe(false);
   });
   it("partner can only access partners section", () => {
     expect(canAccessAdminSection("partner", undefined, "partners")).toBe(true);
     expect(canAccessAdminSection("partner", undefined, "overview")).toBe(false);
-    expect(canAccessAdminSection("partner", undefined, "accounting")).toBe(false);
+    expect(canAccessAdminSection("partner", undefined, "accounting")).toBe(
+      false,
+    );
   });
   it("nutritionist can only access nutrition section", () => {
-    expect(canAccessAdminSection("nutritionist", undefined, "nutrition")).toBe(true);
-    expect(canAccessAdminSection("nutritionist", undefined, "overview")).toBe(false);
+    expect(canAccessAdminSection("nutritionist", undefined, "nutrition")).toBe(
+      true,
+    );
+    expect(canAccessAdminSection("nutritionist", undefined, "overview")).toBe(
+      false,
+    );
   });
   it("trainer cannot access payments or accounting sections", () => {
     expect(canAccessAdminSection("trainer", undefined, "payments")).toBe(false);
-    expect(canAccessAdminSection("trainer", undefined, "accounting")).toBe(false);
+    expect(canAccessAdminSection("trainer", undefined, "accounting")).toBe(
+      false,
+    );
   });
   it("trainer can access classes and bookings sections", () => {
     expect(canAccessAdminSection("trainer", undefined, "classes")).toBe(true);
@@ -195,7 +262,13 @@ describe("getDefaultAdminSection", () => {
   });
   it("trainer defaults to a section in their allowed list", () => {
     const section = getDefaultAdminSection("trainer");
-    expect(["classes","trainers","bookings","customers"]).toContain(section);
+    expect([
+      "approvals",
+      "classes",
+      "trainers",
+      "bookings",
+      "customers",
+    ]).toContain(section);
   });
   it("contracts_manager defaults to contracts", () => {
     expect(getDefaultAdminSection("contracts_manager")).toBe("contracts");
@@ -219,18 +292,60 @@ describe("ROLE_FEATURE_TEMPLATES integrity", () => {
   it("every feature in every role template is a valid AdminFeature", () => {
     for (const [role, features] of Object.entries(ROLE_FEATURE_TEMPLATES)) {
       for (const feature of features) {
-        expect(ADMIN_FEATURES, `role "${role}" has invalid feature: "${feature}"`).toContain(feature);
+        expect(
+          ADMIN_FEATURES,
+          `role "${role}" has invalid feature: "${feature}"`,
+        ).toContain(feature);
       }
     }
   });
   it("admin template contains exactly all ADMIN_FEATURES", () => {
     expect(ROLE_FEATURE_TEMPLATES.admin.length).toBe(ADMIN_FEATURES.length);
-    expect(ROLE_FEATURE_TEMPLATES.admin).toEqual(expect.arrayContaining(ADMIN_FEATURES));
+    expect(ROLE_FEATURE_TEMPLATES.admin).toEqual(
+      expect.arrayContaining(ADMIN_FEATURES),
+    );
   });
   it("no role template contains duplicate features", () => {
     for (const [role, features] of Object.entries(ROLE_FEATURE_TEMPLATES)) {
       const unique = new Set(features);
-      expect(unique.size, `role "${role}" has duplicate features`).toBe(features.length);
+      expect(unique.size, `role "${role}" has duplicate features`).toBe(
+        features.length,
+      );
     }
+  });
+});
+
+describe("employee granular permissions can open employees section", () => {
+  it.each([
+    "employees_view",
+    "employees_manage",
+    "departments_manage",
+    "positions_manage",
+    "employee_attendance_view",
+    "employee_attendance_manage",
+    "employee_attendance_lock",
+    "employee_attendance_override",
+    "coach_class_attendance_view",
+    "coach_class_attendance_manage",
+  ])("%s grants access to employees section", (permission) => {
+    expect(canAccessAdminSection("staff", [permission], "employees")).toBe(
+      true,
+    );
+  });
+
+  it("does not grant employees section for unrelated permission", () => {
+    expect(canAccessAdminSection("staff", ["bookings_view"], "employees")).toBe(
+      false,
+    );
+  });
+
+  it("does not trust employee permissions for a non-admin-side role", () => {
+    expect(
+      canAccessAdminSection(
+        "customer",
+        ["employee_attendance_view"],
+        "employees",
+      ),
+    ).toBe(false);
   });
 });

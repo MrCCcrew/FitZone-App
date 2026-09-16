@@ -11,6 +11,12 @@ interface OverviewData {
   totalProducts: number;
   openComplaints: number;
   monthlyRevenue: number;
+  revenueBreakdown: {
+    clubRevenue: number;
+    membershipRevenue: number;
+    bookingRevenue: number;
+    storeRevenue: number;
+  };
   monthlyData: { month: string; revenue: number }[];
   planDistribution: { name: string; count: number }[];
   activity: { type: string; text: string; time: string }[];
@@ -67,16 +73,16 @@ export default function Overview() {
 
     return [
       {
-        label: "إجمالي الأعضاء",
+        label: "حسابات الأعضاء",
         value: data.totalMembers.toLocaleString("ar-EG"),
-        sub: `${data.activeMembers.toLocaleString("ar-EG")} اشتراك نشط`,
+        sub: `${data.activeMembers.toLocaleString("ar-EG")} اشتراك نشط حاليًا`,
         accent: "text-[#ffd166]",
         icon: "👥",
       },
       {
-        label: "الإيراد الشهري",
+        label: "الإيراد التشغيلي هذا الشهر",
         value: `${data.monthlyRevenue.toLocaleString("ar-EG")} ج.م`,
-        sub: "إجمالي هذا الشهر",
+        sub: `النادي ${data.revenueBreakdown.clubRevenue.toLocaleString("ar-EG")} ج.م · المتجر ${data.revenueBreakdown.storeRevenue.toLocaleString("ar-EG")} ج.م`,
         accent: "text-[#4ade80]",
         icon: "💰",
       },
@@ -143,7 +149,7 @@ export default function Overview() {
         <AdminCard>
           <div className="mb-5">
             <h3 className="text-lg font-black text-[#fff4f8]">الإيراد خلال آخر 6 أشهر</h3>
-            <p className="mt-1 text-xs text-[#d7aabd]">عرض بصري لتطور الدخل الشهري بالجنيه المصري.</p>
+            <p className="mt-1 text-xs text-[#d7aabd]">إيرادات النادي + صافي مبيعات المتجر وفق نفس أساس الاعتراف المستخدم في الحسابات.</p>
           </div>
 
           <div className="flex h-44 items-end gap-2">

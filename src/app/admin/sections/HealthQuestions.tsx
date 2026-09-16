@@ -4,6 +4,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { HealthQuestion } from "../types";
 import { AdminCard, AdminEmptyState, AdminSectionShell } from "./shared";
 import { TranslateButton } from "./TranslateButton";
+import {
+  HEALTH_CLASS_TYPE_LABELS,
+  normalizeHealthClassTypeKey,
+} from "@/lib/health-class-taxonomy";
 
 const INPUT =
   "w-full rounded-xl border border-gray-700 bg-gray-800 px-4 py-2.5 text-sm text-white outline-none transition-colors focus:border-[#ff4f93]";
@@ -21,56 +25,10 @@ const EMPTY_QUESTION: Omit<HealthQuestion, "id"> = {
   restrictions: [],
 };
 
-const CLASS_TYPE_LABELS: Record<string, string> = {
-  cardio: "كارديو",
-  strength: "قوة",
-  yoga: "يوجا",
-  pilates: "بيلاتس",
-  crossfit: "كروس فيت",
-  zumba: "زومبا",
-  fitness: "فيتنس",
-  bodybuilding: "بيلدينج",
-  building: "بيلدينج",
-  boxing: "كيك بوكس",
-  kickboxing: "كيك بوكس",
-  selfdefense: "سلف ديفنس",
-  karate: "كاراتيه",
-  dance: "رقص شرقي",
-  kids: "أطفال",
-};
-
-const CLASS_TYPE_LABELS_AR: Record<string, string> = {
-  cardio: "كارديو",
-  strength: "قوة",
-  yoga: "يوجا",
-  pilates: "بيلاتس",
-  crossfit: "كروس فيت",
-  zumba: "زومبا",
-  fitness: "فيتنس",
-  bodybuilding: "بيلدينج",
-  building: "بيلدينج",
-  boxing: "كيك بوكس",
-  kickboxing: "كيك بوكس",
-  selfdefense: "سلف ديفنس",
-  karate: "كاراتيه",
-  dance: "رقص شرقي",
-  kids: "أطفال",
-};
-
-const CLASS_TYPE_ALIASES: Record<string, string> = Object.entries(CLASS_TYPE_LABELS_AR).reduce(
-  (acc, [key, label]) => {
-    acc[key] = key;
-    acc[label] = key;
-    return acc;
-  },
-  {} as Record<string, string>,
-);
+const CLASS_TYPE_LABELS_AR = HEALTH_CLASS_TYPE_LABELS;
 
 function normalizeClassTypeKey(value: string) {
-  const trimmed = value.trim();
-  if (!trimmed) return "";
-  const lower = trimmed.toLowerCase();
-  return CLASS_TYPE_ALIASES[lower] ?? CLASS_TYPE_ALIASES[trimmed] ?? lower;
+  return normalizeHealthClassTypeKey(value);
 }
 
 function Modal({

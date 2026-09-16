@@ -4,6 +4,7 @@ import { getSiteCapability } from "@/lib/ai-coach/site-capability-registry";
 import { requestedOfferSubtype } from "@/lib/ai-coach/site-taxonomy";
 import { searchMemberships, searchPackages, type MembershipCatalogFilters } from "@/lib/ai-coach/catalog-tools";
 import { extractCatalogSearchQuery } from "@/lib/catalog-query";
+import { extractScheduleTemporalFilter, scheduleTemporalDayWindow, stripScheduleTemporalTerms } from "@/lib/ai-coach/schedule-temporal";
 import { visibleTrainerWhere } from "@/lib/public-catalog";
 import { scheduleReadState, traceCoachCatalogRead, trainerReadState } from "@/lib/ai-coach/catalog-read-status";
 
@@ -100,13 +101,25 @@ export async function searchTrainersInteractive(query = ""): Promise<Interactive
 export async function searchSchedulesInteractive(query = ""): Promise<InteractiveToolResult> {
   try {
     const now = new Date();
-    const q = extractCatalogSearchQuery("class", query).searchTerm.toLowerCase();
+    const temporalFilter = extractScheduleTemporalFilter(query);
+    const dayWindow = scheduleTemporalDayWindow(now, temporalFilter);
+    const q = extractCatalogSearchQuery("class", stripScheduleTemporalTerms(query)).searchTerm.toLowerCase();
     const [classTotal, scheduleTotal, futureTotal, bookableTotal, rows] = await Promise.all([
       db.class.count({ where: { isActive: true } }),
       db.schedule.count({ where: { class: { isActive: true } } }),
       db.schedule.count({ where: { isActive: true, date: { gte: now }, class: { isActive: true } } }),
       db.schedule.count({ where: { isActive: true, date: { gte: now }, availableSpots: { gt: 0 }, class: { isActive: true } } }),
-      db.schedule.findMany({ where: { isActive: true, date: { gte: now }, availableSpots: { gt: 0 }, class: { isActive: true } }, include: { class: { include: { trainer: { select: { name: true } } } } }, orderBy: [{ date: "asc" }, { time: "asc" }], take: 12 }),
+      db.schedule.findMany({
+        where: {
+          isActive: true,
+          date: dayWindow ? { gte: dayWindow.from, lte: dayWindow.to } : { gte: now },
+          availableSpots: { gt: 0 },
+          class: { isActive: true },
+        },
+        include: { class: { include: { trainer: { select: { name: true } } } } },
+        orderBy: [{ date: "asc" }, { time: "asc" }],
+        take: 12,
+      }),
     ]);
     const matched = q ? rows.filter((row) => `${row.class.name} ${row.class.type}`.toLowerCase().includes(q)) : rows;
     const state = scheduleReadState(classTotal, scheduleTotal, futureTotal, bookableTotal);

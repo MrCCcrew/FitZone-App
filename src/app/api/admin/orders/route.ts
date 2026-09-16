@@ -257,7 +257,8 @@ export async function PATCH(req: Request) {
       }
 
       // Use Phase 2C atomic sale conversion (reuse shared logic)
-      const { confirmOrderInventorySale, updateOrderItemCostPrices } = await import("@/lib/inventory-service");
+      const { confirmOrderInventoryAllocationSale } =
+        await import("@/lib/order-inventory-allocation-service");
 
       try {
         // ATOMIC: All operations in ONE transaction
@@ -281,17 +282,29 @@ export async function PATCH(req: Request) {
           const saleCompletionTime = new Date();
 
           // Convert reservation → sale (stock-=qty, reservedStock-=qty, create movements)
-          const saleResults = await confirmOrderInventorySale(
-            tx,
-            order.items.map((item) => ({
-              productId: item.productId,
-              quantity: item.quantity,
-            })),
-            order.id
-          );
+          const saleResults =
+            await confirmOrderInventoryAllocationSale(
+              tx,
+              order.id
+            );
 
-          // Capture cost prices in order items
-          await updateOrderItemCostPrices(tx, order.id, saleResults);
+          try {
+            const { postAllocatedSaleJournal } =
+              await import("@/lib/accounting-service");
+
+            await postAllocatedSaleJournal(
+              tx,
+              order.id,
+              order.total,
+              saleResults,
+              order.paymentMethod
+            );
+          } catch (err) {
+            console.error(
+              "[GL_ALLOCATED_SALE_JOURNAL]",
+              err
+            );
+          }
 
           // Final atomic update: mark completion and set timestamp
           await tx.order.update({
@@ -330,50 +343,41 @@ export async function PATCH(req: Request) {
     }
 
     if (shouldRestore || shouldRestoreReturn) {
-      // Phase 2B: Aggregate quantities by productId
-      const productQuantities = new Map<string, number>();
-      for (const item of order.items) {
-        const key = item.variantId || item.productId;
-        const current = productQuantities.get(key) || 0;
-        productQuantities.set(key, current + item.quantity);
-      }
+      await db.$transaction(async (tx) => {
+        const {
+          returnOrderInventoryAllocations,
+        } = await import(
+          "@/lib/order-inventory-allocation-service"
+        );
 
-      // Restore stock (aggregated)
-      const restoredProducts = new Set<string>();
-      for (const item of order.items) {
-        if (!item.product.trackInventory) continue;
+        const returnResults =
+          await returnOrderInventoryAllocations(
+            tx,
+            order.id
+          );
 
-        const key = item.variantId || item.productId;
-        if (restoredProducts.has(key)) continue; // Already restored
-        restoredProducts.add(key);
+        try {
+          const {
+            postAllocatedReturnJournal,
+          } = await import(
+            "@/lib/accounting-service"
+          );
 
-        const totalQty = productQuantities.get(key)!;
-        const before = item.variant ? item.variant.stock : item.product.stock;
-        const after = before + totalQty;
-
-        if (item.variantId) {
-          await db.productVariant.update({ where: { id: item.variantId }, data: { stock: { increment: totalQty } } });
+          await postAllocatedReturnJournal(
+            tx,
+            order.id,
+            order.total,
+            returnResults,
+            order.paymentMethod
+          );
+        } catch (err) {
+          console.error(
+            "[GL_ALLOCATED_RETURN_JOURNAL]",
+            err
+          );
         }
-        await db.product.update({ where: { id: item.productId }, data: { stock: { increment: totalQty } } });
+      });
 
-        await db.inventoryMovement.create({
-          data: {
-            productId: item.productId,
-            variantId: item.variantId ?? null,
-            type: "order_restore",
-            quantityChange: totalQty,
-            quantityBefore: before,
-            quantityAfter: after,
-            unitCost: null,  // Phase 2B: no COGS reversal yet
-            averageCostBefore: item.product.averageCost,
-            averageCostAfter: item.product.averageCost,
-            referenceType: "Order",
-            referenceId: order.id,
-            reason: newStatus === "cancelled" ? `إلغاء الطلب #${order.id.slice(-8)}` : `مرتجع الطلب #${order.id.slice(-8)}`,
-            performedByUserId: userId,
-          },
-        });
-      }
       updateData.inventoryDeducted = false;
     }
 

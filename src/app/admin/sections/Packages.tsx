@@ -80,13 +80,20 @@ function Field({
 export default function Packages() {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
-  const [classes, setClasses] = useState<Array<{ type: string; label: string }>>([]);
+  const [classes, setClasses] = useState<
+    Array<{ classTypeId: string; type: string; label: string }>
+  >([]);
   const [products, setProducts] = useState<Array<{ id: string; name: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [featureInput, setFeatureInput] = useState("");
   const [featureInputEn, setFeatureInputEn] = useState("");
-  const [classSessionDraft, setClassSessionDraft] = useState<{ classType: string; sessions: number }>({
+  const [classSessionDraft, setClassSessionDraft] = useState<{
+    classTypeId: string;
+    classType: string;
+    sessions: number;
+  }>({
+    classTypeId: "",
     classType: "",
     sessions: 1,
   });
@@ -117,17 +124,36 @@ export default function Packages() {
           : Array.isArray((classesPayload as { classes?: unknown[] })?.classes)
             ? (classesPayload as { classes: unknown[] }).classes
             : [];
-        const unique = new Map<string, string>();
-        classesList.forEach((item: { type?: string; subType?: string; active?: boolean }) => {
-          if (item?.active === false) return;
-          const rawType = (item.type ?? "").trim();
-          if (!rawType) return;
-          const typeKey = normalizeClassType(rawType);
-          if (!unique.has(typeKey)) {
-            unique.set(typeKey, getClassTypeArabicLabel(rawType));
-          }
-        });
-        setClasses(Array.from(unique, ([type, label]) => ({ type, label })));
+        const unique = new Map<
+          string,
+          { classTypeId: string; type: string; label: string }
+        >();
+
+        classesList.forEach(
+          (item: {
+            type?: string;
+            classTypeId?: string | null;
+            active?: boolean;
+          }) => {
+            if (item?.active === false) return;
+
+            const rawType = (item.type ?? "").trim();
+            const classTypeId = (item.classTypeId ?? "").trim();
+
+            // New package configuration requires the stable ClassType identity.
+            if (!rawType || !classTypeId) return;
+
+            if (!unique.has(classTypeId)) {
+              unique.set(classTypeId, {
+                classTypeId,
+                type: normalizeClassType(rawType),
+                label: getClassTypeArabicLabel(rawType),
+              });
+            }
+          },
+        );
+
+        setClasses(Array.from(unique.values()));
       setProducts(
         Array.isArray(productsPayload)
           ? productsPayload
@@ -159,19 +185,60 @@ export default function Packages() {
   };
 
   const addClassSession = () => {
-    if (!planModal || !classSessionDraft.classType || classSessionDraft.sessions <= 0) return;
+    if (
+      !planModal ||
+      !classSessionDraft.classTypeId ||
+      !classSessionDraft.classType ||
+      classSessionDraft.sessions <= 0
+    ) {
+      return;
+    }
+
     const existing = planModal.classSessions ?? [];
-    const next = existing.filter((item) => item.classId !== classSessionDraft.classType);
-    next.push({ classId: classSessionDraft.classType, classType: classSessionDraft.classType, sessions: classSessionDraft.sessions });
+
+    const next = existing.filter(
+      (item) =>
+        item.classTypeId !== classSessionDraft.classTypeId &&
+        !(
+          !item.classTypeId &&
+          normalizeClassType(item.classType ?? item.classId ?? "") ===
+            normalizeClassType(classSessionDraft.classType)
+        ),
+    );
+
+    next.push({
+      classTypeId: classSessionDraft.classTypeId,
+      classType: classSessionDraft.classType,
+      sessions: classSessionDraft.sessions,
+    });
+
     setPlanModal({ ...planModal, classSessions: next });
-    setClassSessionDraft({ classType: "", sessions: 1 });
+    setClassSessionDraft({
+      classTypeId: "",
+      classType: "",
+      sessions: 1,
+    });
   };
 
-  const removeClassSession = (classId: string) => {
+  const removeClassSession = (entry: {
+    classId?: string;
+    classTypeId?: string;
+    classType?: string;
+  }) => {
     if (!planModal) return;
+
     setPlanModal({
       ...planModal,
-      classSessions: (planModal.classSessions ?? []).filter((item) => item.classId !== classId),
+      classSessions: (planModal.classSessions ?? []).filter((item) => {
+        if (entry.classTypeId) {
+          return item.classTypeId !== entry.classTypeId;
+        }
+
+        return !(
+          item.classId === entry.classId &&
+          item.classType === entry.classType
+        );
+      }),
     });
   };
 
@@ -498,15 +565,26 @@ export default function Packages() {
               >
                 <div className="flex flex-wrap gap-2">
                   <select
-                    value={classSessionDraft.classType}
-                    onChange={(event) =>
-                      setClassSessionDraft({ ...classSessionDraft, classType: event.target.value })
-                    }
+                    value={classSessionDraft.classTypeId}
+                    onChange={(event) => {
+                      const selected = classes.find(
+                        (item) => item.classTypeId === event.target.value,
+                      );
+
+                      setClassSessionDraft({
+                        ...classSessionDraft,
+                        classTypeId: selected?.classTypeId ?? "",
+                        classType: selected?.type ?? "",
+                      });
+                    }}
                     className={INPUT}
                   >
                     <option value="">اختاري نوع الكلاس</option>
                     {classes.map((item) => (
-                      <option key={item.type} value={item.type}>
+                      <option
+                        key={item.classTypeId}
+                        value={item.classTypeId}
+                      >
                         {item.label}
                       </option>
                     ))}
@@ -532,12 +610,22 @@ export default function Packages() {
                 <div className="mt-3 space-y-2">
                   {(planModal.classSessions ?? []).map((entry) => (
                     <div
-                      key={entry.classId}
+                      key={entry.classTypeId ?? entry.classId ?? entry.classType}
                       className="flex items-center justify-between rounded-xl border border-[rgba(255,188,219,0.12)] bg-black/15 px-4 py-3 text-sm text-[#fff4f8]"
                     >
                       <div>
-                        {classes.find((item) => item.type === entry.classId)?.label ??
-                          getClassTypeArabicLabel(entry.classId) ??
+                        {classes.find(
+                          (item) =>
+                            item.classTypeId === entry.classTypeId ||
+                            normalizeClassType(item.type) ===
+                              normalizeClassType(
+                                entry.classType ?? entry.classId ?? "",
+                              ),
+                        )?.label ??
+                          getClassTypeArabicLabel(
+                            entry.classType ?? entry.classId ?? "",
+                          ) ??
+                          entry.classType ??
                           entry.classId ??
                           "كلاس"}
                         <span className="mr-2 text-xs text-[#d7aabd]">
@@ -546,7 +634,7 @@ export default function Packages() {
                       </div>
                       <button
                         type="button"
-                        onClick={() => removeClassSession(entry.classId)}
+                        onClick={() => removeClassSession(entry)}
                         className="text-[#d7aabd] transition-colors hover:text-rose-300"
                       >
                         ×

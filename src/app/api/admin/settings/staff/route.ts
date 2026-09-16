@@ -24,6 +24,8 @@ function serializeEmployee(user: {
   maxDiscount: number | null;
   commissionRate: number;
   commissionType: string;
+  marketingCommissionRate: number;
+  marketingCommissionType: string;
   createdAt: Date;
   updatedAt: Date;
 }) {
@@ -49,6 +51,8 @@ function serializeEmployee(user: {
     maxDiscount: user.maxDiscount,
     commissionRate: user.commissionRate,
     commissionType: user.commissionType,
+    marketingCommissionRate: user.marketingCommissionRate,
+    marketingCommissionType: user.marketingCommissionType,
     createdAt: user.createdAt.toISOString(),
     updatedAt: user.updatedAt.toISOString(),
   };
@@ -84,6 +88,8 @@ export async function GET() {
       maxDiscount: true,
       commissionRate: true,
       commissionType: true,
+      marketingCommissionRate: true,
+      marketingCommissionType: true,
       createdAt: true,
       updatedAt: true,
     },
@@ -107,6 +113,31 @@ export async function POST(req: Request) {
   const adminAccess = Boolean(payload.adminAccess ?? true);
   const isActive = payload.isActive !== false;
 
+  const marketingCommissionType =
+    payload.marketingCommissionType === "fixed"
+      ? "fixed"
+      : "percentage";
+
+  const marketingCommissionRate =
+    Number(payload.marketingCommissionRate ?? 0);
+
+  if (!Number.isFinite(marketingCommissionRate) || marketingCommissionRate < 0) {
+    return NextResponse.json(
+      { error: "عمولة إغلاق التسويق يجب أن تكون رقمًا غير سالب." },
+      { status: 400 },
+    );
+  }
+
+  if (
+    marketingCommissionType === "percentage" &&
+    marketingCommissionRate > 100
+  ) {
+    return NextResponse.json(
+      { error: "نسبة عمولة إغلاق التسويق لا يمكن أن تتجاوز 100%." },
+      { status: 400 },
+    );
+  }
+
   if (!name || !email || !password || !role) {
     return NextResponse.json({ error: "Name, email, password, and role are required." }, { status: 400 });
   }
@@ -128,6 +159,10 @@ export async function POST(req: Request) {
       adminAccess,
       isActive,
       adminPermissions: JSON.stringify(permissions),
+
+      marketingCommissionRate,
+      marketingCommissionType,
+
       emailVerified: new Date(),
     },
     select: {
@@ -145,6 +180,8 @@ export async function POST(req: Request) {
       maxDiscount: true,
       commissionRate: true,
       commissionType: true,
+      marketingCommissionRate: true,
+      marketingCommissionType: true,
       createdAt: true,
       updatedAt: true,
     },
@@ -177,6 +214,100 @@ export async function PATCH(req: Request) {
   if (payload.maxDiscount !== undefined) data.maxDiscount = payload.maxDiscount === "" || payload.maxDiscount === null ? null : Number(payload.maxDiscount);
   if (payload.commissionRate != null) data.commissionRate = Number(payload.commissionRate) || 0;
   if (payload.commissionType != null) data.commissionType = payload.commissionType === "fixed" ? "fixed" : "percentage";
+
+  /*
+   * MARKETING_PATCH_EFFECTIVE_TYPE_GUARD
+   *
+   * Partial PATCH must validate the rate against the effective type:
+   * - payload type when supplied
+   * - otherwise the employee's currently stored type
+   */
+  /*
+   * MARKETING_TYPE_ONLY_EFFECTIVE_RATE_GUARD
+   *
+   * Validate the final pair (type + rate), not only fields present
+   * in the partial PATCH.
+   *
+   * This prevents:
+   * stored fixed=150 + PATCH type=percentage
+   * from producing an invalid 150% commission.
+   */
+  let effectiveMarketingCommissionType:
+    | "fixed"
+    | "percentage"
+    | null = null;
+
+  let effectiveMarketingCommissionRate:
+    number | null = null;
+
+  if (
+    payload.marketingCommissionType != null ||
+    payload.marketingCommissionRate != null
+  ) {
+    const currentEmployee = await db.user.findUnique({
+      where: { id },
+      select: {
+        marketingCommissionType: true,
+        marketingCommissionRate: true,
+      },
+    });
+
+    if (!currentEmployee) {
+      return NextResponse.json(
+        { error: "Employee not found." },
+        { status: 404 },
+      );
+    }
+
+    effectiveMarketingCommissionType =
+      payload.marketingCommissionType != null
+        ? (
+            payload.marketingCommissionType === "fixed"
+              ? "fixed"
+              : "percentage"
+          )
+        : (
+            currentEmployee.marketingCommissionType === "fixed"
+              ? "fixed"
+              : "percentage"
+          );
+
+    effectiveMarketingCommissionRate =
+      payload.marketingCommissionRate != null
+        ? Number(payload.marketingCommissionRate)
+        : Number(currentEmployee.marketingCommissionRate);
+
+    if (
+      !Number.isFinite(effectiveMarketingCommissionRate) ||
+      effectiveMarketingCommissionRate < 0
+    ) {
+      return NextResponse.json(
+        { error: "عمولة إغلاق التسويق يجب أن تكون رقمًا غير سالب." },
+        { status: 400 },
+      );
+    }
+
+    if (
+      effectiveMarketingCommissionType === "percentage" &&
+      effectiveMarketingCommissionRate > 100
+    ) {
+      return NextResponse.json(
+        { error: "نسبة عمولة إغلاق التسويق لا يمكن أن تتجاوز 100%." },
+        { status: 400 },
+      );
+    }
+
+    if (payload.marketingCommissionType != null) {
+      data.marketingCommissionType =
+        effectiveMarketingCommissionType;
+    }
+
+    if (payload.marketingCommissionRate != null) {
+      data.marketingCommissionRate =
+        effectiveMarketingCommissionRate;
+    }
+  }
+
   if (payload.password) {
     data.password = await bcryptjs.hash(String(payload.password), 10);
   }
@@ -199,6 +330,8 @@ export async function PATCH(req: Request) {
       maxDiscount: true,
       commissionRate: true,
       commissionType: true,
+      marketingCommissionRate: true,
+      marketingCommissionType: true,
       createdAt: true,
       updatedAt: true,
     },

@@ -8,6 +8,11 @@ export const DEFAULT_REWARD_SETTINGS = {
   pointValueEGP: 0.1,
   referralRewardType: "wallet" as "points" | "wallet",
   referralRewardValue: 50,
+
+  // WALLET_TOPUP_BONUS_SYSTEMIC
+  // Percentage credited in addition to the customer's paid top-up principal.
+  walletTopupBonusPercent: 15,
+
   tierThresholds: { silver: 500, gold: 1500, platinum: 5000 },
   onboardingProfilePoints: 80,
   onboardingEmailPoints: 20,

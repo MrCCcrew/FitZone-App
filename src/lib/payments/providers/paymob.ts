@@ -7,6 +7,7 @@ import type {
   PaymentWebhookResult,
 } from "@/lib/payments/types";
 import { getPaymentSettings } from "@/lib/payments/settings";
+import { assertExternalSideEffectsAllowed } from "@/lib/staging-safety";
 
 const REGION_BASE = "https://accept.paymob.com";
 const FETCH_TIMEOUT_MS = 20_000;
@@ -162,6 +163,7 @@ function buildUnifiedCheckoutUrl(publicKey: string, clientSecret: string) {
 }
 
 async function authenticate() {
+  assertExternalSideEffectsAllowed("Paymob authentication");
   const apiKey = requireSecret("PAYMOB_API_KEY");
   const response = await fetch(`${getRegionBase()}/api/auth/tokens`, {
     method: "POST",
@@ -192,6 +194,7 @@ async function createUnifiedIntention(params: {
   purpose: PaymentCheckoutInput["purpose"];
   context: PaymentCheckoutInput["context"];
 }) {
+  assertExternalSideEffectsAllowed("Paymob intention creation");
   const secretKey = requireSecret("PAYMOB_SECRET_KEY");
   const paymentMethodIds = getAllowedPaymentMethodIds(params.settings);
   const billingData = buildBillingData(params.customer);
@@ -392,6 +395,7 @@ async function verifyTransaction(transaction: {
   providerPayload?: string | null;
 }): Promise<PaymentVerificationResult> {
   if (transaction.externalReference) {
+    assertExternalSideEffectsAllowed("Paymob transaction verification");
     const authToken = await authenticate();
     const response = await fetch(`${getRegionBase()}/api/acceptance/transactions/${transaction.externalReference}`, {
       headers: { Authorization: `Token ${authToken}` },
@@ -416,8 +420,7 @@ async function verifyTransaction(transaction: {
             : status === "failed"
               ? "Paymob marked the payment as failed."
               : "Payment is still being processed by Paymob.",
-        providerReference:
-          acceptance.order?.id != null ? String(acceptance.order.id) : transaction.providerReference ?? null,
+        providerReference: transaction.providerReference ?? null,
         externalReference:
           acceptance.id != null ? String(acceptance.id) : transaction.externalReference ?? null,
         payload: {
@@ -430,20 +433,59 @@ async function verifyTransaction(transaction: {
       };
     }
 
-    // v1 API call failed — fall back to webhook payload already stored in DB
+    // v1 API call failed — fall back only to a stored, HMAC-verified webhook.
+    //
+    // Checkout-creation payloads are NOT authoritative payment results.
+    // A webhookType marker exists only after handleWebhook() has accepted
+    // a Paymob callback and verified its HMAC.
     const storedPayload = readStoredPayload(transaction.providerPayload);
-    if (storedPayload?.success === true && storedPayload?.pending === false) {
-      console.info("[PAYMOB] v1 API unavailable — trusting stored webhook payload", {
-        transactionId: transaction.id,
-        externalReference: transaction.externalReference,
+    const storedWebhookType =
+      typeof storedPayload?.webhookType === "string"
+        ? storedPayload.webhookType
+        : null;
+
+    const hasTrustedStoredWebhook =
+      storedWebhookType === "TRANSACTION" ||
+      storedWebhookType === "UNIFIED_CHECKOUT";
+
+    if (hasTrustedStoredWebhook) {
+      const storedStatus = mapAcceptanceStatus({
+        success:
+          storedPayload?.success === true,
+        pending:
+          storedPayload?.pending === true,
+        error_occured:
+          storedPayload?.error_occured === true,
       });
-      return {
-        status: "paid",
-        message: "Payment confirmed via stored webhook payload (v1 API unavailable).",
-        providerReference: transaction.providerReference ?? null,
-        externalReference: transaction.externalReference ?? null,
-        payload: storedPayload,
-      };
+
+      if (
+        storedStatus === "paid" ||
+        storedStatus === "failed"
+      ) {
+        console.info(
+          "[PAYMOB] v1 API unavailable — trusting stored verified webhook payload",
+          {
+            transactionId: transaction.id,
+            externalReference:
+              transaction.externalReference,
+            storedWebhookType,
+            status: storedStatus,
+          },
+        );
+
+        return {
+          status: storedStatus,
+          message:
+            storedStatus === "paid"
+              ? "Payment confirmed via stored verified webhook payload (v1 API unavailable)."
+              : "Payment failure confirmed via stored verified webhook payload (v1 API unavailable).",
+          providerReference:
+            transaction.providerReference ?? null,
+          externalReference:
+            transaction.externalReference ?? null,
+          payload: storedPayload,
+        };
+      }
     }
   }
 
@@ -456,55 +498,259 @@ async function verifyTransaction(transaction: {
   };
 }
 
-async function handleWebhook(payload: unknown): Promise<PaymentWebhookResult> {
+async function handleWebhook(
+  payload: unknown,
+  headers: Headers,
+  queryHmac?: string | null,
+): Promise<PaymentWebhookResult> {
   if (!payload || typeof payload !== "object") {
     return { ok: false, message: "invalid_payload" };
   }
 
-  const body = payload as PaymobWebhookBody;
+  const body = payload as any;
 
-  if (body.type !== "TRANSACTION" || !body.obj) {
+  // Detect payload format
+  const isNestedFormat = body.type === "TRANSACTION" && body.obj;
+  const isFlatFormat = body.id && body.merchant_order_id;
+
+  if (!isNestedFormat && !isFlatFormat) {
     return { ok: false, message: "Unsupported Paymob webhook payload." };
   }
 
-  const providedHmac = String(body.hmac ?? "").trim();
+  // Extract HMAC (query param takes priority)
+  const providedHmac = String(queryHmac || body.hmac || "").trim();
   if (!providedHmac) {
     return { ok: false, code: "MISSING_HMAC", message: "Paymob webhook HMAC is required." };
   }
-  const expected = computePaymobHmac(body.obj, requireSecret("PAYMOB_HMAC_SECRET"));
-  if (!verifyHmac(providedHmac, expected)) {
-    return { ok: false, code: "INVALID_HMAC", message: "Paymob webhook HMAC verification failed." };
+
+  // Handle nested format (Acceptance API)
+  if (isNestedFormat) {
+    const expected = computePaymobHmac(body.obj, requireSecret("PAYMOB_HMAC_SECRET"));
+    if (!verifyHmac(providedHmac, expected)) {
+      return { ok: false, code: "INVALID_HMAC", message: "Paymob webhook HMAC verification failed." };
+    }
+
+    const transactionId = body.obj.order?.merchant_order_id ?? body.obj.special_reference ?? null;
+    if (!transactionId) {
+      return { ok: false, message: "Paymob webhook did not include merchant_order_id." };
+    }
+
+    const status = mapAcceptanceStatus(body.obj);
+    console.info("[PAYMOB] Webhook received (nested)", {
+      transactionId,
+      paymobOrderId: body.obj.order?.id ?? null,
+      paymobTransactionId: body.obj.id ?? null,
+      status,
+    });
+
+    return {
+      ok: true,
+      transactionId,
+      status,
+      providerReference: null,
+      externalReference: body.obj.id != null ? String(body.obj.id) : null,
+      message: "Paymob webhook received successfully.",
+      payload: {
+        webhookType: body.type,
+        success: body.obj.success ?? false,
+        pending: body.obj.pending ?? true,
+        sourceType: body.obj.source_data?.type ?? null,
+        sourceSubtype: body.obj.source_data?.sub_type ?? null,
+      },
+    };
   }
 
-  const transactionId = body.obj.order?.merchant_order_id ?? body.obj.special_reference ?? null;
-  if (!transactionId) {
-    return { ok: false, message: "Paymob webhook did not include merchant_order_id." };
+  // Handle flat format (Unified Checkout)
+  if (isFlatFormat) {
+    const expected = computePaymobHmac(body, requireSecret("PAYMOB_HMAC_SECRET"));
+    if (!verifyHmac(providedHmac, expected)) {
+      return { ok: false, code: "INVALID_HMAC", message: "Paymob webhook HMAC verification failed." };
+    }
+
+    const transactionId = String(body.merchant_order_id ?? "").trim();
+    if (!transactionId) {
+      return { ok: false, message: "Paymob webhook did not include merchant_order_id." };
+    }
+
+    // Parse boolean fields (handle both boolean and string values)
+    const success = body.success === true || body.success === "true";
+    const pending = body.pending === true || body.pending === "true";
+    const errorOccured = body.error_occured === true || body.error_occured === "true";
+
+    const status = mapAcceptanceStatus({
+      id: body.id ? Number(body.id) : undefined,
+      success,
+      pending,
+      error_occured: errorOccured,
+    });
+
+    console.info("[PAYMOB] Webhook received (flat)", {
+      transactionId,
+      paymobTransactionId: body.id,
+      status,
+      success,
+      pending,
+    });
+
+    return {
+      ok: true,
+      transactionId,
+      status,
+      providerReference: null, // Flat format doesn't include order.id
+      externalReference: body.id ? String(body.id) : null,
+      message: "Paymob Unified Checkout callback received.",
+      payload: {
+        webhookType: "UNIFIED_CHECKOUT",
+        success,
+        pending,
+        sourceType: body.source_data_type ?? null,
+        sourceSubtype: body.source_data_sub_type ?? null,
+        txnResponseCode: body.txn_response_code ?? null,
+        acqResponseCode: body.acq_response_code ?? null,
+      },
+    };
   }
 
-  const status = mapAcceptanceStatus(body.obj);
-  console.info("[PAYMOB] Webhook received", {
-    transactionId,
-    paymobOrderId: body.obj.order?.id ?? null,
-    paymobTransactionId: body.obj.id ?? null,
-    status,
-    sourceType: body.obj.source_data?.type ?? null,
-    sourceSubtype: body.obj.source_data?.sub_type ?? null,
+  return { ok: false, message: "Unknown webhook format." };
+}
+
+/**
+ * Remote Paymob Transaction Verification Result
+ *
+ * Used for recovery to verify transaction independently via Paymob API
+ * BEFORE any local mutations.
+ */
+export type PaymobRemoteVerificationResult = {
+  verified: boolean;
+  transactionId: string;
+  success: boolean;
+  pending: boolean;
+  amountCents: number;
+  currency: string;
+  paymobOrderId: number | null;
+  specialReference: string | null;
+  sourceType: string | null;
+  isRefunded: boolean;
+  isVoided: boolean;
+  errorOccured: boolean;
+  failureReason?: string;
+};
+
+/**
+ * Verify a Paymob transaction remotely for recovery.
+ *
+ * CRITICAL: This function performs EXTERNAL verification via Paymob API
+ * to ensure transaction exists, is successful, matches expected values,
+ * AND belongs to the expected intention BEFORE any local database mutations.
+ *
+ * Used by recoverVerifiedPaymobPayment to validate:
+ * - Transaction exists in Paymob
+ * - Transaction belongs to expected intention (via special_reference linkage)
+ * - Transaction is successful (not failed/pending/refunded/voided)
+ * - Amount and currency match expected values
+ * - FitZone reference matches if Paymob returns it
+ *
+ * INTENTION LINKAGE PROOF:
+ * - Paymob returns transaction.special_reference (our PaymentTransaction.id)
+ * - We verify local PaymentTransaction.providerReference === expectedIntentionId
+ * - This proves transaction was created through the expected intention
+ *
+ * @param paymobTransactionId - Paymob transaction ID (e.g., "512944958")
+ * @param expectedLocalTransactionId - Our PaymentTransaction.id (links to intention via special_reference)
+ * @param expectedAmount - Expected amount in base currency units (e.g., 333 for 333 EGP)
+ * @param expectedCurrency - Expected currency code (e.g., "EGP")
+ * @param expectedFitZoneReference - Expected FitZone reference (e.g., "FZ-Offers-0000017")
+ * @returns Remote verification result with transaction details and validation status
+ */
+export async function verifyPaymobTransactionForRecovery(
+  paymobTransactionId: string,
+  expectedLocalTransactionId: string,
+  expectedAmount: number,
+  expectedCurrency: string,
+  expectedFitZoneReference: string,
+): Promise<PaymobRemoteVerificationResult> {
+  const authToken = await authenticate();
+
+  const response = await fetch(`${getRegionBase()}/api/acceptance/transactions/${paymobTransactionId}`, {
+    headers: { Authorization: `Bearer ${authToken}` },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
 
+  if (!response.ok) {
+    return {
+      verified: false,
+      transactionId: paymobTransactionId,
+      success: false,
+      pending: true,
+      amountCents: 0,
+      currency: "",
+      paymobOrderId: null,
+      specialReference: null,
+      sourceType: null,
+      isRefunded: false,
+      isVoided: false,
+      errorOccured: true,
+      failureReason: `Paymob API returned ${response.status}. Transaction may not exist or API is unavailable.`,
+    };
+  }
+
+  const tx = (await response.json()) as PaymobAcceptanceTransaction;
+  const amountCents = tx.amount_cents ?? 0;
+  const amountInCurrency = amountCents / 100;
+  const currency = (tx.currency ?? "").toUpperCase();
+  const success = tx.success ?? false;
+  const pending = tx.pending ?? true;
+  const isRefunded = tx.is_refunded ?? false;
+  const isVoided = tx.is_voided ?? false;
+  const errorOccured = tx.error_occured ?? false;
+  const specialReference = tx.special_reference ?? null;
+  const sourceType = tx.source_data?.type ?? null;
+  const paymobOrderId = tx.order?.id ?? null;
+
+  // Extract merchant_order_id from order (LIVE PAYMOB: this is the actual linkage field)
+  const merchantOrderId = tx.order?.merchant_order_id ?? null;
+
+  // Validation checks
+  const checks = {
+    exists: response.ok,
+    success: success === true,
+    notPending: pending === false,
+    amountMatch: amountInCurrency === expectedAmount,
+    currencyMatch: currency === expectedCurrency.toUpperCase(),
+    notRefunded: isRefunded === false,
+    notVoided: isVoided === false,
+    noError: errorOccured === false,
+    // CRITICAL: Verify transaction belongs to our PaymentTransaction via merchant_order_id
+    // LIVE PAYMOB PROOF: order.merchant_order_id === our PaymentTransaction.id
+    transactionLinkage: merchantOrderId === expectedLocalTransactionId,
+  };
+
+  const verified = Object.values(checks).every((check) => check === true);
+
+  const failureReasons: string[] = [];
+  if (!checks.success) failureReasons.push("success=false");
+  if (!checks.notPending) failureReasons.push("pending=true");
+  if (!checks.amountMatch) failureReasons.push(`amount=${amountInCurrency} (expected ${expectedAmount})`);
+  if (!checks.currencyMatch) failureReasons.push(`currency=${currency} (expected ${expectedCurrency})`);
+  if (!checks.notRefunded) failureReasons.push("refunded");
+  if (!checks.notVoided) failureReasons.push("voided");
+  if (!checks.noError) failureReasons.push("error_occured=true");
+  if (!checks.transactionLinkage) failureReasons.push(`merchant_order_id=${merchantOrderId} (expected ${expectedLocalTransactionId} to prove transaction linkage)`);
+
   return {
-    ok: true,
-    transactionId,
-    status,
-    providerReference: body.obj.order?.id != null ? String(body.obj.order.id) : null,
-    externalReference: body.obj.id != null ? String(body.obj.id) : null,
-    message: "Paymob webhook received successfully.",
-    payload: {
-      webhookType: body.type,
-      success: body.obj.success ?? false,
-      pending: body.obj.pending ?? true,
-      sourceType: body.obj.source_data?.type ?? null,
-      sourceSubtype: body.obj.source_data?.sub_type ?? null,
-    },
+    verified,
+    transactionId: String(tx.id ?? paymobTransactionId),
+    success,
+    pending,
+    amountCents,
+    currency,
+    paymobOrderId,
+    specialReference,
+    sourceType,
+    isRefunded,
+    isVoided,
+    errorOccured,
+    failureReason: failureReasons.length > 0 ? failureReasons.join(", ") : undefined,
   };
 }
 

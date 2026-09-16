@@ -1,0 +1,559 @@
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
+import { PrismaClient } from "@prisma/client";
+import { NextRequest } from "next/server";
+
+const raw = process.env.DATABASE_URL;
+
+if (!raw) {
+  throw new Error("REFUSING: DATABASE_URL missing");
+}
+
+const url = new URL(raw);
+
+if (
+  process.env.APP_ENV !== "test" ||
+  process.env.NODE_ENV !== "test" ||
+  url.protocol !== "mysql:" ||
+  url.hostname !== "127.0.0.1" ||
+  url.port !== "3306" ||
+  decodeURIComponent(url.username) !== "fitzone_test_user" ||
+  url.pathname !== "/fitzone_test"
+) {
+  throw new Error("REFUSING: Compensation API tests require fitzone_test");
+}
+
+const guardState = vi.hoisted(() => ({
+  mode: "allowed" as "allowed" | "unauthorized" | "forbidden",
+  lastPermission: "",
+  userId: "compensation-api-placeholder",
+}));
+
+vi.mock("@/lib/admin-authorization-server", async () => {
+  const { NextResponse } = await import("next/server");
+
+  return {
+    requireAdminPermission: vi.fn(async (permission: string) => {
+      guardState.lastPermission = permission;
+
+      if (guardState.mode === "unauthorized") {
+        return {
+          error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+        };
+      }
+
+      if (guardState.mode === "forbidden") {
+        return {
+          error: NextResponse.json({ error: "Forbidden" }, { status: 403 }),
+        };
+      }
+
+      return {
+        session: {
+          user: {
+            id: guardState.userId,
+            name: "Compensation API Admin",
+            email: "compensation-api-admin@test.local",
+            role: "admin",
+          },
+        },
+        role: "admin",
+        permissions: [],
+      };
+    }),
+  };
+});
+
+import {
+  GET as getCompensationRoute,
+  POST as createCompensationRoute,
+  PATCH as updateCompensationRoute,
+} from "@/app/api/admin/employee-compensation/route";
+
+type Handler = (request: NextRequest) => Promise<Response>;
+
+const getCompensation = getCompensationRoute as unknown as Handler;
+
+const createCompensation = createCompensationRoute as unknown as Handler;
+
+const updateCompensation = updateCompensationRoute as unknown as Handler;
+
+const db = new PrismaClient();
+
+const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+let adminId = "";
+let employee1Id = "";
+let employee2Id = "";
+let trainer1Id = "";
+let trainer2Id = "";
+let class1Id = "";
+let class2Id = "";
+
+function request(path: string, method: string, body?: Record<string, unknown>) {
+  return new NextRequest(`http://localhost${path}`, {
+    method,
+    headers:
+      body === undefined
+        ? undefined
+        : {
+            "content-type": "application/json",
+          },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+}
+
+async function cleanupTerms() {
+  await db.coachClassCompensationTerm.deleteMany({
+    where: {
+      employeeId: {
+        in: [employee1Id, employee2Id].filter(Boolean),
+      },
+    },
+  });
+
+  await db.coachCompensationTerm.deleteMany({
+    where: {
+      employeeId: {
+        in: [employee1Id, employee2Id].filter(Boolean),
+      },
+    },
+  });
+
+  await db.employeeCompensationTerm.deleteMany({
+    where: {
+      employeeId: {
+        in: [employee1Id, employee2Id].filter(Boolean),
+      },
+    },
+  });
+
+  if (adminId) {
+    await db.auditLog.deleteMany({
+      where: {
+        actorUserId: adminId,
+        targetType: {
+          in: [
+            "EmployeeCompensationTerm",
+            "CoachCompensationTerm",
+            "CoachClassCompensationTerm",
+          ],
+        },
+      },
+    });
+  }
+}
+
+async function cleanup() {
+  await cleanupTerms();
+
+  if (class1Id || class2Id) {
+    await db.class.deleteMany({
+      where: {
+        id: {
+          in: [class1Id, class2Id].filter(Boolean),
+        },
+      },
+    });
+  }
+
+  if (trainer1Id || trainer2Id) {
+    await db.trainer.deleteMany({
+      where: {
+        id: {
+          in: [trainer1Id, trainer2Id].filter(Boolean),
+        },
+      },
+    });
+  }
+
+  if (employee1Id || employee2Id) {
+    await db.employeeProfile.deleteMany({
+      where: {
+        id: {
+          in: [employee1Id, employee2Id].filter(Boolean),
+        },
+      },
+    });
+  }
+
+  if (adminId) {
+    await db.user.deleteMany({
+      where: {
+        id: adminId,
+      },
+    });
+  }
+}
+
+beforeAll(async () => {
+  await cleanup();
+
+  const admin = await db.user.create({
+    data: {
+      name: "Compensation API Admin",
+      email: `compensation-api-${stamp}@test.local`,
+      role: "admin",
+      adminAccess: true,
+      isActive: true,
+    },
+  });
+
+  adminId = admin.id;
+  guardState.userId = adminId;
+
+  const employee1 = await db.employeeProfile.create({
+    data: {
+      employeeCode: `TEST-COMP-API-E1-${stamp}`,
+      name: "Compensation API Employee 1",
+      employmentStatus: "active",
+      payrollEnabled: true,
+    },
+  });
+
+  employee1Id = employee1.id;
+
+  const employee2 = await db.employeeProfile.create({
+    data: {
+      employeeCode: `TEST-COMP-API-E2-${stamp}`,
+      name: "Compensation API Employee 2",
+      employmentStatus: "active",
+      payrollEnabled: true,
+    },
+  });
+
+  employee2Id = employee2.id;
+
+  const trainer1 = await db.trainer.create({
+    data: {
+      name: `TEST Compensation API Trainer 1 ${stamp}`,
+      specialty: "fitness",
+      employeeId: employee1Id,
+    },
+  });
+
+  trainer1Id = trainer1.id;
+
+  const trainer2 = await db.trainer.create({
+    data: {
+      name: `TEST Compensation API Trainer 2 ${stamp}`,
+      specialty: "fitness",
+      employeeId: employee2Id,
+    },
+  });
+
+  trainer2Id = trainer2.id;
+
+  const class1 = await db.class.create({
+    data: {
+      name: `TEST Compensation API Class 1 ${stamp}`,
+      trainerId: trainer1Id,
+      type: "fitness",
+      duration: 60,
+      intensity: "medium",
+      maxSpots: 10,
+    },
+  });
+
+  class1Id = class1.id;
+
+  const class2 = await db.class.create({
+    data: {
+      name: `TEST Compensation API Class 2 ${stamp}`,
+      trainerId: trainer2Id,
+      type: "fitness",
+      duration: 45,
+      intensity: "medium",
+      maxSpots: 10,
+    },
+  });
+
+  class2Id = class2.id;
+});
+
+beforeEach(async () => {
+  guardState.mode = "allowed";
+  guardState.lastPermission = "";
+  await cleanupTerms();
+});
+
+afterAll(async () => {
+  await cleanup();
+  await db.$disconnect();
+});
+
+describe("Employee Compensation API — real fitzone_test integration", () => {
+  it("GET requires employee_compensation_view", async () => {
+    const response = await getCompensation(
+      request("/api/admin/employee-compensation", "GET"),
+    );
+
+    expect(response.status).toBe(200);
+    expect(guardState.lastPermission).toBe("employee_compensation_view");
+  });
+
+  it("GET returns 401 when unauthorized", async () => {
+    guardState.mode = "unauthorized";
+
+    const response = await getCompensation(
+      request("/api/admin/employee-compensation", "GET"),
+    );
+
+    expect(response.status).toBe(401);
+    expect(guardState.lastPermission).toBe("employee_compensation_view");
+  });
+
+  it("GET returns 403 when forbidden", async () => {
+    guardState.mode = "forbidden";
+
+    const response = await getCompensation(
+      request("/api/admin/employee-compensation", "GET"),
+    );
+
+    expect(response.status).toBe(403);
+  });
+
+  it("POST requires employee_compensation_manage", async () => {
+    guardState.mode = "forbidden";
+
+    const response = await createCompensation(
+      request("/api/admin/employee-compensation", "POST", {}),
+    );
+
+    expect(response.status).toBe(403);
+    expect(guardState.lastPermission).toBe("employee_compensation_manage");
+  });
+
+  it("creates employee compensation term", async () => {
+    const response = await createCompensation(
+      request("/api/admin/employee-compensation", "POST", {
+        kind: "employee",
+        employeeId: employee1Id,
+        effectiveFrom: "2036-01-01",
+        fixedSalaryMinor: 250000,
+      }),
+    );
+
+    expect(response.status).toBe(201);
+
+    const payload = await response.json();
+
+    expect(payload.kind).toBe("employee");
+
+    expect(payload.term.fixedSalaryMinor).toBe(250000);
+
+    expect(
+      await db.employeeCompensationTerm.count({
+        where: {
+          employeeId: employee1Id,
+        },
+      }),
+    ).toBe(1);
+  });
+
+  it("creates coach compensation term", async () => {
+    const response = await createCompensation(
+      request("/api/admin/employee-compensation", "POST", {
+        kind: "coach",
+        employeeId: employee1Id,
+        effectiveFrom: "2036-01-01",
+        coachLevel: "leader",
+        defaultFixedClassMonthlyMinor: 25000,
+        traineeClassCommissionBps: 2250,
+        privateSessionCommissionBps: 5000,
+        coachMembershipCommissionBps: 4000,
+      }),
+    );
+
+    expect(response.status).toBe(201);
+
+    const payload = await response.json();
+
+    expect(payload.kind).toBe("coach");
+
+    expect(payload.term.coachLevel).toBe("leader");
+  });
+
+  it("creates class-specific compensation override", async () => {
+    const response = await createCompensation(
+      request("/api/admin/employee-compensation", "POST", {
+        kind: "coach_class",
+        employeeId: employee1Id,
+        classId: class1Id,
+        effectiveFrom: "2036-01-01",
+        monthlyAmountMinor: 30000,
+      }),
+    );
+
+    expect(response.status).toBe(201);
+
+    const payload = await response.json();
+
+    expect(payload.kind).toBe("coach_class");
+
+    expect(payload.term.monthlyAmountMinor).toBe(30000);
+  });
+
+  it("rejects class override for another coach employee", async () => {
+    const response = await createCompensation(
+      request("/api/admin/employee-compensation", "POST", {
+        kind: "coach_class",
+        employeeId: employee1Id,
+        classId: class2Id,
+        effectiveFrom: "2036-01-01",
+        monthlyAmountMinor: 30000,
+      }),
+    );
+
+    expect(response.status).toBe(400);
+
+    const payload = await response.json();
+
+    expect(payload.error).toBe("COMPENSATION_CLASS_EMPLOYEE_MISMATCH");
+  });
+
+  it("maps overlap to 409", async () => {
+    const first = await createCompensation(
+      request("/api/admin/employee-compensation", "POST", {
+        kind: "employee",
+        employeeId: employee1Id,
+        effectiveFrom: "2036-01-01",
+        effectiveTo: "2036-06-30",
+        fixedSalaryMinor: 200000,
+      }),
+    );
+
+    expect(first.status).toBe(201);
+
+    const second = await createCompensation(
+      request("/api/admin/employee-compensation", "POST", {
+        kind: "employee",
+        employeeId: employee1Id,
+        effectiveFrom: "2036-06-01",
+        fixedSalaryMinor: 220000,
+      }),
+    );
+
+    expect(second.status).toBe(409);
+
+    const payload = await second.json();
+
+    expect(payload.error).toBe("COMPENSATION_EMPLOYEE_TERM_OVERLAP");
+  });
+
+  it("PATCH requires edit reason and then updates", async () => {
+    const createdResponse = await createCompensation(
+      request("/api/admin/employee-compensation", "POST", {
+        kind: "employee",
+        employeeId: employee1Id,
+        effectiveFrom: "2036-01-01",
+        fixedSalaryMinor: 200000,
+      }),
+    );
+
+    expect(createdResponse.status).toBe(201);
+
+    const created = await createdResponse.json();
+
+    const rejected = await updateCompensation(
+      request("/api/admin/employee-compensation", "PATCH", {
+        kind: "employee",
+        termId: created.term.id,
+        employeeId: employee1Id,
+        effectiveFrom: "2036-01-01",
+        fixedSalaryMinor: 210000,
+      }),
+    );
+
+    expect(rejected.status).toBe(400);
+
+    expect((await rejected.json()).error).toBe(
+      "COMPENSATION_EDIT_REASON_REQUIRED",
+    );
+
+    const updated = await updateCompensation(
+      request("/api/admin/employee-compensation", "PATCH", {
+        kind: "employee",
+        termId: created.term.id,
+        employeeId: employee1Id,
+        effectiveFrom: "2036-01-01",
+        fixedSalaryMinor: 210000,
+        editReason: "Approved salary correction",
+      }),
+    );
+
+    expect(updated.status).toBe(200);
+
+    expect((await updated.json()).term.fixedSalaryMinor).toBe(210000);
+  });
+
+  it("GET filters by employeeId and returns all three collections", async () => {
+    await createCompensation(
+      request("/api/admin/employee-compensation", "POST", {
+        kind: "employee",
+        employeeId: employee1Id,
+        effectiveFrom: "2036-01-01",
+        fixedSalaryMinor: 200000,
+      }),
+    );
+
+    await createCompensation(
+      request("/api/admin/employee-compensation", "POST", {
+        kind: "coach",
+        employeeId: employee1Id,
+        effectiveFrom: "2036-01-01",
+        coachLevel: "normal",
+        defaultFixedClassMonthlyMinor: 25000,
+        traineeClassCommissionBps: 2000,
+        privateSessionCommissionBps: 4000,
+        coachMembershipCommissionBps: 4000,
+      }),
+    );
+
+    await createCompensation(
+      request("/api/admin/employee-compensation", "POST", {
+        kind: "coach_class",
+        employeeId: employee1Id,
+        classId: class1Id,
+        effectiveFrom: "2036-01-01",
+        monthlyAmountMinor: 30000,
+      }),
+    );
+
+    const response = await getCompensation(
+      request(
+        `/api/admin/employee-compensation?employeeId=${employee1Id}`,
+        "GET",
+      ),
+    );
+
+    expect(response.status).toBe(200);
+
+    const payload = await response.json();
+
+    expect(payload.employeeTerms).toHaveLength(1);
+
+    expect(payload.coachTerms).toHaveLength(1);
+
+    expect(payload.coachClassTerms).toHaveLength(1);
+  });
+
+  it("rejects invalid kind", async () => {
+    const response = await createCompensation(
+      request("/api/admin/employee-compensation", "POST", {
+        kind: "invalid",
+      }),
+    );
+
+    expect(response.status).toBe(400);
+
+    expect((await response.json()).error).toBe("COMPENSATION_INVALID_KIND");
+  });
+});
