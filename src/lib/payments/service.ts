@@ -315,6 +315,7 @@ async function activatePaidMembershipTx(
     where: { id: membershipId },
     select: {
       id: true,
+      userId: true,
       status: true,
       pendingExpiresAt: true,
       offerId: true,
@@ -323,6 +324,7 @@ async function activatePaidMembershipTx(
         select: {
           name: true,
           nameEn: true,
+          kind: true,
           duration: true,
           walletBonus: true,
           productRewards: true,
@@ -407,6 +409,19 @@ async function activatePaidMembershipTx(
         `[ACTIVATION] Membership ${membershipId} already processed (cron won race)`,
       );
       return { success: false, membershipData: null };
+    }
+
+    // The new membership is economically finalized now.
+    // Only at this point may it supersede older active memberships.
+    if (membership.membership?.kind !== "trial") {
+      await tx.userMembership.updateMany({
+        where: {
+          userId: membership.userId,
+          status: "active",
+          id: { not: membershipId },
+        },
+        data: { status: "expired" },
+      });
     }
 
     console.log(
