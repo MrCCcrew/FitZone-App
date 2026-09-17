@@ -794,3 +794,221 @@ export function printPurchaseInvoice(receipt: {
 
   openPrint(html);
 }
+
+
+/* ─── Supplier balances / statement ───────────────────────────────────────── */
+
+export interface SupplierBalanceForPrint {
+  supplierId: string;
+  supplierName: string;
+  supplierCode: string | null;
+  invoiceOutstanding: number;
+  consignmentOutstanding: number;
+  totalOutstanding: number;
+}
+
+export interface SupplierStatementEntryForPrint {
+  date: string;
+  dateKey: string;
+  type: string;
+  reference: string;
+  description: string;
+  debit: number;
+  credit: number;
+  balance: number;
+}
+
+function supplierSafe(value: string | null | undefined) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+export function printSupplierBalancesReport(opts: {
+  rows: SupplierBalanceForPrint[];
+}) {
+  const invoiceTotal = opts.rows.reduce(
+    (sum, row) => sum + row.invoiceOutstanding,
+    0,
+  );
+
+  const consignmentTotal = opts.rows.reduce(
+    (sum, row) => sum + row.consignmentOutstanding,
+    0,
+  );
+
+  const total = opts.rows.reduce(
+    (sum, row) => sum + row.totalOutstanding,
+    0,
+  );
+
+  const rows = opts.rows
+    .map(
+      (row) => `
+        <tr>
+          <td>
+            <strong>${supplierSafe(row.supplierName)}</strong>
+            ${row.supplierCode ? `<div style="font-size:10px;color:#888">#${supplierSafe(row.supplierCode)}</div>` : ""}
+          </td>
+          <td>${fmt(row.invoiceOutstanding)} ج</td>
+          <td>${fmt(row.consignmentOutstanding)} ج</td>
+          <td style="font-weight:900;color:${row.totalOutstanding > 0 ? "#d97706" : row.totalOutstanding < 0 ? "#16a34a" : "#555"}">
+            ${fmt(row.totalOutstanding)} ج
+          </td>
+        </tr>
+      `,
+    )
+    .join("");
+
+  const html = `
+    ${header("تقرير أرصدة الموردين", "Supplier Balances Report")}
+    <div class="report-title">أرصدة الموردين</div>
+    <div class="report-sub">فواتير المشتريات المرحلة + مستحقات مبيعات الأمانات</div>
+
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-label">فواتير مشتريات مستحقة</div>
+        <div class="kpi-value orange">${fmt(invoiceTotal)} ج</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">مستحقات الأمانات</div>
+        <div class="kpi-value orange">${fmt(consignmentTotal)} ج</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">إجمالي أرصدة الموردين</div>
+        <div class="kpi-value ${total >= 0 ? "red" : "green"}">${fmt(total)} ج</div>
+      </div>
+    </div>
+
+    <div class="section-title">تفاصيل الموردين</div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>المورد</th>
+          <th>فواتير مشتريات</th>
+          <th>أمانات</th>
+          <th>الرصيد</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows || '<tr><td colspan="4" style="text-align:center;color:#888">لا توجد بيانات</td></tr>'}
+      </tbody>
+      <tfoot>
+        <tr>
+          <td>الإجمالي</td>
+          <td>${fmt(invoiceTotal)} ج</td>
+          <td>${fmt(consignmentTotal)} ج</td>
+          <td>${fmt(total)} ج</td>
+        </tr>
+      </tfoot>
+    </table>
+
+    ${footer()}
+  `;
+
+  openPrint(html);
+}
+
+export function printSupplierStatement(opts: {
+  supplierName: string;
+  supplierCode?: string | null;
+  from?: string | null;
+  to?: string | null;
+  openingBalance: number;
+  debitTotal: number;
+  creditTotal: number;
+  closingBalance: number;
+  entries: SupplierStatementEntryForPrint[];
+}) {
+  const range =
+    opts.from || opts.to
+      ? `${opts.from ?? "البداية"} إلى ${opts.to ?? "حتى الآن"}`
+      : "كامل الفترة";
+
+  const rows = opts.entries
+    .map(
+      (entry) => `
+        <tr>
+          <td>${supplierSafe(entry.dateKey)}</td>
+          <td>${supplierSafe(entry.type)}</td>
+          <td>${supplierSafe(entry.reference)}</td>
+          <td>${supplierSafe(entry.description)}</td>
+          <td style="font-weight:700">${entry.debit ? fmt(entry.debit) : "—"}</td>
+          <td style="font-weight:700">${entry.credit ? fmt(entry.credit) : "—"}</td>
+          <td style="font-weight:900">${fmt(entry.balance)}</td>
+        </tr>
+      `,
+    )
+    .join("");
+
+  const html = `
+    ${header(
+      "كشف حساب مورد",
+      `${supplierSafe(opts.supplierName)}${opts.supplierCode ? ` — #${supplierSafe(opts.supplierCode)}` : ""}`,
+      range,
+    )}
+
+    <div class="report-title">كشف حساب المورد</div>
+    <div class="report-sub">
+      ${supplierSafe(opts.supplierName)}
+      ${opts.supplierCode ? ` — #${supplierSafe(opts.supplierCode)}` : ""}
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-label">الرصيد الافتتاحي</div>
+        <div class="kpi-value">${fmt(opts.openingBalance)} ج</div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-label">إجمالي الاستحقاقات</div>
+        <div class="kpi-value orange">${fmt(opts.debitTotal)} ج</div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-label">إجمالي السداد / العكس</div>
+        <div class="kpi-value green">${fmt(opts.creditTotal)} ج</div>
+      </div>
+    </div>
+
+    <div class="net-profit-box">
+      <div>
+        <div class="net-profit-label">الرصيد الختامي للمورد</div>
+        <div class="net-profit-formula">
+          الرصيد الافتتاحي + الاستحقاقات − السداد والعكوس
+        </div>
+      </div>
+
+      <div class="net-profit-value ${opts.closingBalance >= 0 ? "red" : "green"}">
+        ${fmt(opts.closingBalance)} ج
+      </div>
+    </div>
+
+    <div class="section-title">حركة الحساب</div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>التاريخ</th>
+          <th>الحركة</th>
+          <th>المرجع</th>
+          <th>البيان</th>
+          <th>مدين</th>
+          <th>دائن</th>
+          <th>الرصيد</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows || '<tr><td colspan="7" style="text-align:center;color:#888">لا توجد حركات في الفترة المختارة</td></tr>'}
+      </tbody>
+    </table>
+
+    ${footer()}
+  `;
+
+  openPrint(html);
+}

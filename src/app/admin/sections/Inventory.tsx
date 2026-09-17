@@ -2,6 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Product } from "../types";
+import {
+  printSupplierBalancesReport,
+  printSupplierStatement,
+} from "@/lib/print-pdf";
 
 type Supplier = {
   id: string;
@@ -112,7 +116,113 @@ type SupplierPaymentRow = {
   referenceNumber: string | null;
   status: string;
   notes: string | null;
+  postedAt?: string | null;
+  cancelledAt?: string | null;
 };
+
+type ConsignmentLiabilityRow = {
+  id: string;
+  supplierId: string;
+  supplier: {
+    id: string;
+    name: string;
+    code: string | null;
+  };
+  orderId: string;
+  orderItemId: string;
+  orderInventoryAllocationId: string;
+  quantity: number;
+  unitCost: number;
+  grossAmount: number;
+  paidAmount: number;
+  reversedAmount: number;
+  outstandingAmount: number;
+  status: string;
+  source: string;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+  reversedAt: string | null;
+};
+
+type SupplierStatementEntry = {
+  date: string;
+  dateKey: string;
+  type: string;
+  reference: string;
+  description: string;
+  debit: number;
+  credit: number;
+  balance: number;
+};
+
+type SupplierBalanceRow = {
+  supplierId: string;
+  supplierName: string;
+  supplierCode: string | null;
+  isActive: boolean;
+  isDeleted: boolean;
+  invoiceOutstanding: number;
+  consignmentOutstanding: number;
+  totalOutstanding: number;
+};
+
+type SupplierStatementData = {
+  supplier: {
+    id: string;
+    name: string;
+    code: string | null;
+    isActive: boolean;
+    isDeleted: boolean;
+  } | null;
+  from: string | null;
+  to: string | null;
+  openingBalance: number;
+  debitTotal: number;
+  creditTotal: number;
+  closingBalance: number;
+  entries: SupplierStatementEntry[];
+};
+
+const EMPTY_SUPPLIER_STATEMENT: SupplierStatementData = {
+  supplier: null,
+  from: null,
+  to: null,
+  openingBalance: 0,
+  debitTotal: 0,
+  creditTotal: 0,
+  closingBalance: 0,
+  entries: [],
+};
+
+function downloadCsv(filename: string, rows: Array<Array<string | number>>) {
+  const escapeCell = (value: string | number) => {
+    const text = String(value ?? "");
+    return `"${text.replace(/"/g, '""')}"`;
+  };
+
+  const csv =
+    "\uFEFF" +
+    rows
+      .map((row) => row.map(escapeCell).join(","))
+      .join("\r\n");
+
+  const blob = new Blob([csv], {
+    type: "text/csv;charset=utf-8",
+  });
+
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+
+  anchor.href = url;
+  anchor.download = filename;
+
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+
+  URL.revokeObjectURL(url);
+}
 
 type ConsignmentReceiptLotRow = {
   id: string;
@@ -245,6 +355,10 @@ export default function Inventory({
     SupplierPaymentRow[]
   >([]);
 
+  const [consignmentLiabilities, setConsignmentLiabilities] = useState<
+    ConsignmentLiabilityRow[]
+  >([]);
+
   const [consignmentReceipts, setConsignmentReceipts] = useState<
     ConsignmentReceiptRow[]
   >([]);
@@ -282,12 +396,58 @@ export default function Inventory({
   const [piSaving, setPiSaving] = useState(false);
 
   const [spSupplierId, setSpSupplierId] = useState("");
+  const [spSourceType, setSpSourceType] = useState<
+    "invoice" | "consignment"
+  >("invoice");
   const [spInvoiceId, setSpInvoiceId] = useState("");
+  const [spLiabilityId, setSpLiabilityId] = useState("");
   const [spAmount, setSpAmount] = useState("");
   const [spPaymentDate, setSpPaymentDate] = useState("");
   const [spReferenceNumber, setSpReferenceNumber] = useState("");
   const [spNotes, setSpNotes] = useState("");
   const [spSaving, setSpSaving] = useState(false);
+
+  const [supplierPaymentInvoices, setSupplierPaymentInvoices] = useState<
+    PurchaseInvoiceRow[]
+  >([]);
+
+  const [supplierPaymentLiabilities, setSupplierPaymentLiabilities] =
+    useState<ConsignmentLiabilityRow[]>([]);
+
+  const [supplierPayablesLoading, setSupplierPayablesLoading] =
+    useState(false);
+
+  const [supplierPayablesError, setSupplierPayablesError] =
+    useState("");
+
+  const [statementSupplierId, setStatementSupplierId] = useState("");
+  const [statementFrom, setStatementFrom] = useState("");
+  const [statementTo, setStatementTo] = useState("");
+
+  const [supplierBalances, setSupplierBalances] = useState<
+    SupplierBalanceRow[]
+  >([]);
+
+  const [statementSuppliers, setStatementSuppliers] = useState<
+    SupplierBalanceRow[]
+  >([]);
+
+  const [supplierBalancesLoading, setSupplierBalancesLoading] =
+    useState(false);
+
+  const [supplierBalancesError, setSupplierBalancesError] =
+    useState("");
+
+  const [supplierStatementLoading, setSupplierStatementLoading] =
+    useState(false);
+
+  const [supplierStatementError, setSupplierStatementError] =
+    useState("");
+
+  const [statementData, setStatementData] =
+    useState<SupplierStatementData>(
+      EMPTY_SUPPLIER_STATEMENT,
+    );
 
   const [movements, setMovements] = useState<Movement[]>([]);
   const [loading, setLoading] = useState(true);
@@ -395,6 +555,13 @@ export default function Inventory({
       const loadedSupplierPayments = Array.isArray(paymentRes?.payments)
         ? paymentRes.payments
         : [];
+
+      const loadedConsignmentLiabilities = Array.isArray(
+        paymentRes?.consignmentLiabilities,
+      )
+        ? paymentRes.consignmentLiabilities
+        : [];
+
       const loadedMovements = Array.isArray(movRes) ? movRes : [];
 
       setProducts(loadedProducts);
@@ -403,6 +570,7 @@ export default function Inventory({
       setConsignmentReceipts(loadedConsignmentReceipts);
       setPurchaseInvoices(loadedPurchaseInvoices);
       setSupplierPayments(loadedSupplierPayments);
+      setConsignmentLiabilities(loadedConsignmentLiabilities);
       setMovements(loadedMovements);
 
       return {
@@ -412,6 +580,7 @@ export default function Inventory({
         consignmentReceipts: loadedConsignmentReceipts,
         purchaseInvoices: loadedPurchaseInvoices,
         supplierPayments: loadedSupplierPayments,
+        consignmentLiabilities: loadedConsignmentLiabilities,
         movements: loadedMovements,
       };
     } catch (error) {
@@ -1014,26 +1183,382 @@ export default function Inventory({
     }
   };
 
+  const loadSupplierPayables = useCallback(
+    async (signal?: AbortSignal) => {
+      if (!spSupplierId) {
+        setSupplierPaymentInvoices([]);
+        setSupplierPaymentLiabilities([]);
+        setSupplierPayablesError("");
+        setSupplierPayablesLoading(false);
+        return;
+      }
+
+      setSupplierPaymentInvoices([]);
+      setSupplierPaymentLiabilities([]);
+      setSupplierPayablesError("");
+      setSupplierPayablesLoading(true);
+
+      const encodedSupplierId = encodeURIComponent(spSupplierId);
+
+      try {
+        const [invoiceRes, liabilityRes] = await Promise.all([
+          fetch(
+            `/api/admin/purchase-invoices?supplierId=${encodedSupplierId}&status=posted&outstandingOnly=1`,
+            { cache: "no-store", signal },
+          ),
+          fetch(
+            `/api/admin/supplier-payments?supplierId=${encodedSupplierId}&outstandingOnly=1`,
+            { cache: "no-store", signal },
+          ),
+        ]);
+
+        const invoiceData =
+          (await invoiceRes.json().catch(() => ({}))) as {
+            invoices?: PurchaseInvoiceRow[];
+            error?: string;
+          };
+
+        const liabilityData =
+          (await liabilityRes.json().catch(() => ({}))) as {
+            consignmentLiabilities?: ConsignmentLiabilityRow[];
+            error?: string;
+          };
+
+        if (!invoiceRes.ok || !liabilityRes.ok) {
+          throw new Error(
+            invoiceData.error ??
+              liabilityData.error ??
+              "تعذر تحميل مستحقات المورد",
+          );
+        }
+
+        setSupplierPaymentInvoices(
+          Array.isArray(invoiceData.invoices)
+            ? invoiceData.invoices
+            : [],
+        );
+
+        setSupplierPaymentLiabilities(
+          Array.isArray(liabilityData.consignmentLiabilities)
+            ? liabilityData.consignmentLiabilities
+            : [],
+        );
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          error.name === "AbortError"
+        ) {
+          return;
+        }
+
+        console.error("[SUPPLIER_PAYABLES]", error);
+        setSupplierPaymentInvoices([]);
+        setSupplierPaymentLiabilities([]);
+        setSupplierPayablesError(
+          error instanceof Error
+            ? error.message
+            : "تعذر تحميل مستحقات المورد",
+        );
+      } finally {
+        if (!signal?.aborted) {
+          setSupplierPayablesLoading(false);
+        }
+      }
+    },
+    [spSupplierId],
+  );
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    void loadSupplierPayables(controller.signal);
+
+    return () => controller.abort();
+  }, [
+    loadSupplierPayables,
+    purchaseInvoices,
+    supplierPayments,
+    consignmentLiabilities,
+  ]);
+
   const eligibleSupplierPaymentInvoices = useMemo(
     () =>
-      purchaseInvoices.filter(
+      supplierPaymentInvoices.filter(
         (invoice) =>
           invoice.supplierId === spSupplierId &&
           invoice.documentStatus === "posted" &&
           invoice.outstandingAmount > 0,
       ),
-    [purchaseInvoices, spSupplierId],
+    [supplierPaymentInvoices, spSupplierId],
   );
 
   const selectedSupplierPaymentInvoice = useMemo(
     () =>
-      purchaseInvoices.find((invoice) => invoice.id === spInvoiceId) ?? null,
-    [purchaseInvoices, spInvoiceId],
+      supplierPaymentInvoices.find(
+        (invoice) => invoice.id === spInvoiceId,
+      ) ?? null,
+    [supplierPaymentInvoices, spInvoiceId],
   );
+
+  const eligibleSupplierPaymentLiabilities = useMemo(
+    () =>
+      supplierPaymentLiabilities.filter(
+        (liability) =>
+          liability.supplierId === spSupplierId &&
+          liability.outstandingAmount > 0,
+      ),
+    [supplierPaymentLiabilities, spSupplierId],
+  );
+
+  const selectedSupplierPaymentLiability = useMemo(
+    () =>
+      supplierPaymentLiabilities.find(
+        (liability) => liability.id === spLiabilityId,
+      ) ?? null,
+    [supplierPaymentLiabilities, spLiabilityId],
+  );
+
+  const selectedSupplierPayableOutstanding =
+    spSourceType === "invoice"
+      ? selectedSupplierPaymentInvoice?.outstandingAmount ?? 0
+      : selectedSupplierPaymentLiability?.outstandingAmount ?? 0;
+  const loadSupplierBalances = useCallback(
+    async (signal?: AbortSignal) => {
+      setSupplierBalancesError("");
+      setSupplierBalancesLoading(true);
+
+      try {
+        const res = await fetch(
+          "/api/admin/supplier-reports?mode=balances",
+          {
+            cache: "no-store",
+            signal,
+          },
+        );
+
+        const data = (await res.json().catch(() => ({}))) as {
+          balances?: SupplierBalanceRow[];
+          statementSuppliers?: SupplierBalanceRow[];
+          error?: string;
+        };
+
+        if (!res.ok) {
+          throw new Error(
+            data.error ??
+              "\u062a\u0639\u0630\u0631 \u062a\u062d\u0645\u064a\u0644 \u0623\u0631\u0635\u062f\u0629 \u0627\u0644\u0645\u0648\u0631\u062f\u064a\u0646",
+          );
+        }
+
+        setSupplierBalances(
+          Array.isArray(data.balances)
+            ? data.balances
+            : [],
+        );
+
+        setStatementSuppliers(
+          Array.isArray(data.statementSuppliers)
+            ? data.statementSuppliers
+            : [],
+        );
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          error.name === "AbortError"
+        ) {
+          return;
+        }
+
+        console.error("[SUPPLIER_BALANCES_REPORT]", error);
+
+        setSupplierBalancesError(
+          error instanceof Error
+            ? error.message
+            : "\u062a\u0639\u0630\u0631 \u062a\u062d\u0645\u064a\u0644 \u0623\u0631\u0635\u062f\u0629 \u0627\u0644\u0645\u0648\u0631\u062f\u064a\u0646",
+        );
+      } finally {
+        if (!signal?.aborted) {
+          setSupplierBalancesLoading(false);
+        }
+      }
+    },
+    [],
+  );
+
+  const loadSupplierStatement = useCallback(
+    async (signal?: AbortSignal) => {
+      if (!statementSupplierId) {
+        setStatementData(EMPTY_SUPPLIER_STATEMENT);
+        setSupplierStatementError("");
+        setSupplierStatementLoading(false);
+        return;
+      }
+
+      setStatementData(EMPTY_SUPPLIER_STATEMENT);
+      setSupplierStatementError("");
+      setSupplierStatementLoading(true);
+
+      const params = new URLSearchParams({
+        mode: "statement",
+        supplierId: statementSupplierId,
+      });
+
+      if (statementFrom) {
+        params.set("from", statementFrom);
+      }
+
+      if (statementTo) {
+        params.set("to", statementTo);
+      }
+
+      try {
+        const res = await fetch(
+          `/api/admin/supplier-reports?${params.toString()}`,
+          {
+            cache: "no-store",
+            signal,
+          },
+        );
+
+        const data = (await res.json().catch(() => ({}))) as {
+          statement?: SupplierStatementData;
+          error?: string;
+        };
+
+        if (!res.ok) {
+          throw new Error(
+            data.error ??
+              "\u062a\u0639\u0630\u0631 \u062a\u062d\u0645\u064a\u0644 \u0643\u0634\u0641 \u062d\u0633\u0627\u0628 \u0627\u0644\u0645\u0648\u0631\u062f",
+          );
+        }
+
+        setStatementData(
+          data.statement ??
+            EMPTY_SUPPLIER_STATEMENT,
+        );
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          error.name === "AbortError"
+        ) {
+          return;
+        }
+
+        console.error("[SUPPLIER_STATEMENT_REPORT]", error);
+
+        setSupplierStatementError(
+          error instanceof Error
+            ? error.message
+            : "\u062a\u0639\u0630\u0631 \u062a\u062d\u0645\u064a\u0644 \u0643\u0634\u0641 \u062d\u0633\u0627\u0628 \u0627\u0644\u0645\u0648\u0631\u062f",
+        );
+      } finally {
+        if (!signal?.aborted) {
+          setSupplierStatementLoading(false);
+        }
+      }
+    },
+    [
+      statementSupplierId,
+      statementFrom,
+      statementTo,
+    ],
+  );
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    void loadSupplierBalances(controller.signal);
+
+    return () => {
+      controller.abort();
+    };
+  }, [
+    loadSupplierBalances,
+    purchaseInvoices,
+    supplierPayments,
+    consignmentLiabilities,
+  ]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    void loadSupplierStatement(controller.signal);
+
+    return () => {
+      controller.abort();
+    };
+  }, [
+    loadSupplierStatement,
+    purchaseInvoices,
+    supplierPayments,
+    consignmentLiabilities,
+  ]);
+  const exportSupplierBalancesCsv = () => {
+    downloadCsv(
+      "fitzone-supplier-balances.csv",
+      [
+        [
+          "المورد",
+          "الكود",
+          "فواتير مشتريات مستحقة",
+          "مبيعات أمانات مستحقة",
+          "إجمالي الرصيد",
+        ],
+        ...supplierBalances.map((row) => [
+          row.supplierName,
+          row.supplierCode ?? "",
+          row.invoiceOutstanding.toFixed(2),
+          row.consignmentOutstanding.toFixed(2),
+          row.totalOutstanding.toFixed(2),
+        ]),
+      ],
+    );
+  };
+
+  const exportSupplierStatementCsv = () => {
+    if (!statementData.supplier) {
+      alert("اختر المورد أولًا");
+      return;
+    }
+
+    downloadCsv(
+      `fitzone-supplier-statement-${statementData.supplier.name}.csv`,
+      [
+        ["المورد", statementData.supplier.name],
+        [
+          "الفترة",
+          `${statementFrom || "البداية"} إلى ${statementTo || "حتى الآن"}`,
+        ],
+        ["الرصيد الافتتاحي", statementData.openingBalance.toFixed(2)],
+        [],
+        [
+          "التاريخ",
+          "النوع",
+          "المرجع",
+          "البيان",
+          "مدين",
+          "دائن",
+          "الرصيد",
+        ],
+        ...statementData.entries.map((entry) => [
+          entry.dateKey,
+          entry.type,
+          entry.reference,
+          entry.description,
+          entry.debit.toFixed(2),
+          entry.credit.toFixed(2),
+          entry.balance.toFixed(2),
+        ]),
+        [],
+        ["الرصيد الختامي", statementData.closingBalance.toFixed(2)],
+      ],
+    );
+  };
 
   const clearSupplierPaymentForm = () => {
     setSpSupplierId("");
+    setSpSourceType("invoice");
     setSpInvoiceId("");
+    setSpLiabilityId("");
     setSpAmount("");
     setSpPaymentDate("");
     setSpReferenceNumber("");
@@ -1046,8 +1571,19 @@ export default function Inventory({
       return;
     }
 
-    if (!spInvoiceId || !selectedSupplierPaymentInvoice) {
+    if (
+      spSourceType === "invoice" &&
+      (!spInvoiceId || !selectedSupplierPaymentInvoice)
+    ) {
       alert("يجب اختيار فاتورة مورد");
+      return;
+    }
+
+    if (
+      spSourceType === "consignment" &&
+      (!spLiabilityId || !selectedSupplierPaymentLiability)
+    ) {
+      alert("يجب اختيار استحقاق أمانات");
       return;
     }
 
@@ -1063,9 +1599,9 @@ export default function Inventory({
       return;
     }
 
-    if (amount > selectedSupplierPaymentInvoice.outstandingAmount) {
+    if (amount > selectedSupplierPayableOutstanding) {
       alert(
-        `المبلغ أكبر من الرصيد المتبقي (${selectedSupplierPaymentInvoice.outstandingAmount.toLocaleString("ar-EG")} ج.م)`,
+        `المبلغ أكبر من الرصيد المتبقي (${selectedSupplierPayableOutstanding.toLocaleString("ar-EG")} ج.م)`,
       );
       return;
     }
@@ -1085,12 +1621,24 @@ export default function Inventory({
           paymentMethod: "cash",
           referenceNumber: spReferenceNumber.trim() || null,
           notes: spNotes.trim() || null,
-          allocations: [
-            {
-              purchaseInvoiceId: spInvoiceId,
-              amount,
-            },
-          ],
+          allocations:
+            spSourceType === "invoice"
+              ? [
+                  {
+                    purchaseInvoiceId: spInvoiceId,
+                    amount,
+                  },
+                ]
+              : [],
+          consignmentAllocations:
+            spSourceType === "consignment"
+              ? [
+                  {
+                    liabilityId: spLiabilityId,
+                    amount,
+                  },
+                ]
+              : [],
         }),
       });
 
@@ -3641,6 +4189,525 @@ export default function Inventory({
       {tab === "supplierPayments" && (
         <div style={{ display: "grid", gap: 20 }}>
           <div style={CARD}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: 12,
+                flexWrap: "wrap",
+                marginBottom: 16,
+              }}
+            >
+              <div>
+                <h2
+                  style={{
+                    margin: 0,
+                    fontSize: 16,
+                    color: "#fff4f8",
+                    fontWeight: 900,
+                  }}
+                >
+                  أرصدة الموردين
+                </h2>
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: "#d7aabd",
+                    marginTop: 4,
+                  }}
+                >
+                  الرصيد يشمل فواتير الشراء المرحلة ومستحقات مبيعات الأمانات.
+                </div>
+              </div>
+
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button
+                  disabled={supplierBalancesLoading || Boolean(supplierBalancesError)}
+                  onClick={() =>
+                    printSupplierBalancesReport({
+                      rows: supplierBalances,
+                    })
+                  }
+                  style={{
+                    border: "none",
+                    borderRadius: 8,
+                    padding: "8px 13px",
+                    background: "#e91e63",
+                    color: "#fff",
+                    cursor: "pointer",
+                    fontWeight: 800,
+                  }}
+                >
+                  تقرير PDF
+                </button>
+
+                <button
+                  disabled={supplierBalancesLoading || Boolean(supplierBalancesError)}
+                  onClick={exportSupplierBalancesCsv}
+                  style={{
+                    border: "1px solid rgba(255,255,255,.14)",
+                    borderRadius: 8,
+                    padding: "8px 13px",
+                    background: "rgba(255,255,255,.06)",
+                    color: "#fff4f8",
+                    cursor: "pointer",
+                    fontWeight: 700,
+                  }}
+                >
+                  تصدير CSV
+                </button>
+              </div>
+            </div>
+
+            {supplierBalancesLoading && (
+              <div style={{ marginBottom: 10, color: "#d7aabd", fontSize: 12 }}>
+                {"\u062c\u0627\u0631\u064d \u062a\u062d\u062f\u064a\u062b \u0623\u0631\u0635\u062f\u0629 \u0627\u0644\u0645\u0648\u0631\u062f\u064a\u0646..."}
+              </div>
+            )}
+
+            {supplierBalancesError && (
+              <div style={{ marginBottom: 10, color: "#ff9ebf", fontSize: 12 }}>
+                {supplierBalancesError}
+                {" ? \u064a\u062a\u0645 \u0639\u0631\u0636 \u0622\u062e\u0631 \u0628\u064a\u0627\u0646\u0627\u062a \u0646\u0627\u062c\u062d\u0629 \u0625\u0646 \u0648\u062c\u062f\u062a."}
+              </div>
+            )}
+            <div style={{ overflowX: "auto" }}>
+              <table
+                style={{
+                  width: "100%",
+                  borderCollapse: "collapse",
+                  fontSize: 12,
+                }}
+              >
+                <thead>
+                  <tr style={{ color: "#d7aabd" }}>
+                    <th style={{ padding: 8, textAlign: "right" }}>المورد</th>
+                    <th style={{ padding: 8, textAlign: "right" }}>
+                      فواتير شراء
+                    </th>
+                    <th style={{ padding: 8, textAlign: "right" }}>
+                      أمانات
+                    </th>
+                    <th style={{ padding: 8, textAlign: "right" }}>
+                      الرصيد
+                    </th>
+                    <th style={{ padding: 8, textAlign: "right" }}>
+                      إجراء
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {supplierBalances.map((row) => (
+                    <tr
+                      key={row.supplierId}
+                      style={{
+                        borderTop: "1px solid rgba(255,255,255,.07)",
+                      }}
+                    >
+                      <td style={{ padding: 9, color: "#fff4f8" }}>
+                        <b>{row.supplierName}</b>
+                        {row.supplierCode
+                          ? ` • #${row.supplierCode}`
+                          : ""}
+                      </td>
+
+                      <td style={{ padding: 9 }}>
+                        {row.invoiceOutstanding.toLocaleString("ar-EG")} ج.م
+                      </td>
+
+                      <td style={{ padding: 9 }}>
+                        {row.consignmentOutstanding.toLocaleString("ar-EG")} ج.م
+                      </td>
+
+                      <td
+                        style={{
+                          padding: 9,
+                          fontWeight: 900,
+                          color:
+                            row.totalOutstanding > 0
+                              ? "#ffd166"
+                              : row.totalOutstanding < 0
+                                ? "#4ade80"
+                                : "#d7aabd",
+                        }}
+                      >
+                        {row.totalOutstanding.toLocaleString("ar-EG")} ج.م
+                      </td>
+
+                      <td style={{ padding: 9 }}>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <button
+                            disabled={
+                              !row.isActive ||
+                              row.isDeleted
+                            }
+                            onClick={() => {
+                              if (
+                                !row.isActive ||
+                                row.isDeleted
+                              ) {
+                                return;
+                              }
+
+                              setSpSupplierId(
+                                row.supplierId,
+                              );
+                              setSpSourceType("invoice");
+                              setSpInvoiceId("");
+                              setSpLiabilityId("");
+                              setSpAmount("");
+                            }}
+                            title={
+                              !row.isActive
+                                ? "لا يمكن تسجيل دفعة لمورد غير نشط"
+                                : row.isDeleted
+                                  ? "لا يمكن تسجيل دفعة لمورد محذوف"
+                                  : "تسجيل دفعة للمورد"
+                            }
+                            style={{
+                              border: "none",
+                              borderRadius: 7,
+                              padding: "6px 10px",
+                              background:
+                                !row.isActive ||
+                                row.isDeleted
+                                  ? "rgba(255,255,255,.05)"
+                                  : "rgba(233,30,99,.15)",
+                              color:
+                                !row.isActive ||
+                                row.isDeleted
+                                  ? "#76636b"
+                                  : "#ff8fbd",
+                              cursor:
+                                !row.isActive ||
+                                row.isDeleted
+                                  ? "not-allowed"
+                                  : "pointer",
+                            }}
+                          >
+                            سداد
+                          </button>
+
+                          <button
+                            onClick={() =>
+                              setStatementSupplierId(row.supplierId)
+                            }
+                            style={{
+                              border: "none",
+                              borderRadius: 7,
+                              padding: "6px 10px",
+                              background: "rgba(255,255,255,.07)",
+                              color: "#d7aabd",
+                              cursor: "pointer",
+                            }}
+                          >
+                            كشف حساب
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div style={CARD}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: 12,
+                flexWrap: "wrap",
+                marginBottom: 16,
+              }}
+            >
+              <div>
+                <h2
+                  style={{
+                    margin: 0,
+                    fontSize: 16,
+                    color: "#fff4f8",
+                    fontWeight: 900,
+                  }}
+                >
+                  كشف حساب المورد
+                </h2>
+
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: "#d7aabd",
+                    marginTop: 4,
+                  }}
+                >
+                  رصيد افتتاحي، استحقاقات، دفعات، ورصيد ختامي.
+                </div>
+              </div>
+
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button
+                  disabled={supplierStatementLoading || Boolean(supplierStatementError) || !statementData.supplier}
+                  onClick={() => {
+                    if (!statementData.supplier) return;
+
+                    printSupplierStatement({
+                      supplierName: statementData.supplier.name,
+                      supplierCode: statementData.supplier.code ?? null,
+                      from: statementFrom || null,
+                      to: statementTo || null,
+                      openingBalance: statementData.openingBalance,
+                      debitTotal: statementData.debitTotal,
+                      creditTotal: statementData.creditTotal,
+                      closingBalance: statementData.closingBalance,
+                      entries: statementData.entries,
+                    });
+                  }}
+                  style={{
+                    border: "none",
+                    borderRadius: 8,
+                    padding: "8px 13px",
+                    background: "#e91e63",
+                    color: "#fff",
+                    cursor: statementData.supplier
+                      ? "pointer"
+                      : "not-allowed",
+                    opacity: statementData.supplier ? 1 : 0.5,
+                    fontWeight: 800,
+                  }}
+                >
+                  كشف حساب PDF
+                </button>
+
+                <button
+                  disabled={supplierStatementLoading || Boolean(supplierStatementError) || !statementData.supplier}
+                  onClick={exportSupplierStatementCsv}
+                  style={{
+                    border: "1px solid rgba(255,255,255,.14)",
+                    borderRadius: 8,
+                    padding: "8px 13px",
+                    background: "rgba(255,255,255,.06)",
+                    color: "#fff4f8",
+                    cursor: statementData.supplier
+                      ? "pointer"
+                      : "not-allowed",
+                    opacity: statementData.supplier ? 1 : 0.5,
+                    fontWeight: 700,
+                  }}
+                >
+                  تصدير CSV
+                </button>
+              </div>
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(3,minmax(0,1fr))",
+                gap: 10,
+                marginBottom: 14,
+              }}
+            >
+              <select
+                value={statementSupplierId}
+                onChange={(e) =>
+                  setStatementSupplierId(
+                    e.target.value,
+                  )
+                }
+                style={INPUT}
+              >
+                <option value="">اختر المورد</option>
+
+                {statementSuppliers.map(
+                  (supplier) => (
+                    <option
+                      key={supplier.supplierId}
+                      value={supplier.supplierId}
+                    >
+                      {supplier.supplierName}
+                      {supplier.supplierCode
+                        ? ` (#${supplier.supplierCode})`
+                        : ""}
+                      {!supplier.isActive
+                        ? " — غير نشط"
+                        : ""}
+                      {supplier.isDeleted
+                        ? " — محذوف"
+                        : ""}
+                    </option>
+                  ),
+                )}
+              </select>
+
+              <input
+                type="date"
+                value={statementFrom}
+                onChange={(e) => setStatementFrom(e.target.value)}
+                style={{ ...INPUT, direction: "ltr" }}
+                aria-label="من تاريخ"
+              />
+
+              <input
+                type="date"
+                value={statementTo}
+                onChange={(e) => setStatementTo(e.target.value)}
+                style={{ ...INPUT, direction: "ltr" }}
+                aria-label="إلى تاريخ"
+              />
+            </div>
+
+            {supplierStatementLoading && (
+              <div style={{ marginBottom: 12, color: "#d7aabd", fontSize: 12 }}>
+                {"\u062c\u0627\u0631\u064d \u062a\u062d\u0645\u064a\u0644 \u0643\u0634\u0641 \u062d\u0633\u0627\u0628 \u0627\u0644\u0645\u0648\u0631\u062f..."}
+              </div>
+            )}
+
+            {supplierStatementError && (
+              <div style={{ marginBottom: 12, color: "#ff9ebf", fontSize: 12 }}>
+                {supplierStatementError}
+              </div>
+            )}
+            {statementData.supplier && (
+              <>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(4,minmax(0,1fr))",
+                    gap: 10,
+                    marginBottom: 14,
+                  }}
+                >
+                  {[
+                    ["الرصيد الافتتاحي", statementData.openingBalance],
+                    ["إجمالي الاستحقاقات", statementData.debitTotal],
+                    ["إجمالي السداد / العكس", statementData.creditTotal],
+                    ["الرصيد الختامي", statementData.closingBalance],
+                  ].map(([label, value]) => (
+                    <div
+                      key={String(label)}
+                      style={{
+                        padding: 12,
+                        borderRadius: 10,
+                        background: "rgba(0,0,0,.18)",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 10,
+                          color: "#d7aabd",
+                          marginBottom: 4,
+                        }}
+                      >
+                        {label}
+                      </div>
+                      <div
+                        style={{
+                          color: "#fff4f8",
+                          fontWeight: 900,
+                          fontSize: 15,
+                        }}
+                      >
+                        {Number(value).toLocaleString("ar-EG")} ج.م
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div style={{ overflowX: "auto" }}>
+                  <table
+                    style={{
+                      width: "100%",
+                      borderCollapse: "collapse",
+                      fontSize: 11,
+                    }}
+                  >
+                    <thead>
+                      <tr style={{ color: "#d7aabd" }}>
+                        <th style={{ padding: 7, textAlign: "right" }}>
+                          التاريخ
+                        </th>
+                        <th style={{ padding: 7, textAlign: "right" }}>
+                          الحركة
+                        </th>
+                        <th style={{ padding: 7, textAlign: "right" }}>
+                          المرجع
+                        </th>
+                        <th style={{ padding: 7, textAlign: "right" }}>
+                          مدين
+                        </th>
+                        <th style={{ padding: 7, textAlign: "right" }}>
+                          دائن
+                        </th>
+                        <th style={{ padding: 7, textAlign: "right" }}>
+                          الرصيد
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {statementData.entries.length === 0 ? (
+                        <tr>
+                          <td
+                            colSpan={6}
+                            style={{
+                              padding: 18,
+                              textAlign: "center",
+                              color: "#d7aabd",
+                            }}
+                          >
+                            لا توجد حركات في الفترة المختارة.
+                          </td>
+                        </tr>
+                      ) : (
+                        statementData.entries.map((entry, index) => (
+                          <tr
+                            key={`${entry.date}-${entry.reference}-${index}`}
+                            style={{
+                              borderTop:
+                                "1px solid rgba(255,255,255,.06)",
+                            }}
+                          >
+                            <td style={{ padding: 7 }}>
+                              {entry.dateKey}
+                            </td>
+                            <td style={{ padding: 7 }}>
+                              {entry.type}
+                            </td>
+                            <td style={{ padding: 7 }}>
+                              {entry.reference}
+                            </td>
+                            <td style={{ padding: 7 }}>
+                              {entry.debit
+                                ? entry.debit.toLocaleString("ar-EG")
+                                : "—"}
+                            </td>
+                            <td style={{ padding: 7 }}>
+                              {entry.credit
+                                ? entry.credit.toLocaleString("ar-EG")
+                                : "—"}
+                            </td>
+                            <td
+                              style={{
+                                padding: 7,
+                                fontWeight: 800,
+                                color: "#ffd166",
+                              }}
+                            >
+                              {entry.balance.toLocaleString("ar-EG")}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+          </div>
+
+          <div style={CARD}>
             <h2
               style={{
                 fontSize: 16,
@@ -3688,6 +4755,7 @@ export default function Inventory({
                   onChange={(e) => {
                     setSpSupplierId(e.target.value);
                     setSpInvoiceId("");
+                    setSpLiabilityId("");
                     setSpAmount("");
                   }}
                   style={INPUT}
@@ -3715,38 +4783,132 @@ export default function Inventory({
                     marginBottom: 4,
                   }}
                 >
-                  الفاتورة *
+                  نوع المستحق *
                 </label>
 
                 <select
-                  value={spInvoiceId}
+                  value={spSourceType}
                   onChange={(e) => {
-                    const id = e.target.value;
-                    setSpInvoiceId(id);
+                    const next = e.target.value as
+                      | "invoice"
+                      | "consignment";
 
-                    const invoice = purchaseInvoices.find(
-                      (item) => item.id === id,
-                    );
-
-                    setSpAmount(
-                      invoice ? String(invoice.outstandingAmount) : "",
-                    );
+                    setSpSourceType(next);
+                    setSpInvoiceId("");
+                    setSpLiabilityId("");
+                    setSpAmount("");
                   }}
                   style={INPUT}
                   disabled={!spSupplierId || spSaving}
                 >
-                  <option value="">
-                    {spSupplierId ? "اختر الفاتورة" : "اختر المورد أولًا"}
-                  </option>
-
-                  {eligibleSupplierPaymentInvoices.map((invoice) => (
-                    <option key={invoice.id} value={invoice.id}>
-                      {invoice.invoiceNumber ?? `#${invoice.id.slice(-8)}`} —
-                      متبقي {invoice.outstandingAmount.toLocaleString("ar-EG")}{" "}
-                      ج.م
-                    </option>
-                  ))}
+                  <option value="invoice">فاتورة مشتريات</option>
+                  <option value="consignment">مبيعات أمانات</option>
                 </select>
+              </div>
+
+              <div>
+                <label
+                  style={{
+                    display: "block",
+                    fontSize: 11,
+                    color: "#d7aabd",
+                    marginBottom: 4,
+                  }}
+                >
+                  {spSourceType === "invoice"
+                    ? "الفاتورة *"
+                    : "استحقاق الأمانات *"}
+                </label>
+
+                {spSourceType === "invoice" ? (
+                  <select
+                    value={spInvoiceId}
+                    onChange={(e) => {
+                      const id = e.target.value;
+                      setSpInvoiceId(id);
+
+                      const invoice = supplierPaymentInvoices.find(
+                        (item) => item.id === id,
+                      );
+
+                      setSpAmount(
+                        invoice
+                          ? String(invoice.outstandingAmount)
+                          : "",
+                      );
+                    }}
+                    style={INPUT}
+                    disabled={!spSupplierId || spSaving || supplierPayablesLoading}
+                  >
+                    <option value="">
+                      {supplierPayablesError
+                        ? "تعذر تحميل الفواتير"
+                        : supplierPayablesLoading
+                          ? "جارٍ تحميل الفواتير..."
+                          : spSupplierId
+                            ? "اختر الفاتورة"
+                            : "اختر المورد أولًا"}
+                    </option>
+
+                    {eligibleSupplierPaymentInvoices.map((invoice) => (
+                      <option key={invoice.id} value={invoice.id}>
+                        {invoice.invoiceNumber ??
+                          `#${invoice.id.slice(-8)}`}{" "}
+                        — متبقي{" "}
+                        {invoice.outstandingAmount.toLocaleString(
+                          "ar-EG",
+                        )}{" "}
+                        ج.م
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <select
+                    value={spLiabilityId}
+                    onChange={(e) => {
+                      const id = e.target.value;
+                      setSpLiabilityId(id);
+
+                      const liability =
+                        supplierPaymentLiabilities.find(
+                          (item) => item.id === id,
+                        );
+
+                      setSpAmount(
+                        liability
+                          ? String(liability.outstandingAmount)
+                          : "",
+                      );
+                    }}
+                    style={INPUT}
+                    disabled={!spSupplierId || spSaving || supplierPayablesLoading}
+                  >
+                    <option value="">
+                      {supplierPayablesError
+                        ? "تعذر تحميل الاستحقاقات"
+                        : supplierPayablesLoading
+                          ? "جارٍ تحميل الاستحقاقات..."
+                          : spSupplierId
+                            ? "اختر الاستحقاق"
+                            : "اختر المورد أولًا"}
+                    </option>
+
+                    {eligibleSupplierPaymentLiabilities.map(
+                      (liability) => (
+                        <option
+                          key={liability.id}
+                          value={liability.id}
+                        >
+                          طلب #{liability.orderId.slice(-8)} — متبقي{" "}
+                          {liability.outstandingAmount.toLocaleString(
+                            "ar-EG",
+                          )}{" "}
+                          ج.م
+                        </option>
+                      ),
+                    )}
+                  </select>
+                )}
               </div>
 
               <div>
@@ -3765,17 +4927,19 @@ export default function Inventory({
                   type="number"
                   min={0.01}
                   step="0.01"
-                  max={selectedSupplierPaymentInvoice?.outstandingAmount}
+                  max={selectedSupplierPayableOutstanding || undefined}
                   value={spAmount}
                   onChange={(e) => setSpAmount(e.target.value)}
                   style={{
                     ...INPUT,
                     direction: "ltr",
                   }}
-                  disabled={!selectedSupplierPaymentInvoice || spSaving}
+                  disabled={
+                    selectedSupplierPayableOutstanding <= 0 || spSaving
+                  }
                 />
 
-                {selectedSupplierPaymentInvoice && (
+                {selectedSupplierPayableOutstanding > 0 && (
                   <div
                     style={{
                       fontSize: 10,
@@ -3784,7 +4948,7 @@ export default function Inventory({
                     }}
                   >
                     الحد الأقصى:{" "}
-                    {selectedSupplierPaymentInvoice.outstandingAmount.toLocaleString(
+                    {selectedSupplierPayableOutstanding.toLocaleString(
                       "ar-EG",
                     )}{" "}
                     ج.م
@@ -3890,7 +5054,8 @@ export default function Inventory({
               </div>
             </div>
 
-            {selectedSupplierPaymentInvoice && (
+            {(selectedSupplierPaymentInvoice ||
+              selectedSupplierPaymentLiability) && (
               <div
                 style={{
                   marginTop: 14,
@@ -3901,25 +5066,60 @@ export default function Inventory({
                   color: "#d7aabd",
                 }}
               >
-                إجمالي الفاتورة:{" "}
-                <b style={{ color: "#fff4f8" }}>
-                  {selectedSupplierPaymentInvoice.totalAmount.toLocaleString(
-                    "ar-EG",
-                  )}{" "}
-                  ج.م
-                </b>
-                {" • "}
-                مدفوع:{" "}
-                <b style={{ color: "#4ade80" }}>
-                  {selectedSupplierPaymentInvoice.paidAmount.toLocaleString(
-                    "ar-EG",
-                  )}{" "}
-                  ج.م
-                </b>
+                {spSourceType === "invoice" &&
+                  selectedSupplierPaymentInvoice && (
+                    <>
+                      إجمالي الفاتورة:{" "}
+                      <b style={{ color: "#fff4f8" }}>
+                        {selectedSupplierPaymentInvoice.totalAmount.toLocaleString(
+                          "ar-EG",
+                        )}{" "}
+                        ج.م
+                      </b>
+                      {" • "}
+                      مدفوع:{" "}
+                      <b style={{ color: "#4ade80" }}>
+                        {selectedSupplierPaymentInvoice.paidAmount.toLocaleString(
+                          "ar-EG",
+                        )}{" "}
+                        ج.م
+                      </b>
+                    </>
+                  )}
+
+                {spSourceType === "consignment" &&
+                  selectedSupplierPaymentLiability && (
+                    <>
+                      الطلب:{" "}
+                      <b style={{ color: "#fff4f8" }}>
+                        #
+                        {selectedSupplierPaymentLiability.orderId.slice(
+                          -8,
+                        )}
+                      </b>
+                      {" • "}
+                      أصل المستحق:{" "}
+                      <b style={{ color: "#fff4f8" }}>
+                        {selectedSupplierPaymentLiability.grossAmount.toLocaleString(
+                          "ar-EG",
+                        )}{" "}
+                        ج.م
+                      </b>
+                      {" • "}
+                      مدفوع:{" "}
+                      <b style={{ color: "#4ade80" }}>
+                        {selectedSupplierPaymentLiability.paidAmount.toLocaleString(
+                          "ar-EG",
+                        )}{" "}
+                        ج.م
+                      </b>
+                    </>
+                  )}
+
                 {" • "}
                 متبقي:{" "}
                 <b style={{ color: "#f87171" }}>
-                  {selectedSupplierPaymentInvoice.outstandingAmount.toLocaleString(
+                  {selectedSupplierPayableOutstanding.toLocaleString(
                     "ar-EG",
                   )}{" "}
                   ج.م
@@ -3935,7 +5135,11 @@ export default function Inventory({
                 marginTop: 16,
               }}
             >
-              {(spSupplierId || spInvoiceId || spAmount || spPaymentDate) && (
+              {(spSupplierId ||
+                spInvoiceId ||
+                spLiabilityId ||
+                spAmount ||
+                spPaymentDate) && (
                 <button
                   onClick={clearSupplierPaymentForm}
                   disabled={spSaving}
@@ -3957,7 +5161,9 @@ export default function Inventory({
                 disabled={
                   spSaving ||
                   !spSupplierId ||
-                  !spInvoiceId ||
+                  (spSourceType === "invoice"
+                    ? !spInvoiceId
+                    : !spLiabilityId) ||
                   !spPaymentDate ||
                   !(Number(spAmount) > 0)
                 }
@@ -3972,7 +5178,9 @@ export default function Inventory({
                   opacity:
                     spSaving ||
                     !spSupplierId ||
-                    !spInvoiceId ||
+                    (spSourceType === "invoice"
+                      ? !spInvoiceId
+                      : !spLiabilityId) ||
                     !spPaymentDate ||
                     !(Number(spAmount) > 0)
                       ? 0.5

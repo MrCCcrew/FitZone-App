@@ -44,6 +44,8 @@ export async function GET(req: Request) {
 
   const supplierId = searchParams.get("supplierId")?.trim() || null;
   const status = searchParams.get("status")?.trim() || null;
+  const outstandingOnly =
+    searchParams.get("outstandingOnly") === "1";
 
   const invoices = await db.purchaseInvoice.findMany({
     where: {
@@ -74,7 +76,7 @@ export async function GET(req: Request) {
       },
     },
     orderBy: [{ invoiceDate: "desc" }, { createdAt: "desc" }],
-    take: 200,
+    take: supplierId && outstandingOnly ? undefined : 200,
   });
 
   const rows = invoices.map((invoice) => {
@@ -145,7 +147,17 @@ export async function GET(req: Request) {
     };
   });
 
-  return NextResponse.json({ invoices: rows });
+  const responseRows = outstandingOnly
+    ? rows.filter(
+        (row) =>
+          row.documentStatus === "posted" &&
+          row.outstandingAmount > 0,
+      )
+    : rows;
+
+  return NextResponse.json({
+    invoices: responseRows,
+  });
 }
 
 export async function POST(req: Request) {
