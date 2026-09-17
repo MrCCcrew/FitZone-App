@@ -86,6 +86,12 @@ describe("confirmOrderInventoryAllocationSale", () => {
         create: vi.fn().mockResolvedValue({ id: "movement-cons" }),
       },
 
+      consignmentSupplierLiability: {
+        create: vi.fn().mockResolvedValue({
+          id: "liability-1",
+        }),
+      },
+
       orderItem: {
         update: vi.fn().mockResolvedValue({}),
       },
@@ -124,6 +130,24 @@ describe("confirmOrderInventoryAllocationSale", () => {
         quantityChange: -2,
         quantityBefore: 10,
         quantityAfter: 8,
+      }),
+    });
+
+    expect(
+      tx.consignmentSupplierLiability.create
+    ).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        supplierId: "supplier-1",
+        orderId: "order-1",
+        orderItemId: "item-1",
+        orderInventoryAllocationId: "cons-a",
+        quantity: 2,
+        unitCost: 20,
+        grossAmount: 40,
+        paidAmount: 0,
+        reversedAmount: 0,
+        status: "open",
+        source: "sale",
       }),
     });
 

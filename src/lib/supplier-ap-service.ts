@@ -99,6 +99,25 @@ async function lockSupplierPayment(tx: TransactionClient, paymentId: string) {
   );
 }
 
+async function lockConsignmentLiabilities(
+  tx: TransactionClient,
+  liabilityIds: string[],
+) {
+  const ids = [...new Set(liabilityIds)].sort();
+
+  if (!ids.length) return;
+
+  await tx.$queryRaw(
+    Prisma.sql`
+      SELECT id
+      FROM ConsignmentSupplierLiability
+      WHERE id IN (${Prisma.join(ids)})
+      ORDER BY id
+      FOR UPDATE
+    `,
+  );
+}
+
 async function lockPurchaseInvoices(
   tx: TransactionClient,
   invoiceIds: string[],
@@ -736,8 +755,12 @@ export async function createSupplierPaymentDraft(input: {
   referenceNumber?: string | null;
   notes?: string | null;
   createdByUserId?: string | null;
-  allocations: Array<{
+  allocations?: Array<{
     purchaseInvoiceId: string;
+    amount: number;
+  }>;
+  consignmentAllocations?: Array<{
+    liabilityId: string;
     amount: number;
   }>;
 }) {
@@ -747,29 +770,81 @@ export async function createSupplierPaymentDraft(input: {
     throw new Error("Supplier payment method is required");
   }
 
-  if (!input.allocations.length) {
+  const invoiceInput = input.allocations ?? [];
+  const consignmentInput =
+    input.consignmentAllocations ?? [];
+
+  if (
+    invoiceInput.length === 0 &&
+    consignmentInput.length === 0
+  ) {
     throw new Error(
       "Supplier payment requires allocations until supplier advances are implemented",
     );
   }
 
-  const seen = new Set<string>();
+  const seenInvoices = new Set<string>();
 
-  const allocations = input.allocations.map((allocation) => {
-    if (seen.has(allocation.purchaseInvoiceId)) {
-      throw new Error("Duplicate invoice allocation in supplier payment");
-    }
+  const allocations = invoiceInput.map(
+    (allocation) => {
+      if (
+        seenInvoices.has(
+          allocation.purchaseInvoiceId,
+        )
+      ) {
+        throw new Error(
+          "Duplicate invoice allocation in supplier payment",
+        );
+      }
 
-    seen.add(allocation.purchaseInvoiceId);
+      seenInvoices.add(
+        allocation.purchaseInvoiceId,
+      );
 
-    return {
-      purchaseInvoiceId: allocation.purchaseInvoiceId,
-      amount: requirePositiveMoney(allocation.amount, "allocation amount"),
-    };
-  });
+      return {
+        purchaseInvoiceId:
+          allocation.purchaseInvoiceId,
+        amount: requirePositiveMoney(
+          allocation.amount,
+          "allocation amount",
+        ),
+      };
+    },
+  );
 
-  const allocatedMinor = allocations.reduce(
-    (sum, allocation) => sum + toMinor(allocation.amount),
+  const seenLiabilities = new Set<string>();
+
+  const consignmentAllocations =
+    consignmentInput.map((allocation) => {
+      if (
+        seenLiabilities.has(
+          allocation.liabilityId,
+        )
+      ) {
+        throw new Error(
+          "Duplicate consignment liability allocation in supplier payment",
+        );
+      }
+
+      seenLiabilities.add(
+        allocation.liabilityId,
+      );
+
+      return {
+        liabilityId: allocation.liabilityId,
+        amount: requirePositiveMoney(
+          allocation.amount,
+          "consignment allocation amount",
+        ),
+      };
+    });
+
+  const allocatedMinor = [
+    ...allocations,
+    ...consignmentAllocations,
+  ].reduce(
+    (sum, allocation) =>
+      sum + toMinor(allocation.amount),
     0,
   );
 
@@ -827,6 +902,98 @@ export async function createSupplierPaymentDraft(input: {
       }
     }
 
+    await lockConsignmentLiabilities(
+      tx,
+      consignmentAllocations.map(
+        (allocation) => allocation.liabilityId,
+      ),
+    );
+
+    const liabilities =
+      await tx.consignmentSupplierLiability.findMany({
+        where: {
+          id: {
+            in: consignmentAllocations.map(
+              (allocation) =>
+                allocation.liabilityId,
+            ),
+          },
+        },
+        select: {
+          id: true,
+          supplierId: true,
+          grossAmount: true,
+          paidAmount: true,
+          reversedAmount: true,
+          status: true,
+        },
+      });
+
+    if (
+      liabilities.length !==
+      consignmentAllocations.length
+    ) {
+      throw new Error(
+        "One or more consignment liabilities do not exist",
+      );
+    }
+
+    const liabilityMap = new Map(
+      liabilities.map((liability) => [
+        liability.id,
+        liability,
+      ]),
+    );
+
+    for (
+      const allocation of consignmentAllocations
+    ) {
+      const liability =
+        liabilityMap.get(
+          allocation.liabilityId,
+        );
+
+      if (!liability) {
+        throw new Error(
+          "Consignment liability not found",
+        );
+      }
+
+      if (
+        liability.supplierId !== supplier.id
+      ) {
+        throw new Error(
+          "Cross-supplier payment allocation is not allowed",
+        );
+      }
+
+      const outstandingMinor =
+        toMinor(
+          Number(liability.grossAmount),
+        ) -
+        toMinor(
+          Number(liability.paidAmount),
+        ) -
+        toMinor(
+          Number(liability.reversedAmount),
+        );
+
+      if (outstandingMinor <= 0) {
+        throw new Error(
+          "Consignment liability has no outstanding balance",
+        );
+      }
+
+      if (
+        toMinor(allocation.amount) >
+        outstandingMinor
+      ) {
+        throw new Error(
+          "Allocation exceeds consignment liability outstanding balance",
+        );
+      }
+    }
+
     return tx.supplierPayment.create({
       data: {
         supplierId: supplier.id,
@@ -840,12 +1007,31 @@ export async function createSupplierPaymentDraft(input: {
 
         allocations: {
           create: allocations.map((allocation) => ({
-            purchaseInvoiceId: allocation.purchaseInvoiceId,
-            amount: new Prisma.Decimal(allocation.amount),
+            purchaseInvoiceId:
+              allocation.purchaseInvoiceId,
+            amount: new Prisma.Decimal(
+              allocation.amount,
+            ),
           })),
         },
+
+        consignmentAllocations: {
+          create: consignmentAllocations.map(
+            (allocation) => ({
+              liabilityId:
+                allocation.liabilityId,
+              amount: new Prisma.Decimal(
+                allocation.amount,
+              ),
+            }),
+          ),
+        },
       },
-      include: { allocations: true },
+
+      include: {
+        allocations: true,
+        consignmentAllocations: true,
+      },
     });
   });
 }
@@ -860,7 +1046,10 @@ export async function postSupplierPayment(
 
       const payment = await tx.supplierPayment.findUnique({
         where: { id: paymentId },
-        include: { allocations: true },
+        include: {
+          allocations: true,
+          consignmentAllocations: true,
+        },
       });
 
       if (!payment) {
@@ -883,7 +1072,10 @@ export async function postSupplierPayment(
         throw new Error("Supplier payment amount must be greater than zero");
       }
 
-      if (!payment.allocations.length) {
+      if (
+        payment.allocations.length === 0 &&
+        payment.consignmentAllocations.length === 0
+      ) {
         throw new Error(
           "Supplier payment requires allocations until supplier advances are implemented",
         );
@@ -913,8 +1105,12 @@ export async function postSupplierPayment(
         invoices.map((invoice) => [invoice.id, invoice]),
       );
 
-      const paymentAllocatedMinor = payment.allocations.reduce(
-        (sum, allocation) => sum + toMinor(Number(allocation.amount)),
+      const paymentAllocatedMinor = [
+        ...payment.allocations,
+        ...payment.consignmentAllocations,
+      ].reduce(
+        (sum, allocation) =>
+          sum + toMinor(Number(allocation.amount)),
         0,
       );
 
@@ -968,6 +1164,112 @@ export async function postSupplierPayment(
         }
       }
 
+      const liabilityIds =
+        payment.consignmentAllocations.map(
+          (allocation) => allocation.liabilityId,
+        );
+
+      await lockConsignmentLiabilities(
+        tx,
+        liabilityIds,
+      );
+
+      const liabilities =
+        await tx.consignmentSupplierLiability.findMany({
+          where: {
+            id: { in: liabilityIds },
+          },
+          select: {
+            id: true,
+            supplierId: true,
+            grossAmount: true,
+            paidAmount: true,
+            reversedAmount: true,
+            status: true,
+          },
+        });
+
+      if (
+        liabilities.length !==
+        new Set(liabilityIds).size
+      ) {
+        throw new Error(
+          "One or more allocated consignment liabilities do not exist",
+        );
+      }
+
+      const liabilityMap = new Map(
+        liabilities.map((liability) => [
+          liability.id,
+          liability,
+        ]),
+      );
+
+      for (
+        const allocation of
+        payment.consignmentAllocations
+      ) {
+        const liability =
+          liabilityMap.get(
+            allocation.liabilityId,
+          );
+
+        if (!liability) {
+          throw new Error(
+            "Allocated consignment liability not found",
+          );
+        }
+
+        if (
+          liability.supplierId !==
+          payment.supplierId
+        ) {
+          throw new Error(
+            "Cross-supplier payment allocation is not allowed",
+          );
+        }
+
+        const grossMinor =
+          toMinor(
+            Number(liability.grossAmount),
+          );
+
+        const paidMinor =
+          toMinor(
+            Number(liability.paidAmount),
+          );
+
+        const reversedMinor =
+          toMinor(
+            Number(liability.reversedAmount),
+          );
+
+        const outstandingMinor =
+          grossMinor -
+          paidMinor -
+          reversedMinor;
+
+        const allocationMinor =
+          toMinor(
+            Number(allocation.amount),
+          );
+
+        if (outstandingMinor <= 0) {
+          throw new Error(
+            "Consignment liability has no outstanding balance",
+          );
+        }
+
+        if (
+          allocationMinor >
+          outstandingMinor
+        ) {
+          throw new Error(
+            "Allocation exceeds consignment liability outstanding balance",
+          );
+        }
+      }
+
       const paymentAccount = mapSupplierPaymentAccount(payment.paymentMethod);
 
       await postJournal(
@@ -990,6 +1292,65 @@ export async function postSupplierPayment(
           },
         ],
       );
+
+      for (
+        const allocation of
+        payment.consignmentAllocations
+      ) {
+        const liability =
+          liabilityMap.get(
+            allocation.liabilityId,
+          );
+
+        if (!liability) {
+          throw new Error(
+            "Allocated consignment liability not found during settlement",
+          );
+        }
+
+        const grossMinor =
+          toMinor(
+            Number(liability.grossAmount),
+          );
+
+        const reversedMinor =
+          toMinor(
+            Number(liability.reversedAmount),
+          );
+
+        const currentPaidMinor =
+          toMinor(
+            Number(liability.paidAmount),
+          );
+
+        const allocationMinor =
+          toMinor(
+            Number(allocation.amount),
+          );
+
+        const newPaidMinor =
+          currentPaidMinor +
+          allocationMinor;
+
+        const remainingMinor =
+          grossMinor -
+          reversedMinor -
+          newPaidMinor;
+
+        await tx.consignmentSupplierLiability.update({
+          where: {
+            id: liability.id,
+          },
+          data: {
+            paidAmount:
+              fromMinor(newPaidMinor),
+            status:
+              remainingMinor <= 0
+                ? "paid"
+                : "partial",
+          },
+        });
+      }
 
       await tx.supplierPayment.update({
         where: { id: payment.id },
@@ -1017,6 +1378,9 @@ export async function cancelSupplierPayment(
 
     const payment = await tx.supplierPayment.findUnique({
       where: { id: paymentId },
+      include: {
+        consignmentAllocations: true,
+      },
     });
 
     if (!payment) {
@@ -1030,6 +1394,46 @@ export async function cancelSupplierPayment(
     if (payment.status !== "posted") {
       throw new Error("Only posted supplier payments can be cancelled");
     }
+
+    const liabilityIds =
+      payment.consignmentAllocations.map(
+        (allocation) => allocation.liabilityId,
+      );
+
+    await lockConsignmentLiabilities(
+      tx,
+      liabilityIds,
+    );
+
+    const liabilities =
+      await tx.consignmentSupplierLiability.findMany({
+        where: {
+          id: { in: liabilityIds },
+        },
+        select: {
+          id: true,
+          grossAmount: true,
+          paidAmount: true,
+          reversedAmount: true,
+          status: true,
+        },
+      });
+
+    if (
+      liabilities.length !==
+      new Set(liabilityIds).size
+    ) {
+      throw new Error(
+        "One or more allocated consignment liabilities do not exist",
+      );
+    }
+
+    const liabilityMap = new Map(
+      liabilities.map((liability) => [
+        liability.id,
+        liability,
+      ]),
+    );
 
     const journal = await tx.journal.findUnique({
       where: {
@@ -1046,6 +1450,89 @@ export async function cancelSupplierPayment(
     }
 
     await reverseJournal(tx, journal.id);
+
+    for (
+      const allocation of
+      payment.consignmentAllocations
+    ) {
+      const liability =
+        liabilityMap.get(
+          allocation.liabilityId,
+        );
+
+      if (!liability) {
+        throw new Error(
+          "Allocated consignment liability not found during payment cancellation",
+        );
+      }
+
+      const grossMinor =
+        toMinor(
+          Number(liability.grossAmount),
+        );
+
+      const currentPaidMinor =
+        toMinor(
+          Number(liability.paidAmount),
+        );
+
+      const reversedMinor =
+        toMinor(
+          Number(liability.reversedAmount),
+        );
+
+      const allocationMinor =
+        toMinor(
+          Number(allocation.amount),
+        );
+
+      const newPaidMinor =
+        currentPaidMinor -
+        allocationMinor;
+
+      if (newPaidMinor < 0) {
+        throw new Error(
+          "Consignment liability paid amount cannot become negative",
+        );
+      }
+
+      const outstandingMinor =
+        grossMinor -
+        reversedMinor -
+        newPaidMinor;
+
+      let nextStatus: string;
+
+      if (
+        reversedMinor >= grossMinor
+      ) {
+        nextStatus =
+          newPaidMinor > 0
+            ? "credit"
+            : "reversed";
+      } else if (
+        newPaidMinor <= 0
+      ) {
+        nextStatus = "open";
+      } else if (
+        outstandingMinor <= 0
+      ) {
+        nextStatus = "paid";
+      } else {
+        nextStatus = "partial";
+      }
+
+      await tx.consignmentSupplierLiability.update({
+        where: {
+          id: liability.id,
+        },
+        data: {
+          paidAmount:
+            fromMinor(newPaidMinor),
+          status: nextStatus,
+        },
+      });
+    }
 
     await tx.supplierPayment.update({
       where: { id: payment.id },

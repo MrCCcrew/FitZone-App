@@ -115,6 +115,22 @@ describe(
                 id: "cons-return",
               }),
           },
+
+          consignmentSupplierLiability: {
+            findUnique: vi.fn()
+              .mockResolvedValue({
+                id: "liability-1",
+                grossAmount: 40,
+                paidAmount: 0,
+                reversedAmount: 0,
+              }),
+
+            update: vi.fn()
+              .mockResolvedValue({
+                id: "liability-1",
+                status: "reversed",
+              }),
+          },
         };
 
         const result =
@@ -159,6 +175,34 @@ describe(
             quantityChange: 2,
             quantityBefore: 8,
             quantityAfter: 10,
+          }),
+        });
+
+        expect(
+          tx.consignmentSupplierLiability.findUnique
+        ).toHaveBeenCalledWith({
+          where: {
+            orderInventoryAllocationId:
+              "cons-a",
+          },
+          select: {
+            id: true,
+            grossAmount: true,
+            paidAmount: true,
+            reversedAmount: true,
+          },
+        });
+
+        expect(
+          tx.consignmentSupplierLiability.update
+        ).toHaveBeenCalledWith({
+          where: {
+            id: "liability-1",
+          },
+          data: expect.objectContaining({
+            reversedAmount: 40,
+            status: "reversed",
+            reversedAt: expect.any(Date),
           }),
         });
 
