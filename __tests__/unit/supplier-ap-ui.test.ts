@@ -156,4 +156,10 @@ describe("Supplier AP admin UI contract", () => {
     expect(inventorySource).toContain("new AbortController()");
   });
 
+  it("resets balance-table settlement to invoice source", () => {
+    expect(inventorySource).toMatch(
+      /setSpSupplierId\(\s*row\.supplierId,\s*\);\s*setSpSourceType\("invoice"\);/,
+    );
+  });
+
 });

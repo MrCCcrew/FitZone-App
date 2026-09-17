@@ -4353,6 +4353,7 @@ export default function Inventory({
                               setSpSupplierId(
                                 row.supplierId,
                               );
+                              setSpSourceType("invoice");
                               setSpInvoiceId("");
                               setSpLiabilityId("");
                               setSpAmount("");

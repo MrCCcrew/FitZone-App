@@ -405,4 +405,46 @@ describe("supplier reports runtime", () => {
       mocks.supplierFindUnique,
     ).not.toHaveBeenCalled();
   });
+  it("keeps a date-only supplier payment on the same Cairo calendar day", async () => {
+    mocks.supplierFindUnique.mockResolvedValue({
+      id: "s-date",
+      name: "Date Supplier",
+      code: "DATE",
+      isActive: true,
+      deletedAt: null,
+    });
+
+    mocks.supplierPaymentFindMany.mockResolvedValue([
+      {
+        id: "payment-date-only",
+        amount: 25,
+        paymentDate: new Date("2025-01-10"),
+        referenceNumber: "DATE-1",
+        status: "posted",
+        postedAt: new Date("2025-01-10T00:00:01Z"),
+        cancelledAt: null,
+      },
+    ]);
+
+    const response = await GET(
+      new Request(
+        "http://localhost/api/admin/supplier-reports" +
+          "?mode=statement" +
+          "&supplierId=s-date" +
+          "&from=2025-01-10" +
+          "&to=2025-01-10",
+      ),
+    );
+
+    expect(response.status).toBe(200);
+
+    const payload = await response.json();
+
+    expect(payload.statement.entries).toHaveLength(1);
+    expect(payload.statement.entries[0].dateKey).toBe("2025-01-10");
+    expect(payload.statement.entries[0].type).toBe("\u0633\u062f\u0627\u062f \u0645\u0648\u0631\u062f");
+    expect(payload.statement.creditTotal).toBe(25);
+    expect(payload.statement.closingBalance).toBe(-25);
+  });
+
 });
