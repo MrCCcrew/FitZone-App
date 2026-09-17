@@ -4827,7 +4827,7 @@ export default function Inventory({
                       const id = e.target.value;
                       setSpInvoiceId(id);
 
-                      const invoice = purchaseInvoices.find(
+                      const invoice = supplierPaymentInvoices.find(
                         (item) => item.id === id,
                       );
 
@@ -4870,7 +4870,7 @@ export default function Inventory({
                       setSpLiabilityId(id);
 
                       const liability =
-                        consignmentLiabilities.find(
+                        supplierPaymentLiabilities.find(
                           (item) => item.id === id,
                         );
 

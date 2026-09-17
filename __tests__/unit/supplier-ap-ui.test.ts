@@ -162,4 +162,9 @@ describe("Supplier AP admin UI contract", () => {
     );
   });
 
+  it("uses complete supplier-specific payable arrays when selecting a target", () => {
+    expect(inventorySource).toContain("const invoice = supplierPaymentInvoices.find(");
+    expect(inventorySource).toContain("supplierPaymentLiabilities.find(");
+  });
+
 });
