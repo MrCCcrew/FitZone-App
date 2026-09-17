@@ -48,8 +48,11 @@ describe("Supplier AP admin UI contract", () => {
   });
 
   it("has a client-side overpayment guard in addition to the server-side guard", () => {
+    expect(inventorySource).toContain(
+      "selectedSupplierPayableOutstanding",
+    );
     expect(inventorySource).toMatch(
-      /amount > selectedSupplierPaymentInvoice\.outstandingAmount/,
+      /amount > selectedSupplierPayableOutstanding/,
     );
     expect(inventorySource).toContain("المبلغ أكبر من الرصيد المتبقي");
   });
@@ -59,6 +62,21 @@ describe("Supplier AP admin UI contract", () => {
     expect(inventorySource).toContain('action: "cancel"');
     expect(inventorySource).toContain("ترحيل الفاتورة");
     expect(inventorySource).toContain("إلغاء الفاتورة");
+  });
+
+  it("supports consignment liabilities as supplier payment targets", () => {
+    expect(inventorySource).toContain("consignmentLiabilities");
+    expect(inventorySource).toContain("spLiabilityId");
+    expect(inventorySource).toContain("consignmentAllocations");
+    expect(inventorySource).toContain("مبيعات أمانات");
+  });
+
+  it("shows supplier balances and supplier statements with export actions", () => {
+    expect(inventorySource).toContain("أرصدة الموردين");
+    expect(inventorySource).toContain("كشف حساب المورد");
+    expect(inventorySource).toContain("printSupplierBalancesReport");
+    expect(inventorySource).toContain("printSupplierStatement");
+    expect(inventorySource).toContain("تصدير CSV");
   });
 
   it("supports supplier payment post and cancel actions", () => {

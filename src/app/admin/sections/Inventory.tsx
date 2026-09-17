@@ -2,6 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Product } from "../types";
+import {
+  printSupplierBalancesReport,
+  printSupplierStatement,
+} from "@/lib/print-pdf";
 
 type Supplier = {
   id: string;
@@ -112,7 +116,88 @@ type SupplierPaymentRow = {
   referenceNumber: string | null;
   status: string;
   notes: string | null;
+  postedAt?: string | null;
+  cancelledAt?: string | null;
 };
+
+type ConsignmentLiabilityRow = {
+  id: string;
+  supplierId: string;
+  supplier: {
+    id: string;
+    name: string;
+    code: string | null;
+  };
+  orderId: string;
+  orderItemId: string;
+  orderInventoryAllocationId: string;
+  quantity: number;
+  unitCost: number;
+  grossAmount: number;
+  paidAmount: number;
+  reversedAmount: number;
+  outstandingAmount: number;
+  status: string;
+  source: string;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+  reversedAt: string | null;
+};
+
+type SupplierStatementEntry = {
+  date: string;
+  dateKey: string;
+  type: string;
+  reference: string;
+  description: string;
+  debit: number;
+  credit: number;
+  balance: number;
+};
+
+function cairoDateKey(value: string): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Africa/Cairo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date(value));
+
+  const get = (type: string) =>
+    parts.find((part) => part.type === type)?.value ?? "";
+
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
+function downloadCsv(filename: string, rows: Array<Array<string | number>>) {
+  const escapeCell = (value: string | number) => {
+    const text = String(value ?? "");
+    return `"${text.replace(/"/g, '""')}"`;
+  };
+
+  const csv =
+    "\uFEFF" +
+    rows
+      .map((row) => row.map(escapeCell).join(","))
+      .join("\r\n");
+
+  const blob = new Blob([csv], {
+    type: "text/csv;charset=utf-8",
+  });
+
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+
+  anchor.href = url;
+  anchor.download = filename;
+
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+
+  URL.revokeObjectURL(url);
+}
 
 type ConsignmentReceiptLotRow = {
   id: string;
@@ -245,6 +330,10 @@ export default function Inventory({
     SupplierPaymentRow[]
   >([]);
 
+  const [consignmentLiabilities, setConsignmentLiabilities] = useState<
+    ConsignmentLiabilityRow[]
+  >([]);
+
   const [consignmentReceipts, setConsignmentReceipts] = useState<
     ConsignmentReceiptRow[]
   >([]);
@@ -282,12 +371,20 @@ export default function Inventory({
   const [piSaving, setPiSaving] = useState(false);
 
   const [spSupplierId, setSpSupplierId] = useState("");
+  const [spSourceType, setSpSourceType] = useState<
+    "invoice" | "consignment"
+  >("invoice");
   const [spInvoiceId, setSpInvoiceId] = useState("");
+  const [spLiabilityId, setSpLiabilityId] = useState("");
   const [spAmount, setSpAmount] = useState("");
   const [spPaymentDate, setSpPaymentDate] = useState("");
   const [spReferenceNumber, setSpReferenceNumber] = useState("");
   const [spNotes, setSpNotes] = useState("");
   const [spSaving, setSpSaving] = useState(false);
+
+  const [statementSupplierId, setStatementSupplierId] = useState("");
+  const [statementFrom, setStatementFrom] = useState("");
+  const [statementTo, setStatementTo] = useState("");
 
   const [movements, setMovements] = useState<Movement[]>([]);
   const [loading, setLoading] = useState(true);
@@ -395,6 +492,13 @@ export default function Inventory({
       const loadedSupplierPayments = Array.isArray(paymentRes?.payments)
         ? paymentRes.payments
         : [];
+
+      const loadedConsignmentLiabilities = Array.isArray(
+        paymentRes?.consignmentLiabilities,
+      )
+        ? paymentRes.consignmentLiabilities
+        : [];
+
       const loadedMovements = Array.isArray(movRes) ? movRes : [];
 
       setProducts(loadedProducts);
@@ -403,6 +507,7 @@ export default function Inventory({
       setConsignmentReceipts(loadedConsignmentReceipts);
       setPurchaseInvoices(loadedPurchaseInvoices);
       setSupplierPayments(loadedSupplierPayments);
+      setConsignmentLiabilities(loadedConsignmentLiabilities);
       setMovements(loadedMovements);
 
       return {
@@ -412,6 +517,7 @@ export default function Inventory({
         consignmentReceipts: loadedConsignmentReceipts,
         purchaseInvoices: loadedPurchaseInvoices,
         supplierPayments: loadedSupplierPayments,
+        consignmentLiabilities: loadedConsignmentLiabilities,
         movements: loadedMovements,
       };
     } catch (error) {
@@ -1031,9 +1137,322 @@ export default function Inventory({
     [purchaseInvoices, spInvoiceId],
   );
 
+  const eligibleSupplierPaymentLiabilities = useMemo(
+    () =>
+      consignmentLiabilities.filter(
+        (liability) =>
+          liability.supplierId === spSupplierId &&
+          liability.outstandingAmount > 0,
+      ),
+    [consignmentLiabilities, spSupplierId],
+  );
+
+  const selectedSupplierPaymentLiability = useMemo(
+    () =>
+      consignmentLiabilities.find(
+        (liability) => liability.id === spLiabilityId,
+      ) ?? null,
+    [consignmentLiabilities, spLiabilityId],
+  );
+
+  const selectedSupplierPayableOutstanding =
+    spSourceType === "invoice"
+      ? selectedSupplierPaymentInvoice?.outstandingAmount ?? 0
+      : selectedSupplierPaymentLiability?.outstandingAmount ?? 0;
+
+  const supplierBalances = useMemo(() => {
+    return suppliers
+      .filter((supplier) => supplier.isActive)
+      .map((supplier) => {
+        const invoiceOutstanding = purchaseInvoices
+          .filter(
+            (invoice) =>
+              invoice.supplierId === supplier.id &&
+              invoice.documentStatus === "posted",
+          )
+          .reduce(
+            (sum, invoice) =>
+              sum + Math.max(0, invoice.outstandingAmount),
+            0,
+          );
+
+        const consignmentOutstanding = consignmentLiabilities
+          .filter((liability) => liability.supplierId === supplier.id)
+          .reduce(
+            (sum, liability) => sum + liability.outstandingAmount,
+            0,
+          );
+
+        return {
+          supplierId: supplier.id,
+          supplierName: supplier.name,
+          supplierCode: supplier.code ?? null,
+          invoiceOutstanding,
+          consignmentOutstanding,
+          totalOutstanding:
+            invoiceOutstanding + consignmentOutstanding,
+        };
+      })
+      .sort((a, b) => b.totalOutstanding - a.totalOutstanding);
+  }, [suppliers, purchaseInvoices, consignmentLiabilities]);
+
+  const statementData = useMemo(() => {
+    const supplier = suppliers.find(
+      (item) => item.id === statementSupplierId,
+    );
+
+    if (!supplier) {
+      return {
+        supplier: null,
+        openingBalance: 0,
+        debitTotal: 0,
+        creditTotal: 0,
+        closingBalance: 0,
+        entries: [] as SupplierStatementEntry[],
+      };
+    }
+
+    const raw: Omit<SupplierStatementEntry, "balance">[] = [];
+
+    for (const invoice of purchaseInvoices) {
+      if (invoice.supplierId !== supplier.id) continue;
+
+      const invoiceAny = invoice as PurchaseInvoiceRow & {
+        postedAt?: string | null;
+        cancelledAt?: string | null;
+      };
+
+      if (
+        invoiceAny.postedAt &&
+        ["posted", "cancelled"].includes(invoice.documentStatus)
+      ) {
+        raw.push({
+          date: invoiceAny.postedAt,
+          dateKey: cairoDateKey(invoiceAny.postedAt),
+          type: "فاتورة مشتريات",
+          reference:
+            invoice.invoiceNumber ?? `#${invoice.id.slice(-8)}`,
+          description: "ترحيل فاتورة مورد",
+          debit: invoice.totalAmount,
+          credit: 0,
+        });
+      }
+
+      if (
+        invoice.documentStatus === "cancelled" &&
+        invoiceAny.postedAt &&
+        invoiceAny.cancelledAt
+      ) {
+        raw.push({
+          date: invoiceAny.cancelledAt,
+          dateKey: cairoDateKey(invoiceAny.cancelledAt),
+          type: "إلغاء فاتورة",
+          reference:
+            invoice.invoiceNumber ?? `#${invoice.id.slice(-8)}`,
+          description: "عكس فاتورة مورد ملغاة",
+          debit: 0,
+          credit: invoice.totalAmount,
+        });
+      }
+    }
+
+    for (const liability of consignmentLiabilities) {
+      if (liability.supplierId !== supplier.id) continue;
+
+      raw.push({
+        date: liability.createdAt,
+        dateKey: cairoDateKey(liability.createdAt),
+        type: "استحقاق أمانات",
+        reference: `#${liability.orderId.slice(-8)}`,
+        description:
+          liability.source === "historical_correction"
+            ? "تسوية تاريخية لمستحق مورد"
+            : "استحقاق ناتج عن بيع أمانات",
+        debit: liability.grossAmount,
+        credit: 0,
+      });
+
+      if (
+        liability.reversedAmount > 0 &&
+        liability.reversedAt
+      ) {
+        raw.push({
+          date: liability.reversedAt,
+          dateKey: cairoDateKey(liability.reversedAt),
+          type: "عكس استحقاق",
+          reference: `#${liability.orderId.slice(-8)}`,
+          description: "مرتجع / عكس مستحق أمانات",
+          debit: 0,
+          credit: liability.reversedAmount,
+        });
+      }
+    }
+
+    for (const payment of supplierPayments) {
+      if (payment.supplierId !== supplier.id) continue;
+
+      if (
+        payment.status === "posted" ||
+        (payment.status === "cancelled" && payment.postedAt)
+      ) {
+        raw.push({
+          date: payment.paymentDate,
+          dateKey: cairoDateKey(payment.paymentDate),
+          type: "سداد مورد",
+          reference:
+            payment.referenceNumber ?? `#${payment.id.slice(-8)}`,
+          description: "دفعة مورد مرحلة",
+          debit: 0,
+          credit: payment.amount,
+        });
+      }
+
+      if (
+        payment.status === "cancelled" &&
+        payment.postedAt &&
+        payment.cancelledAt
+      ) {
+        raw.push({
+          date: payment.cancelledAt,
+          dateKey: cairoDateKey(payment.cancelledAt),
+          type: "إلغاء سداد",
+          reference:
+            payment.referenceNumber ?? `#${payment.id.slice(-8)}`,
+          description: "عكس دفعة مورد ملغاة",
+          debit: payment.amount,
+          credit: 0,
+        });
+      }
+    }
+
+    raw.sort(
+      (a, b) =>
+        new Date(a.date).getTime() - new Date(b.date).getTime(),
+    );
+
+    const beforeFrom = (entry: (typeof raw)[number]) =>
+      Boolean(statementFrom) && entry.dateKey < statementFrom;
+
+    const inRange = (entry: (typeof raw)[number]) => {
+      if (statementFrom && entry.dateKey < statementFrom) return false;
+      if (statementTo && entry.dateKey > statementTo) return false;
+      return true;
+    };
+
+    const openingBalance = raw
+      .filter(beforeFrom)
+      .reduce(
+        (sum, entry) => sum + entry.debit - entry.credit,
+        0,
+      );
+
+    let running = openingBalance;
+
+    const entries = raw.filter(inRange).map((entry) => {
+      running += entry.debit - entry.credit;
+
+      return {
+        ...entry,
+        balance: running,
+      };
+    });
+
+    const debitTotal = entries.reduce(
+      (sum, entry) => sum + entry.debit,
+      0,
+    );
+
+    const creditTotal = entries.reduce(
+      (sum, entry) => sum + entry.credit,
+      0,
+    );
+
+    return {
+      supplier,
+      openingBalance,
+      debitTotal,
+      creditTotal,
+      closingBalance:
+        openingBalance + debitTotal - creditTotal,
+      entries,
+    };
+  }, [
+    suppliers,
+    statementSupplierId,
+    statementFrom,
+    statementTo,
+    purchaseInvoices,
+    consignmentLiabilities,
+    supplierPayments,
+  ]);
+
+  const exportSupplierBalancesCsv = () => {
+    downloadCsv(
+      "fitzone-supplier-balances.csv",
+      [
+        [
+          "المورد",
+          "الكود",
+          "فواتير مشتريات مستحقة",
+          "مبيعات أمانات مستحقة",
+          "إجمالي الرصيد",
+        ],
+        ...supplierBalances.map((row) => [
+          row.supplierName,
+          row.supplierCode ?? "",
+          row.invoiceOutstanding.toFixed(2),
+          row.consignmentOutstanding.toFixed(2),
+          row.totalOutstanding.toFixed(2),
+        ]),
+      ],
+    );
+  };
+
+  const exportSupplierStatementCsv = () => {
+    if (!statementData.supplier) {
+      alert("اختر المورد أولًا");
+      return;
+    }
+
+    downloadCsv(
+      `fitzone-supplier-statement-${statementData.supplier.name}.csv`,
+      [
+        ["المورد", statementData.supplier.name],
+        [
+          "الفترة",
+          `${statementFrom || "البداية"} إلى ${statementTo || "حتى الآن"}`,
+        ],
+        ["الرصيد الافتتاحي", statementData.openingBalance.toFixed(2)],
+        [],
+        [
+          "التاريخ",
+          "النوع",
+          "المرجع",
+          "البيان",
+          "مدين",
+          "دائن",
+          "الرصيد",
+        ],
+        ...statementData.entries.map((entry) => [
+          entry.dateKey,
+          entry.type,
+          entry.reference,
+          entry.description,
+          entry.debit.toFixed(2),
+          entry.credit.toFixed(2),
+          entry.balance.toFixed(2),
+        ]),
+        [],
+        ["الرصيد الختامي", statementData.closingBalance.toFixed(2)],
+      ],
+    );
+  };
+
   const clearSupplierPaymentForm = () => {
     setSpSupplierId("");
+    setSpSourceType("invoice");
     setSpInvoiceId("");
+    setSpLiabilityId("");
     setSpAmount("");
     setSpPaymentDate("");
     setSpReferenceNumber("");
@@ -1046,8 +1465,19 @@ export default function Inventory({
       return;
     }
 
-    if (!spInvoiceId || !selectedSupplierPaymentInvoice) {
+    if (
+      spSourceType === "invoice" &&
+      (!spInvoiceId || !selectedSupplierPaymentInvoice)
+    ) {
       alert("يجب اختيار فاتورة مورد");
+      return;
+    }
+
+    if (
+      spSourceType === "consignment" &&
+      (!spLiabilityId || !selectedSupplierPaymentLiability)
+    ) {
+      alert("يجب اختيار استحقاق أمانات");
       return;
     }
 
@@ -1063,9 +1493,9 @@ export default function Inventory({
       return;
     }
 
-    if (amount > selectedSupplierPaymentInvoice.outstandingAmount) {
+    if (amount > selectedSupplierPayableOutstanding) {
       alert(
-        `المبلغ أكبر من الرصيد المتبقي (${selectedSupplierPaymentInvoice.outstandingAmount.toLocaleString("ar-EG")} ج.م)`,
+        `المبلغ أكبر من الرصيد المتبقي (${selectedSupplierPayableOutstanding.toLocaleString("ar-EG")} ج.م)`,
       );
       return;
     }
@@ -1085,12 +1515,24 @@ export default function Inventory({
           paymentMethod: "cash",
           referenceNumber: spReferenceNumber.trim() || null,
           notes: spNotes.trim() || null,
-          allocations: [
-            {
-              purchaseInvoiceId: spInvoiceId,
-              amount,
-            },
-          ],
+          allocations:
+            spSourceType === "invoice"
+              ? [
+                  {
+                    purchaseInvoiceId: spInvoiceId,
+                    amount,
+                  },
+                ]
+              : [],
+          consignmentAllocations:
+            spSourceType === "consignment"
+              ? [
+                  {
+                    liabilityId: spLiabilityId,
+                    amount,
+                  },
+                ]
+              : [],
         }),
       });
 
@@ -3641,6 +4083,451 @@ export default function Inventory({
       {tab === "supplierPayments" && (
         <div style={{ display: "grid", gap: 20 }}>
           <div style={CARD}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: 12,
+                flexWrap: "wrap",
+                marginBottom: 16,
+              }}
+            >
+              <div>
+                <h2
+                  style={{
+                    margin: 0,
+                    fontSize: 16,
+                    color: "#fff4f8",
+                    fontWeight: 900,
+                  }}
+                >
+                  أرصدة الموردين
+                </h2>
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: "#d7aabd",
+                    marginTop: 4,
+                  }}
+                >
+                  الرصيد يشمل فواتير الشراء المرحلة ومستحقات مبيعات الأمانات.
+                </div>
+              </div>
+
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button
+                  onClick={() =>
+                    printSupplierBalancesReport({
+                      rows: supplierBalances,
+                    })
+                  }
+                  style={{
+                    border: "none",
+                    borderRadius: 8,
+                    padding: "8px 13px",
+                    background: "#e91e63",
+                    color: "#fff",
+                    cursor: "pointer",
+                    fontWeight: 800,
+                  }}
+                >
+                  تقرير PDF
+                </button>
+
+                <button
+                  onClick={exportSupplierBalancesCsv}
+                  style={{
+                    border: "1px solid rgba(255,255,255,.14)",
+                    borderRadius: 8,
+                    padding: "8px 13px",
+                    background: "rgba(255,255,255,.06)",
+                    color: "#fff4f8",
+                    cursor: "pointer",
+                    fontWeight: 700,
+                  }}
+                >
+                  تصدير CSV
+                </button>
+              </div>
+            </div>
+
+            <div style={{ overflowX: "auto" }}>
+              <table
+                style={{
+                  width: "100%",
+                  borderCollapse: "collapse",
+                  fontSize: 12,
+                }}
+              >
+                <thead>
+                  <tr style={{ color: "#d7aabd" }}>
+                    <th style={{ padding: 8, textAlign: "right" }}>المورد</th>
+                    <th style={{ padding: 8, textAlign: "right" }}>
+                      فواتير شراء
+                    </th>
+                    <th style={{ padding: 8, textAlign: "right" }}>
+                      أمانات
+                    </th>
+                    <th style={{ padding: 8, textAlign: "right" }}>
+                      الرصيد
+                    </th>
+                    <th style={{ padding: 8, textAlign: "right" }}>
+                      إجراء
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {supplierBalances.map((row) => (
+                    <tr
+                      key={row.supplierId}
+                      style={{
+                        borderTop: "1px solid rgba(255,255,255,.07)",
+                      }}
+                    >
+                      <td style={{ padding: 9, color: "#fff4f8" }}>
+                        <b>{row.supplierName}</b>
+                        {row.supplierCode
+                          ? ` • #${row.supplierCode}`
+                          : ""}
+                      </td>
+
+                      <td style={{ padding: 9 }}>
+                        {row.invoiceOutstanding.toLocaleString("ar-EG")} ج.م
+                      </td>
+
+                      <td style={{ padding: 9 }}>
+                        {row.consignmentOutstanding.toLocaleString("ar-EG")} ج.م
+                      </td>
+
+                      <td
+                        style={{
+                          padding: 9,
+                          fontWeight: 900,
+                          color:
+                            row.totalOutstanding > 0
+                              ? "#ffd166"
+                              : row.totalOutstanding < 0
+                                ? "#4ade80"
+                                : "#d7aabd",
+                        }}
+                      >
+                        {row.totalOutstanding.toLocaleString("ar-EG")} ج.م
+                      </td>
+
+                      <td style={{ padding: 9 }}>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <button
+                            onClick={() => {
+                              setSpSupplierId(row.supplierId);
+                              setSpInvoiceId("");
+                              setSpLiabilityId("");
+                              setSpAmount("");
+                            }}
+                            style={{
+                              border: "none",
+                              borderRadius: 7,
+                              padding: "6px 10px",
+                              background: "rgba(233,30,99,.15)",
+                              color: "#ff8fbd",
+                              cursor: "pointer",
+                            }}
+                          >
+                            سداد
+                          </button>
+
+                          <button
+                            onClick={() =>
+                              setStatementSupplierId(row.supplierId)
+                            }
+                            style={{
+                              border: "none",
+                              borderRadius: 7,
+                              padding: "6px 10px",
+                              background: "rgba(255,255,255,.07)",
+                              color: "#d7aabd",
+                              cursor: "pointer",
+                            }}
+                          >
+                            كشف حساب
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div style={CARD}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: 12,
+                flexWrap: "wrap",
+                marginBottom: 16,
+              }}
+            >
+              <div>
+                <h2
+                  style={{
+                    margin: 0,
+                    fontSize: 16,
+                    color: "#fff4f8",
+                    fontWeight: 900,
+                  }}
+                >
+                  كشف حساب المورد
+                </h2>
+
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: "#d7aabd",
+                    marginTop: 4,
+                  }}
+                >
+                  رصيد افتتاحي، استحقاقات، دفعات، ورصيد ختامي.
+                </div>
+              </div>
+
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button
+                  disabled={!statementData.supplier}
+                  onClick={() => {
+                    if (!statementData.supplier) return;
+
+                    printSupplierStatement({
+                      supplierName: statementData.supplier.name,
+                      supplierCode: statementData.supplier.code ?? null,
+                      from: statementFrom || null,
+                      to: statementTo || null,
+                      openingBalance: statementData.openingBalance,
+                      debitTotal: statementData.debitTotal,
+                      creditTotal: statementData.creditTotal,
+                      closingBalance: statementData.closingBalance,
+                      entries: statementData.entries,
+                    });
+                  }}
+                  style={{
+                    border: "none",
+                    borderRadius: 8,
+                    padding: "8px 13px",
+                    background: "#e91e63",
+                    color: "#fff",
+                    cursor: statementData.supplier
+                      ? "pointer"
+                      : "not-allowed",
+                    opacity: statementData.supplier ? 1 : 0.5,
+                    fontWeight: 800,
+                  }}
+                >
+                  كشف حساب PDF
+                </button>
+
+                <button
+                  disabled={!statementData.supplier}
+                  onClick={exportSupplierStatementCsv}
+                  style={{
+                    border: "1px solid rgba(255,255,255,.14)",
+                    borderRadius: 8,
+                    padding: "8px 13px",
+                    background: "rgba(255,255,255,.06)",
+                    color: "#fff4f8",
+                    cursor: statementData.supplier
+                      ? "pointer"
+                      : "not-allowed",
+                    opacity: statementData.supplier ? 1 : 0.5,
+                    fontWeight: 700,
+                  }}
+                >
+                  تصدير CSV
+                </button>
+              </div>
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(3,minmax(0,1fr))",
+                gap: 10,
+                marginBottom: 14,
+              }}
+            >
+              <select
+                value={statementSupplierId}
+                onChange={(e) => setStatementSupplierId(e.target.value)}
+                style={INPUT}
+              >
+                <option value="">اختر المورد</option>
+                {suppliers
+                  .filter((supplier) => supplier.isActive)
+                  .map((supplier) => (
+                    <option key={supplier.id} value={supplier.id}>
+                      {supplier.name}
+                      {supplier.code ? ` (#${supplier.code})` : ""}
+                    </option>
+                  ))}
+              </select>
+
+              <input
+                type="date"
+                value={statementFrom}
+                onChange={(e) => setStatementFrom(e.target.value)}
+                style={{ ...INPUT, direction: "ltr" }}
+                aria-label="من تاريخ"
+              />
+
+              <input
+                type="date"
+                value={statementTo}
+                onChange={(e) => setStatementTo(e.target.value)}
+                style={{ ...INPUT, direction: "ltr" }}
+                aria-label="إلى تاريخ"
+              />
+            </div>
+
+            {statementData.supplier && (
+              <>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(4,minmax(0,1fr))",
+                    gap: 10,
+                    marginBottom: 14,
+                  }}
+                >
+                  {[
+                    ["الرصيد الافتتاحي", statementData.openingBalance],
+                    ["إجمالي الاستحقاقات", statementData.debitTotal],
+                    ["إجمالي السداد / العكس", statementData.creditTotal],
+                    ["الرصيد الختامي", statementData.closingBalance],
+                  ].map(([label, value]) => (
+                    <div
+                      key={String(label)}
+                      style={{
+                        padding: 12,
+                        borderRadius: 10,
+                        background: "rgba(0,0,0,.18)",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 10,
+                          color: "#d7aabd",
+                          marginBottom: 4,
+                        }}
+                      >
+                        {label}
+                      </div>
+                      <div
+                        style={{
+                          color: "#fff4f8",
+                          fontWeight: 900,
+                          fontSize: 15,
+                        }}
+                      >
+                        {Number(value).toLocaleString("ar-EG")} ج.م
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div style={{ overflowX: "auto" }}>
+                  <table
+                    style={{
+                      width: "100%",
+                      borderCollapse: "collapse",
+                      fontSize: 11,
+                    }}
+                  >
+                    <thead>
+                      <tr style={{ color: "#d7aabd" }}>
+                        <th style={{ padding: 7, textAlign: "right" }}>
+                          التاريخ
+                        </th>
+                        <th style={{ padding: 7, textAlign: "right" }}>
+                          الحركة
+                        </th>
+                        <th style={{ padding: 7, textAlign: "right" }}>
+                          المرجع
+                        </th>
+                        <th style={{ padding: 7, textAlign: "right" }}>
+                          مدين
+                        </th>
+                        <th style={{ padding: 7, textAlign: "right" }}>
+                          دائن
+                        </th>
+                        <th style={{ padding: 7, textAlign: "right" }}>
+                          الرصيد
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {statementData.entries.length === 0 ? (
+                        <tr>
+                          <td
+                            colSpan={6}
+                            style={{
+                              padding: 18,
+                              textAlign: "center",
+                              color: "#d7aabd",
+                            }}
+                          >
+                            لا توجد حركات في الفترة المختارة.
+                          </td>
+                        </tr>
+                      ) : (
+                        statementData.entries.map((entry, index) => (
+                          <tr
+                            key={`${entry.date}-${entry.reference}-${index}`}
+                            style={{
+                              borderTop:
+                                "1px solid rgba(255,255,255,.06)",
+                            }}
+                          >
+                            <td style={{ padding: 7 }}>
+                              {entry.dateKey}
+                            </td>
+                            <td style={{ padding: 7 }}>
+                              {entry.type}
+                            </td>
+                            <td style={{ padding: 7 }}>
+                              {entry.reference}
+                            </td>
+                            <td style={{ padding: 7 }}>
+                              {entry.debit
+                                ? entry.debit.toLocaleString("ar-EG")
+                                : "—"}
+                            </td>
+                            <td style={{ padding: 7 }}>
+                              {entry.credit
+                                ? entry.credit.toLocaleString("ar-EG")
+                                : "—"}
+                            </td>
+                            <td
+                              style={{
+                                padding: 7,
+                                fontWeight: 800,
+                                color: "#ffd166",
+                              }}
+                            >
+                              {entry.balance.toLocaleString("ar-EG")}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+          </div>
+
+          <div style={CARD}>
             <h2
               style={{
                 fontSize: 16,
@@ -3688,6 +4575,7 @@ export default function Inventory({
                   onChange={(e) => {
                     setSpSupplierId(e.target.value);
                     setSpInvoiceId("");
+                    setSpLiabilityId("");
                     setSpAmount("");
                   }}
                   style={INPUT}
@@ -3715,38 +4603,124 @@ export default function Inventory({
                     marginBottom: 4,
                   }}
                 >
-                  الفاتورة *
+                  نوع المستحق *
                 </label>
 
                 <select
-                  value={spInvoiceId}
+                  value={spSourceType}
                   onChange={(e) => {
-                    const id = e.target.value;
-                    setSpInvoiceId(id);
+                    const next = e.target.value as
+                      | "invoice"
+                      | "consignment";
 
-                    const invoice = purchaseInvoices.find(
-                      (item) => item.id === id,
-                    );
-
-                    setSpAmount(
-                      invoice ? String(invoice.outstandingAmount) : "",
-                    );
+                    setSpSourceType(next);
+                    setSpInvoiceId("");
+                    setSpLiabilityId("");
+                    setSpAmount("");
                   }}
                   style={INPUT}
                   disabled={!spSupplierId || spSaving}
                 >
-                  <option value="">
-                    {spSupplierId ? "اختر الفاتورة" : "اختر المورد أولًا"}
-                  </option>
-
-                  {eligibleSupplierPaymentInvoices.map((invoice) => (
-                    <option key={invoice.id} value={invoice.id}>
-                      {invoice.invoiceNumber ?? `#${invoice.id.slice(-8)}`} —
-                      متبقي {invoice.outstandingAmount.toLocaleString("ar-EG")}{" "}
-                      ج.م
-                    </option>
-                  ))}
+                  <option value="invoice">فاتورة مشتريات</option>
+                  <option value="consignment">مبيعات أمانات</option>
                 </select>
+              </div>
+
+              <div>
+                <label
+                  style={{
+                    display: "block",
+                    fontSize: 11,
+                    color: "#d7aabd",
+                    marginBottom: 4,
+                  }}
+                >
+                  {spSourceType === "invoice"
+                    ? "الفاتورة *"
+                    : "استحقاق الأمانات *"}
+                </label>
+
+                {spSourceType === "invoice" ? (
+                  <select
+                    value={spInvoiceId}
+                    onChange={(e) => {
+                      const id = e.target.value;
+                      setSpInvoiceId(id);
+
+                      const invoice = purchaseInvoices.find(
+                        (item) => item.id === id,
+                      );
+
+                      setSpAmount(
+                        invoice
+                          ? String(invoice.outstandingAmount)
+                          : "",
+                      );
+                    }}
+                    style={INPUT}
+                    disabled={!spSupplierId || spSaving}
+                  >
+                    <option value="">
+                      {spSupplierId
+                        ? "اختر الفاتورة"
+                        : "اختر المورد أولًا"}
+                    </option>
+
+                    {eligibleSupplierPaymentInvoices.map((invoice) => (
+                      <option key={invoice.id} value={invoice.id}>
+                        {invoice.invoiceNumber ??
+                          `#${invoice.id.slice(-8)}`}{" "}
+                        — متبقي{" "}
+                        {invoice.outstandingAmount.toLocaleString(
+                          "ar-EG",
+                        )}{" "}
+                        ج.م
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <select
+                    value={spLiabilityId}
+                    onChange={(e) => {
+                      const id = e.target.value;
+                      setSpLiabilityId(id);
+
+                      const liability =
+                        consignmentLiabilities.find(
+                          (item) => item.id === id,
+                        );
+
+                      setSpAmount(
+                        liability
+                          ? String(liability.outstandingAmount)
+                          : "",
+                      );
+                    }}
+                    style={INPUT}
+                    disabled={!spSupplierId || spSaving}
+                  >
+                    <option value="">
+                      {spSupplierId
+                        ? "اختر الاستحقاق"
+                        : "اختر المورد أولًا"}
+                    </option>
+
+                    {eligibleSupplierPaymentLiabilities.map(
+                      (liability) => (
+                        <option
+                          key={liability.id}
+                          value={liability.id}
+                        >
+                          طلب #{liability.orderId.slice(-8)} — متبقي{" "}
+                          {liability.outstandingAmount.toLocaleString(
+                            "ar-EG",
+                          )}{" "}
+                          ج.م
+                        </option>
+                      ),
+                    )}
+                  </select>
+                )}
               </div>
 
               <div>
@@ -3765,17 +4739,19 @@ export default function Inventory({
                   type="number"
                   min={0.01}
                   step="0.01"
-                  max={selectedSupplierPaymentInvoice?.outstandingAmount}
+                  max={selectedSupplierPayableOutstanding || undefined}
                   value={spAmount}
                   onChange={(e) => setSpAmount(e.target.value)}
                   style={{
                     ...INPUT,
                     direction: "ltr",
                   }}
-                  disabled={!selectedSupplierPaymentInvoice || spSaving}
+                  disabled={
+                    selectedSupplierPayableOutstanding <= 0 || spSaving
+                  }
                 />
 
-                {selectedSupplierPaymentInvoice && (
+                {selectedSupplierPayableOutstanding > 0 && (
                   <div
                     style={{
                       fontSize: 10,
@@ -3784,7 +4760,7 @@ export default function Inventory({
                     }}
                   >
                     الحد الأقصى:{" "}
-                    {selectedSupplierPaymentInvoice.outstandingAmount.toLocaleString(
+                    {selectedSupplierPayableOutstanding.toLocaleString(
                       "ar-EG",
                     )}{" "}
                     ج.م
@@ -3890,7 +4866,8 @@ export default function Inventory({
               </div>
             </div>
 
-            {selectedSupplierPaymentInvoice && (
+            {(selectedSupplierPaymentInvoice ||
+              selectedSupplierPaymentLiability) && (
               <div
                 style={{
                   marginTop: 14,
@@ -3901,25 +4878,60 @@ export default function Inventory({
                   color: "#d7aabd",
                 }}
               >
-                إجمالي الفاتورة:{" "}
-                <b style={{ color: "#fff4f8" }}>
-                  {selectedSupplierPaymentInvoice.totalAmount.toLocaleString(
-                    "ar-EG",
-                  )}{" "}
-                  ج.م
-                </b>
-                {" • "}
-                مدفوع:{" "}
-                <b style={{ color: "#4ade80" }}>
-                  {selectedSupplierPaymentInvoice.paidAmount.toLocaleString(
-                    "ar-EG",
-                  )}{" "}
-                  ج.م
-                </b>
+                {spSourceType === "invoice" &&
+                  selectedSupplierPaymentInvoice && (
+                    <>
+                      إجمالي الفاتورة:{" "}
+                      <b style={{ color: "#fff4f8" }}>
+                        {selectedSupplierPaymentInvoice.totalAmount.toLocaleString(
+                          "ar-EG",
+                        )}{" "}
+                        ج.م
+                      </b>
+                      {" • "}
+                      مدفوع:{" "}
+                      <b style={{ color: "#4ade80" }}>
+                        {selectedSupplierPaymentInvoice.paidAmount.toLocaleString(
+                          "ar-EG",
+                        )}{" "}
+                        ج.م
+                      </b>
+                    </>
+                  )}
+
+                {spSourceType === "consignment" &&
+                  selectedSupplierPaymentLiability && (
+                    <>
+                      الطلب:{" "}
+                      <b style={{ color: "#fff4f8" }}>
+                        #
+                        {selectedSupplierPaymentLiability.orderId.slice(
+                          -8,
+                        )}
+                      </b>
+                      {" • "}
+                      أصل المستحق:{" "}
+                      <b style={{ color: "#fff4f8" }}>
+                        {selectedSupplierPaymentLiability.grossAmount.toLocaleString(
+                          "ar-EG",
+                        )}{" "}
+                        ج.م
+                      </b>
+                      {" • "}
+                      مدفوع:{" "}
+                      <b style={{ color: "#4ade80" }}>
+                        {selectedSupplierPaymentLiability.paidAmount.toLocaleString(
+                          "ar-EG",
+                        )}{" "}
+                        ج.م
+                      </b>
+                    </>
+                  )}
+
                 {" • "}
                 متبقي:{" "}
                 <b style={{ color: "#f87171" }}>
-                  {selectedSupplierPaymentInvoice.outstandingAmount.toLocaleString(
+                  {selectedSupplierPayableOutstanding.toLocaleString(
                     "ar-EG",
                   )}{" "}
                   ج.م
@@ -3935,7 +4947,11 @@ export default function Inventory({
                 marginTop: 16,
               }}
             >
-              {(spSupplierId || spInvoiceId || spAmount || spPaymentDate) && (
+              {(spSupplierId ||
+                spInvoiceId ||
+                spLiabilityId ||
+                spAmount ||
+                spPaymentDate) && (
                 <button
                   onClick={clearSupplierPaymentForm}
                   disabled={spSaving}
@@ -3957,7 +4973,9 @@ export default function Inventory({
                 disabled={
                   spSaving ||
                   !spSupplierId ||
-                  !spInvoiceId ||
+                  (spSourceType === "invoice"
+                    ? !spInvoiceId
+                    : !spLiabilityId) ||
                   !spPaymentDate ||
                   !(Number(spAmount) > 0)
                 }
@@ -3972,7 +4990,9 @@ export default function Inventory({
                   opacity:
                     spSaving ||
                     !spSupplierId ||
-                    !spInvoiceId ||
+                    (spSourceType === "invoice"
+                      ? !spInvoiceId
+                      : !spLiabilityId) ||
                     !spPaymentDate ||
                     !(Number(spAmount) > 0)
                       ? 0.5
