@@ -251,4 +251,113 @@ describe("Paid Membership Recovery Integration Tests", { timeout: 90000 }, () =>
       recoverPaidMembershipActivation("non-existent-payment-id")
     ).rejects.toThrow("Payment transaction not found");
   });
+
+  it("9. successful paid activation supersedes older active membership", async () => {
+    let oldPlanId = "";
+    let oldMembershipId = "";
+
+    try {
+      const oldPlan = await db.membership.create({
+        data: {
+          name: `Old Active Plan ${Date.now()}`,
+          nameEn: "Old Active Plan",
+          kind: "subscription",
+          duration: 30,
+          price: 250,
+          walletBonus: 0,
+          features: "[]",
+        },
+      });
+      oldPlanId = oldPlan.id;
+
+      const oldMembership = await db.userMembership.create({
+        data: {
+          userId: testUserId,
+          membershipId: oldPlanId,
+          status: "active",
+          activatedAt: new Date(),
+          startDate: new Date(),
+          endDate: new Date(Date.now() + 30 * 86400000),
+        },
+      });
+      oldMembershipId = oldMembership.id;
+
+      await recoverPaidMembershipActivation(testPaymentId);
+
+      const oldAfter = await db.userMembership.findUnique({
+        where: { id: oldMembershipId },
+      });
+      const newAfter = await db.userMembership.findUnique({
+        where: { id: testMembershipId },
+      });
+
+      expect(oldAfter?.status).toBe("expired");
+      expect(newAfter?.status).toBe("active");
+    } finally {
+      if (oldMembershipId) {
+        await db.userMembership.deleteMany({ where: { id: oldMembershipId } });
+      }
+      if (oldPlanId) {
+        await db.membership.deleteMany({ where: { id: oldPlanId } });
+      }
+    }
+  });
+
+  it("10. paid trial activation does not expire existing active membership", async () => {
+    let oldPlanId = "";
+    let oldMembershipId = "";
+
+    try {
+      await db.membership.update({
+        where: { id: testBaseMembershipId },
+        data: { kind: "trial" },
+      });
+
+      const oldPlan = await db.membership.create({
+        data: {
+          name: `Existing Subscription ${Date.now()}`,
+          nameEn: "Existing Subscription",
+          kind: "subscription",
+          duration: 30,
+          price: 250,
+          walletBonus: 0,
+          features: "[]",
+        },
+      });
+      oldPlanId = oldPlan.id;
+
+      const oldMembership = await db.userMembership.create({
+        data: {
+          userId: testUserId,
+          membershipId: oldPlanId,
+          status: "active",
+          activatedAt: new Date(),
+          startDate: new Date(),
+          endDate: new Date(Date.now() + 30 * 86400000),
+        },
+      });
+      oldMembershipId = oldMembership.id;
+
+      await recoverPaidMembershipActivation(testPaymentId);
+
+      const oldAfter = await db.userMembership.findUnique({
+        where: { id: oldMembershipId },
+      });
+      const trialAfter = await db.userMembership.findUnique({
+        where: { id: testMembershipId },
+      });
+
+      expect(oldAfter?.status).toBe("active");
+      expect(trialAfter?.status).toBe("active");
+    } finally {
+      if (oldMembershipId) {
+        await db.userMembership.deleteMany({ where: { id: oldMembershipId } });
+      }
+      if (oldPlanId) {
+        await db.membership.deleteMany({ where: { id: oldPlanId } });
+      }
+    }
+  });
+
+
 });

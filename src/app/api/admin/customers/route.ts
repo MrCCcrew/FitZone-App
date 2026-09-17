@@ -386,44 +386,62 @@ async function applyMembership(userId: string, planName?: string, status?: Custo
     return;
   }
 
-  await db.userMembership.updateMany({
-    where: { userId, status: "active" },
-    data: { status: "expired" },
-  });
+  // Never reactivate an old membership while another plan is already active.
+  // Plan changes must go through the normal subscription/payment workflow.
+  if (activeMembership) {
+    return;
+  }
 
-  const startDate = new Date();
-  const endDate = new Date(startDate);
-  endDate.setDate(endDate.getDate() + plan.duration);
-
-  const createdMembership = await db.userMembership.create({
-    data: {
+  /*
+   * Admin customer editing must never manufacture a free membership.
+   *
+   * Safe recovery is allowed only when:
+   * - the same plan already exists,
+   * - its contractual end date is still in the future,
+   * - it is currently marked expired,
+   * - and a confirmed paid transaction proves economic activation.
+   *
+   * Any genuinely new/change-of-plan membership must go through the
+   * normal subscription/payment workflow.
+   */
+  const recoverableMembership = await db.userMembership.findFirst({
+    where: {
       userId,
       membershipId: plan.id,
-      startDate,
-      endDate,
-      status: "active",
-      activatedAt: startDate,
+      status: "expired",
+      endDate: { gt: new Date() },
+    },
+    orderBy: { startDate: "desc" },
+    select: {
+      id: true,
     },
   });
 
-  void recordMembershipActivatedEvent(createdMembership.id).catch(() => null);
-
-  if (plan.walletBonus > 0) {
-    const wallet = await db.wallet.upsert({
-      where: { userId },
-      update: { balance: { increment: plan.walletBonus } },
-      create: { userId, balance: plan.walletBonus },
-    });
-
-    await db.walletTransaction.create({
-      data: {
-        walletId: wallet.id,
-        amount: plan.walletBonus,
-        type: "credit",
-        description: `مكافأة تفعيل باقة ${plan.name} من الإدارة`,
-      },
-    });
+  if (!recoverableMembership) {
+    return;
   }
+
+  const paidTransaction = await db.paymentTransaction.findFirst({
+    where: {
+      membershipId: recoverableMembership.id,
+      status: "paid",
+    },
+    select: { id: true },
+  });
+
+  if (!paidTransaction) {
+    return;
+  }
+
+  await db.userMembership.updateMany({
+    where: {
+      id: recoverableMembership.id,
+      status: "expired",
+    },
+    data: {
+      status: "active",
+    },
+  });
 }
 
 async function applyWalletAndRewards(userId: string, nextBalance?: number, nextPoints?: number) {

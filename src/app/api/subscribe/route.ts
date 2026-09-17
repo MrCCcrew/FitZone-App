@@ -801,13 +801,9 @@ export async function POST(req: Request) {
         quantity: number;
       }>(plan.productRewards ?? null);
 
-      // Trial classes run alongside existing subscriptions — never expire them.
-      if (plan.kind !== "trial") {
-        await tx.userMembership.updateMany({
-          where: { userId, status: "active" },
-          data: { status: "expired" },
-        });
-      }
+      // Starting a new checkout must never revoke an existing
+      // active entitlement. Supersession happens only after the new
+      // membership economically finalizes.
 
       // Resolve the immutable purchase terms once and use them everywhere
       // (membership dates, snapshots, booking planner and payment recovery).
@@ -1315,6 +1311,20 @@ export async function POST(req: Request) {
             : {}),
         },
       } as Parameters<typeof tx.userMembership.create>[0]);
+
+
+      // Immediate/free subscriptions finalize inside this transaction.
+      // Only after successful creation may they supersede an old membership.
+      if (!needsPaymentConfirmation && plan.kind !== "trial") {
+        await tx.userMembership.updateMany({
+          where: {
+            userId,
+            status: "active",
+            id: { not: subscription.id },
+          },
+          data: { status: "expired" },
+        });
+      }
 
       // Freeze marketing closer attribution independently from referral attribution.
       await lockMarketingConversionForCheckoutTx(asDbTransactionClient(tx), {
