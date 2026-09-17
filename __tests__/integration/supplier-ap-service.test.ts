@@ -1125,3 +1125,477 @@ describe("Supplier AP Service — concurrency protection", () => {
     expect(balance.paymentStatus).toBe("paid");
   });
 });
+
+describe("Supplier AP Service — consignment liabilities", () => {
+  async function createConsignmentLiabilityFixture(
+    supplierId: string,
+    grossAmount = 100,
+  ) {
+    const token =
+      `${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2)}`;
+
+    const user = await db.user.create({
+      data: {
+        email:
+          `cons-pay-${token}@fitzone.test`,
+      },
+    });
+
+    const order = await db.order.create({
+      data: {
+        userId: user.id,
+        total: grossAmount,
+        status: "confirmed",
+        inventoryDeducted: true,
+      },
+    });
+
+    const item = await db.orderItem.create({
+      data: {
+        orderId: order.id,
+        productId: testProductId,
+        quantity: 1,
+        price: grossAmount,
+        costPrice: grossAmount,
+      },
+    });
+
+    const allocation =
+      await db.orderInventoryAllocation.create({
+        data: {
+          orderId: order.id,
+          orderItemId: item.id,
+          source: "owned",
+          quantity: 1,
+          unitCost: grossAmount,
+          status: "sold",
+        },
+      });
+
+    const liability =
+      await db.consignmentSupplierLiability.create({
+        data: {
+          supplierId,
+          orderId: order.id,
+          orderItemId: item.id,
+          orderInventoryAllocationId:
+            allocation.id,
+          quantity: 1,
+          unitCost: grossAmount,
+          grossAmount,
+          paidAmount: 0,
+          reversedAmount: 0,
+          status: "open",
+          source: "historical_correction",
+          notes:
+            "TEST consignment supplier payment liability",
+        },
+      });
+
+    return {
+      userId: user.id,
+      orderId: order.id,
+      liabilityId: liability.id,
+    };
+  }
+
+  async function cleanupConsignmentFixture(
+    fixture: {
+      userId: string;
+      liabilityId: string;
+    },
+  ) {
+    await db.consignmentSupplierPaymentAllocation.deleteMany({
+      where: {
+        liabilityId: fixture.liabilityId,
+      },
+    });
+
+    await db.consignmentSupplierLiability.deleteMany({
+      where: {
+        id: fixture.liabilityId,
+      },
+    });
+
+    await db.user.deleteMany({
+      where: {
+        id: fixture.userId,
+      },
+    });
+  }
+
+  it(
+    "supports partial then full consignment settlement, blocks overpayment, and restores partial balance on cancellation",
+    async () => {
+      const {
+        createSupplierPaymentDraft,
+        postSupplierPayment,
+        cancelSupplierPayment,
+      } = await import(
+        "@/lib/supplier-ap-service"
+      );
+
+      const fixture =
+        await createConsignmentLiabilityFixture(
+          supplier1Id,
+          100,
+        );
+
+      try {
+        const p1 =
+          await createSupplierPaymentDraft({
+            supplierId: supplier1Id,
+            amount: 40,
+            paymentDate: new Date(),
+            paymentMethod: "cash",
+            allocations: [],
+            consignmentAllocations: [
+              {
+                liabilityId:
+                  fixture.liabilityId,
+                amount: 40,
+              },
+            ],
+          });
+
+        await postSupplierPayment(p1.id);
+
+        let liability =
+          await db.consignmentSupplierLiability
+            .findUniqueOrThrow({
+              where: {
+                id: fixture.liabilityId,
+              },
+            });
+
+        expect(
+          Number(liability.paidAmount),
+        ).toBe(40);
+
+        expect(liability.status).toBe(
+          "partial",
+        );
+
+        const p2 =
+          await createSupplierPaymentDraft({
+            supplierId: supplier1Id,
+            amount: 60,
+            paymentDate: new Date(),
+            paymentMethod: "cash",
+            allocations: [],
+            consignmentAllocations: [
+              {
+                liabilityId:
+                  fixture.liabilityId,
+                amount: 60,
+              },
+            ],
+          });
+
+        await postSupplierPayment(p2.id);
+
+        liability =
+          await db.consignmentSupplierLiability
+            .findUniqueOrThrow({
+              where: {
+                id: fixture.liabilityId,
+              },
+            });
+
+        expect(
+          Number(liability.paidAmount),
+        ).toBe(100);
+
+        expect(liability.status).toBe(
+          "paid",
+        );
+
+        await expect(
+          createSupplierPaymentDraft({
+            supplierId: supplier1Id,
+            amount: 1,
+            paymentDate: new Date(),
+            paymentMethod: "cash",
+            allocations: [],
+            consignmentAllocations: [
+              {
+                liabilityId:
+                  fixture.liabilityId,
+                amount: 1,
+              },
+            ],
+          }),
+        ).rejects.toThrow(
+          /no outstanding balance/i,
+        );
+
+        await cancelSupplierPayment(p2.id);
+
+        liability =
+          await db.consignmentSupplierLiability
+            .findUniqueOrThrow({
+              where: {
+                id: fixture.liabilityId,
+              },
+            });
+
+        expect(
+          Number(liability.paidAmount),
+        ).toBe(40);
+
+        expect(liability.status).toBe(
+          "partial",
+        );
+
+        await cancelSupplierPayment(p1.id);
+
+        liability =
+          await db.consignmentSupplierLiability
+            .findUniqueOrThrow({
+              where: {
+                id: fixture.liabilityId,
+              },
+            });
+
+        expect(
+          Number(liability.paidAmount),
+        ).toBe(0);
+
+        expect(liability.status).toBe(
+          "open",
+        );
+      } finally {
+        await cleanupConsignmentFixture(
+          fixture,
+        );
+      }
+    },
+  );
+
+  it(
+    "blocks cross-supplier consignment allocation",
+    async () => {
+      const {
+        createSupplierPaymentDraft,
+      } = await import(
+        "@/lib/supplier-ap-service"
+      );
+
+      const fixture =
+        await createConsignmentLiabilityFixture(
+          supplier1Id,
+          100,
+        );
+
+      try {
+        await expect(
+          createSupplierPaymentDraft({
+            supplierId: supplier2Id,
+            amount: 50,
+            paymentDate: new Date(),
+            paymentMethod: "cash",
+            allocations: [],
+            consignmentAllocations: [
+              {
+                liabilityId:
+                  fixture.liabilityId,
+                amount: 50,
+              },
+            ],
+          }),
+        ).rejects.toThrow(
+          /cross-supplier/i,
+        );
+      } finally {
+        await cleanupConsignmentFixture(
+          fixture,
+        );
+      }
+    },
+  );
+
+  it(
+    "supports one payment allocated across purchase invoice and consignment liability",
+    async () => {
+      const {
+        createPurchaseInvoiceDraft,
+        postPurchaseInvoice,
+        createSupplierPaymentDraft,
+        postSupplierPayment,
+        cancelSupplierPayment,
+        getPurchaseInvoiceBalance,
+      } = await import(
+        "@/lib/supplier-ap-service"
+      );
+
+      const fixture =
+        await createConsignmentLiabilityFixture(
+          supplier1Id,
+          100,
+        );
+
+      try {
+        const invoice =
+          await createPurchaseInvoiceDraft({
+            supplierId: supplier1Id,
+            invoiceNumber:
+              `TST-MIX-${Date.now()}`,
+            invoiceDate: new Date(),
+            items: [
+              {
+                description:
+                  "Mixed payment test",
+                quantity: 1,
+                unitCost: 50,
+              },
+            ],
+          });
+
+        await createLinkedReceipt(
+          invoice.id,
+        );
+
+        await postPurchaseInvoice(
+          invoice.id,
+        );
+
+        const payment =
+          await createSupplierPaymentDraft({
+            supplierId: supplier1Id,
+            amount: 75,
+            paymentDate: new Date(),
+            paymentMethod: "cash",
+
+            allocations: [
+              {
+                purchaseInvoiceId:
+                  invoice.id,
+                amount: 25,
+              },
+            ],
+
+            consignmentAllocations: [
+              {
+                liabilityId:
+                  fixture.liabilityId,
+                amount: 50,
+              },
+            ],
+          });
+
+        await postSupplierPayment(
+          payment.id,
+        );
+
+        let liability =
+          await db.consignmentSupplierLiability
+            .findUniqueOrThrow({
+              where: {
+                id: fixture.liabilityId,
+              },
+            });
+
+        expect(
+          Number(liability.paidAmount),
+        ).toBe(50);
+
+        expect(liability.status).toBe(
+          "partial",
+        );
+
+        let invoiceBalance =
+          await getPurchaseInvoiceBalance(
+            invoice.id,
+          );
+
+        expect(
+          invoiceBalance.paidAmount,
+        ).toBe(25);
+
+        expect(
+          invoiceBalance.outstandingAmount,
+        ).toBe(25);
+
+        const journal =
+          await db.journal.findUniqueOrThrow({
+            where: {
+              referenceType_referenceId: {
+                referenceType:
+                  "SupplierPayment",
+                referenceId:
+                  payment.id,
+              },
+            },
+            include: {
+              entries: {
+                include: {
+                  account: true,
+                },
+              },
+            },
+          });
+
+        const ap =
+          journal.entries.find(
+            (entry) =>
+              entry.account.code ===
+              "2010",
+          );
+
+        const cash =
+          journal.entries.find(
+            (entry) =>
+              entry.account.code ===
+              "1020",
+          );
+
+        expect(
+          Number(ap?.debit),
+        ).toBe(75);
+
+        expect(
+          Number(cash?.credit),
+        ).toBe(75);
+
+        await cancelSupplierPayment(
+          payment.id,
+        );
+
+        liability =
+          await db.consignmentSupplierLiability
+            .findUniqueOrThrow({
+              where: {
+                id: fixture.liabilityId,
+              },
+            });
+
+        expect(
+          Number(liability.paidAmount),
+        ).toBe(0);
+
+        expect(liability.status).toBe(
+          "open",
+        );
+
+        invoiceBalance =
+          await getPurchaseInvoiceBalance(
+            invoice.id,
+          );
+
+        expect(
+          invoiceBalance.paidAmount,
+        ).toBe(0);
+
+        expect(
+          invoiceBalance.outstandingAmount,
+        ).toBe(50);
+      } finally {
+        await cleanupConsignmentFixture(
+          fixture,
+        );
+      }
+    },
+  );
+});

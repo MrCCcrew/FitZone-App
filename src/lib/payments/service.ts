@@ -1509,22 +1509,20 @@ export async function updatePaymentTransactionStatus(
               existing.orderId!,
             );
 
-            // Phase 4: Post GL journal for sale
-            try {
-              const { postAllocatedSaleJournal } =
-                await import("@/lib/accounting-service");
+            // Phase 4: Post GL journal for sale.
+            // This is intentionally fail-closed inside the same transaction:
+            // if accounting fails, order/inventory/allocation/consignment
+            // liability changes must all roll back.
+            const { postAllocatedSaleJournal } =
+              await import("@/lib/accounting-service");
 
-              await postAllocatedSaleJournal(
-                tx,
-                existing.orderId!,
-                order.total,
-                saleResults,
-                order.paymentMethod,
-              );
-            } catch (err) {
-              console.error("[GL_SALE_JOURNAL]", err);
-              // Don't block order confirmation if GL fails
-            }
+            await postAllocatedSaleJournal(
+              tx,
+              existing.orderId!,
+              order.total,
+              saleResults,
+              order.paymentMethod,
+            );
           },
           { timeout: 15000 },
         );

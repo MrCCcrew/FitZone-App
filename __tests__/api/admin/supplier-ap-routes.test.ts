@@ -604,3 +604,326 @@ describe("Supplier payments admin API", () => {
     expect(body.error).toContain("الحذف المباشر غير مسموح");
   });
 });
+
+describe("Supplier payments admin API — consignment liability", () => {
+  it(
+    "creates, posts and cancels a consignment supplier payment",
+    async () => {
+      const token =
+        `${Date.now()}-${Math.random()
+          .toString(36)
+          .slice(2)}`;
+
+      const user = await db.user.create({
+        data: {
+          email:
+            `cons-api-${token}@fitzone.test`,
+        },
+      });
+
+      const order = await db.order.create({
+        data: {
+          userId: user.id,
+          total: 100,
+          status: "confirmed",
+          inventoryDeducted: true,
+        },
+      });
+
+      const item = await db.orderItem.create({
+        data: {
+          orderId: order.id,
+          productId: testProductId,
+          quantity: 1,
+          price: 100,
+          costPrice: 100,
+        },
+      });
+
+      const allocation =
+        await db.orderInventoryAllocation.create({
+          data: {
+            orderId: order.id,
+            orderItemId: item.id,
+            source: "owned",
+            quantity: 1,
+            unitCost: 100,
+            status: "sold",
+          },
+        });
+
+      const liability =
+        await db.consignmentSupplierLiability.create({
+          data: {
+            supplierId,
+            orderId: order.id,
+            orderItemId: item.id,
+            orderInventoryAllocationId:
+              allocation.id,
+            quantity: 1,
+            unitCost: 100,
+            grossAmount: 100,
+            paidAmount: 0,
+            reversedAmount: 0,
+            status: "open",
+            source: "historical_correction",
+            notes:
+              "TEST API consignment liability",
+          },
+        });
+
+      let paymentId = "";
+
+      try {
+        const createResponse =
+          await createPayment(
+            request(
+              "/api/admin/supplier-payments",
+              "POST",
+              {
+                supplierId,
+                amount: 40,
+                paymentDate:
+                  "2026-09-15T12:00:00.000Z",
+                paymentMethod: "cash",
+                referenceNumber:
+                  `CONS-API-${token}`,
+                allocations: [],
+                consignmentAllocations: [
+                  {
+                    liabilityId:
+                      liability.id,
+                    amount: 40,
+                  },
+                ],
+              },
+            ),
+          );
+
+        expect(
+          createResponse.status,
+        ).toBe(200);
+
+        const createBody =
+          await createResponse.json();
+
+        expect(
+          createBody.success,
+        ).toBe(true);
+
+        expect(
+          createBody.payment.status,
+        ).toBe("draft");
+
+        expect(
+          createBody.payment.amount,
+        ).toBe(40);
+
+        paymentId =
+          createBody.payment.id as string;
+
+        const draft =
+          await db.supplierPayment.findUniqueOrThrow({
+            where: {
+              id: paymentId,
+            },
+            include: {
+              consignmentAllocations: true,
+            },
+          });
+
+        expect(
+          draft.consignmentAllocations,
+        ).toHaveLength(1);
+
+        expect(
+          draft.consignmentAllocations[0]
+            .liabilityId,
+        ).toBe(liability.id);
+
+        expect(
+          Number(
+            draft.consignmentAllocations[0]
+              .amount,
+          ),
+        ).toBe(40);
+
+        const postResponse =
+          await patchPayment(
+            request(
+              "/api/admin/supplier-payments",
+              "PATCH",
+              {
+                id: paymentId,
+                action: "post",
+              },
+            ),
+          );
+
+        expect(
+          postResponse.status,
+        ).toBe(200);
+
+        let savedLiability =
+          await db.consignmentSupplierLiability
+            .findUniqueOrThrow({
+              where: {
+                id: liability.id,
+              },
+            });
+
+        expect(
+          Number(
+            savedLiability.paidAmount,
+          ),
+        ).toBe(40);
+
+        expect(
+          savedLiability.status,
+        ).toBe("partial");
+
+        const postedPayment =
+          await db.supplierPayment.findUniqueOrThrow({
+            where: {
+              id: paymentId,
+            },
+          });
+
+        expect(
+          postedPayment.status,
+        ).toBe("posted");
+
+        expect(
+          postedPayment.postedByUserId,
+        ).toBe(adminId);
+
+        const journal =
+          await db.journal.findUniqueOrThrow({
+            where: {
+              referenceType_referenceId: {
+                referenceType:
+                  "SupplierPayment",
+                referenceId:
+                  paymentId,
+              },
+            },
+            include: {
+              entries: {
+                include: {
+                  account: true,
+                },
+              },
+            },
+          });
+
+        const ap =
+          journal.entries.find(
+            (entry) =>
+              entry.account.code ===
+              "2010",
+          );
+
+        const cash =
+          journal.entries.find(
+            (entry) =>
+              entry.account.code ===
+              "1020",
+          );
+
+        expect(
+          Number(ap?.debit),
+        ).toBe(40);
+
+        expect(
+          Number(cash?.credit),
+        ).toBe(40);
+
+        const cancelResponse =
+          await patchPayment(
+            request(
+              "/api/admin/supplier-payments",
+              "PATCH",
+              {
+                id: paymentId,
+                action: "cancel",
+              },
+            ),
+          );
+
+        expect(
+          cancelResponse.status,
+        ).toBe(200);
+
+        savedLiability =
+          await db.consignmentSupplierLiability
+            .findUniqueOrThrow({
+              where: {
+                id: liability.id,
+              },
+            });
+
+        expect(
+          Number(
+            savedLiability.paidAmount,
+          ),
+        ).toBe(0);
+
+        expect(
+          savedLiability.status,
+        ).toBe("open");
+
+        const cancelled =
+          await db.supplierPayment.findUniqueOrThrow({
+            where: {
+              id: paymentId,
+            },
+          });
+
+        expect(
+          cancelled.status,
+        ).toBe("cancelled");
+
+        expect(
+          cancelled.cancelledByUserId,
+        ).toBe(adminId);
+
+        const reversedJournal =
+          await db.journal.findUniqueOrThrow({
+            where: {
+              referenceType_referenceId: {
+                referenceType:
+                  "SupplierPayment",
+                referenceId:
+                  paymentId,
+              },
+            },
+          });
+
+        expect(
+          reversedJournal.status,
+        ).toBe("reversed");
+      } finally {
+        if (paymentId) {
+          await db.supplierPayment.deleteMany({
+            where: {
+              id: paymentId,
+            },
+          });
+        }
+
+        await db.consignmentSupplierLiability
+          .deleteMany({
+            where: {
+              id: liability.id,
+            },
+          });
+
+        await db.user.deleteMany({
+          where: {
+            id: user.id,
+          },
+        });
+      }
+    },
+  );
+});

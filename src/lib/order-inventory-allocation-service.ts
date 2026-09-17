@@ -586,6 +586,26 @@ export async function confirmOrderInventoryAllocationSale(
         },
       });
 
+      const liabilityAmount =
+        allocation.quantity * Number(lot.unitCost);
+
+      await tx.consignmentSupplierLiability.create({
+        data: {
+          supplierId: lot.supplierId,
+          orderId,
+          orderItemId: allocation.orderItemId,
+          orderInventoryAllocationId: allocation.id,
+          quantity: allocation.quantity,
+          unitCost: lot.unitCost,
+          grossAmount: liabilityAmount,
+          paidAmount: 0,
+          reversedAmount: 0,
+          status: "open",
+          source: "sale",
+          notes: `مستحق مورد أمانات - طلب #${orderId.slice(-8)}`,
+        },
+      });
+
       await tx.orderInventoryAllocation.update({
         where: { id: allocation.id },
         data: {
@@ -888,6 +908,55 @@ export async function returnOrderInventoryAllocations(
           referenceId: allocation.id,
           reason:
             `عكس بيع أمانة - طلب #${orderId.slice(-8)}`,
+        },
+      });
+
+      const liability =
+        await tx.consignmentSupplierLiability.findUnique({
+          where: {
+            orderInventoryAllocationId:
+              allocation.id,
+          },
+          select: {
+            id: true,
+            grossAmount: true,
+            paidAmount: true,
+            reversedAmount: true,
+          },
+        });
+
+      if (!liability) {
+        throw new Error(
+          `Consignment liability missing for allocation ${allocation.id}`
+        );
+      }
+
+      const grossAmount =
+        Number(liability.grossAmount);
+
+      const paidAmount =
+        Number(liability.paidAmount);
+
+      const reversedAmount =
+        Number(liability.reversedAmount);
+
+      if (reversedAmount > 0) {
+        throw new Error(
+          `Consignment liability already reversed for allocation ${allocation.id}`
+        );
+      }
+
+      await tx.consignmentSupplierLiability.update({
+        where: {
+          id: liability.id,
+        },
+        data: {
+          reversedAmount: grossAmount,
+          reversedAt: new Date(),
+          status:
+            paidAmount > 0
+              ? "credit"
+              : "reversed",
         },
       });
     } else {

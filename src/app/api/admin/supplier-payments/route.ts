@@ -39,7 +39,8 @@ export async function GET(req: Request) {
   const supplierId = searchParams.get("supplierId")?.trim() || null;
   const status = searchParams.get("status")?.trim() || null;
 
-  const payments = await db.supplierPayment.findMany({
+  const [payments, consignmentLiabilities] = await Promise.all([
+    db.supplierPayment.findMany({
     where: {
       ...(supplierId ? { supplierId } : {}),
       ...(status ? { status } : {}),
@@ -65,10 +66,46 @@ export async function GET(req: Request) {
           },
         },
       },
+      consignmentAllocations: {
+        include: {
+          liability: {
+            select: {
+              id: true,
+              orderId: true,
+              grossAmount: true,
+              paidAmount: true,
+              reversedAmount: true,
+              status: true,
+              source: true,
+            },
+          },
+        },
+      },
     },
     orderBy: [{ paymentDate: "desc" }, { createdAt: "desc" }],
-    take: 200,
-  });
+      take: 200,
+    }),
+
+    db.consignmentSupplierLiability.findMany({
+      where: {
+        ...(supplierId ? { supplierId } : {}),
+      },
+      include: {
+        supplier: {
+          select: {
+            id: true,
+            name: true,
+            code: true,
+          },
+        },
+      },
+      orderBy: [
+        { createdAt: "desc" },
+        { id: "desc" },
+      ],
+      take: 500,
+    }),
+  ]);
 
   return NextResponse.json({
     payments: payments.map((payment) => ({
@@ -102,7 +139,59 @@ export async function GET(req: Request) {
           status: allocation.purchaseInvoice.status,
         },
       })),
+
+      consignmentAllocations: payment.consignmentAllocations.map(
+        (allocation) => ({
+          id: allocation.id,
+          amount: Number(allocation.amount),
+          liability: {
+            id: allocation.liability.id,
+            orderId: allocation.liability.orderId,
+            grossAmount: Number(allocation.liability.grossAmount),
+            paidAmount: Number(allocation.liability.paidAmount),
+            reversedAmount: Number(allocation.liability.reversedAmount),
+            status: allocation.liability.status,
+            source: allocation.liability.source,
+          },
+        }),
+      ),
     })),
+
+    consignmentLiabilities: consignmentLiabilities.map((liability) => {
+      const grossAmount = Number(liability.grossAmount);
+      const paidAmount = Number(liability.paidAmount);
+      const reversedAmount = Number(liability.reversedAmount);
+      const outstandingAmount =
+        grossAmount - paidAmount - reversedAmount;
+
+      return {
+        id: liability.id,
+        supplierId: liability.supplierId,
+        supplier: liability.supplier,
+
+        orderId: liability.orderId,
+        orderItemId: liability.orderItemId,
+        orderInventoryAllocationId:
+          liability.orderInventoryAllocationId,
+
+        quantity: liability.quantity,
+        unitCost: Number(liability.unitCost),
+
+        grossAmount,
+        paidAmount,
+        reversedAmount,
+        outstandingAmount,
+
+        status: liability.status,
+        source: liability.source,
+        notes: liability.notes,
+
+        createdAt: liability.createdAt.toISOString(),
+        updatedAt: liability.updatedAt.toISOString(),
+        reversedAt:
+          liability.reversedAt?.toISOString() ?? null,
+      };
+    }),
   });
 }
 
@@ -122,13 +211,31 @@ export async function POST(req: Request) {
         purchaseInvoiceId?: string;
         amount?: number;
       }>;
+
+      consignmentAllocations?: Array<{
+        liabilityId?: string;
+        amount?: number;
+      }>;
     };
 
     if (!body.supplierId?.trim()) {
       return NextResponse.json({ error: "المورد مطلوب" }, { status: 400 });
     }
 
-    if (!Array.isArray(body.allocations)) {
+    const invoiceAllocations =
+      Array.isArray(body.allocations)
+        ? body.allocations
+        : [];
+
+    const consignmentAllocations =
+      Array.isArray(body.consignmentAllocations)
+        ? body.consignmentAllocations
+        : [];
+
+    if (
+      invoiceAllocations.length === 0 &&
+      consignmentAllocations.length === 0
+    ) {
       return NextResponse.json(
         { error: "توزيعات الدفعة مطلوبة" },
         { status: 400 },
@@ -144,10 +251,24 @@ export async function POST(req: Request) {
       notes: body.notes ?? null,
       createdByUserId: userId,
 
-      allocations: body.allocations.map((allocation) => ({
-        purchaseInvoiceId: String(allocation.purchaseInvoiceId ?? ""),
-        amount: Number(allocation.amount),
-      })),
+      allocations: invoiceAllocations.map(
+        (allocation) => ({
+          purchaseInvoiceId: String(
+            allocation.purchaseInvoiceId ?? "",
+          ),
+          amount: Number(allocation.amount),
+        }),
+      ),
+
+      consignmentAllocations:
+        consignmentAllocations.map(
+          (allocation) => ({
+            liabilityId: String(
+              allocation.liabilityId ?? "",
+            ),
+            amount: Number(allocation.amount),
+          }),
+        ),
     });
 
     await logAudit({

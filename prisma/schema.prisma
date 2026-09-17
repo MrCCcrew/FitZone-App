@@ -1919,9 +1919,10 @@ model OrderInventoryAllocation {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
-  order          Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  orderItem      OrderItem       @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
-  consignmentLot ConsignmentLot? @relation(fields: [consignmentLotId], references: [id], onDelete: Restrict)
+  order                Order                         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderItem            OrderItem                     @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  consignmentLot       ConsignmentLot?               @relation(fields: [consignmentLotId], references: [id], onDelete: Restrict)
+  consignmentLiability ConsignmentSupplierLiability?
 
   @@index([orderId, status])
   @@index([orderItemId, status])
@@ -3432,13 +3433,14 @@ model Supplier {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
-  products             Product[]
-  receipts             InventoryReceipt[]
-  purchaseInvoices     PurchaseInvoice[]
-  payments             SupplierPayment[]
-  consignmentReceipts  ConsignmentReceipt[]
-  consignmentLots      ConsignmentLot[]
-  consignmentMovements ConsignmentMovement[]
+  products               Product[]
+  receipts               InventoryReceipt[]
+  purchaseInvoices       PurchaseInvoice[]
+  payments               SupplierPayment[]
+  consignmentReceipts    ConsignmentReceipt[]
+  consignmentLots        ConsignmentLot[]
+  consignmentMovements   ConsignmentMovement[]
+  consignmentLiabilities ConsignmentSupplierLiability[]
 
   @@index([isActive])
   @@index([deletedAt])
@@ -3619,8 +3621,9 @@ model SupplierPayment {
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
-  supplier    Supplier                    @relation(fields: [supplierId], references: [id], onDelete: Restrict)
-  allocations SupplierPaymentAllocation[]
+  supplier               Supplier                               @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  allocations            SupplierPaymentAllocation[]
+  consignmentAllocations ConsignmentSupplierPaymentAllocation[]
 
   createdBy   User? @relation("SupplierPaymentCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
   postedBy    User? @relation("SupplierPaymentPoster", fields: [postedByUserId], references: [id], onDelete: SetNull)
@@ -3645,6 +3648,72 @@ model SupplierPaymentAllocation {
 
   @@unique([supplierPaymentId, purchaseInvoiceId])
   @@index([purchaseInvoiceId])
+}
+
+// ─── Consignment Supplier Liability Sub-ledger ───────────────────────────────
+//
+// One row per sold consignment inventory allocation.
+//
+// Balance convention:
+//   grossAmount - paidAmount - reversedAmount
+//
+// Positive balance => FitZone owes supplier.
+// Zero             => fully settled / fully reversed.
+// Negative balance => supplier credit due back to FitZone, e.g. return after
+//                     the supplier had already been paid.
+//
+// source:
+//   sale                  => normal consignment sale
+//   historical_correction => controlled correction of legacy owned allocations
+//
+model ConsignmentSupplierLiability {
+  id                         String @id @default(cuid())
+  supplierId                 String
+  orderId                    String
+  orderItemId                String
+  orderInventoryAllocationId String @unique(map: "uq_cons_liability_allocation")
+
+  quantity       Int
+  unitCost       Decimal @db.Decimal(18, 2)
+  grossAmount    Decimal @db.Decimal(18, 2)
+  paidAmount     Decimal @default(0) @db.Decimal(18, 2)
+  reversedAmount Decimal @default(0) @db.Decimal(18, 2)
+
+  // open | partial | paid | reversed | credit
+  status String @default("open")
+
+  // sale | historical_correction
+  source String @default("sale")
+
+  notes String? @db.Text
+
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  reversedAt DateTime?
+
+  supplier   Supplier                 @relation(fields: [supplierId], references: [id], onDelete: Restrict, map: "fk_cons_liability_supplier")
+  allocation OrderInventoryAllocation @relation(fields: [orderInventoryAllocationId], references: [id], onDelete: Restrict, map: "fk_cons_liability_allocation")
+
+  paymentAllocations ConsignmentSupplierPaymentAllocation[]
+
+  @@index([supplierId, status, createdAt], map: "idx_cons_liability_supplier_status")
+  @@index([orderId], map: "idx_cons_liability_order")
+  @@index([orderItemId], map: "idx_cons_liability_order_item")
+  @@index([source, createdAt], map: "idx_cons_liability_source")
+}
+
+model ConsignmentSupplierPaymentAllocation {
+  id                String   @id @default(cuid())
+  supplierPaymentId String
+  liabilityId       String
+  amount            Decimal  @db.Decimal(18, 2)
+  createdAt         DateTime @default(now())
+
+  supplierPayment SupplierPayment              @relation(fields: [supplierPaymentId], references: [id], onDelete: Cascade, map: "fk_cons_payalloc_payment")
+  liability       ConsignmentSupplierLiability @relation(fields: [liabilityId], references: [id], onDelete: Restrict, map: "fk_cons_payalloc_liability")
+
+  @@unique([supplierPaymentId, liabilityId], map: "uq_cons_payalloc_payment_liability")
+  @@index([liabilityId], map: "idx_cons_payalloc_liability")
 }
 
 // ─── Product Variants ─────────────────────────────────────────────────────────
