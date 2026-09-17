@@ -38,6 +38,8 @@ export async function GET(req: Request) {
 
   const supplierId = searchParams.get("supplierId")?.trim() || null;
   const status = searchParams.get("status")?.trim() || null;
+  const outstandingOnly =
+    searchParams.get("outstandingOnly") === "1";
 
   const [payments, consignmentLiabilities] = await Promise.all([
     db.supplierPayment.findMany({
@@ -89,6 +91,13 @@ export async function GET(req: Request) {
     db.consignmentSupplierLiability.findMany({
       where: {
         ...(supplierId ? { supplierId } : {}),
+        ...(outstandingOnly
+          ? {
+              status: {
+                in: ["open", "partial"],
+              },
+            }
+          : {}),
       },
       include: {
         supplier: {
@@ -103,7 +112,7 @@ export async function GET(req: Request) {
         { createdAt: "desc" },
         { id: "desc" },
       ],
-      take: 500,
+      take: supplierId && outstandingOnly ? undefined : 500,
     }),
   ]);
 

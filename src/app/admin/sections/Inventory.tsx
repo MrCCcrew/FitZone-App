@@ -156,19 +156,44 @@ type SupplierStatementEntry = {
   balance: number;
 };
 
-function cairoDateKey(value: string): string {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "Africa/Cairo",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(new Date(value));
+type SupplierBalanceRow = {
+  supplierId: string;
+  supplierName: string;
+  supplierCode: string | null;
+  isActive: boolean;
+  isDeleted: boolean;
+  invoiceOutstanding: number;
+  consignmentOutstanding: number;
+  totalOutstanding: number;
+};
 
-  const get = (type: string) =>
-    parts.find((part) => part.type === type)?.value ?? "";
+type SupplierStatementData = {
+  supplier: {
+    id: string;
+    name: string;
+    code: string | null;
+    isActive: boolean;
+    isDeleted: boolean;
+  } | null;
+  from: string | null;
+  to: string | null;
+  openingBalance: number;
+  debitTotal: number;
+  creditTotal: number;
+  closingBalance: number;
+  entries: SupplierStatementEntry[];
+};
 
-  return `${get("year")}-${get("month")}-${get("day")}`;
-}
+const EMPTY_SUPPLIER_STATEMENT: SupplierStatementData = {
+  supplier: null,
+  from: null,
+  to: null,
+  openingBalance: 0,
+  debitTotal: 0,
+  creditTotal: 0,
+  closingBalance: 0,
+  entries: [],
+};
 
 function downloadCsv(filename: string, rows: Array<Array<string | number>>) {
   const escapeCell = (value: string | number) => {
@@ -382,9 +407,47 @@ export default function Inventory({
   const [spNotes, setSpNotes] = useState("");
   const [spSaving, setSpSaving] = useState(false);
 
+  const [supplierPaymentInvoices, setSupplierPaymentInvoices] = useState<
+    PurchaseInvoiceRow[]
+  >([]);
+
+  const [supplierPaymentLiabilities, setSupplierPaymentLiabilities] =
+    useState<ConsignmentLiabilityRow[]>([]);
+
+  const [supplierPayablesLoading, setSupplierPayablesLoading] =
+    useState(false);
+
+  const [supplierPayablesError, setSupplierPayablesError] =
+    useState("");
+
   const [statementSupplierId, setStatementSupplierId] = useState("");
   const [statementFrom, setStatementFrom] = useState("");
   const [statementTo, setStatementTo] = useState("");
+
+  const [supplierBalances, setSupplierBalances] = useState<
+    SupplierBalanceRow[]
+  >([]);
+
+  const [statementSuppliers, setStatementSuppliers] = useState<
+    SupplierBalanceRow[]
+  >([]);
+
+  const [supplierBalancesLoading, setSupplierBalancesLoading] =
+    useState(false);
+
+  const [supplierBalancesError, setSupplierBalancesError] =
+    useState("");
+
+  const [supplierStatementLoading, setSupplierStatementLoading] =
+    useState(false);
+
+  const [supplierStatementError, setSupplierStatementError] =
+    useState("");
+
+  const [statementData, setStatementData] =
+    useState<SupplierStatementData>(
+      EMPTY_SUPPLIER_STATEMENT,
+    );
 
   const [movements, setMovements] = useState<Movement[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1120,272 +1183,315 @@ export default function Inventory({
     }
   };
 
+  const loadSupplierPayables = useCallback(
+    async (signal?: AbortSignal) => {
+      if (!spSupplierId) {
+        setSupplierPaymentInvoices([]);
+        setSupplierPaymentLiabilities([]);
+        setSupplierPayablesError("");
+        setSupplierPayablesLoading(false);
+        return;
+      }
+
+      setSupplierPaymentInvoices([]);
+      setSupplierPaymentLiabilities([]);
+      setSupplierPayablesError("");
+      setSupplierPayablesLoading(true);
+
+      const encodedSupplierId = encodeURIComponent(spSupplierId);
+
+      try {
+        const [invoiceRes, liabilityRes] = await Promise.all([
+          fetch(
+            `/api/admin/purchase-invoices?supplierId=${encodedSupplierId}&status=posted&outstandingOnly=1`,
+            { cache: "no-store", signal },
+          ),
+          fetch(
+            `/api/admin/supplier-payments?supplierId=${encodedSupplierId}&outstandingOnly=1`,
+            { cache: "no-store", signal },
+          ),
+        ]);
+
+        const invoiceData =
+          (await invoiceRes.json().catch(() => ({}))) as {
+            invoices?: PurchaseInvoiceRow[];
+            error?: string;
+          };
+
+        const liabilityData =
+          (await liabilityRes.json().catch(() => ({}))) as {
+            consignmentLiabilities?: ConsignmentLiabilityRow[];
+            error?: string;
+          };
+
+        if (!invoiceRes.ok || !liabilityRes.ok) {
+          throw new Error(
+            invoiceData.error ??
+              liabilityData.error ??
+              "تعذر تحميل مستحقات المورد",
+          );
+        }
+
+        setSupplierPaymentInvoices(
+          Array.isArray(invoiceData.invoices)
+            ? invoiceData.invoices
+            : [],
+        );
+
+        setSupplierPaymentLiabilities(
+          Array.isArray(liabilityData.consignmentLiabilities)
+            ? liabilityData.consignmentLiabilities
+            : [],
+        );
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          error.name === "AbortError"
+        ) {
+          return;
+        }
+
+        console.error("[SUPPLIER_PAYABLES]", error);
+        setSupplierPaymentInvoices([]);
+        setSupplierPaymentLiabilities([]);
+        setSupplierPayablesError(
+          error instanceof Error
+            ? error.message
+            : "تعذر تحميل مستحقات المورد",
+        );
+      } finally {
+        if (!signal?.aborted) {
+          setSupplierPayablesLoading(false);
+        }
+      }
+    },
+    [spSupplierId],
+  );
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    void loadSupplierPayables(controller.signal);
+
+    return () => controller.abort();
+  }, [
+    loadSupplierPayables,
+    purchaseInvoices,
+    supplierPayments,
+    consignmentLiabilities,
+  ]);
+
   const eligibleSupplierPaymentInvoices = useMemo(
     () =>
-      purchaseInvoices.filter(
+      supplierPaymentInvoices.filter(
         (invoice) =>
           invoice.supplierId === spSupplierId &&
           invoice.documentStatus === "posted" &&
           invoice.outstandingAmount > 0,
       ),
-    [purchaseInvoices, spSupplierId],
+    [supplierPaymentInvoices, spSupplierId],
   );
 
   const selectedSupplierPaymentInvoice = useMemo(
     () =>
-      purchaseInvoices.find((invoice) => invoice.id === spInvoiceId) ?? null,
-    [purchaseInvoices, spInvoiceId],
+      supplierPaymentInvoices.find(
+        (invoice) => invoice.id === spInvoiceId,
+      ) ?? null,
+    [supplierPaymentInvoices, spInvoiceId],
   );
 
   const eligibleSupplierPaymentLiabilities = useMemo(
     () =>
-      consignmentLiabilities.filter(
+      supplierPaymentLiabilities.filter(
         (liability) =>
           liability.supplierId === spSupplierId &&
           liability.outstandingAmount > 0,
       ),
-    [consignmentLiabilities, spSupplierId],
+    [supplierPaymentLiabilities, spSupplierId],
   );
 
   const selectedSupplierPaymentLiability = useMemo(
     () =>
-      consignmentLiabilities.find(
+      supplierPaymentLiabilities.find(
         (liability) => liability.id === spLiabilityId,
       ) ?? null,
-    [consignmentLiabilities, spLiabilityId],
+    [supplierPaymentLiabilities, spLiabilityId],
   );
 
   const selectedSupplierPayableOutstanding =
     spSourceType === "invoice"
       ? selectedSupplierPaymentInvoice?.outstandingAmount ?? 0
       : selectedSupplierPaymentLiability?.outstandingAmount ?? 0;
+  const loadSupplierBalances = useCallback(
+    async (signal?: AbortSignal) => {
+      setSupplierBalancesError("");
+      setSupplierBalancesLoading(true);
 
-  const supplierBalances = useMemo(() => {
-    return suppliers
-      .filter((supplier) => supplier.isActive)
-      .map((supplier) => {
-        const invoiceOutstanding = purchaseInvoices
-          .filter(
-            (invoice) =>
-              invoice.supplierId === supplier.id &&
-              invoice.documentStatus === "posted",
-          )
-          .reduce(
-            (sum, invoice) =>
-              sum + Math.max(0, invoice.outstandingAmount),
-            0,
-          );
+      try {
+        const res = await fetch(
+          "/api/admin/supplier-reports?mode=balances",
+          {
+            cache: "no-store",
+            signal,
+          },
+        );
 
-        const consignmentOutstanding = consignmentLiabilities
-          .filter((liability) => liability.supplierId === supplier.id)
-          .reduce(
-            (sum, liability) => sum + liability.outstandingAmount,
-            0,
-          );
-
-        return {
-          supplierId: supplier.id,
-          supplierName: supplier.name,
-          supplierCode: supplier.code ?? null,
-          invoiceOutstanding,
-          consignmentOutstanding,
-          totalOutstanding:
-            invoiceOutstanding + consignmentOutstanding,
+        const data = (await res.json().catch(() => ({}))) as {
+          balances?: SupplierBalanceRow[];
+          statementSuppliers?: SupplierBalanceRow[];
+          error?: string;
         };
-      })
-      .sort((a, b) => b.totalOutstanding - a.totalOutstanding);
-  }, [suppliers, purchaseInvoices, consignmentLiabilities]);
 
-  const statementData = useMemo(() => {
-    const supplier = suppliers.find(
-      (item) => item.id === statementSupplierId,
-    );
+        if (!res.ok) {
+          throw new Error(
+            data.error ??
+              "\u062a\u0639\u0630\u0631 \u062a\u062d\u0645\u064a\u0644 \u0623\u0631\u0635\u062f\u0629 \u0627\u0644\u0645\u0648\u0631\u062f\u064a\u0646",
+          );
+        }
 
-    if (!supplier) {
-      return {
-        supplier: null,
-        openingBalance: 0,
-        debitTotal: 0,
-        creditTotal: 0,
-        closingBalance: 0,
-        entries: [] as SupplierStatementEntry[],
-      };
-    }
+        setSupplierBalances(
+          Array.isArray(data.balances)
+            ? data.balances
+            : [],
+        );
 
-    const raw: Omit<SupplierStatementEntry, "balance">[] = [];
+        setStatementSuppliers(
+          Array.isArray(data.statementSuppliers)
+            ? data.statementSuppliers
+            : [],
+        );
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          error.name === "AbortError"
+        ) {
+          return;
+        }
 
-    for (const invoice of purchaseInvoices) {
-      if (invoice.supplierId !== supplier.id) continue;
+        console.error("[SUPPLIER_BALANCES_REPORT]", error);
 
-      const invoiceAny = invoice as PurchaseInvoiceRow & {
-        postedAt?: string | null;
-        cancelledAt?: string | null;
-      };
+        setSupplierBalancesError(
+          error instanceof Error
+            ? error.message
+            : "\u062a\u0639\u0630\u0631 \u062a\u062d\u0645\u064a\u0644 \u0623\u0631\u0635\u062f\u0629 \u0627\u0644\u0645\u0648\u0631\u062f\u064a\u0646",
+        );
+      } finally {
+        if (!signal?.aborted) {
+          setSupplierBalancesLoading(false);
+        }
+      }
+    },
+    [],
+  );
 
-      if (
-        invoiceAny.postedAt &&
-        ["posted", "cancelled"].includes(invoice.documentStatus)
-      ) {
-        raw.push({
-          date: invoiceAny.postedAt,
-          dateKey: cairoDateKey(invoiceAny.postedAt),
-          type: "فاتورة مشتريات",
-          reference:
-            invoice.invoiceNumber ?? `#${invoice.id.slice(-8)}`,
-          description: "ترحيل فاتورة مورد",
-          debit: invoice.totalAmount,
-          credit: 0,
-        });
+  const loadSupplierStatement = useCallback(
+    async (signal?: AbortSignal) => {
+      if (!statementSupplierId) {
+        setStatementData(EMPTY_SUPPLIER_STATEMENT);
+        setSupplierStatementError("");
+        setSupplierStatementLoading(false);
+        return;
       }
 
-      if (
-        invoice.documentStatus === "cancelled" &&
-        invoiceAny.postedAt &&
-        invoiceAny.cancelledAt
-      ) {
-        raw.push({
-          date: invoiceAny.cancelledAt,
-          dateKey: cairoDateKey(invoiceAny.cancelledAt),
-          type: "إلغاء فاتورة",
-          reference:
-            invoice.invoiceNumber ?? `#${invoice.id.slice(-8)}`,
-          description: "عكس فاتورة مورد ملغاة",
-          debit: 0,
-          credit: invoice.totalAmount,
-        });
-      }
-    }
+      setStatementData(EMPTY_SUPPLIER_STATEMENT);
+      setSupplierStatementError("");
+      setSupplierStatementLoading(true);
 
-    for (const liability of consignmentLiabilities) {
-      if (liability.supplierId !== supplier.id) continue;
-
-      raw.push({
-        date: liability.createdAt,
-        dateKey: cairoDateKey(liability.createdAt),
-        type: "استحقاق أمانات",
-        reference: `#${liability.orderId.slice(-8)}`,
-        description:
-          liability.source === "historical_correction"
-            ? "تسوية تاريخية لمستحق مورد"
-            : "استحقاق ناتج عن بيع أمانات",
-        debit: liability.grossAmount,
-        credit: 0,
+      const params = new URLSearchParams({
+        mode: "statement",
+        supplierId: statementSupplierId,
       });
 
-      if (
-        liability.reversedAmount > 0 &&
-        liability.reversedAt
-      ) {
-        raw.push({
-          date: liability.reversedAt,
-          dateKey: cairoDateKey(liability.reversedAt),
-          type: "عكس استحقاق",
-          reference: `#${liability.orderId.slice(-8)}`,
-          description: "مرتجع / عكس مستحق أمانات",
-          debit: 0,
-          credit: liability.reversedAmount,
-        });
-      }
-    }
-
-    for (const payment of supplierPayments) {
-      if (payment.supplierId !== supplier.id) continue;
-
-      if (
-        payment.status === "posted" ||
-        (payment.status === "cancelled" && payment.postedAt)
-      ) {
-        raw.push({
-          date: payment.paymentDate,
-          dateKey: cairoDateKey(payment.paymentDate),
-          type: "سداد مورد",
-          reference:
-            payment.referenceNumber ?? `#${payment.id.slice(-8)}`,
-          description: "دفعة مورد مرحلة",
-          debit: 0,
-          credit: payment.amount,
-        });
+      if (statementFrom) {
+        params.set("from", statementFrom);
       }
 
-      if (
-        payment.status === "cancelled" &&
-        payment.postedAt &&
-        payment.cancelledAt
-      ) {
-        raw.push({
-          date: payment.cancelledAt,
-          dateKey: cairoDateKey(payment.cancelledAt),
-          type: "إلغاء سداد",
-          reference:
-            payment.referenceNumber ?? `#${payment.id.slice(-8)}`,
-          description: "عكس دفعة مورد ملغاة",
-          debit: payment.amount,
-          credit: 0,
-        });
+      if (statementTo) {
+        params.set("to", statementTo);
       }
-    }
 
-    raw.sort(
-      (a, b) =>
-        new Date(a.date).getTime() - new Date(b.date).getTime(),
-    );
+      try {
+        const res = await fetch(
+          `/api/admin/supplier-reports?${params.toString()}`,
+          {
+            cache: "no-store",
+            signal,
+          },
+        );
 
-    const beforeFrom = (entry: (typeof raw)[number]) =>
-      Boolean(statementFrom) && entry.dateKey < statementFrom;
+        const data = (await res.json().catch(() => ({}))) as {
+          statement?: SupplierStatementData;
+          error?: string;
+        };
 
-    const inRange = (entry: (typeof raw)[number]) => {
-      if (statementFrom && entry.dateKey < statementFrom) return false;
-      if (statementTo && entry.dateKey > statementTo) return false;
-      return true;
-    };
+        if (!res.ok) {
+          throw new Error(
+            data.error ??
+              "\u062a\u0639\u0630\u0631 \u062a\u062d\u0645\u064a\u0644 \u0643\u0634\u0641 \u062d\u0633\u0627\u0628 \u0627\u0644\u0645\u0648\u0631\u062f",
+          );
+        }
 
-    const openingBalance = raw
-      .filter(beforeFrom)
-      .reduce(
-        (sum, entry) => sum + entry.debit - entry.credit,
-        0,
-      );
+        setStatementData(
+          data.statement ??
+            EMPTY_SUPPLIER_STATEMENT,
+        );
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          error.name === "AbortError"
+        ) {
+          return;
+        }
 
-    let running = openingBalance;
+        console.error("[SUPPLIER_STATEMENT_REPORT]", error);
 
-    const entries = raw.filter(inRange).map((entry) => {
-      running += entry.debit - entry.credit;
+        setSupplierStatementError(
+          error instanceof Error
+            ? error.message
+            : "\u062a\u0639\u0630\u0631 \u062a\u062d\u0645\u064a\u0644 \u0643\u0634\u0641 \u062d\u0633\u0627\u0628 \u0627\u0644\u0645\u0648\u0631\u062f",
+        );
+      } finally {
+        if (!signal?.aborted) {
+          setSupplierStatementLoading(false);
+        }
+      }
+    },
+    [
+      statementSupplierId,
+      statementFrom,
+      statementTo,
+    ],
+  );
 
-      return {
-        ...entry,
-        balance: running,
-      };
-    });
+  useEffect(() => {
+    const controller = new AbortController();
 
-    const debitTotal = entries.reduce(
-      (sum, entry) => sum + entry.debit,
-      0,
-    );
+    void loadSupplierBalances(controller.signal);
 
-    const creditTotal = entries.reduce(
-      (sum, entry) => sum + entry.credit,
-      0,
-    );
-
-    return {
-      supplier,
-      openingBalance,
-      debitTotal,
-      creditTotal,
-      closingBalance:
-        openingBalance + debitTotal - creditTotal,
-      entries,
+    return () => {
+      controller.abort();
     };
   }, [
-    suppliers,
-    statementSupplierId,
-    statementFrom,
-    statementTo,
+    loadSupplierBalances,
     purchaseInvoices,
-    consignmentLiabilities,
     supplierPayments,
+    consignmentLiabilities,
   ]);
 
+  useEffect(() => {
+    const controller = new AbortController();
+
+    void loadSupplierStatement(controller.signal);
+
+    return () => {
+      controller.abort();
+    };
+  }, [
+    loadSupplierStatement,
+    purchaseInvoices,
+    supplierPayments,
+    consignmentLiabilities,
+  ]);
   const exportSupplierBalancesCsv = () => {
     downloadCsv(
       "fitzone-supplier-balances.csv",
@@ -4117,6 +4223,7 @@ export default function Inventory({
 
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <button
+                  disabled={supplierBalancesLoading || Boolean(supplierBalancesError)}
                   onClick={() =>
                     printSupplierBalancesReport({
                       rows: supplierBalances,
@@ -4136,6 +4243,7 @@ export default function Inventory({
                 </button>
 
                 <button
+                  disabled={supplierBalancesLoading || Boolean(supplierBalancesError)}
                   onClick={exportSupplierBalancesCsv}
                   style={{
                     border: "1px solid rgba(255,255,255,.14)",
@@ -4152,6 +4260,18 @@ export default function Inventory({
               </div>
             </div>
 
+            {supplierBalancesLoading && (
+              <div style={{ marginBottom: 10, color: "#d7aabd", fontSize: 12 }}>
+                {"\u062c\u0627\u0631\u064d \u062a\u062d\u062f\u064a\u062b \u0623\u0631\u0635\u062f\u0629 \u0627\u0644\u0645\u0648\u0631\u062f\u064a\u0646..."}
+              </div>
+            )}
+
+            {supplierBalancesError && (
+              <div style={{ marginBottom: 10, color: "#ff9ebf", fontSize: 12 }}>
+                {supplierBalancesError}
+                {" ? \u064a\u062a\u0645 \u0639\u0631\u0636 \u0622\u062e\u0631 \u0628\u064a\u0627\u0646\u0627\u062a \u0646\u0627\u062c\u062d\u0629 \u0625\u0646 \u0648\u062c\u062f\u062a."}
+              </div>
+            )}
             <div style={{ overflowX: "auto" }}>
               <table
                 style={{
@@ -4218,19 +4338,51 @@ export default function Inventory({
                       <td style={{ padding: 9 }}>
                         <div style={{ display: "flex", gap: 6 }}>
                           <button
+                            disabled={
+                              !row.isActive ||
+                              row.isDeleted
+                            }
                             onClick={() => {
-                              setSpSupplierId(row.supplierId);
+                              if (
+                                !row.isActive ||
+                                row.isDeleted
+                              ) {
+                                return;
+                              }
+
+                              setSpSupplierId(
+                                row.supplierId,
+                              );
                               setSpInvoiceId("");
                               setSpLiabilityId("");
                               setSpAmount("");
                             }}
+                            title={
+                              !row.isActive
+                                ? "لا يمكن تسجيل دفعة لمورد غير نشط"
+                                : row.isDeleted
+                                  ? "لا يمكن تسجيل دفعة لمورد محذوف"
+                                  : "تسجيل دفعة للمورد"
+                            }
                             style={{
                               border: "none",
                               borderRadius: 7,
                               padding: "6px 10px",
-                              background: "rgba(233,30,99,.15)",
-                              color: "#ff8fbd",
-                              cursor: "pointer",
+                              background:
+                                !row.isActive ||
+                                row.isDeleted
+                                  ? "rgba(255,255,255,.05)"
+                                  : "rgba(233,30,99,.15)",
+                              color:
+                                !row.isActive ||
+                                row.isDeleted
+                                  ? "#76636b"
+                                  : "#ff8fbd",
+                              cursor:
+                                !row.isActive ||
+                                row.isDeleted
+                                  ? "not-allowed"
+                                  : "pointer",
                             }}
                           >
                             سداد
@@ -4296,7 +4448,7 @@ export default function Inventory({
 
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <button
-                  disabled={!statementData.supplier}
+                  disabled={supplierStatementLoading || Boolean(supplierStatementError) || !statementData.supplier}
                   onClick={() => {
                     if (!statementData.supplier) return;
 
@@ -4329,7 +4481,7 @@ export default function Inventory({
                 </button>
 
                 <button
-                  disabled={!statementData.supplier}
+                  disabled={supplierStatementLoading || Boolean(supplierStatementError) || !statementData.supplier}
                   onClick={exportSupplierStatementCsv}
                   style={{
                     border: "1px solid rgba(255,255,255,.14)",
@@ -4359,18 +4511,34 @@ export default function Inventory({
             >
               <select
                 value={statementSupplierId}
-                onChange={(e) => setStatementSupplierId(e.target.value)}
+                onChange={(e) =>
+                  setStatementSupplierId(
+                    e.target.value,
+                  )
+                }
                 style={INPUT}
               >
                 <option value="">اختر المورد</option>
-                {suppliers
-                  .filter((supplier) => supplier.isActive)
-                  .map((supplier) => (
-                    <option key={supplier.id} value={supplier.id}>
-                      {supplier.name}
-                      {supplier.code ? ` (#${supplier.code})` : ""}
+
+                {statementSuppliers.map(
+                  (supplier) => (
+                    <option
+                      key={supplier.supplierId}
+                      value={supplier.supplierId}
+                    >
+                      {supplier.supplierName}
+                      {supplier.supplierCode
+                        ? ` (#${supplier.supplierCode})`
+                        : ""}
+                      {!supplier.isActive
+                        ? " — غير نشط"
+                        : ""}
+                      {supplier.isDeleted
+                        ? " — محذوف"
+                        : ""}
                     </option>
-                  ))}
+                  ),
+                )}
               </select>
 
               <input
@@ -4390,6 +4558,17 @@ export default function Inventory({
               />
             </div>
 
+            {supplierStatementLoading && (
+              <div style={{ marginBottom: 12, color: "#d7aabd", fontSize: 12 }}>
+                {"\u062c\u0627\u0631\u064d \u062a\u062d\u0645\u064a\u0644 \u0643\u0634\u0641 \u062d\u0633\u0627\u0628 \u0627\u0644\u0645\u0648\u0631\u062f..."}
+              </div>
+            )}
+
+            {supplierStatementError && (
+              <div style={{ marginBottom: 12, color: "#ff9ebf", fontSize: 12 }}>
+                {supplierStatementError}
+              </div>
+            )}
             {statementData.supplier && (
               <>
                 <div
@@ -4658,12 +4837,16 @@ export default function Inventory({
                       );
                     }}
                     style={INPUT}
-                    disabled={!spSupplierId || spSaving}
+                    disabled={!spSupplierId || spSaving || supplierPayablesLoading}
                   >
                     <option value="">
-                      {spSupplierId
-                        ? "اختر الفاتورة"
-                        : "اختر المورد أولًا"}
+                      {supplierPayablesError
+                        ? "تعذر تحميل الفواتير"
+                        : supplierPayablesLoading
+                          ? "جارٍ تحميل الفواتير..."
+                          : spSupplierId
+                            ? "اختر الفاتورة"
+                            : "اختر المورد أولًا"}
                     </option>
 
                     {eligibleSupplierPaymentInvoices.map((invoice) => (
@@ -4697,12 +4880,16 @@ export default function Inventory({
                       );
                     }}
                     style={INPUT}
-                    disabled={!spSupplierId || spSaving}
+                    disabled={!spSupplierId || spSaving || supplierPayablesLoading}
                   >
                     <option value="">
-                      {spSupplierId
-                        ? "اختر الاستحقاق"
-                        : "اختر المورد أولًا"}
+                      {supplierPayablesError
+                        ? "تعذر تحميل الاستحقاقات"
+                        : supplierPayablesLoading
+                          ? "جارٍ تحميل الاستحقاقات..."
+                          : spSupplierId
+                            ? "اختر الاستحقاق"
+                            : "اختر المورد أولًا"}
                     </option>
 
                     {eligibleSupplierPaymentLiabilities.map(

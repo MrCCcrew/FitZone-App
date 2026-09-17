@@ -79,6 +79,28 @@ describe("Supplier AP admin UI contract", () => {
     expect(inventorySource).toContain("تصدير CSV");
   });
 
+  it("loads supplier balances and statements from the dedicated server report API", () => {
+    expect(inventorySource).toContain(
+      "/api/admin/supplier-reports?mode=balances",
+    );
+
+    expect(inventorySource).toContain(
+      'mode: "statement"',
+    );
+
+    expect(inventorySource).toContain(
+      "loadSupplierStatement",
+    );
+
+    expect(inventorySource).not.toContain(
+      "const supplierBalances = useMemo",
+    );
+
+    expect(inventorySource).not.toContain(
+      "function cairoDateKey",
+    );
+  });
+
   it("supports supplier payment post and cancel actions", () => {
     expect(inventorySource).toContain("postSupplierPaymentFromUi");
     expect(inventorySource).toContain("cancelSupplierPaymentFromUi");
@@ -94,4 +116,44 @@ describe("Supplier AP admin UI contract", () => {
       /fetch\("\/api\/admin\/supplier-payments"[\s\S]{0,300}?method:\s*"DELETE"/,
     );
   });
+  it("keeps inactive suppliers available for statements but blocks settlement", () => {
+    expect(inventorySource).toContain(
+      "supplierBalances.map",
+    );
+
+    expect(inventorySource).toContain(
+      "لا يمكن تسجيل دفعة لمورد غير نشط",
+    );
+
+    expect(inventorySource).toContain(
+      "لا يمكن تسجيل دفعة لمورد محذوف",
+    );
+
+    expect(inventorySource).toContain(
+      "row.isDeleted",
+    );
+  });
+  it("loads complete outstanding payables for the selected supplier", () => {
+    expect(inventorySource).toContain(
+      "/api/admin/purchase-invoices?supplierId=",
+    );
+    expect(inventorySource).toContain(
+      "/api/admin/supplier-payments?supplierId=",
+    );
+    expect(inventorySource).toContain("outstandingOnly=1");
+    expect(inventorySource).toContain("supplierPaymentInvoices");
+    expect(inventorySource).toContain("supplierPaymentLiabilities");
+    expect(inventorySource).toContain("supplierPayablesLoading");
+    expect(inventorySource).toContain("supplierPayablesError");
+  });
+
+  it("handles supplier report loading errors and historical statement suppliers", () => {
+    expect(inventorySource).toContain("statementSuppliers.map");
+    expect(inventorySource).toContain("supplierBalancesLoading");
+    expect(inventorySource).toContain("supplierBalancesError");
+    expect(inventorySource).toContain("supplierStatementLoading");
+    expect(inventorySource).toContain("supplierStatementError");
+    expect(inventorySource).toContain("new AbortController()");
+  });
+
 });
