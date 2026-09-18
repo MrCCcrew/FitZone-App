@@ -2,6 +2,7 @@
 import bcryptjs from "bcryptjs";
 import { requireAdminFeature } from "@/lib/admin-guard";
 import { db } from "@/lib/db";
+import { recoverPaidMembershipForAdmin } from "@/lib/admin-membership-recovery";
 import { logAudit } from "@/lib/audit-context";
 import { getRewardSettings, calcTier } from "@/lib/reward-settings";
 import { recordMembershipActivatedEvent } from "@/lib/analytics/membership-events";
@@ -321,7 +322,11 @@ function mapCustomer(
   };
 }
 
-async function applyMembership(userId: string, planName?: string, status?: CustomerPayload["status"]) {
+async function applyMembership(
+  userId: string,
+  planName?: string,
+  status?: CustomerPayload["status"],
+) {
   if (status === "suspended") {
     await db.user.update({
       where: { id: userId },
@@ -334,18 +339,14 @@ async function applyMembership(userId: string, planName?: string, status?: Custo
   }
 
   /*
-   * active is the only lifecycle value allowed to initiate/change a
-   * membership from this screen.
-   *
    * pending_payment / cancelled / expired / unsubscribed are derived states.
-   * Saving profile data while one of those states is displayed must NEVER
+   * Saving profile data while one of those states is displayed must never
    * rewrite UserMembership.status.
    */
   if (status !== "active") {
     return;
   }
 
-  // Explicitly choosing Active also removes an administrative suspension.
   await db.user.update({
     where: { id: userId },
     data: {
@@ -354,93 +355,14 @@ async function applyMembership(userId: string, planName?: string, status?: Custo
     },
   });
 
-  let nextPlanName = planName;
-
-  if ((!nextPlanName || nextPlanName === "بدون اشتراك") && status === "active") {
-    const latestMembership = await db.userMembership.findFirst({
-      where: { userId },
-      include: { membership: true },
-      orderBy: { startDate: "desc" },
-    });
-
-    nextPlanName = latestMembership?.membership.name;
-  }
-
-  if (!nextPlanName || nextPlanName === "بدون اشتراك") {
-    return;
-  }
-
-  const plan = await db.membership.findFirst({
-    where: { name: nextPlanName, isActive: true },
-  });
-
-  if (!plan) return;
-
-  const activeMembership = await db.userMembership.findFirst({
-    where: { userId, status: "active" },
-    include: { membership: true },
-    orderBy: { startDate: "desc" },
-  });
-
-  if (activeMembership?.membershipId === plan.id) {
-    return;
-  }
-
-  // Never reactivate an old membership while another plan is already active.
-  // Plan changes must go through the normal subscription/payment workflow.
-  if (activeMembership) {
-    return;
-  }
-
   /*
-   * Admin customer editing must never manufacture a free membership.
-   *
-   * Safe recovery is allowed only when:
-   * - the same plan already exists,
-   * - its contractual end date is still in the future,
-   * - it is currently marked expired,
-   * - and a confirmed paid transaction proves economic activation.
-   *
-   * Any genuinely new/change-of-plan membership must go through the
-   * normal subscription/payment workflow.
+   * Never manufacture a free replacement membership from customer editing.
+   * Paid entitlement recovery is serialized inside a database transaction so
+   * it cannot race a successful checkout that activates a replacement plan.
    */
-  const recoverableMembership = await db.userMembership.findFirst({
-    where: {
-      userId,
-      membershipId: plan.id,
-      status: "expired",
-      endDate: { gt: new Date() },
-    },
-    orderBy: { startDate: "desc" },
-    select: {
-      id: true,
-    },
-  });
-
-  if (!recoverableMembership) {
-    return;
-  }
-
-  const paidTransaction = await db.paymentTransaction.findFirst({
-    where: {
-      membershipId: recoverableMembership.id,
-      status: "paid",
-    },
-    select: { id: true },
-  });
-
-  if (!paidTransaction) {
-    return;
-  }
-
-  await db.userMembership.updateMany({
-    where: {
-      id: recoverableMembership.id,
-      status: "expired",
-    },
-    data: {
-      status: "active",
-    },
+  await recoverPaidMembershipForAdmin({
+    userId,
+    planName,
   });
 }
 

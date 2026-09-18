@@ -6,7 +6,7 @@ function readSource(relativePath: string) {
   return fs.readFileSync(path.join(process.cwd(), relativePath), "utf8");
 }
 
-describe("membership supersession regression guards", () => {
+describe("membership supersession structural guards", () => {
   it("does not expire the current membership merely because a paid checkout starts", () => {
     const source = readSource("src/app/api/subscribe/route.ts");
 
@@ -35,11 +35,21 @@ describe("membership supersession regression guards", () => {
     expect(source).toContain("id: { not: membershipId }");
   });
 
-  it("admin customer editing never creates a free replacement membership", () => {
-    const source = readSource("src/app/api/admin/customers/route.ts");
+  it("admin editing delegates paid recovery to the transactional recovery service", () => {
+    const routeSource = readSource(
+      "src/app/api/admin/customers/route.ts",
+    );
+    const serviceSource = readSource(
+      "src/lib/admin-membership-recovery.ts",
+    );
+    const paymentSource = readSource(
+      "src/lib/payments/service.ts",
+    );
 
-    const start = source.indexOf("async function applyMembership");
-    const end = source.indexOf(
+    const start = routeSource.indexOf(
+      "async function applyMembership",
+    );
+    const end = routeSource.indexOf(
       "async function applyWalletAndRewards",
       start,
     );
@@ -47,19 +57,26 @@ describe("membership supersession regression guards", () => {
     expect(start).toBeGreaterThanOrEqual(0);
     expect(end).toBeGreaterThan(start);
 
-    const applyMembership = source.slice(start, end);
+    const applyMembership = routeSource.slice(start, end);
 
-    expect(applyMembership).toContain("if (activeMembership)");
-    expect(applyMembership).toContain('status: "expired"');
-    expect(applyMembership).toContain("endDate: { gt: new Date() }");
-    expect(applyMembership).toContain('status: "paid"');
-
+    expect(applyMembership).toContain(
+      "recoverPaidMembershipForAdmin",
+    );
     expect(applyMembership).not.toContain(
       "db.userMembership.create",
     );
-    expect(applyMembership).not.toContain(
-      'data: { status: "expired" }',
+
+    expect(serviceSource).toContain(
+      "lockMembershipLifecycleUserTx",
     );
-    expect(applyMembership).not.toContain("walletBonus");
+    expect(paymentSource).toContain(
+      "lockMembershipLifecycleUserTx",
+    );
+    expect(serviceSource).toContain(
+      "Prisma.TransactionIsolationLevel.Serializable",
+    );
+    expect(serviceSource).toContain(
+      'status: "paid"',
+    );
   });
 });
