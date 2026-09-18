@@ -1,4 +1,5 @@
 ﻿import { asDbTransactionClient, db } from "@/lib/db";
+import { lockMembershipLifecycleUserTx } from "@/lib/membership-lifecycle-lock";
 import { accruePrivateSessionEarningTx } from "@/lib/employees/private-session-earning-service";
 import {
   buildAttendancePayload,
@@ -342,6 +343,12 @@ async function activatePaidMembershipTx(
     );
     return { success: false, membershipData: null };
   }
+
+  // Serialize payment activation with admin entitlement recovery.
+  await lockMembershipLifecycleUserTx(
+    asDbTransactionClient(tx),
+    membership.userId,
+  );
 
   // Late payment check: if cancelled by cron after timeout
   if (membership.status === "cancelled") {
