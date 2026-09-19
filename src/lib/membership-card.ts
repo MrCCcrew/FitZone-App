@@ -41,17 +41,40 @@ function escapeXml(value: string | null | undefined) {
 }
 
 function readLogoDataUrl() {
-  const candidates = [
-    path.join(process.cwd(), "public", "fitzone-logo-200.jpeg"),
-    path.join(process.cwd(), "public", "fitzone-logo.jpeg"),
-  ];
+  try {
+    const buffer = fs.readFileSync(
+      path.join(
+        process.cwd(),
+        "public",
+        "fitzone-logo-200.jpeg",
+      ),
+    );
 
-  for (const candidate of candidates) {
-    if (!fs.existsSync(candidate)) continue;
-    const buffer = fs.readFileSync(candidate);
-    const ext = path.extname(candidate).toLowerCase();
-    const mime = ext === ".png" ? "image/png" : "image/jpeg";
-    return `data:${mime};base64,${buffer.toString("base64")}`;
+    return `data:image/jpeg;base64,${buffer.toString("base64")}`;
+  } catch (error) {
+    if (
+      (error as NodeJS.ErrnoException).code !== "ENOENT"
+    ) {
+      throw error;
+    }
+  }
+
+  try {
+    const buffer = fs.readFileSync(
+      path.join(
+        process.cwd(),
+        "public",
+        "fitzone-logo.jpeg",
+      ),
+    );
+
+    return `data:image/jpeg;base64,${buffer.toString("base64")}`;
+  } catch (error) {
+    if (
+      (error as NodeJS.ErrnoException).code !== "ENOENT"
+    ) {
+      throw error;
+    }
   }
 
   return null;
