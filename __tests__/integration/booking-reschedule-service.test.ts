@@ -697,6 +697,162 @@ describe("BookingRescheduleService — real fitzone_test integration", () => {
     expect(requestAfter.pendingKey).toBeNull();
   });
 
+  it("allows an active-membership noshow booking to create a past-absence make-up request", async () => {
+    const scenario = await createScenario({
+      label: "Past-Makeup-Noshow-Regression",
+      sourceOffsetMinutes: -24 * 60 - 17,
+      targetOffsetMinutes: 40 * 60 + 17,
+      sourceStatus: "noshow",
+      targetSpots: 1,
+      paymentMethod: "card",
+    });
+
+    const [
+      membershipBefore,
+      historicalBefore,
+      sourceBefore,
+      targetBefore,
+    ] = await Promise.all([
+      db.userMembership.findUniqueOrThrow({
+        where: {
+          id: scenario.userMembership.id,
+        },
+        select: {
+          status: true,
+        },
+      }),
+      db.booking.findUniqueOrThrow({
+        where: {
+          id: scenario.booking.id,
+        },
+        select: {
+          status: true,
+        },
+      }),
+      db.schedule.findUniqueOrThrow({
+        where: {
+          id: scenario.sourceSchedule.id,
+        },
+      }),
+      db.schedule.findUniqueOrThrow({
+        where: {
+          id: scenario.targetSchedule.id,
+        },
+      }),
+    ]);
+
+    expect(membershipBefore.status).toBe("active");
+    expect(historicalBefore.status).toBe("noshow");
+
+    const request =
+      await createBookingRescheduleRequest({
+        userId: scenario.customer.id,
+        bookingId: scenario.booking.id,
+        targetScheduleId:
+          scenario.targetSchedule.id,
+        requestType:
+          "past_absence_makeup",
+        absenceReason:
+          "ظرف طارئ منع الحضور",
+      });
+
+    requestIds.push(request.requestId);
+
+    expect(request.requestId).toEqual(
+      expect.any(String),
+    );
+
+    const firstApproval =
+      await reviewBookingRescheduleRequest({
+        requestId: request.requestId,
+        decision: "approve",
+        reviewedByUserId: scannerId,
+      });
+
+    expect(firstApproval.decision).toBe("approved");
+
+    await expect(
+      reviewBookingRescheduleRequest({
+        requestId: request.requestId,
+        decision: "approve",
+        reviewedByUserId: scannerId,
+      }),
+    ).rejects.toMatchObject({
+      code: "REQUEST_ALREADY_REVIEWED",
+    });
+
+    const [
+      historicalAfter,
+      sourceAfter,
+      targetAfter,
+      requestAfter,
+      replacements,
+    ] = await Promise.all([
+      db.booking.findUniqueOrThrow({
+        where: {
+          id: scenario.booking.id,
+        },
+      }),
+      db.schedule.findUniqueOrThrow({
+        where: {
+          id: scenario.sourceSchedule.id,
+        },
+      }),
+      db.schedule.findUniqueOrThrow({
+        where: {
+          id: scenario.targetSchedule.id,
+        },
+      }),
+      db.bookingRescheduleRequest.findUniqueOrThrow({
+        where: {
+          id: request.requestId,
+        },
+      }),
+      db.booking.findMany({
+        where: {
+          userId: scenario.customer.id,
+          scheduleId: scenario.targetSchedule.id,
+          isMakeup: true,
+        },
+      }),
+    ]);
+
+    replacements.forEach((booking) => {
+      if (!bookingIds.includes(booking.id)) {
+        bookingIds.push(booking.id);
+      }
+    });
+
+    expect(historicalAfter.status).toBe("noshow");
+
+    expect(sourceAfter.availableSpots).toBe(
+      sourceBefore.availableSpots,
+    );
+
+    expect(targetAfter.availableSpots).toBe(
+      targetBefore.availableSpots - 1,
+    );
+
+    expect(replacements).toHaveLength(1);
+
+    const replacement = replacements[0];
+
+    expect(replacement.isMakeup).toBe(true);
+    expect(replacement.makeupReason).toBe(
+      "past_absence_makeup",
+    );
+    expect(replacement.paidAmount).toBe(0);
+    expect(replacement.paymentMethod).toBe(
+      scenario.booking.paymentMethod,
+    );
+    expect(replacement.userMembershipId).toBe(
+      scenario.userMembership.id,
+    );
+
+    expect(requestAfter.status).toBe("approved");
+    expect(requestAfter.pendingKey).toBeNull();
+  });
+
   it("approves a past-absence make-up exactly once and creates one zero-value marked replacement", async () => {
     const scenario = await createScenario({
       label: "Past-Makeup",
