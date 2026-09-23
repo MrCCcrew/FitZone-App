@@ -29,7 +29,7 @@ describe("membership supersession structural guards", () => {
     const source = readSource("src/lib/payments/service.ts");
 
     expect(source).toContain(
-      'if (membership.membership?.kind !== "trial")',
+      'if (membership.membership.kind !== "trial")',
     );
     expect(source).toContain("userId: membership.userId");
     expect(source).toContain("id: { not: membershipId }");
