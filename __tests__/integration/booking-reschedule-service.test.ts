@@ -697,6 +697,126 @@ describe("BookingRescheduleService — real fitzone_test integration", () => {
     expect(requestAfter.pendingKey).toBeNull();
   });
 
+  it("rejects a noshow past-absence make-up when the membership is inactive", async () => {
+    const scenario = await createScenario({
+      label: "Past-Makeup-Noshow-Inactive",
+      sourceOffsetMinutes: -24 * 60 - 31,
+      targetOffsetMinutes: 40 * 60 + 31,
+      sourceStatus: "noshow",
+      targetSpots: 1,
+      paymentMethod: "card",
+    });
+
+    await db.userMembership.update({
+      where: {
+        id: scenario.userMembership.id,
+      },
+      data: {
+        status: "inactive",
+      },
+    });
+
+    const [
+      membershipBefore,
+      historicalBefore,
+      targetBefore,
+    ] = await Promise.all([
+      db.userMembership.findUniqueOrThrow({
+        where: {
+          id: scenario.userMembership.id,
+        },
+        select: {
+          status: true,
+        },
+      }),
+      db.booking.findUniqueOrThrow({
+        where: {
+          id: scenario.booking.id,
+        },
+        select: {
+          status: true,
+        },
+      }),
+      db.schedule.findUniqueOrThrow({
+        where: {
+          id: scenario.targetSchedule.id,
+        },
+      }),
+    ]);
+
+    expect(membershipBefore.status).toBe("inactive");
+    expect(historicalBefore.status).toBe("noshow");
+
+    await expect(
+      createBookingRescheduleRequest({
+        userId: scenario.customer.id,
+        bookingId: scenario.booking.id,
+        targetScheduleId:
+          scenario.targetSchedule.id,
+        requestType:
+          "past_absence_makeup",
+        absenceReason:
+          "اختبار رفض التعويض عند عدم نشاط العضوية",
+      }),
+    ).rejects.toMatchObject({
+      code: "BOOKING_NOT_OPERATIONAL",
+    });
+
+    const [
+      membershipAfter,
+      historicalAfter,
+      targetAfter,
+      requestCount,
+      replacements,
+    ] = await Promise.all([
+      db.userMembership.findUniqueOrThrow({
+        where: {
+          id: scenario.userMembership.id,
+        },
+        select: {
+          status: true,
+        },
+      }),
+      db.booking.findUniqueOrThrow({
+        where: {
+          id: scenario.booking.id,
+        },
+        select: {
+          status: true,
+          isMakeup: true,
+        },
+      }),
+      db.schedule.findUniqueOrThrow({
+        where: {
+          id: scenario.targetSchedule.id,
+        },
+      }),
+      db.bookingRescheduleRequest.count({
+        where: {
+          bookingId: scenario.booking.id,
+        },
+      }),
+      db.booking.findMany({
+        where: {
+          userId: scenario.customer.id,
+          scheduleId:
+            scenario.targetSchedule.id,
+          isMakeup: true,
+        },
+      }),
+    ]);
+
+    expect(membershipAfter.status).toBe("inactive");
+    expect(historicalAfter.status).toBe("noshow");
+    expect(historicalAfter.isMakeup).toBe(false);
+
+    expect(targetAfter.availableSpots).toBe(
+      targetBefore.availableSpots,
+    );
+
+    expect(requestCount).toBe(0);
+    expect(replacements).toHaveLength(0);
+  });
   it("allows an active-membership noshow booking to create a past-absence make-up request", async () => {
     const scenario = await createScenario({
       label: "Past-Makeup-Noshow-Regression",
