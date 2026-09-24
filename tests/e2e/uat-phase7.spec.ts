@@ -1,5 +1,5 @@
 /**
- * Phase 7 UAT — localhost:3000 only, fitzone_test only
+ * Phase 7 UAT — 127.0.0.1:3107 only, fitzone_test only
  * Admin credentials: admin@test.invalid / TestAdmin@123
  * DO NOT run against fitzoneland.com or fitzone_prod
  */
@@ -7,7 +7,7 @@ import { test, expect, Page, BrowserContext } from "@playwright/test";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const BASE = process.env.E2E_BASE_URL ?? "http://localhost:3000";
+const BASE = process.env.E2E_BASE_URL ?? "http://127.0.0.1:3107";
 const ADMIN_EMAIL = "admin@test.invalid";
 const ADMIN_PASS  = "TestAdmin@123";
 
