@@ -1,11 +1,5 @@
 ﻿import { asDbTransactionClient, db } from "@/lib/db";
 import { lockMembershipLifecycleUserTx } from "@/lib/membership-lifecycle-lock";
-import {
-  applyMembershipSessionCarryoverTx,
-  isBlockingMembershipCarryoverReason,
-  prepareMembershipSessionCarryoverTx,
-  type MembershipCarryoverReason,
-} from "@/lib/membership-session-carryover";
 import { accruePrivateSessionEarningTx } from "@/lib/employees/private-session-earning-service";
 import {
   buildAttendancePayload,
@@ -191,7 +185,6 @@ async function ensureMembershipBookingsFromPaymentMetadataTx(
       membershipId: true,
       offerId: true,
       totalSessions: true,
-      baseSessions: true,
       snapshotDurationDays: true,
       bookingPatternSnapshot: true,
       membership: {
@@ -254,20 +247,8 @@ async function ensureMembershipBookingsFromPaymentMetadataTx(
   const duration =
     membership.snapshotDurationDays ?? membership.membership.duration;
 
-  /*
-   * Booking-plan reconciliation must use only the originally purchased
-   * entitlement. Renewal carryover increases totalSessions later, but those
-   * carried units must never be interpreted as new sessions that the booking
-   * plan should auto-create.
-   *
-   * Legacy rows created before baseSessions existed fall back to their
-   * historical totalSessions value.
-   */
   const sessionsCount =
-    membership.baseSessions ??
-    membership.totalSessions ??
-    membership.membership.sessionsCount ??
-    null;
+    membership.totalSessions ?? membership.membership.sessionsCount ?? null;
 
   const result = await applyMembershipBookingPlanTx({
     tx,
@@ -315,9 +296,6 @@ async function activatePaidMembershipTx(
   tx: any,
   transactionId: string,
   membershipId: string,
-  options?: {
-    skipBookingGuarantee?: boolean;
-  },
 ): Promise<{
   success: boolean;
   membershipData: {
@@ -333,24 +311,15 @@ async function activatePaidMembershipTx(
     };
     offer: { title: string } | null;
   } | null;
-  carryoverBlocked?: boolean;
-  carryoverReason?: MembershipCarryoverReason | null;
 }> {
   const membership = await tx.userMembership.findUnique({
     where: { id: membershipId },
     select: {
       id: true,
       userId: true,
-      membershipId: true,
       status: true,
-      startDate: true,
-      endDate: true,
       pendingExpiresAt: true,
       offerId: true,
-      totalSessions: true,
-      baseSessions: true,
-      eligibilitySnapshot: true,
-      allowedClassTypesSnapshot: true,
       snapshotDurationDays: true,
       membership: {
         select: {
@@ -375,28 +344,28 @@ async function activatePaidMembershipTx(
     return { success: false, membershipData: null };
   }
 
+  // Serialize payment activation with admin entitlement recovery.
   await lockMembershipLifecycleUserTx(
     asDbTransactionClient(tx),
     membership.userId,
   );
 
-  const paymentState = await tx.paymentTransaction.findUnique({
-    where: { id: transactionId },
-    select: { metadata: true },
-  });
-  const paymentMetadata: Record<string, unknown> =
-    parseJson(paymentState?.metadata) ?? {};
-
+  // Late payment check: if cancelled by cron after timeout
   if (membership.status === "cancelled") {
     console.warn(
       `[ACTIVATION] Late payment for membership ${membershipId}. ` +
         `Cron already cancelled it. Booking spots may have been reassigned. Manual review required.`,
     );
+    // Record in transaction metadata for admin review/refund
+    const existing = await tx.paymentTransaction.findUnique({
+      where: { id: transactionId },
+      select: { metadata: true },
+    });
     await tx.paymentTransaction.update({
       where: { id: transactionId },
       data: {
         metadata: stringifyJson({
-          ...paymentMetadata,
+          ...(parseJson(existing?.metadata) ?? {}),
           latePaymentWarning: true,
           membershipStatus: "cancelled",
           paymentReceivedAt: new Date().toISOString(),
@@ -406,24 +375,15 @@ async function activatePaidMembershipTx(
     return { success: false, membershipData: null };
   }
 
-  // Idempotent retry: do not create a second carryover lineage.
+  // Already active - return existing state
   if (membership.status === "active") {
     const duration =
-      membership.snapshotDurationDays ?? membership.membership.duration ?? 30;
-
-    if (!options?.skipBookingGuarantee) {
-      await ensureMembershipBookingsFromPaymentMetadataTx(tx, {
-        userId: membership.userId,
-        userMembershipId: membershipId,
-        metadata: paymentState?.metadata,
-      });
-    }
-
+      membership.snapshotDurationDays ?? membership.membership?.duration ?? 30;
     return {
       success: true,
       membershipData: {
         status: membership.status,
-        startDate: membership.startDate ?? new Date(),
+        startDate: new Date(), // Will be overwritten by actual startDate if available
         offerId: membership.offerId,
         membership: { ...membership.membership, duration },
         offer: membership.offer,
@@ -431,145 +391,63 @@ async function activatePaidMembershipTx(
     };
   }
 
-  if (membership.status !== "pending_payment") {
-    return { success: false, membershipData: null };
-  }
+  if (membership.status === "pending_payment") {
+    const now = new Date();
+    // Pending offer memberships carry their purchase-time duration. A
+    // later edit to the offer or linked plan cannot alter this activation.
+    const duration =
+      membership.snapshotDurationDays ?? membership.membership?.duration ?? 30;
+    const endDate = new Date(now.getTime() + duration * 24 * 60 * 60 * 1000);
 
-  const now = new Date();
-  const duration =
-    membership.snapshotDurationDays ?? membership.membership.duration ?? 30;
-  const endDate = new Date(now.getTime() + duration * 24 * 60 * 60 * 1000);
-
-  // Decide and lock the carryover source while the target is still pending.
-  const carryoverPreview = await prepareMembershipSessionCarryoverTx(tx, {
-    userId: membership.userId,
-    excludeMembershipId: membershipId,
-    target: {
-      membershipId: membership.membershipId,
-      offerId: membership.offerId,
-      eligibilitySnapshot: membership.eligibilitySnapshot,
-      allowedClassTypesSnapshot: membership.allowedClassTypesSnapshot,
-      baseSessions: membership.baseSessions ?? membership.totalSessions,
-      startDate: now,
-      endDate,
-      kind: membership.membership.kind,
-    },
-  });
-
-  if (isBlockingMembershipCarryoverReason(carryoverPreview.reason)) {
-    await tx.paymentTransaction.update({
-      where: { id: transactionId },
+    // Atomic activation: race vs cron cleanup
+    const activated = await tx.userMembership.updateMany({
+      where: { id: membershipId, status: "pending_payment" },
       data: {
-        metadata: stringifyJson({
-          ...paymentMetadata,
-          membershipCarryoverBlocked: {
-            reason: carryoverPreview.reason,
-            sourceMembershipId: carryoverPreview.sourceMembershipId,
-            detectedAt: now.toISOString(),
-            requiresManualReview: true,
-          },
-        }),
-      },
-    });
-
-    console.warn(
-      `[ACTIVATION] Paid membership ${membershipId} blocked by carryover safety: ${carryoverPreview.reason}`,
-    );
-
-    return {
-      success: false,
-      membershipData: null,
-      carryoverBlocked: true,
-      carryoverReason: carryoverPreview.reason,
-    };
-  }
-
-  const activated = await tx.userMembership.updateMany({
-    where: { id: membershipId, status: "pending_payment" },
-    data: {
-      status: "active",
-      activatedAt: now,
-      startDate: now,
-      endDate,
-      pendingExpiresAt: null,
-    },
-  });
-
-  if (activated.count !== 1) {
-    console.warn(
-      `[ACTIVATION] Membership ${membershipId} changed concurrently`,
-    );
-    return { success: false, membershipData: null };
-  }
-
-  // Purchased/base entitlement is created before any old booking is moved in.
-  if (!options?.skipBookingGuarantee) {
-    await ensureMembershipBookingsFromPaymentMetadataTx(tx, {
-      userId: membership.userId,
-      userMembershipId: membershipId,
-      metadata: paymentState?.metadata,
-    });
-  }
-
-  const carryover = await applyMembershipSessionCarryoverTx(tx, {
-    userId: membership.userId,
-    targetMembershipId: membershipId,
-    appliedAt: now,
-  });
-
-  if (isBlockingMembershipCarryoverReason(carryover.reason)) {
-    throw new Error(
-      `MEMBERSHIP_CARRYOVER_PREPARE_APPLY_DIVERGENCE:${carryover.reason}`,
-    );
-  }
-
-  // Supersession is deliberately last: no old entitlement is lost before
-  // base bookings and carryover both succeed.
-  if (membership.membership.kind !== "trial") {
-    await tx.userMembership.updateMany({
-      where: {
-        userId: membership.userId,
         status: "active",
-        id: { not: membershipId },
+        activatedAt: now,
+        startDate: now,
+        endDate,
+        pendingExpiresAt: null, // Clear timeout on successful activation
       },
-      data: { status: "expired" },
     });
-  }
 
-  if (
-    Object.prototype.hasOwnProperty.call(
-      paymentMetadata,
-      "membershipCarryoverBlocked",
-    )
-  ) {
-    const resolvedMetadata: Record<string, unknown> = {
-      ...paymentMetadata,
+    if (activated.count === 0) {
+      console.warn(
+        `[ACTIVATION] Membership ${membershipId} already processed (cron won race)`,
+      );
+      return { success: false, membershipData: null };
+    }
+
+    // The new membership is economically finalized now.
+    // Only at this point may it supersede older active memberships.
+    if (membership.membership?.kind !== "trial") {
+      await tx.userMembership.updateMany({
+        where: {
+          userId: membership.userId,
+          status: "active",
+          id: { not: membershipId },
+        },
+        data: { status: "expired" },
+      });
+    }
+
+    console.log(
+      `[ACTIVATION] Successfully activated membership ${membershipId}`,
+    );
+    return {
+      success: true,
+      membershipData: {
+        status: "active",
+        startDate: now,
+        offerId: membership.offerId,
+        membership: { ...membership.membership, duration },
+        offer: membership.offer,
+      },
     };
-    delete resolvedMetadata.membershipCarryoverBlocked;
-    resolvedMetadata.membershipCarryoverBlockResolvedAt = now.toISOString();
-
-    await tx.paymentTransaction.update({
-      where: { id: transactionId },
-      data: { metadata: stringifyJson(resolvedMetadata) },
-    });
   }
 
-  console.log(
-    `[ACTIVATION] Successfully activated membership ${membershipId}`,
-  );
-
-  return {
-    success: true,
-    membershipData: {
-      status: "active",
-      startDate: now,
-      offerId: membership.offerId,
-      membership: { ...membership.membership, duration },
-      offer: membership.offer,
-    },
-    carryoverBlocked: false,
-    carryoverReason: carryover.reason,
-  };
+  // Invalid status for activation
+  return { success: false, membershipData: null };
 }
 
 function extractPaymentAdjustments(
@@ -1561,13 +1439,18 @@ export async function updatePaymentTransactionStatus(
         activationSucceeded = result.success;
         membershipData = result.membershipData;
 
+        if (result.success && result.membershipData) {
+          await ensureMembershipBookingsFromPaymentMetadataTx(tx, {
+            userId: existing.userId,
+            userMembershipId: membershipId,
+            metadata: transaction.metadata,
+          });
+        }
       });
 
       if (!activationSucceeded || !membershipData) {
-        const latestTransaction = await db.paymentTransaction.findUnique({
-          where: { id: transactionId },
-        });
-        return mapPaymentTransaction(latestTransaction ?? transaction);
+        // Webhook lost race or membership already processed
+        return mapPaymentTransaction(transaction);
       }
       void recordMembershipActivatedEvent(
         existing.membershipId,
@@ -2152,16 +2035,19 @@ async function restoreBookingsFromMetadata(
   paymentMetadata: string | null,
 ): Promise<void> {
   try {
-    /*
-     * Do not skip the entire timeout restoration just because this membership
-     * already owns another booking.
-     *
-     * Renewal carryover may legitimately relink old confirmed bookings onto
-     * this membership before the deleted purchase reservations are restored.
-     *
-     * Idempotency is enforced per schedule below after the Schedule row lock.
-     */
-    // 1. Parse metadata safely
+    // 1. Check if bookings already exist
+    const existingBookingsCount = await db.booking.count({
+      where: { userMembershipId },
+    });
+
+    if (existingBookingsCount > 0) {
+      console.info(
+        `[BOOKING_RECOVERY] Membership ${userMembershipId} already has ${existingBookingsCount} bookings - skip restoration`,
+      );
+      return;
+    }
+
+    // 2. Parse metadata safely
     const metadata = parseJson(paymentMetadata);
     if (!metadata) {
       console.info(
@@ -2386,7 +2272,6 @@ export async function recoverPaidMembershipActivation(
 
   // Activate membership atomically
   let activationSucceeded = false;
-  let carryoverBlocked = false;
   let membershipData: {
     status: string;
     startDate: Date;
@@ -2410,21 +2295,17 @@ export async function recoverPaidMembershipActivation(
 
     activationSucceeded = result.success;
     membershipData = result.membershipData;
-    carryoverBlocked = result.carryoverBlocked === true;
+
+    if (result.success && result.membershipData) {
+      await ensureMembershipBookingsFromPaymentMetadataTx(tx, {
+        userId: payment.userId,
+        userMembershipId: payment.membershipId!,
+        metadata: payment.metadata,
+      });
+    }
   });
 
   if (!activationSucceeded || !membershipData) {
-    if (carryoverBlocked) {
-      const blockedPayment = await db.paymentTransaction.findUnique({
-        where: { id: paymentTransactionId },
-      });
-      if (!blockedPayment) {
-        throw new Error(
-          "Recovery failed: blocked paid transaction disappeared",
-        );
-      }
-      return mapPaymentTransaction(blockedPayment);
-    }
     throw new Error("Recovery failed: Membership activation unsuccessful");
   }
 
@@ -2616,29 +2497,33 @@ export async function recoverVerifiedPaymobPayment(
         ? (timeoutSnapshotRaw as Record<string, unknown>)
         : null;
 
-    const hasTimeoutCancelledSnapshot =
+    const isTimeoutCancelledRecovery =
+      membership.status === "cancelled" &&
+      payment.status === "cancelled" &&
       timeoutSnapshot?.reason === "timeout_cleanup" &&
       timeoutSnapshot?.userMembershipId === payment.membershipId;
-
-    const needsTimeoutReopen =
-      hasTimeoutCancelledSnapshot &&
-      membership.status === "cancelled" &&
-      payment.status === "cancelled";
-
-    const isTimeoutCancelledRecovery =
-      hasTimeoutCancelledSnapshot &&
-      (needsTimeoutReopen ||
-        (payment.status === "paid" &&
-          (membership.status === "pending_payment" ||
-            membership.status === "active")));
 
     if (
       membership.status !== "pending_payment" &&
       membership.status !== "active" &&
-      !needsTimeoutReopen
+      !isTimeoutCancelledRecovery
     ) {
       throw new Error(
         `Recovery rejected: membership ${payment.membershipId} is not recoverable (status: ${membership.status})`,
+      );
+    }
+
+    const duplicateActive = await tx.userMembership.findFirst({
+      where: {
+        userId: membership.userId,
+        membershipId: membership.membershipId,
+        status: "active",
+        id: { not: payment.membershipId },
+      },
+    });
+    if (duplicateActive) {
+      throw new Error(
+        `Recovery rejected: duplicate active membership exists for user ${membership.userId} / plan ${membership.membershipId}`,
       );
     }
 
@@ -2696,7 +2581,7 @@ export async function recoverVerifiedPaymobPayment(
       }
     }
 
-    if (needsTimeoutReopen) {
+    if (isTimeoutCancelledRecovery) {
       const reopened = await tx.userMembership.updateMany({
         where: {
           id: payment.membershipId,
@@ -2714,51 +2599,46 @@ export async function recoverVerifiedPaymobPayment(
       }
     }
 
-    // Shared helper owns activation -> base booking -> carryover -> supersession.
+    // Use SHARED activation helper (same logic as normal payment)
     const activation = await activatePaidMembershipTx(
       tx,
       paymentTransactionId,
       payment.membershipId,
-      {
-        skipBookingGuarantee: isTimeoutCancelledRecovery,
-      },
     );
-
-    const updatedPayment = await tx.paymentTransaction.findUnique({
-      where: { id: paymentTransactionId },
-    });
-    if (!updatedPayment) {
-      throw new Error(
-        `Payment ${paymentTransactionId} disappeared during recovery`,
-      );
-    }
-
-    if (activation.carryoverBlocked) {
-      return {
-        alreadyPaid,
-        isTimeoutCancelledRecovery,
-        transaction: updatedPayment,
-        membershipData: null,
-        carryoverBlocked: true,
-      };
-    }
 
     if (!activation.success || !activation.membershipData) {
       throw new Error(`Membership ${payment.membershipId} activation failed`);
     }
 
+    /*
+     * Normal verified recovery uses the same recurring booking-plan engine as
+     * subscribe and normal paid activation.
+     *
+     * Timeout-cancelled late payments are intentionally excluded here because
+     * cleanup stored deletedBookingsSnapshot containing the exact reservations
+     * that existed before timeout. That compatibility path is restored after
+     * this transaction by restoreBookingsFromMetadata().
+     */
+    if (!isTimeoutCancelledRecovery) {
+      await ensureMembershipBookingsFromPaymentMetadataTx(tx, {
+        userId: payment.userId,
+        userMembershipId: payment.membershipId,
+        metadata: payment.metadata,
+      });
+    }
+
+    // Refresh payment data
+    const updatedPayment = await tx.paymentTransaction.findUnique({
+      where: { id: paymentTransactionId },
+    });
+
     return {
       alreadyPaid,
       isTimeoutCancelledRecovery,
-      transaction: updatedPayment,
+      transaction: updatedPayment!,
       membershipData: activation.membershipData,
-      carryoverBlocked: false,
     };
   });
-
-  if (result.carryoverBlocked || !result.membershipData) {
-    return mapPaymentTransaction(result.transaction);
-  }
 
   if (result.isTimeoutCancelledRecovery) {
     await restoreBookingsFromMetadata(
