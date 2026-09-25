@@ -50,7 +50,8 @@ function assertDateKey(value: string) {
     throw new Error("EMPLOYEE_ATTENDANCE_INVALID_DATE");
   }
 
-  return instant;
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day));
 }
 
 function monthKeyFromDate(date: string) {
