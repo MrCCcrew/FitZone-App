@@ -3,9 +3,68 @@ import { getCurrentAppUser } from "@/lib/app-session";
 import { asDbTransactionClient, db } from "@/lib/db";
 import { createPaymentTransaction } from "@/lib/payments/service";
 import {
+  FriendOfferCarryoverPreviewError,
+  previewFriendOfferCarryoverForCustomer,
+} from "@/lib/payments/friend-offer-carryover-preview";
+import {
   lockMarketingConversionForFriendOfferTx,
   releaseMarketingFriendOfferLockTx,
 } from "@/lib/marketing-conversion-service";
+
+export async function GET(req: Request) {
+  try {
+    const currentUser = await getCurrentAppUser();
+
+    if (!currentUser?.id) {
+      return NextResponse.json(
+        { error: "يجب تسجيل الدخول أولًا." },
+        { status: 401 },
+      );
+    }
+
+    const verificationUser = await db.user.findUnique({
+      where: { id: currentUser.id },
+      select: { emailVerified: true },
+    });
+
+    if (!verificationUser?.emailVerified) {
+      return NextResponse.json(
+        {
+          error: "يجب تفعيل الحساب أولًا قبل إتمام الاشتراك.",
+          needsVerification: true,
+        },
+        { status: 403 },
+      );
+    }
+
+    const url = new URL(req.url);
+    const token = url.searchParams.get("token")?.trim() ?? "";
+
+    const carryover = await previewFriendOfferCarryoverForCustomer(
+      currentUser.id,
+      token,
+    );
+
+    return NextResponse.json({
+      success: true,
+      carryover,
+    });
+  } catch (error) {
+    if (error instanceof FriendOfferCarryoverPreviewError) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: error.status },
+      );
+    }
+
+    console.error("[FRIEND_OFFER_CARRYOVER_PREVIEW]", error);
+
+    return NextResponse.json(
+      { error: "تعذر التحقق من رصيد الجلسات المرحل حاليًا." },
+      { status: 500 },
+    );
+  }
+}
 
 export async function POST(req: Request) {
   try {
@@ -196,6 +255,36 @@ export async function POST(req: Request) {
           );
         }
       }
+    }
+
+    let carryover;
+
+    try {
+      carryover = await previewFriendOfferCarryoverForCustomer(
+        currentUser.id,
+        token,
+        now,
+      );
+    } catch (error) {
+      if (error instanceof FriendOfferCarryoverPreviewError) {
+        return NextResponse.json(
+          { error: error.message },
+          { status: error.status },
+        );
+      }
+
+      throw error;
+    }
+
+    if (carryover.blocking) {
+      return NextResponse.json(
+        {
+          error:
+            "لا يمكن بدء عملية دفع جديدة قبل مراجعة تعارض ترحيل الجلسات الحالي.",
+          carryover,
+        },
+        { status: 409 },
+      );
     }
 
     let attributionSnapshot = participant.attributionSnapshot;
@@ -465,6 +554,7 @@ export async function POST(req: Request) {
       status: transaction.status,
       checkoutUrl: transaction.checkoutUrl,
       amount: transaction.amount,
+      carryover,
     });
   } catch (error) {
     console.error("[FRIEND_OFFER_CHECKOUT]", error);

@@ -8,8 +8,12 @@ const settingsSource = readFileSync(resolve(process.cwd(), "src/app/admin/sectio
 
 describe("trainer referrals UI visibility", () => {
   it("does not expose the trainer-referrals tab to staff", () => {
-    expect(trainersSource).toContain('const canManageTrainerReferrals = userRole === "admin" || userRole === "head_coach" || userRole === "trainer";');
-    expect(trainersSource).toContain('...(canManageTrainerReferrals ? [["referrals","لينكات الإحالة"]] as const : []),');
+    expect(trainersSource).toMatch(
+      /const canManageTrainerReferrals\s*=\s*userRole === "admin"\s*\|\|\s*userRole === "head_coach"\s*\|\|\s*userRole === "trainer";/,
+    );
+    expect(trainersSource).toMatch(
+      /\.\.\.\(canManageTrainerReferrals\s*\?\s*\(\[\["referrals",\s*"لينكات الإحالة"\]\]\s*as const\)\s*:\s*\[\]\)/,
+    );
     expect(trainersSource).not.toMatch(/userRole === "staff"[^\n]*\[\["referrals"/);
   });
 

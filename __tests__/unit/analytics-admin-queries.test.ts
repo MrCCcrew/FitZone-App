@@ -1,18 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
-const { pageViews, sessions, events, voiceSessions } = vi.hoisted(() => ({
-  pageViews: vi.fn(),
-  sessions: vi.fn(),
-  events: vi.fn(),
-  voiceSessions: vi.fn(),
-}));
+const { pageViews, sessions, events, voiceSessions, paymentTransactions } =
+  vi.hoisted(() => ({
+    pageViews: vi.fn(),
+    sessions: vi.fn(),
+    events: vi.fn(),
+    voiceSessions: vi.fn(),
+    paymentTransactions: vi.fn(),
+  }));
 vi.mock("@/lib/db", () => ({
   db: {
     analyticsPageView: { findMany: pageViews },
     analyticsSession: { findMany: sessions },
     analyticsEvent: { findMany: events },
     voiceRealtimeSession: { findMany: voiceSessions },
+    paymentTransaction: { findMany: paymentTransactions },
   },
 }));
 
@@ -23,6 +26,15 @@ const filters = { from: new Date("2026-01-01"), to: new Date("2026-01-31T23:59:5
 describe("admin analytics aggregations", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+
+    paymentTransactions.mockResolvedValue([
+      {
+        id: "payment-1",
+        amount: 200,
+        currency: "EGP",
+      },
+    ]);
+
     voiceSessions.mockResolvedValue([]);
     pageViews.mockResolvedValue([{
       visitorId: "v1",

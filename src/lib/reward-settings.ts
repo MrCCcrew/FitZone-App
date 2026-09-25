@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 
 const SECTION = "reward_settings";
@@ -20,11 +21,20 @@ export const DEFAULT_REWARD_SETTINGS = {
 
 export type RewardSettings = typeof DEFAULT_REWARD_SETTINGS;
 
-export async function getRewardSettings(): Promise<RewardSettings> {
+export async function getRewardSettings(
+  tx?: Prisma.TransactionClient,
+): Promise<RewardSettings> {
   try {
-    const row = await db.siteContent.findUnique({ where: { section: SECTION } });
+    const row = tx
+      ? await tx.siteContent.findUnique({ where: { section: SECTION } })
+      : await db.siteContent.findUnique({ where: { section: SECTION } });
+
     if (!row) return DEFAULT_REWARD_SETTINGS;
-    return { ...DEFAULT_REWARD_SETTINGS, ...(JSON.parse(row.content) as object) } as RewardSettings;
+
+    return {
+      ...DEFAULT_REWARD_SETTINGS,
+      ...(JSON.parse(row.content) as object),
+    } as RewardSettings;
   } catch {
     return DEFAULT_REWARD_SETTINGS;
   }
