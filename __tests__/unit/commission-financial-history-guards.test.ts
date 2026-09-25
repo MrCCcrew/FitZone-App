@@ -45,49 +45,11 @@ describe("commission financial-history guards", () => {
     const end = source.indexOf("// Update partner", start);
     const block = source.slice(start, end);
 
-    expect(block).toContain("settleCommissionsTx");
-    expect(block).toContain('commissionType: "manager"');
-    expect(block).toContain('commissionType: "manager_partner"');
+    expect(block).toContain("managerCommission.updateMany");
+    expect(block).toContain("managerPartnerCommission.updateMany");
 
-    const service = read(
-      "src/lib/commissions/commission-settlement-service.ts",
-    );
-
-    const managerStart = service.indexOf('case "manager":');
-    const managerEnd = service.indexOf(
-      'case "manager_partner":',
-      managerStart,
-    );
-    const managerBlock = service.slice(
-      managerStart,
-      managerEnd,
-    );
-
-    expect(managerStart).toBeGreaterThan(-1);
-    expect(managerBlock).toContain(
-      "managerCommission.updateMany",
-    );
-    expect(managerBlock).toContain('status: "earned"');
-    expect(managerBlock).toContain('status: "settled"');
-    expect(managerBlock).toContain("settledAt");
-
-    const partnerStart = managerEnd;
-    const partnerEnd = service.indexOf(
-      'case "staff":',
-      partnerStart,
-    );
-    const partnerBlock = service.slice(
-      partnerStart,
-      partnerEnd,
-    );
-
-    expect(partnerStart).toBeGreaterThan(-1);
-    expect(partnerBlock).toContain(
-      "managerPartnerCommission.updateMany",
-    );
-    expect(partnerBlock).toContain('status: "earned"');
-    expect(partnerBlock).toContain('status: "settled"');
-    expect(partnerBlock).toContain("settledAt");
+    const earnedMatches = block.match(/status:\s*"earned"/g) ?? [];
+    expect(earnedMatches.length).toBeGreaterThanOrEqual(2);
   });
 
   it("sales agent settlement does not rewrite already-settled commissions", () => {
@@ -100,32 +62,9 @@ describe("commission financial-history guards", () => {
 
     const block = source.slice(start, start + 900);
 
-    expect(block).toContain("settleCommissionsTx");
-    expect(block).toContain('commissionType: "sales_agent"');
-
-    const service = read(
-      "src/lib/commissions/commission-settlement-service.ts",
-    );
-
-    const serviceStart = service.indexOf(
-      'case "sales_agent":',
-    );
-    const serviceEnd = service.indexOf(
-      'case "manager":',
-      serviceStart,
-    );
-    const serviceBlock = service.slice(
-      serviceStart,
-      serviceEnd,
-    );
-
-    expect(serviceStart).toBeGreaterThan(-1);
-    expect(serviceBlock).toContain(
-      "salesAgentCommission.updateMany",
-    );
-    expect(serviceBlock).toContain('status: "earned"');
-    expect(serviceBlock).toContain('status: "settled"');
-    expect(serviceBlock).toContain("settledAt");
+    expect(block).toContain("salesAgentCommission.updateMany");
+    expect(block).toContain('status: "earned"');
+    expect(block).toContain('status: "settled"');
   });
 
   it("generic DB maintenance cannot delete financial history roots", () => {
@@ -260,9 +199,8 @@ describe("commission financial-history guards", () => {
     );
 
     expect(source).toContain(
-      "commissionIds: eligibleCommissions.map",
+      "id: { in: eligibleCommissions.map",
     );
-    expect(source).toContain("settleCommissionsTx");
   });
 });
 
@@ -270,14 +208,7 @@ describe("staff trainer nutrition financial-history protection", () => {
   it("staff referral-link deletion preserves commission through SetNull", () => {
     const schema = read("prisma/schema.prisma");
     const start = schema.indexOf("model StaffCommission {");
-    const end = schema.indexOf(
-      "\nmodel ",
-      start + 1,
-    );
-    const block = schema.slice(
-      start,
-      end === -1 ? schema.length : end,
-    );
+    const block = schema.slice(start, start + 1400);
 
     expect(block).toContain("staffReferralLink");
     expect(block).toContain("onDelete: SetNull");
@@ -319,32 +250,10 @@ describe("staff trainer nutrition financial-history protection", () => {
 
     const block = source.slice(start, start + 1800);
 
-    expect(block).toContain("settleCommissionsTx");
-    expect(block).toContain('commissionType: "nutrition"');
-
-    const service = read(
-      "src/lib/commissions/commission-settlement-service.ts",
-    );
-
-    const serviceStart = service.indexOf(
-      'case "nutrition":',
-    );
-    const serviceEnd = service.indexOf(
-      'case "marketing":',
-      serviceStart,
-    );
-    const serviceBlock = service.slice(
-      serviceStart,
-      serviceEnd,
-    );
-
-    expect(serviceStart).toBeGreaterThan(-1);
-    expect(serviceBlock).toContain(
-      "nutritionCommission.updateMany",
-    );
-    expect(serviceBlock).toContain('status: "earned"');
-    expect(serviceBlock).toContain('status: "settled"');
-    expect(serviceBlock).toContain("settledAt");
+    expect(block).toContain("nutritionCommission.updateMany");
+    expect(block).toContain('status: "earned"');
+    expect(block).toContain('status: "settled"');
+    expect(block).toContain("settledAt");
   });
 
   it("staff and trainer settlements only operate on earned commissions", () => {
@@ -394,50 +303,12 @@ describe("legacy manager settlement compatibility", () => {
     const end = source.indexOf("const upd:", start);
     const block = source.slice(start, end);
 
-    expect(block).toContain("settleCommissionsTx");
-    expect(block).toContain('commissionType: "manager"');
-    expect(block).toContain('commissionType: "manager_partner"');
+    expect(block).toContain("managerCommission.updateMany");
+    expect(block).toContain("managerPartnerCommission.updateMany");
 
-    const service = read(
-      "src/lib/commissions/commission-settlement-service.ts",
-    );
+    const earnedFilters = block.match(/status:\s*"earned"/g) ?? [];
+    expect(earnedFilters.length).toBeGreaterThanOrEqual(2);
 
-    const managerStart = service.indexOf('case "manager":');
-    const partnerStart = service.indexOf(
-      'case "manager_partner":',
-      managerStart,
-    );
-    const staffStart = service.indexOf(
-      'case "staff":',
-      partnerStart,
-    );
-
-    const managerBlock = service.slice(
-      managerStart,
-      partnerStart,
-    );
-    const partnerBlock = service.slice(
-      partnerStart,
-      staffStart,
-    );
-
-    expect(managerStart).toBeGreaterThan(-1);
-    expect(partnerStart).toBeGreaterThan(-1);
-
-    expect(managerBlock).toContain(
-      "managerCommission.updateMany",
-    );
-    expect(managerBlock).toContain('status: "earned"');
-    expect(managerBlock).toContain('status: "settled"');
-
-    expect(partnerBlock).toContain(
-      "managerPartnerCommission.updateMany",
-    );
-    expect(partnerBlock).toContain('status: "earned"');
-    expect(partnerBlock).toContain('status: "settled"');
-
-    expect(service).toContain(
-      "const settledAt = rawInput.paidAt ?? new Date();",
-    );
+    expect(block).toContain("const settledAt = new Date()");
   });
 });

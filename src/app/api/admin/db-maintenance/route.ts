@@ -11,35 +11,6 @@ import path from "path";
 const MASTER_PASSWORD = process.env.DB_RESET_MASTER_PASSWORD ?? "";
 const BACKUP_DIR = process.env.DB_BACKUP_DIR ?? path.join(process.cwd(), "backups");
 
-class InvalidBackupFileError extends Error {
-  constructor(message = "اسم ملف النسخة الاحتياطية غير صالح.") {
-    super(message);
-    this.name = "InvalidBackupFileError";
-  }
-}
-
-/**
- * Backup files are intentionally runtime-managed and may live outside the
- * bundled application tree. Validate the filename before opting these runtime
- * filesystem operations out of Turbopack static tracing.
- */
-function resolveBackupPath(backupFile: string) {
-  const safeName = path.basename(backupFile);
-
-  if (
-    safeName !== backupFile ||
-    !safeName.endsWith(".sql.gz")
-  ) {
-    throw new InvalidBackupFileError();
-  }
-
-  return path.join(
-    /* turbopackIgnore: true */
-    BACKUP_DIR,
-    safeName,
-  );
-}
-
 function parseDatabaseUrl() {
   const raw = process.env.DATABASE_URL;
   if (!raw) throw new Error("DATABASE_URL غير مضبوط.");
@@ -58,10 +29,10 @@ function getTimestamp() {
 }
 
 async function createBackup() {
-  await fs.mkdir(/* turbopackIgnore: true */ BACKUP_DIR, { recursive: true });
+  await fs.mkdir(BACKUP_DIR, { recursive: true });
   const dbConfig = parseDatabaseUrl();
   const filename = `fitzone-db-${getTimestamp()}.sql.gz`;
-  const filePath = resolveBackupPath(filename);
+  const filePath = path.join(BACKUP_DIR, filename);
 
   await new Promise<void>((resolve, reject) => {
     const dump = spawn("mysqldump", ["-h", dbConfig.host, "-P", dbConfig.port, "-u", dbConfig.user, dbConfig.database], {
@@ -157,8 +128,8 @@ function buildResetTables({ preserveSiteContent, resetUsers }: { preserveSiteCon
 }
 
 async function restoreFullDatabase(backupFile: string) {
-  const filePath = resolveBackupPath(backupFile);
-  await fs.access(/* turbopackIgnore: true */ filePath);
+  const filePath = path.join(BACKUP_DIR, backupFile);
+  await fs.access(filePath);
 
   const dbConfig = parseDatabaseUrl();
   await new Promise<void>((resolve, reject) => {
@@ -177,13 +148,13 @@ async function restoreFullDatabase(backupFile: string) {
     });
 
     const gunzip = createGunzip();
-    createReadStream(/* turbopackIgnore: true */ filePath).pipe(gunzip).pipe(proc.stdin);
+    createReadStream(filePath).pipe(gunzip).pipe(proc.stdin);
   });
 }
 
 async function restoreTablesFromBackup(backupFile: string, tables: string[]) {
-  const filePath = resolveBackupPath(backupFile);
-  await fs.access(/* turbopackIgnore: true */ filePath);
+  const filePath = path.join(BACKUP_DIR, backupFile);
+  await fs.access(filePath);
 
   // Decompress
   const chunks: Buffer[] = [];
@@ -191,7 +162,7 @@ async function restoreTablesFromBackup(backupFile: string, tables: string[]) {
   const collector = new Writable({
     write(chunk, _enc, cb) { chunks.push(chunk); cb(); },
   });
-  await pipeline(createReadStream(/* turbopackIgnore: true */ filePath), gunzip, collector);
+  await pipeline(createReadStream(filePath), gunzip, collector);
   const sql = Buffer.concat(chunks).toString("utf8");
 
   // Extract LOCK TABLES...UNLOCK TABLES blocks wholesale (preserves multi-line INSERTs)
@@ -258,13 +229,13 @@ export async function GET() {
   if ("error" in masterGuard) return masterGuard.error;
 
   try {
-    await fs.mkdir(/* turbopackIgnore: true */ BACKUP_DIR, { recursive: true });
-    const files = await fs.readdir(/* turbopackIgnore: true */ BACKUP_DIR);
+    await fs.mkdir(BACKUP_DIR, { recursive: true });
+    const files = await fs.readdir(BACKUP_DIR);
     const backups = await Promise.all(
       files
         .filter((name) => name.endsWith(".sql.gz"))
         .map(async (name) => {
-          const stat = await fs.stat(/* turbopackIgnore: true */ resolveBackupPath(name));
+          const stat = await fs.stat(path.join(BACKUP_DIR, name));
           return {
             name,
             size: stat.size,
@@ -370,12 +341,12 @@ export async function POST(req: Request) {
     if (action === "restore-products") {
       if (!backupFile) return NextResponse.json({ message: "حدد ملف النسخة الاحتياطية." }, { status: 400 });
       try {
-        const filePath = resolveBackupPath(backupFile);
+        const filePath = path.join(BACKUP_DIR, backupFile);
         // Verify file exists first
         try {
-          await fs.access(/* turbopackIgnore: true */ filePath);
+          await fs.access(filePath);
         } catch {
-          return NextResponse.json({ message: "ملف النسخة الاحتياطية غير موجود." }, { status: 404 });
+          return NextResponse.json({ message: `ملف النسخة الاحتياطية غير موجود في المسار: ${filePath}` }, { status: 404 });
         }
         const count = await restoreTablesFromBackup(backupFile, ["ProductCategory", "Product"]);
         if (count === 0) {
@@ -383,13 +354,6 @@ export async function POST(req: Request) {
         }
         return NextResponse.json({ message: `تم استرجاع المنتجات بنجاح ✅ — عدد الصفوف المُستعادة: ${count}` });
       } catch (err) {
-        if (err instanceof InvalidBackupFileError) {
-          return NextResponse.json(
-            { message: err.message },
-            { status: 400 },
-          );
-        }
-
         const msg = err instanceof Error ? err.message : String(err);
         console.error("[RESTORE_PRODUCTS]", err);
         return NextResponse.json({ message: `فشل الاسترجاع: ${msg}` }, { status: 500 });
@@ -399,22 +363,15 @@ export async function POST(req: Request) {
     if (action === "restore-full") {
       if (!backupFile) return NextResponse.json({ message: "حدد ملف النسخة الاحتياطية." }, { status: 400 });
       try {
-        const filePath = resolveBackupPath(backupFile);
+        const filePath = path.join(BACKUP_DIR, backupFile);
         try {
-          await fs.access(/* turbopackIgnore: true */ filePath);
+          await fs.access(filePath);
         } catch {
-          return NextResponse.json({ message: "ملف النسخة الاحتياطية غير موجود." }, { status: 404 });
+          return NextResponse.json({ message: `ملف النسخة الاحتياطية غير موجود: ${filePath}` }, { status: 404 });
         }
         await restoreFullDatabase(backupFile);
         return NextResponse.json({ message: "تم استرجاع قاعدة البيانات بالكامل بنجاح ✅" });
       } catch (err) {
-        if (err instanceof InvalidBackupFileError) {
-          return NextResponse.json(
-            { message: err.message },
-            { status: 400 },
-          );
-        }
-
         const msg = err instanceof Error ? err.message : String(err);
         console.error("[RESTORE_FULL]", err);
         return NextResponse.json({ message: `فشل الاسترجاع: ${msg}` }, { status: 500 });
