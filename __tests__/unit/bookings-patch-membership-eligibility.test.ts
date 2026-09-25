@@ -227,23 +227,38 @@ describe("PATCH /api/bookings membership eligibility", () => {
     expect(mocks.updateSchedule).not.toHaveBeenCalled();
   });
 
-  it("rejects customer self-cancellation because cancellation is administration-only", async () => {
-    const response = await PATCH(
+  it("restores the seat only once when the same booking is cancelled concurrently", async () => {
+    const cancelRequest = () =>
       new Request("http://localhost/api/bookings", {
         method: "PATCH",
         body: JSON.stringify({ bookingId: "booking-1" }),
+      });
+
+    mocks.updateBookingMany
+      .mockResolvedValueOnce({ count: 1 })
+      .mockResolvedValueOnce({ count: 0 });
+
+    mocks.transaction.mockImplementation(async (callback) =>
+      callback({
+        booking: { updateMany: mocks.updateBookingMany },
+        schedule: { update: mocks.updateSchedule },
+        bookingRescheduleRequest: {
+          updateMany: mocks.updateRescheduleRequestMany,
+        },
+        notification: { create: mocks.createNotification },
       }),
     );
 
-    const body = await response.json();
+    const responses = await Promise.all([
+      PATCH(cancelRequest()),
+      PATCH(cancelRequest()),
+    ]);
 
-    expect(response.status).toBe(403);
-    expect(body.code).toBe("CUSTOMER_CANCELLATION_DISABLED");
-    expect(mocks.transaction).not.toHaveBeenCalled();
-    expect(mocks.updateBookingMany).not.toHaveBeenCalled();
-    expect(mocks.updateSchedule).not.toHaveBeenCalled();
-    expect(mocks.updateRescheduleRequestMany).not.toHaveBeenCalled();
-    expect(mocks.createNotification).not.toHaveBeenCalled();
+    expect(responses.map((response) => response.status).sort()).toEqual([200, 409]);
+    expect(mocks.updateBookingMany).toHaveBeenCalledTimes(2);
+    expect(mocks.updateSchedule).toHaveBeenCalledTimes(1);
+    expect(mocks.updateRescheduleRequestMany).toHaveBeenCalledTimes(1);
+    expect(mocks.createNotification).toHaveBeenCalledTimes(1);
   });
 
   it("does not change membershipId when the schedule is unchanged", async () => {

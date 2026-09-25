@@ -38,7 +38,8 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1018.0",
-    "@prisma/client": "^6.19.3",
+    "@prisma/adapter-mariadb": "^6.19.2",
+    "@prisma/client": "^6.19.2",
     "@tailwindcss/postcss": "^4.2.1",
     "@types/node": "^25.5.0",
     "@types/pdfkit": "^0.17.6",
@@ -53,14 +54,14 @@
     "date-fns": "^4.1.0",
     "dotenv": "^17.2.3",
     "eslint": "^9.39.4",
-    "eslint-config-next": "16.3.5",
+    "eslint-config-next": "^16.1.6",
     "jsqr": "^1.4.0",
     "lucide-react": "^0.577.0",
-    "mariadb": "^3.5.4",
-    "next": "16.3.5",
-    "nodemailer": "^10.0.10",
+    "mariadb": "^3.5.2",
+    "next": "^16.1.6",
+    "nodemailer": "^7.0.7",
     "pdfkit": "^0.18.0",
-    "prisma": "^6.19.3",
+    "prisma": "^6.19.2",
     "qrcode": "^1.5.4",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
@@ -96,10 +97,5 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
-  },
-  "overrides": {
-    "@prisma/config": {
-      "deepmerge-ts": "8.0.1"
-    }
   }
 }

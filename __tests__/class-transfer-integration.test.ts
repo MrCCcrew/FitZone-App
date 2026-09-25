@@ -22,6 +22,7 @@ describe("Class Transfer Integration", () => {
       data: {
         name: "Test Trainer 1",
         specialty: "Zumba",
+        userId: "user_test_trainer_1",
       },
       select: { id: true, name: true },
     });
@@ -30,6 +31,7 @@ describe("Class Transfer Integration", () => {
       data: {
         name: "Test Trainer 2",
         specialty: "Fitness",
+        userId: "user_test_trainer_2",
       },
       select: { id: true, name: true },
     });
@@ -38,6 +40,7 @@ describe("Class Transfer Integration", () => {
       data: {
         name: "Test Trainer 3",
         specialty: "Yoga",
+        userId: "user_test_trainer_3",
       },
       select: { id: true, name: true },
     });

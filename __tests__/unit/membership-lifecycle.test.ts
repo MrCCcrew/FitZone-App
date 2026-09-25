@@ -17,10 +17,6 @@ describe("membership lifecycle expiration", () => {
           .mockResolvedValueOnce({ count: 0 }),
       },
 
-      booking: {
-        findMany: vi.fn().mockResolvedValue([]),
-      },
-
       attendancePass: {
         updateMany: vi.fn()
           .mockResolvedValueOnce({ count: 1 }),
@@ -49,10 +45,6 @@ describe("membership lifecycle expiration", () => {
       userMembership: {
         findMany: vi.fn().mockResolvedValue([]),
         updateMany: vi.fn(),
-      },
-
-      booking: {
-        findMany: vi.fn().mockResolvedValue([]),
       },
 
       attendancePass: {

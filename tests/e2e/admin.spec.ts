@@ -107,31 +107,25 @@ test.describe("Admin dashboard (/admin) — access control", () => {
     await page.goto("/admin");
     await page.waitForLoadState("domcontentloaded");
 
-    // Protection is client-driven, so wait until one accepted protected
-    // state becomes observable instead of sampling immediately after DOMContentLoaded.
-    await expect.poll(
-      async () => {
-        const url = page.url();
-        const text = (await page.locator("body").textContent()) ?? "";
+    const url = page.url();
+    const text = (await page.locator("body").textContent()) ?? "";
 
-        return (
-          url.includes("/admin/login") ||
-          url.includes("/login") ||
-          text.includes("دخول لوحة الإدارة") ||
-          text.includes("ADMIN PANEL") ||
-          text.includes("تسجيل الدخول") ||
-          text.includes("التحقق من صلاحيات") ||
-          text.includes("صلاحيات الدخول") ||
-          text.includes("🔒") ||
-          text.includes("Unauthorized") ||
-          text.includes("غير مصرح")
-        );
-      },
-      {
-        message: "waiting for unauthenticated admin access protection",
-        timeout: 20_000,
-        intervals: [100, 250, 500, 1000],
-      },
-    ).toBe(true);
+    // Should be redirected to login OR show access denied
+    // /admin is a client component — when session returns 401 it shows
+    // a "verifying permissions" loading screen (🔒  جارٍ التحقق من صلاحيات الدخول...)
+    // rather than a server-side redirect. All of these count as access control.
+    const isProtected =
+      url.includes("/admin/login") ||
+      url.includes("/login") ||
+      text.includes("دخول لوحة الإدارة") ||
+      text.includes("ADMIN PANEL") ||
+      text.includes("تسجيل الدخول") ||
+      text.includes("التحقق من صلاحيات") ||
+      text.includes("صلاحيات الدخول") ||
+      text.includes("🔒") ||
+      text.includes("Unauthorized") ||
+      text.includes("غير مصرح");
+
+    expect(isProtected).toBe(true);
   });
 });

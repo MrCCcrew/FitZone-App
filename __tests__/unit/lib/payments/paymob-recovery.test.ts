@@ -245,20 +245,12 @@ describe("Paymob Payment Recovery", () => {
     await db.paymentTransaction.deleteMany({ where: { id: duplicatePaidId } });
   });
 
-  it("7. single active membership is used as carryover source and superseded", async () => {
-    await db.userMembership.update({
-      where: { id: testUserMembershipId },
-      data: {
-        totalSessions: 12,
-        baseSessions: 12,
-      },
-    });
-
-    const sourceMembershipId = `carryover-source-${Date.now()}`;
-
+  it("7. duplicate active membership rejected", async () => {
+    // Create a duplicate active membership for same user and plan
+    const duplicateMemId = `dup-mem-${Date.now()}`;
     await db.userMembership.create({
       data: {
-        id: sourceMembershipId,
+        id: duplicateMemId,
         userId: testUserId,
         membershipId: testMembershipPlanId,
         status: "active",
@@ -266,53 +258,25 @@ describe("Paymob Payment Recovery", () => {
         endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         snapshotDurationDays: 30,
         paymentAmount: 333,
-        totalSessions: 12,
-        baseSessions: 12,
       },
     });
 
-    try {
-      const input: VerifiedPaymobRecoveryInput = {
-        paymentTransactionId: testPaymentId,
-        paymobTransactionId: "512944958",
-        expectedAmount: 333,
-        expectedCurrency: "EGP",
-        expectedFitZoneReference: "FZ-Offers-0000017",
-        expectedIntentionId: "pi_live_test_intention_123",
-      };
+    const input: VerifiedPaymobRecoveryInput = {
+      paymentTransactionId: testPaymentId,
+      paymobTransactionId: "512944958",
+      expectedAmount: 333,
+      expectedCurrency: "EGP",
+      expectedFitZoneReference: "FZ-Offers-0000017",
+      expectedIntentionId: "pi_live_test_intention_123",
+    };
 
-      const result = await recoverVerifiedPaymobPayment(input);
+    await expect(recoverVerifiedPaymobPayment(input)).rejects.toThrow("duplicate active membership");
 
-      expect(result.status).toBe("paid");
+    const payment = await db.paymentTransaction.findUnique({ where: { id: testPaymentId } });
+    expect(payment?.status).toBe("pending");
 
-      const payment = await db.paymentTransaction.findUnique({
-        where: { id: testPaymentId },
-      });
-
-      expect(payment?.status).toBe("paid");
-
-      const targetMembership = await db.userMembership.findUnique({
-        where: { id: testUserMembershipId },
-      });
-
-      expect(targetMembership?.status).toBe("active");
-      expect(targetMembership?.baseSessions).toBe(12);
-      expect(targetMembership?.carryoverSessions).toBe(12);
-      expect(targetMembership?.totalSessions).toBe(24);
-      expect(targetMembership?.carryoverFromMembershipId).toBe(sourceMembershipId);
-      expect(targetMembership?.carryoverAppliedAt).toBeTruthy();
-
-      const sourceMembership = await db.userMembership.findUnique({
-        where: { id: sourceMembershipId },
-      });
-
-      expect(sourceMembership?.status).toBe("expired");
-    } finally {
-      await db.userMembership.deleteMany({
-        where: { id: sourceMembershipId },
-      });
-    }
-  }, 20000);
+    await db.userMembership.deleteMany({ where: { id: duplicateMemId } });
+  });
 
   it("8. exact retry idempotent", async () => {
     const input: VerifiedPaymobRecoveryInput = {

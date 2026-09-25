@@ -683,7 +683,6 @@ describe("membership commission accrual service", () => {
       data: {
         userId: memberUserId,
         membershipId: membershipPlanId,
-        activatedAt: new Date("2026-08-18T00:00:00.000Z"),
         startDate: new Date("2026-08-18T00:00:00.000Z"),
         endDate: new Date("2026-09-18T00:00:00.000Z"),
         status: "active",
@@ -795,7 +794,6 @@ describe("membership commission accrual service", () => {
       data: {
         userId: memberUserId,
         membershipId: membershipPlanId,
-        activatedAt: new Date("2026-08-18T00:00:00.000Z"),
         startDate: new Date("2026-08-18T00:00:00.000Z"),
         endDate: new Date("2026-09-18T00:00:00.000Z"),
         status: "active",

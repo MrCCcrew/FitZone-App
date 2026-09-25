@@ -5,6 +5,7 @@ import {
   saveEmployeeAttendance,
   unlockAttendancePeriod,
 } from "@/lib/employees/employee-attendance-service";
+import { cairoDateStartInstant } from "@/lib/fitzone-time";
 
 const raw = process.env.DATABASE_URL;
 
@@ -178,7 +179,7 @@ describe(
         await db.employeeAttendance.count({
           where: {
             employeeId,
-            attendanceDate: new Date("2026-09-08T00:00:00.000Z"),
+            attendanceDate: cairoDateStartInstant("2026-09-08"),
           },
         }),
       ).toBe(1);
@@ -222,7 +223,7 @@ describe(
             employeeId_attendanceDate: {
               employeeId,
               attendanceDate:
-                new Date("2026-09-08T00:00:00.000Z"),
+                cairoDateStartInstant("2026-09-08"),
             },
           },
         });
@@ -246,7 +247,7 @@ describe(
         await db.employeeAttendance.count({
           where: {
             employeeId,
-            attendanceDate: new Date("2026-09-09T00:00:00.000Z"),
+            attendanceDate: cairoDateStartInstant("2026-09-09"),
           },
         }),
       ).toBe(0);
@@ -325,7 +326,7 @@ describe(
         await db.employeeAttendance.count({
           where: {
             employeeId,
-            attendanceDate: new Date("2026-10-07T00:00:00.000Z"),
+            attendanceDate: cairoDateStartInstant("2026-10-07"),
           },
         }),
       ).toBe(0);

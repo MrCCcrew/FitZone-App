@@ -12,14 +12,11 @@ const mocks = vi.hoisted(() => ({
   createNotification: vi.fn(),
   resolveEligibility: vi.fn(),
   findHealthResponses: vi.fn(),
-  transaction: vi.fn(),
-  queryRaw: vi.fn(),
 }));
 
 vi.mock("@/lib/app-session", () => ({ getCurrentAppUser: mocks.getCurrentAppUser }));
 vi.mock("@/lib/db", () => ({
   db: {
-    $transaction: mocks.transaction,
     schedule: { findUnique: mocks.findSchedule, update: mocks.updateSchedule },
     booking: {
       findFirst: mocks.findExistingBooking,
@@ -82,63 +79,6 @@ function eligible(overrides: Partial<{ unrestricted: boolean; allowedClassIds: s
 describe("POST /api/bookings membership eligibility", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-
-    mocks.queryRaw.mockImplementation(
-      async (strings: TemplateStringsArray, id: string) => {
-        const sql = strings.join(" ");
-
-        if (sql.includes("FROM `UserMembership`")) {
-          return [
-            {
-              id,
-              status: "active",
-              totalSessions: null,
-              startDate: new Date("2020-01-01T00:00:00.000Z"),
-              endDate: new Date("2031-01-01T00:00:00.000Z"),
-            },
-          ];
-        }
-
-        if (sql.includes("FROM `Schedule`")) {
-          return [
-            {
-              id,
-              availableSpots: schedule.availableSpots,
-              isActive: schedule.isActive,
-            },
-          ];
-        }
-
-        throw new Error(`Unexpected queryRaw in test: ${sql}`);
-      },
-    );
-
-    mocks.transaction.mockImplementation(
-      async (callback: (tx: any) => unknown) =>
-        callback({
-          $queryRaw: mocks.queryRaw,
-          schedule: {
-            findUnique: mocks.findSchedule,
-            update: mocks.updateSchedule,
-          },
-          booking: {
-            findFirst: mocks.findExistingBooking,
-            findMany: mocks.findMembershipBookings,
-            count: mocks.countBookings,
-            create: mocks.createBooking,
-          },
-          userMembership: {
-            findMany: mocks.findMemberships,
-          },
-          notification: {
-            create: mocks.createNotification,
-          },
-          healthResponse: {
-            findMany: mocks.findHealthResponses,
-          },
-        }),
-    );
-
     mocks.getCurrentAppUser.mockResolvedValue({ id: "user-1" });
     mocks.findSchedule.mockResolvedValue(schedule);
     mocks.findExistingBooking.mockResolvedValue(null);

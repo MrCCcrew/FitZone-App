@@ -8,7 +8,6 @@ vi.mock("@/lib/db", () => ({
     analyticsSession: { findMany: vi.fn() },
     analyticsEvent: { findMany: vi.fn() },
     voiceRealtimeSession: { findMany: vi.fn() },
-    paymentTransaction: { findMany: vi.fn() },
   },
 }));
 
@@ -19,7 +18,6 @@ describe("AI Coach analytics overview", () => {
   beforeEach(() => {
     vi.mocked(db.voiceRealtimeSession.findMany).mockResolvedValue([]);
     vi.clearAllMocks();
-    vi.mocked(db.paymentTransaction.findMany).mockResolvedValue([]);
 
     vi.mocked(db.analyticsPageView.findMany).mockResolvedValue([]);
     vi.mocked(db.analyticsSession.findMany).mockResolvedValue([]);
