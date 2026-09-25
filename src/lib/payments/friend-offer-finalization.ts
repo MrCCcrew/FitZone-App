@@ -310,6 +310,7 @@ async function ensureParticipantMembership(participantId: string) {
           paymentMethod: "offer",
           offerTitle: typeof terms.title === "string" ? terms.title : null,
           offerId: terms.offerId,
+          baseSessions: totalSessions,
           totalSessions,
           eligibilitySnapshot: participant.group.eligibilitySnapshot,
           bookingPatternSnapshot: null,
