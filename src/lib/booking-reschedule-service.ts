@@ -146,15 +146,7 @@ export async function createBookingRescheduleRequest(input: {
     fail("EXCHANGE_RESCHEDULE_NOT_ALLOWED");
   }
 
-  const isActiveMembershipNoshowMakeup =
-    isPastAbsence &&
-    booking.status === "noshow" &&
-    booking.userMembership?.status === "active";
-
-  if (
-    !isBookingOperational(booking) &&
-    !isActiveMembershipNoshowMakeup
-  ) {
+  if (!isBookingOperational(booking)) {
     fail("BOOKING_NOT_OPERATIONAL");
   }
 
