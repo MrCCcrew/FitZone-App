@@ -149,6 +149,7 @@ export async function createBookingRescheduleRequest(input: {
   const isActiveMembershipNoshowMakeup =
     isPastAbsence &&
     booking.status === "noshow" &&
+    booking.isMakeup !== true &&
     booking.userMembership?.status === "active";
 
   if (
