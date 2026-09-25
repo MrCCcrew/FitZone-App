@@ -18,6 +18,7 @@ const {
   userFindMany,
   complaintFindMany,
   membershipFindMany,
+  userMembershipFindMany,
 } = vi.hoisted(() => ({
   requireAdminFeature: vi.fn(),
   userCount: vi.fn(),
@@ -33,6 +34,7 @@ const {
   userFindMany: vi.fn(),
   complaintFindMany: vi.fn(),
   membershipFindMany: vi.fn(),
+  userMembershipFindMany: vi.fn(),
 }));
 
 vi.mock("@/lib/admin-guard", () => ({
@@ -48,6 +50,7 @@ vi.mock("@/lib/db", () => ({
     userMembership: {
       count: membershipCount,
       aggregate: membershipAggregate,
+      findMany: userMembershipFindMany,
     },
     order: {
       count: orderCount,
@@ -104,6 +107,21 @@ describe("admin overview route", () => {
     orderFindMany.mockResolvedValue([]);
     userFindMany.mockResolvedValue([]);
     complaintFindMany.mockResolvedValue([]);
+
+    userMembershipFindMany.mockResolvedValue([
+      {
+        membershipId: "plan-1",
+        membership: { name: "Fitness" },
+      },
+      {
+        membershipId: "plan-1",
+        membership: { name: "Fitness" },
+      },
+      {
+        membershipId: "plan-2",
+        membership: { name: "Karate" },
+      },
+    ]);
 
     membershipFindMany.mockResolvedValue([
       { id: "plan-1", name: "Fitness" },
@@ -199,16 +217,35 @@ describe("admin overview route", () => {
       { name: "Karate", count: 1 },
     ]);
 
-    const planCalls = membershipCount.mock.calls.filter(
-      ([args]) => args?.where?.membershipId,
+    expect(userMembershipFindMany).toHaveBeenCalledTimes(1);
+
+    const distributionArgs =
+      userMembershipFindMany.mock.calls[0]?.[0];
+
+    expect(distributionArgs).toBeTruthy();
+    expect(distributionArgs.where.status).toBe("active");
+    expect(distributionArgs.where.endDate?.gt).toBeInstanceOf(Date);
+
+    const activeCountCall = membershipCount.mock.calls.find(
+      ([args]) =>
+        args?.where?.status === "active" &&
+        args?.where?.endDate?.gt instanceof Date,
     );
 
-    expect(planCalls).toHaveLength(2);
+    expect(activeCountCall).toBeTruthy();
 
-    for (const [args] of planCalls) {
-      expect(args.where.status).toBe("active");
-      expect(args.where.endDate?.gt).toBeInstanceOf(Date);
-    }
+    expect(
+      distributionArgs.where.endDate.gt.getTime(),
+    ).toBe(
+      activeCountCall![0].where.endDate.gt.getTime(),
+    );
+
+    expect(distributionArgs.select).toEqual({
+      membershipId: true,
+      membership: {
+        select: { name: true },
+      },
+    });
   });
 
   it("uses exclusive month boundaries for all operational revenue queries", async () => {
