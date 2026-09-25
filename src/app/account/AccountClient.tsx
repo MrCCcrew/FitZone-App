@@ -2206,6 +2206,7 @@ function AccountMembershipTab({
   );
 }
 
+// â”€â”€â”€ Tab: Bookings â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 // ─── Tab: Bookings ────────────────────────────────────────────────────────────
 function BookingsTabLegacy({ bookings }: { bookings: AccountData["bookings"] }) {
@@ -6086,43 +6087,6 @@ type AccountFriendOffer = {
   };
 };
 
-type FriendOfferCarryoverPreview = {
-  eligible: boolean;
-  reason: string;
-  baseSessions: number | null;
-  freeCarryoverSessions: number;
-  transferredReservedUnits: number;
-  carryoverSessions: number;
-  expectedTotalSessions: number | null;
-  blocking: boolean;
-  targetMembershipId: string;
-  targetOfferId: string;
-  previewedAt: string;
-};
-
-async function fetchFriendOfferCarryoverPreview(
-  token: string,
-): Promise<FriendOfferCarryoverPreview> {
-  const response = await fetch(
-    `/api/friend-offers/checkout?token=${encodeURIComponent(token)}`,
-    { cache: "no-store" },
-  );
-
-  const payload = (await response.json().catch(() => null)) as {
-    carryover?: FriendOfferCarryoverPreview;
-    error?: string;
-  } | null;
-
-  if (!response.ok || !payload?.carryover) {
-    throw new Error(
-      payload?.error ||
-        "تعذر التحقق من رصيد الجلسات المرحل قبل الدفع.",
-    );
-  }
-
-  return payload.carryover;
-}
-
 export default function AccountClient({ data }: { data: AccountData }) {
   const { lang } = useLang();
   const t = (arText: string, enText: string) => (lang === "ar" ? arText : enText);
@@ -6180,11 +6144,6 @@ export default function AccountClient({ data }: { data: AccountData }) {
   const [friendOffersLoading, setFriendOffersLoading] = useState(true);
   const [friendCheckoutId, setFriendCheckoutId] = useState<string | null>(null);
   const [friendOfferError, setFriendOfferError] = useState<string | null>(null);
-  const [friendCarryoverPreviews, setFriendCarryoverPreviews] = useState<
-    Record<string, FriendOfferCarryoverPreview | null>
-  >({});
-  const [friendCarryoverPreviewLoading, setFriendCarryoverPreviewLoading] =
-    useState<Record<string, boolean>>({});
   const [friendCancelId, setFriendCancelId] =
     useState<string | null>(null);
   const [friendScheduleOffer, setFriendScheduleOffer] = useState<AccountFriendOffer | null>(null);
@@ -6238,55 +6197,6 @@ export default function AccountClient({ data }: { data: AccountData }) {
   useEffect(() => {
     void loadFriendOffers();
   }, []);
-
-  const refreshFriendCarryoverPreview = async (
-    friendOffer: AccountFriendOffer,
-  ) => {
-    setFriendCarryoverPreviewLoading((current) => ({
-      ...current,
-      [friendOffer.participantId]: true,
-    }));
-
-    try {
-      const preview = await fetchFriendOfferCarryoverPreview(
-        friendOffer.group.token,
-      );
-
-      setFriendCarryoverPreviews((current) => ({
-        ...current,
-        [friendOffer.participantId]: preview,
-      }));
-
-      return preview;
-    } catch (error) {
-      setFriendCarryoverPreviews((current) => ({
-        ...current,
-        [friendOffer.participantId]: null,
-      }));
-      throw error;
-    } finally {
-      setFriendCarryoverPreviewLoading((current) => ({
-        ...current,
-        [friendOffer.participantId]: false,
-      }));
-    }
-  };
-
-  useEffect(() => {
-    for (const friendOffer of friendOffers) {
-      const paidOrActivated =
-        friendOffer.participantStatus === "paid" ||
-        friendOffer.participantStatus === "activated" ||
-        friendOffer.payment?.status === "paid";
-
-      if (!paidOrActivated) {
-        void refreshFriendCarryoverPreview(friendOffer).catch(() => {});
-      }
-    }
-    // Recheck whenever the server refreshes the customer's Friend Offer rows.
-    // The checkout POST performs another authoritative check before new payment.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [friendOffers]);
 
 
   const openFriendSchedulePicker = async (
@@ -6626,25 +6536,6 @@ export default function AccountClient({ data }: { data: AccountData }) {
     setFriendOfferError(null);
 
     try {
-      const checkoutAlreadyStarted =
-        friendOffer.participantStatus === "checkout_started" ||
-        friendOffer.payment?.status === "pending" ||
-        friendOffer.payment?.status === "requires_action";
-
-      if (!checkoutAlreadyStarted) {
-        const freshPreview = await refreshFriendCarryoverPreview(friendOffer);
-
-        if (freshPreview.blocking) {
-          setFriendOfferError(
-            t(
-              "التجديد يحتاج مراجعة قبل بدء دفع جديد بسبب تعارض في ترحيل الجلسات.",
-              "This renewal needs review before starting a new payment because carryover is currently blocked.",
-            ),
-          );
-          return;
-        }
-      }
-
       const returnUrl = `${window.location.origin}/account`;
       const cancelUrl = `${window.location.origin}/account`;
 
@@ -7133,15 +7024,6 @@ export default function AccountClient({ data }: { data: AccountData }) {
                 friendOffer.payment?.status ===
                   "requires_action";
 
-              const carryoverPreview =
-                friendCarryoverPreviews[friendOffer.participantId];
-              const carryoverPreviewLoading =
-                friendCarryoverPreviewLoading[friendOffer.participantId] === true;
-              const carryoverPreviewLoaded = Object.prototype.hasOwnProperty.call(
-                friendCarryoverPreviews,
-                friendOffer.participantId,
-              );
-
               return (
                 <div
                   key={friendOffer.participantId}
@@ -7195,83 +7077,6 @@ export default function AccountClient({ data }: { data: AccountData }) {
                           </strong>
                         </span>
                       </div>
-
-                      {carryoverPreview?.eligible &&
-                      carryoverPreview.carryoverSessions > 0 ? (
-                        <div className="mt-3 rounded-xl border border-emerald-400/25 bg-emerald-500/10 px-3 py-3 text-xs text-emerald-100">
-                          <div className="font-black text-emerald-200">
-                            {t(
-                              "سيتم ترحيل رصيد جلساتك عند تفعيل المجموعة",
-                              "Your remaining sessions are expected to carry over when the group activates",
-                            )}
-                          </div>
-                          <div className="mt-2 grid grid-cols-3 gap-2">
-                            <div>
-                              {t("الجديدة", "New")}: {carryoverPreview.baseSessions ?? "—"}
-                            </div>
-                            <div>
-                              {t("المرحلة", "Carried")}: {carryoverPreview.carryoverSessions}
-                            </div>
-                            <div>
-                              {t("المتوقع", "Expected")}: {carryoverPreview.expectedTotalSessions ?? "—"}
-                            </div>
-                          </div>
-                          <div className="mt-2 leading-5 text-emerald-100/80">
-                            {t(
-                              "التقدير مبني على شروط المجموعة المجمدة الآن، وسيتم التحقق مرة أخرى قبل الدفع وعند التفعيل الفعلي.",
-                              "This estimate uses the group's frozen terms now and is checked again before payment and at actual activation.",
-                            )}
-                          </div>
-                        </div>
-                      ) : null}
-
-                      {carryoverPreview?.blocking && !checkoutStarted ? (
-                        <div className="mt-3 rounded-xl border border-amber-400/25 bg-amber-500/10 px-3 py-3 text-xs text-amber-100">
-                          <div className="font-black text-amber-200">
-                            {t(
-                              "التجديد يحتاج مراجعة قبل دفع جديد",
-                              "Renewal needs review before a new payment",
-                            )}
-                          </div>
-                          <div className="mt-1 leading-5">
-                            {t(
-                              "لن يتم إنشاء عملية دفع جديدة بينما مانع ترحيل الجلسات قائم.",
-                              "No new payment will be created while the carryover blocker is present.",
-                            )}
-                          </div>
-                        </div>
-                      ) : null}
-
-                      {carryoverPreviewLoaded &&
-                      carryoverPreview === null &&
-                      !checkoutStarted ? (
-                        <div className="mt-3 rounded-xl border border-white/10 bg-black/15 px-3 py-3 text-xs text-[#d7aabd]">
-                          {t(
-                            "تعذر التحقق من ترحيل الجلسات. أعيدي التحقق قبل الدفع.",
-                            "Carryover could not be verified. Recheck before payment.",
-                          )}
-                          <button
-                            type="button"
-                            disabled={carryoverPreviewLoading}
-                            onClick={() =>
-                              void refreshFriendCarryoverPreview(friendOffer).catch(
-                                (error) =>
-                                  setFriendOfferError(
-                                    error instanceof Error
-                                      ? error.message
-                                      : t(
-                                          "تعذر التحقق من ترحيل الجلسات.",
-                                          "Carryover verification failed.",
-                                        ),
-                                  ),
-                              )
-                            }
-                            className="mt-2 block rounded-lg border border-white/15 px-3 py-1.5 font-bold text-white disabled:opacity-50"
-                          >
-                            {t("إعادة التحقق", "Recheck")}
-                          </button>
-                        </div>
-                      ) : null}
 
                       {isPaid ? (
                         <div className="mt-3 text-sm font-bold text-emerald-300">
@@ -7354,12 +7159,8 @@ export default function AccountClient({ data }: { data: AccountData }) {
                         <button
                         type="button"
                         disabled={
-                          friendCheckoutId === friendOffer.participantId ||
-                          (!checkoutStarted &&
-                            (carryoverPreviewLoading ||
-                              !carryoverPreviewLoaded ||
-                              !carryoverPreview ||
-                              carryoverPreview.blocking))
+                          friendCheckoutId ===
+                          friendOffer.participantId
                         }
                         onClick={() =>
                           void startFriendCheckout(friendOffer)

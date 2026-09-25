@@ -31,40 +31,9 @@ function money(value: number) {
   return value.toLocaleString("ar-EG", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-function getSafeEmailDomain(email: string) {
-  const normalized = email.trim().toLowerCase();
-  const at = normalized.lastIndexOf("@");
-
-  if (at <= 0 || at >= normalized.length - 1) {
-    return "invalid";
-  }
-
-  const domain = normalized
-    .slice(at + 1)
-    .replace(/[^a-z0-9.-]/g, "")
-    .slice(0, 120);
-
-  return domain || "invalid";
-}
-
-function getSafeSmtpField(value: unknown) {
-  if (typeof value === "string" || typeof value === "number") {
-    return String(value).slice(0, 80);
-  }
-
-  return "UNKNOWN";
-}
-
-function getSmtpResponseCode(response: unknown) {
-  if (typeof response !== "string") return "UNKNOWN";
-  return response.trim().match(/^(\d{3})\b/)?.[1] ?? "UNKNOWN";
-}
-
 export async function sendVerificationEmail(email: string, name: string, code: string) {
-  const domain = getSafeEmailDomain(email);
-
   try {
-    const info = (await getTransporter().sendMail({
+    await getTransporter().sendMail({
       from: FROM,
       to: email,
       subject: "رمز تفعيل حسابك في FitZone",
@@ -93,43 +62,10 @@ export async function sendVerificationEmail(email: string, name: string, code: s
           </div>
         </div>
       `,
-    })) as {
-      accepted?: unknown;
-      rejected?: unknown;
-      messageId?: unknown;
-      response?: unknown;
-    };
-
-    const accepted = Array.isArray(info.accepted) ? info.accepted.length : 0;
-    const rejected = Array.isArray(info.rejected) ? info.rejected.length : 0;
-    const acceptedBySmtp = accepted > 0 && rejected === 0;
-
-    console.info("[EMAIL_VERIFY_DELIVERY]", {
-      domain,
-      accepted,
-      rejected,
-      messageIdPresent: Boolean(info.messageId),
-      smtpResponseCode: getSmtpResponseCode(info.response),
-      acceptedBySmtp,
     });
-
-    return acceptedBySmtp;
+    return true;
   } catch (err) {
-    const smtpError = err as {
-      name?: unknown;
-      code?: unknown;
-      command?: unknown;
-      responseCode?: unknown;
-    };
-
-    console.error("[EMAIL_VERIFY_ERROR]", {
-      domain,
-      name: getSafeSmtpField(smtpError?.name),
-      code: getSafeSmtpField(smtpError?.code),
-      command: getSafeSmtpField(smtpError?.command),
-      responseCode: getSafeSmtpField(smtpError?.responseCode),
-    });
-
+    console.error("[EMAIL_VERIFY]", err);
     return false;
   }
 }
