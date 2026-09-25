@@ -21,13 +21,6 @@ type PaymentTransaction = {
   } | null;
 };
 
-type MembershipCarryoverResult = {
-  baseSessions: number | null;
-  carryoverSessions: number;
-  totalSessions: number | null;
-  appliedAt: string | null;
-};
-
 const STATUS_LABELS: Record<PaymentTransaction["status"], string> = {
   pending: "جارٍ انتظار تأكيد الدفع",
   requires_action: "الدفع قيد المعالجة",
@@ -43,8 +36,6 @@ function PaymentVerifyContent() {
   const returnState = searchParams.get("state");
   const [loading, setLoading] = useState(true);
   const [transaction, setTransaction] = useState<PaymentTransaction | null>(null);
-  const [membershipCarryover, setMembershipCarryover] =
-    useState<MembershipCarryoverResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -65,19 +56,12 @@ function PaymentVerifyContent() {
           `/api/payments/verify/${transactionId}${params.toString() ? `?${params.toString()}` : ""}`,
           { cache: "no-store" },
         );
-        const payload = (await response.json()) as {
-          error?: string;
-          transaction?: PaymentTransaction;
-          membershipCarryover?: MembershipCarryoverResult | null;
-        };
+        const payload = (await response.json()) as { error?: string; transaction?: PaymentTransaction };
         if (!response.ok) throw new Error(payload.error ?? "تعذر التحقق من حالة الدفع.");
         if (cancelled) return;
 
         const nextTransaction = payload.transaction ?? null;
         setTransaction(nextTransaction);
-        setMembershipCarryover(
-          payload.membershipCarryover ?? null,
-        );
         setError(null);
         setLoading(false);
 
@@ -141,40 +125,6 @@ function PaymentVerifyContent() {
             </p>
           </>
         )}
-
-        {isPaid &&
-        isMembership &&
-        membershipCarryover &&
-        membershipCarryover.carryoverSessions > 0 ? (
-          <div className="mt-6 rounded-2xl border border-emerald-400/25 bg-emerald-500/10 p-5">
-            <div className="font-black text-emerald-200">
-              تم ترحيل رصيد اشتراكك بنجاح
-            </div>
-            <div className="mt-3 grid gap-2 text-sm text-emerald-50 sm:grid-cols-3">
-              <div>
-                الحصص الجديدة:{" "}
-                <strong>
-                  {membershipCarryover.baseSessions ?? "—"}
-                </strong>
-              </div>
-              <div>
-                الحصص المرحلة:{" "}
-                <strong>
-                  {membershipCarryover.carryoverSessions}
-                </strong>
-              </div>
-              <div>
-                إجمالي الاشتراك:{" "}
-                <strong>
-                  {membershipCarryover.totalSessions ?? "—"}
-                </strong>
-              </div>
-            </div>
-            <div className="mt-2 text-xs text-emerald-100/80">
-              هذه هي النتيجة الفعلية بعد تفعيل الاشتراك على السيرفر.
-            </div>
-          </div>
-        ) : null}
 
         <div className="mt-6 rounded-3xl border border-[#ffbcdb]/20 bg-[#2a0f1b] p-6">
           {isCancelledFromReturn ? (

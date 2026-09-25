@@ -57,13 +57,6 @@ import { getEligibilityPolicySnapshotForSource } from "@/lib/get-eligible-classe
 import { buildMembershipCommissionSnapshotTx } from "@/lib/commissions/membership-commission-snapshot-builder";
 import { accrueMembershipCommissionsTx } from "@/lib/commissions/membership-commission-accrual";
 import { asDbTransactionClient } from "@/lib/db";
-import { lockMembershipLifecycleUserTx } from "@/lib/membership-lifecycle-lock";
-import {
-  applyMembershipSessionCarryoverTx,
-  isBlockingMembershipCarryoverReason,
-  previewMembershipSessionCarryoverTx,
-  type MembershipCarryoverApplyResult,
-} from "@/lib/membership-session-carryover";
 import { buildCoachMembershipAttributionTx } from "@/lib/employees/coach-membership-attribution-service";
 import { accrueCoachMembershipEarningTx } from "@/lib/employees/coach-membership-earning-service";
 import {
@@ -660,14 +653,6 @@ export async function POST(req: Request) {
 
   const result = await db
     .$transaction(async (tx) => {
-      // Serialize membership creation/finalization for this customer with
-      // paid activation and admin recovery. Carryover relies on this same
-      // lifecycle boundary so two renewals cannot finalize concurrently.
-      await lockMembershipLifecycleUserTx(
-        asDbTransactionClient(tx),
-        userId,
-      );
-
       let resolvedMembershipId = membershipId as string | undefined;
       let offerTitle: string | null = null;
       let offerTitleEn: string | null = null;
@@ -1164,46 +1149,6 @@ export async function POST(req: Request) {
       );
       const eligibilitySnapshot = JSON.stringify(purchaseEligibility);
 
-      /*
-       * Pre-payment carryover safety gate.
-       *
-       * Paid renewals are evaluated before a pending membership/payment is
-       * created so a customer is not knowingly sent to Paymob when the
-       * existing entitlement already requires manual review. Activation still
-       * re-checks authoritatively after payment to protect against changes
-       * between checkout and provider confirmation.
-       */
-      if (plan.kind !== "trial") {
-        const carryoverPreflight =
-          await previewMembershipSessionCarryoverTx(
-            asDbTransactionClient(tx),
-            {
-              userId,
-              target: {
-                membershipId: plan.id,
-                offerId: offerRecord?.id ?? null,
-                eligibilitySnapshot,
-                allowedClassTypesSnapshot,
-                baseSessions: effectiveSessionsCount,
-                startDate: resolvedStart,
-                endDate,
-                kind: plan.kind,
-              },
-            },
-          );
-
-        if (
-          isBlockingMembershipCarryoverReason(
-            carryoverPreflight.reason,
-          )
-        ) {
-          throw new SubscribeError(
-            "لا يمكن بدء الدفع للتجديد تلقائيًا لأن رصيد اشتراكك الحالي أو حجوزاته يحتاج إلى مراجعة قبل النقل. لم يتم إنشاء اشتراك جديد أو بدء عملية دفع.",
-            "back_to_plan",
-          );
-        }
-      }
-
       // Subscriptions with a remaining balance stay pending_payment until Paymob webhook confirms
       const needsPaymentConfirmation = (paymentAmount ?? 0) > 0;
 
@@ -1295,7 +1240,6 @@ export async function POST(req: Request) {
           offerTitle: offerTitle ?? null,
           offerId: offerRecord?.id ?? null,
           totalSessions: effectiveSessionsCount,
-          baseSessions: effectiveSessionsCount,
           eligibilitySnapshot,
           offerSnapshot,
           allowedClassTypesSnapshot,
@@ -1368,6 +1312,19 @@ export async function POST(req: Request) {
         },
       } as Parameters<typeof tx.userMembership.create>[0]);
 
+
+      // Immediate/free subscriptions finalize inside this transaction.
+      // Only after successful creation may they supersede an old membership.
+      if (!needsPaymentConfirmation && plan.kind !== "trial") {
+        await tx.userMembership.updateMany({
+          where: {
+            userId,
+            status: "active",
+            id: { not: subscription.id },
+          },
+          data: { status: "expired" },
+        });
+      }
 
       // Freeze marketing closer attribution independently from referral attribution.
       await lockMarketingConversionForCheckoutTx(asDbTransactionClient(tx), {
@@ -1514,58 +1471,6 @@ export async function POST(req: Request) {
         });
 
         bookedSchedules = bookingResult.bookedSchedules;
-      }
-
-      let carryoverResult: MembershipCarryoverApplyResult | null = null;
-
-      /*
-       * IMPORTANT ORDERING CONTRACT
-       *
-       * The renewed plan's own booking entitlement must be created/reconciled
-       * BEFORE old confirmed bookings are transferred onto this membership.
-       *
-       * Otherwise carried bookings could be counted as part of the newly
-       * purchased plan and suppress creation of sessions the customer actually
-       * bought in the renewal.
-       *
-       * Everything remains inside the same transaction, so any blocking
-       * carryover result rolls back the new membership, its booking plan and
-       * all earlier transaction mutations.
-       */
-      if (!needsPaymentConfirmation && plan.kind !== "trial") {
-        carryoverResult =
-          await applyMembershipSessionCarryoverTx(
-            asDbTransactionClient(tx),
-            {
-              userId,
-              targetMembershipId: subscription.id,
-            },
-          );
-
-        if (
-          isBlockingMembershipCarryoverReason(
-            carryoverResult.reason,
-          )
-        ) {
-          throw new SubscribeError(
-            "لا يمكن إتمام التجديد تلقائيًا لأن رصيد اشتراكك الحالي أو حجوزاته يحتاج إلى مراجعة قبل النقل. لم يتم إنهاء اشتراكك الحالي أو تأكيد الاشتراك الجديد.",
-            "back_to_plan",
-          );
-        }
-
-        /*
-         * Supersession is LAST:
-         * only after the renewed plan booking contract and carryover both
-         * completed safely may older active memberships expire.
-         */
-        await tx.userMembership.updateMany({
-          where: {
-            userId,
-            status: "active",
-            id: { not: subscription.id },
-          },
-          data: { status: "expired" },
-        });
       }
 
       // Only increment offer subscribers if payment is not pending confirmation
@@ -1725,26 +1630,6 @@ export async function POST(req: Request) {
         planId: plan.id,
         planKind: plan.kind,
         offerId,
-        carryover: carryoverResult
-          ? {
-              eligible: carryoverResult.eligible,
-              reason: carryoverResult.reason,
-              sourceMembershipId:
-                carryoverResult.sourceMembershipId,
-              baseSessions:
-                carryoverResult.baseSessions,
-              freeCarryoverSessions:
-                carryoverResult.freeCarryoverSessions,
-              transferredReservedUnits:
-                carryoverResult.transferredReservedUnits,
-              carryoverSessions:
-                carryoverResult.carryoverSessions,
-              totalSessions:
-                carryoverResult.expectedTotalSessions,
-              appliedAt:
-                carryoverResult.appliedAt,
-            }
-          : null,
       };
     })
     .catch((error: unknown) => {

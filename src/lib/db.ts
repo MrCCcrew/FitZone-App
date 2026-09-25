@@ -1,8 +1,10 @@
+import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import { PrismaClient } from "@prisma/client";
 import { getAuditActor } from "@/lib/audit-context";
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
+  prismaAdapter: PrismaMariaDb | undefined;
 };
 
 function getConnectionLimit() {
@@ -35,7 +37,9 @@ function normalizeDatabaseUrl(value: string) {
   return trimmed;
 }
 
-function getDatabaseUrl() {
+function getAdapter() {
+  if (globalForPrisma.prismaAdapter) return globalForPrisma.prismaAdapter;
+
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
     throw new Error("DATABASE_URL is not configured");
@@ -80,19 +84,26 @@ function getDatabaseUrl() {
     }
   }
 
-  url.searchParams.set("connection_limit", String(getConnectionLimit()));
+  const adapter = new PrismaMariaDb({
+    host: url.hostname,
+    port: url.port ? Number(url.port) : 3306,
+    user: decodeURIComponent(url.username),
+    password: decodeURIComponent(url.password),
+    database,
+    charset: "utf8mb4",
+    connectTimeout: 5000,
+    idleTimeout: 300,
+    connectionLimit: getConnectionLimit(),
+  });
 
-  if (!url.searchParams.has("connect_timeout")) {
-    url.searchParams.set("connect_timeout", "5");
-  }
-
-  return url.toString();
+  globalForPrisma.prismaAdapter = adapter;
+  return adapter;
 }
 
 const basePrisma =
   globalForPrisma.prisma ??
   new PrismaClient({
-    datasourceUrl: getDatabaseUrl(),
+    adapter: getAdapter(),
     log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
   });
 
