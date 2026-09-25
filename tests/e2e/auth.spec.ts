@@ -72,7 +72,7 @@ test.describe("Login page (/login) — structure and validation", () => {
     await page.waitForTimeout(800);
     // HTML5 required validation keeps us on the same page
     const url = page.url();
-    expect(url).toContain("localhost:3000");
+    expect(new URL(url).pathname).toBe("/login");
   });
 
   test("submitting fake credentials shows an error message (mocked API)", async ({ page }) => {
