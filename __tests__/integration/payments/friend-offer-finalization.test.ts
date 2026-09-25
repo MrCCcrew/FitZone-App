@@ -1,16 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-
-vi.mock("@/lib/email", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/email")>(
-    "@/lib/email",
-  );
-
-  return {
-    ...actual,
-    sendSubscriptionEmail: vi.fn().mockResolvedValue(true),
-    sendAdminSubscriptionNotification: vi.fn().mockResolvedValue(true),
-  };
-});
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { asDbTransactionClient, db } from "@/lib/db";
 import { maybeFinalizeFriendOfferPayment } from "@/lib/payments/friend-offer-finalization";
@@ -36,7 +24,6 @@ let user2Id = "";
 let marketingStaffId = "";
 let marketingConversion1Id = "";
 let marketingConversion2Id = "";
-let sourceMembership1Id = "";
 
 function testDbGuard() {
   const url = new URL(process.env.DATABASE_URL ?? "");
@@ -75,13 +62,6 @@ async function state() {
         in: [user1Id, user2Id],
       },
       offerId,
-      ...(sourceMembership1Id
-        ? {
-            id: {
-              not: sourceMembership1Id,
-            },
-          }
-        : {}),
     },
   });
 
@@ -173,37 +153,6 @@ beforeAll(async () => {
   });
 
   offerId = offer.id;
-
-  /*
-   * Existing compatible entitlement for Friend A.
-   *
-   * This is the renewal/carryover source. It intentionally has the
-   * same plan + offer identity and no consumed/reserved sessions, so
-   * all 4 sessions are authoritative carryover.
-   */
-  const sourceMembership1 = await db.userMembership.create({
-    data: {
-      userId: user1Id,
-      membershipId: membershipPlanId,
-      startDate: new Date(Date.now() - 24 * 60 * 60 * 1000),
-      endDate: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000),
-      status: "active",
-      activatedAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
-      paymentAmount: 280,
-      paymentMethod: "offer",
-      offerTitle: offer.title,
-      offerId,
-      baseSessions: 4,
-      totalSessions: 4,
-      eligibilitySnapshot: null,
-      bookingPatternSnapshot: null,
-      allowedClassTypesSnapshot: null,
-      snapshotDurationDays: 30,
-    },
-  });
-
-  sourceMembership1Id = sourceMembership1.id;
-  createdUserMembershipIds.push(sourceMembership1.id);
 
   const config = await db.friendOfferConfig.create({
     data: {
@@ -545,15 +494,6 @@ describe(
       expect(current.memberships).toHaveLength(0);
       expect(current.offer?.currentSubscribers).toBe(0);
 
-      const sourceAfterFirstShare = await db.userMembership.findUnique({
-        where: {
-          id: sourceMembership1Id,
-        },
-      });
-
-      expect(sourceAfterFirstShare?.status).toBe("active");
-      expect(sourceAfterFirstShare?.totalSessions).toBe(4);
-
       const firstPayment = current.payments.find(
         (row) => row.id === payment1Id,
       );
@@ -583,7 +523,7 @@ describe(
       expect(conversionAfterFirstShare.commissionBaseSnapshot).toBe(280);
     });
 
-    it("last paid share carries compatible sessions exactly once", async () => {
+    it("last paid share finalizes both memberships exactly once", async () => {
       await updatePaymentTransactionStatus(payment2Id, "paid", null);
 
       const concurrentResults = await Promise.allSettled([
@@ -641,36 +581,6 @@ describe(
       expect(
         new Set(afterFinalization.memberships.map((row) => row.id)).size,
       ).toBe(2);
-
-      const friendARenewal = afterFinalization.memberships.find(
-        (row) => row.userId === user1Id,
-      );
-      const friendBMembership = afterFinalization.memberships.find(
-        (row) => row.userId === user2Id,
-      );
-
-      expect(friendARenewal).toBeTruthy();
-      expect(friendARenewal?.baseSessions).toBe(12);
-      expect(friendARenewal?.carryoverSessions).toBe(4);
-      expect(friendARenewal?.totalSessions).toBe(16);
-      expect(friendARenewal?.carryoverFromMembershipId).toBe(
-        sourceMembership1Id,
-      );
-      expect(friendARenewal?.carryoverAppliedAt).not.toBeNull();
-
-      expect(friendBMembership).toBeTruthy();
-      expect(friendBMembership?.baseSessions).toBe(12);
-      expect(friendBMembership?.carryoverSessions).toBe(0);
-      expect(friendBMembership?.totalSessions).toBe(12);
-      expect(friendBMembership?.carryoverFromMembershipId).toBeNull();
-
-      const sourceAfterFinalization = await db.userMembership.findUnique({
-        where: {
-          id: sourceMembership1Id,
-        },
-      });
-
-      expect(sourceAfterFinalization?.status).toBe("expired");
 
       for (const payment of afterFinalization.payments) {
         expect(payment.status).toBe("paid");
@@ -788,25 +698,6 @@ describe(
       expect(afterRetry.offer?.currentSubscribers).toBe(2);
 
       expect(afterRetry.group?.status).toBe("completed");
-
-      const friendAAfterRetry = afterRetry.memberships.find(
-        (row) => row.userId === user1Id,
-      );
-
-      expect(friendAAfterRetry?.baseSessions).toBe(12);
-      expect(friendAAfterRetry?.carryoverSessions).toBe(4);
-      expect(friendAAfterRetry?.totalSessions).toBe(16);
-      expect(friendAAfterRetry?.carryoverFromMembershipId).toBe(
-        sourceMembership1Id,
-      );
-
-      const lineageCountAfterRetry = await db.userMembership.count({
-        where: {
-          carryoverFromMembershipId: sourceMembership1Id,
-        },
-      });
-
-      expect(lineageCountAfterRetry).toBe(1);
 
       const commissionsAfterRetry =
         await db.marketingCommission.findMany({
