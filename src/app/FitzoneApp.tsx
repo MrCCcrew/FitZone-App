@@ -3011,6 +3011,43 @@ type FriendOfferGroupView = {
   };
 };
 
+type FriendOfferCarryoverPreview = {
+  eligible: boolean;
+  reason: string;
+  baseSessions: number | null;
+  freeCarryoverSessions: number;
+  transferredReservedUnits: number;
+  carryoverSessions: number;
+  expectedTotalSessions: number | null;
+  blocking: boolean;
+  targetMembershipId: string;
+  targetOfferId: string;
+  previewedAt: string;
+};
+
+async function fetchFriendOfferCarryoverPreview(
+  token: string,
+): Promise<FriendOfferCarryoverPreview> {
+  const response = await fetch(
+    `/api/friend-offers/checkout?token=${encodeURIComponent(token)}`,
+    { cache: "no-store" },
+  );
+
+  const payload = (await response.json().catch(() => null)) as {
+    carryover?: FriendOfferCarryoverPreview;
+    error?: string;
+  } | null;
+
+  if (!response.ok || !payload?.carryover) {
+    throw new Error(
+      payload?.error ||
+        "تعذر التحقق من رصيد الجلسات المرحل قبل الدفع.",
+    );
+  }
+
+  return payload.carryover;
+}
+
 type PublicGoal = {
   id: string;
   name: string;
@@ -10085,6 +10122,18 @@ const MembershipsPage = ({
     rewardPointsEGP: number;
     affiliateDiscountRate?: number;
     affiliateDiscountEligible?: boolean;
+    carryover?: {
+      eligible: boolean;
+      reason: string;
+      baseSessions: number | null;
+      freeCarryoverSessions: number;
+      transferredReservedUnits: number;
+      carryoverSessions: number;
+      expectedTotalSessions: number | null;
+      blocking: boolean;
+      targetMembershipId: string;
+      targetOfferId: string | null;
+    } | null;
   } | null>(null);
   const [subUseWallet, setSubUseWallet] = useState(false);
   const [subUseRewards, setSubUseRewards] = useState(false);
@@ -11219,7 +11268,41 @@ const MembershipsPage = ({
         setMembershipTrainers([]);
       });
 
-    fetch("/api/me/checkout-options", { cache: "no-store" })
+    const checkoutParams = new URLSearchParams();
+
+    if (plan.id) {
+      checkoutParams.set("membershipId", plan.id);
+    }
+    if (plan.offerId) {
+      checkoutParams.set("offerId", plan.offerId);
+    }
+    for (const scheduleId of scheduleIds) {
+      checkoutParams.append("scheduleId", scheduleId);
+    }
+    if (plan.selectedMonths != null) {
+      checkoutParams.set(
+        "selectedMonths",
+        String(plan.selectedMonths),
+      );
+    }
+    if (plan.isFeatured && featuredStartDate) {
+      checkoutParams.set(
+        "startDate",
+        featuredStartDate,
+      );
+    }
+
+    const checkoutQuery =
+      checkoutParams.toString();
+
+    fetch(
+      `/api/me/checkout-options${
+        checkoutQuery
+          ? `?${checkoutQuery}`
+          : ""
+      }`,
+      { cache: "no-store" },
+    )
       .then((r) => (r.ok ? r.json() : null))
       .then(
         (
@@ -11230,6 +11313,18 @@ const MembershipsPage = ({
             rewardPointsEGP: number;
             affiliateDiscountRate?: number;
             affiliateDiscountEligible?: boolean;
+            carryover?: {
+              eligible: boolean;
+              reason: string;
+                      baseSessions: number | null;
+              freeCarryoverSessions: number;
+              transferredReservedUnits: number;
+              carryoverSessions: number;
+              expectedTotalSessions: number | null;
+              blocking: boolean;
+              targetMembershipId: string;
+              targetOfferId: string | null;
+            } | null;
           } | null,
         ) => {
           if (d) setSubCheckoutOptions(d);
@@ -13102,6 +13197,15 @@ const MembershipsPage = ({
               const summary = getMembershipFinancialSummary(
                 checkoutPreview.plan,
               );
+              const carryoverPreview =
+                subCheckoutOptions?.carryover &&
+                (checkoutPreview.plan.offerId
+                  ? subCheckoutOptions.carryover.targetOfferId ===
+                    checkoutPreview.plan.offerId
+                  : subCheckoutOptions.carryover.targetMembershipId ===
+                    checkoutPreview.plan.id)
+                  ? subCheckoutOptions.carryover
+                  : null;
               const paymentOptions = [
                 {
                   id: "paymob" as const,
@@ -13329,6 +13433,112 @@ const MembershipsPage = ({
                     </div>
                   </div>
 
+                  {carryoverPreview?.eligible &&
+                  carryoverPreview.carryoverSessions > 0 ? (
+                    <div
+                      className="card"
+                      style={{
+                        padding: "14px 16px",
+                        marginBottom: 14,
+                        background: "rgba(16,185,129,.08)",
+                        border: "1px solid rgba(16,185,129,.28)",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontWeight: 900,
+                          color: "#86efac",
+                          fontSize: 14,
+                          marginBottom: 8,
+                        }}
+                      >
+                        {t(
+                          "سيتم ترحيل رصيد اشتراكك",
+                          "Your remaining sessions will carry over",
+                        )}
+                      </div>
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                          gap: 8,
+                          fontSize: 12,
+                          color: C.grayLight,
+                        }}
+                      >
+                        <div>
+                          {t("الجديدة", "New")}:{" "}
+                          <strong style={{ color: C.white }}>
+                            {carryoverPreview.baseSessions ?? "—"}
+                          </strong>
+                        </div>
+                        <div>
+                          {t("المرحلة", "Carried")}:{" "}
+                          <strong style={{ color: "#86efac" }}>
+                            {carryoverPreview.carryoverSessions}
+                          </strong>
+                        </div>
+                        <div>
+                          {t("الإجمالي", "Total")}:{" "}
+                          <strong style={{ color: C.white }}>
+                            {carryoverPreview.expectedTotalSessions ?? "—"}
+                          </strong>
+                        </div>
+                      </div>
+                      <div
+                        style={{
+                          marginTop: 8,
+                          color: "#bbf7d0",
+                          fontSize: 11,
+                          lineHeight: 1.6,
+                        }}
+                      >
+                        {t(
+                          "هذا تقدير معتمد من السيرفر قبل الدفع. سيتم التحقق مرة أخرى عند تفعيل التجديد بعد نجاح الدفع.",
+                          "This is a server-authoritative pre-payment preview. It will be verified again when the renewal activates after successful payment.",
+                        )}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {carryoverPreview?.blocking ? (
+                    <div
+                      className="card"
+                      style={{
+                        padding: "14px 16px",
+                        marginBottom: 14,
+                        background: "rgba(245,158,11,.09)",
+                        border: "1px solid rgba(245,158,11,.3)",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontWeight: 900,
+                          color: "#fcd34d",
+                          fontSize: 14,
+                          marginBottom: 6,
+                        }}
+                      >
+                        {t(
+                          "التجديد يحتاج مراجعة قبل الدفع",
+                          "Renewal needs review before payment",
+                        )}
+                      </div>
+                      <div
+                        style={{
+                          color: "#fde68a",
+                          fontSize: 12,
+                          lineHeight: 1.7,
+                        }}
+                      >
+                        {t(
+                          "يوجد رصيد أو حجوزات في اشتراكك الحالي تحتاج مراجعة قبل النقل. لن يتم بدء الدفع أو إنهاء اشتراكك الحالي تلقائيًا.",
+                          "Your current membership has sessions or bookings that need review before transfer. Payment will not start and your current membership will not be ended automatically.",
+                        )}
+                      </div>
+                    </div>
+                  ) : null}
+
                   {/* Wallet & Points selection */}
                   {subCheckoutOptions &&
                     (subCheckoutOptions.rewardPointsEGP > 0 ||
@@ -13445,12 +13655,17 @@ const MembershipsPage = ({
                   {!checkoutPreview.confirmed ? (
                     <button
                       className="btn-primary"
-                      style={{ width: "100%", justifyContent: "center" }}
+                      style={{
+                        width: "100%",
+                        justifyContent: "center",
+                        opacity: carryoverPreview?.blocking ? 0.55 : 1,
+                      }}
                       onClick={() =>
                         setCheckoutPreview((current) =>
                           current ? { ...current, confirmed: true } : current,
                         )
                       }
+                      disabled={carryoverPreview?.blocking === true}
                     >
                       {t("تأكيد الاشتراك", "Confirm subscription")}
                     </button>
@@ -13790,6 +14005,7 @@ const MembershipsPage = ({
                           )
                         }
                         disabled={
+                          carryoverPreview?.blocking === true ||
                           (checkoutPreview.plan.id !== null &&
                             subscribing === checkoutPreview.plan.id) ||
                           (checkoutPreview.plan.coachMembershipEnabled ===
@@ -15204,6 +15420,14 @@ const OffersPage = ({
   const [friendBusy, setFriendBusy] = useState(false);
   const [friendError, setFriendError] = useState("");
   const [friendCopied, setFriendCopied] = useState(false);
+  const [friendCarryoverPreview, setFriendCarryoverPreview] =
+    useState<FriendOfferCarryoverPreview | null>(null);
+  const [friendCarryoverPreviewToken, setFriendCarryoverPreviewToken] =
+    useState<string | null>(null);
+  const [friendCarryoverPreviewLoading, setFriendCarryoverPreviewLoading] =
+    useState(false);
+  const [friendCarryoverPreviewFailed, setFriendCarryoverPreviewFailed] =
+    useState(false);
 
   const FRIEND_PENDING_KEY = "fitzone_friend_offer_pending";
 
@@ -15217,11 +15441,33 @@ const OffersPage = ({
     return url.toString();
   };
 
+  const refreshFriendCarryoverPreview = async (token: string) => {
+    setFriendCarryoverPreviewLoading(true);
+    setFriendCarryoverPreviewFailed(false);
+
+    try {
+      const preview = await fetchFriendOfferCarryoverPreview(token);
+      setFriendCarryoverPreview(preview);
+      setFriendCarryoverPreviewToken(token);
+      return preview;
+    } catch (error) {
+      setFriendCarryoverPreview(null);
+      setFriendCarryoverPreviewToken(null);
+      setFriendCarryoverPreviewFailed(true);
+      throw error;
+    } finally {
+      setFriendCarryoverPreviewLoading(false);
+    }
+  };
+
   const openFriendOffer = (offer: PublicOffer) => {
     setFriendOffer(offer);
     setFriendGroup(null);
     setFriendError("");
     setFriendCopied(false);
+    setFriendCarryoverPreview(null);
+    setFriendCarryoverPreviewToken(null);
+    setFriendCarryoverPreviewFailed(false);
   };
 
   const createFriendGroup = async (
@@ -15385,6 +15631,33 @@ const OffersPage = ({
     }
   };
 
+  useEffect(() => {
+    const token = friendGroup?.token ?? null;
+    const participantStatus = friendGroup?.currentParticipant?.status ?? null;
+
+    if (
+      !summary?.authenticated ||
+      !token ||
+      !participantStatus ||
+      participantStatus === "paid" ||
+      participantStatus === "activated"
+    ) {
+      setFriendCarryoverPreview(null);
+      setFriendCarryoverPreviewToken(null);
+      setFriendCarryoverPreviewFailed(false);
+      return;
+    }
+
+    void refreshFriendCarryoverPreview(token).catch(() => {});
+    // Preview is intentionally refreshed when the frozen group or participant
+    // payment state changes. The POST route rechecks again before any new payment.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    friendGroup?.token,
+    friendGroup?.currentParticipant?.status,
+    summary?.authenticated,
+  ]);
+
   const startFriendCheckout = async () => {
     if (!friendGroup?.token) return;
 
@@ -15415,6 +15688,23 @@ const OffersPage = ({
     setFriendError("");
 
     try {
+      if (friendGroup.currentParticipant?.status !== "checkout_started") {
+        const freshPreview = await refreshFriendCarryoverPreview(
+          friendGroup.token,
+        );
+
+        if (freshPreview.blocking) {
+          setFriendError(
+            t(
+              "التجديد يحتاج مراجعة قبل بدء دفع جديد بسبب تعارض في ترحيل الجلسات.",
+              "This renewal needs review before starting a new payment because carryover is currently blocked.",
+            ),
+          );
+          setFriendBusy(false);
+          return;
+        }
+      }
+
       const returnUrl = new URL(
         window.location.origin + window.location.pathname,
       );
@@ -15659,6 +15949,9 @@ const OffersPage = ({
                   setFriendOffer(null);
                   setFriendGroup(null);
                   setFriendError("");
+                  setFriendCarryoverPreview(null);
+                  setFriendCarryoverPreviewToken(null);
+                  setFriendCarryoverPreviewFailed(false);
                 }}
                 style={{
                   border: 0,
@@ -15930,6 +16223,117 @@ ${friendInviteUrl(friendGroup.token)}`,
                   </>
                 )}
 
+                {friendCarryoverPreview?.eligible &&
+                friendCarryoverPreview.carryoverSessions > 0 ? (
+                  <div
+                    style={{
+                      padding: 13,
+                      borderRadius: 11,
+                      border: "1px solid rgba(16,185,129,.3)",
+                      background: "rgba(16,185,129,.08)",
+                      color: "#bbf7d0",
+                      marginBottom: 15,
+                    }}
+                  >
+                    <div style={{ fontWeight: 900, marginBottom: 7 }}>
+                      {t(
+                        "سيتم ترحيل رصيد جلساتك عند تفعيل المجموعة",
+                        "Your remaining sessions are expected to carry over when the group activates",
+                      )}
+                    </div>
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                        gap: 8,
+                        fontSize: 12,
+                      }}
+                    >
+                      <div>
+                        {t("الجديدة", "New")}: {friendCarryoverPreview.baseSessions ?? "—"}
+                      </div>
+                      <div>
+                        {t("المرحلة", "Carried")}: {friendCarryoverPreview.carryoverSessions}
+                      </div>
+                      <div>
+                        {t("المتوقع", "Expected")}: {friendCarryoverPreview.expectedTotalSessions ?? "—"}
+                      </div>
+                    </div>
+                    <div style={{ marginTop: 8, fontSize: 11, lineHeight: 1.7 }}>
+                      {t(
+                        "هذا تقدير معتمد من شروط المجموعة المجمدة وقت الفحص. سيتم التحقق مرة أخرى قبل إنشاء الدفع وعند التفعيل الفعلي بعد اكتمال المجموعة.",
+                        "This server-authoritative estimate uses the group's frozen terms at preview time. It is checked again before creating a new payment and at actual activation after the group completes.",
+                      )}
+                    </div>
+                  </div>
+                ) : null}
+
+                {friendCarryoverPreview?.blocking ? (
+                  <div
+                    style={{
+                      padding: 13,
+                      borderRadius: 11,
+                      border: "1px solid rgba(245,158,11,.35)",
+                      background: "rgba(245,158,11,.09)",
+                      color: "#fde68a",
+                      marginBottom: 15,
+                      lineHeight: 1.7,
+                    }}
+                  >
+                    <strong>
+                      {t(
+                        "التجديد يحتاج مراجعة قبل دفع جديد",
+                        "Renewal needs review before a new payment",
+                      )}
+                    </strong>
+                    <div style={{ marginTop: 5, fontSize: 11 }}>
+                      {t(
+                        "لن يتم إنشاء عملية دفع جديدة بينما مانع ترحيل الجلسات ما زال قائمًا.",
+                        "No new payment will be created while the carryover blocker is still present.",
+                      )}
+                    </div>
+                  </div>
+                ) : null}
+
+                {friendCarryoverPreviewFailed ? (
+                  <div
+                    style={{
+                      padding: 12,
+                      borderRadius: 11,
+                      border: `1px solid ${C.border}`,
+                      color: C.grayLight,
+                      marginBottom: 15,
+                      fontSize: 12,
+                    }}
+                  >
+                    {t(
+                      "تعذر التحقق من ترحيل الجلسات. أعيدي التحقق قبل بدء دفع جديد.",
+                      "Carryover could not be verified. Recheck before starting a new payment.",
+                    )}
+                    <button
+                      type="button"
+                      disabled={friendCarryoverPreviewLoading}
+                      onClick={() =>
+                        void refreshFriendCarryoverPreview(
+                          friendGroup.token,
+                        ).catch(() => {})
+                      }
+                      style={{
+                        display: "block",
+                        marginTop: 8,
+                        padding: "7px 10px",
+                        borderRadius: 8,
+                        border: `1px solid ${C.border}`,
+                        background: "transparent",
+                        color: C.white,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {t("إعادة التحقق", "Recheck")}
+                    </button>
+                  </div>
+                ) : null}
+
                 {!summary?.authenticated ? (
                   <button
                     type="button"
@@ -15980,7 +16384,14 @@ ${friendInviteUrl(friendGroup.token)}`,
                 ) : friendGroup.currentParticipant ? (
                   <button
                     type="button"
-                    disabled={friendBusy}
+                    disabled={
+                      friendBusy ||
+                      (friendGroup.currentParticipant.status !==
+                        "checkout_started" &&
+                        (friendCarryoverPreviewLoading ||
+                          friendCarryoverPreviewToken !== friendGroup.token ||
+                          friendCarryoverPreview?.blocking === true))
+                    }
                     onClick={() => void startFriendCheckout()}
                     style={{
                       width: "100%",
