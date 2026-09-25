@@ -296,9 +296,7 @@ export async function runPaidMembershipPostActivationReconciliation(
 
       // ── Reward points ────────────────────────────────────────────────────────
       try {
-        const rewardCfg = await getRewardSettings(
-          asDbTransactionClient(tx),
-        );
+        const rewardCfg = await getRewardSettings();
         if (rewardCfg.pointsPerSubscription > 0) {
           const rp = await tx.rewardPoints.findUnique({ where: { userId } });
           if (rp) {

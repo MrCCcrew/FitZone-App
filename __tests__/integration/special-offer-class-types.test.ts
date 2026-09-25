@@ -135,8 +135,8 @@ describe("Offer Class Selection - Special vs Regular", () => {
       })
     ).id;
 
-    // Simulate migrated/backfilled exact Class IDs on the special offer.
-    // Exact Class IDs are authoritative; class-type rows are legacy fallback.
+    // Simulate OLD backfill: add incorrect direct links to special offer
+    // (These should be IGNORED for special offers)
     await db.offerAllowedClass.createMany({
       data: [
         { offerId: specialOfferId, classId: fitnessClass1.id },
@@ -182,30 +182,25 @@ describe("Offer Class Selection - Special vs Regular", () => {
     await db.$disconnect();
   });
 
-  describe("Special Offer - Exact Class IDs with legacy type fallback", () => {
-    it("uses exact direct Class IDs when they exist", async () => {
+  describe("Special Offer - Class Types ONLY", () => {
+    it("returns ONLY classes matching allowedClassTypes (ignores direct links)", async () => {
       const eligible = await getEligibleClassesForSource({
         type: "offer",
         id: specialOfferId,
       });
 
-      // Exact direct Class IDs are authoritative when present.
-      // All four explicitly linked classes must be returned.
-      expect(eligible.length).toBe(4);
-
+      // Should return ONLY fitness classes (2 classes)
+      // Even though we have 4 direct links, special offers ignore them
+      expect(eligible.length).toBe(2);
+      expect(eligible.every((c) => c.type === "fitness")).toBe(true);
 
       const ids = eligible.map((c) => c.id).sort();
-      const expectedIds = [
-        fitnessClass1.id,
-        fitnessClass2.id,
-        kickboxingClass.id,
-        zumbaClass.id,
-      ].sort();
+      const expectedIds = [fitnessClass1.id, fitnessClass2.id].sort();
       expect(ids).toEqual(expectedIds);
     });
 
-    it("validates by exact direct Class ID when present", async () => {
-      // Fitness classes: ALLOWED by exact direct Class IDs.
+    it("validates by class type, NOT direct link", async () => {
+      // Fitness classes: ALLOWED (in allowedClassTypes)
       expect(
         await isClassAllowedForSource(
           { type: "offer", id: specialOfferId },
@@ -220,21 +215,22 @@ describe("Offer Class Selection - Special vs Regular", () => {
         )
       ).toBe(true);
 
-      // Kickboxing: ALLOWED because its exact direct Class ID is authoritative.
+      // Kickboxing: NOT ALLOWED (not in allowedClassTypes)
+      // Even though it has a direct link!
       expect(
         await isClassAllowedForSource(
           { type: "offer", id: specialOfferId },
           kickboxingClass.id
         )
-      ).toBe(true);
+      ).toBe(false);
 
-      // Zumba: ALLOWED because its exact direct Class ID is authoritative.
+      // Zumba: NOT ALLOWED
       expect(
         await isClassAllowedForSource(
           { type: "offer", id: specialOfferId },
           zumbaClass.id
         )
-      ).toBe(true);
+      ).toBe(false);
     });
 
     it("returns ZERO classes when allowedClassTypes is empty", async () => {
@@ -321,27 +317,20 @@ describe("Offer Class Selection - Special vs Regular", () => {
       await db.offer.delete({ where: { id: testOfferId } });
     });
 
-    it("uses backfilled direct links as authoritative exact Class IDs", async () => {
+    it("has direct links (created by backfill) but ignores them", async () => {
       // Verify direct links exist
       const links = await db.offerAllowedClass.count({
         where: { offerId: specialOfferId },
       });
       expect(links).toBe(4);
 
-      // Exact direct Class IDs are authoritative for this offer.
+      // But special offer ignores them
       const eligible = await getEligibleClassesForSource({
         type: "offer",
         id: specialOfferId,
       });
-      expect(eligible.length).toBe(4);
-      expect(eligible.map((c) => c.id).sort()).toEqual(
-        [
-          fitnessClass1.id,
-          fitnessClass2.id,
-          kickboxingClass.id,
-          zumbaClass.id,
-        ].sort(),
-      );
+      expect(eligible.length).toBe(2); // Not 4!
+      expect(eligible.every((c) => c.type === "fitness")).toBe(true);
     });
   });
 

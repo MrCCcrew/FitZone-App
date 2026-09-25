@@ -25,7 +25,6 @@ vi.mock("@/lib/payments/reconciliation-helper", () => ({
 
 // Create shared mock instances for transaction
 const txUserMembershipFindUnique = vi.fn();
-const txUserMembershipFindMany = vi.fn().mockResolvedValue([]);
 const txUserMembershipUpdateMany = vi.fn();
 const txPaymentTransactionUpdate = vi.fn();
 
@@ -70,7 +69,7 @@ vi.mock("@/lib/db", () => ({
           update: txPaymentTransactionUpdate,
           updateMany: vi.fn().mockResolvedValue({ count: 1 })
         },
-        userMembership:     { findUnique: txUserMembershipFindUnique, findMany: txUserMembershipFindMany, updateMany: txUserMembershipUpdateMany, update: vi.fn() },
+        userMembership:     { findUnique: txUserMembershipFindUnique, updateMany: txUserMembershipUpdateMany, update: vi.fn() },
         wallet:             { upsert: vi.fn().mockResolvedValue({ id: "w1" }), update: vi.fn(), findUnique: vi.fn().mockResolvedValue(null) },
         walletTransaction:  { create: vi.fn(), findMany: vi.fn().mockResolvedValue([]), findFirst: vi.fn().mockResolvedValue(null) },
         rewardPoints:       { upsert: vi.fn().mockResolvedValue({ id: "rp1" }), update: vi.fn(), findUnique: vi.fn().mockResolvedValue({ id: "rp1", points: 100, userId: "u1" }) },
@@ -150,27 +149,9 @@ const BASE_TX = {
 
 // Membership fixture — status pending_payment, 30-day duration, no partner/bonus/offer
 const PENDING_MEM = {
-  id: "m1",
-  userId: "u1",
-  membershipId: "plan1",
   status: "pending_payment",
-  startDate: null,
-  endDate: null,
-  pendingExpiresAt: null,
   offerId: null,
-  totalSessions: null,
-  baseSessions: null,
-  eligibilitySnapshot: null,
-  allowedClassTypesSnapshot: null,
-  snapshotDurationDays: null,
-  membership: {
-    name: "Basic",
-    nameEn: "Basic",
-    kind: "membership",
-    duration: 30,
-    walletBonus: 0,
-    productRewards: null,
-  },
+  membership: { name: "Basic", nameEn: "Basic", duration: 30, walletBonus: 0, productRewards: null },
   offer: null,
 };
 
@@ -188,12 +169,6 @@ const ACTIVE_BOOKING_MEM = {
   membershipId: "plan1",
   offerId: null,
   totalSessions: null,
-  baseSessions: null,
-  carryoverSessions: 0,
-  carryoverFromMembershipId: null,
-  carryoverAppliedAt: null,
-  eligibilitySnapshot: null,
-  allowedClassTypesSnapshot: null,
   snapshotDurationDays: null,
   bookingPatternSnapshot: null,
   membership: {
@@ -220,7 +195,6 @@ describe("membership activation — happy path", () => {
     // Setup tx.userMembership.findUnique inside transaction
     txUserMembershipFindUnique
       .mockResolvedValueOnce(PENDING_MEM as never)
-      .mockResolvedValueOnce(ACTIVE_BOOKING_MEM as never)
       .mockResolvedValueOnce(ACTIVE_BOOKING_MEM as never);
     txUserMembershipUpdateMany.mockResolvedValue({ count: 1 } as never);
 
@@ -245,7 +219,6 @@ describe("membership activation — happy path", () => {
 
     txUserMembershipFindUnique
       .mockResolvedValueOnce(PENDING_MEM as never)
-      .mockResolvedValueOnce(ACTIVE_BOOKING_MEM as never)
       .mockResolvedValueOnce(ACTIVE_BOOKING_MEM as never);
     txUserMembershipUpdateMany.mockResolvedValue({ count: 1 } as never);
 
@@ -275,7 +248,6 @@ describe("membership activation — end-date calculation", () => {
 
     txUserMembershipFindUnique
       .mockResolvedValueOnce(PENDING_MEM as never)
-      .mockResolvedValueOnce(ACTIVE_BOOKING_MEM as never)
       .mockResolvedValueOnce(ACTIVE_BOOKING_MEM as never);
     txUserMembershipUpdateMany.mockResolvedValue({ count: 1 } as never);
 
@@ -312,8 +284,7 @@ describe("membership activation — end-date calculation", () => {
           ...ACTIVE_BOOKING_MEM.membership,
           duration: 90,
         },
-      } as never)
-      .mockResolvedValueOnce({         ...ACTIVE_BOOKING_MEM,         endDate: new Date("2026-04-01T00:00:00.000Z"),         membership: {           ...ACTIVE_BOOKING_MEM.membership,           duration: 90,         },       } as never);
+      } as never);
     txUserMembershipUpdateMany.mockResolvedValue({ count: 1 } as never);
 
     vi.mocked(db.userMembership.findUnique).mockResolvedValueOnce(NO_PARTNER as never);

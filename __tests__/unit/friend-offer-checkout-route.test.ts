@@ -3,9 +3,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   getCurrentAppUser: vi.fn(),
   createPaymentTransaction: vi.fn(),
-  previewFriendOfferCarryoverForCustomer: vi.fn(),
-  transaction: vi.fn(),
-  queryRaw: vi.fn(),
 
   userFindUnique: vi.fn(),
 
@@ -32,23 +29,8 @@ vi.mock("@/lib/payments/service", () => ({
   createPaymentTransaction: mocks.createPaymentTransaction,
 }));
 
-vi.mock("@/lib/payments/friend-offer-carryover-preview", () => ({
-  FriendOfferCarryoverPreviewError: class FriendOfferCarryoverPreviewError extends Error {
-    constructor(
-      public readonly status: number,
-      message: string,
-    ) {
-      super(message);
-    }
-  },
-  previewFriendOfferCarryoverForCustomer:
-    mocks.previewFriendOfferCarryoverForCustomer,
-}));
-
 vi.mock("@/lib/db", () => ({
-  asDbTransactionClient: (tx: unknown) => tx,
   db: {
-    $transaction: mocks.transaction,
     user: {
       findUnique: mocks.userFindUnique,
     },
@@ -81,7 +63,7 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
-import { GET, POST } from "@/app/api/friend-offers/checkout/route";
+import { POST } from "@/app/api/friend-offers/checkout/route";
 
 function request(body: Record<string, unknown>) {
   return new Request("http://localhost/api/friend-offers/checkout", {
@@ -165,49 +147,6 @@ beforeEach(() => {
     count: 1,
   });
 
-  mocks.participantFindUnique.mockResolvedValue({
-    id: "p1",
-    userId: "user-1",
-    status: "joined",
-  });
-
-  mocks.queryRaw.mockResolvedValue([]);
-
-  mocks.transaction.mockImplementation(
-    async (
-      callback: (tx: {
-        friendOfferParticipant: {
-          updateMany:
-            typeof mocks.participantUpdateMany;
-          findUnique:
-            typeof mocks.participantFindUnique;
-        };
-        $queryRaw: typeof mocks.queryRaw;
-      }) => unknown,
-    ) =>
-      callback({
-        friendOfferParticipant: {
-          updateMany: mocks.participantUpdateMany,
-          findUnique: mocks.participantFindUnique,
-        },
-        $queryRaw: mocks.queryRaw,
-      }),
-  );
-
-  mocks.previewFriendOfferCarryoverForCustomer.mockResolvedValue({
-    eligible: true,
-    reason: "eligible",
-    baseSessions: 12,
-    freeCarryoverSessions: 4,
-    transferredReservedUnits: 0,
-    carryoverSessions: 4,
-    expectedTotalSessions: 16,
-    blocking: false,
-    targetMembershipId: "membership-1",
-    targetOfferId: "offer-1",
-    previewedAt: "2026-09-22T12:00:00.000Z",
-  });
-
   mocks.createPaymentTransaction.mockResolvedValue({
     id: "new-payment",
     status: "pending",
@@ -222,107 +161,6 @@ beforeEach(() => {
 });
 
 describe("Friend Offer checkout route", () => {
-  it("returns the authoritative frozen-contract carryover preview", async () => {
-    const response = await GET(
-      new Request(
-        "http://localhost/api/friend-offers/checkout?token=FRIENDTOKEN",
-      ),
-    );
-
-    expect(response.status).toBe(200);
-
-    const body = await response.json();
-
-    expect(body.carryover).toEqual(
-      expect.objectContaining({
-        carryoverSessions: 4,
-        expectedTotalSessions: 16,
-        blocking: false,
-      }),
-    );
-
-    expect(
-      mocks.previewFriendOfferCarryoverForCustomer,
-    ).toHaveBeenCalledWith(
-      "user-1",
-      "FRIENDTOKEN",
-    );
-
-    expect(mocks.createPaymentTransaction).not.toHaveBeenCalled();
-  });
-
-  it("blocks a fresh payment when the authoritative carryover preview is blocking", async () => {
-    mocks.previewFriendOfferCarryoverForCustomer.mockResolvedValueOnce({
-      eligible: false,
-      reason: "pending_exchange_request",
-      baseSessions: 12,
-      freeCarryoverSessions: 0,
-      transferredReservedUnits: 0,
-      carryoverSessions: 0,
-      expectedTotalSessions: 12,
-      blocking: true,
-      targetMembershipId: "membership-1",
-      targetOfferId: "offer-1",
-      previewedAt: "2026-09-22T12:00:00.000Z",
-    });
-
-    const response = await POST(
-      request({ token: "FRIENDTOKEN" }),
-    );
-
-    expect(response.status).toBe(409);
-
-    const body = await response.json();
-
-    expect(body.carryover).toEqual(
-      expect.objectContaining({
-        blocking: true,
-        reason: "pending_exchange_request",
-      }),
-    );
-
-    expect(mocks.createPaymentTransaction).not.toHaveBeenCalled();
-    expect(mocks.participantUpdateMany).not.toHaveBeenCalled();
-  });
-  it("reuses an already-started payment without applying a new-payment carryover blocker", async () => {
-    mocks.groupFindUnique.mockResolvedValue(
-      baseGroup({
-        participants: [
-          {
-            id: "p1",
-            userId: "user-1",
-            status: "checkout_started",
-            shareAmountMinor: 28000,
-            paymentTransactionId: "existing-payment",
-            attributionSnapshot: null,
-          },
-        ],
-      }),
-    );
-
-    mocks.paymentFindUnique.mockResolvedValueOnce({
-      id: "existing-payment",
-      status: "pending",
-      checkoutUrl: "https://checkout.test/existing",
-      amount: 280,
-    });
-
-    const response = await POST(
-      request({ token: "FRIENDTOKEN" }),
-    );
-
-    expect(response.status).toBe(200);
-
-    const body = await response.json();
-
-    expect(body.reused).toBe(true);
-    expect(body.paymentTransactionId).toBe("existing-payment");
-    expect(
-      mocks.previewFriendOfferCarryoverForCustomer,
-    ).not.toHaveBeenCalled();
-    expect(mocks.createPaymentTransaction).not.toHaveBeenCalled();
-  });
-
   it("blocks unverified user", async () => {
     mocks.userFindUnique.mockResolvedValueOnce({
       emailVerified: null,

@@ -1,5 +1,5 @@
 /**
- * Phase 7 UAT — 127.0.0.1:3107 only, fitzone_test only
+ * Phase 7 UAT — localhost:3000 only, fitzone_test only
  * Admin credentials: admin@test.invalid / TestAdmin@123
  * DO NOT run against fitzoneland.com or fitzone_prod
  */
@@ -7,7 +7,7 @@ import { test, expect, Page, BrowserContext } from "@playwright/test";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const BASE = process.env.E2E_BASE_URL ?? "http://127.0.0.1:3107";
+const BASE = "http://localhost:3000";
 const ADMIN_EMAIL = "admin@test.invalid";
 const ADMIN_PASS  = "TestAdmin@123";
 
@@ -200,52 +200,13 @@ test.describe("3. Authentication", () => {
   });
 
   test("3.5 Admin login via UI — navigates to /admin on success", async ({ page }) => {
-    test.setTimeout(60_000);
-    await page.goto(`${BASE}/admin/login`, {
-      waitUntil: "domcontentloaded",
-      timeout: 45_000,
-    });
+    await page.goto(`${BASE}/admin/login`);
     await page.waitForLoadState("domcontentloaded");
-    // Explicitly prove React hydration BEFORE entering credentials.
-    // The SSR button can be visible before its React onClick is active.
-    const passwordField = page.locator('input[placeholder="********"]');
-    const showPasswordButton = page.getByRole("button", { name: "إظهار كلمة المرور" });
-
-    await expect(showPasswordButton).toBeVisible({ timeout: 45_000 });
-
-    await expect.poll(
-      async () => {
-        const currentType = await passwordField.getAttribute("type");
-
-        if (currentType === "text") {
-          return currentType;
-        }
-
-        await showPasswordButton.click();
-        await page.waitForTimeout(150);
-
-        return await passwordField.getAttribute("type");
-      },
-      {
-        message: "waiting for React hydration to activate the password toggle",
-        timeout: 45_000,
-        intervals: [100, 250, 500, 1000],
-      },
-    ).toBe("text");
-
-    await page.getByRole("button", { name: "إخفاء كلمة المرور" }).click();
-    await expect(passwordField).toHaveAttribute("type", "password");
-
-    // Hydration is now proven. Enter credentials only afterwards.
     await page.fill('input[type="email"]', ADMIN_EMAIL);
     await page.fill('input[type="password"]', ADMIN_PASS);
-
-    // React onSubmit is now proven active.
+    // Wait for URL to change to /admin — avoids networkidle timeout (admin has WebSocket)
     await Promise.all([
-      page.waitForURL(/\/admin(?!\/login)/, {
-        timeout: 45_000,
-        waitUntil: "domcontentloaded",
-      }),
+      page.waitForURL(/\/admin(?!\/login)/, { timeout: 20000 }),
       page.click('button[type="submit"]'),
     ]);
     // Should be on /admin (not /admin/login)
@@ -254,11 +215,7 @@ test.describe("3. Authentication", () => {
   });
 
   test("3.6 Unauthenticated /account — redirects or shows auth prompt", async ({ page }) => {
-    test.setTimeout(60_000);
-    await page.goto(`${BASE}/account`, {
-      waitUntil: "domcontentloaded",
-      timeout: 45_000,
-    });
+    await page.goto(`${BASE}/account`);
     await page.waitForLoadState("domcontentloaded");
     await page.waitForTimeout(2000);
     const url = page.url();
@@ -302,7 +259,14 @@ test.describe("4. Admin Panel", () => {
   test.beforeEach(async ({ page }) => {
     // Inject cached session cookie into page context
     if (sharedAdminCookies.length > 0) {
-      await page.context().addCookies(sharedAdminCookies);
+      await page.context().addCookies(
+        sharedAdminCookies.map((c) => ({
+          name: c.name,
+          value: c.value,
+          domain: "localhost",
+          path: "/",
+        })),
+      );
     }
     await page.goto(`${BASE}/admin`);
     await page.waitForLoadState("domcontentloaded");
