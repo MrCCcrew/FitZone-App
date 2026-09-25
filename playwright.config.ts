@@ -1,7 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
 /**
- * E2E configuration — runs against localhost:3000 only.
+ * E2E configuration — runs against 127.0.0.1:3107 only.
  * Start the dev server manually before running:  npm run dev
  *
  * Safety guarantees:
@@ -22,7 +22,7 @@ export default defineConfig({
   ],
 
   use: {
-    baseURL: "http://localhost:3000",
+    baseURL: "http://127.0.0.1:3107",
     trace: "on-first-retry",
     screenshot: "only-on-failure",
     video: "on-first-retry",

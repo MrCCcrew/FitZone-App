@@ -1151,6 +1151,17 @@ model UserMembership {
   offerTitle                String?
   offerId                   String?
   totalSessions             Int?
+  // Original purchased session entitlement before any renewal carryover.
+  // Null on legacy rows; for new finite memberships it snapshots the purchased base.
+  baseSessions              Int?
+  // Sessions carried from exactly one superseded membership after real activation.
+  // This value is zero until carryover is atomically finalized.
+  carryoverSessions         Int       @default(0)
+  // Lineage to the immediately superseded membership that funded the carryover.
+  // @unique guarantees one old membership cannot fund two renewals.
+  carryoverFromMembershipId String?   @unique
+  // Written only when carryover has actually been applied after activation.
+  carryoverAppliedAt        DateTime?
   // Immutable purchase-time class entitlement. This is the canonical source
   // of truth for which exact classes this membership may use after purchase.
   eligibilitySnapshot       String?   @db.LongText
