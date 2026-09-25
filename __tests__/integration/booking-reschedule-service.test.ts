@@ -973,6 +973,69 @@ describe("BookingRescheduleService — real fitzone_test integration", () => {
     expect(requestAfter.pendingKey).toBeNull();
   });
 
+  it("rejects chaining a new make-up from a previous make-up noshow", async () => {
+    const scenario = await createScenario({
+      label: "Past-Makeup-No-Chain",
+      sourceOffsetMinutes: -24 * 60 - 23,
+      targetOffsetMinutes: 40 * 60 + 23,
+      sourceStatus: "noshow",
+      targetSpots: 1,
+      paymentMethod: "card",
+    });
+
+    await db.booking.update({
+      where: {
+        id: scenario.booking.id,
+      },
+      data: {
+        isMakeup: true,
+        makeupReason: "past_absence_makeup",
+        paidAmount: 0,
+      },
+    });
+
+    const targetBefore =
+      await db.schedule.findUniqueOrThrow({
+        where: {
+          id: scenario.targetSchedule.id,
+        },
+      });
+
+    await expect(
+      createBookingRescheduleRequest({
+        userId: scenario.customer.id,
+        bookingId: scenario.booking.id,
+        targetScheduleId:
+          scenario.targetSchedule.id,
+        requestType:
+          "past_absence_makeup",
+        absenceReason:
+          "Previous make-up booking was missed",
+      }),
+    ).rejects.toMatchObject({
+      code: "BOOKING_NOT_OPERATIONAL",
+    });
+
+    const [requestCount, targetAfter] =
+      await Promise.all([
+        db.bookingRescheduleRequest.count({
+          where: {
+            bookingId: scenario.booking.id,
+          },
+        }),
+        db.schedule.findUniqueOrThrow({
+          where: {
+            id: scenario.targetSchedule.id,
+          },
+        }),
+      ]);
+
+    expect(requestCount).toBe(0);
+    expect(targetAfter.availableSpots).toBe(
+      targetBefore.availableSpots,
+    );
+  });
+
   it("approves a past-absence make-up exactly once and creates one zero-value marked replacement", async () => {
     const scenario = await createScenario({
       label: "Past-Makeup",
