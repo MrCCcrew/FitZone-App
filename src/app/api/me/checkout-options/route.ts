@@ -1,15 +1,32 @@
 import { NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/app-session";
-import { db } from "@/lib/db";
+import { asDbTransactionClient, db } from "@/lib/db";
+import { previewMembershipCarryoverForCustomerTx } from "@/lib/membership-carryover-customer-preview";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
     const user = await getCurrentAppUser();
     if (!user?.id) {
       return NextResponse.json({ error: "يجب تسجيل الدخول أولًا." }, { status: 401 });
     }
+
+    const url = new URL(req.url);
+    const membershipId = url.searchParams.get("membershipId");
+    const offerId = url.searchParams.get("offerId");
+    const selectedMonthsRaw = url.searchParams.get("selectedMonths");
+    const startDate = url.searchParams.get("startDate");
+    const scheduleIds = url.searchParams
+      .getAll("scheduleId")
+      .map((value) => value.trim())
+      .filter(Boolean);
+
+    const selectedMonths =
+      selectedMonthsRaw != null &&
+      Number.isFinite(Number(selectedMonthsRaw))
+        ? Number(selectedMonthsRaw)
+        : null;
 
     const [dbUser, rewardSettings, affiliateUsageCount] = await Promise.all([
       db.user.findUnique({
@@ -55,6 +72,31 @@ export async function GET() {
       }
     }
 
+    let carryover = null;
+
+    if (membershipId || offerId) {
+      try {
+        carryover = await db.$transaction((tx) =>
+          previewMembershipCarryoverForCustomerTx(
+            asDbTransactionClient(tx),
+            user.id,
+            {
+              membershipId,
+              offerId,
+              scheduleIds,
+              selectedMonths,
+              startDate,
+            },
+          ),
+        );
+      } catch (error) {
+        console.error(
+          "[CHECKOUT_OPTIONS_CARRYOVER_PREVIEW]",
+          error,
+        );
+      }
+    }
+
     return NextResponse.json({
       walletBalance,
       rewardPoints,
@@ -62,6 +104,7 @@ export async function GET() {
       rewardPointsEGP: Math.floor(rewardPoints * pointValueEGP * 100) / 100,
       affiliateDiscountRate,
       affiliateDiscountEligible,
+      carryover,
     });
   } catch (error) {
     console.error("[CHECKOUT_OPTIONS_GET]", error);

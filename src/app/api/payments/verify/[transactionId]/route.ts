@@ -7,6 +7,60 @@ import {
   verifyPaymentTransaction,
 } from "@/lib/payments/service";
 
+type ActualMembershipCarryover = {
+  baseSessions: number | null;
+  carryoverSessions: number;
+  totalSessions: number | null;
+  appliedAt: string | null;
+};
+
+async function loadActualMembershipCarryover(
+  paymentTransactionId: string,
+  userId: string,
+): Promise<ActualMembershipCarryover | null> {
+  const linkedPayment = await db.paymentTransaction.findUnique({
+    where: { id: paymentTransactionId },
+    select: { membershipId: true },
+  });
+
+  if (!linkedPayment?.membershipId) {
+    return null;
+  }
+
+  const membership = await db.userMembership.findUnique({
+    where: { id: linkedPayment.membershipId },
+    select: {
+      userId: true,
+      status: true,
+      baseSessions: true,
+      carryoverSessions: true,
+      totalSessions: true,
+      carryoverAppliedAt: true,
+    },
+  });
+
+  if (
+    !membership ||
+    membership.userId !== userId ||
+    membership.status !== "active"
+  ) {
+    return null;
+  }
+
+  return {
+    baseSessions:
+      membership.baseSessions ??
+      membership.totalSessions,
+    carryoverSessions:
+      membership.carryoverSessions,
+    totalSessions:
+      membership.totalSessions,
+    appliedAt:
+      membership.carryoverAppliedAt?.toISOString() ??
+      null,
+  };
+}
+
 export async function GET(req: Request, context: { params: Promise<{ transactionId: string }> }) {
   try {
     const user = await getCurrentAppUser();
@@ -42,6 +96,7 @@ export async function GET(req: Request, context: { params: Promise<{ transaction
     }
 
     let result = await verifyPaymentTransaction(transactionId);
+    let membershipCarryover: ActualMembershipCarryover | null = null;
 
     // Friend Offer payments have no normal membership link until the
     // whole group is ready. Finalize that flow before normal membership recovery.
@@ -50,6 +105,14 @@ export async function GET(req: Request, context: { params: Promise<{ transaction
         await maybeFinalizeFriendOfferPayment(transactionId);
 
       if (friendFinalization.kind === "friend_offer") {
+        const membershipCarryover =
+          friendFinalization.status === "completed"
+            ? await loadActualMembershipCarryover(
+                transactionId,
+                user.id,
+              )
+            : null;
+
         return NextResponse.json({
           success: true,
           transaction: result,
@@ -57,6 +120,7 @@ export async function GET(req: Request, context: { params: Promise<{ transaction
             groupId: friendFinalization.groupId,
             status: friendFinalization.status,
           },
+          membershipCarryover,
         });
       }
 
@@ -96,10 +160,20 @@ export async function GET(req: Request, context: { params: Promise<{ transaction
             { status: 409 },
           );
         }
+
+        membershipCarryover =
+          await loadActualMembershipCarryover(
+            transactionId,
+            user.id,
+          );
       }
     }
 
-    return NextResponse.json({ success: true, transaction: result });
+    return NextResponse.json({
+      success: true,
+      transaction: result,
+      membershipCarryover,
+    });
   } catch (error) {
     console.error("[PAYMENTS_VERIFY_GET]", error);
     const message = error instanceof Error ? error.message : "تعذر التحقق من حالة الدفع.";
