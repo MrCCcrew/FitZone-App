@@ -150,6 +150,59 @@ describe(
     );
 
     it(
+      "ignores stale checkout-options responses when the selected plan changes",
+      () => {
+        const source = read(
+          "src/app/FitzoneApp.tsx",
+        );
+
+        const refIndex = source.indexOf(
+          "const checkoutOptionsRequestSequenceRef = useRef(0);",
+        );
+
+        const openIndex = source.indexOf(
+          "const openCheckoutPreview = (plan: PlanItem, scheduleIds: string[] = []) => {",
+        );
+
+        const sequenceIndex = source.indexOf(
+          "++checkoutOptionsRequestSequenceRef.current;",
+          openIndex,
+        );
+
+        const fetchIndex = source.indexOf(
+          "/api/me/checkout-options",
+          sequenceIndex,
+        );
+
+        const guardIndex = source.indexOf(
+          "checkoutOptionsRequestSequence ===",
+          fetchIndex,
+        );
+
+        const currentRefIndex = source.indexOf(
+          "checkoutOptionsRequestSequenceRef.current",
+          guardIndex,
+        );
+
+        const setterIndex = source.indexOf(
+          "setSubCheckoutOptions(d);",
+          currentRefIndex,
+        );
+
+        expect(refIndex).toBeGreaterThanOrEqual(0);
+        expect(openIndex).toBeGreaterThan(refIndex);
+        expect(sequenceIndex).toBeGreaterThan(openIndex);
+        expect(fetchIndex).toBeGreaterThan(sequenceIndex);
+        expect(guardIndex).toBeGreaterThan(fetchIndex);
+        expect(currentRefIndex).toBeGreaterThan(guardIndex);
+        expect(setterIndex).toBeGreaterThan(currentRefIndex);
+
+        expect(source).not.toContain(
+          "if (d) setSubCheckoutOptions(d);",
+        );
+      },
+    );
+    it(
       "shows only the persisted post-payment carryover result on verify",
       () => {
         const source = read(

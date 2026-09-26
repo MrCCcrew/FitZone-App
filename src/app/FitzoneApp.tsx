@@ -11240,7 +11240,11 @@ const MembershipsPage = ({
     };
   };
 
+  const checkoutOptionsRequestSequenceRef = useRef(0);
+
   const openCheckoutPreview = (plan: PlanItem, scheduleIds: string[] = []) => {
+    const checkoutOptionsRequestSequence =
+      ++checkoutOptionsRequestSequenceRef.current;
     setCheckoutPreview({ plan, scheduleIds, confirmed: false });
 
     // Coach selection is checkout-specific and must never leak across plans.
@@ -11327,7 +11331,13 @@ const MembershipsPage = ({
             } | null;
           } | null,
         ) => {
-          if (d) setSubCheckoutOptions(d);
+          if (
+            d &&
+            checkoutOptionsRequestSequence ===
+              checkoutOptionsRequestSequenceRef.current
+          ) {
+            setSubCheckoutOptions(d);
+          }
         },
       )
       .catch(() => {});
