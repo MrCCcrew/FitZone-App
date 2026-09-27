@@ -107,7 +107,7 @@ Then remove or rotate `SETUP_TOKEN`.
 
 Use:
 
-- [`SERVER_HARDENING.md`](/c:/Fitzone/SERVER_HARDENING.md)
+- [`SERVER_HARDENING.md`](./SERVER_HARDENING.md)
 - [`ops/nginx/fitzone.conf`](/c:/Fitzone/ops/nginx/fitzone.conf)
 - [`ops/fail2ban/jail.local.example`](/c:/Fitzone/ops/fail2ban/jail.local.example)
 - [`ops/ssh/sshd_config.hardening.example`](/c:/Fitzone/ops/ssh/sshd_config.hardening.example)

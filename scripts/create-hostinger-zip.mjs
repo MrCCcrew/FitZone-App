@@ -1,4 +1,4 @@
-import fs from "node:fs";
+﻿import fs from "node:fs";
 import path from "node:path";
 import archiver from "archiver";
 
@@ -19,8 +19,8 @@ const includePaths = [
   "components.json",
   "prisma.config.ts",
   ".env.example",
-  "DEPLOY_FINAL_CHECKLIST.md",
-  "HOSTINGER_DEPLOY.md",
+  "docs/deployment/DEPLOY_FINAL_CHECKLIST.md",
+  "docs/deployment/HOSTINGER_DEPLOY.md",
   "eslint.config.mjs",
   ".gitignore",
 ];
