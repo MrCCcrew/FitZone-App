@@ -1,7 +1,8 @@
-const TOKEN = process.env.HOSTINGER_API_TOKEN;
+﻿const TOKEN = process.env.HOSTINGER_API_TOKEN;
 if (!TOKEN) throw new Error("HOSTINGER_API_TOKEN is required");
 const USERNAME = "u952525674";
-const PASS = "MrCCcrew@1985";
+const PASS = process.env.HOSTINGER_FILE_BROWSER_PASSWORD;
+if (!PASS) throw new Error("HOSTINGER_FILE_BROWSER_PASSWORD is required");
 
 // Login to file browser
 const loginRes = await fetch(`https://srv1999-files.hstgr.io/rest/`, {
@@ -21,7 +22,7 @@ try {
   const m = loginText.match(/"session"\s*:\s*"([^"]+)"/);
   sessionId = m?.[1];
 }
-console.log("Session:", sessionId);
+console.log("Session acquired:", Boolean(sessionId));
 if (!sessionId) {
   console.log("No session ID found");
   process.exit(1);
