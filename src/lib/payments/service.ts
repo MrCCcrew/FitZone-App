@@ -1332,10 +1332,35 @@ export async function updatePaymentTransactionStatus(
           current.status === "cancelled" ||
           current.status === "expired";
 
-        const payment = alreadyTerminal
-          ? current
-          : await tx.paymentTransaction.update({
-              where: { id: transactionId },
+        let payment = current;
+
+        if (!alreadyTerminal) {
+          const terminalClaimableStatuses = [
+            "pending",
+            "pending_payment",
+            "processing",
+            "requires_action",
+          ];
+
+          try {
+            /*
+             * Atomic terminal-state claim.
+             *
+             * The status predicate is part of the UPDATE itself, so a
+             * concurrent paid webhook cannot be overwritten after the read
+             * above.
+             *
+             * "retrying" is intentionally excluded because retry hand-off
+             * owns that transaction while the replacement checkout is being
+             * created.
+             */
+            payment = await tx.paymentTransaction.update({
+              where: {
+                id: transactionId,
+                status: {
+                  in: terminalClaimableStatuses,
+                },
+              },
               data: {
                 status,
                 metadata: stringifyJson({
@@ -1345,6 +1370,21 @@ export async function updatePaymentTransactionStatus(
                 failedAt: status === "failed" ? new Date() : undefined,
               },
             });
+          } catch (error) {
+            /*
+             * Do not re-read inside this MySQL REPEATABLE READ
+             * transaction. The first SELECT may have fixed an older
+             * snapshot. Leave the transaction and inspect the latest
+             * committed state afterwards.
+             */
+            return {
+              payment: current,
+              paidGuard: false,
+              terminalClaimLost: true,
+              terminalClaimError: error,
+            };
+          }
+        }
 
         /*
          * Friend Offer payments have no membershipId until the
@@ -1423,22 +1463,115 @@ export async function updatePaymentTransactionStatus(
 
         return { payment, paidGuard: false };
       })
-    : {
-        payment: await db.paymentTransaction.update({
-          where: { id: transactionId },
-          data: {
-            status,
-            metadata: stringifyJson({
-              ...(parseJson(existing?.metadata) ?? {}),
-              ...(note != null ? { adminNote: note } : {}),
-            }),
-            paidAt: status === "paid" ? new Date() : undefined,
-          },
-        }),
-        paidGuard: false,
-      };
+    : status === "paid" &&
+        existing?.purpose === "order" &&
+        existing?.orderId
+      ? await (async () => {
+          const paidClaimableStatuses = [
+            "pending",
+            "pending_payment",
+            "processing",
+            "requires_action",
+          ];
 
-  const transaction = paymentResult.payment;
+          const claimed =
+            await db.paymentTransaction.updateMany({
+              where: {
+                id: transactionId,
+                status: {
+                  in: paidClaimableStatuses,
+                },
+              },
+              data: {
+                status: "paid",
+                metadata: stringifyJson({
+                  ...(parseJson(existing?.metadata) ?? {}),
+                  ...(note != null
+                    ? { adminNote: note }
+                    : {}),
+                }),
+                paidAt: new Date(),
+              },
+            });
+
+          const current =
+            await db.paymentTransaction.findUnique({
+              where: { id: transactionId },
+            });
+
+          if (!current) {
+            throw new Error("?????? ????? ??? ??????.");
+          }
+
+          /*
+           * If terminal cleanup or retry hand-off won first,
+           * do not silently promote this Store payment to paid.
+           */
+          return {
+            payment: current,
+            paidGuard:
+              claimed.count === 0 &&
+              current.status !== "paid",
+          };
+        })()
+      : {
+          payment: await db.paymentTransaction.update({
+            where: { id: transactionId },
+            data: {
+              status,
+              metadata: stringifyJson({
+                ...(parseJson(existing?.metadata) ?? {}),
+                ...(note != null
+                  ? { adminNote: note }
+                  : {}),
+              }),
+              paidAt:
+                status === "paid"
+                  ? new Date()
+                  : undefined,
+            },
+          }),
+          paidGuard: false,
+        };
+
+  let transaction = paymentResult.payment;
+
+  if (
+    "terminalClaimLost" in paymentResult &&
+    paymentResult.terminalClaimLost
+  ) {
+    const latest =
+      await db.paymentTransaction.findUnique({
+        where: { id: transactionId },
+      });
+
+    if (!latest) {
+      throw new Error("?????? ????? ??? ??????.");
+    }
+
+    /*
+     * Fresh committed-state read outside the losing
+     * REPEATABLE READ transaction.
+     */
+    if (latest.status === "paid") {
+      return mapPaymentTransaction(latest);
+    }
+
+    const latestIsTerminal =
+      latest.status === "failed" ||
+      latest.status === "cancelled" ||
+      latest.status === "expired";
+
+    if (!latestIsTerminal) {
+      throw (
+        "terminalClaimError" in paymentResult
+          ? paymentResult.terminalClaimError
+          : new Error("TERMINAL_PAYMENT_CLAIM_LOST")
+      );
+    }
+
+    transaction = latest;
+  }
 
   if (paymentResult.paidGuard) {
     return mapPaymentTransaction(transaction);
