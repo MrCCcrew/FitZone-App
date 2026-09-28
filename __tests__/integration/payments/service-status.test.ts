@@ -547,28 +547,28 @@ describe("store order terminal payment inventory release", () => {
       metadata: null,
     };
 
-    vi.mocked(db.paymentTransaction.findUnique).mockResolvedValueOnce(
-      pendingSelect({
-        purpose: "order",
-        orderId: "order-1",
-        membershipId: null,
-        metadata: null,
-      }) as never,
-    );
+    vi.mocked(db.paymentTransaction.findUnique)
+      .mockResolvedValueOnce(
+        pendingSelect({
+          purpose: "order",
+          orderId: "order-1",
+          membershipId: null,
+          metadata: null,
+        }) as never,
+      )
+      .mockResolvedValueOnce(paidTx as never);
 
     /*
      * The terminal path reads the transaction while it is still open.
      * Before its conditional UPDATE can commit, the paid webhook wins.
      */
-    transactionalPaymentFindUnique
-      .mockResolvedValueOnce({
-        ...BASE_TX,
-        purpose: "order",
-        orderId: "order-1",
-        status: "pending",
-        metadata: null,
-      })
-      .mockResolvedValueOnce(paidTx);
+    transactionalPaymentFindUnique.mockResolvedValueOnce({
+      ...BASE_TX,
+      purpose: "order",
+      orderId: "order-1",
+      status: "pending",
+      metadata: null,
+    });
 
     transactionalPaymentUpdate.mockRejectedValueOnce(
       new Error("TERMINAL_PAYMENT_CLAIM_LOST"),
@@ -622,6 +622,72 @@ describe("store order terminal payment inventory release", () => {
     expect(
       transactionalOrderUpdate,
     ).not.toHaveBeenCalled();
+  });
+
+  it("does not promote a Store payment to paid after terminal state wins", async () => {
+    const expiredTx = {
+      ...BASE_TX,
+      purpose: "order",
+      orderId: "order-1",
+      status: "expired",
+      paidAt: null,
+      metadata: null,
+    };
+
+    vi.mocked(db.paymentTransaction.findUnique)
+      .mockResolvedValueOnce(
+        pendingSelect({
+          purpose: "order",
+          orderId: "order-1",
+          membershipId: null,
+          metadata: null,
+        }) as never,
+      )
+      .mockResolvedValueOnce(expiredTx as never);
+
+    vi.mocked(
+      db.paymentTransaction.updateMany,
+    ).mockResolvedValueOnce({
+      count: 0,
+    } as never);
+
+    const result =
+      await updatePaymentTransactionStatus(
+        "tx-001",
+        "paid",
+      );
+
+    expect(
+      db.paymentTransaction.updateMany,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          id: "tx-001",
+          status: {
+            in: [
+              "pending",
+              "pending_payment",
+              "processing",
+              "requires_action",
+            ],
+          },
+        },
+        data: expect.objectContaining({
+          status: "paid",
+          paidAt: expect.any(Date),
+        }),
+      }),
+    );
+
+    expect(
+      db.paymentTransaction.update,
+    ).not.toHaveBeenCalled();
+
+    expect(
+      db.order.findUnique,
+    ).not.toHaveBeenCalled();
+
+    expect(result.status).toBe("expired");
   });
 
   for (const terminalStatus of [
