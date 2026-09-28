@@ -8,6 +8,7 @@ import { sendStoreOrderEmail, sendAdminOrderNotification } from "@/lib/email";
 import { generateStoreOrderInvoicePdf } from "@/lib/store-order-invoice";
 import { recordCheckoutStarted } from "@/lib/analytics/checkout-events";
 import {
+  InventoryReservationConflictError,
   reserveOrderInventoryOwnedFirst,
   releaseOrderInventoryAllocations,
 } from "@/lib/order-inventory-allocation-service";
@@ -579,7 +580,21 @@ export async function POST(req: Request) {
     });
   } catch (error) {
     console.error("[ORDERS_POST]", error);
-    return NextResponse.json({ error: "تعذر حفظ الطلب." }, { status: 500 });
+
+    if (error instanceof InventoryReservationConflictError) {
+      return NextResponse.json(
+        {
+          error: error.message,
+          code: error.code,
+        },
+        { status: 409 },
+      );
+    }
+
+    return NextResponse.json(
+      { error: "تعذر حفظ الطلب." },
+      { status: 500 },
+    );
   }
 }
 

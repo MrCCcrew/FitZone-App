@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 import {
   useCallback,
   useEffect,
@@ -19280,15 +19280,17 @@ const ShopPage = ({
               style={{
                 overflowX: "auto",
                 WebkitOverflowScrolling: "touch",
-                borderBottom: `2px solid ${C.border}`,
+                padding: "4px 2px 10px",
+                scrollbarWidth: "none",
               }}
             >
               <div
                 style={{
                   display: "flex",
-                  gap: 0,
+                  gap: isMobile ? 8 : 10,
                   flexWrap: "nowrap",
                   minWidth: "max-content",
+                  paddingInline: 2,
                 }}
               >
                 {categoryButtons.map((label) => {
@@ -19304,24 +19306,45 @@ const ShopPage = ({
                   return (
                     <button
                       key={label}
-                      onClick={() => setCat(label)}
+                      aria-pressed={isActive}
+                      onClick={() => {
+                        setCat(label);
+
+                        window.requestAnimationFrame(() => {
+                          window.requestAnimationFrame(() => {
+                            document
+                              .getElementById("shop-products")
+                              ?.scrollIntoView({
+                                behavior: "smooth",
+                                block: "start",
+                              });
+                          });
+                        });
+                      }}
                       style={{
                         display: "flex",
                         alignItems: "center",
-                        gap: 6,
+                        justifyContent: "center",
+                        gap: 7,
                         whiteSpace: "nowrap",
-                        padding: "10px 18px",
-                        background: "transparent",
-                        border: "none",
-                        borderBottom: isActive
-                          ? `2px solid ${C.red}`
-                          : "2px solid transparent",
-                        marginBottom: -2,
+                        minHeight: 40,
+                        padding: isMobile ? "9px 14px" : "10px 18px",
+                        background: isActive
+                          ? "rgba(233,30,99,0.14)"
+                          : "rgba(255,255,255,0.025)",
+                        border: isActive
+                          ? `1px solid ${C.red}`
+                          : `1px solid ${C.border}`,
+                        borderRadius: 999,
+                        boxShadow: isActive
+                          ? "0 8px 24px rgba(233,30,99,0.14)"
+                          : "none",
                         cursor: "pointer",
-                        transition: "all .2s",
+                        transition:
+                          "background .2s ease, border-color .2s ease, color .2s ease, box-shadow .2s ease, transform .2s ease",
                         color: isActive ? C.white : C.gray,
-                        fontWeight: isActive ? 700 : 500,
-                        fontSize: 14,
+                        fontWeight: isActive ? 800 : 600,
+                        fontSize: isMobile ? 13 : 14,
                         fontFamily: "'Cairo', sans-serif",
                       }}
                     >
@@ -19473,7 +19496,7 @@ const ShopPage = ({
           )}
 
           {/* ── Best Sellers ── */}
-          {bestSellers.length > 0 && !search.trim() && (
+          {bestSellers.length > 0 && !search.trim() && cat === allLabel && (
             <div style={{ marginBottom: 48 }}>
               <div
                 style={{
@@ -26974,7 +26997,9 @@ export default function App({
   }, [page]);
 
   useEffect(() => {
-    const targetId = pendingScrollTarget.current;
+    const targetId =
+      pendingScrollTarget.current ??
+      (page === "shop" ? "shop-products" : null);
     if (!targetId) return;
 
     let frame: number | null = null;
@@ -26998,7 +27023,7 @@ export default function App({
       window.clearTimeout(timeout);
       if (frame !== null) cancelAnimationFrame(frame);
     };
-  }, [page]);
+  }, [page, storeEnabled]);
 
   useEffect(() => {
     const handle = () => {
@@ -27082,9 +27107,14 @@ export default function App({
     }
 
     navigating.current = true;
+
+    const effectiveScrollTarget =
+      scrollTarget ??
+      (p === "shop" ? "shop-products" : null);
+
     // CRITICAL FIX: Clear pending section when navigating to home without explicit section
     // This prevents stale sectionId (e.g., #classes) from being inherited
-    if (p === "home" && !scrollTarget) {
+    if (p === "home" && !effectiveScrollTarget) {
       pendingScrollTarget.current = null;
       const targetUrl = new URL(window.location.href);
       targetUrl.hash = "";
@@ -27094,10 +27124,19 @@ export default function App({
         targetUrl.pathname + targetUrl.search,
       );
     } else {
-      pendingScrollTarget.current = scrollTarget ?? null;
-      if (p === "home" && scrollTarget) {
-        const targetUrl = new URL(window.location.href);
-        targetUrl.hash = `#${scrollTarget}`;
+      pendingScrollTarget.current =
+        effectiveScrollTarget;
+
+      if (
+        p === "home" &&
+        effectiveScrollTarget
+      ) {
+        const targetUrl =
+          new URL(window.location.href);
+
+        targetUrl.hash =
+          `#${effectiveScrollTarget}`;
+
         window.history.replaceState(
           window.history.state,
           "",
@@ -27105,9 +27144,14 @@ export default function App({
         );
       }
     }
+
     setPage(p);
-    if (!scrollTarget) {
-      window.scrollTo({ top: 0, behavior: "smooth" });
+
+    if (!effectiveScrollTarget) {
+      window.scrollTo({
+        top: 0,
+        behavior: "smooth",
+      });
     }
   };
 

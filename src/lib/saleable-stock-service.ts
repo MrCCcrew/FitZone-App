@@ -100,6 +100,176 @@ export async function getSaleableStockByProductIds(
 }
 
 /**
+ * Public catalog availability.
+ *
+ * Transient reservations must not make a product appear sold out.
+ * Physical inventory is reduced only when a sale is confirmed.
+ *
+ * Checkout/allocation MUST NOT use these functions. Checkout continues
+ * to use the saleable-stock functions below, which subtract reservations.
+ */
+export async function getCatalogStockByProductIds(
+  productIds: string[],
+): Promise<Map<string, SaleableStockSnapshot>> {
+  const ids = [...new Set(productIds.filter(Boolean))];
+
+  if (ids.length === 0) {
+    return new Map();
+  }
+
+  const [products, lots] = await Promise.all([
+    db.product.findMany({
+      where: { id: { in: ids } },
+      select: {
+        id: true,
+        stock: true,
+        trackInventory: true,
+      },
+    }),
+
+    db.consignmentLot.findMany({
+      where: {
+        productId: { in: ids },
+        status: "open",
+      },
+      select: {
+        productId: true,
+        quantityAvailable: true,
+      },
+    }),
+  ]);
+
+  const consignmentByProduct = new Map<string, number>();
+
+  for (const lot of lots) {
+    const available = Math.max(
+      0,
+      lot.quantityAvailable,
+    );
+
+    consignmentByProduct.set(
+      lot.productId,
+      (consignmentByProduct.get(lot.productId) ?? 0) + available,
+    );
+  }
+
+  const result = new Map<string, SaleableStockSnapshot>();
+
+  for (const product of products) {
+    const ownedAvailable = product.trackInventory
+      ? Math.max(0, product.stock)
+      : 0;
+
+    const consignmentAvailable = product.trackInventory
+      ? (consignmentByProduct.get(product.id) ?? 0)
+      : 0;
+
+    result.set(product.id, {
+      productId: product.id,
+      variantId: null,
+      ownedAvailable,
+      consignmentAvailable,
+      totalAvailable: product.trackInventory
+        ? ownedAvailable + consignmentAvailable
+        : Number.MAX_SAFE_INTEGER,
+      trackInventory: product.trackInventory,
+    });
+  }
+
+  return result;
+}
+
+export async function getCatalogStockForItems(
+  items: SaleableItemKey[],
+): Promise<Map<string, SaleableStockSnapshot>> {
+  const normalized = Array.from(
+    new Map(
+      items
+        .filter((item) => item.productId)
+        .map((item) => [
+          key(item.productId, item.variantId ?? null),
+          {
+            productId: item.productId,
+            variantId: item.variantId ?? null,
+          },
+        ]),
+    ).values(),
+  );
+
+  if (normalized.length === 0) {
+    return new Map();
+  }
+
+  const productIds = [
+    ...new Set(normalized.map((item) => item.productId)),
+  ];
+
+  const [products, lots] = await Promise.all([
+    db.product.findMany({
+      where: { id: { in: productIds } },
+      select: {
+        id: true,
+        stock: true,
+        trackInventory: true,
+      },
+    }),
+
+    db.consignmentLot.findMany({
+      where: {
+        productId: { in: productIds },
+        status: "open",
+      },
+      select: {
+        productId: true,
+        variantId: true,
+        quantityAvailable: true,
+      },
+    }),
+  ]);
+
+  const productById = new Map(
+    products.map((product) => [product.id, product]),
+  );
+
+  const result = new Map<string, SaleableStockSnapshot>();
+
+  for (const item of normalized) {
+    const product = productById.get(item.productId);
+    if (!product) continue;
+
+    const ownedAvailable = product.trackInventory
+      ? Math.max(0, product.stock)
+      : 0;
+
+    const consignmentAvailable = product.trackInventory
+      ? lots
+          .filter(
+            (lot) =>
+              lot.productId === item.productId &&
+              (lot.variantId ?? null) === item.variantId,
+          )
+          .reduce(
+            (sum, lot) =>
+              sum + Math.max(0, lot.quantityAvailable),
+            0,
+          )
+      : 0;
+
+    result.set(key(item.productId, item.variantId), {
+      productId: item.productId,
+      variantId: item.variantId,
+      ownedAvailable,
+      consignmentAvailable,
+      totalAvailable: product.trackInventory
+        ? ownedAvailable + consignmentAvailable
+        : Number.MAX_SAFE_INTEGER,
+      trackInventory: product.trackInventory,
+    });
+  }
+
+  return result;
+}
+/**
  * Checkout/allocation availability for an exact requested variant.
  *
  * IMPORTANT:

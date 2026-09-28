@@ -13,6 +13,7 @@ vi.mock("@/lib/db", () => ({
 
 import { db } from "@/lib/db";
 import {
+  getCatalogStockForItems,
   getSaleableItemKey,
   getSaleableStockByProductIds,
   getSaleableStockForItems,
@@ -98,6 +99,53 @@ describe("variant saleable stock", () => {
     expect(row?.consignmentAvailable).toBe(7);
   });
 
+  it("keeps a reserved consignment variant visible in catalog while checkout remains protected", async () => {
+    vi.mocked(db.product.findMany).mockResolvedValue([
+      {
+        id: "p1",
+        stock: 0,
+        reservedStock: 0,
+        trackInventory: true,
+      },
+    ] as any);
+
+    vi.mocked(db.consignmentLot.findMany).mockResolvedValue([
+      {
+        productId: "p1",
+        variantId: "v1",
+        quantityAvailable: 1,
+        quantityReserved: 1,
+      },
+    ] as any);
+
+    const checkoutStock =
+      await getSaleableStockForItems([
+        { productId: "p1", variantId: "v1" },
+      ]);
+
+    const catalogStock =
+      await getCatalogStockForItems([
+        { productId: "p1", variantId: "v1" },
+      ]);
+
+    expect(
+      checkoutStock.get(
+        getSaleableItemKey("p1", "v1"),
+      )?.totalAvailable,
+    ).toBe(0);
+
+    expect(
+      catalogStock.get(
+        getSaleableItemKey("p1", "v1"),
+      )?.consignmentAvailable,
+    ).toBe(1);
+
+    expect(
+      catalogStock.get(
+        getSaleableItemKey("p1", "v1"),
+      )?.totalAvailable,
+    ).toBe(1);
+  });
   it("variant-less request never consumes variant lots", async () => {
     vi.mocked(db.product.findMany).mockResolvedValue([
       {
