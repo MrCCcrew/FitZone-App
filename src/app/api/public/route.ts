@@ -974,8 +974,8 @@ export async function GET(request: Request) {
       products: storeEnabled
         ? await (async () => {
             const {
-              getSaleableStockByProductIds,
-              getSaleableStockForItems,
+              getCatalogStockByProductIds,
+              getCatalogStockForItems,
               getSaleableItemKey,
             } = await import("@/lib/saleable-stock-service");
 
@@ -983,11 +983,11 @@ export async function GET(request: Request) {
               (product) => !giftOnlyIds.has(product.id),
             );
 
-            const saleable = await getSaleableStockByProductIds(
+            const catalogStock = await getCatalogStockByProductIds(
               visibleProducts.map((product) => product.id),
             );
 
-            const variantSaleable = await getSaleableStockForItems(
+            const variantCatalogStock = await getCatalogStockForItems(
               visibleProducts.flatMap((product) =>
                 product.variants.map((variant) => ({
                   productId: product.id,
@@ -1035,11 +1035,11 @@ export async function GET(request: Request) {
                   price: variant.price,
                   image: variant.image,
                   stock:
-                    variantSaleable.get(
+                    variantCatalogStock.get(
                       getSaleableItemKey(product.id, variant.id),
                     )?.trackInventory === false
                       ? 1
-                      : (variantSaleable.get(
+                      : (variantCatalogStock.get(
                           getSaleableItemKey(product.id, variant.id),
                         )?.totalAvailable ?? 0),
                 })),
@@ -1052,9 +1052,9 @@ export async function GET(request: Request) {
                 rating,
                 reviewCount,
                 stock:
-                  saleable.get(product.id)?.trackInventory === false
+                  catalogStock.get(product.id)?.trackInventory === false
                     ? 1
-                    : (saleable.get(product.id)?.totalAvailable ?? 0),
+                    : (catalogStock.get(product.id)?.totalAvailable ?? 0),
               };
             });
           })()

@@ -11,6 +11,7 @@ import { assertExternalSideEffectsAllowed } from "@/lib/staging-safety";
 
 const REGION_BASE = "https://accept.paymob.com";
 const FETCH_TIMEOUT_MS = 20_000;
+const PAYMOB_CHECKOUT_EXPIRATION_SECONDS = 30 * 60;
 type PaymobSettings = Awaited<ReturnType<typeof getPaymentSettings>>;
 
 type PaymobAuthResponse = {
@@ -204,6 +205,7 @@ async function createUnifiedIntention(params: {
   const body = {
     amount: params.amountCents,
     currency: params.currency,
+    expiration: PAYMOB_CHECKOUT_EXPIRATION_SECONDS,
     payment_methods: paymentMethodIds,
     special_reference: params.transactionId,
     redirection_url: redirectionUrl,
@@ -347,7 +349,7 @@ async function createCheckout(input: PaymentCheckoutInput): Promise<PaymentCheck
   });
 
   const checkoutUrl = buildUnifiedCheckoutUrl(publicKey, intention.clientSecret);
-  const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
+  const expiresAt = new Date(Date.now() + PAYMOB_CHECKOUT_EXPIRATION_SECONDS * 1000);
 
   console.info("[PAYMOB] Unified checkout prepared", {
     transactionId: input.transactionId,

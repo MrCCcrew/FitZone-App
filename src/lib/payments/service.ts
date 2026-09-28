@@ -1,4 +1,4 @@
-﻿import { asDbTransactionClient, db } from "@/lib/db";
+﻿﻿import { asDbTransactionClient, db } from "@/lib/db";
 import { lockMembershipLifecycleUserTx } from "@/lib/membership-lifecycle-lock";
 import {
   applyMembershipSessionCarryoverTx,
@@ -1460,11 +1460,14 @@ export async function updatePaymentTransactionStatus(
   }
 
   if (isFailureTerminal) {
-    await restorePaymentTransactionAdjustments(transactionId);
+    if (!isSupersededStoreOrderFailure) {
+      await restorePaymentTransactionAdjustments(transactionId);
 
-    // Phase 2C: Release reservation for failed orders
+      // Phase 2C: Release reservation for failed orders
     const failedOrderId = existing?.orderId;
     if (failedOrderId) {
+      const { releaseOrderInventoryAllocations } =
+        await import("@/lib/order-inventory-allocation-service");
       const { releaseOrderReservation } =
         await import("@/lib/inventory-service");
 
@@ -1500,15 +1503,41 @@ export async function updatePaymentTransactionStatus(
             throw new Error("PAYMENT_CONFIRMED_RACE");
           }
 
-          // Release reservation (reservedStock -= quantity, stock unchanged)
-          await releaseOrderReservation(
-            tx,
-            order.items.map((item) => ({
-              productId: item.productId,
-              quantity: item.quantity,
-            })),
-            failedOrderId,
-          );
+          /*
+           * Modern store orders reserve stock through
+           * OrderInventoryAllocation, including exact consignment lots.
+           *
+           * Check ALL historical allocations for this order, not only
+           * currently-reserved rows. This keeps repeated terminal payment
+           * callbacks idempotent and prevents the legacy fallback from
+           * releasing inventory that belongs to another order.
+           */
+          const allocationHistoryCount =
+            await tx.orderInventoryAllocation.count({
+              where: {
+                orderId: failedOrderId,
+              },
+            });
+
+          if (allocationHistoryCount > 0) {
+            await releaseOrderInventoryAllocations(
+              tx,
+              failedOrderId,
+            );
+          } else {
+            /*
+             * Legacy fallback only for orders created before
+             * OrderInventoryAllocation tracking existed.
+             */
+            await releaseOrderReservation(
+              tx,
+              order.items.map((item) => ({
+                productId: item.productId,
+                quantity: item.quantity,
+              })),
+              failedOrderId,
+            );
+          }
 
           // Cancel order
           await tx.order.update({
@@ -1521,6 +1550,8 @@ export async function updatePaymentTransactionStatus(
         },
         { timeout: 10000 },
       );
+    }
+
     }
 
     const restored = await db.paymentTransaction.findUnique({

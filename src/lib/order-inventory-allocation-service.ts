@@ -10,6 +10,18 @@ type AllocationResult = {
   consignmentQuantity: number;
 };
 
+export const INVENTORY_TEMPORARILY_RESERVED_MESSAGE =
+  "هذا المنتج قيد إتمام عملية شراء حاليًا، يرجى المحاولة بعد قليل.";
+
+export class InventoryReservationConflictError extends Error {
+  readonly code = "INVENTORY_TEMPORARILY_RESERVED";
+
+  constructor() {
+    super(INVENTORY_TEMPORARILY_RESERVED_MESSAGE);
+    this.name = "InventoryReservationConflictError";
+  }
+}
+
 export async function reserveOrderInventoryOwnedFirst(
   tx: TransactionClient,
   orderId: string
@@ -81,6 +93,9 @@ export async function reserveOrderInventoryOwnedFirst(
 
     let remaining = item.quantity;
 
+    let reservedBlockingQuantity =
+      Math.max(0, product.reservedStock);
+
     // Fresh read is mandatory here because the same product can appear
     // in more than one OrderItem inside the same order.
     const ownedAvailable =
@@ -106,9 +121,7 @@ export async function reserveOrderInventoryOwnedFirst(
       });
 
       if (ownedUpdated.count !== 1) {
-        throw new Error(
-          `تم تغيير المخزون المملوك لـ ${item.product.name} أثناء الحجز`
-        );
+        throw new InventoryReservationConflictError();
       }
 
       await tx.orderInventoryAllocation.create({
@@ -156,6 +169,9 @@ export async function reserveOrderInventoryOwnedFirst(
       for (const lot of lots) {
         if (remaining <= 0) break;
 
+        reservedBlockingQuantity +=
+          Math.max(0, lot.quantityReserved);
+
         const lotAvailable =
           lot.quantityAvailable - lot.quantityReserved;
 
@@ -181,9 +197,7 @@ export async function reserveOrderInventoryOwnedFirst(
         });
 
         if (updated.count !== 1) {
-          throw new Error(
-            `تم تغيير مخزون الأمانة لـ ${item.product.name} أثناء الحجز`
-          );
+          throw new InventoryReservationConflictError();
         }
 
         await tx.orderInventoryAllocation.create({
@@ -204,6 +218,10 @@ export async function reserveOrderInventoryOwnedFirst(
     }
 
     if (remaining > 0) {
+      if (reservedBlockingQuantity >= remaining) {
+        throw new InventoryReservationConflictError();
+      }
+
       throw new Error(
         `المخزون الكلي غير كافٍ لـ ${item.product.name}. الناقص: ${remaining}`
       );

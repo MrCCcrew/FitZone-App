@@ -1,13 +1,19 @@
-﻿import { describe, it, expect, vi, beforeEach } from "vitest";
+﻿﻿import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const {
   transactionalPaymentFindUnique,
+  transactionalPaymentFindFirst,
   transactionalPaymentUpdate,
   transactionalPaymentUpdateMany,
   transactionalUserMembershipUpdateMany,
   transactionalBookingFindMany,
   transactionalBookingUpdateMany,
   transactionalScheduleUpdate,
+  transactionalOrderFindUnique,
+  transactionalOrderUpdate,
+  transactionalOrderInventoryAllocationCount,
+  releaseOrderInventoryAllocationsMock,
+  releaseOrderReservationMock,
   transactionalWalletUpsert,
   transactionalWalletTransactionCreate,
   transactionalPrivateSessionFindUnique,
@@ -15,6 +21,7 @@ const {
   accruePrivateSessionEarningTxMock,
 } = vi.hoisted(() => ({
   transactionalPaymentFindUnique: vi.fn(),
+  transactionalPaymentFindFirst: vi.fn(),
   transactionalPaymentUpdate: vi.fn(),
   transactionalPaymentUpdateMany: vi.fn().mockResolvedValue({ count: 1 }),
   transactionalUserMembershipUpdateMany: vi
@@ -23,6 +30,11 @@ const {
   transactionalBookingFindMany: vi.fn().mockResolvedValue([]),
   transactionalBookingUpdateMany: vi.fn(),
   transactionalScheduleUpdate: vi.fn(),
+  transactionalOrderFindUnique: vi.fn(),
+  transactionalOrderUpdate: vi.fn(),
+  transactionalOrderInventoryAllocationCount: vi.fn(),
+  releaseOrderInventoryAllocationsMock: vi.fn(),
+  releaseOrderReservationMock: vi.fn(),
   transactionalWalletUpsert: vi.fn().mockResolvedValue({ id: "w1" }),
   transactionalWalletTransactionCreate: vi.fn(),
   transactionalPrivateSessionFindUnique: vi.fn(),
@@ -76,6 +88,7 @@ vi.mock("@/lib/db", () => ({
         cb({
           paymentTransaction: {
             findUnique: transactionalPaymentFindUnique,
+            findFirst: transactionalPaymentFindFirst,
             update: transactionalPaymentUpdate,
             updateMany: transactionalPaymentUpdateMany,
           },
@@ -88,6 +101,13 @@ vi.mock("@/lib/db", () => ({
           },
           schedule: {
             update: transactionalScheduleUpdate,
+          },
+          order: {
+            findUnique: transactionalOrderFindUnique,
+            update: transactionalOrderUpdate,
+          },
+          orderInventoryAllocation: {
+            count: transactionalOrderInventoryAllocationCount,
           },
           wallet: { upsert: transactionalWalletUpsert, update: vi.fn() },
           walletTransaction: { create: transactionalWalletTransactionCreate },
@@ -138,6 +158,14 @@ vi.mock("@/lib/payments/registry", () => ({
   listPaymentProviders: vi.fn().mockReturnValue([]),
 }));
 
+vi.mock("@/lib/order-inventory-allocation-service", () => ({
+  releaseOrderInventoryAllocations:
+    releaseOrderInventoryAllocationsMock,
+}));
+
+vi.mock("@/lib/inventory-service", () => ({
+  releaseOrderReservation: releaseOrderReservationMock,
+}));
 import { db } from "@/lib/db";
 import { updatePaymentTransactionStatus } from "@/lib/payments/service";
 
@@ -478,6 +506,279 @@ describe("updatePaymentTransactionStatus — 'failed' cancels pending membership
         where: { id: "s1" },
         data: { availableSpots: { increment: 2 } },
       }),
+    );
+  });
+});
+
+describe("store order terminal payment inventory release", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    transactionalPaymentFindFirst.mockResolvedValue(null);
+
+    transactionalOrderFindUnique.mockResolvedValue({
+      id: "order-1",
+      status: "pending",
+      inventoryDeducted: false,
+      items: [
+        {
+          productId: "product-1",
+          quantity: 1,
+        },
+      ],
+    });
+
+    transactionalOrderUpdate.mockResolvedValue({
+      id: "order-1",
+      status: "cancelled",
+    });
+
+    releaseOrderInventoryAllocationsMock.mockResolvedValue(undefined);
+    releaseOrderReservationMock.mockResolvedValue([]);
+  });
+
+  for (const terminalStatus of [
+    "failed",
+    "cancelled",
+    "expired",
+  ] as const) {
+    it(`releases modern order allocations on terminal payment failure: ${terminalStatus}`, async () => {
+      const terminalTx = {
+        ...BASE_TX,
+        purpose: "order",
+        orderId: "order-1",
+        status: terminalStatus,
+        failedAt:
+          terminalStatus === "failed"
+            ? new Date()
+            : null,
+      };
+
+      vi.mocked(db.paymentTransaction.findUnique)
+        .mockResolvedValueOnce(
+          pendingSelect({
+            purpose: "order",
+            orderId: "order-1",
+          }) as never,
+        )
+        .mockResolvedValueOnce(terminalTx as never);
+
+      transactionalPaymentFindUnique.mockResolvedValue({
+        ...BASE_TX,
+        purpose: "order",
+        orderId: "order-1",
+        status: "pending_payment",
+        metadata: null,
+      });
+
+      transactionalPaymentUpdate.mockResolvedValue(
+        terminalTx,
+      );
+
+      transactionalOrderInventoryAllocationCount
+        .mockResolvedValue(1);
+
+      await updatePaymentTransactionStatus(
+        "tx-001",
+        terminalStatus,
+      );
+
+      expect(
+        transactionalOrderInventoryAllocationCount,
+      ).toHaveBeenCalledWith({
+        where: {
+          orderId: "order-1",
+        },
+      });
+
+      expect(
+        releaseOrderInventoryAllocationsMock,
+      ).toHaveBeenCalledOnce();
+
+      expect(
+        releaseOrderInventoryAllocationsMock,
+      ).toHaveBeenCalledWith(
+        expect.anything(),
+        "order-1",
+      );
+
+      expect(
+        releaseOrderReservationMock,
+      ).not.toHaveBeenCalled();
+
+      expect(
+        transactionalOrderUpdate,
+      ).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            id: "order-1",
+          },
+          data: expect.objectContaining({
+            status: "cancelled",
+            cancelledAt: expect.any(Date),
+          }),
+        }),
+      );
+    });
+  }
+
+  it("does not restore adjustments or release inventory for a superseded store payment", async () => {
+    const supersededMetadata = JSON.stringify({
+      storeRetryClaimedAt: "2026-09-28T00:00:00.000Z",
+      storeRetrySupersededByPaymentTransactionId: "tx-replacement",
+      paymentAdjustments: {
+        walletAmount: 25,
+        pointsCount: 10,
+      },
+    });
+
+    const expiredTx = {
+      ...BASE_TX,
+      purpose: "order",
+      orderId: "order-1",
+      membershipId: null,
+      status: "expired",
+      metadata: supersededMetadata,
+      failedAt: null,
+    };
+
+    vi.mocked(db.paymentTransaction.findUnique)
+      .mockResolvedValueOnce(
+        pendingSelect({
+          purpose: "order",
+          orderId: "order-1",
+          membershipId: null,
+          metadata: supersededMetadata,
+        }) as never,
+      )
+      .mockResolvedValueOnce(expiredTx as never);
+
+    transactionalPaymentFindUnique.mockResolvedValue({
+      ...BASE_TX,
+      purpose: "order",
+      orderId: "order-1",
+      membershipId: null,
+      status: "pending",
+      metadata: supersededMetadata,
+    });
+
+    transactionalPaymentUpdate.mockResolvedValue(
+      expiredTx,
+    );
+
+    await updatePaymentTransactionStatus(
+      "tx-001",
+      "expired",
+    );
+
+    /*
+     * The old payment may become terminal, but it no longer owns the
+     * order reservation or frozen financial adjustments after retry
+     * hand-off to the replacement transaction.
+     */
+    expect(
+      transactionalPaymentUpdate,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "tx-001" },
+        data: expect.objectContaining({
+          status: "expired",
+        }),
+      }),
+    );
+
+    // No wallet/financial adjustment restoration.
+    expect(
+      transactionalWalletUpsert,
+    ).not.toHaveBeenCalled();
+
+    expect(
+      transactionalWalletTransactionCreate,
+    ).not.toHaveBeenCalled();
+
+    // No inventory release and no order cancellation.
+    expect(
+      transactionalOrderInventoryAllocationCount,
+    ).not.toHaveBeenCalled();
+
+    expect(
+      releaseOrderInventoryAllocationsMock,
+    ).not.toHaveBeenCalled();
+
+    expect(
+      releaseOrderReservationMock,
+    ).not.toHaveBeenCalled();
+
+    expect(
+      transactionalOrderFindUnique,
+    ).not.toHaveBeenCalled();
+
+    expect(
+      transactionalOrderUpdate,
+    ).not.toHaveBeenCalled();
+
+    // Membership lifecycle must remain completely untouched.
+    expect(
+      transactionalUserMembershipUpdateMany,
+    ).not.toHaveBeenCalled();
+  });
+  it("uses legacy reservation release only when the historical order has no allocation records", async () => {
+    const failedTx = {
+      ...BASE_TX,
+      purpose: "order",
+      orderId: "order-1",
+      status: "failed",
+      failedAt: new Date(),
+    };
+
+    vi.mocked(db.paymentTransaction.findUnique)
+      .mockResolvedValueOnce(
+        pendingSelect({
+          purpose: "order",
+          orderId: "order-1",
+        }) as never,
+      )
+      .mockResolvedValueOnce(failedTx as never);
+
+    transactionalPaymentFindUnique.mockResolvedValue({
+      ...BASE_TX,
+      purpose: "order",
+      orderId: "order-1",
+      status: "pending_payment",
+      metadata: null,
+    });
+
+    transactionalPaymentUpdate.mockResolvedValue(
+      failedTx,
+    );
+
+    transactionalOrderInventoryAllocationCount
+      .mockResolvedValue(0);
+
+    await updatePaymentTransactionStatus(
+      "tx-001",
+      "failed",
+    );
+
+    expect(
+      releaseOrderInventoryAllocationsMock,
+    ).not.toHaveBeenCalled();
+
+    expect(
+      releaseOrderReservationMock,
+    ).toHaveBeenCalledOnce();
+
+    expect(
+      releaseOrderReservationMock,
+    ).toHaveBeenCalledWith(
+      expect.anything(),
+      [
+        {
+          productId: "product-1",
+          quantity: 1,
+        },
+      ],
+      "order-1",
     );
   });
 });

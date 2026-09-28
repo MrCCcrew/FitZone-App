@@ -12,7 +12,10 @@ vi.mock("@/lib/db", () => ({
 }));
 
 import { db } from "@/lib/db";
-import { getSaleableStockByProductIds } from "@/lib/saleable-stock-service";
+import {
+  getCatalogStockByProductIds,
+  getSaleableStockByProductIds,
+} from "@/lib/saleable-stock-service";
 
 describe("saleable stock", () => {
   beforeEach(() => {
@@ -63,6 +66,42 @@ describe("saleable stock", () => {
     );
   });
 
+  it("keeps transiently reserved physical stock visible in the public catalog", async () => {
+    vi.mocked(db.product.findMany).mockResolvedValue([
+      {
+        id: "p-reserved",
+        stock: 1,
+        reservedStock: 1,
+        trackInventory: true,
+      },
+    ] as any);
+
+    vi.mocked(db.consignmentLot.findMany).mockResolvedValue([
+      {
+        productId: "p-reserved",
+        quantityAvailable: 1,
+        quantityReserved: 1,
+      },
+    ] as any);
+
+    const checkoutStock =
+      await getSaleableStockByProductIds(["p-reserved"]);
+
+    const catalogStock =
+      await getCatalogStockByProductIds(["p-reserved"]);
+
+    expect(checkoutStock.get("p-reserved")?.totalAvailable)
+      .toBe(0);
+
+    expect(catalogStock.get("p-reserved")).toEqual({
+      productId: "p-reserved",
+      variantId: null,
+      ownedAvailable: 1,
+      consignmentAvailable: 1,
+      totalAvailable: 2,
+      trackInventory: true,
+    });
+  });
   it("does not block non-tracked products", async () => {
     vi.mocked(db.product.findMany).mockResolvedValue([
       {

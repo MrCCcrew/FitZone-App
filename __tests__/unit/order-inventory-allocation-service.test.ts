@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { reserveOrderInventoryOwnedFirst } from "@/lib/order-inventory-allocation-service";
+import {
+  INVENTORY_TEMPORARILY_RESERVED_MESSAGE,
+  InventoryReservationConflictError,
+  reserveOrderInventoryOwnedFirst,
+} from "@/lib/order-inventory-allocation-service";
 
 describe("reserveOrderInventoryOwnedFirst", () => {
   it("uses owned stock first then consignment overflow", async () => {
@@ -115,6 +119,140 @@ describe("reserveOrderInventoryOwnedFirst", () => {
         status: "reserved",
       }),
     ]);
+  });
+
+  it("reports a temporary conflict when physical consignment stock exists but is fully reserved", async () => {
+    const tx = {
+      orderItem: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: "item-1",
+            productId: "product-1",
+            variantId: null,
+            quantity: 1,
+            product: {
+              id: "product-1",
+              name: "Reserved Product",
+              stock: 0,
+              reservedStock: 0,
+              trackInventory: true,
+            },
+          },
+        ]),
+      },
+
+      orderInventoryAllocation: {
+        count: vi.fn().mockResolvedValue(0),
+        create: vi.fn(),
+      },
+
+      product: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "product-1",
+          name: "Reserved Product",
+          stock: 0,
+          reservedStock: 0,
+          trackInventory: true,
+        }),
+        updateMany: vi.fn(),
+      },
+
+      consignmentLot: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: "lot-1",
+            quantityAvailable: 1,
+            quantityReserved: 1,
+            unitCost: 20,
+            createdAt: new Date("2026-09-01T00:00:00Z"),
+          },
+        ]),
+        updateMany: vi.fn(),
+      },
+    };
+
+    let thrown: unknown;
+
+    try {
+      await reserveOrderInventoryOwnedFirst(
+        tx as any,
+        "order-1",
+      );
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(
+      InventoryReservationConflictError,
+    );
+
+    expect(thrown).toMatchObject({
+      code: "INVENTORY_TEMPORARILY_RESERVED",
+      message: INVENTORY_TEMPORARILY_RESERVED_MESSAGE,
+    });
+
+    expect(tx.orderInventoryAllocation.create)
+      .not.toHaveBeenCalled();
+  });
+
+  it("keeps true physical stock shortage distinct from a temporary reservation conflict", async () => {
+    const tx = {
+      orderItem: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: "item-1",
+            productId: "product-1",
+            variantId: null,
+            quantity: 1,
+            product: {
+              id: "product-1",
+              name: "Sold Product",
+              stock: 0,
+              reservedStock: 0,
+              trackInventory: true,
+            },
+          },
+        ]),
+      },
+
+      orderInventoryAllocation: {
+        count: vi.fn().mockResolvedValue(0),
+        create: vi.fn(),
+      },
+
+      product: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "product-1",
+          name: "Sold Product",
+          stock: 0,
+          reservedStock: 0,
+          trackInventory: true,
+        }),
+        updateMany: vi.fn(),
+      },
+
+      consignmentLot: {
+        findMany: vi.fn().mockResolvedValue([]),
+        updateMany: vi.fn(),
+      },
+    };
+
+    let thrown: unknown;
+
+    try {
+      await reserveOrderInventoryOwnedFirst(
+        tx as any,
+        "order-1",
+      );
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+
+    expect(thrown).not.toBeInstanceOf(
+      InventoryReservationConflictError,
+    );
   });
 });
 
