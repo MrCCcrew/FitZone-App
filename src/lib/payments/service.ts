@@ -1332,10 +1332,35 @@ export async function updatePaymentTransactionStatus(
           current.status === "cancelled" ||
           current.status === "expired";
 
-        const payment = alreadyTerminal
-          ? current
-          : await tx.paymentTransaction.update({
-              where: { id: transactionId },
+        let payment = current;
+
+        if (!alreadyTerminal) {
+          const terminalClaimableStatuses = [
+            "pending",
+            "pending_payment",
+            "processing",
+            "requires_action",
+          ];
+
+          try {
+            /*
+             * Atomic terminal-state claim.
+             *
+             * The status predicate is part of the UPDATE itself, so a
+             * concurrent paid webhook cannot be overwritten after the read
+             * above.
+             *
+             * "retrying" is intentionally excluded because retry hand-off
+             * owns that transaction while the replacement checkout is being
+             * created.
+             */
+            payment = await tx.paymentTransaction.update({
+              where: {
+                id: transactionId,
+                status: {
+                  in: terminalClaimableStatuses,
+                },
+              },
               data: {
                 status,
                 metadata: stringifyJson({
@@ -1345,6 +1370,48 @@ export async function updatePaymentTransactionStatus(
                 failedAt: status === "failed" ? new Date() : undefined,
               },
             });
+          } catch (error) {
+            /*
+             * The conditional UPDATE may lose a legitimate race to another
+             * payment-status writer. Re-read before deciding whether this is
+             * an actual database error.
+             */
+            const latest = await tx.paymentTransaction.findUnique({
+              where: { id: transactionId },
+            });
+
+            if (!latest) {
+              throw new Error("معاملة الدفع غير موجودة.");
+            }
+
+            /*
+             * Most importantly, a successful payment always wins.
+             * Return immediately so no terminal cleanup runs.
+             */
+            if (latest.status === "paid") {
+              return {
+                payment: latest,
+                paidGuard: true,
+              };
+            }
+
+            const latestIsTerminal =
+              latest.status === "failed" ||
+              latest.status === "cancelled" ||
+              latest.status === "expired";
+
+            /*
+             * Another terminal caller may have won the race. Preserve the
+             * existing idempotent cleanup behavior without changing its
+             * terminal status again.
+             */
+            if (latestIsTerminal) {
+              payment = latest;
+            } else {
+              throw error;
+            }
+          }
+        }
 
         /*
          * Friend Offer payments have no membershipId until the

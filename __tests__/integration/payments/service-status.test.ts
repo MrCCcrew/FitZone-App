@@ -537,6 +537,93 @@ describe("store order terminal payment inventory release", () => {
     releaseOrderReservationMock.mockResolvedValue([]);
   });
 
+  it("does not overwrite or clean up a Store payment that wins the race to paid", async () => {
+    const paidTx = {
+      ...BASE_TX,
+      purpose: "order",
+      orderId: "order-1",
+      status: "paid",
+      paidAt: new Date(),
+      metadata: null,
+    };
+
+    vi.mocked(db.paymentTransaction.findUnique).mockResolvedValueOnce(
+      pendingSelect({
+        purpose: "order",
+        orderId: "order-1",
+        membershipId: null,
+        metadata: null,
+      }) as never,
+    );
+
+    /*
+     * The terminal path reads the transaction while it is still open.
+     * Before its conditional UPDATE can commit, the paid webhook wins.
+     */
+    transactionalPaymentFindUnique
+      .mockResolvedValueOnce({
+        ...BASE_TX,
+        purpose: "order",
+        orderId: "order-1",
+        status: "pending",
+        metadata: null,
+      })
+      .mockResolvedValueOnce(paidTx);
+
+    transactionalPaymentUpdate.mockRejectedValueOnce(
+      new Error("TERMINAL_PAYMENT_CLAIM_LOST"),
+    );
+
+    const result = await updatePaymentTransactionStatus(
+      "tx-001",
+      "expired",
+    );
+
+    expect(result.status).toBe("paid");
+
+    expect(transactionalPaymentUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          id: "tx-001",
+          status: {
+            in: [
+              "pending",
+              "pending_payment",
+              "processing",
+              "requires_action",
+            ],
+          },
+        },
+        data: expect.objectContaining({
+          status: "expired",
+        }),
+      }),
+    );
+
+    // The stale timeout must not touch membership state.
+    expect(
+      transactionalUserMembershipUpdateMany,
+    ).not.toHaveBeenCalled();
+
+    // It must not release any Store inventory.
+    expect(
+      transactionalOrderInventoryAllocationCount,
+    ).not.toHaveBeenCalled();
+
+    expect(
+      releaseOrderInventoryAllocationsMock,
+    ).not.toHaveBeenCalled();
+
+    expect(
+      releaseOrderReservationMock,
+    ).not.toHaveBeenCalled();
+
+    // And it must never cancel the paid order.
+    expect(
+      transactionalOrderUpdate,
+    ).not.toHaveBeenCalled();
+  });
+
   for (const terminalStatus of [
     "failed",
     "cancelled",
@@ -680,7 +767,17 @@ describe("store order terminal payment inventory release", () => {
       transactionalPaymentUpdate,
     ).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: "tx-001" },
+        where: expect.objectContaining({
+          id: "tx-001",
+          status: {
+            in: [
+              "pending",
+              "pending_payment",
+              "processing",
+              "requires_action",
+            ],
+          },
+        }),
         data: expect.objectContaining({
           status: "expired",
         }),
