@@ -485,7 +485,61 @@ export async function GET(request: Request) {
     storeGrossProfit - storeExpensesTotal - storeFeeTotal,
   );
 
-  const membershipRows = memberships.map((membership) => ({
+  const paidMembershipEvidence =
+    memberships.length > 0
+      ? await db.paymentTransaction.findMany({
+          where: {
+            membershipId: {
+              in: memberships.map((membership) => membership.id),
+            },
+            status: "paid",
+            purpose: "membership",
+          },
+          select: {
+            membershipId: true,
+            purpose: true,
+            amount: true,
+          },
+        })
+      : [];
+
+  const paidMembershipEvidenceById = new Map<
+    string,
+    typeof paidMembershipEvidence
+  >();
+
+  for (const payment of paidMembershipEvidence) {
+    if (!payment.membershipId) continue;
+
+    const evidence =
+      paidMembershipEvidenceById.get(payment.membershipId) ?? [];
+
+    evidence.push(payment);
+    paidMembershipEvidenceById.set(payment.membershipId, evidence);
+  }
+
+  const accountingMemberships = memberships.filter((membership) => {
+    const paymentAmount = Number(membership.paymentAmount ?? 0);
+    if (paymentAmount <= 0) return true;
+
+    const paymentMethod = String(membership.paymentMethod ?? "")
+      .trim()
+      .toLowerCase();
+
+    if (paymentMethod !== "paymob" && paymentMethod !== "offer") {
+      return true;
+    }
+
+    const paidEvidence =
+      paidMembershipEvidenceById.get(membership.id) ?? [];
+
+    return paidEvidence.some(
+      (payment) =>
+        payment.purpose === "membership" &&
+        Math.abs(Number(payment.amount) - paymentAmount) < 0.000001,
+    );
+  });
+  const membershipRows = accountingMemberships.map((membership) => ({
     id: membership.id,
     date: membership.startDate.toISOString(),
     customerName: membership.user.name ?? "مشتركة",
@@ -647,7 +701,7 @@ export async function GET(request: Request) {
 
   // Discounts granted on club memberships (memo only — already reflected in paymentAmount)
   const clubDiscountsGranted = round2(
-    memberships.reduce((sum, m) => {
+    accountingMemberships.reduce((sum, m) => {
       const originalPrice =
         m.membership.priceAfter && m.membership.priceAfter > 0
           ? m.membership.priceAfter
