@@ -425,7 +425,7 @@ describe("updatePaymentTransactionStatus — status transitions", () => {
 describe("updatePaymentTransactionStatus — 'failed' cancels pending membership", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("calls userMembership.updateMany to expire pending membership on failure", async () => {
+  it("cancels pending membership on payment failure and clears pending expiry", async () => {
     const failedTx = {
       ...BASE_TX,
       status: "failed",
@@ -450,7 +450,7 @@ describe("updatePaymentTransactionStatus — 'failed' cancels pending membership
     expect(transactionalUserMembershipUpdateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "m1", status: "pending_payment" },
-        data: { status: "expired" },
+        data: { status: "cancelled", pendingExpiresAt: null },
       }),
     );
   });

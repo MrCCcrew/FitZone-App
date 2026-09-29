@@ -1416,7 +1416,10 @@ export async function updatePaymentTransactionStatus(
               id: failedMembershipId,
               status: "pending_payment",
             },
-            data: { status: "expired" },
+            data: {
+              status: "cancelled",
+              pendingExpiresAt: null,
+            },
           });
 
           if (membershipClaim.count > 0) {
