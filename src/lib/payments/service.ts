@@ -1,4 +1,4 @@
-﻿﻿import { asDbTransactionClient, db } from "@/lib/db";
+﻿import { asDbTransactionClient, db } from "@/lib/db";
 import { lockMembershipLifecycleUserTx } from "@/lib/membership-lifecycle-lock";
 import {
   applyMembershipSessionCarryoverTx,
@@ -586,13 +586,58 @@ function extractPaymentAdjustments(
       ? (metadata.membershipInvoice as Record<string, unknown>)
       : null;
 
-  const walletAmount = Number(
+  const legacyWalletAmount = Number(
     adjustmentRecord?.walletAmount ??
       metadata?.walletDeductedAmount ??
       metadata?.walletDeducted ??
       invoiceRecord?.walletDeduct ??
       0,
   );
+
+  const normalizedLegacyWalletAmount =
+    Number.isFinite(legacyWalletAmount)
+      ? Math.max(0, legacyWalletAmount)
+      : 0;
+
+  const referralRaw =
+    adjustmentRecord?.referralWalletAmount ??
+    metadata?.referralWalletAmount;
+
+  const generalRaw =
+    adjustmentRecord?.generalWalletAmount ??
+    metadata?.generalWalletAmount;
+
+  const hasWalletSourceSplit =
+    referralRaw != null || generalRaw != null;
+
+  const parsedReferral = Number(referralRaw ?? 0);
+
+  const referralWalletAmount =
+    hasWalletSourceSplit &&
+    Number.isFinite(parsedReferral)
+      ? Math.max(0, parsedReferral)
+      : 0;
+
+  const parsedGeneral = Number(
+    generalRaw ??
+      Math.max(
+        0,
+        normalizedLegacyWalletAmount -
+          referralWalletAmount,
+      ),
+  );
+
+  const generalWalletAmount =
+    hasWalletSourceSplit &&
+    Number.isFinite(parsedGeneral)
+      ? Math.max(0, parsedGeneral)
+      : normalizedLegacyWalletAmount;
+
+  const walletAmount =
+    hasWalletSourceSplit
+      ? referralWalletAmount +
+        generalWalletAmount
+      : normalizedLegacyWalletAmount;
 
   const pointsCount = Number(
     adjustmentRecord?.pointsCount ??
@@ -607,7 +652,10 @@ function extractPaymentAdjustments(
       : null;
 
   return {
-    walletAmount: Number.isFinite(walletAmount) ? Math.max(0, walletAmount) : 0,
+    walletAmount,
+    referralWalletAmount,
+    generalWalletAmount,
+    hasWalletSourceSplit,
     pointsCount: Number.isFinite(pointsCount)
       ? Math.max(0, Math.floor(pointsCount))
       : 0,
@@ -618,11 +666,51 @@ function extractPaymentAdjustments(
 export async function restorePaymentBalanceAdjustments(input: {
   userId: string;
   walletAmount?: number | null;
+  referralWalletAmount?: number | null;
+  generalWalletAmount?: number | null;
   pointsCount?: number | null;
   reference?: string | null;
 }) {
-  const walletAmount = Math.max(0, Number(input.walletAmount ?? 0));
-  const pointsCount = Math.max(0, Math.floor(Number(input.pointsCount ?? 0)));
+  const legacyWalletAmount =
+    Math.max(0, Number(input.walletAmount ?? 0));
+
+  const hasWalletSourceSplit =
+    input.referralWalletAmount != null ||
+    input.generalWalletAmount != null;
+
+  const referralWalletAmount =
+    hasWalletSourceSplit
+      ? Math.max(
+          0,
+          Number(input.referralWalletAmount ?? 0),
+        )
+      : 0;
+
+  const generalWalletAmount =
+    hasWalletSourceSplit
+      ? Math.max(
+          0,
+          Number(
+            input.generalWalletAmount ??
+              Math.max(
+                0,
+                legacyWalletAmount -
+                  referralWalletAmount,
+              ),
+          ),
+        )
+      : legacyWalletAmount;
+
+  const walletAmount =
+    hasWalletSourceSplit
+      ? referralWalletAmount +
+        generalWalletAmount
+      : legacyWalletAmount;
+
+  const pointsCount = Math.max(
+    0,
+    Math.floor(Number(input.pointsCount ?? 0)),
+  );
 
   if (walletAmount <= 0 && pointsCount <= 0) return;
 
@@ -630,19 +718,57 @@ export async function restorePaymentBalanceAdjustments(input: {
     if (walletAmount > 0) {
       const wallet = await tx.wallet.upsert({
         where: { userId: input.userId },
-        update: { balance: { increment: walletAmount } },
-        create: { userId: input.userId, balance: walletAmount },
-      });
-
-      await tx.walletTransaction.create({
-        data: {
-          walletId: wallet.id,
-          amount: walletAmount,
-          type: "credit",
-          description:
-            `استرجاع رصيد محفظة لعملية غير مكتملة ${input.reference ?? ""}`.trim(),
+        update: {
+          balance: { increment: walletAmount },
+          referralBalance: {
+            increment: referralWalletAmount,
+          },
+        },
+        create: {
+          userId: input.userId,
+          balance: walletAmount,
+          referralBalance: referralWalletAmount,
         },
       });
+
+      if (hasWalletSourceSplit) {
+        if (referralWalletAmount > 0) {
+          await tx.walletTransaction.create({
+            data: {
+              walletId: wallet.id,
+              amount: referralWalletAmount,
+              type: "credit",
+              source: "referral",
+              description:
+                `استرجاع رصيد إحالة لعملية غير مكتملة ${input.reference ?? ""}`.trim(),
+            },
+          });
+        }
+
+        if (generalWalletAmount > 0) {
+          await tx.walletTransaction.create({
+            data: {
+              walletId: wallet.id,
+              amount: generalWalletAmount,
+              type: "credit",
+              source: "general",
+              description:
+                `استرجاع رصيد عام لعملية غير مكتملة ${input.reference ?? ""}`.trim(),
+            },
+          });
+        }
+      } else {
+        await tx.walletTransaction.create({
+          data: {
+            walletId: wallet.id,
+            amount: walletAmount,
+            type: "credit",
+            source: "payment_restore",
+            description:
+              `استرجاع رصيد محفظة لعملية غير مكتملة ${input.reference ?? ""}`.trim(),
+          },
+        });
+      }
     }
 
     if (pointsCount > 0) {
@@ -690,21 +816,60 @@ async function restorePaymentTransactionAdjustments(transactionId: string) {
     if (adjustments.walletAmount > 0) {
       const wallet = await tx.wallet.upsert({
         where: { userId: transaction.userId },
-        update: { balance: { increment: adjustments.walletAmount } },
+        update: {
+          balance: {
+            increment: adjustments.walletAmount,
+          },
+          referralBalance: {
+            increment:
+              adjustments.referralWalletAmount,
+          },
+        },
         create: {
           userId: transaction.userId,
           balance: adjustments.walletAmount,
+          referralBalance:
+            adjustments.referralWalletAmount,
         },
       });
 
-      await tx.walletTransaction.create({
-        data: {
-          walletId: wallet.id,
-          amount: adjustments.walletAmount,
-          type: "credit",
-          description: `استرجاع رصيد محفظة للمعاملة ${transaction.referenceCode ?? transaction.id}`,
-        },
-      });
+      if (adjustments.hasWalletSourceSplit) {
+        if (adjustments.referralWalletAmount > 0) {
+          await tx.walletTransaction.create({
+            data: {
+              walletId: wallet.id,
+              amount:
+                adjustments.referralWalletAmount,
+              type: "credit",
+              source: "referral",
+              description: `استرجاع رصيد إحالة للمعاملة ${transaction.referenceCode ?? transaction.id}`,
+            },
+          });
+        }
+
+        if (adjustments.generalWalletAmount > 0) {
+          await tx.walletTransaction.create({
+            data: {
+              walletId: wallet.id,
+              amount:
+                adjustments.generalWalletAmount,
+              type: "credit",
+              source: "general",
+              description: `استرجاع رصيد عام للمعاملة ${transaction.referenceCode ?? transaction.id}`,
+            },
+          });
+        }
+      } else {
+        await tx.walletTransaction.create({
+          data: {
+            walletId: wallet.id,
+            amount: adjustments.walletAmount,
+            type: "credit",
+            source: "payment_restore",
+            description: `استرجاع رصيد محفظة للمعاملة ${transaction.referenceCode ?? transaction.id}`,
+          },
+        });
+      }
     }
 
     if (adjustments.pointsCount > 0) {
@@ -1249,6 +1414,7 @@ export async function updatePaymentTransactionStatus(
           walletId: wallet.id,
           amount: payment.amount,
           type: "credit",
+          source: "topup",
           description: `شحن محفظة عبر ${payment.referenceCode ?? payment.id}`,
         },
       });
@@ -1275,6 +1441,7 @@ export async function updatePaymentTransactionStatus(
             walletId: wallet.id,
             amount: bonusAmount,
             type: "credit",
+            source: "topup_bonus",
             description: `بونص شحن المحفظة ${
               Number.isFinite(snapshotPercent) ? snapshotPercent : 0
             }% للمعاملة ${payment.referenceCode ?? payment.id}`,
@@ -1503,7 +1670,7 @@ export async function updatePaymentTransactionStatus(
             });
 
           if (!current) {
-            throw new Error("?????? ????? ??? ??????.");
+            throw new Error("معاملة الدفع غير موجودة.");
           }
 
           /*
@@ -1549,7 +1716,7 @@ export async function updatePaymentTransactionStatus(
       });
 
     if (!latest) {
-      throw new Error("?????? ????? ??? ??????.");
+      throw new Error("معاملة الدفع غير موجودة.");
     }
 
     /*
@@ -2159,6 +2326,12 @@ export async function unlockPendingReferralReward(subscribedUserId: string) {
       return;
     }
 
+    // New anti-abuse decisions are explicit.
+    // Legacy rows remain compatible because null/unevaluated rows continue normally.
+    if (usage.antiAbuseRewardEligible === false) {
+      return;
+    }
+
     const rType = cfg.referralRewardType;
     const rValue = Number(cfg.referralRewardValue ?? 0);
     const referrerUserId = usage.referral.userId;
@@ -2183,6 +2356,7 @@ export async function unlockPendingReferralReward(subscribedUserId: string) {
         create: {
           userId: referrerUserId,
           balance: 0,
+          referralBalance: 0,
         },
       });
 
@@ -2190,6 +2364,9 @@ export async function unlockPendingReferralReward(subscribedUserId: string) {
         where: { id: wallet.id },
         data: {
           balance: {
+            increment: rValue,
+          },
+          referralBalance: {
             increment: rValue,
           },
         },
@@ -2200,6 +2377,7 @@ export async function unlockPendingReferralReward(subscribedUserId: string) {
           walletId: wallet.id,
           amount: rValue,
           type: "credit",
+          source: "referral",
           description: "مكافأة إحالة — اشترك العضو المُحال بنجاح",
         },
       });

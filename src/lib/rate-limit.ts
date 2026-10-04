@@ -114,10 +114,15 @@ export async function applySensitiveRateLimit(key: string, limit: number, window
 }
 
 export function getClientIp(request: Request) {
+  const realIp = request.headers.get("x-real-ip")?.trim();
+  if (realIp) {
+    return realIp;
+  }
+
   const forwarded = request.headers.get("x-forwarded-for");
   if (forwarded) {
     return forwarded.split(",")[0].trim();
   }
 
-  return request.headers.get("x-real-ip") ?? "unknown";
+  return "unknown";
 }

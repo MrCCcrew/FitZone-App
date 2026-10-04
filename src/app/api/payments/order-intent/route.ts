@@ -1,6 +1,7 @@
 ﻿import { NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/app-session";
 import { db } from "@/lib/db";
+import { allocateWalletDeductionBySource } from "@/lib/referral-credit-policy";
 import { createPaymentTransaction, restorePaymentBalanceAdjustments } from "@/lib/payments/service";
 
 type OrderItemInput = {
@@ -160,7 +161,7 @@ export async function POST(req: Request) {
     if (walletDeductAmount > 0 || pointsDeductCount > 0) {
       const [walletRow, pointsRow, rewardSettings] = await Promise.all([
         walletDeductAmount > 0
-          ? db.wallet.findUnique({ where: { userId: currentUser.id }, select: { balance: true } })
+          ? db.wallet.findUnique({ where: { userId: currentUser.id }, select: { balance: true, referralBalance: true } })
           : null,
         pointsDeductCount > 0 ? db.rewardPoints.findUnique({ where: { userId: currentUser.id } }) : null,
         db.siteContent.findUnique({ where: { section: "reward_settings" } }),
@@ -174,10 +175,22 @@ export async function POST(req: Request) {
       }
 
       if (walletDeductAmount > 0) {
-        if (walletDeductAmount > (walletRow?.balance ?? 0)) {
+        const walletBalance = walletRow?.balance ?? 0;
+        const referralBalance = walletRow?.referralBalance ?? 0;
+
+        if (walletDeductAmount > walletBalance) {
           return NextResponse.json({ error: "رصيد المحفظة غير كافٍ." }, { status: 400 });
         }
-        validatedWalletDeduct = walletDeductAmount;
+
+        const walletAllocation = allocateWalletDeductionBySource({
+          purchaseKind: "store",
+          walletBalance,
+          referralBalance,
+          requestedWalletDeduct: walletDeductAmount,
+          amountDue: total,
+        });
+
+        validatedWalletDeduct = walletAllocation.totalDeduct;
       }
 
       if (pointsDeductCount > 0) {
@@ -226,6 +239,7 @@ export async function POST(req: Request) {
             walletId: wallet.id,
             amount: validatedWalletDeduct,
             type: "debit",
+            source: "general",
             description: `سداد طلب رقم ${createdOrder.id}`,
           },
         });

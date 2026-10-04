@@ -279,6 +279,7 @@ export async function runPaidMembershipPostActivationReconciliation(
               walletId: wallet.id,
               amount: walletBonus,
               type: "credit",
+              source: "membership_bonus",
               description: `مكافأة الاشتراك في باقة ${membershipData.membership?.name ?? ""}`,
             },
           });

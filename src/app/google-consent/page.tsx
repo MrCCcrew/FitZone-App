@@ -4,6 +4,31 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useLang } from "@/lib/language";
 
+const REFERRAL_DEVICE_ID_KEY = "fitzone:referral-device-id:v1";
+
+function getOrCreateReferralDeviceId(): string | null {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const existing = window.localStorage.getItem(
+      REFERRAL_DEVICE_ID_KEY,
+    );
+
+    if (existing) return existing;
+
+    const deviceId = window.crypto.randomUUID();
+
+    window.localStorage.setItem(
+      REFERRAL_DEVICE_ID_KEY,
+      deviceId,
+    );
+
+    return deviceId;
+  } catch {
+    return null;
+  }
+}
+
 export default function GoogleConsentPage() {
   const router = useRouter();
   const { lang } = useLang();
@@ -21,10 +46,15 @@ export default function GoogleConsentPage() {
     setLoading(true);
     setError("");
     try {
+      const deviceId = getOrCreateReferralDeviceId();
+
       const res = await fetch("/api/auth/oauth/consent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accepted: true }),
+        body: JSON.stringify({
+          accepted: true,
+          deviceId,
+        }),
       });
       const d = await res.json() as { ok?: boolean; error?: string; redirectTo?: string };
       if (d.ok) {

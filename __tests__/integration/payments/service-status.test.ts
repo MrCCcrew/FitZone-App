@@ -167,7 +167,10 @@ vi.mock("@/lib/inventory-service", () => ({
   releaseOrderReservation: releaseOrderReservationMock,
 }));
 import { db } from "@/lib/db";
-import { updatePaymentTransactionStatus } from "@/lib/payments/service";
+import {
+  restorePaymentBalanceAdjustments,
+  updatePaymentTransactionStatus,
+} from "@/lib/payments/service";
 
 // ─── Shared fixtures ──────────────────────────────────────────────────────────
 
@@ -363,6 +366,98 @@ describe("wallet top-up payment", () => {
   });
 });
 
+describe("restorePaymentBalanceAdjustments — source-aware wallet restoration", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("restores referral and general wallet amounts to their original buckets", async () => {
+    await restorePaymentBalanceAdjustments({
+      userId: "user-restore",
+      walletAmount: 120,
+      referralWalletAmount: 70,
+      generalWalletAmount: 50,
+      reference: "sub-restore",
+    });
+
+    expect(transactionalWalletUpsert).toHaveBeenCalledWith({
+      where: { userId: "user-restore" },
+      update: {
+        balance: { increment: 120 },
+        referralBalance: { increment: 70 },
+      },
+      create: {
+        userId: "user-restore",
+        balance: 120,
+        referralBalance: 70,
+      },
+    });
+
+    expect(transactionalWalletTransactionCreate).toHaveBeenCalledTimes(2);
+    expect(transactionalWalletTransactionCreate).toHaveBeenNthCalledWith(
+      1,
+      { data: expect.objectContaining({ amount: 70, type: "credit", source: "referral" }) },
+    );
+    expect(transactionalWalletTransactionCreate).toHaveBeenNthCalledWith(
+      2,
+      { data: expect.objectContaining({ amount: 50, type: "credit", source: "general" }) },
+    );
+  });
+
+  it("restores a general-only split without creating referral credit", async () => {
+    await restorePaymentBalanceAdjustments({
+      userId: "user-general",
+      walletAmount: 60,
+      referralWalletAmount: 0,
+      generalWalletAmount: 60,
+    });
+
+    expect(transactionalWalletUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: {
+          balance: { increment: 60 },
+          referralBalance: { increment: 0 },
+        },
+      }),
+    );
+
+    expect(transactionalWalletTransactionCreate).toHaveBeenCalledOnce();
+    expect(transactionalWalletTransactionCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        amount: 60,
+        type: "credit",
+        source: "general",
+      }),
+    });
+  });
+
+  it("keeps legacy anonymous wallet restoration unrestricted", async () => {
+    await restorePaymentBalanceAdjustments({
+      userId: "user-legacy",
+      walletAmount: 40,
+    });
+
+    expect(transactionalWalletUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: {
+          balance: { increment: 40 },
+          referralBalance: { increment: 0 },
+        },
+      }),
+    );
+
+    expect(transactionalWalletTransactionCreate).toHaveBeenCalledOnce();
+
+    const call =
+      transactionalWalletTransactionCreate.mock.calls[0]?.[0];
+
+    expect(call?.data).toEqual(
+      expect.objectContaining({
+        amount: 40,
+        type: "credit",
+      }),
+    );
+    expect(call?.data).toHaveProperty("source", "payment_restore");
+  });
+});
 // ─── Status transitions ───────────────────────────────────────────────────────
 
 describe("updatePaymentTransactionStatus — status transitions", () => {
@@ -417,6 +512,92 @@ describe("updatePaymentTransactionStatus — status transitions", () => {
         }),
       }),
     );
+  });
+
+  it("restores referral/general split from payment metadata on terminal failure", async () => {
+    const metadata = JSON.stringify({
+      paymentAdjustments: {
+        walletAmount: 120,
+        referralWalletAmount: 70,
+        generalWalletAmount: 50,
+        pointsCount: 0,
+      },
+    });
+
+    const pendingTx = {
+      ...BASE_TX,
+      status: "pending_payment",
+      metadata,
+    };
+
+    const failedTx = {
+      ...BASE_TX,
+      status: "failed",
+      failedAt: new Date(),
+      metadata,
+    };
+
+    vi.mocked(db.paymentTransaction.findUnique)
+      .mockResolvedValueOnce(
+        pendingSelect({
+          metadata,
+        }) as never,
+      )
+      .mockResolvedValueOnce(failedTx as never);
+
+    transactionalPaymentFindUnique
+      .mockResolvedValueOnce(pendingTx)
+      .mockResolvedValueOnce(failedTx);
+
+    transactionalPaymentUpdate.mockResolvedValue(
+      failedTx,
+    );
+
+    transactionalBookingFindMany.mockResolvedValue(
+      [],
+    );
+
+    await updatePaymentTransactionStatus(
+      "tx-001",
+      "failed",
+    );
+
+    expect(transactionalWalletUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: {
+          balance: { increment: 120 },
+          referralBalance: { increment: 70 },
+        },
+        create: expect.objectContaining({
+          balance: 120,
+          referralBalance: 70,
+        }),
+      }),
+    );
+
+    expect(
+      transactionalWalletTransactionCreate,
+    ).toHaveBeenCalledTimes(2);
+
+    expect(
+      transactionalWalletTransactionCreate,
+    ).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        amount: 70,
+        type: "credit",
+        source: "referral",
+      }),
+    });
+
+    expect(
+      transactionalWalletTransactionCreate,
+    ).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        amount: 50,
+        type: "credit",
+        source: "general",
+      }),
+    });
   });
 });
 

@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import archiver from "archiver";
+import { ZipArchive } from "archiver";
 
 const projectRoot = process.cwd();
 const outputPath = path.join(projectRoot, "fitzone-hostinger-posix.zip");
@@ -63,7 +63,7 @@ function addPathToArchive(archive, absolutePath, relativePath) {
 }
 
 const output = fs.createWriteStream(outputPath);
-const archive = archiver("zip", { zlib: { level: 9 } });
+const archive = new ZipArchive({ zlib: { level: 9 } });
 
 output.on("close", () => {
   console.log(`Created: ${outputPath}`);

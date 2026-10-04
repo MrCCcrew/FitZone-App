@@ -1,7 +1,8 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/app-session";
 import { db } from "@/lib/db";
-import { createPaymentTransaction, restorePaymentBalanceAdjustments, unlockPendingReferralReward } from "@/lib/payments/service";
+import { allocateWalletDeductionBySource } from "@/lib/referral-credit-policy";
+import { createPaymentTransaction, restorePaymentBalanceAdjustments } from "@/lib/payments/service";
 import { getStoreCampaignSettings } from "@/app/api/admin/store-gift-campaign/route";
 import { cookies } from "next/headers";
 import { sendStoreOrderEmail, sendAdminOrderNotification } from "@/lib/email";
@@ -287,13 +288,15 @@ export async function POST(req: Request) {
     const walletDeductReq = Math.max(0, Number(body.walletDeduct ?? 0));
     const pointsDeductReq = Math.floor(Math.max(0, Number(body.pointsDeduct ?? 0)));
     let validatedWalletDeduct = 0;
+    let validatedReferralWalletDeduct = 0;
+    let validatedGeneralWalletDeduct = 0;
     let validatedPointsDeduct = 0;
     let pointsEGP = 0;
     let pointValueEGP = 0.1;
 
     if (walletDeductReq > 0 || pointsDeductReq > 0) {
       const [walletRow, pointsRow, rewardSettings] = await Promise.all([
-        walletDeductReq > 0 ? db.wallet.findUnique({ where: { userId }, select: { balance: true } }) : null,
+        walletDeductReq > 0 ? db.wallet.findUnique({ where: { userId }, select: { balance: true, referralBalance: true } }) : null,
         pointsDeductReq > 0 ? db.rewardPoints.findUnique({ where: { userId } }) : null,
         db.siteContent.findUnique({ where: { section: "reward_settings" } }),
       ]);
@@ -306,10 +309,26 @@ export async function POST(req: Request) {
       }
 
       if (walletDeductReq > 0) {
-        if (walletDeductReq > (walletRow?.balance ?? 0)) {
+        const walletBalance = walletRow?.balance ?? 0;
+        const referralBalance = walletRow?.referralBalance ?? 0;
+
+        if (walletDeductReq > walletBalance) {
           return NextResponse.json({ error: "رصيد المحفظة غير كافٍ." }, { status: 400 });
         }
-        validatedWalletDeduct = Math.min(walletDeductReq, baseTotal);
+
+        const walletAllocation = allocateWalletDeductionBySource({
+          purchaseKind: "store",
+          walletBalance,
+          referralBalance,
+          requestedWalletDeduct: walletDeductReq,
+          amountDue: baseTotal,
+        });
+
+        validatedWalletDeduct = walletAllocation.totalDeduct;
+        validatedReferralWalletDeduct =
+          walletAllocation.referralDeduct;
+        validatedGeneralWalletDeduct =
+          walletAllocation.generalDeduct;
       }
 
       if (pointsDeductReq > 0) {
@@ -398,6 +417,7 @@ export async function POST(req: Request) {
           walletId: wallet.id,
           amount: validatedWalletDeduct,
           type: "debit",
+          source: "general",
           description: `سداد طلب رقم ${order.id}`,
         },
       });
@@ -434,6 +454,10 @@ export async function POST(req: Request) {
           metadata: {
             paymentAdjustments: {
               walletAmount: validatedWalletDeduct,
+              referralWalletAmount:
+                validatedReferralWalletDeduct,
+              generalWalletAmount:
+                validatedGeneralWalletDeduct,
               pointsCount: validatedPointsDeduct,
             },
             walletDeductedAmount: validatedWalletDeduct || null,
@@ -479,6 +503,10 @@ export async function POST(req: Request) {
         await restorePaymentBalanceAdjustments({
           userId,
           walletAmount: validatedWalletDeduct,
+          referralWalletAmount:
+            validatedReferralWalletDeduct,
+          generalWalletAmount:
+            validatedGeneralWalletDeduct,
           pointsCount: validatedPointsDeduct,
           reference: order.id,
         }).catch((restoreError) => {
@@ -503,11 +531,6 @@ export async function POST(req: Request) {
         where: { id: order.id },
         data: { status: "confirmed" }
       });
-    }
-
-    // Unlock pending referral reward for confirmed/free orders (fire-and-forget)
-    if (total <= 0 || paymentMethod === "cod") {
-      void unlockPendingReferralReward(userId).catch(() => {});
     }
 
     // Send order confirmation emails (fire-and-forget, non-critical)

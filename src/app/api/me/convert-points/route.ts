@@ -13,6 +13,80 @@ async function getPointValueEGP(): Promise<number> {
   }
 }
 
+const REFERRAL_POINT_REASONS = new Set([
+  "referral_signup",
+  "referral_bonus",
+]);
+
+function resolveConvertiblePoints(
+  currentPoints: number,
+  history: Array<{ points: number; reason: string }>,
+) {
+  let protectedReferralPoints = 0;
+  let generalPoints = 0;
+  let ledgerPoints = 0;
+  let ledgerConsistent = true;
+
+  for (const row of history) {
+    const delta = Math.trunc(Number(row.points) || 0);
+    ledgerPoints += delta;
+
+    if (delta > 0) {
+      if (REFERRAL_POINT_REASONS.has(row.reason)) {
+        protectedReferralPoints += delta;
+      } else {
+        generalPoints += delta;
+      }
+      continue;
+    }
+
+    if (delta >= 0) {
+      continue;
+    }
+
+    let debit = Math.abs(delta);
+
+    const generalDebit = Math.min(
+      generalPoints,
+      debit,
+    );
+
+    generalPoints -= generalDebit;
+    debit -= generalDebit;
+
+    const referralDebit = Math.min(
+      protectedReferralPoints,
+      debit,
+    );
+
+    protectedReferralPoints -= referralDebit;
+    debit -= referralDebit;
+
+    if (debit > 0) {
+      ledgerConsistent = false;
+    }
+  }
+
+  const bucketTotal =
+    generalPoints + protectedReferralPoints;
+
+  if (
+    ledgerPoints !== currentPoints ||
+    bucketTotal !== currentPoints
+  ) {
+    ledgerConsistent = false;
+  }
+
+  return {
+    convertiblePoints: ledgerConsistent
+      ? generalPoints
+      : 0,
+    protectedReferralPoints,
+    ledgerPoints,
+    ledgerConsistent,
+  };
+}
+
 export async function POST(req: Request) {
   try {
     const user = await getCurrentAppUser();
@@ -27,52 +101,210 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "عدد الفيتزونات غير صحيح." }, { status: 400 });
     }
 
-    const [pointsRow, pointValueEGP] = await Promise.all([
-      db.rewardPoints.findUnique({ where: { userId: user.id } }),
-      getPointValueEGP(),
-    ]);
+    const pointValueEGP = await getPointValueEGP();
 
-    const currentPoints = pointsRow?.points ?? 0;
-    if (pointsToConvert > currentPoints) {
-      return NextResponse.json({ error: "رصيد الفيتزونات غير كافٍ." }, { status: 400 });
-    }
+    const egpAmount =
+      Math.round(
+        pointsToConvert *
+          pointValueEGP *
+          100,
+      ) / 100;
 
-    const egpAmount = Math.round(pointsToConvert * pointValueEGP * 100) / 100;
     if (egpAmount <= 0) {
-      return NextResponse.json({ error: "قيمة الفيتزونات لا تكفي للتحويل." }, { status: 400 });
+      return NextResponse.json(
+        {
+          error:
+            "قيمة الفيتزونات لا تكفي للتحويل.",
+        },
+        { status: 400 },
+      );
     }
 
-    await db.$transaction(async (tx) => {
-      // Deduct points
-      await tx.rewardPoints.update({
-        where: { userId: user.id },
-        data: { points: { decrement: pointsToConvert } },
-      });
-      await tx.rewardHistory.create({
-        data: {
-          rewardId: pointsRow!.id,
-          points: -pointsToConvert,
-          reason: `تحويل ${pointsToConvert} فيتزونة إلى رصيد المحفظة`,
-        },
-      });
+    const conversionResult =
+      await db.$transaction(
+        async (tx) => {
+          const lockedRows =
+            await tx.$queryRaw<
+              Array<{ id: string }>
+            >`
+              SELECT \`id\`
+              FROM \`RewardPoints\`
+              WHERE \`userId\` = ${user.id}
+              FOR UPDATE
+            `;
 
-      // Credit wallet
-      const wallet = await tx.wallet.upsert({
-        where: { userId: user.id },
-        update: { balance: { increment: egpAmount } },
-        create: { userId: user.id, balance: egpAmount },
-      });
-      await tx.walletTransaction.create({
-        data: {
-          walletId: wallet.id,
-          amount: egpAmount,
-          type: "credit",
-          description: `تحويل ${pointsToConvert} فيتزونة (${egpAmount} ج.م)`,
+          if (lockedRows.length !== 1) {
+            return {
+              ok: false as const,
+              status: 400,
+              error:
+                "رصيد الفيتزونات غير كافٍ.",
+            };
+          }
+
+          const pointsRow =
+            await tx.rewardPoints.findUnique({
+              where: {
+                userId: user.id,
+              },
+            });
+
+          if (!pointsRow) {
+            return {
+              ok: false as const,
+              status: 400,
+              error:
+                "رصيد الفيتزونات غير كافٍ.",
+            };
+          }
+
+          const history =
+            await tx.rewardHistory.findMany({
+              where: {
+                rewardId: pointsRow.id,
+              },
+              select: {
+                points: true,
+                reason: true,
+              },
+              orderBy: [
+                {
+                  createdAt: "asc",
+                },
+                {
+                  id: "asc",
+                },
+              ],
+            });
+
+          const currentPoints =
+            pointsRow.points;
+
+          const {
+            convertiblePoints,
+            ledgerConsistent,
+          } = resolveConvertiblePoints(
+            currentPoints,
+            history,
+          );
+
+          if (!ledgerConsistent) {
+            return {
+              ok: false as const,
+              status: 409,
+              error:
+                "تعذر التحقق من مصدر رصيد الفيتزونات بأمان. يرجى المحاولة لاحقًا أو التواصل مع الإدارة.",
+            };
+          }
+
+          if (
+            pointsToConvert >
+            currentPoints
+          ) {
+            return {
+              ok: false as const,
+              status: 400,
+              error:
+                "رصيد الفيتزونات غير كافٍ.",
+            };
+          }
+
+          if (
+            pointsToConvert >
+            convertiblePoints
+          ) {
+            return {
+              ok: false as const,
+              status: 400,
+              error:
+                "نقاط الإحالة غير قابلة للتحويل إلى رصيد محفظة. يمكنك تحويل الفيتزونات المؤهلة فقط.",
+            };
+          }
+
+          await tx.rewardPoints.update({
+            where: {
+              id: pointsRow.id,
+            },
+            data: {
+              points: {
+                decrement:
+                  pointsToConvert,
+              },
+            },
+          });
+
+          await tx.rewardHistory.create({
+            data: {
+              rewardId:
+                pointsRow.id,
+              points:
+                -pointsToConvert,
+              reason:
+                `تحويل ${pointsToConvert} فيتزونة إلى رصيد المحفظة`,
+            },
+          });
+
+          const wallet =
+            await tx.wallet.upsert({
+              where: {
+                userId: user.id,
+              },
+              update: {
+                balance: {
+                  increment:
+                    egpAmount,
+                },
+              },
+              create: {
+                userId: user.id,
+                balance: egpAmount,
+                referralBalance: 0,
+              },
+            });
+
+          await tx.walletTransaction.create({
+            data: {
+              walletId: wallet.id,
+              amount: egpAmount,
+              type: "credit",
+              source:
+                "points_conversion",
+              description:
+                `تحويل ${pointsToConvert} فيتزونة (${egpAmount} ج.م)`,
+            },
+          });
+
+          return {
+            ok: true as const,
+            convertiblePointsBefore:
+              convertiblePoints,
+          };
         },
-      });
+      );
+
+    if (!conversionResult.ok) {
+      return NextResponse.json(
+        {
+          error:
+            conversionResult.error,
+        },
+        {
+          status:
+            conversionResult.status,
+        },
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      convertedPoints:
+        pointsToConvert,
+      egpAmount,
+      convertiblePoints:
+        conversionResult
+          .convertiblePointsBefore -
+        pointsToConvert,
     });
-
-    return NextResponse.json({ success: true, convertedPoints: pointsToConvert, egpAmount });
   } catch (error) {
     console.error("[CONVERT_POINTS]", error);
     return NextResponse.json({ error: "تعذر تحويل الفيتزونات الآن." }, { status: 500 });

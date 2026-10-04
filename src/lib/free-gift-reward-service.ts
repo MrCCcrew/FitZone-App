@@ -283,6 +283,7 @@ export async function confirmFreeGiftSessionAtomic(
 
             type:
               "credit",
+            source: "free_gift_game",
 
             description:
               "هدية من لعبة الهدايا المجانية",

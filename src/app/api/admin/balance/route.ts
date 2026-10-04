@@ -1,6 +1,11 @@
 ﻿import { NextResponse } from "next/server";
 import { requireAdminFeature } from "@/lib/admin-guard";
 import { db } from "@/lib/db";
+import {
+  AdminWalletAdjustmentError,
+  canonicalizeAdminWalletAmount,
+  resolveAdminWalletAdjustment,
+} from "@/lib/admin-wallet-adjustment";
 import { getRewardSettings, calcTier } from "@/lib/reward-settings";
 
 async function checkAdmin() {
@@ -69,20 +74,113 @@ export async function POST(req: Request) {
   if (!userId || !type) return NextResponse.json({ error: "بيانات ناقصة" }, { status: 400 });
 
   if (type === "topup" || type === "deduct") {
-    const wallet = await db.wallet.upsert({
-      where:  { userId },
-      update: { balance: { increment: type === "topup" ? Number(amount) : -Number(amount) } },
-      create: { userId, balance: type === "topup" ? Number(amount) : 0 },
-    });
-    await db.walletTransaction.create({
-      data: {
-        walletId: wallet.id,
-        amount:   Number(amount),
-        type:     type === "topup" ? "credit" : "debit",
-        description: reason ?? (type === "topup" ? "شحن رصيد" : "خصم رصيد"),
-      },
-    });
-    return NextResponse.json({ success: true, balance: wallet.balance });
+    const numericAmount = Number(amount);
+
+    if (
+      !Number.isFinite(numericAmount) ||
+      numericAmount <= 0
+    ) {
+      return NextResponse.json(
+        { error: "قيمة الرصيد غير صالحة" },
+        { status: 400 },
+      );
+    }
+
+    const canonicalAmount =
+      canonicalizeAdminWalletAmount(
+        numericAmount,
+      );
+
+    if (canonicalAmount <= 0) {
+      return NextResponse.json(
+        { error: "قيمة الرصيد يجب ألا تقل عن 0.01" },
+        { status: 400 },
+      );
+    }
+
+    try {
+      const adjustment =
+        await db.$transaction(async (tx) => {
+          const wallet =
+            await tx.wallet.upsert({
+              where: { userId },
+              update: {},
+              create: {
+                userId,
+                balance: 0,
+                referralBalance: 0,
+              },
+            });
+
+          const delta =
+            type === "topup"
+              ? canonicalAmount
+              : -canonicalAmount;
+
+          const resolved =
+            resolveAdminWalletAdjustment({
+              balance: wallet.balance,
+              referralBalance:
+                wallet.referralBalance,
+              delta,
+            });
+
+          const updated =
+            await tx.wallet.updateMany({
+              where: {
+                id: wallet.id,
+                balance: wallet.balance,
+                referralBalance:
+                  wallet.referralBalance,
+              },
+              data: {
+                balance:
+                  resolved.nextBalance,
+                referralBalance:
+                  resolved.nextReferralBalance,
+              },
+            });
+
+          if (updated.count !== 1) {
+            throw new AdminWalletAdjustmentError(
+              "تم تعديل الرصيد بالتوازي. أعد المحاولة.",
+              409,
+            );
+          }
+
+          await tx.walletTransaction.create({
+            data: {
+              walletId: wallet.id,
+              amount:   canonicalAmount,
+              type:     type === "topup" ? "credit" : "debit",
+              source:   "admin_adjustment",
+              description: reason ?? (type === "topup" ? "شحن رصيد" : "خصم رصيد"),
+            },
+          });
+
+          return resolved;
+        });
+
+      return NextResponse.json({
+        success: true,
+        balance:
+          adjustment.nextBalance,
+        referralBalance:
+          adjustment.nextReferralBalance,
+      });
+    } catch (error) {
+      if (
+        error instanceof
+        AdminWalletAdjustmentError
+      ) {
+        return NextResponse.json(
+          { error: error.message },
+          { status: error.status },
+        );
+      }
+
+      throw error;
+    }
   }
 
   if (type === "earn" || type === "redeem") {

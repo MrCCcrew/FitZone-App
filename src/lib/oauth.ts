@@ -52,6 +52,9 @@ export async function findOrCreateOAuthUser(profile: {
   providerId: string;
   email: string | null;
   name: string | null;
+  referralDeviceHash?: string | null;
+  referralIpHash?: string | null;
+  referralUserAgentHash?: string | null;
 }) {
   const { provider, providerId, email, name } = profile;
 
@@ -82,6 +85,12 @@ export async function findOrCreateOAuthUser(profile: {
           name: name ?? email.split("@")[0],
           email,
           role: "member",
+          referralDeviceHash:
+            profile.referralDeviceHash ?? null,
+          referralIpHash:
+            profile.referralIpHash ?? null,
+          referralUserAgentHash:
+            profile.referralUserAgentHash ?? null,
         },
       });
       await tx.wallet.create({ data: { userId: created.id, balance: 0 } });
