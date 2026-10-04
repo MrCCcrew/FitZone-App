@@ -533,10 +533,6 @@ export async function POST(req: Request) {
       });
     }
 
-    // Unlock pending referral reward for confirmed/free orders (fire-and-forget)
-    if (total <= 0 || paymentMethod === "cod") {
-      }
-
     // Send order confirmation emails (fire-and-forget, non-critical)
     if (currentUser?.email && (total <= 0 || paymentMethod === "cod")) {
       const invoiceNumber = `ORD-${order.id.slice(-8).toUpperCase()}`;
