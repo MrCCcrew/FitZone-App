@@ -3,7 +3,57 @@ import bcryptjs from "bcryptjs";
 import { db } from "@/lib/db";
 import { sendVerificationEmail } from "@/lib/email";
 import { applySensitiveRateLimit, getClientIp } from "@/lib/rate-limit";
-import { getRewardSettings, calcTier } from "@/lib/reward-settings";
+import { buildReferralIdentityHashes } from "@/lib/referral-identity";
+import { evaluateReferralAntiAbuse } from "@/lib/referral-anti-abuse";
+
+type TurnstileSiteverifyResponse = {
+  success: boolean;
+  "error-codes"?: string[];
+};
+
+async function verifyTurnstileToken(
+  token: string,
+  remoteIp: string | null,
+): Promise<boolean> {
+  const secret =
+    process.env.TURNSTILE_SECRET_KEY;
+
+  if (!secret) return false;
+
+  const body = new URLSearchParams();
+
+  body.set("secret", secret);
+  body.set("response", token);
+
+  if (remoteIp) {
+    body.set("remoteip", remoteIp);
+  }
+
+  try {
+    const response = await fetch(
+      "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type":
+            "application/x-www-form-urlencoded",
+        },
+        body: body.toString(),
+        cache: "no-store",
+      },
+    );
+
+    if (!response.ok) return false;
+
+    const result =
+      (await response.json()) as
+        TurnstileSiteverifyResponse;
+
+    return result.success === true;
+  } catch {
+    return false;
+  }
+}
 
 export async function POST(req: Request) {
   try {
@@ -16,12 +66,18 @@ export async function POST(req: Request) {
       );
     }
 
-    const { name, email, phone, password, referralCode, affiliateRef, partnerRef, agentRef, staffRef, trainerRef, nutritionRef } = await req.json();
+    const { name, email, phone, password, referralCode, affiliateRef, partnerRef, agentRef, staffRef, trainerRef, nutritionRef, deviceId, turnstileToken } = await req.json();
 
     const normalizedName = String(name ?? "").trim();
     const normalizedEmail = String(email ?? "").trim().toLowerCase();
     const normalizedPhone = String(phone ?? "").trim();
     const normalizedPassword = String(password ?? "");
+    const userAgent = req.headers.get("user-agent");
+    const registrationIdentity = buildReferralIdentityHashes({
+      deviceId: deviceId ? String(deviceId) : null,
+      ipAddress: clientIp,
+      userAgent,
+    });
 
     if (!normalizedName || !normalizedEmail || !normalizedPassword) {
       return NextResponse.json(
@@ -34,6 +90,35 @@ export async function POST(req: Request) {
       return NextResponse.json(
         { error: "يجب إدخال ثلاثة أسماء على الأقل (الاسم الأول والأوسط والأخير)." },
         { status: 400 },
+      );
+    }
+
+    const normalizedTurnstileToken =
+      String(turnstileToken ?? "").trim();
+
+    if (!normalizedTurnstileToken) {
+      return NextResponse.json(
+        {
+          error:
+            "يرجى إكمال التحقق الأمني قبل إنشاء الحساب.",
+        },
+        { status: 400 },
+      );
+    }
+
+    const turnstileValid =
+      await verifyTurnstileToken(
+        normalizedTurnstileToken,
+        clientIp,
+      );
+
+    if (!turnstileValid) {
+      return NextResponse.json(
+        {
+          error:
+            "تعذر إتمام التحقق الأمني. يرجى المحاولة مرة أخرى.",
+        },
+        { status: 403 },
       );
     }
 
@@ -119,6 +204,11 @@ export async function POST(req: Request) {
 
     // Validate referral code before creating user
     let referralRecord: { id: string; userId: string } | null = null;
+    let referralAntiAbuseDecision = evaluateReferralAntiAbuse({
+      sameDevice: false,
+      sameIp: false,
+    });
+
     if (normalizedReferralCode) {
       const found = await db.referral.findUnique({
         where: { code: normalizedReferralCode },
@@ -129,15 +219,33 @@ export async function POST(req: Request) {
         // Prevent self-referral: check if the code belongs to the same email
         const codeOwner = await db.user.findUnique({
           where: { id: found.userId },
-          select: { email: true },
+          select: {
+            email: true,
+            referralDeviceHash: true,
+            referralIpHash: true,
+          },
         });
         if (codeOwner?.email?.toLowerCase() !== normalizedEmail) {
+          const sameDevice =
+            !!registrationIdentity.deviceHash &&
+            !!codeOwner?.referralDeviceHash &&
+            registrationIdentity.deviceHash === codeOwner.referralDeviceHash;
+
+          const sameIp =
+            !!registrationIdentity.ipHash &&
+            !!codeOwner?.referralIpHash &&
+            registrationIdentity.ipHash === codeOwner.referralIpHash;
+
+          referralAntiAbuseDecision = evaluateReferralAntiAbuse({
+            sameDevice,
+            sameIp,
+          });
+
           referralRecord = found;
         }
       }
     }
 
-    const rewardSettings = await getRewardSettings();
 
     const user = await db.$transaction(async (tx) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -149,6 +257,9 @@ export async function POST(req: Request) {
           phone: normalizedPhone || null,
           password: hashedPassword,
           role: "member",
+          referralDeviceHash: registrationIdentity.deviceHash,
+          referralIpHash: registrationIdentity.ipHash,
+          referralUserAgentHash: registrationIdentity.userAgentHash,
           pendingPartnerRef: pendingPartnerRef || null,
           pendingAgentRef: pendingAgentRef || null,
           pendingStaffRef: pendingStaffRef || null,
@@ -158,7 +269,7 @@ export async function POST(req: Request) {
       });
 
       await tx.wallet.create({ data: { userId: createdUser.id, balance: 0 } });
-      const newUserRewardPoints = await tx.rewardPoints.create({ data: { userId: createdUser.id, points: 0, tier: "bronze" } });
+      await tx.rewardPoints.create({ data: { userId: createdUser.id, points: 0, tier: "bronze" } });
       await tx.referral.create({
         data: { userId: createdUser.id, code: `FZ-${createdUser.id.slice(-6).toUpperCase()}` },
       });
@@ -184,21 +295,12 @@ export async function POST(req: Request) {
             rewardGiven: false,
             rewardType: null,
             rewardValue: null,
+            antiAbuseRewardEligible: referralAntiAbuseDecision.rewardEligible,
+            antiAbuseRiskReasons: JSON.stringify(referralAntiAbuseDecision.riskReasons),
+            antiAbuseEvaluatedAt: new Date(),
           },
         });
 
-        // Give the new user points for registering with a referral code (immediate, not tied to eligibility)
-        if (rewardSettings.pointsPerReferral > 0) {
-          const pts = rewardSettings.pointsPerReferral;
-          const tier = calcTier(pts, rewardSettings.tierThresholds);
-          await tx.rewardPoints.update({
-            where: { id: newUserRewardPoints.id },
-            data: { points: pts, tier },
-          });
-          await tx.rewardHistory.create({
-            data: { rewardId: newUserRewardPoints.id, points: pts, reason: "referral_signup" },
-          });
-        }
       }
 
       return createdUser;

@@ -215,6 +215,7 @@ export async function PATCH(req: Request) {
           walletId: wallet.id,
           amount: request.refundAmount ?? request.session.price,
           type: "refund",
+          source: "payment_restore",
           description: `استرجاع مبلغ جلسة تغذية - طلب إعادة جدولة`,
         },
       });

@@ -332,11 +332,19 @@ describe(
         ).toBe(50);
 
         expect(
+          stored.wallet.referralBalance,
+        ).toBe(50);
+
+        expect(
           stored.walletTransactions,
         ).toHaveLength(1);
 
         const walletTx =
           stored.walletTransactions[0];
+
+        expect(
+          walletTx.source,
+        ).toBe("referral");
 
         journalRefs.add({
           type:
@@ -423,6 +431,10 @@ describe(
         ).toBe(0);
 
         expect(
+          stored.wallet.referralBalance,
+        ).toBe(0);
+
+        expect(
           stored.walletTransactions,
         ).toHaveLength(0);
       },
@@ -459,11 +471,19 @@ describe(
         ).toBe(50);
 
         expect(
+          stored.wallet.referralBalance,
+        ).toBe(50);
+
+        expect(
           stored.walletTransactions,
         ).toHaveLength(1);
 
         const walletTx =
           stored.walletTransactions[0];
+
+        expect(
+          walletTx.source,
+        ).toBe("referral");
 
         journalRefs.add({
           type:
@@ -533,6 +553,10 @@ describe(
         ).toBe(0);
 
         expect(
+          stored.wallet.referralBalance,
+        ).toBe(0);
+
+        expect(
           stored.walletTransactions,
         ).toHaveLength(0);
       },
@@ -583,6 +607,10 @@ describe(
 
         expect(
           stored.wallet.balance,
+        ).toBe(0);
+
+        expect(
+          stored.wallet.referralBalance,
         ).toBe(0);
 
         expect(

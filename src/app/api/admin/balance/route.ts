@@ -79,6 +79,7 @@ export async function POST(req: Request) {
         walletId: wallet.id,
         amount:   Number(amount),
         type:     type === "topup" ? "credit" : "debit",
+        source:   "admin_adjustment",
         description: reason ?? (type === "topup" ? "شحن رصيد" : "خصم رصيد"),
       },
     });

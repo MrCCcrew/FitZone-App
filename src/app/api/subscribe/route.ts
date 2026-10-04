@@ -7,6 +7,10 @@ import {
 import { NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/app-session";
 import { db } from "@/lib/db";
+import {
+  allocateWalletDeductionBySource,
+  type ReferralPurchaseKind,
+} from "@/lib/referral-credit-policy";
 
 type SubscribeAction = "back_to_schedule" | "back_to_plan";
 class SubscribeError extends Error {
@@ -259,7 +263,7 @@ export async function POST(req: Request) {
 
     const [walletRow, pointsRow] = await Promise.all([
       walletDeductAmount > 0
-        ? db.wallet.findUnique({ where: { userId }, select: { balance: true } })
+        ? db.wallet.findUnique({ where: { userId }, select: { balance: true, referralBalance: true } })
         : null,
       pointsDeductCount > 0
         ? db.rewardPoints.findUnique({ where: { userId } })
@@ -1072,25 +1076,82 @@ export async function POST(req: Request) {
         paymentAmount = Math.max(0, paymentAmount - discountApplied);
       }
 
-      // Deduct wallet balance
-      const actualWalletDeduct = Math.min(
-        validatedWalletDeduct,
-        paymentAmount ?? 0,
-      );
+      // Deduct wallet balance by source.
+      // Referral credit is restricted to eligible subscriptions, while
+      // general wallet credit keeps its existing unrestricted behavior.
+      const referralPurchaseKind: ReferralPurchaseKind = offerRecord
+        ? "offer"
+        : plan.kind === "package"
+          ? "package"
+          : plan.kind === "trial"
+            ? "trial"
+            : "subscription";
+
+      const walletForDeduction =
+        validatedWalletDeduct > 0
+          ? await tx.wallet.findUnique({
+              where: { userId },
+              select: {
+                id: true,
+                balance: true,
+                referralBalance: true,
+              },
+            })
+          : null;
+
+      const walletAllocation = allocateWalletDeductionBySource({
+        purchaseKind: referralPurchaseKind,
+        walletBalance: walletForDeduction?.balance ?? 0,
+        referralBalance: walletForDeduction?.referralBalance ?? 0,
+        requestedWalletDeduct: validatedWalletDeduct,
+        amountDue: paymentAmount ?? 0,
+      });
+
+      const actualWalletDeduct = walletAllocation.totalDeduct;
+      const actualReferralWalletDeduct = walletAllocation.referralDeduct;
+      const actualGeneralWalletDeduct = walletAllocation.generalDeduct;
+
       if (actualWalletDeduct > 0) {
+        if (!walletForDeduction) {
+          throw new SubscribeError("تعذر تحديد رصيد المحفظة.");
+        }
+
         const wallet = await tx.wallet.update({
           where: { userId },
-          data: { balance: { decrement: actualWalletDeduct } },
-        });
-        await tx.walletTransaction.create({
           data: {
-            walletId: wallet.id,
-            amount: actualWalletDeduct,
-            type: "debit",
-            description: `سداد اشتراك باقة ${plan.name}`,
+            balance: { decrement: actualWalletDeduct },
+            referralBalance: { decrement: actualReferralWalletDeduct },
           },
         });
-        paymentAmount = Math.max(0, (paymentAmount ?? 0) - actualWalletDeduct);
+
+        if (actualReferralWalletDeduct > 0) {
+          await tx.walletTransaction.create({
+            data: {
+              walletId: wallet.id,
+              amount: actualReferralWalletDeduct,
+              type: "debit",
+              source: "referral",
+              description: `سداد اشتراك باقة ${plan.name} من رصيد الإحالة`,
+            },
+          });
+        }
+
+        if (actualGeneralWalletDeduct > 0) {
+          await tx.walletTransaction.create({
+            data: {
+              walletId: wallet.id,
+              amount: actualGeneralWalletDeduct,
+              type: "debit",
+              source: "general",
+              description: `سداد اشتراك باقة ${plan.name} من الرصيد العام`,
+            },
+          });
+        }
+
+        paymentAmount = Math.max(
+          0,
+          (paymentAmount ?? 0) - actualWalletDeduct,
+        );
       }
 
       // Deduct reward points
@@ -1618,6 +1679,7 @@ export async function POST(req: Request) {
             walletId: wallet.id,
             amount: walletBonus,
             type: "credit",
+            source: "membership_bonus",
             description: offerTitle
               ? `مكافأة الاشتراك في ${offerTitle}`
               : `مكافأة الاشتراك في باقة ${plan.name}`,
@@ -1714,6 +1776,8 @@ export async function POST(req: Request) {
         membershipDiscountAmount,
         priceAfterMembershipDiscount,
         actualWalletDeduct,
+        actualReferralWalletDeduct,
+        actualGeneralWalletDeduct,
         actualPointsDeduct,
         actualPointsEGP,
         discountCode:
@@ -1841,6 +1905,10 @@ export async function POST(req: Request) {
           subscribeAttemptFingerprint,
           paymentAdjustments: {
             walletAmount: result.actualWalletDeduct,
+            referralWalletAmount:
+              result.actualReferralWalletDeduct,
+            generalWalletAmount:
+              result.actualGeneralWalletDeduct,
             pointsCount: result.actualPointsDeduct,
             pointsAmount: result.actualPointsEGP,
           },
@@ -1902,6 +1970,10 @@ export async function POST(req: Request) {
       await restorePaymentBalanceAdjustments({
         userId,
         walletAmount: result.actualWalletDeduct,
+        referralWalletAmount:
+          result.actualReferralWalletDeduct,
+        generalWalletAmount:
+          result.actualGeneralWalletDeduct,
         pointsCount: result.actualPointsDeduct,
         reference: result.subscriptionId,
       }).catch((restoreError) => {

@@ -274,6 +274,7 @@ export async function grantStoreGiftClaimAtomic(
 
             type:
               "credit",
+            source: "store_gift",
 
             description:
               "مكافأة من حملة هدايا المتجر",

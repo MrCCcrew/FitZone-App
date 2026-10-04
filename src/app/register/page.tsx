@@ -1,9 +1,45 @@
 ﻿"use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
 import Link from "next/link";
+import Script from "next/script";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useLang } from "@/lib/language";
+
+const REFERRAL_DEVICE_ID_KEY = "fitzone:referral-device-id:v1";
+
+type TurnstileApi = {
+  render: (
+    container: HTMLElement,
+    options: {
+      sitekey: string;
+      callback: (token: string) => void;
+      "expired-callback": () => void;
+      "error-callback": () => void;
+    },
+  ) => string;
+};
+
+declare global {
+  interface Window {
+    turnstile?: TurnstileApi;
+  }
+}
+
+function getOrCreateReferralDeviceId(): string | null {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const existing = window.localStorage.getItem(REFERRAL_DEVICE_ID_KEY);
+    if (existing) return existing;
+
+    const deviceId = window.crypto.randomUUID();
+    window.localStorage.setItem(REFERRAL_DEVICE_ID_KEY, deviceId);
+    return deviceId;
+  } catch {
+    return null;
+  }
+}
 
 function GoogleIcon() {
   return (
@@ -115,6 +151,11 @@ function RegisterForm() {
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
   const [loading, setLoading] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState("");
+  const turnstileContainerRef = useRef<HTMLDivElement | null>(null);
+  const turnstileWidgetIdRef = useRef<string | null>(null);
+  const turnstileSiteKey =
+    process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? "";
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   useEffect(() => {
@@ -148,6 +189,34 @@ function RegisterForm() {
     if (aRef) { setAgentRef(aRef.trim().toUpperCase()); }
   }, [searchParams]);
 
+  const renderTurnstile = () => {
+    if (
+      !turnstileSiteKey ||
+      !turnstileContainerRef.current ||
+      !window.turnstile ||
+      turnstileWidgetIdRef.current
+    ) {
+      return;
+    }
+
+    turnstileWidgetIdRef.current =
+      window.turnstile.render(
+        turnstileContainerRef.current,
+        {
+          sitekey: turnstileSiteKey,
+          callback: (token) => {
+            setTurnstileToken(token);
+          },
+          "expired-callback": () => {
+            setTurnstileToken("");
+          },
+          "error-callback": () => {
+            setTurnstileToken("");
+          },
+        },
+      );
+  };
+
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError("");
@@ -179,9 +248,27 @@ function RegisterForm() {
       return;
     }
 
+    if (!turnstileSiteKey) {
+      setError(t(
+        "إعداد التحقق الأمني غير مكتمل. يرجى التواصل مع الدعم.",
+        "Security verification is not configured. Please contact support.",
+      ));
+      return;
+    }
+
+    if (!turnstileToken) {
+      setError(t(
+        "يرجى إكمال التحقق الأمني قبل إنشاء الحساب.",
+        "Please complete the security verification before creating your account.",
+      ));
+      return;
+    }
+
     setLoading(true);
 
     try {
+      const deviceId = getOrCreateReferralDeviceId();
+
       const res = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -190,6 +277,8 @@ function RegisterForm() {
           email: form.email,
           phone: form.phone,
           password: form.password,
+          deviceId,
+          turnstileToken,
           referralCode: referralCode.trim().toUpperCase() || null,
           partnerRef: partnerRef || null,
           staffRef: staffRef || sessionStorage.getItem("fitzone:staff-ref") || null,
@@ -273,6 +362,12 @@ function RegisterForm() {
           {info ? (
             <div className="mb-5 rounded-xl border border-emerald-500/30 bg-emerald-950/30 px-4 py-3 text-sm text-emerald-300">{info}</div>
           ) : null}
+
+          <Script
+            src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"
+            strategy="afterInteractive"
+            onReady={renderTurnstile}
+          />
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
@@ -455,7 +550,20 @@ function RegisterForm() {
               </label>
             </div>
 
-            <button type="submit" disabled={loading || !acceptedTerms}
+            <div
+              ref={turnstileContainerRef}
+              className="flex min-h-[65px] justify-center"
+              aria-label={t("التحقق الأمني", "Security verification")}
+            />
+
+            <button
+              type="submit"
+              disabled={
+                loading ||
+                !acceptedTerms ||
+                !turnstileToken ||
+                !turnstileSiteKey
+              }
               className="mt-2 w-full rounded-xl bg-red-600 py-3 font-bold text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50">
               {loading ? t("جاري إنشاء الحساب...", "Creating account...") : t("إنشاء الحساب", "Create account")}
             </button>

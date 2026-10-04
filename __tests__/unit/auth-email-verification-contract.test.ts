@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({
   emailSent: true,
@@ -60,7 +60,15 @@ vi.mock("@/lib/db", () => ({
     notification: {
       create: m.notificationCreate,
     },
-    $transaction: vi.fn(async (fn: any) =>
+    $transaction: vi.fn(
+      async (
+        fn: (tx: {
+          user: { create: typeof m.txUserCreate };
+          wallet: { create: typeof m.txWalletCreate };
+          rewardPoints: { create: typeof m.txRewardCreate };
+          referral: { create: typeof m.txReferralCreate };
+        }) => unknown,
+      ) =>
       fn({
         user: {
           create: m.txUserCreate,
@@ -88,11 +96,45 @@ function request(path: string, body: Record<string, unknown>) {
     headers: {
       "content-type": "application/json",
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify(
+      path === "/api/auth/register"
+        ? { ...body, turnstileToken: "test-turnstile-token" }
+        : body,
+    ),
   });
 }
 
 beforeEach(() => {
+  vi.stubEnv("TURNSTILE_SECRET_KEY", "test-turnstile-secret");
+
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string | URL | Request) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+
+      if (
+        url !==
+        "https://challenges.cloudflare.com/turnstile/v0/siteverify"
+      ) {
+        throw new Error("Unexpected fetch in auth email verification test");
+      }
+
+      return new Response(
+        JSON.stringify({ success: true }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json",
+          },
+        },
+      );
+    }),
+  );
   vi.clearAllMocks();
 
   state.emailSent = true;
@@ -128,6 +170,11 @@ beforeEach(() => {
   m.sendVerificationEmail.mockImplementation(
     async () => state.emailSent,
   );
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
 });
 
 describe("auth email verification contract", () => {

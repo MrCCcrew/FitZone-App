@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAppSessionToken, APP_SESSION_COOKIE, getAppSessionCookieOptions } from "@/lib/app-session";
 import { findOrCreateOAuthUser, parsePendingOAuthToken } from "@/lib/oauth";
 import { db } from "@/lib/db";
+import { getClientIp } from "@/lib/rate-limit";
+import { buildReferralIdentityHashes } from "@/lib/referral-identity";
+import { evaluateReferralAntiAbuse } from "@/lib/referral-anti-abuse";
 
 const CLEAR_COOKIES = (res: NextResponse) => {
   res.cookies.set("oauth_pending_profile", "", { httpOnly: true, maxAge: 0, path: "/" });
@@ -21,10 +24,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "انتهت صلاحية الجلسة، يرجى تسجيل الدخول مرة أخرى." }, { status: 400 });
   }
 
-  const { accepted } = (await req.json()) as { accepted?: boolean };
+  const { accepted, deviceId } = (await req.json()) as {
+    accepted?: boolean;
+    deviceId?: string | null;
+  };
+
   if (!accepted) {
     return CLEAR_COOKIES(NextResponse.json({ error: "يجب الموافقة على الشروط للمتابعة." }, { status: 400 }));
   }
+
+  const clientIp = getClientIp(req);
+  const userAgent = req.headers.get("user-agent");
+
+  const registrationIdentity =
+    buildReferralIdentityHashes({
+      deviceId,
+      ipAddress: clientIp,
+      userAgent,
+    });
 
   const refCode        = req.cookies.get("oauth_ref_code")?.value?.trim().toUpperCase()      || null;
   const partnerRefToken  = req.cookies.get("oauth_partner_ref")?.value?.trim().toUpperCase()  || null;
@@ -38,6 +55,9 @@ export async function POST(req: NextRequest) {
     providerId: pending.providerId,
     email: pending.email,
     name: pending.name,
+    referralDeviceHash: registrationIdentity.deviceHash,
+    referralIpHash: registrationIdentity.ipHash,
+    referralUserAgentHash: registrationIdentity.userAgentHash,
   });
 
   if (!result?.user) {
@@ -58,7 +78,34 @@ export async function POST(req: NextRequest) {
         : false;
 
       if (referralRecord && !isOwnCode && !alreadyUsed) {
-        // Track referral — reward is held until the referred user subscribes or purchases
+        const referrerIdentity = await db.user.findUnique({
+          where: { id: referralRecord.userId },
+          select: {
+            referralDeviceHash: true,
+            referralIpHash: true,
+          },
+        });
+
+        const sameDevice =
+          !!registrationIdentity.deviceHash &&
+          !!referrerIdentity?.referralDeviceHash &&
+          registrationIdentity.deviceHash ===
+            referrerIdentity.referralDeviceHash;
+
+        const sameIp =
+          !!registrationIdentity.ipHash &&
+          !!referrerIdentity?.referralIpHash &&
+          registrationIdentity.ipHash ===
+            referrerIdentity.referralIpHash;
+
+        const referralAntiAbuseDecision =
+          evaluateReferralAntiAbuse({
+            sameDevice,
+            sameIp,
+          });
+
+        // Track referral even when the reward is denied.
+        // Account creation remains successful; reward eligibility is audited.
         await db.$transaction(async (tx) => {
           await tx.referral.update({
             where: { id: referralRecord.id },
@@ -72,6 +119,13 @@ export async function POST(req: NextRequest) {
               rewardGiven: false,
               rewardType: null,
               rewardValue: null,
+              antiAbuseRewardEligible:
+                referralAntiAbuseDecision.rewardEligible,
+              antiAbuseRiskReasons:
+                JSON.stringify(
+                  referralAntiAbuseDecision.riskReasons,
+                ),
+              antiAbuseEvaluatedAt: new Date(),
             },
           });
         });
@@ -102,7 +156,7 @@ export async function POST(req: NextRequest) {
   // Apply staff / trainer / nutrition / agent pending refs for new OAuth users
   if (result.isNew && (staffRefToken || trainerRefToken || nutritionRefToken || agentRefToken)) {
     try {
-      const dbx = db as any;
+      const dbx = db;
       const updates: Record<string, string | null> = {};
 
       if (staffRefToken) {

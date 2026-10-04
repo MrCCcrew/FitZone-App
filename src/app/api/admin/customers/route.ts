@@ -387,6 +387,7 @@ async function applyWalletAndRewards(userId: string, nextBalance?: number, nextP
           walletId: wallet.id,
           amount: Math.abs(delta),
           type: delta > 0 ? "credit" : "debit",
+          source: "admin_adjustment",
           description: delta > 0 ? "إضافة رصيد من الإدارة" : "خصم رصيد من الإدارة",
         },
       });

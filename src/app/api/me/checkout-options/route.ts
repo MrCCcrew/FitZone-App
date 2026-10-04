@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/app-session";
 import { asDbTransactionClient, db } from "@/lib/db";
 import { previewMembershipCarryoverForCustomerTx } from "@/lib/membership-carryover-customer-preview";
+import {
+  resolveReferralCreditAllowance,
+  type ReferralPurchaseKind,
+} from "@/lib/referral-credit-policy";
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +36,7 @@ export async function GET(req: Request) {
       db.user.findUnique({
         where: { id: user.id },
         select: {
-          wallet: { select: { balance: true } },
+          wallet: { select: { balance: true, referralBalance: true } },
           rewardPoints: { select: { points: true } },
           pendingPartnerRef: true,
         },
@@ -51,7 +55,108 @@ export async function GET(req: Request) {
     }
 
     const walletBalance = dbUser?.wallet?.balance ?? 0;
+    const referralBalance = Math.max(
+      0,
+      Math.min(
+        walletBalance,
+        dbUser?.wallet?.referralBalance ?? 0,
+      ),
+    );
+    const generalBalance =
+      Math.round(
+        Math.max(
+          0,
+          walletBalance - referralBalance,
+        ) * 100,
+      ) / 100;
+
     const rewardPoints = dbUser?.rewardPoints?.points ?? 0;
+
+    let referralPurchaseKind: ReferralPurchaseKind =
+      offerId ? "offer" : "subscription";
+
+    let referralAmountDue = 0;
+
+    if (!offerId && membershipId) {
+      if (membershipId === "trial-class") {
+        referralPurchaseKind = "trial";
+      } else {
+        const membership =
+          await db.membership.findUnique({
+            where: { id: membershipId },
+          });
+
+        if (membership) {
+          referralPurchaseKind =
+            membership.kind === "package"
+              ? "package"
+              : membership.kind === "trial"
+                ? "trial"
+                : "subscription";
+
+          if (
+            referralPurchaseKind ===
+            "subscription"
+          ) {
+            if (membership.kind === "custom") {
+              const customMembership =
+                membership as typeof membership & {
+                  minMonths?: number | null;
+                  maxMonths?: number | null;
+                  discountPct?: number | null;
+                };
+
+              const months =
+                Math.floor(selectedMonths ?? 0);
+
+              const minMonths =
+                customMembership.minMonths ?? 1;
+
+              const maxMonths =
+                customMembership.maxMonths ?? 12;
+
+              if (
+                months >= minMonths &&
+                months <= maxMonths
+              ) {
+                referralAmountDue =
+                  Math.round(
+                    (
+                      membership.price *
+                      months *
+                      (
+                        1 -
+                        (
+                          customMembership.discountPct ??
+                          0
+                        ) /
+                          100
+                      )
+                    ) *
+                      100,
+                  ) / 100;
+              }
+            } else {
+              referralAmountDue =
+                membership.priceAfter != null &&
+                membership.priceAfter > 0
+                  ? membership.priceAfter
+                  : membership.price;
+            }
+          }
+        }
+      }
+    }
+
+    const referralAllowance =
+      resolveReferralCreditAllowance({
+        purchaseKind: referralPurchaseKind,
+        referralBalance,
+        amountDue: referralAmountDue,
+      });
+
+    const maxUsableReferral =
+      referralAllowance.maxUsableReferral;
 
     let affiliateDiscountRate = 0;
     let affiliateDiscountEligible = false;
@@ -99,6 +204,9 @@ export async function GET(req: Request) {
 
     return NextResponse.json({
       walletBalance,
+      referralBalance,
+      generalBalance,
+      maxUsableReferral,
       rewardPoints,
       pointValueEGP,
       rewardPointsEGP: Math.floor(rewardPoints * pointValueEGP * 100) / 100,
