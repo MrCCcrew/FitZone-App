@@ -22,7 +22,7 @@ describe("WalletTransaction source taxonomy contract", () => {
     const source = read("src/app/api/admin/balance/route.ts");
 
     expect(source).toMatch(
-      /walletTransaction\.create\([\s\S]*?amount:\s*Number\(amount\),[\s\S]*?type:\s*type\s*===\s*"topup"\s*\?\s*"credit"\s*:\s*"debit",\s*source:\s*"admin_adjustment",/,
+      /walletTransaction\.create\([\s\S]*?amount:\s*canonicalAmount,[\s\S]*?type:\s*type\s*===\s*"topup"\s*\?\s*"credit"\s*:\s*"debit",\s*source:\s*"admin_adjustment",/,
     );
   });
 

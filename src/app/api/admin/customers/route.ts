@@ -2,6 +2,10 @@
 import bcryptjs from "bcryptjs";
 import { requireAdminFeature } from "@/lib/admin-guard";
 import { db } from "@/lib/db";
+import {
+  AdminWalletAdjustmentError,
+  resolveAdminWalletAdjustment,
+} from "@/lib/admin-wallet-adjustment";
 import { recoverPaidMembershipForAdmin } from "@/lib/admin-membership-recovery";
 import { logAudit } from "@/lib/audit-context";
 import { getRewardSettings, calcTier } from "@/lib/reward-settings";
@@ -368,21 +372,73 @@ async function applyMembership(
 
 async function applyWalletAndRewards(userId: string, nextBalance?: number, nextPoints?: number) {
   if (nextBalance !== undefined) {
-    const wallet = await db.wallet.upsert({
-      where: { userId },
-      update: {},
-      create: { userId, balance: 0 },
-    });
+    const numericNextBalance =
+      Number(nextBalance);
 
-    const delta = Number(nextBalance) - wallet.balance;
+    if (
+      !Number.isFinite(numericNextBalance) ||
+      numericNextBalance < 0
+    ) {
+      throw new AdminWalletAdjustmentError(
+        "قيمة الرصيد غير صالحة.",
+      );
+    }
 
-    await db.wallet.update({
-      where: { id: wallet.id },
-      data: { balance: Number(nextBalance) },
-    });
+    await db.$transaction(async (tx) => {
+      const wallet =
+        await tx.wallet.upsert({
+          where: { userId },
+          update: {},
+          create: {
+            userId,
+            balance: 0,
+            referralBalance: 0,
+          },
+        });
 
-    if (delta !== 0) {
-      await db.walletTransaction.create({
+      const delta =
+        Math.round(
+          (numericNextBalance -
+            wallet.balance) *
+            100,
+        ) / 100;
+
+      if (delta === 0) {
+        return;
+      }
+
+      const resolved =
+        resolveAdminWalletAdjustment({
+          balance: wallet.balance,
+          referralBalance:
+            wallet.referralBalance,
+          delta,
+        });
+
+      const updated =
+        await tx.wallet.updateMany({
+          where: {
+            id: wallet.id,
+            balance: wallet.balance,
+            referralBalance:
+              wallet.referralBalance,
+          },
+          data: {
+            balance:
+              resolved.nextBalance,
+            referralBalance:
+              resolved.nextReferralBalance,
+          },
+        });
+
+      if (updated.count !== 1) {
+        throw new AdminWalletAdjustmentError(
+          "تم تعديل الرصيد بالتوازي. أعد المحاولة.",
+          409,
+        );
+      }
+
+      await tx.walletTransaction.create({
         data: {
           walletId: wallet.id,
           amount: Math.abs(delta),
@@ -391,7 +447,7 @@ async function applyWalletAndRewards(userId: string, nextBalance?: number, nextP
           description: delta > 0 ? "إضافة رصيد من الإدارة" : "خصم رصيد من الإدارة",
         },
       });
-    }
+    });
   }
 
   if (nextPoints !== undefined) {
@@ -828,6 +884,16 @@ export async function POST(req: Request) {
       { status: isTrainer ? 202 : 200 },
     );
   } catch (error) {
+    if (
+      error instanceof
+      AdminWalletAdjustmentError
+    ) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: error.status },
+      );
+    }
+
     console.error("[ADMIN_CUSTOMERS_POST]", error);
     return NextResponse.json({ error: "تعذر إنشاء العميل" }, { status: 500 });
   }
@@ -1099,6 +1165,16 @@ export async function PATCH(req: Request) {
     void logAudit({ action: "update", targetType: "customer", targetId: id, details: { changes: Object.keys(data) } });
     return NextResponse.json(user ? mapCustomer(user, new Map(), new Map()) : null);
   } catch (error) {
+    if (
+      error instanceof
+      AdminWalletAdjustmentError
+    ) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: error.status },
+      );
+    }
+
     console.error("[ADMIN_CUSTOMERS_PATCH]", error);
     return NextResponse.json({ error: "تعذر تحديث العميل" }, { status: 500 });
   }
