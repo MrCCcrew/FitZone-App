@@ -809,7 +809,7 @@ describe("Cancelled membership stale booking lifecycle", { timeout: 90000 }, () 
           type: "fitness",
           duration: 60,
           intensity: "medium",
-          maxSpots: 10,
+          maxSpots: 1,
           price: 100,
         },
       });
@@ -848,7 +848,7 @@ describe("Cancelled membership stale booking lifecycle", { timeout: 90000 }, () 
           classId,
           date: scheduleDate,
           time: "18:00",
-          availableSpots: 9,
+          availableSpots: 0,
           isActive: true,
         },
       });
@@ -940,8 +940,8 @@ describe("Cancelled membership stale booking lifecycle", { timeout: 90000 }, () 
         select: { availableSpots: true },
       });
 
-      // 9 stale-occupied -> release to 10 -> replacement consumes back to 9.
-      expect(scheduleAfter?.availableSpots).toBe(9);
+      // 0 stale-occupied -> release to 1 -> replacement consumes back to 0.
+      expect(scheduleAfter?.availableSpots).toBe(0);
     } finally {
       if (userId) {
         await db.booking.deleteMany({ where: { userId } });

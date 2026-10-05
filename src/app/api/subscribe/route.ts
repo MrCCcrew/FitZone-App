@@ -42,7 +42,6 @@ import {
 } from "@/lib/payments/service";
 import {
   cleanupExpiredPendingMembershipsForUser,
-  findReusablePendingMembershipCheckout,
   findScheduleReplaceablePendingMembershipCheckoutTx,
   type SubscribeAttemptFingerprint,
 } from "@/lib/payments/pending-membership-cleanup";
@@ -640,29 +639,6 @@ export async function POST(req: Request) {
   // - non-expired pending memberships
   // - memberships that already have a paid transaction
   await cleanupExpiredPendingMembershipsForUser(userId);
-
-  /*
-   * A still-valid pending checkout already owns its bookings/capacity.
-   *
-   * Repeating the exact same purchase must resume that checkout instead of
-   * creating another UserMembership and then colliding with the customer's
-   * own existing reservation.
-   */
-  const reusablePendingCheckout = await findReusablePendingMembershipCheckout({
-    userId,
-    fingerprint: subscribeAttemptFingerprint,
-  });
-
-  if (reusablePendingCheckout) {
-    return NextResponse.json({
-      success: true,
-      subscriptionId: reusablePendingCheckout.membershipId,
-      endDate: reusablePendingCheckout.endDate.toISOString(),
-      checkoutUrl: reusablePendingCheckout.checkoutUrl,
-      transactionId: reusablePendingCheckout.transactionId,
-      resumedPending: true,
-    });
-  }
 
   /*
    * A still-valid pending checkout with the same economic identity may change

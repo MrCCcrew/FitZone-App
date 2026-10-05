@@ -542,8 +542,84 @@ export async function applyMembershipBookingPlanTx({
     ),
   );
 
+  /*
+   * Release stale ordinary reservations BEFORE validating seed capacity.
+   *
+   * A selected schedule may currently show zero available spots only because
+   * a cancelled/expired membership still owns a stale confirmed reservation.
+   * The release and capacity validation stay inside this transaction.
+   */
   for (const schedule of week1Schedules) {
-    if (!schedule.isActive) {
+    const staleSeedBookings = await tx.booking.findMany({
+      where: {
+        userId,
+        status: "confirmed",
+        isMakeup: false,
+        classExchange: { is: null },
+        userMembership: {
+          is: {
+            status: { in: ["cancelled", "expired"] },
+          },
+        },
+        schedule: {
+          date: schedule.date,
+          time: schedule.time,
+        },
+      },
+      select: {
+        id: true,
+        scheduleId: true,
+      },
+    });
+
+    for (const staleBooking of staleSeedBookings) {
+      const released = await tx.booking.updateMany({
+        where: {
+          id: staleBooking.id,
+          status: "confirmed",
+          isMakeup: false,
+          classExchange: { is: null },
+          userMembership: {
+            is: {
+              status: { in: ["cancelled", "expired"] },
+            },
+          },
+        },
+        data: { status: "cancelled" },
+      });
+
+      if (released.count === 1) {
+        await tx.schedule.update({
+          where: { id: staleBooking.scheduleId },
+          data: {
+            availableSpots: { increment: 1 },
+          },
+        });
+      }
+    }
+
+    /*
+     * Use a locking read instead of the earlier in-memory Schedule value.
+     * This sees the capacity restored above and serializes concurrent buyers.
+     */
+    const lockedSeedRows = await tx.$queryRaw<any[]>`
+      SELECT \`id\`, \`availableSpots\`, \`isActive\`
+      FROM \`Schedule\`
+      WHERE \`id\` = ${schedule.id}
+      FOR UPDATE
+    `;
+
+    const lockedSeed = lockedSeedRows[0];
+
+    const lockedSeedIsActive =
+      lockedSeed?.isActive === true ||
+      Number(lockedSeed?.isActive) === 1;
+
+    const lockedSeedAvailableSpots = Number(
+      lockedSeed?.availableSpots ?? 0,
+    );
+
+    if (!lockedSeed || !lockedSeedIsActive) {
       throw new MembershipBookingPlanError(
         "أحد المواعيد المختارة غير متاح حاليًا.",
         "back_to_schedule",
@@ -551,7 +627,10 @@ export async function applyMembershipBookingPlanTx({
     }
 
     if (
-      schedule.availableSpots <= 0 &&
+      (
+        !Number.isFinite(lockedSeedAvailableSpots) ||
+        lockedSeedAvailableSpots <= 0
+      ) &&
       !ownedWeek1Ids.has(schedule.id)
     ) {
       throw new MembershipBookingPlanError(
