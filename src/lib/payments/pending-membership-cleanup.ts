@@ -338,6 +338,182 @@ function normalizeFingerprint(
   };
 }
 
+export type ScheduleReplaceablePendingMembershipCheckout =
+  ReusablePendingMembershipCheckout & {
+    startDate: Date;
+    membershipKind: string;
+    bookingPatternSnapshot: string;
+    transactionMetadata: string | null;
+    storedScheduleIds: string[];
+    scheduleSelectionChanged: boolean;
+  };
+
+function economicFingerprintKey(
+  value: SubscribeAttemptFingerprint,
+) {
+  const normalized = normalizeFingerprint(value);
+
+  return JSON.stringify({
+    membershipId: normalized.membershipId,
+    offerId: normalized.offerId,
+    paymentMethod: normalized.paymentMethod,
+    discountCode: normalized.discountCode,
+    walletDeduct: normalized.walletDeduct,
+    pointsDeduct: normalized.pointsDeduct,
+    selectedMonths: normalized.selectedMonths,
+    startDate: normalized.startDate,
+    partnerCode: normalized.partnerCode,
+    memberBenefitCode: normalized.memberBenefitCode,
+    affiliateRef: normalized.affiliateRef,
+    agentRef: normalized.agentRef,
+    coachMembershipTrainerId:
+      normalized.coachMembershipTrainerId ?? null,
+  });
+}
+
+export async function findScheduleReplaceablePendingMembershipCheckoutTx(input: {
+  tx: any;
+  userId: string;
+  fingerprint: SubscribeAttemptFingerprint;
+  now?: Date;
+}): Promise<ScheduleReplaceablePendingMembershipCheckout | null> {
+  const now = input.now ?? new Date();
+  const requestedFingerprint = normalizeFingerprint(input.fingerprint);
+
+  const sourceWhere = requestedFingerprint.offerId
+    ? { offerId: requestedFingerprint.offerId }
+    : requestedFingerprint.membershipId
+      ? {
+          membershipId: requestedFingerprint.membershipId,
+          offerId: null,
+        }
+      : null;
+
+  if (!sourceWhere) return null;
+
+  let matchedCheckout: ScheduleReplaceablePendingMembershipCheckout | null =
+    null;
+
+  const pendingMemberships = await input.tx.userMembership.findMany({
+    where: {
+      userId: input.userId,
+      status: "pending_payment",
+      pendingExpiresAt: { gt: now },
+      ...sourceWhere,
+    },
+    orderBy: { pendingExpiresAt: "desc" },
+    select: {
+      id: true,
+      startDate: true,
+      endDate: true,
+      pendingExpiresAt: true,
+      bookingPatternSnapshot: true,
+      membership: {
+        select: { kind: true },
+      },
+    },
+  });
+
+  for (const membership of pendingMemberships) {
+    if (
+      !membership.pendingExpiresAt ||
+      !membership.bookingPatternSnapshot
+    ) {
+      continue;
+    }
+
+    const transaction = await input.tx.paymentTransaction.findFirst({
+      where: {
+        membershipId: membership.id,
+        userId: input.userId,
+        purpose: "membership",
+        status: { in: ["pending", "requires_action"] },
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        checkoutUrl: true,
+        metadata: true,
+      },
+    });
+
+    if (!transaction?.checkoutUrl) continue;
+
+    const metadata = parseJson(transaction.metadata);
+    const storedRaw = metadata?.subscribeAttemptFingerprint;
+
+    if (!storedRaw || typeof storedRaw !== "object") continue;
+
+    const storedFingerprint = normalizeFingerprint(
+      storedRaw as SubscribeAttemptFingerprint,
+    );
+
+    if (
+      economicFingerprintKey(storedFingerprint) !==
+      economicFingerprintKey(requestedFingerprint)
+    ) {
+      continue;
+    }
+
+    const recovery = metadata?.bookingRecoveryData;
+    const recoveryScheduleIds = [
+      ...new Set(
+        recovery &&
+        typeof recovery === "object" &&
+        Array.isArray(
+          (recovery as Record<string, unknown>).selectedScheduleIds,
+        )
+          ? (
+              (recovery as Record<string, unknown>)
+                .selectedScheduleIds as unknown[]
+            )
+              .filter((id): id is string => typeof id === "string")
+              .map((id) => id.trim())
+              .filter(Boolean)
+          : [],
+      ),
+    ].sort();
+
+    if (
+      recoveryScheduleIds.length !== storedFingerprint.scheduleIds.length ||
+      recoveryScheduleIds.some(
+        (id, index) => id !== storedFingerprint.scheduleIds[index],
+      )
+    ) {
+      continue;
+    }
+
+    const scheduleSelectionChanged =
+      storedFingerprint.scheduleIds.length !==
+        requestedFingerprint.scheduleIds.length ||
+      storedFingerprint.scheduleIds.some(
+        (id, index) => id !== requestedFingerprint.scheduleIds[index],
+      );
+
+    const candidate: ScheduleReplaceablePendingMembershipCheckout = {
+      membershipId: membership.id,
+      transactionId: transaction.id,
+      checkoutUrl: transaction.checkoutUrl,
+      startDate: membership.startDate,
+      endDate: membership.endDate,
+      pendingExpiresAt: membership.pendingExpiresAt,
+      membershipKind: membership.membership.kind,
+      bookingPatternSnapshot: membership.bookingPatternSnapshot,
+      transactionMetadata: transaction.metadata,
+      storedScheduleIds: storedFingerprint.scheduleIds,
+      scheduleSelectionChanged,
+    };
+
+    if (matchedCheckout) {
+      throw new Error("AMBIGUOUS_PENDING_MEMBERSHIP_CHECKOUT");
+    }
+
+    matchedCheckout = candidate;
+  }
+
+  return matchedCheckout;
+}
 export async function findReusablePendingMembershipCheckout(input: {
   userId: string;
   fingerprint: SubscribeAttemptFingerprint;

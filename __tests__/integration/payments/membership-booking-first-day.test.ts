@@ -5,6 +5,27 @@ import {
   MembershipBookingPlanError,
 } from "@/lib/payments/membership-booking-plan";
 
+const raw = process.env.DATABASE_URL;
+
+if (!raw) {
+  throw new Error("REFUSING: DATABASE_URL missing");
+}
+
+const testDbUrl = new URL(raw);
+
+if (
+  process.env.APP_ENV !== "test" ||
+  process.env.NODE_ENV !== "test" ||
+  testDbUrl.protocol !== "mysql:" ||
+  testDbUrl.hostname !== "127.0.0.1" ||
+  decodeURIComponent(testDbUrl.username) !== "fitzone_test_user" ||
+  testDbUrl.pathname !== "/fitzone_test"
+) {
+  throw new Error(
+    "REFUSING: Membership booking tests require fitzone_test",
+  );
+}
+
 
 describe(
   "Membership booking recurring-pattern uniqueness",
@@ -750,3 +771,212 @@ describe(
     });
   },
 );
+
+describe("Cancelled membership stale booking lifecycle", { timeout: 90000 }, () => {
+  it("releases a stale confirmed ordinary booking from a cancelled membership and reuses its capacity", async () => {
+    let userId = "";
+    let baseMembershipId = "";
+    let staleMembershipId = "";
+    let newMembershipId = "";
+    let trainerId = "";
+    let classId = "";
+    let scheduleId = "";
+    let staleBookingId = "";
+
+    try {
+      const user = await db.user.create({
+        data: {
+          phone: `+201${Math.floor(Math.random() * 1_000_000_000)}`,
+          name: "Cancelled Membership Stale Booking Test",
+          gender: "female",
+        },
+      });
+      userId = user.id;
+
+      const trainer = await db.trainer.create({
+        data: {
+          name: "Cancelled Membership Stale Booking Trainer",
+          specialty: "fitness",
+          bio: "integration test",
+        },
+      });
+      trainerId = trainer.id;
+
+      const classRecord = await db.class.create({
+        data: {
+          name: "Cancelled Membership Stale Booking Class",
+          trainerId,
+          type: "fitness",
+          duration: 60,
+          intensity: "medium",
+          maxSpots: 1,
+          price: 100,
+        },
+      });
+      classId = classRecord.id;
+
+      const baseMembership = await db.membership.create({
+        data: {
+          name: "Cancelled Membership Stale Booking Plan",
+          nameEn: "Cancelled Membership Stale Booking Plan",
+          duration: 30,
+          price: 100,
+          sessionsCount: 1,
+          walletBonus: 0,
+          features: "[]",
+          classSessions: JSON.stringify([
+            {
+              classId,
+              classType: "fitness",
+              sessions: 1,
+            },
+          ]),
+        },
+      });
+      baseMembershipId = baseMembership.id;
+
+      const membershipStart = new Date();
+      const membershipEnd = new Date(membershipStart);
+      membershipEnd.setUTCDate(membershipEnd.getUTCDate() + 30);
+
+      const scheduleDate = new Date(membershipStart);
+      scheduleDate.setUTCDate(scheduleDate.getUTCDate() + 14);
+      scheduleDate.setUTCHours(0, 0, 0, 0);
+
+      const schedule = await db.schedule.create({
+        data: {
+          classId,
+          date: scheduleDate,
+          time: "18:00",
+          availableSpots: 0,
+          isActive: true,
+        },
+      });
+      scheduleId = schedule.id;
+
+      const staleMembership = await db.userMembership.create({
+        data: {
+          userId,
+          membershipId: baseMembershipId,
+          status: "cancelled",
+          paymentAmount: 100,
+          totalSessions: 1,
+          snapshotDurationDays: 30,
+          startDate: membershipStart,
+          endDate: membershipEnd,
+        },
+      });
+      staleMembershipId = staleMembership.id;
+
+      const staleBooking = await db.booking.create({
+        data: {
+          userId,
+          scheduleId,
+          userMembershipId: staleMembershipId,
+          status: "confirmed",
+          paidAmount: 100,
+          paymentMethod: "cash",
+          isMakeup: false,
+        },
+      });
+      staleBookingId = staleBooking.id;
+
+      const newMembership = await db.userMembership.create({
+        data: {
+          userId,
+          membershipId: baseMembershipId,
+          status: "active",
+          paymentAmount: 100,
+          totalSessions: 1,
+          snapshotDurationDays: 30,
+          startDate: membershipStart,
+          endDate: membershipEnd,
+        },
+      });
+      newMembershipId = newMembership.id;
+
+      const result = await db.$transaction(async (tx) =>
+        applyMembershipBookingPlanTx({
+          tx,
+          userId,
+          userMembershipId: newMembershipId,
+          startDate: membershipStart,
+          endDate: membershipEnd,
+          source: {
+            type: "membership",
+            id: baseMembershipId,
+          },
+          selectedScheduleIds: [scheduleId],
+          plan: {
+            kind: "standard",
+            sessionsCount: 1,
+            duration: 30,
+          },
+        }),
+      );
+
+      expect(result.createdCount).toBe(1);
+
+      const staleAfter = await db.booking.findUnique({
+        where: { id: staleBookingId },
+        select: { status: true },
+      });
+
+      expect(staleAfter?.status).toBe("cancelled");
+
+      const replacementBooking = await db.booking.findFirst({
+        where: {
+          userMembershipId: newMembershipId,
+          scheduleId,
+          status: "confirmed",
+        },
+        select: { id: true },
+      });
+
+      expect(replacementBooking).not.toBeNull();
+
+      const scheduleAfter = await db.schedule.findUnique({
+        where: { id: scheduleId },
+        select: { availableSpots: true },
+      });
+
+      // 0 stale-occupied -> release to 1 -> replacement consumes back to 0.
+      expect(scheduleAfter?.availableSpots).toBe(0);
+    } finally {
+      if (userId) {
+        await db.booking.deleteMany({ where: { userId } });
+      }
+
+      if (staleMembershipId || newMembershipId) {
+        await db.userMembership.deleteMany({
+          where: {
+            id: {
+              in: [staleMembershipId, newMembershipId].filter(Boolean),
+            },
+          },
+        });
+      }
+
+      if (scheduleId) {
+        await db.schedule.deleteMany({ where: { id: scheduleId } });
+      }
+
+      if (classId) {
+        await db.class.deleteMany({ where: { id: classId } });
+      }
+
+      if (trainerId) {
+        await db.trainer.deleteMany({ where: { id: trainerId } });
+      }
+
+      if (baseMembershipId) {
+        await db.membership.deleteMany({ where: { id: baseMembershipId } });
+      }
+
+      if (userId) {
+        await db.notification.deleteMany({ where: { userId } });
+        await db.user.deleteMany({ where: { id: userId } });
+      }
+    }
+  });
+});
