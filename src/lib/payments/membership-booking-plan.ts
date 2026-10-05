@@ -1016,6 +1016,60 @@ async function ensureMembershipBookingsFromContractTx({
     }
 
     /*
+     * Release stale ordinary reservations left behind by cancelled/expired
+     * memberships before conflict and capacity checks.
+     *
+     * Only confirmed ordinary reservations are releasable here.
+     * Legacy, make-up, class-exchange, attended and noshow bookings remain untouched.
+     */
+    const staleOrdinaryBookings = await tx.booking.findMany({
+      where: {
+        userId,
+        status: "confirmed",
+        isMakeup: false,
+        classExchange: { is: null },
+        userMembership: {
+          is: {
+            status: { in: ["cancelled", "expired"] },
+          },
+        },
+        schedule: {
+          date: schedule.date,
+          time: schedule.time,
+        },
+      },
+      select: {
+        id: true,
+        scheduleId: true,
+      },
+    });
+
+    for (const staleBooking of staleOrdinaryBookings) {
+      const released = await tx.booking.updateMany({
+        where: {
+          id: staleBooking.id,
+          status: "confirmed",
+          isMakeup: false,
+          classExchange: { is: null },
+          userMembership: {
+            is: {
+              status: { in: ["cancelled", "expired"] },
+            },
+          },
+        },
+        data: { status: "cancelled" },
+      });
+
+      if (released.count === 1) {
+        await tx.schedule.update({
+          where: { id: staleBooking.scheduleId },
+          data: {
+            availableSpots: { increment: 1 },
+          },
+        });
+      }
+    }
+    /*
      * Serialize capacity decisions on the Schedule row.
      *
      * IMPORTANT: use the values returned by the locking read itself.
@@ -1509,6 +1563,143 @@ async function ensureMembershipBookingsFromContractTx({
 }
 
 
+export async function replacePendingMembershipBookingPlanTx(input: {
+  tx: any;
+  userId: string;
+  userMembershipId: string;
+  selectedScheduleIds: string[];
+}) {
+  const membership = await input.tx.userMembership.findUnique({
+    where: { id: input.userMembershipId },
+    select: {
+      id: true,
+      userId: true,
+      status: true,
+      startDate: true,
+      endDate: true,
+      bookingPatternSnapshot: true,
+      membership: {
+        select: { kind: true },
+      },
+    },
+  });
+
+  if (
+    !membership ||
+    membership.userId !== input.userId ||
+    membership.status !== "pending_payment" ||
+    !membership.bookingPatternSnapshot
+  ) {
+    throw new Error("Pending membership booking replacement is not eligible");
+  }
+
+  const frozenContract = parseBookingContract(
+    membership.bookingPatternSnapshot,
+    membership.id,
+  );
+
+  if (!frozenContract) {
+    throw new Error("Pending membership has no valid frozen booking contract");
+  }
+
+  const unsafeBooking = await input.tx.booking.findFirst({
+    where: {
+      userMembershipId: membership.id,
+      OR: [
+        { status: { in: ["attended", "noshow"] } },
+        { isMakeup: true },
+        { classExchange: { isNot: null } },
+      ],
+    },
+    select: { id: true },
+  });
+
+  if (unsafeBooking) {
+    throw new Error("Pending membership contains non-replaceable booking history");
+  }
+
+  const confirmedBookings = await input.tx.booking.findMany({
+    where: {
+      userMembershipId: membership.id,
+      status: "confirmed",
+      isMakeup: false,
+      classExchange: { is: null },
+    },
+    select: {
+      id: true,
+      scheduleId: true,
+    },
+  });
+
+  const restorationCounts = new Map<string, number>();
+
+  for (const booking of confirmedBookings) {
+    restorationCounts.set(
+      booking.scheduleId,
+      (restorationCounts.get(booking.scheduleId) ?? 0) + 1,
+    );
+  }
+
+  await input.tx.booking.deleteMany({
+    where: {
+      id: {
+        in: confirmedBookings.map((booking: { id: string }) => booking.id),
+      },
+    },
+  });
+
+  for (const [scheduleId, countToRestore] of restorationCounts) {
+    const restoredSchedule = await input.tx.schedule.update({
+      where: { id: scheduleId },
+      data: {
+        availableSpots: { increment: countToRestore },
+      },
+      select: {
+        availableSpots: true,
+        class: {
+          select: { maxSpots: true },
+        },
+      },
+    });
+
+    if (restoredSchedule.availableSpots > restoredSchedule.class.maxSpots) {
+      throw new Error(
+        "Pending membership capacity restoration exceeded class capacity",
+      );
+    }
+  }
+
+  const cleared = await input.tx.userMembership.updateMany({
+    where: {
+      id: membership.id,
+      userId: input.userId,
+      status: "pending_payment",
+      bookingPatternSnapshot: membership.bookingPatternSnapshot,
+    },
+    data: {
+      bookingPatternSnapshot: null,
+    },
+  });
+
+  if (cleared.count !== 1) {
+    throw new Error("Pending membership booking contract replacement lost race");
+  }
+
+  return applyMembershipBookingPlanTx({
+    tx: input.tx,
+    userId: input.userId,
+    userMembershipId: membership.id,
+    startDate: membership.startDate,
+    endDate: membership.endDate,
+    selectedScheduleIds: input.selectedScheduleIds,
+    source: frozenContract.source,
+    plan: {
+      kind: membership.membership.kind as any,
+      sessionsCount: frozenContract.policy.totalSessions,
+      duration: frozenContract.policy.durationDays,
+    },
+  });
+}
 type EnsureMembershipBookingsInput = {
   tx: any;
   userMembershipId: string;

@@ -43,10 +43,12 @@ import {
 import {
   cleanupExpiredPendingMembershipsForUser,
   findReusablePendingMembershipCheckout,
+  findScheduleReplaceablePendingMembershipCheckoutTx,
   type SubscribeAttemptFingerprint,
 } from "@/lib/payments/pending-membership-cleanup";
 import {
   applyMembershipBookingPlanTx,
+  replacePendingMembershipBookingPlanTx,
   MembershipBookingPlanError,
 } from "@/lib/payments/membership-booking-plan";
 import { getRewardSettings, calcTier } from "@/lib/reward-settings";
@@ -659,6 +661,162 @@ export async function POST(req: Request) {
       checkoutUrl: reusablePendingCheckout.checkoutUrl,
       transactionId: reusablePendingCheckout.transactionId,
       resumedPending: true,
+    });
+  }
+
+  /*
+   * A still-valid pending checkout with the same economic identity may change
+   * only its schedule selection before payment.
+   *
+   * Serialize this with membership lifecycle finalization, replace the frozen
+   * booking contract atomically, and keep the SAME payment checkout.
+   *
+   * This happens before any wallet/points/partner/referral writes below.
+   */
+  const rescheduledPendingCheckout = await db.$transaction(async (tx) => {
+    await lockMembershipLifecycleUserTx(
+      asDbTransactionClient(tx),
+      userId,
+    );
+
+    const pendingCheckout =
+      await findScheduleReplaceablePendingMembershipCheckoutTx({
+        tx,
+        userId,
+        fingerprint: subscribeAttemptFingerprint,
+      });
+
+    if (!pendingCheckout) {
+      return null;
+    }
+
+    /*
+     * Defensive race path:
+     * if another request already brought the pending checkout to the requested
+     * schedules while we waited for the lifecycle lock, simply resume it.
+     */
+    if (!pendingCheckout.scheduleSelectionChanged) {
+      return {
+        membershipId: pendingCheckout.membershipId,
+        transactionId: pendingCheckout.transactionId,
+        checkoutUrl: pendingCheckout.checkoutUrl,
+        endDate: pendingCheckout.endDate,
+        rescheduled: false,
+      };
+    }
+
+    await replacePendingMembershipBookingPlanTx({
+      tx,
+      userId,
+      userMembershipId: pendingCheckout.membershipId,
+      selectedScheduleIds: subscribeAttemptFingerprint.scheduleIds,
+    });
+
+    let existingMetadata: Record<string, unknown> = {};
+
+    if (pendingCheckout.transactionMetadata) {
+      const parsed = JSON.parse(
+        pendingCheckout.transactionMetadata,
+      ) as unknown;
+
+      if (
+        !parsed ||
+        typeof parsed !== "object" ||
+        Array.isArray(parsed)
+      ) {
+        throw new Error(
+          "Pending membership payment metadata is invalid",
+        );
+      }
+
+      existingMetadata = parsed as Record<string, unknown>;
+    }
+
+    const paymentUpdated =
+      await tx.paymentTransaction.updateMany({
+        where: {
+          id: pendingCheckout.transactionId,
+          membershipId: pendingCheckout.membershipId,
+          userId,
+          purpose: "membership",
+          status: {
+            in: ["pending", "requires_action"],
+          },
+        },
+        data: {
+          metadata: JSON.stringify({
+            ...existingMetadata,
+            subscribeAttemptFingerprint,
+            bookingRecoveryData: {
+              selectedScheduleIds:
+                subscribeAttemptFingerprint.scheduleIds,
+              createdAt: new Date().toISOString(),
+            },
+          }),
+        },
+      });
+
+    if (paymentUpdated.count !== 1) {
+      throw new Error(
+        "Pending membership payment update lost race",
+      );
+    }
+
+    return {
+      membershipId: pendingCheckout.membershipId,
+      transactionId: pendingCheckout.transactionId,
+      checkoutUrl: pendingCheckout.checkoutUrl,
+      endDate: pendingCheckout.endDate,
+      rescheduled: true,
+    };
+  }).catch((error: unknown) => {
+    if (error instanceof MembershipBookingPlanError) {
+      return {
+        error: error.message,
+        action: error.action,
+      };
+    }
+
+    if (
+      error instanceof Error &&
+      error.message === "AMBIGUOUS_PENDING_MEMBERSHIP_CHECKOUT"
+    ) {
+      return {
+        error:
+          "يوجد أكثر من محاولة دفع معلقة لنفس الاشتراك. يرجى استكمال أو إلغاء إحدى المحاولات الحالية قبل تغيير المواعيد.",
+        action: "back_to_schedule",
+      };
+    }
+
+    throw error;
+  });
+
+  if (
+    rescheduledPendingCheckout &&
+    "error" in rescheduledPendingCheckout
+  ) {
+    return NextResponse.json(
+      {
+        error: rescheduledPendingCheckout.error,
+        action: rescheduledPendingCheckout.action,
+      },
+      { status: 400 },
+    );
+  }
+
+  if (rescheduledPendingCheckout) {
+    return NextResponse.json({
+      success: true,
+      subscriptionId: rescheduledPendingCheckout.membershipId,
+      endDate:
+        rescheduledPendingCheckout.endDate.toISOString(),
+      checkoutUrl:
+        rescheduledPendingCheckout.checkoutUrl,
+      transactionId:
+        rescheduledPendingCheckout.transactionId,
+      resumedPending: true,
+      rescheduledPending:
+        rescheduledPendingCheckout.rescheduled,
     });
   }
 
