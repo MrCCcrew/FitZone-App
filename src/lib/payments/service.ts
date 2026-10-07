@@ -1281,13 +1281,64 @@ export async function updatePaymentTransactionStatus(
       orderId: true,
       userId: true,
       purpose: true,
+      provider: true,
+      expiresAt: true,
     },
   });
+
+  const isOpenPaymentStatus =
+    existing?.status === "pending" ||
+    existing?.status === "pending_payment" ||
+    existing?.status === "processing" ||
+    existing?.status === "requires_action";
+
+  /*
+   * Paymob Unified Checkout may emit a failed transaction attempt while the
+   * same checkout is still valid and retryable. Do not treat that individual
+   * attempt as terminal for a linked membership.
+   *
+   * Once the checkout itself expires, the normal terminal-failure path remains
+   * authoritative.
+   */
+  const isLivePaymobMembershipAttemptFailure =
+    status === "failed" &&
+    isOpenPaymentStatus &&
+    existing?.provider === "paymob" &&
+    existing.purpose === "membership" &&
+    Boolean(existing.membershipId) &&
+    existing.expiresAt instanceof Date &&
+    existing.expiresAt.getTime() > Date.now();
+
+  if (isLivePaymobMembershipAttemptFailure) {
+    const current =
+      await db.paymentTransaction.findUnique({
+        where: { id: transactionId },
+      });
+
+    if (!current) {
+      throw new Error("\u0645\u0639\u0627\u0645\u0644\u0629 \u0627\u0644\u062f\u0641\u0639 \u063a\u064a\u0631 \u0645\u0648\u062c\u0648\u062f\u0629.");
+    }
+
+    return mapPaymentTransaction(current);
+  }
 
   // Idempotency: an already-paid retry must still repair
   // recoverable business-side effects that may be missing.
   if (existing?.status === "paid" && status === "paid") {
     await markFriendOfferParticipantPaid(transactionId);
+
+    /*
+     * Crash-window repair:
+     * payment status may have committed as "paid" before linked membership
+     * activation completed. A repeated paid signal must repair that membership
+     * instead of returning early.
+     */
+    if (
+      existing.purpose === "membership" &&
+      existing.membershipId
+    ) {
+      return recoverPaidMembershipActivation(transactionId);
+    }
 
     const current = await db.paymentTransaction.findUnique({
       where: { id: transactionId },

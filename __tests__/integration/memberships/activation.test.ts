@@ -1,4 +1,4 @@
-﻿import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
@@ -374,5 +374,108 @@ describe("membership activation — idempotency guard", () => {
     // userMembership.updateMany is NOT called (no actual activation needed)
     expect(db.userMembership.updateMany).not.toHaveBeenCalled();
     expect(recordMembershipActivatedEvent).toHaveBeenCalledWith("m1", "tx-001");
+  });
+});
+
+/*
+ * PAID_RETRY_PENDING_MEMBERSHIP_CHARACTERIZATION
+ *
+ * Crash-window invariant:
+ * the payment may already be durably "paid" while membership activation
+ * previously failed or timed out. A repeated paid signal must repair the
+ * still-pending linked membership instead of returning early.
+ */
+describe("membership activation — paid retry crash-window recovery", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("repairs a pending membership when the payment is already paid", async () => {
+    /*
+     * clearAllMocks() does not clear queued mockResolvedValueOnce values from
+     * earlier tests in this legacy file. Reset only the mocks this
+     * characterization owns so it is order-independent.
+     */
+    vi.mocked(db.paymentTransaction.findUnique).mockReset();
+    vi.mocked(db.userMembership.findUnique).mockReset();
+    vi.mocked(db.user.findUnique).mockReset();
+    txUserMembershipFindUnique.mockReset();
+    txUserMembershipUpdateMany.mockReset();
+
+    const paidAt = new Date("2026-10-07T15:59:52.462Z");
+
+    const paidSelect = {
+      status: "paid",
+      metadata: null,
+      membershipId: "m1",
+      orderId: null,
+      userId: "u1",
+      purpose: "membership",
+      provider: "paymob",
+      expiresAt: new Date("2099-01-01T00:00:00.000Z"),
+    };
+
+    const paidFull = {
+      ...BASE_TX,
+      status: "paid",
+      purpose: "membership",
+      membershipId: "m1",
+      provider: "paymob",
+      paidAt,
+    };
+
+    vi.mocked(db.paymentTransaction.findUnique)
+      .mockResolvedValueOnce(paidSelect as never)
+      .mockResolvedValue(paidFull as never);
+
+    vi.mocked(db.userMembership.findUnique).mockResolvedValue(
+      {
+        status: "pending_payment",
+      } as never,
+    );
+
+    txUserMembershipFindUnique
+      .mockResolvedValueOnce(PENDING_MEM as never)
+      .mockResolvedValueOnce(ACTIVE_BOOKING_MEM as never)
+      .mockResolvedValueOnce(ACTIVE_BOOKING_MEM as never);
+
+    txUserMembershipUpdateMany.mockResolvedValue({
+      count: 1,
+    } as never);
+
+    vi.mocked(db.user.findUnique).mockResolvedValue(null);
+
+    const result =
+      await updatePaymentTransactionStatus(
+        "tx-001",
+        "paid",
+      );
+
+    expect(result.status).toBe("paid");
+
+    expect(txUserMembershipUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          id: "m1",
+          status: "pending_payment",
+        },
+        data: expect.objectContaining({
+          status: "active",
+          pendingExpiresAt: null,
+        }),
+      }),
+    );
+
+    expect(recordMembershipActivatedEvent).toHaveBeenCalledWith(
+      "m1",
+      "tx-001",
+    );
+
+    expect(
+      runPaidMembershipPostActivationReconciliation,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        transactionId: "tx-001",
+        userMembershipId: "m1",
+      }),
+    );
   });
 });
