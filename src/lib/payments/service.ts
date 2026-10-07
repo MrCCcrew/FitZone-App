@@ -2998,6 +2998,7 @@ export async function recoverVerifiedPaymobPayment(
         userId: true,
         membershipId: true,
         status: true,
+        activatedAt: true,
       },
     });
 
@@ -3016,6 +3017,48 @@ export async function recoverVerifiedPaymobPayment(
       timeoutSnapshot?.reason === "timeout_cleanup" &&
       timeoutSnapshot?.userMembershipId === payment.membershipId;
 
+    /*
+     * Historical Paymob multi-attempt recovery.
+     *
+     * Before the retry fix, one failed transaction attempt could cancel a
+     * membership even though the same Unified Checkout was still valid.
+     * A later verified successful attempt then left payment=paid while the
+     * linked membership remained cancelled.
+     *
+     * Reopen only when persisted evidence proves that exact sequence.
+     */
+    const failedAtMs =
+      payment.failedAt instanceof Date
+        ? payment.failedAt.getTime()
+        : Number.NaN;
+
+    const paidAtMs =
+      payment.paidAt instanceof Date
+        ? payment.paidAt.getTime()
+        : Number.NaN;
+
+    const expiresAtMs =
+      payment.expiresAt instanceof Date
+        ? payment.expiresAt.getTime()
+        : Number.NaN;
+
+    const hasPreExpiryFailedAttemptEvidence =
+      payment.provider === "paymob" &&
+      payment.status === "paid" &&
+      payment.externalReference === paymobTransactionId &&
+      membership.status === "cancelled" &&
+      membership.activatedAt == null &&
+      recoveryMetadata?.latePaymentWarning === true &&
+      recoveryMetadata?.membershipStatus === "cancelled" &&
+      Number.isFinite(failedAtMs) &&
+      Number.isFinite(paidAtMs) &&
+      Number.isFinite(expiresAtMs) &&
+      failedAtMs <= paidAtMs &&
+      paidAtMs <= expiresAtMs;
+
+    const needsPreExpiryFailedAttemptReopen =
+      hasPreExpiryFailedAttemptEvidence;
+
     const needsTimeoutReopen =
       hasTimeoutCancelledSnapshot &&
       membership.status === "cancelled" &&
@@ -3028,10 +3071,14 @@ export async function recoverVerifiedPaymobPayment(
           (membership.status === "pending_payment" ||
             membership.status === "active")));
 
+    const needsCancelledMembershipReopen =
+      needsTimeoutReopen ||
+      needsPreExpiryFailedAttemptReopen;
+
     if (
       membership.status !== "pending_payment" &&
       membership.status !== "active" &&
-      !needsTimeoutReopen
+      !needsCancelledMembershipReopen
     ) {
       throw new Error(
         `Recovery rejected: membership ${payment.membershipId} is not recoverable (status: ${membership.status})`,
@@ -3092,7 +3139,7 @@ export async function recoverVerifiedPaymobPayment(
       }
     }
 
-    if (needsTimeoutReopen) {
+    if (needsCancelledMembershipReopen) {
       const reopened = await tx.userMembership.updateMany({
         where: {
           id: payment.membershipId,
@@ -3105,7 +3152,7 @@ export async function recoverVerifiedPaymobPayment(
 
       if (reopened.count !== 1) {
         throw new Error(
-          `Recovery rejected: timeout-cancelled membership ${payment.membershipId} changed concurrently`,
+          `Recovery rejected: cancelled membership ${payment.membershipId} changed concurrently`,
         );
       }
     }
