@@ -396,6 +396,111 @@ describe("Paymob Payment Recovery", () => {
     expect(membership?.status).toBe("cancelled"); // Unchanged
   });
 
+
+  // PAYMOB_PRE_EXPIRY_CANCELLED_RECOVERY_CHARACTERIZATION
+  it("10a. recovers verified paid-before-expiry membership cancelled by an earlier failed attempt", async () => {
+    const failedAt = new Date("2026-10-07T15:51:00.000Z");
+    const paidAt = new Date("2026-10-07T15:59:52.462Z");
+    const expiresAt = new Date("2026-10-07T16:20:48.553Z");
+
+    await db.userMembership.update({
+      where: { id: testUserMembershipId },
+      data: {
+        status: "cancelled",
+        pendingExpiresAt: null,
+        activatedAt: null,
+      },
+    });
+
+    await db.paymentTransaction.update({
+      where: { id: testPaymentId },
+      data: {
+        status: "paid",
+        failedAt,
+        paidAt,
+        expiresAt,
+        externalReference: "512944958",
+        metadata: JSON.stringify({
+          latePaymentWarning: true,
+          membershipStatus: "cancelled",
+          paymentReceivedAt: paidAt.toISOString(),
+        }),
+      },
+    });
+
+    const input: VerifiedPaymobRecoveryInput = {
+      paymentTransactionId: testPaymentId,
+      paymobTransactionId: "512944958",
+      expectedAmount: 333,
+      expectedCurrency: "EGP",
+      expectedFitZoneReference: "FZ-Offers-0000017",
+      expectedIntentionId: "pi_live_test_intention_123",
+    };
+
+    const result = await recoverVerifiedPaymobPayment(input);
+
+    expect(result.status).toBe("paid");
+
+    const membership = await db.userMembership.findUnique({
+      where: { id: testUserMembershipId },
+    });
+
+    expect(membership?.status).toBe("active");
+    expect(membership?.activatedAt).not.toBeNull();
+    expect(membership?.pendingExpiresAt).toBeNull();
+  }, 20000);
+
+  it("10b. does not recover a cancelled membership when payment succeeded after checkout expiry", async () => {
+    const failedAt = new Date("2026-10-07T15:51:00.000Z");
+    const expiresAt = new Date("2026-10-07T16:20:48.553Z");
+    const paidAt = new Date("2026-10-07T16:21:00.000Z");
+
+    await db.userMembership.update({
+      where: { id: testUserMembershipId },
+      data: {
+        status: "cancelled",
+        pendingExpiresAt: null,
+        activatedAt: null,
+      },
+    });
+
+    await db.paymentTransaction.update({
+      where: { id: testPaymentId },
+      data: {
+        status: "paid",
+        failedAt,
+        paidAt,
+        expiresAt,
+        externalReference: "512944958",
+        metadata: JSON.stringify({
+          latePaymentWarning: true,
+          membershipStatus: "cancelled",
+          paymentReceivedAt: paidAt.toISOString(),
+        }),
+      },
+    });
+
+    const input: VerifiedPaymobRecoveryInput = {
+      paymentTransactionId: testPaymentId,
+      paymobTransactionId: "512944958",
+      expectedAmount: 333,
+      expectedCurrency: "EGP",
+      expectedFitZoneReference: "FZ-Offers-0000017",
+      expectedIntentionId: "pi_live_test_intention_123",
+    };
+
+    await expect(
+      recoverVerifiedPaymobPayment(input),
+    ).rejects.toThrow("not recoverable");
+
+    const membership = await db.userMembership.findUnique({
+      where: { id: testUserMembershipId },
+    });
+
+    expect(membership?.status).toBe("cancelled");
+    expect(membership?.activatedAt).toBeNull();
+  }, 20000);
+
   it("11. wrong intention ID rejected", async () => {
     const input: VerifiedPaymobRecoveryInput = {
       paymentTransactionId: testPaymentId,

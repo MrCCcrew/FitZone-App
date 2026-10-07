@@ -1126,3 +1126,138 @@ describe("store order terminal payment inventory release", () => {
     );
   });
 });
+// PAYMOB_LIVE_CHECKOUT_FAILED_ATTEMPT_CHARACTERIZATION
+describe("Paymob live checkout failed-attempt characterization", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("does not terminalize an unexpired Paymob membership checkout after one failed attempt", async () => {
+    const expiresAt = new Date("2099-01-01T00:00:00.000Z");
+
+    const pendingPayment = {
+      ...BASE_TX,
+      provider: "paymob",
+      purpose: "membership",
+      status: "pending_payment",
+      membershipId: "m1",
+      expiresAt,
+    };
+
+    const failedPayment = {
+      ...pendingPayment,
+      status: "failed",
+      failedAt: new Date(),
+    };
+
+    vi.mocked(db.paymentTransaction.findUnique)
+      .mockResolvedValueOnce(
+        pendingSelect({
+          provider: "paymob",
+          purpose: "membership",
+          membershipId: "m1",
+          expiresAt,
+        }) as never,
+      )
+      .mockResolvedValueOnce(pendingPayment as never);
+
+    transactionalPaymentFindUnique.mockResolvedValue(
+      pendingPayment,
+    );
+
+    transactionalPaymentUpdate.mockResolvedValue(
+      failedPayment,
+    );
+
+    transactionalUserMembershipUpdateMany.mockResolvedValue({
+      count: 1,
+    });
+
+    transactionalBookingFindMany.mockResolvedValue([]);
+
+    const result =
+      await updatePaymentTransactionStatus(
+        "tx-001",
+        "failed",
+      );
+
+    expect(result.status).toBe("pending_payment");
+
+    expect(
+      transactionalUserMembershipUpdateMany,
+    ).not.toHaveBeenCalled();
+
+    expect(
+      transactionalBookingUpdateMany,
+    ).not.toHaveBeenCalled();
+
+    expect(
+      transactionalScheduleUpdate,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("still terminalizes a Paymob membership failure after checkout expiry", async () => {
+    const expiresAt = new Date("2000-01-01T00:00:00.000Z");
+
+    const pendingPayment = {
+      ...BASE_TX,
+      provider: "paymob",
+      purpose: "membership",
+      status: "pending_payment",
+      membershipId: "m1",
+      expiresAt,
+    };
+
+    const failedPayment = {
+      ...pendingPayment,
+      status: "failed",
+      failedAt: new Date(),
+    };
+
+    vi.mocked(db.paymentTransaction.findUnique)
+      .mockResolvedValueOnce(
+        pendingSelect({
+          provider: "paymob",
+          purpose: "membership",
+          membershipId: "m1",
+          expiresAt,
+        }) as never,
+      )
+      .mockResolvedValueOnce(failedPayment as never);
+
+    transactionalPaymentFindUnique.mockResolvedValue(
+      pendingPayment,
+    );
+
+    transactionalPaymentUpdate.mockResolvedValue(
+      failedPayment,
+    );
+
+    transactionalUserMembershipUpdateMany.mockResolvedValue({
+      count: 1,
+    });
+
+    transactionalBookingFindMany.mockResolvedValue([]);
+
+    const result =
+      await updatePaymentTransactionStatus(
+        "tx-001",
+        "failed",
+      );
+
+    expect(result.status).toBe("failed");
+
+    expect(
+      transactionalUserMembershipUpdateMany,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          id: "m1",
+          status: "pending_payment",
+        },
+        data: {
+          status: "cancelled",
+          pendingExpiresAt: null,
+        },
+      }),
+    );
+  });
+});
