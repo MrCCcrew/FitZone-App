@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   memberships: vi.fn(),
@@ -62,7 +62,12 @@ async function attempt() {
 describe("Expired Paymob membership hold guard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubEnv("PAYMOB_MEMBERSHIP_INTENTION_RENEWAL_ENABLED", "true");
     mocks.payments.mockResolvedValue([]);
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it("blocks an expired unresolved membership", async () => {
