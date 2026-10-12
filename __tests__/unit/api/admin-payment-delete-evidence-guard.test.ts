@@ -28,7 +28,13 @@ vi.mock("@/lib/payments/service", () => ({
   verifyPaymentTransaction: vi.fn(),
 }));
 
-import { DELETE } from "@/app/api/admin/payments/route";
+import { DELETE as routeDELETE } from "@/app/api/admin/payments/route";
+
+async function DELETE(request: Request): Promise<Response> {
+  const response = await routeDELETE(request);
+  if (!response) throw new Error("ADMIN_DELETE_ROUTE_DID_NOT_RESPOND");
+  return response;
+}
 
 const req = (transactionId = "transaction-123") =>
   new Request("https://example.test/api/admin/payments", {
