@@ -30,6 +30,7 @@ export type PendingMembershipCleanupResult =
         | "not_found"
         | "not_pending"
         | "not_expired"
+        | "provider_reconciliation_required"
         | "paid_transaction_exists"
         | "lost_race";
     };
@@ -102,6 +103,35 @@ export async function cleanupExpiredPendingMembership(
      * Include pendingExpiresAt in the claim so this helper can never cancel
      * a still-valid pending membership even if called from another code path.
      */
+    /*
+     * PAYMOB_TIMEOUT_FINALITY_GUARD
+     *
+     * An expired local hold and a non-paid local payment status
+     * do not prove that Paymob did not capture funds.
+     *
+     * Until provider-wide reconciliation establishes finality,
+     * retain the membership, bookings and frozen adjustments.
+     *
+     * This is intentionally fail-closed. A separate reconciliation
+     * process must later settle these records.
+     */
+    const unresolvedPaymob = await tx.paymentTransaction.findFirst({
+      where: {
+        membershipId,
+        provider: "paymob",
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (unresolvedPaymob) {
+      return {
+        cleaned: false,
+        membershipId,
+        reason: "provider_reconciliation_required",
+      };
+    }
     const claimed = await tx.userMembership.updateMany({
       where: {
         id: membershipId,
@@ -199,6 +229,76 @@ export async function cleanupExpiredPendingMembership(
       },
     });
 
+    /*
+     * TIMEOUT_MEMBERSHIP_FINANCIAL_SETTLEMENT
+     *
+     * Reservation release and financial restoration must commit
+     * atomically. A failed settlement rolls back the cancellation.
+     *
+     * Never guess which payment owns the original wallet/points
+     * deduction. Multiple ownership snapshots require review.
+     */
+    const membershipPayments = await tx.paymentTransaction.findMany({
+      where: {
+        membershipId,
+        userId: membership.userId,
+        purpose: "membership",
+      },
+      select: {
+        id: true,
+        status: true,
+        metadata: true,
+      },
+    });
+
+    if (
+      membershipPayments.some((payment) =>
+        [
+          "paid",
+          "retrying",
+          "processing",
+          "pending_payment",
+        ].includes(payment.status),
+      )
+    ) {
+      throw new Error(
+        "TIMEOUT_PAYMENT_SETTLEMENT_REQUIRES_RECONCILIATION",
+      );
+    }
+
+    const financialOwners = membershipPayments.filter((payment) => {
+      const metadata = parseJson(payment.metadata);
+
+      if (payment.metadata && !metadata) {
+        throw new Error(
+          "TIMEOUT_PAYMENT_FINANCIAL_METADATA_INVALID",
+        );
+      }
+
+      const adjustments = metadata?.paymentAdjustments;
+
+      return (
+        adjustments !== null &&
+        typeof adjustments === "object" &&
+        !Array.isArray(adjustments)
+      );
+    });
+
+    if (financialOwners.length > 1) {
+      throw new Error(
+        "TIMEOUT_MULTIPLE_FINANCIAL_OWNERS_REQUIRE_REVIEW",
+      );
+    }
+
+    if (financialOwners.length === 1) {
+      const { restorePaymentTransactionAdjustmentsTx } =
+        await import("@/lib/payments/service");
+
+      await restorePaymentTransactionAdjustmentsTx(
+        tx,
+        financialOwners[0].id,
+      );
+    }
     // Delete reservations owned by this expired membership.
     await tx.booking.deleteMany({
       where: {

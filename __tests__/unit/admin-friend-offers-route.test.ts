@@ -6,6 +6,9 @@ const mocks = vi.hoisted(() => ({
   offerFindUnique: vi.fn(),
   offerCreate: vi.fn(),
   offerUpdate: vi.fn(),
+  queryRaw: vi.fn(),
+  executeRaw: vi.fn(),
+  transaction: vi.fn(),
   classFindMany: vi.fn(),
   clearPublicApiCache: vi.fn(),
   logAudit: vi.fn(),
@@ -17,6 +20,8 @@ vi.mock("@/lib/admin-guard", () => ({
 
 vi.mock("@/lib/db", () => ({
   db: {
+    $queryRaw: mocks.queryRaw,
+    $transaction: mocks.transaction,
     offer: {
       findMany: mocks.offerFindMany,
       findUnique: mocks.offerFindUnique,
@@ -45,6 +50,20 @@ import { GET, PATCH, POST } from "@/app/api/admin/offers/route";
 
 beforeEach(() => {
   vi.clearAllMocks();
+
+  mocks.queryRaw.mockResolvedValue([
+    { id: "offer-1", requiresBirthDate: false, minAgeYears: null, maxAgeYears: null },
+  ]);
+  mocks.executeRaw.mockResolvedValue(1);
+  mocks.transaction.mockImplementation(async (callback) =>
+    callback({
+      offer: {
+        create: mocks.offerCreate,
+        update: mocks.offerUpdate,
+      },
+      $executeRaw: mocks.executeRaw,
+    }),
+  );
 
   mocks.requireAdminFeature.mockResolvedValue({
     admin: { id: "admin-1" },
@@ -241,5 +260,83 @@ describe("Admin Friend Offer config", () => {
     });
 
     expect(call.data.friendOfferConfig.delete).toBeUndefined();
+  });
+});
+
+describe("Admin Offer Box config", () => {
+  it("POST persists default false and explicit true", async () => {
+    mocks.offerCreate.mockImplementation(async (args) =>
+      baseOffer({ offerBoxEnabled: args.data.offerBoxEnabled }),
+    );
+
+    for (const enabled of [undefined, true]) {
+      const response = await POST(
+        new Request("http://localhost/api/admin/offers", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: "Offer Box test",
+            type: "special",
+            specialPrice: 560,
+            validUntil: "2026-12-31T22:00",
+            active: true,
+            ...(enabled === undefined ? {} : { offerBoxEnabled: enabled }),
+          }),
+        }),
+      );
+
+      expect(response.status).toBe(200);
+
+      const call = mocks.offerCreate.mock.calls.at(-1)?.[0];
+      expect(call.data.offerBoxEnabled).toBe(enabled ?? false);
+
+      const body = await response.json();
+      expect(body.offerBoxEnabled).toBe(enabled ?? false);
+    }
+  });
+
+  it("GET returns normalized Offer Box flags", async () => {
+    mocks.offerFindMany.mockResolvedValue([
+      baseOffer({ id: "enabled", offerBoxEnabled: true }),
+      baseOffer({ id: "disabled", offerBoxEnabled: false }),
+    ]);
+
+    const response = await GET();
+
+    expect(response.status).toBe(200);
+
+    const body = await response.json();
+
+    expect(body[0].offerBoxEnabled).toBe(true);
+    expect(body[1].offerBoxEnabled).toBe(false);
+  });
+
+  it("PATCH persists enabling and disabling Offer Box", async () => {
+    mocks.offerFindUnique.mockResolvedValue({ type: "special" });
+
+    mocks.offerUpdate.mockImplementation(async (args) =>
+      baseOffer({ offerBoxEnabled: args.data.offerBoxEnabled }),
+    );
+
+    for (const enabled of [true, false]) {
+      const response = await PATCH(
+        new Request("http://localhost/api/admin/offers", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: "offer-1",
+            offerBoxEnabled: enabled,
+          }),
+        }),
+      );
+
+      expect(response.status).toBe(200);
+
+      const call = mocks.offerUpdate.mock.calls.at(-1)?.[0];
+      expect(call.data.offerBoxEnabled).toBe(enabled);
+
+      const body = await response.json();
+      expect(body.offerBoxEnabled).toBe(enabled);
+    }
   });
 });

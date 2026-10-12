@@ -1,0 +1,4 @@
+ALTER TABLE `Offer`
+    ADD COLUMN `requiresBirthDate` BOOLEAN NOT NULL DEFAULT false,
+    ADD COLUMN `minAgeYears` INTEGER NULL,
+    ADD COLUMN `maxAgeYears` INTEGER NULL;

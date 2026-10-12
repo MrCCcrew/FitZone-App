@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { db } from "@/lib/db";
 import { updatePaymentTransactionStatus } from "@/lib/payments/service";
+import { inquirePaymobTransactionByMerchantReference } from "@/lib/payments/providers/paymob";
 
 const EXPIRABLE_PAYMENT_STATUSES = new Set([
   "pending",
@@ -101,10 +102,239 @@ export async function GET(req: Request) {
     },
   });
 
-  if (pending.length === 0) {
+  /*
+   * Offer Box timeout cleanup.
+   *
+   * PaymentTransaction.expiresAt remains authoritative.
+   * We intentionally select only Offer Box payment rows whose checkout
+   * has actually expired. The shared payment service owns the atomic
+   * terminal claim and the exact-once Box reservation release.
+   *
+   * This also recovers the crash window where the payment transaction
+   * exists with offerBoxPurchaseId metadata but the purchase row was not
+   * yet linked to paymentTransactionId.
+   */
+  const expiredOfferBoxPayments =
+    await db.paymentTransaction.findMany({
+      where: {
+        purpose: "offer_box",
+        expiresAt: {
+          lte: now,
+        },
+        status: {
+          in: [
+            "pending",
+            "pending_payment",
+            "processing",
+            "requires_action",
+            "failed",
+            "cancelled",
+          ],
+        },
+      },
+      orderBy: {
+        createdAt: "asc",
+      },
+      take: 100,
+      select: {
+        id: true,
+        status: true,
+        expiresAt: true,
+      },
+    });
+
+  let offerBoxExpired = 0;
+
+  for (const payment of expiredOfferBoxPayments) {
+    if (!(payment.expiresAt instanceof Date)) {
+      continue;
+    }
+
+    if (
+      payment.expiresAt.getTime() >
+      now.getTime()
+    ) {
+      continue;
+    }
+
+    try {
+      /*
+       * Ambiguous checkout recovery:
+       *
+       * PaymentTransaction exists before the external Paymob intention
+       * request. If Paymob accepted that request but our HTTP response
+       * was lost, local provider references may still be missing.
+       *
+       * This path runs only after the durable 60-minute local cutoff,
+       * while Paymob checkout itself expires after 30 minutes.
+       */
+      const offerBoxRemotePayment =
+        await db.paymentTransaction.findUnique({
+          where: {
+            id: payment.id,
+          },
+          select: {
+            id: true,
+            provider: true,
+            status: true,
+            amount: true,
+            currency: true,
+          },
+        });
+
+      if (!offerBoxRemotePayment) {
+        continue;
+      }
+
+      if (
+        offerBoxRemotePayment.provider === "paymob" &&
+        offerBoxRemotePayment.status !== "paid"
+      ) {
+        /*
+         * Read-only Paymob lookup by the immutable local
+         * PaymentTransaction.id / merchant_order_id.
+         *
+         * Transport/API errors deliberately throw and fail closed.
+         */
+        const inquiry =
+          await inquirePaymobTransactionByMerchantReference(
+            offerBoxRemotePayment.id,
+          );
+
+        if (inquiry.found) {
+          if (
+            inquiry.merchantOrderId !==
+            offerBoxRemotePayment.id
+          ) {
+            throw new Error(
+              "OFFER_BOX_PAYMOB_INQUIRY_LINK_MISMATCH",
+            );
+          }
+
+          const expectedAmountCents =
+            Math.round(
+              Number(
+                offerBoxRemotePayment.amount,
+              ) * 100,
+            );
+
+          if (
+            inquiry.amountCents == null ||
+            inquiry.amountCents !==
+              expectedAmountCents ||
+            inquiry.currency == null ||
+            inquiry.currency.toUpperCase() !==
+              String(
+                offerBoxRemotePayment.currency,
+              ).toUpperCase()
+          ) {
+            throw new Error(
+              "OFFER_BOX_PAYMOB_INQUIRY_FINANCIAL_MISMATCH",
+            );
+          }
+
+          if (inquiry.status === "paid") {
+            if (!inquiry.paymobTransactionId) {
+              throw new Error(
+                "OFFER_BOX_PAYMOB_PAID_REFERENCE_MISSING",
+              );
+            }
+
+            /*
+             * Persist the recovered Acceptance transaction ID.
+             * This does not create a payment or checkout.
+             */
+            await db.paymentTransaction.update({
+              where: {
+                id: offerBoxRemotePayment.id,
+              },
+              data: {
+                externalReference:
+                  inquiry.paymobTransactionId,
+              },
+            });
+
+            const repaired =
+              await updatePaymentTransactionStatus(
+                offerBoxRemotePayment.id,
+                "paid",
+              );
+
+            if (repaired.status !== "paid") {
+              throw new Error(
+                "OFFER_BOX_PAYMOB_PAID_RECOVERY_NOT_COMMITTED",
+              );
+            }
+
+            /*
+             * Paid wins: reconciliation preserves the Offer Box right.
+             */
+            continue;
+          }
+
+          if (inquiry.status === "pending") {
+            /*
+             * Provider still reports unresolved state.
+             * Keep the reservation and retry on a later cron run.
+             */
+            continue;
+          }
+
+          /*
+           * inquiry.status === "failed"
+           *
+           * We are already beyond both:
+           * - Paymob's 30-minute checkout lifetime
+           * - our conservative 60-minute local hold
+           *
+           * Safe to continue into canonical expiry below.
+           */
+        }
+
+        /*
+         * found=false:
+         * after the durable 60-minute cutoff, Paymob has no transaction
+         * matching our merchant reference. Continue to canonical expiry.
+         */
+      }
+
+      const result =
+        await updatePaymentTransactionStatus(
+          payment.id,
+          "expired",
+        );
+
+      /*
+       * A concurrent successful payment may win before expiry gets
+       * its atomic claim. In that case the shared payment service
+       * returns the paid transaction and no Box reservation is released.
+       */
+      if (result.status === "paid") {
+        console.log(
+          `[CRON] Offer Box payment ${payment.id} became paid during timeout processing`,
+        );
+        continue;
+      }
+
+      if (result.status === "expired") {
+        offerBoxExpired++;
+      }
+    } catch (err) {
+      console.error(
+        `[CRON] Failed to expire Offer Box payment ${payment.id}:`,
+        err,
+      );
+    }
+  }
+
+  if (
+    pending.length === 0 &&
+    expiredOfferBoxPayments.length === 0
+  ) {
     return NextResponse.json({
       ok: true,
       expired: 0,
+      offerBoxExpired: 0,
     });
   }
 
