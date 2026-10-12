@@ -233,6 +233,38 @@ export async function POST(req: Request, context: { params: Promise<{ provider: 
       },
     });
 
+    // A two-review no-charge settlement has already returned frozen
+    // wallet/points and released seats. A later provider charge must go to
+    // financial exception handling (refund or supervised compensation).
+    // Never auto-reactivate and grant an unpaid membership benefit.
+    if (
+      providerKey === "paymob" &&
+      result.status === "paid" &&
+      updated?.status === "cancelled" &&
+      updated.purpose === "membership"
+    ) {
+      let settledAt: unknown = null;
+      try {
+        const saved = JSON.parse(updated.metadata || "{}") as Record<string, unknown>;
+        const review = saved.paymobNoChargeReview;
+        if (review && typeof review === "object" && !Array.isArray(review)) {
+          settledAt = (review as Record<string, unknown>).settledAt;
+        }
+      } catch {
+        settledAt = null;
+      }
+
+      if (typeof settledAt === "string") {
+        console.error("[PAYMOB_POST_MANUAL_RELEASE_CHARGE_REQUIRES_FINANCE_REVIEW]", {
+          transactionId: result.transactionId,
+        });
+        return NextResponse.json(
+          { received: false, message: "Financial exception needs reconciliation" },
+          { status: 503 },
+        );
+      }
+    }
+
     // CRITICAL: A late Paymob success may arrive after timeout cleanup already
     // cancelled both the payment and membership. Handle that case BEFORE
     // verifyPaymentTransaction(), because normal verification can promote the
