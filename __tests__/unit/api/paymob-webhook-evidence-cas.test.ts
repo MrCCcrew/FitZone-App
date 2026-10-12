@@ -173,6 +173,10 @@ describe("Paymob webhook evidence CAS and paid ownership proof", () => {
   });
 
   it("quarantines a verified late charge after two-review no-charge release", async () => {
+    // This recovery path is membership-specific. The shared default fixture
+    // represents a Store order and must not be used for this scenario.
+    payment.purpose = "membership";
+    payment.membershipId = "membership-a";
     payment.status = "cancelled";
     payment.metadata = JSON.stringify({
       paymobNoChargeReview: {
