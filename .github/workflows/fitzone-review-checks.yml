@@ -1,6 +1,9 @@
 name: FitZone Review Safety Gate
 
 on:
+  push:
+    branches:
+      - review/fitzone-full-review-20261012
   pull_request:
     branches:
       - main
