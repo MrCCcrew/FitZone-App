@@ -104,6 +104,23 @@ export async function maybeRenewPendingMembershipCheckout(input: {
       return { kind: "blocked" } as const;
     }
 
+    /*
+     * PRODUCTION PAYMOB COMPATIBILITY GATE
+     *
+     * The existing Live Paymob configuration and normal checkout path are
+     * unchanged. Updating an expired provider Intention is an additional,
+     * independently unverified payment operation, NOT evidence of how the
+     * currently successful Live integration behaves.
+     *
+     * Disabled by default: keep the original pending membership and all its
+     * wallet, points and booking reservations intact, and do not claim the
+     * payment as "retrying" or contact Paymob. Enable only after verified
+     * provider acceptance and a separately approved release gate.
+     */
+    if (process.env.PAYMOB_MEMBERSHIP_INTENTION_RENEWAL_ENABLED !== "true") {
+      return { kind: "blocked" } as const;
+    }
+
     const membership = memberships[0];
 
 
