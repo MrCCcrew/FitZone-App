@@ -107,8 +107,8 @@ describe("Paymob webhook evidence CAS and paid ownership proof", () => {
       if (
         where.status !== payment.status ||
         where.externalReference !== payment.externalReference ||
-        where.providerPayload !== payment.providerPayload ||
-        where.providerReference !== payment.providerReference
+        (where.providerPayload !== undefined && where.providerPayload !== payment.providerPayload) ||
+        (where.providerReference !== undefined && where.providerReference !== payment.providerReference)
       ) {
         return { count: 0 };
       }
@@ -170,6 +170,26 @@ describe("Paymob webhook evidence CAS and paid ownership proof", () => {
 
     expect(response.status).toBe(503);
     expect(mocks.finalize).not.toHaveBeenCalled();
+  });
+
+  it("quarantines a verified late charge after two-review no-charge release", async () => {
+    payment.status = "cancelled";
+    payment.metadata = JSON.stringify({
+      paymobNoChargeReview: {
+        reportReference: "PAYMOB-REPORT-123",
+        approvals: [{ reviewerId: "a" }, { reviewerId: "b" }],
+        settledAt: new Date().toISOString(),
+      },
+    });
+
+    const response = await deliver("paid");
+    expect(response.status).toBe(503);
+    expect(payment.status).toBe("cancelled");
+    expect(mocks.finalize).not.toHaveBeenCalled();
+
+    const metadata = JSON.parse(payment.metadata || "{}") as Record<string, unknown>;
+    expect(typeof metadata.paymobManualNoChargeLatePaidAt).toBe("string");
+    expect(metadata.paymobManualNoChargeLatePaidReference).toBe("987654");
   });
 
   it("keeps an in-progress renewal claim intact on a late failed attempt", async () => {
