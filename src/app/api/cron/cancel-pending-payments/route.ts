@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { sendOnePush } from "@/lib/push";
 import { cleanupExpiredPendingMembership } from "@/lib/payments/pending-membership-cleanup";
+import { reconcileExpiredPaymobMembership } from "@/lib/payments/expired-membership-paymob-reconciliation";
 import { expireEndedActiveMembershipsTx } from "@/lib/membership-lifecycle";
 import { extendRecurringSchedules } from "@/lib/schedule-maintenance";
 
@@ -73,6 +74,7 @@ export async function GET(req: Request) {
     select: {
       id: true,
     },
+    orderBy: [{ pendingExpiresAt: "asc" }, { id: "asc" }],
   });
 
   if (pending.length === 0) {
@@ -88,10 +90,35 @@ export async function GET(req: Request) {
 
   let cancelled = 0;
   let skipped = 0;
+  let paidRecovered = 0;
+  let unresolvedPaymob = 0;
+  let providerInquiries = 0;
+
+  // Rotate through overdue holds so one stuck checkout cannot starve
+  // newer customers. Bound remote inquiries per cron execution.
+  const inquiryBatchSize = 12;
+  const inquiryPages = Math.ceil(pending.length / inquiryBatchSize);
+  const inquiryPage = Math.floor(now.getTime() / 300000) % inquiryPages;
+  const inquiryCandidates = new Set(
+    pending
+      .slice(inquiryPage * inquiryBatchSize, (inquiryPage + 1) * inquiryBatchSize)
+      .map((membership) => membership.id),
+  );
   const failures: string[] = [];
 
   for (const membership of pending) {
     try {
+      if (inquiryCandidates.has(membership.id)) {
+        providerInquiries++;
+        const reconciliation = await reconcileExpiredPaymobMembership(
+          membership.id,
+        );
+        if (reconciliation.kind === "paid_recovered") {
+          paidRecovered++;
+          continue;
+        }
+      }
+
       const result = await cleanupExpiredPendingMembership(
         membership.id,
         now,
@@ -99,6 +126,9 @@ export async function GET(req: Request) {
 
       if (!result.cleaned) {
         skipped++;
+        if (result.reason === "provider_reconciliation_required") {
+          unresolvedPaymob++;
+        }
 
         console.info(
           `[CLEANUP] Membership ${membership.id} skipped: ${result.reason}`,
@@ -163,13 +193,27 @@ export async function GET(req: Request) {
 
   console.info(
     `[CLEANUP] Found ${pending.length}, ` +
-    `cancelled ${cancelled}, skipped ${skipped}, failed ${failures.length}`,
+    `cancelled ${cancelled}, paidRecovered ${paidRecovered}, ` +
+    `unresolvedPaymob ${unresolvedPaymob}, skipped ${skipped}, ` +
+    `failed ${failures.length}`,
   );
+
+  if (unresolvedPaymob > 0) {
+    // Operational escalation: unresolved Paymob holds MUST NOT be treated
+    // as proof of non-payment or silently released by the timeout cron.
+    console.error("[PAYMOB_EXPIRED_MEMBERSHIP_REVIEW_REQUIRED]", {
+      unresolved: unresolvedPaymob,
+      providerInquiries,
+    });
+  }
 
   return NextResponse.json({
     ok: failures.length === 0,
     found: pending.length,
     cancelled,
+    paidRecovered,
+    unresolvedPaymob,
+    providerInquiries,
     skipped,
     failed: failures.length,
     failedMembershipIds: failures,
