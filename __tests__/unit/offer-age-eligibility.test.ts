@@ -71,6 +71,29 @@ describe("offer age eligibility", () => {
     }
   });
 
+  it("rejects future birth dates with maximum-only age rules", () => {
+    const result = evaluateOfferAgeEligibility({
+      requiresBirthDate: true,
+      minAgeYears: null,
+      maxAgeYears: 25,
+      birthDate: new Date("2026-11-10T00:00:00.000Z"),
+      now: NOW,
+    });
+    expect(result.eligible).toBe(false);
+    if (!result.eligible) expect(result.code).toBe("AGE_NOT_ELIGIBLE");
+  });
+
+  it("enforces age bounds even if requiresBirthDate flag is absent", () => {
+    const result = evaluateOfferAgeEligibility({
+      requiresBirthDate: false,
+      minAgeYears: 13,
+      maxAgeYears: 25,
+      birthDate: new Date("2020-01-01T00:00:00.000Z"),
+      now: NOW,
+    });
+    expect(result.eligible).toBe(false);
+  });
+
   it("does not affect offers without an age rule", () => {
     const result = evaluateOfferAgeEligibility({
       requiresBirthDate: false,

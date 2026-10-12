@@ -29,10 +29,18 @@ function testDatabaseUrl() {
     parsed.pathname.replace(/^\//, ""),
   );
 
-  if (database !== "fitzone_test") {
-    throw new Error(
-      `Expected fitzone_test, received ${database}`,
-    );
+  // Fixture writes are allowed only against the same isolated local
+  // MySQL connection used by the imported application helpers.
+  if (
+    parsed.protocol !== "mysql:" ||
+    parsed.hostname !== "127.0.0.1" ||
+    parsed.port !== "3306" ||
+    decodeURIComponent(parsed.username) !== "fitzone_test_user" ||
+    database !== "fitzone_test" ||
+    process.env.APP_ENV !== "test" ||
+    process.env.DATABASE_URL !== value
+  ) {
+    throw new Error("REFUSING: attendance tests require matching local fitzone_test URLs");
   }
 
   return value;

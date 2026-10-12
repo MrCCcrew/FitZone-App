@@ -1051,8 +1051,16 @@ export async function inquirePaymobTransactionByMerchantReference(
     );
   }
 
-  const mappedStatus =
-    mapAcceptanceStatus(transaction);
+  // A successful attempt is not proof of retained funds. Refunded,
+  // voided, partially refunded and provider-error payments need review.
+  const mappedStatus = mapAcceptanceStatus(transaction);
+  const finalPaid = mappedStatus === "paid" &&
+    transaction.success === true && transaction.pending === false &&
+    transaction.error_occured === false && transaction.is_refunded === false &&
+    transaction.is_voided === false &&
+    Number(transaction.refunded_amount_cents ?? 0) === 0;
+  const safeStatus = mappedStatus === "paid" && !finalPaid
+    ? "pending" as const : mappedStatus;
 
   return {
     found: true,
@@ -1061,7 +1069,7 @@ export async function inquirePaymobTransactionByMerchantReference(
      * mapAcceptanceStatus is deliberately normalized to:
      * paid | failed | pending
      */
-    status: mappedStatus,
+    status: safeStatus,
 
     paymobTransactionId:
       transaction.id != null

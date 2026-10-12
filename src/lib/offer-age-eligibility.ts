@@ -120,7 +120,7 @@ export function evaluateOfferAgeEligibility(input: {
     now = new Date(),
   } = input;
 
-  if (!requiresBirthDate) {
+  if (!requiresBirthDate && minAgeYears == null && maxAgeYears == null) {
     return {
       eligible: true,
       ageYears: null,
@@ -165,9 +165,10 @@ export function evaluateOfferAgeEligibility(input: {
       now,
     );
 
+  // Negative ages indicate a future date of birth and cannot qualify.
   const belowMinimum =
-    minAgeYears != null &&
-    ageYears < minAgeYears;
+    ageYears < 0 ||
+    (minAgeYears != null && ageYears < minAgeYears);
 
   const aboveMaximum =
     maxAgeYears != null &&

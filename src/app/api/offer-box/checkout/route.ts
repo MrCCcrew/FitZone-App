@@ -319,13 +319,29 @@ export async function POST(req: Request) {
             ? Number(membership.price)
             : Number(offer.specialPrice ?? 0);
 
-        const finalPrice =
-          offer.specialPrice != null
-            ? Number(offer.specialPrice)
-            : membership?.priceAfter &&
-                membership.priceAfter > 0
-              ? Number(membership.priceAfter)
-              : basePrice;
+        // The membership priceAfter is a base for this Offer, not a
+        // substitute for applying this Offer's percentage/fixed discount.
+        const offerStartingPrice =
+          membership?.priceAfter && membership.priceAfter > 0
+            ? Number(membership.priceAfter)
+            : basePrice;
+        const discount = Number(offer.discount);
+        if (
+          !Number.isFinite(offerStartingPrice) || offerStartingPrice <= 0 ||
+          !Number.isFinite(discount) || discount < 0 ||
+          (offer.type === "percentage" && discount > 100)
+        ) {
+          throw new OfferBoxCheckoutError(
+            "إعدادات سعر العرض غير صالحة.", 409, "OFFER_BOX_INVALID_DISCOUNT",
+          );
+        }
+        const finalPrice = offer.specialPrice != null
+          ? Number(offer.specialPrice)
+          : offer.type === "percentage"
+            ? Math.round((offerStartingPrice * (100 - discount) / 100) * 100) / 100
+            : offer.type === "fixed"
+              ? Math.round(Math.max(0, offerStartingPrice - discount) * 100) / 100
+              : offerStartingPrice;
 
         if (
           !Number.isFinite(finalPrice) ||
