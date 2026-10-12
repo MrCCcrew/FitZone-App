@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   memberships: vi.fn(),
@@ -114,6 +114,7 @@ function attempt() {
 describe("Paymob renewal real handoff race boundary", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.stubEnv("PAYMOB_MEMBERSHIP_INTENTION_RENEWAL_ENABLED", "true");
 
     hold = future();
 
@@ -191,6 +192,31 @@ describe("Paymob renewal real handoff race boundary", () => {
     });
 
     mocks.renew.mockImplementation(async () => renewed());
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("does not contact Live Paymob or modify the payment when renewal is unapproved", async () => {
+    vi.stubEnv("PAYMOB_MEMBERSHIP_INTENTION_RENEWAL_ENABLED", "");
+    const originalPayment = JSON.stringify(payment);
+    expect(await attempt()).toEqual({ kind: "blocked" });
+    expect(JSON.stringify(payment)).toBe(originalPayment);
+    expect(mocks.payments).not.toHaveBeenCalled();
+    expect(mocks.updatePayment).not.toHaveBeenCalled();
+    expect(mocks.renew).not.toHaveBeenCalled();
+    expect(mocks.createPayment).not.toHaveBeenCalled();
+  });
+
+  it("allows normal new membership creation path when no pending hold exists and renewal is disabled", async () => {
+    vi.stubEnv("PAYMOB_MEMBERSHIP_INTENTION_RENEWAL_ENABLED", "");
+    mocks.memberships.mockResolvedValue([]);
+    expect(await attempt()).toEqual({ kind: "none" });
+    expect(mocks.payments).not.toHaveBeenCalled();
+    expect(mocks.updatePayment).not.toHaveBeenCalled();
+    expect(mocks.renew).not.toHaveBeenCalled();
+    expect(mocks.createPayment).not.toHaveBeenCalled();
   });
 
   it("renews the same payment and original membership without new deductions", async () => {
