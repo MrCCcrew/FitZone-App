@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/app-session";
 import { db } from "@/lib/db";
+import { cairoCalendarDateKey } from "@/lib/fitzone-time";
 
 const EGYPT_GOVERNORATES = [
   "القاهرة","الجيزة","الإسكندرية","الدقهلية","البحر الأحمر","البحيرة","الفيوم",
@@ -35,6 +36,9 @@ export async function PATCH(req: Request) {
   }
   if (birthDate !== undefined && isNaN(birthDate.getTime())) {
     return NextResponse.json({ error: "تاريخ الميلاد غير صحيح." }, { status: 400 });
+  }
+  if (birthDate !== undefined && birthDate.toISOString().slice(0, 10) > cairoCalendarDateKey(new Date())) {
+    return NextResponse.json({ error: "لا يمكن حفظ تاريخ ميلاد مستقبلي." }, { status: 400 });
   }
 
   const data: Record<string, unknown> = {};

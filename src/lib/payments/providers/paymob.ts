@@ -1,4 +1,5 @@
 import { findSinglePaidPaymobOrderTransaction } from "@/lib/payments/paymob-order-paid-proof";
+import { isFinalRetainedPaymobPayment } from "@/lib/payments/paymob-retained-payment-proof";
 import { resolvePaymobIntentionExpiration } from "@/lib/payments/paymob-membership-expiration";
 import crypto from "crypto";
 import type {
@@ -1055,10 +1056,7 @@ export async function inquirePaymobTransactionByMerchantReference(
   // voided, partially refunded and provider-error payments need review.
   const mappedStatus = mapAcceptanceStatus(transaction);
   const finalPaid = mappedStatus === "paid" &&
-    transaction.success === true && transaction.pending === false &&
-    transaction.error_occured === false && transaction.is_refunded === false &&
-    transaction.is_voided === false &&
-    Number(transaction.refunded_amount_cents ?? 0) === 0;
+    isFinalRetainedPaymobPayment(transaction);
   const safeStatus = mappedStatus === "paid" && !finalPaid
     ? "pending" as const : mappedStatus;
 

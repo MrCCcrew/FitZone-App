@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/app-session";
 import { asDbTransactionClient, db } from "@/lib/db";
 import { evaluateOfferAgeEligibility } from "@/lib/offer-age-eligibility";
+import { calculateOfferBoxFinalPrice } from "@/lib/payments/offer-box-pricing";
 import { getEligibilityPolicySnapshotForSource } from "@/lib/get-eligible-classes";
 import { buildMembershipCommissionSnapshotTx } from "@/lib/commissions/membership-commission-snapshot-builder";
 import {
@@ -319,29 +320,20 @@ export async function POST(req: Request) {
             ? Number(membership.price)
             : Number(offer.specialPrice ?? 0);
 
-        // The membership priceAfter is a base for this Offer, not a
-        // substitute for applying this Offer's percentage/fixed discount.
-        const offerStartingPrice =
-          membership?.priceAfter && membership.priceAfter > 0
-            ? Number(membership.priceAfter)
-            : basePrice;
-        const discount = Number(offer.discount);
-        if (
-          !Number.isFinite(offerStartingPrice) || offerStartingPrice <= 0 ||
-          !Number.isFinite(discount) || discount < 0 ||
-          (offer.type === "percentage" && discount > 100)
-        ) {
+        let finalPrice: number;
+        try {
+          finalPrice = calculateOfferBoxFinalPrice({
+            offerType: offer.type,
+            discount: Number(offer.discount),
+            specialPrice: offer.specialPrice != null ? Number(offer.specialPrice) : null,
+            membershipPriceAfter: membership?.priceAfter ?? null,
+            basePrice,
+          });
+        } catch {
           throw new OfferBoxCheckoutError(
             "إعدادات سعر العرض غير صالحة.", 409, "OFFER_BOX_INVALID_DISCOUNT",
           );
         }
-        const finalPrice = offer.specialPrice != null
-          ? Number(offer.specialPrice)
-          : offer.type === "percentage"
-            ? Math.round((offerStartingPrice * (100 - discount) / 100) * 100) / 100
-            : offer.type === "fixed"
-              ? Math.round(Math.max(0, offerStartingPrice - discount) * 100) / 100
-              : offerStartingPrice;
 
         if (
           !Number.isFinite(finalPrice) ||
