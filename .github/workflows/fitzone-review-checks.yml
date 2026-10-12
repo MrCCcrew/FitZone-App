@@ -56,6 +56,7 @@ jobs:
             __tests__/unit/lib/payments/expired-membership-paymob-reconciliation.test.ts \
             __tests__/unit/lib/payments/membership-paymob-renewal-race.test.ts \
             __tests__/unit/lib/payments/paymob-production-settings-compatibility.test.ts \
+            __tests__/unit/lib/payments/paymob-existing-live-checkout-contract.test.ts \
             __tests__/unit/lib/payments/membership-checkout-retry-decision.test.ts \
             __tests__/unit/lib/payments/membership-paymob-expired-hold-guard.test.ts \
             __tests__/unit/lib/payments/paymob-intention-renewal-contract.test.ts \
