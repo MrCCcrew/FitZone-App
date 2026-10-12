@@ -115,22 +115,122 @@ export async function cleanupExpiredPendingMembership(
      * This is intentionally fail-closed. A separate reconciliation
      * process must later settle these records.
      */
-    const unresolvedPaymob = await tx.paymentTransaction.findFirst({
+    const paymobPayments = await tx.paymentTransaction.findMany({
       where: {
         membershipId,
         provider: "paymob",
+        purpose: "membership",
       },
+      take: 2,
       select: {
         id: true,
+        status: true,
+        metadata: true,
+        providerReference: true,
+        externalReference: true,
+        providerPayload: true,
       },
     });
 
-    if (unresolvedPaymob) {
-      return {
-        cleaned: false,
-        membershipId,
-        reason: "provider_reconciliation_required",
-      };
+    let manuallyReviewedPaymobPaymentId: string | null = null;
+
+    if (paymobPayments.length > 0) {
+      // Negative proof cannot be inferred from Paymob's last-attempt API.
+      // A pair of separate master-authorized reviewers must cross-check
+      // the full merchant transaction report after the original hold.
+      if (paymobPayments.length !== 1) {
+        return {
+          cleaned: false,
+          membershipId,
+          reason: "provider_reconciliation_required",
+        };
+      }
+
+      const payment = paymobPayments[0];
+      const metadata = parseJson(payment.metadata);
+      const review = metadata?.paymobNoChargeReview;
+      const approval = review && typeof review === "object" && !Array.isArray(review)
+        ? review as Record<string, unknown>
+        : null;
+      const entries = Array.isArray(approval?.approvals)
+        ? approval.approvals
+        : [];
+
+      const validEntries = entries.length === 2 &&
+        entries.every((value): value is { reviewerId: string; reviewedAt: string } =>
+          Boolean(
+            value &&
+            typeof value === "object" &&
+            !Array.isArray(value) &&
+            typeof (value as Record<string, unknown>).reviewerId === "string" &&
+            typeof (value as Record<string, unknown>).reviewedAt === "string",
+          ),
+        );
+
+      const twoDistinctReviewers = validEntries &&
+        entries[0].reviewerId !== entries[1].reviewerId;
+
+      const afterHold = validEntries && entries.every((entry) => {
+        const checkedAt = Date.parse(entry.reviewedAt);
+        return Number.isFinite(checkedAt) &&
+          checkedAt >= membership.pendingExpiresAt!.getTime() + 20 * 60_000 &&
+          checkedAt <= now.getTime();
+      });
+
+      const safelyClosedProviderSession =
+        !["paid", "retrying", "processing", "pending_payment"].includes(payment.status) &&
+        now.getTime() >= membership.pendingExpiresAt.getTime() + 20 * 60_000;
+
+      if (
+        !twoDistinctReviewers ||
+        !afterHold ||
+        !safelyClosedProviderSession ||
+        typeof approval?.reportReference !== "string" ||
+        approval.reportReference.length < 8
+      ) {
+        return {
+          cleaned: false,
+          membershipId,
+          reason: "provider_reconciliation_required",
+        };
+      }
+
+      // Mutually exclude late webhook settlements and admin release.
+      // No customer wallet/seat adjustments occur unless this CAS and
+      // the membership status claim both succeed in the SAME transaction.
+      const paymentClaim = await tx.paymentTransaction.updateMany({
+        where: {
+          id: payment.id,
+          membershipId,
+          provider: "paymob",
+          purpose: "membership",
+          status: payment.status,
+          metadata: payment.metadata,
+          providerReference: payment.providerReference,
+          externalReference: payment.externalReference,
+          providerPayload: payment.providerPayload,
+        },
+        data: {
+          status: "cancelled",
+          metadata: stringifyJson({
+            ...(metadata ?? {}),
+            paymobNoChargeReview: {
+              ...approval,
+              settledAt: now.toISOString(),
+            },
+          }),
+        },
+      });
+
+      if (paymentClaim.count !== 1) {
+        return {
+          cleaned: false,
+          membershipId,
+          reason: "lost_race",
+        };
+      }
+
+      manuallyReviewedPaymobPaymentId = payment.id;
     }
     const claimed = await tx.userMembership.updateMany({
       where: {
@@ -179,16 +279,21 @@ export async function cleanupExpiredPendingMembership(
 
     // Preserve the exact deleted bookings for verified late-payment recovery.
     if (bookings.length > 0) {
-      const paymentTx = await tx.paymentTransaction.findFirst({
-        where: {
-          membershipId,
-          status: { in: ["pending", "requires_action"] },
-        },
-        select: {
-          id: true,
-          metadata: true,
-        },
-      });
+      const paymentTx = manuallyReviewedPaymobPaymentId
+        ? await tx.paymentTransaction.findUnique({
+            where: { id: manuallyReviewedPaymobPaymentId },
+            select: { id: true, metadata: true },
+          })
+        : await tx.paymentTransaction.findFirst({
+            where: {
+              membershipId,
+              status: { in: ["pending", "requires_action"] },
+            },
+            select: {
+              id: true,
+              metadata: true,
+            },
+          });
 
       if (paymentTx) {
         const existingMetadata = parseJson(paymentTx.metadata) ?? {};
