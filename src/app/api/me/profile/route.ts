@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/app-session";
 import { db } from "@/lib/db";
-import { parseProfileBirthDate } from "@/lib/profile-birth-date";
+import { parseOptionalProfileBirthDate } from "@/lib/profile-birth-date";
 
 const EGYPT_GOVERNORATES = [
   "القاهرة","الجيزة","الإسكندرية","الدقهلية","البحر الأحمر","البحيرة","الفيوم",
@@ -26,11 +26,8 @@ export async function PATCH(req: Request) {
   const address    = body.address !== undefined
     ? (body.address ? String(body.address).trim() : null)
     : undefined;
-  // Accept a birth date only as a civil YYYY-MM-DD, never a timestamp.
-  const suppliedBirthDate = body.birthDate !== undefined && body.birthDate !== null;
-  const parsedBirthDate = suppliedBirthDate
-    ? parseProfileBirthDate(body.birthDate)
-    : null;
+  // Empty date inputs remain optional; populated dates must be canonical.
+  const parsedBirthDate = parseOptionalProfileBirthDate(body.birthDate);
 
   // Validate
   if (name !== undefined && name.split(/\s+/).length < 3) {
@@ -50,7 +47,7 @@ export async function PATCH(req: Request) {
   if (gender     !== undefined) data.gender     = gender;
   if (governorate !== undefined) data.governorate = governorate;
   if (address    !== undefined) data.address    = address;
-  if (parsedBirthDate?.ok) data.birthDate = parsedBirthDate.birthDate;
+  if (parsedBirthDate.ok && parsedBirthDate.birthDate) data.birthDate = parsedBirthDate.birthDate;
 
   if (!Object.keys(data).length) {
     return NextResponse.json({ error: "لا توجد بيانات للتحديث." }, { status: 400 });

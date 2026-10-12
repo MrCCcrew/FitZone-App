@@ -21,3 +21,15 @@ export function parseProfileBirthDate(
   }
   return { ok: true, birthDate: date };
 }
+
+// Preserve existing profile-edit behavior: an empty date input must not
+// prevent a customer from updating an unrelated profile field.
+export function parseOptionalProfileBirthDate(
+  value: unknown,
+  now = new Date(),
+): ReturnType<typeof parseProfileBirthDate> | { ok: true; birthDate: null } {
+  if (value === undefined || value === null || value === "") {
+    return { ok: true, birthDate: null };
+  }
+  return parseProfileBirthDate(value, now);
+}
