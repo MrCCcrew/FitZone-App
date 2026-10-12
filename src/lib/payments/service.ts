@@ -3318,6 +3318,15 @@ export async function recoverVerifiedPaymobPayment(
     }
 
     const recoveryMetadata = parseJson(payment.metadata);
+    const manualFinalityReview = recoveryMetadata?.paymobNoChargeReview;
+    if (
+      manualFinalityReview &&
+      typeof manualFinalityReview === "object" &&
+      !Array.isArray(manualFinalityReview) &&
+      typeof (manualFinalityReview as Record<string, unknown>).settledAt === "string"
+    ) {
+      throw new Error("PAYMOB_MANUAL_NO_CHARGE_RELEASE_NEEDS_FINANCE_COMPENSATION");
+    }
     const timeoutSnapshotRaw = recoveryMetadata?.deletedBookingsSnapshot;
     const timeoutSnapshot =
       timeoutSnapshotRaw && typeof timeoutSnapshotRaw === "object"
