@@ -76,10 +76,52 @@ export async function GET(req: Request) {
     byMembership.set(payment.membershipId, entries);
   }
 
+  // A provider-confirmed charge after two-review release requires a
+  // finance refund/compensation decision, never automatic activation.
+  const markedExceptions = await db.paymentTransaction.findMany({
+    where: {
+      provider: "paymob",
+      purpose: "membership",
+      status: "cancelled",
+      metadata: { contains: "paymobManualNoChargeLatePaidAt" },
+    },
+    select: {
+      id: true,
+      membershipId: true,
+      userId: true,
+      amount: true,
+      currency: true,
+      externalReference: true,
+      metadata: true,
+    },
+    orderBy: { updatedAt: "desc" },
+    take: 100,
+  });
+
+  const financialExceptions = markedExceptions.flatMap((payment) => {
+    try {
+      const metadata = JSON.parse(payment.metadata || "{}") as Record<string, unknown>;
+      if (typeof metadata.paymobManualNoChargeLatePaidAt !== "string") return [];
+      return [{
+        transactionId: payment.id,
+        membershipId: payment.membershipId,
+        userId: payment.userId,
+        amount: payment.amount,
+        currency: payment.currency,
+        paymobTransactionId: payment.externalReference,
+        flaggedAt: metadata.paymobManualNoChargeLatePaidAt,
+        actionRequired: "verify_charge_then_refund_or_supervised_entitlement_correction",
+      }];
+    } catch {
+      return [];
+    }
+  });
+
   return NextResponse.json({
     page: requestedPage,
     pageSize: 100,
     totalExpiredHolds,
+    financialExceptions,
     hasMore: (requestedPage + 1) * 100 < totalExpiredHolds,
     requiresFinancialReview: true,
     items: memberships
