@@ -106,7 +106,8 @@ describe("Paymob webhook evidence CAS and paid ownership proof", () => {
     mocks.updateMany.mockImplementation(async ({ where, data }) => {
       if (
         where.status !== payment.status ||
-        where.externalReference !== payment.externalReference ||
+        (where.externalReference !== undefined && where.externalReference !== payment.externalReference) ||
+        (where.metadata !== undefined && where.metadata !== payment.metadata) ||
         (where.providerPayload !== undefined && where.providerPayload !== payment.providerPayload) ||
         (where.providerReference !== undefined && where.providerReference !== payment.providerReference)
       ) {
@@ -194,6 +195,18 @@ describe("Paymob webhook evidence CAS and paid ownership proof", () => {
     const metadata = JSON.parse(payment.metadata || "{}") as Record<string, unknown>;
     expect(typeof metadata.paymobManualNoChargeLatePaidAt).toBe("string");
     expect(metadata.paymobManualNoChargeLatePaidReference).toBe("987654");
+    expect(mocks.updateMany).toHaveBeenCalledTimes(2);
+    expect(mocks.updateMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: "cancelled",
+          metadata: expect.any(String),
+        }),
+        data: expect.objectContaining({
+          metadata: expect.stringContaining("paymobManualNoChargeLatePaidAt"),
+        }),
+      }),
+    );
   });
 
   it("keeps an in-progress renewal claim intact on a late failed attempt", async () => {
