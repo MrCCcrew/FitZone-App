@@ -35,7 +35,13 @@ vi.mock("@/lib/payments/pending-membership-cleanup", () => ({
   cleanupExpiredPendingMembership: mocks.cleanup,
 }));
 
-import { POST } from "@/app/api/admin/payments/expired-membership-reconciliation/route";
+import { POST as routePOST } from "@/app/api/admin/payments/expired-membership-reconciliation/route";
+
+async function POST(request: Request): Promise<Response> {
+  const response = await routePOST(request);
+  if (!response) throw new Error("PAYMOB_REVIEW_ROUTE_DID_NOT_RESPOND");
+  return response;
+}
 
 const payload = {
   action: "approve-no-charge",
