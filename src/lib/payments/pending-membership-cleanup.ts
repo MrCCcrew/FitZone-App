@@ -245,6 +245,11 @@ export async function cleanupExpiredPendingMembership(
     });
 
     if (claimed.count !== 1) {
+      if (manuallyReviewedPaymobPaymentId) {
+        // Do not commit the Paymob cancellation claim without also
+        // claiming the membership. Throw to roll back BOTH DB writes.
+        throw new Error("PAYMOB_MANUAL_RELEASE_MEMBERSHIP_CAS_LOST");
+      }
       return {
         cleaned: false,
         membershipId,
