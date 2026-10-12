@@ -1,4 +1,5 @@
-﻿import { asDbTransactionClient, db } from "@/lib/db";
+import { shouldDeferMembershipPaymentRestore } from "@/lib/payments/membership-retry-financial-policy";
+import { asDbTransactionClient, db } from "@/lib/db";
 import { lockMembershipLifecycleUserTx } from "@/lib/membership-lifecycle-lock";
 import {
   applyMembershipSessionCarryoverTx,
@@ -37,6 +38,10 @@ import {
   listPaymentProviders,
 } from "@/lib/payments/registry";
 import { runPaidMembershipPostActivationReconciliation } from "@/lib/payments/reconciliation-helper";
+import {
+  reconcilePaidOfferBoxPurchase,
+  releaseExpiredOfferBoxPaymentHold,
+} from "@/lib/payments/offer-box-payment";
 import { markFriendOfferParticipantPaid } from "@/lib/payments/friend-offer-payment";
 import { releaseMarketingFriendOfferLockTx } from "@/lib/marketing-conversion-service";
 import {
@@ -65,6 +70,7 @@ type CreatePaymentTransactionInput = {
   cancelUrl?: string | null;
   description?: string | null;
   metadata?: Record<string, unknown> | null;
+  provisionalExpiresAt?: Date | null;
   customer?: {
     name?: string | null;
     email?: string | null;
@@ -790,20 +796,54 @@ export async function restorePaymentBalanceAdjustments(input: {
   });
 }
 
-async function restorePaymentTransactionAdjustments(transactionId: string) {
-  await db.$transaction(async (tx) => {
+export async function restorePaymentTransactionAdjustmentsTx(
+  tx: any,
+  transactionId: string,
+) {
     const transaction = await tx.paymentTransaction.findUnique({
       where: { id: transactionId },
       select: {
         id: true,
         referenceCode: true,
         userId: true,
+        purpose: true,
+        membershipId: true,
         status: true,
         metadata: true,
       },
     });
 
     if (!transaction || transaction.status === "paid") return;
+
+    /*
+     * Membership payment attempts and the 60-minute membership hold
+     * have different lifetimes.
+     *
+     * Do not refund frozen wallet/points adjustments while the
+     * original membership hold is still valid.
+     *
+     * The eventual timeout settlement is handled separately.
+     */
+    if (transaction.purpose === "membership" && transaction.membershipId) {
+      const heldMembership = await tx.userMembership.findUnique({
+        where: { id: transaction.membershipId },
+        select: {
+          status: true,
+          pendingExpiresAt: true,
+        },
+      });
+
+      if (
+        shouldDeferMembershipPaymentRestore({
+          purpose: transaction.purpose,
+          membershipId: transaction.membershipId,
+          membershipStatus: heldMembership?.status ?? null,
+          pendingExpiresAt: heldMembership?.pendingExpiresAt ?? null,
+        })
+      ) {
+        return;
+      }
+    }
 
     const metadata = parseJson(transaction.metadata);
     const adjustments = extractPaymentAdjustments(metadata);
@@ -813,6 +853,37 @@ async function restorePaymentTransactionAdjustments(transactionId: string) {
     )
       return;
 
+    /*
+     * Claim restoration BEFORE crediting the wallet or points.
+     *
+     * The metadata equality predicate is a compare-and-swap guard.
+     * Only one concurrent settlement can claim this transaction's
+     * financial adjustments. The claim and credits share one DB
+     * transaction, so a failure rolls everything back.
+     */
+    const claimedRestoration = await tx.paymentTransaction.updateMany({
+      where: {
+        id: transaction.id,
+        status: { not: "paid" },
+        metadata: transaction.metadata,
+      },
+      data: {
+        metadata: stringifyJson({
+          ...(metadata ?? {}),
+          paymentAdjustments: {
+            ...((metadata?.paymentAdjustments as
+              Record<string, unknown> | undefined) ?? {}),
+            walletAmount: adjustments.walletAmount,
+            pointsCount: adjustments.pointsCount,
+            restoredAt: new Date().toISOString(),
+          },
+        }),
+      },
+    });
+
+    if (claimedRestoration.count !== 1) {
+      return;
+    }
     if (adjustments.walletAmount > 0) {
       const wallet = await tx.wallet.upsert({
         where: { userId: transaction.userId },
@@ -892,24 +963,21 @@ async function restorePaymentTransactionAdjustments(transactionId: string) {
       });
     }
 
-    await tx.paymentTransaction.update({
-      where: { id: transactionId },
-      data: {
-        metadata: stringifyJson({
-          ...(metadata ?? {}),
-          paymentAdjustments: {
-            ...((metadata?.paymentAdjustments as
-              Record<string, unknown> | undefined) ?? {}),
-            walletAmount: adjustments.walletAmount,
-            pointsCount: adjustments.pointsCount,
-            restoredAt: new Date().toISOString(),
-          },
-        }),
-      },
-    });
-  });
+
 }
 
+/*
+ * Preserve the original standalone API.
+ * Timeout cleanup can instead reuse the same settlement logic
+ * inside its existing database transaction.
+ */
+async function restorePaymentTransactionAdjustments(
+  transactionId: string,
+) {
+  await db.$transaction(async (tx) => {
+    await restorePaymentTransactionAdjustmentsTx(tx, transactionId);
+  });
+}
 function toInvoiceDetails(
   value: Record<string, unknown> | null | undefined,
 ): MembershipInvoiceDetails | null {
@@ -1046,6 +1114,39 @@ export async function createPaymentTransaction(
     throw new Error("قيمة الدفع غير صحيحة.");
   }
 
+  /*
+   * Payment checkout expiry must be derived from the original
+   * pending membership hold, never from a new 60-minute timer.
+   */
+  let membershipHoldExpiresAt: Date | null = null;
+
+  if (provider.key === "paymob" && input.purpose === "membership") {
+    if (!input.membershipId) {
+      throw new Error("MEMBERSHIP_CHECKOUT_MISSING_MEMBERSHIP");
+    }
+
+    const heldMembership = await db.userMembership.findUnique({
+      where: { id: input.membershipId },
+      select: {
+        userId: true,
+        status: true,
+        pendingExpiresAt: true,
+      },
+    });
+
+    if (
+      !heldMembership ||
+      heldMembership.userId !== input.userId ||
+      heldMembership.status !== "pending_payment" ||
+      !heldMembership.pendingExpiresAt ||
+      !Number.isFinite(heldMembership.pendingExpiresAt.getTime()) ||
+      heldMembership.pendingExpiresAt.getTime() <= Date.now()
+    ) {
+      throw new Error("MEMBERSHIP_CHECKOUT_ORIGINAL_HOLD_INVALID");
+    }
+
+    membershipHoldExpiresAt = heldMembership.pendingExpiresAt;
+  }
   /* WALLET_TOPUP_BONUS_CHECKOUT_SNAPSHOT */
   let paymentMetadata: Record<string, unknown> = {
     description: input.description ?? null,
@@ -1103,6 +1204,8 @@ export async function createPaymentTransaction(
         returnUrl: input.returnUrl ?? null,
         cancelUrl: input.cancelUrl ?? null,
         metadata: stringifyJson(paymentMetadata),
+        expiresAt:
+          input.provisionalExpiresAt ?? null,
       },
     });
   });
@@ -1112,6 +1215,7 @@ export async function createPaymentTransaction(
     amount: transaction.amount,
     currency: transaction.currency,
     purpose: input.purpose,
+    membershipHoldExpiresAt,
     returnUrl: input.returnUrl ?? null,
     cancelUrl: input.cancelUrl ?? null,
     customer: {
@@ -1131,8 +1235,16 @@ export async function createPaymentTransaction(
     },
   });
 
-  const updated = await db.paymentTransaction.update({
-    where: { id: transaction.id },
+  // PAYMENT_CHECKOUT_CAS_V1: preserve any newer provider settlement.
+  const saved = await db.paymentTransaction.updateMany({
+    where: {
+      id: transaction.id,
+      status: "pending",
+      checkoutUrl: null,
+      providerReference: null,
+      externalReference: null,
+      providerPayload: null,
+    },
     data: {
       status: checkout.status,
       checkoutUrl: checkout.checkoutUrl ?? null,
@@ -1143,6 +1255,21 @@ export async function createPaymentTransaction(
       expiresAt: checkout.expiresAt ?? null,
     },
   });
+
+  const updated = await db.paymentTransaction.findUnique({
+    where: { id: transaction.id },
+  });
+
+  if (!updated) {
+    throw new Error("PAYMENT_CHECKOUT_TRANSACTION_MISSING");
+  }
+
+  if (saved.count !== 1) {
+    if (updated.status === "paid") {
+      return mapPaymentTransaction(updated);
+    }
+    throw new Error("PAYMENT_CHECKOUT_RACE_REQUIRES_RECONCILIATION");
+  }
 
   return mapPaymentTransaction(updated, checkout.message);
 }
@@ -1168,9 +1295,15 @@ export async function verifyPaymentTransaction(transactionId: string) {
     providerPayload: transaction.providerPayload,
   });
 
-  // Store updated references regardless of status
-  await db.paymentTransaction.update({
-    where: { id: transaction.id },
+  // PAYMENT_VERIFY_CAS_V1: compare the complete observed payment state.
+  const referenceClaim = await db.paymentTransaction.updateMany({
+    where: {
+      id: transaction.id,
+      status: transaction.status,
+      providerReference: transaction.providerReference,
+      externalReference: transaction.externalReference,
+      providerPayload: transaction.providerPayload,
+    },
     data: {
       providerReference:
         verification.providerReference ?? transaction.providerReference,
@@ -1181,6 +1314,16 @@ export async function verifyPaymentTransaction(transactionId: string) {
       ),
     },
   });
+
+  if (referenceClaim.count !== 1) {
+    const latest = await db.paymentTransaction.findUnique({
+      where: { id: transaction.id },
+    });
+    if (!latest) {
+      throw new Error("PAYMENT_VERIFY_TRANSACTION_MISSING");
+    }
+    return mapPaymentTransaction(latest);
+  }
 
   // If paid or failed, delegate to updatePaymentTransactionStatus which handles
   // membership activation, order confirmation, notifications, etc.
@@ -1358,6 +1501,22 @@ export async function updatePaymentTransactionStatus(
       await reconcilePaidPrivateSessionApplication({
         transactionId,
         privateSessionApplicationId: retryPrivateSessionApplicationId,
+        paidAt: current.paidAt ?? new Date(),
+      });
+    }
+
+    const retryOfferBoxPurchaseId =
+      typeof retryMetadata?.offerBoxPurchaseId === "string"
+        ? retryMetadata.offerBoxPurchaseId
+        : null;
+
+    if (
+      current?.purpose === "offer_box" &&
+      retryOfferBoxPurchaseId
+    ) {
+      await reconcilePaidOfferBoxPurchase({
+        transactionId,
+        purchaseId: retryOfferBoxPurchaseId,
         paidAt: current.paidAt ?? new Date(),
       });
     }
@@ -1629,10 +1788,18 @@ export async function updatePaymentTransactionStatus(
         const failedMembershipId = current.membershipId;
 
         if (failedMembershipId) {
+          /*
+           * A failed payment attempt must not cancel an otherwise
+           * valid 60-minute membership reservation.
+           *
+           * Checkout retry and financial adjustment handling are
+           * completed separately before this can be released.
+           */
           const membershipClaim = await tx.userMembership.updateMany({
             where: {
               id: failedMembershipId,
               status: "pending_payment",
+              pendingExpiresAt: { lte: new Date() },
             },
             data: {
               status: "cancelled",
@@ -1685,9 +1852,66 @@ export async function updatePaymentTransactionStatus(
         return { payment, paidGuard: false };
       })
     : status === "paid" &&
-        existing?.purpose === "order" &&
-        existing?.orderId
+        existing?.purpose === "offer_box"
       ? await (async () => {
+          /*
+           * One Paymob checkout can have a failed/cancelled attempt
+           * and then succeed on retry.
+           *
+           * Open + failed/cancelled states may therefore become paid.
+           * Authoritative checkout expiry is final and cannot reopen.
+           */
+          const offerBoxPaidClaimableStatuses = [
+            "pending",
+            "pending_payment",
+            "processing",
+            "requires_action",
+            "failed",
+            "cancelled",
+          ];
+
+          const claimed =
+            await db.paymentTransaction.updateMany({
+              where: {
+                id: transactionId,
+                status: {
+                  in: offerBoxPaidClaimableStatuses,
+                },
+              },
+              data: {
+                status: "paid",
+                metadata: stringifyJson({
+                  ...(parseJson(existing?.metadata) ?? {}),
+                  ...(note != null
+                    ? { adminNote: note }
+                    : {}),
+                }),
+                paidAt: new Date(),
+              },
+            });
+
+          const current =
+            await db.paymentTransaction.findUnique({
+              where: { id: transactionId },
+            });
+
+          if (!current) {
+            throw new Error(
+              "معاملة الدفع غير موجودة.",
+            );
+          }
+
+          return {
+            payment: current,
+            paidGuard:
+              claimed.count === 0 &&
+              current.status !== "paid",
+          };
+        })()
+      : status === "paid" &&
+          existing?.purpose === "order" &&
+          existing?.orderId
+        ? await (async () => {
           const paidClaimableStatuses = [
             "pending",
             "pending_payment",
@@ -1735,6 +1959,51 @@ export async function updatePaymentTransactionStatus(
               current.status !== "paid",
           };
         })()
+      : status === "paid" &&
+          existing?.provider === "paymob" &&
+          existing?.purpose === "membership"
+        ? await (async () => {
+            // CAS also serializes a late provider success against an
+            // already-approved manual no-charge release. A cancelled
+            // membership whose frozen wallet was restored must never
+            // become paid without a separate financial recovery review.
+            const noChargeReview = parseJson(existing.metadata)?.paymobNoChargeReview;
+            if (
+              noChargeReview &&
+              typeof noChargeReview === "object" &&
+              !Array.isArray(noChargeReview) &&
+              typeof (noChargeReview as Record<string, unknown>).settledAt === "string"
+            ) {
+              throw new Error("PAYMOB_POST_NO_CHARGE_SETTLEMENT_REQUIRES_FINANCE_REVIEW");
+            }
+
+            const claimed = await db.paymentTransaction.updateMany({
+              where: {
+                id: transactionId,
+                provider: "paymob",
+                purpose: "membership",
+                status: existing.status,
+                metadata: existing.metadata,
+              },
+              data: {
+                status: "paid",
+                paidAt: new Date(),
+                metadata: stringifyJson({
+                  ...(parseJson(existing.metadata) ?? {}),
+                  ...(note != null ? { adminNote: note } : {}),
+                }),
+              },
+            });
+
+            const current = await db.paymentTransaction.findUnique({
+              where: { id: transactionId },
+            });
+            if (!current) throw new Error("PAYMOB_MEMBERSHIP_PAYMENT_DISAPPEARED");
+            return {
+              payment: current,
+              paidGuard: claimed.count !== 1,
+            };
+          })()
       : {
           payment: await db.paymentTransaction.update({
             where: { id: transactionId },
@@ -1814,6 +2083,26 @@ export async function updatePaymentTransactionStatus(
   }
 
   if (isFailureTerminal) {
+    if (
+      status === "expired" &&
+      existing?.purpose === "offer_box"
+    ) {
+      const offerBoxMetadata =
+        parseJson(transaction.metadata);
+
+      const offerBoxPurchaseId =
+        typeof offerBoxMetadata?.offerBoxPurchaseId === "string"
+          ? offerBoxMetadata.offerBoxPurchaseId
+          : null;
+
+      if (offerBoxPurchaseId) {
+        await releaseExpiredOfferBoxPaymentHold({
+          transactionId,
+          purchaseId: offerBoxPurchaseId,
+        });
+      }
+    }
+
     if (!isSupersededStoreOrderFailure) {
       await restorePaymentTransactionAdjustments(transactionId);
 
@@ -1917,6 +2206,28 @@ export async function updatePaymentTransactionStatus(
   // Activate linked membership or order when payment confirmed
   if (status === "paid") {
     await markFriendOfferParticipantPaid(transactionId);
+
+    if (existing?.purpose === "offer_box") {
+      const offerBoxMetadata =
+        parseJson(transaction.metadata);
+
+      const offerBoxPurchaseId =
+        typeof offerBoxMetadata?.offerBoxPurchaseId === "string"
+          ? offerBoxMetadata.offerBoxPurchaseId
+          : null;
+
+      if (!offerBoxPurchaseId) {
+        throw new Error(
+          "OFFER_BOX_PAYMENT_METADATA_MISSING",
+        );
+      }
+
+      await reconcilePaidOfferBoxPurchase({
+        transactionId,
+        purchaseId: offerBoxPurchaseId,
+        paidAt: transaction.paidAt ?? new Date(),
+      });
+    }
 
     if (existing?.membershipId) {
       // ── Activate membership with race condition protection ────────────────
@@ -3007,6 +3318,15 @@ export async function recoverVerifiedPaymobPayment(
     }
 
     const recoveryMetadata = parseJson(payment.metadata);
+    const manualFinalityReview = recoveryMetadata?.paymobNoChargeReview;
+    if (
+      manualFinalityReview &&
+      typeof manualFinalityReview === "object" &&
+      !Array.isArray(manualFinalityReview) &&
+      typeof (manualFinalityReview as Record<string, unknown>).settledAt === "string"
+    ) {
+      throw new Error("PAYMOB_MANUAL_NO_CHARGE_RELEASE_NEEDS_FINANCE_COMPENSATION");
+    }
     const timeoutSnapshotRaw = recoveryMetadata?.deletedBookingsSnapshot;
     const timeoutSnapshot =
       timeoutSnapshotRaw && typeof timeoutSnapshotRaw === "object"

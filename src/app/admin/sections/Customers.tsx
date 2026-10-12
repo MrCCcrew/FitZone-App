@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import type { Customer, CustomerMembershipReport, HealthSurveyResponse } from "../types";
@@ -131,6 +131,21 @@ type ExchangeDayBooking = {
   scheduleId: string;
     sourceBookingIds: string[];
   reason: string;
+};
+type RetroactiveAttendanceSchedule = {
+  id: string;
+  date: string;
+  time: string;
+  className: string;
+  trainerName: string;
+  selectable: boolean;
+  reason: string | null;
+  hasStandaloneReservation: boolean;
+};
+
+type RetroactiveAttendanceModal = {
+  membership: CustomerMembershipReport;
+  schedules: RetroactiveAttendanceSchedule[];
 };
 
 const EMPTY_CUSTOMER: NewCustomer = {
@@ -493,6 +508,20 @@ export default function Customers() {
     useState(false);
   const [classExchangeError, setClassExchangeError] =
     useState<string | null>(null);
+  const [retroactiveAttendanceModal, setRetroactiveAttendanceModal] =
+    useState<RetroactiveAttendanceModal | null>(null);
+
+  const [retroactiveAttendanceSelected, setRetroactiveAttendanceSelected] =
+    useState<string[]>([]);
+
+  const [retroactiveAttendanceLoading, setRetroactiveAttendanceLoading] =
+    useState(false);
+
+  const [retroactiveAttendanceWorking, setRetroactiveAttendanceWorking] =
+    useState(false);
+
+  const [retroactiveAttendanceError, setRetroactiveAttendanceError] =
+    useState<string | null>(null);
 
   const loadCustomers = useCallback(async () => {
     setLoading(true);
@@ -729,6 +758,147 @@ export default function Customers() {
     [loadCustomers, marketingModal],
   );
 
+  const openRetroactiveAttendance =
+    useCallback(
+      async (membership: CustomerMembershipReport) => {
+        setRetroactiveAttendanceModal({
+          membership,
+          schedules: [],
+        });
+
+        setRetroactiveAttendanceSelected([]);
+        setRetroactiveAttendanceError(null);
+        setRetroactiveAttendanceLoading(true);
+
+        try {
+          const response = await fetch(
+            `/api/admin/memberships/retroactive-attendance?userMembershipId=${encodeURIComponent(
+              membership.id,
+            )}&days=120`,
+            {
+              cache: "no-store",
+            },
+          );
+
+          const payload = await response
+            .json()
+            .catch(() => ({}));
+
+          if (!response.ok) {
+            setRetroactiveAttendanceError(
+              payload?.error ??
+                "تعذر تحميل الحصص السابقة.",
+            );
+            return;
+          }
+
+          setRetroactiveAttendanceModal({
+            membership,
+            schedules: Array.isArray(payload?.schedules)
+              ? payload.schedules
+              : [],
+          });
+        } catch {
+          setRetroactiveAttendanceError(
+            "تعذر الاتصال بخدمة الحضور السابق.",
+          );
+        } finally {
+          setRetroactiveAttendanceLoading(false);
+        }
+      },
+      [],
+    );
+
+  const toggleRetroactiveAttendance =
+    useCallback((scheduleId: string) => {
+      setRetroactiveAttendanceSelected((current) =>
+        current.includes(scheduleId)
+          ? current.filter((id) => id !== scheduleId)
+          : [...current, scheduleId],
+      );
+    }, []);
+
+  const submitRetroactiveAttendance =
+    useCallback(async () => {
+      if (
+        !retroactiveAttendanceModal ||
+        retroactiveAttendanceSelected.length === 0
+      ) {
+        setRetroactiveAttendanceError(
+          "اختر حصة سابقة واحدة على الأقل.",
+        );
+        return;
+      }
+
+      const count = retroactiveAttendanceSelected.length;
+
+      const confirmed = window.confirm(
+        `سيتم احتساب ${count} حصة سابقة كحضور فعلي.` +
+          "\n\nإذا كان الاشتراك محجوزًا بالكامل، سيُلغي النظام أبعد الحجوزات المستقبلية العادية بالعدد اللازم فقط حتى لا يتجاوز إجمالي حصص الاشتراك." +
+          "\n\nهل تريد المتابعة؟",
+      );
+
+      if (!confirmed) return;
+
+      setRetroactiveAttendanceWorking(true);
+      setRetroactiveAttendanceError(null);
+
+      try {
+        const response = await fetch(
+          "/api/admin/memberships/retroactive-attendance",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              userMembershipId:
+                retroactiveAttendanceModal.membership.id,
+              scheduleIds:
+                retroactiveAttendanceSelected,
+            }),
+          },
+        );
+
+        const payload = await response
+          .json()
+          .catch(() => ({}));
+
+        if (!response.ok) {
+          setRetroactiveAttendanceError(
+            payload?.error ??
+              "تعذر احتساب الحضور السابق.",
+          );
+          return;
+        }
+
+        const cancelledCount =
+          Array.isArray(payload?.cancelledFutureBookingIds)
+            ? payload.cancelledFutureBookingIds.length
+            : 0;
+
+        setRetroactiveAttendanceModal(null);
+        setRetroactiveAttendanceSelected([]);
+
+        await loadCustomers();
+
+        window.alert(
+          cancelledCount > 0
+            ? `تم احتساب ${payload?.addedAttendanceCount ?? count} حصة سابقة بنجاح، وإلغاء ${cancelledCount} حجز مستقبلي بعيد للحفاظ على رصيد الاشتراك.`
+            : `تم احتساب ${payload?.addedAttendanceCount ?? count} حصة سابقة بنجاح.`,
+        );
+      } catch {
+        setRetroactiveAttendanceError(
+          "تعذر الاتصال بخدمة الحضور السابق.",
+        );
+      } finally {
+        setRetroactiveAttendanceWorking(false);
+      }
+    }, [
+      loadCustomers,
+      retroactiveAttendanceModal,
+      retroactiveAttendanceSelected,
+    ]);
   const loadClassExchangeSources =
     useCallback(
       async (
@@ -2187,6 +2357,27 @@ export default function Customers() {
                           : "—"}
                       </div>
 
+                      {userRole === "admin" &&
+                       membership.status === "active" &&
+                       membership.sessionsTotal !== null ? (
+                        <div className="mt-4">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void openRetroactiveAttendance(
+                                membership,
+                              )
+                            }
+                            className="w-full rounded-xl border border-sky-400/30 bg-sky-500/10 px-4 py-3 text-sm font-black text-sky-200 transition-colors hover:bg-sky-500/20"
+                          >
+                            احتساب حضور سابق
+                          </button>
+
+                          <div className="mt-2 text-center text-[11px] text-[#d7aabd]">
+                            للحصص التي حضرتها العميلة قبل ربطها بهذا الاشتراك
+                          </div>
+                        </div>
+                      ) : null}
                       {canExecuteClassExchange &&
                        membership.status === "active" &&
                       membership.sessionsTotal !== null ? (
@@ -2220,6 +2411,171 @@ export default function Customers() {
               )}
             </div>
 
+            {retroactiveAttendanceModal ? (
+              <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+                <button
+                  type="button"
+                  aria-label="إغلاق"
+                  className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+                  onClick={() => {
+                    if (!retroactiveAttendanceWorking) {
+                      setRetroactiveAttendanceModal(null);
+                    }
+                  }}
+                />
+
+                <div className="relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-[26px] border border-sky-400/20 bg-[rgba(56,18,34,0.99)] p-6 shadow-[0_24px_70px_rgba(17,5,10,0.48)]">
+                  <div className="mb-5 flex items-start justify-between gap-4">
+                    <div>
+                      <h3 className="text-lg font-black text-[#fff4f8]">
+                        احتساب حضور سابق
+                      </h3>
+
+                      <div className="mt-1 text-xs text-[#d7aabd]">
+                        {retroactiveAttendanceModal.membership.name}
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={retroactiveAttendanceWorking}
+                      onClick={() =>
+                        setRetroactiveAttendanceModal(null)
+                      }
+                      className="text-2xl leading-none text-[#d7aabd] hover:text-white disabled:opacity-40"
+                    >
+                      ×
+                    </button>
+                  </div>
+
+                  <div className="mb-4 rounded-2xl border border-sky-400/20 bg-sky-500/10 p-4 text-xs leading-6 text-sky-100">
+                    اختر فقط الحصص التي حضرتها العميلة فعليًا.
+                    سيتم احتسابها من رصيد الاشتراك مع الحفاظ على إجمالي عدد الحصص.
+                  </div>
+
+                  {retroactiveAttendanceError ? (
+                    <div className="mb-4 rounded-xl border border-rose-400/25 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+                      {retroactiveAttendanceError}
+                    </div>
+                  ) : null}
+
+                  {retroactiveAttendanceLoading ? (
+                    <div className="py-8 text-center text-sm text-[#d7aabd]">
+                      جاري تحميل الحصص السابقة...
+                    </div>
+                  ) : retroactiveAttendanceModal.schedules.length === 0 ? (
+                    <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-6 text-center text-sm text-[#d7aabd]">
+                      لا توجد حصص سابقة مؤهلة خلال آخر 120 يومًا.
+                    </div>
+                  ) : (
+                    <div className="max-h-[52vh] space-y-2 overflow-y-auto">
+                      {retroactiveAttendanceModal.schedules.map(
+                        (schedule) => {
+                          const selected =
+                            retroactiveAttendanceSelected.includes(
+                              schedule.id,
+                            );
+
+                          return (
+                            <label
+                              key={schedule.id}
+                              className={`flex gap-3 rounded-xl border px-4 py-3 ${
+                                schedule.selectable
+                                  ? "cursor-pointer border-white/10 bg-black/20 hover:border-sky-400/30"
+                                  : "cursor-not-allowed border-white/5 bg-black/10 opacity-50"
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selected}
+                                disabled={
+                                  !schedule.selectable ||
+                                  retroactiveAttendanceWorking
+                                }
+                                onChange={() =>
+                                  toggleRetroactiveAttendance(
+                                    schedule.id,
+                                  )
+                                }
+                                className="mt-1 h-4 w-4"
+                              />
+
+                              <div className="min-w-0 flex-1">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <span className="font-bold text-[#fff4f8]">
+                                    {schedule.className}
+                                  </span>
+
+                                  <span className="text-xs text-sky-200">
+                                    {formatDate(schedule.date)}
+                                    {" — "}
+                                    {schedule.time}
+                                  </span>
+                                </div>
+
+                                {schedule.trainerName ? (
+                                  <div className="mt-1 text-xs text-[#d7aabd]">
+                                    المدربة: {schedule.trainerName}
+                                  </div>
+                                ) : null}
+
+                                {schedule.hasStandaloneReservation ? (
+                                  <div className="mt-1 text-[11px] text-emerald-300">
+                                    يوجد حجز سابق مستقل وسيتم ربطه بالاشتراك.
+                                  </div>
+                                ) : null}
+
+                                {schedule.reason ? (
+                                  <div className="mt-1 text-[11px] text-rose-300">
+                                    {schedule.reason}
+                                  </div>
+                                ) : null}
+                              </div>
+                            </label>
+                          );
+                        },
+                      )}
+                    </div>
+                  )}
+
+                  <div className="mt-5 rounded-xl bg-black/25 px-4 py-3 text-sm text-[#fff4f8]">
+                    الحصص المحددة:{" "}
+                    <span className="font-black text-sky-300">
+                      {retroactiveAttendanceSelected.length}
+                    </span>
+                  </div>
+
+                  <div className="mt-5 flex gap-3">
+                    <button
+                      type="button"
+                      disabled={
+                        retroactiveAttendanceWorking ||
+                        retroactiveAttendanceSelected.length === 0
+                      }
+                      onClick={() =>
+                        void submitRetroactiveAttendance()
+                      }
+                      className="flex-1 rounded-xl bg-sky-600 px-4 py-3 text-sm font-black text-white hover:bg-sky-500 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      {retroactiveAttendanceWorking
+                        ? "جارٍ الاحتساب..."
+                        : "تأكيد احتساب الحضور"}
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={retroactiveAttendanceWorking}
+                      onClick={() =>
+                        setRetroactiveAttendanceModal(null)
+                      }
+                      className="rounded-xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-bold text-[#d7aabd] hover:bg-white/10 disabled:opacity-40"
+                    >
+                      إلغاء
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
             {classExchangeModal ? (
               <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
                 <button
