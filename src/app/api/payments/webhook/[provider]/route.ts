@@ -255,6 +255,37 @@ export async function POST(req: Request, context: { params: Promise<{ provider: 
       }
 
       if (typeof settledAt === "string") {
+        // Persist the exception for the master-authorized finance queue.
+        // Provider proof was already checked before storing this callback.
+        const current = await db.paymentTransaction.findUnique({
+          where: { id: result.transactionId },
+          select: { metadata: true },
+        });
+        if (current?.metadata) {
+          try {
+            const stored = JSON.parse(current.metadata) as Record<string, unknown>;
+            await db.paymentTransaction.updateMany({
+              where: {
+                id: result.transactionId,
+                status: "cancelled",
+                metadata: current.metadata,
+              },
+              data: {
+                metadata: JSON.stringify({
+                  ...stored,
+                  paymobManualNoChargeLatePaidAt: new Date().toISOString(),
+                  paymobManualNoChargeLatePaidReference: updated.externalReference,
+                }),
+              },
+            });
+          } catch (error) {
+            console.error("[PAYMOB_MANUAL_RELEASE_EXCEPTION_RECORD_FAILED]", {
+              transactionId: result.transactionId,
+              errorType: error instanceof Error ? error.name : "unknown",
+            });
+          }
+        }
+
         console.error("[PAYMOB_POST_MANUAL_RELEASE_CHARGE_REQUIRES_FINANCE_REVIEW]", {
           transactionId: result.transactionId,
         });
