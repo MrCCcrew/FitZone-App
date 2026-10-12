@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/app-session";
 import { db } from "@/lib/db";
-import { cairoCalendarDateKey } from "@/lib/fitzone-time";
+import { parseProfileBirthDate } from "@/lib/profile-birth-date";
 
 const EGYPT_GOVERNORATES = [
   "القاهرة","الجيزة","الإسكندرية","الدقهلية","البحر الأحمر","البحيرة","الفيوم",
@@ -26,19 +26,22 @@ export async function PATCH(req: Request) {
   const address    = body.address !== undefined
     ? (body.address ? String(body.address).trim() : null)
     : undefined;
-  const birthDate  = body.birthDate
-    ? new Date(String(body.birthDate))
-    : undefined;
+  // Accept a birth date only as a civil YYYY-MM-DD, never a timestamp.
+  const suppliedBirthDate = body.birthDate !== undefined && body.birthDate !== null;
+  const parsedBirthDate = suppliedBirthDate
+    ? parseProfileBirthDate(body.birthDate)
+    : null;
 
   // Validate
   if (name !== undefined && name.split(/\s+/).length < 3) {
     return NextResponse.json({ error: "يجب إدخال ثلاثة أسماء على الأقل." }, { status: 400 });
   }
-  if (birthDate !== undefined && isNaN(birthDate.getTime())) {
-    return NextResponse.json({ error: "تاريخ الميلاد غير صحيح." }, { status: 400 });
-  }
-  if (birthDate !== undefined && birthDate.toISOString().slice(0, 10) > cairoCalendarDateKey(new Date())) {
-    return NextResponse.json({ error: "لا يمكن حفظ تاريخ ميلاد مستقبلي." }, { status: 400 });
+  if (parsedBirthDate && !parsedBirthDate.ok) {
+    return NextResponse.json({
+      error: parsedBirthDate.error === "FUTURE_BIRTH_DATE"
+        ? "لا يمكن حفظ تاريخ ميلاد مستقبلي."
+        : "تاريخ الميلاد غير صحيح.",
+    }, { status: 400 });
   }
 
   const data: Record<string, unknown> = {};
@@ -47,7 +50,7 @@ export async function PATCH(req: Request) {
   if (gender     !== undefined) data.gender     = gender;
   if (governorate !== undefined) data.governorate = governorate;
   if (address    !== undefined) data.address    = address;
-  if (birthDate  !== undefined) data.birthDate  = birthDate;
+  if (parsedBirthDate?.ok) data.birthDate = parsedBirthDate.birthDate;
 
   if (!Object.keys(data).length) {
     return NextResponse.json({ error: "لا توجد بيانات للتحديث." }, { status: 400 });
