@@ -1,0 +1,61 @@
+name: FitZone Review Safety Gate
+
+on:
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fitzone-review-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  safe-static-and-unit:
+    name: TypeScript and Payment Unit Safety
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      APP_ENV: test
+      NODE_ENV: test
+      NEXT_TELEMETRY_DISABLED: "1"
+      DATABASE_URL: mysql://blocked:blocked@127.0.0.1:1/compile_only
+      TEST_DATABASE_URL: mysql://blocked:blocked@127.0.0.1:1/compile_only
+      # NEVER put Paymob credentials, live URLs or Production DB connections in this workflow.
+      PAYMOB_ENV: test
+    steps:
+      - name: Check out PR
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install exact lockfile
+        run: npm ci --no-audit --no-fund
+      - name: Generate isolated Prisma client
+        run: npx prisma generate
+      - name: TypeScript
+        run: node node_modules/typescript/bin/tsc --noEmit --pretty false
+      - name: Focused payment, membership and offer unit regression
+        run: |
+          node node_modules/vitest/vitest.mjs run \
+            __tests__/unit/api/expired-membership-paymob-finance-review.test.ts \
+            __tests__/unit/api/expired-membership-paymob-reconciliation-route.test.ts \
+            __tests__/unit/api/paymob-webhook-evidence-cas.test.ts \
+            __tests__/unit/lib/payments/expired-membership-paymob-reconciliation.test.ts \
+            __tests__/unit/lib/payments/membership-paymob-renewal-race.test.ts \
+            __tests__/unit/lib/payments/membership-checkout-retry-decision.test.ts \
+            __tests__/unit/lib/payments/membership-paymob-expired-hold-guard.test.ts \
+            __tests__/unit/lib/payments/paymob-intention-renewal-contract.test.ts \
+            __tests__/unit/lib/payments/paymob-order-paid-proof.test.ts \
+            __tests__/unit/lib/payments/paymob-transaction-identity.test.ts \
+            __tests__/unit/offer-box-frozen-eligibility.contract.test.ts \
+            __tests__/unit/offer-box-purchases.test.ts \
+            --maxWorkers=2 --reporter=dot
