@@ -27,7 +27,7 @@ import {
 } from "@/lib/ai-coach/ui-action-dispatcher";
 import { COACH_PAGES } from "@/lib/ai-coach/page-registry";
 import { formatTime12Hour } from "@/lib/time-format";
-import { cairoCalendarDateKey } from "@/lib/fitzone-time";
+import { cairoCalendarDateKey, scheduleSlotInstant } from "@/lib/fitzone-time";
 import AccountOfferBoxPurchases from "@/components/AccountOfferBoxPurchases";
 import { resolveBookingPolicy } from "@/lib/booking/booking-policy";
 
