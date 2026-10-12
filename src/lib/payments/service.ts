@@ -1959,6 +1959,51 @@ export async function updatePaymentTransactionStatus(
               current.status !== "paid",
           };
         })()
+      : status === "paid" &&
+          existing?.provider === "paymob" &&
+          existing?.purpose === "membership"
+        ? await (async () => {
+            // CAS also serializes a late provider success against an
+            // already-approved manual no-charge release. A cancelled
+            // membership whose frozen wallet was restored must never
+            // become paid without a separate financial recovery review.
+            const noChargeReview = parseJson(existing.metadata)?.paymobNoChargeReview;
+            if (
+              noChargeReview &&
+              typeof noChargeReview === "object" &&
+              !Array.isArray(noChargeReview) &&
+              typeof (noChargeReview as Record<string, unknown>).settledAt === "string"
+            ) {
+              throw new Error("PAYMOB_POST_NO_CHARGE_SETTLEMENT_REQUIRES_FINANCE_REVIEW");
+            }
+
+            const claimed = await db.paymentTransaction.updateMany({
+              where: {
+                id: transactionId,
+                provider: "paymob",
+                purpose: "membership",
+                status: existing.status,
+                metadata: existing.metadata,
+              },
+              data: {
+                status: "paid",
+                paidAt: new Date(),
+                metadata: stringifyJson({
+                  ...(parseJson(existing.metadata) ?? {}),
+                  ...(note != null ? { adminNote: note } : {}),
+                }),
+              },
+            });
+
+            const current = await db.paymentTransaction.findUnique({
+              where: { id: transactionId },
+            });
+            if (!current) throw new Error("PAYMOB_MEMBERSHIP_PAYMENT_DISAPPEARED");
+            return {
+              payment: current,
+              paidGuard: claimed.count !== 1,
+            };
+          })()
       : {
           payment: await db.paymentTransaction.update({
             where: { id: transactionId },
