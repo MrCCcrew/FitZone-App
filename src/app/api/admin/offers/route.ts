@@ -22,6 +22,117 @@ function normalizeAllowedClassTypes(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return [...new Set(value.map((item) => String(item).trim().toLowerCase()).filter(Boolean))];
 }
+type OfferAgeRule = {
+  requiresBirthDate: boolean;
+  minAgeYears: number | null;
+  maxAgeYears: number | null;
+};
+
+const DEFAULT_OFFER_AGE_RULE: OfferAgeRule = {
+  requiresBirthDate: false,
+  minAgeYears: null,
+  maxAgeYears: null,
+};
+
+class OfferAgeRuleError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "OfferAgeRuleError";
+  }
+}
+
+function normalizeAgeValue(
+  value: unknown,
+  fieldLabel: string,
+): number | null {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+
+  const numeric = Number(value);
+
+  if (
+    !Number.isInteger(numeric) ||
+    numeric < 0 ||
+    numeric > 120
+  ) {
+    throw new OfferAgeRuleError(
+      `${fieldLabel} must be an integer from 0 to 120.`,
+    );
+  }
+
+  return numeric;
+}
+
+function resolveOfferAgeRule(
+  body: Record<string, unknown>,
+  current: OfferAgeRule = DEFAULT_OFFER_AGE_RULE,
+): OfferAgeRule {
+  const requiresBirthDate =
+    body.requiresBirthDate !== undefined
+      ? body.requiresBirthDate === true
+      : current.requiresBirthDate;
+
+  if (!requiresBirthDate) {
+    return {
+      requiresBirthDate: false,
+      minAgeYears: null,
+      maxAgeYears: null,
+    };
+  }
+
+  const minAgeYears =
+    body.minAgeYears !== undefined
+      ? normalizeAgeValue(
+          body.minAgeYears,
+          "Minimum age",
+        )
+      : current.minAgeYears;
+
+  const maxAgeYears =
+    body.maxAgeYears !== undefined
+      ? normalizeAgeValue(
+          body.maxAgeYears,
+          "Maximum age",
+        )
+      : current.maxAgeYears;
+
+  if (
+    minAgeYears != null &&
+    maxAgeYears != null &&
+    minAgeYears > maxAgeYears
+  ) {
+    throw new OfferAgeRuleError(
+      "Minimum age cannot be greater than maximum age.",
+    );
+  }
+
+  return {
+    requiresBirthDate: true,
+    minAgeYears,
+    maxAgeYears,
+  };
+}
+
+function normalizeOfferAgeRow(
+  row:
+    | {
+        requiresBirthDate: boolean | number;
+        minAgeYears: number | null;
+        maxAgeYears: number | null;
+      }
+    | undefined,
+): OfferAgeRule {
+  if (!row) return DEFAULT_OFFER_AGE_RULE;
+
+  return {
+    requiresBirthDate:
+      row.requiresBirthDate === true ||
+      Number(row.requiresBirthDate) === 1,
+    minAgeYears: row.minAgeYears ?? null,
+    maxAgeYears: row.maxAgeYears ?? null,
+  };
+}
 
 
 function mapOffer(
@@ -41,6 +152,7 @@ function mapOffer(
     specialPrice: number | null;
     maxSubscribers: number | null;
     currentSubscribers: number;
+    offerBoxEnabled?: boolean | number;
     image: string | null;
     showOnHome: boolean;
     showMaxSubscribers: boolean;
@@ -59,6 +171,7 @@ function mapOffer(
       isActive: boolean;
     } | null;
   },
+  ageRule: OfferAgeRule = DEFAULT_OFFER_AGE_RULE,
 ) {
   const parseFeatures = (raw: string | null | undefined): string[] => {
     if (!raw) return [];
@@ -81,6 +194,9 @@ function mapOffer(
     specialPrice: offer.specialPrice,
     maxSubscribers: offer.maxSubscribers,
     currentSubscribers: offer.currentSubscribers,
+    offerBoxEnabled:
+      offer.offerBoxEnabled === true ||
+      Number(offer.offerBoxEnabled) === 1,
     image: offer.image,
     showOnHome: offer.showOnHome,
     showMaxSubscribers: offer.showMaxSubscribers,
@@ -98,6 +214,9 @@ function mapOffer(
     friendOfferEnabled: offer.friendOfferConfig?.isActive === true,
     friendRequiredMembers: offer.friendOfferConfig?.requiredMembers ?? 2,
     friendInviteExpiryHours: offer.friendOfferConfig?.inviteExpiryHours ?? 24,
+    requiresBirthDate: ageRule.requiresBirthDate,
+    minAgeYears: ageRule.minAgeYears,
+    maxAgeYears: ageRule.maxAgeYears,
   };
 }
 
@@ -121,7 +240,40 @@ export async function GET() {
     orderBy: [{ showOnHome: "desc" }, { expiresAt: "asc" }],
   });
 
-  return NextResponse.json(offers.map(mapOffer));
+  const ageRows =
+    await db.$queryRaw<
+      Array<{
+        id: string;
+        requiresBirthDate: boolean | number;
+        minAgeYears: number | null;
+        maxAgeYears: number | null;
+      }>
+    >`
+      SELECT
+        id,
+        requiresBirthDate,
+        minAgeYears,
+        maxAgeYears
+      FROM Offer
+    `;
+
+  const ageByOfferId =
+    new Map<string, OfferAgeRule>(
+      ageRows.map((row) => [
+        row.id,
+        normalizeOfferAgeRow(row),
+      ]),
+    );
+
+  return NextResponse.json(
+    offers.map((offer) =>
+      mapOffer(
+        offer,
+        ageByOfferId.get(offer.id) ??
+          DEFAULT_OFFER_AGE_RULE,
+      ),
+    ),
+  );
 }
 
 export async function POST(req: Request) {
@@ -141,6 +293,7 @@ export async function POST(req: Request) {
     const friendOfferEnabled = body.friendOfferEnabled === true;
     const friendRequiredMembers = Number(body.friendRequiredMembers ?? 2);
     const friendInviteExpiryHours = Number(body.friendInviteExpiryHours ?? 24);
+    const offerBoxEnabled = body.offerBoxEnabled === true;
 
     if (friendOfferEnabled && type !== "special") {
       return NextResponse.json(
@@ -174,6 +327,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "أدخلي قيمة الاشتراك الخاصة بالعرض." }, { status: 400 });
     }
 
+    const ageRule = resolveOfferAgeRule(body);
+
     const allowedClassIds = normalizeAllowedClassTypes(body.allowedClassIds);
     if (allowedClassIds.length > 0) {
       const found = await db.class.findMany({
@@ -190,7 +345,8 @@ export async function POST(req: Request) {
       }
     }
 
-    const created = await db.offer.create({
+    const created = await db.$transaction(async (tx) => {
+      const created = await tx.offer.create({
       data: {
         title,
         titleEn: typeof body.titleEn === "string" ? body.titleEn.trim() : "",
@@ -206,6 +362,7 @@ export async function POST(req: Request) {
         specialPrice: body.specialPrice != null && body.specialPrice !== "" ? Number(body.specialPrice) : null,
         maxSubscribers: body.maxSubscribers != null && body.maxSubscribers !== "" ? Number(body.maxSubscribers) : null,
         currentSubscribers: Number(body.currentSubscribers ?? 0),
+        offerBoxEnabled,
         image: typeof body.image === "string" && body.image.trim() ? body.image.trim() : null,
         showOnHome: Boolean(body.showOnHome),
         showMaxSubscribers: body.showMaxSubscribers !== false,
@@ -241,12 +398,32 @@ export async function POST(req: Request) {
           },
         },
       },
+      });
+
+      await tx.$executeRaw`
+        UPDATE Offer
+        SET
+          requiresBirthDate = ${ageRule.requiresBirthDate},
+          minAgeYears = ${ageRule.minAgeYears},
+          maxAgeYears = ${ageRule.maxAgeYears}
+        WHERE id = ${created.id}
+      `;
+
+      return created;
     });
+
 
     void logAudit({ action: "create", targetType: "offer", targetId: created.id, details: { title: created.title } });
     clearPublicApiCache();
-    return NextResponse.json(mapOffer(created));
+    return NextResponse.json(mapOffer(created, ageRule));
   } catch (error) {
+    if (error instanceof OfferAgeRuleError) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: 400 },
+      );
+    }
+
     console.error("[ADMIN_OFFERS_POST]", error);
     return NextResponse.json({ error: "تعذر حفظ العرض حالياً." }, { status: 500 });
   }
@@ -271,6 +448,39 @@ export async function PATCH(req: Request) {
     if (!current) {
       return NextResponse.json({ error: "العرض غير موجود." }, { status: 404 });
     }
+
+    const currentAgeRows =
+      await db.$queryRaw<
+        Array<{
+          requiresBirthDate: boolean | number;
+          minAgeYears: number | null;
+          maxAgeYears: number | null;
+        }>
+      >`
+        SELECT
+          requiresBirthDate,
+          minAgeYears,
+          maxAgeYears
+        FROM Offer
+        WHERE id = ${id}
+        LIMIT 1
+      `;
+
+    const currentAgeRule =
+      normalizeOfferAgeRow(currentAgeRows[0]);
+
+    const agePatchRequested =
+      body.requiresBirthDate !== undefined ||
+      body.minAgeYears !== undefined ||
+      body.maxAgeYears !== undefined;
+
+    const ageRule =
+      agePatchRequested
+        ? resolveOfferAgeRule(
+            body,
+            currentAgeRule,
+          )
+        : currentAgeRule;
 
     const currentType = normalizeOfferType(current.type);
     const newType = body.type !== undefined ? normalizeOfferType(String(body.type)) : currentType;
@@ -346,6 +556,7 @@ export async function PATCH(req: Request) {
       data.maxSubscribers = body.maxSubscribers != null && body.maxSubscribers !== "" ? Number(body.maxSubscribers) : null;
     }
     if (body.currentSubscribers !== undefined) data.currentSubscribers = Number(body.currentSubscribers ?? 0);
+    if (body.offerBoxEnabled !== undefined) data.offerBoxEnabled = body.offerBoxEnabled === true;
     if (body.image !== undefined) data.image = body.image ? String(body.image).trim() : null;
     if (body.showOnHome !== undefined) data.showOnHome = Boolean(body.showOnHome);
     if (body.showMaxSubscribers !== undefined) data.showMaxSubscribers = Boolean(body.showMaxSubscribers);
@@ -390,7 +601,8 @@ export async function PATCH(req: Request) {
       };
     }
 
-    const updated = await db.offer.update({
+    const updated = await db.$transaction(async (tx) => {
+      const updated = await tx.offer.update({
       where: { id },
       data,
       include: {
@@ -405,12 +617,34 @@ export async function PATCH(req: Request) {
           },
         },
       },
+      });
+
+      if (agePatchRequested) {
+        await tx.$executeRaw`
+          UPDATE Offer
+          SET
+            requiresBirthDate = ${ageRule.requiresBirthDate},
+            minAgeYears = ${ageRule.minAgeYears},
+            maxAgeYears = ${ageRule.maxAgeYears}
+          WHERE id = ${id}
+        `;
+      }
+
+      return updated;
     });
+
 
     void logAudit({ action: "update", targetType: "offer", targetId: id, details: { title: updated.title, changes: Object.keys(data) } });
     clearPublicApiCache();
-    return NextResponse.json(mapOffer(updated));
+    return NextResponse.json(mapOffer(updated, ageRule));
   } catch (error) {
+    if (error instanceof OfferAgeRuleError) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: 400 },
+      );
+    }
+
     console.error("[ADMIN_OFFERS_PATCH]", error);
     return NextResponse.json({ error: "تعذر تحديث العرض حالياً." }, { status: 500 });
   }
