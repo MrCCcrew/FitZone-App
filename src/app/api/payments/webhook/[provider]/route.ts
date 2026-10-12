@@ -75,13 +75,91 @@ export async function POST(req: Request, context: { params: Promise<{ provider: 
       return NextResponse.json({ received: true });
     }
 
-    // Save webhook metadata without destroying checkout evidence such as
-    // Paymob Unified Checkout intentionId stored in providerPayload.
+    // Persist provider evidence without overwriting newer Paymob state.
+    // Paymob's signed callback is an event, not proof that it owns the
+    // current membership/order or that its amount matches this payment.
     if (result.providerReference || result.externalReference || result.payload) {
       const existingPayment = await db.paymentTransaction.findUnique({
         where: { id: result.transactionId },
-        select: { providerPayload: true },
+        select: {
+          provider: true,
+          status: true,
+          providerPayload: true,
+          providerReference: true,
+          externalReference: true,
+          amount: true,
+          currency: true,
+          metadata: true,
+        },
       });
+
+      if (providerKey === "paymob") {
+        if (!existingPayment || existingPayment.provider !== "paymob") {
+          console.warn("[PAYMOB_WEBHOOK_OWNER_MISMATCH]", {
+            transactionId: result.transactionId,
+          });
+          return NextResponse.json({ received: true });
+        }
+
+        // A confirmed payment must never be replaced by a late failed
+        // attempt (or by a different acceptance transaction ID).
+        if (existingPayment.status === "paid") {
+          if (
+            result.status !== "paid" ||
+            existingPayment.externalReference !== result.externalReference
+          ) {
+            return NextResponse.json({ received: true });
+          }
+        } else if (existingPayment.status === "retrying" && result.status !== "paid") {
+          // Preserve the durable renewal claim for later reconciliation.
+          return NextResponse.json({ received: true });
+        } else if (result.status === "paid") {
+          if (!result.externalReference) {
+            return NextResponse.json({ received: true });
+          }
+
+          // Verify against Paymob's own transaction endpoint BEFORE storing
+          // the callback's reference. This checks the amount, currency,
+          // local merchant reference and immutable Paymob order identity.
+          let positiveProof = false;
+          try {
+            const proof = await provider.verifyTransaction({
+              id: result.transactionId,
+              providerReference: existingPayment.providerReference,
+              externalReference: result.externalReference,
+              amount: existingPayment.amount,
+              currency: existingPayment.currency,
+              metadata: existingPayment.metadata,
+              providerPayload: existingPayment.providerPayload,
+            });
+            positiveProof =
+              proof.status === "paid" &&
+              proof.externalReference === result.externalReference;
+          } catch (error) {
+            console.warn("[PAYMOB_WEBHOOK_PROOF_UNAVAILABLE]", {
+              transactionId: result.transactionId,
+              errorType: error instanceof Error ? error.name : "unknown",
+            });
+          }
+
+          if (!positiveProof) {
+            // Do not acknowledge unverified payment success. The provider
+            // may retry; no DB reference or payment state is mutated.
+            return NextResponse.json(
+              { received: false, message: "Payment verification unavailable" },
+              { status: 503 },
+            );
+          }
+        } else if (
+          existingPayment.externalReference &&
+          result.externalReference &&
+          existingPayment.externalReference !== result.externalReference
+        ) {
+          // A stale failure/pending attempt cannot replace the current
+          // acceptance reference. A different SUCCESS must pass proof above.
+          return NextResponse.json({ received: true });
+        }
+      }
 
       let existingProviderPayload: Record<string, unknown> = {};
       if (existingPayment?.providerPayload) {
@@ -91,29 +169,52 @@ export async function POST(req: Request, context: { params: Promise<{ provider: 
             existingProviderPayload = parsed as Record<string, unknown>;
           }
         } catch {
-          // Preserve webhook processing even if historical payload is malformed.
+          // Invalid historical payload must not authorize a payment.
         }
       }
 
       const mergedProviderPayload = result.payload
-        ? {
-            ...existingProviderPayload,
-            ...result.payload,
-          }
+        ? { ...existingProviderPayload, ...result.payload }
         : existingProviderPayload;
 
-      await db.paymentTransaction.update({
-        where: { id: result.transactionId },
-        data: {
-          providerReference: result.providerReference || undefined,
-          externalReference: result.externalReference || undefined,
-          providerPayload: result.payload
-            ? JSON.stringify(mergedProviderPayload)
-            : undefined,
-        },
-      }).catch((error: unknown) => {
-        console.error(`[WEBHOOK:${providerKey}] Failed to persist references`, error);
-      });
+      const data = {
+        providerReference: result.providerReference || undefined,
+        externalReference: result.externalReference || undefined,
+        providerPayload: result.payload
+          ? JSON.stringify(mergedProviderPayload)
+          : undefined,
+      };
+
+      if (providerKey === "paymob") {
+        // Duplicate paid webhook: no need to touch provider evidence.
+        if (existingPayment?.status !== "paid") {
+          const claimed = await db.paymentTransaction.updateMany({
+            where: {
+              id: result.transactionId,
+              provider: "paymob",
+              status: existingPayment!.status,
+              providerReference: existingPayment!.providerReference,
+              externalReference: existingPayment!.externalReference,
+              providerPayload: existingPayment!.providerPayload,
+            },
+            data,
+          });
+
+          if (claimed.count !== 1) {
+            // A webhook or retry won the race. Do not overwrite its data.
+            return NextResponse.json(
+              { received: false, message: "Concurrent payment update" },
+              { status: 503 },
+            );
+          }
+        }
+      } else {
+        // Preserve historical behavior for other providers.
+        await db.paymentTransaction.update({
+          where: { id: result.transactionId },
+          data,
+        });
+      }
     }
 
     // Reload transaction after webhook evidence persistence.
@@ -131,6 +232,69 @@ export async function POST(req: Request, context: { params: Promise<{ provider: 
         providerReference: true,
       },
     });
+
+    // A two-review no-charge settlement has already returned frozen
+    // wallet/points and released seats. A later provider charge must go to
+    // financial exception handling (refund or supervised compensation).
+    // Never auto-reactivate and grant an unpaid membership benefit.
+    if (
+      providerKey === "paymob" &&
+      result.status === "paid" &&
+      updated?.status === "cancelled" &&
+      updated.purpose === "membership"
+    ) {
+      let settledAt: unknown = null;
+      try {
+        const saved = JSON.parse(updated.metadata || "{}") as Record<string, unknown>;
+        const review = saved.paymobNoChargeReview;
+        if (review && typeof review === "object" && !Array.isArray(review)) {
+          settledAt = (review as Record<string, unknown>).settledAt;
+        }
+      } catch {
+        settledAt = null;
+      }
+
+      if (typeof settledAt === "string") {
+        // Persist the exception for the master-authorized finance queue.
+        // Provider proof was already checked before storing this callback.
+        const current = await db.paymentTransaction.findUnique({
+          where: { id: result.transactionId },
+          select: { metadata: true },
+        });
+        if (current?.metadata) {
+          try {
+            const stored = JSON.parse(current.metadata) as Record<string, unknown>;
+            await db.paymentTransaction.updateMany({
+              where: {
+                id: result.transactionId,
+                status: "cancelled",
+                metadata: current.metadata,
+              },
+              data: {
+                metadata: JSON.stringify({
+                  ...stored,
+                  paymobManualNoChargeLatePaidAt: new Date().toISOString(),
+                  paymobManualNoChargeLatePaidReference: updated.externalReference,
+                }),
+              },
+            });
+          } catch (error) {
+            console.error("[PAYMOB_MANUAL_RELEASE_EXCEPTION_RECORD_FAILED]", {
+              transactionId: result.transactionId,
+              errorType: error instanceof Error ? error.name : "unknown",
+            });
+          }
+        }
+
+        console.error("[PAYMOB_POST_MANUAL_RELEASE_CHARGE_REQUIRES_FINANCE_REVIEW]", {
+          transactionId: result.transactionId,
+        });
+        return NextResponse.json(
+          { received: false, message: "Financial exception needs reconciliation" },
+          { status: 503 },
+        );
+      }
+    }
 
     // CRITICAL: A late Paymob success may arrive after timeout cleanup already
     // cancelled both the payment and membership. Handle that case BEFORE

@@ -69,6 +69,10 @@ const EMPTY_OFFER: Omit<Offer, "id" | "usedCount" | "currentSubscribers"> = {
   friendOfferEnabled: false,
   friendRequiredMembers: 2,
   friendInviteExpiryHours: 24,
+  offerBoxEnabled: false,
+  requiresBirthDate: false,
+  minAgeYears: null,
+  maxAgeYears: null,
 };
 
 const CYCLE_LABELS: Record<NonNullable<Plan["cycle"]>, string> = {
@@ -1907,6 +1911,111 @@ export default function Subscriptions() {
               </div>
             </Field>
 
+            <div className="rounded-2xl border border-[rgba(255,188,219,0.16)] bg-black/20 p-4">
+              <label className="flex cursor-pointer items-start gap-3 text-sm text-[#fff4f8]">
+                <input
+                  type="checkbox"
+                  checked={offerModal.offerBoxEnabled === true}
+                  onChange={(event) =>
+                    setOfferModal({
+                      ...offerModal,
+                      offerBoxEnabled: event.target.checked,
+                    })
+                  }
+                  className="mt-1 h-4 w-4 accent-[#ff4f93]"
+                />
+
+                <div>
+                  <div className="font-bold">
+                    {"\u0625\u062a\u0627\u062d\u0629 \u0627\u0644\u0634\u0631\u0627\u0621 \u0641\u064a Offer Box"}
+                  </div>
+
+                  <div className="mt-1 text-xs leading-6 text-[#d7aabd]">
+                    {"العميل يشتري العرض الآن، ويختار الجداول لاحقًا بعد الدفع عند الاسترداد. لا يتم تفعيل الاشتراك أو حجز الحصص وقت الشراء."}
+                  </div>
+                </div>
+              </label>
+            </div>
+            <div className="rounded-2xl border border-[rgba(255,188,219,0.16)] bg-black/20 p-4">
+              <label className="flex cursor-pointer items-start gap-3 text-sm text-[#fff4f8]">
+                <input
+                  type="checkbox"
+                  checked={offerModal.requiresBirthDate === true}
+                  onChange={(event) => {
+                    const enabled = event.target.checked;
+
+                    setOfferModal({
+                      ...offerModal,
+                      requiresBirthDate: enabled,
+                      minAgeYears: enabled
+                        ? (offerModal.minAgeYears ?? 13)
+                        : null,
+                      maxAgeYears: enabled
+                        ? (offerModal.maxAgeYears ?? 25)
+                        : null,
+                    });
+                  }}
+                  className="mt-1 h-4 w-4 accent-[#ff4f93]"
+                />
+
+                <div>
+                  <div className="font-bold">
+                    تقييد العرض حسب العمر
+                  </div>
+                  <div className="mt-1 text-xs leading-6 text-[#d7aabd]">
+                    عند تفعيل هذا الخيار يجب أن يكون تاريخ ميلاد العميل مسجلاً، ويتم التحقق من العمر على السيرفر.
+                  </div>
+                </div>
+              </label>
+
+              {offerModal.requiresBirthDate ? (
+                <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                  <Field label="الحد الأدنى للعمر">
+                    <input
+                      type="number"
+                      min={0}
+                      max={120}
+                      step={1}
+                      value={offerModal.minAgeYears ?? ""}
+                      onChange={(event) =>
+                        setOfferModal({
+                          ...offerModal,
+                          minAgeYears:
+                            event.target.value === ""
+                              ? null
+                              : Number(event.target.value),
+                        })
+                      }
+                      className={INPUT}
+                      dir="ltr"
+                      placeholder="13"
+                    />
+                  </Field>
+
+                  <Field label="الحد الأقصى للعمر">
+                    <input
+                      type="number"
+                      min={0}
+                      max={120}
+                      step={1}
+                      value={offerModal.maxAgeYears ?? ""}
+                      onChange={(event) =>
+                        setOfferModal({
+                          ...offerModal,
+                          maxAgeYears:
+                            event.target.value === ""
+                              ? null
+                              : Number(event.target.value),
+                        })
+                      }
+                      className={INPUT}
+                      dir="ltr"
+                      placeholder="25"
+                    />
+                  </Field>
+                </div>
+              ) : null}
+            </div>
             {offerModal.type === "special" ? (
               <>
                 <Field
