@@ -33,7 +33,22 @@ vi.mock("@/lib/payments/expired-membership-paymob-reconciliation", () => ({
   reconcileExpiredPaymobMembership: mocks.reconcile,
 }));
 
-import { GET, POST } from "@/app/api/admin/payments/expired-membership-reconciliation/route";
+import {
+  GET as routeGET,
+  POST as routePOST,
+} from "@/app/api/admin/payments/expired-membership-reconciliation/route";
+
+async function GET(request: Request): Promise<Response> {
+  const response = await routeGET(request);
+  if (!response) throw new Error("PAYMOB_REVIEW_GET_DID_NOT_RESPOND");
+  return response;
+}
+
+async function POST(request: Request): Promise<Response> {
+  const response = await routePOST(request);
+  if (!response) throw new Error("PAYMOB_REVIEW_POST_DID_NOT_RESPOND");
+  return response;
+}
 
 const getReq = () =>
   new Request("https://example.test/api/admin/payments/expired-membership-reconciliation?page=0");
