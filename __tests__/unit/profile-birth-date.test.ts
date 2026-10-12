@@ -11,6 +11,13 @@ describe("profile birth-date calendar validation", () => {
   it("rejects the next Cairo day even if the UTC clock day is earlier", () => {
     expect(parseProfileBirthDate("2026-10-14", now)).toEqual({ ok: false, error: "FUTURE_BIRTH_DATE" });
   });
+  it("uses Cairo midnight rather than UTC midnight for the day boundary", () => {
+    const beforeCairoMidnight = new Date("2026-10-12T20:59:59.000Z");
+    const atCairoMidnight = new Date("2026-10-12T21:00:00.000Z");
+    expect(parseProfileBirthDate("2026-10-13", beforeCairoMidnight))
+      .toEqual({ ok: false, error: "FUTURE_BIRTH_DATE" });
+    expect(parseProfileBirthDate("2026-10-13", atCairoMidnight).ok).toBe(true);
+  });
   it("rejects timestamp input rather than implicitly shifting the civil birth date", () => {
     expect(parseProfileBirthDate("2026-10-14T00:01:00+03:00", now))
       .toEqual({ ok: false, error: "INVALID_BIRTH_DATE" });
