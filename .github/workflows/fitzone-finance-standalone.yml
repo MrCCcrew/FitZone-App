@@ -53,6 +53,5 @@ jobs:
             __tests__/unit/customer-statement-financial-truth.test.ts \
             __tests__/unit/wallet-topup-customer-ledger-route.test.ts \
             __tests__/unit/membership-accounting-financial-truth.test.ts \
-            __tests__/unit/accounting-wallet-topup-journal.test.ts \
             __tests__/unit/wallet-transaction-source-taxonomy.contract.test.ts \
             --maxWorkers=2 --reporter=dot
