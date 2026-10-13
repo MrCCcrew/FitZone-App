@@ -24,6 +24,7 @@ describe("Egyptian national ID student-offer age gate", () => {
     }
     expect(check(mk(2008,"02","29")).eligible).toBe(true);
     expect(check(mk(2008,"10","10","88")).eligible).toBe(true);
+    expect(check(mk(2008,"02","30")).code).toBe("EGYPTIAN_NATIONAL_ID_INVALID");
   });
   it("enforces exact 13 and 25 year birthdates against Cairo calendar day", () => {
     expect(check(mk(2013,"10","10")).eligible).toBe(true);
