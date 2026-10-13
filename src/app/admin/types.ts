@@ -219,6 +219,12 @@ export interface Offer {
   friendOfferEnabled?: boolean;
   friendRequiredMembers?: number;
   friendInviteExpiryHours?: number;
+  offerBoxEnabled?: boolean;
+  offerBoxApplyDiscount?: boolean;
+  requiresBirthDate?: boolean;
+  requiresEgyptianNationalId?: boolean;
+  minAgeYears?: number | null;
+  maxAgeYears?: number | null;
 }
 
 export interface GymClass {

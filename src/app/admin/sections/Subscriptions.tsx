@@ -6,6 +6,7 @@ import { AdminCard, AdminEmptyState, AdminSectionShell } from "./shared";
 import { TranslateButton } from "./TranslateButton";
 import { getClassTypeArabicLabel } from "../class-type-labels";
 import { formatTime12Hour } from "@/lib/time-format";
+import { calculateOfferBoxFinalPrice } from "@/lib/payments/offer-box-pricing";
 
 const INPUT =
   "w-full rounded-xl border border-gray-700 bg-gray-800 px-4 py-2.5 text-sm text-white outline-none transition-colors focus:border-[#ff4f93]";
@@ -69,6 +70,12 @@ const EMPTY_OFFER: Omit<Offer, "id" | "usedCount" | "currentSubscribers"> = {
   friendOfferEnabled: false,
   friendRequiredMembers: 2,
   friendInviteExpiryHours: 24,
+  offerBoxEnabled: false,
+  offerBoxApplyDiscount: false,
+  requiresBirthDate: false,
+  requiresEgyptianNationalId: false,
+  minAgeYears: null,
+  maxAgeYears: null,
 };
 
 const CYCLE_LABELS: Record<NonNullable<Plan["cycle"]>, string> = {
@@ -1815,6 +1822,10 @@ export default function Subscriptions() {
                   setOfferModal({
                     ...offerModal,
                     type: nextType,
+                    offerBoxApplyDiscount: nextType === "special"
+                      ? false
+                      : offerModal.offerBoxApplyDiscount ?? false,
+                    specialPrice: nextType === "special" ? offerModal.specialPrice : null,
                     friendOfferEnabled:
                       nextType === "special"
                         ? offerModal.friendOfferEnabled
@@ -1907,6 +1918,182 @@ export default function Subscriptions() {
               </div>
             </Field>
 
+            <div className="rounded-2xl border border-[rgba(255,188,219,0.16)] bg-black/20 p-4">
+              <label className="flex cursor-pointer items-start gap-3 text-sm text-[#fff4f8]">
+                <input
+                  type="checkbox"
+                  checked={offerModal.offerBoxEnabled === true}
+                  onChange={(event) =>
+                    setOfferModal({
+                      ...offerModal,
+                      offerBoxEnabled: event.target.checked,
+                      offerBoxApplyDiscount: event.target.checked
+                        ? offerModal.offerBoxApplyDiscount ?? false
+                        : false,
+                    })
+                  }
+                  className="mt-1 h-4 w-4 accent-[#ff4f93]"
+                />
+
+                <div>
+                  <div className="font-bold">
+                    {"\u0625\u062a\u0627\u062d\u0629 \u0627\u0644\u0634\u0631\u0627\u0621 \u0641\u064a Offer Box"}
+                  </div>
+
+                  <div className="mt-1 text-xs leading-6 text-[#d7aabd]">
+                    {"العميل يشتري العرض الآن، ويختار الجداول لاحقًا بعد الدفع عند الاسترداد. لا يتم تفعيل الاشتراك أو حجز الحصص وقت الشراء."}
+                  </div>
+                </div>
+              </label>
+            </div>
+            {offerModal.offerBoxEnabled && offerModal.type !== "special" && (
+              <div className="rounded-2xl border border-[rgba(255,188,219,0.16)] bg-black/20 p-4">
+                <label className="flex cursor-pointer items-start gap-3 text-sm text-[#fff4f8]">
+                  <input
+                    type="checkbox"
+                    checked={offerModal.offerBoxApplyDiscount === true}
+                    onChange={(event) =>
+                      setOfferModal({
+                        ...offerModal,
+                        offerBoxApplyDiscount: event.target.checked,
+                      })
+                    }
+                    className="mt-1 h-4 w-4 accent-[#ff4f93]"
+                  />
+                  <span>
+                    <strong className="block">تطبيق خصم إضافي على سعر الاشتراك الحالي داخل Offer Box</strong>
+                    <span className="mt-1 block text-xs leading-6 text-[#d7aabd]">
+                      مغلق افتراضيًا: تدفع العميلة سعر الاشتراك الحالي بعد خصمه (مثلاً 90 جنيه).
+                      عند تشغيله، تُطبَّق نسبة أو قيمة الخصم المحددة للعرض مرة واحدة على هذا السعر
+                      (مثلاً خصم 20% من 90 = 72 جنيه).
+                    </span>
+                  </span>
+                </label>
+                {(() => {
+                  const plan = allPlans.find((item) => item.id === offerModal.membershipId);
+                  if (!plan) return <p className="mt-2 text-xs text-amber-300">اربطي العرض باشتراك لتظهر معاينة السعر النهائي.</p>;
+                  try {
+                    const basePrice = plan.priceAfter != null && plan.priceAfter > 0
+                      ? plan.priceAfter
+                      : plan.price;
+                    const finalPrice = calculateOfferBoxFinalPrice({
+                      offerType: offerModal.type,
+                      discount: Number(offerModal.discount),
+                      specialPrice: null,
+                      membershipPriceAfter: plan.priceAfter ?? null,
+                      basePrice: plan.price,
+                      applyOfferDiscount: offerModal.offerBoxApplyDiscount === true,
+                    });
+                    return <p className="mt-2 text-sm font-bold text-[#4ade80]">
+                      السعر الحالي: {basePrice.toLocaleString("ar-EG")} ج.م
+                      {" — "}سعر Offer Box: {finalPrice.toLocaleString("ar-EG")} ج.م
+                    </p>;
+                  } catch {
+                    return <p className="mt-2 text-xs text-rose-300">قيمة الخصم غير صالحة؛ يرجى مراجعتها قبل الحفظ.</p>;
+                  }
+                })()}
+              </div>
+            )}
+            <div className="rounded-2xl border border-[rgba(255,188,219,0.16)] bg-black/20 p-4">
+              <label className="flex cursor-pointer items-start gap-3 text-sm text-[#fff4f8]">
+                <input
+                  type="checkbox"
+                  checked={offerModal.requiresBirthDate === true}
+                  onChange={(event) => {
+                    const enabled = event.target.checked;
+
+                    setOfferModal({
+                      ...offerModal,
+                      requiresBirthDate: enabled,
+                      requiresEgyptianNationalId: enabled ? offerModal.requiresEgyptianNationalId ?? false : false,
+                      minAgeYears: enabled
+                        ? (offerModal.minAgeYears ?? 13)
+                        : null,
+                      maxAgeYears: enabled
+                        ? (offerModal.maxAgeYears ?? 25)
+                        : null,
+                    });
+                  }}
+                  className="mt-1 h-4 w-4 accent-[#ff4f93]"
+                />
+
+                <div>
+                  <div className="font-bold">
+                    تقييد العرض حسب العمر
+                  </div>
+                  <div className="mt-1 text-xs leading-6 text-[#d7aabd]">
+                    عند تفعيل الخيار يتحقق السيرفر من العمر. لعرض الطلبة يمكنكِ اختيار الرقم القومي بدل تاريخ الميلاد المسجل بالحساب.
+                  </div>
+                </div>
+              </label>
+
+              {offerModal.requiresBirthDate ? (
+                <>
+                  <label className="mt-4 flex cursor-pointer items-start gap-3 text-sm text-[#fff4f8]">
+                    <input
+                      type="checkbox"
+                      checked={offerModal.requiresEgyptianNationalId === true}
+                      onChange={(event) => setOfferModal({
+                        ...offerModal,
+                        requiresEgyptianNationalId: event.target.checked,
+                      })}
+                      className="mt-1 h-4 w-4 accent-[#ff4f93]"
+                    />
+                    <span>
+                      <strong className="block">التحقق بالرقم القومي المصري (عرض الطلبة)</strong>
+                      <span className="mt-1 block text-xs text-[#d7aabd]">
+                        يُطلب الرقم القومي المكوّن من 14 رقمًا عند الشراء، ويُحسب العمر من تاريخ الميلاد المرمز داخله دون حفظ الرقم كاملًا في الطلب.
+                      </span>
+                    </span>
+                  </label>
+                  <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                  <Field label="الحد الأدنى للعمر">
+                    <input
+                      type="number"
+                      min={0}
+                      max={120}
+                      step={1}
+                      value={offerModal.minAgeYears ?? ""}
+                      onChange={(event) =>
+                        setOfferModal({
+                          ...offerModal,
+                          minAgeYears:
+                            event.target.value === ""
+                              ? null
+                              : Number(event.target.value),
+                        })
+                      }
+                      className={INPUT}
+                      dir="ltr"
+                      placeholder="13"
+                    />
+                  </Field>
+
+                  <Field label="الحد الأقصى للعمر">
+                    <input
+                      type="number"
+                      min={0}
+                      max={120}
+                      step={1}
+                      value={offerModal.maxAgeYears ?? ""}
+                      onChange={(event) =>
+                        setOfferModal({
+                          ...offerModal,
+                          maxAgeYears:
+                            event.target.value === ""
+                              ? null
+                              : Number(event.target.value),
+                        })
+                      }
+                      className={INPUT}
+                      dir="ltr"
+                      placeholder="25"
+                    />
+                  </Field>
+                  </div>
+                </>
+              ) : null}
+            </div>
             {offerModal.type === "special" ? (
               <>
                 <Field

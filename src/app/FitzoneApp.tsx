@@ -27,7 +27,8 @@ import {
 } from "@/lib/ai-coach/ui-action-dispatcher";
 import { COACH_PAGES } from "@/lib/ai-coach/page-registry";
 import { formatTime12Hour } from "@/lib/time-format";
-import { scheduleSlotInstant } from "@/lib/fitzone-time";
+import { cairoCalendarDateKey, scheduleSlotInstant } from "@/lib/fitzone-time";
+import AccountOfferBoxPurchases from "@/components/AccountOfferBoxPurchases";
 import { resolveBookingPolicy } from "@/lib/booking/booking-policy";
 
 const FitZoneTour = dynamic(
@@ -2980,8 +2981,14 @@ type PublicOffer = {
   allowedClassTypes?: string[];
   allowedClassIds?: string[];
   friendOfferEnabled?: boolean;
+  offerBoxEnabled?: boolean;
+  offerBoxApplyDiscount?: boolean;
   friendRequiredMembers?: number;
   friendInviteExpiryHours?: number;
+  requiresBirthDate?: boolean;
+  requiresEgyptianNationalId?: boolean;
+  minAgeYears?: number | null;
+  maxAgeYears?: number | null;
 };
 
 type FriendOfferGroupView = {
@@ -4554,6 +4561,260 @@ const PrivateBookingModal = ({
   );
 };
 
+type OfferBoxCheckoutError = {
+  offerId: string;
+  message: string;
+};
+
+type OfferBoxPendingResponse = {
+  status?: "none" | "payable" | "not_payable" | "awaiting_confirmation";
+  transactionId?: string | null;
+  error?: string;
+};
+
+async function getOfferBoxPending(
+  offerId: string,
+): Promise<OfferBoxPendingResponse> {
+  const response = await fetch(
+    `/api/offer-box/pending?offerId=${encodeURIComponent(offerId)}`,
+    {
+      credentials: "same-origin",
+      cache: "no-store",
+    },
+  );
+
+  const result = (await response.json()) as OfferBoxPendingResponse;
+
+  if (!response.ok) {
+    throw new Error(
+      result.error || "تعذر التحقق من عملية الدفع السابقة.",
+    );
+  }
+
+  if (
+    result.status !== "none" &&
+    result.status !== "payable" &&
+    result.status !== "not_payable" &&
+    result.status !== "awaiting_confirmation"
+  ) {
+    throw new Error("استجابة التحقق من الدفع غير صالحة.");
+  }
+
+  return result;
+}
+
+function useOfferBoxCheckout(summary: UserSummary | null) {
+  const { lang } = useLang();
+  const [offerBoxBusyId, setOfferBoxBusyId] = useState<string | null>(null);
+  const [offerBoxError, setOfferBoxError] =
+    useState<OfferBoxCheckoutError | null>(null);
+  const offerBoxInFlight = useRef(false);
+
+  const reportError = (offerId: string, message: string) => {
+    setOfferBoxError({ offerId, message });
+  };
+
+  const goToLogin = (offerId: string) => {
+    const callback = new URL(
+      window.location.origin + window.location.pathname,
+    );
+
+    callback.searchParams.set("page", "offers");
+    callback.searchParams.set("offerBox", offerId);
+
+    window.location.assign(
+      `/login?callbackUrl=${encodeURIComponent(
+        callback.pathname + callback.search,
+      )}`,
+    );
+  };
+
+  const goToCheckout = (transactionId: string) => {
+    window.location.assign(
+      `/payment/checkout?transactionId=${encodeURIComponent(transactionId)}`,
+    );
+  };
+
+  const purchaseOfferBox = async (offer: PublicOffer) => {
+    if (
+      !offer.offerBoxEnabled ||
+      offer.friendOfferEnabled ||
+      offerBoxInFlight.current
+    ) {
+      return;
+    }
+
+    setOfferBoxError(null);
+
+    if (summary == null) {
+      reportError(
+        offer.id,
+        "جاري تحميل بيانات الحساب. حاولي مرة أخرى.",
+      );
+      return;
+    }
+
+    if (!summary.authenticated) {
+      goToLogin(offer.id);
+      return;
+    }
+
+    offerBoxInFlight.current = true;
+    setOfferBoxBusyId(offer.id);
+
+    try {
+      const previous = await getOfferBoxPending(offer.id);
+
+      if (previous.status === "payable") {
+        if (!previous.transactionId) {
+          throw new Error("معرّف عملية الدفع السابقة غير متاح.");
+        }
+
+        goToCheckout(previous.transactionId);
+        return;
+      }
+
+      if (previous.status === "awaiting_confirmation") {
+        throw new Error(
+          "لديك عملية دفع قيد التحقق. يرجى عدم إنشاء عملية جديدة حتى تتضح حالتها.",
+        );
+      }
+
+      if (previous.status === "not_payable") {
+        throw new Error(
+          "عملية الدفع السابقة لم تعد صالحة. سيتم تحديث حالتها بعد مراجعة الدفع، ثم يمكنك المحاولة مجددًا.",
+        );
+      }
+
+      // Only a confirmed "none" response permits a new checkout.
+      if (previous.status !== "none") {
+        throw new Error("تعذر تحديد حالة الشراء السابقة.");
+      }
+
+      let egyptianNationalId: string | undefined;
+      if (offer.requiresEgyptianNationalId) {
+        const entered = window.prompt(
+          lang === "en"
+            ? "Enter your 14-digit Egyptian national ID to verify age for this student offer. The full ID will not be saved."
+            : "أدخلي الرقم القومي المصري (14 رقمًا) للتحقق من عمر عرض الطلبة. لن يُحفظ الرقم كاملًا في الطلب.",
+        );
+        if (entered === null) return;
+        egyptianNationalId = entered.trim();
+        if (!/^[0-9٠-٩۰-۹]{14}$/.test(egyptianNationalId)) {
+          throw new Error("الرقم القومي يجب أن يتكون من 14 رقمًا.");
+        }
+      }
+
+      const response = await fetch("/api/offer-box/checkout", {
+        method: "POST",
+        credentials: "same-origin",
+        cache: "no-store",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          offerId: offer.id,
+          ...(egyptianNationalId ? { egyptianNationalId } : {}),
+        }),
+      });
+
+      const result = (await response.json()) as {
+        success?: boolean;
+        error?: string;
+        code?: string;
+        transaction?: {
+          id?: string | null;
+          status?: string | null;
+        };
+      };
+
+      if (response.status === 401) {
+        goToLogin(offer.id);
+        return;
+      }
+
+      if (
+        response.status === 409 &&
+        result.code === "OFFER_BOX_PENDING_CHECKOUT_EXISTS"
+      ) {
+        const existing = await getOfferBoxPending(offer.id);
+
+        if (existing.status === "payable" && existing.transactionId) {
+          goToCheckout(existing.transactionId);
+          return;
+        }
+
+        throw new Error(
+          "توجد عملية دفع معلقة لهذا العرض. يرجى انتظار تأكيد حالتها قبل المحاولة مجددًا.",
+        );
+      }
+
+      if (!response.ok || result.success !== true) {
+        throw new Error(
+          result.error || "تعذر بدء شراء العرض. حاولي مرة أخرى.",
+        );
+      }
+
+      const transactionId = result.transaction?.id;
+      const paymentStatus = result.transaction?.status;
+
+      if (typeof transactionId !== "string" || !transactionId.trim()) {
+        throw new Error(
+          "لم يتم استلام معرّف عملية الدفع. يرجى مراجعة حالة الشراء.",
+        );
+      }
+
+      if (paymentStatus === "paid") {
+        window.location.assign(
+          `/payment/verify?transactionId=${encodeURIComponent(transactionId)}`,
+        );
+        return;
+      }
+
+      if (
+        paymentStatus !== "pending" &&
+        paymentStatus !== "requires_action"
+      ) {
+        throw new Error(
+          "عملية الدفع لم تصبح جاهزة بعد. يرجى مراجعة حالتها.",
+        );
+      }
+
+      // Verify the persisted payment session before navigating.
+      const persisted = await getOfferBoxPending(offer.id);
+
+      if (
+        persisted.status !== "payable" ||
+        persisted.transactionId !== transactionId
+      ) {
+        throw new Error(
+          "تم تسجيل طلب الشراء، لكن جلسة الدفع لم تتأكد جاهزيتها بعد. يرجى المحاولة لاحقًا لاستكمال نفس الطلب.",
+        );
+      }
+
+      goToCheckout(transactionId);
+    } catch (error) {
+      const fallback = error instanceof Error
+        ? error.message
+        : "تعذر الاتصال بالخادم. يرجى مراجعة حالة العملية قبل إعادة المحاولة.";
+      reportError(
+        offer.id,
+        lang === "en"
+          ? "Checkout could not be completed. Review your existing payment status before trying again."
+          : fallback,
+      );
+    } finally {
+      offerBoxInFlight.current = false;
+      setOfferBoxBusyId(null);
+    }
+  };
+
+  return {
+    purchaseOfferBox,
+    offerBoxBusyId,
+    offerBoxError,
+  };
+}
 const HomePage = ({
   navigate,
   summary,
@@ -4573,6 +4834,7 @@ const HomePage = ({
   const offerClock = useHydratedOfferClock();
   const { lang } = useLang();
   const t = useT();
+  const { purchaseOfferBox, offerBoxBusyId, offerBoxError } = useOfferBoxCheckout(summary);
   const [refreshTick, setRefreshTick] = useState(0);
   useEffect(() => {
     const onVisible = () => {
@@ -5701,6 +5963,8 @@ const HomePage = ({
                           >
                             {isSpecial
                               ? t("عرض خاص", "Special")
+                              : offer.offerBoxEnabled && !offer.offerBoxApplyDiscount
+                                ? t("بدون خصم إضافي", "No extra discount")
                               : offer.type === "percentage"
                                 ? `${offer.discount}% ${t("خصم", "off")}`
                                 : t("عرض", "Offer")}
@@ -5725,6 +5989,8 @@ const HomePage = ({
                           >
                             {isSpecial
                               ? t("عرض خاص", "Special")
+                              : offer.offerBoxEnabled && !offer.offerBoxApplyDiscount
+                                ? t("بدون خصم إضافي", "No extra discount")
                               : offer.type === "percentage"
                                 ? `${offer.discount}% ${t("خصم", "off")}`
                                 : t("عرض", "Offer")}
@@ -5756,6 +6022,8 @@ const HomePage = ({
                         >
                           {isSpecial
                             ? formatCurrency(offer.specialPrice ?? 0)
+                            : offer.offerBoxEnabled && !offer.offerBoxApplyDiscount
+                              ? t("السعر الحالي", "Current price")
                             : offer.type === "percentage"
                               ? `${offer.discount}%`
                               : `${offer.discount} ${t("ج.م", "EGP")}`}
@@ -5769,6 +6037,8 @@ const HomePage = ({
                         >
                           {isSpecial
                             ? t("سعر العرض", "Offer price")
+                            : offer.offerBoxEnabled && !offer.offerBoxApplyDiscount
+                              ? t("بدون خصم إضافي عند الشراء", "No extra checkout discount")
                             : t("قيمة الخصم", "Discount value")}
                         </div>
                         <h3
@@ -5929,19 +6199,46 @@ const HomePage = ({
                               return;
                             }
 
-                            startMembershipFlow(
+                            if (offer.offerBoxEnabled) {
+                  void purchaseOfferBox(offer);
+                  return;
+                }
+                startMembershipFlow(
                               offer.membershipId,
                               "offer",
                               offer.id,
                               offer.specialPrice ?? null,
                             );
                           }}
-                          disabled={cd.expired}
+                          disabled={cd.expired || (offer.offerBoxEnabled && offerBoxBusyId !== null)}
                         >
                           {cd.expired
                             ? t("انتهى العرض", "Ended")
-                            : t("اشتركي الآن", "Join now")}
+                            : offer.offerBoxEnabled && offerBoxBusyId === offer.id
+    ? t("جاري تجهيز الدفع...", "Preparing payment...")
+    : offer.offerBoxEnabled
+      ? t("شراء العرض", "Buy offer")
+      : t("اشتركي الآن", "Join now")}
                         </button>
+        {offer.offerBoxEnabled &&
+          offerBoxError?.offerId === offer.id && (
+            <div
+              role="alert"
+              aria-live="polite"
+              style={{
+                marginTop: 8,
+                padding: "8px 10px",
+                borderRadius: 8,
+                background: "#FEF2F2",
+                color: "#991B1B",
+                fontSize: 12,
+                lineHeight: 1.6,
+                overflowWrap: "anywhere",
+              }}
+            >
+              {offerBoxError.message}
+            </div>
+          )}
                       </div>
                     </div>
                   );
@@ -9986,6 +10283,10 @@ type PlanItem = {
   allowedClassTypes?: string[] | null;
   allowedClassIds?: string[];
   kind?: string | null;
+  requiresBirthDate?: boolean;
+  requiresEgyptianNationalId?: boolean;
+  minAgeYears?: number | null;
+  maxAgeYears?: number | null;
 };
 
 type MembershipCheckoutPreview = {
@@ -10104,6 +10405,15 @@ const MembershipsPage = ({
     coachMembershipTrainerId?: string | null;
   } | null>(null);
 
+  const [dobModal, setDobModal] = useState<{
+    plan: PlanItem;
+    scheduleIds: string[];
+    paymentOverride?: "paymob";
+    coachMembershipTrainerId?: string | null;
+  } | null>(null);
+  const [dobBirthDate, setDobBirthDate] = useState("");
+  const [dobSaving, setDobSaving] = useState(false);
+  const [dobError, setDobError] = useState<string | null>(null);
   const [checkoutPreview, setCheckoutPreview] =
     useState<MembershipCheckoutPreview | null>(null);
 
@@ -10341,6 +10651,13 @@ const MembershipsPage = ({
               ? offerSpecialPrice
               : (mb.priceAfter ?? null),
           isFeatured: false, // always run normal checkout flow when explicitly clicked
+          requiresBirthDate:
+            matchedOffer?.requiresBirthDate === true,
+          requiresEgyptianNationalId: matchedOffer?.requiresEgyptianNationalId === true,
+          minAgeYears:
+            matchedOffer?.minAgeYears ?? null,
+          maxAgeYears:
+            matchedOffer?.maxAgeYears ?? null,
           ...(matchedOffer?.durationDays != null
             ? { durationDays: matchedOffer.durationDays }
             : {}),
@@ -10399,6 +10716,10 @@ const MembershipsPage = ({
           goalIds: [],
           subtitle: t("اشتراك في عرض", "Offer subscription"),
           isFeatured: false,
+          requiresBirthDate: offer.requiresBirthDate === true,
+          requiresEgyptianNationalId: offer.requiresEgyptianNationalId === true,
+          minAgeYears: offer.minAgeYears ?? null,
+          maxAgeYears: offer.maxAgeYears ?? null,
           allowedClassTypes: offer.allowedClassTypes ?? null,
           allowedClassIds: Array.isArray(offer.allowedClassIds)
             ? offer.allowedClassIds
@@ -11348,6 +11669,7 @@ const MembershipsPage = ({
     scheduleIds: string[] = [],
     paymentOverride?: "paymob",
     coachMembershipTrainerId?: string | null,
+    egyptianNationalId?: string,
   ) => {
     if (!plan.id && !plan.offerId) {
       navigate("register");
@@ -11403,6 +11725,7 @@ const MembershipsPage = ({
               pointsDeduct:
                 fs.pointsToDeduct > 0 ? fs.pointsToDeduct : undefined,
               offerId: plan.offerId ?? undefined,
+              ...(egyptianNationalId ? { egyptianNationalId } : {}),
               trialPrice: plan.isTrial ? plan.price : undefined,
               selectedMonths: plan.selectedMonths ?? undefined,
               coachMembershipTrainerId:
@@ -11432,12 +11755,32 @@ const MembershipsPage = ({
       const data = (await res.json()) as {
         error?: string;
         action?: "back_to_schedule" | "back_to_plan";
+        code?:
+          | "BIRTH_DATE_REQUIRED"
+          | "EGYPTIAN_NATIONAL_ID_REQUIRED"
+          | "EGYPTIAN_NATIONAL_ID_INVALID"
+          | "AGE_NOT_ELIGIBLE"
+          | "INVALID_AGE_RULE";
         needsVerification?: boolean;
         checkoutUrl?: string;
         transactionId?: string | null;
       };
       if (!res.ok) {
-        if (data.needsVerification) {
+        if (data.code === "BIRTH_DATE_REQUIRED" ||
+            data.code === "EGYPTIAN_NATIONAL_ID_REQUIRED" ||
+            data.code === "EGYPTIAN_NATIONAL_ID_INVALID") {
+          setDobModal({
+            plan,
+            scheduleIds,
+            paymentOverride,
+            coachMembershipTrainerId:
+              plan.coachMembershipEnabled === true
+                ? (coachMembershipTrainerId ?? null)
+                : null,
+          });
+          setDobBirthDate("");
+          setDobError(data.code === "EGYPTIAN_NATIONAL_ID_INVALID" ? (data.error || "الرقم القومي غير صالح.") : null);
+        } else if (data.needsVerification) {
           setVerifyModal({
             plan,
             scheduleIds,
@@ -11491,6 +11834,117 @@ const MembershipsPage = ({
     }
   };
 
+  const saveDobAndRetrySubscription = async () => {
+    if (!dobModal || dobSaving) return;
+
+    if (dobModal.plan.requiresEgyptianNationalId) {
+      const egyptianNationalId = dobBirthDate.trim();
+      if (!/^[0-9٠-٩۰-۹]{14}$/.test(egyptianNationalId)) {
+        setDobError(t("الرقم القومي المصري يجب أن يتكون من 14 رقمًا.", "Egyptian national ID must contain 14 digits."));
+        return;
+      }
+      const pending = dobModal;
+      setDobModal(null);
+      setDobBirthDate("");
+      setDobError(null);
+      setTimeout(() => {
+        void handleSubscribe(
+          pending.plan, pending.scheduleIds,
+          pending.paymentOverride, pending.coachMembershipTrainerId ?? null,
+          egyptianNationalId,
+        );
+      }, 0);
+      return;
+    }
+
+    const birthDate = dobBirthDate.trim();
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(birthDate)) {
+      setDobError(
+        t(
+          "يرجى إدخال تاريخ ميلاد صحيح.",
+          "Please enter a valid date of birth.",
+        ),
+      );
+      return;
+    }
+
+    const parsedBirthDate = new Date(`${birthDate}T00:00:00.000Z`);
+
+    if (
+      Number.isNaN(parsedBirthDate.getTime()) ||
+      parsedBirthDate.toISOString().slice(0, 10) !== birthDate
+    ) {
+      setDobError(
+        t(
+          "تاريخ الميلاد غير صحيح.",
+          "The date of birth is invalid.",
+        ),
+      );
+      return;
+    }
+
+    if (birthDate > cairoCalendarDateKey(new Date())) {
+      setDobError(t("لا يمكن تسجيل تاريخ ميلاد في المستقبل.", "The date of birth cannot be in the future."));
+      return;
+    }
+
+    setDobSaving(true);
+    setDobError(null);
+
+    try {
+      const response = await fetch("/api/me/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ birthDate }),
+      });
+
+      const data = (await response.json().catch(() => null)) as {
+        error?: string;
+      } | null;
+
+      if (response.status === 401) {
+        window.location.href =
+          `/login?callbackUrl=${encodeURIComponent("/?page=memberships")}`;
+        return;
+      }
+
+      if (!response.ok) {
+        setDobError(
+          data?.error ||
+            t(
+              "تعذر حفظ تاريخ الميلاد.",
+              "Could not save your date of birth.",
+            ),
+        );
+        return;
+      }
+
+      const pendingSubscription = dobModal;
+
+      setDobModal(null);
+      setDobBirthDate("");
+      setDobError(null);
+
+      setTimeout(() => {
+        void handleSubscribe(
+          pendingSubscription.plan,
+          pendingSubscription.scheduleIds,
+          pendingSubscription.paymentOverride,
+          pendingSubscription.coachMembershipTrainerId ?? null,
+        );
+      }, 0);
+    } catch {
+      setDobError(
+        t(
+          "تعذر الاتصال بالخادم. حاولي مرة أخرى.",
+          "Could not reach the server. Please try again.",
+        ),
+      );
+    } finally {
+      setDobSaving(false);
+    }
+  };
   const handleScheduleConfirm = async () => {
     if (!schedulePlan) return;
 
@@ -14043,6 +14497,232 @@ const MembershipsPage = ({
         </div>
       )}
 
+      {/* ─ DATE OF BIRTH REQUIRED MODAL ─ */}
+      {dobModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={t("إدخال تاريخ الميلاد", "Enter date of birth")}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 205,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "16px",
+            background: "rgba(0,0,0,.72)",
+            backdropFilter: "blur(7px)",
+          }}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 430,
+              borderRadius: 22,
+              background: "#fff",
+              border: `1px solid ${C.border}`,
+              boxShadow: "0 24px 70px rgba(0,0,0,.28)",
+              padding: 26,
+              textAlign: "center",
+            }}
+          >
+            <div style={{ fontSize: 42, marginBottom: 8 }}>🎂</div>
+
+            <h3
+              style={{
+                margin: 0,
+                color: C.white,
+                fontSize: 21,
+                fontWeight: 900,
+              }}
+            >
+              {t(
+                dobModal.plan.requiresEgyptianNationalId
+                  ? "الرقم القومي المصري مطلوب"
+                  : "تاريخ الميلاد مطلوب",
+                dobModal.plan.requiresEgyptianNationalId
+                  ? "Egyptian national ID required"
+                  : "Date of birth required",
+              )}
+            </h3>
+
+            <p
+              style={{
+                margin: "10px 0 6px",
+                color: C.gray,
+                fontSize: 14,
+                lineHeight: 1.8,
+              }}
+            >
+              {t(
+                dobModal.plan.requiresEgyptianNationalId
+                  ? "عرض الطلبة يتطلب إدخال الرقم القومي المصري، وسيتم حساب العمر من تاريخ الميلاد الموجود داخله."
+                  : "هذا العرض مرتبط بشرط عمر. أدخلي تاريخ ميلادك لإكمال التحقق من الأهلية.",
+                dobModal.plan.requiresEgyptianNationalId
+                  ? "Enter your Egyptian national ID to calculate age from the embedded date of birth."
+                  : "This offer has an age requirement. Enter your date of birth to continue the eligibility check.",
+              )}
+            </p>
+
+            {(dobModal.plan.minAgeYears != null ||
+              dobModal.plan.maxAgeYears != null) && (
+              <div
+                style={{
+                  margin: "10px 0 16px",
+                  padding: "9px 12px",
+                  borderRadius: 10,
+                  background: "rgba(233,30,99,.07)",
+                  color: C.redText,
+                  fontSize: 13,
+                  fontWeight: 800,
+                }}
+              >
+                {dobModal.plan.minAgeYears != null &&
+                dobModal.plan.maxAgeYears != null
+                  ? t(
+                      `العمر المسموح لهذا العرض: من ${dobModal.plan.minAgeYears} إلى ${dobModal.plan.maxAgeYears} سنة.`,
+                      `Eligible age for this offer: ${dobModal.plan.minAgeYears} to ${dobModal.plan.maxAgeYears} years.`,
+                    )
+                  : dobModal.plan.minAgeYears != null
+                    ? t(
+                        `الحد الأدنى للعمر: ${dobModal.plan.minAgeYears} سنة.`,
+                        `Minimum age: ${dobModal.plan.minAgeYears} years.`,
+                      )
+                    : t(
+                        `الحد الأقصى للعمر: ${dobModal.plan.maxAgeYears} سنة.`,
+                        `Maximum age: ${dobModal.plan.maxAgeYears} years.`,
+                      )}
+              </div>
+            )}
+
+            <label
+              style={{
+                display: "block",
+                textAlign: lang === "ar" ? "right" : "left",
+                color: C.white,
+                fontSize: 13,
+                fontWeight: 800,
+                marginTop: 14,
+              }}
+            >
+              {dobModal.plan.requiresEgyptianNationalId
+                ? t("الرقم القومي المصري (14 رقمًا)", "Egyptian national ID (14 digits)")
+                : t("تاريخ الميلاد", "Date of birth")}
+
+              <input
+                type={dobModal.plan.requiresEgyptianNationalId ? "text" : "date"}
+                inputMode={dobModal.plan.requiresEgyptianNationalId ? "numeric" : undefined}
+                maxLength={dobModal.plan.requiresEgyptianNationalId ? 14 : undefined}
+                autoComplete="off"
+                value={dobBirthDate}
+                onChange={(event) => {
+                  setDobBirthDate(event.target.value);
+                  setDobError(null);
+                }}
+                disabled={dobSaving}
+                style={{
+                  width: "100%",
+                  boxSizing: "border-box",
+                  marginTop: 7,
+                  padding: "12px 14px",
+                  borderRadius: 10,
+                  border: `1px solid ${C.border}`,
+                  background: "#fff",
+                  color: C.white,
+                  fontSize: 15,
+                  outline: "none",
+                  direction: "ltr",
+                }}
+              />
+            </label>
+
+            <div
+              style={{
+                marginTop: 8,
+                color: C.gray,
+                fontSize: 11,
+                lineHeight: 1.6,
+              }}
+            >
+              {t(
+                dobModal.plan.requiresEgyptianNationalId
+                  ? "نستخدم الرقم للتحقق من العمر وقت طلب العرض فقط، ولن نحتفظ بالرقم كاملًا داخل الطلب."
+                  : "سيتم حفظ تاريخ الميلاد في حسابك لاستخدامه في التحقق من الأهلية.",
+                dobModal.plan.requiresEgyptianNationalId
+                  ? "Used only to verify age for this checkout; the full ID is not stored in the order."
+                  : "Your date of birth will be saved to your account for eligibility checks.",
+              )}
+            </div>
+
+            {dobError && (
+              <div
+                style={{
+                  marginTop: 12,
+                  padding: "10px 12px",
+                  borderRadius: 10,
+                  background: "rgba(220,38,38,.08)",
+                  color: "#b91c1c",
+                  fontSize: 13,
+                  fontWeight: 700,
+                }}
+              >
+                {dobError}
+              </div>
+            )}
+
+            <div
+              style={{
+                display: "flex",
+                gap: 10,
+                marginTop: 20,
+              }}
+            >
+              <button
+                type="button"
+                disabled={dobSaving}
+                onClick={() => {
+                  setDobModal(null);
+                  setDobBirthDate("");
+                  setDobError(null);
+                }}
+                style={{
+                  flex: 1,
+                  padding: "12px 14px",
+                  borderRadius: 10,
+                  border: `1px solid ${C.border}`,
+                  background: "#fff",
+                  color: C.gray,
+                  fontWeight: 800,
+                  cursor: dobSaving ? "not-allowed" : "pointer",
+                  opacity: dobSaving ? 0.6 : 1,
+                }}
+              >
+                {t("إلغاء", "Cancel")}
+              </button>
+
+              <button
+                type="button"
+                disabled={dobSaving || !dobBirthDate}
+                onClick={() => void saveDobAndRetrySubscription()}
+                className="btn-primary"
+                style={{
+                  flex: 1,
+                  justifyContent: "center",
+                  padding: "12px 14px",
+                  opacity: dobSaving || !dobBirthDate ? 0.6 : 1,
+                }}
+              >
+                {dobSaving
+                  ? t("جارٍ التحقق...", "Verifying...")
+                  : dobModal.plan.requiresEgyptianNationalId
+                    ? t("تحقق ومتابعة", "Verify & continue")
+                    : t("حفظ ومتابعة", "Save & continue")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* ─ VERIFY EMAIL MODAL ─ */}
       {verifyModal && (
         <div
@@ -15419,8 +16099,36 @@ const OffersPage = ({
 }) => {
   const offerClock = useHydratedOfferClock();
   const t = useT();
+  const { purchaseOfferBox, offerBoxBusyId, offerBoxError } = useOfferBoxCheckout(summary);
   const { lang } = useLang();
   const [offers, setOffers] = useState(DEFAULT_OFFERS);
+  useEffect(() => {
+    if (offers.length === 0) return;
+
+    const requestedOfferId =
+      new URLSearchParams(window.location.search).get("offerBox");
+
+    if (!requestedOfferId) return;
+
+    const target = Array.from(
+      document.querySelectorAll<HTMLButtonElement>(
+        "[data-offer-box-id]",
+      ),
+    ).find(
+      (button) => button.dataset.offerBoxId === requestedOfferId,
+    );
+
+    if (!target) return;
+
+    target.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+
+    if (!target.disabled) {
+      target.focus({ preventScroll: true });
+    }
+  }, [offers]);
   const [packages, setPackages] = useState<PublicMembership[]>([]);
   const [customPlans, setCustomPlans] = useState<PublicMembership[]>([]);
   const [friendOffer, setFriendOffer] = useState<PublicOffer | null>(null);
@@ -16666,6 +17374,8 @@ ${friendInviteUrl(friendGroup.token)}`,
                         >
                           {o.type === "special"
                             ? formatCurrency(o.specialPrice ?? 0)
+                            : o.offerBoxEnabled && !o.offerBoxApplyDiscount
+                              ? t("السعر الحالي", "Current price")
                             : o.type === "percentage"
                               ? `${o.discount}%`
                               : `${o.discount} ${t("ج.م", "EGP")}`}
@@ -16675,6 +17385,8 @@ ${friendInviteUrl(friendGroup.token)}`,
                         >
                           {o.type === "special"
                             ? t("سعر العرض الخاص", "Special offer price")
+                            : o.offerBoxEnabled && !o.offerBoxApplyDiscount
+                              ? t("بدون خصم إضافي عند الشراء", "No extra checkout discount")
                             : t("قيمة الخصم", "Discount value")}
                         </div>
                       </div>
@@ -16839,13 +17551,18 @@ ${friendInviteUrl(friendGroup.token)}`,
                           return;
                         }
 
-                        openSubscribeModal(
+                        if (o.offerBoxEnabled) {
+                  void purchaseOfferBox(o);
+                  return;
+                }
+                openSubscribeModal(
                           o.membershipId,
                           o.id,
                           o.specialPrice ?? null,
                         );
                       }}
-                      disabled={offerUnavailable}
+                      data-offer-box-id={o.offerBoxEnabled ? o.id : undefined}
+                      disabled={offerUnavailable || (o.offerBoxEnabled && offerBoxBusyId !== null)}
                       style={{
                         width: "100%",
                         padding: "10px",
@@ -16863,8 +17580,31 @@ ${friendInviteUrl(friendGroup.token)}`,
                     >
                       {offerUnavailable
                         ? t("العرض غير متاح", "Offer unavailable")
-                        : t("اشتركي الآن", "Subscribe now")}
+                        : o.offerBoxEnabled && offerBoxBusyId === o.id
+    ? t("جاري تجهيز الدفع...", "Preparing payment...")
+    : o.offerBoxEnabled
+      ? t("شراء العرض", "Buy offer")
+      : t("اشتركي الآن", "Subscribe now")}
                     </button>
+        {o.offerBoxEnabled &&
+          offerBoxError?.offerId === o.id && (
+            <div
+              role="alert"
+              aria-live="polite"
+              style={{
+                marginTop: 8,
+                padding: "8px 10px",
+                borderRadius: 8,
+                background: "#FEF2F2",
+                color: "#991B1B",
+                fontSize: 12,
+                lineHeight: 1.6,
+                overflowWrap: "anywhere",
+              }}
+            >
+              {offerBoxError.message}
+            </div>
+          )}
                   </div>
                 </div>
               );
@@ -23947,6 +24687,7 @@ const AccountPage = ({ navigate }: { navigate: (p: string) => void }) => {
       label: t("اشتراكاتي", "My memberships"),
       icon: "repeat",
     },
+    { id: "offer-box", label: t("عروضي المشتراة", "Purchased offers"), icon: "box" },
     { id: "bookings", label: t("حجوزاتي", "My bookings"), icon: "calendar" },
     { id: "orders", label: t("طلباتي", "My orders"), icon: "box" },
     { id: "wallet", label: t("المحفظة", "Wallet"), icon: "wallet" },
@@ -24464,6 +25205,7 @@ const AccountPage = ({ navigate }: { navigate: (p: string) => void }) => {
           )}
         </main>
       </div>
+      {activeTab === "offer-box" && <AccountOfferBoxPurchases />}
     </div>
   );
 };
