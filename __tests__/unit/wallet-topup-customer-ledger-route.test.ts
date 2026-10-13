@@ -29,7 +29,12 @@ vi.mock("@/lib/db", () => ({
     },
   },
 }));
-import { GET } from "@/app/api/admin/accounting/wallet-topups/route";
+import { GET as routeGet } from "@/app/api/admin/accounting/wallet-topups/route";
+async function GET(req: Request): Promise<Response> {
+  const response = await routeGet(req);
+  if (!response) throw new Error("ACCOUNTING_GET_RETURNED_UNDEFINED");
+  return response;
+}
 
 const create = (id: string, paid: boolean, amount: number) => ({
   id,
