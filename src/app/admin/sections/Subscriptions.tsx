@@ -73,6 +73,7 @@ const EMPTY_OFFER: Omit<Offer, "id" | "usedCount" | "currentSubscribers"> = {
   offerBoxEnabled: false,
   offerBoxApplyDiscount: false,
   requiresBirthDate: false,
+  requiresEgyptianNationalId: false,
   minAgeYears: null,
   maxAgeYears: null,
 };
@@ -2004,6 +2005,7 @@ export default function Subscriptions() {
                     setOfferModal({
                       ...offerModal,
                       requiresBirthDate: enabled,
+                      requiresEgyptianNationalId: enabled ? offerModal.requiresEgyptianNationalId ?? false : false,
                       minAgeYears: enabled
                         ? (offerModal.minAgeYears ?? 13)
                         : null,
@@ -2020,13 +2022,31 @@ export default function Subscriptions() {
                     تقييد العرض حسب العمر
                   </div>
                   <div className="mt-1 text-xs leading-6 text-[#d7aabd]">
-                    عند تفعيل هذا الخيار يجب أن يكون تاريخ ميلاد العميل مسجلاً، ويتم التحقق من العمر على السيرفر.
+                    عند تفعيل الخيار يتحقق السيرفر من العمر. لعرض الطلبة يمكنكِ اختيار الرقم القومي بدل تاريخ الميلاد المسجل بالحساب.
                   </div>
                 </div>
               </label>
 
               {offerModal.requiresBirthDate ? (
-                <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <>
+                  <label className="mt-4 flex cursor-pointer items-start gap-3 text-sm text-[#fff4f8]">
+                    <input
+                      type="checkbox"
+                      checked={offerModal.requiresEgyptianNationalId === true}
+                      onChange={(event) => setOfferModal({
+                        ...offerModal,
+                        requiresEgyptianNationalId: event.target.checked,
+                      })}
+                      className="mt-1 h-4 w-4 accent-[#ff4f93]"
+                    />
+                    <span>
+                      <strong className="block">التحقق بالرقم القومي المصري (عرض الطلبة)</strong>
+                      <span className="mt-1 block text-xs text-[#d7aabd]">
+                        يُطلب الرقم القومي المكوّن من 14 رقمًا عند الشراء، ويُحسب العمر من تاريخ الميلاد المرمز داخله دون حفظ الرقم كاملًا في الطلب.
+                      </span>
+                    </span>
+                  </label>
+                  <div className="mt-4 grid gap-4 sm:grid-cols-2">
                   <Field label="الحد الأدنى للعمر">
                     <input
                       type="number"
@@ -2070,7 +2090,8 @@ export default function Subscriptions() {
                       placeholder="25"
                     />
                   </Field>
-                </div>
+                  </div>
+                </>
               ) : null}
             </div>
             {offerModal.type === "special" ? (

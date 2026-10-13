@@ -2986,6 +2986,7 @@ type PublicOffer = {
   friendRequiredMembers?: number;
   friendInviteExpiryHours?: number;
   requiresBirthDate?: boolean;
+  requiresEgyptianNationalId?: boolean;
   minAgeYears?: number | null;
   maxAgeYears?: number | null;
 };
@@ -4690,6 +4691,20 @@ function useOfferBoxCheckout(summary: UserSummary | null) {
         throw new Error("تعذر تحديد حالة الشراء السابقة.");
       }
 
+      let egyptianNationalId: string | undefined;
+      if (offer.requiresEgyptianNationalId) {
+        const entered = window.prompt(
+          lang === "en"
+            ? "Enter your 14-digit Egyptian national ID to verify age for this student offer. The full ID will not be saved."
+            : "أدخلي الرقم القومي المصري (14 رقمًا) للتحقق من عمر عرض الطلبة. لن يُحفظ الرقم كاملًا في الطلب.",
+        );
+        if (entered === null) return;
+        egyptianNationalId = entered.trim();
+        if (!/^[0-9٠-٩۰-۹]{14}$/.test(egyptianNationalId)) {
+          throw new Error("الرقم القومي يجب أن يتكون من 14 رقمًا.");
+        }
+      }
+
       const response = await fetch("/api/offer-box/checkout", {
         method: "POST",
         credentials: "same-origin",
@@ -4699,6 +4714,7 @@ function useOfferBoxCheckout(summary: UserSummary | null) {
         },
         body: JSON.stringify({
           offerId: offer.id,
+          ...(egyptianNationalId ? { egyptianNationalId } : {}),
         }),
       });
 
@@ -10268,6 +10284,7 @@ type PlanItem = {
   allowedClassIds?: string[];
   kind?: string | null;
   requiresBirthDate?: boolean;
+  requiresEgyptianNationalId?: boolean;
   minAgeYears?: number | null;
   maxAgeYears?: number | null;
 };
@@ -10636,6 +10653,7 @@ const MembershipsPage = ({
           isFeatured: false, // always run normal checkout flow when explicitly clicked
           requiresBirthDate:
             matchedOffer?.requiresBirthDate === true,
+          requiresEgyptianNationalId: matchedOffer?.requiresEgyptianNationalId === true,
           minAgeYears:
             matchedOffer?.minAgeYears ?? null,
           maxAgeYears:
@@ -10699,6 +10717,7 @@ const MembershipsPage = ({
           subtitle: t("اشتراك في عرض", "Offer subscription"),
           isFeatured: false,
           requiresBirthDate: offer.requiresBirthDate === true,
+          requiresEgyptianNationalId: offer.requiresEgyptianNationalId === true,
           minAgeYears: offer.minAgeYears ?? null,
           maxAgeYears: offer.maxAgeYears ?? null,
           allowedClassTypes: offer.allowedClassTypes ?? null,
@@ -11650,6 +11669,7 @@ const MembershipsPage = ({
     scheduleIds: string[] = [],
     paymentOverride?: "paymob",
     coachMembershipTrainerId?: string | null,
+    egyptianNationalId?: string,
   ) => {
     if (!plan.id && !plan.offerId) {
       navigate("register");
@@ -11705,6 +11725,7 @@ const MembershipsPage = ({
               pointsDeduct:
                 fs.pointsToDeduct > 0 ? fs.pointsToDeduct : undefined,
               offerId: plan.offerId ?? undefined,
+              ...(egyptianNationalId ? { egyptianNationalId } : {}),
               trialPrice: plan.isTrial ? plan.price : undefined,
               selectedMonths: plan.selectedMonths ?? undefined,
               coachMembershipTrainerId:
@@ -11736,6 +11757,8 @@ const MembershipsPage = ({
         action?: "back_to_schedule" | "back_to_plan";
         code?:
           | "BIRTH_DATE_REQUIRED"
+          | "EGYPTIAN_NATIONAL_ID_REQUIRED"
+          | "EGYPTIAN_NATIONAL_ID_INVALID"
           | "AGE_NOT_ELIGIBLE"
           | "INVALID_AGE_RULE";
         needsVerification?: boolean;
@@ -11743,7 +11766,9 @@ const MembershipsPage = ({
         transactionId?: string | null;
       };
       if (!res.ok) {
-        if (data.code === "BIRTH_DATE_REQUIRED") {
+        if (data.code === "BIRTH_DATE_REQUIRED" ||
+            data.code === "EGYPTIAN_NATIONAL_ID_REQUIRED" ||
+            data.code === "EGYPTIAN_NATIONAL_ID_INVALID") {
           setDobModal({
             plan,
             scheduleIds,
@@ -11754,7 +11779,7 @@ const MembershipsPage = ({
                 : null,
           });
           setDobBirthDate("");
-          setDobError(null);
+          setDobError(data.code === "EGYPTIAN_NATIONAL_ID_INVALID" ? (data.error || "الرقم القومي غير صالح.") : null);
         } else if (data.needsVerification) {
           setVerifyModal({
             plan,
@@ -11811,6 +11836,26 @@ const MembershipsPage = ({
 
   const saveDobAndRetrySubscription = async () => {
     if (!dobModal || dobSaving) return;
+
+    if (dobModal.plan.requiresEgyptianNationalId) {
+      const egyptianNationalId = dobBirthDate.trim();
+      if (!/^[0-9٠-٩۰-۹]{14}$/.test(egyptianNationalId)) {
+        setDobError(t("الرقم القومي المصري يجب أن يتكون من 14 رقمًا.", "Egyptian national ID must contain 14 digits."));
+        return;
+      }
+      const pending = dobModal;
+      setDobModal(null);
+      setDobBirthDate("");
+      setDobError(null);
+      setTimeout(() => {
+        void handleSubscribe(
+          pending.plan, pending.scheduleIds,
+          pending.paymentOverride, pending.coachMembershipTrainerId ?? null,
+          egyptianNationalId,
+        );
+      }, 0);
+      return;
+    }
 
     const birthDate = dobBirthDate.trim();
 
@@ -14493,8 +14538,12 @@ const MembershipsPage = ({
               }}
             >
               {t(
-                "تاريخ الميلاد مطلوب",
-                "Date of birth required",
+                dobModal.plan.requiresEgyptianNationalId
+                  ? "الرقم القومي المصري مطلوب"
+                  : "تاريخ الميلاد مطلوب",
+                dobModal.plan.requiresEgyptianNationalId
+                  ? "Egyptian national ID required"
+                  : "Date of birth required",
               )}
             </h3>
 
@@ -14507,8 +14556,12 @@ const MembershipsPage = ({
               }}
             >
               {t(
-                "هذا العرض مرتبط بشرط عمر. أدخلي تاريخ ميلادك لإكمال التحقق من الأهلية.",
-                "This offer has an age requirement. Enter your date of birth to continue the eligibility check.",
+                dobModal.plan.requiresEgyptianNationalId
+                  ? "عرض الطلبة يتطلب إدخال الرقم القومي المصري، وسيتم حساب العمر من تاريخ الميلاد الموجود داخله."
+                  : "هذا العرض مرتبط بشرط عمر. أدخلي تاريخ ميلادك لإكمال التحقق من الأهلية.",
+                dobModal.plan.requiresEgyptianNationalId
+                  ? "Enter your Egyptian national ID to calculate age from the embedded date of birth."
+                  : "This offer has an age requirement. Enter your date of birth to continue the eligibility check.",
               )}
             </p>
 
@@ -14553,10 +14606,15 @@ const MembershipsPage = ({
                 marginTop: 14,
               }}
             >
-              {t("تاريخ الميلاد", "Date of birth")}
+              {dobModal.plan.requiresEgyptianNationalId
+                ? t("الرقم القومي المصري (14 رقمًا)", "Egyptian national ID (14 digits)")
+                : t("تاريخ الميلاد", "Date of birth")}
 
               <input
-                type="date"
+                type={dobModal.plan.requiresEgyptianNationalId ? "text" : "date"}
+                inputMode={dobModal.plan.requiresEgyptianNationalId ? "numeric" : undefined}
+                maxLength={dobModal.plan.requiresEgyptianNationalId ? 14 : undefined}
+                autoComplete="off"
                 value={dobBirthDate}
                 onChange={(event) => {
                   setDobBirthDate(event.target.value);
@@ -14588,8 +14646,12 @@ const MembershipsPage = ({
               }}
             >
               {t(
-                "سيتم حفظ تاريخ الميلاد في حسابك لاستخدامه في التحقق من الأهلية.",
-                "Your date of birth will be saved to your account for eligibility checks.",
+                dobModal.plan.requiresEgyptianNationalId
+                  ? "نستخدم الرقم للتحقق من العمر وقت طلب العرض فقط، ولن نحتفظ بالرقم كاملًا داخل الطلب."
+                  : "سيتم حفظ تاريخ الميلاد في حسابك لاستخدامه في التحقق من الأهلية.",
+                dobModal.plan.requiresEgyptianNationalId
+                  ? "Used only to verify age for this checkout; the full ID is not stored in the order."
+                  : "Your date of birth will be saved to your account for eligibility checks.",
               )}
             </div>
 
@@ -14652,8 +14714,10 @@ const MembershipsPage = ({
                 }}
               >
                 {dobSaving
-                  ? t("جارٍ الحفظ...", "Saving...")
-                  : t("حفظ ومتابعة", "Save & continue")}
+                  ? t("جارٍ التحقق...", "Verifying...")
+                  : dobModal.plan.requiresEgyptianNationalId
+                    ? t("تحقق ومتابعة", "Verify & continue")
+                    : t("حفظ ومتابعة", "Save & continue")}
               </button>
             </div>
           </div>

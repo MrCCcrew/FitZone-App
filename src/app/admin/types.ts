@@ -222,6 +222,7 @@ export interface Offer {
   offerBoxEnabled?: boolean;
   offerBoxApplyDiscount?: boolean;
   requiresBirthDate?: boolean;
+  requiresEgyptianNationalId?: boolean;
   minAgeYears?: number | null;
   maxAgeYears?: number | null;
 }

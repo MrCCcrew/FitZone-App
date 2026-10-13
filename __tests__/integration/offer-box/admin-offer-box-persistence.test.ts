@@ -171,4 +171,37 @@ describe("Admin Offer Box real persistence", () => {
     }));
     expect(rejected.status).toBe(400);
   });
+
+  it("lets admin opt a student offer into national-ID age checks without affecting existing offers", async () => {
+    const { GET, POST, PATCH } = await import("@/app/api/admin/offers/route");
+    const response = await POST(new Request("http://localhost/api/admin/offers", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        title: `${stamp}-STUDENT-NATIONAL-ID`,
+        type: "special", specialPrice: 90, validUntil: "2027-12-31T22:00",
+        requiresBirthDate: true, requiresEgyptianNationalId: true,
+        minAgeYears: 13, maxAgeYears: 25,
+      }),
+    }));
+    const created = await response.json();
+    expect(response.status, JSON.stringify(created)).toBe(200);
+    createdIds.push(created.id);
+    expect(created.requiresEgyptianNationalId).toBe(true);
+
+    const current = await db.offer.findUniqueOrThrow({ where: { id: created.id } });
+    expect(current.requiresEgyptianNationalId).toBe(true);
+    expect(current.minAgeYears).toBe(13);
+    expect(current.maxAgeYears).toBe(25);
+
+    const all = await (await GET()).json();
+    expect(all.find((o: { id: string }) => o.id === created.id)?.requiresEgyptianNationalId).toBe(true);
+
+    const patch = await PATCH(new Request("http://localhost/api/admin/offers", {
+      method: "PATCH", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: created.id, requiresEgyptianNationalId: false }),
+    }));
+    expect(patch.status).toBe(200);
+    expect((await patch.json()).requiresEgyptianNationalId).toBe(false);
+    expect((await db.offer.findUniqueOrThrow({ where: { id: created.id } })).requiresEgyptianNationalId).toBe(false);
+  });
 });

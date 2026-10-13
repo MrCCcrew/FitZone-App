@@ -24,12 +24,14 @@ function normalizeAllowedClassTypes(value: unknown): string[] {
 }
 type OfferAgeRule = {
   requiresBirthDate: boolean;
+  requiresEgyptianNationalId: boolean;
   minAgeYears: number | null;
   maxAgeYears: number | null;
 };
 
 const DEFAULT_OFFER_AGE_RULE: OfferAgeRule = {
   requiresBirthDate: false,
+  requiresEgyptianNationalId: false,
   minAgeYears: null,
   maxAgeYears: null,
 };
@@ -72,10 +74,15 @@ function resolveOfferAgeRule(
     body.requiresBirthDate !== undefined
       ? body.requiresBirthDate === true
       : current.requiresBirthDate;
+  const requiresEgyptianNationalId =
+    body.requiresEgyptianNationalId !== undefined
+      ? body.requiresEgyptianNationalId === true
+      : current.requiresEgyptianNationalId;
 
   if (!requiresBirthDate) {
     return {
       requiresBirthDate: false,
+      requiresEgyptianNationalId: false,
       minAgeYears: null,
       maxAgeYears: null,
     };
@@ -109,6 +116,7 @@ function resolveOfferAgeRule(
 
   return {
     requiresBirthDate: true,
+    requiresEgyptianNationalId,
     minAgeYears,
     maxAgeYears,
   };
@@ -118,6 +126,7 @@ function normalizeOfferAgeRow(
   row:
     | {
         requiresBirthDate: boolean | number;
+        requiresEgyptianNationalId: boolean | number;
         minAgeYears: number | null;
         maxAgeYears: number | null;
       }
@@ -129,6 +138,9 @@ function normalizeOfferAgeRow(
     requiresBirthDate:
       row.requiresBirthDate === true ||
       Number(row.requiresBirthDate) === 1,
+    requiresEgyptianNationalId:
+      row.requiresEgyptianNationalId === true ||
+      Number(row.requiresEgyptianNationalId) === 1,
     minAgeYears: row.minAgeYears ?? null,
     maxAgeYears: row.maxAgeYears ?? null,
   };
@@ -219,6 +231,7 @@ function mapOffer(
     friendRequiredMembers: offer.friendOfferConfig?.requiredMembers ?? 2,
     friendInviteExpiryHours: offer.friendOfferConfig?.inviteExpiryHours ?? 24,
     requiresBirthDate: ageRule.requiresBirthDate,
+    requiresEgyptianNationalId: ageRule.requiresEgyptianNationalId,
     minAgeYears: ageRule.minAgeYears,
     maxAgeYears: ageRule.maxAgeYears,
   };
@@ -249,6 +262,7 @@ export async function GET() {
       Array<{
         id: string;
         requiresBirthDate: boolean | number;
+        requiresEgyptianNationalId: boolean | number;
         minAgeYears: number | null;
         maxAgeYears: number | null;
       }>
@@ -256,6 +270,7 @@ export async function GET() {
       SELECT
         id,
         requiresBirthDate,
+        requiresEgyptianNationalId,
         minAgeYears,
         maxAgeYears
       FROM Offer
@@ -421,6 +436,7 @@ export async function POST(req: Request) {
         UPDATE Offer
         SET
           requiresBirthDate = ${ageRule.requiresBirthDate},
+          requiresEgyptianNationalId = ${ageRule.requiresEgyptianNationalId},
           minAgeYears = ${ageRule.minAgeYears},
           maxAgeYears = ${ageRule.maxAgeYears}
         WHERE id = ${created.id}
@@ -476,6 +492,7 @@ export async function PATCH(req: Request) {
       >`
         SELECT
           requiresBirthDate,
+          requiresEgyptianNationalId,
           minAgeYears,
           maxAgeYears
         FROM Offer
@@ -487,6 +504,7 @@ export async function PATCH(req: Request) {
       normalizeOfferAgeRow(currentAgeRows[0]);
 
     const agePatchRequested =
+      body.requiresEgyptianNationalId !== undefined ||
       body.requiresBirthDate !== undefined ||
       body.minAgeYears !== undefined ||
       body.maxAgeYears !== undefined;
@@ -663,6 +681,7 @@ export async function PATCH(req: Request) {
           UPDATE Offer
           SET
             requiresBirthDate = ${ageRule.requiresBirthDate},
+            requiresEgyptianNationalId = ${ageRule.requiresEgyptianNationalId},
             minAgeYears = ${ageRule.minAgeYears},
             maxAgeYears = ${ageRule.maxAgeYears}
           WHERE id = ${id}

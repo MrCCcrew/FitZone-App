@@ -120,6 +120,7 @@ type PublicPayload = {
     friendRequiredMembers: number;
     friendInviteExpiryHours: number;
     requiresBirthDate: boolean;
+    requiresEgyptianNationalId: boolean;
     minAgeYears: number | null;
     maxAgeYears: number | null;
   }>;
@@ -849,6 +850,7 @@ export async function GET(request: Request) {
           offer.friendOfferConfig?.inviteExpiryHours ?? 24,
         requiresBirthDate:
           offerAgeById.get(offer.id)?.requiresBirthDate ?? false,
+        requiresEgyptianNationalId: offer.requiresEgyptianNationalId === true,
         minAgeYears:
           offerAgeById.get(offer.id)?.minAgeYears ?? null,
         maxAgeYears:

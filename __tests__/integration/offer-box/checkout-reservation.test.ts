@@ -562,5 +562,52 @@ describe(
       expect(await db.userMembership.count({ where: { userId } })).toBe(0);
     }, 20000);
 
+    it("requires a structurally valid Egyptian ID for student offers and never persists it", async () => {
+      // Isolated fixture; previous checkout test has removed its own holds.
+      await db.offerBoxPurchase.deleteMany({ where: { userId, offerId } });
+      if (paymentId) await db.paymentTransaction.deleteMany({ where: { id: paymentId } });
+      paymentId = "";
+      purchaseId = "";
+      await db.offer.update({
+        where: { id: offerId },
+        data: {
+          requiresBirthDate: true, requiresEgyptianNationalId: true,
+          minAgeYears: 13, maxAgeYears: 25, offerBoxReservedCount: 0,
+        },
+      });
+      const attempt = async (nationalId?: string) => {
+        const response = await offerBoxCheckout(new Request("http://localhost/api/offer-box/checkout", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ offerId, ...(nationalId ? { egyptianNationalId: nationalId } : {}) }),
+        }));
+        return { status: response.status, data: await response.json() };
+      };
+      const missing = await attempt();
+      expect(missing.status).toBe(400);
+      expect(missing.data.code).toBe("EGYPTIAN_NATIONAL_ID_REQUIRED");
+      const malformed = await attempt("00000000000000");
+      expect(malformed.status).toBe(400);
+      expect(malformed.data.code).toBe("EGYPTIAN_NATIONAL_ID_INVALID");
+      const tooYoung = await attempt("32010100112345");
+      expect(tooYoung.status).toBe(400);
+      expect(tooYoung.data.code).toBe("AGE_NOT_ELIGIBLE");
+      expect(mocks.createPaymentTransaction).not.toHaveBeenCalled();
+      const valid = "30810100112345"; // synthetic structure-only fixture; not a real identity proof
+      const accepted = await attempt(valid);
+      expect(accepted.status, JSON.stringify(accepted.data)).toBe(200);
+      purchaseId = accepted.data.purchaseId;
+      const saved = await db.offerBoxPurchase.findUniqueOrThrow({ where: { id: purchaseId } });
+      const snapshotText = saved.offerSnapshot;
+      expect(snapshotText).not.toContain(valid);
+      expect(JSON.parse(snapshotText).ageEligibility).toMatchObject({
+        verificationMethod: "egyptian_national_id",
+        ageYearsAtPurchase: expect.any(Number),
+      });
+      expect(mocks.createPaymentTransaction).toHaveBeenCalledTimes(1);
+      const payment = await db.paymentTransaction.findUniqueOrThrow({ where: { id: paymentId } });
+      expect(payment.metadata).not.toContain(valid);
+      expect(await db.userMembership.count({ where: { userId } })).toBe(0);
+    }, 20000);
+
   },
 );

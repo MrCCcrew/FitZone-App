@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/app-session";
 import { asDbTransactionClient, db } from "@/lib/db";
-import { evaluateOfferAgeEligibility } from "@/lib/offer-age-eligibility";
+import { evaluateEgyptianNationalIdAgeEligibility, evaluateOfferAgeEligibility } from "@/lib/offer-age-eligibility";
 import { calculateOfferBoxFinalPrice } from "@/lib/payments/offer-box-pricing";
 import { getEligibilityPolicySnapshotForSource } from "@/lib/get-eligible-classes";
 import { buildMembershipCommissionSnapshotTx } from "@/lib/commissions/membership-commission-snapshot-builder";
@@ -13,6 +13,7 @@ import {
 
 type CheckoutBody = {
   offerId?: string | null;
+  egyptianNationalId?: string | null;
   returnUrl?: string | null;
   cancelUrl?: string | null;
 };
@@ -42,6 +43,7 @@ type LockedOfferRow = {
   features: string | null;
   featuresEn: string | null;
   requiresBirthDate: boolean | number;
+  requiresEgyptianNationalId: boolean | number;
   minAgeYears: number | null;
   maxAgeYears: number | null;
 };
@@ -147,6 +149,7 @@ export async function POST(req: Request) {
               features,
               featuresEn,
               requiresBirthDate,
+              requiresEgyptianNationalId,
               minAgeYears,
               maxAgeYears
             FROM Offer
@@ -243,10 +246,13 @@ export async function POST(req: Request) {
             ? Number(offer.maxAgeYears)
             : null;
 
+        const isEgyptianIdOffer = isTrue(offer.requiresEgyptianNationalId);
         const ageSubject =
-          requiresBirthDate ||
-          minAgeYears != null ||
-          maxAgeYears != null
+          !isEgyptianIdOffer && (
+            requiresBirthDate ||
+            minAgeYears != null ||
+            maxAgeYears != null
+          )
             ? await tx.user.findUnique({
                 where: {
                   id: user.id,
@@ -257,15 +263,20 @@ export async function POST(req: Request) {
               })
             : null;
 
-        const ageEligibility =
-          evaluateOfferAgeEligibility({
-            requiresBirthDate,
-            minAgeYears,
-            maxAgeYears,
-            birthDate:
-              ageSubject?.birthDate ?? null,
-            now,
-          });
+        const ageEligibility = isEgyptianIdOffer
+          ? evaluateEgyptianNationalIdAgeEligibility({
+              egyptianNationalId: body.egyptianNationalId,
+              minAgeYears,
+              maxAgeYears,
+              now,
+            })
+          : evaluateOfferAgeEligibility({
+              requiresBirthDate,
+              minAgeYears,
+              maxAgeYears,
+              birthDate: ageSubject?.birthDate ?? null,
+              now,
+            });
 
         if (!ageEligibility.eligible) {
           throw new OfferBoxCheckoutError(
@@ -466,6 +477,7 @@ export async function POST(req: Request) {
 
           ageEligibility: {
             requiresBirthDate,
+            verificationMethod: isEgyptianIdOffer ? "egyptian_national_id" : "account_birth_date",
             minAgeYears,
             maxAgeYears,
             ageYearsAtPurchase:
