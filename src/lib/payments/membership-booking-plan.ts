@@ -223,6 +223,17 @@ export async function applyMembershipBookingPlanTx({
     Boolean(preexistingContractRecord?.bookingPatternSnapshot);
 
   /*
+   * A purchase may already carry an immutable entitlement snapshot before
+   * the first booking pattern is chosen. Offer Box redemption relies on
+   * this boundary because the original public offer may later be hidden,
+   * expired, disabled, changed, or deleted.
+   */
+  const preexistingFrozenEligibility =
+    parseEligibilityPolicySnapshot(
+      preexistingContractRecord?.eligibilitySnapshot,
+    );
+
+  /*
    * Seed validation is purchase-time validation only.
    * Existing contracts deliberately validate zero submitted seeds here;
    * the immutable patterns/seed IDs are loaded later from the contract.
@@ -234,7 +245,8 @@ export async function applyMembershipBookingPlanTx({
 
   const liveEligibilitySnapshot =
     !hasFrozenBookingContract
-      ? await getEligibilityPolicySnapshotForSource(source, tx)
+      ? preexistingFrozenEligibility ??
+        await getEligibilityPolicySnapshotForSource(source, tx)
       : null;
 
   const hasSchedulableEntitlement = Boolean(

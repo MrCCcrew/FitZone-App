@@ -101,16 +101,39 @@ export async function DELETE(req: Request) {
 
     const existing = await db.paymentTransaction.findUnique({
       where: { id: body.transactionId },
-      select: { id: true },
+      select: { id: true, provider: true, status: true },
     });
 
     if (!existing) {
       return NextResponse.json({ error: "المعاملة غير موجودة." }, { status: 404 });
     }
 
-    await db.paymentTransaction.delete({
-      where: { id: body.transactionId },
+    // PAYMOB_FINANCIAL_EVIDENCE_RETENTION
+    // Provider attempts, webhook proofs, dispute/late-capture evidence and
+    // all settled payment records must remain auditable. Admin master access
+    // permits review, not destruction of the financial trail.
+    if (existing.provider === "paymob" || existing.status === "paid") {
+      return NextResponse.json(
+        { error: "سجل الدفع مؤمّن ولا يمكن حذفه. استخدم إجراء التسوية المالية المعتمد." },
+        { status: 409 },
+      );
+    }
+
+    // Guard against a concurrent payment becoming paid after the read.
+    const deleted = await db.paymentTransaction.deleteMany({
+      where: {
+        id: existing.id,
+        provider: existing.provider,
+        status: existing.status,
+      },
     });
+
+    if (deleted.count !== 1) {
+      return NextResponse.json(
+        { error: "حالة المعاملة تغيرت؛ أعد التحقق قبل أي إجراء." },
+        { status: 409 },
+      );
+    }
 
     return NextResponse.json({ success: true, transactionId: body.transactionId });
   } catch (error) {

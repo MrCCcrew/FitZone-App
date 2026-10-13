@@ -1,3 +1,6 @@
+import { findSinglePaidPaymobOrderTransaction } from "@/lib/payments/paymob-order-paid-proof";
+import { isFinalRetainedPaymobPayment } from "@/lib/payments/paymob-retained-payment-proof";
+import { resolvePaymobIntentionExpiration } from "@/lib/payments/paymob-membership-expiration";
 import crypto from "crypto";
 import type {
   PaymentCheckoutInput,
@@ -11,7 +14,6 @@ import { assertExternalSideEffectsAllowed } from "@/lib/staging-safety";
 
 const REGION_BASE = "https://accept.paymob.com";
 const FETCH_TIMEOUT_MS = 20_000;
-const PAYMOB_CHECKOUT_EXPIRATION_SECONDS = 30 * 60;
 type PaymobSettings = Awaited<ReturnType<typeof getPaymentSettings>>;
 
 type PaymobAuthResponse = {
@@ -30,6 +32,7 @@ type PaymobAcceptanceTransaction = {
   is_auth?: boolean;
   is_capture?: boolean;
   is_refunded?: boolean;
+  refunded_amount_cents?: number;
   is_standalone_payment?: boolean;
   is_voided?: boolean;
   order?: { id?: number; merchant_order_id?: string | null };
@@ -194,6 +197,7 @@ async function createUnifiedIntention(params: {
   customer: PaymentCheckoutInput["customer"];
   purpose: PaymentCheckoutInput["purpose"];
   context: PaymentCheckoutInput["context"];
+  expirationSeconds: number;
 }) {
   assertExternalSideEffectsAllowed("Paymob intention creation");
   const secretKey = requireSecret("PAYMOB_SECRET_KEY");
@@ -205,7 +209,7 @@ async function createUnifiedIntention(params: {
   const body = {
     amount: params.amountCents,
     currency: params.currency,
-    expiration: PAYMOB_CHECKOUT_EXPIRATION_SECONDS,
+    expiration: params.expirationSeconds,
     payment_methods: paymentMethodIds,
     special_reference: params.transactionId,
     redirection_url: redirectionUrl,
@@ -259,6 +263,12 @@ async function createUnifiedIntention(params: {
 
     return {
       intentionId: payload.id != null ? String(payload.id) : null,
+      intentionOrderId:
+        String(
+          (payload as PaymobIntentionResponse & {
+            intention_order_id?: number | string | null;
+          }).intention_order_id ?? "",
+        ) || null,
       clientSecret: payload.client_secret,
       paymentMethods: Array.isArray(payload.payment_methods) ? payload.payment_methods : [],
       paymentMethodIds,
@@ -337,8 +347,22 @@ async function createCheckout(input: PaymentCheckoutInput): Promise<PaymentCheck
     throw new Error("Payment amount must be greater than zero.");
   }
 
+  if (input.purpose === "membership" && !input.membershipHoldExpiresAt) {
+    throw new Error("PAYMOB_MEMBERSHIP_HOLD_EXPIRY_REQUIRED");
+  }
+
+  const checkoutStartedAt = new Date();
+
+  const expirationSeconds = resolvePaymobIntentionExpiration({
+    membershipHoldExpiresAt:
+      input.purpose === "membership"
+        ? input.membershipHoldExpiresAt
+        : null,
+    now: checkoutStartedAt,
+  });
   const publicKey = getPublicKey(settings);
   const intention = await createUnifiedIntention({
+    expirationSeconds,
     amountCents,
     currency: input.currency || "EGP",
     transactionId: input.transactionId,
@@ -349,7 +373,7 @@ async function createCheckout(input: PaymentCheckoutInput): Promise<PaymentCheck
   });
 
   const checkoutUrl = buildUnifiedCheckoutUrl(publicKey, intention.clientSecret);
-  const expiresAt = new Date(Date.now() + PAYMOB_CHECKOUT_EXPIRATION_SECONDS * 1000);
+  const expiresAt = new Date(checkoutStartedAt.getTime() + expirationSeconds * 1000);
 
   console.info("[PAYMOB] Unified checkout prepared", {
     transactionId: input.transactionId,
@@ -372,6 +396,7 @@ async function createCheckout(input: PaymentCheckoutInput): Promise<PaymentCheck
       providerMode: "paymob_unified_checkout",
       checkoutExperience: "redirect",
       intentionId: intention.intentionId,
+      intentionOrderId: intention.intentionOrderId,
       clientSecret: intention.clientSecret,
       publicKey,
       paymentMethodIds: intention.paymentMethodIds,
@@ -387,6 +412,160 @@ async function createCheckout(input: PaymentCheckoutInput): Promise<PaymentCheck
   };
 }
 
+/*
+ * Renew the SAME Paymob Intention.
+ *
+ * This is not permission to create a second charge.
+ * Caller must claim the membership/payment retry atomically,
+ * and must block any unresolved paid/in-flight outcome.
+ */
+export async function renewExistingMembershipPaymobIntention(input: {
+  transactionId: string;
+  providerReference: string | null;
+  providerPayload: string | null;
+  amount: number;
+  currency: string;
+  pendingExpiresAt: Date;
+  customer: PaymentCheckoutInput["customer"];
+}) {
+  assertExternalSideEffectsAllowed("Paymob membership intention renewal");
+
+  const stored = readStoredPayload(input.providerPayload);
+
+  if (stored?.providerMode !== "paymob_unified_checkout") {
+    throw new Error("PAYMOB_RENEWAL_UNSUPPORTED_CHECKOUT");
+  }
+
+  const clientSecret = String(stored.clientSecret ?? "").trim();
+  const intentionId = String(stored.intentionId ?? "").trim();
+  const orderIdText = String(stored.intentionOrderId ?? "").trim();
+  const orderId = Number(orderIdText);
+
+  const methods = stored.paymentMethodIds;
+
+  if (
+    !clientSecret ||
+    clientSecret.length > 500 ||
+    !/^[a-zA-Z0-9_-]+$/.test(clientSecret) ||
+    !intentionId ||
+    intentionId !== input.providerReference ||
+    !/^[0-9]+$/.test(orderIdText) ||
+    !Number.isSafeInteger(orderId) ||
+    orderId <= 0 ||
+    !Array.isArray(methods) ||
+    methods.length === 0 ||
+    !methods.every(
+      (id) => Number.isSafeInteger(id) && id > 0,
+    )
+  ) {
+    throw new Error("PAYMOB_RENEWAL_IDENTITY_INVALID");
+  }
+
+  const amountCents = Math.round(input.amount * 100);
+  const currency = input.currency.trim().toUpperCase();
+
+  if (
+    !Number.isSafeInteger(amountCents) ||
+    amountCents <= 0 ||
+    currency !== "EGP"
+  ) {
+    throw new Error("PAYMOB_RENEWAL_ECONOMICS_INVALID");
+  }
+
+  const now = new Date();
+
+  const expirationSeconds = resolvePaymobIntentionExpiration({
+    membershipHoldExpiresAt: input.pendingExpiresAt,
+    now,
+  });
+
+  /*
+   * Paymob Update Intention requires the original accept_order_id.
+   * All payment economics and the original special_reference stay fixed.
+   */
+  const body = {
+    accept_order_id: orderId,
+    amount: amountCents,
+    currency,
+    payment_methods: methods,
+    items: [],
+    billing_data: buildBillingData(input.customer),
+    special_reference: input.transactionId,
+    expiration: expirationSeconds,
+    notification_url: String(stored.notificationUrl ?? ""),
+    redirection_url: buildReturnUrl(
+      String(stored.returnUrl ?? ""),
+      input.transactionId,
+    ),
+  };
+
+  const secretKey = requireSecret("PAYMOB_SECRET_KEY");
+
+  const response = await fetch(
+    `${getRegionBase()}/v1/intention/${encodeURIComponent(clientSecret)}/`,
+    {
+      method: "PUT",
+      headers: {
+        Authorization: `Token ${secretKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    },
+  );
+
+  if (!response.ok) {
+    // Do not include provider response body: it might contain credentials.
+    throw new Error(
+      `PAYMOB_RENEWAL_PROVIDER_REJECTED_${response.status}`,
+    );
+  }
+
+  const renewed = (await response.json()) as {
+    id?: string;
+    intention_order_id?: string | number;
+    client_secret?: string;
+    special_reference?: string;
+    confirmed?: boolean;
+    status?: string;
+  };
+
+  /*
+   * Accept only an explicitly unconfirmed update to the same
+   * Intention and Paymob order.
+   *
+   * An ambiguous response must never authorize another checkout.
+   */
+  if (
+    renewed.confirmed !== false ||
+    renewed.id !== intentionId ||
+    String(renewed.intention_order_id ?? "") !== orderIdText ||
+    renewed.special_reference !== input.transactionId ||
+    renewed.status !== "intended" ||
+    !renewed.client_secret
+  ) {
+    throw new Error("PAYMOB_RENEWAL_RESULT_REQUIRES_RECONCILIATION");
+  }
+
+  const checkoutUrl = buildUnifiedCheckoutUrl(
+    String(stored.publicKey ?? ""),
+    renewed.client_secret,
+  );
+
+  return {
+    checkoutUrl,
+    expiresAt: new Date(
+      now.getTime() + expirationSeconds * 1000,
+    ),
+    providerReference: intentionId,
+    providerPayload: {
+      ...stored,
+      clientSecret: renewed.client_secret,
+      checkoutUrl,
+      renewalUpdatedAt: new Date().toISOString(),
+    },
+  };
+}
 async function verifyTransaction(transaction: {
   id: string;
   providerReference?: string | null;
@@ -396,17 +575,125 @@ async function verifyTransaction(transaction: {
   metadata?: string | null;
   providerPayload?: string | null;
 }): Promise<PaymentVerificationResult> {
+  /*
+   * PAYMOB_ORDER_PAID_RECONCILIATION_V1
+   *
+   * An intention may have succeeded before we received its webhook.
+   * When no acceptance transaction ID was stored, consult the
+   * provider order's complete transaction list if available.
+   *
+   * Only positive, single-payment proof may change status.
+   * Missing/ambiguous results never authorize retry or refund.
+   */
+  const savedPayload = readStoredPayload(transaction.providerPayload);
+  const storedOrderId = String(savedPayload?.intentionOrderId ?? "").trim();
+
+  if (
+    !transaction.externalReference &&
+    /^[0-9]+$/.test(storedOrderId)
+  ) {
+    try {
+      assertExternalSideEffectsAllowed("Paymob order reconciliation");
+
+      const token = await authenticate();
+
+      const response = await fetch(
+        `${getRegionBase()}/api/ecommerce/orders/${encodeURIComponent(storedOrderId)}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+        },
+      );
+
+      if (response.ok) {
+        const order: unknown = await response.json();
+
+        const confirmedTransactionId =
+          findSinglePaidPaymobOrderTransaction({
+            order,
+            expectedOrderId: storedOrderId,
+            expectedAmountCents: Math.round(transaction.amount * 100),
+            expectedCurrency: transaction.currency,
+          });
+
+        if (confirmedTransactionId) {
+          return {
+            status: "paid",
+            message: "Paymob order confirmed one matching successful payment.",
+            providerReference: transaction.providerReference ?? null,
+            externalReference: confirmedTransactionId,
+            payload: {
+              ...(savedPayload ?? {}),
+              paymobOrderId: storedOrderId,
+              paymobTransactionId: confirmedTransactionId,
+              reconciliationSource: "paymob_order_transactions",
+            },
+          };
+        }
+      }
+    } catch (error) {
+      console.warn(
+        "[PAYMOB] Order reconciliation inconclusive",
+        error instanceof Error ? error.name : "unknown_error",
+      );
+    }
+  }
   if (transaction.externalReference) {
     assertExternalSideEffectsAllowed("Paymob transaction verification");
     const authToken = await authenticate();
     const response = await fetch(`${getRegionBase()}/api/acceptance/transactions/${transaction.externalReference}`, {
-      headers: { Authorization: `Token ${authToken}` },
+      headers: { Authorization: `Bearer ${authToken}` },
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
 
     if (response.ok) {
       const acceptance = (await response.json()) as PaymobAcceptanceTransaction;
       const status = mapAcceptanceStatus(acceptance);
+      // PAYMOB_ACCEPTANCE_INQUIRY_IDENTITY_V1
+      // A provider response must belong to THIS stored transaction.
+      // Missing or inconsistent evidence never settles a payment.
+      const savedIdentity = readStoredPayload(transaction.providerPayload);
+      const expectedOrderId = String(savedIdentity?.intentionOrderId ?? "").trim();
+      const merchantOrderId = acceptance.order?.merchant_order_id ?? null;
+      const specialReference = acceptance.special_reference ?? null;
+      const expectedAmountCents = Math.round(transaction.amount * 100);
+      const orderProven = /^[0-9]+$/.test(expectedOrderId)
+        ? String(acceptance.order?.id ?? "") === expectedOrderId
+        : merchantOrderId === transaction.id || specialReference === transaction.id;
+      const identityMatches =
+        Number.isSafeInteger(acceptance.id) &&
+        String(acceptance.id) === transaction.externalReference &&
+        Number.isSafeInteger(expectedAmountCents) &&
+        expectedAmountCents > 0 &&
+        Number.isSafeInteger(acceptance.amount_cents) &&
+        acceptance.amount_cents === expectedAmountCents &&
+        String(acceptance.currency ?? "").trim().toUpperCase() ===
+          transaction.currency.trim().toUpperCase() &&
+        orderProven &&
+        (merchantOrderId === null || merchantOrderId === transaction.id) &&
+        (specialReference === null || specialReference === transaction.id);
+      const positivePaymentSafe =
+        status !== "paid" ||
+        (acceptance.success === true &&
+          acceptance.pending === false &&
+          acceptance.error_occured === false &&
+          acceptance.is_refunded === false &&
+          Number(acceptance.refunded_amount_cents ?? 0) === 0 &&
+          acceptance.is_voided === false);
+      if (!identityMatches || !positivePaymentSafe) {
+        console.warn("[PAYMOB_ACCEPTANCE_RECONCILIATION_REQUIRED]", {
+          transactionId: transaction.id,
+        });
+        return {
+          status: "pending",
+          message: "Payment identity requires reconciliation.",
+          providerReference: transaction.providerReference ?? null,
+          externalReference: transaction.externalReference ?? null,
+          payload: savedIdentity,
+        };
+      }
 
       console.info("[PAYMOB] Verification result", {
         transactionId: transaction.id,
@@ -664,6 +951,153 @@ export type PaymobRemoteVerificationResult = {
  * @param expectedFitZoneReference - Expected FitZone reference (e.g., "FZ-Offers-0000017")
  * @returns Remote verification result with transaction details and validation status
  */
+export type PaymobMerchantReferenceInquiryResult = {
+  found: boolean;
+  status: "paid" | "failed" | "pending";
+  paymobTransactionId: string | null;
+  merchantOrderId: string | null;
+  amountCents: number | null;
+  currency: string | null;
+  pending: boolean | null;
+  success: boolean | null;
+};
+
+/**
+ * Read-only recovery for the checkout-creation ambiguity window.
+ *
+ * Intention creation sends our PaymentTransaction.id as special_reference.
+ * Paymob exposes it later as merchant_order_id, so this lookup remains
+ * possible even when the intention response was lost before providerReference,
+ * externalReference, providerPayload or expiresAt were persisted locally.
+ *
+ * This function performs NO local mutation and creates NO new checkout.
+ */
+export async function inquirePaymobTransactionByMerchantReference(
+  localTransactionId: string,
+): Promise<PaymobMerchantReferenceInquiryResult> {
+  const merchantOrderId = String(
+    localTransactionId ?? "",
+  ).trim();
+
+  if (!merchantOrderId) {
+    throw new Error(
+      "PAYMOB_MERCHANT_REFERENCE_REQUIRED",
+    );
+  }
+
+  assertExternalSideEffectsAllowed(
+    "Paymob transaction inquiry by merchant reference",
+  );
+
+  const authToken = await authenticate();
+
+  const response = await fetch(
+    `${getRegionBase()}/api/ecommerce/orders/transaction_inquiry`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        auth_token: authToken,
+        merchant_order_id: merchantOrderId,
+      }),
+      signal: AbortSignal.timeout(
+        FETCH_TIMEOUT_MS,
+      ),
+    },
+  );
+
+  if (response.status === 404) {
+    return {
+      found: false,
+      status: "pending",
+      paymobTransactionId: null,
+      merchantOrderId,
+      amountCents: null,
+      currency: null,
+      pending: null,
+      success: null,
+    };
+  }
+
+  if (!response.ok) {
+    const text = await response
+      .text()
+      .catch(() => "");
+
+    throw new Error(
+      `PAYMOB_MERCHANT_REFERENCE_INQUIRY_FAILED:${response.status}:${text.slice(0, 300)}`,
+    );
+  }
+
+  const transaction =
+    (await response.json()) as PaymobAcceptanceTransaction;
+
+  const returnedMerchantOrderId =
+    transaction.order?.merchant_order_id != null
+      ? String(
+          transaction.order.merchant_order_id,
+        )
+      : transaction.special_reference != null
+        ? String(transaction.special_reference)
+        : null;
+
+  if (
+    returnedMerchantOrderId !== null &&
+    returnedMerchantOrderId !== merchantOrderId
+  ) {
+    throw new Error(
+      "PAYMOB_MERCHANT_REFERENCE_INQUIRY_LINK_MISMATCH",
+    );
+  }
+
+  // A successful attempt is not proof of retained funds. Refunded,
+  // voided, partially refunded and provider-error payments need review.
+  const mappedStatus = mapAcceptanceStatus(transaction);
+  const finalPaid = mappedStatus === "paid" &&
+    isFinalRetainedPaymobPayment(transaction);
+  const safeStatus = mappedStatus === "paid" && !finalPaid
+    ? "pending" as const : mappedStatus;
+
+  return {
+    found: true,
+
+    /*
+     * mapAcceptanceStatus is deliberately normalized to:
+     * paid | failed | pending
+     */
+    status: safeStatus,
+
+    paymobTransactionId:
+      transaction.id != null
+        ? String(transaction.id)
+        : null,
+
+    merchantOrderId:
+      returnedMerchantOrderId,
+
+    amountCents:
+      typeof transaction.amount_cents === "number"
+        ? transaction.amount_cents
+        : null,
+
+    currency:
+      typeof transaction.currency === "string"
+        ? transaction.currency.toUpperCase()
+        : null,
+
+    pending:
+      typeof transaction.pending === "boolean"
+        ? transaction.pending
+        : null,
+
+    success:
+      typeof transaction.success === "boolean"
+        ? transaction.success
+        : null,
+  };
+}
 export async function verifyPaymobTransactionForRecovery(
   paymobTransactionId: string,
   expectedLocalTransactionId: string,

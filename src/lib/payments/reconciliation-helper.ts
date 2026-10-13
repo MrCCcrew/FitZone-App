@@ -64,6 +64,13 @@ type ReconciliationInput = {
   paymentMethod: string;
   paidAt: Date | null;
   transactionMetadata: string | null;
+
+  /*
+   * Deferred Offer Box redemption already converts
+   * offerBoxReservedCount -> currentSubscribers atomically.
+   * Prevent reconciliation from incrementing the Offer twice.
+   */
+  skipOfferSubscriberIncrement?: boolean;
 };
 
 type ReconciliationResult = {
@@ -85,36 +92,169 @@ function stringifyJson(value: Record<string, unknown> | null | undefined) {
   return JSON.stringify(value);
 }
 
+function asRecord(
+  value: unknown,
+): Record<string, unknown> | null {
+  if (
+    !value ||
+    typeof value !== "object" ||
+    Array.isArray(value)
+  ) {
+    return null;
+  }
+
+  return value as Record<string, unknown>;
+}
+
 function toInvoiceDetails(
   metadata: Record<string, unknown> | null,
 ): MembershipInvoiceDetails | null {
   if (!metadata) return null;
-  const {
-    invoiceNumber,
-    originalPrice,
-    membershipDiscount,
-    discountCodeAmount,
-    walletDeduct,
-    pointsDeduct,
-  } = metadata;
-  if (typeof invoiceNumber !== "string") return null;
+
+  /*
+   * Canonical subscription checkout metadata stores invoice data
+   * under membershipInvoice.
+   *
+   * Keep the historical flat shape as a compatibility fallback.
+   */
+  const invoice =
+    asRecord(metadata.membershipInvoice) ??
+    metadata;
+
+  const invoiceNumber =
+    typeof invoice.invoiceNumber === "string"
+      ? invoice.invoiceNumber.trim()
+      : "";
+
+  if (!invoiceNumber) {
+    return null;
+  }
+
   return {
     invoiceNumber,
-    customerName: String(metadata.customerName ?? ""),
-    customerEmail: String(metadata.customerEmail ?? ""),
-    membershipName: String(metadata.membershipName ?? ""),
-    originalPrice: Number(originalPrice ?? 0),
-    membershipDiscount: Number(membershipDiscount ?? 0),
-    discountCodeAmount: Number(discountCodeAmount ?? 0),
-    walletDeduct: Number(walletDeduct ?? 0),
-    pointsDeduct: Number(pointsDeduct ?? 0),
-    finalAmount: 0,
-    paymentMethod: "",
+    customerName:
+      String(invoice.customerName ?? ""),
+    customerEmail:
+      String(invoice.customerEmail ?? ""),
+    membershipName:
+      String(invoice.membershipName ?? ""),
+    membershipNameEn:
+      invoice.membershipNameEn
+        ? String(invoice.membershipNameEn)
+        : null,
+    offerTitle:
+      invoice.offerTitle
+        ? String(invoice.offerTitle)
+        : null,
+    offerTitleEn:
+      invoice.offerTitleEn
+        ? String(invoice.offerTitleEn)
+        : null,
+    originalPrice:
+      Number(invoice.originalPrice ?? 0),
+    membershipDiscount:
+      Number(invoice.membershipDiscount ?? 0),
+    discountCodeAmount:
+      Number(invoice.discountCodeAmount ?? 0),
+    discountCode:
+      invoice.discountCode
+        ? String(invoice.discountCode)
+        : null,
+    walletDeduct:
+      Number(invoice.walletDeduct ?? 0),
+    pointsDeduct:
+      Number(invoice.pointsDeduct ?? 0),
+
+    /*
+     * These are authoritatively replaced below by the actual
+     * activated membership/payment values.
+     */
+    finalAmount:
+      Number(invoice.finalAmount ?? 0),
+    paymentMethod:
+      String(invoice.paymentMethod ?? ""),
+    startDate: null,
     endDate: new Date(),
     issuedAt: new Date(),
   };
 }
 
+function toOfferBoxInvoiceDetails(
+  metadata: Record<string, unknown> | null,
+  invoiceNumber: string,
+): MembershipInvoiceDetails | null {
+  if (!metadata) return null;
+
+  const invoice =
+    asRecord(
+      metadata.offerBoxInvoiceSnapshot,
+    );
+
+  if (
+    !invoice ||
+    Number(invoice.version) !== 1
+  ) {
+    return null;
+  }
+
+  return {
+    /*
+     * The PaymentTransaction reference is durable and unique,
+     * and exists in the same DB transaction that persisted
+     * the checkout metadata.
+     */
+    invoiceNumber,
+
+    customerName:
+      String(invoice.customerName ?? ""),
+    customerEmail:
+      String(invoice.customerEmail ?? ""),
+    membershipName:
+      String(invoice.membershipName ?? ""),
+    membershipNameEn:
+      invoice.membershipNameEn
+        ? String(invoice.membershipNameEn)
+        : null,
+    offerTitle:
+      invoice.offerTitle
+        ? String(invoice.offerTitle)
+        : null,
+    offerTitleEn:
+      invoice.offerTitleEn
+        ? String(invoice.offerTitleEn)
+        : null,
+
+    originalPrice:
+      Number(invoice.originalPrice ?? 0),
+    membershipDiscount:
+      Number(invoice.membershipDiscount ?? 0),
+    discountCodeAmount:
+      Number(invoice.discountCodeAmount ?? 0),
+    discountCode:
+      invoice.discountCode
+        ? String(invoice.discountCode)
+        : null,
+    walletDeduct:
+      Number(invoice.walletDeduct ?? 0),
+    pointsDeduct:
+      Number(invoice.pointsDeduct ?? 0),
+
+    finalAmount:
+      Number(invoice.finalAmount ?? 0),
+    paymentMethod:
+      String(
+        invoice.paymentMethod ?? "paymob",
+      ),
+
+    /*
+     * Offer Box does not start membership duration at purchase.
+     * Actual dates are injected after redemption below.
+     */
+    startDate: null,
+    endDate: new Date(),
+    issuedAt: new Date(),
+  };
+}
 /**
  * Execute post-activation reconciliation with row-lock guarantee.
  *
@@ -135,6 +275,7 @@ export async function runPaidMembershipPostActivationReconciliation(
     paymentMethod,
     paidAt,
     transactionMetadata,
+    skipOfferSubscriberIncrement = false,
   } = input;
 
   // Execute ALL DB reconciliation in ONE locked transaction
@@ -428,7 +569,7 @@ export async function runPaidMembershipPostActivationReconciliation(
       }
 
       // ── Offer subscribers ────────────────────────────────────────────────────
-      if (membershipData.offerId) {
+      if (membershipData.offerId && !skipOfferSubscriberIncrement) {
         try {
           await tx.offer.update({
             where: { id: membershipData.offerId },
@@ -522,8 +663,37 @@ export async function runPaidMembershipPostActivationReconciliation(
         trainerName: b.schedule.class.trainer.name,
       }));
 
-      const transactionMeta = parseJson(transactionMetadata);
-      const invoiceDetails = toInvoiceDetails(transactionMeta);
+      /*
+       * Re-read the payment after the reconciliation transaction committed.
+       *
+       * This preserves the canonical nested membershipInvoice and also
+       * guarantees Offer Box has its durable payment reference even when
+       * checkout creation previously went through crash recovery.
+       */
+      const invoicePayment =
+        await db.paymentTransaction.findUnique({
+          where: {
+            id: transactionId,
+          },
+          select: {
+            referenceCode: true,
+            metadata: true,
+          },
+        });
+
+      const transactionMeta =
+        parseJson(
+          invoicePayment?.metadata ??
+            transactionMetadata,
+        );
+
+      const invoiceDetails =
+        toInvoiceDetails(transactionMeta) ??
+        toOfferBoxInvoiceDetails(
+          transactionMeta,
+          invoicePayment?.referenceCode ??
+            transactionId,
+        );
       const now = membershipData.startDate;
       const duration = membershipData.membership?.duration ?? 30;
       const endDate = new Date(now.getTime() + duration * 24 * 60 * 60 * 1000);
