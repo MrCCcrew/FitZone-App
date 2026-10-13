@@ -36,6 +36,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           persist-credentials: false
+          fetch-depth: 2
 
       - name: Verify workflow is the ONLY change since approved Hotfix
         shell: bash
