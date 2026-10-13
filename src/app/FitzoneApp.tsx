@@ -2982,6 +2982,7 @@ type PublicOffer = {
   allowedClassIds?: string[];
   friendOfferEnabled?: boolean;
   offerBoxEnabled?: boolean;
+  offerBoxApplyDiscount?: boolean;
   friendRequiredMembers?: number;
   friendInviteExpiryHours?: number;
   requiresBirthDate?: boolean;
@@ -5946,6 +5947,8 @@ const HomePage = ({
                           >
                             {isSpecial
                               ? t("عرض خاص", "Special")
+                              : offer.offerBoxEnabled && !offer.offerBoxApplyDiscount
+                                ? t("بدون خصم إضافي", "No extra discount")
                               : offer.type === "percentage"
                                 ? `${offer.discount}% ${t("خصم", "off")}`
                                 : t("عرض", "Offer")}
@@ -5970,6 +5973,8 @@ const HomePage = ({
                           >
                             {isSpecial
                               ? t("عرض خاص", "Special")
+                              : offer.offerBoxEnabled && !offer.offerBoxApplyDiscount
+                                ? t("بدون خصم إضافي", "No extra discount")
                               : offer.type === "percentage"
                                 ? `${offer.discount}% ${t("خصم", "off")}`
                                 : t("عرض", "Offer")}
@@ -6001,6 +6006,8 @@ const HomePage = ({
                         >
                           {isSpecial
                             ? formatCurrency(offer.specialPrice ?? 0)
+                            : offer.offerBoxEnabled && !offer.offerBoxApplyDiscount
+                              ? t("السعر الحالي", "Current price")
                             : offer.type === "percentage"
                               ? `${offer.discount}%`
                               : `${offer.discount} ${t("ج.م", "EGP")}`}
@@ -6014,6 +6021,8 @@ const HomePage = ({
                         >
                           {isSpecial
                             ? t("سعر العرض", "Offer price")
+                            : offer.offerBoxEnabled && !offer.offerBoxApplyDiscount
+                              ? t("بدون خصم إضافي عند الشراء", "No extra checkout discount")
                             : t("قيمة الخصم", "Discount value")}
                         </div>
                         <h3
@@ -17301,6 +17310,8 @@ ${friendInviteUrl(friendGroup.token)}`,
                         >
                           {o.type === "special"
                             ? formatCurrency(o.specialPrice ?? 0)
+                            : o.offerBoxEnabled && !o.offerBoxApplyDiscount
+                              ? t("السعر الحالي", "Current price")
                             : o.type === "percentage"
                               ? `${o.discount}%`
                               : `${o.discount} ${t("ج.م", "EGP")}`}
@@ -17310,6 +17321,8 @@ ${friendInviteUrl(friendGroup.token)}`,
                         >
                           {o.type === "special"
                             ? t("سعر العرض الخاص", "Special offer price")
+                            : o.offerBoxEnabled && !o.offerBoxApplyDiscount
+                              ? t("بدون خصم إضافي عند الشراء", "No extra checkout discount")
                             : t("قيمة الخصم", "Discount value")}
                         </div>
                       </div>

@@ -2187,6 +2187,8 @@ model Offer {
   maxSubscribers         Int?
   currentSubscribers     Int      @default(0)
   offerBoxEnabled        Boolean  @default(false)
+  // Admin must explicitly opt into a second discount on the existing membership price.
+  offerBoxApplyDiscount  Boolean  @default(false)
   offerBoxReservedCount  Int      @default(0)
   image                  String?
   showOnHome             Boolean  @default(false)

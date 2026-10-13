@@ -6,6 +6,7 @@ import { AdminCard, AdminEmptyState, AdminSectionShell } from "./shared";
 import { TranslateButton } from "./TranslateButton";
 import { getClassTypeArabicLabel } from "../class-type-labels";
 import { formatTime12Hour } from "@/lib/time-format";
+import { calculateOfferBoxFinalPrice } from "@/lib/payments/offer-box-pricing";
 
 const INPUT =
   "w-full rounded-xl border border-gray-700 bg-gray-800 px-4 py-2.5 text-sm text-white outline-none transition-colors focus:border-[#ff4f93]";
@@ -70,6 +71,7 @@ const EMPTY_OFFER: Omit<Offer, "id" | "usedCount" | "currentSubscribers"> = {
   friendRequiredMembers: 2,
   friendInviteExpiryHours: 24,
   offerBoxEnabled: false,
+  offerBoxApplyDiscount: false,
   requiresBirthDate: false,
   minAgeYears: null,
   maxAgeYears: null,
@@ -1819,6 +1821,10 @@ export default function Subscriptions() {
                   setOfferModal({
                     ...offerModal,
                     type: nextType,
+                    offerBoxApplyDiscount: nextType === "special"
+                      ? false
+                      : offerModal.offerBoxApplyDiscount ?? false,
+                    specialPrice: nextType === "special" ? offerModal.specialPrice : null,
                     friendOfferEnabled:
                       nextType === "special"
                         ? offerModal.friendOfferEnabled
@@ -1920,6 +1926,9 @@ export default function Subscriptions() {
                     setOfferModal({
                       ...offerModal,
                       offerBoxEnabled: event.target.checked,
+                      offerBoxApplyDiscount: event.target.checked
+                        ? offerModal.offerBoxApplyDiscount ?? false
+                        : false,
                     })
                   }
                   className="mt-1 h-4 w-4 accent-[#ff4f93]"
@@ -1936,6 +1945,54 @@ export default function Subscriptions() {
                 </div>
               </label>
             </div>
+            {offerModal.offerBoxEnabled && offerModal.type !== "special" && (
+              <div className="rounded-2xl border border-[rgba(255,188,219,0.16)] bg-black/20 p-4">
+                <label className="flex cursor-pointer items-start gap-3 text-sm text-[#fff4f8]">
+                  <input
+                    type="checkbox"
+                    checked={offerModal.offerBoxApplyDiscount === true}
+                    onChange={(event) =>
+                      setOfferModal({
+                        ...offerModal,
+                        offerBoxApplyDiscount: event.target.checked,
+                      })
+                    }
+                    className="mt-1 h-4 w-4 accent-[#ff4f93]"
+                  />
+                  <span>
+                    <strong className="block">تطبيق خصم إضافي على سعر الاشتراك الحالي داخل Offer Box</strong>
+                    <span className="mt-1 block text-xs leading-6 text-[#d7aabd]">
+                      مغلق افتراضيًا: تدفع العميلة سعر الاشتراك الحالي بعد خصمه (مثلاً 90 جنيه).
+                      عند تشغيله، تُطبَّق نسبة أو قيمة الخصم المحددة للعرض مرة واحدة على هذا السعر
+                      (مثلاً خصم 20% من 90 = 72 جنيه).
+                    </span>
+                  </span>
+                </label>
+                {(() => {
+                  const plan = allPlans.find((item) => item.id === offerModal.membershipId);
+                  if (!plan) return <p className="mt-2 text-xs text-amber-300">اربطي العرض باشتراك لتظهر معاينة السعر النهائي.</p>;
+                  try {
+                    const basePrice = plan.priceAfter != null && plan.priceAfter > 0
+                      ? plan.priceAfter
+                      : plan.price;
+                    const finalPrice = calculateOfferBoxFinalPrice({
+                      offerType: offerModal.type,
+                      discount: Number(offerModal.discount),
+                      specialPrice: null,
+                      membershipPriceAfter: plan.priceAfter ?? null,
+                      basePrice: plan.price,
+                      applyOfferDiscount: offerModal.offerBoxApplyDiscount === true,
+                    });
+                    return <p className="mt-2 text-sm font-bold text-[#4ade80]">
+                      السعر الحالي: {basePrice.toLocaleString("ar-EG")} ج.م
+                      {" — "}سعر Offer Box: {finalPrice.toLocaleString("ar-EG")} ج.م
+                    </p>;
+                  } catch {
+                    return <p className="mt-2 text-xs text-rose-300">قيمة الخصم غير صالحة؛ يرجى مراجعتها قبل الحفظ.</p>;
+                  }
+                })()}
+              </div>
+            )}
             <div className="rounded-2xl border border-[rgba(255,188,219,0.16)] bg-black/20 p-4">
               <label className="flex cursor-pointer items-start gap-3 text-sm text-[#fff4f8]">
                 <input

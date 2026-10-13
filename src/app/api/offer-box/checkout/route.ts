@@ -34,6 +34,7 @@ type LockedOfferRow = {
   maxSubscribers: number | null;
   currentSubscribers: number;
   offerBoxEnabled: boolean | number;
+  offerBoxApplyDiscount: boolean | number;
   offerBoxReservedCount: number;
   sessionsCount: number | null;
   durationDays: number | null;
@@ -138,6 +139,7 @@ export async function POST(req: Request) {
               maxSubscribers,
               currentSubscribers,
               offerBoxEnabled,
+              offerBoxApplyDiscount,
               offerBoxReservedCount,
               sessionsCount,
               durationDays,
@@ -328,6 +330,7 @@ export async function POST(req: Request) {
             specialPrice: offer.specialPrice != null ? Number(offer.specialPrice) : null,
             membershipPriceAfter: membership?.priceAfter ?? null,
             basePrice,
+            applyOfferDiscount: isTrue(offer.offerBoxApplyDiscount),
           });
         } catch {
           throw new OfferBoxCheckoutError(
@@ -404,6 +407,7 @@ export async function POST(req: Request) {
             titleEn: offer.titleEn,
             type: offer.type,
             discount: Number(offer.discount),
+            offerBoxApplyDiscount: isTrue(offer.offerBoxApplyDiscount),
             description: offer.description,
             descriptionEn: offer.descriptionEn,
             appliesTo: offer.appliesTo,

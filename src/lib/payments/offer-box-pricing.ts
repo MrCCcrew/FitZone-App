@@ -1,8 +1,8 @@
 /**
- * Canonical Offer Box checkout price, computed before snapshots/Paymob.
- * Membership.priceAfter is the base membership price; the Offer's own
- * percentage/fixed discount is applied once on top of that base.
- * Explicit specialPrice overrides discount types for backward compatibility.
+ * Offer Box price locked into the purchase/payment snapshot.
+ * An already-discounted membership price is preserved by default.
+ * Only an explicit admin opt-in applies the offer's extra percentage/fixed
+ * discount once on top of that price. Special offers retain specialPrice.
  */
 export function calculateOfferBoxFinalPrice(input: {
   offerType: string;
@@ -10,33 +10,31 @@ export function calculateOfferBoxFinalPrice(input: {
   specialPrice: number | null;
   membershipPriceAfter: number | null;
   basePrice: number;
+  applyOfferDiscount: boolean;
 }): number {
   const startingPrice =
     input.membershipPriceAfter != null && input.membershipPriceAfter > 0
       ? input.membershipPriceAfter
       : input.basePrice;
+  if (!Number.isFinite(startingPrice) || startingPrice <= 0) {
+    throw new Error("OFFER_BOX_INVALID_PRICE");
+  }
 
-  if (
-    !Number.isFinite(startingPrice) ||
-    startingPrice <= 0 ||
-    !Number.isFinite(input.discount) ||
-    input.discount < 0 ||
-    (input.offerType === "percentage" && input.discount > 100)
-  ) {
+  if (input.offerType === "special") {
+    return input.specialPrice ?? startingPrice;
+  }
+  if (!input.applyOfferDiscount) return startingPrice;
+
+  const discount = input.discount;
+  if (!Number.isFinite(discount) || discount <= 0 ||
+      (input.offerType === "percentage" && discount >= 100)) {
     throw new Error("OFFER_BOX_INVALID_DISCOUNT");
   }
-
-  if (input.specialPrice != null) {
-    return input.specialPrice;
-  }
-
   if (input.offerType === "percentage") {
-    return Math.round(startingPrice * (100 - input.discount)) / 100;
+    return Math.round(startingPrice * (100 - discount)) / 100;
   }
-
   if (input.offerType === "fixed") {
-    return Math.round(Math.max(0, startingPrice - input.discount) * 100) / 100;
+    return Math.round(Math.max(0, startingPrice - discount) * 100) / 100;
   }
-
-  return startingPrice;
+  throw new Error("OFFER_BOX_UNSUPPORTED_DISCOUNT_TYPE");
 }

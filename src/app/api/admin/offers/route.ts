@@ -153,6 +153,7 @@ function mapOffer(
     maxSubscribers: number | null;
     currentSubscribers: number;
     offerBoxEnabled?: boolean | number;
+    offerBoxApplyDiscount?: boolean | number;
     image: string | null;
     showOnHome: boolean;
     showMaxSubscribers: boolean;
@@ -197,6 +198,9 @@ function mapOffer(
     offerBoxEnabled:
       offer.offerBoxEnabled === true ||
       Number(offer.offerBoxEnabled) === 1,
+    offerBoxApplyDiscount:
+      offer.offerBoxApplyDiscount === true ||
+      Number(offer.offerBoxApplyDiscount) === 1,
     image: offer.image,
     showOnHome: offer.showOnHome,
     showMaxSubscribers: offer.showMaxSubscribers,
@@ -294,6 +298,18 @@ export async function POST(req: Request) {
     const friendRequiredMembers = Number(body.friendRequiredMembers ?? 2);
     const friendInviteExpiryHours = Number(body.friendInviteExpiryHours ?? 24);
     const offerBoxEnabled = body.offerBoxEnabled === true;
+    const offerBoxApplyDiscount = body.offerBoxApplyDiscount === true;
+    const offerDiscount = Number(body.discount ?? 0);
+    if (offerBoxApplyDiscount && (
+      !offerBoxEnabled ||
+      type === "special" ||
+      !body.membershipId ||
+      !Number.isFinite(offerDiscount) ||
+      offerDiscount <= 0 ||
+      (type === "percentage" && offerDiscount >= 100)
+    )) {
+      return NextResponse.json({ error: "لتفعيل الخصم الإضافي اختاري عرض نسبة أو مبلغ صالحًا مرتبطًا باشتراك داخل Offer Box." }, { status: 400 });
+    }
 
     if (friendOfferEnabled && type !== "special") {
       return NextResponse.json(
@@ -359,10 +375,11 @@ export async function POST(req: Request) {
         expiresAt: new Date(validUntil),
         isActive: body.active !== false,
         membershipId: body.membershipId || null,
-        specialPrice: body.specialPrice != null && body.specialPrice !== "" ? Number(body.specialPrice) : null,
+        specialPrice: type === "special" && body.specialPrice != null && body.specialPrice !== "" ? Number(body.specialPrice) : null,
         maxSubscribers: body.maxSubscribers != null && body.maxSubscribers !== "" ? Number(body.maxSubscribers) : null,
         currentSubscribers: Number(body.currentSubscribers ?? 0),
         offerBoxEnabled,
+        offerBoxApplyDiscount,
         image: typeof body.image === "string" && body.image.trim() ? body.image.trim() : null,
         showOnHome: Boolean(body.showOnHome),
         showMaxSubscribers: body.showMaxSubscribers !== false,
@@ -443,7 +460,7 @@ export async function PATCH(req: Request) {
     // Get current offer type
     const current = await db.offer.findUnique({
       where: { id },
-      select: { type: true },
+      select: { type: true, discount: true, membershipId: true, offerBoxEnabled: true, offerBoxApplyDiscount: true },
     });
     if (!current) {
       return NextResponse.json({ error: "العرض غير موجود." }, { status: 404 });
@@ -484,6 +501,21 @@ export async function PATCH(req: Request) {
 
     const currentType = normalizeOfferType(current.type);
     const newType = body.type !== undefined ? normalizeOfferType(String(body.type)) : currentType;
+    const effectiveDiscount = body.discount !== undefined ? Number(body.discount) : current.discount;
+    const effectiveMembershipId = body.membershipId !== undefined ? body.membershipId : current.membershipId;
+    const effectiveBoxEnabled = body.offerBoxEnabled !== undefined ? body.offerBoxEnabled === true : current.offerBoxEnabled;
+    // A type switch to "special" clears the previous opt-in.
+    const effectiveApplyDiscount = newType === "special" || !effectiveBoxEnabled ? false
+      : body.offerBoxApplyDiscount !== undefined ? body.offerBoxApplyDiscount === true : current.offerBoxApplyDiscount;
+    if (effectiveApplyDiscount && (
+      !effectiveBoxEnabled ||
+      !effectiveMembershipId ||
+      !Number.isFinite(effectiveDiscount) ||
+      effectiveDiscount <= 0 ||
+      (newType === "percentage" && effectiveDiscount >= 100)
+    )) {
+      return NextResponse.json({ error: "إعدادات الخصم الإضافي لـOffer Box غير صالحة." }, { status: 400 });
+    }
 
     const data: Record<string, unknown> = {};
 
@@ -541,6 +573,11 @@ export async function PATCH(req: Request) {
     if (body.title !== undefined) data.title = String(body.title).trim();
     if (body.titleEn !== undefined) data.titleEn = String(body.titleEn).trim() || null;
     if (body.type !== undefined) data.type = newType;
+    if (body.offerBoxApplyDiscount !== undefined ||
+        (body.type !== undefined && newType === "special") ||
+        (body.offerBoxEnabled !== undefined && !effectiveBoxEnabled)) {
+      data.offerBoxApplyDiscount = effectiveApplyDiscount;
+    }
     if (body.discount !== undefined) data.discount = Number(body.discount ?? 0);
     if (body.description !== undefined) data.description = body.description ? String(body.description).trim() : null;
     if (body.descriptionEn !== undefined) data.descriptionEn = body.descriptionEn ? String(body.descriptionEn).trim() : null;
@@ -550,7 +587,9 @@ export async function PATCH(req: Request) {
     if (body.active !== undefined) data.isActive = Boolean(body.active);
     if (body.membershipId !== undefined) data.membershipId = body.membershipId || null;
     if (body.specialPrice !== undefined) {
-      data.specialPrice = body.specialPrice != null && body.specialPrice !== "" ? Number(body.specialPrice) : null;
+      data.specialPrice = newType === "special" && body.specialPrice != null && body.specialPrice !== "" ? Number(body.specialPrice) : null;
+    } else if (body.type !== undefined && newType !== "special") {
+      data.specialPrice = null;
     }
     if (body.maxSubscribers !== undefined) {
       data.maxSubscribers = body.maxSubscribers != null && body.maxSubscribers !== "" ? Number(body.maxSubscribers) : null;

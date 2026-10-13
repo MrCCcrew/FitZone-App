@@ -521,5 +521,46 @@ describe(
       },
       20000,
     );
+    it("sends 90 without admin discount, 72 with opt-in, and freezes each invoice", async () => {
+      // Previous test fixture left an unpaid hold: clean isolated test rows.
+      await db.offerBoxPurchase.deleteMany({ where: { userId, offerId } });
+      if (paymentId) await db.paymentTransaction.deleteMany({ where: { id: paymentId } });
+      paymentId = "";
+      purchaseId = "";
+      await db.membership.update({ where: { id: membershipId }, data: { priceAfter: 90 } });
+
+      for (const [apply, amount] of [[false, 90], [true, 72]] as const) {
+        await db.offer.update({
+          where: { id: offerId },
+          data: {
+            type: "percentage", discount: 20, specialPrice: null,
+            offerBoxApplyDiscount: apply, offerBoxReservedCount: 0,
+          },
+        });
+        mocks.createPaymentTransaction.mockClear();
+        const response = await offerBoxCheckout(new Request("http://localhost/api/offer-box/checkout", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ offerId }),
+        }));
+        const body = await response.json();
+        expect(response.status, JSON.stringify(body)).toBe(200);
+        purchaseId = body.purchaseId;
+        expect(mocks.createPaymentTransaction).toHaveBeenCalledWith(
+          expect.objectContaining({ amount, provider: "paymob", purpose: "offer_box", offerId }),
+        );
+        const purchase = await db.offerBoxPurchase.findUniqueOrThrow({ where: { id: purchaseId } });
+        expect(Number(purchase.priceSnapshot)).toBe(amount);
+        expect(JSON.parse(purchase.offerSnapshot).offer.offerBoxApplyDiscount).toBe(apply);
+        const transaction = await db.paymentTransaction.findUniqueOrThrow({ where: { id: paymentId } });
+        expect(Number(transaction.amount)).toBe(amount);
+
+        await db.offerBoxPurchase.delete({ where: { id: purchaseId } });
+        await db.paymentTransaction.delete({ where: { id: paymentId } });
+        paymentId = "";
+        purchaseId = "";
+      }
+      expect(await db.userMembership.count({ where: { userId } })).toBe(0);
+    }, 20000);
+
   },
 );
