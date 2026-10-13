@@ -25,7 +25,12 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
-import { GET } from "@/app/api/admin/accounting/customers-report/route";
+import { GET as routeGet } from "@/app/api/admin/accounting/customers-report/route";
+async function GET(req: Request): Promise<Response> {
+  const response = await routeGet(req);
+  if (!response) throw new Error("ACCOUNTING_GET_RETURNED_UNDEFINED");
+  return response;
+}
 
 function makeMembership(userId: string, name: string, status: string, amount = 343) {
   return {
