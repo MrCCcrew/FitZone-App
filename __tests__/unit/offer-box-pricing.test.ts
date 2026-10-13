@@ -13,6 +13,7 @@ describe("Offer Box opt-in pricing", () => {
   it("defaults to 90 without an extra discount", () => {
     expect(price()).toBe(90);
     expect(price({ discount: 99 })).toBe(90);
+    expect(price({ discount: Number.NaN, applyOfferDiscount: false })).toBe(90);
   });
   it("charges 72 for a 20% discount only when admin enables it", () => {
     expect(price({ applyOfferDiscount: true })).toBe(72);
