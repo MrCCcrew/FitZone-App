@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import type { Prisma } from "@prisma/client";
 
 import { db } from "@/lib/db";
 import { updatePaymentTransactionStatus } from "@/lib/payments/service";
@@ -114,27 +115,25 @@ export async function GET(req: Request) {
    * exists with offerBoxPurchaseId metadata but the purchase row was not
    * yet linked to paymentTransactionId.
    */
+  const offerBoxExpiryWhere: Prisma.PaymentTransactionWhereInput = {
+    purpose: "offer_box",
+    expiresAt: { lte: now },
+    status: {
+      in: ["pending", "pending_payment", "processing", "requires_action", "failed", "cancelled"],
+    },
+  };
+  // Rotating deterministic pages keep unresolved/terminal older rows from
+  // indefinitely starving newer checkouts. Does not rely on process memory.
+  const offerBoxDueCount = await db.paymentTransaction.count({
+    where: offerBoxExpiryWhere,
+  });
+  const offerBoxPageCount = Math.max(1, Math.ceil(offerBoxDueCount / 100));
+  const offerBoxPage = Math.floor(now.getTime() / 3_600_000) % offerBoxPageCount;
   const expiredOfferBoxPayments =
     await db.paymentTransaction.findMany({
-      where: {
-        purpose: "offer_box",
-        expiresAt: {
-          lte: now,
-        },
-        status: {
-          in: [
-            "pending",
-            "pending_payment",
-            "processing",
-            "requires_action",
-            "failed",
-            "cancelled",
-          ],
-        },
-      },
-      orderBy: {
-        createdAt: "asc",
-      },
+      where: offerBoxExpiryWhere,
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      skip: offerBoxPage * 100,
       take: 100,
       select: {
         id: true,
@@ -179,6 +178,7 @@ export async function GET(req: Request) {
             status: true,
             amount: true,
             currency: true,
+            externalReference: true,
           },
         });
 
@@ -244,15 +244,21 @@ export async function GET(req: Request) {
              * Persist the recovered Acceptance transaction ID.
              * This does not create a payment or checkout.
              */
-            await db.paymentTransaction.update({
+            // Compare-and-swap the reference AND payment state. A stale
+            // inquiry must not overwrite a concurrent webhook or expiry.
+            const referenceClaim = await db.paymentTransaction.updateMany({
               where: {
                 id: offerBoxRemotePayment.id,
+                purpose: "offer_box",
+                provider: "paymob",
+                status: offerBoxRemotePayment.status,
+                externalReference: offerBoxRemotePayment.externalReference,
               },
-              data: {
-                externalReference:
-                  inquiry.paymobTransactionId,
-              },
+              data: { externalReference: inquiry.paymobTransactionId },
             });
+            if (referenceClaim.count !== 1) {
+              throw new Error("OFFER_BOX_PAYMOB_REFERENCE_CAS_LOST");
+            }
 
             const repaired =
               await updatePaymentTransactionStatus(

@@ -2187,6 +2187,8 @@ model Offer {
   maxSubscribers         Int?
   currentSubscribers     Int      @default(0)
   offerBoxEnabled        Boolean  @default(false)
+  // Admin must explicitly opt into a second discount on the existing membership price.
+  offerBoxApplyDiscount  Boolean  @default(false)
   offerBoxReservedCount  Int      @default(0)
   image                  String?
   showOnHome             Boolean  @default(false)
@@ -2199,6 +2201,7 @@ model Offer {
   // Optional generic age eligibility for offers.
   // Defaults preserve all existing offer behaviour.
   requiresBirthDate      Boolean  @default(false)
+  requiresEgyptianNationalId Boolean @default(false)
   minAgeYears            Int?
   maxAgeYears            Int?
   features               String?  @db.Text // JSON array of feature strings (Arabic)

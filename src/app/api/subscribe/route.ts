@@ -4,7 +4,7 @@ import {
   cairoCalendarDateKey,
   cairoDateStartInstant,
 } from "@/lib/fitzone-time";
-import { evaluateOfferAgeEligibility } from "@/lib/offer-age-eligibility";
+import { evaluateEgyptianNationalIdAgeEligibility, evaluateOfferAgeEligibility } from "@/lib/offer-age-eligibility";
 import { NextResponse } from "next/server";
 import { maybeRenewPendingMembershipCheckout } from "@/lib/payments/membership-paymob-renewal-handoff";
 import { getCurrentAppUser } from "@/lib/app-session";
@@ -17,6 +17,8 @@ import {
 type SubscribeAction = "back_to_schedule" | "back_to_plan";
 type SubscribeCode =
   | "BIRTH_DATE_REQUIRED"
+  | "EGYPTIAN_NATIONAL_ID_REQUIRED"
+  | "EGYPTIAN_NATIONAL_ID_INVALID"
   | "AGE_NOT_ELIGIBLE"
   | "INVALID_AGE_RULE";
 class SubscribeError extends Error {
@@ -91,6 +93,7 @@ import {
 type SubscribePayload = {
   membershipId?: string | null;
   offerId?: string | null;
+  egyptianNationalId?: string | null;
   scheduleIds?: string[] | null;
   paymentMethod?: string | null;
   discountCode?: string | null;
@@ -141,6 +144,7 @@ export async function POST(req: Request) {
   const {
     membershipId,
     offerId,
+    egyptianNationalId,
     scheduleIds,
     paymentMethod,
     discountCode,
@@ -878,6 +882,7 @@ export async function POST(req: Request) {
 
       let offerAgeEligibilitySnapshot: {
         requiresBirthDate: boolean;
+        verificationMethod?: "account_birth_date" | "egyptian_national_id";
         minAgeYears: number | null;
         maxAgeYears: number | null;
         ageYearsAtPurchase: number | null;
@@ -911,12 +916,14 @@ export async function POST(req: Request) {
           await tx.$queryRaw<
             Array<{
               requiresBirthDate: boolean | number;
+              requiresEgyptianNationalId: boolean | number;
               minAgeYears: number | null;
               maxAgeYears: number | null;
             }>
           >`
             SELECT
               requiresBirthDate,
+              requiresEgyptianNationalId,
               minAgeYears,
               maxAgeYears
             FROM Offer
@@ -936,24 +943,31 @@ export async function POST(req: Request) {
         const maxAgeYears =
           ageConfig?.maxAgeYears ?? null;
 
+        const isEgyptianIdOffer = ageConfig?.requiresEgyptianNationalId === true ||
+          Number(ageConfig?.requiresEgyptianNationalId ?? 0) === 1;
         let ageYearsAtPurchase: number | null = null;
 
-        if (requiresBirthDate) {
-          const ageSubject =
+        if (requiresBirthDate || isEgyptianIdOffer || minAgeYears != null || maxAgeYears != null) {
+          const ageSubject = isEgyptianIdOffer ? null :
             await tx.user.findUnique({
               where: { id: userId },
               select: { birthDate: true },
             });
 
-          const ageEligibility =
-            evaluateOfferAgeEligibility({
-              requiresBirthDate,
-              minAgeYears,
-              maxAgeYears,
-              birthDate:
-                ageSubject?.birthDate ?? null,
-              now: new Date(),
-            });
+          const ageEligibility = isEgyptianIdOffer
+            ? evaluateEgyptianNationalIdAgeEligibility({
+                egyptianNationalId,
+                minAgeYears,
+                maxAgeYears,
+                now: new Date(),
+              })
+            : evaluateOfferAgeEligibility({
+                requiresBirthDate,
+                minAgeYears,
+                maxAgeYears,
+                birthDate: ageSubject?.birthDate ?? null,
+                now: new Date(),
+              });
 
           if (!ageEligibility.eligible) {
             throw new SubscribeError(
@@ -969,6 +983,7 @@ export async function POST(req: Request) {
 
         offerAgeEligibilitySnapshot = {
           requiresBirthDate,
+          verificationMethod: isEgyptianIdOffer ? "egyptian_national_id" : "account_birth_date",
           minAgeYears,
           maxAgeYears,
           ageYearsAtPurchase,

@@ -1,4 +1,5 @@
 import { findSinglePaidPaymobOrderTransaction } from "@/lib/payments/paymob-order-paid-proof";
+import { isFinalRetainedPaymobPayment } from "@/lib/payments/paymob-retained-payment-proof";
 import { resolvePaymobIntentionExpiration } from "@/lib/payments/paymob-membership-expiration";
 import crypto from "crypto";
 import type {
@@ -1051,8 +1052,13 @@ export async function inquirePaymobTransactionByMerchantReference(
     );
   }
 
-  const mappedStatus =
-    mapAcceptanceStatus(transaction);
+  // A successful attempt is not proof of retained funds. Refunded,
+  // voided, partially refunded and provider-error payments need review.
+  const mappedStatus = mapAcceptanceStatus(transaction);
+  const finalPaid = mappedStatus === "paid" &&
+    isFinalRetainedPaymobPayment(transaction);
+  const safeStatus = mappedStatus === "paid" && !finalPaid
+    ? "pending" as const : mappedStatus;
 
   return {
     found: true,
@@ -1061,7 +1067,7 @@ export async function inquirePaymobTransactionByMerchantReference(
      * mapAcceptanceStatus is deliberately normalized to:
      * paid | failed | pending
      */
-    status: mappedStatus,
+    status: safeStatus,
 
     paymobTransactionId:
       transaction.id != null

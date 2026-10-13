@@ -220,7 +220,9 @@ export interface Offer {
   friendRequiredMembers?: number;
   friendInviteExpiryHours?: number;
   offerBoxEnabled?: boolean;
+  offerBoxApplyDiscount?: boolean;
   requiresBirthDate?: boolean;
+  requiresEgyptianNationalId?: boolean;
   minAgeYears?: number | null;
   maxAgeYears?: number | null;
 }

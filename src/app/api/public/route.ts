@@ -116,9 +116,11 @@ type PublicPayload = {
     allowedClassIds: string[];
     friendOfferEnabled: boolean;
     offerBoxEnabled: boolean;
+    offerBoxApplyDiscount: boolean;
     friendRequiredMembers: number;
     friendInviteExpiryHours: number;
     requiresBirthDate: boolean;
+    requiresEgyptianNationalId: boolean;
     minAgeYears: number | null;
     maxAgeYears: number | null;
   }>;
@@ -842,11 +844,13 @@ export async function GET(request: Request) {
         allowedClassIds: canonicalOfferClassIds.get(offer.id) ?? [],
         friendOfferEnabled: offer.friendOfferConfig?.isActive === true,
         offerBoxEnabled: offer.offerBoxEnabled === true,
+        offerBoxApplyDiscount: offer.offerBoxApplyDiscount === true,
         friendRequiredMembers: offer.friendOfferConfig?.requiredMembers ?? 2,
         friendInviteExpiryHours:
           offer.friendOfferConfig?.inviteExpiryHours ?? 24,
         requiresBirthDate:
           offerAgeById.get(offer.id)?.requiresBirthDate ?? false,
+        requiresEgyptianNationalId: offer.requiresEgyptianNationalId === true,
         minAgeYears:
           offerAgeById.get(offer.id)?.minAgeYears ?? null,
         maxAgeYears:

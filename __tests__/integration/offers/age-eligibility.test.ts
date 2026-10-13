@@ -24,16 +24,22 @@ const url = new URL(raw);
 
 if (
   process.env.APP_ENV !== "test" ||
+  process.env.NODE_ENV !== "test" ||
+  url.protocol !== "mysql:" ||
   url.hostname !== "127.0.0.1" ||
+  url.port !== "3306" ||
   decodeURIComponent(url.username) !== "fitzone_test_user" ||
-  url.pathname !== "/fitzone_test"
+  url.pathname !== "/fitzone_test" ||
+  (process.env.DATABASE_URL != null &&
+    process.env.TEST_DATABASE_URL != null &&
+    process.env.DATABASE_URL !== process.env.TEST_DATABASE_URL)
 ) {
   throw new Error(
     "REFUSING: offer age integration test requires fitzone_test as fitzone_test_user",
   );
 }
 
-const db = new PrismaClient();
+const db = new PrismaClient({ datasources: { db: { url: raw } } });
 
 const stamp =
   `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;

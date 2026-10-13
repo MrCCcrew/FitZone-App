@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { format, differenceInDays } from "date-fns";
 import { ar, enUS } from "date-fns/locale";
 import { useLang } from "@/lib/language";
+import AccountOfferBoxPurchases from "@/components/AccountOfferBoxPurchases";
 import { TranslateButton } from "@/app/admin/sections/TranslateButton";
 import PushNotificationToggle from "@/components/PushNotificationToggle";
 import PushPromptModal from "@/components/PushPromptModal";
@@ -283,6 +284,7 @@ const TABS = [
   { id: "privateSessions", label: "Private Sessions", icon: "🎯" },
   { id: "myPrivateSessions", label: "My Privates", icon: "📋" },
   { id: "membership", label: "Membership", icon: "M" },
+  { id: "offerBox", label: "Purchased offers", icon: "🎁" },
   { id: "bookings", label: "Bookings", icon: "B" },
   { id: "nutrition", label: "Nutrition", icon: "🥗" },
   { id: "orders", label: "Orders", icon: "O" },
@@ -301,6 +303,7 @@ type TabId =
   | "privateSessions"
   | "myPrivateSessions"
   | "membership"
+  | "offerBox"
   | "bookings"
   | "nutrition"
   | "orders"
@@ -363,6 +366,7 @@ function getTabLabel(tabId: TabId, lang: "ar" | "en") {
     privateSessions: { ar: "طلبات البرايفيت", en: "Private sessions" },
     myPrivateSessions: { ar: "طلباتي", en: "My applications" },
     membership: { ar: "الاشتراك", en: "Membership" },
+    offerBox: { ar: "عروضي المشتراة", en: "Purchased offers" },
     bookings: { ar: "الحجوزات", en: "Bookings" },
     nutrition: { ar: "دكتورة التغذية", en: "Nutrition Doctor" },
     orders: { ar: "الطلبات", en: "Orders" },
@@ -7440,6 +7444,11 @@ export default function AccountClient({ data }: { data: AccountData }) {
             {activeTab === "privateSessions"      && <PrivateSessionsTab />}
             {activeTab === "myPrivateSessions"    && <MyPrivateSessionsTab />}
             {activeTab === "membership"           && <AccountMembershipTab membership={data.membership} membershipHistory={data.membershipHistory} privateApplications={data.privateApplications} pendingPayment={data.pendingPayment} />}
+            {activeTab === "offerBox" && (
+              <div className="rounded-2xl bg-white p-5 text-slate-900">
+                <AccountOfferBoxPurchases />
+              </div>
+            )}
             {activeTab === "bookings"      && <BookingsTab      bookings={data.bookings} />}
             {activeTab === "nutrition"     && <NutritionTab />}
             {activeTab === "orders"        && <AccountOrdersTab orders={data.orders} />}

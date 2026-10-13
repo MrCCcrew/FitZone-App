@@ -175,8 +175,23 @@ export async function listRetroactiveAttendanceCandidates(input: {
       days * 24 * 60 * 60 * 1000,
   );
 
-  const schedules =
-    await db.schedule.findMany({
+  const result: Array<{
+    id: string;
+    date: string;
+    time: string;
+    classId: string;
+    className: string;
+    trainerName: string;
+    selectable: boolean;
+    reason: string | null;
+    hasStandaloneReservation: boolean;
+  }> = [];
+
+  // Page across the requested date window instead of cutting off the
+  // oldest eligible sessions after the newest 500 rows.
+  let offset = 0;
+  while (true) {
+    const schedules = await db.schedule.findMany({
       where: {
         date: {
           gte: from,
@@ -220,21 +235,11 @@ export async function listRetroactiveAttendanceCandidates(input: {
         },
       ],
       take: 500,
+      skip: offset,
     });
+    offset += schedules.length;
 
-  const result: Array<{
-    id: string;
-    date: string;
-    time: string;
-    classId: string;
-    className: string;
-    trainerName: string;
-    selectable: boolean;
-    reason: string | null;
-    hasStandaloneReservation: boolean;
-  }> = [];
-
-  for (const schedule of schedules) {
+    for (const schedule of schedules) {
     const instant = scheduleSlotInstant(
       new Date(schedule.date),
       schedule.time,
@@ -280,6 +285,8 @@ export async function listRetroactiveAttendanceCandidates(input: {
       hasStandaloneReservation:
         Boolean(standalone),
     });
+    }
+    if (schedules.length < 500) break;
   }
 
   return {
