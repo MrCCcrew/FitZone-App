@@ -1,0 +1,94 @@
+name: FitZone Friend Student — Isolated Cloud Build (No Deploy)
+
+on:
+  push:
+    branches:
+      - ci/friend-student-build-20261014
+    paths:
+      - .github/workflows/fitzone-friend-student-cloud-build.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fitzone-friend-cloud-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-only:
+    name: Next.js Webpack Build — No Deploy / No Production DB
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    env:
+      CI: "true"
+      APP_ENV: test
+      FITZONE_TEST_BUILD: "1"
+      NEXT_TELEMETRY_DISABLED: "1"
+      DATABASE_URL: mysql://fitzone_test_user:unused@127.0.0.1:3306/fitzone_test
+      TEST_DATABASE_URL: mysql://fitzone_test_user:unused@127.0.0.1:3306/fitzone_test
+      TEST_SHADOW_DATABASE_URL: mysql://fitzone_test_user:unused@127.0.0.1:3306/fitzone_shadow
+      PAYMOB_ENV: test
+      AI_COACH_VOICE_ENABLED: "false"
+      AI_COACH_REALTIME_VOICE_ENABLED: "false"
+
+    steps:
+      - name: Checkout tested Hotfix plus isolated workflow
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Verify workflow is the ONLY change since approved Hotfix
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "71ac1c070038d30de0904ca3d0a31721ad4cf31b"
+          test "$(git diff --name-only HEAD^ HEAD)" = ".github/workflows/fitzone-friend-student-cloud-build.yml"
+          test -z "$(git status --porcelain)"
+          echo "HOTFIX_BASELINE_AND_CI_ONLY_DIFF=PASS"
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install exact locked dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Generate Prisma client using isolated test configuration
+        run: node node_modules/prisma/build/index.js generate --config prisma.test.config.ts
+
+      - name: Build Next.js with Webpack and GitHub runner Internet access
+        env:
+          NODE_OPTIONS: --require=./scripts/skip-production-env.cjs --max-old-space-size=4096
+          OPENAI_API_KEY: ""
+        run: node node_modules/next/dist/bin/next build --webpack
+
+      - name: Record non-sensitive build evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s .next/BUILD_ID
+          {
+            echo "Workflow: isolated GitHub-hosted build; no deployment"
+            echo "Hotfix base commit: 71ac1c070038d30de0904ca3d0a31721ad4cf31b"
+            echo "CI workflow commit: $(git rev-parse HEAD)"
+            echo "Next.js build ID: $(cat .next/BUILD_ID)"
+            echo "Lockfile sha256: $(sha256sum package-lock.json | awk '{print $1}')"
+            echo "Database: unreachable dummy fitzone_test URL (no live database)"
+          } > build-evidence.txt
+          cat build-evidence.txt
+          {
+            echo "### FitZone Cloud Build"
+            echo "Build succeeded with Webpack on the GitHub-hosted runner."
+            echo 'No deployment, no Paymob credentials, no production database.'
+            echo 'Evidence: uploaded artifact `build-evidence`.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload build evidence only (not deployable output)
+        uses: actions/upload-artifact@v4
+        with:
+          name: fitzone-friend-cloud-build-evidence
+          path: build-evidence.txt
+          retention-days: 7
+          if-no-files-found: error
