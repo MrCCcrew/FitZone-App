@@ -4,7 +4,9 @@ import {
   cairoCalendarDateKey,
   cairoDateStartInstant,
 } from "@/lib/fitzone-time";
+import { evaluateEgyptianNationalIdAgeEligibility, evaluateOfferAgeEligibility } from "@/lib/offer-age-eligibility";
 import { NextResponse } from "next/server";
+import { maybeRenewPendingMembershipCheckout } from "@/lib/payments/membership-paymob-renewal-handoff";
 import { getCurrentAppUser } from "@/lib/app-session";
 import { db } from "@/lib/db";
 import {
@@ -13,13 +15,25 @@ import {
 } from "@/lib/referral-credit-policy";
 
 type SubscribeAction = "back_to_schedule" | "back_to_plan";
+type SubscribeCode =
+  | "BIRTH_DATE_REQUIRED"
+  | "EGYPTIAN_NATIONAL_ID_REQUIRED"
+  | "EGYPTIAN_NATIONAL_ID_INVALID"
+  | "AGE_NOT_ELIGIBLE"
+  | "INVALID_AGE_RULE";
 class SubscribeError extends Error {
   action?: SubscribeAction;
+  code?: SubscribeCode;
 
-  constructor(message: string, action?: SubscribeAction) {
+  constructor(
+    message: string,
+    action?: SubscribeAction,
+    code?: SubscribeCode,
+  ) {
     super(message);
     this.name = "SubscribeError";
     this.action = action;
+    this.code = code;
   }
 }
 import {
@@ -37,7 +51,6 @@ import {
 import { generateMembershipQrCard } from "@/lib/membership-card";
 import {
   createPaymentTransaction,
-  restorePaymentBalanceAdjustments,
   unlockPendingReferralReward,
 } from "@/lib/payments/service";
 import {
@@ -80,6 +93,7 @@ import {
 type SubscribePayload = {
   membershipId?: string | null;
   offerId?: string | null;
+  egyptianNationalId?: string | null;
   scheduleIds?: string[] | null;
   paymentMethod?: string | null;
   discountCode?: string | null;
@@ -130,6 +144,7 @@ export async function POST(req: Request) {
   const {
     membershipId,
     offerId,
+    egyptianNationalId,
     scheduleIds,
     paymentMethod,
     discountCode,
@@ -220,6 +235,208 @@ export async function POST(req: Request) {
   }
 
   const resolvedPaymentMethod = sanitizeMethod(paymentMethod);
+
+  // Remove only EXPIRED pending-payment attempts before creating a new
+  // subscription attempt. This prevents stale bookings from blocking the retry.
+  //
+  // The shared cleanup helper is race-safe and will not touch:
+  // - non-expired pending memberships
+  // - memberships that already have a paid transaction
+  await cleanupExpiredPendingMembershipsForUser(userId);
+
+  /*
+   * A still-valid pending checkout with the same economic identity may change
+   * only its schedule selection before payment.
+   *
+   * Serialize this with membership lifecycle finalization, replace the frozen
+   * booking contract atomically, and keep the SAME payment checkout.
+   *
+   * This happens before any wallet/points/partner/referral writes below.
+   */
+  const rescheduledPendingCheckout = await db.$transaction(async (tx) => {
+    await lockMembershipLifecycleUserTx(
+      asDbTransactionClient(tx),
+      userId,
+    );
+
+    const pendingCheckout =
+      await findScheduleReplaceablePendingMembershipCheckoutTx({
+        tx,
+        userId,
+        fingerprint: subscribeAttemptFingerprint,
+      });
+
+    if (!pendingCheckout) {
+      return null;
+    }
+
+    /*
+     * Defensive race path:
+     * if another request already brought the pending checkout to the requested
+     * schedules while we waited for the lifecycle lock, simply resume it.
+     */
+    if (!pendingCheckout.scheduleSelectionChanged) {
+      return {
+        membershipId: pendingCheckout.membershipId,
+        transactionId: pendingCheckout.transactionId,
+        checkoutUrl: pendingCheckout.checkoutUrl,
+        endDate: pendingCheckout.endDate,
+        rescheduled: false,
+      };
+    }
+
+    await replacePendingMembershipBookingPlanTx({
+      tx,
+      userId,
+      userMembershipId: pendingCheckout.membershipId,
+      selectedScheduleIds: subscribeAttemptFingerprint.scheduleIds,
+    });
+
+    let existingMetadata: Record<string, unknown> = {};
+
+    if (pendingCheckout.transactionMetadata) {
+      const parsed = JSON.parse(
+        pendingCheckout.transactionMetadata,
+      ) as unknown;
+
+      if (
+        !parsed ||
+        typeof parsed !== "object" ||
+        Array.isArray(parsed)
+      ) {
+        throw new Error(
+          "Pending membership payment metadata is invalid",
+        );
+      }
+
+      existingMetadata = parsed as Record<string, unknown>;
+    }
+
+    const paymentUpdated =
+      await tx.paymentTransaction.updateMany({
+        where: {
+          id: pendingCheckout.transactionId,
+          membershipId: pendingCheckout.membershipId,
+          userId,
+          purpose: "membership",
+          status: {
+            in: ["pending", "requires_action"],
+          },
+        },
+        data: {
+          metadata: JSON.stringify({
+            ...existingMetadata,
+            subscribeAttemptFingerprint,
+            bookingRecoveryData: {
+              selectedScheduleIds:
+                subscribeAttemptFingerprint.scheduleIds,
+              createdAt: new Date().toISOString(),
+            },
+          }),
+        },
+      });
+
+    if (paymentUpdated.count !== 1) {
+      throw new Error(
+        "Pending membership payment update lost race",
+      );
+    }
+
+    return {
+      membershipId: pendingCheckout.membershipId,
+      transactionId: pendingCheckout.transactionId,
+      checkoutUrl: pendingCheckout.checkoutUrl,
+      endDate: pendingCheckout.endDate,
+      rescheduled: true,
+    };
+  }).catch((error: unknown) => {
+    if (error instanceof MembershipBookingPlanError) {
+      return {
+        error: error.message,
+        action: error.action,
+      };
+    }
+
+    if (
+      error instanceof Error &&
+      error.message === "AMBIGUOUS_PENDING_MEMBERSHIP_CHECKOUT"
+    ) {
+      return {
+        error:
+          "يوجد أكثر من محاولة دفع معلقة لنفس الاشتراك. يرجى استكمال أو إلغاء إحدى المحاولات الحالية قبل تغيير المواعيد.",
+        action: "back_to_schedule",
+      };
+    }
+
+    throw error;
+  });
+
+  if (
+    rescheduledPendingCheckout &&
+    "error" in rescheduledPendingCheckout
+  ) {
+    return NextResponse.json(
+      {
+        error: rescheduledPendingCheckout.error,
+        action: rescheduledPendingCheckout.action,
+      },
+      { status: 400 },
+    );
+  }
+
+  if (rescheduledPendingCheckout) {
+    return NextResponse.json({
+      success: true,
+      subscriptionId: rescheduledPendingCheckout.membershipId,
+      endDate:
+        rescheduledPendingCheckout.endDate.toISOString(),
+      checkoutUrl:
+        rescheduledPendingCheckout.checkoutUrl,
+      transactionId:
+        rescheduledPendingCheckout.transactionId,
+      resumedPending: true,
+      rescheduledPending:
+        rescheduledPendingCheckout.rescheduled,
+    });
+  }
+
+  /*
+   * Same-membership Paymob renewal handoff.
+   * Must run before any new membership or financial deductions.
+   */
+  const renewedPendingCheckout =
+    await maybeRenewPendingMembershipCheckout({
+      userId,
+      fingerprint: subscribeAttemptFingerprint,
+      customer: {
+        id: userId,
+        name: userRecord.name,
+        email: userRecord.email,
+        phone: userRecord.phone,
+      },
+    });
+
+  if (renewedPendingCheckout.kind === "blocked") {
+    return NextResponse.json(
+      {
+        error:
+          "محاولة الدفع السابقة تحتاج تأكيد حالتها قبل إعادة المحاولة. تم الاحتفاظ بالاشتراك والحجوزات والخصومات لحين التحقق.",
+      },
+      { status: 409 },
+    );
+  }
+
+  if (renewedPendingCheckout.kind === "resumed") {
+    return NextResponse.json({
+      success: true,
+      subscriptionId: renewedPendingCheckout.membershipId,
+      endDate: renewedPendingCheckout.endDate.toISOString(),
+      checkoutUrl: renewedPendingCheckout.checkoutUrl,
+      transactionId: renewedPendingCheckout.transactionId,
+      resumedPending: true,
+      renewedPaymobIntention: true,
+    });
+  }
 
   const rewardCfg = await getRewardSettings();
 
@@ -632,170 +849,6 @@ export async function POST(req: Request) {
     }
   }
 
-  // Remove only EXPIRED pending-payment attempts before creating a new
-  // subscription attempt. This prevents stale bookings from blocking the retry.
-  //
-  // The shared cleanup helper is race-safe and will not touch:
-  // - non-expired pending memberships
-  // - memberships that already have a paid transaction
-  await cleanupExpiredPendingMembershipsForUser(userId);
-
-  /*
-   * A still-valid pending checkout with the same economic identity may change
-   * only its schedule selection before payment.
-   *
-   * Serialize this with membership lifecycle finalization, replace the frozen
-   * booking contract atomically, and keep the SAME payment checkout.
-   *
-   * This happens before any wallet/points/partner/referral writes below.
-   */
-  const rescheduledPendingCheckout = await db.$transaction(async (tx) => {
-    await lockMembershipLifecycleUserTx(
-      asDbTransactionClient(tx),
-      userId,
-    );
-
-    const pendingCheckout =
-      await findScheduleReplaceablePendingMembershipCheckoutTx({
-        tx,
-        userId,
-        fingerprint: subscribeAttemptFingerprint,
-      });
-
-    if (!pendingCheckout) {
-      return null;
-    }
-
-    /*
-     * Defensive race path:
-     * if another request already brought the pending checkout to the requested
-     * schedules while we waited for the lifecycle lock, simply resume it.
-     */
-    if (!pendingCheckout.scheduleSelectionChanged) {
-      return {
-        membershipId: pendingCheckout.membershipId,
-        transactionId: pendingCheckout.transactionId,
-        checkoutUrl: pendingCheckout.checkoutUrl,
-        endDate: pendingCheckout.endDate,
-        rescheduled: false,
-      };
-    }
-
-    await replacePendingMembershipBookingPlanTx({
-      tx,
-      userId,
-      userMembershipId: pendingCheckout.membershipId,
-      selectedScheduleIds: subscribeAttemptFingerprint.scheduleIds,
-    });
-
-    let existingMetadata: Record<string, unknown> = {};
-
-    if (pendingCheckout.transactionMetadata) {
-      const parsed = JSON.parse(
-        pendingCheckout.transactionMetadata,
-      ) as unknown;
-
-      if (
-        !parsed ||
-        typeof parsed !== "object" ||
-        Array.isArray(parsed)
-      ) {
-        throw new Error(
-          "Pending membership payment metadata is invalid",
-        );
-      }
-
-      existingMetadata = parsed as Record<string, unknown>;
-    }
-
-    const paymentUpdated =
-      await tx.paymentTransaction.updateMany({
-        where: {
-          id: pendingCheckout.transactionId,
-          membershipId: pendingCheckout.membershipId,
-          userId,
-          purpose: "membership",
-          status: {
-            in: ["pending", "requires_action"],
-          },
-        },
-        data: {
-          metadata: JSON.stringify({
-            ...existingMetadata,
-            subscribeAttemptFingerprint,
-            bookingRecoveryData: {
-              selectedScheduleIds:
-                subscribeAttemptFingerprint.scheduleIds,
-              createdAt: new Date().toISOString(),
-            },
-          }),
-        },
-      });
-
-    if (paymentUpdated.count !== 1) {
-      throw new Error(
-        "Pending membership payment update lost race",
-      );
-    }
-
-    return {
-      membershipId: pendingCheckout.membershipId,
-      transactionId: pendingCheckout.transactionId,
-      checkoutUrl: pendingCheckout.checkoutUrl,
-      endDate: pendingCheckout.endDate,
-      rescheduled: true,
-    };
-  }).catch((error: unknown) => {
-    if (error instanceof MembershipBookingPlanError) {
-      return {
-        error: error.message,
-        action: error.action,
-      };
-    }
-
-    if (
-      error instanceof Error &&
-      error.message === "AMBIGUOUS_PENDING_MEMBERSHIP_CHECKOUT"
-    ) {
-      return {
-        error:
-          "يوجد أكثر من محاولة دفع معلقة لنفس الاشتراك. يرجى استكمال أو إلغاء إحدى المحاولات الحالية قبل تغيير المواعيد.",
-        action: "back_to_schedule",
-      };
-    }
-
-    throw error;
-  });
-
-  if (
-    rescheduledPendingCheckout &&
-    "error" in rescheduledPendingCheckout
-  ) {
-    return NextResponse.json(
-      {
-        error: rescheduledPendingCheckout.error,
-        action: rescheduledPendingCheckout.action,
-      },
-      { status: 400 },
-    );
-  }
-
-  if (rescheduledPendingCheckout) {
-    return NextResponse.json({
-      success: true,
-      subscriptionId: rescheduledPendingCheckout.membershipId,
-      endDate:
-        rescheduledPendingCheckout.endDate.toISOString(),
-      checkoutUrl:
-        rescheduledPendingCheckout.checkoutUrl,
-      transactionId:
-        rescheduledPendingCheckout.transactionId,
-      resumedPending: true,
-      rescheduledPending:
-        rescheduledPendingCheckout.rescheduled,
-    });
-  }
-
   const result = await db
     .$transaction(async (tx) => {
       // Serialize membership creation/finalization for this customer with
@@ -827,6 +880,15 @@ export async function POST(req: Request) {
       } | null = null;
       let walletBonus = 0;
 
+      let offerAgeEligibilitySnapshot: {
+        requiresBirthDate: boolean;
+        verificationMethod?: "account_birth_date" | "egyptian_national_id";
+        minAgeYears: number | null;
+        maxAgeYears: number | null;
+        ageYearsAtPurchase: number | null;
+        validatedAt: string;
+      } | null = null;
+
       if (offerId) {
         const offer = await tx.offer.findUnique({
           where: { id: offerId },
@@ -845,6 +907,88 @@ export async function POST(req: Request) {
         ) {
           throw new SubscribeError("اكتمل عدد المشتركين في هذا العرض.");
         }
+
+        /*
+         * Offer age eligibility is enforced authoritatively here.
+         * The browser must never be trusted for age validation.
+         */
+        const ageConfigRows =
+          await tx.$queryRaw<
+            Array<{
+              requiresBirthDate: boolean | number;
+              requiresEgyptianNationalId: boolean | number;
+              minAgeYears: number | null;
+              maxAgeYears: number | null;
+            }>
+          >`
+            SELECT
+              requiresBirthDate,
+              requiresEgyptianNationalId,
+              minAgeYears,
+              maxAgeYears
+            FROM Offer
+            WHERE id = ${offer.id}
+            LIMIT 1
+          `;
+
+        const ageConfig = ageConfigRows[0];
+
+        const requiresBirthDate =
+          ageConfig?.requiresBirthDate === true ||
+          Number(ageConfig?.requiresBirthDate ?? 0) === 1;
+
+        const minAgeYears =
+          ageConfig?.minAgeYears ?? null;
+
+        const maxAgeYears =
+          ageConfig?.maxAgeYears ?? null;
+
+        const isEgyptianIdOffer = ageConfig?.requiresEgyptianNationalId === true ||
+          Number(ageConfig?.requiresEgyptianNationalId ?? 0) === 1;
+        let ageYearsAtPurchase: number | null = null;
+
+        if (requiresBirthDate || isEgyptianIdOffer || minAgeYears != null || maxAgeYears != null) {
+          const ageSubject = isEgyptianIdOffer ? null :
+            await tx.user.findUnique({
+              where: { id: userId },
+              select: { birthDate: true },
+            });
+
+          const ageEligibility = isEgyptianIdOffer
+            ? evaluateEgyptianNationalIdAgeEligibility({
+                egyptianNationalId,
+                minAgeYears,
+                maxAgeYears,
+                now: new Date(),
+              })
+            : evaluateOfferAgeEligibility({
+                requiresBirthDate,
+                minAgeYears,
+                maxAgeYears,
+                birthDate: ageSubject?.birthDate ?? null,
+                now: new Date(),
+              });
+
+          if (!ageEligibility.eligible) {
+            throw new SubscribeError(
+              ageEligibility.message,
+              "back_to_plan",
+              ageEligibility.code,
+            );
+          }
+
+          ageYearsAtPurchase =
+            ageEligibility.ageYears;
+        }
+
+        offerAgeEligibilitySnapshot = {
+          requiresBirthDate,
+          verificationMethod: isEgyptianIdOffer ? "egyptian_national_id" : "account_birth_date",
+          minAgeYears,
+          maxAgeYears,
+          ageYearsAtPurchase,
+          validatedAt: new Date().toISOString(),
+        };
 
         resolvedMembershipId = offer.membershipId ?? undefined;
         if (!resolvedMembershipId) {
@@ -1329,6 +1473,8 @@ export async function POST(req: Request) {
             finalPrice: paymentAmount ?? 0,
             durationDays: effectiveDurationDays,
             sessionsCount: effectiveSessionsCount,
+            ageEligibility:
+              offerAgeEligibilitySnapshot,
             allowedClassTypes: offerRecord.allowedClassTypes.map(
               (item) => item.classType,
             ),
@@ -1950,6 +2096,7 @@ export async function POST(req: Request) {
         return {
           error: error.message,
           action: error.action,
+          code: error.code,
         };
       }
 
@@ -1971,7 +2118,11 @@ export async function POST(req: Request) {
 
   if ("error" in result) {
     return NextResponse.json(
-      { error: result.error, action: result.action },
+      {
+        error: result.error,
+        action: result.action,
+        code: "code" in result ? result.code : undefined,
+      },
       { status: 400 },
     );
   }
@@ -2101,17 +2252,91 @@ export async function POST(req: Request) {
         );
       });
 
-      await restorePaymentBalanceAdjustments({
-        userId,
-        walletAmount: result.actualWalletDeduct,
-        referralWalletAmount:
-          result.actualReferralWalletDeduct,
-        generalWalletAmount:
-          result.actualGeneralWalletDeduct,
-        pointsCount: result.actualPointsDeduct,
-        reference: result.subscriptionId,
-      }).catch((restoreError) => {
-        console.error("[SUBSCRIBE_PAYMENT_RESTORE]", restoreError);
+      /*
+       * CHECKOUT_INITIALIZATION_FINANCIAL_RECOVERY_V1
+       *
+       * A provider request may have started before checkout creation
+       * threw. Never credit wallet/points while the original pending
+       * membership still owns its reservation.
+       *
+       * createPaymentTransaction commits its payment row BEFORE provider
+       * I/O. That row already owns the immutable financial adjustments.
+       *
+       * If no payment row was committed, the provider request never
+       * started through that function. Record a non-provider financial
+       * recovery owner for the original timeout settlement instead.
+       */
+      await db.$transaction(async (tx) => {
+        await lockMembershipLifecycleUserTx(
+          asDbTransactionClient(tx),
+          userId,
+        );
+
+        const heldMembership = await tx.userMembership.findUnique({
+          where: { id: result.subscriptionId },
+          select: {
+            userId: true,
+            status: true,
+            pendingExpiresAt: true,
+          },
+        });
+
+        if (
+          !heldMembership ||
+          heldMembership.userId !== userId ||
+          heldMembership.status !== "pending_payment"
+        ) {
+          return;
+        }
+
+        const existingPayment = await tx.paymentTransaction.findFirst({
+          where: {
+            userId,
+            membershipId: result.subscriptionId,
+            purpose: "membership",
+          },
+          select: { id: true },
+        });
+
+        if (existingPayment) {
+          // Unknown provider outcome: preserve the existing payment
+          // and its frozen economic snapshot for reconciliation.
+          return;
+        }
+
+        await tx.paymentTransaction.create({
+          data: {
+            userId,
+            membershipId: result.subscriptionId,
+            purpose: "membership",
+            businessUnit: "club",
+            provider: "manual",
+            amount: result.paymentAmount,
+            currency: "EGP",
+            status: "failed",
+            paymentMethod: "card",
+            metadata: JSON.stringify({
+              checkoutInitializationFailedBeforeProviderRequest: true,
+              subscribeAttemptFingerprint,
+              paymentAdjustments: {
+                walletAmount: result.actualWalletDeduct,
+                referralWalletAmount:
+                  result.actualReferralWalletDeduct,
+                generalWalletAmount:
+                  result.actualGeneralWalletDeduct,
+                pointsCount: result.actualPointsDeduct,
+                pointsAmount: result.actualPointsEGP,
+              },
+              bookingRecoveryData:
+                scheduleIds && scheduleIds.length > 0
+                  ? {
+                      selectedScheduleIds: scheduleIds,
+                      createdAt: new Date().toISOString(),
+                    }
+                  : undefined,
+            }),
+          },
+        });
       });
       return NextResponse.json(
         {

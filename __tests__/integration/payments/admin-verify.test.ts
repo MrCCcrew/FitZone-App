@@ -110,6 +110,18 @@ describe("POST /admin/payments/verify — verify vs force-activate", () => {
     expect(updatePaymentTransactionStatus).not.toHaveBeenCalled();
   });
 
+  it("rejects unverified Paymob forceActivate without mutating payment", async () => {
+    vi.mocked(db.paymentTransaction.findUnique).mockResolvedValue({
+      ...TX,
+      provider: "paymob",
+    } as never);
+
+    const res = (await POST(postReq({ transactionId: "t1", forceActivate: true })))!;
+    expect(res.status).toBe(409);
+    expect(updatePaymentTransactionStatus).not.toHaveBeenCalled();
+    expect(verifyPaymentTransaction).not.toHaveBeenCalled();
+  });
+
   it("calls updatePaymentTransactionStatus with 'paid' when forceActivate=true", async () => {
     vi.mocked(updatePaymentTransactionStatus).mockResolvedValue({ id: "t1", status: "paid" } as never);
     const res = (await POST(postReq({ transactionId: "t1", forceActivate: true })))!;

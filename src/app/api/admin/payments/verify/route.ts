@@ -19,7 +19,7 @@ export async function POST(req: Request) {
 
     const transaction = await db.paymentTransaction.findUnique({
       where: { id: transactionId },
-      select: { id: true, status: true, userId: true, membershipId: true },
+      select: { id: true, status: true, userId: true, membershipId: true, provider: true },
     });
 
     if (!transaction) {
@@ -27,6 +27,15 @@ export async function POST(req: Request) {
     }
 
     if (forceActivate) {
+      // Never convert a Paymob transaction to paid without provider proof.
+      // A manual status write bypasses amount/order ownership verification,
+      // customer financial settlement and the payment webhook CAS barrier.
+      if (transaction.provider === "paymob") {
+        return NextResponse.json(
+          { error: "لا يمكن تفعيل دفعة Paymob يدويًا دون تأكيد الدفع من Paymob. استخدم التحقق من الدفع." },
+          { status: 409 },
+        );
+      }
       const result = await updatePaymentTransactionStatus(transactionId, "paid", "تفعيل يدوي من الأدمن");
       return NextResponse.json({ success: true, transaction: result, method: "force" });
     }
