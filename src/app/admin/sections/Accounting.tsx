@@ -1346,6 +1346,9 @@ type WalletTopupAuditRow = {
   customerPhone: string | null;
   currentWalletBalance: number | null;
   journalStatus: string;
+  principalCreditEvidence: "unique_reference_amount_match" | "ambiguous_duplicate" | "no_match" | "not_paid";
+  additionalReferencedCreditCandidate: number;
+  additionalReferencedCreditCount: number;
   walletCreditReconciled: false;
 };
 
@@ -1441,6 +1444,7 @@ function WalletTopupsAudit() {
                       <th className="p-2">الحالة</th>
                       <th className="p-2">مرجع الدفع</th>
                       <th className="p-2">القيد</th>
+                      <th className="p-2">مطابقة حركة المحفظة</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1461,6 +1465,18 @@ function WalletTopupsAudit() {
                         <td className="p-2">{tx.status === "paid" ? "مدفوع" : tx.status}</td>
                         <td className="p-2 font-mono text-xs">{tx.reference}</td>
                         <td className="p-2">{tx.journalStatus === "posted" ? "قيد منشور" : tx.journalStatus === "missing" ? "لا يوجد قيد" : tx.journalStatus}</td>
+                        <td className="p-2 text-xs">
+                          {tx.principalCreditEvidence === "unique_reference_amount_match"
+                            ? <span className="text-emerald-300">حركة أصل الشحن مطابقة بالمرجع والمبلغ</span>
+                            : tx.principalCreditEvidence === "not_paid"
+                              ? <span className="text-[#d7aabd]">غير مدفوع</span>
+                              : <span className="text-amber-300">تحتاج مراجعة — {tx.principalCreditEvidence === "ambiguous_duplicate" ? "أكثر من حركة مطابقة" : "لا توجد حركة مطابقة"}</span>}
+                          {tx.additionalReferencedCreditCount > 0 && (
+                            <div className="mt-1 text-amber-200">
+                              رصيد إضافي مرجّح: {tx.additionalReferencedCreditCandidate.toFixed(2)} ج — بانتظار إثبات نوعه وقيده
+                            </div>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>

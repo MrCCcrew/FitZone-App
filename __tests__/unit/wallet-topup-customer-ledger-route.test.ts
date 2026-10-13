@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const state = vi.hoisted(() => ({
   payments: [] as Array<Record<string, unknown>>,
   journals: [] as Array<Record<string, unknown>>,
+  movements: [] as Array<Record<string, unknown>>,
   permitted: true,
 }));
 vi.mock("@/lib/admin-guard", () => ({
@@ -26,6 +27,23 @@ vi.mock("@/lib/db", () => ({
     },
     journal: {
       findMany: vi.fn(async () => state.journals),
+    },
+    walletTransaction: {
+      findMany: vi.fn(async ({ where }: { where: {
+        wallet: { userId: string };
+        type: string;
+        source: { in: string[] };
+        description: { contains: string };
+        createdAt: { gte: Date; lte: Date };
+      } }) => state.movements.filter(m =>
+        m.userId === where.wallet.userId &&
+        m.type === where.type &&
+        where.source.in.includes(String(m.source)) &&
+        String(m.description).includes(where.description.contains) &&
+        m.createdAt instanceof Date &&
+        m.createdAt >= where.createdAt.gte &&
+        m.createdAt <= where.createdAt.lte,
+      )),
     },
   },
 }));
@@ -59,6 +77,7 @@ const create = (id: string, paid: boolean, amount: number) => ({
 
 beforeEach(() => {
   state.permitted = true;
+  state.movements = [];
   state.payments = [create("A", true, 250), create("B", true, 98),
     create("C", false, 100), create("D", false, 100), create("E", false, 50)];
   state.journals = [{ referenceId: "A", status: "posted" }, { referenceId: "B", status: "posted" }];
@@ -80,6 +99,42 @@ describe("wallet-topup ledger with customer attribution", () => {
       walletCreditReconciled: false,
     });
     expect(body.creditReconciliationStatus).toBe("requires_direct_payment_transaction_link");
+  });
+
+  it("matches old legacy source by payment reference and amount, never double-counting bonus", async () => {
+    state.movements = [
+      { userId: "customer-A", type: "credit", source: "legacy", amount: 250,
+        description: "شحن محفظة عبر REF-A", createdAt: new Date("2026-10-01T10:02:00Z") },
+      { userId: "customer-B", type: "credit", source: "legacy", amount: 98,
+        description: "شحن محفظة عبر REF-B", createdAt: new Date("2026-10-01T10:02:00Z") },
+      { userId: "customer-B", type: "credit", source: "legacy", amount: 14.7,
+        description: "بونص شحن للمعاملة REF-B", createdAt: new Date("2026-10-01T10:02:00Z") },
+    ];
+    const body = await (await GET(new Request(
+      "http://localhost/api/admin/accounting/wallet-topups?status=paid",
+    ))).json();
+    expect(body.rows[0]).toMatchObject({
+      principalCreditEvidence: "unique_reference_amount_match",
+      additionalReferencedCreditCandidate: 0,
+    });
+    expect(body.rows[1]).toMatchObject({
+      principalCreditEvidence: "unique_reference_amount_match",
+      additionalReferencedCreditCandidate: 14.7,
+      additionalReferencedCreditCount: 1,
+      walletCreditReconciled: false,
+    });
+  });
+
+  it("flags duplicate principal credit candidates, never claims full reconciliation", async () => {
+    state.movements = Array.from({ length: 2 }, () => ({
+      userId: "customer-A", type: "credit", source: "legacy", amount: 250,
+      description: "شحن محفظة عبر REF-A", createdAt: new Date("2026-10-01T10:02:00Z"),
+    }));
+    const body = await (await GET(new Request(
+      "http://localhost/api/admin/accounting/wallet-topups?status=paid",
+    ))).json();
+    expect(body.rows[0].principalCreditEvidence).toBe("ambiguous_duplicate");
+    expect(body.rows[0].walletCreditReconciled).toBe(false);
   });
 
   it("filters to paid transactions without treating pending attempts as collections", async () => {

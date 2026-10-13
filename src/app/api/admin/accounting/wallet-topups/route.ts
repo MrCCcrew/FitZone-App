@@ -71,8 +71,49 @@ export async function GET(request: Request) {
     journals.map((entry) => [entry.referenceId, entry.status]),
   );
 
+  // Historical wallet movements use source="legacy"; newer ones use
+  // "topup" / "topup_bonus". Match by same customer, exact reference suffix,
+  // settlement-day proximity and amount. This is evidence, not authority to
+  // change the wallet or claim a complete formal reconciliation.
+  const creditEvidence = await Promise.all(transactions.map(async (transaction) => {
+    if (transaction.status !== "paid") {
+      return { principal: "not_paid" as const, extraCredit: 0, extraCreditCount: 0 };
+    }
+    const reference = transaction.referenceCode ?? transaction.id;
+    const settledAt = transaction.paidAt ?? transaction.createdAt;
+    const movements = await db.walletTransaction.findMany({
+      where: {
+        wallet: { userId: transaction.userId },
+        type: "credit",
+        source: { in: ["legacy", "topup", "topup_bonus"] },
+        description: { contains: reference },
+        createdAt: {
+          gte: new Date(settledAt.getTime() - 72 * 3600000),
+          lte: new Date(settledAt.getTime() + 72 * 3600000),
+        },
+      },
+      select: { amount: true, source: true, description: true },
+    });
+    const exact = movements.filter(m =>
+      typeof m.description === "string" &&
+      m.description.trim().endsWith(reference),
+    );
+    const principal = exact.filter(m =>
+      Math.abs(Number(m.amount) - Number(transaction.amount)) < 0.005 &&
+      (m.source === "legacy" || m.source === "topup"),
+    );
+    // Other matching credits might be a bonus; never count them as cash.
+    const additional = exact.filter(m => !principal.includes(m));
+    return {
+      principal: principal.length === 1 ? "unique_reference_amount_match" as const
+        : principal.length > 1 ? "ambiguous_duplicate" as const : "no_match" as const,
+      extraCredit: Math.round(additional.reduce((total, m) => total + Number(m.amount), 0) * 100) / 100,
+      extraCreditCount: additional.length,
+    };
+  }));
+
   return NextResponse.json({
-    rows: transactions.map((transaction) => ({
+    rows: transactions.map((transaction, index) => ({
       id: transaction.id,
       status: transaction.status,
       amount: transaction.amount,
@@ -88,6 +129,9 @@ export async function GET(request: Request) {
       customerPhone: transaction.user.phone ?? null,
       currentWalletBalance: transaction.user.wallet?.balance ?? null,
       journalStatus: journalStatusByPayment.get(transaction.id) ?? "missing",
+      principalCreditEvidence: creditEvidence[index].principal,
+      additionalReferencedCreditCandidate: creditEvidence[index].extraCredit,
+      additionalReferencedCreditCount: creditEvidence[index].extraCreditCount,
       // Not a settlement verdict: no direct payment-to-wallet-credit FK.
       walletCreditReconciled: false,
     })),
