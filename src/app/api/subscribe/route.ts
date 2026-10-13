@@ -17,6 +17,8 @@ import {
 type SubscribeAction = "back_to_schedule" | "back_to_plan";
 type SubscribeCode =
   | "BIRTH_DATE_REQUIRED"
+  | "EGYPTIAN_NATIONAL_ID_REQUIRED"
+  | "EGYPTIAN_NATIONAL_ID_INVALID"
   | "AGE_NOT_ELIGIBLE"
   | "INVALID_AGE_RULE";
 class SubscribeError extends Error {
