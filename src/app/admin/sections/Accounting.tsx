@@ -1332,6 +1332,153 @@ function StoreTab({
 
 // ─── Club Tab ─────────────────────────────────────────────────────────────────
 
+type WalletTopupAuditRow = {
+  id: string;
+  status: string;
+  amount: number;
+  currency: string;
+  provider: string;
+  reference: string;
+  createdAt: string;
+  paidAt: string | null;
+  customerName: string;
+  customerEmail: string | null;
+  customerPhone: string | null;
+  currentWalletBalance: number | null;
+  journalStatus: string;
+  walletCreditReconciled: false;
+};
+
+function WalletTopupsAudit() {
+  const [open, setOpen] = useState(false);
+  const [page, setPage] = useState(1);
+  const [status, setStatus] = useState("all");
+  const [result, setResult] = useState<{
+    rows: WalletTopupAuditRow[];
+    total: number;
+    totalPages: number;
+  } | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const controller = new AbortController();
+    setLoading(true);
+    setError(null);
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/admin/accounting/wallet-topups?page=${page}&status=${encodeURIComponent(status)}`,
+          { cache: "no-store", signal: controller.signal },
+        );
+        if (!res.ok) throw new Error("تعذر تحميل سجل شحن المحافظ.");
+        const data = await res.json() as {
+          rows: WalletTopupAuditRow[];
+          total: number;
+          totalPages: number;
+        };
+        if (!controller.signal.aborted) setResult(data);
+      } catch (e) {
+        if (!controller.signal.aborted) {
+          setError(e instanceof Error ? e.message : "تعذر تحميل السجل.");
+        }
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
+    })();
+    return () => controller.abort();
+  }, [open, page, status]);
+
+  return (
+    <div className="mt-4 space-y-3">
+      <button
+        className={BTN_GHOST}
+        onClick={() => { setOpen(value => !value); setPage(1); }}
+        type="button"
+      >
+        {open ? "إخفاء كشف الشحن" : "عرض كشف الشحن بأسماء العميلات والمراجع"}
+      </button>
+      {open && (
+        <div className="space-y-3">
+          <p className="text-xs text-amber-200">
+            هذه عمليات شحن المحفظة وليست إيراد اشتراكات. وجود قيد محاسبي لا يثبت وحده
+            إضافة الرصيد للعميلة؛ الربط المباشر بحركة المحفظة لا يزال قيد المراجعة.
+            المبلغ المعروض للأموال المشحونة هو إجمالي التحصيل خلال الفترة وليس الرصيد المتبقي.
+          </p>
+          <label className="block text-sm text-[#d7aabd]">
+            حالة معاملة الدفع
+            <select
+              className={INPUT + " mt-2 max-w-xs"}
+              value={status}
+              onChange={e => { setStatus(e.target.value); setPage(1); }}
+            >
+              <option value="all">كل المحاولات</option>
+              <option value="paid">مدفوع</option>
+              <option value="pending">معلق</option>
+              <option value="processing">قيد المعالجة</option>
+              <option value="requires_action">بانتظار العميلة</option>
+              <option value="failed">فاشل</option>
+              <option value="expired">منتهي</option>
+              <option value="cancelled">ملغي</option>
+            </select>
+          </label>
+          {loading ? (
+            <p className="text-sm text-[#d7aabd]">جاري تحميل الشحنات...</p>
+          ) : error ? (
+            <p className="text-sm text-red-300">{error}</p>
+          ) : !result || result.rows.length === 0 ? (
+            <p className="text-sm text-[#d7aabd]">لا توجد عمليات ضمن الاختيار.</p>
+          ) : (
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[850px] text-right text-sm">
+                  <thead className="border-b border-white/10 text-[#d7aabd]">
+                    <tr>
+                      <th className="p-2">العميلة</th>
+                      <th className="p-2">تاريخ الشحن</th>
+                      <th className="p-2">المبلغ</th>
+                      <th className="p-2">الحالة</th>
+                      <th className="p-2">مرجع الدفع</th>
+                      <th className="p-2">القيد</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {result.rows.map(tx => (
+                      <tr key={tx.id} className="border-b border-white/5 text-[#fff4f8]">
+                        <td className="p-2">
+                          <div className="font-bold">{tx.customerName}</div>
+                          <div className="text-xs text-[#d7aabd]">
+                            {tx.customerEmail ?? tx.customerPhone ?? "—"}
+                          </div>
+                          <div className="text-xs text-[#d7aabd]">
+                            رصيد المحفظة الحالي: {tx.currentWalletBalance == null
+                              ? "غير متاح" : `${tx.currentWalletBalance.toFixed(2)} ج`}
+                          </div>
+                        </td>
+                        <td className="p-2 text-xs">{new Date(tx.paidAt ?? tx.createdAt).toLocaleString("ar-EG")}</td>
+                        <td className="p-2 font-bold">{tx.amount.toFixed(2)} {tx.currency}</td>
+                        <td className="p-2">{tx.status === "paid" ? "مدفوع" : tx.status}</td>
+                        <td className="p-2 font-mono text-xs">{tx.reference}</td>
+                        <td className="p-2">{tx.journalStatus === "posted" ? "قيد منشور" : tx.journalStatus === "missing" ? "لا يوجد قيد" : tx.journalStatus}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="flex items-center justify-center gap-3 text-sm text-[#d7aabd]">
+                <button className={BTN_GHOST} type="button" disabled={page <= 1} onClick={() => setPage(page - 1)}>السابق</button>
+                <span>صفحة {page} من {result.totalPages} — إجمالي {result.total} عملية</span>
+                <button className={BTN_GHOST} type="button" disabled={page >= result.totalPages} onClick={() => setPage(page + 1)}>التالي</button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ClubTab({
   data,
   onRefresh,
@@ -1496,8 +1643,8 @@ function ClubTab({
               💰 أموال محافظ مشحونة (التزام مؤجل)
             </p>
             <p className="mt-1 text-xs text-[#a07080]">
-              هذه المبالغ دُفعت لكنها لم تُصرف بعد — ستتحول لإيراد عند استخدامها
-              في اشتراك أو منتج. لا تُحتسب ضمن الإيرادات الفعلية.
+              هذا إجمالي شحن المحافظ المدفوع خلال فترة التقرير، وليس الرصيد غير المستخدم
+              حاليًا. يعالج كتحصيل مقابل التزام، وليس إيراد اشتراكات.
             </p>
           </div>
           <div className="text-left shrink-0">
@@ -1509,6 +1656,7 @@ function ClubTab({
             </p>
           </div>
         </div>
+        <WalletTopupsAudit />
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
