@@ -486,6 +486,7 @@ export async function PATCH(req: Request) {
       await db.$queryRaw<
         Array<{
           requiresBirthDate: boolean | number;
+          requiresEgyptianNationalId: boolean | number;
           minAgeYears: number | null;
           maxAgeYears: number | null;
         }>
