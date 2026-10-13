@@ -2013,6 +2013,8 @@ model WalletTransaction {
   createdAt   DateTime @default(now())
 
   wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  @@index([walletId, type, source, createdAt], map: "idx_wallet_tx_audit_v1")
 }
 
 // ─── Rewards ──────────────────────────────────────────────────────────────────
