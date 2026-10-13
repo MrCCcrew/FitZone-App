@@ -167,6 +167,13 @@ describe("real MySQL customer financial truth and wallet topup identity", () => 
     ));
     if (!pending) throw Error("WALLET_PENDING_RESPONSE_MISSING");
     const pendingBody = await pending.json();
-    expect(pendingBody.rows.some((x: { id: string }) => x.id === topupPendingId)).toBe(true);
+    expect(pendingBody.rows.find((x: { id: string }) => x.id === topupPendingId))
+      .toMatchObject({
+        customerName: marker,
+        amount: 50,
+        status: "pending",
+        journalStatus: "missing",
+        walletCreditReconciled: false,
+      });
   });
 });
