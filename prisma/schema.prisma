@@ -215,6 +215,7 @@ model User {
   attendanceDeductionPoliciesCreated     AttendanceDeductionPolicy[]      @relation("AttendanceDeductionPolicyCreator")
   attendanceDeductionsCalculated         AttendanceDeduction[]            @relation("AttendanceDeductionCalculator")
   attendanceDeductionsFinalized          AttendanceDeduction[]            @relation("AttendanceDeductionFinalizer")
+  offerBoxPurchases OfferBoxPurchase[] @relation("OfferBoxPurchaseUser")
 }
 
 model AuditLog {
@@ -1250,6 +1251,7 @@ model UserMembership {
   @@index([partnerId])
   @@index([salesAgentUserId])
   @@index([salesAgentId])
+  redeemedOfferBoxPurchase OfferBoxPurchase? @relation("OfferBoxRedemption")
 }
 
 // ─── Coach Membership Earning ────────────────────────────────────────────────
@@ -1980,6 +1982,7 @@ model PaymentTransaction {
   @@index([userId, status])
   @@index([orderId])
   @@index([provider, status])
+  offerBoxPurchase OfferBoxPurchase? @relation("OfferBoxPayment")
 }
 
 model PaymentReferenceCounter {
@@ -2183,6 +2186,10 @@ model Offer {
   specialPrice           Float?
   maxSubscribers         Int?
   currentSubscribers     Int      @default(0)
+  offerBoxEnabled        Boolean  @default(false)
+  // Admin must explicitly opt into a second discount on the existing membership price.
+  offerBoxApplyDiscount  Boolean  @default(false)
+  offerBoxReservedCount  Int      @default(0)
   image                  String?
   showOnHome             Boolean  @default(false)
   showMaxSubscribers     Boolean  @default(true)
@@ -2190,6 +2197,13 @@ model Offer {
   sessionsCount          Int?
   durationDays           Int?
   priceBefore            Float?
+
+  // Optional generic age eligibility for offers.
+  // Defaults preserve all existing offer behaviour.
+  requiresBirthDate      Boolean  @default(false)
+  requiresEgyptianNationalId Boolean @default(false)
+  minAgeYears            Int?
+  maxAgeYears            Int?
   features               String?  @db.Text // JSON array of feature strings (Arabic)
   featuresEn             String?  @db.Text // JSON array of feature strings (English)
 
@@ -2198,7 +2212,49 @@ model Offer {
   allowedClassTypes OfferAllowedClassType[]
   allowedClasses    OfferAllowedClass[]
   friendOfferConfig FriendOfferConfig?
+  offerBoxPurchases OfferBoxPurchase[] @relation("OfferBoxPurchaseOffer")
 }
+
+model OfferBoxPurchase {
+  id                       String    @id @default(cuid())
+  userId                   String
+  offerId                  String?
+
+  // pending_payment | available | redeemed | cancelled
+  status                   String    @default("pending_payment")
+
+  // Immutable commercial and eligibility contract captured at purchase time.
+  offerSnapshot            String    @db.LongText
+  snapshotVersion          Int       @default(1)
+  priceSnapshot            Float
+  currency                 String    @default("EGP")
+  paymentMethod            String?
+
+  // Pending checkout temporarily reserves one offer entitlement.
+  holdExpiresAt            DateTime?
+  paymentTransactionId     String?   @unique
+  paidAt                   DateTime?
+
+  // Redemption is exact-once: one Box right can create at most one membership.
+  redeemedAt               DateTime?
+  redeemedUserMembershipId String?   @unique
+
+  cancelledAt              DateTime?
+  cancelReason             String?
+
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+
+  user                     User      @relation("OfferBoxPurchaseUser", fields: [userId], references: [id], onDelete: Cascade)
+  offer                    Offer?    @relation("OfferBoxPurchaseOffer", fields: [offerId], references: [id], onDelete: SetNull)
+
+  @@index([userId, status])
+  @@index([offerId, status])
+  @@index([status, holdExpiresAt])
+  paymentTransaction      PaymentTransaction? @relation("OfferBoxPayment", fields: [paymentTransactionId], references: [id], onDelete: SetNull)
+  redeemedUserMembership  UserMembership?      @relation("OfferBoxRedemption", fields: [redeemedUserMembershipId], references: [id], onDelete: SetNull)
+}
+
 
 // Class types are currently represented by Class.type (there is no ClassType
 // catalogue model). Store the normalized type key here so offers can be edited
