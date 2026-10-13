@@ -115,8 +115,14 @@ type PublicPayload = {
     allowedClassTypeIds?: string[];
     allowedClassIds: string[];
     friendOfferEnabled: boolean;
+    offerBoxEnabled: boolean;
+    offerBoxApplyDiscount: boolean;
     friendRequiredMembers: number;
     friendInviteExpiryHours: number;
+    requiresBirthDate: boolean;
+    requiresEgyptianNationalId: boolean;
+    minAgeYears: number | null;
+    maxAgeYears: number | null;
   }>;
   classes: Array<{
     id: string;
@@ -547,6 +553,36 @@ export async function GET(request: Request) {
       }),
     ]);
 
+    const offerAgeRows =
+      await db.$queryRaw<
+        Array<{
+          id: string;
+          requiresBirthDate: boolean | number;
+          minAgeYears: number | null;
+          maxAgeYears: number | null;
+        }>
+      >`
+        SELECT
+          id,
+          requiresBirthDate,
+          minAgeYears,
+          maxAgeYears
+        FROM Offer
+      `;
+
+    const offerAgeById = new Map(
+      offerAgeRows.map((row) => [
+        row.id,
+        {
+          requiresBirthDate:
+            row.requiresBirthDate === true ||
+            Number(row.requiresBirthDate) === 1,
+          minAgeYears: row.minAgeYears ?? null,
+          maxAgeYears: row.maxAgeYears ?? null,
+        },
+      ]),
+    );
+
     // Server-side filtering for special offers ONLY
     let filteredClasses = classes;
     if (offerId) {
@@ -807,9 +843,18 @@ export async function GET(request: Request) {
           .filter((id): id is string => Boolean(id)),
         allowedClassIds: canonicalOfferClassIds.get(offer.id) ?? [],
         friendOfferEnabled: offer.friendOfferConfig?.isActive === true,
+        offerBoxEnabled: offer.offerBoxEnabled === true,
+        offerBoxApplyDiscount: offer.offerBoxApplyDiscount === true,
         friendRequiredMembers: offer.friendOfferConfig?.requiredMembers ?? 2,
         friendInviteExpiryHours:
           offer.friendOfferConfig?.inviteExpiryHours ?? 24,
+        requiresBirthDate:
+          offerAgeById.get(offer.id)?.requiresBirthDate ?? false,
+        requiresEgyptianNationalId: offer.requiresEgyptianNationalId === true,
+        minAgeYears:
+          offerAgeById.get(offer.id)?.minAgeYears ?? null,
+        maxAgeYears:
+          offerAgeById.get(offer.id)?.maxAgeYears ?? null,
       })),
       classes: filteredClasses.map((gymClass) => ({
         id: gymClass.id,
