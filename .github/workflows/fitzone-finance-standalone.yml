@@ -1,0 +1,57 @@
+name: FitZone Finance Standalone Safety Gate
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/app/api/admin/accounting/**'
+      - 'src/app/admin/sections/Accounting.tsx'
+      - '__tests__/unit/customer-statement-financial-truth.test.ts'
+      - '__tests__/unit/wallet-topup-customer-ledger-route.test.ts'
+      - '__tests__/integration/accounting/customer-statement-financial-truth.test.ts'
+      - '.github/workflows/fitzone-finance-standalone.yml'
+  push:
+    branches: [fix/fitzone-finance-report-main-release-20261013]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fitzone-finance-standalone-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  finance-static-and-unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      APP_ENV: test
+      NODE_ENV: test
+      NEXT_TELEMETRY_DISABLED: '1'
+      DATABASE_URL: mysql://blocked:blocked@127.0.0.1:1/compile_only
+      TEST_DATABASE_URL: mysql://blocked:blocked@127.0.0.1:1/compile_only
+      PAYMOB_ENV: test
+    steps:
+      - name: Checkout finance release
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install lockfile
+        run: npm ci --no-audit --no-fund
+      - name: Generate Prisma client
+        run: npx prisma generate
+      - name: TypeScript whole project
+        run: node node_modules/typescript/bin/tsc --noEmit --pretty false
+      - name: Targeted customer and accounting regression
+        run: |
+          node node_modules/vitest/vitest.mjs run \
+            __tests__/unit/customer-statement-financial-truth.test.ts \
+            __tests__/unit/wallet-topup-customer-ledger-route.test.ts \
+            __tests__/unit/membership-accounting-financial-truth.test.ts \
+            __tests__/unit/wallet-transaction-source-taxonomy.contract.test.ts \
+            --maxWorkers=2 --reporter=dot
