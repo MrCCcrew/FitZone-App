@@ -90,7 +90,7 @@ beforeAll(async () => {
       name: marker,
       email: `${marker.toLowerCase()}@test.local`,
       emailVerified: new Date(),
-      birthDate: new Date("2000-01-01T00:00:00.000Z"), // deliberately eligible account DOB
+      birthDate: new Date("2008-01-01T00:00:00.000Z"), // account DOB is eligible (18 years); ID decides
       role: "member",
       isActive: true,
     },
