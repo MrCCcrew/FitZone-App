@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { requireAdminFeature } from "@/lib/admin-guard";
 
@@ -26,7 +27,7 @@ export async function GET(request: Request) {
     ...(status === "all" ? {} : { status }),
   };
 
-  const [transactions, count] = await Promise.all([
+  const [transactions, count] = await db.$transaction([
     db.paymentTransaction.findMany({
       where,
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
@@ -55,7 +56,9 @@ export async function GET(request: Request) {
       },
     }),
     db.paymentTransaction.count({ where }),
-  ]);
+  ], {
+    isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
+  });
 
   const transactionIds = transactions.map((t) => t.id);
   const journals = transactionIds.length
@@ -75,42 +78,87 @@ export async function GET(request: Request) {
   // "topup" / "topup_bonus". Match by same customer, exact reference suffix,
   // settlement-day proximity and amount. This is evidence, not authority to
   // change the wallet or claim a complete formal reconciliation.
-  const creditEvidence = await Promise.all(transactions.map(async (transaction) => {
+  const paidTransactions = transactions.filter(
+    (transaction) => transaction.status === "paid",
+  );
+
+  // Fetch matching credit candidates once for the entire page.
+  // Each OR branch keeps the customer's identity, exact reference
+  // substring and original 72-hour evidence window.
+  const candidates = paidTransactions.length
+    ? await db.walletTransaction.findMany({
+        where: {
+          type: "credit",
+          source: { in: ["legacy", "topup", "topup_bonus"] },
+          OR: paidTransactions.map((transaction) => {
+            const settledAt = transaction.paidAt ?? transaction.createdAt;
+            return {
+              wallet: { userId: transaction.userId },
+              description: {
+                contains: transaction.referenceCode ?? transaction.id,
+              },
+              createdAt: {
+                gte: new Date(settledAt.getTime() - 72 * 3600000),
+                lte: new Date(settledAt.getTime() + 72 * 3600000),
+              },
+            };
+          }),
+        },
+        select: {
+          amount: true,
+          source: true,
+          description: true,
+          createdAt: true,
+          wallet: { select: { userId: true } },
+        },
+      })
+    : [];
+
+  const creditEvidence = transactions.map((transaction) => {
     if (transaction.status !== "paid") {
-      return { principal: "not_paid" as const, extraCredit: 0, extraCreditCount: 0 };
+      return {
+        principal: "not_paid" as const,
+        extraCredit: 0,
+        extraCreditCount: 0,
+      };
     }
+
     const reference = transaction.referenceCode ?? transaction.id;
     const settledAt = transaction.paidAt ?? transaction.createdAt;
-    const movements = await db.walletTransaction.findMany({
-      where: {
-        wallet: { userId: transaction.userId },
-        type: "credit",
-        source: { in: ["legacy", "topup", "topup_bonus"] },
-        description: { contains: reference },
-        createdAt: {
-          gte: new Date(settledAt.getTime() - 72 * 3600000),
-          lte: new Date(settledAt.getTime() + 72 * 3600000),
-        },
-      },
-      select: { amount: true, source: true, description: true },
-    });
-    const exact = movements.filter(m =>
-      typeof m.description === "string" &&
-      m.description.trim().endsWith(reference),
+    const from = settledAt.getTime() - 72 * 3600000;
+    const until = settledAt.getTime() + 72 * 3600000;
+
+    const exact = candidates.filter((movement) =>
+      movement.wallet.userId === transaction.userId &&
+      movement.createdAt.getTime() >= from &&
+      movement.createdAt.getTime() <= until &&
+      typeof movement.description === "string" &&
+      movement.description.trim().endsWith(reference),
     );
-    const principal = exact.filter(m =>
-      Math.abs(Number(m.amount) - Number(transaction.amount)) < 0.005 &&
-      (m.source === "legacy" || m.source === "topup"),
+
+    const principal = exact.filter((movement) =>
+      Math.abs(Number(movement.amount) - Number(transaction.amount)) < 0.005 &&
+      (movement.source === "legacy" || movement.source === "topup"),
     );
-    // Other matching credits might be a bonus; never count them as cash.
-    const additional = exact.filter(m => !principal.includes(m));
+
+    const additional = exact.filter(
+      (movement) => !principal.includes(movement),
+    );
+
     return {
-      principal: principal.length === 1 ? "unique_reference_amount_match" as const
-        : principal.length > 1 ? "ambiguous_duplicate" as const : "no_match" as const,
-      extraCredit: Math.round(additional.reduce((total, m) => total + Number(m.amount), 0) * 100) / 100,
+      principal: principal.length === 1
+        ? "unique_reference_amount_match" as const
+        : principal.length > 1
+          ? "ambiguous_duplicate" as const
+          : "no_match" as const,
+      extraCredit: Math.round(
+        additional.reduce(
+          (total, movement) => total + Number(movement.amount), 0,
+        ) * 100,
+      ) / 100,
       extraCreditCount: additional.length,
     };
-  }));
+  });
 
   return NextResponse.json({
     rows: transactions.map((transaction, index) => ({

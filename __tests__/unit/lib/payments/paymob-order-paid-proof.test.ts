@@ -62,6 +62,27 @@ describe("Paymob positive order payment proof", () => {
     expect(prove([payment({ is_voided: true })])).toBeNull();
   });
 
+  it("fails closed when required retained-funds evidence is missing", () => {
+    for (const key of [
+      "error_occured",
+      "is_voided",
+      "is_refunded",
+      "refunded_amount_cents",
+    ]) {
+      const incomplete: Record<string, unknown> = payment();
+      delete incomplete[key];
+      expect(prove([incomplete]), key).toBeNull();
+    }
+  });
+
+  it("rejects ambiguous refund and void fields", () => {
+    expect(prove([payment({ refunded_amount_cents: "0" })])).toBeNull();
+    expect(prove([payment({ refunded_amount_cents: null })])).toBeNull();
+    expect(prove([payment({ is_void: true })])).toBeNull();
+    expect(prove([payment({ refunded_amount_cents_int: 100 })])).toBeNull();
+    expect(prove([payment({ refunded_amount_cents_int: null })])).toBeNull();
+  });
+
   it("does not auto-reconcile two successful charges", () => {
     expect(
       prove([

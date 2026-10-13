@@ -12,6 +12,8 @@ vi.mock("@/lib/admin-guard", () => ({
 }));
 vi.mock("@/lib/db", () => ({
   db: {
+    $transaction: vi.fn(async (operations: Promise<unknown>[]) =>
+      Promise.all(operations)),
     paymentTransaction: {
       findMany: vi.fn(async ({ where, skip, take }: {
         where: { purpose: string; status?: string }; skip: number; take: number;
@@ -29,25 +31,37 @@ vi.mock("@/lib/db", () => ({
       findMany: vi.fn(async () => state.journals),
     },
     walletTransaction: {
-      findMany: vi.fn(async ({ where }: { where: {
-        wallet: { userId: string };
-        type: string;
-        source: { in: string[] };
-        description: { contains: string };
-        createdAt: { gte: Date; lte: Date };
-      } }) => state.movements.filter(m =>
-        m.userId === where.wallet.userId &&
-        m.type === where.type &&
-        where.source.in.includes(String(m.source)) &&
-        String(m.description).includes(where.description.contains) &&
-        m.createdAt instanceof Date &&
-        m.createdAt >= where.createdAt.gte &&
-        m.createdAt <= where.createdAt.lte,
-      )),
+      findMany: vi.fn(async ({ where }: {
+        where: {
+          type: string;
+          source: { in: string[] };
+          OR: Array<{
+            wallet: { userId: string };
+            description: { contains: string };
+            createdAt: { gte: Date; lte: Date };
+          }>;
+        };
+      }) => state.movements.filter((movement) =>
+        movement.type === where.type &&
+        where.source.in.includes(String(movement.source)) &&
+        where.OR.some((condition) =>
+          movement.userId === condition.wallet.userId &&
+          String(movement.description).includes(
+            condition.description.contains,
+          ) &&
+          movement.createdAt instanceof Date &&
+          movement.createdAt >= condition.createdAt.gte &&
+          movement.createdAt <= condition.createdAt.lte,
+        ),
+      ).map((movement) => ({
+        ...movement,
+        wallet: { userId: movement.userId },
+      }))),
     },
   },
 }));
 import { GET as routeGet } from "@/app/api/admin/accounting/wallet-topups/route";
+import { db } from "@/lib/db";
 async function GET(req: Request): Promise<Response> {
   const response = await routeGet(req);
   if (!response) throw new Error("ACCOUNTING_GET_RETURNED_UNDEFINED");
@@ -144,6 +158,33 @@ describe("wallet-topup ledger with customer attribution", () => {
     const body = await response.json();
     expect(body.total).toBe(2);
     expect(body.rows.map((row: { amount: number }) => row.amount)).toEqual([250, 98]);
+  });
+
+  it("uses one batched wallet query and a repeatable-read page snapshot", async () => {
+    vi.mocked(db.walletTransaction.findMany).mockClear();
+    vi.mocked(db.$transaction).mockClear();
+
+    const response = await GET(new Request(
+      "http://localhost/api/admin/accounting/wallet-topups?status=paid",
+    ));
+
+    expect(response.status).toBe(200);
+    expect(db.walletTransaction.findMany).toHaveBeenCalledTimes(1);
+    expect(db.$transaction).toHaveBeenCalledWith(
+      expect.any(Array),
+      expect.objectContaining({ isolationLevel: "RepeatableRead" }),
+    );
+  });
+
+  it("does not read wallet evidence for an unpaid-only page", async () => {
+    vi.mocked(db.walletTransaction.findMany).mockClear();
+
+    const response = await GET(new Request(
+      "http://localhost/api/admin/accounting/wallet-topups?status=pending",
+    ));
+
+    expect(response.status).toBe(200);
+    expect(db.walletTransaction.findMany).not.toHaveBeenCalled();
   });
 
   it("rejects invalid status filters", async () => {

@@ -61,13 +61,17 @@ export function findSinglePaidPaymobOrderTransaction(input: {
 
     // Any suspicious paid record requires manual reconciliation.
     if (
-      payment.error_occured === true ||
-      payment.is_voided === true ||
-      payment.is_void === true ||
-      payment.is_refunded === true ||
-      Number(payment.refunded_amount_cents ?? 0) > 0 ||
-      Number(payment.refunded_amount_cents_int ?? 0) > 0
+      payment.error_occured !== false ||
+      payment.is_voided !== false ||
+      payment.is_refunded !== false ||
+      typeof payment.refunded_amount_cents !== "number" ||
+      !Number.isFinite(payment.refunded_amount_cents) ||
+      payment.refunded_amount_cents !== 0 ||
+      (payment.is_void !== undefined && payment.is_void !== false) ||
+      (payment.refunded_amount_cents_int !== undefined &&
+        payment.refunded_amount_cents_int !== 0)
     ) {
+      // Missing or ambiguous finality evidence requires reconciliation.
       return null;
     }
 

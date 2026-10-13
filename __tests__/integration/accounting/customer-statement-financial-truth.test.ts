@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
 
 // Refuse every connection except the dedicated, guarded local test schema.
 const dbUrl = process.env.DATABASE_URL;
@@ -176,4 +176,126 @@ describe("real MySQL customer financial truth and wallet topup identity", () => 
         walletCreditReconciled: false,
       });
   });
+  it("matches real MySQL principal and bonus credit evidence in one batched report", async () => {
+    const wallet = await db.wallet.create({
+      data: { userId, balance: 92.5 },
+    });
+
+    try {
+      const paid = await db.paymentTransaction.findUniqueOrThrow({
+        where: { id: topupPaidId },
+      });
+      const reference = paid.referenceCode ?? paid.id;
+      const settledAt = paid.paidAt ?? paid.createdAt;
+
+      await db.walletTransaction.createMany({
+        data: [
+          {
+            walletId: wallet.id,
+            amount: 80,
+            type: "credit",
+            source: "legacy",
+            description: `Test principal ${reference}`,
+            createdAt: settledAt,
+          },
+          {
+            walletId: wallet.id,
+            amount: 12.5,
+            type: "credit",
+            source: "topup_bonus",
+            description: `Test bonus ${reference}`,
+            createdAt: settledAt,
+          },
+        ],
+      });
+
+      const { GET } = await import(
+        "@/app/api/admin/accounting/wallet-topups/route"
+      );
+
+      const response = await GET(new Request(
+        "http://localhost/api/admin/accounting/wallet-topups?status=paid",
+      ));
+
+      if (!response) throw Error("WALLET_AUDIT_NO_RESPONSE");
+      expect(response.status).toBe(200);
+
+      const body = await response.json();
+      const row = body.rows.find(
+        (item: { id: string }) => item.id === topupPaidId,
+      );
+
+      expect(row).toMatchObject({
+        principalCreditEvidence: "unique_reference_amount_match",
+        additionalReferencedCreditCandidate: 12.5,
+        additionalReferencedCreditCount: 1,
+        walletCreditReconciled: false,
+      });
+    } finally {
+      await db.walletTransaction.deleteMany({
+        where: { walletId: wallet.id },
+      });
+      await db.wallet.delete({
+        where: { id: wallet.id },
+      });
+    }
+  });
+
+  it("keeps the MySQL repeatable-read count stable during a concurrent insert", async () => {
+    const writer = new PrismaClient();
+    let insertedId = "";
+
+    try {
+      const initialCount = await db.$transaction(async (tx) => {
+        const where = {
+          purpose: "wallet_topup",
+          userId,
+        };
+
+        const before = await tx.paymentTransaction.count({ where });
+
+        const inserted = await writer.paymentTransaction.create({
+          data: {
+            userId,
+            provider: "paymob",
+            purpose: "wallet_topup",
+            businessUnit: "club",
+            paymentMethod: "card",
+            currency: "EGP",
+            status: "pending",
+            amount: 77,
+          },
+        });
+
+        insertedId = inserted.id;
+
+        const during = await tx.paymentTransaction.count({ where });
+
+        expect(during).toBe(before);
+
+        return before;
+      }, {
+        isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
+        maxWait: 10000,
+        timeout: 15000,
+      });
+
+      const after = await db.paymentTransaction.count({
+        where: {
+          purpose: "wallet_topup",
+          userId,
+        },
+      });
+
+      expect(after).toBe(initialCount + 1);
+    } finally {
+      if (insertedId) {
+        await writer.paymentTransaction.deleteMany({
+          where: { id: insertedId, userId },
+        });
+      }
+      await writer.$disconnect();
+    }
+  });
+
 });
