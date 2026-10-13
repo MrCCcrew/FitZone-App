@@ -67,6 +67,8 @@ jobs:
             __tests__/unit/offer-box-pricing.test.ts \
             __tests__/unit/offer-age-eligibility.test.ts \
             __tests__/unit/egyptian-national-id-age.test.ts \
+            __tests__/unit/customer-statement-financial-truth.test.ts \
+            __tests__/unit/wallet-topup-customer-ledger-route.test.ts \
             __tests__/unit/profile-birth-date.test.ts \
             __tests__/unit/lib/payments/paymob-retained-payment-proof.test.ts \
             --maxWorkers=2 --reporter=dot

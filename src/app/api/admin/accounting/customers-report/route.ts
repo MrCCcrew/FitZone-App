@@ -81,8 +81,14 @@ export async function GET(req: Request) {
 
   // ── Build full rows ──────────────────────────────────────────────────────
   const userIds = allUsers.map(u => u.id);
+  const membershipIds = allUsers.flatMap((user) =>
+    user.memberships.map((membership) => membership.id),
+  );
 
-  const [discountUsages, trainerCodes, staffCodes] = await Promise.all([
+  // Only server-confirmed, membership-linked payments qualify as collected.
+  // A cancelled checkout can retain a quoted paymentAmount while collecting
+  // nothing. Keep those historical attempts visible but NEVER sum quotations.
+  const [discountUsages, trainerCodes, staffCodes, paidMembershipPayments] = await Promise.all([
     db.discountCodeUsage.findMany({
       where: { userId: { in: userIds } },
       select: {
@@ -99,7 +105,67 @@ export async function GET(req: Request) {
       where: { targetUserId: { in: userIds }, isUsed: true },
       select: { targetUserId: true, code: true, discountType: true, discountValue: true },
     }),
+    membershipIds.length
+      ? db.paymentTransaction.findMany({
+          where: {
+            membershipId: { in: membershipIds },
+            purpose: "membership",
+            status: "paid",
+          },
+          select: {
+            membershipId: true,
+            userId: true,
+            amount: true,
+            status: true,
+          },
+        })
+      : Promise.resolve([]),
   ]);
+
+  const paidEvidenceByMembership = new Map<string, typeof paidMembershipPayments>();
+  for (const evidence of paidMembershipPayments) {
+    if (!evidence.membershipId) continue;
+    const key = `${evidence.userId}:${evidence.membershipId}`;
+    const records = paidEvidenceByMembership.get(key) ?? [];
+    records.push(evidence);
+    paidEvidenceByMembership.set(key, records);
+  }
+  function getConfirmedMembershipPayment(userId: string, membership: {
+    id: string;
+    paymentAmount: number;
+    status: string;
+    paymentMethod: string | null;
+  }) {
+    const price = Number(membership.paymentAmount ?? 0);
+    const evidence = paidEvidenceByMembership.get(`${userId}:${membership.id}`) ?? [];
+    const exactMatches = evidence.filter((payment) =>
+      Number.isFinite(Number(payment.amount)) &&
+      Math.abs(Number(payment.amount) - price) < 0.000001,
+    );
+
+    if (price <= 0 || !Number.isFinite(price)) {
+      return { paidAmount: 0, paymentEvidence: "zero_price", needsFinancialReview: false };
+    }
+    if (exactMatches.length > 0) {
+      // One membership price at most, even if the provider sent duplicates.
+      // Cancelled with paid proof must be flagged, never silently erased.
+      return {
+        paidAmount: price,
+        paymentEvidence: "paid_transaction",
+        needsFinancialReview: exactMatches.length !== 1 ||
+          !["active", "expired"].includes(membership.status),
+      };
+    }
+    // Do not infer collection from a membership's quoted amount or status.
+    // Manual/cash/wallet lines require separate settlement proof.
+    return {
+      paidAmount: 0,
+      paymentEvidence: "unverified",
+      needsFinancialReview: evidence.length > 0 ||
+        (["active", "expired"].includes(membership.status) &&
+         !["free", "gift"].includes((membership.paymentMethod ?? "").toLowerCase())),
+    };
+  }
 
   type CodeEntry = { code: string; amount: number; source: string };
   const discountMap = new Map<string, CodeEntry[]>();
@@ -134,6 +200,7 @@ export async function GET(req: Request) {
       if (hasDateFilter && filteredMemberships.length === 0) return null;
 
       const memberships = filteredMemberships.map(m => {
+        const financialTruth = getConfirmedMembershipPayment(u.id, m);
         const endDate        = new Date(m.endDate);
         const isActive       = m.status === "active" && endDate >= now;
         const remainingDays  = isActive ? Math.max(0, Math.ceil((endDate.getTime() - now.getTime()) / 86400000)) : 0;
@@ -150,6 +217,9 @@ export async function GET(req: Request) {
           endDate: m.endDate.toISOString(),
           status: isActive ? "active" : m.status,
           paymentAmount: m.paymentAmount,
+          confirmedPaidAmount: financialTruth.paidAmount,
+          paymentEvidence: financialTruth.paymentEvidence,
+          needsFinancialReview: financialTruth.needsFinancialReview,
           paymentMethod: m.paymentMethod ?? "—",
           remainingDays,
           totalSessions: totalSess,
@@ -173,7 +243,12 @@ export async function GET(req: Request) {
         paidAmount: b.paidAmount,
       }));
 
-      const totalMembershipPaid = memberships.reduce((s, m) => s + m.paymentAmount, 0);
+      const totalMembershipPaid = memberships.reduce(
+        (sum, membership) => sum + membership.confirmedPaidAmount, 0,
+      );
+      const unverifiedMembershipCount = memberships.filter(
+        (membership) => membership.needsFinancialReview,
+      ).length;
       const totalBookingPaid    =
         directBookings.reduce((s, b) => s + b.paidAmount, 0) +
         filteredMemberships.flatMap(m => m.bookings).reduce((s, b) => s + b.paidAmount, 0);
@@ -204,6 +279,12 @@ export async function GET(req: Request) {
           endDate: currentActive.endDate.toISOString(),
           status: "active" as const,
           paymentAmount: currentActive.paymentAmount,
+          confirmedPaidAmount:
+            getConfirmedMembershipPayment(u.id, currentActive).paidAmount,
+          paymentEvidence:
+            getConfirmedMembershipPayment(u.id, currentActive).paymentEvidence,
+          needsFinancialReview:
+            getConfirmedMembershipPayment(u.id, currentActive).needsFinancialReview,
           paymentMethod: currentActive.paymentMethod ?? "—",
           remainingDays,
           totalSessions: totalSess,
@@ -227,6 +308,7 @@ export async function GET(req: Request) {
         totalPaid: totalMembershipPaid + totalBookingPaid,
         totalMembershipPaid,
         totalBookingPaid,
+        unverifiedMembershipCount,
         totalDiscounts,
 
         membershipsCount: memberships.length,
