@@ -77,10 +77,31 @@ describe("Paymob positive order payment proof", () => {
 
   it("rejects ambiguous refund and void fields", () => {
     expect(prove([payment({ refunded_amount_cents: "0" })])).toBeNull();
-    expect(prove([payment({ refunded_amount_cents: null })])).toBeNull();
     expect(prove([payment({ is_void: true })])).toBeNull();
     expect(prove([payment({ refunded_amount_cents_int: 100 })])).toBeNull();
     expect(prove([payment({ refunded_amount_cents_int: null })])).toBeNull();
+  });
+
+  it("accepts documented null refund amount only with explicit safe finality", () => {
+    expect(prove([
+      payment({ refunded_amount_cents: null, is_refund: false }),
+    ])).toBe("123456789");
+
+    expect(prove([
+      payment({ refunded_amount_cents: null, is_refunded: true }),
+    ])).toBeNull();
+
+    expect(prove([
+      payment({ refunded_amount_cents: null, is_voided: true }),
+    ])).toBeNull();
+
+    expect(prove([
+      payment({ refunded_amount_cents: null, error_occured: true }),
+    ])).toBeNull();
+
+    expect(prove([
+      payment({ refunded_amount_cents: null, is_refund: true }),
+    ])).toBeNull();
   });
 
   it("does not auto-reconcile two successful charges", () => {

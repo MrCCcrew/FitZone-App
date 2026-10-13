@@ -64,10 +64,12 @@ export function findSinglePaidPaymobOrderTransaction(input: {
       payment.error_occured !== false ||
       payment.is_voided !== false ||
       payment.is_refunded !== false ||
-      typeof payment.refunded_amount_cents !== "number" ||
-      !Number.isFinite(payment.refunded_amount_cents) ||
-      payment.refunded_amount_cents !== 0 ||
+      (payment.refunded_amount_cents !== null &&
+        (typeof payment.refunded_amount_cents !== "number" ||
+          !Number.isFinite(payment.refunded_amount_cents) ||
+          payment.refunded_amount_cents !== 0)) ||
       (payment.is_void !== undefined && payment.is_void !== false) ||
+      (payment.is_refund !== undefined && payment.is_refund !== false) ||
       (payment.refunded_amount_cents_int !== undefined &&
         payment.refunded_amount_cents_int !== 0)
     ) {
