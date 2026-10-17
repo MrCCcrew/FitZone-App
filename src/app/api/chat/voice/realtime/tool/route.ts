@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isForbiddenRealtimeToolRequest, realtimeVoiceSummary } from "@/lib/ai-coach/voice/route-helpers";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { ownsCoachSession } from "@/lib/ai-coach/session-guard";
@@ -11,17 +12,6 @@ import { assertActiveVoiceToolSession, voiceQuotaEnabled, VoiceQuotaError } from
 const names = ["searchMemberships", "searchPackages", "searchOffers", "searchProducts", "searchClassSchedule", "getAccountSummary", "getPageLink", "searchTrainers", "searchGoals", "searchTrialClasses", "getNutritionDoctor", "getSiteOverview"] as const;
 const schema = z.object({ sessionId: z.string().min(8).max(128), voiceSessionId: z.string().length(64).optional(), name: z.enum(names), arguments: z.object({ query: z.string().trim().max(1800).optional(), pageId: z.string().trim().max(64).optional() }).strict(), lang: z.enum(["ar", "en"]).default("ar") });
 const fallbackQuery: Partial<Record<(typeof names)[number], string>> = { searchMemberships: "الاشتراكات", searchPackages: "الباقات", searchOffers: "العروض", searchProducts: "منتجات المتجر", searchClassSchedule: "مواعيد الكلاسات", searchTrainers: "المدربات", searchGoals: "الأهداف", searchTrialClasses: "الكلاسات التجريبية" };
-export const isForbiddenRealtimeToolRequest = (query: string) => /(?:غي[ّ]?ر(?:ي)?|عد[ّ]?ل|احذف|امسح|ادفع|نف[ّ]?ذ|change|edit|delete|remove|pay|execute)/i.test(query) && /(?:رصيدي|رصيد|نقاطي|نقاط|اشتراكي|اشتراك|عضويتي|عضوية|price|balance|points|membership|sql)/i.test(query);
-
-export function realtimeVoiceSummary(content: string, metadata: string | null) {
-  try {
-    const parsed = metadata ? JSON.parse(metadata) as { structured?: { voiceSummary?: unknown } } : null;
-    if (typeof parsed?.structured?.voiceSummary === "string" && parsed.structured.voiceSummary.trim()) return parsed.structured.voiceSummary.trim().slice(0, 520);
-  } catch { /* use a bounded plain-text summary */ }
-  const lines = content.replace(/https?:\/\/\S+/g, "").split(/\n+/).filter(Boolean).slice(0, 3).join(" ");
-  return lines.length <= 520 ? lines : `${lines.slice(0, 500).replace(/\s+\S*$/, "")}…`;
-}
-
 export async function POST(req: Request) {
   const parsed = schema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Tool unavailable.", ...(process.env.AI_COACH_VOICE_DEBUG_ENABLED === "true" ? { errorCode: "INVALID_ARGUMENTS" } : {}) }, { status: 400 });

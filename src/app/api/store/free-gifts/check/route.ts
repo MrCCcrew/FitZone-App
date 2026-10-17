@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getGameSettings } from "@/app/api/admin/store-free-gifts-game/route";
+import { getGameSettings } from "@/lib/store-free-gifts-game-settings";
 
 export async function GET() {
   const settings = await getGameSettings();

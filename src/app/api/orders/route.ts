@@ -3,7 +3,7 @@ import { getCurrentAppUser } from "@/lib/app-session";
 import { db } from "@/lib/db";
 import { allocateWalletDeductionBySource } from "@/lib/referral-credit-policy";
 import { createPaymentTransaction, restorePaymentBalanceAdjustments } from "@/lib/payments/service";
-import { getStoreCampaignSettings } from "@/app/api/admin/store-gift-campaign/route";
+import { getStoreCampaignSettings } from "@/lib/store-gift-campaign-settings";
 import { cookies } from "next/headers";
 import { sendStoreOrderEmail, sendAdminOrderNotification } from "@/lib/email";
 import { generateStoreOrderInvoicePdf } from "@/lib/store-order-invoice";

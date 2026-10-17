@@ -1,18 +1,10 @@
 import { NextResponse } from "next/server";
+import { selectVoiceText } from "@/lib/ai-coach/voice/route-helpers";
 import { db } from "@/lib/db";
 import { ownsCoachSession } from "@/lib/ai-coach/session-guard";
 import { configuredTtsVoice, configuredVoiceSpeed, ttsEnabled, voiceDebugEnabled } from "@/lib/ai-coach/voice/config";
 import { openAiTtsProvider } from "@/lib/ai-coach/voice/tts-provider";
 import { applyRateLimit, getClientIp } from "@/lib/rate-limit";
-
-export function selectVoiceText(content: string, metadata: string | null) {
-  try {
-    const parsed = metadata ? JSON.parse(metadata) as { structured?: { voiceSummary?: unknown } } : null;
-    if (typeof parsed?.structured?.voiceSummary === "string" && parsed.structured.voiceSummary.trim()) return parsed.structured.voiceSummary.trim().replace(/https?:\/\/\S+/g, "");
-  } catch { /* fall back to safe plain text */ }
-  const withoutUrls = content.replace(/https?:\/\/\S+/g, "").replace(/\s+/g, " ").trim();
-  return withoutUrls.length <= 500 ? withoutUrls : `${withoutUrls.slice(0, 470).replace(/\s+\S*$/, "")}…`;
-}
 
 export async function POST(req: Request) {
   if (!ttsEnabled()) return NextResponse.json({ error: "Voice playback is unavailable.", ...(voiceDebugEnabled() ? { errorCode: "TTS_VOICE_NOT_CONFIGURED" } : {}) }, { status: 503 });
