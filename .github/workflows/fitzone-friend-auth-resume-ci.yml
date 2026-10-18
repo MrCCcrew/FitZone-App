@@ -4,8 +4,6 @@ on:
   push:
     branches:
       - fix/friend-offer-auth-resume-20261018
-    paths:
-      - .github/workflows/fitzone-friend-auth-resume-ci.yml
 
 permissions:
   contents: read
@@ -41,17 +39,31 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
-      - name: Verify exact approved source and workflow scope
+      - name: Verify exact approved source and scope
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD^)" = \
-            "19f0bb66f417ca1c53a0abbaabde677d256c3d7a"
-          test "$(git diff --name-only HEAD^ HEAD)" = \
-            ".github/workflows/fitzone-friend-auth-resume-ci.yml"
+          BASE=9845e61aa9a0206b2c016fa4dd1eab3e57ff745c
+          git merge-base --is-ancestor "$BASE" HEAD
+
+          actual="$(git diff --name-only "$BASE" HEAD | LC_ALL=C sort)"
+
+          expected="$(cat <<'APPROVED_SCOPE' | LC_ALL=C sort
+          .github/workflows/fitzone-friend-auth-resume-ci.yml
+          __tests__/unit/account-friend-offer-financial-visibility.test.ts
+          __tests__/unit/friend-offer-account-checkout.test.ts
+          __tests__/unit/payment-verification-friend-status.test.ts
+          src/app/account/AccountClient.tsx
+          src/app/api/me/friend-offers/route.ts
+          src/app/payment/verify/page.tsx
+          src/lib/friend-offer-account-checkout.ts
+          src/lib/payment-verification-friend-status.ts
+          APPROVED_SCOPE
+          )"
+
+          test "$actual" = "$expected"
           test -z "$(git status --porcelain)"
-          echo "APPROVED_SOURCE=PASS"
-          echo "CI_ONLY_ADDITION=PASS"
+          echo "ACCOUNT_PARITY_APPROVED_SCOPE=PASS"
 
       - name: Set up Node.js 22
         uses: actions/setup-node@v4
@@ -65,7 +77,7 @@ jobs:
       - name: Generate isolated test Prisma client
         run: node node_modules/prisma/build/index.js generate --config prisma.test.config.ts
 
-      - name: Run 52 targeted unit regressions
+      - name: Run 67 targeted unit regressions
         env:
           NODE_ENV: test
           NODE_OPTIONS: --require=./scripts/skip-production-env.cjs --max-old-space-size=4096
@@ -81,6 +93,9 @@ jobs:
             __tests__/unit/friend-offer-public-snapshot.test.ts \
             __tests__/unit/friend-student-eligibility.hotfix.test.ts \
             __tests__/unit/frontend-offer-canonical-eligibility.test.ts \
+            __tests__/unit/friend-offer-account-checkout.test.ts \
+            __tests__/unit/account-friend-offer-financial-visibility.test.ts \
+            __tests__/unit/payment-verification-friend-status.test.ts \
             --maxWorkers=1 \
             --no-file-parallelism
           echo "FRIEND_AUTH_CLOUD_UNITS=PASS"
@@ -110,7 +125,7 @@ jobs:
         run: |
           set -euo pipefail
           {
-            echo "Source commit: 19f0bb66f417ca1c53a0abbaabde677d256c3d7a"
+            echo "Approved baseline commit: 9845e61aa9a0206b2c016fa4dd1eab3e57ff745c"
             echo "Workflow commit: $(git rev-parse HEAD)"
             echo "Build ID: $(cat .next/BUILD_ID)"
             echo "Lockfile SHA256: $(sha256sum package-lock.json | cut -d' ' -f1)"
