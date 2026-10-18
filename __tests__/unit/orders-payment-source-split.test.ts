@@ -96,7 +96,7 @@ vi.mock("next/headers", () => ({
 }));
 
 vi.mock(
-  "@/app/api/admin/store-gift-campaign/route",
+  "@/lib/store-gift-campaign-settings",
   () => ({
     getStoreCampaignSettings:
       mocks.getStoreCampaignSettings,

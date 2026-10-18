@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { db } from "@/lib/db";
-import { getGameSettings } from "@/app/api/admin/store-free-gifts-game/route";
+import { getGameSettings } from "@/lib/store-free-gifts-game-settings";
 import { confirmFreeGiftSessionAtomic } from "@/lib/free-gift-reward-service";
 
 const COOKIE = "fitzone-game-token";

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAdminFeature } from "@/lib/admin-guard";
 import { db } from "@/lib/db";
 
-export const DEFAULT_REMINDER_SETTINGS = {
+const DEFAULT_REMINDER_SETTINGS = {
   title: "تذكير بموعدك في FitZone 💪",
   body: "{className} مع {trainerName} — {day} الساعة {time}",
 };
