@@ -776,25 +776,27 @@ describe("Three participant student friend checkout regression", () => {
   it.each(cases)(
     "accepts $customerId with priorPaid=$priorPaid without an existing membership",
     async ({ customerId, priorPaid }) => {
-      const group = baseGroup();
+      const group = {
+        ...baseGroup(),
+        participants: [1, 2, 3].map((number) => ({
+          id: `p${number}`,
+          userId: `user-${number}`,
+          status:
+            priorPaid && number === 2 ? "paid" : "joined",
+          shareAmountMinor: 19000,
+          updatedAt: new Date(),
+          paymentTransactionId:
+            priorPaid && number === 2 ? "paid-share" : null,
+          attributionSnapshot: null,
+        })),
+      };
 
       group.config.offer.requiresBirthDate = true;
       group.config.offer.requiresEgyptianNationalId = true;
       group.config.offer.minAgeYears = 13;
       group.config.offer.maxAgeYears = 25;
-      group.config.requiredMembers = 3;
 
-      group.participants = [1, 2, 3].map((number) => ({
-        id: `p${number}`,
-        userId: `user-${number}`,
-        status:
-          priorPaid && number === 2 ? "paid" : "joined",
-        shareAmountMinor: 19000,
-        updatedAt: new Date(),
-        paymentTransactionId:
-          priorPaid && number === 2 ? "paid-share" : null,
-        attributionSnapshot: null,
-      }));
+      expect(group.participants).toHaveLength(3);
 
       const participantId = `p${customerId.slice(-1)}`;
 

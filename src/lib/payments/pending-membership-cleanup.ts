@@ -809,7 +809,7 @@ export async function findReusablePendingMembershipCheckout(input: {
         now,
       });
 
-    if (!usableCheckoutUrl) {
+    if (!usableCheckoutUrl || !transaction) {
       continue;
     }
 
