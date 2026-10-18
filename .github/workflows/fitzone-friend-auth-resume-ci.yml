@@ -1,0 +1,135 @@
+name: FitZone Friend Auth — Isolated Validation (No Deploy)
+
+on:
+  push:
+    branches:
+      - fix/friend-offer-auth-resume-20261018
+    paths:
+      - .github/workflows/fitzone-friend-auth-resume-ci.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fitzone-friend-auth-validation
+  cancel-in-progress: true
+
+jobs:
+  isolated-validation:
+    name: Unit Tests + TypeScript + Next.js Build
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+
+    env:
+      CI: "true"
+      APP_ENV: test
+      FITZONE_TEST_BUILD: "1"
+      ALLOW_EXTERNAL_SIDE_EFFECTS: "false"
+      NEXT_TELEMETRY_DISABLED: "1"
+      DATABASE_URL: mysql://fitzone_test_user:unused@127.0.0.1:3306/fitzone_test
+      TEST_DATABASE_URL: mysql://fitzone_test_user:unused@127.0.0.1:3306/fitzone_test
+      TEST_SHADOW_DATABASE_URL: mysql://fitzone_test_user:unused@127.0.0.1:3306/fitzone_shadow
+      PAYMOB_ENV: test
+      AI_COACH_VOICE_ENABLED: "false"
+      AI_COACH_REALTIME_VOICE_ENABLED: "false"
+      OPENAI_API_KEY: ""
+
+    steps:
+      - name: Checkout isolated branch only
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Verify exact approved source and workflow scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = \
+            "19f0bb66f417ca1c53a0abbaabde677d256c3d7a"
+          test "$(git diff --name-only HEAD^ HEAD)" = \
+            ".github/workflows/fitzone-friend-auth-resume-ci.yml"
+          test -z "$(git status --porcelain)"
+          echo "APPROVED_SOURCE=PASS"
+          echo "CI_ONLY_ADDITION=PASS"
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Generate isolated test Prisma client
+        run: node node_modules/prisma/build/index.js generate --config prisma.test.config.ts
+
+      - name: Run 52 targeted unit regressions
+        env:
+          NODE_ENV: test
+          NODE_OPTIONS: --require=./scripts/skip-production-env.cjs --max-old-space-size=4096
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 180s node node_modules/vitest/vitest.mjs run \
+            __tests__/unit/friend-offer-auth-return.test.ts \
+            __tests__/unit/friend-offer-auth-http.test.ts \
+            __tests__/unit/friend-offer-oauth-consent.test.ts \
+            __tests__/unit/friend-offer-checkout-route.test.ts \
+            __tests__/unit/friend-offer-committed-edge-cases.test.ts \
+            __tests__/unit/friend-offer-public-snapshot.test.ts \
+            __tests__/unit/friend-student-eligibility.hotfix.test.ts \
+            __tests__/unit/frontend-offer-canonical-eligibility.test.ts \
+            --maxWorkers=1 \
+            --no-file-parallelism
+          echo "FRIEND_AUTH_CLOUD_UNITS=PASS"
+
+      - name: Validate complete TypeScript project
+        env:
+          NODE_OPTIONS: --require=./scripts/skip-production-env.cjs --max-old-space-size=5120
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 600s node node_modules/typescript/bin/tsc \
+            --noEmit --incremental false
+          echo "FRIEND_AUTH_CLOUD_TYPESCRIPT=PASS"
+
+      - name: Build Next.js using Webpack
+        env:
+          NODE_OPTIONS: --require=./scripts/skip-production-env.cjs --max-old-space-size=4096
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 900s node node_modules/next/dist/bin/next build --webpack
+          test -s .next/BUILD_ID
+          echo "FRIEND_AUTH_CLOUD_BUILD=PASS"
+
+      - name: Write build verification evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "Source commit: 19f0bb66f417ca1c53a0abbaabde677d256c3d7a"
+            echo "Workflow commit: $(git rev-parse HEAD)"
+            echo "Build ID: $(cat .next/BUILD_ID)"
+            echo "Lockfile SHA256: $(sha256sum package-lock.json | cut -d' ' -f1)"
+            echo "Target: isolated test configuration"
+            echo "No production database or deployment"
+            echo "Unit, TypeScript, Webpack build: PASS"
+          } > friend-auth-validation-evidence.txt
+          cat friend-auth-validation-evidence.txt
+
+          {
+            echo "### FitZone Friend Auth Validation"
+            echo "Unit tests, TypeScript and Webpack build passed."
+            echo "No deployment performed."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload evidence only
+        uses: actions/upload-artifact@v4
+        with:
+          name: fitzone-friend-auth-validation-evidence
+          path: friend-auth-validation-evidence.txt
+          retention-days: 7
+          if-no-files-found: error
