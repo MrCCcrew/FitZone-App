@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/app-session";
 import { db } from "@/lib/db";
@@ -50,7 +51,13 @@ export async function GET() {
         where: {
           userId: currentUser.id,
           status: {
-            in: ["joined", "checkout_started", "paid", "activated"],
+            in: [
+              "joined",
+              "checkout_claiming",
+              "checkout_started",
+              "paid",
+              "activated",
+            ],
           },
         },
         orderBy: {
@@ -120,8 +127,32 @@ export async function GET() {
     const hasUnresolvedFinancialState = (
       participant: (typeof participations)[number],
     ) =>
-      ["paid", "checkout_started"].includes(participant.status) ||
+      ["paid", "checkout_claiming", "checkout_started"]
+        .includes(participant.status) ||
       ["paid", "pending", "requires_action"].includes(
+        participant.paymentTransaction?.status ?? "",
+      );
+
+    // An expired invite with a settled group payment is not
+    // automatically a cancelled economic contract. Existing unpaid
+    // participants must remain visible so the group can finish.
+    const canCompleteCommittedGroup = (
+      participant: (typeof participations)[number],
+    ) =>
+      ["waiting", "ready"].includes(participant.group.status) &&
+      participant.group.participants.some((row) =>
+        ["paid", "activated"].includes(row.status),
+      );
+
+    // Pending or in-flight provider attempts still require their
+    // own reconciliation. A paid share alone does not require a
+    // second payment or automatically make a group irrecoverable.
+    const needsPaymentReconciliation = (
+      participant: (typeof participations)[number],
+    ) =>
+      ["checkout_claiming", "checkout_started"]
+        .includes(participant.status) ||
+      ["pending", "requires_action"].includes(
         participant.paymentTransaction?.status ?? "",
       );
 
@@ -136,7 +167,10 @@ export async function GET() {
         }
 
         if (isClosedOrExpired(participant)) {
-          return hasUnresolvedFinancialState(participant);
+          return (
+            canCompleteCommittedGroup(participant) ||
+            hasUnresolvedFinancialState(participant)
+          );
         }
 
         if (participant.group.status === "completed") {
@@ -166,7 +200,13 @@ export async function GET() {
         paidAt: participant.paidAt?.toISOString() ?? null,
         financialReviewRequired:
           isClosedOrExpired(participant) &&
-          hasUnresolvedFinancialState(participant),
+          (
+            needsPaymentReconciliation(participant) ||
+            (
+              !canCompleteCommittedGroup(participant) &&
+              hasUnresolvedFinancialState(participant)
+            )
+          ),
 
         membership: participant.userMembership
           ? (() => {
@@ -291,6 +331,20 @@ export async function DELETE(req: Request) {
     }
 
     const result = await db.$transaction(async (tx) => {
+      const locked = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM FriendOfferGroup
+        WHERE id = (
+          SELECT groupId FROM FriendOfferParticipant
+          WHERE id = ${participantId}
+            AND userId = ${currentUser.id}
+        )
+        FOR UPDATE
+      `;
+
+      if (locked.length !== 1) {
+        return "NOT_FOUND" as const;
+      }
+
       const participant =
         await tx.friendOfferParticipant.findFirst({
           where: {
@@ -303,6 +357,8 @@ export async function DELETE(req: Request) {
                 participants: {
                   select: {
                     status: true,
+                    paymentTransactionId: true,
+                    userMembershipId: true,
                     paymentTransaction: {
                       select: { status: true },
                     },
@@ -341,7 +397,14 @@ export async function DELETE(req: Request) {
 
       const paymentStarted =
         participant.group.participants.some((row) =>
-          ["checkout_started", "paid", "activated"].includes(row.status) ||
+          [
+            "checkout_claiming",
+            "checkout_started",
+            "paid",
+            "activated",
+          ].includes(row.status) ||
+          row.paymentTransactionId != null ||
+          row.userMembershipId != null ||
           ["pending", "requires_action", "paid"].includes(
             row.paymentTransaction?.status ?? "",
           )
@@ -379,6 +442,8 @@ export async function DELETE(req: Request) {
       });
 
       return "CANCELLED" as const;
+    }, {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
     });
 
     if (result === "CANCELLED") {

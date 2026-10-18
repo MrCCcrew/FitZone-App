@@ -74,7 +74,7 @@ beforeEach(() => {
 });
 
 describe("Account friend offer financial truth", () => {
-  it("retains paid expired and cancelled groups for review", async () => {
+  it("distinguishes recoverable expired paid groups from closed paid groups", async () => {
     mocks.findMany.mockResolvedValue([
       participation("one", "paid", "waiting", true, "paid"),
       participation("two", "paid", "expired", true, "paid"),
@@ -86,12 +86,23 @@ describe("Account friend offer financial truth", () => {
 
     expect(response.status).toBe(200);
     expect(body.offers).toHaveLength(3);
-    expect(
-      body.offers.every(
-        (item: { financialReviewRequired: boolean }) =>
-          item.financialReviewRequired,
-      ),
-    ).toBe(true);
+    const financialStates = body.offers.map(
+      (item: {
+        participantId: string;
+        financialReviewRequired: boolean;
+      }) => ({
+        id: item.participantId,
+        review: item.financialReviewRequired,
+      }),
+    );
+
+    // An expired invitation remains recoverable if the group
+    // is still waiting and a member has already paid.
+    expect(financialStates).toEqual([
+      { id: "one", review: false },
+      { id: "two", review: true },
+      { id: "three", review: true },
+    ]);
 
     const query = mocks.findMany.mock.calls[0][0];
     expect(query.where.group).toBeUndefined();

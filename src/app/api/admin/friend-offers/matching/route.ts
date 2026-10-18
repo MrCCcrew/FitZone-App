@@ -241,6 +241,17 @@ export async function DELETE(req: Request) {
   try {
     const result = await db.$transaction(
       async (tx) => {
+        // Checkout claims and member removal share the same lock.
+        const locked = await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT id FROM FriendOfferGroup
+          WHERE id = ${groupId}
+          FOR UPDATE
+        `;
+
+        if (locked.length !== 1) {
+          return { kind: "NOT_FOUND" as const };
+        }
+
         const group = await tx.friendOfferGroup.findUnique({
           where: { id: groupId },
           include: {
@@ -293,6 +304,27 @@ export async function DELETE(req: Request) {
 
         if (participant.status === "cancelled") {
           return { kind: "ALREADY_CANCELLED" as const };
+        }
+
+        // Once ANY member starts checkout, do not remove
+        // another member and strand an existing payment.
+        const groupPaymentStarted = group.participants.some(
+          (row) =>
+            [
+              "checkout_claiming",
+              "checkout_started",
+              "paid",
+              "activated",
+            ].includes(row.status) ||
+            row.paymentTransactionId != null ||
+            row.userMembershipId != null ||
+            ["pending", "requires_action", "paid"].includes(
+              row.paymentTransaction?.status ?? "",
+            ),
+        );
+
+        if (groupPaymentStarted) {
+          return { kind: "ECONOMIC_COMMITMENT" as const };
         }
 
         const hasEconomicCommitment =

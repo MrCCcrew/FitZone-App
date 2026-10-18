@@ -6192,6 +6192,8 @@ export default function AccountClient({ data }: { data: AccountData }) {
   const [friendNationalIds, setFriendNationalIds] =
     useState<Record<string, string>>({});
   const [friendOfferError, setFriendOfferError] = useState<string | null>(null);
+  const [friendInviteCopiedId, setFriendInviteCopiedId] =
+    useState<string | null>(null);
   const [friendCarryoverPreviews, setFriendCarryoverPreviews] = useState<
     Record<string, FriendOfferCarryoverPreview | null>
   >({});
@@ -6629,10 +6631,46 @@ export default function AccountClient({ data }: { data: AccountData }) {
     }
   };
 
+  const copyFriendOfferInvite = async (
+    friendOffer: AccountFriendOffer,
+  ) => {
+    try {
+      const url = new URL("/", window.location.origin);
+      url.searchParams.set("page", "offers");
+      url.searchParams.set("friendOffer", friendOffer.group.token);
+
+      await navigator.clipboard.writeText(url.toString());
+
+      setFriendInviteCopiedId(friendOffer.participantId);
+      setFriendOfferError(null);
+    } catch {
+      setFriendInviteCopiedId(null);
+      setFriendOfferError(
+        t(
+          "تعذر نسخ رابط الدعوة. يمكنك فتح رابط الدعوة ومشاركته من المتصفح.",
+          "Could not copy the invite link. Open it and share it from your browser.",
+        ),
+      );
+    }
+  };
+
   const startFriendCheckout = async (
     friendOffer: AccountFriendOffer,
   ) => {
     if (friendCheckoutId) return;
+
+    if (
+      friendOffer.group.remainingPlaces > 0 ||
+      friendOffer.group.status !== "ready"
+    ) {
+      setFriendOfferError(
+        t(
+          `لا يمكن بدء الدفع قبل اكتمال المجموعة. عدد الصديقات الناقصات: ${friendOffer.group.remainingPlaces}.`,
+          `Payment is unavailable until the group is complete. Missing friends: ${friendOffer.group.remainingPlaces}.`,
+        ),
+      );
+      return;
+    }
 
     setFriendCheckoutId(friendOffer.participantId);
     setFriendOfferError(null);
@@ -7223,6 +7261,62 @@ export default function AccountClient({ data }: { data: AccountData }) {
                         </span>
                       </div>
 
+                      {friendOffer.group.remainingPlaces > 0 &&
+                      ["waiting", "ready"].includes(
+                        friendOffer.group.status,
+                      ) &&
+                      !isActivated ? (
+                        <div
+                          role="status"
+                          className="mt-3 rounded-xl border border-amber-300/30 bg-amber-500/10 p-4 text-sm text-amber-100"
+                        >
+                          <div className="font-black text-amber-100">
+                            {t(
+                              friendOffer.group.remainingPlaces === 1
+                                ? "مجموعتك ناقصها صديقة واحدة"
+                                : friendOffer.group.remainingPlaces === 2
+                                  ? "مجموعتك ناقصها صديقتين"
+                                  : `مجموعتك ناقصها ${friendOffer.group.remainingPlaces} صديقات`,
+                              `Your group needs ${friendOffer.group.remainingPlaces} more friend(s)`,
+                            )}
+                          </div>
+
+                          <p className="mt-2 leading-6">
+                            {t(
+                              isPaid
+                                ? "حصتك مدفوعة ومحفوظة. ادعي باقي الصديقات، ولن يُطلب منك دفعها مرة ثانية. تفعيل الاشتراكات بعد سداد الجميع."
+                                : "ادعي الصديقات الناقصات أولًا. الدفع مش متاح قبل اكتمال المجموعة، والاشتراكات تتفعل بعد سداد الجميع.",
+                              isPaid
+                                ? "Your share is already paid and recorded. Invite the remaining friends; you will not be charged for it again. Memberships activate after everyone pays."
+                                : "Invite the missing friends first. Payment becomes available only when the group is full. Memberships activate after everyone pays.",
+                            )}
+                          </p>
+
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void copyFriendOfferInvite(friendOffer)
+                              }
+                              className="rounded-lg border border-amber-200/30 bg-white/10 px-3 py-2 font-bold text-white hover:bg-white/15"
+                            >
+                              {friendInviteCopiedId === friendOffer.participantId
+                                ? t("تم نسخ رابط الدعوة", "Invite link copied")
+                                : t("نسخ رابط دعوة الصديقات", "Copy friends invitation")}
+                            </button>
+
+                            <a
+                              href={`/?page=offers&friendOffer=${encodeURIComponent(friendOffer.group.token)}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="rounded-lg border border-white/20 px-3 py-2 font-bold text-white"
+                            >
+                              {t("فتح رابط الدعوة", "Open invitation")}
+                            </a>
+                          </div>
+                        </div>
+                      ) : null}
+
                       {carryoverPreview?.eligible &&
                       carryoverPreview.carryoverSessions > 0 ? (
                         <div className="mt-3 rounded-xl border border-emerald-400/25 bg-emerald-500/10 px-3 py-3 text-xs text-emerald-100">
@@ -7436,6 +7530,8 @@ export default function AccountClient({ data }: { data: AccountData }) {
                         type="button"
                         disabled={
                           friendCheckoutId === friendOffer.participantId ||
+                          friendOffer.group.remainingPlaces > 0 ||
+                          friendOffer.group.status !== "ready" ||
                           (!checkoutStarted &&
                             (carryoverPreviewLoading ||
                               !carryoverPreviewLoaded ||
@@ -7453,12 +7549,17 @@ export default function AccountClient({ data }: { data: AccountData }) {
                               "جارٍ تجهيز الدفع...",
                               "Preparing payment...",
                             )
-                          : checkoutStarted
+                          : friendOffer.group.remainingPlaces > 0
                             ? t(
-                                "استكمال الدفع",
-                                "Continue payment",
+                                "كمّلي المجموعة أولًا",
+                                "Complete your group first",
                               )
-                            : t(
+                            : checkoutStarted
+                              ? t(
+                                  "استكمال الدفع",
+                                  "Continue payment",
+                                )
+                              : t(
                                 "ادفعي حصتك",
                                 "Pay your share",
                               )}

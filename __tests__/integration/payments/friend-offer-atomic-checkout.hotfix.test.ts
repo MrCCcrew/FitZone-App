@@ -7,6 +7,7 @@ import {
   vi,
 } from "vitest";
 import { PrismaClient } from "@prisma/client";
+import { POST as friendJoinPOST } from "@/app/api/friend-offers/route";
 
 const auth = vi.hoisted(() => ({
   getCurrentAppUser: vi.fn(),
@@ -51,10 +52,12 @@ const db = new PrismaClient();
 const suffix = `friend-cas-${Date.now()}-${process.pid}`;
 
 let userId = "";
+let secondUserId = "";
 let offerId = "";
 let configId = "";
 let groupId = "";
 let participantId = "";
+let secondParticipantId = "";
 let paymentId = "";
 
 function assertTestDatabase() {
@@ -112,6 +115,15 @@ beforeAll(async () => {
   });
   userId = user.id;
 
+  const secondUser = await db.user.create({
+    data: {
+      name: `Second Friend ${suffix}`,
+      email: `second-${suffix}@test.local`,
+      emailVerified: new Date(),
+    },
+  });
+  secondUserId = secondUser.id;
+
   const offer = await db.offer.create({
     data: {
       title: `Test Friend CAS ${suffix}`,
@@ -157,6 +169,22 @@ beforeAll(async () => {
   });
   participantId = participant.id;
 
+  const secondParticipant = await db.friendOfferParticipant.create({
+    data: {
+      groupId,
+      userId: secondUserId,
+      role: "invited",
+      status: "joined",
+      shareAmountMinor: 23800,
+    },
+  });
+  secondParticipantId = secondParticipant.id;
+
+  await db.friendOfferGroup.update({
+    where: { id: groupId },
+    data: { status: "ready" },
+  });
+
   gateway.createCheckout.mockImplementation(
     async (input: { transactionId: string }) => ({
       provider: "paymob",
@@ -178,9 +206,13 @@ afterAll(async () => {
         where: { id: paymentId },
       });
     }
-    if (participantId) {
+    if (participantId || secondParticipantId) {
       await db.friendOfferParticipant.deleteMany({
-        where: { id: participantId },
+        where: {
+          id: {
+            in: [participantId, secondParticipantId].filter(Boolean),
+          },
+        },
       });
     }
     if (groupId) {
@@ -198,9 +230,13 @@ afterAll(async () => {
         where: { id: offerId },
       });
     }
-    if (userId) {
+    if (userId || secondUserId) {
       await db.user.deleteMany({
-        where: { id: userId },
+        where: {
+          id: {
+            in: [userId, secondUserId].filter(Boolean),
+          },
+        },
       });
     }
   } finally {
@@ -236,6 +272,54 @@ describe("Real MySQL friend checkout and simulated gateway", () => {
     ).rejects.toThrow("FRIEND_OFFER_PAYMENT_PROOF_INVALID");
 
     expect(gateway.createCheckout).not.toHaveBeenCalled();
+  });
+
+  it("blocks real MySQL checkout before all friends join", async () => {
+    auth.getCurrentAppUser.mockResolvedValue({
+      id: userId,
+      name: "Test Friend",
+      email: `${suffix}@test.local`,
+    });
+
+    await db.$transaction(async (tx) => {
+      await tx.friendOfferParticipant.update({
+        where: { id: secondParticipantId },
+        data: { status: "cancelled" },
+      });
+      await tx.friendOfferGroup.update({
+        where: { id: groupId },
+        data: { status: "waiting" },
+      });
+    });
+
+    try {
+      const response = await friendCheckoutPOST(new Request(
+        "http://localhost/api/friend-offers/checkout",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ token: suffix }),
+        },
+      ));
+
+      expect(response.status).toBe(409);
+      expect(await response.json()).toMatchObject({
+        code: "FRIEND_OFFER_GROUP_NOT_COMPLETE",
+        missingMembers: 1,
+      });
+      expect(gateway.createCheckout).not.toHaveBeenCalled();
+    } finally {
+      await db.$transaction(async (tx) => {
+        await tx.friendOfferParticipant.update({
+          where: { id: secondParticipantId },
+          data: { status: "joined" },
+        });
+        await tx.friendOfferGroup.update({
+          where: { id: groupId },
+          data: { status: "ready" },
+        });
+      });
+    }
   });
 
   it("allows exactly one atomic claim under concurrent MySQL requests", async () => {
@@ -454,6 +538,85 @@ describe("Real MySQL friend checkout and simulated gateway", () => {
     });
 
     expect(gateway.createCheckout).toHaveBeenCalledTimes(1);
+  });
+
+
+  it("recovers old paid group by rejoining missing friend after expiry", async () => {
+    await db.$transaction(async (tx) => {
+      await tx.friendOfferParticipant.update({
+        where: { id: secondParticipantId },
+        data: { status: "cancelled" },
+      });
+      await tx.friendOfferGroup.update({
+        where: { id: groupId },
+        data: {
+          status: "waiting",
+          expiresAt: new Date(Date.now() - 60000),
+        },
+      });
+    });
+
+    auth.getCurrentAppUser.mockResolvedValue({
+      id: userId,
+      name: "Test Friend",
+      email: `${suffix}@test.local`,
+    });
+
+    const blocked = await friendCheckoutPOST(new Request(
+      "http://localhost/api/friend-offers/checkout",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ token: suffix }),
+      },
+    ));
+
+    expect(blocked.status).toBe(409);
+    expect(await blocked.json()).toMatchObject({
+      code: "FRIEND_OFFER_GROUP_NOT_COMPLETE",
+      missingMembers: 1,
+    });
+
+    auth.getCurrentAppUser.mockResolvedValue({
+      id: secondUserId,
+    });
+
+    const joined = await friendJoinPOST(new Request(
+      "http://localhost/api/friend-offers",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          action: "join",
+          token: suffix,
+        }),
+      },
+    ));
+
+    const joinBody = await joined.json();
+    expect(joined.status, JSON.stringify(joinBody)).toBe(200);
+    expect(joinBody.group).toMatchObject({
+      status: "ready",
+      joinedCount: 2,
+      remainingPlaces: 0,
+    });
+
+    const paid = await db.paymentTransaction.findUniqueOrThrow({
+      where: { id: paymentId },
+    });
+
+    const owner = await db.friendOfferParticipant.findUniqueOrThrow({
+      where: { id: participantId },
+    });
+
+    expect(paid.status).toBe("paid");
+    expect(paid.membershipId).toBeNull();
+    expect(owner.paymentTransactionId).toBe(paymentId);
+    expect(owner.status).toBe("paid");
+    expect(gateway.createCheckout).toHaveBeenCalledTimes(1);
+
+    console.info("LEGACY_PAID_GROUP_RECOVERY=PASS");
+    console.info("ORIGINAL_PAID_TRANSACTION_PRESERVED=PASS");
   });
 
 });

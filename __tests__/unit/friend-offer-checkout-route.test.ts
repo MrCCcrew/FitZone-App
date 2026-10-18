@@ -101,9 +101,11 @@ function baseGroup(overrides?: Partial<any>) {
   return {
     id: "group-1",
     inviteToken: "FRIENDTOKEN",
-    status: "waiting",
+    status: "ready",
+    priceSnapshotMinor: 56000,
     expiresAt: new Date(now + 60_000),
     config: {
+      requiredMembers: 2,
       isActive: true,
       offer: {
         id: "offer-1",
@@ -179,11 +181,30 @@ beforeEach(() => {
     status: "joined",
   });
 
-  mocks.queryRaw.mockResolvedValue([]);
+  mocks.queryRaw.mockImplementation(
+    async (strings: TemplateStringsArray) => {
+      const sql = Array.from(strings).join(" ");
+
+      if (sql.includes("FROM FriendOfferGroup")) {
+        return [{ id: "group-1" }];
+      }
+
+      if (sql.includes("FROM MarketingConversion")) {
+        // No marketing conversion exists in this checkout fixture.
+        // The real marketing lock function still executes.
+        return [];
+      }
+
+      throw new Error("UNEXPECTED_SQL_QUERY_IN_FRIEND_TEST");
+    },
+  );
 
   mocks.transaction.mockImplementation(
     async (
       callback: (tx: {
+        friendOfferGroup: {
+          findUnique: typeof mocks.groupFindUnique;
+        };
         friendOfferParticipant: {
           updateMany:
             typeof mocks.participantUpdateMany;
@@ -194,6 +215,9 @@ beforeEach(() => {
       }) => unknown,
     ) =>
       callback({
+        friendOfferGroup: {
+          findUnique: mocks.groupFindUnique,
+        },
         friendOfferParticipant: {
           updateMany: mocks.participantUpdateMany,
           findUnique: mocks.participantFindUnique,
@@ -305,6 +329,14 @@ describe("Friend Offer checkout route", () => {
             paymentTransactionId: "existing-payment",
             attributionSnapshot: null,
           },
+          {
+            id: "p2",
+            userId: "user-2",
+            status: "joined",
+            shareAmountMinor: 28000,
+            paymentTransactionId: null,
+            attributionSnapshot: null,
+          },
         ],
       }),
     );
@@ -374,6 +406,14 @@ describe("Friend Offer checkout route", () => {
               nutritionReferralLinkId: null,
             }),
           },
+          {
+            id: "p2",
+            userId: "user-2",
+            status: "joined",
+            shareAmountMinor: 28000,
+            paymentTransactionId: null,
+            attributionSnapshot: null,
+          },
         ],
       }),
     );
@@ -421,6 +461,7 @@ describe("Friend Offer checkout route", () => {
       baseGroup({
         expiresAt: new Date(now - 60_000),
         config: {
+          requiredMembers: 2,
           isActive: false,
           offer: {
             id: "offer-1",
@@ -778,6 +819,14 @@ describe("Linked friend checkout validity", () => {
           paymentTransactionId: "existing-payment",
           attributionSnapshot: null,
         },
+        {
+          id: "p2",
+          userId: "user-2",
+          status: "joined",
+          shareAmountMinor: 28000,
+          paymentTransactionId: null,
+          attributionSnapshot: null,
+        },
       ],
     });
   }
@@ -878,6 +927,10 @@ describe("Three participant student friend checkout regression", () => {
         })),
       };
 
+      group.status = "ready";
+      group.priceSnapshotMinor = 57000;
+      group.config.requiredMembers = 3;
+
       group.config.offer.requiresBirthDate = true;
       group.config.offer.requiresEgyptianNationalId = true;
       group.config.offer.minAgeYears = 13;
@@ -952,4 +1005,106 @@ describe("Three participant student friend checkout regression", () => {
         .not.toContain(nationalId);
     },
   );
+});
+
+// GROUP_COMPLETENESS_FINANCIAL_REGRESSION
+describe("Historical and new friend group checkout completeness", () => {
+  it("blocks a new group missing one member before any provider call", async () => {
+    const group = baseGroup();
+    group.status = "waiting";
+    group.participants = group.participants.slice(0, 1);
+
+    mocks.groupFindUnique.mockResolvedValue(group);
+
+    const response = await POST(request({ token: "FRIENDTOKEN" }));
+    const payload = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(payload).toMatchObject({
+      code: "FRIEND_OFFER_GROUP_NOT_COMPLETE",
+      requiredMembers: 2,
+      joinedMembers: 1,
+      missingMembers: 1,
+    });
+    expect(mocks.transaction).not.toHaveBeenCalled();
+    expect(mocks.createPaymentTransaction).not.toHaveBeenCalled();
+  });
+
+  it("protects a historical paid share while two members are missing", async () => {
+    const group = baseGroup();
+
+    group.status = "waiting";
+    group.priceSnapshotMinor = 58500;
+    group.config.requiredMembers = 3;
+    group.expiresAt = new Date(Date.now() - 60_000);
+    group.participants = [{
+      ...group.participants[0],
+      status: "paid",
+      shareAmountMinor: 19500,
+      paymentTransactionId: "historical-paid-share",
+      attributionSnapshot: null,
+    }];
+
+    mocks.groupFindUnique.mockResolvedValue(group);
+
+    const response = await POST(request({ token: "FRIENDTOKEN" }));
+    const payload = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(payload).toMatchObject({
+      code: "FRIEND_OFFER_GROUP_NOT_COMPLETE",
+      requiredMembers: 3,
+      joinedMembers: 1,
+      missingMembers: 2,
+    });
+    expect(mocks.paymentFindUnique).not.toHaveBeenCalled();
+    expect(mocks.createPaymentTransaction).not.toHaveBeenCalled();
+  });
+
+  it("blocks an old group that lost a member after one paid", async () => {
+    const group = baseGroup();
+
+    group.status = "waiting";
+    group.participants[0].status = "paid";
+    group.participants[0].paymentTransactionId = "existing-paid";
+    group.participants[1].status = "cancelled";
+
+    mocks.groupFindUnique.mockResolvedValue(group);
+
+    const response = await POST(request({ token: "FRIENDTOKEN" }));
+    const payload = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(payload.missingMembers).toBe(1);
+    expect(mocks.createPaymentTransaction).not.toHaveBeenCalled();
+  });
+
+  it("rejects a group becoming incomplete before atomic claim", async () => {
+    const initiallyReady = baseGroup();
+    const changed = baseGroup();
+
+    changed.status = "waiting";
+    changed.participants = changed.participants.slice(0, 1);
+
+    mocks.groupFindUnique
+      .mockResolvedValueOnce(initiallyReady)
+      .mockResolvedValueOnce(changed);
+
+    const response = await POST(request({ token: "FRIENDTOKEN" }));
+
+    expect(response.status).toBe(409);
+    expect(mocks.queryRaw).toHaveBeenCalledTimes(1);
+    expect(mocks.participantUpdateMany).not.toHaveBeenCalled();
+    expect(mocks.createPaymentTransaction).not.toHaveBeenCalled();
+  });
+
+  it("rejects checkout when the group lock cannot be acquired", async () => {
+    mocks.queryRaw.mockResolvedValueOnce([]);
+
+    const response = await POST(request({ token: "FRIENDTOKEN" }));
+
+    expect(response.status).toBe(409);
+    expect(mocks.participantUpdateMany).not.toHaveBeenCalled();
+    expect(mocks.createPaymentTransaction).not.toHaveBeenCalled();
+  });
 });

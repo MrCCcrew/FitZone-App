@@ -1,4 +1,6 @@
+import { Prisma } from "@prisma/client";
 import { NextResponse } from "next/server";
+import { assessFriendOfferGroupReadiness } from "@/lib/friend-offer-group-readiness";
 import {
   evaluateFriendOfferStudentEligibility,
 } from "@/lib/friend-offer-student-eligibility";
@@ -153,6 +155,23 @@ export async function POST(req: Request) {
       return NextResponse.json(
         { error: "مجموعة عرض الصحاب غير موجودة." },
         { status: 404 },
+      );
+    }
+
+    const readiness = assessFriendOfferGroupReadiness(group);
+
+    if (!readiness.ready) {
+      return NextResponse.json(
+        {
+          error: readiness.missingMembers > 0
+            ? `المجموعة لم تكتمل بعد. مطلوب انضمام ${readiness.missingMembers} من الصديقات قبل بدء الدفع.`
+            : "المجموعة غير جاهزة للدفع. يرجى مراجعة حالتها.",
+          code: "FRIEND_OFFER_GROUP_NOT_COMPLETE",
+          requiredMembers: readiness.requiredMembers,
+          joinedMembers: readiness.joinedMembers,
+          missingMembers: readiness.missingMembers,
+        },
+        { status: 409 },
       );
     }
 
@@ -634,6 +653,41 @@ export async function POST(req: Request) {
      * can reach the external payment provider.
      */
     const claim = await db.$transaction(async (tx) => {
+      // Group membership must be rechecked under the same database
+      // lock used by member-removal and cancellation mutations.
+      const locked = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM FriendOfferGroup
+        WHERE id = ${group.id}
+        FOR UPDATE
+      `;
+
+      if (locked.length !== 1) {
+        return { count: 0 };
+      }
+
+      const currentGroup = await tx.friendOfferGroup.findUnique({
+        where: { id: group.id },
+        select: {
+          status: true,
+          priceSnapshotMinor: true,
+          config: { select: { requiredMembers: true } },
+          participants: {
+            select: {
+              userId: true,
+              status: true,
+              shareAmountMinor: true,
+            },
+          },
+        },
+      });
+
+      if (
+        !currentGroup ||
+        !assessFriendOfferGroupReadiness(currentGroup).ready
+      ) {
+        return { count: 0 };
+      }
+
       const reserved = await tx.friendOfferParticipant.updateMany({
         where: {
           id: participant.id,
@@ -657,6 +711,8 @@ export async function POST(req: Request) {
       }
 
       return reserved;
+    }, {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
     });
 
     if (claim.count !== 1) {

@@ -16481,6 +16481,26 @@ const OffersPage = ({
       return;
     }
 
+    // The full group must exist before payment preparation.
+    // The server independently rechecks under a database lock.
+    if (
+      friendGroup.remainingPlaces > 0 ||
+      friendGroup.status !== "ready" ||
+      !friendGroup.ready
+    ) {
+      setFriendError(
+        t(
+          friendGroup.remainingPlaces > 0
+            ? `المجموعة ناقصها ${friendGroup.remainingPlaces} صديقات. كمّلي العدد أولًا قبل الدفع.`
+            : "المجموعة غير جاهزة للدفع حاليًا.",
+          friendGroup.remainingPlaces > 0
+            ? `Your group needs ${friendGroup.remainingPlaces} more friend(s) before payment.`
+            : "The group is not ready for payment.",
+        ),
+      );
+      return;
+    }
+
     const checkoutStudentId =
       friendGroup.offer.requiresEgyptianNationalId
         ? friendStudentNationalId.trim()
@@ -16985,6 +17005,40 @@ const OffersPage = ({
                   ) : null}
                 </div>
 
+                {friendGroup.remainingPlaces > 0 &&
+                ["waiting", "ready"].includes(friendGroup.status) ? (
+                  <div
+                    role="status"
+                    style={{
+                      padding: 13,
+                      borderRadius: 11,
+                      border: "1px solid rgba(245,158,11,.4)",
+                      background: "rgba(245,158,11,.09)",
+                      color: "#fde68a",
+                      lineHeight: 1.8,
+                      marginBottom: 15,
+                    }}
+                  >
+                    <strong>
+                      {t(
+                        friendGroup.remainingPlaces === 1
+                          ? "المجموعة ناقصها صديقة واحدة"
+                          : friendGroup.remainingPlaces === 2
+                            ? "المجموعة ناقصها صديقتين"
+                            : `المجموعة ناقصها ${friendGroup.remainingPlaces} صديقات`,
+                        `The group needs ${friendGroup.remainingPlaces} more friend(s)`,
+                      )}
+                    </strong>
+
+                    <div style={{ marginTop: 6 }}>
+                      {t(
+                        "الدفع غير متاح قبل اكتمال عدد الصديقات. ولن تتفعل الاشتراكات إلا بعد سداد الجميع.",
+                        "Payment is unavailable until the group is full. Memberships activate only after everyone pays.",
+                      )}
+                    </div>
+                  </div>
+                ) : null}
+
                 {friendGroup.matchingEnabled ? (
                   <div
                     style={{
@@ -16998,8 +17052,8 @@ const OffersPage = ({
                   >
                     🔎{" "}
                     {t(
-                      "تم تسجيل طلب العثور على شريكة. يمكنك دفع حصتك، ولن يتفعّل الاشتراك إلا بعد اكتمال المجموعة ودفع الجميع.",
-                      "Your partner request is registered. You can pay your share; activation waits until the group is complete and everyone has paid.",
+                      "تم تسجيل طلب العثور على شريكة. انتظري اكتمال عدد الصديقات قبل الدفع، ولن تتفعل الاشتراكات إلا بعد سداد الجميع.",
+                      "Your partner request is registered. Payment opens when the group is complete, and memberships activate after everyone has paid.",
                     )}
                   </div>
                 ) : (
@@ -17284,6 +17338,9 @@ ${friendInviteUrl(friendGroup.token)}`,
                     type="button"
                     disabled={
                       friendBusy ||
+                      friendGroup.remainingPlaces > 0 ||
+                      friendGroup.status !== "ready" ||
+                      !friendGroup.ready ||
                       (friendGroup.currentParticipant.status !==
                         "checkout_started" &&
                         (friendCarryoverPreviewLoading ||
@@ -17305,7 +17362,17 @@ ${friendInviteUrl(friendGroup.token)}`,
                   >
                     {friendBusy
                       ? t("جاري التجهيز...", "Preparing...")
-                      : t(
+                      : friendGroup.remainingPlaces > 0
+                        ? t(
+                            "كمّلي عدد الصديقات أولًا",
+                            "Complete your group first",
+                          )
+                        : friendGroup.status !== "ready" || !friendGroup.ready
+                          ? t(
+                              "المجموعة غير جاهزة للدفع",
+                              "Group not ready for payment",
+                            )
+                          : t(
                           `ادفعي حصتك ${formatCurrency(
                             friendGroup.currentParticipant.shareAmountMinor /
                               100,

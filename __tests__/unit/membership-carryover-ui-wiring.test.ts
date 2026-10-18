@@ -119,13 +119,23 @@ describe(
           "if (carryover.blocking)",
           previewIndex,
         );
+        const transactionDeclarationIndex = route.indexOf(
+          "let transaction: Awaited<",
+          blockingIndex,
+        );
         const paymentIndex = route.indexOf(
-          "const transaction = await createPaymentTransaction({",
+          "transaction = await createPaymentTransaction({",
+          blockingIndex,
         );
 
         expect(previewIndex).toBeGreaterThanOrEqual(0);
         expect(blockingIndex).toBeGreaterThan(previewIndex);
-        expect(paymentIndex).toBeGreaterThan(blockingIndex);
+        expect(transactionDeclarationIndex).toBeGreaterThan(
+          blockingIndex,
+        );
+        expect(paymentIndex).toBeGreaterThan(
+          transactionDeclarationIndex,
+        );
 
         expect(publicUi).toContain(
           "/api/friend-offers/checkout?token=",
