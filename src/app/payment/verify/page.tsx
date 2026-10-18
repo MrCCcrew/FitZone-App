@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { getPaidPaymentMessage } from "@/lib/payment-verification-friend-status";
 
 type PaymentTransaction = {
   id: string;
@@ -43,6 +44,8 @@ function PaymentVerifyContent() {
   const returnState = searchParams.get("state");
   const [loading, setLoading] = useState(true);
   const [transaction, setTransaction] = useState<PaymentTransaction | null>(null);
+  const [friendOfferStatus, setFriendOfferStatus] =
+    useState<"waiting" | "completed" | null>(null);
   const [membershipCarryover, setMembershipCarryover] =
     useState<MembershipCarryoverResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -68,6 +71,10 @@ function PaymentVerifyContent() {
         const payload = (await response.json()) as {
           error?: string;
           transaction?: PaymentTransaction;
+          friendOffer?: {
+            groupId: string;
+            status: "waiting" | "completed";
+          } | null;
           membershipCarryover?: MembershipCarryoverResult | null;
         };
         if (!response.ok) throw new Error(payload.error ?? "تعذر التحقق من حالة الدفع.");
@@ -75,6 +82,12 @@ function PaymentVerifyContent() {
 
         const nextTransaction = payload.transaction ?? null;
         setTransaction(nextTransaction);
+        setFriendOfferStatus(
+          payload.friendOffer?.status === "waiting" ||
+          payload.friendOffer?.status === "completed"
+            ? payload.friendOffer.status
+            : null,
+        );
         setMembershipCarryover(
           payload.membershipCarryover ?? null,
         );
@@ -112,6 +125,12 @@ function PaymentVerifyContent() {
   const membershipName = transaction?.metadata?.membershipInvoice?.membershipName ?? null;
   const isPaid = transaction?.status === "paid";
   const isMembership = transaction?.purpose === "membership";
+  const paidPaymentMessage = getPaidPaymentMessage({
+    status: transaction?.status ?? null,
+    purpose: transaction?.purpose ?? null,
+    friendOfferStatus,
+    membershipName,
+  });
   const isCancelledFromReturn =
     returnState === "cancel" &&
     (transaction?.status === "pending" || transaction?.status === "requires_action" || !transaction);
@@ -123,13 +142,11 @@ function PaymentVerifyContent() {
           <div className="mb-6 rounded-2xl border border-green-500/30 bg-green-500/10 p-6 text-center">
             <div className="mb-3 text-5xl">✓</div>
             <div className="mb-1 text-2xl font-black text-green-300">
-              {isMembership
-                ? `تم الاشتراك${membershipName ? ` في ${membershipName}` : ""} بنجاح`
-                : "تم تأكيد الدفع بنجاح"}
+              {paidPaymentMessage?.title ?? "تم تأكيد الدفع بنجاح"}
             </div>
-            {isMembership ? (
+            {paidPaymentMessage?.description ? (
               <div className="mt-1 text-sm text-green-200">
-                اشتراكك أصبح نشطًا بعد تأكيد Paymob من السيرفر.
+                {paidPaymentMessage.description}
               </div>
             ) : null}
           </div>
@@ -228,7 +245,17 @@ function PaymentVerifyContent() {
                     >
                       إتمام الدفع الآن
                     </a>
-                  ) : null}
+                  ) : (
+                    <div className="rounded-xl border border-amber-400/25 bg-amber-500/10 p-3 text-sm text-amber-100">
+                      جلسة الدفع الحالية غير متاحة للاستكمال بأمان. يمكنك متابعة حالة الاشتراك من حسابك، ولا تبدئي دفعًا جديدًا قبل التحقق من العملية السابقة.
+                      <Link
+                        href="/account"
+                        className="mt-3 block font-black text-white underline"
+                      >
+                        متابعة الاشتراك من حسابي
+                      </Link>
+                    </div>
+                  )}
                   <div className="rounded-2xl border border-[#ffbcdb]/15 bg-black/20 p-4 text-sm text-[#d7aabd]">
                     إذا أكملت الدفع بالفعل فانتظر بضع ثوانٍ. سيتم تحديث الحالة تلقائيًا بعد وصول إشعار Paymob والتحقق منه على السيرفر.
                   </div>
@@ -240,14 +267,9 @@ function PaymentVerifyContent() {
               transaction.status === "expired" ||
               isCancelledFromReturn ? (
                 <div className="flex flex-wrap gap-3">
-                  {transaction.checkoutUrl ? (
-                    <a
-                      href={transaction.checkoutUrl}
-                      className="rounded-xl bg-pink-600 px-5 py-3 text-sm font-bold text-white"
-                    >
-                      إعادة محاولة الدفع
-                    </a>
-                  ) : null}
+                  <span className="text-sm text-amber-100">
+                    لا تستخدمي رابط العملية القديمة لإعادة الدفع. راجعي الحالة من حسابك أولًا.
+                  </span>
                   <Link href="/account" className="rounded-xl border border-pink-300/20 px-5 py-3 text-sm font-bold text-pink-100">
                     الرجوع إلى الحساب
                   </Link>

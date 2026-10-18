@@ -52,11 +52,6 @@ export async function GET() {
           status: {
             in: ["joined", "checkout_started", "paid", "activated"],
           },
-          group: {
-            status: {
-                notIn: ["cancelled", "expired"],
-              },
-          },
         },
         orderBy: {
           joinedAt: "desc",
@@ -95,6 +90,10 @@ export async function GET() {
                       id: true,
                       title: true,
                       titleEn: true,
+                      requiresBirthDate: true,
+                      requiresEgyptianNationalId: true,
+                      minAgeYears: true,
+                      maxAgeYears: true,
                     },
                   },
                 },
@@ -110,6 +109,22 @@ export async function GET() {
         },
       });
 
+    const nowMs = Date.now();
+
+    const isClosedOrExpired = (
+      participant: (typeof participations)[number],
+    ) =>
+      ["expired", "cancelled"].includes(participant.group.status) ||
+      participant.group.expiresAt.getTime() <= nowMs;
+
+    const hasUnresolvedFinancialState = (
+      participant: (typeof participations)[number],
+    ) =>
+      ["paid", "checkout_started"].includes(participant.status) ||
+      ["paid", "pending", "requires_action"].includes(
+        participant.paymentTransaction?.status ?? "",
+      );
+
     const visibleParticipations = participations.filter(
       (participant) => {
         if (participant.status === "activated") {
@@ -120,13 +135,18 @@ export async function GET() {
           );
         }
 
-        if (
-            participant.group.expiresAt.getTime() <= Date.now()
-          ) {
-            return false;
-          }
+        if (isClosedOrExpired(participant)) {
+          return hasUnresolvedFinancialState(participant);
+        }
 
-          return participant.group.status !== "completed";
+        if (participant.group.status === "completed") {
+          return (
+            participant.status === "paid" ||
+            participant.paymentTransaction?.status === "paid"
+          );
+        }
+
+        return true;
       },
     );
 
@@ -144,6 +164,9 @@ export async function GET() {
         participantStatus: participant.status,
         shareAmountMinor: participant.shareAmountMinor,
         paidAt: participant.paidAt?.toISOString() ?? null,
+        financialReviewRequired:
+          isClosedOrExpired(participant) &&
+          hasUnresolvedFinancialState(participant),
 
         membership: participant.userMembership
           ? (() => {
@@ -211,6 +234,14 @@ export async function GET() {
           ),
           titleEn:
             participant.group.config.offer.titleEn,
+          requiresBirthDate:
+            participant.group.config.offer.requiresBirthDate,
+          requiresEgyptianNationalId:
+            participant.group.config.offer.requiresEgyptianNationalId,
+          minAgeYears:
+            participant.group.config.offer.minAgeYears,
+          maxAgeYears:
+            participant.group.config.offer.maxAgeYears,
         },
       };
     });

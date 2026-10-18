@@ -2,6 +2,19 @@ import { NextRequest, NextResponse } from "next/server";
 import { createPendingOAuthToken, findExistingOAuthUser, getAppBaseUrl } from "@/lib/oauth";
 import { APP_SESSION_COOKIE, createAppSessionToken, getAppSessionCookieOptions } from "@/lib/app-session";
 import { assertExternalSideEffectsAllowed } from "@/lib/staging-safety";
+import { FRIEND_OFFER_RETURN_COOKIE, normalizeFriendOfferReturn } from "@/lib/friend-offer-auth-return";
+
+
+function clearFriendOfferReturn(res: NextResponse) {
+  res.cookies.set(FRIEND_OFFER_RETURN_COOKIE, "", {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 0,
+  });
+  return res;
+}
 
 export async function GET(req: NextRequest) {
   const base = getAppBaseUrl();
@@ -9,9 +22,10 @@ export async function GET(req: NextRequest) {
   const code = searchParams.get("code");
   const state = searchParams.get("state");
   const savedState = req.cookies.get("oauth_state")?.value;
+  const friendReturn = normalizeFriendOfferReturn(req.cookies.get(FRIEND_OFFER_RETURN_COOKIE)?.value ?? null);
 
   if (!code || !state || !savedState || state !== savedState) {
-    return NextResponse.redirect(`${base}/login?error=oauth_failed`);
+    return clearFriendOfferReturn(NextResponse.redirect(`${base}/login?error=oauth_failed`));
   }
 
   try {
@@ -68,12 +82,13 @@ export async function GET(req: NextRequest) {
     if (existing.requiresVerification && existing.user.email) {
       const verifyParams = new URLSearchParams({ email: existing.user.email });
       if (!existing.emailSent) verifyParams.set("sent", "0");
-      return NextResponse.redirect(`${base}/verify-email?${verifyParams.toString()}`);
+      if (friendReturn) verifyParams.set("callbackUrl", friendReturn);
+      return clearFriendOfferReturn(NextResponse.redirect(`${base}/verify-email?${verifyParams.toString()}`));
     }
 
     // Admin/staff/partner/trainer accounts must use the admin login page
     if (existing.user.role !== "member") {
-      return NextResponse.redirect(`${base}/login?error=admin_account`);
+      return clearFriendOfferReturn(NextResponse.redirect(`${base}/login?error=admin_account`));
     }
 
     const token = createAppSessionToken({
@@ -83,14 +98,14 @@ export async function GET(req: NextRequest) {
       role: "member",
     });
 
-    const res = NextResponse.redirect(`${base}/`);
+    const res = NextResponse.redirect(`${base}${friendReturn ?? "/"}`);
     res.cookies.set(APP_SESSION_COOKIE, token, getAppSessionCookieOptions());
     res.cookies.set("oauth_pending_profile", "", { httpOnly: true, maxAge: 0, path: "/" });
     res.cookies.set("oauth_pending_session", "", { httpOnly: true, maxAge: 0, path: "/" });
     res.cookies.set("oauth_state", "", { httpOnly: true, maxAge: 0, path: "/" });
-    return res;
+    return clearFriendOfferReturn(res);
   } catch (err) {
     console.error("[GOOGLE_CALLBACK]", err);
-    return NextResponse.redirect(`${base}/login?error=oauth_failed`);
+    return clearFriendOfferReturn(NextResponse.redirect(`${base}/login?error=oauth_failed`));
   }
 }

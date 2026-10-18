@@ -3015,6 +3015,7 @@ type FriendOfferGroupView = {
     sessionsCount: number | null;
     durationDays: number | null;
     expiresAt: string;
+    requiresEgyptianNationalId: boolean;
   };
 };
 
@@ -16138,6 +16139,8 @@ const OffersPage = ({
   const [friendBusy, setFriendBusy] = useState(false);
   const [friendError, setFriendError] = useState("");
   const [friendCopied, setFriendCopied] = useState(false);
+  const [friendStudentNationalId, setFriendStudentNationalId] =
+    useState("");
   const [friendCarryoverPreview, setFriendCarryoverPreview] =
     useState<FriendOfferCarryoverPreview | null>(null);
   const [friendCarryoverPreviewToken, setFriendCarryoverPreviewToken] =
@@ -16148,6 +16151,17 @@ const OffersPage = ({
     useState(false);
 
   const FRIEND_PENDING_KEY = "fitzone_friend_offer_pending";
+
+  const friendGoToLogin = (token?: string) => {
+    const destination = new URL("/?page=offers", window.location.origin);
+    if (token) destination.searchParams.set("friendOffer", token);
+    window.location.assign(
+      `/login?callbackUrl=${encodeURIComponent(
+        destination.pathname + destination.search,
+      )}`,
+    );
+  };
+
 
   const friendInviteUrl = (token: string) => {
     if (typeof window === "undefined") return "";
@@ -16183,6 +16197,7 @@ const OffersPage = ({
     setFriendGroup(null);
     setFriendError("");
     setFriendCopied(false);
+    setFriendStudentNationalId("");
     setFriendCarryoverPreview(null);
     setFriendCarryoverPreviewToken(null);
     setFriendCarryoverPreviewFailed(false);
@@ -16212,7 +16227,20 @@ const OffersPage = ({
         }),
       );
 
-      navigate("login");
+      friendGoToLogin();
+      return;
+    }
+
+    const studentId = offer.requiresEgyptianNationalId
+      ? friendStudentNationalId.trim()
+      : undefined;
+
+    if (offer.requiresEgyptianNationalId &&
+        !/^[0-9٠-٩۰-۹]{14}$/.test(studentId ?? "")) {
+      setFriendError(
+        t("أدخلي الرقم القومي المصري المكون من 14 رقمًا.",
+          "Enter your 14-digit Egyptian national ID."),
+      );
       return;
     }
 
@@ -16227,6 +16255,7 @@ const OffersPage = ({
           action: "create",
           offerId: offer.id,
           matchingEnabled,
+          ...(studentId ? { egyptianNationalId: studentId } : {}),
         }),
       });
 
@@ -16247,6 +16276,18 @@ const OffersPage = ({
       }
 
       setFriendGroup(data.group);
+      setFriendStudentNationalId("");
+      const saved = window.sessionStorage.getItem(FRIEND_PENDING_KEY);
+      if (saved) {
+        try {
+          const pending = JSON.parse(saved);
+          if (pending.kind === "create" && pending.offerId === offer.id) {
+            window.sessionStorage.removeItem(FRIEND_PENDING_KEY);
+          }
+        } catch {
+          // Invalid pending state is not a payment or group failure.
+        }
+      }
     } catch (error) {
       setFriendError(
         error instanceof Error
@@ -16258,7 +16299,10 @@ const OffersPage = ({
     }
   };
 
-  const loadOrJoinFriendGroup = async (token: string) => {
+  const loadOrJoinFriendGroup = async (
+    token: string,
+    joinRequested = false,
+  ) => {
     setFriendBusy(true);
     setFriendError("");
 
@@ -16281,13 +16325,32 @@ const OffersPage = ({
 
       let group = data as FriendOfferGroupView;
 
-      if (summary?.authenticated && !group.currentParticipant) {
+      if (
+        summary?.authenticated &&
+        !group.currentParticipant &&
+        (!group.offer.requiresEgyptianNationalId || joinRequested)
+      ) {
+        const joinStudentId = group.offer.requiresEgyptianNationalId
+          ? friendStudentNationalId.trim()
+          : undefined;
+
+        if (group.offer.requiresEgyptianNationalId &&
+            !/^[0-9٠-٩۰-۹]{14}$/.test(joinStudentId ?? "")) {
+          throw new Error(
+            t("أدخلي الرقم القومي المصري المكون من 14 رقمًا.",
+              "Enter your 14-digit Egyptian national ID."),
+          );
+        }
+
         response = await fetch("/api/friend-offers", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: "join",
             token,
+            ...(joinStudentId
+              ? { egyptianNationalId: joinStudentId }
+              : {}),
           }),
         });
 
@@ -16308,9 +16371,23 @@ const OffersPage = ({
         }
 
         group = joined.group;
+        setFriendStudentNationalId("");
       }
 
       setFriendGroup(group);
+      if (group.currentParticipant) {
+        const saved = window.sessionStorage.getItem(FRIEND_PENDING_KEY);
+        if (saved) {
+          try {
+            const pending = JSON.parse(saved);
+            if (pending.kind === "join" && pending.token === token) {
+              window.sessionStorage.removeItem(FRIEND_PENDING_KEY);
+            }
+          } catch {
+            // Invalid pending state is not a payment or group failure.
+          }
+        }
+      }
 
       setFriendOffer(
         (current) =>
@@ -16336,6 +16413,8 @@ const OffersPage = ({
             sessionsCount: group.offer.sessionsCount,
             friendOfferEnabled: true,
             friendRequiredMembers: group.requiredMembers,
+            requiresEgyptianNationalId:
+              group.offer.requiresEgyptianNationalId,
           },
       );
     } catch (error) {
@@ -16398,7 +16477,23 @@ const OffersPage = ({
         }),
       );
 
-      navigate("login");
+      friendGoToLogin(friendGroup.token);
+      return;
+    }
+
+    const checkoutStudentId =
+      friendGroup.offer.requiresEgyptianNationalId
+        ? friendStudentNationalId.trim()
+        : undefined;
+
+    if (
+      friendGroup.offer.requiresEgyptianNationalId &&
+      !/^[0-9٠-٩۰-۹]{14}$/.test(checkoutStudentId ?? "")
+    ) {
+      setFriendError(
+        t("أدخلي الرقم القومي المصري قبل إتمام الدفع.",
+          "Enter your Egyptian national ID before payment."),
+      );
       return;
     }
 
@@ -16444,6 +16539,9 @@ const OffersPage = ({
           token: friendGroup.token,
           returnUrl: returnUrl.toString(),
           cancelUrl: cancelUrl.toString(),
+          ...(checkoutStudentId
+            ? { egyptianNationalId: checkoutStudentId }
+            : {}),
         }),
       });
 
@@ -16460,6 +16558,7 @@ const OffersPage = ({
         );
       }
 
+      setFriendStudentNationalId("");
       window.location.href = data.checkoutUrl;
     } catch (error) {
       setFriendError(
@@ -16561,12 +16660,11 @@ const OffersPage = ({
         token?: string;
       };
 
-      window.sessionStorage.removeItem(FRIEND_PENDING_KEY);
-
       if (pending.kind === "open" && pending.offerId) {
         const offer = offers.find((item) => item.id === pending.offerId);
 
         if (offer?.friendOfferEnabled) {
+          window.sessionStorage.removeItem(FRIEND_PENDING_KEY);
           openFriendOffer(offer);
         }
 
@@ -16667,6 +16765,7 @@ const OffersPage = ({
                   setFriendOffer(null);
                   setFriendGroup(null);
                   setFriendError("");
+                  setFriendStudentNationalId("");
                   setFriendCarryoverPreview(null);
                   setFriendCarryoverPreviewToken(null);
                   setFriendCarryoverPreviewFailed(false);
@@ -16682,6 +16781,67 @@ const OffersPage = ({
                 ×
               </button>
             </div>
+
+            {(
+              friendGroup?.offer.requiresEgyptianNationalId ??
+              friendOffer.requiresEgyptianNationalId
+            ) === true &&
+            friendGroup?.currentParticipant?.status !== "paid" &&
+            friendGroup?.currentParticipant?.status !== "activated" ? (
+              <div style={{
+                marginBottom: 16,
+                padding: 14,
+                borderRadius: 12,
+                border: `1px solid ${C.border}`,
+              }}>
+                <label
+                  htmlFor="friend-student-national-id"
+                  style={{
+                    display: "block",
+                    color: C.white,
+                    fontWeight: 800,
+                    marginBottom: 8,
+                  }}
+                >
+                  {t("الرقم القومي المصري (14 رقمًا)",
+                    "Egyptian national ID (14 digits)")}
+                </label>
+                <input
+                  id="friend-student-national-id"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  maxLength={14}
+                  value={friendStudentNationalId}
+                  onChange={(event) =>
+                    setFriendStudentNationalId(event.target.value)}
+                  disabled={friendBusy}
+                  placeholder={t("اكتبي رقمك القومي",
+                    "Enter your national ID")}
+                  style={{
+                    width: "100%",
+                    boxSizing: "border-box",
+                    padding: 12,
+                    borderRadius: 9,
+                    border: `1px solid ${C.border}`,
+                    color: "#111",
+                    background: "#fff",
+                    direction: "ltr",
+                  }}
+                />
+                <div style={{
+                  marginTop: 8,
+                  color: C.grayLight,
+                  fontSize: 12,
+                  lineHeight: 1.7,
+                }}>
+                  {t(
+                    "يُستخدم الرقم للتحقق من السن. لا نحفظ الرقم كاملًا في طلب الدفع.",
+                    "Used to check age. The full ID is not stored in the payment record.",
+                  )}
+                </div>
+              </div>
+            ) : null}
 
             {!friendGroup ? (
               <>
@@ -17064,7 +17224,7 @@ ${friendInviteUrl(friendGroup.token)}`,
                         }),
                       );
 
-                      navigate("login");
+                      friendGoToLogin(friendGroup.token);
                     }}
                     style={{
                       width: "100%",
@@ -17099,6 +17259,26 @@ ${friendInviteUrl(friendGroup.token)}`,
                           "Your share is paid — waiting for the group",
                         )}
                   </div>
+                ) : !friendGroup.currentParticipant ? (
+                  <button
+                    type="button"
+                    disabled={friendBusy}
+                    onClick={() =>
+                      void loadOrJoinFriendGroup(friendGroup.token, true)}
+                    style={{
+                      width: "100%",
+                      padding: 13,
+                      borderRadius: 11,
+                      border: 0,
+                      background: C.red,
+                      color: C.white,
+                      fontWeight: 800,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {t("تحققي وانضمي للمجموعة",
+                      "Verify and join the group")}
+                  </button>
                 ) : friendGroup.currentParticipant ? (
                   <button
                     type="button"

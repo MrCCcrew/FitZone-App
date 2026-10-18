@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/app-session";
 import { db } from "@/lib/db";
+import {
+  validReusableMembershipCheckoutUrl,
+} from "@/lib/payments/membership-pending-session-validity";
 import { maybeFinalizeFriendOfferPayment } from "@/lib/payments/friend-offer-finalization";
 import {
   recoverPaidMembershipActivation,
@@ -61,6 +64,105 @@ async function loadActualMembershipCarryover(
   };
 }
 
+/**
+ * The customer's verification page must never expose an old or
+ * terminal checkout link, even when the DB retains it as evidence.
+ *
+ * This function is read-only. It never creates or renews a payment.
+ */
+async function verifiedTransactionForCustomer(
+  result: Awaited<ReturnType<typeof verifyPaymentTransaction>>,
+  userId: string,
+) {
+  const payable =
+    result.status === "pending" ||
+    result.status === "requires_action";
+
+  if (!payable) {
+    return {
+      ...result,
+      checkoutUrl: null,
+      iframeUrl: null,
+    };
+  }
+
+  let holdExpiresAt = result.expiresAt;
+
+  if (result.purpose === "membership") {
+    holdExpiresAt = null;
+
+    if (result.membershipId) {
+      const membership = await db.userMembership.findUnique({
+        where: { id: result.membershipId },
+        select: {
+          userId: true,
+          status: true,
+          pendingExpiresAt: true,
+        },
+      });
+
+      if (
+        membership?.userId === userId &&
+        membership.status === "pending_payment"
+      ) {
+        holdExpiresAt = membership.pendingExpiresAt;
+      }
+    } else {
+      const metadata = result.metadata;
+
+      const groupId =
+        metadata &&
+        metadata.source === "friend-offer" &&
+        typeof metadata.friendGroupId === "string"
+          ? metadata.friendGroupId
+          : null;
+
+      if (groupId) {
+        const participant =
+          await db.friendOfferParticipant.findFirst({
+            where: {
+              userId,
+              groupId,
+              paymentTransactionId: result.id,
+              status: "checkout_started",
+            },
+            select: {
+              group: {
+                select: {
+                  status: true,
+                  expiresAt: true,
+                },
+              },
+            },
+          });
+
+        if (
+          participant &&
+          ["waiting", "ready"].includes(
+            participant.group.status,
+          )
+        ) {
+          holdExpiresAt = participant.group.expiresAt;
+        }
+      }
+    }
+  }
+
+  const checkoutUrl =
+    validReusableMembershipCheckoutUrl({
+      checkoutUrl: result.checkoutUrl,
+      expiresAt: result.expiresAt,
+      holdExpiresAt,
+      now: new Date(),
+    });
+
+  return {
+    ...result,
+    checkoutUrl,
+    iframeUrl: checkoutUrl ? result.iframeUrl : null,
+  };
+}
+
 export async function GET(req: Request, context: { params: Promise<{ transactionId: string }> }) {
   try {
     const user = await getCurrentAppUser();
@@ -115,7 +217,7 @@ export async function GET(req: Request, context: { params: Promise<{ transaction
 
         return NextResponse.json({
           success: true,
-          transaction: result,
+          transaction: await verifiedTransactionForCustomer(result, user.id),
           friendOffer: {
             groupId: friendFinalization.groupId,
             status: friendFinalization.status,
@@ -171,7 +273,7 @@ export async function GET(req: Request, context: { params: Promise<{ transaction
 
     return NextResponse.json({
       success: true,
-      transaction: result,
+      transaction: await verifiedTransactionForCustomer(result, user.id),
       membershipCarryover,
     });
   } catch (error) {

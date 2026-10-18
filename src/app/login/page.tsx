@@ -4,6 +4,7 @@ import { Suspense, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useLang } from "@/lib/language";
+import { normalizeFriendOfferReturn, withFriendOfferReturn } from "@/lib/friend-offer-auth-return";
 
 function GoogleIcon() {
   return (
@@ -32,7 +33,7 @@ function AppleIcon() {
   );
 }
 
-function SocialButtons({ lang }: { lang: string }) {
+function SocialButtons({ lang, friendReturn }: { lang: string; friendReturn: string | null }) {
   const t = (ar: string, en: string) => (lang === "ar" ? ar : en);
   return (
     <div className="space-y-3">
@@ -42,7 +43,7 @@ function SocialButtons({ lang }: { lang: string }) {
         <div className="flex-grow border-t border-white/10" />
       </div>
       <a
-        href="/api/auth/oauth/google"
+        href={withFriendOfferReturn("/api/auth/oauth/google", friendReturn)}
         className="flex w-full items-center justify-center gap-3 rounded-xl border border-white/10 bg-white/5 py-3 text-sm font-medium text-white transition-colors hover:bg-white/10"
       >
         <GoogleIcon />
@@ -80,7 +81,7 @@ function EyeIcon({ open }: { open: boolean }) {
 
 function normalizeCallbackUrl(value: string | null) {
   if (!value) return "/";
-  if (value.startsWith("/")) return value;
+  if (value.startsWith("/") && !value.startsWith("//") && !value.includes("\\\\")) return value;
 
   try {
     const url = new URL(value);
@@ -98,6 +99,7 @@ function LoginForm() {
   const params = useSearchParams();
   const router = useRouter();
   const callbackUrl = useMemo(() => normalizeCallbackUrl(params.get("callbackUrl")), [params]);
+  const friendReturn = normalizeFriendOfferReturn(params.get("callbackUrl"));
   const verified = params.get("verified");
   const verifiedEmail = params.get("email");
 
@@ -128,7 +130,7 @@ function LoginForm() {
 
       if (!res.ok) {
         if (data?.requiresVerification && data?.email) {
-          router.push(`/verify-email?email=${encodeURIComponent(data.email)}`);
+          router.push(withFriendOfferReturn(`/verify-email?email=${encodeURIComponent(data.email)}`, friendReturn));
           return;
         }
 
@@ -239,11 +241,11 @@ function LoginForm() {
             </button>
           </form>
 
-          <SocialButtons lang={lang} />
+          <SocialButtons lang={lang} friendReturn={friendReturn} />
 
           <div className="mt-6 text-center text-sm">
             <span className="text-gray-400">{t("ليس لديك حساب؟", "Don't have an account?")} </span>
-            <Link href="/register" className="font-bold text-pink-300 transition-colors hover:text-pink-200">
+            <Link href={withFriendOfferReturn("/register", friendReturn)} className="font-bold text-pink-300 transition-colors hover:text-pink-200">
               {t("إنشاء حساب جديد", "Create a new account")}
             </Link>
           </div>
