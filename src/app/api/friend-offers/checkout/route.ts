@@ -378,12 +378,35 @@ export async function POST(req: Request) {
           existingPayment.status === "requires_action" ||
           existingPayment.status === "paid"
         ) {
+          if (existingPayment.status !== "paid") {
+            const expiresAt = existingPayment.expiresAt;
+
+            if (
+              !existingPayment.checkoutUrl ||
+              !(expiresAt instanceof Date) ||
+              !Number.isFinite(expiresAt.getTime()) ||
+              expiresAt.getTime() <= now.getTime()
+            ) {
+              return NextResponse.json(
+                {
+                  error:
+                    "جلسة الدفع السابقة غير صالحة للاستخدام. يلزم مراجعة حالة المعاملة قبل إعادة المحاولة.",
+                  code: "FRIEND_CHECKOUT_LINK_RECONCILIATION_REQUIRED",
+                },
+                { status: 409 },
+              );
+            }
+          }
+
           return NextResponse.json({
             success: true,
             reused: true,
             paymentTransactionId: existingPayment.id,
             status: existingPayment.status,
-            checkoutUrl: existingPayment.checkoutUrl,
+            checkoutUrl:
+              existingPayment.status === "paid"
+                ? null
+                : existingPayment.checkoutUrl,
             amount: existingPayment.amount,
           });
         }

@@ -313,6 +313,7 @@ describe("Friend Offer checkout route", () => {
       id: "existing-payment",
       status: "pending",
       checkoutUrl: "https://checkout.test/existing",
+      expiresAt: new Date(Date.now() + 120_000),
       amount: 280,
     });
 
@@ -762,6 +763,92 @@ describe("Friend checkout stored-session recovery", () => {
   });
 });
 
+
+
+// FRIEND_LINKED_CHECKOUT_EXPIRY_REGRESSION
+describe("Linked friend checkout validity", () => {
+  function linkedGroup(status = "checkout_started") {
+    return baseGroup({
+      participants: [
+        {
+          id: "p1",
+          userId: "user-1",
+          status,
+          shareAmountMinor: 28000,
+          paymentTransactionId: "existing-payment",
+          attributionSnapshot: null,
+        },
+      ],
+    });
+  }
+
+  it.each(["pending", "requires_action"])(
+    "blocks an expired linked %s checkout without creating another payment",
+    async (status) => {
+      mocks.groupFindUnique.mockResolvedValue(linkedGroup());
+      mocks.paymentFindUnique.mockResolvedValue({
+        id: "existing-payment",
+        status,
+        checkoutUrl: "https://checkout.test/expired",
+        expiresAt: new Date(Date.now() - 60_000),
+        amount: 280,
+      });
+
+      const response = await POST(
+        request({ token: "FRIENDTOKEN" }),
+      );
+
+      expect(response.status).toBe(409);
+      expect((await response.json()).code).toBe(
+        "FRIEND_CHECKOUT_LINK_RECONCILIATION_REQUIRED",
+      );
+      expect(mocks.createPaymentTransaction).not.toHaveBeenCalled();
+      expect(mocks.participantUpdateMany).not.toHaveBeenCalled();
+    },
+  );
+
+  it("blocks a linked payment with no trustworthy expiry", async () => {
+    mocks.groupFindUnique.mockResolvedValue(linkedGroup());
+    mocks.paymentFindUnique.mockResolvedValue({
+      id: "existing-payment",
+      status: "pending",
+      checkoutUrl: "https://checkout.test/unknown",
+      expiresAt: null,
+      amount: 280,
+    });
+
+    const response = await POST(
+      request({ token: "FRIENDTOKEN" }),
+    );
+
+    expect(response.status).toBe(409);
+    expect(mocks.createPaymentTransaction).not.toHaveBeenCalled();
+  });
+
+  it("does not return a payment link for an already-paid share", async () => {
+    mocks.groupFindUnique.mockResolvedValue(linkedGroup("paid"));
+    mocks.paymentFindUnique.mockResolvedValue({
+      id: "existing-payment",
+      status: "paid",
+      checkoutUrl: "https://checkout.test/old",
+      expiresAt: new Date(Date.now() - 60_000),
+      amount: 280,
+    });
+
+    const response = await POST(
+      request({ token: "FRIENDTOKEN" }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      success: true,
+      reused: true,
+      status: "paid",
+      checkoutUrl: null,
+    });
+    expect(mocks.createPaymentTransaction).not.toHaveBeenCalled();
+  });
+});
 
 // FRIEND_THREE_PARTICIPANT_CHECKOUT_REGRESSION
 describe("Three participant student friend checkout regression", () => {
