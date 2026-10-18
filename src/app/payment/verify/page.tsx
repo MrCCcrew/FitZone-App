@@ -245,7 +245,17 @@ function PaymentVerifyContent() {
                     >
                       إتمام الدفع الآن
                     </a>
-                  ) : null}
+                  ) : (
+                    <div className="rounded-xl border border-amber-400/25 bg-amber-500/10 p-3 text-sm text-amber-100">
+                      جلسة الدفع الحالية غير متاحة للاستكمال بأمان. يمكنك متابعة حالة الاشتراك من حسابك، ولا تبدئي دفعًا جديدًا قبل التحقق من العملية السابقة.
+                      <Link
+                        href="/account"
+                        className="mt-3 block font-black text-white underline"
+                      >
+                        متابعة الاشتراك من حسابي
+                      </Link>
+                    </div>
+                  )}
                   <div className="rounded-2xl border border-[#ffbcdb]/15 bg-black/20 p-4 text-sm text-[#d7aabd]">
                     إذا أكملت الدفع بالفعل فانتظر بضع ثوانٍ. سيتم تحديث الحالة تلقائيًا بعد وصول إشعار Paymob والتحقق منه على السيرفر.
                   </div>
@@ -257,14 +267,9 @@ function PaymentVerifyContent() {
               transaction.status === "expired" ||
               isCancelledFromReturn ? (
                 <div className="flex flex-wrap gap-3">
-                  {transaction.checkoutUrl ? (
-                    <a
-                      href={transaction.checkoutUrl}
-                      className="rounded-xl bg-pink-600 px-5 py-3 text-sm font-bold text-white"
-                    >
-                      إعادة محاولة الدفع
-                    </a>
-                  ) : null}
+                  <span className="text-sm text-amber-100">
+                    لا تستخدمي رابط العملية القديمة لإعادة الدفع. راجعي الحالة من حسابك أولًا.
+                  </span>
                   <Link href="/account" className="rounded-xl border border-pink-300/20 px-5 py-3 text-sm font-bold text-pink-100">
                     الرجوع إلى الحساب
                   </Link>

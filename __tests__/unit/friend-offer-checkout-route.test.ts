@@ -761,3 +761,106 @@ describe("Friend checkout stored-session recovery", () => {
     expect(mocks.participantUpdateMany).not.toHaveBeenCalled();
   });
 });
+
+
+// FRIEND_THREE_PARTICIPANT_CHECKOUT_REGRESSION
+describe("Three participant student friend checkout regression", () => {
+  const cases = [
+    { customerId: "user-1", priorPaid: false },
+    { customerId: "user-2", priorPaid: false },
+    { customerId: "user-3", priorPaid: false },
+    { customerId: "user-1", priorPaid: true },
+    { customerId: "user-3", priorPaid: true },
+  ];
+
+  it.each(cases)(
+    "accepts $customerId with priorPaid=$priorPaid without an existing membership",
+    async ({ customerId, priorPaid }) => {
+      const group = baseGroup();
+
+      group.config.offer.requiresBirthDate = true;
+      group.config.offer.requiresEgyptianNationalId = true;
+      group.config.offer.minAgeYears = 13;
+      group.config.offer.maxAgeYears = 25;
+      group.config.requiredMembers = 3;
+
+      group.participants = [1, 2, 3].map((number) => ({
+        id: `p${number}`,
+        userId: `user-${number}`,
+        status:
+          priorPaid && number === 2 ? "paid" : "joined",
+        shareAmountMinor: 19000,
+        updatedAt: new Date(),
+        paymentTransactionId:
+          priorPaid && number === 2 ? "paid-share" : null,
+        attributionSnapshot: null,
+      }));
+
+      const participantId = `p${customerId.slice(-1)}`;
+
+      mocks.getCurrentAppUser.mockResolvedValue({
+        id: customerId,
+        name: "Student Test",
+        email: "student@example.test",
+      });
+
+      mocks.groupFindUnique.mockResolvedValue(group);
+
+      // Resolve the actual participant requested by the checkout.
+      // Preserve the production identity validation unchanged.
+      mocks.participantFindUnique.mockImplementation(
+        async (args: { where: { id: string } }) =>
+          group.participants.find(
+            (row: { id: string }) =>
+              row.id === args.where.id,
+          ) ?? null,
+      );
+
+      mocks.createPaymentTransaction.mockResolvedValue({
+        id: "new-share-payment",
+        status: "pending",
+        checkoutUrl: "https://checkout.test/share",
+        amount: 190,
+      });
+
+      const nationalId = "31201010112345";
+
+      const response = await POST(
+        request({
+          token: "FRIENDTOKEN",
+          egyptianNationalId: nationalId,
+        }),
+      );
+
+      const payload = await response.json();
+
+      expect(response.status, JSON.stringify(payload)).toBe(200);
+      expect(payload.success).toBe(true);
+      expect(payload.amount).toBe(190);
+
+      expect(mocks.createPaymentTransaction)
+        .toHaveBeenCalledTimes(1);
+
+      const paymentInput =
+        mocks.createPaymentTransaction.mock.calls[0][0];
+
+      expect(paymentInput).toMatchObject({
+        userId: customerId,
+        purpose: "membership",
+        friendOfferShare: true,
+        membershipId: null,
+        offerId: "offer-1",
+        amount: 190,
+        metadata: {
+          source: "friend-offer",
+          friendGroupId: "group-1",
+          friendParticipantId: participantId,
+          friendShareAmountMinor: 19000,
+        },
+      });
+
+      expect(JSON.stringify(paymentInput))
+        .not.toContain(nationalId);
+    },
+  );
+});

@@ -28,6 +28,7 @@ jobs:
       TEST_DATABASE_URL: mysql://fitzone_test_user:unused@127.0.0.1:3306/fitzone_test
       TEST_SHADOW_DATABASE_URL: mysql://fitzone_test_user:unused@127.0.0.1:3306/fitzone_shadow
       PAYMOB_ENV: test
+      PAYMOB_MEMBERSHIP_INTENTION_RENEWAL_ENABLED: "false"
       AI_COACH_VOICE_ENABLED: "false"
       AI_COACH_REALTIME_VOICE_ENABLED: "false"
       OPENAI_API_KEY: ""
@@ -50,14 +51,23 @@ jobs:
 
           expected="$(cat <<'APPROVED_SCOPE' | LC_ALL=C sort
           .github/workflows/fitzone-friend-auth-resume-ci.yml
+          __tests__/integration/payments/friend-offer-service-checkout-bridge.test.ts
+          __tests__/integration/payments/friend-offer-three-participant.test.ts
+          __tests__/integration/payments/valid-pending-checkout-resume.test.ts
           __tests__/unit/account-friend-offer-financial-visibility.test.ts
           __tests__/unit/friend-offer-account-checkout.test.ts
+          __tests__/unit/friend-offer-checkout-route.test.ts
+          __tests__/unit/membership-pending-session-validity.test.ts
           __tests__/unit/payment-verification-friend-status.test.ts
+          __tests__/unit/payment-verify-checkout-visibility.test.ts
           src/app/account/AccountClient.tsx
           src/app/api/me/friend-offers/route.ts
+          src/app/api/payments/verify/[transactionId]/route.ts
           src/app/payment/verify/page.tsx
           src/lib/friend-offer-account-checkout.ts
           src/lib/payment-verification-friend-status.ts
+          src/lib/payments/membership-pending-session-validity.ts
+          src/lib/payments/pending-membership-cleanup.ts
           APPROVED_SCOPE
           )"
 
@@ -77,7 +87,7 @@ jobs:
       - name: Generate isolated test Prisma client
         run: node node_modules/prisma/build/index.js generate --config prisma.test.config.ts
 
-      - name: Run 67 targeted unit regressions
+      - name: Run expanded targeted unit regressions
         env:
           NODE_ENV: test
           NODE_OPTIONS: --require=./scripts/skip-production-env.cjs --max-old-space-size=4096
@@ -96,6 +106,10 @@ jobs:
             __tests__/unit/friend-offer-account-checkout.test.ts \
             __tests__/unit/account-friend-offer-financial-visibility.test.ts \
             __tests__/unit/payment-verification-friend-status.test.ts \
+            __tests__/unit/payment-verify-checkout-visibility.test.ts \
+            __tests__/unit/payment-verify-membership-carryover.test.ts \
+            __tests__/unit/payment-session-expiry-regression.test.ts \
+            __tests__/unit/membership-pending-session-validity.test.ts \
             --maxWorkers=1 \
             --no-file-parallelism
           echo "FRIEND_AUTH_CLOUD_UNITS=PASS"

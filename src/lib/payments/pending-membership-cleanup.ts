@@ -1,5 +1,6 @@
 import { asDbTransactionClient, db } from "@/lib/db";
 import { releaseMarketingCheckoutLockTx } from "@/lib/marketing-conversion-service";
+import { validReusableMembershipCheckoutUrl } from "@/lib/payments/membership-pending-session-validity";
 
 function parseJson(value: string | null | undefined) {
   if (!value) return null;
@@ -638,17 +639,26 @@ export async function findScheduleReplaceablePendingMembershipCheckoutTx(input: 
         userId: input.userId,
         purpose: "membership",
         status: { in: ["pending", "requires_action"] },
-        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+        expiresAt: { gt: now },
       },
       orderBy: { createdAt: "desc" },
       select: {
         id: true,
         checkoutUrl: true,
+        expiresAt: true,
         metadata: true,
       },
     });
 
-    if (!transaction?.checkoutUrl) continue;
+    const usableCheckoutUrl =
+      validReusableMembershipCheckoutUrl({
+        checkoutUrl: transaction?.checkoutUrl ?? null,
+        expiresAt: transaction?.expiresAt ?? null,
+        holdExpiresAt: membership.pendingExpiresAt,
+        now,
+      });
+
+    if (!usableCheckoutUrl) continue;
 
     const metadata = parseJson(transaction.metadata);
     const storedRaw = metadata?.subscribeAttemptFingerprint;
@@ -704,7 +714,7 @@ export async function findScheduleReplaceablePendingMembershipCheckoutTx(input: 
     const candidate: ScheduleReplaceablePendingMembershipCheckout = {
       membershipId: membership.id,
       transactionId: transaction.id,
-      checkoutUrl: transaction.checkoutUrl,
+      checkoutUrl: usableCheckoutUrl,
       startDate: membership.startDate,
       endDate: membership.endDate,
       pendingExpiresAt: membership.pendingExpiresAt,
@@ -778,7 +788,7 @@ export async function findReusablePendingMembershipCheckout(input: {
         status: {
           in: ["pending", "requires_action"],
         },
-        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+        expiresAt: { gt: now },
       },
       orderBy: {
         createdAt: "desc",
@@ -786,11 +796,20 @@ export async function findReusablePendingMembershipCheckout(input: {
       select: {
         id: true,
         checkoutUrl: true,
+        expiresAt: true,
         metadata: true,
       },
     });
 
-    if (!transaction?.checkoutUrl) {
+    const usableCheckoutUrl =
+      validReusableMembershipCheckoutUrl({
+        checkoutUrl: transaction?.checkoutUrl ?? null,
+        expiresAt: transaction?.expiresAt ?? null,
+        holdExpiresAt: membership.pendingExpiresAt,
+        now,
+      });
+
+    if (!usableCheckoutUrl) {
       continue;
     }
 
@@ -841,7 +860,7 @@ export async function findReusablePendingMembershipCheckout(input: {
     return {
       membershipId: membership.id,
       transactionId: transaction.id,
-      checkoutUrl: transaction.checkoutUrl,
+      checkoutUrl: usableCheckoutUrl,
       endDate: membership.endDate,
       pendingExpiresAt: membership.pendingExpiresAt,
     };
