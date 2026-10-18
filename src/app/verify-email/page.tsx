@@ -4,12 +4,14 @@ import { Suspense, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useLang } from "@/lib/language";
+import { normalizeFriendOfferReturn, withFriendOfferReturn } from "@/lib/friend-offer-auth-return";
 
 function VerifyEmailForm() {
   const { lang } = useLang();
   const t = (arText: string, enText: string) => (lang === "ar" ? arText : enText);
   const router = useRouter();
   const params = useSearchParams();
+  const friendReturn = normalizeFriendOfferReturn(params.get("callbackUrl"));
   const defaultEmail = params.get("email") ?? "";
   const sentFlag = params.get("sent");
   const [email, setEmail] = useState(defaultEmail);
@@ -47,7 +49,7 @@ function VerifyEmailForm() {
       }
 
       // Server sets session cookie — redirect directly to account
-      router.push(data?.redirectTo ?? "/account");
+      router.push(friendReturn ?? data?.redirectTo ?? "/account");
     } catch {
       setError(t("تعذر تفعيل البريد الإلكتروني حاليًا. حاول مرة أخرى.", "Unable to verify your email right now. Please try again."));
     } finally {
@@ -162,7 +164,7 @@ function VerifyEmailForm() {
 
           <div className="mt-6 text-center text-sm">
             <span className="text-gray-400">{t("لديك حساب مفعل بالفعل؟", "Already have a verified account?")} </span>
-            <Link href="/login" className="font-bold text-pink-300 transition-colors hover:text-pink-200">
+            <Link href={withFriendOfferReturn("/login", friendReturn)} className="font-bold text-pink-300 transition-colors hover:text-pink-200">
               {t("تسجيل الدخول", "Log in")}
             </Link>
           </div>

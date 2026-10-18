@@ -16152,6 +16152,17 @@ const OffersPage = ({
 
   const FRIEND_PENDING_KEY = "fitzone_friend_offer_pending";
 
+  const friendGoToLogin = (token?: string) => {
+    const destination = new URL("/?page=offers", window.location.origin);
+    if (token) destination.searchParams.set("friendOffer", token);
+    window.location.assign(
+      `/login?callbackUrl=${encodeURIComponent(
+        destination.pathname + destination.search,
+      )}`,
+    );
+  };
+
+
   const friendInviteUrl = (token: string) => {
     if (typeof window === "undefined") return "";
 
@@ -16216,7 +16227,7 @@ const OffersPage = ({
         }),
       );
 
-      navigate("login");
+      friendGoToLogin();
       return;
     }
 
@@ -16266,6 +16277,17 @@ const OffersPage = ({
 
       setFriendGroup(data.group);
       setFriendStudentNationalId("");
+      const saved = window.sessionStorage.getItem(FRIEND_PENDING_KEY);
+      if (saved) {
+        try {
+          const pending = JSON.parse(saved);
+          if (pending.kind === "create" && pending.offerId === offer.id) {
+            window.sessionStorage.removeItem(FRIEND_PENDING_KEY);
+          }
+        } catch {
+          // Invalid pending state is not a payment or group failure.
+        }
+      }
     } catch (error) {
       setFriendError(
         error instanceof Error
@@ -16353,6 +16375,19 @@ const OffersPage = ({
       }
 
       setFriendGroup(group);
+      if (group.currentParticipant) {
+        const saved = window.sessionStorage.getItem(FRIEND_PENDING_KEY);
+        if (saved) {
+          try {
+            const pending = JSON.parse(saved);
+            if (pending.kind === "join" && pending.token === token) {
+              window.sessionStorage.removeItem(FRIEND_PENDING_KEY);
+            }
+          } catch {
+            // Invalid pending state is not a payment or group failure.
+          }
+        }
+      }
 
       setFriendOffer(
         (current) =>
@@ -16442,7 +16477,7 @@ const OffersPage = ({
         }),
       );
 
-      navigate("login");
+      friendGoToLogin(friendGroup.token);
       return;
     }
 
@@ -16625,12 +16660,11 @@ const OffersPage = ({
         token?: string;
       };
 
-      window.sessionStorage.removeItem(FRIEND_PENDING_KEY);
-
       if (pending.kind === "open" && pending.offerId) {
         const offer = offers.find((item) => item.id === pending.offerId);
 
         if (offer?.friendOfferEnabled) {
+          window.sessionStorage.removeItem(FRIEND_PENDING_KEY);
           openFriendOffer(offer);
         }
 
@@ -17190,7 +17224,7 @@ ${friendInviteUrl(friendGroup.token)}`,
                         }),
                       );
 
-                      navigate("login");
+                      friendGoToLogin(friendGroup.token);
                     }}
                     style={{
                       width: "100%",
