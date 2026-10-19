@@ -42,7 +42,9 @@ function hasFrozenOfferBoxAgeProof(raw: string): boolean {
     // terms. An explicit null/unknown method is never treated as legacy.
     const legacyBirthDateProof =
       !Object.prototype.hasOwnProperty.call(proof, "verificationMethod") &&
-      proof.requiresBirthDate === true &&
+      (proof.requiresBirthDate === true ||
+        proof.minAgeYears !== null ||
+        proof.maxAgeYears !== null) &&
       (snapshot as Record<string, unknown>).version === 1 &&
       typeof (snapshot as Record<string, unknown>).purchasedAt === "string" &&
       Number.isFinite(Date.parse((snapshot as Record<string, unknown>).purchasedAt as string));
