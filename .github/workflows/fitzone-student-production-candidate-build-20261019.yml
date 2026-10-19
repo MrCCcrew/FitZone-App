@@ -22,8 +22,10 @@ jobs:
       CI: "true"
       NODE_ENV: production
       NEXT_TELEMETRY_DISABLED: "1"
-      # Build-time DB is intentionally unreachable. Never use live credentials.
-      DATABASE_URL: mysql://build_blocked:blocked@127.0.0.1:1/compile_only
+      # Build-time DB is intentionally unreachable (localhost port 1, invalid account).
+      # The DB name satisfies the existing production safety name check ONLY.
+      # Never use live credentials or an active port.
+      DATABASE_URL: mysql://build_blocked:blocked@127.0.0.1:1/fitzone_prod
       ALLOW_EXTERNAL_SIDE_EFFECTS: "false"
       # Preserve effective AI Coach feature flags confirmed from the current
       # running Production process. These are public client-build booleans.
@@ -54,7 +56,7 @@ jobs:
         run: |
           set -euo pipefail
           test "${NODE_ENV}" = production
-          test "${DATABASE_URL}" = "mysql://build_blocked:blocked@127.0.0.1:1/compile_only"
+          test "${DATABASE_URL}" = "mysql://build_blocked:blocked@127.0.0.1:1/fitzone_prod"
           test -z "${APP_ENV:-}"
           test -z "${FITZONE_TEST_BUILD:-}"
           test -z "${PAYMOB_SECRET_KEY:-}"
