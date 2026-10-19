@@ -209,6 +209,31 @@ describe("Paymob webhook evidence CAS and paid ownership proof", () => {
     );
   });
 
+
+  it("quarantines a late charge after automated unpaid order release", async () => {
+    payment.purpose = "membership";
+    payment.membershipId = "membership-a";
+    payment.status = "cancelled";
+    payment.metadata = JSON.stringify({
+      paymobNoChargeReview: {
+        source: "paymob_order_unpaid_automated",
+        orderId: "112233",
+        paidAmountCents: 0,
+        settledAt: new Date().toISOString(),
+      },
+    });
+
+    const response = await deliver("paid");
+
+    expect(response.status).toBe(503);
+    expect(payment.status).toBe("cancelled");
+    expect(mocks.finalize).not.toHaveBeenCalled();
+
+    const metadata = JSON.parse(payment.metadata || "{}");
+    expect(typeof metadata.paymobManualNoChargeLatePaidAt).toBe("string");
+    expect(metadata.paymobManualNoChargeLatePaidReference).toBe("987654");
+  });
+
   it("keeps an in-progress renewal claim intact on a late failed attempt", async () => {
     payment.status = "retrying";
 

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { sendOnePush } from "@/lib/push";
 import { cleanupExpiredPendingMembership } from "@/lib/payments/pending-membership-cleanup";
-import { reconcileExpiredPaymobMembership } from "@/lib/payments/expired-membership-paymob-reconciliation";
+import { settleExpiredPendingMembership } from "@/lib/payments/expired-membership-settlement";
 import { expireEndedActiveMembershipsTx } from "@/lib/membership-lifecycle";
 import { extendRecurringSchedules } from "@/lib/schedule-maintenance";
 
@@ -108,21 +108,26 @@ export async function GET(req: Request) {
 
   for (const membership of pending) {
     try {
+      let result;
+
       if (inquiryCandidates.has(membership.id)) {
         providerInquiries++;
-        const reconciliation = await reconcileExpiredPaymobMembership(
-          membership.id,
-        );
-        if (reconciliation.kind === "paid_recovered") {
+
+        const settlement =
+          await settleExpiredPendingMembership(membership.id);
+
+        if (settlement.kind === "paid_recovered") {
           paidRecovered++;
           continue;
         }
-      }
 
-      const result = await cleanupExpiredPendingMembership(
-        membership.id,
-        now,
-      );
+        result = settlement.cleanup;
+      } else {
+        result = await cleanupExpiredPendingMembership(
+          membership.id,
+          new Date(),
+        );
+      }
 
       if (!result.cleaned) {
         skipped++;

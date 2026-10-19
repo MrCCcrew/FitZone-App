@@ -1,4 +1,5 @@
-import { findSinglePaidPaymobOrderTransaction } from "@/lib/payments/paymob-order-paid-proof";
+import { assessPaymobUnpaidOrder, type PaymobUnpaidOrderProof } from "@/lib/payments/paymob-order-unpaid-proof";
+import { assessPaymobOrderPositiveProof } from "@/lib/payments/paymob-order-positive-proof";
 import { isFinalRetainedPaymobPayment } from "@/lib/payments/paymob-retained-payment-proof";
 import { resolvePaymobIntentionExpiration } from "@/lib/payments/paymob-membership-expiration";
 import crypto from "crypto";
@@ -566,6 +567,54 @@ export async function renewExistingMembershipPaymobIntention(input: {
     },
   };
 }
+export async function inquirePaymobUnpaidOrder(input: {
+  paymentId: string;
+  providerPayload: string | null;
+  amount: number;
+  currency: string;
+}): Promise<PaymobUnpaidOrderProof | null> {
+  const stored = readStoredPayload(input.providerPayload);
+  const orderId = String(stored?.intentionOrderId ?? "").trim();
+  const cents = Math.round(input.amount * 100);
+
+  if (!/^[0-9]+$/.test(orderId) ||
+      !Number.isSafeInteger(cents) || cents <= 0) return null;
+
+  try {
+    assertExternalSideEffectsAllowed("Paymob unpaid order inquiry");
+    const token = await authenticate();
+
+    const response = await fetch(
+      `${getRegionBase()}/api/ecommerce/orders/${encodeURIComponent(orderId)}`,
+      {
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+        cache: "no-store",
+      },
+    );
+
+    if (!response.ok) return null;
+
+    const order: unknown = await response.json();
+
+    return assessPaymobUnpaidOrder({
+      order,
+      paymentId: input.paymentId,
+      expectedOrderId: orderId,
+      expectedAmountCents: cents,
+      expectedCurrency: input.currency,
+      checkedAt: new Date(),
+    });
+  } catch (error) {
+    console.warn(
+      "[PAYMOB_UNPAID_ORDER_INQUIRY_INCONCLUSIVE]",
+      error instanceof Error ? error.name : "unknown",
+    );
+    return null;
+  }
+}
+
 async function verifyTransaction(transaction: {
   id: string;
   providerReference?: string | null;
@@ -611,9 +660,10 @@ async function verifyTransaction(transaction: {
         const order: unknown = await response.json();
 
         const confirmedTransactionId =
-          findSinglePaidPaymobOrderTransaction({
+          assessPaymobOrderPositiveProof({
             order,
             expectedOrderId: storedOrderId,
+            expectedMerchantOrderId: transaction.id,
             expectedAmountCents: Math.round(transaction.amount * 100),
             expectedCurrency: transaction.currency,
           });

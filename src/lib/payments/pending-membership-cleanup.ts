@@ -1,4 +1,8 @@
 import { asDbTransactionClient, db } from "@/lib/db";
+import {
+  canSettleExpiredPaymobOrder,
+  type PaymobUnpaidOrderProof,
+} from "@/lib/payments/paymob-order-unpaid-proof";
 import { releaseMarketingCheckoutLockTx } from "@/lib/marketing-conversion-service";
 import { validReusableMembershipCheckoutUrl } from "@/lib/payments/membership-pending-session-validity";
 
@@ -39,6 +43,7 @@ export type PendingMembershipCleanupResult =
 export async function cleanupExpiredPendingMembership(
   membershipId: string,
   now = new Date(),
+  unpaidOrderProof: PaymobUnpaidOrderProof | null = null,
 ): Promise<PendingMembershipCleanupResult> {
   return db.$transaction(async (tx) => {
     const membership = await tx.userMembership.findUnique({
@@ -130,6 +135,9 @@ export async function cleanupExpiredPendingMembership(
         providerReference: true,
         externalReference: true,
         providerPayload: true,
+        amount: true,
+        currency: true,
+        expiresAt: true,
       },
     });
 
@@ -149,6 +157,23 @@ export async function cleanupExpiredPendingMembership(
 
       const payment = paymobPayments[0];
       const metadata = parseJson(payment.metadata);
+
+      // Invalid financial metadata must never authorize a release.
+      if (payment.metadata && !metadata) {
+        return {
+          cleaned: false,
+          membershipId,
+          reason: "provider_reconciliation_required",
+        };
+      }
+
+      const automatedUnpaidProofValid = canSettleExpiredPaymobOrder({
+        proof: unpaidOrderProof,
+        payment,
+        membershipExpiresAt: membership.pendingExpiresAt,
+        now,
+      });
+
       const review = metadata?.paymobNoChargeReview;
       const approval = review && typeof review === "object" && !Array.isArray(review)
         ? review as Record<string, unknown>
@@ -180,14 +205,19 @@ export async function cleanupExpiredPendingMembership(
 
       const safelyClosedProviderSession =
         !["paid", "retrying", "processing", "pending_payment"].includes(payment.status) &&
-        now.getTime() >= membership.pendingExpiresAt.getTime() + 20 * 60_000;
+        (
+          automatedUnpaidProofValid ||
+          now.getTime() >= membership.pendingExpiresAt.getTime() + 20 * 60_000
+        );
 
       if (
-        !twoDistinctReviewers ||
-        !afterHold ||
         !safelyClosedProviderSession ||
-        typeof approval?.reportReference !== "string" ||
-        approval.reportReference.length < 8
+        (!automatedUnpaidProofValid && (
+          !twoDistinctReviewers ||
+          !afterHold ||
+          typeof approval?.reportReference !== "string" ||
+          approval.reportReference.length < 8
+        ))
       ) {
         return {
           cleaned: false,
@@ -215,10 +245,18 @@ export async function cleanupExpiredPendingMembership(
           status: "cancelled",
           metadata: stringifyJson({
             ...(metadata ?? {}),
-            paymobNoChargeReview: {
-              ...approval,
-              settledAt: now.toISOString(),
-            },
+            paymobNoChargeReview: automatedUnpaidProofValid
+              ? {
+                  source: "paymob_order_unpaid_automated",
+                  orderId: unpaidOrderProof!.orderId,
+                  checkedAt: unpaidOrderProof!.checkedAt,
+                  paidAmountCents: 0,
+                  settledAt: now.toISOString(),
+                }
+              : {
+                  ...approval,
+                  settledAt: now.toISOString(),
+                },
           }),
         },
       });
@@ -887,9 +925,23 @@ export async function cleanupExpiredPendingMembershipsForUser(
   });
 
   const results: PendingMembershipCleanupResult[] = [];
+  if (expired.length === 0) return results;
+
+  const { settleExpiredPendingMembership } =
+    await import("@/lib/payments/expired-membership-settlement");
 
   for (const membership of expired) {
-    results.push(await cleanupExpiredPendingMembership(membership.id, now));
+    const settled = await settleExpiredPendingMembership(membership.id);
+
+    results.push(
+      settled.kind === "paid_recovered"
+        ? {
+            cleaned: false,
+            membershipId: membership.id,
+            reason: "paid_transaction_exists",
+          }
+        : settled.cleanup,
+    );
   }
 
   return results;
