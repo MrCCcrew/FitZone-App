@@ -56,6 +56,8 @@ jobs:
             __tests__/unit/student-offer-age-preflight.test.ts \
             __tests__/unit/offer-box-student-modal-wiring.test.ts \
             __tests__/unit/offer-box-student-session-security.test.ts \
+            __tests__/unit/offer-box-paymob-checkout-readiness.test.ts \
+            __tests__/unit/offer-box-paymob-preflight-no-writes.test.ts \
             __tests__/unit/payment-session-expiry-regression.test.ts \
             __tests__/unit/offer-box-pending-resume.test.ts \
             __tests__/unit/friend-offer-committed-edge-cases.test.ts \
