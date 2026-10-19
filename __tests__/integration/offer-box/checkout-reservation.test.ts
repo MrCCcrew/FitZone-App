@@ -42,6 +42,12 @@ const mocks = vi.hoisted(() => ({
   updatePaymentTransactionStatus: vi.fn(),
 }));
 
+// Checkout readiness is tested independently. This suite mocks only the
+// provider preflight so that no Paymob credentials or network are used.
+vi.mock("@/lib/payments/offer-box-checkout-readiness", () => ({
+  isOfferBoxPaymobCheckoutReady: vi.fn().mockResolvedValue(true),
+}));
+
 vi.mock("@/lib/app-session", () => ({
   getCurrentAppUser:
     mocks.getCurrentAppUser,

@@ -1,6 +1,9 @@
 import { randomBytes } from "crypto";
 import { Prisma } from "@prisma/client";
 import { NextResponse } from "next/server";
+import {
+  evaluateFriendOfferStudentEligibility,
+} from "@/lib/friend-offer-student-eligibility";
 import { getCurrentAppUser } from "@/lib/app-session";
 import { db } from "@/lib/db";
 import { getEligibilityPolicySnapshotForSource } from "@/lib/get-eligible-classes";
@@ -59,6 +62,7 @@ function publicGroupShape(
         durationDays: number | null;
         expiresAt: Date;
         isActive: boolean;
+        requiresEgyptianNationalId: boolean;
       };
     };
     participants: Array<{
@@ -151,6 +155,8 @@ function publicGroupShape(
       sessionsCount: frozenSessionsCount,
       durationDays: frozenDurationDays,
       expiresAt: group.config.offer.expiresAt,
+      requiresEgyptianNationalId:
+        group.config.offer.requiresEgyptianNationalId,
     },
   };
 }
@@ -172,6 +178,7 @@ async function loadGroupByToken(token: string) {
               durationDays: true,
               expiresAt: true,
               isActive: true,
+              requiresEgyptianNationalId: true,
             },
           },
         },
@@ -252,6 +259,7 @@ export async function POST(req: Request) {
     offerId?: string;
     token?: string;
     matchingEnabled?: boolean;
+    egyptianNationalId?: string;
   } | null;
 
   if (!body?.action) {
@@ -291,6 +299,10 @@ export async function POST(req: Request) {
             priceBefore: true,
             features: true,
             featuresEn: true,
+            requiresBirthDate: true,
+            requiresEgyptianNationalId: true,
+            minAgeYears: true,
+            maxAgeYears: true,
           },
         },
       },
@@ -335,6 +347,27 @@ export async function POST(req: Request) {
         reused: true,
         group: publicGroupShape(loaded, currentUser.id),
       });
+    }
+
+    const studentEligibility =
+      evaluateFriendOfferStudentEligibility({
+        requiresBirthDate: config.offer.requiresBirthDate,
+        requiresEgyptianNationalId:
+          config.offer.requiresEgyptianNationalId,
+        minAgeYears: config.offer.minAgeYears,
+        maxAgeYears: config.offer.maxAgeYears,
+        egyptianNationalId: body.egyptianNationalId,
+        now,
+      });
+
+    if (!studentEligibility.eligible) {
+      return NextResponse.json(
+        {
+          error: studentEligibility.message,
+          code: studentEligibility.code,
+        },
+        { status: 400 },
+      );
     }
 
     if (
@@ -581,6 +614,10 @@ export async function POST(req: Request) {
                       id: true,
                       isActive: true,
                       expiresAt: true,
+                      requiresBirthDate: true,
+                      requiresEgyptianNationalId: true,
+                      minAgeYears: true,
+                      maxAgeYears: true,
                     },
                   },
                 },
@@ -656,6 +693,26 @@ export async function POST(req: Request) {
             return {
               kind: "ALREADY_JOINED" as const,
               token: group.inviteToken,
+            };
+          }
+
+          const studentEligibility =
+            evaluateFriendOfferStudentEligibility({
+              requiresBirthDate:
+                group.config.offer.requiresBirthDate,
+              requiresEgyptianNationalId:
+                group.config.offer.requiresEgyptianNationalId,
+              minAgeYears: group.config.offer.minAgeYears,
+              maxAgeYears: group.config.offer.maxAgeYears,
+              egyptianNationalId: body.egyptianNationalId,
+              now,
+            });
+
+          if (!studentEligibility.eligible) {
+            return {
+              kind: "STUDENT_NOT_ELIGIBLE" as const,
+              message: studentEligibility.message,
+              code: studentEligibility.code,
             };
           }
 
@@ -752,6 +809,13 @@ export async function POST(req: Request) {
         return NextResponse.json(
           { error: "تم إكمال هذه المجموعة بالفعل." },
           { status: 409 },
+        );
+      }
+
+      if (result.kind === "STUDENT_NOT_ELIGIBLE") {
+        return NextResponse.json(
+          { error: result.message, code: result.code },
+          { status: 400 },
         );
       }
 

@@ -85,6 +85,10 @@ async function assertNoFinancialOrBookingEffects() {
     select: { currentSubscribers: true, offerBoxReservedCount: true },
   }))).toMatchObject({ currentSubscribers: 0, offerBoxReservedCount: 0 });
   expect(mocks.createPaymentTransaction).not.toHaveBeenCalled();
+  // STUDENT_PRE_PAYMENT_BOUNDARY_REGRESSION
+  expect(mocks.cleanupExpiredPendingMembershipsForUser).not.toHaveBeenCalled();
+  expect(mocks.findScheduleReplaceablePendingMembershipCheckoutTx).not.toHaveBeenCalled();
+  expect(mocks.maybeRenewPendingMembershipCheckout).not.toHaveBeenCalled();
 }
 beforeAll(async () => {
   const actual = await db.$queryRaw<Array<{ name: string }>>`SELECT DATABASE() AS name`;
@@ -186,6 +190,51 @@ describe("direct /api/subscribe student Egyptian-ID security integration", () =>
     expect(result.body.code).toBe("AGE_NOT_ELIGIBLE");
     await assertNoFinancialOrBookingEffects();
   });
+  it("keeps ambiguous previous Paymob payment blocked without starting another payment", async () => {
+    mocks.maybeRenewPendingMembershipCheckout.mockResolvedValueOnce({
+      kind: "blocked",
+    });
+
+    const result = await attempt(syntheticId("2008-10-10"));
+
+    expect(result.status).toBe(409);
+    expect(result.body.error).toContain("محاولة الدفع السابقة");
+    expect(mocks.cleanupExpiredPendingMembershipsForUser).toHaveBeenCalledOnce();
+    expect(mocks.maybeRenewPendingMembershipCheckout).toHaveBeenCalledOnce();
+    expect(mocks.createPaymentTransaction).not.toHaveBeenCalled();
+
+    expect(await db.userMembership.count({ where: { userId } })).toBe(0);
+    expect(await db.paymentTransaction.count({ where: { userId } })).toBe(0);
+    expect(await db.booking.count({ where: { userId } })).toBe(0);
+  });
+
+  it("returns the existing mocked Paymob renewal without creating a duplicate", async () => {
+    const existing = {
+      kind: "resumed",
+      membershipId: "existing-pending-membership",
+      transactionId: "existing-payment-transaction",
+      checkoutUrl: "https://checkout.example.test/existing",
+      endDate: new Date("2026-11-01T00:00:00.000Z"),
+    };
+
+    mocks.maybeRenewPendingMembershipCheckout.mockResolvedValueOnce(existing);
+
+    const result = await attempt(syntheticId("2008-10-10"));
+
+    expect(result.status).toBe(200);
+    expect(result.body.success).toBe(true);
+    expect(result.body.resumedPending).toBe(true);
+    expect(result.body.transactionId).toBe(existing.transactionId);
+    expect(result.body.subscriptionId).toBe(existing.membershipId);
+    expect(result.body.checkoutUrl).toBe(existing.checkoutUrl);
+    expect(mocks.maybeRenewPendingMembershipCheckout).toHaveBeenCalledOnce();
+    expect(mocks.createPaymentTransaction).not.toHaveBeenCalled();
+
+    expect(await db.userMembership.count({ where: { userId } })).toBe(0);
+    expect(await db.paymentTransaction.count({ where: { userId } })).toBe(0);
+    expect(await db.booking.count({ where: { userId } })).toBe(0);
+  });
+
   it("accepts an eligible ID, locks 90 EGP pending checkout, without persisting the ID", async () => {
     const nationalId = syntheticId("2008-10-10"); // synthetic data ONLY
     mocks.createPaymentTransaction.mockImplementationOnce(async (input: {

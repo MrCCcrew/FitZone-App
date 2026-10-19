@@ -236,6 +236,46 @@ export async function POST(req: Request) {
 
   const resolvedPaymentMethod = sanitizeMethod(paymentMethod);
 
+  /*
+   * STUDENT_AGE_PRE_PAYMENT_GUARD
+   *
+   * Reject an ineligible student before pending-checkout cleanup,
+   * schedule replacement, Paymob renewal or any financial writes.
+   *
+   * The authoritative check inside the purchase transaction remains.
+   * Never persist the submitted national ID.
+   */
+  if (offerId) {
+    const studentAgeOffer = await db.offer.findUnique({
+      where: { id: offerId },
+      select: {
+        requiresEgyptianNationalId: true,
+        minAgeYears: true,
+        maxAgeYears: true,
+      },
+    });
+
+    if (studentAgeOffer?.requiresEgyptianNationalId) {
+      const eligibility = evaluateEgyptianNationalIdAgeEligibility({
+        egyptianNationalId,
+        minAgeYears: studentAgeOffer.minAgeYears,
+        maxAgeYears: studentAgeOffer.maxAgeYears,
+        now: new Date(),
+      });
+
+      if (!eligibility.eligible) {
+        return NextResponse.json(
+          {
+            error: eligibility.message,
+            code: eligibility.code,
+            action: "back_to_plan",
+          },
+          { status: 400 },
+        );
+      }
+    }
+  }
+
   // Remove only EXPIRED pending-payment attempts before creating a new
   // subscription attempt. This prevents stale bookings from blocking the retry.
   //

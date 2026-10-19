@@ -1,0 +1,124 @@
+name: FitZone Student Offers - Isolated CI
+
+on:
+  push:
+    branches:
+      - fix/student-offer-national-id-gate-20261019
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fitzone-student-offers-ci
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+
+    env:
+      CI: "true"
+      APP_ENV: test
+      FITZONE_TEST_BUILD: "1"
+      ALLOW_EXTERNAL_SIDE_EFFECTS: "false"
+      NEXT_TELEMETRY_DISABLED: "1"
+      DATABASE_URL: mysql://fitzone_test_user:unused@127.0.0.1:3306/fitzone_test
+      TEST_DATABASE_URL: mysql://fitzone_test_user:unused@127.0.0.1:3306/fitzone_test
+      TEST_SHADOW_DATABASE_URL: mysql://fitzone_test_user:unused@127.0.0.1:3306/fitzone_shadow
+      PAYMOB_ENV: test
+      OPENAI_API_KEY: ""
+
+    steps:
+      - name: Checkout isolated source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Generate isolated Prisma client
+        run: node node_modules/prisma/build/index.js generate --config prisma.test.config.ts
+
+      - name: Targeted unit regression
+        env:
+          NODE_ENV: test
+          NODE_OPTIONS: --require=./scripts/skip-production-env.cjs --max-old-space-size=4096
+        run: |
+          node node_modules/vitest/vitest.mjs run \
+            __tests__/unit/student-offer-age-preflight.test.ts \
+            __tests__/unit/offer-box-student-modal-wiring.test.ts \
+            __tests__/unit/offer-box-student-session-security.test.ts \
+            __tests__/unit/offer-box-paymob-checkout-readiness.test.ts \
+            __tests__/unit/offer-box-paymob-preflight-no-writes.test.ts \
+            __tests__/unit/payment-session-expiry-regression.test.ts \
+            __tests__/unit/offer-box-pending-resume.test.ts \
+            __tests__/unit/friend-offer-committed-edge-cases.test.ts \
+            __tests__/unit/friend-offer-checkout-route.test.ts \
+            --maxWorkers=1
+
+      - name: TypeScript
+        env:
+          NODE_OPTIONS: --require=./scripts/skip-production-env.cjs --max-old-space-size=5120
+        run: |
+          timeout 600s node node_modules/typescript/bin/tsc \
+            --noEmit --incremental false
+
+      - name: Next.js Webpack build
+        env:
+          NODE_OPTIONS: --require=./scripts/skip-production-env.cjs --max-old-space-size=4096
+        run: |
+          timeout 900s node node_modules/next/dist/bin/next build --webpack
+          test -s .next/BUILD_ID
+
+      - name: Build evidence
+        run: |
+          echo "COMMIT=$(git rev-parse HEAD)" > build-evidence.txt
+          echo "BUILD_ID=$(cat .next/BUILD_ID)" >> build-evidence.txt
+          echo "TYPESCRIPT=PASS" >> build-evidence.txt
+          echo "BUILD=PASS" >> build-evidence.txt
+          echo "DEPLOYMENT=NONE" >> build-evidence.txt
+
+      - name: Package isolated test preview (never production)
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s .next/BUILD_ID
+          test -s .next/routes-manifest.json
+          test -s .next/prerender-manifest.json
+          mkdir -p cloud-preview
+          tar -czf cloud-preview/fitzone-student-test-preview.tar.gz \
+            --exclude='.next/cache' \
+            .next public package.json package-lock.json next.config.ts
+          sha256sum cloud-preview/fitzone-student-test-preview.tar.gz \
+            > cloud-preview/SHA256SUMS
+          printf '%s\n' \
+            'TEST-ENVIRONMENT BUILD ONLY - NEVER DEPLOY TO PRODUCTION' \
+            'Build: Next.js Webpack; APP_ENV=test; no production credentials' \
+            "Commit: $(git rev-parse HEAD)" \
+            "Build ID: $(cat .next/BUILD_ID)" \
+            > cloud-preview/README.txt
+          test -s cloud-preview/fitzone-student-test-preview.tar.gz
+          echo "CLOUD_TEST_PREVIEW_PACKAGE=PASS"
+
+      - name: Upload preview build artifact (test only)
+        uses: actions/upload-artifact@v4
+        with:
+          name: fitzone-student-test-preview-not-production
+          path: cloud-preview/
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload build evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: fitzone-student-build-evidence
+          path: build-evidence.txt
+          retention-days: 7

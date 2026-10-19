@@ -11,6 +11,125 @@ function parseJson(value: string | null | undefined) {
   }
 }
 
+
+// OFFER_BOX_FROZEN_SESSION_GUARD_V1
+function hasFrozenOfferBoxAgeProof(raw: string): boolean {
+  try {
+    const snapshot: unknown = JSON.parse(raw);
+
+    if (
+      !snapshot ||
+      typeof snapshot !== "object" ||
+      Array.isArray(snapshot)
+    ) return false;
+
+    const age = (
+      snapshot as Record<string, unknown>
+    ).ageEligibility;
+
+    if (
+      !age ||
+      typeof age !== "object" ||
+      Array.isArray(age)
+    ) return false;
+
+    const proof = age as Record<string, unknown>;
+
+    const method = proof.verificationMethod;
+
+    // Existing paid-intent purchases predate the verificationMethod field.
+    // Their frozen DOB/age decision must stay recoverable under the original
+    // terms. An explicit null/unknown method is never treated as legacy.
+    const legacyBirthDateProof =
+      !Object.prototype.hasOwnProperty.call(proof, "verificationMethod") &&
+      (proof.requiresBirthDate === true ||
+        proof.minAgeYears !== null ||
+        proof.maxAgeYears !== null) &&
+      (snapshot as Record<string, unknown>).version === 1 &&
+      typeof (snapshot as Record<string, unknown>).purchasedAt === "string" &&
+      Number.isFinite(Date.parse((snapshot as Record<string, unknown>).purchasedAt as string));
+
+    const legacyUnrestrictedProof =
+      !Object.prototype.hasOwnProperty.call(proof, "verificationMethod") &&
+      proof.requiresBirthDate === false &&
+      proof.minAgeYears === null &&
+      proof.maxAgeYears === null &&
+      proof.ageYearsAtPurchase === null &&
+      (snapshot as Record<string, unknown>).version === 1 &&
+      typeof (snapshot as Record<string, unknown>).purchasedAt === "string" &&
+      Number.isFinite(Date.parse((snapshot as Record<string, unknown>).purchasedAt as string));
+
+    if (
+      method !== "egyptian_national_id" &&
+      method !== "account_birth_date" &&
+      !legacyBirthDateProof &&
+      !legacyUnrestrictedProof
+    ) return false;
+
+    const validatedAt = proof.validatedAt;
+
+    if (typeof validatedAt !== "string") return false;
+
+    const validatedTime = Date.parse(validatedAt);
+
+    if (
+      !Number.isFinite(validatedTime) ||
+      validatedTime > Date.now() + 60_000
+    ) return false;
+
+    const min = proof.minAgeYears;
+    const max = proof.maxAgeYears;
+
+    const validBound = (value: unknown) =>
+      value === null ||
+      (
+        typeof value === "number" &&
+        Number.isInteger(value) &&
+        value >= 0 &&
+        value <= 125
+      );
+
+    if (!validBound(min) || !validBound(max)) {
+      return false;
+    }
+
+    if (
+      typeof min === "number" &&
+      typeof max === "number" &&
+      min > max
+    ) return false;
+
+    const years = proof.ageYearsAtPurchase;
+
+    const needsAge =
+      method === "egyptian_national_id" ||
+      proof.requiresBirthDate === true ||
+      min !== null ||
+      max !== null;
+
+    if (!needsAge && years === null) return true;
+
+    if (
+      typeof years !== "number" ||
+      !Number.isInteger(years) ||
+      years < 0 ||
+      years > 125
+    ) return false;
+
+    if (typeof min === "number" && years < min) {
+      return false;
+    }
+
+    if (typeof max === "number" && years > max) {
+      return false;
+    }
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function GET(_: Request, context: { params: Promise<{ transactionId: string }> }) {
   const user = await getCurrentAppUser();
   if (!user?.id) {
@@ -86,6 +205,82 @@ export async function GET(_: Request, context: { params: Promise<{ transactionId
   }
 
   const isPaid = transaction.status === "paid";
+
+  // Offer Box checkout is recoverable only against its
+  // original purchase and frozen age authorization.
+  // Never replace or mutate a Paymob transaction here.
+  if (transaction.purpose === "offer_box" && !isPaid) {
+    const purchase = await db.offerBoxPurchase.findUnique({
+      where: {
+        paymentTransactionId: transaction.id,
+      },
+      select: {
+        id: true,
+        userId: true,
+        paymentTransactionId: true,
+        status: true,
+        holdExpiresAt: true,
+        offerSnapshot: true,
+      },
+    });
+
+    if (!purchase) {
+      return NextResponse.json(
+        {
+          error: "تعذر التحقق من الشراء المرتبط بالدفع.",
+          code: "OFFER_BOX_PAYMENT_PURCHASE_MISSING",
+        },
+        { status: 409 },
+      );
+    }
+
+    if (
+      purchase.userId !== user.id ||
+      purchase.paymentTransactionId !== transaction.id
+    ) {
+      return NextResponse.json(
+        { error: "عملية الشراء غير متاحة." },
+        { status: 404 },
+      );
+    }
+
+    if (purchase.status !== "pending_payment") {
+      return NextResponse.json(
+        {
+          error: "عملية الشراء ليست في حالة انتظار الدفع.",
+          code: "OFFER_BOX_PURCHASE_NOT_PENDING",
+        },
+        { status: 409 },
+      );
+    }
+
+    if (
+      !purchase.holdExpiresAt ||
+      !Number.isFinite(purchase.holdExpiresAt.getTime()) ||
+      purchase.holdExpiresAt.getTime() <= Date.now()
+    ) {
+      return NextResponse.json(
+        {
+          error: "انتهت صلاحية حجز هذا العرض.",
+          code: "OFFER_BOX_HOLD_EXPIRED",
+        },
+        { status: 410 },
+      );
+    }
+
+    if (!hasFrozenOfferBoxAgeProof(purchase.offerSnapshot)) {
+      return NextResponse.json(
+        {
+          error:
+            "لا يمكن استكمال الدفع قبل مراجعة أهلية هذا العرض. " +
+            "لن يتم إنشاء عملية دفع جديدة.",
+          code: "OFFER_BOX_AGE_PROOF_REQUIRED",
+        },
+        { status: 409 },
+      );
+    }
+  }
+
 
   return NextResponse.json({
     transaction: {

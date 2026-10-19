@@ -1,4 +1,9 @@
+import { Prisma } from "@prisma/client";
 import { NextResponse } from "next/server";
+import { assessFriendOfferGroupReadiness } from "@/lib/friend-offer-group-readiness";
+import {
+  evaluateFriendOfferStudentEligibility,
+} from "@/lib/friend-offer-student-eligibility";
 import { getCurrentAppUser } from "@/lib/app-session";
 import { asDbTransactionClient, db } from "@/lib/db";
 import { createPaymentTransaction } from "@/lib/payments/service";
@@ -101,6 +106,7 @@ export async function POST(req: Request) {
       token?: string;
       returnUrl?: string;
       cancelUrl?: string;
+      egyptianNationalId?: string;
     } | null;
 
     const token = typeof body?.token === "string" ? body.token.trim() : "";
@@ -123,6 +129,10 @@ export async function POST(req: Request) {
                 title: true,
                 isActive: true,
                 expiresAt: true,
+                requiresBirthDate: true,
+                requiresEgyptianNationalId: true,
+                minAgeYears: true,
+                maxAgeYears: true,
               },
             },
           },
@@ -135,6 +145,7 @@ export async function POST(req: Request) {
             shareAmountMinor: true,
             paymentTransactionId: true,
             attributionSnapshot: true,
+            updatedAt: true,
           },
         },
       },
@@ -144,6 +155,23 @@ export async function POST(req: Request) {
       return NextResponse.json(
         { error: "مجموعة عرض الصحاب غير موجودة." },
         { status: 404 },
+      );
+    }
+
+    const readiness = assessFriendOfferGroupReadiness(group);
+
+    if (!readiness.ready) {
+      return NextResponse.json(
+        {
+          error: readiness.missingMembers > 0
+            ? `المجموعة لم تكتمل بعد. مطلوب انضمام ${readiness.missingMembers} من الصديقات قبل بدء الدفع.`
+            : "المجموعة غير جاهزة للدفع. يرجى مراجعة حالتها.",
+          code: "FRIEND_OFFER_GROUP_NOT_COMPLETE",
+          requiredMembers: readiness.requiredMembers,
+          joinedMembers: readiness.joinedMembers,
+          missingMembers: readiness.missingMembers,
+        },
+        { status: 409 },
       );
     }
 
@@ -182,6 +210,182 @@ export async function POST(req: Request) {
       );
     }
 
+    if (
+      participant.status !== "paid" &&
+      participant.status !== "activated"
+    ) {
+      const studentEligibility =
+        evaluateFriendOfferStudentEligibility({
+          requiresBirthDate:
+            group.config.offer.requiresBirthDate,
+          requiresEgyptianNationalId:
+            group.config.offer.requiresEgyptianNationalId,
+          minAgeYears: group.config.offer.minAgeYears,
+          maxAgeYears: group.config.offer.maxAgeYears,
+          egyptianNationalId: body?.egyptianNationalId,
+          now,
+        });
+
+      if (!studentEligibility.eligible) {
+        return NextResponse.json(
+          {
+            error: studentEligibility.message,
+            code: studentEligibility.code,
+          },
+          { status: 400 },
+        );
+      }
+    }
+
+    /*
+     * Recover a saved checkout after an interrupted response/link.
+     * Never create a second Paymob intention while a claim is unresolved.
+     */
+    if (
+      participant.status === "checkout_claiming" &&
+      participant.paymentTransactionId === null
+    ) {
+      const claimTime = participant.updatedAt?.getTime();
+
+      if (
+        !Number.isFinite(claimTime) ||
+        claimTime > now.getTime() ||
+        now.getTime() - claimTime < 60_000
+      ) {
+        return NextResponse.json(
+          {
+            error: "محاولة الدفع الأولى لا تزال قيد التجهيز.",
+            code: "FRIEND_CHECKOUT_PREPARATION_IN_PROGRESS",
+          },
+          { status: 409 },
+        );
+      }
+
+      const candidates = await db.paymentTransaction.findMany({
+        where: {
+          userId: currentUser.id,
+          offerId: group.config.offer.id,
+          membershipId: null,
+          purpose: "membership",
+          provider: "paymob",
+          createdAt: {
+            gte: new Date(claimTime - 10_000),
+          },
+          metadata: {
+            contains: `"friendParticipantId":"${participant.id}"`,
+          },
+        },
+        select: {
+          id: true,
+          userId: true,
+          membershipId: true,
+          offerId: true,
+          status: true,
+          amount: true,
+          currency: true,
+          metadata: true,
+          checkoutUrl: true,
+          expiresAt: true,
+        },
+        orderBy: { createdAt: "desc" },
+        take: 25,
+      });
+
+      const matching = candidates.filter((payment) => {
+        let metadata: Record<string, unknown> | null = null;
+        try {
+          const value = JSON.parse(payment.metadata ?? "");
+          if (value && typeof value === "object" &&
+              !Array.isArray(value)) {
+            metadata = value as Record<string, unknown>;
+          }
+        } catch {
+          return false;
+        }
+
+        return (
+          payment.userId === currentUser.id &&
+          payment.offerId === group.config.offer.id &&
+          payment.membershipId === null &&
+          payment.currency === "EGP" &&
+          Number.isFinite(payment.amount) &&
+          Math.abs(
+            payment.amount * 100 -
+            participant.shareAmountMinor
+          ) < 0.000001 &&
+          metadata?.source === "friend-offer" &&
+          metadata.friendGroupId === group.id &&
+          metadata.friendParticipantId === participant.id &&
+          metadata.friendShareAmountMinor ===
+            participant.shareAmountMinor
+        );
+      });
+
+      if (matching.length !== 1) {
+        return NextResponse.json(
+          {
+            error:
+              "تعذر تحديد جلسة الدفع الأصلية بشكل قاطع. يلزم مراجعتها قبل إنشاء دفع جديد.",
+            code: "FRIEND_CHECKOUT_REMOTE_RECONCILIATION_REQUIRED",
+          },
+          { status: 409 },
+        );
+      }
+
+      const payment = matching[0];
+
+      if (
+        !["pending", "requires_action"].includes(payment.status) ||
+        !payment.checkoutUrl ||
+        !payment.expiresAt ||
+        !Number.isFinite(payment.expiresAt.getTime()) ||
+        payment.expiresAt.getTime() <= now.getTime()
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "تم العثور على معاملة دفع أصلية تحتاج مراجعة حالتها قبل المتابعة.",
+            code: "FRIEND_CHECKOUT_PAYMENT_STATE_REVIEW_REQUIRED",
+          },
+          { status: 409 },
+        );
+      }
+
+      const linked = await db.friendOfferParticipant.updateMany({
+        where: {
+          id: participant.id,
+          groupId: group.id,
+          userId: currentUser.id,
+          paymentTransactionId: null,
+          status: "checkout_claiming",
+        },
+        data: {
+          paymentTransactionId: payment.id,
+          status: "checkout_started",
+        },
+      });
+
+      if (linked.count !== 1) {
+        return NextResponse.json(
+          {
+            error: "تغيرت حالة عملية الدفع. يرجى إعادة تحميل العرض.",
+            code: "FRIEND_CHECKOUT_RECOVERY_RACE",
+          },
+          { status: 409 },
+        );
+      }
+
+      return NextResponse.json({
+        success: true,
+        reused: true,
+        recovered: true,
+        paymentTransactionId: payment.id,
+        status: payment.status,
+        checkoutUrl: payment.checkoutUrl,
+        amount: payment.amount,
+      });
+    }
+
     if (participant.paymentTransactionId) {
       const existingPayment = await db.paymentTransaction.findUnique({
         where: { id: participant.paymentTransactionId },
@@ -193,12 +397,35 @@ export async function POST(req: Request) {
           existingPayment.status === "requires_action" ||
           existingPayment.status === "paid"
         ) {
+          if (existingPayment.status !== "paid") {
+            const expiresAt = existingPayment.expiresAt;
+
+            if (
+              !existingPayment.checkoutUrl ||
+              !(expiresAt instanceof Date) ||
+              !Number.isFinite(expiresAt.getTime()) ||
+              expiresAt.getTime() <= now.getTime()
+            ) {
+              return NextResponse.json(
+                {
+                  error:
+                    "جلسة الدفع السابقة غير صالحة للاستخدام. يلزم مراجعة حالة المعاملة قبل إعادة المحاولة.",
+                  code: "FRIEND_CHECKOUT_LINK_RECONCILIATION_REQUIRED",
+                },
+                { status: 409 },
+              );
+            }
+          }
+
           return NextResponse.json({
             success: true,
             reused: true,
             paymentTransactionId: existingPayment.id,
             status: existingPayment.status,
-            checkoutUrl: existingPayment.checkoutUrl,
+            checkoutUrl:
+              existingPayment.status === "paid"
+                ? null
+                : existingPayment.checkoutUrl,
             amount: existingPayment.amount,
           });
         }
@@ -420,7 +647,91 @@ export async function POST(req: Request) {
       );
     }
 
-    const transaction = await createPaymentTransaction({
+    /*
+     * Claim this participant BEFORE creating a Paymob intention.
+     * The database CAS ensures that at most one concurrent request
+     * can reach the external payment provider.
+     */
+    const claim = await db.$transaction(async (tx) => {
+      // Group membership must be rechecked under the same database
+      // lock used by member-removal and cancellation mutations.
+      const locked = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM FriendOfferGroup
+        WHERE id = ${group.id}
+        FOR UPDATE
+      `;
+
+      if (locked.length !== 1) {
+        return { count: 0 };
+      }
+
+      const currentGroup = await tx.friendOfferGroup.findUnique({
+        where: { id: group.id },
+        select: {
+          status: true,
+          priceSnapshotMinor: true,
+          config: { select: { requiredMembers: true } },
+          participants: {
+            select: {
+              userId: true,
+              status: true,
+              shareAmountMinor: true,
+            },
+          },
+        },
+      });
+
+      if (
+        !currentGroup ||
+        !assessFriendOfferGroupReadiness(currentGroup).ready
+      ) {
+        return { count: 0 };
+      }
+
+      const reserved = await tx.friendOfferParticipant.updateMany({
+        where: {
+          id: participant.id,
+          groupId: group.id,
+          userId: currentUser.id,
+          paymentTransactionId: null,
+          status: { in: ["joined", "checkout_started"] },
+        },
+        data: { status: "checkout_claiming" },
+      });
+
+      if (reserved.count === 1) {
+        await lockMarketingConversionForFriendOfferTx(
+          asDbTransactionClient(tx),
+          {
+            customerId: currentUser.id,
+            friendOfferParticipantId: participant.id,
+            commissionBase: amount,
+          },
+        );
+      }
+
+      return reserved;
+    }, {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    });
+
+    if (claim.count !== 1) {
+      return NextResponse.json(
+        {
+          error:
+            "هناك محاولة دفع قيد التجهيز لهذه الحصة. يرجى عدم إنشاء محاولة أخرى.",
+          code: "FRIEND_OFFER_CHECKOUT_ALREADY_CLAIMED",
+        },
+        { status: 409 },
+      );
+    }
+
+    let transaction: Awaited<
+      ReturnType<typeof createPaymentTransaction>
+    >;
+
+    try {
+      transaction = await createPaymentTransaction({
       userId: currentUser.id,
       provider: "paymob",
       purpose: "membership",
@@ -428,6 +739,7 @@ export async function POST(req: Request) {
       amount,
       paymentMethod: "paymob",
       membershipId: null,
+      friendOfferShare: true,
       offerId: group.config.offer.id,
       returnUrl: body?.returnUrl ?? null,
       cancelUrl: body?.cancelUrl ?? null,
@@ -446,103 +758,63 @@ export async function POST(req: Request) {
         phone: null,
       },
     });
+    } catch (error) {
+      /*
+       * Do NOT release the claim automatically.
+       * The provider may have created an intention before a network
+       * or database failure became visible to this request.
+       * Reconciliation must establish finality before a new attempt.
+       */
+      console.error("[FRIEND_CHECKOUT_PROVIDER_PREPARATION]", error);
+      return NextResponse.json(
+        {
+          error:
+            "تعذر تأكيد تجهيز الدفع. يرجى التواصل مع الإدارة قبل إعادة المحاولة.",
+          code: "FRIEND_OFFER_CHECKOUT_RECONCILIATION_REQUIRED",
+        },
+        { status: 503 },
+      );
+    }
 
+    /*
+     * Link the unique payment to the previously claimed participant.
+     * Never silently cancel an already-created Paymob intention.
+     */
     let linked;
 
     try {
-      linked = await db.$transaction(async (tx) => {
-        const participantClaim =
-          await tx.friendOfferParticipant.updateMany({
-            where: {
-              id: participant.id,
-              userId: currentUser.id,
-              paymentTransactionId: null,
-              status: {
-                in: ["joined", "checkout_started"],
-              },
-            },
-            data: {
-              paymentTransactionId: transaction.id,
-              status: "checkout_started",
-            },
-          });
-
-        if (participantClaim.count === 1) {
-          await lockMarketingConversionForFriendOfferTx(
-            asDbTransactionClient(tx),
-            {
-              customerId: currentUser.id,
-              friendOfferParticipantId: participant.id,
-              commissionBase: amount,
-            },
-          );
-        }
-
-        return participantClaim;
-      });
-    } catch (error) {
-      /*
-       * Payment creation occurs before the participant DB claim.
-       * If the participant+marketing atomic phase fails, do not
-       * leave a fresh pending payment orphaned.
-       */
-      await db.paymentTransaction.updateMany({
+      linked = await db.friendOfferParticipant.updateMany({
         where: {
-          id: transaction.id,
-          status: {
-            in: ["pending", "requires_action"],
-          },
+          id: participant.id,
+          groupId: group.id,
+          userId: currentUser.id,
+          paymentTransactionId: null,
+          status: "checkout_claiming",
         },
         data: {
-          status: "cancelled",
+          paymentTransactionId: transaction.id,
+          status: "checkout_started",
         },
       });
-
-      throw error;
+    } catch (error) {
+      console.error("[FRIEND_CHECKOUT_LINK_RECONCILIATION]", error);
+      return NextResponse.json(
+        {
+          error:
+            "عملية الدفع تحتاج مراجعة قبل إعادة المحاولة.",
+          code: "FRIEND_OFFER_PAYMENT_LINK_RECONCILIATION_REQUIRED",
+        },
+        { status: 503 },
+      );
     }
 
     if (linked.count !== 1) {
-      const winner = await db.friendOfferParticipant.findUnique({
-        where: { id: participant.id },
-        select: {
-          paymentTransactionId: true,
-        },
-      });
-
-      if (
-        winner?.paymentTransactionId &&
-        winner.paymentTransactionId !== transaction.id
-      ) {
-        await db.paymentTransaction.updateMany({
-          where: {
-            id: transaction.id,
-            status: {
-              in: ["pending", "requires_action"],
-            },
-          },
-          data: {
-            status: "cancelled",
-          },
-        });
-
-        const existingPayment = await db.paymentTransaction.findUnique({
-          where: { id: winner.paymentTransactionId },
-        });
-
-        if (existingPayment) {
-          return NextResponse.json({
-            success: true,
-            reused: true,
-            paymentTransactionId: existingPayment.id,
-            status: existingPayment.status,
-            checkoutUrl: existingPayment.checkoutUrl,
-            amount: existingPayment.amount,
-          });
-        }
-      }
-
       return NextResponse.json(
-        { error: "تعذر ربط عملية الدفع بالمشاركة." },
+        {
+          error:
+            "تغيرت حالة ربط عملية الدفع. يرجى مراجعة الإدارة قبل إعادة المحاولة.",
+          code: "FRIEND_OFFER_PAYMENT_LINK_CONFLICT",
+        },
         { status: 409 },
       );
     }

@@ -295,3 +295,210 @@ describe("Friend Offer committed edge cases", () => {
     expect(mocks.txGroupUpdateMany).not.toHaveBeenCalled();
   });
 });
+
+
+// FRIEND_STUDENT_COMMITTED_JOIN_REGRESSION_V1
+
+function committedJoinFixture(student: boolean) {
+  const expired = new Date(Date.now() - 60_000);
+
+  return {
+    id: "group-1",
+    inviteToken: "COMMITTEDTOKEN",
+    status: "waiting",
+    expiresAt: expired,
+    priceSnapshotMinor: 56000,
+    config: {
+      id: "config-1",
+      requiredMembers: 2,
+      isActive: false,
+      offer: {
+        id: "offer-1",
+        isActive: false,
+        expiresAt: expired,
+        requiresBirthDate: true,
+        requiresEgyptianNationalId: student,
+        minAgeYears: 13,
+        maxAgeYears: 25,
+      },
+    },
+    participants: [
+      {
+        id: "participant-creator",
+        userId: "creator-1",
+        status: "paid",
+      },
+    ],
+  };
+}
+
+function syntheticStudentId(year: number): string {
+  return (
+    (year < 2000 ? "2" : "3") +
+    String(year).slice(-2) +
+    "0101" +
+    "01" +
+    "12345"
+  );
+}
+
+async function joinCommittedGroup(
+  egyptianNationalId?: string,
+) {
+  const response = await POST(
+    new Request("http://localhost/api/friend-offers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "join",
+        token: "COMMITTEDTOKEN",
+        ...(egyptianNationalId
+          ? { egyptianNationalId }
+          : {}),
+      }),
+    }),
+  );
+
+  return {
+    status: response.status,
+    body: await response.json(),
+  };
+}
+
+describe("Friend student committed join age boundary", () => {
+  beforeEach(() => {
+    mocks.getCurrentAppUser.mockResolvedValue({
+      id: "partner-2",
+    });
+  });
+
+  it.each([
+    [
+      "missing national ID",
+      undefined,
+      "EGYPTIAN_NATIONAL_ID_REQUIRED",
+    ],
+    [
+      "underage national ID",
+      syntheticStudentId(2020),
+      "AGE_NOT_ELIGIBLE",
+    ],
+  ])(
+    "rejects %s before modifying a paid group",
+    async (_label, nationalId, expectedCode) => {
+      mocks.txGroupFindUnique.mockResolvedValue(
+        committedJoinFixture(true),
+      );
+
+      const result = await joinCommittedGroup(nationalId);
+
+      expect(result.status).toBe(400);
+      expect(result.body.code).toBe(expectedCode);
+
+      expect(mocks.txParticipantCreate)
+        .not.toHaveBeenCalled();
+
+      expect(mocks.txParticipantUpdate)
+        .not.toHaveBeenCalled();
+
+      expect(mocks.txGroupUpdate)
+        .not.toHaveBeenCalled();
+
+      expect(mocks.txGroupUpdateMany)
+        .not.toHaveBeenCalled();
+    },
+  );
+
+  it("allows an eligible student to join a financially committed group", async () => {
+    mocks.txGroupFindUnique.mockResolvedValue(
+      committedJoinFixture(true),
+    );
+
+    const group = loadedGroup([
+      {
+        userId: "creator-1",
+        role: "creator",
+        status: "paid",
+        shareAmountMinor: 28000,
+      },
+      {
+        userId: "partner-2",
+        role: "invited",
+        status: "joined",
+        shareAmountMinor: 28000,
+      },
+    ]);
+
+    mocks.groupFindUnique.mockResolvedValue({
+      ...group,
+      config: {
+        ...group.config,
+        offer: {
+          ...group.config.offer,
+          requiresBirthDate: true,
+          requiresEgyptianNationalId: true,
+          minAgeYears: 13,
+          maxAgeYears: 25,
+        },
+      },
+    });
+
+    const result = await joinCommittedGroup(
+      syntheticStudentId(2008),
+    );
+
+    expect(result.status).toBe(200);
+    expect(result.body.success).toBe(true);
+
+    expect(mocks.txParticipantCreate)
+      .toHaveBeenCalledOnce();
+
+    expect(mocks.txParticipantCreate)
+      .toHaveBeenCalledWith({
+        data: {
+          groupId: "group-1",
+          userId: "partner-2",
+          role: "invited",
+          status: "joined",
+          shareAmountMinor: 28000,
+        },
+      });
+
+    expect(mocks.txGroupUpdate)
+      .toHaveBeenCalledWith({
+        where: { id: "group-1" },
+        data: { status: "ready" },
+      });
+  });
+
+  it("does not require national ID for a normal friend offer", async () => {
+    mocks.txGroupFindUnique.mockResolvedValue(
+      committedJoinFixture(false),
+    );
+
+    mocks.groupFindUnique.mockResolvedValue(
+      loadedGroup([
+        {
+          userId: "creator-1",
+          role: "creator",
+          status: "paid",
+          shareAmountMinor: 28000,
+        },
+        {
+          userId: "partner-2",
+          role: "invited",
+          status: "joined",
+          shareAmountMinor: 28000,
+        },
+      ]),
+    );
+
+    const result = await joinCommittedGroup();
+
+    expect(result.status).toBe(200);
+    expect(result.body.success).toBe(true);
+
+    expect(mocks.txParticipantCreate)
+      .toHaveBeenCalledOnce();
+  });
+});

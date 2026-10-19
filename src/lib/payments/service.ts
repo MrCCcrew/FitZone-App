@@ -66,6 +66,8 @@ type CreatePaymentTransactionInput = {
   orderId?: string | null;
   membershipId?: string | null;
   offerId?: string | null;
+  /** Internal server-only friend-offer payment flow. */
+  friendOfferShare?: true;
   returnUrl?: string | null;
   cancelUrl?: string | null;
   description?: string | null;
@@ -1120,32 +1122,98 @@ export async function createPaymentTransaction(
    */
   let membershipHoldExpiresAt: Date | null = null;
 
+  if (input.friendOfferShare === true &&
+      (provider.key !== "paymob" ||
+       input.purpose !== "membership" ||
+       input.membershipId != null)) {
+    throw new Error("FRIEND_OFFER_PAYMENT_CONTRACT_INVALID");
+  }
+
   if (provider.key === "paymob" && input.purpose === "membership") {
-    if (!input.membershipId) {
-      throw new Error("MEMBERSHIP_CHECKOUT_MISSING_MEMBERSHIP");
+    if (input.friendOfferShare === true) {
+      const metadata = input.metadata;
+      const participantId = metadata?.friendParticipantId;
+      const groupId = metadata?.friendGroupId;
+
+      if (
+        metadata?.source !== "friend-offer" ||
+        typeof participantId !== "string" ||
+        !participantId ||
+        typeof groupId !== "string" ||
+        !groupId ||
+        !input.offerId
+      ) {
+        throw new Error("FRIEND_OFFER_PAYMENT_PROOF_REQUIRED");
+      }
+
+      const [participant, group] = await Promise.all([
+        db.friendOfferParticipant.findUnique({
+          where: { id: participantId },
+          select: {
+            userId: true,
+            groupId: true,
+            shareAmountMinor: true,
+            status: true,
+            paymentTransactionId: true,
+          },
+        }),
+        db.friendOfferGroup.findUnique({
+          where: { id: groupId },
+          select: {
+            config: {
+              select: { offerId: true },
+            },
+          },
+        }),
+      ]);
+
+      if (
+        !participant ||
+        !group ||
+        participant.userId !== input.userId ||
+        participant.groupId !== groupId ||
+        group.config.offerId !== input.offerId ||
+        participant.status !== "checkout_claiming" ||
+        participant.paymentTransactionId !== null ||
+        !Number.isSafeInteger(Math.round(amount * 100)) ||
+        Math.abs(amount * 100 - participant.shareAmountMinor) > 0.000001
+      ) {
+        throw new Error("FRIEND_OFFER_PAYMENT_PROOF_INVALID");
+      }
+
+      /*
+       * Friend-offer shares do not have an individual pending
+       * UserMembership. Keep a bounded checkout session,
+       * independent of the ordinary membership's 60-minute hold.
+       */
+      membershipHoldExpiresAt = new Date(Date.now() + 30 * 60 * 1000);
+    } else {
+      if (!input.membershipId) {
+        throw new Error("MEMBERSHIP_CHECKOUT_MISSING_MEMBERSHIP");
+      }
+
+      const heldMembership = await db.userMembership.findUnique({
+        where: { id: input.membershipId },
+        select: {
+          userId: true,
+          status: true,
+          pendingExpiresAt: true,
+        },
+      });
+
+      if (
+        !heldMembership ||
+        heldMembership.userId !== input.userId ||
+        heldMembership.status !== "pending_payment" ||
+        !heldMembership.pendingExpiresAt ||
+        !Number.isFinite(heldMembership.pendingExpiresAt.getTime()) ||
+        heldMembership.pendingExpiresAt.getTime() <= Date.now()
+      ) {
+        throw new Error("MEMBERSHIP_CHECKOUT_ORIGINAL_HOLD_INVALID");
+      }
+
+      membershipHoldExpiresAt = heldMembership.pendingExpiresAt;
     }
-
-    const heldMembership = await db.userMembership.findUnique({
-      where: { id: input.membershipId },
-      select: {
-        userId: true,
-        status: true,
-        pendingExpiresAt: true,
-      },
-    });
-
-    if (
-      !heldMembership ||
-      heldMembership.userId !== input.userId ||
-      heldMembership.status !== "pending_payment" ||
-      !heldMembership.pendingExpiresAt ||
-      !Number.isFinite(heldMembership.pendingExpiresAt.getTime()) ||
-      heldMembership.pendingExpiresAt.getTime() <= Date.now()
-    ) {
-      throw new Error("MEMBERSHIP_CHECKOUT_ORIGINAL_HOLD_INVALID");
-    }
-
-    membershipHoldExpiresAt = heldMembership.pendingExpiresAt;
   }
   /* WALLET_TOPUP_BONUS_CHECKOUT_SNAPSHOT */
   let paymentMetadata: Record<string, unknown> = {
