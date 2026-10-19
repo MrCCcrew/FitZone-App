@@ -204,6 +204,25 @@ describe(
       expect(mocks.paymentFind).toHaveBeenCalledTimes(1);
     });
 
+    it("preserves legacy frozen age-bound purchases when birth-date flag was false", async () => {
+      const frozen = JSON.parse(studentSnapshot({
+        requiresBirthDate: false,
+        minAgeYears: 13,
+        maxAgeYears: 25,
+        ageYearsAtPurchase: 18,
+      }));
+      frozen.purchasedAt = new Date(Date.now() - 120000).toISOString();
+      delete frozen.ageEligibility.verificationMethod;
+
+      mocks.purchaseFind.mockResolvedValue(
+        purchase({ offerSnapshot: JSON.stringify(frozen) }),
+      );
+
+      const response = await request();
+      expect(response.status).toBe(200);
+      expect((await response.json()).session.checkoutUrl).toBe(CHECKOUT);
+    });
+
     it("resumes a legacy unrestricted offer without demanding an ID", async () => {
       const frozen = JSON.parse(studentSnapshot({
         requiresBirthDate: false,
