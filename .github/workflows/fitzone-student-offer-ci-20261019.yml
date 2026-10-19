@@ -84,6 +84,36 @@ jobs:
           echo "BUILD=PASS" >> build-evidence.txt
           echo "DEPLOYMENT=NONE" >> build-evidence.txt
 
+      - name: Package isolated test preview (never production)
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s .next/BUILD_ID
+          test -s .next/routes-manifest.json
+          test -s .next/prerender-manifest.json
+          mkdir -p cloud-preview
+          tar -czf cloud-preview/fitzone-student-test-preview.tar.gz \
+            --exclude='.next/cache' \
+            .next public package.json package-lock.json next.config.ts
+          sha256sum cloud-preview/fitzone-student-test-preview.tar.gz \
+            > cloud-preview/SHA256SUMS
+          printf '%s\n' \
+            'TEST-ENVIRONMENT BUILD ONLY - NEVER DEPLOY TO PRODUCTION' \
+            'Build: Next.js Webpack; APP_ENV=test; no production credentials' \
+            "Commit: $(git rev-parse HEAD)" \
+            "Build ID: $(cat .next/BUILD_ID)" \
+            > cloud-preview/README.txt
+          test -s cloud-preview/fitzone-student-test-preview.tar.gz
+          echo "CLOUD_TEST_PREVIEW_PACKAGE=PASS"
+
+      - name: Upload preview build artifact (test only)
+        uses: actions/upload-artifact@v4
+        with:
+          name: fitzone-student-test-preview-not-production
+          path: cloud-preview/
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Upload build evidence
         uses: actions/upload-artifact@v4
         with:
