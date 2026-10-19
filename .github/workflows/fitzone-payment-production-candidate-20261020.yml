@@ -1,0 +1,150 @@
+name: FitZone Payment Lifecycle - Production Candidate Build ONLY
+
+on:
+  push:
+    branches:
+      - fix/payment-lifecycle-systemic-20261019
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fitzone-payment-production-candidate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-only:
+    name: Validate and package independent production candidate
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    env:
+      CI: "true"
+      NODE_ENV: production
+      NEXT_TELEMETRY_DISABLED: "1"
+      # Build-time DB is intentionally unreachable (localhost port 1, invalid account).
+      # The DB name satisfies the existing production safety name check ONLY.
+      # Never use live credentials or an active port.
+      DATABASE_URL: mysql://build_blocked:blocked@127.0.0.1:1/fitzone_prod
+      ALLOW_EXTERNAL_SIDE_EFFECTS: "false"
+      # Preserve effective AI Coach feature flags confirmed from the current
+      # running Production process. These are public client-build booleans.
+      AI_COACH_VOICE_ENABLED: "true"
+      AI_COACH_REALTIME_VOICE_ENABLED: "true"
+      AI_COACH_STT_ENABLED: "true"
+      AI_COACH_TTS_ENABLED: "false"
+      AI_COACH_VOICE_DEBUG_ENABLED: "false"
+      HYDRATION_AUTH_DEBUG: "false"
+      OPENAI_API_KEY: ""
+      # Intentionally no APP_ENV=test, FITZONE_TEST_BUILD, Paymob keys,
+      # authentication secrets, production DB, or deployment credentials.
+
+    steps:
+      - name: Checkout exact candidate source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Configure Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Assert build is disconnected and has no private env files
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${NODE_ENV}" = production
+          test "${DATABASE_URL}" = "mysql://build_blocked:blocked@127.0.0.1:1/fitzone_prod"
+          test -z "${APP_ENV:-}"
+          test -z "${FITZONE_TEST_BUILD:-}"
+          test -z "${PAYMOB_SECRET_KEY:-}"
+          test -z "${PAYMOB_API_KEY:-}"
+          test -z "${PAYMOB_PUBLIC_KEY:-}"
+          test -z "${AUTH_SECRET:-}"
+          test -z "${NEXTAUTH_SECRET:-}"
+          for f in .env .env.local .env.production .env.production.local; do
+            test ! -e "$f"
+          done
+          echo "LIVE_CREDENTIALS=NONE"
+          echo "PRODUCTION_DATABASE=DISCONNECTED"
+          echo "DEPLOYMENT=NONE"
+
+      - name: Install locked build and development toolchain
+        # NODE_ENV=production otherwise omits vitest, tsc types, etc.
+        # Development tooling is needed to BUILD; it is never shipped.
+        run: |
+          npm ci --include=dev --no-audit --no-fund
+          test -x node_modules/.bin/vitest
+          test -x node_modules/.bin/tsc
+          echo "LOCKED_BUILD_TOOLCHAIN=PASS"
+
+      - name: Generate Prisma client without any database connection
+        run: node node_modules/prisma/build/index.js generate --config prisma.config.ts
+
+      - name: Validate Prisma client against source schema (offline)
+        run: |
+          node - <<'JS'
+          const fs = require("fs");
+          const { Prisma } = require("@prisma/client");
+          const schema = fs.readFileSync("prisma/schema.prisma", "utf8");
+          const model = Prisma.dmmf.datamodel.models.find(m => m.name === "UserMembership");
+          if (!model || !schema.includes("model UserMembership")) throw Error("PRISMA_CLIENT_SCHEMA_MISMATCH");
+          console.log("PRISMA_CLIENT_GENERATION=PASS");
+          JS
+
+      - name: TypeScript validation
+        env:
+          NODE_OPTIONS: --max-old-space-size=5120
+        run: |
+          timeout 600s node node_modules/typescript/bin/tsc --noEmit --incremental false
+          echo "TYPESCRIPT=PASS"
+
+      - name: Production-mode Next.js Webpack build (no server deployment)
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+        run: |
+          timeout 900s node node_modules/next/dist/bin/next build --webpack
+          test -s .next/BUILD_ID
+          test -s .next/routes-manifest.json
+          test -s .next/prerender-manifest.json
+          echo "PRODUCTION_MODE_BUILD=PASS"
+
+      - name: Package immutable candidate with source and build provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          H="$(git rev-parse HEAD)"
+          test "$H" = "${GITHUB_SHA}"
+          mkdir -p cloud-production-candidate
+          tar -czf cloud-production-candidate/fitzone-production-candidate.tar.gz \
+            --exclude='.next/cache' \
+            .next public package.json package-lock.json next.config.ts prisma/schema.prisma
+          cd cloud-production-candidate
+          sha256sum fitzone-production-candidate.tar.gz > SHA256SUMS
+          {
+            echo 'PRODUCTION-MODE BUILD CANDIDATE ONLY - NOT DEPLOYED'
+            echo "COMMIT=$H"
+            echo "BUILD_ID=$(cat ../.next/BUILD_ID)"
+            echo 'NODE_ENV=production'
+            echo 'APP_ENV=unset'
+            echo 'DATABASE_URL=unreachable_build_stub'
+            echo 'PAYMOB_CREDENTIALS=none'
+            echo 'AI_COACH_VOICE_ENABLED=true'
+            echo 'AI_COACH_REALTIME_VOICE_ENABLED=true'
+            echo 'AI_COACH_STT_ENABLED=true'
+            echo 'AI_COACH_TTS_ENABLED=false'
+            echo 'AI_COACH_VOICE_DEBUG_ENABLED=false'
+            echo 'HYDRATION_AUTH_DEBUG=false'
+            echo 'DEPLOYMENT=NONE'
+          } > MANIFEST.txt
+          echo "CANDIDATE_PACKAGE=PASS"
+
+      - name: Upload candidate artifact (not deployed)
+        uses: actions/upload-artifact@v4
+        with:
+          name: fitzone-payment-production-candidate-NOT-DEPLOYED
+          path: cloud-production-candidate/
+          retention-days: 7
+          if-no-files-found: error
