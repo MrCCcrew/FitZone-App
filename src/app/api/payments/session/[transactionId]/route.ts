@@ -37,9 +37,31 @@ function hasFrozenOfferBoxAgeProof(raw: string): boolean {
 
     const method = proof.verificationMethod;
 
+    // Existing paid-intent purchases predate the verificationMethod field.
+    // Their frozen DOB/age decision must stay recoverable under the original
+    // terms. An explicit null/unknown method is never treated as legacy.
+    const legacyBirthDateProof =
+      !Object.prototype.hasOwnProperty.call(proof, "verificationMethod") &&
+      proof.requiresBirthDate === true &&
+      (snapshot as Record<string, unknown>).version === 1 &&
+      typeof (snapshot as Record<string, unknown>).purchasedAt === "string" &&
+      Number.isFinite(Date.parse((snapshot as Record<string, unknown>).purchasedAt as string));
+
+    const legacyUnrestrictedProof =
+      !Object.prototype.hasOwnProperty.call(proof, "verificationMethod") &&
+      proof.requiresBirthDate === false &&
+      proof.minAgeYears === null &&
+      proof.maxAgeYears === null &&
+      proof.ageYearsAtPurchase === null &&
+      (snapshot as Record<string, unknown>).version === 1 &&
+      typeof (snapshot as Record<string, unknown>).purchasedAt === "string" &&
+      Number.isFinite(Date.parse((snapshot as Record<string, unknown>).purchasedAt as string));
+
     if (
       method !== "egyptian_national_id" &&
-      method !== "account_birth_date"
+      method !== "account_birth_date" &&
+      !legacyBirthDateProof &&
+      !legacyUnrestrictedProof
     ) return false;
 
     const validatedAt = proof.validatedAt;
