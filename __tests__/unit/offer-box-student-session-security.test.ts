@@ -187,6 +187,65 @@ describe(
       },
     );
 
+    it("resumes a legacy verified birth-date checkout without changing payment", async () => {
+      const frozen = JSON.parse(studentSnapshot());
+      frozen.purchasedAt = new Date(Date.now() - 120000).toISOString();
+      delete frozen.ageEligibility.verificationMethod;
+
+      mocks.purchaseFind.mockResolvedValue(
+        purchase({ offerSnapshot: JSON.stringify(frozen) }),
+      );
+
+      const response = await request();
+      const body = await response.json();
+      expect(response.status).toBe(200);
+      expect(body.transaction.id).toBe("payment-1");
+      expect(body.session.checkoutUrl).toBe(CHECKOUT);
+      expect(mocks.paymentFind).toHaveBeenCalledTimes(1);
+    });
+
+    it("resumes a legacy unrestricted offer without demanding an ID", async () => {
+      const frozen = JSON.parse(studentSnapshot({
+        requiresBirthDate: false,
+        minAgeYears: null,
+        maxAgeYears: null,
+        ageYearsAtPurchase: null,
+      }));
+      frozen.purchasedAt = new Date(Date.now() - 120000).toISOString();
+      delete frozen.ageEligibility.verificationMethod;
+
+      mocks.purchaseFind.mockResolvedValue(
+        purchase({ offerSnapshot: JSON.stringify(frozen) }),
+      );
+
+      const response = await request();
+      expect(response.status).toBe(200);
+      expect((await response.json()).session.checkoutUrl).toBe(CHECKOUT);
+    });
+
+    it("rejects legacy age evidence that fails frozen age boundaries", async () => {
+      const frozen = JSON.parse(studentSnapshot({ ageYearsAtPurchase: 10 }));
+      frozen.purchasedAt = new Date(Date.now() - 120000).toISOString();
+      delete frozen.ageEligibility.verificationMethod;
+
+      mocks.purchaseFind.mockResolvedValue(
+        purchase({ offerSnapshot: JSON.stringify(frozen) }),
+      );
+
+      await expectBlocked(409);
+    });
+
+    it("rejects a missing-method snapshot with no frozen purchase date", async () => {
+      const frozen = JSON.parse(studentSnapshot());
+      delete frozen.ageEligibility.verificationMethod;
+
+      mocks.purchaseFind.mockResolvedValue(
+        purchase({ offerSnapshot: JSON.stringify(frozen) }),
+      );
+
+      await expectBlocked(409);
+    });
+
     it(
       "does not expose an orphan Offer Box session",
       async () => {
