@@ -4,6 +4,7 @@ import { getCurrentAppUser } from "@/lib/app-session";
 import { asDbTransactionClient, db } from "@/lib/db";
 import { evaluateEgyptianNationalIdAgeEligibility, evaluateOfferAgeEligibility } from "@/lib/offer-age-eligibility";
 import { calculateOfferBoxFinalPrice } from "@/lib/payments/offer-box-pricing";
+import { isOfferBoxPaymobCheckoutReady } from "@/lib/payments/offer-box-checkout-readiness";
 import { getEligibilityPolicySnapshotForSource } from "@/lib/get-eligible-classes";
 import { buildMembershipCommissionSnapshotTx } from "@/lib/commissions/membership-commission-snapshot-builder";
 import {
@@ -109,6 +110,16 @@ export async function POST(req: Request) {
         "يرجى اختيار العرض أولًا.",
         400,
         "OFFER_ID_REQUIRED",
+      );
+    }
+
+    // Definitive local configuration failures must not reserve an offer
+    // or create an orphan payment. No Paymob network request happens here.
+    if (!(await isOfferBoxPaymobCheckoutReady())) {
+      throw new OfferBoxCheckoutError(
+        "الدفع الإلكتروني غير متاح مؤقتًا. يرجى المحاولة لاحقًا.",
+        503,
+        "OFFER_BOX_PAYMENT_PROVIDER_NOT_READY",
       );
     }
 
