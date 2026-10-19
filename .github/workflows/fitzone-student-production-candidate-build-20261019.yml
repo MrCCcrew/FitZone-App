@@ -69,8 +69,14 @@ jobs:
           echo "PRODUCTION_DATABASE=DISCONNECTED"
           echo "DEPLOYMENT=NONE"
 
-      - name: Install locked dependencies
-        run: npm ci --no-audit --no-fund
+      - name: Install locked build and development toolchain
+        # NODE_ENV=production otherwise omits vitest, tsc types, etc.
+        # Development tooling is needed to BUILD; it is never shipped.
+        run: |
+          npm ci --include=dev --no-audit --no-fund
+          test -x node_modules/.bin/vitest
+          test -x node_modules/.bin/tsc
+          echo "LOCKED_BUILD_TOOLCHAIN=PASS"
 
       - name: Generate Prisma client without any database connection
         run: node node_modules/prisma/build/index.js generate --config prisma.config.ts
