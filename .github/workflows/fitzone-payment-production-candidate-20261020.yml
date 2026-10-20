@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - fix/payment-lifecycle-systemic-20261019
+      - ci/fitzone-id-card-20261020
   workflow_dispatch:
 
 permissions:
