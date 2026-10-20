@@ -14884,7 +14884,7 @@ const MembershipsPage = ({
               textAlign: "center",
             }}
           >
-            <div style={{ fontSize: 42, marginBottom: 8 }}>🎂</div>
+            <div style={{ fontSize: 42, marginBottom: 8 }}>🪪</div>
 
             <h3
               style={{
