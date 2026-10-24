@@ -48,7 +48,7 @@ import {
   applyMembershipBookingPlanTx,
   ensureMembershipBookingsTx,
 } from "@/lib/payments/membership-booking-plan";
-import { verifyPaymobTransactionForRecovery } from "@/lib/payments/providers/paymob";
+import { verifyPaymobTransactionForRecovery, confirmPaymobOrderPaidForRecovery } from "@/lib/payments/providers/paymob";
 import type {
   PaymentProviderKey,
   PaymentPurpose,
@@ -1493,6 +1493,11 @@ export async function updatePaymentTransactionStatus(
       userId: true,
       purpose: true,
       provider: true,
+      providerReference: true,
+      externalReference: true,
+      providerPayload: true,
+      amount: true,
+      currency: true,
       expiresAt: true,
     },
   });
@@ -1531,6 +1536,32 @@ export async function updatePaymentTransactionStatus(
     }
 
     return mapPaymentTransaction(current);
+  }
+
+  // PAYMOB_CENTRAL_ORDER_AUTHORITY_V1
+  // Every Paymob paid transition or paid-side-effect repair
+  // requires fresh provider verification backed by the live Order.
+  // Historical local paid state is never sufficient on its own.
+  if (status === "paid" && existing?.provider === "paymob") {
+    const paymobProvider = getPaymentProvider("paymob");
+
+    if (!paymobProvider) {
+      throw new Error("PAYMOB_ORDER_VERIFIER_UNAVAILABLE");
+    }
+
+    const orderVerification = await paymobProvider.verifyTransaction({
+      id: transactionId,
+      providerReference: existing.providerReference,
+      externalReference: existing.externalReference,
+      amount: existing.amount,
+      currency: existing.currency,
+      metadata: existing.metadata,
+      providerPayload: existing.providerPayload,
+    });
+
+    if (orderVerification.status !== "paid") {
+      throw new Error("PAYMOB_ORDER_PAID_PROOF_REQUIRED");
+    }
   }
 
   // Idempotency: an already-paid retry must still repair
@@ -3295,6 +3326,21 @@ export async function recoverVerifiedPaymobPayment(
     throw new Error(
       `Recovery rejected: Paymob remote verification failed - ${paymobVerification.failureReason ?? "transaction not verified"}`,
     );
+  }
+
+  // PAYMOB_RECOVERY_LIVE_ORDER_AUTHORITY_V1
+  // A successful Acceptance Transaction is not sufficient.
+  // Reject before the atomic paid claim or any membership activation.
+  const confirmedByOrder = await confirmPaymobOrderPaidForRecovery({
+    paymentId: paymentTransactionId,
+    paymobOrderId: paymobVerification.paymobOrderId,
+    paymobTransactionId,
+    amount: expectedAmount,
+    currency: expectedCurrency,
+  });
+
+  if (!confirmedByOrder) {
+    throw new Error("PAYMOB_ORDER_PAID_PROOF_REQUIRED");
   }
 
   console.info("[RECOVERY] Paymob remote verification passed", {

@@ -1,3 +1,4 @@
+import { verifyPartnerReceiptObject } from "@/lib/commissions/partner-receipt-proof";
 import { NextResponse } from "next/server";
 import { requireAdminFeature } from "@/lib/admin-guard";
 import { db, asDbTransactionClient } from "@/lib/db";
@@ -87,6 +88,30 @@ export async function PATCH(req: Request) {
         );
       }
 
+      const confirmedReceiptUrl =
+        body.receiptUrl?.trim() || existing.receiptUrl?.trim() || null;
+
+      if (!confirmedReceiptUrl) {
+        return NextResponse.json(
+          { error: "يجب إرفاق مستند إثبات الصرف قبل تسجيل المبلغ كمدفوع." },
+          { status: 400 },
+        );
+      }
+
+
+      // PARTNER_WITHDRAWAL_RECEIPT_SHA256_V1
+      const receiptProof =
+        await verifyPartnerReceiptObject(confirmedReceiptUrl);
+
+      if (!receiptProof.ok) {
+        return NextResponse.json(
+          { error: receiptProof.message },
+          { status: receiptProof.status },
+        );
+      }
+
+      const receiptSha256 = receiptProof.sha256;
+
       const processedAt = new Date();
 
       /* COMMISSION_SETTLEMENT_PHASE_B1_PARTNER_WITHDRAWAL */
@@ -110,7 +135,8 @@ export async function PATCH(req: Request) {
           sourceId: existing.id,
 
           paymentMethod: "partner_withdrawal",
-          receiptUrl: body.receiptUrl?.trim() || existing.receiptUrl || null,
+          receiptUrl: confirmedReceiptUrl,
+          receiptSha256,
           notes:
             body.adminNotes?.trim() ||
             existing.adminNotes ||
@@ -129,9 +155,7 @@ export async function PATCH(req: Request) {
             ...(body.adminNotes !== undefined
               ? { adminNotes: body.adminNotes.trim() || null }
               : {}),
-            ...(body.receiptUrl !== undefined
-              ? { receiptUrl: body.receiptUrl.trim() || null }
-              : {}),
+            receiptUrl: confirmedReceiptUrl,
           },
         });
       });

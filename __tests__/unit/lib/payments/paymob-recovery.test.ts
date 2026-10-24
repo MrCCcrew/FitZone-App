@@ -11,22 +11,45 @@ import { recoverVerifiedPaymobPayment, type VerifiedPaymobRecoveryInput } from "
 import * as paymobProvider from "@/lib/payments/providers/paymob";
 
 // Mock Paymob remote verification
+// Prevent real email delivery during isolated financial tests.
+vi.mock("@/lib/email", async (importOriginal) => {
+  const original = await importOriginal<Record<string, unknown>>();
+  return Object.fromEntries(
+    Object.entries(original).map(([key, value]) => [
+      key,
+      typeof value === "function" && /^(send|notify)/i.test(key)
+        ? vi.fn().mockResolvedValue(undefined)
+        : value,
+    ]),
+  );
+});
+
 vi.mock("@/lib/payments/providers/paymob", async () => {
   const actual = await vi.importActual("@/lib/payments/providers/paymob");
   return {
     ...actual,
     verifyPaymobTransactionForRecovery: vi.fn(),
+    confirmPaymobOrderPaidForRecovery: vi.fn(),
   };
 });
+
+function uniqueTestReference(prefix = "FZ-Offers") {
+  const suffix = Math.floor(Math.random() * 1_000_000)
+    .toString()
+    .padStart(6, "0");
+  return `${prefix}-${Date.now()}${suffix}`;
+}
 
 describe("Paymob Payment Recovery", () => {
   let testUserId: string;
   let testMembershipPlanId: string;
   let testUserMembershipId: string;
   let testPaymentId: string;
+  let testReferenceCode: string;
 
   beforeEach(async () => {
     const timestamp = Date.now();
+    testReferenceCode = uniqueTestReference();
     testUserId = `paymob-recovery-user-${timestamp}`;
 
     // Create test user
@@ -76,7 +99,7 @@ describe("Paymob Payment Recovery", () => {
         id: testPaymentId,
         userId: testUserId,
         membershipId: testUserMembershipId,
-        referenceCode: "FZ-Offers-0000017",
+        referenceCode: testReferenceCode,
         purpose: "subscription",
         businessUnit: "club",
         provider: "paymob",
@@ -87,6 +110,15 @@ describe("Paymob Payment Recovery", () => {
         providerReference: "pi_live_test_intention_123",
       },
     });
+
+    // PAYMOB_RECOVERY_LIVE_ORDER_AUTHORITY_V1
+    // Existing successful recovery fixtures also require Order proof.
+    vi.mocked(
+      paymobProvider.confirmPaymobOrderPaidForRecovery,
+    ).mockReset();
+    vi.mocked(
+      paymobProvider.confirmPaymobOrderPaidForRecovery,
+    ).mockResolvedValue(true);
 
     // Mock successful Paymob verification for all tests by default
     // LIVE PAYMOB RESPONSE: merchant_order_id (not special_reference) proves linkage
@@ -115,13 +147,41 @@ describe("Paymob Payment Recovery", () => {
     await db.user.deleteMany({ where: { id: testUserId } });
   });
 
+  it("rejects recovery without live Paymob Order proof before DB mutation", async () => {
+    vi.mocked(
+      paymobProvider.confirmPaymobOrderPaidForRecovery,
+    ).mockResolvedValueOnce(false);
+
+    await expect(
+      recoverVerifiedPaymobPayment({
+        paymentTransactionId: testPaymentId,
+        paymobTransactionId: "512944958",
+        expectedAmount: 333,
+        expectedCurrency: "EGP",
+        expectedFitZoneReference: testReferenceCode,
+        expectedIntentionId: "pi_live_test_intention_123",
+      }),
+    ).rejects.toThrow("PAYMOB_ORDER_PAID_PROOF_REQUIRED");
+
+    const payment = await db.paymentTransaction.findUniqueOrThrow({
+      where: { id: testPaymentId },
+    });
+    const membership = await db.userMembership.findUniqueOrThrow({
+      where: { id: testUserMembershipId },
+    });
+
+    expect(payment.status).toBe("pending");
+    expect(payment.externalReference).toBeNull();
+    expect(membership.status).toBe("pending_payment");
+  });
+
   it("1. successful verified recovery", async () => {
     const input: VerifiedPaymobRecoveryInput = {
       paymentTransactionId: testPaymentId,
       paymobTransactionId: "512944958",
       expectedAmount: 333,
       expectedCurrency: "EGP",
-      expectedFitZoneReference: "FZ-Offers-0000017",
+      expectedFitZoneReference: testReferenceCode,
       expectedIntentionId: "pi_live_test_intention_123",
     };
 
@@ -147,7 +207,7 @@ describe("Paymob Payment Recovery", () => {
       paymobTransactionId: "512944958",
       expectedAmount: 500, // Wrong amount
       expectedCurrency: "EGP",
-      expectedFitZoneReference: "FZ-Offers-0000017",
+      expectedFitZoneReference: testReferenceCode,
       expectedIntentionId: "pi_live_test_intention_123",
     };
 
@@ -166,7 +226,7 @@ describe("Paymob Payment Recovery", () => {
       paymobTransactionId: "512944958",
       expectedAmount: 333,
       expectedCurrency: "USD", // Wrong currency
-      expectedFitZoneReference: "FZ-Offers-0000017",
+      expectedFitZoneReference: testReferenceCode,
       expectedIntentionId: "pi_live_test_intention_123",
     };
 
@@ -198,7 +258,7 @@ describe("Paymob Payment Recovery", () => {
       paymobTransactionId: "512944958",
       expectedAmount: 333,
       expectedCurrency: "EGP",
-      expectedFitZoneReference: "FZ-Offers-0000017",
+      expectedFitZoneReference: testReferenceCode,
       expectedIntentionId: "pi_live_wrong_intention", // Wrong intention
     };
 
@@ -211,12 +271,13 @@ describe("Paymob Payment Recovery", () => {
   it("6. duplicate paid payment rejected", async () => {
     // Create a duplicate paid payment for same user and membership
     const duplicatePaidId = `dup-paid-${Date.now()}`;
+    const duplicatePaidReferenceCode = uniqueTestReference();
     await db.paymentTransaction.create({
       data: {
         id: duplicatePaidId,
         userId: testUserId,
         membershipId: testUserMembershipId,
-        referenceCode: "FZ-Offers-0000099",
+        referenceCode: duplicatePaidReferenceCode,
         purpose: "subscription",
         businessUnit: "club",
         provider: "paymob",
@@ -233,7 +294,7 @@ describe("Paymob Payment Recovery", () => {
       paymobTransactionId: "512944958",
       expectedAmount: 333,
       expectedCurrency: "EGP",
-      expectedFitZoneReference: "FZ-Offers-0000017",
+      expectedFitZoneReference: testReferenceCode,
       expectedIntentionId: "pi_live_test_intention_123",
     };
 
@@ -277,7 +338,7 @@ describe("Paymob Payment Recovery", () => {
         paymobTransactionId: "512944958",
         expectedAmount: 333,
         expectedCurrency: "EGP",
-        expectedFitZoneReference: "FZ-Offers-0000017",
+        expectedFitZoneReference: testReferenceCode,
         expectedIntentionId: "pi_live_test_intention_123",
       };
 
@@ -320,7 +381,7 @@ describe("Paymob Payment Recovery", () => {
       paymobTransactionId: "512944958",
       expectedAmount: 333,
       expectedCurrency: "EGP",
-      expectedFitZoneReference: "FZ-Offers-0000017",
+      expectedFitZoneReference: testReferenceCode,
       expectedIntentionId: "pi_live_test_intention_123",
     };
 
@@ -358,7 +419,7 @@ describe("Paymob Payment Recovery", () => {
       paymobTransactionId: "512944958", // Different from existing
       expectedAmount: 333,
       expectedCurrency: "EGP",
-      expectedFitZoneReference: "FZ-Offers-0000017",
+      expectedFitZoneReference: testReferenceCode,
       expectedIntentionId: "pi_live_test_intention_123",
     };
 
@@ -381,7 +442,7 @@ describe("Paymob Payment Recovery", () => {
       paymobTransactionId: "512944958",
       expectedAmount: 333,
       expectedCurrency: "EGP",
-      expectedFitZoneReference: "FZ-Offers-0000017",
+      expectedFitZoneReference: testReferenceCode,
       expectedIntentionId: "pi_live_test_intention_123",
     };
 
@@ -433,7 +494,7 @@ describe("Paymob Payment Recovery", () => {
       paymobTransactionId: "512944958",
       expectedAmount: 333,
       expectedCurrency: "EGP",
-      expectedFitZoneReference: "FZ-Offers-0000017",
+      expectedFitZoneReference: testReferenceCode,
       expectedIntentionId: "pi_live_test_intention_123",
     };
 
@@ -485,7 +546,7 @@ describe("Paymob Payment Recovery", () => {
       paymobTransactionId: "512944958",
       expectedAmount: 333,
       expectedCurrency: "EGP",
-      expectedFitZoneReference: "FZ-Offers-0000017",
+      expectedFitZoneReference: testReferenceCode,
       expectedIntentionId: "pi_live_test_intention_123",
     };
 
@@ -507,7 +568,7 @@ describe("Paymob Payment Recovery", () => {
       paymobTransactionId: "512944958",
       expectedAmount: 333,
       expectedCurrency: "EGP",
-      expectedFitZoneReference: "FZ-Offers-0000017",
+      expectedFitZoneReference: testReferenceCode,
       expectedIntentionId: "pi_live_wrong_intention", // Wrong intention
     };
 
@@ -540,7 +601,7 @@ describe("Paymob Payment Recovery", () => {
       paymobTransactionId: "512944958",
       expectedAmount: 333,
       expectedCurrency: "EGP",
-      expectedFitZoneReference: "FZ-Offers-0000017",
+      expectedFitZoneReference: testReferenceCode,
       expectedIntentionId: "pi_live_test_intention_123",
     };
 
@@ -562,7 +623,7 @@ describe("Paymob Payment Recovery", () => {
       amountCents: 33300,
       currency: "EGP",
       paymobOrderId: 584723754,
-      specialReference: "FZ-Offers-0000017",
+      specialReference: testReferenceCode,
       sourceType: "wallet",
       isRefunded: false,
       isVoided: false,
@@ -575,7 +636,7 @@ describe("Paymob Payment Recovery", () => {
       paymobTransactionId: "512944958",
       expectedAmount: 333,
       expectedCurrency: "EGP",
-      expectedFitZoneReference: "FZ-Offers-0000017",
+      expectedFitZoneReference: testReferenceCode,
       expectedIntentionId: "pi_live_test_intention_123",
     };
 
@@ -599,7 +660,7 @@ describe("Paymob Payment Recovery", () => {
       amountCents: 33300,
       currency: "EGP",
       paymobOrderId: 584723754,
-      specialReference: "FZ-Offers-0000017",
+      specialReference: testReferenceCode,
       sourceType: "wallet",
       isRefunded: true, // Refunded
       isVoided: false,
@@ -612,7 +673,7 @@ describe("Paymob Payment Recovery", () => {
       paymobTransactionId: "512944958",
       expectedAmount: 333,
       expectedCurrency: "EGP",
-      expectedFitZoneReference: "FZ-Offers-0000017",
+      expectedFitZoneReference: testReferenceCode,
       expectedIntentionId: "pi_live_test_intention_123",
     };
 
@@ -631,7 +692,7 @@ describe("Paymob Payment Recovery", () => {
       amountCents: 33300,
       currency: "EGP",
       paymobOrderId: 584723754,
-      specialReference: "FZ-Offers-0000017",
+      specialReference: testReferenceCode,
       sourceType: "wallet",
       isRefunded: false,
       isVoided: true, // Voided
@@ -644,7 +705,7 @@ describe("Paymob Payment Recovery", () => {
       paymobTransactionId: "512944958",
       expectedAmount: 333,
       expectedCurrency: "EGP",
-      expectedFitZoneReference: "FZ-Offers-0000017",
+      expectedFitZoneReference: testReferenceCode,
       expectedIntentionId: "pi_live_test_intention_123",
     };
 
@@ -663,7 +724,7 @@ describe("Paymob Payment Recovery", () => {
       amountCents: 50000, // Wrong amount (500 instead of 333)
       currency: "EGP",
       paymobOrderId: 584723754,
-      specialReference: "FZ-Offers-0000017",
+      specialReference: testReferenceCode,
       sourceType: "wallet",
       isRefunded: false,
       isVoided: false,
@@ -676,7 +737,7 @@ describe("Paymob Payment Recovery", () => {
       paymobTransactionId: "512944958",
       expectedAmount: 333,
       expectedCurrency: "EGP",
-      expectedFitZoneReference: "FZ-Offers-0000017",
+      expectedFitZoneReference: testReferenceCode,
       expectedIntentionId: "pi_live_test_intention_123",
     };
 
@@ -695,7 +756,7 @@ describe("Paymob Payment Recovery", () => {
       amountCents: 33300,
       currency: "USD", // Wrong currency
       paymobOrderId: 584723754,
-      specialReference: "FZ-Offers-0000017",
+      specialReference: testReferenceCode,
       sourceType: "wallet",
       isRefunded: false,
       isVoided: false,
@@ -708,7 +769,7 @@ describe("Paymob Payment Recovery", () => {
       paymobTransactionId: "512944958",
       expectedAmount: 333,
       expectedCurrency: "EGP",
-      expectedFitZoneReference: "FZ-Offers-0000017",
+      expectedFitZoneReference: testReferenceCode,
       expectedIntentionId: "pi_live_test_intention_123",
     };
 
@@ -721,12 +782,13 @@ describe("Paymob Payment Recovery", () => {
   it("17. missing provider reference (intention ID) rejected", async () => {
     // Create payment without providerReference
     const noIntentionPaymentId = `payment-no-intention-${Date.now()}`;
+    const noIntentionReferenceCode = uniqueTestReference("FZ-Test");
     await db.paymentTransaction.create({
       data: {
         id: noIntentionPaymentId,
         userId: testUserId,
         membershipId: testUserMembershipId,
-        referenceCode: "FZ-Test-9999",
+        referenceCode: noIntentionReferenceCode,
         purpose: "subscription",
         businessUnit: "club",
         provider: "paymob",
@@ -743,7 +805,7 @@ describe("Paymob Payment Recovery", () => {
       paymobTransactionId: "512944958",
       expectedAmount: 333,
       expectedCurrency: "EGP",
-      expectedFitZoneReference: "FZ-Test-9999",
+      expectedFitZoneReference: noIntentionReferenceCode,
       expectedIntentionId: "pi_live_test_intention_123",
     };
 
@@ -832,7 +894,7 @@ describe("Paymob Payment Recovery", () => {
         paymobTransactionId: "512944958",
         expectedAmount: 333,
         expectedCurrency: "EGP",
-        expectedFitZoneReference: "FZ-Offers-0000017",
+        expectedFitZoneReference: testReferenceCode,
         expectedIntentionId: "pi_live_test_intention_123",
       };
 

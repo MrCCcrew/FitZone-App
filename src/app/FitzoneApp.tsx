@@ -6234,9 +6234,7 @@ const HomePage = ({
                           >
                             {isSpecial
                               ? t("عرض خاص", "Special")
-                              : offer.offerBoxEnabled && !offer.offerBoxApplyDiscount
-                                ? t("بدون خصم إضافي", "No extra discount")
-                              : offer.type === "percentage"
+                              :  offer.type === "percentage"
                                 ? `${offer.discount}% ${t("خصم", "off")}`
                                 : t("عرض", "Offer")}
                           </span>
@@ -6260,9 +6258,7 @@ const HomePage = ({
                           >
                             {isSpecial
                               ? t("عرض خاص", "Special")
-                              : offer.offerBoxEnabled && !offer.offerBoxApplyDiscount
-                                ? t("بدون خصم إضافي", "No extra discount")
-                              : offer.type === "percentage"
+                              :  offer.type === "percentage"
                                 ? `${offer.discount}% ${t("خصم", "off")}`
                                 : t("عرض", "Offer")}
                           </span>
@@ -6293,9 +6289,7 @@ const HomePage = ({
                         >
                           {isSpecial
                             ? formatCurrency(offer.specialPrice ?? 0)
-                            : offer.offerBoxEnabled && !offer.offerBoxApplyDiscount
-                              ? t("السعر الحالي", "Current price")
-                            : offer.type === "percentage"
+                            :  offer.type === "percentage"
                               ? `${offer.discount}%`
                               : `${offer.discount} ${t("ج.م", "EGP")}`}
                         </div>
@@ -6308,9 +6302,7 @@ const HomePage = ({
                         >
                           {isSpecial
                             ? t("سعر العرض", "Offer price")
-                            : offer.offerBoxEnabled && !offer.offerBoxApplyDiscount
-                              ? t("بدون خصم إضافي عند الشراء", "No extra checkout discount")
-                            : t("قيمة الخصم", "Discount value")}
+                            :  t("قيمة الخصم", "Discount value")}
                         </div>
                         <h3
                           style={{
@@ -6470,10 +6462,6 @@ const HomePage = ({
                               return;
                             }
 
-                            if (offer.offerBoxEnabled) {
-                  void purchaseOfferBox(offer);
-                  return;
-                }
                 startMembershipFlow(
                               offer.membershipId,
                               "offer",
@@ -6483,14 +6471,31 @@ const HomePage = ({
                           }}
                           disabled={cd.expired || (offer.offerBoxEnabled && offerBoxBusyId !== null)}
                         >
-                          {cd.expired
-                            ? t("انتهى العرض", "Ended")
-                            : offer.offerBoxEnabled && offerBoxBusyId === offer.id
-    ? t("جاري تجهيز الدفع...", "Preparing payment...")
-    : offer.offerBoxEnabled
-      ? t("شراء العرض", "Buy offer")
-      : t("اشتركي الآن", "Join now")}
+                          {cd.expired ? t("انتهى العرض", "Ended") : t("اشتركي الآن", "Join now")}
                         </button>
+
+        {offer.offerBoxEnabled && !offer.friendOfferEnabled && (
+          <button
+            type="button"
+            className="btn-outline"
+            data-offer-box-id={offer.id}
+            onClick={() => void purchaseOfferBox(offer)}
+            disabled={cd.expired || offerBoxBusyId !== null}
+            style={{
+              width: "100%",
+              justifyContent: "center",
+              marginTop: 8,
+              fontSize: 12,
+              borderColor: accentColor,
+              color: accentColor,
+              opacity: cd.expired ? 0.65 : 1,
+            }}
+          >
+            {offerBoxBusyId === offer.id
+              ? t("جاري تجهيز الدفع...", "Preparing payment...")
+              : t("احفظيه في صندوق العروض", "Save in Offer Box")}
+          </button>
+        )}
         {offer.offerBoxEnabled &&
           offerBoxError?.offerId === offer.id && (
             <div
@@ -17983,9 +17988,7 @@ ${friendInviteUrl(friendGroup.token)}`,
                         >
                           {o.type === "special"
                             ? formatCurrency(o.specialPrice ?? 0)
-                            : o.offerBoxEnabled && !o.offerBoxApplyDiscount
-                              ? t("السعر الحالي", "Current price")
-                            : o.type === "percentage"
+                            :  o.type === "percentage"
                               ? `${o.discount}%`
                               : `${o.discount} ${t("ج.م", "EGP")}`}
                         </div>
@@ -17994,9 +17997,7 @@ ${friendInviteUrl(friendGroup.token)}`,
                         >
                           {o.type === "special"
                             ? t("سعر العرض الخاص", "Special offer price")
-                            : o.offerBoxEnabled && !o.offerBoxApplyDiscount
-                              ? t("بدون خصم إضافي عند الشراء", "No extra checkout discount")
-                            : t("قيمة الخصم", "Discount value")}
+                            :  t("قيمة الخصم", "Discount value")}
                         </div>
                       </div>
                     </div>
@@ -18160,17 +18161,12 @@ ${friendInviteUrl(friendGroup.token)}`,
                           return;
                         }
 
-                        if (o.offerBoxEnabled) {
-                  void purchaseOfferBox(o);
-                  return;
-                }
                 openSubscribeModal(
                           o.membershipId,
                           o.id,
                           o.specialPrice ?? null,
                         );
                       }}
-                      data-offer-box-id={o.offerBoxEnabled ? o.id : undefined}
                       disabled={offerUnavailable || (o.offerBoxEnabled && offerBoxBusyId !== null)}
                       style={{
                         width: "100%",
@@ -18187,14 +18183,38 @@ ${friendInviteUrl(friendGroup.token)}`,
                         opacity: offerUnavailable ? 0.6 : 1,
                       }}
                     >
-                      {offerUnavailable
-                        ? t("العرض غير متاح", "Offer unavailable")
-                        : o.offerBoxEnabled && offerBoxBusyId === o.id
-    ? t("جاري تجهيز الدفع...", "Preparing payment...")
-    : o.offerBoxEnabled
-      ? t("شراء العرض", "Buy offer")
-      : t("اشتركي الآن", "Subscribe now")}
+                      {offerUnavailable ? t("العرض غير متاح", "Offer unavailable") : t("اشتركي الآن", "Subscribe now")}
                     </button>
+
+        {o.offerBoxEnabled && !o.friendOfferEnabled && (
+          <button
+            type="button"
+            data-offer-box-id={o.id}
+            onClick={() => {
+              trackBusinessView("offer_viewed", o.id);
+              void purchaseOfferBox(o);
+            }}
+            disabled={offerUnavailable || offerBoxBusyId !== null}
+            style={{
+              width: "100%",
+              padding: "10px",
+              marginTop: 8,
+              borderRadius: 10,
+              border: `1px dashed ${offerTextColor}`,
+              background: "transparent",
+              color: offerTextColor,
+              fontFamily: "'Cairo', sans-serif",
+              fontSize: 13,
+              fontWeight: 700,
+              opacity: offerUnavailable ? 0.6 : 1,
+              cursor: offerUnavailable ? "not-allowed" : "pointer",
+            }}
+          >
+            {offerBoxBusyId === o.id
+              ? t("جاري تجهيز الدفع...", "Preparing payment...")
+              : t("احفظيه في صندوق العروض", "Save in Offer Box")}
+          </button>
+        )}
         {o.offerBoxEnabled &&
           offerBoxError?.offerId === o.id && (
             <div

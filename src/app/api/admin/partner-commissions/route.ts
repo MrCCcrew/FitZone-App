@@ -1,3 +1,4 @@
+import { verifyPartnerReceiptObject } from "@/lib/commissions/partner-receipt-proof";
 import { NextResponse } from "next/server";
 import { requireAdminFeature } from "@/lib/admin-guard";
 import { db, asDbTransactionClient } from "@/lib/db";
@@ -65,7 +66,7 @@ export async function PATCH(req: Request) {
   }
 
   try {
-    const body = (await req.json()) as { id?: string; status?: string; notes?: string };
+    const body = (await req.json()) as { id?: string; status?: string; notes?: string; receiptUrl?: string };
     if (!body.id) return NextResponse.json({ error: "معرّف العمولة مطلوب." }, { status: 400 });
 
     const existing = await db.partnerCommission.findUnique({
@@ -115,6 +116,20 @@ export async function PATCH(req: Request) {
         );
       }
 
+      // PARTNER_DIRECT_RECEIPT_SHA256_V1
+      const receiptUrl = body.receiptUrl?.trim() || "";
+      const receiptProof =
+        await verifyPartnerReceiptObject(receiptUrl);
+
+      if (!receiptProof.ok) {
+        return NextResponse.json(
+          { error: receiptProof.message },
+          { status: receiptProof.status },
+        );
+      }
+
+      const receiptSha256 = receiptProof.sha256;
+
       const result = await db.$transaction(async (tx) => {
         const payout = await settleCommissionsTx(
           asDbTransactionClient(tx),
@@ -124,6 +139,8 @@ export async function PATCH(req: Request) {
             commissionIds: [commission.id],
             actorUserId: guard.session.user.id,
             paymentMethod: "admin_manual",
+            receiptUrl,
+            receiptSha256,
             notes:
               body.notes?.trim() ||
               "تسجيل عمولة شريك كمدفوعة يدويًا من شاشة المحاسبة",

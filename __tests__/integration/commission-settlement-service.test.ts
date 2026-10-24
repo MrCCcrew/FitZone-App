@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { afterEach, describe, expect, it } from "vitest";
 import { db, asDbTransactionClient } from "@/lib/db";
 import { settleCommissionsTx } from "@/lib/commissions/commission-settlement-service";
@@ -521,16 +522,82 @@ describe(
         },
       });
 
+      // PARTNER_RECEIPT_DUPLICATE_ROLLBACK_INTEGRATION_V1
+      const receiptSha256 = createHash("sha256")
+        .update(stamp)
+        .digest("hex");
+      const receiptUrl = `https://r2.test/partners/${stamp}.png`;
+
       const result = await db.$transaction(async (tx) =>
         settleCommissionsTx(asDbTransactionClient(tx), {
           commissionType: "partner",
           beneficiaryId: partner.id,
           commissionIds: [commission.id],
           actorUserId: user.id,
+          receiptUrl,
+          receiptSha256,
         }),
       );
 
       createdPayoutIds.push(result.payout.id);
+
+      const secondMembership = await db.userMembership.create({
+        data: {
+          userId: customer.id,
+          membershipId: membership.id,
+          status: "active",
+          startDate,
+          endDate,
+          paymentAmount: 100,
+          paymentMethod: "cash",
+        },
+      });
+
+      const secondCommission = await db.partnerCommission.create({
+        data: {
+          partnerId: partner.id,
+          userMembershipId: secondMembership.id,
+          amount: 10,
+          status: "pending",
+        },
+      });
+
+      try {
+        await expect(
+          db.$transaction(async (tx) =>
+            settleCommissionsTx(asDbTransactionClient(tx), {
+              commissionType: "partner",
+              beneficiaryId: partner.id,
+              commissionIds: [secondCommission.id],
+              actorUserId: user.id,
+              sourceType: "partner_withdrawal_request",
+              sourceId: `receipt-duplicate-${stamp}`,
+              receiptUrl,
+              receiptSha256,
+            }),
+          ),
+        ).rejects.toThrow();
+
+        const secondAfter =
+          await db.partnerCommission.findUniqueOrThrow({
+            where: { id: secondCommission.id },
+          });
+
+        expect(secondAfter.status).toBe("pending");
+
+        expect(
+          await db.commissionPayout.count({
+            where: { beneficiaryId: partner.id },
+          }),
+        ).toBe(1);
+      } finally {
+        await db.partnerCommission.delete({
+          where: { id: secondCommission.id },
+        });
+        await db.userMembership.delete({
+          where: { id: secondMembership.id },
+        });
+      }
 
       const after = await db.partnerCommission.findUniqueOrThrow({
         where: { id: commission.id },

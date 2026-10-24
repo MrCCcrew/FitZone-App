@@ -1292,9 +1292,11 @@ export async function POST(req: Request) {
       }
 
       const originalPrice =
-        plan.priceBefore && plan.priceBefore > 0
-          ? plan.priceBefore
-          : resolvedBasePrice;
+        offerRecord?.priceBefore != null && offerRecord.priceBefore > 0
+          ? offerRecord.priceBefore
+          : plan.priceBefore && plan.priceBefore > 0
+            ? plan.priceBefore
+            : resolvedBasePrice;
       const priceAfterMembershipDiscount =
         offerRecord?.specialPrice ??
         (plan.priceAfter && plan.priceAfter > 0

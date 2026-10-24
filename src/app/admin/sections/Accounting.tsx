@@ -2206,6 +2206,8 @@ function PartnerCommissionsTab({ from, to }: { from: string; to: string }) {
   const [data, setData] = useState<CommissionsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [patching, setPatching] = useState<string | null>(null);
+  const [uploadingReceipt, setUploadingReceipt] = useState<string | null>(null);
+  const [receiptUrls, setReceiptUrls] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -2224,8 +2226,85 @@ function PartnerCommissionsTab({ from, to }: { from: string; to: string }) {
     void load();
   }, [load]);
 
+  const uploadCommissionReceipt = async (
+    row: PartnerCommissionRow,
+    file: File,
+  ) => {
+    if (row.status === "paid") return;
+
+    const allowed = [
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+      "image/avif",
+      "image/gif",
+    ];
+
+    if (!allowed.includes(file.type)) {
+      window.alert("يرجى اختيار صورة إيصال بصيغة مدعومة.");
+      return;
+    }
+
+    setUploadingReceipt(row.id);
+    setReceiptUrls((prev) => {
+      const next = { ...prev };
+      delete next[row.id];
+      return next;
+    });
+
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      // FITZONE_PRIVATE_RECEIPT_ACCOUNTING_V1
+      // Financial receipts must never use the public images upload.
+
+
+      const res = await fetch("/api/admin/partner-receipts", {
+        method: "POST",
+        body: form,
+        credentials: "same-origin",
+        cache: "no-store",
+      });
+
+      const result = (await res.json().catch(() => ({}))) as {
+        url?: string;
+        error?: string;
+      };
+
+      if (!res.ok || !result.url) {
+        throw new Error(result.error ?? "تعذر رفع إيصال الصرف.");
+      }
+
+      setReceiptUrls((prev) => ({
+        ...prev,
+        [row.id]: result.url!,
+      }));
+    } catch (error) {
+      window.alert(
+        error instanceof Error ? error.message : "تعذر رفع إيصال الصرف.",
+      );
+    } finally {
+      setUploadingReceipt(null);
+    }
+  };
+
   const markPartnerCommissionPaid = async (row: PartnerCommissionRow) => {
     if (row.status === "paid") return;
+
+    const receiptUrl = receiptUrls[row.id];
+
+    if (!receiptUrl) {
+      window.alert("يجب رفع صورة إيصال الصرف أولاً.");
+      return;
+    }
+
+    if (
+      !window.confirm(
+        `هل تؤكد صرف عمولة ${row.partnerName} بقيمة ${row.amount.toFixed(2)} جنيه فعلياً؟`,
+      )
+    ) {
+      return;
+    }
 
     setPatching(row.id);
 
@@ -2233,7 +2312,7 @@ function PartnerCommissionsTab({ from, to }: { from: string; to: string }) {
       const res = await fetch("/api/admin/partner-commissions", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: row.id, status: "paid" }),
+        body: JSON.stringify({ id: row.id, status: "paid", receiptUrl }),
       });
 
       const json = await res.json().catch(() => ({}));
@@ -2356,15 +2435,50 @@ function PartnerCommissionsTab({ from, to }: { from: string; to: string }) {
                           ✓ مدفوعة
                         </span>
                       ) : (
-                        <button
-                          disabled={patching === row.id}
-                          onClick={() => void markPartnerCommissionPaid(row)}
-                          className="rounded-full bg-amber-500/15 px-3 py-1 text-xs font-bold text-amber-300 transition-colors hover:bg-amber-500/25 disabled:opacity-50"
-                        >
-                          {patching === row.id
-                            ? "جارٍ التسجيل..."
-                            : "تسجيل كمدفوعة"}
-                        </button>
+                        <div className="flex flex-col gap-2">
+                          <input
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp,image/avif,image/gif"
+                            aria-label="رفع صورة إيصال صرف عمولة الشريك"
+                            disabled={uploadingReceipt !== null || patching !== null}
+                            onChange={(event) => {
+                              const file = event.currentTarget.files?.[0];
+                              if (file) void uploadCommissionReceipt(row, file);
+                              event.currentTarget.value = "";
+                            }}
+                            className="max-w-48 text-xs text-[#d7aabd]"
+                          />
+                          {uploadingReceipt === row.id ? (
+                            <span className="text-xs text-amber-300">
+                              جارٍ رفع الإيصال...
+                            </span>
+                          ) : receiptUrls[row.id] ? (
+                            <a
+                              href={receiptUrls[row.id]}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs text-emerald-300 underline"
+                            >
+                              عرض صورة الإيصال
+                            </a>
+                          ) : null}
+                          <button
+                            disabled={
+                              !receiptUrls[row.id] ||
+                              uploadingReceipt !== null ||
+                              patching !== null
+                            }
+                            onClick={() => void markPartnerCommissionPaid(row)}
+                            className="rounded-full bg-amber-500/15 px-3 py-1 text-xs font-bold text-amber-300 transition-colors hover:bg-amber-500/25 disabled:opacity-50"
+                          >
+                            {patching === row.id
+                              ? "جارٍ التسجيل..."
+                              : "تأكيد الصرف"}
+                          </button>
+                          <span className="max-w-48 text-xs text-amber-200">
+                            رابط الصورة عام؛ لا ترفع بيانات بنكية حساسة.
+                          </span>
+                        </div>
                       )}
                     </td>
                   </tr>
