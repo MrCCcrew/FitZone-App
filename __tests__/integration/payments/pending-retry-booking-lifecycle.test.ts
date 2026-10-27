@@ -148,7 +148,7 @@ describe(
             membershipId: baseMembershipId,
             status: "pending_payment",
             paymentAmount: 300,
-            pendingExpiresAt: new Date(Date.now() - 60_000),
+            pendingExpiresAt: new Date(Date.now() - 30 * 60_000),
             staffReferralLinkId,
             snapshotDurationDays: 30,
             totalSessions: 3,
@@ -225,6 +225,43 @@ describe(
         // ─────────────────────────────────────────────────────────────
         // 3. Timeout cleanup
         // ─────────────────────────────────────────────────────────────
+
+        // A pending Paymob attempt must not release seats without proof.
+        const unverifiedCleanup =
+          await cleanupExpiredPendingMembership(oldMembershipId);
+
+        expect(unverifiedCleanup).toMatchObject({
+          cleaned: false,
+          reason: "provider_reconciliation_required",
+        });
+
+        expect(
+          await db.booking.count({
+            where: { userMembershipId: oldMembershipId },
+          }),
+        ).toBe(3);
+
+        // Synthetic test evidence: failed payment and two independent
+        // no-charge reviews completed after the original hold.
+        const reviewedAt =
+          new Date(Date.now() - 2 * 60_000).toISOString();
+
+        await db.paymentTransaction.update({
+          where: { id: oldPaymentId },
+          data: {
+            status: "failed",
+            metadata: JSON.stringify({
+              ...(JSON.parse(oldPayment.metadata ?? "{}") as Record<string, unknown>),
+              paymobNoChargeReview: {
+                reportReference: "SYNTHETIC-PAYMOB-NO-CHARGE-REVIEW",
+                approvals: [
+                  { reviewerId: "test-reviewer-a", reviewedAt },
+                  { reviewerId: "test-reviewer-b", reviewedAt },
+                ],
+              },
+            }),
+          },
+        });
 
         const cleanupResult =
           await cleanupExpiredPendingMembership(oldMembershipId);

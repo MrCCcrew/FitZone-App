@@ -1,5 +1,5 @@
 import { assessPaymobUnpaidOrder, type PaymobUnpaidOrderProof } from "@/lib/payments/paymob-order-unpaid-proof";
-import { assessPaymobOrderPositiveProof } from "@/lib/payments/paymob-order-positive-proof";
+import { assessPaymobOrderPositiveProof, assessPaymobOrderAndAcceptanceProof } from "@/lib/payments/paymob-order-positive-proof";
 import { isFinalRetainedPaymobPayment } from "@/lib/payments/paymob-retained-payment-proof";
 import { resolvePaymobIntentionExpiration } from "@/lib/payments/paymob-membership-expiration";
 import crypto from "crypto";
@@ -608,15 +608,52 @@ export async function confirmPaymobOrderPaidForRecovery(input: {
 
     const order: unknown = await response.json();
 
-    const confirmedId = assessPaymobOrderPositiveProof({
+    const orderTransactions =
+      order && typeof order === "object" && !Array.isArray(order)
+        ? (order as Record<string, unknown>).transactions
+        : undefined;
+
+    // Preserve the original multi-transaction proof when available.
+    if (Array.isArray(orderTransactions)) {
+      const confirmedId = assessPaymobOrderPositiveProof({
+        order,
+        expectedOrderId: orderId,
+        expectedMerchantOrderId: input.paymentId,
+        expectedAmountCents,
+        expectedCurrency: input.currency,
+      });
+
+      return confirmedId === input.paymobTransactionId;
+    }
+
+    // A malformed list is inconclusive, not permission to bypass it.
+    if (orderTransactions !== undefined) return false;
+
+    // Live Paymob Orders may not include transactions.
+    // Independently obtain the exact Acceptance Transaction.
+    const acceptanceResponse = await fetch(
+      `${getRegionBase()}/api/acceptance/transactions/${encodeURIComponent(input.paymobTransactionId)}`,
+      {
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+        cache: "no-store",
+      },
+    );
+
+    if (!acceptanceResponse.ok) return false;
+
+    const acceptance: unknown = await acceptanceResponse.json();
+
+    return assessPaymobOrderAndAcceptanceProof({
       order,
+      acceptance,
       expectedOrderId: orderId,
       expectedMerchantOrderId: input.paymentId,
+      expectedTransactionId: input.paymobTransactionId,
       expectedAmountCents,
       expectedCurrency: input.currency,
     });
-
-    return confirmedId === input.paymobTransactionId;
   } catch (error) {
     console.warn(
       "[PAYMOB_RECOVERY_ORDER_INCONCLUSIVE]",
@@ -1277,6 +1314,7 @@ export async function verifyPaymobTransactionForRecovery(
   // Validation checks
   const checks = {
     exists: response.ok,
+    transactionIdMatch: String(tx.id ?? "") === paymobTransactionId,
     success: success === true,
     notPending: pending === false,
     amountMatch: amountInCurrency === expectedAmount,
@@ -1292,6 +1330,7 @@ export async function verifyPaymobTransactionForRecovery(
   const verified = Object.values(checks).every((check) => check === true);
 
   const failureReasons: string[] = [];
+  if (!checks.transactionIdMatch) failureReasons.push("transaction_id_mismatch");
   if (!checks.success) failureReasons.push("success=false");
   if (!checks.notPending) failureReasons.push("pending=true");
   if (!checks.amountMatch) failureReasons.push(`amount=${amountInCurrency} (expected ${expectedAmount})`);

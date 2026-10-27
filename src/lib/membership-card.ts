@@ -47,8 +47,8 @@ function readLogoDataUrl() {
   ];
 
   for (const candidate of candidates) {
-    if (!fs.existsSync(candidate)) continue;
-    const buffer = fs.readFileSync(candidate);
+    if (!fs.existsSync(/* turbopackIgnore: true */ candidate)) continue;
+    const buffer = fs.readFileSync(/* turbopackIgnore: true */ candidate);
     const ext = path.extname(candidate).toLowerCase();
     const mime = ext === ".png" ? "image/png" : "image/jpeg";
     return `data:${mime};base64,${buffer.toString("base64")}`;
