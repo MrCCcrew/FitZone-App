@@ -4519,3 +4519,37 @@ model PrivateSessionEarning {
   @@index([calculatedById])
   @@index([finalizedById])
 }
+
+// Persistent Paymob membership recovery queue.
+// Financial writes remain exclusively in the verified payment service.
+// No cascade delete: retain recovery history for financial review.
+model PaymobRecoveryJob {
+  id                   String   @id @default(cuid())
+  paymentTransactionId String   @unique
+  status               String   @default("pending")
+  attempts             Int      @default(0)
+  nextAttemptAt        DateTime @default(now())
+  lockedUntil          DateTime?
+  leaseToken           String?
+  lastErrorCode        String?  @db.VarChar(191)
+  lastCheckedAt        DateTime?
+  completedAt          DateTime?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([status, nextAttemptAt])
+  @@index([lockedUntil])
+  @@index([updatedAt])
+}
+
+
+// Persistent checkpoint for bounded Paymob recovery discovery.
+// A versioned compare-and-swap prevents stale workers from
+// overwriting a newer scan position.
+model PaymobRecoveryScanState {
+  id              String   @id
+  cursorCreatedAt DateTime?
+  cursorPaymentId String?
+  version         Int      @default(0)
+  updatedAt       DateTime @updatedAt
+}

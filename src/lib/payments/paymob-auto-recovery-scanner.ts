@@ -26,8 +26,18 @@ export type RecoveryScanDb = {
   paymentTransaction: {
     findMany: (args: {
       where: Prisma.PaymentTransactionWhereInput;
-      select: Record<string, boolean>;
-      orderBy: Array<Record<string, "asc">>;
+      select: {
+        id: true;
+        purpose: true;
+        provider: true;
+        status: true;
+        membershipId: true;
+        metadata: true;
+        createdAt: true;
+      };
+      orderBy: Array<
+        Prisma.PaymentTransactionOrderByWithRelationInput
+      >;
       take: number;
     }) => Promise<PaymentRow[]>;
   };

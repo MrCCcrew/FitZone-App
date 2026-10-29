@@ -3230,6 +3230,7 @@ export async function recoverPaidMembershipActivation(
       tx,
       paymentTransactionId,
       payment.membershipId!,
+      { preserveExistingDates: true },
     );
 
     activationSucceeded = result.success;

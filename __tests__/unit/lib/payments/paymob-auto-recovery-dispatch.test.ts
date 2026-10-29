@@ -62,7 +62,7 @@ describe("Paymob automatic recovery dispatch safety", () => {
       ...base,
       paymentStatus: "paid",
       membershipStatus: "cancelled",
-    })).toBe("skip");
+    })).toBe("manual_review");
   });
 
   it.each(["order", "wallet_topup", "offer_box", "package"])(
