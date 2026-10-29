@@ -325,6 +325,7 @@ async function activatePaidMembershipTx(
   membershipId: string,
   options?: {
     skipBookingGuarantee?: boolean;
+    preserveExistingDates?: boolean;
   },
 ): Promise<{
   success: boolean;
@@ -446,7 +447,24 @@ async function activatePaidMembershipTx(
   const now = new Date();
   const duration =
     membership.snapshotDurationDays ?? membership.membership.duration ?? 30;
-  const endDate = new Date(now.getTime() + duration * 24 * 60 * 60 * 1000);
+  const preserveExistingDates = options?.preserveExistingDates === true;
+
+  if (
+    preserveExistingDates &&
+    (!membership.startDate ||
+      !membership.endDate ||
+      membership.endDate <= membership.startDate)
+  ) {
+    throw new Error("RECOVERY_INVALID_ORIGINAL_MEMBERSHIP_DATES");
+  }
+
+  const activationStartDate = preserveExistingDates
+    ? membership.startDate!
+    : now;
+
+  const endDate = preserveExistingDates
+    ? membership.endDate!
+    : new Date(now.getTime() + duration * 24 * 60 * 60 * 1000);
 
   // Decide and lock the carryover source while the target is still pending.
   const carryoverPreview = await prepareMembershipSessionCarryoverTx(tx, {
@@ -458,7 +476,7 @@ async function activatePaidMembershipTx(
       eligibilitySnapshot: membership.eligibilitySnapshot,
       allowedClassTypesSnapshot: membership.allowedClassTypesSnapshot,
       baseSessions: membership.baseSessions ?? membership.totalSessions,
-      startDate: now,
+      startDate: activationStartDate,
       endDate,
       kind: membership.membership.kind,
     },
@@ -497,7 +515,7 @@ async function activatePaidMembershipTx(
     data: {
       status: "active",
       activatedAt: now,
-      startDate: now,
+      startDate: activationStartDate,
       endDate,
       pendingExpiresAt: null,
     },
@@ -570,7 +588,7 @@ async function activatePaidMembershipTx(
     success: true,
     membershipData: {
       status: "active",
-      startDate: now,
+      startDate: activationStartDate,
       offerId: membership.offerId,
       membership: { ...membership.membership, duration },
       offer: membership.offer,
@@ -3598,6 +3616,7 @@ export async function recoverVerifiedPaymobPayment(
       payment.membershipId,
       {
         skipBookingGuarantee: isTimeoutCancelledRecovery,
+        preserveExistingDates: true,
       },
     );
 
