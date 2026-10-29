@@ -2,6 +2,38 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
+// This suite exercises local lifecycle transitions. Only the paid attempt receives
+// a simulated provider Order proof; production Paymob verification stays mandatory.
+const mockProviderProof = vi.hoisted(() => ({
+  allowedPaymentId: "",
+  verifiedCalls: 0,
+}));
+
+vi.mock("@/lib/payments/registry", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/payments/registry")>();
+  return {
+    ...actual,
+    getPaymentProvider: (key: Parameters<typeof actual.getPaymentProvider>[0]) => {
+      const provider = actual.getPaymentProvider(key);
+      if (key !== "paymob" || !provider) return provider;
+      return {
+        ...provider,
+        verifyTransaction: async (input: { id: string; amount: number; currency: string }) => {
+          mockProviderProof.verifiedCalls++;
+          if (
+            input.id !== mockProviderProof.allowedPaymentId ||
+            input.amount !== 300 ||
+            input.currency !== "EGP"
+          ) {
+            throw new Error("UNEXPECTED_TEST_PAYMENT_PROOF_REQUEST");
+          }
+          return { status: "paid" as const };
+        },
+      };
+    },
+  };
+});
+
 vi.mock("@/lib/analytics/payment-events", () => ({
   recordPaymentStatusEvent: vi.fn().mockResolvedValue(undefined),
 }));
@@ -132,6 +164,8 @@ describe(
           },
         });
         paymentId = payment.id;
+        mockProviderProof.allowedPaymentId = paymentId;
+        mockProviderProof.verifiedCalls = 0;
 
         const booking = await db.booking.create({
           data: {
@@ -202,6 +236,7 @@ describe(
 
         const paidAttempt =
           await updatePaymentTransactionStatus(paymentId, "paid");
+        expect(mockProviderProof.verifiedCalls).toBe(1);
 
         expect(paidAttempt.status).toBe("paid");
 
@@ -242,6 +277,7 @@ describe(
 
         expect(metadata.latePaymentWarning).not.toBe(true);
       } finally {
+        mockProviderProof.allowedPaymentId = "";
         if (bookingId) {
           await db.booking.deleteMany({
             where: { id: bookingId },
