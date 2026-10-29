@@ -1,0 +1,134 @@
+name: FitZone Paymob Multi-Attempt Hotfix - Isolated CI (No Deploy)
+
+on:
+  push:
+    branches:
+      - hotfix/paymob-order-multi-attempt-discovery-20261029
+    paths:
+      - "src/lib/payments/**"
+      - "__tests__/unit/lib/payments/**"
+      - "__tests__/integration/payments/**"
+      - ".github/workflows/fitzone-paymob-multi-attempt-hotfix-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fitzone-paymob-hotfix-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  isolated-validation:
+    name: TypeScript + Paymob Unit + DB Integration (No Deploy)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: ci_root_only
+          MYSQL_DATABASE: fitzone_test
+          MYSQL_USER: fitzone_test_user
+          MYSQL_PASSWORD: ci_test_only
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -u fitzone_test_user -pci_test_only"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=12
+
+    env:
+      CI: "true"
+      APP_ENV: test
+      NODE_ENV: test
+      NEXT_TELEMETRY_DISABLED: "1"
+      ALLOW_EXTERNAL_SIDE_EFFECTS: "false"
+      PAYMOB_ENV: test
+      OPENAI_API_KEY: ""
+      DATABASE_URL: mysql://fitzone_test_user:ci_test_only@127.0.0.1:3306/fitzone_test
+      TEST_DATABASE_URL: mysql://fitzone_test_user:ci_test_only@127.0.0.1:3306/fitzone_test
+      TEST_SHADOW_DATABASE_URL: mysql://fitzone_test_user:ci_test_only@127.0.0.1:3306/fitzone_shadow
+
+    steps:
+      - name: Check out hotfix branch without persisted credentials
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Verify hotfix ref and disconnected database
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/hotfix/paymob-order-multi-attempt-discovery-20261029"
+          test "$APP_ENV" = test
+          test "$PAYMOB_ENV" = test
+          node -e 'const u = new URL(process.env.DATABASE_URL); if(u.hostname!=="127.0.0.1" || u.port!=="3306" || u.username!=="fitzone_test_user" || u.pathname!=="/fitzone_test") process.exit(1)'
+          for f in .env .env.local .env.production .env.production.local; do
+            test ! -e "$f"
+          done
+          echo "PRODUCTION_DATABASE=DISCONNECTED"
+          echo "DEPLOYMENT=NONE"
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Generate Prisma client in isolated test mode
+        run: node node_modules/prisma/build/index.js generate --config prisma.test.config.ts
+
+      - name: Create test-only schema on ephemeral MySQL
+        shell: bash
+        run: |
+          set -euo pipefail
+          node node_modules/prisma/build/index.js db push --config prisma.test.config.ts --skip-generate
+          echo "EPHEMERAL_TEST_SCHEMA=READY"
+
+      - name: Paymob hotfix targeted unit tests
+        env:
+          NODE_OPTIONS: --require=./scripts/skip-production-env.cjs --max-old-space-size=4096
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 240s node node_modules/vitest/vitest.mjs run \
+            __tests__/unit/lib/payments/paymob-auto-recovery-fallback-guard.test.ts \
+            __tests__/unit/lib/payments/paymob-auto-recovery-multi-attempt.test.ts \
+            __tests__/unit/lib/payments/paymob-auto-recovery-provider-safety.test.ts \
+            __tests__/unit/lib/payments/paymob-auto-recovery-retained-guard.test.ts \
+            __tests__/unit/lib/payments/paymob-order-paid-proof.test.ts \
+            __tests__/unit/lib/payments/paymob-retained-payment-proof.test.ts \
+            --maxWorkers=1 --no-file-parallelism
+
+      - name: Three database-backed financial regression suites
+        env:
+          NODE_OPTIONS: --require=./scripts/skip-production-env.cjs --max-old-space-size=4096
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 360s node node_modules/vitest/vitest.mjs run \
+            __tests__/integration/payments/paid-membership-recovery.test.ts \
+            __tests__/integration/payments/paymob-membership-multi-attempt.test.ts \
+            __tests__/unit/lib/payments/paymob-recovery.test.ts \
+            --maxWorkers=1 --no-file-parallelism
+
+      - name: Full TypeScript check (CI runner only)
+        env:
+          NODE_OPTIONS: --require=./scripts/skip-production-env.cjs --max-old-space-size=5120
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 720s node node_modules/typescript/bin/tsc --noEmit --incremental false --pretty false
+
+      - name: Record isolated validation result
+        if: success()
+        run: |
+          echo "### FitZone Paymob Hotfix CI" >> "$GITHUB_STEP_SUMMARY"
+          echo "Targeted units, database-backed financial regression and TypeScript: PASS" >> "$GITHUB_STEP_SUMMARY"
+          echo "Ephemeral MySQL only. No production credentials, external Paymob calls, deployment or cron." >> "$GITHUB_STEP_SUMMARY"
