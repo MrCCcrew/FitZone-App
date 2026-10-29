@@ -755,14 +755,53 @@ async function verifyTransaction(transaction: {
       if (response.ok) {
         const order: unknown = await response.json();
 
-        const confirmedTransactionId =
-          assessPaymobOrderPositiveProof({
-            order,
-            expectedOrderId: storedOrderId,
-            expectedMerchantOrderId: transaction.id,
-            expectedAmountCents: Math.round(transaction.amount * 100),
-            expectedCurrency: transaction.currency,
-          });
+        // First use the order's complete transaction list when provided.
+        // An absent list is not a failed payment: independently inquire by
+        // our merchant reference, then require fresh Order + Acceptance proof.
+        let confirmedTransactionId = assessPaymobOrderPositiveProof({
+          order,
+          expectedOrderId: storedOrderId,
+          expectedMerchantOrderId: transaction.id,
+          expectedAmountCents: Math.round(transaction.amount * 100),
+          expectedCurrency: transaction.currency,
+        });
+        let reconciliationSource = "paymob_order_transactions";
+
+        if (
+          !confirmedTransactionId &&
+          order &&
+          typeof order === "object" &&
+          !Array.isArray(order) &&
+          (order as Record<string, unknown>).transactions === undefined
+        ) {
+          const inquiry = await inquirePaymobTransactionByMerchantReference(
+            transaction.id,
+          );
+          const candidateId = inquiry.paymobTransactionId;
+          const expectedAmountCents = Math.round(transaction.amount * 100);
+
+          if (
+            inquiry.found &&
+            inquiry.status === "paid" &&
+            inquiry.success === true &&
+            inquiry.pending === false &&
+            inquiry.merchantOrderId === transaction.id &&
+            inquiry.amountCents === expectedAmountCents &&
+            inquiry.currency === transaction.currency.trim().toUpperCase() &&
+            candidateId &&
+            /^[1-9][0-9]*$/.test(candidateId) &&
+            await confirmPaymobOrderPaidForRecovery({
+              paymentId: transaction.id,
+              paymobOrderId: storedOrderId,
+              paymobTransactionId: candidateId,
+              amount: transaction.amount,
+              currency: transaction.currency,
+            })
+          ) {
+            confirmedTransactionId = candidateId;
+            reconciliationSource = "paymob_merchant_reference_order_acceptance";
+          }
+        }
 
         if (confirmedTransactionId) {
           return {
@@ -774,7 +813,7 @@ async function verifyTransaction(transaction: {
               ...(savedPayload ?? {}),
               paymobOrderId: storedOrderId,
               paymobTransactionId: confirmedTransactionId,
-              reconciliationSource: "paymob_order_transactions",
+              reconciliationSource,
             },
           };
         }
@@ -877,6 +916,27 @@ async function verifyTransaction(transaction: {
                   expectedAmountCents,
                   expectedCurrency: transaction.currency,
                 });
+
+              // The live Order may omit transactions. Do not downgrade to
+              // Acceptance-only proof: verify both independent responses.
+              if (
+                !confirmedOrderTransactionId &&
+                liveOrder &&
+                typeof liveOrder === "object" &&
+                !Array.isArray(liveOrder) &&
+                (liveOrder as Record<string, unknown>).transactions === undefined &&
+                assessPaymobOrderAndAcceptanceProof({
+                  order: liveOrder,
+                  acceptance,
+                  expectedOrderId: orderIdForProof,
+                  expectedMerchantOrderId: transaction.id,
+                  expectedTransactionId: String(acceptance.id ?? ""),
+                  expectedAmountCents,
+                  expectedCurrency: transaction.currency,
+                })
+              ) {
+                confirmedOrderTransactionId = String(acceptance.id);
+              }
             }
           } catch (error) {
             console.warn(
