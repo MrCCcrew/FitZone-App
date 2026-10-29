@@ -2,6 +2,7 @@ import "server-only";
 
 import {
   inquirePaymobTransactionByMerchantReference,
+  inquirePaidPaymobOrderAttemptsForRecovery,
 } from "@/lib/payments/providers/paymob";
 
 import {
@@ -16,6 +17,7 @@ import type {
 export const paymobAutoRecoveryDependencies:
   PaymobAutoRecoveryDiscoveryDependencies = {
   inquire: inquirePaymobTransactionByMerchantReference,
+  inquireOrderAttempts: inquirePaidPaymobOrderAttemptsForRecovery,
 
   recoverVerified: async (identity) => {
     const recovered = await recoverVerifiedPaymobPayment(identity);

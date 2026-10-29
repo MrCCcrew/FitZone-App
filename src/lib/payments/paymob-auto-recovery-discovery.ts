@@ -13,11 +13,20 @@ export type PaymobDiscoveryResult = {
   currency: string | null;
   pending: boolean | null;
   success: boolean | null;
+  retainedPaymentFailure?:
+    | "refunded"
+    | "voided"
+    | "partially_refunded"
+    | "duplicate_charge";
 };
 
 export type PaymobAutoRecoveryDiscoveryDependencies =
   PaymobVerifiedRecoveryDependencies & {
     inquire: (localPaymentId: string) => Promise<PaymobDiscoveryResult>;
+    inquireOrderAttempts?: (
+      localPaymentId: string,
+      paymobOrderId: string | null,
+    ) => Promise<PaymobDiscoveryResult>;
   };
 
 export async function discoverAndRecoverPaymobPayment(
@@ -27,24 +36,53 @@ export async function discoverAndRecoverPaymobPayment(
   const inquiry = await deps.inquire(identity.paymentTransactionId);
   const expectedCents = Math.round(identity.expectedAmount * 100);
 
+  const isMatchingPaidAttempt = (candidate: PaymobDiscoveryResult) =>
+    candidate.found === true &&
+    candidate.status === "paid" &&
+    candidate.success === true &&
+    candidate.pending === false &&
+    candidate.merchantOrderId === identity.paymentTransactionId &&
+    !!candidate.paymobTransactionId &&
+    /^[1-9][0-9]*$/.test(candidate.paymobTransactionId) &&
+    Number.isSafeInteger(expectedCents) &&
+    expectedCents > 0 &&
+    candidate.amountCents === expectedCents &&
+    candidate.currency === identity.expectedCurrency.toUpperCase();
+
+  // A provider response explicitly linked to another merchant order
+  // must never be used to initiate alternative payment discovery.
   if (
-    inquiry.found !== true ||
-    inquiry.status !== "paid" ||
-    inquiry.success !== true ||
-    inquiry.pending !== false ||
-    inquiry.merchantOrderId !== identity.paymentTransactionId ||
-    !inquiry.paymobTransactionId ||
-    !/^[1-9][0-9]*$/.test(inquiry.paymobTransactionId) ||
-    !Number.isSafeInteger(expectedCents) ||
-    expectedCents <= 0 ||
-    inquiry.amountCents !== expectedCents ||
-    inquiry.currency !== identity.expectedCurrency.toUpperCase()
+    inquiry.found === true &&
+    inquiry.merchantOrderId !== null &&
+    inquiry.merchantOrderId !== identity.paymentTransactionId
   ) {
+    return "unresolved";
+  }
+
+  // Explicit retained-funds contradictions require manual review.
+  // Never substitute another attempt through automatic fallback.
+  if (inquiry.retainedPaymentFailure) {
+    return "unresolved";
+  }
+
+  let selected = inquiry;
+
+  if (!isMatchingPaidAttempt(inquiry) && deps.inquireOrderAttempts) {
+    const other = await deps.inquireOrderAttempts(
+      identity.paymentTransactionId,
+      null,
+    );
+    if (isMatchingPaidAttempt(other)) {
+      selected = other;
+    }
+  }
+
+  if (!isMatchingPaidAttempt(selected)) {
     return "unresolved";
   }
 
   return executeVerifiedPaymobRecovery({
     ...identity,
-    paymobTransactionId: inquiry.paymobTransactionId,
+    paymobTransactionId: selected.paymobTransactionId!,
   }, deps);
 }
