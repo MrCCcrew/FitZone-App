@@ -91,6 +91,42 @@ jobs:
           node node_modules/prisma/build/index.js db push --config prisma.test.config.ts --skip-generate
           echo "EPHEMERAL_TEST_SCHEMA=READY"
 
+      - name: Seed minimum chart of accounts for ephemeral financial tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'JS'
+          const { PrismaClient } = require("@prisma/client");
+          const prisma = new PrismaClient();
+          const accounts = [
+            ["1010", "Inventory Asset", "asset"],
+            ["1020", "Cash", "asset"],
+            ["1030", "Paymob Clearing", "asset"],
+            ["2010", "Accounts Payable", "liability"],
+            ["2020", "Wallet Liability", "liability"],
+            ["2030", "Reward Points Liability", "liability"],
+            ["3010", "Opening Balance Equity", "equity"],
+            ["4010", "Sales Revenue", "revenue"],
+            ["4020", "Subscription Revenue", "revenue"],
+            ["5010", "Cost of Goods Sold", "expense"],
+            ["5020", "Rewards Promotion Expense", "expense"]
+          ];
+          (async () => {
+            for (const [code, name, type] of accounts) {
+              await prisma.gLAccount.create({ data: { code, name, type } });
+            }
+            console.log("EPHEMERAL_GL_ACCOUNTS=" + accounts.length);
+          })().finally(() => prisma.$disconnect());
+          JS
+
+      - name: Full TypeScript check (CI runner only)
+        env:
+          NODE_OPTIONS: --require=./scripts/skip-production-env.cjs --max-old-space-size=5120
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 720s node node_modules/typescript/bin/tsc --noEmit --incremental false --pretty false
+
       - name: Paymob hotfix targeted unit tests
         env:
           NODE_OPTIONS: --require=./scripts/skip-production-env.cjs --max-old-space-size=4096
@@ -117,14 +153,6 @@ jobs:
             __tests__/integration/payments/paymob-membership-multi-attempt.test.ts \
             __tests__/unit/lib/payments/paymob-recovery.test.ts \
             --maxWorkers=1 --no-file-parallelism
-
-      - name: Full TypeScript check (CI runner only)
-        env:
-          NODE_OPTIONS: --require=./scripts/skip-production-env.cjs --max-old-space-size=5120
-        shell: bash
-        run: |
-          set -euo pipefail
-          timeout 720s node node_modules/typescript/bin/tsc --noEmit --incremental false --pretty false
 
       - name: Record isolated validation result
         if: success()
