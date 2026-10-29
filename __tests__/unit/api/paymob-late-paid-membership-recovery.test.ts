@@ -9,7 +9,7 @@ vi.mock("@/lib/payments/settings", () => ({
 
 import { paymobPaymentProvider } from "@/lib/payments/providers/paymob";
 
-const merchantId = "cmvr1hocs0060l1ifchv0qp2f";
+const merchantId = "test-membership-merchant-order-001";
 const orderId = 640961343;
 const acceptanceId = 987654321;
 const amountCents = 34300;
