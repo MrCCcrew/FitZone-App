@@ -1,0 +1,595 @@
+name: FitZone Unified Attested Candidate - Build Only
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: "Exact approved 40-character source commit SHA"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fitzone-unified-attested-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-attested-candidate:
+    name: Isolated Linux build and provenance
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    permissions:
+      contents: read
+
+    env:
+      CI: "true"
+      NODE_ENV: production
+      NEXT_TELEMETRY_DISABLED: "1"
+      DATABASE_URL: mysql://build_blocked:blocked@127.0.0.1:1/fitzone_prod
+      ALLOW_EXTERNAL_SIDE_EFFECTS: "false"
+      OPENAI_API_KEY: ""
+      AI_COACH_VOICE_ENABLED: "true"
+      AI_COACH_REALTIME_VOICE_ENABLED: "true"
+      AI_COACH_STT_ENABLED: "true"
+      AI_COACH_TTS_ENABLED: "false"
+      AI_COACH_VOICE_DEBUG_ENABLED: "false"
+      HYDRATION_AUTH_DEBUG: "false"
+
+    steps:
+      - name: Validate exact requested source
+        shell: bash
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$GITHUB_REPOSITORY" = "MrCCcrew/FitZone-App"
+          test "$GITHUB_REF" = "refs/heads/release/fitzone-attestation-20261105"
+          test "$CANDIDATE_SHA" = "0ca9650c0a9b80af1d8ae1a8208f273da06a1785"
+          echo "APPROVED_CANDIDATE_PIN=PASS"
+          echo "ISOLATED_WORKFLOW_BRANCH=PASS"
+
+      - name: Checkout candidate commit without persistent credentials
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.candidate_sha }}
+          persist-credentials: false
+
+      - name: Verify checked-out commit and isolated environment
+        shell: bash
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test "$NODE_ENV" = production
+          test -z "${APP_ENV:-}"
+          test -z "${FITZONE_TEST_BUILD:-}"
+          test -z "${PAYMOB_SECRET_KEY:-}"
+          test -z "${PAYMOB_API_KEY:-}"
+          test -z "${PAYMOB_PUBLIC_KEY:-}"
+          test -z "${AUTH_SECRET:-}"
+          test -z "${NEXTAUTH_SECRET:-}"
+
+          for f in .env .env.local .env.production .env.production.local; do
+            test ! -e "$f"
+          done
+
+          test "$DATABASE_URL" = "mysql://build_blocked:blocked@127.0.0.1:1/fitzone_prod"
+          echo "EXACT_SOURCE_COMMIT=PASS"
+          echo "LIVE_CREDENTIALS=NONE"
+          echo "DATABASE_BUILD_STUB=PASS"
+          echo "DEPLOYMENT=NONE"
+
+      - name: Checkout pinned release verification tools
+        uses: actions/checkout@v4
+        with:
+          ref: 1c21264dc386a10ee6c28d2464ddced245ad5cab
+          path: .trusted-release-tools
+          persist-credentials: false
+
+      - name: Verify independent release tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C .trusted-release-tools rev-parse HEAD)" = "1c21264dc386a10ee6c28d2464ddced245ad5cab"
+          test -f .trusted-release-tools/ops/deployment/fitzone-artifact-manifest.py
+          test -f .trusted-release-tools/ops/deployment/fitzone-green-stage.py
+          test -f .trusted-release-tools/ops/deployment/fitzone-release.py
+          echo "INDEPENDENT_TOOLING_SOURCE=PASS"
+          echo "DEPLOYMENT=NONE"
+
+      - name: Configure Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install locked dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --include=dev --no-audit --no-fund
+
+      - name: Build and validate candidate
+        shell: bash
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+        run: |
+          set -euo pipefail
+          node node_modules/prisma/build/index.js generate --config prisma.config.ts
+          node scripts/check-prisma-contract.mjs
+          timeout 900s node node_modules/next/dist/bin/next build --webpack
+          test -s .next/BUILD_ID
+          test -s .next/routes-manifest.json
+          test -s .next/prerender-manifest.json
+          echo "ISOLATED_LINUX_BUILD=PASS"
+
+      - name: Reject unsafe candidate archive contents
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          import stat
+          from pathlib import Path
+
+          root = Path.cwd().resolve(strict=True)
+          required = (
+              ".next/BUILD_ID", ".next/server", ".next/static",
+              "node_modules", "public", "prisma", "src",
+              "scripts", "ops", "package.json",
+              "package-lock.json", "next.config.ts",
+              "prisma.config.ts", "tsconfig.json",
+              "postcss.config.mjs", "tailwind.config.ts",
+              "middleware.ts", "ecosystem.config.js",
+          )
+          archive_roots = (
+              ".next", "node_modules", "public", "prisma",
+              "src", "scripts", "ops", "package.json",
+              "package-lock.json", "next.config.ts",
+              "prisma.config.ts", "tsconfig.json",
+              "postcss.config.mjs", "tailwind.config.ts",
+              "middleware.ts", "ecosystem.config.js",
+          )
+          forbidden = {
+              ".env", ".env.local", ".env.production",
+              ".env.production.local",
+              ".paymob-green-runtime.env",
+          }
+
+          def reject(message, path):
+              raise SystemExit(message + ": " + str(path))
+
+          for name in required:
+              path = root / name
+              if not path.exists() or path.is_symlink():
+                  reject("REQUIRED_ARTIFACT_PATH_MISSING", name)
+
+          counts = {"files": 0, "links": 0, "directories": 0}
+
+          def scan(path):
+              info = path.lstat()
+              mode = info.st_mode
+
+              if path.name in forbidden or path.name.startswith(".env."):
+                  reject("RUNTIME_SECRET_PATH_BLOCKED", path)
+
+              if stat.S_ISLNK(mode):
+                  target = os.readlink(path)
+                  if os.path.isabs(target):
+                      reject("ABSOLUTE_SYMLINK_BLOCKED", path)
+
+                  lexical = Path(os.path.normpath(
+                      os.path.join(path.parent, target)
+                  ))
+                  if not lexical.is_relative_to(root):
+                      reject("SYMLINK_ESCAPE_BLOCKED", path)
+
+                  try:
+                      resolved = path.resolve(strict=True)
+                  except (OSError, RuntimeError):
+                      reject("BROKEN_OR_CYCLIC_SYMLINK", path)
+
+                  if not resolved.is_relative_to(root):
+                      reject("SYMLINK_ESCAPE_BLOCKED", path)
+
+                  counts["links"] += 1
+                  return
+
+              if stat.S_ISREG(mode):
+                  if info.st_nlink != 1:
+                      reject("HARDLINKED_FILE_BLOCKED", path)
+                  counts["files"] += 1
+                  return
+
+              if not stat.S_ISDIR(mode):
+                  reject("SPECIAL_FILE_BLOCKED", path)
+
+              counts["directories"] += 1
+
+              with os.scandir(path) as iterator:
+                  children = sorted(
+                      (Path(entry.path) for entry in iterator),
+                      key=lambda item: item.name,
+                  )
+
+              for child in children:
+                  scan(child)
+
+          for name in archive_roots:
+              scan(root / name)
+
+          print("CANDIDATE_ARCHIVE_SECURITY=PASS")
+          print("REGULAR_FILES=" + str(counts["files"]))
+          print("SYMLINKS=" + str(counts["links"]))
+          print("DIRECTORIES=" + str(counts["directories"]))
+          print("RUNTIME_SECRET_PATHS=NONE")
+          print("UNSAFE_LINKS=NONE")
+          print("SPECIAL_FILES=NONE")
+          print("DEPLOYMENT=NONE")
+          PY
+
+      - name: Create complete runtime candidate archive
+        shell: bash
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+        run: |
+          set -euo pipefail
+
+          mkdir -p cloud-unified-candidate
+
+          BUILD_ID="$(cat .next/BUILD_ID)"
+          test -n "$BUILD_ID"
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+
+          cat > release-metadata.txt <<EOF
+          RELEASE_KIND=fitzone-unified-candidate
+          SOURCE_COMMIT=$CANDIDATE_SHA
+          BUILD_ID=$BUILD_ID
+          NODE_ENV=production
+          DATABASE_ACCESS=blocked
+          DEPLOYMENT=none
+          EOF
+
+          tar -czf cloud-unified-candidate/fitzone-unified-candidate.tar.gz \
+            --exclude='.next/cache' \
+            --exclude='node_modules/.cache' \
+            .next \
+            node_modules \
+            public \
+            prisma \
+            src \
+            scripts \
+            ops \
+            package.json \
+            package-lock.json \
+            next.config.ts \
+            prisma.config.ts \
+            tsconfig.json \
+            postcss.config.mjs \
+            tailwind.config.ts \
+            middleware.ts \
+            ecosystem.config.js \
+            release-metadata.txt
+
+          test -s cloud-unified-candidate/fitzone-unified-candidate.tar.gz
+
+          (
+            cd cloud-unified-candidate
+            sha256sum fitzone-unified-candidate.tar.gz > SHA256SUMS
+          )
+
+          # Generate v2 from the EXACT archived payload, not the build workspace.
+          # This runs before uploading the candidate or issuing an attestation.
+          python3 - <<'PY'
+          import importlib.util
+          import os
+          import re
+          import tarfile
+          import tempfile
+          from pathlib import Path
+
+          archive = Path("cloud-unified-candidate/fitzone-unified-candidate.tar.gz").resolve()
+          manifest = Path("cloud-unified-candidate/MANIFEST-v2.json").resolve()
+          tooling = (
+              Path.cwd()
+              / ".trusted-release-tools"
+              / "ops"
+              / "deployment"
+              / "fitzone-artifact-manifest.py"
+          )
+
+          commit = os.environ.get("CANDIDATE_SHA", "")
+          if not re.fullmatch(r"[0-9a-f]{40}", commit):
+              raise SystemExit("INVALID_PINNED_CANDIDATE")
+
+          if commit != "0ca9650c0a9b80af1d8ae1a8208f273da06a1785":
+              raise SystemExit("UNAPPROVED_SOURCE_COMMIT")
+
+          if not tooling.is_file():
+              raise SystemExit("TRUSTED_MANIFEST_TOOL_MISSING")
+
+          spec = importlib.util.spec_from_file_location(
+              "fitzone_trusted_manifest_v2", tooling
+          )
+          if spec is None or spec.loader is None:
+              raise SystemExit("TRUSTED_MANIFEST_TOOL_LOAD_FAILED")
+
+          tool = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(tool)
+
+          allowed = {
+              ".next", "node_modules", "public", "prisma", "src",
+              "scripts", "ops", "package.json", "package-lock.json",
+              "next.config.ts", "prisma.config.ts", "tsconfig.json",
+              "postcss.config.mjs", "tailwind.config.ts",
+              "middleware.ts", "ecosystem.config.js",
+              "release-metadata.txt",
+          }
+
+          with tempfile.TemporaryDirectory(
+              prefix="fitzone-exact-archive-"
+          ) as temporary:
+              extracted = Path(temporary) / "release"
+              extracted.mkdir(mode=0o700)
+
+              with tarfile.open(archive, "r:gz") as stream:
+                  members = stream.getmembers()
+                  if len(members) > 1000000:
+                      raise SystemExit("ARCHIVE_ENTRY_LIMIT_EXCEEDED")
+
+                  seen = set()
+                  for member in members:
+                      parts = Path(member.name).parts
+                      if (
+                          member.name.startswith("/")
+                          or not parts
+                          or ".." in parts
+                          or parts[0] not in allowed
+                          or member.name in seen
+                      ):
+                          raise SystemExit(
+                              "UNSAFE_OR_DUPLICATE_ARCHIVE_ENTRY"
+                          )
+                      seen.add(member.name)
+
+                  stream.extractall(extracted, filter="data")
+
+              build_file = extracted / ".next" / "BUILD_ID"
+              if not build_file.is_file() or build_file.is_symlink():
+                  raise SystemExit("ARCHIVED_BUILD_ID_MISSING")
+
+              build_id = build_file.read_text(
+                  encoding="utf-8"
+              ).strip()
+
+              if not build_id:
+                  raise SystemExit("ARCHIVED_BUILD_ID_EMPTY")
+
+              metadata = (
+                  extracted / "release-metadata.txt"
+              ).read_text(encoding="utf-8").splitlines()
+
+              if (
+                  "SOURCE_COMMIT=" + commit not in metadata
+                  or "BUILD_ID=" + build_id not in metadata
+              ):
+                  raise SystemExit("ARCHIVE_SOURCE_METADATA_MISMATCH")
+
+              tool.generate_manifest(
+                  extracted, manifest, commit, build_id
+              )
+              tool.verify_manifest(
+                  extracted, manifest, commit, build_id
+              )
+
+          print("EXACT_ARCHIVE_MANIFEST_V2=PASS")
+          print("ARCHIVED_BUILD_ID=VERIFIED")
+          print("ARCHIVE_MANIFEST_SIDECAR=MANIFEST-v2.json")
+          print("BUILD_PROVENANCE=NOT_YET_ATTESTED")
+          print("DEPLOYMENT=NONE")
+          PY
+
+          echo "CANDIDATE_ARCHIVE=CREATED"
+          echo "DEPLOYMENT=NONE"
+
+      - name: Upload signed-build candidate package
+        uses: actions/upload-artifact@v4
+        with:
+          name: fitzone-unified-attested-NOT-DEPLOYED
+          path: cloud-unified-candidate/
+          retention-days: 7
+          compression-level: 0
+          if-no-files-found: error
+  attest-candidate:
+    name: Verify uploaded archive and issue attestation
+    needs: build-attested-candidate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+
+    steps:
+      - name: Download exact build output
+        uses: actions/download-artifact@v4
+        with:
+          name: fitzone-unified-attested-NOT-DEPLOYED
+          path: cloud-unified-candidate
+
+      - name: Verify archived output checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s cloud-unified-candidate/fitzone-unified-candidate.tar.gz
+          test -s cloud-unified-candidate/SHA256SUMS
+          (cd cloud-unified-candidate && sha256sum --check --strict SHA256SUMS)
+          echo "DOWNLOADED_ARCHIVE_INTEGRITY=PASS"
+          echo "DEPLOYMENT=NONE"
+
+      - name: Checkout independently pinned verification tools
+        uses: actions/checkout@v4
+        with:
+          ref: 1c21264dc386a10ee6c28d2464ddced245ad5cab
+          path: .trusted-release-tools
+          persist-credentials: false
+
+      - name: Verify exact archive against Manifest v2 before attestation
+        shell: bash
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+        run: |
+          set -euo pipefail
+          test "$(git -C .trusted-release-tools rev-parse HEAD)" = "1c21264dc386a10ee6c28d2464ddced245ad5cab"
+          python3 - <<'PY'
+          import importlib.util
+          import os
+          import re
+          import stat
+          import tarfile
+          import tempfile
+          from pathlib import Path
+
+          expected_commit = "0ca9650c0a9b80af1d8ae1a8208f273da06a1785"
+          commit = os.environ.get("CANDIDATE_SHA", "")
+
+          if not re.fullmatch(r"[0-9a-f]{40}", commit):
+              raise SystemExit("INVALID_CANDIDATE_SHA")
+          if commit != expected_commit:
+              raise SystemExit("UNAPPROVED_CANDIDATE_SHA")
+
+          base = Path.cwd()
+          bundle = base / "cloud-unified-candidate"
+          archive = bundle / "fitzone-unified-candidate.tar.gz"
+          manifest = bundle / "MANIFEST-v2.json"
+          tooling = (
+              base / ".trusted-release-tools"
+              / "ops/deployment/fitzone-artifact-manifest.py"
+          )
+
+          for file in (archive, manifest, tooling):
+              if not file.is_file() or file.is_symlink():
+                  raise SystemExit("REQUIRED_VERIFICATION_FILE_MISSING")
+
+          if manifest.stat().st_size > 64 * 1024 * 1024:
+              raise SystemExit("MANIFEST_TOO_LARGE")
+
+          allowed_roots = {
+              ".next", "node_modules", "public", "prisma",
+              "src", "scripts", "ops", "package.json",
+              "package-lock.json", "next.config.ts",
+              "prisma.config.ts", "tsconfig.json",
+              "postcss.config.mjs", "tailwind.config.ts",
+              "middleware.ts", "ecosystem.config.js",
+              "release-metadata.txt",
+          }
+
+          spec = importlib.util.spec_from_file_location(
+              "fitzone_independent_manifest", tooling
+          )
+          if spec is None or spec.loader is None:
+              raise SystemExit("TRUSTED_VERIFIER_UNAVAILABLE")
+
+          tool = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(tool)
+
+          with tempfile.TemporaryDirectory(
+              prefix="fitzone-attestation-check-"
+          ) as temporary:
+              extracted = Path(temporary) / "release"
+              extracted.mkdir(mode=0o700)
+
+              with tarfile.open(archive, "r:gz") as stream:
+                  members = stream.getmembers()
+                  if len(members) > 1000000:
+                      raise SystemExit("ARCHIVE_ENTRY_LIMIT_EXCEEDED")
+
+                  seen = set()
+                  total_size = 0
+
+                  for member in members:
+                      name = member.name.removeprefix("./").rstrip("/")
+                      parts = Path(name).parts
+
+                      if (
+                          not name
+                          or name.startswith("/")
+                          or ".." in parts
+                          or parts[0] not in allowed_roots
+                          or name in seen
+                      ):
+                          raise SystemExit(
+                              "UNSAFE_OR_DUPLICATE_ARCHIVE_ENTRY"
+                          )
+
+                      if not (
+                          member.isfile()
+                          or member.isdir()
+                          or member.issym()
+                      ):
+                          raise SystemExit("UNSAFE_ARCHIVE_ENTRY_TYPE")
+
+                      if member.isfile():
+                          total_size += member.size
+                          if total_size > 8 * 1024**3:
+                              raise SystemExit(
+                                  "ARCHIVE_UNPACKED_SIZE_LIMIT"
+                              )
+
+                      seen.add(name)
+
+                  # Python's data filter additionally checks extraction
+                  # destinations and link targets.
+                  stream.extractall(extracted, filter="data")
+
+              build_file = extracted / ".next/BUILD_ID"
+              metadata_file = extracted / "release-metadata.txt"
+
+              if (
+                  not build_file.is_file()
+                  or build_file.is_symlink()
+                  or not metadata_file.is_file()
+                  or metadata_file.is_symlink()
+              ):
+                  raise SystemExit("ARCHIVE_METADATA_MISSING")
+
+              build_id = build_file.read_text(
+                  encoding="utf-8"
+              ).strip()
+              if not build_id or len(build_id) > 128:
+                  raise SystemExit("INVALID_ARCHIVED_BUILD_ID")
+
+              metadata = metadata_file.read_text(
+                  encoding="utf-8"
+              ).splitlines()
+
+              if (
+                  "SOURCE_COMMIT=" + commit not in metadata
+                  or "BUILD_ID=" + build_id not in metadata
+              ):
+                  raise SystemExit(
+                      "ARCHIVED_SOURCE_METADATA_MISMATCH"
+                  )
+
+              tool.verify_manifest(
+                  extracted, manifest, commit, build_id
+              )
+
+          print("INDEPENDENT_ARCHIVE_MANIFEST_V2=PASS")
+          print("CANDIDATE_COMMIT_PIN=PASS")
+          print("ARCHIVE_CONTENT_INTEGRITY=PASS")
+          print("PROVENANCE_ATTESTATION=NEXT_STEP_ONLY")
+          print("DEPLOYMENT=NONE")
+          PY
+
+      - name: Attest verified candidate archive
+        uses: actions/attest@v4
+        with:
+          subject-path: cloud-unified-candidate/fitzone-unified-candidate.tar.gz
