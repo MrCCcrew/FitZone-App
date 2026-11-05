@@ -1,0 +1,71 @@
+[dotenv@17.3.1] injecting env (57) from .env -- tip: ⚙️  write to custom object with { processEnv: myObject }
+-- CreateTable
+CREATE TABLE `FriendOfferConfig` (
+    `id` VARCHAR(191) NOT NULL,
+    `offerId` VARCHAR(191) NOT NULL,
+    `requiredMembers` INTEGER NOT NULL DEFAULT 2,
+    `inviteExpiryHours` INTEGER NOT NULL DEFAULT 24,
+    `isActive` BOOLEAN NOT NULL DEFAULT true,
+    `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `updatedAt` DATETIME(3) NOT NULL,
+
+    UNIQUE INDEX `FriendOfferConfig_offerId_key`(`offerId`),
+    INDEX `FriendOfferConfig_isActive_idx`(`isActive`),
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- CreateTable
+CREATE TABLE `FriendOfferGroup` (
+    `id` VARCHAR(191) NOT NULL,
+    `configId` VARCHAR(191) NOT NULL,
+    `creatorUserId` VARCHAR(191) NOT NULL,
+    `inviteToken` VARCHAR(191) NOT NULL,
+    `status` VARCHAR(191) NOT NULL DEFAULT 'waiting',
+    `expiresAt` DATETIME(3) NOT NULL,
+    `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `updatedAt` DATETIME(3) NOT NULL,
+
+    UNIQUE INDEX `FriendOfferGroup_inviteToken_key`(`inviteToken`),
+    INDEX `FriendOfferGroup_configId_status_idx`(`configId`, `status`),
+    INDEX `FriendOfferGroup_creatorUserId_idx`(`creatorUserId`),
+    INDEX `FriendOfferGroup_expiresAt_idx`(`expiresAt`),
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- CreateTable
+CREATE TABLE `FriendOfferParticipant` (
+    `id` VARCHAR(191) NOT NULL,
+    `groupId` VARCHAR(191) NOT NULL,
+    `userId` VARCHAR(191) NOT NULL,
+    `userMembershipId` VARCHAR(191) NULL,
+    `role` VARCHAR(191) NOT NULL DEFAULT 'invited',
+    `status` VARCHAR(191) NOT NULL DEFAULT 'joined',
+    `joinedAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `updatedAt` DATETIME(3) NOT NULL,
+
+    UNIQUE INDEX `FriendOfferParticipant_userMembershipId_key`(`userMembershipId`),
+    INDEX `FriendOfferParticipant_userId_idx`(`userId`),
+    INDEX `FriendOfferParticipant_groupId_status_idx`(`groupId`, `status`),
+    UNIQUE INDEX `FriendOfferParticipant_groupId_userId_key`(`groupId`, `userId`),
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- AddForeignKey
+ALTER TABLE `FriendOfferConfig` ADD CONSTRAINT `FriendOfferConfig_offerId_fkey` FOREIGN KEY (`offerId`) REFERENCES `Offer`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `FriendOfferGroup` ADD CONSTRAINT `FriendOfferGroup_configId_fkey` FOREIGN KEY (`configId`) REFERENCES `FriendOfferConfig`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `FriendOfferGroup` ADD CONSTRAINT `FriendOfferGroup_creatorUserId_fkey` FOREIGN KEY (`creatorUserId`) REFERENCES `User`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `FriendOfferParticipant` ADD CONSTRAINT `FriendOfferParticipant_groupId_fkey` FOREIGN KEY (`groupId`) REFERENCES `FriendOfferGroup`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `FriendOfferParticipant` ADD CONSTRAINT `FriendOfferParticipant_userId_fkey` FOREIGN KEY (`userId`) REFERENCES `User`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `FriendOfferParticipant` ADD CONSTRAINT `FriendOfferParticipant_userMembershipId_fkey` FOREIGN KEY (`userMembershipId`) REFERENCES `UserMembership`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+

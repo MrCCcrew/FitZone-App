@@ -1,0 +1,1757 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { TranslateButton } from "./TranslateButton";
+import type { GymClass } from "../types";
+import { formatTime12Hour } from "@/lib/time-format";
+
+type ApiTrainer = {
+  id: string;
+  name: string;
+  nameEn?: string | null;
+  specialty: string;
+  specialtyEn?: string | null;
+};
+
+type AdminClassType = {
+  id: string;
+  key: string;
+  nameAr: string;
+  nameEn?: string | null;
+  isActive: boolean;
+  sortOrder: number;
+  aliases: string[];
+  _count: {
+    classes: number;
+    offerAllowedTypes: number;
+  };
+};
+
+const DAYS = [
+  "السبت",
+  "الأحد",
+  "الاثنين",
+  "الثلاثاء",
+  "الأربعاء",
+  "الخميس",
+  "الجمعة",
+];
+
+const PRESET_TYPES = [
+  { value: "cardio", label: "كارديو" },
+  { value: "strength", label: "قوة" },
+  { value: "yoga", label: "يوجا" },
+  { value: "boxing", label: "ملاكمة" },
+  { value: "swimming", label: "سباحة" },
+  { value: "dance", label: "رقص" },
+  { value: "pilates", label: "بيلاتس" },
+  { value: "zumba", label: "زومبا" },
+];
+
+const CATEGORY_OPTIONS = [
+  "التخسيس",
+  "التهدئة والإطالة",
+  "القوة البدنية والرشاقة",
+  "زيادة الوزن وريشيب",
+  "الترفيه والرقص",
+  "إطالة ومرونة وريلاكس",
+  "تأهيل إصابات",
+  "شد وتنسيق الجسم",
+  "ألعاب الدفاع عن النفس",
+  "تأهيل عسكري",
+  "قسم الأطفال",
+  "قسم الفيتنس",
+  "أنواع الزومبا",
+];
+
+const CATEGORY_TYPE_MAP: Record<string, string[]> = {
+  التخسيس: ["زومبا", "فيتنس", "كروس فيت"],
+  "التهدئة والإطالة": ["بيلاتس", "يوجا"],
+  "القوة البدنية والرشاقة": ["بيلدينج", "فيتنس", "كروس فيت"],
+  "زيادة الوزن وريشيب": ["بيلدينج"],
+  "الترفيه والرقص": ["رقص شرقي", "زومبا"],
+  "إطالة ومرونة وريلاكس": ["يوجا", "بيلاتس"],
+  "تأهيل إصابات": ["ميني برايفت", "برايفت", "برنامج مخصص"],
+  "شد وتنسيق الجسم": ["زومبا", "فيتنس", "بيلدينج", "بيلاتس"],
+  "ألعاب الدفاع عن النفس": ["سلف ديفنس", "كاراتيه", "كيك بوكس"],
+  "تأهيل عسكري": ["برنامج مخصص", "إعداد تربية وتعليم", "كلية الشرطة", "إعداد ضباط حربية"],
+  "قسم الأطفال": ["فيتنس أطفال", "كيك بوكس", "كاراتيه", "جمباز", "زومبا"],
+  "قسم الفيتنس": ["كارديو", "استيب", "Stick", "Swiss Ball", "Body Pump", "إيروبك", "HIIT", "Tabata", "بيلاتس"],
+  "أنواع الزومبا": ["زومبا لاتيني", "زومبا أفريقي", "زومبا هندي"],
+};
+
+const TYPE_SUBTYPE_MAP: Record<string, string[]> = {
+  زومبا: ["زومبا لاتيني", "زومبا أفريقي", "زومبا هندي"],
+  "زومبا لاتيني": ["زومبا لاتيني"],
+  "زومبا أفريقي": ["زومبا أفريقي"],
+  "زومبا هندي": ["زومبا هندي"],
+};
+
+const TYPE_COLOR_MAP: Record<string, string> = {
+  cardio: "bg-orange-500/15 text-orange-300 border-orange-500/30",
+  strength: "bg-red-500/15 text-red-300 border-red-500/30",
+  yoga: "bg-purple-500/15 text-purple-300 border-purple-500/30",
+  boxing: "bg-blue-500/15 text-blue-300 border-blue-500/30",
+  swimming: "bg-cyan-500/15 text-cyan-300 border-cyan-500/30",
+  dance: "bg-pink-500/15 text-pink-300 border-pink-500/30",
+  pilates: "bg-sky-500/15 text-sky-300 border-sky-500/30",
+  zumba: "bg-fuchsia-500/15 text-fuchsia-300 border-fuchsia-500/30",
+};
+
+const INPUT =
+  "w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition placeholder:text-white/35 focus:border-fuchsia-400/60 focus:bg-white/10";
+
+type ClassModalState = {
+  id?: string;
+  name: string;
+  nameEn: string;
+  trainer: string;
+  trainerId: string;
+  day: string;
+  selectedDays: string[];
+  time: string;
+  duration: number;
+  capacity: number;
+  enrolled: number;
+  category: string;
+  categoryEn: string;
+  type: string;
+  classTypeId: string | null;
+  typeEn: string;
+  subType: string;
+  subTypeEn: string;
+  description: string;
+  descriptionEn: string;
+  active: boolean;
+  showTrainerName: boolean;
+  categoryPreset: string;
+  customCategory: string;
+  typePreset: string;
+  customType: string;
+  subTypePreset: string;
+  customSubType: string;
+  trialEnabled: boolean;
+  trialPrice: number;
+};
+
+const EMPTY_MODAL: ClassModalState = {
+  name: "التخسيس",
+  nameEn: "",
+  trainer: "",
+  trainerId: "",
+  day: DAYS[0],
+  selectedDays: [DAYS[0]],
+  time: "06:00",
+  duration: 60,
+  capacity: 15,
+  enrolled: 0,
+  category: "التخسيس",
+  categoryEn: "",
+  type: "strength",
+  classTypeId: null,
+  typeEn: "",
+  subType: "",
+  subTypeEn: "",
+  description: "",
+  descriptionEn: "",
+  active: true,
+  showTrainerName: true,
+  categoryPreset: "التخسيس",
+  customCategory: "",
+  typePreset: "strength",
+  customType: "",
+  subTypePreset: "",
+  customSubType: "",
+  trialEnabled: true,
+  trialPrice: 50,
+};
+
+function normalizeTypeLabel(type: string) {
+  const normalized = type.trim();
+  if (!normalized) return "غير محدد";
+  const preset = PRESET_TYPES.find(
+    (item) =>
+      item.value.toLowerCase() === normalized.toLowerCase() ||
+      item.label === normalized,
+  );
+  return preset?.label ?? normalized;
+}
+
+function resolveTypeColor(type: string) {
+  return TYPE_COLOR_MAP[type.toLowerCase()] ?? "bg-white/10 text-white/75 border-white/15";
+}
+
+
+function classTypeMatchesLabel(
+  classType: AdminClassType,
+  label: string,
+) {
+  const wanted = label.trim().toLowerCase();
+  if (!wanted) return false;
+
+  return (
+    classType.nameAr.trim().toLowerCase() === wanted ||
+    (classType.nameEn ?? "").trim().toLowerCase() === wanted ||
+    classType.aliases.some(
+      (alias) => alias.trim().toLowerCase() === wanted,
+    )
+  );
+}
+
+function preferredClassTypeForCategory(
+  category: string,
+  classTypes: AdminClassType[],
+) {
+  const active = classTypes.filter((item) => item.isActive);
+  const preferredLabels = CATEGORY_TYPE_MAP[category] ?? [];
+
+  for (const label of preferredLabels) {
+    const found = active.find((item) =>
+      classTypeMatchesLabel(item, label),
+    );
+
+    if (found) return found;
+  }
+
+  return active[0] ?? null;
+}
+
+function createModalState(item?: GymClass, allClasses: GymClass[] = []) {
+  if (!item) return EMPTY_MODAL;
+  const category = item.category ?? "";
+  const presetList = CATEGORY_TYPE_MAP[category] ?? [];
+  const dynamicTypes = Array.from(
+    new Set(allClasses.filter((c) => c.category === category).map((c) => c.type).filter(Boolean)),
+  );
+  const knownTypes = presetList.length > 0 ? presetList : dynamicTypes;
+  const hasPreset = knownTypes.some((entry) => entry === item.type);
+
+  const knownCategories = [
+    ...CATEGORY_OPTIONS,
+    ...Array.from(new Set(allClasses.map((c) => c.category ?? "").filter((c) => c && !CATEGORY_OPTIONS.includes(c)))),
+  ];
+  const categoryKnown = category && knownCategories.includes(category);
+
+  const dynamicSubTypes = Array.from(
+    new Set(allClasses.filter((c) => c.type === item.type && c.subType).map((c) => c.subType as string)),
+  );
+  const knownSubTypes = [...(TYPE_SUBTYPE_MAP[item.type] ?? []), ...dynamicSubTypes];
+  const subTypeKnown = item.subType && knownSubTypes.includes(item.subType);
+
+  return {
+    ...item,
+    nameEn: item.nameEn ?? "",
+    trainerId: item.trainerId ?? "",
+    selectedDays: [item.day],
+    showTrainerName: item.showTrainerName ?? true,
+    category,
+    categoryEn: item.categoryEn ?? "",
+    categoryPreset: categoryKnown ? category : "custom",
+    customCategory: categoryKnown ? "" : category,
+    typePreset: hasPreset ? item.type : "custom",
+    customType: hasPreset ? "" : item.type,
+    classTypeId: item.classTypeId ?? null,
+    subType: item.subType ?? "",
+    subTypeEn: item.subTypeEn ?? "",
+    typeEn: item.typeEn ?? "",
+    description: item.description ?? "",
+    descriptionEn: item.descriptionEn ?? "",
+    subTypePreset: subTypeKnown ? item.subType ?? "" : (item.subType ? "custom" : ""),
+    customSubType: subTypeKnown ? "" : item.subType ?? "",
+    trialEnabled: item.trialEnabled ?? true,
+    trialPrice: item.trialPrice ?? 50,
+  };
+}
+
+function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-3">
+        <label className="text-sm font-semibold text-white/85">{label}</label>
+        {hint ? <span className="text-[11px] text-white/45">{hint}</span> : null}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function Modal({
+  title,
+  children,
+  onClose,
+}: {
+  title: string;
+  children: React.ReactNode;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-sm">
+      <div
+        className="w-full max-w-3xl rounded-3xl border border-white/10 bg-[#2a0f1f] p-6 shadow-2xl max-h-[88vh] overflow-y-auto"
+      >
+        <div className="mb-6 flex items-center justify-between">
+          <h3 className="text-xl font-black text-white">{title}</h3>
+          <button onClick={onClose} className="rounded-full border border-white/10 px-3 py-1 text-lg text-white/70 transition hover:border-white/20 hover:text-white">
+            ×
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+export default function Classes() {
+  const [classes, setClasses] = useState<GymClass[]>([]);
+  const [trainers, setTrainers] = useState<ApiTrainer[]>([]);
+  const [classTypes, setClassTypes] = useState<AdminClassType[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [view, setView] = useState<"schedule" | "list">("schedule");
+  const [filterDay, setFilterDay] = useState("الكل");
+  const [filterType, setFilterType] = useState("الكل");
+  const [filterTrainer, setFilterTrainer] = useState("الكل");
+  const [modal, setModal] = useState<ClassModalState | null>(null);
+  const [userRole, setUserRole] = useState<string | null>(null);
+  const [canAddClasses, setCanAddClasses] = useState(true);
+  const [canManageClassTypes, setCanManageClassTypes] = useState(false);
+  const [transferModal, setTransferModal] = useState(false);
+  const [transferFrom, setTransferFrom] = useState("");
+  const [transferTo, setTransferTo] = useState<string[]>([]);
+  const [transferring, setTransferring] = useState(false);
+  const [selectedForTransfer, setSelectedForTransfer] = useState<Set<string>>(new Set());
+  const [transferMode, setTransferMode] = useState<"all" | "selected">("all");
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+
+  const fetchAll = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [response, classTypesResponse] = await Promise.all([
+        fetch("/api/admin/classes", { cache: "no-store" }),
+        fetch("/api/admin/class-types", { cache: "no-store" }),
+      ]);
+
+      const payload = (await response.json()) as {
+        classes?: GymClass[];
+        trainers?: ApiTrainer[];
+        userRole?: string;
+        canAddClasses?: boolean;
+        canManageClassTypes?: boolean;
+      };
+
+      const classTypesPayload =
+        await classTypesResponse.json().catch(() => []);
+
+      setClasses(Array.isArray(payload.classes) ? payload.classes : []);
+      setTrainers(Array.isArray(payload.trainers) ? payload.trainers : []);
+      setClassTypes(
+        Array.isArray(classTypesPayload)
+          ? classTypesPayload
+          : [],
+      );
+
+      if (payload.userRole) setUserRole(payload.userRole);
+      if (payload.canAddClasses !== undefined) setCanAddClasses(payload.canAddClasses);
+      setCanManageClassTypes(payload.canManageClassTypes === true);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void fetchAll();
+  }, [fetchAll]);
+
+  useEffect(() => {
+    if (trainers.length === 0) return;
+    setModal((current) => {
+      if (!current || current.trainerId) return current;
+      return {
+        ...current,
+        trainerId: trainers[0].id,
+        trainer: trainers[0].name,
+      };
+    });
+  }, [trainers]);
+
+  const typeOptions = useMemo(() => {
+    const dynamic = Array.from(
+      new Set(classes.map((item) => normalizeTypeLabel(item.type)).filter(Boolean)),
+    );
+    return ["الكل", ...dynamic];
+  }, [classes]);
+
+  const availableCategories = useMemo(() => {
+    const fromClasses = Array.from(
+      new Set(
+        classes
+          .map((item) => item.category ?? "")
+          .filter((cat) => cat && !CATEGORY_OPTIONS.includes(cat)),
+      ),
+    );
+    return [...CATEGORY_OPTIONS, ...fromClasses];
+  }, [classes]);
+
+  const availableTypes = useMemo(() => {
+    if (!modal) return [];
+
+    const category =
+      modal.categoryPreset === "custom"
+        ? modal.customCategory.trim()
+        : modal.categoryPreset.trim();
+
+    const preferredLabels = CATEGORY_TYPE_MAP[category] ?? [];
+
+    const visible = classTypes.filter(
+      (item) =>
+        item.isActive ||
+        item.id === modal.classTypeId,
+    );
+
+    return [...visible].sort((a, b) => {
+      const rank = (item: AdminClassType) => {
+        const index = preferredLabels.findIndex((label) =>
+          classTypeMatchesLabel(item, label),
+        );
+
+        return index === -1
+          ? Number.MAX_SAFE_INTEGER
+          : index;
+      };
+
+      const aRank = rank(a);
+      const bRank = rank(b);
+
+      if (aRank !== bRank) return aRank - bRank;
+      if (a.sortOrder !== b.sortOrder) {
+        return a.sortOrder - b.sortOrder;
+      }
+
+      return a.nameAr.localeCompare(b.nameAr, "ar");
+    });
+  }, [
+    modal?.categoryPreset,
+    modal?.customCategory,
+    modal?.classTypeId,
+    classTypes,
+  ]);
+
+  const availableSubTypes = useMemo(() => {
+    if (!modal) return [];
+    const typeLabel =
+      modal.classTypeId === null
+        ? modal.customType.trim()
+        : modal.type.trim();
+    const mapped = TYPE_SUBTYPE_MAP[typeLabel] ?? [];
+    const fromClasses = Array.from(
+      new Set(
+        classes
+          .filter((item) => item.type === typeLabel && item.subType)
+          .map((item) => item.subType as string),
+      ),
+    );
+    const extra = fromClasses.filter((s) => !mapped.includes(s));
+    return [...mapped, ...extra];
+  }, [modal?.typePreset, modal?.customType, classes]);
+
+  const trainerOptions = useMemo(() => {
+    const names = Array.from(
+      new Set(classes.map((c) => c.trainer).filter(Boolean))
+    ).sort();
+    return ["الكل", ...names];
+  }, [classes]);
+
+  const displayedClasses = useMemo(() => {
+    return classes.filter((item) => {
+      const matchesDay = filterDay === "الكل" || item.day === filterDay;
+      const matchesType =
+        filterType === "الكل" || normalizeTypeLabel(item.type) === filterType;
+      const matchesTrainer =
+        filterTrainer === "الكل" || item.trainer === filterTrainer;
+      return matchesDay && matchesType && matchesTrainer;
+    });
+  }, [classes, filterDay, filterType, filterTrainer]);
+
+  const stats = useMemo(() => {
+    const totalCapacity = classes.reduce((sum, item) => sum + item.capacity, 0);
+    const totalEnrolled = classes.reduce((sum, item) => sum + item.enrolled, 0);
+    return [
+      { label: "إجمالي الكلاسات", value: classes.length, tone: "text-white" },
+      {
+        label: "الكلاسات النشطة",
+        value: classes.filter((item) => item.active).length,
+        tone: "text-emerald-300",
+      },
+      { label: "إجمالي المسجلين", value: totalEnrolled, tone: "text-fuchsia-300" },
+      {
+        label: "متوسط الإشغال",
+        value: totalCapacity > 0 ? `${Math.round((totalEnrolled / totalCapacity) * 100)}%` : "0%",
+        tone: "text-amber-300",
+      },
+    ];
+  }, [classes]);
+
+  async function saveClass() {
+    if (!modal) return;
+
+    const resolvedCategory =
+      modal.categoryPreset === "custom"
+        ? modal.customCategory.trim()
+        : modal.categoryPreset.trim();
+    const selectedClassType =
+      modal.classTypeId
+        ? classTypes.find(
+            (item) => item.id === modal.classTypeId,
+          ) ?? null
+        : null;
+
+    const resolvedType =
+      selectedClassType?.nameAr ??
+      modal.customType.trim();
+    const resolvedSubType =
+      modal.subTypePreset === "custom"
+        ? modal.customSubType.trim()
+        : modal.subTypePreset.trim();
+
+    if (!modal.name.trim()) {
+      alert("اسم الكلاس مطلوب.");
+      return;
+    }
+    if (!modal.trainerId) {
+      alert("اختَر المدربة أولًا.");
+      return;
+    }
+    if (!resolvedType) {
+      alert("اكتب نوع الكلاس أو اختَره من القائمة.");
+      return;
+    }
+
+    const isEdit = Boolean(modal.id);
+
+    if (!isEdit && modal.selectedDays.length === 0) {
+      alert("اختَر يومًا واحدًا على الأقل.");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const selectedTrainer = trainers.find((item) => item.id === modal.trainerId);
+      const baseBody = {
+        name: resolvedCategory,
+        nameEn: modal.nameEn.trim() || modal.categoryEn.trim() || null,
+        description: modal.description.trim() || null,
+        descriptionEn: modal.descriptionEn.trim() || null,
+        trainerId: modal.trainerId,
+        category: resolvedCategory,
+        categoryEn: modal.categoryEn.trim() || null,
+        type: resolvedType,
+        classTypeId: modal.classTypeId,
+        typeEn:
+          selectedClassType?.nameEn ??
+          (modal.typeEn.trim() || null),
+        subType: resolvedSubType,
+        subTypeEn: modal.subTypeEn.trim() || null,
+        duration: Number(modal.duration) || 60,
+        intensity: "medium",
+        maxSpots: Number(modal.capacity) || 15,
+        price: 0,
+        active: modal.active,
+        showTrainerName: modal.showTrainerName,
+        time: modal.time,
+        trainer: selectedTrainer?.name ?? modal.trainer,
+        trialEnabled: modal.trialEnabled,
+        trialPrice: Number(modal.trialPrice) || 50,
+      };
+
+      if (isEdit) {
+        const response = await fetch("/api/admin/classes", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...baseBody, id: modal.id, day: modal.day }),
+        });
+        const payload = (await response.json().catch(() => ({}))) as { error?: string };
+        if (!response.ok) {
+          alert(payload.error ?? "تعذر حفظ بيانات الكلاس الآن.");
+          return;
+        }
+      } else {
+        for (const day of modal.selectedDays) {
+          const response = await fetch("/api/admin/classes", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ...baseBody, day }),
+          });
+          const payload = (await response.json().catch(() => ({}))) as { error?: string };
+          if (!response.ok) {
+            alert(`تعذر حفظ كلاس ${day}: ${payload.error ?? "خطأ غير معروف"}`);
+            return;
+          }
+        }
+      }
+
+      await fetchAll();
+      setModal(null);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function toggleClass(item: GymClass) {
+    const response = await fetch("/api/admin/classes", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: item.id, active: !item.active }),
+    });
+    if (!response.ok) {
+      alert("تعذر تحديث حالة الكلاس الآن.");
+      return;
+    }
+    await fetchAll();
+  }
+
+  async function deleteClass(id: string) {
+    if (!confirm("هل تريد حذف هذا الكلاس؟")) return;
+    const response = await fetch("/api/admin/classes", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    if (!response.ok) {
+      alert("تعذر حذف الكلاس الآن.");
+      return;
+    }
+    await fetchAll();
+  }
+
+  async function transferClasses() {
+    if (!transferFrom || transferTo.length === 0) {
+      alert("اختر المدربة المصدر والمدربة/المدربات الهدف.");
+      return;
+    }
+
+    const fromName = trainers.find((t) => t.id === transferFrom)?.name ?? transferFrom;
+
+    // Determine which classes to transfer
+    let classesToTransfer: string[];
+    let count: number;
+
+    if (transferMode === "selected") {
+      if (selectedForTransfer.size === 0) {
+        alert("اختر كلاس واحد على الأقل للنقل.");
+        return;
+      }
+      classesToTransfer = Array.from(selectedForTransfer);
+      count = classesToTransfer.length;
+    } else {
+      const allClasses = classes.filter((c) => c.trainerId === transferFrom);
+      classesToTransfer = allClasses.map(c => c.id);
+      count = allClasses.length;
+    }
+
+    if (count === 0) {
+      alert("لا توجد كلاسات مسجلة لهذه المدربة.");
+      return;
+    }
+
+    // Build confirmation message
+    let confirmMsg = "";
+    if (transferTo.length === 1) {
+      const toName = trainers.find((t) => t.id === transferTo[0])?.name ?? transferTo[0];
+      confirmMsg = `سيتم نقل ${count} كلاس من "${fromName}" إلى "${toName}". هل تريد المتابعة؟`;
+    } else {
+      const toNames = transferTo.map(id => trainers.find((t) => t.id === id)?.name ?? id).join("، ");
+      confirmMsg = `سيتم توزيع ${count} كلاس من "${fromName}" على ${transferTo.length} مدربة: ${toNames}. هل تريد المتابعة؟`;
+    }
+
+    if (!confirm(confirmMsg)) return;
+
+    setTransferring(true);
+    try {
+      const res = await fetch("/api/admin/classes", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fromTrainerId: transferFrom,
+          toTrainerIds: transferTo,
+          classIds: transferMode === "selected" ? classesToTransfer : undefined,
+          mode: transferMode
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        success?: boolean;
+        transferred?: number;
+        error?: string;
+        distribution?: Record<string, number>;
+      };
+      if (!res.ok) { alert(data.error ?? "تعذر نقل الكلاسات."); return; }
+
+      // Show success message with distribution
+      if (transferTo.length === 1) {
+        const toName = trainers.find((t) => t.id === transferTo[0])?.name ?? transferTo[0];
+        alert(`تم نقل ${data.transferred ?? count} كلاس بنجاح إلى "${toName}".`);
+      } else if (data.distribution) {
+        const distMsg = Object.entries(data.distribution)
+          .map(([trainerId, cnt]) => {
+            const name = trainers.find(t => t.id === trainerId)?.name ?? trainerId;
+            return `${name}: ${cnt} كلاس`;
+          })
+          .join("\n");
+        alert(`تم توزيع ${data.transferred ?? count} كلاس بنجاح:\n\n${distMsg}`);
+      }
+
+      setTransferModal(false);
+      setTransferFrom("");
+      setTransferTo([]);
+      setSelectedForTransfer(new Set());
+      setTransferMode("all");
+      await fetchAll();
+    } finally {
+      setTransferring(false);
+    }
+  }
+
+  const toggleSelect = (id: string) =>
+    setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+
+  const bulkDelete = async () => {
+    if (!selected.size) return;
+    if (!confirm(`هل تريد حذف ${selected.size} كلاس؟ لا يمكن التراجع.`)) return;
+    setBulkDeleting(true);
+    try {
+      await Promise.all(
+        Array.from(selected).map(id =>
+          fetch("/api/admin/classes", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) })
+        )
+      );
+      setSelected(new Set());
+      setSelectMode(false);
+      await fetchAll();
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex h-56 items-center justify-center rounded-3xl border border-white/10 bg-white/5 text-sm text-white/60">
+        جارٍ تحميل الكلاسات...
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => setView("schedule")}
+            className={`rounded-xl px-4 py-2 text-sm font-bold transition ${
+              view === "schedule" ? "bg-fuchsia-600 text-white" : "bg-white/5 text-white/65 hover:bg-white/10"
+            }`}
+          >
+            عرض الجدول
+          </button>
+          <button
+            onClick={() => setView("list")}
+            className={`rounded-xl px-4 py-2 text-sm font-bold transition ${
+              view === "list" ? "bg-fuchsia-600 text-white" : "bg-white/5 text-white/65 hover:bg-white/10"
+            }`}
+          >
+            عرض القائمة
+          </button>
+        </div>
+
+        <div className="flex gap-2">
+          {userRole === "admin" || userRole === "staff" ? (
+            <button
+              onClick={() => { setTransferFrom(""); setTransferTo([]); setTransferModal(true); }}
+              className="rounded-2xl bg-amber-500/20 border border-amber-500/40 px-4 py-3 text-sm font-bold text-amber-300 transition hover:bg-amber-500/30"
+            >
+              ⇄ نقل كلاسات مدربة
+            </button>
+          ) : null}
+          {userRole !== "trainer" && (
+            <button
+              onClick={() => { setSelectMode(s => !s); setSelected(new Set()); }}
+              className={`rounded-2xl border px-4 py-3 text-sm font-bold transition ${selectMode ? "bg-yellow-400 text-black border-yellow-400" : "border-white/20 text-white/70 hover:border-white/40"}`}
+            >
+              {selectMode ? "✕ إلغاء التحديد" : "☑ تحديد"}
+            </button>
+          )}
+          {(userRole !== "trainer" || canAddClasses) && (
+            <button
+              onClick={() => {
+                const next = createModalState(
+                  undefined,
+                  classes,
+                );
+
+                const preferredType =
+                  preferredClassTypeForCategory(
+                    next.categoryPreset,
+                    classTypes,
+                  );
+
+                setModal({
+                  ...next,
+                  classTypeId:
+                    preferredType?.id ?? null,
+                  typePreset:
+                    preferredType?.nameAr ?? "custom",
+                  type:
+                    preferredType?.nameAr ?? "",
+                  typeEn:
+                    preferredType?.nameEn ?? "",
+                  customType: "",
+                });
+              }}
+              className="rounded-2xl bg-fuchsia-600 px-5 py-3 text-sm font-black text-white transition hover:bg-fuchsia-500"
+            >
+              + إضافة كلاس جديد
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-4">
+        {stats.map((item) => (
+          <div key={item.label} className="rounded-2xl border border-white/10 bg-white/5 p-4 text-center">
+            <div className={`text-2xl font-black ${item.tone}`}>{item.value}</div>
+            <div className="mt-1 text-xs text-white/55">{item.label}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid gap-4 rounded-3xl border border-white/10 bg-white/5 p-5 lg:grid-cols-[1fr_auto_auto]">
+        <div className="flex flex-wrap gap-2">
+          {["الكل", ...DAYS].map((day) => (
+            <button
+              key={day}
+              onClick={() => setFilterDay(day)}
+              className={`rounded-xl px-3 py-2 text-xs font-bold transition ${
+                filterDay === day ? "bg-amber-400 text-black" : "bg-white/5 text-white/65 hover:bg-white/10"
+              }`}
+            >
+              {day}
+            </button>
+          ))}
+        </div>
+
+        <select
+          value={filterType}
+          onChange={(event) => setFilterType(event.target.value)}
+          className={`${INPUT} min-w-[180px]`}
+        >
+          {typeOptions.map((type) => (
+            <option key={type} value={type} className="bg-[#2a0f1f]">
+              {type}
+            </option>
+          ))}
+        </select>
+
+        <select
+          value={filterTrainer}
+          onChange={(event) => setFilterTrainer(event.target.value)}
+          className={`${INPUT} min-w-[160px]`}
+        >
+          {trainerOptions.map((name) => (
+            <option key={name} value={name} className="bg-[#2a0f1f]">
+              {name === "الكل" ? "كل المدربات" : name}
+            </option>
+          ))}
+        </select>
+
+        <div className="rounded-2xl border border-dashed border-white/15 bg-black/10 px-4 py-3 text-xs text-white/55">
+          أضف نوعًا جديدًا من داخل نموذج الكلاس وسيظهر تلقائيًا في الفلاتر والواجهة العامة.
+        </div>
+      </div>
+
+      {/* Bulk action bar */}
+      {selectMode && (
+        <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-yellow-500/40 bg-yellow-950/30 px-4 py-3">
+          <span className="text-sm font-bold text-yellow-300">
+            {selected.size > 0 ? `${selected.size} كلاس محدد` : "لم تحدد شيئاً بعد"}
+          </span>
+          <button
+            onClick={() => setSelected(new Set(displayedClasses.map(c => c.id)))}
+            className="rounded-lg border border-white/15 px-3 py-1.5 text-xs text-white/70 hover:border-white/30"
+          >
+            تحديد الكل ({displayedClasses.length})
+          </button>
+          <button
+            onClick={() => setSelected(new Set())}
+            className="rounded-lg border border-white/15 px-3 py-1.5 text-xs text-white/70 hover:border-white/30"
+          >
+            إلغاء التحديد
+          </button>
+          <button
+            onClick={() => void bulkDelete()}
+            disabled={selected.size === 0 || bulkDeleting}
+            className="mr-auto rounded-lg bg-red-600 px-4 py-1.5 text-xs font-bold text-white disabled:opacity-40 hover:bg-red-700"
+          >
+            {bulkDeleting ? "جارٍ الحذف..." : `🗑 حذف المحدد (${selected.size})`}
+          </button>
+        </div>
+      )}
+
+      {view === "schedule" ? (
+        <div className="overflow-hidden rounded-3xl border border-white/10 bg-white/5">
+          <div className="grid grid-cols-7 border-b border-white/10 text-center">
+            {DAYS.map((day) => (
+              <div key={day} className="border-s border-white/10 px-2 py-4 text-xs font-bold text-white/55 first:border-s-0">
+                {day}
+              </div>
+            ))}
+          </div>
+          <div className="grid min-h-[320px] grid-cols-7">
+            {DAYS.map((day) => (
+              <div key={day} className="space-y-2 border-s border-white/10 p-3 first:border-s-0">
+                {classes
+                  .filter((item) => item.day === day)
+                  .map((item) => {
+                    const occupancy = item.capacity > 0 ? Math.min(100, Math.round((item.enrolled / item.capacity) * 100)) : 0;
+                    const isSelected = selected.has(item.id);
+                    return (
+                      <div
+                        key={item.id}
+                        onClick={() =>
+                          selectMode
+                            ? toggleSelect(item.id)
+                            : (userRole !== "trainer" || canAddClasses) ? setModal(createModalState(item, classes)) : undefined
+                        }
+                        className={`relative w-full rounded-2xl border p-3 text-right transition cursor-pointer ${
+                          selectMode
+                            ? isSelected ? "border-yellow-400 bg-yellow-950/30" : "border-white/10 bg-black/15 hover:border-white/20"
+                            : item.active ? "border-white/10 bg-black/15 hover:scale-[1.01]" : "border-white/5 bg-black/5 opacity-55"
+                        }`}
+                      >
+                        {selectMode && (
+                          <div className={`absolute left-2 top-2 flex h-4 w-4 items-center justify-center rounded border text-[10px] font-black ${isSelected ? "border-yellow-400 bg-yellow-400 text-black" : "border-white/30 bg-black/30"}`}>
+                            {isSelected && "✓"}
+                          </div>
+                        )}
+                        <div className="text-sm font-black text-white">{item.name}</div>
+                        {item.category ? (
+                          <div className="mt-1 text-[11px] text-white/55">{item.category}</div>
+                        ) : null}
+                        <div className="mt-1 text-[11px] font-semibold text-fuchsia-300/80">{item.trainer}</div>
+                        <div className="mt-1 text-xs text-white/45">{formatTime12Hour(item.time)}</div>
+                        <div className={`mt-2 inline-flex rounded-full border px-2 py-1 text-[11px] font-bold ${resolveTypeColor(item.type)}`}>
+                          {normalizeTypeLabel(item.type)}
+                        </div>
+                        {item.subType ? (
+                          <div className="mt-1 text-[11px] text-white/55">{item.subType}</div>
+                        ) : null}
+                        <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
+                          <div className="h-full rounded-full bg-fuchsia-500" style={{ width: `${occupancy}%` }} />
+                        </div>
+                        <div className="mt-1 text-[10px] text-white/45">
+                          {item.enrolled}/{item.capacity}
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="overflow-hidden rounded-3xl border border-white/10 bg-white/5">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[950px] text-sm">
+              <thead>
+                <tr className="border-b border-white/10 text-right text-xs text-white/45">
+                  {selectMode && (
+                    <th className="px-4 py-4">
+                      <button
+                        onClick={() =>
+                          selected.size === displayedClasses.length
+                            ? setSelected(new Set())
+                            : setSelected(new Set(displayedClasses.map(c => c.id)))
+                        }
+                        className={`flex h-5 w-5 items-center justify-center rounded border text-[10px] font-black transition ${
+                          selected.size === displayedClasses.length && displayedClasses.length > 0
+                            ? "border-yellow-400 bg-yellow-400 text-black"
+                            : "border-white/30 bg-white/5"
+                        }`}
+                      >
+                        {selected.size === displayedClasses.length && displayedClasses.length > 0 ? "✓" : ""}
+                      </button>
+                    </th>
+                  )}
+                  {["الكلاس", "المدربة", "اليوم", "الوقت", "المدة", "الإشغال", "النوع", "الحالة", "إجراءات"].map((head) => (
+                    <th key={head} className="px-4 py-4 font-medium">
+                      {head}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {displayedClasses.map((item) => {
+                  const isSelected = selected.has(item.id);
+                  return (
+                    <tr
+                      key={item.id}
+                      onClick={selectMode ? () => toggleSelect(item.id) : undefined}
+                      className={`border-b border-white/10 last:border-b-0 transition-colors ${selectMode ? "cursor-pointer" : ""} ${isSelected ? "bg-yellow-950/20" : ""}`}
+                    >
+                      {selectMode && (
+                        <td className="px-4 py-4">
+                          <div className={`flex h-5 w-5 items-center justify-center rounded border text-[10px] font-black ${isSelected ? "border-yellow-400 bg-yellow-400 text-black" : "border-white/30 bg-white/5"}`}>
+                            {isSelected && "✓"}
+                          </div>
+                        </td>
+                      )}
+                      <td className="px-4 py-4 font-bold text-white">{item.name}</td>
+                      <td className="px-4 py-4 text-white/70">{item.trainer}</td>
+                      <td className="px-4 py-4 text-white/70">{item.day}</td>
+                      <td className="px-4 py-4 text-white/70">
+                        {formatTime12Hour(item.time)}
+                      </td>
+                      <td className="px-4 py-4 text-white/70">{item.duration} دقيقة</td>
+                      <td className="px-4 py-4 text-white/70">
+                        {item.enrolled}/{item.capacity}
+                      </td>
+                      <td className="px-4 py-4">
+                        {item.category ? (
+                          <div className="mb-1 text-[11px] font-semibold text-white/60">{item.category}</div>
+                        ) : null}
+                        <span className={`inline-flex rounded-full border px-2 py-1 text-xs font-bold ${resolveTypeColor(item.type)}`}>
+                          {normalizeTypeLabel(item.type)}
+                        </span>
+                        {item.subType ? (
+                          <div className="mt-1 text-[11px] text-white/55">{item.subType}</div>
+                        ) : null}
+                      </td>
+                      <td className="px-4 py-4" onClick={e => e.stopPropagation()}>
+                        <button
+                          onClick={() => void toggleClass(item)}
+                          className={`relative h-6 w-12 rounded-full transition ${
+                            item.active ? "bg-emerald-500/70" : "bg-white/15"
+                          }`}
+                        >
+                          <span
+                            className={`absolute top-1 h-4 w-4 rounded-full bg-white transition ${
+                              item.active ? "right-1" : "left-1"
+                            }`}
+                          />
+                        </button>
+                      </td>
+                      <td className="px-4 py-4" onClick={e => e.stopPropagation()}>
+                        {!selectMode && (userRole !== "trainer" || canAddClasses) ? (
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              onClick={() => setModal(createModalState(item, classes))}
+                              className="rounded-xl border border-white/10 px-3 py-2 text-xs font-bold text-white/70 transition hover:border-fuchsia-400/40 hover:text-white"
+                            >
+                              تعديل
+                            </button>
+                            {userRole !== "trainer" && (
+                              <button
+                                onClick={() => void deleteClass(item.id)}
+                                className="rounded-xl border border-red-500/20 px-3 py-2 text-xs font-bold text-red-300 transition hover:bg-red-500/10"
+                              >
+                                حذف
+                              </button>
+                            )}
+                          </div>
+                        ) : !selectMode ? (
+                          <span className="text-xs text-white/35">عرض فقط</span>
+                        ) : null}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {transferModal && (
+        <Modal title="نقل كلاسات مدربة إلى أخرى" onClose={() => { setTransferModal(false); setSelectedForTransfer(new Set()); setTransferMode("all"); }}>
+          <div className="space-y-5">
+            {/* Important Notice */}
+            <div className="space-y-3">
+              <div className="rounded-xl border border-blue-500/25 bg-blue-500/10 px-4 py-3 text-sm text-blue-200">
+                <div className="flex gap-2">
+                  <span>ℹ️</span>
+                  <div>
+                    <strong className="block mb-1">ملاحظة مهمة:</strong>
+                    عند نقل الكلاس، سيتم نقل <strong>كل الحجوزات والجداول</strong> الخاصة به تلقائيًا للمدربة الجديدة.
+                    العملاء المحجوزين سيصبحون تحت المدربة الجديدة.
+                  </div>
+                </div>
+              </div>
+              <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+                <div className="flex gap-2">
+                  <span>⚠️</span>
+                  <div>
+                    تأكد من الاختيار الصحيح قبل النقل - العملية <strong>لا يمكن التراجع عنها</strong> بسهولة.
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Transfer Mode Selection */}
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setTransferMode("all"); setSelectedForTransfer(new Set()); }}
+                className={`flex-1 rounded-xl px-4 py-3 text-sm font-bold transition ${
+                  transferMode === "all"
+                    ? "bg-amber-500 text-black"
+                    : "border border-white/10 bg-white/5 text-white/70 hover:bg-white/10"
+                }`}
+              >
+                نقل جميع الكلاسات
+              </button>
+              <button
+                onClick={() => setTransferMode("selected")}
+                className={`flex-1 rounded-xl px-4 py-3 text-sm font-bold transition ${
+                  transferMode === "selected"
+                    ? "bg-amber-500 text-black"
+                    : "border border-white/10 bg-white/5 text-white/70 hover:bg-white/10"
+                }`}
+              >
+                اختيار كلاسات محددة
+              </button>
+            </div>
+
+            <Field label="المدربة المصدر (التي ستنقل منها)">
+              <select
+                value={transferFrom}
+                onChange={(e) => {
+                  setTransferFrom(e.target.value);
+                  setSelectedForTransfer(new Set());
+                }}
+                className={INPUT}
+              >
+                <option value="" className="bg-[#2a0f1f]">اختر المدربة</option>
+                {trainers.map((t) => {
+                  const count = classes.filter((c) => c.trainerId === t.id).length;
+                  return (
+                    <option key={t.id} value={t.id} className="bg-[#2a0f1f]">
+                      {t.name} — {count} كلاس
+                    </option>
+                  );
+                })}
+              </select>
+            </Field>
+
+            {/* Selected Classes List */}
+            {transferMode === "selected" && transferFrom && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-semibold text-white/85">اختر الكلاسات للنقل</label>
+                  <span className="text-xs text-white/50">
+                    {selectedForTransfer.size} محدد
+                  </span>
+                </div>
+                <div className="max-h-64 space-y-2 overflow-y-auto rounded-xl border border-white/10 bg-white/5 p-3">
+                  {classes.filter((c) => c.trainerId === transferFrom).length === 0 ? (
+                    <div className="py-8 text-center text-sm text-white/40">لا توجد كلاسات</div>
+                  ) : (
+                    classes
+                      .filter((c) => c.trainerId === transferFrom)
+                      .map((cls) => (
+                        <label
+                          key={cls.id}
+                          className="flex cursor-pointer items-center gap-3 rounded-lg border border-white/10 bg-white/5 p-3 transition hover:bg-white/10"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedForTransfer.has(cls.id)}
+                            onChange={(e) => {
+                              const newSet = new Set(selectedForTransfer);
+                              if (e.target.checked) {
+                                newSet.add(cls.id);
+                              } else {
+                                newSet.delete(cls.id);
+                              }
+                              setSelectedForTransfer(newSet);
+                            }}
+                            className="h-4 w-4 accent-amber-500"
+                          />
+                          <div className="flex-1">
+                            <div className="text-sm font-bold text-white">{cls.name}</div>
+                            <div className="text-xs text-white/50">
+                              {cls.day} • {formatTime12Hour(cls.time)} • {cls.type}
+                            </div>
+                          </div>
+                        </label>
+                      ))
+                  )}
+                </div>
+              </div>
+            )}
+
+            <Field label="المدربة/المدربات الهدف (التي ستستلم الكلاسات)">
+              <div className="space-y-2">
+                <div className="text-xs text-white/50 mb-2">
+                  يمكنك اختيار مدربة واحدة أو عدة مدربات لتوزيع الكلاسات عليهم
+                </div>
+                <div className="max-h-48 space-y-2 overflow-y-auto rounded-xl border border-white/10 bg-white/5 p-3">
+                  {trainers.filter((t) => t.id !== transferFrom).map((t) => (
+                    <label
+                      key={t.id}
+                      className="flex cursor-pointer items-center gap-3 rounded-lg border border-white/10 bg-white/5 p-3 transition hover:bg-white/10"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={transferTo.includes(t.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setTransferTo([...transferTo, t.id]);
+                          } else {
+                            setTransferTo(transferTo.filter((id) => id !== t.id));
+                          }
+                        }}
+                        className="h-4 w-4 accent-fuchsia-500"
+                      />
+                      <div className="flex-1">
+                        <div className="text-sm font-bold text-white">{t.name}</div>
+                        <div className="text-xs text-white/50">{t.specialty}</div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </Field>
+
+            {transferFrom && transferTo.length > 0 && (
+              <div className="rounded-xl bg-white/5 px-4 py-3 text-sm text-white/70">
+                {transferMode === "all" ? (
+                  <>
+                    عدد الكلاسات: <strong className="text-white">{classes.filter((c) => c.trainerId === transferFrom).length}</strong>
+                  </>
+                ) : (
+                  <>
+                    عدد الكلاسات المحددة: <strong className="text-white">{selectedForTransfer.size}</strong>
+                  </>
+                )}
+                <br />
+                {transferTo.length === 1 ? (
+                  <>سيتم النقل إلى: <strong className="text-white">{trainers.find((t) => t.id === transferTo[0])?.name}</strong></>
+                ) : (
+                  <>
+                    سيتم التوزيع على <strong className="text-white">{transferTo.length}</strong> مدربة
+                    {transferMode === "all" && ` (${Math.ceil(classes.filter((c) => c.trainerId === transferFrom).length / transferTo.length)} كلاس لكل مدربة تقريباً)`}
+                  </>
+                )}
+              </div>
+            )}
+
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setTransferModal(false);
+                  setSelectedForTransfer(new Set());
+                  setTransferMode("all");
+                }}
+                className="rounded-2xl border border-white/10 px-5 py-3 text-sm font-bold text-white/70 hover:text-white"
+              >
+                إلغاء
+              </button>
+              <button
+                onClick={() => void transferClasses()}
+                disabled={transferring || !transferFrom || transferTo.length === 0 || (transferMode === "selected" && selectedForTransfer.size === 0)}
+                className="rounded-2xl bg-amber-500 px-6 py-3 text-sm font-black text-black transition hover:bg-amber-400 disabled:opacity-50"
+              >
+                {transferring ? "جارٍ النقل..." : "نقل الكلاسات"}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {modal ? (
+        <Modal title={modal.id ? "تعديل الكلاس" : "إضافة كلاس جديد"} onClose={() => setModal(null)}>
+          <div className="grid gap-4 md:grid-cols-2">
+            <Field label="اسم القسم">
+              <input
+                value={modal.name}
+                onChange={(event) => setModal({ ...modal, name: event.target.value })}
+                className={INPUT}
+                placeholder="يتم تعبئته من القسم"
+                readOnly
+              />
+            </Field>
+
+            <Field label="اسم القسم بالإنجليزية" hint="اختياري، لكنه سيظهر للعميل عند اختيار اللغة الإنجليزية.">
+              <div className="flex gap-2">
+                <input
+                  value={modal.nameEn}
+                  onChange={(event) => setModal({ ...modal, nameEn: event.target.value })}
+                  className={`${INPUT} flex-1`}
+                  placeholder="Example: Weight Loss"
+                  dir="ltr"
+                />
+                <TranslateButton from={modal.name} onTranslated={(t) => setModal({ ...modal, nameEn: t })} />
+              </div>
+            </Field>
+
+            <Field label="المدربة">
+              <select
+                value={modal.trainerId}
+                onChange={(event) => {
+                  const trainer = trainers.find((item) => item.id === event.target.value);
+                  setModal({
+                    ...modal,
+                    trainerId: event.target.value,
+                    trainer: trainer?.name ?? "",
+                  });
+                }}
+                className={INPUT}
+              >
+                <option value="" className="bg-[#2a0f1f]">
+                  اختَر المدربة
+                </option>
+                {trainers.map((trainer) => (
+                  <option key={trainer.id} value={trainer.id} className="bg-[#2a0f1f]">
+                    {trainer.name} - {trainer.specialty}
+                  </option>
+                ))}
+              </select>
+            </Field>
+
+            <Field
+              label="نوع القسم"
+              hint="الاختيار مرتبط بالهوية الثابتة للنوع، ويمكنك إنشاء نوع جديد"
+            >
+              <select
+                value={modal.classTypeId ?? "custom"}
+                onChange={(event) => {
+                  const value = event.target.value;
+
+                  if (value === "custom") {
+                    setModal({
+                      ...modal,
+                      classTypeId: null,
+                      typePreset: "custom",
+                      type: modal.customType,
+                      typeEn: "",
+                      subTypePreset: "",
+                      subType: "",
+                      customSubType: "",
+                    });
+                    return;
+                  }
+
+                  const selectedType =
+                    classTypes.find(
+                      (item) => item.id === value,
+                    );
+
+                  if (!selectedType) return;
+
+                  setModal({
+                    ...modal,
+                    classTypeId: selectedType.id,
+                    typePreset: selectedType.nameAr,
+                    type: selectedType.nameAr,
+                    typeEn: selectedType.nameEn ?? "",
+                    customType: "",
+                    subTypePreset: "",
+                    subType: "",
+                    customSubType: "",
+                  });
+                }}
+                className={INPUT}
+              >
+                {availableTypes.map((type) => (
+                  <option
+                    key={type.id}
+                    value={type.id}
+                    className="bg-[#2a0f1f]"
+                  >
+                    {type.nameAr}
+                    {!type.isActive ? " — غير نشط" : ""}
+                  </option>
+                ))}
+
+                {canManageClassTypes ? (
+                  <option value="custom" className="bg-[#2a0f1f]">
+                    + نوع جديد
+                  </option>
+                ) : modal.classTypeId === null ? (
+                  <option
+                    value="custom"
+                    disabled
+                    className="bg-[#2a0f1f]"
+                  >
+                    نوع غير مربوط — تواصل مع المدير
+                  </option>
+                ) : null}
+              </select>
+            </Field>
+
+            <Field label="اسم النوع الجديد" hint="مثال: كروس فيت أو ستيب">
+              <input
+                value={modal.customType}
+                onChange={(event) =>
+                  setModal({
+                    ...modal,
+                    customType: event.target.value,
+                    type:
+                      modal.classTypeId === null
+                        ? event.target.value
+                        : modal.type,
+                    classTypeId:
+                      modal.classTypeId === null
+                        ? null
+                        : modal.classTypeId,
+                  })
+                }
+                className={INPUT}
+                placeholder="اكتب النوع إذا اخترت نوع جديد"
+                disabled={
+                  modal.classTypeId !== null ||
+                  !canManageClassTypes
+                }
+              />
+            </Field>
+
+            <Field label="اسم النوع بالإنجليزية" hint="اختياري، وسيستخدم عند اختيار اللغة الإنجليزية.">
+              <div className="flex gap-2">
+                <input
+                  value={modal.typeEn}
+                  onChange={(event) => setModal({ ...modal, typeEn: event.target.value })}
+                  className={`${INPUT} flex-1`}
+                  placeholder="Example: CrossFit"
+                  dir="ltr"
+                />
+                <TranslateButton from={modal.type} onTranslated={(t) => setModal({ ...modal, typeEn: t })} />
+              </div>
+            </Field>
+
+            <Field label="تصنيف النوع" hint="اختياري، مثل: زومبا لاتيني أو أفريقي">
+              <select
+                value={modal.subTypePreset}
+                onChange={(event) => {
+                  const preset = event.target.value;
+                  setModal({
+                    ...modal,
+                    subTypePreset: preset,
+                    subType: preset === "custom" ? modal.customSubType : preset,
+                  });
+                }}
+                className={INPUT}
+              >
+                <option value="" className="bg-[#2a0f1f]">بدون تصنيف</option>
+                {availableSubTypes.map((type) => (
+                  <option key={type} value={type} className="bg-[#2a0f1f]">
+                    {type}
+                  </option>
+                ))}
+                <option value="custom" className="bg-[#2a0f1f]">
+                  تصنيف جديد
+                </option>
+              </select>
+            </Field>
+
+            <Field label="اسم التصنيف الجديد" hint="مثال: زومبا لاتيني">
+              <input
+                value={modal.customSubType}
+                onChange={(event) =>
+                  setModal({
+                    ...modal,
+                    customSubType: event.target.value,
+                    subType: modal.subTypePreset === "custom" ? event.target.value : modal.subType,
+                  })
+                }
+                className={INPUT}
+                placeholder="اكتب التصنيف إذا اخترت تصنيف جديد"
+                disabled={modal.subTypePreset !== "custom"}
+              />
+            </Field>
+
+            <Field label="اسم التصنيف بالإنجليزية" hint="اختياري، وسيستخدم عند اختيار اللغة الإنجليزية.">
+              <div className="flex gap-2">
+                <input
+                  value={modal.subTypeEn}
+                  onChange={(event) => setModal({ ...modal, subTypeEn: event.target.value })}
+                  className={`${INPUT} flex-1`}
+                  placeholder="Example: Latin Zumba"
+                  dir="ltr"
+                />
+                <TranslateButton from={modal.subType} onTranslated={(t) => setModal({ ...modal, subTypeEn: t })} />
+              </div>
+            </Field>
+
+            {modal.id ? (
+              <Field label="اليوم">
+                <select
+                  value={modal.day}
+                  onChange={(event) => setModal({ ...modal, day: event.target.value })}
+                  className={INPUT}
+                >
+                  {DAYS.map((day) => (
+                    <option key={day} value={day} className="bg-[#2a0f1f]">
+                      {day}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            ) : (
+              <div className="md:col-span-2">
+                <Field label="الأيام" hint="اختر يومًا أو أكثر — سيتم إنشاء كلاس منفصل لكل يوم">
+                  <div className="flex flex-wrap gap-2">
+                    {DAYS.map((day) => {
+                      const checked = modal.selectedDays.includes(day);
+                      return (
+                        <button
+                          key={day}
+                          type="button"
+                          onClick={() => {
+                            const next = checked
+                              ? modal.selectedDays.filter((d) => d !== day)
+                              : [...modal.selectedDays, day];
+                            setModal({ ...modal, selectedDays: next });
+                          }}
+                          className={`rounded-xl border px-4 py-2 text-sm font-bold transition ${
+                            checked
+                              ? "border-fuchsia-400/60 bg-fuchsia-600/30 text-fuchsia-200"
+                              : "border-white/10 bg-white/5 text-white/65 hover:bg-white/10"
+                          }`}
+                        >
+                          {day}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </Field>
+              </div>
+            )}
+
+            <Field label="الوقت">
+              <input
+                type="time"
+                value={modal.time}
+                onChange={(event) => setModal({ ...modal, time: event.target.value })}
+                className={INPUT}
+                dir="ltr"
+              />
+            </Field>
+
+            <Field label="المدة بالدقائق">
+              <input
+                type="number"
+                value={modal.duration}
+                onChange={(event) => setModal({ ...modal, duration: Number(event.target.value) || 0 })}
+                className={INPUT}
+                dir="ltr"
+              />
+            </Field>
+
+            <Field label="السعة القصوى">
+              <input
+                type="number"
+                value={modal.capacity}
+                onChange={(event) => setModal({ ...modal, capacity: Number(event.target.value) || 0 })}
+                className={INPUT}
+                dir="ltr"
+              />
+            </Field>
+          </div>
+
+          <div className="mt-5 flex items-center justify-between rounded-2xl border border-white/10 bg-black/10 px-4 py-3">
+            <div>
+              <div className="text-sm font-bold text-white">تفعيل الكلاس</div>
+              <div className="text-xs text-white/45">يمكن إخفاء الكلاس مؤقتًا بدون حذفه.</div>
+            </div>
+            <button
+              onClick={() => setModal({ ...modal, active: !modal.active })}
+              className={`relative h-7 w-14 rounded-full transition ${
+                modal.active ? "bg-emerald-500/70" : "bg-white/15"
+              }`}
+            >
+              <span
+                className={`absolute top-1.5 h-4 w-4 rounded-full bg-white transition ${
+                  modal.active ? "right-1.5" : "left-1.5"
+                }`}
+              />
+            </button>
+          </div>
+
+          <div className="mt-3 flex items-center justify-between rounded-2xl border border-white/10 bg-black/10 px-4 py-3">
+            <div>
+              <div className="text-sm font-bold text-white">إظهار اسم المدربة في الجدول</div>
+              <div className="text-xs text-white/45">يمكنك إخفاء اسم المدربة من الجدول لهذا الكلاس فقط.</div>
+            </div>
+            <button
+              onClick={() => setModal({ ...modal, showTrainerName: !modal.showTrainerName })}
+              className={`relative h-7 w-14 rounded-full transition ${
+                modal.showTrainerName ? "bg-fuchsia-500/70" : "bg-white/15"
+              }`}
+            >
+              <span
+                className={`absolute top-1.5 h-4 w-4 rounded-full bg-white transition ${
+                  modal.showTrainerName ? "right-1.5" : "left-1.5"
+                }`}
+              />
+            </button>
+          </div>
+
+          {/* Trial class settings */}
+          <div className="mt-3 rounded-2xl border border-amber-500/25 bg-amber-950/20 px-4 py-3 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-sm font-bold text-amber-300">الكلاس التجريبي</div>
+                <div className="text-xs text-white/45">هل يظهر هذا الكلاس ضمن خيارات الكلاس التجريبي؟</div>
+              </div>
+              <button
+                onClick={() => setModal({ ...modal, trialEnabled: !modal.trialEnabled })}
+                className={`relative h-7 w-14 rounded-full transition ${
+                  modal.trialEnabled ? "bg-amber-500/70" : "bg-white/15"
+                }`}
+              >
+                <span
+                  className={`absolute top-1.5 h-4 w-4 rounded-full bg-white transition ${
+                    modal.trialEnabled ? "right-1.5" : "left-1.5"
+                  }`}
+                />
+              </button>
+            </div>
+            {modal.trialEnabled && (
+              <div className="flex items-center gap-3">
+                <label className="text-sm text-white/70 shrink-0">سعر الكلاس التجريبي (ج.م)</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="10"
+                  value={modal.trialPrice}
+                  onChange={(e) => setModal({ ...modal, trialPrice: Number(e.target.value) || 50 })}
+                  className={INPUT + " max-w-[120px]"}
+                />
+              </div>
+            )}
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <Field label="القسم" hint="اختر القسم الرئيسي للكلاس">
+              <select
+                value={modal.categoryPreset}
+                onChange={(event) => {
+                  const preset = event.target.value;
+                  const nextCategory = preset === "custom" ? modal.customCategory : preset;
+                  const preferredType =
+                    preferredClassTypeForCategory(
+                      nextCategory,
+                      classTypes,
+                    );
+
+                  setModal({
+                    ...modal,
+                    categoryPreset: preset,
+                    category: nextCategory,
+                    name: nextCategory,
+                    typePreset:
+                      preferredType?.nameAr ?? "custom",
+                    type:
+                      preferredType?.nameAr ?? "",
+                    classTypeId:
+                      preferredType?.id ?? null,
+                    typeEn:
+                      preferredType?.nameEn ?? "",
+                    customType:
+                      preferredType ? "" : modal.customType,
+                    subTypePreset: "",
+                    subType: "",
+                    customSubType: "",
+                  });
+                }}
+                className={INPUT}
+              >
+                {availableCategories.map((cat) => (
+                  <option key={cat} value={cat} className="bg-[#2a0f1f]">
+                    {cat}
+                  </option>
+                ))}
+                <option value="custom" className="bg-[#2a0f1f]">
+                  قسم جديد
+                </option>
+              </select>
+            </Field>
+
+            <Field label="اسم القسم الجديد" hint="مثال: قسم السيدات أو قسم الدفاع عن النفس">
+              <input
+                value={modal.customCategory}
+                onChange={(event) =>
+                  setModal({
+                    ...modal,
+                    customCategory: event.target.value,
+                    category: modal.categoryPreset === "custom" ? event.target.value : modal.category,
+                    name: modal.categoryPreset === "custom" ? event.target.value : modal.name,
+                  })
+                }
+                className={INPUT}
+                placeholder="اكتب اسم القسم إذا اخترت قسم جديد"
+                disabled={modal.categoryPreset !== "custom"}
+              />
+            </Field>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <Field label="وصف مختصر" hint="اختياري، لاستخدامه عند عرض تفاصيل الكلاس بالعربية.">
+              <textarea
+                value={modal.description}
+                onChange={(event) => setModal({ ...modal, description: event.target.value })}
+                className={`${INPUT} min-h-24 resize-y`}
+              />
+            </Field>
+
+            <Field label="اسم القسم بالإنجليزية" hint="اختياري، لكنه سيظهر للعميل عند اختيار اللغة الإنجليزية.">
+              <div className="flex gap-2">
+                <input
+                  value={modal.categoryEn}
+                  onChange={(event) => setModal({ ...modal, categoryEn: event.target.value })}
+                  className={`${INPUT} flex-1`}
+                  placeholder="Example: Weight Loss"
+                  dir="ltr"
+                />
+                <TranslateButton from={modal.category} onTranslated={(t) => setModal({ ...modal, categoryEn: t })} />
+              </div>
+            </Field>
+
+            <Field label="وصف مختصر بالإنجليزية" hint="اختياري، لاستخدامه عند عرض تفاصيل الكلاس بالإنجليزية.">
+              <div className="space-y-1">
+                <textarea
+                  value={modal.descriptionEn}
+                  onChange={(event) => setModal({ ...modal, descriptionEn: event.target.value })}
+                  className={`${INPUT} min-h-24 resize-y`}
+                  placeholder="Example: Functional class focused on fat burning and stamina."
+                  dir="ltr"
+                />
+                <TranslateButton from={modal.description} onTranslated={(t) => setModal({ ...modal, descriptionEn: t })} />
+              </div>
+            </Field>
+          </div>
+
+          <div className="mt-6 flex flex-wrap justify-end gap-3">
+            <button
+              onClick={() => setModal(null)}
+              className="rounded-2xl border border-white/10 px-5 py-3 text-sm font-bold text-white/70 transition hover:border-white/20 hover:text-white"
+            >
+              إلغاء
+            </button>
+            <button
+              onClick={() => void saveClass()}
+              disabled={saving}
+              className="rounded-2xl bg-fuchsia-600 px-6 py-3 text-sm font-black text-white transition hover:bg-fuchsia-500 disabled:opacity-60"
+            >
+              {saving
+                ? "جارٍ الحفظ..."
+                : modal.id
+                  ? "حفظ الكلاس"
+                  : modal.selectedDays.length > 1
+                    ? `إضافة ${modal.selectedDays.length} كلاسات`
+                    : "إضافة الكلاس"}
+            </button>
+          </div>
+        </Modal>
+      ) : null}
+    </div>
+  );
+}

@@ -1,0 +1,83 @@
+export type PaymentProviderKey = "manual" | "instapay" | "vodafone_cash" | "paymob" | "paytabs" | "custom";
+export type PaymentPurpose = "order" | "membership" | "wallet_topup" | "private_session" | "offer_box";
+export type PaymentStatus =
+  | "pending"
+  | "requires_action"
+  | "paid"
+  | "failed"
+  | "cancelled"
+  | "expired";
+
+export type PaymentCheckoutInput = {
+  transactionId: string;
+  amount: number;
+  currency: string;
+  purpose: PaymentPurpose;
+  membershipHoldExpiresAt?: Date | null;
+  returnUrl?: string | null;
+  cancelUrl?: string | null;
+  customer: {
+    id: string;
+    name?: string | null;
+    email?: string | null;
+    phone?: string | null;
+  };
+  context: {
+    orderId?: string | null;
+    membershipId?: string | null;
+    offerId?: string | null;
+    description?: string | null;
+    metadata?: Record<string, unknown> | null;
+    paymentMethod?: string | null;
+    customerPhone?: string | null;
+  };
+};
+
+export type PaymentCheckoutResult = {
+  provider: PaymentProviderKey;
+  status: PaymentStatus;
+  message?: string;
+  checkoutUrl?: string | null;
+  iframeUrl?: string | null;
+  providerReference?: string | null;
+  externalReference?: string | null;
+  expiresAt?: Date | null;
+  payload?: Record<string, unknown> | null;
+};
+
+export type PaymentVerificationResult = {
+  status: PaymentStatus;
+  message?: string;
+  providerReference?: string | null;
+  externalReference?: string | null;
+  payload?: Record<string, unknown> | null;
+};
+
+export type PaymentWebhookResult = {
+  ok: boolean;
+  code?: "MISSING_HMAC" | "INVALID_HMAC";
+  transactionId?: string | null;
+  status?: PaymentStatus;
+  message?: string;
+  providerReference?: string | null;
+  externalReference?: string | null;
+  payload?: Record<string, unknown> | null;
+};
+
+export type PaymentProviderDefinition = {
+  key: PaymentProviderKey;
+  label: string;
+  enabled: boolean;
+  supportsCards: boolean;
+  createCheckout(input: PaymentCheckoutInput): Promise<PaymentCheckoutResult>;
+  verifyTransaction(transaction: {
+    id: string;
+    providerReference?: string | null;
+    externalReference?: string | null;
+    amount: number;
+    currency: string;
+    metadata?: string | null;
+    providerPayload?: string | null;
+  }): Promise<PaymentVerificationResult>;
+  handleWebhook?(payload: unknown, headers: Headers, queryHmac?: string | null): Promise<PaymentWebhookResult>;
+};

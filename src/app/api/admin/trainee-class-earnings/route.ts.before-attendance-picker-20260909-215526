@@ -1,0 +1,310 @@
+import { NextRequest, NextResponse } from "next/server";
+
+import { requireAdminPermission } from "@/lib/admin-authorization-server";
+import { db } from "@/lib/db";
+import {
+  calculateTraineeClassEarning,
+  finalizeTraineeClassEarning,
+} from "@/lib/employees/trainee-class-earning-service";
+
+export const dynamic = "force-dynamic";
+
+const ALLOWED_STATUSES = ["blocked", "calculated", "finalized"] as const;
+
+type TraineeClassEarningStatus = (typeof ALLOWED_STATUSES)[number];
+
+function actorFromGuard(guard: {
+  session: {
+    id?: string;
+    user?: {
+      id?: string;
+      name?: string | null;
+      email?: string | null;
+      role?: string | null;
+    };
+    name?: string | null;
+    email?: string | null;
+    role?: string | null;
+  };
+  role?: string;
+}) {
+  return {
+    userId: guard.session.user?.id ?? guard.session.id ?? "",
+    name: guard.session.user?.name ?? guard.session.name ?? "",
+    email: guard.session.user?.email ?? guard.session.email ?? null,
+    role: guard.session.user?.role ?? guard.session.role ?? guard.role ?? null,
+  };
+}
+
+function requiredString(value: unknown, code: string) {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error(code);
+  }
+
+  return value.trim();
+}
+
+async function parseBody(req: NextRequest) {
+  try {
+    return (await req.json()) as Record<string, unknown>;
+  } catch {
+    throw new Error("TRAINEE_CLASS_EARNING_INVALID_JSON");
+  }
+}
+
+function mapError(error: unknown) {
+  const message =
+    error instanceof Error
+      ? error.message
+      : "TRAINEE_CLASS_EARNING_UNKNOWN_ERROR";
+
+  if (
+    message === "TRAINEE_CLASS_EARNING_NOT_FOUND" ||
+    message === "TRAINEE_CLASS_EARNING_ATTENDANCE_NOT_FOUND"
+  ) {
+    return NextResponse.json(
+      {
+        error: message,
+      },
+      {
+        status: 404,
+      },
+    );
+  }
+
+  if (
+    message === "TRAINEE_CLASS_EARNING_FINALIZED" ||
+    message === "TRAINEE_CLASS_EARNING_NOT_CALCULATED"
+  ) {
+    return NextResponse.json(
+      {
+        error: message,
+      },
+      {
+        status: 409,
+      },
+    );
+  }
+
+  if (message.startsWith("TRAINEE_CLASS_EARNING_")) {
+    return NextResponse.json(
+      {
+        error: message,
+      },
+      {
+        status: 400,
+      },
+    );
+  }
+
+  console.error("trainee-class-earnings API error", error);
+
+  return NextResponse.json(
+    {
+      error: "Internal server error",
+    },
+    {
+      status: 500,
+    },
+  );
+}
+
+export async function GET(req: NextRequest): Promise<NextResponse> {
+  const guard = await requireAdminPermission("trainee_class_earning_view");
+
+  if ("error" in guard) {
+    return (
+      guard.error ??
+      NextResponse.json(
+        {
+          error: "ADMIN_PERMISSION_GUARD_INVALID_RESPONSE",
+        },
+        {
+          status: 500,
+        },
+      )
+    );
+  }
+
+  try {
+    const url = new URL(req.url);
+
+    const month = url.searchParams.get("month")?.trim() || null;
+
+    const employeeId = url.searchParams.get("employeeId")?.trim() || null;
+
+    const status = url.searchParams.get("status")?.trim() || null;
+
+    const membershipId = url.searchParams.get("membershipId")?.trim() || null;
+
+    const bookingId = url.searchParams.get("bookingId")?.trim() || null;
+
+    const scheduleId = url.searchParams.get("scheduleId")?.trim() || null;
+
+    if (month && !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
+      throw new Error("TRAINEE_CLASS_EARNING_INVALID_MONTH");
+    }
+
+    let parsedStatus: TraineeClassEarningStatus | null = null;
+
+    if (status) {
+      if (!ALLOWED_STATUSES.includes(status as TraineeClassEarningStatus)) {
+        throw new Error("TRAINEE_CLASS_EARNING_INVALID_STATUS");
+      }
+
+      parsedStatus = status as TraineeClassEarningStatus;
+    }
+
+    const earnings = await db.traineeClassEarning.findMany({
+      where: {
+        ...(month
+          ? {
+              monthKey: month,
+            }
+          : {}),
+        ...(employeeId
+          ? {
+              actualEmployeeId: employeeId,
+            }
+          : {}),
+        ...(parsedStatus
+          ? {
+              status: parsedStatus,
+            }
+          : {}),
+        ...(membershipId
+          ? {
+              userMembershipId: membershipId,
+            }
+          : {}),
+        ...(bookingId
+          ? {
+              bookingId,
+            }
+          : {}),
+        ...(scheduleId
+          ? {
+              scheduleId,
+            }
+          : {}),
+      },
+
+      orderBy: [
+        {
+          attendanceDate: "desc",
+        },
+        {
+          attendanceTime: "desc",
+        },
+        {
+          createdAt: "desc",
+        },
+      ],
+    });
+
+    return NextResponse.json({
+      earnings,
+    });
+  } catch (error) {
+    return mapError(error);
+  }
+}
+
+export async function POST(req: NextRequest): Promise<NextResponse> {
+  let body: Record<string, unknown>;
+
+  try {
+    body = await parseBody(req);
+  } catch (error) {
+    return mapError(error);
+  }
+
+  const action = typeof body.action === "string" ? body.action.trim() : "";
+
+  if (action === "calculate") {
+    const guard = await requireAdminPermission(
+      "trainee_class_earning_calculate",
+    );
+
+    if ("error" in guard) {
+      return (
+        guard.error ??
+        NextResponse.json(
+          {
+            error: "ADMIN_PERMISSION_GUARD_INVALID_RESPONSE",
+          },
+          {
+            status: 500,
+          },
+        )
+      );
+    }
+
+    try {
+      const earning = await calculateTraineeClassEarning(
+        {
+          attendanceCheckInId: requiredString(
+            body.attendanceCheckInId,
+            "TRAINEE_CLASS_EARNING_ATTENDANCE_REQUIRED",
+          ),
+        },
+        actorFromGuard(guard),
+      );
+
+      return NextResponse.json({
+        action,
+        earning,
+      });
+    } catch (error) {
+      return mapError(error);
+    }
+  }
+
+  if (action === "finalize") {
+    const guard = await requireAdminPermission(
+      "trainee_class_earning_finalize",
+    );
+
+    if ("error" in guard) {
+      return (
+        guard.error ??
+        NextResponse.json(
+          {
+            error: "ADMIN_PERMISSION_GUARD_INVALID_RESPONSE",
+          },
+          {
+            status: 500,
+          },
+        )
+      );
+    }
+
+    try {
+      const earning = await finalizeTraineeClassEarning(
+        {
+          earningId: requiredString(
+            body.earningId,
+            "TRAINEE_CLASS_EARNING_ID_REQUIRED",
+          ),
+        },
+        actorFromGuard(guard),
+      );
+
+      return NextResponse.json({
+        action,
+        earning,
+      });
+    } catch (error) {
+      return mapError(error);
+    }
+  }
+
+  return NextResponse.json(
+    {
+      error: "TRAINEE_CLASS_EARNING_INVALID_ACTION",
+    },
+    {
+      status: 400,
+    },
+  );
+}

@@ -1,0 +1,17 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+const now = Date.now();
+vi.mock("next/headers", () => ({ cookies: vi.fn(async () => ({ get: (name: string) => ({ value: name === "vid" ? "visitor" : "session" }) })) }));
+vi.mock("@/lib/rate-limit", () => ({ applyRateLimit: vi.fn(() => ({ ok: true })), getClientIp: vi.fn(() => "test") }));
+vi.mock("@/lib/analytics/privacy", () => ({ isAnalyticsBot: vi.fn(() => false), sanitizeAnalyticsPath: vi.fn((v: string) => v) }));
+vi.mock("@/lib/analytics/visitor-session", () => ({ ANALYTICS_VISITOR_COOKIE: { name: "vid" }, ANALYTICS_SESSION_COOKIE: { name: "sid" }, getOrCreateAnalyticsVisitor: vi.fn(), getOrCreateAnalyticsSession: vi.fn() }));
+vi.mock("@/lib/db", () => ({ db: { analyticsVisitor: { findUnique: vi.fn() }, analyticsSession: { findUnique: vi.fn(), update: vi.fn() }, analyticsPageView: { findFirst: vi.fn(), update: vi.fn() }, $transaction: vi.fn() } }));
+import { POST } from "@/app/api/analytics/collect/route"; import { db } from "@/lib/db";
+const req = (body = {}) => new Request("http://x/api/analytics/collect", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ eventName: "heartbeat", path: "/", ...body }) });
+describe("analytics heartbeat collector", () => {
+ beforeEach(() => { vi.clearAllMocks(); vi.mocked(db.analyticsVisitor.findUnique).mockResolvedValue({ id: "v" } as never); vi.mocked(db.analyticsSession.findUnique).mockResolvedValue({ id: "s", visitorId: "v", lastActivityAt: new Date(now - 30000) } as never); vi.mocked(db.analyticsPageView.findFirst).mockResolvedValue({ id: "p" } as never); vi.mocked(db.analyticsSession.update).mockReturnValue({} as never); vi.mocked(db.analyticsPageView.update).mockReturnValue({} as never); vi.mocked(db.$transaction).mockResolvedValue([] as never); });
+ it("updates matching session and page view in a transaction", async () => { await POST(req({ durationSeconds: 999 })); expect(db.$transaction).toHaveBeenCalled(); expect(db.analyticsSession.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ durationSeconds: { increment: expect.any(Number) } }) })); });
+ it("ignores a heartbeat faster than 20 seconds", async () => { vi.mocked(db.analyticsSession.findUnique).mockResolvedValue({ id: "s", visitorId: "v", lastActivityAt: new Date(now - 5000) } as never); expect((await POST(req())).status).toBe(200); expect(db.$transaction).not.toHaveBeenCalled(); });
+ it("caps long delta at 60 seconds", async () => { vi.mocked(db.analyticsSession.findUnique).mockResolvedValue({ id: "s", visitorId: "v", lastActivityAt: new Date(now - 120000) } as never); await POST(req()); expect(db.analyticsSession.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ durationSeconds: { increment: 60 } }) })); });
+ it("ignores foreign and expired sessions", async () => { vi.mocked(db.analyticsSession.findUnique).mockResolvedValueOnce({ id: "s", visitorId: "x", lastActivityAt: new Date(now - 30000) } as never).mockResolvedValueOnce({ id: "s", visitorId: "v", lastActivityAt: new Date(now - 31 * 60 * 1000) } as never); await POST(req()); await POST(req()); expect(db.$transaction).not.toHaveBeenCalled(); });
+ it("ignores when no page view is open", async () => { vi.mocked(db.analyticsPageView.findFirst).mockResolvedValue(null); expect((await POST(req())).status).toBe(200); expect(db.$transaction).not.toHaveBeenCalled(); });
+});

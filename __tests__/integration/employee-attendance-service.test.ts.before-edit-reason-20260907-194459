@@ -1,0 +1,342 @@
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { db } from "@/lib/db";
+import {
+  lockAttendancePeriod,
+  saveEmployeeAttendance,
+  unlockAttendancePeriod,
+} from "@/lib/employees/employee-attendance-service";
+import { cairoDateStartInstant } from "@/lib/fitzone-time";
+
+const raw = process.env.DATABASE_URL;
+
+if (!raw) {
+  throw new Error("REFUSING: DATABASE_URL missing");
+}
+
+const url = new URL(raw);
+
+if (
+  process.env.APP_ENV !== "test" ||
+  process.env.NODE_ENV !== "test" ||
+  url.protocol !== "mysql:" ||
+  url.hostname !== "127.0.0.1" ||
+  decodeURIComponent(url.username) !== "fitzone_test_user" ||
+  url.pathname !== "/fitzone_test"
+) {
+  throw new Error(
+    "REFUSING: Employee Attendance integration requires fitzone_test",
+  );
+}
+
+const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+let actorId = "";
+let employeeId = "";
+
+const employeeCode = `TEST-HR-ATT-${stamp}`;
+
+const actor = () => ({
+  userId: actorId,
+  name: "Attendance Test Admin",
+  email: `attendance-${stamp}@test.local`,
+  role: "admin",
+});
+
+async function cleanup() {
+  await db.auditLog.deleteMany({
+    where: {
+      OR: [
+        {
+          targetType: "EmployeeAttendance",
+        },
+        {
+          targetType: "AttendancePeriod",
+        },
+      ],
+      actorUserId: actorId || undefined,
+    },
+  });
+
+  if (employeeId) {
+    await db.employeeAttendance.deleteMany({
+      where: { employeeId },
+    });
+  }
+
+  await db.attendancePeriod.deleteMany({
+    where: {
+      monthKey: {
+        in: ["2026-09", "2026-10", "2026-11"],
+      },
+    },
+  });
+
+  if (employeeId) {
+    await db.employeeProfile.deleteMany({
+      where: { id: employeeId },
+    });
+  }
+
+  if (actorId) {
+    await db.user.deleteMany({
+      where: { id: actorId },
+    });
+  }
+}
+
+beforeAll(async () => {
+  await cleanup();
+
+  const user = await db.user.create({
+    data: {
+      name: "Attendance Test Admin",
+      email: `attendance-${stamp}@test.local`,
+      role: "admin",
+      adminAccess: true,
+      isActive: true,
+    },
+  });
+
+  actorId = user.id;
+
+  const employee = await db.employeeProfile.create({
+    data: {
+      employeeCode,
+      name: "Attendance Test Employee",
+      employmentStatus: "active",
+      payrollEnabled: true,
+    },
+  });
+
+  employeeId = employee.id;
+});
+
+afterAll(async () => {
+  await cleanup();
+});
+
+describe(
+  "EmployeeAttendanceService — real fitzone_test integration",
+  { timeout: 90_000 },
+  () => {
+    it("creates attendance and mandatory audit atomically", async () => {
+      const row = await saveEmployeeAttendance(
+        {
+          employeeId,
+          date: "2026-09-07",
+          status: "present",
+          scheduledStartTime: "09:00",
+          scheduledEndTime: "17:00",
+          checkInAt: "2026-09-07T06:00:00.000Z",
+          checkOutAt: "2026-09-07T14:00:00.000Z",
+          lateMinutes: 0,
+        },
+        actor(),
+      );
+
+      expect(row.employeeId).toBe(employeeId);
+      expect(row.status).toBe("present");
+
+      const audit = await db.auditLog.findFirst({
+        where: {
+          targetType: "EmployeeAttendance",
+          targetId: row.id,
+          action: "employee_attendance_create",
+          actorUserId: actorId,
+        },
+      });
+
+      expect(audit).toBeTruthy();
+    });
+
+    it("updates same employee/date instead of creating duplicate", async () => {
+      const first = await saveEmployeeAttendance(
+        {
+          employeeId,
+          date: "2026-09-08",
+          status: "present",
+        },
+        actor(),
+      );
+
+      const second = await saveEmployeeAttendance(
+        {
+          employeeId,
+          date: "2026-09-08",
+          status: "late",
+          lateMinutes: 12,
+          notes: "Traffic",
+        },
+        actor(),
+      );
+
+      expect(second.id).toBe(first.id);
+      expect(second.status).toBe("late");
+      expect(second.lateMinutes).toBe(12);
+
+      expect(
+        await db.employeeAttendance.count({
+          where: {
+            employeeId,
+            attendanceDate: cairoDateStartInstant("2026-09-08"),
+          },
+        }),
+      ).toBe(1);
+
+      const updateAudit = await db.auditLog.findFirst({
+        where: {
+          targetId: second.id,
+          action: "employee_attendance_update",
+          actorUserId: actorId,
+        },
+      });
+
+      expect(updateAudit).toBeTruthy();
+
+      const details = JSON.parse(updateAudit!.details || "{}");
+
+      expect(details.before.status).toBe("present");
+      expect(details.after.status).toBe("late");
+    });
+
+    it("rejects invalid status before mutation", async () => {
+      await expect(
+        saveEmployeeAttendance(
+          {
+            employeeId,
+            date: "2026-09-09",
+            status: "invalid" as never,
+          },
+          actor(),
+        ),
+      ).rejects.toThrow("EMPLOYEE_ATTENDANCE_INVALID_STATUS");
+
+      expect(
+        await db.employeeAttendance.count({
+          where: {
+            employeeId,
+            attendanceDate: cairoDateStartInstant("2026-09-09"),
+          },
+        }),
+      ).toBe(0);
+    });
+
+    it("rejects negative late minutes", async () => {
+      await expect(
+        saveEmployeeAttendance(
+          {
+            employeeId,
+            date: "2026-09-10",
+            status: "late",
+            lateMinutes: -1,
+          },
+          actor(),
+        ),
+      ).rejects.toThrow("EMPLOYEE_ATTENDANCE_INVALID_LATE_MINUTES");
+    });
+
+    it("rejects checkout before checkin", async () => {
+      await expect(
+        saveEmployeeAttendance(
+          {
+            employeeId,
+            date: "2026-09-11",
+            status: "present",
+            checkInAt: "2026-09-11T08:00:00.000Z",
+            checkOutAt: "2026-09-11T07:00:00.000Z",
+          },
+          actor(),
+        ),
+      ).rejects.toThrow("EMPLOYEE_ATTENDANCE_CHECKOUT_BEFORE_CHECKIN");
+    });
+
+    it("locks month and creates mandatory audit", async () => {
+      const result = await lockAttendancePeriod("2026-10", actor());
+
+      expect(result.idempotent).toBe(false);
+      expect(result.period.status).toBe("locked");
+
+      const audit = await db.auditLog.findFirst({
+        where: {
+          targetType: "AttendancePeriod",
+          targetId: result.period.id,
+          action: "employee_attendance_period_lock",
+          actorUserId: actorId,
+        },
+      });
+
+      expect(audit).toBeTruthy();
+    });
+
+    it("lock retry is idempotent", async () => {
+      const first = await lockAttendancePeriod("2026-11", actor());
+
+      const second = await lockAttendancePeriod("2026-11", actor());
+
+      expect(first.idempotent).toBe(false);
+      expect(second.idempotent).toBe(true);
+      expect(second.period.id).toBe(first.period.id);
+    });
+
+    it("rejects attendance mutation in locked month", async () => {
+      await expect(
+        saveEmployeeAttendance(
+          {
+            employeeId,
+            date: "2026-10-07",
+            status: "present",
+          },
+          actor(),
+        ),
+      ).rejects.toThrow("EMPLOYEE_ATTENDANCE_PERIOD_LOCKED");
+
+      expect(
+        await db.employeeAttendance.count({
+          where: {
+            employeeId,
+            attendanceDate: cairoDateStartInstant("2026-10-07"),
+          },
+        }),
+      ).toBe(0);
+    });
+
+    it("requires reason for unlock override", async () => {
+      await expect(
+        unlockAttendancePeriod("2026-10", "", actor()),
+      ).rejects.toThrow("EMPLOYEE_ATTENDANCE_UNLOCK_REASON_REQUIRED");
+    });
+
+    it("unlock override reopens month and creates audit", async () => {
+      const period = await unlockAttendancePeriod(
+        "2026-10",
+        "Approved correction",
+        actor(),
+      );
+
+      expect(period.status).toBe("open");
+      expect(period.unlockReason).toBe("Approved correction");
+
+      const audit = await db.auditLog.findFirst({
+        where: {
+          targetType: "AttendancePeriod",
+          targetId: period.id,
+          action: "employee_attendance_period_unlock_override",
+          actorUserId: actorId,
+        },
+      });
+
+      expect(audit).toBeTruthy();
+
+      const row = await saveEmployeeAttendance(
+        {
+          employeeId,
+          date: "2026-10-07",
+          status: "excused",
+        },
+        actor(),
+      );
+
+      expect(row.status).toBe("excused");
+    });
+  },
+);

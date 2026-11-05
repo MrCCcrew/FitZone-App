@@ -1,0 +1,481 @@
+﻿import { describe, it, expect, vi, beforeEach } from "vitest";
+
+vi.mock("server-only", () => ({}));
+
+const {
+  recordMembershipActivatedEvent,
+  runPaidMembershipPostActivationReconciliation,
+} = vi.hoisted(() => ({
+  recordMembershipActivatedEvent: vi.fn().mockResolvedValue(undefined),
+  runPaidMembershipPostActivationReconciliation: vi
+    .fn()
+    .mockResolvedValue({
+      alreadyCompleted: false,
+    }),
+}));
+vi.mock("@/lib/analytics/membership-events", () => ({
+  recordMembershipActivatedEvent,
+}));
+
+vi.mock("@/lib/payments/reconciliation-helper", () => ({
+  runPaidMembershipPostActivationReconciliation,
+}));
+
+// ─── Mocks ────────────────────────────────────────────────────────────────────
+
+// Create shared mock instances for transaction
+const txUserMembershipFindUnique = vi.fn();
+const txUserMembershipFindMany = vi.fn().mockResolvedValue([]);
+const txUserMembershipUpdateMany = vi.fn();
+const txPaymentTransactionUpdate = vi.fn();
+
+vi.mock("@/lib/db", () => ({
+  asDbTransactionClient: (tx: unknown) => tx,
+  db: {
+    paymentTransaction: { findUnique: vi.fn(), update: vi.fn(), updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+    userMembership:     { findUnique: vi.fn(), updateMany: vi.fn() },
+    booking:            { findMany: vi.fn().mockResolvedValue([]), updateMany: vi.fn() },
+    schedule:           { update: vi.fn() },
+    wallet:             { upsert: vi.fn().mockResolvedValue({ id: "w1" }), update: vi.fn() },
+    walletTransaction:  { create: vi.fn() },
+    rewardPoints:       { upsert: vi.fn().mockResolvedValue({ id: "rp1" }) },
+    rewardHistory:      { create: vi.fn() },
+    notification:       { create: vi.fn().mockResolvedValue({ id: "n1" }) },
+    user:               { findUnique: vi.fn() },
+    referralUsage:      { findUnique: vi.fn().mockResolvedValue(null), update: vi.fn() },
+    referral:           { update: vi.fn() },
+    partner:            { findUnique: vi.fn().mockResolvedValue(null) },
+    partnerCommission:  { upsert: vi.fn() },
+    offer:              { update: vi.fn() },
+    product:            { findUnique: vi.fn(), update: vi.fn() },
+    inventoryMovement:  { create: vi.fn() },
+    order:              { findUnique: vi.fn() },
+    privateSessionApplication: { findUnique: vi.fn(), updateMany: vi.fn() },
+    nutritionSession:   { updateMany: vi.fn() },
+    siteContent:        { findUnique: vi.fn().mockResolvedValue(null) },
+    $transaction: vi.fn().mockImplementation(async (cb: (tx: unknown) => unknown) =>
+      cb({
+        $queryRaw: vi.fn().mockResolvedValue([{ id: "tx-001" }]),
+        paymentTransaction: {
+          findUnique: vi.fn().mockResolvedValue({
+            id: "tx-001",
+            metadata: null,
+            status: "paid",
+            amount: 1000,
+            paymentMethod: "paymob",
+            paidAt: new Date(),
+            userId: "u1",
+            membershipId: "m1"
+          }),
+          update: txPaymentTransactionUpdate,
+          updateMany: vi.fn().mockResolvedValue({ count: 1 })
+        },
+        userMembership:     { findUnique: txUserMembershipFindUnique, findMany: txUserMembershipFindMany, updateMany: txUserMembershipUpdateMany, update: vi.fn() },
+        wallet:             { upsert: vi.fn().mockResolvedValue({ id: "w1" }), update: vi.fn(), findUnique: vi.fn().mockResolvedValue(null) },
+        walletTransaction:  { create: vi.fn(), findMany: vi.fn().mockResolvedValue([]), findFirst: vi.fn().mockResolvedValue(null) },
+        rewardPoints:       { upsert: vi.fn().mockResolvedValue({ id: "rp1" }), update: vi.fn(), findUnique: vi.fn().mockResolvedValue({ id: "rp1", points: 100, userId: "u1" }) },
+        rewardHistory:      {
+          create: vi.fn().mockResolvedValue({ id: "reward-history-1" }),
+          findFirst: vi.fn().mockResolvedValue(null),
+          findMany: vi.fn().mockResolvedValue([]),
+        },
+        partner:            { findUnique: vi.fn().mockResolvedValue(null) },
+        partnerCommission:  { upsert: vi.fn(), findUnique: vi.fn().mockResolvedValue(null) },
+        managerPartnerCommission: { findUnique: vi.fn().mockResolvedValue(null), create: vi.fn() },
+        agentCommission:    { upsert: vi.fn() },
+        salesAgent:         { findUnique: vi.fn().mockResolvedValue(null) },
+        salesAgentCommission: { upsert: vi.fn().mockResolvedValue({ id: "sac1" }) },
+        salesAgentReferral: { findUnique: vi.fn().mockResolvedValue(null), update: vi.fn() },
+        contractsManager:   { findUnique: vi.fn().mockResolvedValue(null) },
+        managerCommission:  { findUnique: vi.fn().mockResolvedValue(null), create: vi.fn() },
+        staffCommission:    { upsert: vi.fn() },
+        trainerCommission:  { upsert: vi.fn() },
+        nutritionCommission: { upsert: vi.fn() },
+        product:            { findUnique: vi.fn().mockResolvedValue(null), update: vi.fn(), updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+        inventoryMovement:  { create: vi.fn(), findMany: vi.fn().mockResolvedValue([]), findFirst: vi.fn().mockResolvedValue(null) },
+        offer:              { update: vi.fn(), findUnique: vi.fn().mockResolvedValue(null), findFirst: vi.fn().mockResolvedValue(null) },
+        notification:       { create: vi.fn().mockResolvedValue({ id: "n1" }) },
+        user:               { findUnique: vi.fn().mockResolvedValue(null) },
+        booking:            { findMany: vi.fn().mockResolvedValue([]) },
+
+        // Accounting side-effects executed after successful membership activation.
+        // Keep the real reconciliation path enabled; mock only its persistence layer.
+        journal: {
+          findUnique: vi.fn().mockResolvedValue(null),
+          create: vi.fn().mockResolvedValue({ id: "journal-subscription-1" }),
+        },
+        journalEntry: {
+          create: vi.fn().mockResolvedValue({ id: "journal-entry-1" }),
+        },
+        gLAccount: {
+          findUnique: vi.fn().mockImplementation(
+            async ({ where }: { where: { code: string } }) => ({
+              id: `gl-${where.code}`,
+            }),
+          ),
+        },
+      })
+    ),
+  },
+}));
+
+vi.mock("@/lib/attendance", () => ({
+  ensureMembershipAttendancePass: vi.fn().mockResolvedValue(null),
+  ensurePrivateAttendancePass:    vi.fn().mockResolvedValue(null),
+  buildAttendancePayload:         vi.fn().mockReturnValue("qr"),
+}));
+vi.mock("@/lib/email",            () => ({ sendSubscriptionEmail: vi.fn().mockResolvedValue(undefined) }));
+vi.mock("@/lib/membership-card",  () => ({ generateMembershipQrCard: vi.fn().mockResolvedValue(null) }));
+vi.mock("@/lib/membership-invoice", () => ({ generateMembershipInvoicePdf: vi.fn().mockResolvedValue(null) }));
+vi.mock("@/lib/payments/registry", () => ({
+  getPaymentProvider:        vi.fn().mockReturnValue(null),
+  getDefaultPaymentProvider: vi.fn().mockReturnValue({ key: "paymob", enabled: true }),
+  listPaymentProviders:      vi.fn().mockReturnValue([]),
+}));
+
+import { db } from "@/lib/db";
+import { updatePaymentTransactionStatus } from "@/lib/payments/service";
+
+// ─── Fixtures ─────────────────────────────────────────────────────────────────
+
+const BASE_TX = {
+  id: "tx-001", referenceCode: "FZ-Sub-0000001", provider: "paymob",
+  purpose: "subscription", amount: 1000, currency: "EGP", status: "pending_payment",
+  paymentMethod: "paymob", orderId: null, membershipId: "m1", offerId: null,
+  checkoutUrl: null, iframeUrl: null, providerReference: null, externalReference: null,
+  returnUrl: null, cancelUrl: null, providerPayload: null, metadata: null,
+  expiresAt: null, paidAt: null, failedAt: null,
+  userId: "u1", createdAt: new Date("2024-01-01"), updatedAt: new Date("2024-01-01"),
+};
+
+// Membership fixture — status pending_payment, 30-day duration, no partner/bonus/offer
+const PENDING_MEM = {
+  id: "m1",
+  userId: "u1",
+  membershipId: "plan1",
+  status: "pending_payment",
+  startDate: null,
+  endDate: null,
+  pendingExpiresAt: null,
+  offerId: null,
+  totalSessions: null,
+  baseSessions: null,
+  eligibilitySnapshot: null,
+  allowedClassTypesSnapshot: null,
+  snapshotDurationDays: null,
+  membership: {
+    name: "Basic",
+    nameEn: "Basic",
+    kind: "membership",
+    duration: 30,
+    walletBonus: 0,
+    productRewards: null,
+  },
+  offer: null,
+};
+
+// Second findUnique call inside partner-check block — no partner
+const NO_PARTNER = { partnerId: null, partnerCodeId: null, affiliateLinkId: null, paymentAmount: 1000 };
+
+// Second userMembership.findUnique inside payment booking guarantee.
+// At this point activation has already succeeded, so the membership is active.
+const ACTIVE_BOOKING_MEM = {
+  id: "m1",
+  userId: "u1",
+  startDate: new Date("2026-01-01T00:00:00.000Z"),
+  endDate: new Date("2026-01-31T00:00:00.000Z"),
+  status: "active",
+  membershipId: "plan1",
+  offerId: null,
+  totalSessions: null,
+  baseSessions: null,
+  carryoverSessions: 0,
+  carryoverFromMembershipId: null,
+  carryoverAppliedAt: null,
+  eligibilitySnapshot: null,
+  allowedClassTypesSnapshot: null,
+  snapshotDurationDays: null,
+  bookingPatternSnapshot: null,
+  membership: {
+    kind: "membership",
+    duration: 30,
+    sessionsCount: null,
+  },
+};
+
+function pendingSelect(membershipId = "m1") {
+  return { status: "pending_payment", metadata: null, membershipId, orderId: null, userId: "u1" };
+}
+
+// ─── Activation happy path ────────────────────────────────────────────────────
+
+describe("membership activation — happy path", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("calls userMembership.updateMany with status:'active'", async () => {
+    const paidTx = { ...BASE_TX, status: "paid", paidAt: new Date() };
+    vi.mocked(db.paymentTransaction.findUnique).mockResolvedValueOnce(pendingSelect() as never);
+    vi.mocked(db.paymentTransaction.update).mockResolvedValue(paidTx as never);
+
+    // Setup tx.userMembership.findUnique inside transaction
+    txUserMembershipFindUnique
+      .mockResolvedValueOnce(PENDING_MEM as never)
+      .mockResolvedValueOnce(ACTIVE_BOOKING_MEM as never)
+      .mockResolvedValueOnce(ACTIVE_BOOKING_MEM as never);
+    txUserMembershipUpdateMany.mockResolvedValue({ count: 1 } as never);
+
+    vi.mocked(db.userMembership.findUnique).mockResolvedValueOnce(NO_PARTNER as never); // partner commission check
+    vi.mocked(db.user.findUnique).mockResolvedValue(null);
+
+    await updatePaymentTransactionStatus("tx-001", "paid");
+
+    expect(txUserMembershipUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "m1", status: "pending_payment" },
+        data:  expect.objectContaining({ status: "active", pendingExpiresAt: null }),
+      }),
+    );
+    expect(recordMembershipActivatedEvent).toHaveBeenCalledWith("m1", "tx-001");
+  });
+
+  it("includes startDate and endDate in the updateMany data", async () => {
+    const paidTx = { ...BASE_TX, status: "paid", paidAt: new Date() };
+    vi.mocked(db.paymentTransaction.findUnique).mockResolvedValueOnce(pendingSelect() as never);
+    vi.mocked(db.paymentTransaction.update).mockResolvedValue(paidTx as never);
+
+    txUserMembershipFindUnique
+      .mockResolvedValueOnce(PENDING_MEM as never)
+      .mockResolvedValueOnce(ACTIVE_BOOKING_MEM as never)
+      .mockResolvedValueOnce(ACTIVE_BOOKING_MEM as never);
+    txUserMembershipUpdateMany.mockResolvedValue({ count: 1 } as never);
+
+    vi.mocked(db.userMembership.findUnique).mockResolvedValueOnce(NO_PARTNER as never);
+    vi.mocked(db.user.findUnique).mockResolvedValue(null);
+
+    await updatePaymentTransactionStatus("tx-001", "paid");
+
+    const call = txUserMembershipUpdateMany.mock.calls[0][0];
+    expect(call.data.startDate).toBeInstanceOf(Date);
+    expect(call.data.endDate).toBeInstanceOf(Date);
+    expect((call.data.endDate as Date).getTime()).toBeGreaterThan((call.data.startDate as Date).getTime());
+  });
+});
+
+// ─── End-date calculation ─────────────────────────────────────────────────────
+
+describe("membership activation — end-date calculation", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("end date is startDate + 30 days for a 30-day membership", async () => {
+    const paidTx = { ...BASE_TX, status: "paid", paidAt: new Date() };
+    const before = Date.now();
+
+    vi.mocked(db.paymentTransaction.findUnique).mockResolvedValueOnce(pendingSelect() as never);
+    vi.mocked(db.paymentTransaction.update).mockResolvedValue(paidTx as never);
+
+    txUserMembershipFindUnique
+      .mockResolvedValueOnce(PENDING_MEM as never)
+      .mockResolvedValueOnce(ACTIVE_BOOKING_MEM as never)
+      .mockResolvedValueOnce(ACTIVE_BOOKING_MEM as never);
+    txUserMembershipUpdateMany.mockResolvedValue({ count: 1 } as never);
+
+    vi.mocked(db.userMembership.findUnique).mockResolvedValueOnce(NO_PARTNER as never);
+    vi.mocked(db.user.findUnique).mockResolvedValue(null);
+
+    await updatePaymentTransactionStatus("tx-001", "paid");
+
+    const after = Date.now();
+    const call = txUserMembershipUpdateMany.mock.calls[0][0];
+    const startMs = (call.data.startDate as Date).getTime();
+    const endMs   = (call.data.endDate   as Date).getTime();
+    const thirtyDays = 30 * 24 * 60 * 60 * 1000;
+
+    // end = start + 30 days (allow 2 s test jitter)
+    expect(endMs - startMs).toBeCloseTo(thirtyDays, -4);
+    expect(startMs).toBeGreaterThanOrEqual(before);
+    expect(startMs).toBeLessThanOrEqual(after);
+  });
+
+  it("end date is startDate + 90 days for a 90-day membership", async () => {
+    const mem90 = { ...PENDING_MEM, membership: { ...PENDING_MEM.membership, duration: 90 } };
+    const paidTx = { ...BASE_TX, status: "paid", paidAt: new Date() };
+
+    vi.mocked(db.paymentTransaction.findUnique).mockResolvedValueOnce(pendingSelect() as never);
+    vi.mocked(db.paymentTransaction.update).mockResolvedValue(paidTx as never);
+
+    txUserMembershipFindUnique
+      .mockResolvedValueOnce(mem90 as never)
+      .mockResolvedValueOnce({
+        ...ACTIVE_BOOKING_MEM,
+        endDate: new Date("2026-04-01T00:00:00.000Z"),
+        membership: {
+          ...ACTIVE_BOOKING_MEM.membership,
+          duration: 90,
+        },
+      } as never)
+      .mockResolvedValueOnce({         ...ACTIVE_BOOKING_MEM,         endDate: new Date("2026-04-01T00:00:00.000Z"),         membership: {           ...ACTIVE_BOOKING_MEM.membership,           duration: 90,         },       } as never);
+    txUserMembershipUpdateMany.mockResolvedValue({ count: 1 } as never);
+
+    vi.mocked(db.userMembership.findUnique).mockResolvedValueOnce(NO_PARTNER as never);
+    vi.mocked(db.user.findUnique).mockResolvedValue(null);
+
+    await updatePaymentTransactionStatus("tx-001", "paid");
+
+    const call = txUserMembershipUpdateMany.mock.calls[0][0];
+    const diff = (call.data.endDate as Date).getTime() - (call.data.startDate as Date).getTime();
+    expect(diff).toBeCloseTo(90 * 24 * 60 * 60 * 1000, -4);
+  });
+});
+
+// ─── Idempotency ──────────────────────────────────────────────────────────────
+
+describe("membership activation — idempotency guard", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("skips side-effects when updateMany returns count=0 (already activated)", async () => {
+    const paidTx = { ...BASE_TX, status: "paid", paidAt: new Date() };
+    vi.mocked(db.paymentTransaction.findUnique).mockResolvedValueOnce(pendingSelect() as never);
+    vi.mocked(db.paymentTransaction.update).mockResolvedValue(paidTx as never);
+
+    txUserMembershipFindUnique
+      .mockResolvedValueOnce(PENDING_MEM as never)
+      .mockResolvedValueOnce(ACTIVE_BOOKING_MEM as never);
+    // Concurrent webhook already activated — count = 0
+    txUserMembershipUpdateMany.mockResolvedValue({ count: 0 } as never);
+
+    await updatePaymentTransactionStatus("tx-001", "paid");
+
+    // Notification and email must NOT fire when activation was a no-op
+    expect(db.notification.create).not.toHaveBeenCalled();
+    expect(db.user.findUnique).not.toHaveBeenCalled();
+    expect(recordMembershipActivatedEvent).not.toHaveBeenCalled();
+  });
+
+  it("skips activation entirely when membership is already active", async () => {
+    const activeMem = { ...PENDING_MEM, status: "active", startDate: new Date() };
+    const paidTx = { ...BASE_TX, status: "paid", paidAt: new Date() };
+    vi.mocked(db.paymentTransaction.findUnique).mockResolvedValueOnce(pendingSelect() as never);
+    vi.mocked(db.paymentTransaction.update).mockResolvedValue(paidTx as never);
+
+    txUserMembershipFindUnique.mockImplementation(async (args: any) => {
+      // activatePaidMembershipTx lookup
+      if (!args?.select?.userId) {
+        return activeMem as never;
+      }
+
+      // booking guarantee lookup after activation/crash-window recovery
+      return ACTIVE_BOOKING_MEM as never;
+    });
+
+    await updatePaymentTransactionStatus("tx-001", "paid");
+
+    // NEW ARCHITECTURE: activation helper returns success=true for already-active
+    // (enables crash-window recovery), so analytics event is called but
+    // userMembership.updateMany is NOT called (no actual activation needed)
+    expect(db.userMembership.updateMany).not.toHaveBeenCalled();
+    expect(recordMembershipActivatedEvent).toHaveBeenCalledWith("m1", "tx-001");
+  });
+});
+
+/*
+ * PAID_RETRY_PENDING_MEMBERSHIP_CHARACTERIZATION
+ *
+ * Crash-window invariant:
+ * the payment may already be durably "paid" while membership activation
+ * previously failed or timed out. A repeated paid signal must repair the
+ * still-pending linked membership instead of returning early.
+ */
+describe("membership activation — paid retry crash-window recovery", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("repairs a pending membership when the payment is already paid", async () => {
+    /*
+     * clearAllMocks() does not clear queued mockResolvedValueOnce values from
+     * earlier tests in this legacy file. Reset only the mocks this
+     * characterization owns so it is order-independent.
+     */
+    vi.mocked(db.paymentTransaction.findUnique).mockReset();
+    vi.mocked(db.userMembership.findUnique).mockReset();
+    vi.mocked(db.user.findUnique).mockReset();
+    txUserMembershipFindUnique.mockReset();
+    txUserMembershipUpdateMany.mockReset();
+
+    const paidAt = new Date("2026-10-07T15:59:52.462Z");
+
+    const paidSelect = {
+      status: "paid",
+      metadata: null,
+      membershipId: "m1",
+      orderId: null,
+      userId: "u1",
+      purpose: "membership",
+      provider: "paymob",
+      expiresAt: new Date("2099-01-01T00:00:00.000Z"),
+    };
+
+    const paidFull = {
+      ...BASE_TX,
+      status: "paid",
+      purpose: "membership",
+      membershipId: "m1",
+      provider: "paymob",
+      paidAt,
+    };
+
+    vi.mocked(db.paymentTransaction.findUnique)
+      .mockResolvedValueOnce(paidSelect as never)
+      .mockResolvedValue(paidFull as never);
+
+    vi.mocked(db.userMembership.findUnique).mockResolvedValue(
+      {
+        status: "pending_payment",
+      } as never,
+    );
+
+    txUserMembershipFindUnique
+      .mockResolvedValueOnce(PENDING_MEM as never)
+      .mockResolvedValueOnce(ACTIVE_BOOKING_MEM as never)
+      .mockResolvedValueOnce(ACTIVE_BOOKING_MEM as never);
+
+    txUserMembershipUpdateMany.mockResolvedValue({
+      count: 1,
+    } as never);
+
+    vi.mocked(db.user.findUnique).mockResolvedValue(null);
+
+    const result =
+      await updatePaymentTransactionStatus(
+        "tx-001",
+        "paid",
+      );
+
+    expect(result.status).toBe("paid");
+
+    expect(txUserMembershipUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          id: "m1",
+          status: "pending_payment",
+        },
+        data: expect.objectContaining({
+          status: "active",
+          pendingExpiresAt: null,
+        }),
+      }),
+    );
+
+    expect(recordMembershipActivatedEvent).toHaveBeenCalledWith(
+      "m1",
+      "tx-001",
+    );
+
+    expect(
+      runPaidMembershipPostActivationReconciliation,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        transactionId: "tx-001",
+        userMembershipId: "m1",
+      }),
+    );
+  });
+});

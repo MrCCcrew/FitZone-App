@@ -1,0 +1,291 @@
+import { NextResponse } from "next/server";
+import { requireAdminFeature } from "@/lib/admin-guard";
+import { canManageClassTypes } from "@/lib/admin-permissions";
+import { db } from "@/lib/db";
+import { clearPublicApiCache } from "@/lib/public-cache";
+import { logAudit } from "@/lib/audit-context";
+import {
+  createClassType,
+  renameClassType,
+  setClassTypeActive,
+} from "@/lib/class-type-catalog";
+
+async function checkAdmin() {
+  const guard = await requireAdminFeature("classes");
+  return "error" in guard ? guard.error : null;
+}
+
+
+async function checkClassTypeWrite() {
+  const guard = await requireAdminFeature("classes");
+
+  if ("error" in guard) {
+    return guard.error;
+  }
+
+  if (!canManageClassTypes(guard.role)) {
+    return NextResponse.json(
+      { error: "إدارة أنواع الكلاسات متاحة للمدير فقط." },
+      { status: 403 },
+    );
+  }
+
+  return null;
+}
+
+export async function GET() {
+  const err = await checkAdmin();
+  if (err) return err;
+
+  const rows = await db.classType.findMany({
+    orderBy: [
+      { isActive: "desc" },
+      { sortOrder: "asc" },
+      { nameAr: "asc" },
+    ],
+    select: {
+      id: true,
+      key: true,
+      nameAr: true,
+      nameEn: true,
+      isActive: true,
+      sortOrder: true,
+      aliases: {
+        select: {
+          alias: true,
+        },
+        orderBy: {
+          alias: "asc",
+        },
+      },
+      _count: {
+        select: {
+          classes: true,
+          offerAllowedTypes: true,
+        },
+      },
+    },
+  });
+
+  return NextResponse.json(
+    rows.map((row) => ({
+      ...row,
+      aliases: row.aliases.map((item) => item.alias),
+    })),
+  );
+}
+
+export async function POST(request: Request) {
+  const err = await checkClassTypeWrite();
+  if (err) return err;
+
+  try {
+    const body = (await request.json()) as {
+      nameAr?: string;
+      nameEn?: string | null;
+    };
+
+    const nameAr = body.nameAr?.trim() ?? "";
+
+    if (!nameAr) {
+      return NextResponse.json(
+        { error: "اسم النوع العربي مطلوب." },
+        { status: 400 },
+      );
+    }
+
+    const created = await createClassType({
+      nameAr,
+      nameEn: body.nameEn,
+    });
+
+    clearPublicApiCache();
+
+    void logAudit({
+      action: "create",
+      targetType: "class_type",
+      targetId: created.id,
+      details: {
+        nameAr: created.nameAr,
+        nameEn: created.nameEn,
+      },
+    });
+
+    return NextResponse.json(
+      {
+        id: created.id,
+        key: created.key,
+        nameAr: created.nameAr,
+        nameEn: created.nameEn,
+        isActive: created.isActive,
+        sortOrder: created.sortOrder,
+      },
+      { status: 201 },
+    );
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "";
+
+    if (
+      message.startsWith("CLASS_TYPE_ALIAS_CONFLICT:") ||
+      message.startsWith("CLASS_TYPE_NAME_CONFLICT:")
+    ) {
+      return NextResponse.json(
+        { error: "يوجد نوع كلاس بهذا الاسم بالفعل." },
+        { status: 409 },
+      );
+    }
+
+    console.error("[ADMIN_CLASS_TYPES_POST]", error);
+
+    return NextResponse.json(
+      { error: "تعذر إنشاء نوع الكلاس حالياً." },
+      { status: 500 },
+    );
+  }
+}
+
+export async function PATCH(request: Request) {
+  const err = await checkClassTypeWrite();
+  if (err) return err;
+
+  try {
+    const body = (await request.json()) as {
+      id?: string;
+      nameAr?: string;
+      nameEn?: string | null;
+      isActive?: boolean;
+    };
+
+    const id = body.id?.trim() ?? "";
+
+    if (!id) {
+      return NextResponse.json(
+        { error: "معرّف نوع الكلاس مطلوب." },
+        { status: 400 },
+      );
+    }
+
+    const wantsRename =
+      body.nameAr !== undefined ||
+      body.nameEn !== undefined;
+
+    const wantsActiveChange =
+      body.isActive !== undefined;
+
+    if (!wantsRename && !wantsActiveChange) {
+      return NextResponse.json(
+        { error: "لا توجد تعديلات مطلوبة." },
+        { status: 400 },
+      );
+    }
+
+    let classType = await db.classType.findUnique({
+      where: { id },
+    });
+
+    if (!classType) {
+      return NextResponse.json(
+        { error: "نوع الكلاس غير موجود." },
+        { status: 404 },
+      );
+    }
+
+    let dedupedOfferRows = 0;
+
+    if (wantsRename) {
+      const nameAr =
+        body.nameAr !== undefined
+          ? body.nameAr.trim()
+          : classType.nameAr;
+
+      if (!nameAr) {
+        return NextResponse.json(
+          { error: "اسم النوع العربي مطلوب." },
+          { status: 400 },
+        );
+      }
+
+      const result = await renameClassType({
+        classTypeId: id,
+        nameAr,
+        nameEn:
+          body.nameEn !== undefined
+            ? body.nameEn
+            : classType.nameEn,
+      });
+
+      classType = result.classType;
+      dedupedOfferRows = result.dedupedOfferRows;
+    }
+
+    if (
+      wantsActiveChange &&
+      classType.isActive !== Boolean(body.isActive)
+    ) {
+      classType = await setClassTypeActive({
+        classTypeId: id,
+        isActive: Boolean(body.isActive),
+      });
+    }
+
+    clearPublicApiCache();
+
+    void logAudit({
+      action: "update",
+      targetType: "class_type",
+      targetId: id,
+      details: {
+        action: wantsRename
+          ? wantsActiveChange
+            ? "rename_and_status"
+            : "rename"
+          : "status",
+        nameAr: classType.nameAr,
+        nameEn: classType.nameEn,
+        isActive: classType.isActive,
+        dedupedOfferRows,
+      },
+    });
+
+    return NextResponse.json({
+      id: classType.id,
+      key: classType.key,
+      nameAr: classType.nameAr,
+      nameEn: classType.nameEn,
+      isActive: classType.isActive,
+      sortOrder: classType.sortOrder,
+      dedupedOfferRows,
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "";
+
+    if (
+      message.startsWith("CLASS_TYPE_ALIAS_CONFLICT:") ||
+      message.startsWith("CLASS_TYPE_NAME_CONFLICT:")
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "هذا الاسم مستخدم بالفعل بواسطة نوع كلاس آخر.",
+        },
+        { status: 409 },
+      );
+    }
+
+    if (message.startsWith("CLASS_TYPE_NOT_FOUND:")) {
+      return NextResponse.json(
+        { error: "نوع الكلاس غير موجود." },
+        { status: 404 },
+      );
+    }
+
+    console.error("[ADMIN_CLASS_TYPES_PATCH]", error);
+
+    return NextResponse.json(
+      { error: "تعذر تعديل نوع الكلاس حالياً." },
+      { status: 500 },
+    );
+  }
+}

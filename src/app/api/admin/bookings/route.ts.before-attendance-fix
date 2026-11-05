@@ -1,0 +1,837 @@
+import { NextResponse } from "next/server";
+import { requireAdminPermission } from "@/lib/admin-authorization-server";
+import { db } from "@/lib/db";
+import { logAudit } from "@/lib/audit-context";
+import { isBookingOperational } from "@/lib/booking-operational";
+import { getAdminSession } from "@/lib/admin-session";
+
+async function checkAdmin() {
+  const session = await getAdminSession();
+  return session
+    ? { error: null, role: "admin", userId: session.id }
+    : { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }), role: null, userId: null };
+}
+
+async function getTrainerProfileId(userId: string): Promise<string | null> {
+  const t = await db.trainer.findFirst({ where: { userId }, select: { id: true } });
+  return t?.id ?? null;
+}
+
+function startOfDay(value: Date) {
+  const date = new Date(value);
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+function endOfDay(value: Date) {
+  const date = new Date(value);
+  date.setHours(23, 59, 59, 999);
+  return date;
+}
+
+export async function GET(req: Request) {
+  const guard = await requireAdminPermission("bookings_view");
+  if ("error" in guard) return guard.error;
+
+  const { searchParams } = new URL(req.url);
+  const status = searchParams.get("status") || "all";
+  const q = (searchParams.get("q") || "").trim();
+  const dateFrom = searchParams.get("dateFrom");
+  const dateTo = searchParams.get("dateTo");
+
+  // Trainer filter
+  let trainerProfileId: string | null = null;
+  if (guard.role === "trainer") {
+    trainerProfileId = await getTrainerProfileId(guard.session.id);
+    if (!trainerProfileId) return NextResponse.json([]);
+  }
+
+  const where: Record<string, unknown> = {};
+  if (status !== "all") where.status = status;
+
+  // Build schedule filter (merge date + trainer)
+  const scheduleFilter: Record<string, unknown> = {};
+  if (dateFrom || dateTo) {
+    const fromDate = dateFrom ? startOfDay(new Date(dateFrom)) : undefined;
+    const toDate = dateTo ? endOfDay(new Date(dateTo)) : undefined;
+    scheduleFilter.date = {
+      ...(fromDate ? { gte: fromDate } : {}),
+      ...(toDate ? { lte: toDate } : {}),
+    };
+  }
+  if (trainerProfileId) {
+    scheduleFilter.class = { trainerId: trainerProfileId };
+  }
+  if (Object.keys(scheduleFilter).length > 0) where.schedule = scheduleFilter;
+
+  if (q) {
+    where.OR = [
+      { user: { name: { contains: q } } },
+      { user: { email: { contains: q } } },
+      { user: { phone: { contains: q } } },
+      { schedule: { class: { name: { contains: q } } } },
+    ];
+  }
+
+  const bookings = await db.booking.findMany({
+    where,
+    include: {
+      user: true,
+      schedule: { include: { class: { include: { trainer: true } } } },
+      userMembership: { include: { membership: true } },
+    },
+    orderBy: [{ createdAt: "desc" }],
+    take: 300,
+  });
+
+  return NextResponse.json(
+    bookings.map((booking) => ({
+      id: booking.id,
+      status: booking.status,
+      isMakeup: booking.isMakeup,
+      makeupReason: booking.makeupReason ?? null,
+      paidAmount: booking.paidAmount,
+      paymentMethod: booking.paymentMethod,
+      createdAt: booking.createdAt.toISOString(),
+      user: {
+        id: booking.user.id,
+        name: booking.user.name ?? "—",
+        email: booking.user.email ?? "—",
+        phone: booking.user.phone ?? "—",
+      },
+      schedule: {
+        id: booking.schedule.id,
+        date: booking.schedule.date.toISOString(),
+        time: booking.schedule.time,
+        availableSpots: booking.schedule.availableSpots,
+        class: {
+          id: booking.schedule.class.id,
+          name: booking.schedule.class.name,
+          trainer: booking.schedule.class.trainer.name,
+        },
+      },
+      membership: booking.userMembership
+        ? {
+            id: booking.userMembership.id,
+            name: booking.userMembership.membership.name,
+            status: booking.userMembership.status,
+          }
+        : null,
+      userMembership: booking.userMembership
+        ? { status: booking.userMembership.status }
+        : null,
+    })),
+  );
+}
+
+export async function POST(req: Request) {
+  const authorization =
+    await requireAdminPermission("bookings_create");
+
+  if ("error" in authorization) {
+    return authorization.error;
+  }
+
+  const { error: err, role } = await checkAdmin();
+  if (err) return err;
+
+  if (role !== "admin") {
+    return NextResponse.json(
+      {
+        error:
+          "غير مسموح. هذه العملية للمسؤولين فقط.",
+      },
+      { status: 403 },
+    );
+  }
+
+  try {
+    const payload = (await req.json()) as {
+      userId?: string;
+      scheduleId?: string;
+      paymentMethod?: string;
+    };
+
+    if (!payload.userId || !payload.scheduleId) {
+      return NextResponse.json(
+        {
+          error:
+            "المستخدم والموعد مطلوبان.",
+        },
+        { status: 400 },
+      );
+    }
+
+    const userId = payload.userId;
+    const scheduleId = payload.scheduleId;
+
+    const booking =
+      await db.$transaction(async (tx) => {
+        /*
+         * Serialize seat allocation.
+         */
+        await tx.$queryRaw`
+          SELECT \`id\`, \`availableSpots\`
+          FROM \`Schedule\`
+          WHERE \`id\` = ${scheduleId}
+          FOR UPDATE
+        `;
+
+        const schedule =
+          await tx.schedule.findUnique({
+            where: {
+              id: scheduleId,
+            },
+            include: {
+              class: true,
+            },
+          });
+
+        if (!schedule || !schedule.isActive) {
+          throw new Error(
+            "ADMIN_SCHEDULE_UNAVAILABLE",
+          );
+        }
+
+        if (schedule.availableSpots <= 0) {
+          throw new Error(
+            "ADMIN_SCHEDULE_FULL",
+          );
+        }
+
+        /*
+         * Strong same-user same-date/time protection.
+         */
+        const conflict =
+          await tx.booking.findFirst({
+            where: {
+              userId,
+              status: {
+                in: [
+                  "confirmed",
+                  "attended",
+                  "noshow",
+                ],
+              },
+              schedule: {
+                date: schedule.date,
+                time: schedule.time,
+              },
+            },
+            select: {
+              id: true,
+            },
+          });
+
+        if (conflict) {
+          throw new Error(
+            "ADMIN_BOOKING_TIME_CONFLICT",
+          );
+        }
+
+        /*
+         * IMPORTANT:
+         *
+         * Admin manual booking is explicitly standalone.
+         * It is never silently attached to UserMembership.
+         *
+         * Membership entitlement may only be materialized by
+         * the immutable membership booking engine.
+         */
+        const created =
+          await tx.booking.create({
+            data: {
+              userId,
+              scheduleId,
+              userMembershipId: null,
+              status: "confirmed",
+              paidAmount:
+                schedule.class.price,
+              paymentMethod:
+                payload.paymentMethod ??
+                "manual_pending",
+              isMakeup: false,
+              makeupReason: null,
+            },
+          });
+
+        await tx.schedule.update({
+          where: {
+            id: schedule.id,
+          },
+          data: {
+            availableSpots: {
+              decrement: 1,
+            },
+          },
+        });
+
+        await tx.notification.create({
+          data: {
+            userId,
+            title:
+              `تم حجز ${schedule.class.name}`,
+            body:
+              `تم إضافة حجز مستقل بواسطة الإدارة لميعاد ${schedule.time} بتاريخ ${schedule.date.toLocaleDateString("ar-EG")}.`,
+            type: "success",
+          },
+        });
+
+        return created;
+      });
+
+    return NextResponse.json({
+      success: true,
+      bookingId: booking.id,
+      standalone: true,
+    });
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message ===
+        "ADMIN_SCHEDULE_UNAVAILABLE"
+    ) {
+      return NextResponse.json(
+        { error: "الموعد غير متاح." },
+        { status: 404 },
+      );
+    }
+
+    if (
+      error instanceof Error &&
+      error.message ===
+        "ADMIN_SCHEDULE_FULL"
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "لا توجد أماكن متاحة لهذا الموعد.",
+        },
+        { status: 409 },
+      );
+    }
+
+    if (
+      error instanceof Error &&
+      error.message ===
+        "ADMIN_BOOKING_TIME_CONFLICT"
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "العميل لديه حجز آخر في نفس اليوم والساعة.",
+          code:
+            "BOOKING_TIME_CONFLICT",
+        },
+        { status: 409 },
+      );
+    }
+
+    console.error(
+      "[ADMIN_BOOKINGS_POST]",
+      error,
+    );
+
+    return NextResponse.json(
+      { error: "تعذر إنشاء الحجز." },
+      { status: 500 },
+    );
+  }
+}
+
+export async function PATCH(req: Request) {
+  const { error: err, role, userId } = await checkAdmin();
+  if (err) return err;
+
+  // Only admin can modify bookings
+  if (role !== "admin") {
+    return NextResponse.json({ error: "غير مسموح. هذه العملية للمسؤولين فقط." }, { status: 403 });
+  }
+
+  try {
+    const payload = (await req.json()) as {
+      bookingId?: string;
+      action?: "attended" | "cancel" | "confirm" | "reschedule";
+      scheduleId?: string;
+    };
+
+    if (!payload.bookingId || !payload.action) {
+      return NextResponse.json({ error: "بيانات الحجز غير مكتملة." }, { status: 400 });
+    }
+
+    const actionPermissions = {
+      attended: "manual_attendance",
+      cancel: "bookings_cancel",
+      confirm: "bookings_cancel",
+      reschedule: "bookings_reschedule",
+    } as const;
+    const authorization = await requireAdminPermission(actionPermissions[payload.action]);
+    if ("error" in authorization) return authorization.error;
+
+    const booking = await db.booking.findUnique({
+      where: { id: payload.bookingId },
+      include: {
+        schedule: { include: { class: true } },
+        user: true,
+        userMembership: { select: { status: true } },
+      },
+    });
+
+    if (!booking) {
+      return NextResponse.json({ error: "الحجز غير موجود." }, { status: 404 });
+    }
+
+    // Admin-only mutations - trainer checks removed
+
+    if (payload.action === "cancel") {
+      if (booking.status !== "confirmed" && booking.status !== "cancelled") {
+        return NextResponse.json({ error: "لا يمكن إلغاء حجز تم تسجيل حضوره أو تسجيله كعدم حضور." }, { status: 409 });
+      }
+
+      if (booking.status === "cancelled") {
+        return NextResponse.json({ success: true, alreadyCancelled: true });
+      }
+
+      const cancelled = await db.$transaction(async (tx) => {
+        const claimed = await tx.booking.updateMany({
+          where: { id: booking.id, status: "confirmed" },
+          data: { status: "cancelled" },
+        });
+
+        if (claimed.count !== 1) return false;
+
+        await tx.schedule.update({
+          where: { id: booking.scheduleId },
+          data: { availableSpots: { increment: 1 } },
+        });
+
+        await tx.bookingRescheduleRequest.updateMany({
+          where: { bookingId: booking.id, status: "pending" },
+          data: {
+            status: "cancelled",
+            pendingKey: null,
+            reviewedAt: new Date(),
+          },
+        });
+
+        await tx.notification.create({
+          data: {
+            userId: booking.userId,
+            title: `تم إلغاء حجز ${booking.schedule.class.name}`,
+            body: "تم إلغاء الحجز بواسطة الإدارة وإعادة المقعد إلى الجدول.",
+            type: "info",
+          },
+        });
+
+        return true;
+      });
+
+      if (!cancelled) {
+        return NextResponse.json(
+          {
+            error: "تم تغيير حالة الحجز أثناء تنفيذ الإلغاء. يرجى تحديث الصفحة والمحاولة مرة أخرى.",
+            code: "BOOKING_STATUS_CHANGED",
+          },
+          { status: 409 },
+        );
+      }
+
+      void logAudit({
+        action: "cancel",
+        targetType: "booking",
+        targetId: booking.id,
+        details: { userId: booking.userId },
+      });
+
+      return NextResponse.json({ success: true });
+    }
+
+    if (payload.action === "attended") {
+      if (booking.status !== "confirmed" || !isBookingOperational(booking)) {
+        return NextResponse.json({ error: "لا يمكن تسجيل الحضور قبل إتمام الدفع أو للحجز غير المؤكد." }, { status: 400 });
+      }
+      void logAudit({ action: "manual_attendance", targetType: "booking", targetId: booking.id, details: { userId: booking.userId } });
+      await db.booking.update({
+        where: { id: booking.id },
+        data: { status: "attended" },
+      });
+
+      await db.notification.create({
+        data: {
+          userId: booking.userId,
+          title: `تم تسجيل حضور ${booking.schedule.class.name}`,
+          body: "تم تسجيل حضورك بواسطة الإدارة.",
+          type: "success",
+        },
+      });
+
+      return NextResponse.json({ success: true });
+    }
+
+    if (payload.action === "confirm") {
+      if (booking.status === "confirmed") {
+        return NextResponse.json({ success: true, alreadyConfirmed: true });
+      }
+
+      if (booking.status !== "cancelled") {
+        return NextResponse.json(
+          { error: "يمكن إعادة تفعيل الحجوزات الملغاة فقط." },
+          { status: 409 },
+        );
+      }
+
+      if (booking.userMembership && booking.userMembership.status !== "active") {
+        return NextResponse.json(
+          { error: "لا يمكن إعادة تفعيل الحجز لأن الاشتراك المرتبط به غير فعال." },
+          { status: 409 },
+        );
+      }
+
+      const today = startOfDay(new Date());
+
+      const restored = await db.$transaction(async (tx) => {
+        const seatClaim = await tx.schedule.updateMany({
+          where: {
+            id: booking.scheduleId,
+            isActive: true,
+            date: { gte: today },
+            availableSpots: { gt: 0 },
+          },
+          data: { availableSpots: { decrement: 1 } },
+        });
+
+        if (seatClaim.count !== 1) return "NO_SPOT" as const;
+
+        const bookingClaim = await tx.booking.updateMany({
+          where: {
+            id: booking.id,
+            status: "cancelled",
+          },
+          data: { status: "confirmed" },
+        });
+
+        if (bookingClaim.count !== 1) {
+          throw new Error("BOOKING_STATUS_CHANGED");
+        }
+
+        await tx.notification.create({
+          data: {
+            userId: booking.userId,
+            title: `تمت إعادة تفعيل حجز ${booking.schedule.class.name}`,
+            body: "تمت إعادة تفعيل الحجز بواسطة الإدارة وحجز المقعد مرة أخرى.",
+            type: "success",
+          },
+        });
+
+        return "OK" as const;
+      });
+
+      if (restored === "NO_SPOT") {
+        return NextResponse.json(
+          { error: "لا يمكن إعادة تفعيل الحجز لأن الموعد غير متاح أو لا توجد أماكن متاحة." },
+          { status: 409 },
+        );
+      }
+
+      void logAudit({
+        action: "confirm",
+        targetType: "booking",
+        targetId: booking.id,
+        details: { userId: booking.userId, source: "admin_reactivate" },
+      });
+
+      return NextResponse.json({ success: true });
+    }
+
+    if (payload.action === "reschedule") {
+      if (!payload.scheduleId) {
+        return NextResponse.json({ error: "الميعاد الجديد مطلوب." }, { status: 400 });
+      }
+
+      if (booking.status !== "confirmed" || !isBookingOperational(booking)) {
+        return NextResponse.json(
+          { error: "لا يمكن تعديل موعد حجز غير مؤكد أو مرتبط باشتراك غير فعال." },
+          { status: 409 },
+        );
+      }
+
+      if (payload.scheduleId === booking.scheduleId) {
+        return NextResponse.json({ success: true, alreadySameSchedule: true });
+      }
+
+      const today = startOfDay(new Date());
+
+      const newSchedule = await db.schedule.findUnique({
+        where: { id: payload.scheduleId },
+        include: { class: true },
+      });
+
+      if (!newSchedule || !newSchedule.isActive || newSchedule.date < today || newSchedule.classId !== booking.schedule.classId) {
+        return NextResponse.json(
+          { error: "الميعاد الجديد غير متاح أو لا يتبع نفس الكلاس." },
+          { status: 409 },
+        );
+      }
+
+      const moved = await db.$transaction(async (tx) => {
+        const targetSeat = await tx.schedule.updateMany({
+          where: {
+            id: newSchedule.id,
+            classId: booking.schedule.classId,
+            isActive: true,
+            date: { gte: today },
+            availableSpots: { gt: 0 },
+          },
+          data: { availableSpots: { decrement: 1 } },
+        });
+
+        if (targetSeat.count !== 1) return "TARGET_UNAVAILABLE" as const;
+
+        const bookingClaim = await tx.booking.updateMany({
+          where: {
+            id: booking.id,
+            status: "confirmed",
+            scheduleId: booking.scheduleId,
+          },
+          data: { scheduleId: newSchedule.id },
+        });
+
+        if (bookingClaim.count !== 1) {
+          await tx.schedule.update({
+            where: { id: newSchedule.id },
+            data: { availableSpots: { increment: 1 } },
+          });
+          return "BOOKING_CHANGED" as const;
+        }
+
+        await tx.schedule.update({
+          where: { id: booking.scheduleId },
+          data: { availableSpots: { increment: 1 } },
+        });
+
+        await tx.notification.create({
+          data: {
+            userId: booking.userId,
+            title: `تم تعديل ميعاد ${newSchedule.class.name}`,
+            body: `تم تعديل الموعد إلى ${newSchedule.time} بتاريخ ${newSchedule.date.toLocaleDateString("ar-EG")}.`,
+            type: "info",
+          },
+        });
+
+        return "OK" as const;
+      });
+
+      if (moved === "TARGET_UNAVAILABLE") {
+        return NextResponse.json(
+          { error: "لا توجد أماكن متاحة في الموعد الجديد أو تم حجز آخر مقعد للتو." },
+          { status: 409 },
+        );
+      }
+
+      if (moved === "BOOKING_CHANGED") {
+        return NextResponse.json(
+          {
+            error: "تم تغيير الحجز أثناء تنفيذ تعديل الموعد. يرجى تحديث الصفحة والمحاولة مرة أخرى.",
+            code: "BOOKING_STATUS_CHANGED",
+          },
+          { status: 409 },
+        );
+      }
+
+      void logAudit({
+        action: "reschedule",
+        targetType: "booking",
+        targetId: booking.id,
+        details: {
+          userId: booking.userId,
+          fromScheduleId: booking.scheduleId,
+          toScheduleId: newSchedule.id,
+        },
+      });
+
+      return NextResponse.json({ success: true });
+    }
+
+    void logAudit({ action: payload.action, targetType: "booking", targetId: payload.bookingId, details: { userId: booking.userId, className: booking.schedule.class.name } });
+    return NextResponse.json({ error: "إجراء غير معروف." }, { status: 400 });
+  } catch (error) {
+    console.error("[ADMIN_BOOKINGS_PATCH]", error);
+    return NextResponse.json({ error: "تعذر تحديث الحجز." }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: Request) {
+  const { error: err, role } = await checkAdmin();
+  if (err) return err;
+
+  // Only admin can delete bookings
+  if (role !== "admin") {
+    return NextResponse.json({ error: "غير مسموح. هذه العملية للمسؤولين فقط." }, { status: 403 });
+  }
+
+  try {
+    const { bookingId, bookingIds } = (await req.json()) as { bookingId?: string; bookingIds?: string[] };
+    if (Array.isArray(bookingIds)) {
+      const authorization = await requireAdminPermission("bookings_bulk_delete");
+      if ("error" in authorization) return authorization.error;
+      if (bookingIds.length === 0) return NextResponse.json({ error: "لم يتم تحديد حجوزات." }, { status: 400 });
+      let cancelledCount = 0;
+
+      for (const id of bookingIds) {
+        const booking = await db.booking.findUnique({ where: { id }, include: { schedule: { include: { class: true } } } });
+        if (!booking) continue;
+
+        // Only a confirmed booking is currently holding a seat.
+        // Historical attended / noshow records must never be cancelled
+        // or return capacity to the schedule.
+        if (booking.status !== "confirmed") continue;
+
+        const cancelled = await db.$transaction(async (tx) => {
+          const claimed = await tx.booking.updateMany({
+            where: {
+              id,
+              status: "confirmed",
+            },
+            data: { status: "cancelled" },
+          });
+
+          if (claimed.count !== 1) return false;
+
+          await tx.schedule.update({
+            where: { id: booking.scheduleId },
+            data: { availableSpots: { increment: 1 } },
+          });
+
+          await tx.bookingRescheduleRequest.updateMany({
+            where: {
+              bookingId: id,
+              status: "pending",
+            },
+            data: {
+              status: "cancelled",
+              pendingKey: null,
+              reviewedAt: new Date(),
+            },
+          });
+
+          await tx.notification.create({
+            data: {
+              userId: booking.userId,
+              title: `تم إلغاء حجز ${booking.schedule.class.name}`,
+              body: "تم إلغاء الحجز بواسطة الإدارة مع الاحتفاظ بسجل الحجز.",
+              type: "warning",
+            },
+          });
+
+          return true;
+        });
+
+        if (!cancelled) continue;
+
+        cancelledCount += 1;
+
+        void logAudit({
+          action: "bulk_cancel",
+          targetType: "booking",
+          targetId: id,
+          details: { userId: booking.userId },
+        });
+      }
+      return NextResponse.json({ success: true, count: cancelledCount });
+    }
+    const authorization = await requireAdminPermission("bookings_delete");
+    if ("error" in authorization) return authorization.error;
+    if (!bookingId) return NextResponse.json({ error: "معرّف الحجز مطلوب." }, { status: 400 });
+
+    const booking = await db.booking.findUnique({
+      where: { id: bookingId },
+      include: { schedule: { include: { class: true } } },
+    });
+    if (!booking) return NextResponse.json({ error: "الحجز غير موجود." }, { status: 404 });
+
+    // Admin-only deletion - no trainer-specific checks needed
+
+    if (booking.status === "cancelled") {
+      return NextResponse.json({ success: true, alreadyCancelled: true });
+    }
+
+    if (booking.status !== "confirmed") {
+      return NextResponse.json(
+        {
+          error:
+            booking.status === "attended"
+              ? "لا يمكن إلغاء حجز تم تسجيل حضوره."
+              : booking.status === "noshow"
+                ? "لا يمكن إلغاء حجز مسجل كعدم حضور."
+                : "لا يمكن إلغاء هذا الحجز في حالته الحالية.",
+        },
+        { status: 409 },
+      );
+    }
+
+    await db.$transaction(async (tx) => {
+      const claimed = await tx.booking.updateMany({
+        where: {
+          id: bookingId,
+          status: "confirmed",
+        },
+        data: { status: "cancelled" },
+      });
+
+      if (claimed.count !== 1) {
+        throw new Error("BOOKING_STATUS_CHANGED");
+      }
+
+      await tx.schedule.update({
+        where: { id: booking.scheduleId },
+        data: { availableSpots: { increment: 1 } },
+      });
+
+      await tx.bookingRescheduleRequest.updateMany({
+        where: {
+          bookingId,
+          status: "pending",
+        },
+        data: {
+          status: "cancelled",
+          pendingKey: null,
+          reviewedAt: new Date(),
+        },
+      });
+
+      await tx.notification.create({
+        data: {
+          userId: booking.userId,
+          title: `تم إلغاء حجز ${booking.schedule.class.name}`,
+          body: `تم إلغاء حجزك في ${booking.schedule.class.name} بتاريخ ${booking.schedule.date.toLocaleDateString("ar-EG")} الساعة ${booking.schedule.time} من قِبل الإدارة.`,
+          type: "warning",
+        },
+      });
+    });
+
+    void logAudit({
+      action: "cancel",
+      targetType: "booking",
+      targetId: bookingId,
+      details: { userId: booking.userId, source: "admin_delete_action" },
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message === "BOOKING_STATUS_CHANGED"
+    ) {
+      return NextResponse.json(
+        {
+          error: "تم تغيير حالة الحجز أثناء تنفيذ الإلغاء. يرجى تحديث الصفحة والمحاولة مرة أخرى.",
+          code: "BOOKING_STATUS_CHANGED",
+        },
+        { status: 409 },
+      );
+    }
+
+    console.error("[ADMIN_BOOKINGS_DELETE]", error);
+    return NextResponse.json({ error: "تعذر حذف الحجز." }, { status: 500 });
+  }
+}

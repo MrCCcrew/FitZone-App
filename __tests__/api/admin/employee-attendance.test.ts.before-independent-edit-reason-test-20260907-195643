@@ -1,0 +1,504 @@
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
+import { PrismaClient } from "@prisma/client";
+import { NextRequest } from "next/server";
+import { cairoDateStartInstant } from "@/lib/fitzone-time";
+
+const raw = process.env.DATABASE_URL;
+
+if (!raw) {
+  throw new Error("REFUSING: DATABASE_URL missing");
+}
+
+const url = new URL(raw);
+
+if (
+  process.env.APP_ENV !== "test" ||
+  process.env.NODE_ENV !== "test" ||
+  url.protocol !== "mysql:" ||
+  url.hostname !== "127.0.0.1" ||
+  decodeURIComponent(url.username) !== "fitzone_test_user" ||
+  url.pathname !== "/fitzone_test"
+) {
+  throw new Error(
+    "REFUSING: Employee Attendance API tests require fitzone_test",
+  );
+}
+
+const guardState = vi.hoisted(() => ({
+  mode: "allowed" as "allowed" | "unauthorized" | "forbidden",
+  lastPermission: "",
+  userId: "employee-attendance-api-placeholder",
+}));
+
+vi.mock("@/lib/admin-authorization-server", async () => {
+  const { NextResponse } = await import("next/server");
+
+  return {
+    requireAdminPermission: vi.fn(async (permission: string) => {
+      guardState.lastPermission = permission;
+
+      if (guardState.mode === "unauthorized") {
+        return {
+          error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+        };
+      }
+
+      if (guardState.mode === "forbidden") {
+        return {
+          error: NextResponse.json({ error: "Forbidden" }, { status: 403 }),
+        };
+      }
+
+      return {
+        session: {
+          user: {
+            id: guardState.userId,
+            name: "Attendance API Admin",
+            email: "attendance-api-admin@test.local",
+            role: "admin",
+          },
+        },
+        role: "admin",
+        permissions: [],
+      };
+    }),
+  };
+});
+
+import {
+  GET as getAttendanceRoute,
+  POST as saveAttendanceRoute,
+} from "@/app/api/admin/employee-attendance/route";
+
+import { POST as lockPeriodRoute } from "@/app/api/admin/employee-attendance/period/lock/route";
+
+import { POST as unlockPeriodRoute } from "@/app/api/admin/employee-attendance/period/unlock/route";
+
+type TestRouteHandler = (
+  request: import("next/server").NextRequest,
+) => Promise<Response>;
+
+const getAttendance = getAttendanceRoute as unknown as TestRouteHandler;
+const saveAttendance = saveAttendanceRoute as unknown as TestRouteHandler;
+const lockPeriod = lockPeriodRoute as unknown as TestRouteHandler;
+const unlockPeriod = unlockPeriodRoute as unknown as TestRouteHandler;
+
+const db = new PrismaClient();
+
+const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+const employeeCode = `TEST-HR-ATT-API-${stamp}`;
+
+let adminId = "";
+let employeeId = "";
+
+function request(path: string, method: string, body?: Record<string, unknown>) {
+  return new Request(`http://localhost${path}`, {
+    method,
+    headers:
+      body === undefined
+        ? undefined
+        : {
+            "content-type": "application/json",
+          },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+}
+
+async function cleanup() {
+  if (adminId) {
+    await db.auditLog.deleteMany({
+      where: {
+        actorUserId: adminId,
+        targetType: {
+          in: ["EmployeeAttendance", "AttendancePeriod"],
+        },
+      },
+    });
+  }
+
+  if (employeeId) {
+    await db.employeeAttendance.deleteMany({
+      where: { employeeId },
+    });
+  }
+
+  await db.attendancePeriod.deleteMany({
+    where: {
+      monthKey: {
+        in: ["2026-09", "2026-10", "2026-11", "2026-12"],
+      },
+    },
+  });
+
+  if (employeeId) {
+    await db.employeeProfile.deleteMany({
+      where: { id: employeeId },
+    });
+  }
+
+  if (adminId) {
+    await db.user.deleteMany({
+      where: { id: adminId },
+    });
+  }
+}
+
+beforeAll(async () => {
+  await db.$connect();
+  await cleanup();
+
+  const admin = await db.user.create({
+    data: {
+      name: "Attendance API Admin",
+      email: `attendance-api-${stamp}@test.local`,
+      role: "admin",
+      adminAccess: true,
+      isActive: true,
+    },
+  });
+
+  adminId = admin.id;
+  guardState.userId = admin.id;
+
+  const employee = await db.employeeProfile.create({
+    data: {
+      employeeCode,
+      name: "Attendance API Employee",
+      employmentStatus: "active",
+      payrollEnabled: true,
+    },
+  });
+
+  employeeId = employee.id;
+});
+
+beforeEach(() => {
+  guardState.mode = "allowed";
+  guardState.lastPermission = "";
+});
+
+afterAll(async () => {
+  await cleanup();
+  await db.$disconnect();
+});
+
+describe("Employee Attendance admin API — authorization", () => {
+  it("GET requires employee_attendance_view", async () => {
+    guardState.mode = "unauthorized";
+
+    const response = await getAttendance(
+      request("/api/admin/employee-attendance?month=2026-09", "GET") as never,
+    );
+
+    expect(response.status).toBe(401);
+    expect(guardState.lastPermission).toBe("employee_attendance_view");
+  });
+
+  it("POST requires employee_attendance_manage", async () => {
+    guardState.mode = "forbidden";
+
+    const response = await saveAttendance(
+      request("/api/admin/employee-attendance", "POST", {
+        employeeId,
+        date: "2026-09-07",
+        status: "present",
+      }) as never,
+    );
+
+    expect(response.status).toBe(403);
+    expect(guardState.lastPermission).toBe("employee_attendance_manage");
+  });
+
+  it("lock requires employee_attendance_lock", async () => {
+    guardState.mode = "forbidden";
+
+    const response = await lockPeriod(
+      request("/api/admin/employee-attendance/period/lock", "POST", {
+        monthKey: "2026-11",
+      }) as never,
+    );
+
+    expect(response.status).toBe(403);
+    expect(guardState.lastPermission).toBe("employee_attendance_lock");
+  });
+
+  it("unlock requires employee_attendance_override", async () => {
+    guardState.mode = "forbidden";
+
+    const response = await unlockPeriod(
+      request("/api/admin/employee-attendance/period/unlock", "POST", {
+        monthKey: "2026-11",
+        reason: "Test",
+      }) as never,
+    );
+
+    expect(response.status).toBe(403);
+    expect(guardState.lastPermission).toBe("employee_attendance_override");
+  });
+});
+
+describe("Employee Attendance admin API — behavior", () => {
+  it("creates attendance through service", async () => {
+    const response = await saveAttendance(
+      request("/api/admin/employee-attendance", "POST", {
+        employeeId,
+        date: "2026-09-07",
+        status: "present",
+        scheduledStartTime: "09:00",
+        scheduledEndTime: "17:00",
+        lateMinutes: 0,
+      }) as never,
+    );
+
+    expect(response.status).toBe(200);
+
+    const body = await response.json();
+
+    expect(body.attendance.employeeId).toBe(employeeId);
+    expect(body.attendance.status).toBe("present");
+
+    expect(
+      await db.employeeAttendance.count({
+        where: { employeeId },
+      }),
+    ).toBe(1);
+
+    const audit = await db.auditLog.findFirst({
+      where: {
+        actorUserId: adminId,
+        targetType: "EmployeeAttendance",
+        action: "employee_attendance_create",
+      },
+    });
+
+    expect(audit).toBeTruthy();
+  });
+
+  it("updates same employee/date without duplicate", async () => {
+    const response = await saveAttendance(
+      request("/api/admin/employee-attendance", "POST", {
+        employeeId,
+        date: "2026-09-07",
+        status: "late",
+        lateMinutes: 15,
+        editReason: "Correcting attendance via API",
+      }) as never,
+    );
+
+    expect(response.status).toBe(200);
+
+    const body = await response.json();
+
+    expect(body.attendance.status).toBe("late");
+    expect(body.attendance.lateMinutes).toBe(15);
+
+    expect(
+      await db.employeeAttendance.count({
+        where: { employeeId },
+      }),
+    ).toBe(1);
+
+    const audit = await db.auditLog.findFirst({
+      where: {
+        actorUserId: adminId,
+        targetType: "EmployeeAttendance",
+        action: "employee_attendance_update",
+      },
+    });
+
+    expect(audit).toBeTruthy();
+  });
+
+  it("rejects attendance correction without edit reason", async () => {
+    const request = new NextRequest(
+      "http://localhost/api/admin/employee-attendance",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          employeeId,
+          date: "2026-09-07",
+          status: "absent",
+        }),
+        headers: {
+          "content-type": "application/json",
+        },
+      },
+    );
+
+    const response = await saveAttendance(request);
+
+    expect(response.status).toBe(400);
+
+    const body = await response.json();
+
+    expect(body.code).toBe("EMPLOYEE_ATTENDANCE_EDIT_REASON_REQUIRED");
+
+    const row = await db.employeeAttendance.findUniqueOrThrow({
+      where: {
+        employeeId_attendanceDate: {
+          employeeId,
+          attendanceDate: cairoDateStartInstant("2026-09-07"),
+        },
+      },
+    });
+
+    expect(row.status).toBe("late");
+  });
+
+  it("GET month returns employee attendance", async () => {
+    const response = await getAttendance(
+      request(
+        `/api/admin/employee-attendance?employeeId=${employeeId}&month=2026-09`,
+        "GET",
+      ) as never,
+    );
+
+    expect(response.status).toBe(200);
+
+    const body = await response.json();
+
+    expect(body.rows).toHaveLength(1);
+    expect(body.rows[0].employeeId).toBe(employeeId);
+    expect(body.rows[0].employee.employeeCode).toBe(employeeCode);
+
+    expect(body.period.monthKey).toBe("2026-09");
+    expect(body.period.status).toBe("open");
+  });
+
+  it("rejects invalid status with 400", async () => {
+    const response = await saveAttendance(
+      request("/api/admin/employee-attendance", "POST", {
+        employeeId,
+        date: "2026-09-08",
+        status: "invalid",
+      }) as never,
+    );
+
+    expect(response.status).toBe(400);
+
+    const body = await response.json();
+
+    expect(body.code).toBe("EMPLOYEE_ATTENDANCE_INVALID_STATUS");
+  });
+
+  it("rejects nonexistent employee with 404", async () => {
+    const response = await saveAttendance(
+      request("/api/admin/employee-attendance", "POST", {
+        employeeId: `missing-${stamp}`,
+        date: "2026-09-09",
+        status: "present",
+      }) as never,
+    );
+
+    expect(response.status).toBe(404);
+
+    const body = await response.json();
+
+    expect(body.code).toBe("EMPLOYEE_ATTENDANCE_EMPLOYEE_NOT_FOUND");
+  });
+
+  it("locks month through lock endpoint", async () => {
+    const response = await lockPeriod(
+      request("/api/admin/employee-attendance/period/lock", "POST", {
+        monthKey: "2026-10",
+      }) as never,
+    );
+
+    expect(response.status).toBe(200);
+
+    const body = await response.json();
+
+    expect(body.period.status).toBe("locked");
+    expect(body.idempotent).toBe(false);
+
+    const stored = await db.attendancePeriod.findUniqueOrThrow({
+      where: {
+        monthKey: "2026-10",
+      },
+    });
+
+    expect(stored.status).toBe("locked");
+  });
+
+  it("locked month rejects attendance with 409", async () => {
+    const response = await saveAttendance(
+      request("/api/admin/employee-attendance", "POST", {
+        employeeId,
+        date: "2026-10-07",
+        status: "present",
+      }) as never,
+    );
+
+    expect(response.status).toBe(409);
+
+    const body = await response.json();
+
+    expect(body.code).toBe("EMPLOYEE_ATTENDANCE_PERIOD_LOCKED");
+  });
+
+  it("unlock requires reason", async () => {
+    const response = await unlockPeriod(
+      request("/api/admin/employee-attendance/period/unlock", "POST", {
+        monthKey: "2026-10",
+        reason: "",
+      }) as never,
+    );
+
+    expect(response.status).toBe(400);
+
+    const body = await response.json();
+
+    expect(body.code).toBe("EMPLOYEE_ATTENDANCE_UNLOCK_REASON_REQUIRED");
+  });
+
+  it("override unlock reopens locked month", async () => {
+    const response = await unlockPeriod(
+      request("/api/admin/employee-attendance/period/unlock", "POST", {
+        monthKey: "2026-10",
+        reason: "Approved correction",
+      }) as never,
+    );
+
+    expect(response.status).toBe(200);
+
+    const body = await response.json();
+
+    expect(body.period.status).toBe("open");
+    expect(body.period.unlockReason).toBe("Approved correction");
+
+    const audit = await db.auditLog.findFirst({
+      where: {
+        actorUserId: adminId,
+        targetType: "AttendancePeriod",
+        action: "employee_attendance_period_unlock_override",
+      },
+    });
+
+    expect(audit).toBeTruthy();
+  });
+
+  it("attendance can be entered after authorized unlock", async () => {
+    const response = await saveAttendance(
+      request("/api/admin/employee-attendance", "POST", {
+        employeeId,
+        date: "2026-10-07",
+        status: "excused",
+      }) as never,
+    );
+
+    expect(response.status).toBe(200);
+
+    const body = await response.json();
+
+    expect(body.attendance.status).toBe("excused");
+  });
+});

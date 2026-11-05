@@ -1,0 +1,295 @@
+import { NextResponse } from "next/server";
+import bcryptjs from "bcryptjs";
+import { requireAdminFeature } from "@/lib/admin-guard";
+import { db } from "@/lib/db";
+import { logAudit } from "@/lib/audit-context";
+
+async function guard() {
+  const g = await requireAdminFeature("partners");
+  return "error" in g ? { error: g.error, role: null, userId: null } : { error: null, role: g.role, userId: g.session.user.id };
+}
+
+async function getContractsManagerId(userId: string) {
+  const manager = await db.contractsManager.findFirst({ where: { userId }, select: { id: true } });
+  return manager?.id ?? null;
+}
+
+function formatPartner(p: {
+  id: string;
+  userId: string;
+  name: string;
+  nameEn: string | null;
+  category: string;
+  logoUrl: string | null;
+  websiteUrl: string | null;
+  contactPhone: string | null;
+  commissionRate: number;
+  commissionType: string;
+  contractStartDate: Date | null;
+  contractEndDate: Date | null;
+  referralDiscountRate: number | null;
+  memberBenefitCode: string | null;
+  memberBenefitRate: number | null;
+  isActive: boolean;
+  showOnPublicPage: boolean;
+  notes: string | null;
+  createdAt: Date;
+  user: { id: string; name: string | null; email: string | null };
+  _count: { codes: number; affiliateLinks: number };
+  commissions: { amount: number; status: string }[];
+}) {
+  const pending = p.commissions.filter((c) => c.status === "pending").reduce((s, c) => s + c.amount, 0);
+  const paid = p.commissions.filter((c) => c.status === "withdrawn").reduce((s, c) => s + c.amount, 0);
+  return {
+    id: p.id,
+    userId: p.userId,
+    name: p.name,
+    nameEn: p.nameEn,
+    category: p.category,
+    logoUrl: p.logoUrl,
+    websiteUrl: p.websiteUrl,
+    contactPhone: p.contactPhone,
+    commissionRate: p.commissionRate,
+    commissionType: p.commissionType,
+    contractStartDate: p.contractStartDate?.toISOString().slice(0, 10) ?? null,
+    contractEndDate: p.contractEndDate?.toISOString().slice(0, 10) ?? null,
+    referralDiscountRate: p.referralDiscountRate,
+    memberBenefitCode: p.memberBenefitCode,
+    memberBenefitRate: p.memberBenefitRate,
+    isActive: p.isActive,
+    showOnPublicPage: p.showOnPublicPage,
+    notes: p.notes,
+    createdAt: p.createdAt.toISOString(),
+    linkedUser: { id: p.user.id, name: p.user.name ?? "", email: p.user.email ?? "" },
+    codesCount: p._count.codes,
+    linksCount: p._count.affiliateLinks,
+    totalCommissionPending: pending,
+    totalCommissionPaid: paid,
+  };
+}
+
+const INCLUDE = {
+  user: { select: { id: true, name: true, email: true } },
+  _count: { select: { codes: true, affiliateLinks: true } },
+  commissions: { select: { amount: true, status: true } },
+} as const;
+
+export async function GET() {
+  const { error, role, userId } = await guard();
+  if (error) return error;
+
+  // Partners can only see their own record
+  if (role === "partner") {
+    return NextResponse.json({ error: "Use /api/partner/dashboard" }, { status: 403 });
+  }
+
+  if (role === "contracts_manager") {
+    const managerId = await getContractsManagerId(userId!);
+    if (!managerId) return NextResponse.json([]);
+    const partners = await db.partner.findMany({
+      where: { managerId },
+      include: INCLUDE,
+      orderBy: { createdAt: "desc" },
+    });
+    return NextResponse.json(partners.map(formatPartner));
+  }
+
+  const partners = await db.partner.findMany({
+    include: INCLUDE,
+    orderBy: { createdAt: "desc" },
+  });
+
+  return NextResponse.json(partners.map(formatPartner));
+}
+
+export async function POST(req: Request) {
+  const { error, role } = await guard();
+  if (error) return error;
+  if (role !== "admin" && role !== "staff") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  try {
+    const body = (await req.json()) as {
+      name?: string;
+      nameEn?: string;
+      category?: string;
+      email?: string;
+      password?: string;
+      logoUrl?: string;
+      websiteUrl?: string;
+      contactPhone?: string;
+      commissionRate?: number;
+      commissionType?: string;
+      contractStartDate?: string | null;
+      contractEndDate?: string | null;
+      referralDiscountRate?: number | null;
+      memberBenefitCode?: string | null;
+      memberBenefitRate?: number | null;
+      isActive?: boolean;
+      showOnPublicPage?: boolean;
+      notes?: string;
+    };
+
+    if (!body.name?.trim() || !body.email?.trim() || !body.category?.trim()) {
+      return NextResponse.json({ error: "الاسم والبريد الإلكتروني والفئة مطلوبة." }, { status: 400 });
+    }
+
+    const existing = await db.user.findUnique({ where: { email: body.email.trim() } });
+    if (existing) {
+      return NextResponse.json({ error: "البريد الإلكتروني مسجل بالفعل." }, { status: 409 });
+    }
+
+    const hashed = await bcryptjs.hash(body.password ?? "FitZone@Partner!", 12);
+
+    const user = await db.user.create({
+      data: {
+        name: body.name.trim(),
+        email: body.email.trim(),
+        password: hashed,
+        role: "partner",
+        adminAccess: true,
+        adminPermissions: JSON.stringify(["partners"]),
+        isActive: true,
+        avatar: (body.name.trim()[0] ?? "ش").toUpperCase(),
+      },
+    });
+
+    const partner = await db.partner.create({
+      data: {
+        userId: user.id,
+        name: body.name.trim(),
+        nameEn: body.nameEn?.trim() || null,
+        category: body.category.trim(),
+        logoUrl: body.logoUrl?.trim() || null,
+        websiteUrl: body.websiteUrl?.trim() || null,
+        contactPhone: body.contactPhone?.trim() || null,
+        commissionRate: Number(body.commissionRate ?? 10),
+        commissionType: body.commissionType === "fixed" ? "fixed" : "percentage",
+        contractStartDate: body.contractStartDate ? new Date(body.contractStartDate) : null,
+        contractEndDate: body.contractEndDate ? new Date(body.contractEndDate) : null,
+        referralDiscountRate: body.referralDiscountRate != null ? Number(body.referralDiscountRate) : null,
+        memberBenefitCode: body.memberBenefitCode?.trim() || null,
+        memberBenefitRate: body.memberBenefitRate != null ? Number(body.memberBenefitRate) : null,
+        isActive: body.isActive !== false,
+        showOnPublicPage: body.showOnPublicPage !== false,
+        notes: body.notes?.trim() || null,
+      },
+      include: INCLUDE,
+    });
+
+    void logAudit({ action: "create", targetType: "partner", targetId: partner.id, details: { name: partner.name } });
+    return NextResponse.json(formatPartner(partner));
+  } catch (err) {
+    console.error("[ADMIN_PARTNERS_POST]", err);
+    return NextResponse.json({ error: "تعذر إنشاء حساب الشريك." }, { status: 500 });
+  }
+}
+
+export async function PATCH(req: Request) {
+  const { error, role } = await guard();
+  if (error) return error;
+  if (role !== "admin" && role !== "staff") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  try {
+    const body = (await req.json()) as {
+      id?: string;
+      name?: string;
+      nameEn?: string;
+      category?: string;
+      logoUrl?: string;
+      websiteUrl?: string;
+      contactPhone?: string;
+      commissionRate?: number;
+      commissionType?: string;
+      contractStartDate?: string | null;
+      contractEndDate?: string | null;
+      referralDiscountRate?: number | null;
+      memberBenefitCode?: string | null;
+      memberBenefitRate?: number | null;
+      isActive?: boolean;
+      showOnPublicPage?: boolean;
+      notes?: string;
+    };
+
+    if (!body.id) return NextResponse.json({ error: "معرّف الشريك مطلوب." }, { status: 400 });
+
+    const data: Record<string, unknown> = {};
+    if (body.name !== undefined) data.name = String(body.name).trim();
+    if (body.nameEn !== undefined) data.nameEn = String(body.nameEn).trim() || null;
+    if (body.category !== undefined) data.category = String(body.category).trim();
+    if (body.logoUrl !== undefined) data.logoUrl = String(body.logoUrl).trim() || null;
+    if (body.websiteUrl !== undefined) data.websiteUrl = String(body.websiteUrl).trim() || null;
+    if (body.contactPhone !== undefined) data.contactPhone = String(body.contactPhone).trim() || null;
+    if (body.commissionRate !== undefined) data.commissionRate = Number(body.commissionRate) || 0;
+    if (body.commissionType !== undefined) data.commissionType = body.commissionType === "fixed" ? "fixed" : "percentage";
+    if ("contractStartDate" in body) data.contractStartDate = body.contractStartDate ? new Date(body.contractStartDate) : null;
+    if ("contractEndDate" in body) data.contractEndDate = body.contractEndDate ? new Date(body.contractEndDate) : null;
+    if ("referralDiscountRate" in body) data.referralDiscountRate = body.referralDiscountRate != null ? Number(body.referralDiscountRate) : null;
+    if ("memberBenefitCode" in body) data.memberBenefitCode = body.memberBenefitCode?.trim() || null;
+    if ("memberBenefitRate" in body) data.memberBenefitRate = body.memberBenefitRate != null ? Number(body.memberBenefitRate) : null;
+    if (body.isActive !== undefined) data.isActive = Boolean(body.isActive);
+    if (body.showOnPublicPage !== undefined) data.showOnPublicPage = Boolean(body.showOnPublicPage);
+    if (body.notes !== undefined) data.notes = String(body.notes).trim() || null;
+
+    const partner = await db.partner.update({ where: { id: body.id }, data, include: INCLUDE });
+    if (body.name !== undefined) {
+      await db.user.update({ where: { id: partner.userId }, data: { name: String(body.name).trim() } }).catch(() => null);
+    }
+    void logAudit({ action: "update", targetType: "partner", targetId: partner.id, details: { name: partner.name } });
+    return NextResponse.json(formatPartner(partner));
+  } catch (err) {
+    console.error("[ADMIN_PARTNERS_PATCH]", err);
+    return NextResponse.json({ error: "تعذر تحديث بيانات الشريك." }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: Request) {
+  const { error, role } = await guard();
+  if (error) return error;
+  if (role !== "admin") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  try {
+    const { id } = (await req.json()) as { id?: string };
+    if (!id) return NextResponse.json({ error: "معرّف الشريك مطلوب." }, { status: 400 });
+
+    const partner = await db.partner.findUnique({ where: { id }, select: { userId: true, name: true } });
+    if (!partner) return NextResponse.json({ error: "الشريك غير موجود." }, { status: 404 });
+
+    // Financial-history protection:
+    // Partner commissions / withdrawals / attributed memberships are historical
+    // financial records. Never hard-delete the partner once created.
+    await db.$transaction([
+      db.partner.update({
+        where: { id },
+        data: {
+          isActive: false,
+          showOnPublicPage: false,
+        },
+      }),
+      db.user.update({
+        where: { id: partner.userId },
+        data: {
+          isActive: false,
+          adminAccess: false,
+        },
+      }),
+    ]);
+
+    void logAudit({
+      action: "deactivate",
+      targetType: "partner",
+      targetId: id,
+      details: { name: partner.name, reason: "financial_history_protection" },
+    });
+
+    return NextResponse.json({ success: true, deactivated: true });
+  } catch (err) {
+    console.error("[ADMIN_PARTNERS_DELETE]", err);
+    return NextResponse.json({ error: "تعذر حذف الشريك." }, { status: 500 });
+  }
+}

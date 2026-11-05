@@ -1,0 +1,722 @@
+import { NextResponse } from "next/server";
+import { getCurrentAppUser } from "@/lib/app-session";
+import { db } from "@/lib/db";
+import { allocateWalletDeductionBySource } from "@/lib/referral-credit-policy";
+import { createPaymentTransaction, restorePaymentBalanceAdjustments } from "@/lib/payments/service";
+import { getStoreCampaignSettings } from "@/lib/store-gift-campaign-settings";
+import { cookies } from "next/headers";
+import { sendStoreOrderEmail, sendAdminOrderNotification } from "@/lib/email";
+import { generateStoreOrderInvoicePdf } from "@/lib/store-order-invoice";
+import { recordCheckoutStarted } from "@/lib/analytics/checkout-events";
+import {
+  InventoryReservationConflictError,
+  reserveOrderInventoryOwnedFirst,
+  releaseOrderInventoryAllocations,
+} from "@/lib/order-inventory-allocation-service";
+import {
+  grantStoreGiftClaimAtomic,
+  type StoreGiftRewardType,
+} from "@/lib/store-gift-reward-service";
+
+const GAME_COOKIE = "fitzone-game-token";
+
+type OrderItemInput = {
+  productId: string;
+  quantity: number;
+  variantId?: string | null;
+  size?: string | null;
+  color?: string | null;
+};
+
+type DeliverySnapshot = {
+  id: string;
+  name: string;
+  type: string;
+  fee: number;
+  estimatedDaysMin: number | null;
+  estimatedDaysMax: number | null;
+};
+
+function sanitizeMethod(value: unknown) {
+  const raw = String(value ?? "").toLowerCase().trim();
+  if (raw === "wallet") return "wallet";
+  if (raw === "cod" || raw === "cash_on_delivery" || raw === "cash") return "cod";
+  return "paymob";
+}
+
+async function tryGrantStoreGiftCampaign(
+  userId: string,
+  order: {
+    id: string;
+    subtotal: number;
+    businessUnit: string;
+  },
+) {
+  if (order.businessUnit !== "store") {
+    return;
+  }
+
+  try {
+    const settings =
+      await getStoreCampaignSettings();
+
+    if (!settings.isActive) {
+      return;
+    }
+
+    const now = new Date();
+
+    if (
+      settings.startsAt &&
+      new Date(settings.startsAt) > now
+    ) {
+      return;
+    }
+
+    if (
+      settings.endsAt &&
+      new Date(settings.endsAt) < now
+    ) {
+      return;
+    }
+
+    if (
+      order.subtotal <
+      settings.minStoreCartSubtotal
+    ) {
+      return;
+    }
+
+    await grantStoreGiftClaimAtomic({
+      userId,
+      storeOrderId: order.id,
+      source:
+        "store_cart_threshold",
+
+      maxClaimsPerUser:
+        settings.maxClaimsPerUser,
+
+      rewardType:
+        settings.rewardType as StoreGiftRewardType,
+
+      rewardWalletAmount:
+        settings.rewardWalletAmount,
+
+      rewardPoints:
+        settings.rewardPoints,
+
+      discountAmount:
+        settings.discountAmount,
+
+      rewardProductId:
+        settings.rewardProductId ?? null,
+    });
+  } catch (err) {
+    // Preserve order creation behavior:
+    // gift failure must not break an otherwise valid store order.
+    // The gift transaction itself is fully rolled back.
+    console.error(
+      "[STORE_GIFT_CAMPAIGN] auto-grant failed:",
+      err,
+    );
+  }
+}
+
+export async function POST(req: Request) {
+  try {
+    const currentUser = await getCurrentAppUser();
+    const userId = currentUser?.id;
+
+    if (!userId) {
+      return NextResponse.json({ error: "يجب تسجيل الدخول أولًا." }, { status: 401 });
+    }
+
+    const body = (await req.json()) as {
+      items?: OrderItemInput[];
+      address?: string;
+      paymentMethod?: string;
+      deliveryOptionId?: string | null;
+      isClubPickup?: boolean;
+      recipientName?: string | null;
+      recipientPhone?: string | null;
+      walletDeduct?: number;
+      pointsDeduct?: number;
+    };
+
+    const items = Array.isArray(body.items) ? body.items.filter((item) => item.productId && item.quantity > 0) : [];
+    if (items.length === 0) {
+      return NextResponse.json({ error: "السلة فارغة." }, { status: 400 });
+    }
+
+    const products = await db.product.findMany({
+      where: { id: { in: items.map((item) => item.productId) }, isActive: true },
+    });
+
+    if (products.length !== items.length) {
+      return NextResponse.json({ error: "بعض المنتجات لم تعد متاحة." }, { status: 400 });
+    }
+
+    const activeVariants = await db.productVariant.findMany({
+      where: {
+        productId: { in: products.map((product) => product.id) },
+        isActive: true,
+      },
+      select: {
+        id: true,
+        productId: true,
+        size: true,
+        color: true,
+      },
+    });
+
+    const variantsByProduct = new Map<string, typeof activeVariants>();
+
+    for (const variant of activeVariants) {
+      const list = variantsByProduct.get(variant.productId) ?? [];
+      list.push(variant);
+      variantsByProduct.set(variant.productId, list);
+    }
+
+    for (const item of items) {
+      const productVariants =
+        variantsByProduct.get(item.productId) ?? [];
+
+      if (productVariants.length > 0 && !item.variantId) {
+        return NextResponse.json(
+          {
+            error:
+              "يرجى إعادة اختيار المقاس أو اللون للمنتج قبل إتمام الطلب.",
+          },
+          { status: 400 },
+        );
+      }
+
+      if (item.variantId) {
+        const variant = productVariants.find(
+          (entry) => entry.id === item.variantId,
+        );
+
+        if (!variant) {
+          return NextResponse.json(
+            { error: "الخيار المحدد للمنتج لم يعد متاحًا." },
+            { status: 400 },
+          );
+        }
+
+        item.size = variant.size ?? null;
+        item.color = variant.color ?? null;
+      }
+    }
+
+    for (const item of items) {
+      const product = products.find((entry) => entry.id === item.productId);
+      if (!product) {
+        return NextResponse.json(
+          { error: "بعض المنتجات لم تعد متاحة." },
+          { status: 400 },
+        );
+      }
+    }
+
+    // ── Free-gifts game session: resolve gift products, discount, shipping ──────
+    const cookieStore = await cookies();
+    const gameToken = cookieStore.get(GAME_COOKIE)?.value ?? null;
+    const dbx = db as any;
+
+    let giftProductIds = new Set<string>();
+    let gameDiscount = 0;
+    let gameFreeShipping = false;
+    let gameSessionId: string | null = null;
+
+    if (gameToken) {
+      const gameSession = await dbx.storeFreeGiftsSession
+        .findUnique({ where: { token: gameToken } })
+        .catch(() => null) as { id: string; status: string; spinRewardType: string | null; spinRewardValue: number | null; selectedProductIds: string } | null;
+
+      if (gameSession?.status === "confirmed") {
+        try {
+          const wonIds: string[] = JSON.parse(gameSession.selectedProductIds);
+          giftProductIds = new Set(wonIds);
+          gameSessionId = gameSession.id;
+        } catch { /* ignore parse error */ }
+
+        const rType = gameSession.spinRewardType ?? "";
+        const rValue = Number(gameSession.spinRewardValue ?? 0);
+        if (rType === "free_shipping") gameFreeShipping = true;
+        if (rType === "discount" && rValue > 0) {
+          // % discount applied after gift items (already 0)
+          // will be computed from non-gift subtotal below
+          gameDiscount = rValue; // store percent, apply after subtotal
+        }
+      }
+    }
+
+    const VAT_RATE = 0.14;
+    const subtotal = items.reduce((sum, item) => {
+      const product = products.find((entry) => entry.id === item.productId)!;
+      if (giftProductIds.has(product.id)) return sum; // gift item → free
+      const itemPrice = product.vatEnabled ? Math.round(product.price * (1 + VAT_RATE) * 100) / 100 : product.price;
+      return sum + itemPrice * item.quantity;
+    }, 0);
+
+    // Resolve game discount (% off non-gift subtotal)
+    const gameDiscountAmount = gameDiscount > 0
+      ? Math.round(subtotal * (gameDiscount / 100) * 100) / 100
+      : 0;
+
+    const paymentMethod = sanitizeMethod(body.paymentMethod);
+
+    let deliveryOption: DeliverySnapshot | null = null;
+    if (body.deliveryOptionId) {
+      deliveryOption = await db.deliveryOption.findFirst({
+        where: { id: body.deliveryOptionId, isActive: true },
+        select: {
+          id: true,
+          name: true,
+          type: true,
+          fee: true,
+          estimatedDaysMin: true,
+          estimatedDaysMax: true,
+        },
+      });
+    }
+
+    const isClubPickup = deliveryOption?.type === "pickup" ? true : Boolean(body.isClubPickup);
+    const shippingFee = (deliveryOption?.type === "pickup" || gameFreeShipping) ? 0 : deliveryOption?.fee ?? 0;
+    const baseTotal = Math.max(0, subtotal - gameDiscountAmount + shippingFee);
+
+    const walletDeductReq = Math.max(0, Number(body.walletDeduct ?? 0));
+    const pointsDeductReq = Math.floor(Math.max(0, Number(body.pointsDeduct ?? 0)));
+    let validatedWalletDeduct = 0;
+    let validatedReferralWalletDeduct = 0;
+    let validatedGeneralWalletDeduct = 0;
+    let validatedPointsDeduct = 0;
+    let pointsEGP = 0;
+    let pointValueEGP = 0.1;
+
+    if (walletDeductReq > 0 || pointsDeductReq > 0) {
+      const [walletRow, pointsRow, rewardSettings] = await Promise.all([
+        walletDeductReq > 0 ? db.wallet.findUnique({ where: { userId }, select: { balance: true, referralBalance: true } }) : null,
+        pointsDeductReq > 0 ? db.rewardPoints.findUnique({ where: { userId } }) : null,
+        db.siteContent.findUnique({ where: { section: "reward_settings" } }),
+      ]);
+
+      if (rewardSettings?.content) {
+        try {
+          const parsed = JSON.parse(rewardSettings.content) as { pointValueEGP?: number };
+          if (typeof parsed.pointValueEGP === "number") pointValueEGP = parsed.pointValueEGP;
+        } catch {}
+      }
+
+      if (walletDeductReq > 0) {
+        const walletBalance = walletRow?.balance ?? 0;
+        const referralBalance = walletRow?.referralBalance ?? 0;
+
+        if (walletDeductReq > walletBalance) {
+          return NextResponse.json({ error: "رصيد المحفظة غير كافٍ." }, { status: 400 });
+        }
+
+        const walletAllocation = allocateWalletDeductionBySource({
+          purchaseKind: "store",
+          walletBalance,
+          referralBalance,
+          requestedWalletDeduct: walletDeductReq,
+          amountDue: baseTotal,
+        });
+
+        validatedWalletDeduct = walletAllocation.totalDeduct;
+        validatedReferralWalletDeduct =
+          walletAllocation.referralDeduct;
+        validatedGeneralWalletDeduct =
+          walletAllocation.generalDeduct;
+      }
+
+      if (pointsDeductReq > 0) {
+        if (pointsDeductReq > (pointsRow?.points ?? 0)) {
+          return NextResponse.json({ error: "رصيد الفيتزونات غير كافٍ." }, { status: 400 });
+        }
+        pointsEGP = Math.round(pointsDeductReq * pointValueEGP * 100) / 100;
+        validatedPointsDeduct = pointsDeductReq;
+      }
+    }
+
+    const discountTotal = Math.round((validatedWalletDeduct + pointsEGP) * 100) / 100;
+    const total = Math.max(0, baseTotal - discountTotal);
+
+    // ── Phase 2C: Atomic order creation + inventory reservation ────────
+    const order = await db.$transaction(async (tx) => {
+      // 1. Create order + items
+      const newOrder = await tx.order.create({
+        data: {
+          userId,
+          businessUnit: "store",
+          subtotal,
+          discountTotal,
+          shippingFee,
+          total,
+          status: "pending",
+          address: body.address?.trim() || null,
+          paymentMethod,
+          deliveryOptionId: deliveryOption?.id ?? null,
+          deliveryLabel: deliveryOption?.name ?? (isClubPickup ? "استلام من الجيم" : null),
+          estimatedDeliveryDays: deliveryOption?.estimatedDaysMax ?? deliveryOption?.estimatedDaysMin ?? null,
+          isClubPickup,
+          recipientName: body.recipientName?.trim() || null,
+          recipientPhone: body.recipientPhone?.trim() || null,
+          items: {
+            create: items.map((item) => {
+              const product = products.find((entry) => entry.id === item.productId)!;
+              if (giftProductIds.has(product.id)) {
+                return {
+                  productId: product.id,
+                  variantId: item.variantId ?? null,
+                  quantity: item.quantity,
+                  price: 0,
+                  vatAmount: 0,
+                  size: item.size ?? null,
+                  color: item.color ?? null,
+                };
+              }
+              const itemPrice = product.vatEnabled ? Math.round(product.price * (1 + VAT_RATE) * 100) / 100 : product.price;
+              const vatAmount = product.vatEnabled ? Math.round(product.price * VAT_RATE * 100) / 100 : 0;
+              return {
+                productId: product.id,
+                variantId: item.variantId ?? null,
+                quantity: item.quantity,
+                price: itemPrice,
+                vatAmount,
+                size: item.size ?? null,
+                color: item.color ?? null,
+                // Phase 2C: costPrice captured at payment confirmation
+              };
+            }),
+          },
+        },
+        include: { items: true },
+      });
+
+      // 2. Reserve inventory (reservedStock += quantity, stock unchanged)
+      await reserveOrderInventoryOwnedFirst(
+        tx,
+        newOrder.id
+      );
+
+      // Phase 2C: inventoryDeducted remains false until payment confirmation
+      // No movements created at reservation
+
+      return newOrder;
+    }, { timeout: 10000 });
+
+    if (validatedWalletDeduct > 0) {
+      const wallet = await db.wallet.update({
+        where: { userId },
+        data: { balance: { decrement: validatedWalletDeduct } },
+      });
+      await db.walletTransaction.create({
+        data: {
+          walletId: wallet.id,
+          amount: validatedWalletDeduct,
+          type: "debit",
+          source: "general",
+          description: `سداد طلب رقم ${order.id}`,
+        },
+      });
+    }
+
+    if (validatedPointsDeduct > 0) {
+      const pointsRecord = await db.rewardPoints.update({
+        where: { userId },
+        data: { points: { decrement: validatedPointsDeduct } },
+      });
+      await db.rewardHistory.create({
+        data: {
+          rewardId: pointsRecord.id,
+          points: -validatedPointsDeduct,
+          reason: `استخدام فيتزونات لسداد طلب رقم ${order.id}`,
+        },
+      });
+    }
+
+    let checkoutUrl: string | null = null;
+    let transactionId: string | null = null;
+
+    if (total > 0 && paymentMethod === "paymob") {
+      try {
+        const transaction = await createPaymentTransaction({
+          userId,
+          provider: "paymob",
+          purpose: "order",
+          businessUnit: "store",
+          amount: total,
+          paymentMethod,
+          orderId: order.id,
+          description: `Order ${order.id}`,
+          metadata: {
+            paymentAdjustments: {
+              walletAmount: validatedWalletDeduct,
+              referralWalletAmount:
+                validatedReferralWalletDeduct,
+              generalWalletAmount:
+                validatedGeneralWalletDeduct,
+              pointsCount: validatedPointsDeduct,
+            },
+            walletDeductedAmount: validatedWalletDeduct || null,
+            pointsDeductedCount: validatedPointsDeduct || null,
+            deliveryOptionId: deliveryOption?.id ?? null,
+            deliveryLabel: deliveryOption?.name ?? (isClubPickup ? "استلام من الجيم" : null),
+            shippingFee,
+            walletDeducted: validatedWalletDeduct || null,
+            pointsDeducted: validatedPointsDeduct || null,
+          },
+        });
+        checkoutUrl = transaction.checkoutUrl ?? null;
+        transactionId = transaction.id;
+        void recordCheckoutStarted({
+          userId,
+          entityType: "order",
+          entityId: order.id,
+          entityName: `Order ${order.id}`,
+          value: total,
+          currency: "EGP",
+          source: "store_checkout",
+          paymentTransactionId: transaction.id,
+        });
+      } catch (error) {
+        // Phase 2C: Payment transaction creation failed - release reservation
+        await db.$transaction(async (tx) => {
+          // Release inventory reservation (reservedStock -= quantity, stock unchanged)
+          await releaseOrderInventoryAllocations(
+            tx,
+            order.id
+          );
+
+          // Cancel order
+          await tx.order.update({
+            where: { id: order.id },
+            data: {
+              status: "cancelled",
+              cancelledAt: new Date(),
+            },
+          });
+        }, { timeout: 10000 });
+
+        await restorePaymentBalanceAdjustments({
+          userId,
+          walletAmount: validatedWalletDeduct,
+          referralWalletAmount:
+            validatedReferralWalletDeduct,
+          generalWalletAmount:
+            validatedGeneralWalletDeduct,
+          pointsCount: validatedPointsDeduct,
+          reference: order.id,
+        }).catch((restoreError) => {
+          console.error("[ORDERS_PAYMENT_RESTORE]", restoreError);
+        });
+
+        console.error("[ORDERS_PAYMENT_INIT]", error);
+        const message = error instanceof Error ? error.message : "تعذر تهيئة صفحة الدفع.";
+        return NextResponse.json({ error: message }, { status: 502 });
+      }
+    } else if (total > 0 && paymentMethod === "cod") {
+      // COD: Reserve inventory only, do NOT set confirmedAt yet
+      // confirmedAt must be set only at actual stock conversion event (future workflow)
+      await db.order.update({
+        where: { id: order.id },
+        data: { status: "confirmed" }
+      });
+    } else if (total <= 0) {
+      // Zero-total: Reserve inventory only, do NOT set confirmedAt yet
+      // confirmedAt must be set only at actual stock conversion event (if applicable)
+      await db.order.update({
+        where: { id: order.id },
+        data: { status: "confirmed" }
+      });
+    }
+
+    // Send order confirmation emails (fire-and-forget, non-critical)
+    if (currentUser?.email && (total <= 0 || paymentMethod === "cod")) {
+      const invoiceNumber = `ORD-${order.id.slice(-8).toUpperCase()}`;
+      const orderItems = items.map((item) => {
+        const product = products.find((p) => p.id === item.productId)!;
+        const orderItem = order.items.find((oi) => oi.productId === item.productId);
+        return {
+          name: product.name,
+          quantity: item.quantity,
+          unitPrice: orderItem?.price ?? product.price,
+          size: item.size ?? null,
+        };
+      });
+      const invoiceDetails = {
+        invoiceNumber,
+        customerName: currentUser.name ?? "عميل",
+        customerEmail: currentUser.email,
+        paymentMethod,
+        issuedAt: new Date(),
+        items: orderItems,
+        subtotal,
+        shippingFee,
+        discountTotal,
+        total,
+        address: body.address?.trim() || null,
+        deliveryLabel: deliveryOption?.name ?? null,
+        isClubPickup,
+      };
+      void (async () => {
+        try {
+          const invoicePdf = await generateStoreOrderInvoicePdf(invoiceDetails);
+          void sendStoreOrderEmail(invoiceDetails, invoicePdf).catch((e) => console.error("[ORDER_EMAIL]", e));
+          void sendAdminOrderNotification(invoiceDetails).catch((e) => console.error("[ORDER_ADMIN_EMAIL]", e));
+        } catch (e) {
+          console.error("[ORDER_INVOICE_GEN]", e);
+        }
+      })();
+    }
+
+    // Auto-apply store gift campaign (fire-and-forget, never blocks order)
+    void tryGrantStoreGiftCampaign(userId, { id: order.id, subtotal, businessUnit: "store" });
+
+    // Link confirmed game session to this order — prevents double-claiming
+    if (gameSessionId) {
+      void dbx.storeFreeGiftsSession.update({
+        where: { id: gameSessionId },
+        data: { storeOrderId: order.id },
+      }).catch((e: unknown) => console.error("[FREE_GIFTS_LINK]", e));
+    }
+
+    // Create notification
+    await db.notification.create({
+      data: {
+        userId,
+        title: "تم تسجيل طلبك",
+        body: "تم حفظ طلبك بنجاح. يمكنك متابعة حالة الدفع من صفحة الطلبات.",
+        type: "info",
+      },
+    });
+
+    return NextResponse.json({
+      success: true,
+      orderId: order.id,
+      total: order.total,
+      checkoutUrl,
+      transactionId,
+      message: "تم حفظ طلبك بنجاح.",
+    });
+  } catch (error) {
+    console.error("[ORDERS_POST]", error);
+
+    if (error instanceof InventoryReservationConflictError) {
+      return NextResponse.json(
+        {
+          error: error.message,
+          code: error.code,
+        },
+        { status: 409 },
+      );
+    }
+
+    return NextResponse.json(
+      { error: "تعذر حفظ الطلب." },
+      { status: 500 },
+    );
+  }
+}
+
+export async function PATCH(req: Request) {
+  try {
+    const currentUser = await getCurrentAppUser();
+    const userId = currentUser?.id;
+
+    if (!userId) {
+      return NextResponse.json({ error: "يجب تسجيل الدخول أولًا." }, { status: 401 });
+    }
+
+    const { orderId } = (await req.json()) as { orderId?: string };
+    if (!orderId) {
+      return NextResponse.json({ error: "الطلب غير محدد." }, { status: 400 });
+    }
+
+    const order = await db.order.findFirst({
+      where: { id: orderId, userId },
+      include: { items: true },
+    });
+
+    if (!order) {
+      return NextResponse.json({ error: "الطلب غير موجود." }, { status: 404 });
+    }
+
+    if (!["pending", "confirmed"].includes(order.status)) {
+      return NextResponse.json({ error: "لا يمكن إلغاء هذا الطلب." }, { status: 400 });
+    }
+
+    // Phase 2C: Atomic cancellation + release reservation (or return for confirmed orders)
+    await db.$transaction(async (tx) => {
+      if (order.status === "pending") {
+        // Pending order: release reservation (reservedStock -= quantity)
+        await releaseOrderInventoryAllocations(
+          tx,
+          order.id
+        );
+      } else if (order.status === "confirmed" && order.inventoryDeducted) {
+        const {
+          returnOrderInventoryAllocations,
+        } = await import(
+          "@/lib/order-inventory-allocation-service"
+        );
+
+        const returnResults =
+          await returnOrderInventoryAllocations(
+            tx,
+            order.id
+          );
+
+        try {
+          const {
+            postAllocatedReturnJournal,
+          } = await import(
+            "@/lib/accounting-service"
+          );
+
+          await postAllocatedReturnJournal(
+            tx,
+            order.id,
+            order.total,
+            returnResults,
+            order.paymentMethod
+          );
+        } catch (err) {
+          console.error(
+            "[GL_ALLOCATED_RETURN_JOURNAL]",
+            err
+          );
+        }
+      }
+
+      // Cancel order
+      await tx.order.update({
+        where: { id: orderId },
+        data: {
+          status: "cancelled",
+          inventoryDeducted: false,
+          cancelledAt: new Date(),
+        },
+      });
+
+      // Create notification
+      await tx.notification.create({
+        data: {
+          userId,
+          title: "تم إلغاء الطلب",
+          body: order.status === "pending"
+            ? "تم إلغاء طلبك وتحرير الحجز بنجاح."
+            : "تم إلغاء طلبك وإرجاع المنتجات.",
+          type: "info",
+        },
+      });
+    }, { timeout: 10000 });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("[ORDERS_PATCH]", error);
+    return NextResponse.json({ error: "تعذر إلغاء الطلب." }, { status: 500 });
+  }
+}

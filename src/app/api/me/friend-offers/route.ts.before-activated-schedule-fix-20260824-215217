@@ -1,0 +1,185 @@
+import { NextResponse } from "next/server";
+import { getCurrentAppUser } from "@/lib/app-session";
+import { db } from "@/lib/db";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+function frozenTitle(
+  snapshot: string | null,
+  fallback: string,
+): string {
+  if (!snapshot) return fallback;
+
+  try {
+    const parsed = JSON.parse(snapshot) as Record<string, unknown>;
+
+    if (
+      typeof parsed.title === "string" &&
+      parsed.title.trim()
+    ) {
+      return parsed.title;
+    }
+  } catch {
+    // Keep live title only as a display fallback.
+  }
+
+  return fallback;
+}
+
+export async function GET() {
+  const currentUser = await getCurrentAppUser();
+
+  if (!currentUser?.id) {
+    return NextResponse.json(
+      { offers: [] },
+      {
+        status: 401,
+        headers: {
+          "Cache-Control":
+            "no-store, no-cache, must-revalidate, proxy-revalidate",
+        },
+      },
+    );
+  }
+
+  try {
+    const participations =
+      await db.friendOfferParticipant.findMany({
+        where: {
+          userId: currentUser.id,
+          status: {
+            in: ["joined", "checkout_started", "paid"],
+          },
+          group: {
+            status: {
+              notIn: ["cancelled", "completed"],
+            },
+          },
+        },
+        orderBy: {
+          joinedAt: "desc",
+        },
+        include: {
+          paymentTransaction: {
+            select: {
+              id: true,
+              status: true,
+              checkoutUrl: true,
+              amount: true,
+            },
+          },
+          userMembership: {
+            select: {
+              id: true,
+              status: true,
+              bookingPatternSnapshot: true,
+            },
+          },
+          group: {
+            include: {
+              config: {
+                include: {
+                  offer: {
+                    select: {
+                      id: true,
+                      title: true,
+                      titleEn: true,
+                    },
+                  },
+                },
+              },
+              participants: {
+                select: {
+                  id: true,
+                  status: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+    const offers = participations.map((participant) => {
+      const activeParticipants =
+        participant.group.participants.filter(
+          (row) => row.status !== "cancelled",
+        );
+
+      const joinedCount = activeParticipants.length;
+
+      return {
+        participantId: participant.id,
+        role: participant.role,
+        participantStatus: participant.status,
+        shareAmountMinor: participant.shareAmountMinor,
+        paidAt: participant.paidAt?.toISOString() ?? null,
+
+        membership: participant.userMembership
+          ? {
+              id: participant.userMembership.id,
+              status: participant.userMembership.status,
+              bookingConfigured:
+                Boolean(
+                  participant.userMembership.bookingPatternSnapshot,
+                ),
+            }
+          : null,
+
+        payment: participant.paymentTransaction
+          ? {
+              id: participant.paymentTransaction.id,
+              status: participant.paymentTransaction.status,
+              checkoutUrl:
+                participant.paymentTransaction.checkoutUrl,
+              amount: participant.paymentTransaction.amount,
+            }
+          : null,
+
+        group: {
+          id: participant.group.id,
+          token: participant.group.inviteToken,
+          status: participant.group.status,
+          matchingEnabled: participant.group.matchingEnabled,
+          requiredMembers:
+            participant.group.config.requiredMembers,
+          joinedCount,
+          remainingPlaces: Math.max(
+            0,
+            participant.group.config.requiredMembers -
+              joinedCount,
+          ),
+          expiresAt:
+            participant.group.expiresAt.toISOString(),
+        },
+
+        offer: {
+          id: participant.group.config.offer.id,
+          title: frozenTitle(
+            participant.group.offerTermsSnapshot,
+            participant.group.config.offer.title,
+          ),
+          titleEn:
+            participant.group.config.offer.titleEn,
+        },
+      };
+    });
+
+    return NextResponse.json(
+      { offers },
+      {
+        headers: {
+          "Cache-Control":
+            "no-store, no-cache, must-revalidate, proxy-revalidate",
+        },
+      },
+    );
+  } catch (error) {
+    console.error("[ME_FRIEND_OFFERS_GET]", error);
+
+    return NextResponse.json(
+      { error: "تعذر تحميل عروض الصحاب.", offers: [] },
+      { status: 500 },
+    );
+  }
+}

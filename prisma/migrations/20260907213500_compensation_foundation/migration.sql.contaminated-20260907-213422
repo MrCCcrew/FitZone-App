@@ -1,0 +1,86 @@
+[dotenv@17.3.1] injecting env (57) from .env -- tip: ⚙️  write to custom object with { processEnv: myObject }
+-- CreateTable
+CREATE TABLE `EmployeeCompensationTerm` (
+    `id` VARCHAR(191) NOT NULL,
+    `employeeId` VARCHAR(191) NOT NULL,
+    `effectiveFrom` DATE NOT NULL,
+    `effectiveTo` DATE NULL,
+    `fixedSalaryMinor` INTEGER NOT NULL,
+    `currency` VARCHAR(191) NOT NULL DEFAULT 'EGP',
+    `notes` TEXT NULL,
+    `createdById` VARCHAR(191) NULL,
+    `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `updatedAt` DATETIME(3) NOT NULL,
+
+    INDEX `EmployeeCompensationTerm_employeeId_effectiveFrom_effectiveT_idx`(`employeeId`, `effectiveFrom`, `effectiveTo`),
+    INDEX `EmployeeCompensationTerm_createdById_createdAt_idx`(`createdById`, `createdAt`),
+    UNIQUE INDEX `EmployeeCompensationTerm_employeeId_effectiveFrom_key`(`employeeId`, `effectiveFrom`),
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- CreateTable
+CREATE TABLE `CoachCompensationTerm` (
+    `id` VARCHAR(191) NOT NULL,
+    `employeeId` VARCHAR(191) NOT NULL,
+    `effectiveFrom` DATE NOT NULL,
+    `effectiveTo` DATE NULL,
+    `coachLevel` VARCHAR(191) NOT NULL,
+    `defaultFixedClassMonthlyMinor` INTEGER NOT NULL,
+    `traineeClassCommissionBps` INTEGER NOT NULL,
+    `privateSessionCommissionBps` INTEGER NOT NULL,
+    `coachMembershipCommissionBps` INTEGER NOT NULL,
+    `currency` VARCHAR(191) NOT NULL DEFAULT 'EGP',
+    `notes` TEXT NULL,
+    `createdById` VARCHAR(191) NULL,
+    `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `updatedAt` DATETIME(3) NOT NULL,
+
+    INDEX `CoachCompensationTerm_employeeId_effectiveFrom_effectiveTo_idx`(`employeeId`, `effectiveFrom`, `effectiveTo`),
+    INDEX `CoachCompensationTerm_coachLevel_effectiveFrom_idx`(`coachLevel`, `effectiveFrom`),
+    INDEX `CoachCompensationTerm_createdById_createdAt_idx`(`createdById`, `createdAt`),
+    UNIQUE INDEX `CoachCompensationTerm_employeeId_effectiveFrom_key`(`employeeId`, `effectiveFrom`),
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- CreateTable
+CREATE TABLE `CoachClassCompensationTerm` (
+    `id` VARCHAR(191) NOT NULL,
+    `employeeId` VARCHAR(191) NOT NULL,
+    `classId` VARCHAR(191) NOT NULL,
+    `effectiveFrom` DATE NOT NULL,
+    `effectiveTo` DATE NULL,
+    `monthlyAmountMinor` INTEGER NOT NULL,
+    `currency` VARCHAR(191) NOT NULL DEFAULT 'EGP',
+    `notes` TEXT NULL,
+    `createdById` VARCHAR(191) NULL,
+    `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `updatedAt` DATETIME(3) NOT NULL,
+
+    INDEX `CoachClassCompensationTerm_employeeId_classId_effectiveFrom__idx`(`employeeId`, `classId`, `effectiveFrom`, `effectiveTo`),
+    INDEX `CoachClassCompensationTerm_classId_effectiveFrom_idx`(`classId`, `effectiveFrom`),
+    INDEX `CoachClassCompensationTerm_createdById_createdAt_idx`(`createdById`, `createdAt`),
+    UNIQUE INDEX `CoachClassCompensationTerm_employeeId_classId_effectiveFrom_key`(`employeeId`, `classId`, `effectiveFrom`),
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- AddForeignKey
+ALTER TABLE `EmployeeCompensationTerm` ADD CONSTRAINT `EmployeeCompensationTerm_employeeId_fkey` FOREIGN KEY (`employeeId`) REFERENCES `EmployeeProfile`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `EmployeeCompensationTerm` ADD CONSTRAINT `EmployeeCompensationTerm_createdById_fkey` FOREIGN KEY (`createdById`) REFERENCES `User`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `CoachCompensationTerm` ADD CONSTRAINT `CoachCompensationTerm_employeeId_fkey` FOREIGN KEY (`employeeId`) REFERENCES `EmployeeProfile`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `CoachCompensationTerm` ADD CONSTRAINT `CoachCompensationTerm_createdById_fkey` FOREIGN KEY (`createdById`) REFERENCES `User`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `CoachClassCompensationTerm` ADD CONSTRAINT `CoachClassCompensationTerm_employeeId_fkey` FOREIGN KEY (`employeeId`) REFERENCES `EmployeeProfile`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `CoachClassCompensationTerm` ADD CONSTRAINT `CoachClassCompensationTerm_classId_fkey` FOREIGN KEY (`classId`) REFERENCES `Class`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `CoachClassCompensationTerm` ADD CONSTRAINT `CoachClassCompensationTerm_createdById_fkey` FOREIGN KEY (`createdById`) REFERENCES `User`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+

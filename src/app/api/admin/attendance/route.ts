@@ -1,0 +1,405 @@
+import { NextResponse } from "next/server";
+import { requireAdminFeature } from "@/lib/admin-guard";
+import { requireAdminPermission } from "@/lib/admin-authorization-server";
+import { db } from "@/lib/db";
+import {
+  ensureMembershipAttendancePass,
+  ensurePrivateAttendancePass,
+  extractAttendanceCode,
+  getPrivateSessionsRemaining,
+  isMembershipEligibleForAttendance,
+  isPrivateApplicationEligibleForAttendance,
+} from "@/lib/attendance";
+import { isBookingOperational } from "@/lib/booking-operational";
+import {
+  consumePrivateSession,
+  markClassAttendance,
+} from "@/lib/attendance-service";
+import { logAudit } from "@/lib/audit-context";
+
+function startOfDay(value: Date) {
+  const date = new Date(value);
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+function endOfDay(value: Date) {
+  const date = new Date(value);
+  date.setHours(23, 59, 59, 999);
+  return date;
+}
+
+function parseRequestedDate(raw: string | null) {
+  const parsed = raw ? new Date(raw) : new Date();
+  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+}
+
+export async function GET(req: Request) {
+  const guard = await requireAdminPermission("qr_attendance");
+  if ("error" in guard) return guard.error;
+
+  const { searchParams } = new URL(req.url);
+  const mode = searchParams.get("mode") === "private" ? "private" : "class";
+  const scheduleId = searchParams.get("scheduleId") || "";
+  const selectedDate = parseRequestedDate(searchParams.get("date"));
+  const from = startOfDay(selectedDate);
+  const to = endOfDay(selectedDate);
+
+  let trainerProfileId: string | null = null;
+  if (guard.role === "trainer") {
+    const t = await db.trainer.findFirst({ where: { userId: guard.session.id }, select: { id: true } });
+    if (!t) return NextResponse.json({ schedules: [], checkIns: [] });
+    trainerProfileId = t.id;
+  }
+
+  const [schedules, checkIns] = await Promise.all([
+    db.schedule.findMany({
+      where: {
+        isActive: true,
+        date: { gte: from, lte: to },
+        ...(trainerProfileId ? { class: { trainerId: trainerProfileId } } : {}),
+      },
+      include: {
+        class: { include: { trainer: true } },
+        bookings: { select: { id: true, status: true } },
+      },
+      orderBy: [{ date: "asc" }, { time: "asc" }],
+      take: 100,
+    }),
+    db.attendanceCheckIn.findMany({
+      where: {
+        createdAt: { gte: from, lte: to },
+        ...(mode === "private"
+          ? { privateSessionApplicationId: { not: null } }
+          : { bookingId: { not: null } }),
+        ...(scheduleId ? { scheduleId } : {}),
+      },
+      include: {
+        user: { select: { id: true, name: true, email: true, phone: true } },
+        pass: { select: { label: true, kind: true } },
+        scannedBy: { select: { id: true, name: true, email: true } },
+        booking: {
+          include: {
+            schedule: {
+              include: {
+                class: { include: { trainer: true } },
+              },
+            },
+          },
+        },
+        privateSessionApplication: {
+          include: {
+            trainer: { select: { id: true, name: true } },
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+    }),
+  ]);
+
+  return NextResponse.json({
+    schedules: schedules.map((schedule) => ({
+      id: schedule.id,
+      date: schedule.date.toISOString(),
+      time: schedule.time,
+      availableSpots: schedule.availableSpots,
+      confirmedCount: schedule.bookings.filter((booking) => booking.status === "confirmed").length,
+      attendedCount: schedule.bookings.filter((booking) => booking.status === "attended").length,
+      class: {
+        id: schedule.class.id,
+        name: schedule.class.name,
+        trainerName: schedule.class.trainer.name,
+      },
+    })),
+    checkIns: checkIns.map((checkIn) => ({
+      id: checkIn.id,
+      createdAt: checkIn.createdAt.toISOString(),
+      checkInType: checkIn.checkInType,
+      notes: checkIn.notes ?? null,
+      user: {
+        id: checkIn.user.id,
+        name: checkIn.user.name ?? "Member",
+        email: checkIn.user.email ?? "",
+        phone: checkIn.user.phone ?? "",
+      },
+      passLabel: checkIn.pass.label ?? null,
+      scannedBy: checkIn.scannedBy
+        ? {
+            id: checkIn.scannedBy.id,
+            name: checkIn.scannedBy.name ?? checkIn.scannedBy.email ?? "Staff",
+          }
+        : null,
+      booking: checkIn.booking
+        ? {
+            id: checkIn.booking.id,
+            className: checkIn.booking.schedule.class.name,
+            trainerName: checkIn.booking.schedule.class.trainer.name,
+            date: checkIn.booking.schedule.date.toISOString(),
+            time: checkIn.booking.schedule.time,
+          }
+        : null,
+      privateSession: checkIn.privateSessionApplication
+        ? {
+            id: checkIn.privateSessionApplication.id,
+            type: checkIn.privateSessionApplication.type,
+            trainerName: checkIn.privateSessionApplication.trainer.name,
+          }
+        : null,
+    })),
+  });
+}
+
+export async function POST(req: Request) {
+  const attendanceSource = req.headers.get("x-attendance-source") === "qr" ? "qr" : "manual";
+  const guard = await requireAdminPermission(
+    attendanceSource === "qr" ? "qr_attendance" : "manual_attendance",
+  );
+  if ("error" in guard) return guard.error;
+
+  // Only admin role can mark attendance
+  if (
+    guard.role !== "admin" &&
+    !guard.permissions.includes("manual_attendance") &&
+    !guard.permissions.includes("qr_attendance")
+  ) {
+    return NextResponse.json(
+      { error: "هذه العملية متاحة للمدير فقط" },
+      { status: 403 }
+    );
+  }
+
+  const body = (await req.json().catch(() => ({}))) as {
+    scanValue?: string;
+    scheduleId?: string | null;
+    mode?: "class" | "private";
+    source?: "manual" | "qr";
+  };
+
+
+  const code = extractAttendanceCode(body.scanValue);
+  const mode = body.mode === "private" ? "private" : "class";
+
+  if (!code) {
+    return NextResponse.json({ error: "كود الحضور غير صالح." }, { status: 400 });
+  }
+
+  const pass = await db.attendancePass.findUnique({
+    where: { code },
+    include: {
+      user: { select: { id: true, name: true, email: true, phone: true, isActive: true } },
+      userMembership: { include: { membership: true } },
+      privateSessionApplication: {
+        select: {
+          id: true,
+          type: true,
+          status: true,
+          paidAt: true,
+          expiresAt: true,
+          sessionsCount: true,
+          trainer: { select: { id: true, name: true } },
+          attendanceCheckIns: { select: { id: true } },
+        },
+      },
+    },
+  });
+
+  if (!pass || !pass.user.isActive) {
+    return NextResponse.json({ error: "هذا الكود غير متاح للحضور." }, { status: 404 });
+  }
+
+  if (pass.userMembership) {
+    if (mode !== "class") {
+      return NextResponse.json(
+        { error: "هذا الكود خاص بحضور الكلاسات فقط." },
+        { status: 400 },
+      );
+    }
+
+    if (!body.scheduleId) {
+      return NextResponse.json(
+        { error: "يجب اختيار الكلاس أو الموعد قبل المسح." },
+        { status: 400 },
+      );
+    }
+
+    /*
+     * The route only resolves which booking the scanned pass + selected
+     * schedule refers to. All attendance business rules live in
+     * markClassAttendance().
+     */
+    const booking = await db.booking.findFirst({
+      where: {
+        userId: pass.userId,
+        userMembershipId: pass.userMembership.id,
+        scheduleId: body.scheduleId,
+        status: { in: ["confirmed", "attended"] },
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!booking) {
+      return NextResponse.json(
+        { error: "لا يوجد حجز مطابق لهذا العميل في هذا الكلاس." },
+        { status: 404 },
+      );
+    }
+
+    const attendanceResult = await markClassAttendance({
+      bookingId: booking.id,
+      scannedByUserId: guard.session.id,
+      source: attendanceSource,
+    });
+
+    if (!attendanceResult.ok) {
+      switch (attendanceResult.code) {
+        case "FUTURE_SESSION":
+          return NextResponse.json(
+            { error: "لا يمكن تسجيل حضور حصة لم يبدأ موعدها بعد." },
+            { status: 400 },
+          );
+
+        case "BOOKING_NOT_FOUND":
+          return NextResponse.json(
+            { error: "لا يوجد حجز مطابق لهذا العميل في هذا الكلاس." },
+            { status: 404 },
+          );
+
+        case "BOOKING_STATUS_CHANGED":
+          return NextResponse.json(
+            {
+              error: "تم تغيير حالة الحجز أثناء تسجيل الحضور. حاول المسح مرة أخرى.",
+              code: "BOOKING_STATUS_CHANGED",
+            },
+            { status: 409 },
+          );
+
+        case "ATTENDANCE_PASS_UNAVAILABLE":
+        case "ATTENDANCE_PASS_NOT_ACTIVE":
+          return NextResponse.json(
+            { error: "هذا الكود غير متاح للحضور." },
+            { status: 404 },
+          );
+
+        case "BOOKING_NOT_OPERATIONAL":
+          return NextResponse.json(
+            { error: "لا يمكن تسجيل الحضور. الاشتراك المرتبط بهذا الحجز غير نشط." },
+            { status: 400 },
+          );
+
+        case "MEMBERSHIP_REQUIRED":
+        case "BOOKING_NOT_CONFIRMED":
+        default:
+          return NextResponse.json(
+            { error: "لا يمكن تسجيل الحضور لهذا الحجز." },
+            { status: 400 },
+          );
+      }
+    }
+
+    if (attendanceResult.status === "already_attended") {
+      return NextResponse.json({
+        success: true,
+        alreadyCheckedIn: true,
+        result: {
+          type: "class",
+          customerName: attendanceResult.customerName,
+          className: attendanceResult.className,
+          trainerName: attendanceResult.trainerName,
+          time: attendanceResult.time,
+        },
+      });
+    }
+
+    void logAudit({
+      action:
+        attendanceSource === "qr"
+          ? "qr_attendance"
+          : "manual_attendance",
+      targetType: "booking",
+      targetId: attendanceResult.bookingId,
+    });
+
+    return NextResponse.json({
+      success: true,
+      membershipExpired: attendanceResult.membershipExpired,
+      sessionsRemaining: attendanceResult.sessionsRemaining,
+      result: {
+        id: attendanceResult.checkInId,
+        type: "class",
+        customerName: attendanceResult.customerName,
+        className: attendanceResult.className,
+        trainerName: attendanceResult.trainerName,
+        time: attendanceResult.time,
+      },
+    });
+  }
+
+  if (!pass.privateSessionApplication) {
+    return NextResponse.json(
+      { error: "تعذر تحديد نوع الحضور لهذا الكود." },
+      { status: 400 },
+    );
+  }
+
+  if (mode !== "private") {
+    return NextResponse.json(
+      { error: "هذا الكود خاص بالبرايفيت أو الميني برايفيت." },
+      { status: 400 },
+    );
+  }
+
+  const privateResult = await consumePrivateSession({
+    passId: pass.id,
+    scannedByUserId: guard.session.id,
+  });
+
+  if (!privateResult.ok) {
+    switch (privateResult.code) {
+      case "PRIVATE_APPLICATION_EXPIRED":
+        return NextResponse.json(
+          { error: "انتهت مدة الجلسات الخاصة." },
+          { status: 400 },
+        );
+
+      case "PRIVATE_SESSIONS_EXHAUSTED":
+        return NextResponse.json(
+          { error: "تم استهلاك كل الجلسات المتاحة لهذا الطلب." },
+          { status: 400 },
+        );
+
+      case "PRIVATE_APPLICATION_NOT_ELIGIBLE":
+        return NextResponse.json(
+          { error: "هذا الطلب غير مؤهل للحضور بعد." },
+          { status: 400 },
+        );
+
+      case "PASS_NOT_FOUND":
+      case "PASS_NOT_ACTIVE":
+        return NextResponse.json(
+          { error: "هذا الكود غير متاح للحضور." },
+          { status: 404 },
+        );
+
+      case "PRIVATE_APPLICATION_NOT_FOUND":
+      default:
+        return NextResponse.json(
+          { error: "تعذر تحديد نوع الحضور لهذا الكود." },
+          { status: 400 },
+        );
+    }
+  }
+
+  return NextResponse.json({
+    success: true,
+    result: {
+      id: privateResult.checkInId,
+      type: privateResult.type,
+      customerName: privateResult.customerName,
+      trainerName: privateResult.trainerName,
+      remainingSessions: privateResult.remainingSessions,
+    },
+  });
+}

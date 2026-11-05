@@ -1,0 +1,548 @@
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
+import { PrismaClient } from "@prisma/client";
+
+const raw = process.env.DATABASE_URL;
+
+if (!raw) {
+  throw new Error("REFUSING: DATABASE_URL missing");
+}
+
+const url = new URL(raw);
+
+if (
+  process.env.APP_ENV !== "test" ||
+  process.env.NODE_ENV !== "test" ||
+  url.protocol !== "mysql:" ||
+  url.hostname !== "127.0.0.1" ||
+  decodeURIComponent(url.username) !== "fitzone_test_user" ||
+  url.pathname !== "/fitzone_test"
+) {
+  throw new Error(
+    "REFUSING: Employee Core API tests require fitzone_test as fitzone_test_user",
+  );
+}
+
+const guardState = vi.hoisted(() => ({
+  mode: "allowed" as "allowed" | "unauthorized" | "forbidden",
+  lastPermission: "",
+}));
+
+vi.mock("@/lib/admin-authorization-server", async () => {
+  const { NextResponse } = await import("next/server");
+
+  return {
+    requireAdminPermission: vi.fn(async (permission: string) => {
+      guardState.lastPermission = permission;
+
+      if (guardState.mode === "unauthorized") {
+        return {
+          error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+        };
+      }
+
+      if (guardState.mode === "forbidden") {
+        return {
+          error: NextResponse.json({ error: "Forbidden" }, { status: 403 }),
+        };
+      }
+
+      return {
+        session: {
+          id: "employee-core-test-admin",
+          email: "employee-core-admin@test.local",
+          name: "Employee Core Test Admin",
+          role: "admin",
+          permissions: [],
+          exp: Math.floor(Date.now() / 1000) + 3600,
+        },
+        role: "admin",
+        permissions: [],
+      };
+    }),
+  };
+});
+
+import * as employeesRoute from "@/app/api/admin/employees/route";
+import * as departmentsRoute from "@/app/api/admin/departments/route";
+import * as positionsRoute from "@/app/api/admin/positions/route";
+import { hasAdminPermission } from "@/lib/admin-authorization";
+
+const db = new PrismaClient();
+
+const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+const departmentCode = `TEST_HR_DEPT_${stamp}`
+  .toUpperCase()
+  .replace(/[^A-Z0-9_]/g, "_");
+
+const positionCode = `TEST_HR_POSITION_${stamp}`
+  .toUpperCase()
+  .replace(/[^A-Z0-9_]/g, "_");
+
+let departmentId = "";
+let positionId = "";
+
+const createdUserIds: string[] = [];
+
+function request(path: string, method: string, body?: Record<string, unknown>) {
+  return new Request(`http://localhost${path}`, {
+    method,
+    headers:
+      body === undefined
+        ? undefined
+        : {
+            "content-type": "application/json",
+          },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+}
+
+async function cleanup() {
+  await db.employeeProfile.deleteMany({
+    where: {
+      employeeCode: {
+        startsWith: "TEST-HR-",
+      },
+    },
+  });
+
+  if (createdUserIds.length) {
+    await db.user.deleteMany({
+      where: {
+        id: {
+          in: createdUserIds.splice(0),
+        },
+      },
+    });
+  }
+
+  await db.department.deleteMany({
+    where: {
+      code: {
+        startsWith: "TEST_HR_",
+      },
+    },
+  });
+
+  await db.position.deleteMany({
+    where: {
+      code: {
+        startsWith: "TEST_HR_",
+      },
+    },
+  });
+}
+
+async function createUser(label: string) {
+  const user = await db.user.create({
+    data: {
+      name: `Employee Core ${label}`,
+      email: `employee-core-${label}-${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2)}@test.local`,
+      role: "staff",
+      adminAccess: false,
+      isActive: true,
+    },
+  });
+
+  createdUserIds.push(user.id);
+  return user;
+}
+
+async function createInternalEmployee(
+  code: string,
+  extra: Record<string, unknown> = {},
+) {
+  return employeesRoute.POST(
+    request("/api/admin/employees", "POST", {
+      employeeCode: code,
+      name: `Internal ${code}`,
+      departmentId,
+      positionId,
+      hireDate: "2026-09-01",
+      payrollEnabled: true,
+      ...extra,
+    }),
+  );
+}
+
+beforeAll(async () => {
+  await db.$connect();
+  await cleanup();
+
+  const department = await db.department.create({
+    data: {
+      code: departmentCode,
+      name: "Test HR Department",
+      isActive: true,
+    },
+  });
+
+  departmentId = department.id;
+
+  const position = await db.position.create({
+    data: {
+      code: positionCode,
+      name: "Test Office Boy",
+      isActive: true,
+    },
+  });
+
+  positionId = position.id;
+});
+
+beforeEach(() => {
+  guardState.mode = "allowed";
+  guardState.lastPermission = "";
+});
+
+afterAll(async () => {
+  await cleanup();
+  await db.$disconnect();
+});
+
+describe("Employee Core permissions", () => {
+  it("admin always has employee permissions", () => {
+    expect(
+      hasAdminPermission({ role: "admin", permissions: [] }, "employees_view"),
+    ).toBe(true);
+
+    expect(
+      hasAdminPermission(
+        { role: "admin", permissions: [] },
+        "employees_manage",
+      ),
+    ).toBe(true);
+  });
+
+  it("employees feature grants employees_view compatibility only", () => {
+    expect(
+      hasAdminPermission(
+        { role: "staff", permissions: ["employees"] },
+        "employees_view",
+      ),
+    ).toBe(true);
+
+    expect(
+      hasAdminPermission(
+        { role: "staff", permissions: ["employees"] },
+        "employees_manage",
+      ),
+    ).toBe(false);
+  });
+
+  it("explicit employees_manage works", () => {
+    expect(
+      hasAdminPermission(
+        { role: "staff", permissions: ["employees_manage"] },
+        "employees_manage",
+      ),
+    ).toBe(true);
+  });
+
+  it("GET employees requires employees_view", async () => {
+    guardState.mode = "unauthorized";
+
+    const response = await employeesRoute.GET(
+      request("/api/admin/employees", "GET"),
+    );
+
+    expect(response.status).toBe(401);
+    expect(guardState.lastPermission).toBe("employees_view");
+  });
+
+  it("POST employees requires employees_manage", async () => {
+    guardState.mode = "forbidden";
+
+    const response = await employeesRoute.POST(
+      request("/api/admin/employees", "POST", {
+        employeeCode: "TEST-HR-FORBIDDEN",
+        name: "Forbidden Employee",
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    expect(guardState.lastPermission).toBe("employees_manage");
+  });
+
+  it("department mutation requires departments_manage", async () => {
+    guardState.mode = "forbidden";
+
+    const response = await departmentsRoute.POST(
+      request("/api/admin/departments", "POST", {
+        code: "TEST_HR_FORBIDDEN_DEPT",
+        name: "Forbidden",
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    expect(guardState.lastPermission).toBe("departments_manage");
+  });
+
+  it("position mutation requires positions_manage", async () => {
+    guardState.mode = "forbidden";
+
+    const response = await positionsRoute.POST(
+      request("/api/admin/positions", "POST", {
+        code: "TEST_HR_FORBIDDEN_POS",
+        name: "Forbidden",
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    expect(guardState.lastPermission).toBe("positions_manage");
+  });
+});
+
+describe("Employee Core identity", () => {
+  it("creates internal employee without User/login account", async () => {
+    const code = `TEST-HR-INTERNAL-${Date.now()}`;
+
+    const response = await createInternalEmployee(code, {
+      name: "Test Office Boy",
+      phone: "01000000000",
+    });
+
+    expect(response.status).toBe(201);
+
+    const body = await response.json();
+
+    expect(body.employee.employeeCode).toBe(code);
+    expect(body.employee.name).toBe("Test Office Boy");
+    expect(body.employee.userId).toBeNull();
+    expect(body.employee.user).toBeNull();
+    expect(body.employee.hasLoginAccount).toBe(false);
+    expect(body.employee.payrollEnabled).toBe(true);
+
+    const stored = await db.employeeProfile.findUniqueOrThrow({
+      where: { employeeCode: code },
+    });
+
+    expect(stored.userId).toBeNull();
+    expect(stored.name).toBe("Test Office Boy");
+  });
+
+  it("creates employee linked to existing User", async () => {
+    const user = await createUser("linked");
+    const code = `TEST-HR-LINKED-${Date.now()}`;
+
+    const response = await createInternalEmployee(code, {
+      name: "Linked Employee",
+      userId: user.id,
+    });
+
+    expect(response.status).toBe(201);
+
+    const body = await response.json();
+
+    expect(body.employee.userId).toBe(user.id);
+    expect(body.employee.hasLoginAccount).toBe(true);
+    expect(body.employee.user.id).toBe(user.id);
+  });
+
+  it("rejects duplicate employeeCode", async () => {
+    const code = `TEST-HR-DUP-CODE-${Date.now()}`;
+
+    expect((await createInternalEmployee(code)).status).toBe(201);
+
+    const second = await createInternalEmployee(code, {
+      name: "Duplicate Code",
+    });
+
+    expect(second.status).toBe(409);
+  });
+
+  it("rejects linking same User twice", async () => {
+    const user = await createUser("duplicate-link");
+
+    const first = await createInternalEmployee(`TEST-HR-USER-A-${Date.now()}`, {
+      userId: user.id,
+    });
+
+    expect(first.status).toBe(201);
+
+    const second = await createInternalEmployee(
+      `TEST-HR-USER-B-${Date.now()}`,
+      {
+        userId: user.id,
+      },
+    );
+
+    expect(second.status).toBe(409);
+  });
+
+  it("rejects invalid Department", async () => {
+    const response = await createInternalEmployee(
+      `TEST-HR-BAD-DEPT-${Date.now()}`,
+      {
+        departmentId: `missing-department-${Date.now()}`,
+      },
+    );
+
+    expect(response.status).toBe(400);
+  });
+
+  it("rejects invalid Position", async () => {
+    const response = await createInternalEmployee(
+      `TEST-HR-BAD-POS-${Date.now()}`,
+      {
+        positionId: `missing-position-${Date.now()}`,
+      },
+    );
+
+    expect(response.status).toBe(400);
+  });
+
+  it("keeps employeeCode and userId immutable through HR PATCH", async () => {
+    const code = `TEST-HR-IMMUTABLE-${Date.now()}`;
+
+    const created = await createInternalEmployee(code, {
+      name: "Before Update",
+    });
+
+    expect(created.status).toBe(201);
+
+    const createdBody = await created.json();
+    const employeeId = createdBody.employee.id;
+
+    const attemptedUser = await createUser("patch-attempt");
+
+    const patch = await employeesRoute.PATCH(
+      request("/api/admin/employees", "PATCH", {
+        id: employeeId,
+        employeeCode: "TEST-HR-SHOULD-NOT-CHANGE",
+        userId: attemptedUser.id,
+        name: "After Update",
+        employmentStatus: "on_leave",
+        payrollEnabled: false,
+      }),
+    );
+
+    expect(patch.status).toBe(200);
+
+    const stored = await db.employeeProfile.findUniqueOrThrow({
+      where: { id: employeeId },
+    });
+
+    expect(stored.employeeCode).toBe(code);
+    expect(stored.userId).toBeNull();
+    expect(stored.name).toBe("After Update");
+    expect(stored.employmentStatus).toBe("on_leave");
+    expect(stored.payrollEnabled).toBe(false);
+  });
+
+  it("allows Department and Position changes without identity change", async () => {
+    const secondDepartment = await db.department.create({
+      data: {
+        code: `TEST_HR_SECOND_DEPT_${Date.now()}`,
+        name: "Second HR Department",
+      },
+    });
+
+    const secondPosition = await db.position.create({
+      data: {
+        code: `TEST_HR_SECOND_POS_${Date.now()}`,
+        name: "Second HR Position",
+      },
+    });
+
+    const code = `TEST-HR-MOVE-${Date.now()}`;
+    const created = await createInternalEmployee(code);
+    const body = await created.json();
+
+    const patch = await employeesRoute.PATCH(
+      request("/api/admin/employees", "PATCH", {
+        id: body.employee.id,
+        departmentId: secondDepartment.id,
+        positionId: secondPosition.id,
+      }),
+    );
+
+    expect(patch.status).toBe(200);
+
+    const stored = await db.employeeProfile.findUniqueOrThrow({
+      where: { id: body.employee.id },
+    });
+
+    expect(stored.departmentId).toBe(secondDepartment.id);
+    expect(stored.positionId).toBe(secondPosition.id);
+    expect(stored.employeeCode).toBe(code);
+  });
+});
+
+describe("Department and Position lifecycle", () => {
+  it("deactivates Department without hard delete", async () => {
+    const code = `TEST_HR_API_DEPT_${Date.now()}`;
+
+    const create = await departmentsRoute.POST(
+      request("/api/admin/departments", "POST", {
+        code,
+        name: "Temporary Department",
+      }),
+    );
+
+    expect(create.status).toBe(201);
+
+    const body = await create.json();
+
+    const patch = await departmentsRoute.PATCH(
+      request("/api/admin/departments", "PATCH", {
+        id: body.department.id,
+        isActive: false,
+      }),
+    );
+
+    expect(patch.status).toBe(200);
+
+    const stored = await db.department.findUniqueOrThrow({
+      where: { id: body.department.id },
+    });
+
+    expect(stored.isActive).toBe(false);
+  });
+
+  it("deactivates Position without hard delete", async () => {
+    const code = `TEST_HR_API_POS_${Date.now()}`;
+
+    const create = await positionsRoute.POST(
+      request("/api/admin/positions", "POST", {
+        code,
+        name: "Temporary Position",
+      }),
+    );
+
+    expect(create.status).toBe(201);
+
+    const body = await create.json();
+
+    const patch = await positionsRoute.PATCH(
+      request("/api/admin/positions", "PATCH", {
+        id: body.position.id,
+        isActive: false,
+      }),
+    );
+
+    expect(patch.status).toBe(200);
+
+    const stored = await db.position.findUniqueOrThrow({
+      where: { id: body.position.id },
+    });
+
+    expect(stored.isActive).toBe(false);
+  });
+
+  it("does not expose hard-delete handlers", () => {
+    expect("DELETE" in employeesRoute).toBe(false);
+    expect("DELETE" in departmentsRoute).toBe(false);
+    expect("DELETE" in positionsRoute).toBe(false);
+  });
+});

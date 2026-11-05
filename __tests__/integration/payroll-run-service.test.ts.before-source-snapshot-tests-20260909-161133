@@ -1,0 +1,529 @@
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+
+import type { PrismaClient, User } from "@prisma/client";
+
+let db: PrismaClient;
+let actor: User;
+
+const stamp = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+const employeeIds: string[] = [];
+
+beforeAll(async () => {
+  const mod = await import("@/lib/db");
+
+  db = mod.db as PrismaClient;
+
+  const current = await db.$queryRawUnsafe<Array<{ db: string }>>(
+    "SELECT DATABASE() AS db",
+  );
+
+  if (current[0]?.db !== "fitzone_test") {
+    throw new Error("REFUSING_NON_TEST_DB");
+  }
+
+  actor = await db.user.create({
+    data: {
+      email: `payroll-${stamp}@example.test`,
+      name: "Payroll Test Actor",
+      role: "super_admin",
+    },
+  });
+});
+
+afterAll(async () => {
+  if (!db) return;
+
+  const runs = await db.payrollRun.findMany({
+    where: {
+      monthKey: {
+        startsWith: "205",
+      },
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  const runIds = runs.map((r) => r.id);
+
+  const runEmployees = await db.payrollRunEmployee.findMany({
+    where: {
+      payrollRunId: {
+        in: runIds,
+      },
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  await db.payrollRunItem.deleteMany({
+    where: {
+      payrollRunEmployeeId: {
+        in: runEmployees.map((r) => r.id),
+      },
+    },
+  });
+
+  await db.payrollRunEmployee.deleteMany({
+    where: {
+      payrollRunId: {
+        in: runIds,
+      },
+    },
+  });
+
+  await db.payrollRun.deleteMany({
+    where: {
+      id: {
+        in: runIds,
+      },
+    },
+  });
+
+  await db.payrollAdjustment.deleteMany({
+    where: {
+      employeeId: {
+        in: employeeIds,
+      },
+    },
+  });
+
+  await db.employeeLoanInstallment.deleteMany({
+    where: {
+      loan: {
+        employeeId: {
+          in: employeeIds,
+        },
+      },
+    },
+  });
+
+  await db.employeeLoan.deleteMany({
+    where: {
+      employeeId: {
+        in: employeeIds,
+      },
+    },
+  });
+
+  await db.attendanceDeductionOccurrence.deleteMany({
+    where: {
+      deduction: {
+        employeeId: {
+          in: employeeIds,
+        },
+      },
+    },
+  });
+
+  await db.attendanceDeduction.deleteMany({
+    where: {
+      employeeId: {
+        in: employeeIds,
+      },
+    },
+  });
+
+  await db.privateSessionEarning.deleteMany({
+    where: {
+      employeeIdSnapshot: {
+        in: employeeIds,
+      },
+    },
+  });
+
+  await db.coachMembershipEarning.deleteMany({
+    where: {
+      employeeIdSnapshot: {
+        in: employeeIds,
+      },
+    },
+  });
+
+  await db.traineeClassEarning.deleteMany({
+    where: {
+      actualEmployeeId: {
+        in: employeeIds,
+      },
+    },
+  });
+
+  await db.fixedClassEarningOccurrence.deleteMany({
+    where: {
+      earning: {
+        employeeId: {
+          in: employeeIds,
+        },
+      },
+    },
+  });
+
+  await db.fixedClassEarning.deleteMany({
+    where: {
+      employeeId: {
+        in: employeeIds,
+      },
+    },
+  });
+
+  await db.employeeCompensationTerm.deleteMany({
+    where: {
+      employeeId: {
+        in: employeeIds,
+      },
+    },
+  });
+
+  await db.auditLog.deleteMany({
+    where: {
+      actorUserId: actor?.id,
+    },
+  });
+
+  await db.employeeProfile.deleteMany({
+    where: {
+      id: {
+        in: employeeIds,
+      },
+    },
+  });
+
+  if (actor?.id) {
+    await db.user.delete({
+      where: {
+        id: actor.id,
+      },
+    });
+  }
+});
+
+describe("PayrollRunService — real fitzone_test", () => {
+  const service = () => import("@/lib/employees/payroll-run-service");
+
+  const actorInput = () => ({
+    userId: actor.id,
+    name: actor.name,
+    email: actor.email,
+    role: actor.role,
+  });
+
+  async function createEmployee(code: string, monthKey: string) {
+    const employee = await db.employeeProfile.create({
+      data: {
+        employeeCode: `${code}-${stamp}`.slice(0, 45),
+        name: `Payroll ${code}`,
+        employmentStatus: "active",
+        payrollEnabled: true,
+
+        // Test isolation: this employee participates only
+        // in the PayrollRun month owned by this scenario.
+        hireDate: new Date(`${monthKey}-01T00:00:00.000Z`),
+        employmentEndDate: new Date(`${monthKey}-28T23:59:59.000Z`),
+      },
+    });
+
+    employeeIds.push(employee.id);
+
+    return employee;
+  }
+
+  it("blocks employee with no full-month compensation term", async () => {
+    const employee = await createEmployee("BLOCK", "2050-01");
+
+    const { calculatePayrollRun } = await service();
+
+    const run = await calculatePayrollRun("2050-01", actorInput());
+
+    const row = run.employees.find((x) => x.employeeId === employee.id);
+
+    expect(row?.status).toBe("blocked");
+
+    expect(row?.blockReason).toBe("MISSING_COMPENSATION_TERM");
+
+    expect(run.status).toBe("blocked");
+  });
+
+  it("blocks ambiguous mid-month salary change", async () => {
+    const employee = await createEmployee("MID", "2050-02");
+
+    await db.employeeCompensationTerm.createMany({
+      data: [
+        {
+          employeeId: employee.id,
+          effectiveFrom: new Date("2050-02-01T00:00:00.000Z"),
+          effectiveTo: new Date("2050-02-14T00:00:00.000Z"),
+          fixedSalaryMinor: 300000,
+          currency: "EGP",
+          createdById: actor.id,
+        },
+        {
+          employeeId: employee.id,
+          effectiveFrom: new Date("2050-02-15T00:00:00.000Z"),
+          fixedSalaryMinor: 400000,
+          currency: "EGP",
+          createdById: actor.id,
+        },
+      ],
+    });
+
+    const { calculatePayrollRun } = await service();
+
+    const run = await calculatePayrollRun("2050-02", actorInput());
+
+    const row = run.employees.find((x) => x.employeeId === employee.id);
+
+    expect(row?.status).toBe("blocked");
+
+    expect(row?.blockReason).toBe("MULTIPLE_COMPENSATION_TERMS_IN_MONTH");
+  });
+
+  it("aggregates fixed salary and approved adjustment", async () => {
+    const employee = await createEmployee("BASE", "2051-01");
+
+    await db.employeeCompensationTerm.create({
+      data: {
+        employeeId: employee.id,
+        effectiveFrom: new Date("2051-01-01T00:00:00.000Z"),
+        fixedSalaryMinor: 500000,
+        currency: "EGP",
+        createdById: actor.id,
+      },
+    });
+
+    const adjustment = await db.payrollAdjustment.create({
+      data: {
+        employeeId: employee.id,
+        monthKey: "2051-01",
+        direction: "earning",
+        sourceType: "manual",
+        amountMinor: 25000,
+        currency: "EGP",
+        reason: "Performance bonus",
+        status: "approved",
+        approvedAt: new Date(),
+        approvedById: actor.id,
+        createdById: actor.id,
+      },
+    });
+
+    const { calculatePayrollRun } = await service();
+
+    const run = await calculatePayrollRun("2051-01", actorInput());
+
+    const row = run.employees.find((x) => x.employeeId === employee.id);
+
+    expect(row?.status).toBe("calculated");
+
+    expect(row?.fixedSalaryMinor).toBe(500000);
+
+    expect(row?.adjustmentEarningMinor).toBe(25000);
+
+    expect(row?.grossEarningsMinor).toBe(525000);
+
+    expect(row?.netPayMinor).toBe(525000);
+
+    expect(row?.items.some((item) => item.sourceId === adjustment.id)).toBe(
+      true,
+    );
+  });
+
+  it("aggregates approved loan and deduction adjustment", async () => {
+    const employee = await createEmployee("DED", "2052-01");
+
+    await db.employeeCompensationTerm.create({
+      data: {
+        employeeId: employee.id,
+        effectiveFrom: new Date("2052-01-01T00:00:00.000Z"),
+        fixedSalaryMinor: 400000,
+        currency: "EGP",
+        createdById: actor.id,
+      },
+    });
+
+    const loan = await db.employeeLoan.create({
+      data: {
+        employeeId: employee.id,
+        principalMinor: 100000,
+        currency: "EGP",
+        startMonthKey: "2052-01",
+        status: "active",
+        reason: "Employee loan",
+        createdById: actor.id,
+        approvedAt: new Date(),
+        approvedById: actor.id,
+      },
+    });
+
+    await db.employeeLoanInstallment.create({
+      data: {
+        loanId: loan.id,
+        monthKey: "2052-01",
+        amountMinor: 30000,
+        currency: "EGP",
+        status: "approved",
+        approvedAt: new Date(),
+        approvedById: actor.id,
+      },
+    });
+
+    await db.payrollAdjustment.create({
+      data: {
+        employeeId: employee.id,
+        monthKey: "2052-01",
+        direction: "deduction",
+        sourceType: "manual",
+        amountMinor: 10000,
+        currency: "EGP",
+        reason: "Manual deduction",
+        status: "approved",
+        approvedAt: new Date(),
+        approvedById: actor.id,
+        createdById: actor.id,
+      },
+    });
+
+    const { calculatePayrollRun } = await service();
+
+    const run = await calculatePayrollRun("2052-01", actorInput());
+
+    const row = run.employees.find((x) => x.employeeId === employee.id);
+
+    expect(row?.loanDeductionMinor).toBe(30000);
+
+    expect(row?.adjustmentDeductionMinor).toBe(10000);
+
+    expect(row?.totalDeductionsMinor).toBe(40000);
+
+    expect(row?.netPayMinor).toBe(360000);
+  });
+
+  it("recalculation replaces payroll items without duplication", async () => {
+    const { calculatePayrollRun } = await service();
+
+    const first = await calculatePayrollRun("2052-01", actorInput());
+
+    const second = await calculatePayrollRun("2052-01", actorInput());
+
+    expect(second.id).toBe(first.id);
+
+    const duplicateGroups = await db.$queryRawUnsafe<
+      Array<{
+        c: bigint;
+      }>
+    >(`
+            SELECT COUNT(*) AS c
+            FROM (
+              SELECT
+                payrollRunEmployeeId,
+                sourceType,
+                sourceId,
+                COUNT(*) AS n
+              FROM PayrollRunItem
+              WHERE payrollRunEmployeeId IN (
+                SELECT id
+                FROM PayrollRunEmployee
+                WHERE payrollRunId='${second.id}'
+              )
+              GROUP BY
+                payrollRunEmployeeId,
+                sourceType,
+                sourceId
+              HAVING COUNT(*) > 1
+            ) x
+          `);
+
+    expect(Number(duplicateGroups[0]?.c ?? 0)).toBe(0);
+  });
+
+  it("finalization applies owned approved adjustment and loan sources", async () => {
+    const { calculatePayrollRun, finalizePayrollRun } = await service();
+
+    const run = await calculatePayrollRun("2052-01", actorInput());
+
+    expect(run.status).toBe("calculated");
+
+    const finalized = await finalizePayrollRun("2052-01", actorInput());
+
+    expect(finalized.status).toBe("finalized");
+
+    expect(
+      await db.payrollAdjustment.count({
+        where: {
+          monthKey: "2052-01",
+          status: "applied",
+          payrollRunId: finalized.id,
+        },
+      }),
+    ).toBe(1);
+
+    expect(
+      await db.employeeLoanInstallment.count({
+        where: {
+          monthKey: "2052-01",
+          status: "applied",
+          payrollRunId: finalized.id,
+        },
+      }),
+    ).toBe(1);
+  });
+
+  it("finalization is idempotent", async () => {
+    const { finalizePayrollRun } = await service();
+
+    const a = await finalizePayrollRun("2052-01", actorInput());
+
+    const b = await finalizePayrollRun("2052-01", actorInput());
+
+    expect(b.id).toBe(a.id);
+
+    expect(
+      await db.auditLog.count({
+        where: {
+          targetId: a.id,
+          action: "payroll_run_finalize",
+        },
+      }),
+    ).toBe(1);
+  });
+
+  it("finalized run is immutable", async () => {
+    const { calculatePayrollRun } = await service();
+
+    await expect(calculatePayrollRun("2052-01", actorInput())).rejects.toThrow(
+      "PAYROLL_RUN_FINALIZED_IMMUTABLE",
+    );
+  });
+
+  it("mandatory audit failure rolls back calculation", async () => {
+    const employee = await createEmployee("AUDIT", "2053-01");
+
+    await db.employeeCompensationTerm.create({
+      data: {
+        employeeId: employee.id,
+        effectiveFrom: new Date("2053-01-01T00:00:00.000Z"),
+        fixedSalaryMinor: 300000,
+        currency: "EGP",
+        createdById: actor.id,
+      },
+    });
+
+    const { calculatePayrollRun } = await service();
+
+    await expect(
+      calculatePayrollRun("2053-01", {
+        ...actorInput(),
+        name: "X".repeat(1000),
+      }),
+    ).rejects.toThrow();
+
+    expect(
+      await db.payrollRun.count({
+        where: {
+          monthKey: "2053-01",
+        },
+      }),
+    ).toBe(0);
+  });
+});

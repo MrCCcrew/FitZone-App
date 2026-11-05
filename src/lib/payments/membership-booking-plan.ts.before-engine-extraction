@@ -1,0 +1,946 @@
+import {
+  getEligibilityPolicySnapshotForSource,
+  isClassAllowedByEligibilitySnapshot,
+  type EligibilityPolicySnapshot,
+  type EligibilitySource,
+} from "@/lib/get-eligible-classes";
+import {
+  scheduleSlotInstant,
+  scheduleWeekday,
+} from "@/lib/fitzone-time";
+
+export type MembershipBookingAction = "back_to_schedule" | "back_to_plan";
+
+export class MembershipBookingPlanError extends Error {
+  action?: MembershipBookingAction;
+
+  constructor(message: string, action?: MembershipBookingAction) {
+    super(message);
+    this.name = "MembershipBookingPlanError";
+    this.action = action;
+  }
+}
+
+type BookingPlanInput = {
+  tx: any;
+  userId: string;
+  userMembershipId: string;
+  startDate: Date;
+  endDate: Date;
+  selectedScheduleIds: string[];
+  source: EligibilitySource;
+  plan: {
+    kind: string;
+    sessionsCount: number | null;
+    duration: number;
+  };
+};
+
+export async function applyMembershipBookingPlanTx({
+  tx,
+  userId,
+  userMembershipId,
+  startDate,
+  endDate,
+  selectedScheduleIds: rawSelectedScheduleIds,
+  source,
+  plan,
+}: BookingPlanInput) {
+  const selectedScheduleIds = [
+    ...new Set(
+      rawSelectedScheduleIds.filter(
+        (id) => typeof id === "string" && id.trim() !== "",
+      ),
+    ),
+  ];
+
+  /*
+   * CONTRACT-FIRST FLOW
+   *
+   * Once bookingPatternSnapshot exists, retries/recovery must apply that
+   * immutable contract and must not depend on newly supplied seed IDs or
+   * mutable plan terms.
+   */
+  const preexistingContractRecord =
+    await tx.userMembership.findUnique({
+      where: { id: userMembershipId },
+      select: { bookingPatternSnapshot: true },
+    });
+
+  const hasFrozenBookingContract =
+    Boolean(preexistingContractRecord?.bookingPatternSnapshot);
+
+  /*
+   * Seed validation is purchase-time validation only.
+   * Existing contracts deliberately validate zero submitted seeds here;
+   * the immutable patterns/seed IDs are loaded later from the contract.
+   */
+  const purchaseValidationScheduleIds =
+    hasFrozenBookingContract
+      ? []
+      : selectedScheduleIds;
+
+  if (
+    selectedScheduleIds.length === 0 &&
+    !hasFrozenBookingContract
+  ) {
+    return {
+      selectedScheduleIds,
+      plannedScheduleIds: [] as string[],
+      createdCount: 0,
+      bookedSchedules: [] as {
+        date: Date;
+        time: string;
+        className: string;
+        trainerName: string;
+      }[],
+    };
+  }
+
+  if (!hasFrozenBookingContract) {
+    const weekCap = Math.min(12, plan.sessionsCount ?? 12);
+
+    if (selectedScheduleIds.length > weekCap) {
+      throw new MembershipBookingPlanError(
+        `لا يمكن اختيار أكثر من ${weekCap} موعداً في الأسبوع لهذا الاشتراك.`,
+        "back_to_schedule",
+      );
+    }
+
+    if (
+      plan.kind !== "trial" &&
+      plan.sessionsCount &&
+      plan.duration
+    ) {
+      const minPerWeek = Math.ceil(
+        (plan.sessionsCount * 7) / plan.duration,
+      );
+
+      if (minPerWeek > weekCap) {
+        throw new MembershipBookingPlanError(
+          `هذه الباقة تتطلب حضور ${minPerWeek} مواعيد في الأسبوع على الأقل ` +
+            `لتغطية ${plan.sessionsCount} حصة خلال ${plan.duration} يوم، ` +
+            `وهو أكثر من الحد الأقصى المسموح به. يرجى اختيار باقة مختلفة.`,
+          "back_to_plan",
+        );
+      }
+
+      if (selectedScheduleIds.length < minPerWeek) {
+        const theoreticalTotal = Math.floor(
+          selectedScheduleIds.length * (plan.duration / 7),
+        );
+
+        throw new MembershipBookingPlanError(
+          `عدد المواعيد المختارة (${selectedScheduleIds.length} في الأسبوع) لا يكفي لتغطية حصص اشتراكك. ` +
+            `بهذا الاختيار ستحصلين على ${theoreticalTotal} حصة فقط خلال مدة الاشتراك (${plan.duration} يوم)، ` +
+            `بينما اشتراكك يشمل ${plan.sessionsCount} حصة. ` +
+            `يلزم اختيار ${minPerWeek} مواعيد في الأسبوع على الأقل.`,
+          "back_to_schedule",
+        );
+      }
+    }
+  }
+
+  const week1Schedules = await tx.schedule.findMany({
+    where: {
+      id: { in: purchaseValidationScheduleIds },
+    },
+    include: {
+      class: {
+        include: {
+          trainer: true,
+        },
+      },
+    },
+  });
+
+  if (
+    week1Schedules.length !==
+    purchaseValidationScheduleIds.length
+  ) {
+    throw new MembershipBookingPlanError(
+      "تعذر العثور على بعض المواعيد المختارة.",
+      "back_to_schedule",
+    );
+  }
+
+  /*
+   * BUSINESS-TIME VALIDATION:
+   * Every selected seed schedule must itself fall inside the membership
+   * period using the real Africa/Cairo session instant.
+   *
+   * Schedule.date alone is only a calendar-date anchor and must never be
+   * compared directly with membership startDate/endDate.
+   */
+  for (const schedule of week1Schedules) {
+    const slotInstant = scheduleSlotInstant(
+      new Date(schedule.date),
+      schedule.time,
+    );
+
+    if (slotInstant.getTime() < startDate.getTime()) {
+      throw new MembershipBookingPlanError(
+        "أحد المواعيد المختارة بدأ بالفعل قبل تفعيل الاشتراك.",
+        "back_to_schedule",
+      );
+    }
+
+    if (slotInstant.getTime() > endDate.getTime()) {
+      throw new MembershipBookingPlanError(
+        "أحد المواعيد المختارة خارج مدة الاشتراك.",
+        "back_to_schedule",
+      );
+    }
+  }
+
+  /*
+   * IMMUTABLE ELIGIBILITY:
+   *
+   * The first successful purchase validation freezes the entitlement policy.
+   * Later payment recovery/retries must use that frozen policy instead of
+   * re-reading mutable offer/membership configuration.
+   */
+  const existingMembershipSnapshot =
+    await tx.userMembership.findUnique({
+      where: { id: userMembershipId },
+      select: { bookingPatternSnapshot: true },
+    });
+
+  let frozenEligibility: EligibilityPolicySnapshot | null = null;
+
+  if (existingMembershipSnapshot?.bookingPatternSnapshot) {
+    try {
+      const parsed = JSON.parse(
+        existingMembershipSnapshot.bookingPatternSnapshot,
+      ) as {
+        eligibility?: EligibilityPolicySnapshot;
+      };
+
+      if (
+        parsed?.eligibility &&
+        (parsed.eligibility.mode === "class_ids" ||
+          parsed.eligibility.mode === "class_types")
+      ) {
+        frozenEligibility = parsed.eligibility;
+      }
+    } catch {
+      // Legacy/invalid snapshots fall back to source capture below.
+    }
+  }
+
+  if (!frozenEligibility) {
+    frozenEligibility =
+      await getEligibilityPolicySnapshotForSource(source);
+  }
+
+  const selectedClassIds: string[] = [
+    ...new Set<string>(
+      week1Schedules.map(
+        (schedule: { classId: string }) => schedule.classId,
+      ),
+    ),
+  ];
+
+  for (const classId of selectedClassIds) {
+    const allowed =
+      await isClassAllowedByEligibilitySnapshot(
+        frozenEligibility,
+        classId,
+      );
+
+    if (!allowed) {
+      throw new MembershipBookingPlanError(
+        "أحد الكلاسات المختارة غير مشمول ضمن هذا الاشتراك أو العرض.",
+        "back_to_schedule",
+      );
+    }
+  }
+
+  // Maximum two selected sessions on the same day.
+  const dayCounts = new Map<string, number>();
+
+  for (const schedule of week1Schedules) {
+    const dayKey = new Date(schedule.date)
+      .toISOString()
+      .slice(0, 10);
+
+    dayCounts.set(
+      dayKey,
+      (dayCounts.get(dayKey) ?? 0) + 1,
+    );
+  }
+
+  for (const count of dayCounts.values()) {
+    if (count > 2) {
+      throw new MembershipBookingPlanError(
+        "لا يمكن اختيار أكثر من حصتين في اليوم الواحد.",
+        "back_to_schedule",
+      );
+    }
+  }
+
+  /*
+   * Important for idempotency:
+   * a schedule may currently have zero free spots because THIS membership
+   * already owns its reservation. That must not make a repeated application
+   * fail.
+   */
+  const existingWeek1ForCurrentMembership =
+    await tx.booking.findMany({
+      where: {
+        userMembershipId,
+        scheduleId: {
+          in: purchaseValidationScheduleIds,
+        },
+      },
+      select: {
+        scheduleId: true,
+      },
+    });
+
+  const ownedWeek1Ids = new Set(
+    existingWeek1ForCurrentMembership.map(
+      (booking: { scheduleId: string }) =>
+        booking.scheduleId,
+    ),
+  );
+
+  for (const schedule of week1Schedules) {
+    if (!schedule.isActive) {
+      throw new MembershipBookingPlanError(
+        "أحد المواعيد المختارة غير متاح حاليًا.",
+        "back_to_schedule",
+      );
+    }
+
+    if (
+      schedule.availableSpots <= 0 &&
+      !ownedWeek1Ids.has(schedule.id)
+    ) {
+      throw new MembershipBookingPlanError(
+        "أحد المواعيد المختارة لم يعد به أماكن متاحة.",
+        "back_to_schedule",
+      );
+    }
+  }
+
+  /*
+   * IMMUTABLE BOOKING CONTRACT
+   *
+   * The first successful purchase freezes:
+   * - purchase source
+   * - class eligibility
+   * - selected weekly pattern
+   * - seed schedule IDs
+   * - duration/session policy
+   *
+   * Recovery/retry may APPLY this contract, but must never rewrite it.
+   */
+  type BookingPattern = {
+    classId: string;
+    time: string;
+    dayOfWeek: number;
+  };
+
+  type BookingPolicy = {
+    durationDays: number;
+    totalSessions: number | null;
+    minSessionsPerWeek: number | null;
+    selectedSessionsPerWeek: number;
+    selectedDaysPerWeek: number;
+    maxSessionsPerDay: number;
+  };
+
+  type BookingContract = {
+    version: 1;
+    timezone: "Africa/Cairo";
+    source: EligibilitySource;
+    eligibility: EligibilityPolicySnapshot;
+    seedScheduleIds: string[];
+    patterns: BookingPattern[];
+    policy: BookingPolicy;
+  };
+
+  const parseBookingContract = (
+    value: string | null | undefined,
+  ): BookingContract | null => {
+    if (!value) return null;
+
+    let parsed: unknown;
+
+    try {
+      parsed = JSON.parse(value);
+    } catch {
+      throw new Error(
+        `Invalid bookingPatternSnapshot JSON for membership ${userMembershipId}`,
+      );
+    }
+
+    if (!parsed || typeof parsed !== "object") {
+      throw new Error(
+        `Invalid bookingPatternSnapshot for membership ${userMembershipId}`,
+      );
+    }
+
+    const candidate = parsed as Partial<BookingContract>;
+
+    if (
+      candidate.version !== 1 ||
+      candidate.timezone !== "Africa/Cairo" ||
+      !candidate.source ||
+      !candidate.eligibility ||
+      !Array.isArray(candidate.patterns) ||
+      !candidate.policy
+    ) {
+      throw new Error(
+        `Unsupported bookingPatternSnapshot for membership ${userMembershipId}`,
+      );
+    }
+
+    if (
+      candidate.source.type !== "offer" &&
+      candidate.source.type !== "membership" &&
+      candidate.source.type !== "package"
+    ) {
+      throw new Error(
+        `Invalid booking source snapshot for membership ${userMembershipId}`,
+      );
+    }
+
+    if (
+      candidate.eligibility.mode !== "class_ids" &&
+      candidate.eligibility.mode !== "class_types"
+    ) {
+      throw new Error(
+        `Invalid eligibility snapshot for membership ${userMembershipId}`,
+      );
+    }
+
+    const validPatterns = candidate.patterns.every(
+      (pattern) =>
+        pattern &&
+        typeof pattern.classId === "string" &&
+        pattern.classId.length > 0 &&
+        typeof pattern.time === "string" &&
+        Number.isInteger(pattern.dayOfWeek) &&
+        pattern.dayOfWeek >= 0 &&
+        pattern.dayOfWeek <= 6,
+    );
+
+    if (!validPatterns || candidate.patterns.length === 0) {
+      throw new Error(
+        `Invalid booking patterns for membership ${userMembershipId}`,
+      );
+    }
+
+    const policy = candidate.policy;
+
+    if (
+      !Number.isFinite(policy.durationDays) ||
+      policy.durationDays <= 0 ||
+      !Number.isFinite(policy.selectedSessionsPerWeek) ||
+      policy.selectedSessionsPerWeek <= 0 ||
+      !Number.isFinite(policy.selectedDaysPerWeek) ||
+      policy.selectedDaysPerWeek <= 0 ||
+      policy.maxSessionsPerDay !== 2
+    ) {
+      throw new Error(
+        `Invalid booking policy for membership ${userMembershipId}`,
+      );
+    }
+
+    return {
+      version: 1,
+      timezone: "Africa/Cairo",
+      source: candidate.source,
+      eligibility: candidate.eligibility,
+      seedScheduleIds: Array.isArray(candidate.seedScheduleIds)
+        ? [
+            ...new Set(
+              candidate.seedScheduleIds.filter(
+                (id): id is string =>
+                  typeof id === "string" && id.length > 0,
+              ),
+            ),
+          ]
+        : [...selectedScheduleIds],
+      patterns: candidate.patterns,
+      policy,
+    };
+  };
+
+  const patternKey = (
+    classId: string,
+    time: string,
+    dayOfWeek: number,
+  ) => `${classId}|${time}|${dayOfWeek}`;
+
+  /*
+   * Build the candidate contract from the customer's validated seed choices.
+   * This candidate is persisted only if the membership does not already have
+   * a contract.
+   */
+  const proposedPatterns: BookingPattern[] =
+    week1Schedules.map((schedule: any) => ({
+      classId: schedule.classId,
+      time: schedule.time,
+      dayOfWeek: scheduleWeekday(
+        new Date(schedule.date),
+      ),
+    }));
+
+  const proposedMinSessionsPerWeek =
+    plan.kind !== "trial" &&
+    plan.sessionsCount &&
+    plan.duration
+      ? Math.ceil(
+          (plan.sessionsCount * 7) / plan.duration,
+        )
+      : null;
+
+  const proposedSelectedDayCount = new Set(
+    proposedPatterns.map(
+      (pattern) => pattern.dayOfWeek,
+    ),
+  ).size;
+
+  const proposedContract: BookingContract = {
+    version: 1,
+    timezone: "Africa/Cairo",
+    source,
+    eligibility: frozenEligibility,
+    seedScheduleIds: [...selectedScheduleIds],
+    patterns: proposedPatterns,
+    policy: {
+      durationDays: plan.duration,
+      totalSessions: plan.sessionsCount,
+      minSessionsPerWeek:
+        proposedMinSessionsPerWeek,
+      selectedSessionsPerWeek:
+        proposedPatterns.length,
+      selectedDaysPerWeek:
+        proposedSelectedDayCount,
+      maxSessionsPerDay: 2,
+    },
+  };
+
+  /*
+   * Read the contract again because the earlier eligibility lookup may have
+   * observed NULL while another concurrent request was preparing the same
+   * membership.
+   */
+  const currentSnapshot =
+    await tx.userMembership.findUnique({
+      where: { id: userMembershipId },
+      select: { bookingPatternSnapshot: true },
+    });
+
+  let bookingContract = parseBookingContract(
+    currentSnapshot?.bookingPatternSnapshot,
+  );
+
+  if (bookingContract) {
+    /*
+     * A membership can never switch purchase source after its contract has
+     * been frozen. Treat a mismatch as an integrity error rather than silently
+     * re-reading mutable configuration.
+     */
+    if (
+      bookingContract.source.type !== source.type ||
+      bookingContract.source.id !== source.id
+    ) {
+      throw new Error(
+        `Booking contract source mismatch for membership ${userMembershipId}`,
+      );
+    }
+  } else {
+    const serializedContract =
+      JSON.stringify(proposedContract);
+
+    /*
+     * Atomic first-writer-wins freeze.
+     *
+     * updateMany + bookingPatternSnapshot:null prevents two simultaneous
+     * webhook/recovery requests from overwriting each other's contract.
+     */
+    const frozen = await tx.userMembership.updateMany({
+      where: {
+        id: userMembershipId,
+        bookingPatternSnapshot: null,
+      },
+      data: {
+        bookingPatternSnapshot:
+          serializedContract,
+      },
+    });
+
+    if (frozen.count === 1) {
+      bookingContract = proposedContract;
+    } else {
+      /*
+       * Another request won the race. Reload and use the winner's immutable
+       * contract. Never continue with our losing candidate.
+       */
+      const winner =
+        await tx.userMembership.findUnique({
+          where: { id: userMembershipId },
+          select: {
+            bookingPatternSnapshot: true,
+          },
+        });
+
+      bookingContract = parseBookingContract(
+        winner?.bookingPatternSnapshot,
+      );
+
+      if (!bookingContract) {
+        throw new Error(
+          `Booking contract race resolution failed for membership ${userMembershipId}`,
+        );
+      }
+    }
+  }
+
+  const patterns = bookingContract.patterns;
+
+  const patternSet = new Set(
+    patterns.map((pattern) =>
+      patternKey(
+        pattern.classId,
+        pattern.time,
+        pattern.dayOfWeek,
+      ),
+    ),
+  );
+
+  const classIds = [
+    ...new Set(
+      patterns.map(
+        (pattern) => pattern.classId,
+      ),
+    ),
+  ];
+
+  /*
+   * Schedule.date is a calendar-date anchor, not the real session instant.
+   * Fetch a padded calendar range, then enforce the exact Cairo instant below.
+   */
+  const schedulePeriodStart = new Date(startDate);
+  schedulePeriodStart.setUTCDate(
+    schedulePeriodStart.getUTCDate() - 1,
+  );
+  schedulePeriodStart.setUTCHours(0, 0, 0, 0);
+
+  const schedulePeriodEnd = new Date(endDate);
+  schedulePeriodEnd.setUTCDate(
+    schedulePeriodEnd.getUTCDate() + 1,
+  );
+  schedulePeriodEnd.setUTCHours(
+    23,
+    59,
+    59,
+    999,
+  );
+
+  const allMatchingSchedules =
+    await tx.schedule.findMany({
+      where: {
+        classId: {
+          in: classIds,
+        },
+        date: {
+          gte: schedulePeriodStart,
+          lte: schedulePeriodEnd,
+        },
+        isActive: true,
+      },
+      include: {
+        class: {
+          include: {
+            trainer: true,
+          },
+        },
+      },
+      orderBy: [
+        { date: "asc" },
+        { time: "asc" },
+        { id: "asc" },
+      ],
+    });
+
+  const repeated = allMatchingSchedules.filter(
+    (schedule: any) => {
+      const slotInstant =
+        scheduleSlotInstant(
+          new Date(schedule.date),
+          schedule.time,
+        );
+
+      if (
+        slotInstant.getTime() <
+          startDate.getTime() ||
+        slotInstant.getTime() >
+          endDate.getTime()
+      ) {
+        return false;
+      }
+
+      return patternSet.has(
+        patternKey(
+          schedule.classId,
+          schedule.time,
+          scheduleWeekday(
+            new Date(schedule.date),
+          ),
+        ),
+      );
+    },
+  );
+
+  /*
+   * The entitlement limit comes from the frozen contract, never from mutable
+   * plan data supplied to a later retry/recovery call.
+   */
+  const totalLimit =
+    bookingContract.policy.totalSessions ??
+    Math.round(
+      bookingContract.policy
+        .selectedSessionsPerWeek *
+        (
+          bookingContract.policy.durationDays /
+          7
+        ),
+    );
+
+  /*
+   * Count every valid booking already owned by this membership toward the
+   * entitlement, including rescheduled bookings that no longer match the
+   * original weekly pattern.
+   */
+  const existingEntitlementBookings =
+    await tx.booking.findMany({
+      where: {
+        userMembershipId,
+        status: {
+          in: ["confirmed", "attended", "noshow"],
+        },
+      },
+      select: {
+        id: true,
+        scheduleId: true,
+      },
+    });
+
+  let remainingToCreate = Math.max(
+    0,
+    totalLimit - existingEntitlementBookings.length,
+  );
+
+  /*
+   * Booking cutoff depends on lifecycle stage:
+   *
+   * - Initial purchase: the selected schedule was already validated against
+   *   membership startDate, so preserve all valid occurrences from startDate.
+   *
+   * - Recovery/reconciliation of an already-frozen contract: never recreate
+   *   a missing reservation for a session that has already started.
+   */
+  const bookingCutoff =
+    hasFrozenBookingContract
+      ? new Date()
+      : startDate;
+
+  const schedulesToBook = repeated.filter(
+    (schedule: any) =>
+      scheduleSlotInstant(
+        new Date(schedule.date),
+        schedule.time,
+      ).getTime() >= bookingCutoff.getTime(),
+  );
+
+  const week1IdSet = new Set(
+    bookingContract.seedScheduleIds,
+  );
+
+  let createdCount = 0;
+
+  /*
+   * Process sequentially with schedule row locking.
+   *
+   * This gives:
+   * LOCK → ownership check → conflict check → spot check → CREATE → decrement
+   *
+   * and prevents duplicate webhook/recovery calls from decrementing twice.
+   */
+  for (const schedule of schedulesToBook) {
+    if (remainingToCreate <= 0) {
+      break;
+    }
+
+    await tx.$queryRaw`
+      SELECT \`id\`, \`availableSpots\`
+      FROM \`Schedule\`
+      WHERE \`id\` = ${schedule.id}
+      FOR UPDATE
+    `;
+
+    // Already owned by this membership = successful idempotent outcome.
+    const owned = await tx.booking.findFirst({
+      where: {
+        userMembershipId,
+        scheduleId: schedule.id,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (owned) {
+      continue;
+    }
+
+    /*
+     * A booking belonging to another membership for the same user must never
+     * silently masquerade as a booking for this membership.
+     */
+    const otherBooking = await tx.booking.findFirst({
+      where: {
+        userId,
+        scheduleId: schedule.id,
+        NOT: {
+          userMembershipId,
+        },
+        status: {
+          in: ["confirmed", "attended", "noshow"],
+        },
+      },
+      select: {
+        id: true,
+        userMembershipId: true,
+        userMembership: {
+          select: {
+            status: true,
+            pendingExpiresAt: true,
+          },
+        },
+      },
+    });
+
+    if (otherBooking) {
+      const isWeek1 = week1IdSet.has(schedule.id);
+
+      /*
+       * Week-1 is explicitly chosen by the customer.
+       * Never silently drop it.
+       *
+       * An expired pending membership should already have been removed by the
+       * shared cleanup before a retry reaches this function.
+       */
+      if (isWeek1) {
+        throw new MembershipBookingPlanError(
+          "أحد المواعيد المختارة مرتبط بحجز سابق لم يتم تحريره بعد. يرجى إعادة المحاولة.",
+          "back_to_schedule",
+        );
+      }
+
+      // Preserve historical behaviour for later recurring occurrences:
+      // another legitimate booking by the same user is not duplicated.
+      continue;
+    }
+
+    const currentSchedule = await tx.schedule.findUnique({
+      where: {
+        id: schedule.id,
+      },
+      select: {
+        availableSpots: true,
+      },
+    });
+
+    if (
+      !currentSchedule ||
+      currentSchedule.availableSpots <= 0
+    ) {
+      if (week1IdSet.has(schedule.id)) {
+        throw new MembershipBookingPlanError(
+          "أحد المواعيد المختارة لم يعد به أماكن متاحة.",
+          "back_to_schedule",
+        );
+      }
+
+      // Future recurring occurrence being full is non-fatal,
+      // matching the existing business behaviour.
+      continue;
+    }
+
+    await tx.booking.create({
+      data: {
+        userId,
+        scheduleId: schedule.id,
+        userMembershipId,
+        status: "confirmed",
+        paidAmount: schedule.class.price,
+        paymentMethod: "cash",
+      },
+    });
+
+    await tx.schedule.update({
+      where: {
+        id: schedule.id,
+      },
+      data: {
+        availableSpots: {
+          decrement: 1,
+        },
+      },
+    });
+
+    createdCount++;
+    remainingToCreate--;
+  }
+
+  /*
+   * IMPORTANT:
+   * Build the response from bookings actually owned by THIS membership.
+   * Never report theoretical schedules that were skipped.
+   */
+  const actualBookings = await tx.booking.findMany({
+    where: {
+      userMembershipId,
+      status: {
+        in: ["confirmed", "attended", "noshow"],
+      },
+    },
+    include: {
+      schedule: {
+        include: {
+          class: {
+            include: {
+              trainer: true,
+            },
+          },
+        },
+      },
+    },
+    orderBy: {
+      createdAt: "asc",
+    },
+  });
+
+  return {
+    selectedScheduleIds,
+    plannedScheduleIds: schedulesToBook.map(
+      (schedule: any) => schedule.id,
+    ),
+    createdCount,
+    bookedSchedules: actualBookings.map(
+      (booking: any) => ({
+        date: booking.schedule.date,
+        time: booking.schedule.time,
+        className: booking.schedule.class.name,
+        trainerName:
+          booking.schedule.class.trainer?.name ?? "",
+      }),
+    ),
+  };
+}

@@ -1,0 +1,169 @@
+.account-theme {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at top, rgba(255, 140, 190, 0.22), transparent 34%),
+    radial-gradient(circle at bottom left, rgba(255, 186, 216, 0.16), transparent 30%),
+    linear-gradient(180deg, #2a0f1b 0%, #391320 48%, #4a1b2d 100%);
+  color: #ffe7f1;
+}
+
+.account-theme::before,
+.account-theme::after {
+  content: "";
+  position: absolute;
+  border-radius: 9999px;
+  pointer-events: none;
+  filter: blur(10px);
+  opacity: 0.8;
+}
+
+.account-theme::before {
+  top: 7%;
+  right: -4rem;
+  width: 18rem;
+  height: 18rem;
+  background: radial-gradient(circle, rgba(255, 205, 225, 0.34) 0%, rgba(255, 128, 191, 0.16) 55%, transparent 72%);
+  animation: fitzone-float-a 18s ease-in-out infinite;
+}
+
+.account-theme::after {
+  left: -5rem;
+  bottom: -4rem;
+  width: 21rem;
+  height: 21rem;
+  background: radial-gradient(circle, rgba(255, 154, 205, 0.26) 0%, rgba(255, 104, 173, 0.12) 55%, transparent 72%);
+  animation: fitzone-float-b 20s ease-in-out infinite;
+}
+
+.account-theme .bg-black,
+.account-theme .bg-gray-950,
+.account-theme .bg-gray-900,
+.account-theme .bg-gray-900\/60,
+.account-theme .bg-gray-900\/50,
+.account-theme .bg-gray-800,
+.account-theme .bg-gray-800\/50 {
+  background-color: rgba(56, 18, 34, 0.74) !important;
+  color: #fff2f8;
+  backdrop-filter: blur(18px);
+}
+
+.account-theme .border-gray-800,
+.account-theme .border-gray-700,
+.account-theme .border-gray-600,
+.account-theme .border-red-600\/30,
+.account-theme .border-red-600\/40,
+.account-theme .border-yellow-500\/30,
+.account-theme .border-yellow-600\/40 {
+  border-color: rgba(255, 181, 214, 0.18) !important;
+}
+
+.account-theme .text-white {
+  color: #fff2f8 !important;
+}
+
+.account-theme .text-gray-600,
+.account-theme .text-gray-500,
+.account-theme .text-gray-400 {
+  color: #e3b8c8 !important;
+}
+
+.account-theme .placeholder-gray-600::placeholder {
+  color: #caa0b0 !important;
+}
+
+.account-theme .hover\:bg-gray-900:hover,
+.account-theme .hover\:bg-gray-800:hover,
+.account-theme .hover\:bg-gray-700:hover {
+  background-color: rgba(255, 130, 186, 0.14) !important;
+}
+
+.account-theme .hover\:text-white:hover {
+  color: #fff8fb !important;
+}
+
+.account-theme .bg-yellow-900\/20,
+.account-theme .bg-yellow-900\/30,
+.account-theme .bg-yellow-950\/20,
+.account-theme .bg-blue-950\/30,
+.account-theme .bg-red-950\/10 {
+  background-color: rgba(255, 120, 182, 0.12) !important;
+}
+
+.account-theme .bg-yellow-900\/30 > .flex.items-center.gap-3.mb-3 > .mt-4.flex.flex-wrap.gap-2.sm\:hidden {
+  display: none;
+}
+
+.account-theme ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.account-theme ::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 9999px;
+  background: rgba(255, 156, 202, 0.35);
+  background-clip: padding-box;
+}
+
+.account-theme ::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+@keyframes fitzone-float-a {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(-16px, 20px, 0) scale(1.08);
+  }
+}
+
+@keyframes fitzone-float-b {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(22px, -18px, 0) scale(0.94);
+  }
+}
+
+@media (max-width: 1024px) {
+  .account-theme [class*="max-w-5xl"] {
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 640px) {
+  .account-theme .rounded-2xl {
+    border-radius: 1.25rem;
+  }
+}
+
+@media (max-width: 767px) and (orientation: portrait) {
+  .account-theme .overflow-x-auto {
+    overflow-x: visible;
+  }
+
+  .account-theme table {
+    width: 100% !important;
+    min-width: 0 !important;
+    font-size: clamp(9px, 2.4vw, 11px) !important;
+    table-layout: auto;
+  }
+
+  .account-theme table th,
+  .account-theme table td {
+    padding: 5px 3px !important;
+    white-space: normal !important;
+    word-break: break-word;
+    line-height: 1.4;
+  }
+}
+
+@media (max-width: 900px) and (orientation: landscape) {
+  .account-theme .overflow-x-auto {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}

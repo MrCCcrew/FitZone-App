@@ -1,0 +1,461 @@
+import { describe, it, expect } from "vitest";
+import { db } from "@/lib/db";
+import { cleanupExpiredPendingMembership } from "@/lib/payments/pending-membership-cleanup";
+import { recoverPaidMembershipActivation } from "@/lib/payments/service";
+
+describe(
+  "Pending membership retry booking lifecycle",
+  { timeout: 90000 },
+  () => {
+    it("expired pending releases bookings, retry books them on new membership, repeated recovery is idempotent", async () => {
+      let userId = "";
+      let baseMembershipId = "";
+      let trainerId = "";
+      let classId = "";
+      let oldMembershipId = "";
+      let newMembershipId = "";
+      let oldPaymentId = "";
+      let newPaymentId = "";
+      const scheduleIds: string[] = [];
+
+      try {
+        // ─────────────────────────────────────────────────────────────
+        // 1. Shared user / plan / recurring weekly schedules
+        // ─────────────────────────────────────────────────────────────
+
+        const user = await db.user.create({
+          data: {
+            phone: `+201${Math.floor(Math.random() * 1_000_000_000)}`,
+            name: "Pending Retry Booking Test",
+            gender: "female",
+          },
+        });
+        userId = user.id;
+
+        const baseMembership = await db.membership.create({
+          data: {
+            name: "Pending Retry Test Plan",
+            nameEn: "Pending Retry Test Plan",
+            duration: 30,
+            price: 300,
+            sessionsCount: 3,
+            walletBonus: 0,
+            features: "[]",
+          },
+        });
+        baseMembershipId = baseMembership.id;
+
+        const trainer = await db.trainer.create({
+          data: {
+            name: "Pending Retry Trainer",
+            specialty: "fitness",
+            bio: "integration test",
+          },
+        });
+        trainerId = trainer.id;
+
+        const classRecord = await db.class.create({
+          data: {
+            name: "Pending Retry Class",
+            trainerId,
+            type: "fitness",
+            duration: 60,
+            intensity: "medium",
+            maxSpots: 10,
+            price: 100,
+          },
+        });
+        classId = classRecord.id;
+
+        /*
+         * Same weekday + class + time every 7 days.
+         * One week-1 selection should expand to all 3 recurring sessions.
+         */
+        const firstDate = new Date();
+        firstDate.setUTCDate(firstDate.getUTCDate() + 1);
+        firstDate.setUTCHours(10, 0, 0, 0);
+
+        for (const offsetDays of [0, 7, 14]) {
+          const date = new Date(firstDate);
+          date.setUTCDate(firstDate.getUTCDate() + offsetDays);
+
+          const schedule = await db.schedule.create({
+            data: {
+              classId,
+              date,
+              time: "10:00",
+              availableSpots: 10,
+              isActive: true,
+            },
+          });
+
+          scheduleIds.push(schedule.id);
+        }
+
+        // ─────────────────────────────────────────────────────────────
+        // 2. OLD expired pending membership owns the recurring bookings
+        // ─────────────────────────────────────────────────────────────
+
+        const oldMembership = await db.userMembership.create({
+          data: {
+            userId,
+            membershipId: baseMembershipId,
+            status: "pending_payment",
+            paymentAmount: 300,
+            pendingExpiresAt: new Date(Date.now() - 60_000),
+            snapshotDurationDays: 30,
+            totalSessions: 3,
+            startDate: new Date(),
+            endDate: new Date(Date.now() + 30 * 86400000),
+          },
+        });
+        oldMembershipId = oldMembership.id;
+
+        const oldPayment = await db.paymentTransaction.create({
+          data: {
+            userId,
+            membershipId: oldMembershipId,
+            purpose: "membership",
+            businessUnit: "club",
+            provider: "paymob",
+            amount: 300,
+            currency: "EGP",
+            status: "pending",
+            paymentMethod: "card",
+            metadata: JSON.stringify({
+              bookingRecoveryData: {
+                selectedScheduleIds: [scheduleIds[0]],
+                createdAt: new Date().toISOString(),
+              },
+            }),
+          },
+        });
+        oldPaymentId = oldPayment.id;
+
+        // Reproduce the real pending reservation state:
+        // confirmed bookings + occupied schedule spots.
+        for (const scheduleId of scheduleIds) {
+          await db.booking.create({
+            data: {
+              userId,
+              scheduleId,
+              userMembershipId: oldMembershipId,
+              status: "confirmed",
+              paidAmount: 100,
+              paymentMethod: "cash",
+            },
+          });
+
+          await db.schedule.update({
+            where: { id: scheduleId },
+            data: {
+              availableSpots: {
+                decrement: 1,
+              },
+            },
+          });
+        }
+
+        const spotsBeforeCleanup = await db.schedule.findMany({
+          where: { id: { in: scheduleIds } },
+          orderBy: { date: "asc" },
+          select: {
+            id: true,
+            availableSpots: true,
+          },
+        });
+
+        expect(spotsBeforeCleanup.map((s) => s.availableSpots)).toEqual([
+          9, 9, 9,
+        ]);
+
+        expect(
+          await db.booking.count({
+            where: { userMembershipId: oldMembershipId },
+          }),
+        ).toBe(3);
+
+        // ─────────────────────────────────────────────────────────────
+        // 3. Timeout cleanup
+        // ─────────────────────────────────────────────────────────────
+
+        const cleanupResult =
+          await cleanupExpiredPendingMembership(oldMembershipId);
+
+        expect(cleanupResult.cleaned).toBe(true);
+
+        const oldMembershipAfter =
+          await db.userMembership.findUnique({
+            where: { id: oldMembershipId },
+          });
+
+        expect(oldMembershipAfter?.status).toBe("cancelled");
+        expect(oldMembershipAfter?.pendingExpiresAt).toBeNull();
+
+        expect(
+          await db.booking.count({
+            where: { userMembershipId: oldMembershipId },
+          }),
+        ).toBe(0);
+
+        const oldPaymentAfter =
+          await db.paymentTransaction.findUnique({
+            where: { id: oldPaymentId },
+          });
+
+        expect(oldPaymentAfter?.status).toBe("cancelled");
+
+        const oldMetadata = JSON.parse(
+          oldPaymentAfter?.metadata ?? "{}",
+        );
+
+        expect(
+          oldMetadata.deletedBookingsSnapshot?.reason,
+        ).toBe("timeout_cleanup");
+
+        expect(
+          oldMetadata.deletedBookingsSnapshot?.bookings,
+        ).toHaveLength(3);
+
+        const spotsAfterCleanup = await db.schedule.findMany({
+          where: { id: { in: scheduleIds } },
+          orderBy: { date: "asc" },
+          select: {
+            availableSpots: true,
+          },
+        });
+
+        expect(
+          spotsAfterCleanup.map((s) => s.availableSpots),
+        ).toEqual([10, 10, 10]);
+
+        // ─────────────────────────────────────────────────────────────
+        // 4. Customer retries with NEW membership
+        // ─────────────────────────────────────────────────────────────
+
+        const newMembership = await db.userMembership.create({
+          data: {
+            userId,
+            membershipId: baseMembershipId,
+            status: "pending_payment",
+            paymentAmount: 300,
+            pendingExpiresAt: new Date(Date.now() + 60 * 60 * 1000),
+            snapshotDurationDays: 30,
+            totalSessions: 3,
+            startDate: new Date(),
+            endDate: new Date(Date.now() + 30 * 86400000),
+          },
+        });
+        newMembershipId = newMembership.id;
+
+        /*
+         * Reproduce the important Hager failure condition:
+         * new retry exists but currently owns ZERO bookings.
+         */
+        expect(
+          await db.booking.count({
+            where: { userMembershipId: newMembershipId },
+          }),
+        ).toBe(0);
+
+        const newPayment = await db.paymentTransaction.create({
+          data: {
+            userId,
+            membershipId: newMembershipId,
+            purpose: "membership",
+            businessUnit: "club",
+            provider: "paymob",
+            amount: 300,
+            currency: "EGP",
+            status: "paid",
+            paymentMethod: "card",
+            paidAt: new Date(),
+            externalReference: `retry-${Date.now()}`,
+            metadata: JSON.stringify({
+              bookingRecoveryData: {
+                // Week-1 seed, NOT the complete recurring booking list.
+                selectedScheduleIds: [scheduleIds[0]],
+                createdAt: new Date().toISOString(),
+              },
+            }),
+          },
+        });
+        newPaymentId = newPayment.id;
+
+        // ─────────────────────────────────────────────────────────────
+        // 5. Paid recovery must activate AND rebuild recurring bookings
+        // ─────────────────────────────────────────────────────────────
+
+        await recoverPaidMembershipActivation(newPaymentId);
+
+        const newMembershipAfter =
+          await db.userMembership.findUnique({
+            where: { id: newMembershipId },
+          });
+
+        expect(newMembershipAfter?.status).toBe("active");
+
+        const bookingsAfterFirstRecovery =
+          await db.booking.findMany({
+            where: {
+              userMembershipId: newMembershipId,
+              status: "confirmed",
+            },
+            orderBy: {
+              createdAt: "asc",
+            },
+          });
+
+        expect(bookingsAfterFirstRecovery).toHaveLength(3);
+
+        expect(
+          new Set(
+            bookingsAfterFirstRecovery.map((b) => b.scheduleId),
+          ),
+        ).toEqual(new Set(scheduleIds));
+
+        // Old cancelled membership must still own nothing.
+        expect(
+          await db.booking.count({
+            where: { userMembershipId: oldMembershipId },
+          }),
+        ).toBe(0);
+
+        const spotsAfterFirstRecovery =
+          await db.schedule.findMany({
+            where: { id: { in: scheduleIds } },
+            orderBy: { date: "asc" },
+            select: {
+              id: true,
+              availableSpots: true,
+            },
+          });
+
+        expect(
+          spotsAfterFirstRecovery.map((s) => s.availableSpots),
+        ).toEqual([9, 9, 9]);
+
+        // ─────────────────────────────────────────────────────────────
+        // 6. Second recovery: active membership must NOT early-return
+        //    before guarantee, but must also NOT duplicate anything.
+        // ─────────────────────────────────────────────────────────────
+
+        await recoverPaidMembershipActivation(newPaymentId);
+
+        const bookingsAfterSecondRecovery =
+          await db.booking.findMany({
+            where: {
+              userMembershipId: newMembershipId,
+              status: "confirmed",
+            },
+          });
+
+        expect(bookingsAfterSecondRecovery).toHaveLength(3);
+
+        const duplicateGroups =
+          bookingsAfterSecondRecovery.reduce<Record<string, number>>(
+            (acc, booking) => {
+              acc[booking.scheduleId] =
+                (acc[booking.scheduleId] ?? 0) + 1;
+              return acc;
+            },
+            {},
+          );
+
+        expect(
+          Object.values(duplicateGroups).every(
+            (count) => count === 1,
+          ),
+        ).toBe(true);
+
+        const spotsAfterSecondRecovery =
+          await db.schedule.findMany({
+            where: { id: { in: scheduleIds } },
+            orderBy: { date: "asc" },
+            select: {
+              availableSpots: true,
+            },
+          });
+
+        // No second decrement.
+        expect(
+          spotsAfterSecondRecovery.map((s) => s.availableSpots),
+        ).toEqual([9, 9, 9]);
+      } finally {
+        /*
+         * Test-only cleanup.
+         * Never touches anything outside records created above.
+         */
+        if (newPaymentId) {
+          await db.paymentTransaction.deleteMany({
+            where: { id: newPaymentId },
+          });
+        }
+
+        if (oldPaymentId) {
+          await db.paymentTransaction.deleteMany({
+            where: { id: oldPaymentId },
+          });
+        }
+
+        if (newMembershipId) {
+          await db.booking.deleteMany({
+            where: { userMembershipId: newMembershipId },
+          });
+
+          await db.userMembership.deleteMany({
+            where: { id: newMembershipId },
+          });
+        }
+
+        if (oldMembershipId) {
+          await db.booking.deleteMany({
+            where: { userMembershipId: oldMembershipId },
+          });
+
+          await db.userMembership.deleteMany({
+            where: { id: oldMembershipId },
+          });
+        }
+
+        if (scheduleIds.length > 0) {
+          await db.schedule.deleteMany({
+            where: {
+              id: {
+                in: scheduleIds,
+              },
+            },
+          });
+        }
+
+        if (classId) {
+          await db.class.deleteMany({
+            where: { id: classId },
+          });
+        }
+
+        if (trainerId) {
+          await db.trainer.deleteMany({
+            where: { id: trainerId },
+          });
+        }
+
+        if (baseMembershipId) {
+          await db.membership.deleteMany({
+            where: { id: baseMembershipId },
+          });
+        }
+
+        if (userId) {
+          await db.notification.deleteMany({
+            where: { userId },
+          });
+
+          await db.user.deleteMany({
+            where: { id: userId },
+          });
+        }
+      }
+    });
+  },
+);

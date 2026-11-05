@@ -1,0 +1,87 @@
+import { randomUUID } from "node:crypto";
+import { db } from "@/lib/db";
+
+function clean(value: unknown): string {
+  return String(value ?? "").trim();
+}
+
+function makeKey(): string {
+  return `ct_${randomUUID().replace(/-/g, "")}`;
+}
+
+/**
+ * Resolve a mutable human label to the stable ClassType ID.
+ *
+ * Legacy text remains supported during migration.
+ * Unknown labels create a new canonical ClassType so admins can
+ * continue creating new types without depending on the label as identity.
+ */
+export async function resolveOrCreateClassType(input: {
+  classTypeId?: string | null;
+  label?: string | null;
+  labelEn?: string | null;
+}) {
+  const classTypeId = clean(input.classTypeId);
+
+  if (classTypeId) {
+    const existing = await db.classType.findUnique({
+      where: { id: classTypeId },
+    });
+
+    if (!existing) {
+      throw new Error(`CLASS_TYPE_NOT_FOUND:${classTypeId}`);
+    }
+
+    return existing;
+  }
+
+  const label = clean(input.label);
+  if (!label) {
+    throw new Error("CLASS_TYPE_LABEL_REQUIRED");
+  }
+
+  const alias = await db.classTypeAlias.findUnique({
+    where: { alias: label },
+    include: { classType: true },
+  });
+
+  if (alias) {
+    return alias.classType;
+  }
+
+  // Support catalog rows that may temporarily exist without an alias.
+  const existingByName = await db.classType.findFirst({
+    where: {
+      OR: [
+        { nameAr: label },
+        { nameEn: label },
+      ],
+    },
+  });
+
+  if (existingByName) {
+    await db.classTypeAlias.create({
+      data: {
+        alias: label,
+        classTypeId: existingByName.id,
+      },
+    });
+
+    return existingByName;
+  }
+
+  // New admin-created type: stable opaque key, mutable display labels.
+  return db.classType.create({
+    data: {
+      key: makeKey(),
+      nameAr: label,
+      nameEn: clean(input.labelEn) || null,
+      isActive: true,
+      aliases: {
+        create: {
+          alias: label,
+        },
+      },
+    },
+  });
+}

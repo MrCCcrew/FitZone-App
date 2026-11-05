@@ -1,0 +1,327 @@
+import { randomUUID } from "node:crypto";
+import { Prisma } from "@prisma/client";
+import { db } from "@/lib/db";
+
+function clean(value: unknown): string {
+  return String(value ?? "").trim();
+}
+
+function makeKey(): string {
+  return `ct_${randomUUID().replace(/-/g, "")}`;
+}
+
+/**
+ * Resolve a mutable human label to the stable ClassType ID.
+ *
+ * Legacy text remains supported during migration.
+ * Unknown labels create a new canonical ClassType so admins can
+ * continue creating new types without depending on the label as identity.
+ */
+export async function resolveOrCreateClassType(input: {
+  classTypeId?: string | null;
+  label?: string | null;
+  labelEn?: string | null;
+}) {
+  const classTypeId = clean(input.classTypeId);
+
+  if (classTypeId) {
+    const existing = await db.classType.findUnique({
+      where: { id: classTypeId },
+    });
+
+    if (!existing) {
+      throw new Error(`CLASS_TYPE_NOT_FOUND:${classTypeId}`);
+    }
+
+    return existing;
+  }
+
+  const label = clean(input.label);
+  if (!label) {
+    throw new Error("CLASS_TYPE_LABEL_REQUIRED");
+  }
+
+  const alias = await db.classTypeAlias.findUnique({
+    where: { alias: label },
+    include: { classType: true },
+  });
+
+  if (alias) {
+    if (!alias.classType.isActive) {
+      throw new Error(`CLASS_TYPE_INACTIVE:${alias.classType.id}`);
+    }
+
+    return alias.classType;
+  }
+
+  // Support catalog rows that may temporarily exist without an alias.
+  const existingByName = await db.classType.findFirst({
+    where: {
+      OR: [
+        { nameAr: label },
+        { nameEn: label },
+      ],
+    },
+  });
+
+  if (existingByName) {
+    if (!existingByName.isActive) {
+      throw new Error(`CLASS_TYPE_INACTIVE:${existingByName.id}`);
+    }
+
+    try {
+      await db.classTypeAlias.create({
+        data: {
+          alias: label,
+          classTypeId: existingByName.id,
+        },
+      });
+
+      return existingByName;
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      ) {
+        const winner = await db.classTypeAlias.findUnique({
+          where: { alias: label },
+          include: { classType: true },
+        });
+
+        if (winner) {
+          if (!winner.classType.isActive) {
+            throw new Error(`CLASS_TYPE_INACTIVE:${winner.classType.id}`);
+          }
+
+          return winner.classType;
+        }
+      }
+
+      throw error;
+    }
+  }
+
+  // New admin-created type:
+  // nested alias creation is atomic with ClassType creation.
+  // If another request wins the same alias race, return that winner.
+  try {
+    return await db.classType.create({
+      data: {
+        key: makeKey(),
+        nameAr: label,
+        nameEn: clean(input.labelEn) || null,
+        isActive: true,
+        aliases: {
+          create: {
+            alias: label,
+          },
+        },
+      },
+    });
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
+      const winner = await db.classTypeAlias.findUnique({
+        where: { alias: label },
+        include: { classType: true },
+      });
+
+      if (winner) {
+        if (!winner.classType.isActive) {
+          throw new Error(`CLASS_TYPE_INACTIVE:${winner.classType.id}`);
+        }
+
+        return winner.classType;
+      }
+    }
+
+    throw error;
+  }
+}
+
+export async function renameClassType(input: {
+  classTypeId: string;
+  nameAr: string;
+  nameEn?: string | null;
+}) {
+  const classTypeId = clean(input.classTypeId);
+  const nameAr = clean(input.nameAr);
+  const nameEn = clean(input.nameEn) || null;
+
+  if (!classTypeId) {
+    throw new Error("CLASS_TYPE_ID_REQUIRED");
+  }
+
+  if (!nameAr) {
+    throw new Error("CLASS_TYPE_NAME_REQUIRED");
+  }
+
+  return db.$transaction(async (tx) => {
+    const current = await tx.classType.findUnique({
+      where: { id: classTypeId },
+    });
+
+    if (!current) {
+      throw new Error(`CLASS_TYPE_NOT_FOUND:${classTypeId}`);
+    }
+
+    /*
+     * A display label must never silently become ambiguous between
+     * two canonical ClassType identities.
+     */
+    const requestedLabels = [nameAr, nameEn].filter(
+      (value): value is string => Boolean(value),
+    );
+
+    const conflictingAlias = await tx.classTypeAlias.findFirst({
+      where: {
+        alias: { in: requestedLabels },
+        classTypeId: { not: classTypeId },
+      },
+      select: {
+        alias: true,
+        classTypeId: true,
+      },
+    });
+
+    if (conflictingAlias) {
+      throw new Error(
+        `CLASS_TYPE_ALIAS_CONFLICT:${conflictingAlias.alias}:${conflictingAlias.classTypeId}`,
+      );
+    }
+
+    const conflictingType = await tx.classType.findFirst({
+      where: {
+        id: { not: classTypeId },
+        OR: [
+          { nameAr: { in: requestedLabels } },
+          { nameEn: { in: requestedLabels } },
+        ],
+      },
+      select: {
+        id: true,
+        nameAr: true,
+        nameEn: true,
+      },
+    });
+
+    if (conflictingType) {
+      throw new Error(
+        `CLASS_TYPE_NAME_CONFLICT:${conflictingType.id}`,
+      );
+    }
+
+    /*
+     * Preserve old and new human labels as aliases.
+     * Historical textual snapshots can therefore keep resolving
+     * to this same immutable identity.
+     */
+    const aliasesToPreserve = [
+      current.nameAr,
+      current.nameEn,
+      nameAr,
+      nameEn,
+    ]
+      .filter((value): value is string => Boolean(value?.trim()))
+      .map((value) => value.trim());
+
+    for (const alias of [...new Set(aliasesToPreserve)]) {
+      const existingAlias = await tx.classTypeAlias.findUnique({
+        where: { alias },
+        select: {
+          id: true,
+          classTypeId: true,
+        },
+      });
+
+      if (existingAlias) {
+        if (existingAlias.classTypeId !== classTypeId) {
+          throw new Error(
+            `CLASS_TYPE_ALIAS_CONFLICT:${alias}:${existingAlias.classTypeId}`,
+          );
+        }
+
+        continue;
+      }
+
+      await tx.classTypeAlias.create({
+        data: {
+          alias,
+          classTypeId,
+        },
+      });
+    }
+
+    /*
+     * OfferAllowedClassType still has the transitional textual column
+     * with @@unique([offerId, classType]).
+     *
+     * A single offer can currently contain multiple legacy text rows
+     * that already point to this same stable classTypeId.
+     * Keep exactly one live row per offer before synchronising display text.
+     */
+    const offerRows = await tx.offerAllowedClassType.findMany({
+      where: { classTypeId },
+      select: {
+        id: true,
+        offerId: true,
+      },
+      orderBy: {
+        id: "asc",
+      },
+    });
+
+    const keeperByOffer = new Map<string, string>();
+    const duplicateIds: string[] = [];
+
+    for (const row of offerRows) {
+      if (keeperByOffer.has(row.offerId)) {
+        duplicateIds.push(row.id);
+      } else {
+        keeperByOffer.set(row.offerId, row.id);
+      }
+    }
+
+    if (duplicateIds.length > 0) {
+      await tx.offerAllowedClassType.deleteMany({
+        where: {
+          id: { in: duplicateIds },
+        },
+      });
+    }
+
+    /*
+     * Current/live display mirrors are synchronised.
+     * No Membership/UserMembership/payment/booking snapshots are touched.
+     */
+    await tx.class.updateMany({
+      where: { classTypeId },
+      data: {
+        type: nameAr,
+        typeEn: nameEn,
+      },
+    });
+
+    await tx.offerAllowedClassType.updateMany({
+      where: { classTypeId },
+      data: {
+        classType: nameAr,
+      },
+    });
+
+    const updated = await tx.classType.update({
+      where: { id: classTypeId },
+      data: {
+        nameAr,
+        nameEn,
+      },
+    });
+
+    return {
+      classType: updated,
+      dedupedOfferRows: duplicateIds.length,
+    };
+  });
+}

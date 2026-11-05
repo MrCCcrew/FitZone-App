@@ -1,0 +1,32 @@
+{
+    "schemaVersion":  1,
+    "project":  "fitzone",
+    "mode":  "planning-only",
+    "approvedForProduction":  false,
+    "source":  {
+                   "baselineCommit":  "984def9",
+                   "candidateCommit":  "96387cb",
+                   "infrastructureCommit":  "a567dd0"
+               },
+    "production":  {
+                       "currentPort":  3120,
+                       "currentRelease":  "/var/www/fitzone-paymob-release-984def9-20261029",
+                       "sharedDependenciesRelease":  "/var/www/fitzone-paymob-release-c851ddb-20261029"
+                   },
+    "gates":  {
+                  "approvedCommitVerified":  false,
+                  "buildVerified":  false,
+                  "isolatedRuntimeVerified":  false,
+                  "backgroundJobsIsolationVerified":  false,
+                  "paymentConcurrencyVerified":  false,
+                  "rollbackVerified":  false,
+                  "explicitDeploymentApproval":  false
+              },
+    "actions":  {
+                    "deploy":  false,
+                    "switchTraffic":  false,
+                    "restartServices":  false,
+                    "runMigrations":  false,
+                    "cleanupOldReleases":  false
+                }
+}

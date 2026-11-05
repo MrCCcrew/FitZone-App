@@ -1,0 +1,1549 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { SalesAgentRow, SalesAgentCommissionRow, ContractsManagerRow, ManagerCommissionRow, Partner, PartnerManagerCommissionRow } from "../types";
+
+const INPUT = "w-full rounded-xl border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-pink-500 focus:outline-none";
+const CARD = "rounded-2xl border border-[rgba(255,188,219,0.12)] bg-[rgba(56,18,34,0.6)] p-5";
+
+const CATEGORY_LABELS: Record<string, string> = {
+  beauty_center: "سنتر تجميل",
+  salon: "كوافير",
+  pharmacy: "صيدلية",
+  clinic: "عيادة",
+  physiotherapy: "علاج طبيعي",
+  nutrition: "دكتور تغذية",
+  nursery: "حضانة",
+  education: "مركز تعليم أطفال",
+  clothing: "محل ملابس نسائية",
+  spa: "سبا وعافية",
+  restaurant: "مطعم صحي",
+  sports: "مركز رياضي",
+  supplement: "مكملات غذائية",
+  services: "خدمات أخرى",
+  other: "خدمات نسائية أخرى",
+};
+
+function generatePartnerBenefitCode() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let body = "";
+  for (let i = 0; i < 8; i++) body += alphabet[Math.floor(Math.random() * alphabet.length)];
+  return `FZ-${body}`;
+}
+
+// ─── Shared helpers ───────────────────────────────────────────────────────────
+function PrintButton({ label = "طباعة / PDF" }: { label?: string }) {
+  return (
+    <button onClick={() => window.print()} className="rounded-xl border border-gray-600 bg-gray-800 px-4 py-2 text-sm font-bold text-gray-300 hover:bg-gray-700 print:hidden">
+      🖨️ {label}
+    </button>
+  );
+}
+
+function StatusBadge({ status }: { status: string }) {
+  return status === "settled"
+    ? <span className="text-xs rounded-full px-2 py-0.5 bg-emerald-900/30 text-emerald-400">محصّلة</span>
+    : <span className="text-xs rounded-full px-2 py-0.5 bg-yellow-900/30 text-yellow-400">معلقة</span>;
+}
+
+function ReferralLink({ code, label, token, baseUrl }: { code?: string; label?: string; token?: string; baseUrl?: string }) {
+  const path = token ? `${baseUrl ?? ""}${token}` : `?agentRef=${code ?? ""}`;
+  const url = typeof window !== "undefined" ? `${window.location.origin}${path}` : path;
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      {label && <span className="text-xs font-bold text-gray-400">{label}</span>}
+      <code className="flex-1 min-w-0 rounded-lg bg-gray-900 px-3 py-1.5 text-xs text-pink-300 break-all">{url}</code>
+      <button onClick={() => void navigator.clipboard.writeText(url)} className="shrink-0 rounded-lg bg-pink-700 px-3 py-1.5 text-xs font-bold text-white hover:bg-pink-600">نسخ</button>
+    </div>
+  );
+}
+
+type AgentDetail = {
+  id: string; name: string; referralCode: string;
+  commissionRate: number; commissionType: string;
+  clientDiscountType: string; clientDiscountValue: number;
+  managerId: string | null; managerName: string | null;
+  user: { id: string; name: string | null; email: string | null; phone: string | null };
+  referrals: { id: string; user: { id: string; name: string | null; email: string | null; phone: string | null }; convertedAt: string | null; totalSpent: number; createdAt: string }[];
+  commissions: { id: string; amount: number; status: string; settledAt: string | null; createdAt: string }[];
+  totalEarned: number; pendingCommission: number; settledCommission: number;
+};
+
+// ─── Agent Self Dashboard ─────────────────────────────────────────────────────
+function AgentDashboard() {
+  const [data, setData] = useState<AgentDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/contracts", { cache: "no-store" });
+      const json = await res.json().catch(() => ({}));
+      setData((json as { agent?: AgentDetail }).agent ?? null);
+    } finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  if (loading) return <p className="text-sm text-[#d7aabd] p-6">جاري التحميل...</p>;
+  if (!data) return <p className="text-sm text-red-400 p-6">لم يتم العثور على حساب المندوب.</p>;
+
+  return (
+    <div className="space-y-6 p-4">
+      <style>{`@media print { .print-hidden { display:none!important; } body { background:white; color:black; } }`}</style>
+      <div className="flex items-center justify-between flex-wrap gap-3 print-hidden">
+        <h2 className="text-2xl font-black text-white">لوحة المندوب — {data.name}</h2>
+        <PrintButton />
+      </div>
+      {data.managerName && <p className="text-sm text-gray-400">مديرك: <span className="text-pink-300 font-bold">{data.managerName}</span></p>}
+
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+        {[
+          { label: "عدد العملاء", value: data.referrals.length },
+          { label: "اشتركوا", value: data.referrals.filter((r) => r.convertedAt).length },
+          { label: "إجمالي العمولات", value: `${data.totalEarned.toFixed(2)} ج.م` },
+          { label: "معلقة", value: `${data.pendingCommission.toFixed(2)} ج.م` },
+          { label: "محصّلة", value: `${data.settledCommission.toFixed(2)} ج.م` },
+        ].map((s) => (
+          <div key={s.label} className={CARD + " text-center"}>
+            <p className="text-2xl font-black text-pink-300">{s.value}</p>
+            <p className="text-xs text-[#d7aabd] mt-1">{s.label}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className={CARD + " space-y-3"}>
+        <h3 className="text-base font-black text-white">رابط الإحالة الخاص بك</h3>
+        <ReferralLink code={data.referralCode} />
+        <p className="text-xs text-gray-400">شارك هذا الرابط — سيُحتسب لك عمولة تلقائياً عند اشتراك أي عميل.</p>
+      </div>
+
+      <div className={CARD + " space-y-3"}>
+        <h3 className="text-base font-black text-white">عملائي ({data.referrals.length})</h3>
+        {data.referrals.length === 0 ? <p className="text-sm text-[#d7aabd]">لا يوجد عملاء بعد.</p> : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-right">
+              <thead><tr className="border-b border-gray-700 text-xs text-gray-400">
+                <th className="pb-2 font-bold">الاسم</th><th className="pb-2 font-bold">الهاتف</th>
+                <th className="pb-2 font-bold">اشترك؟</th><th className="pb-2 font-bold">المبلغ</th>
+                <th className="pb-2 font-bold">التاريخ</th>
+              </tr></thead>
+              <tbody>
+                {data.referrals.map((r) => (
+                  <tr key={r.id} className="border-b border-gray-800/50">
+                    <td className="py-2"><p className="text-white">{r.user.name ?? "—"}</p><p className="text-xs text-gray-400">{r.user.email ?? ""}</p></td>
+                    <td className="py-2 text-gray-300">{r.user.phone ?? "—"}</td>
+                    <td className="py-2">{r.convertedAt ? <span className="text-emerald-400">✓ نعم</span> : <span className="text-gray-500">لا</span>}</td>
+                    <td className="py-2 text-pink-300">{r.totalSpent > 0 ? `${r.totalSpent} ج.م` : "—"}</td>
+                    <td className="py-2 text-gray-400">{new Date(r.createdAt).toLocaleDateString("ar-EG")}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <div className={CARD + " space-y-3"}>
+        <h3 className="text-base font-black text-white">عمولاتي</h3>
+        {data.commissions.length === 0 ? <p className="text-sm text-[#d7aabd]">لا توجد عمولات بعد.</p> : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-right">
+              <thead><tr className="border-b border-gray-700 text-xs text-gray-400">
+                <th className="pb-2 font-bold">المبلغ</th><th className="pb-2 font-bold">الحالة</th>
+                <th className="pb-2 font-bold">تاريخ التحصيل</th><th className="pb-2 font-bold">التاريخ</th>
+              </tr></thead>
+              <tbody>
+                {data.commissions.map((c) => (
+                  <tr key={c.id} className="border-b border-gray-800/50">
+                    <td className="py-2 font-bold text-pink-300">{c.amount} ج.م</td>
+                    <td className="py-2"><StatusBadge status={c.status} /></td>
+                    <td className="py-2 text-gray-400">{c.settledAt ? new Date(c.settledAt).toLocaleDateString("ar-EG") : "—"}</td>
+                    <td className="py-2 text-gray-400">{new Date(c.createdAt).toLocaleDateString("ar-EG")}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Manager Self Dashboard ───────────────────────────────────────────────────
+type ManagerSelfData = {
+  id: string; name: string; commissionType: string; commissionRate: number;
+  user: { name: string | null; email: string | null };
+  pendingCommission: number; settledCommission: number; totalEarned: number;
+  agents: SalesAgentRow[];
+};
+
+function ManagerDashboard() {
+  const [data, setData] = useState<ManagerSelfData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [agentComms, setAgentComms] = useState<SalesAgentCommissionRow[]>([]);
+  const [mgrComms, setMgrComms] = useState<ManagerCommissionRow[]>([]);
+  const [partnerComms, setPartnerComms] = useState<PartnerManagerCommissionRow[]>([]);
+  const [tab, setTab] = useState<"agents" | "agent_comms" | "my_comms" | "partners" | "partner_comms">("agents");
+  const [showCreate, setShowCreate] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState("");
+  const [form, setForm] = useState({ name: "", email: "", phone: "", password: "", notes: "" });
+  const [selectedAgent, setSelectedAgent] = useState<AgentDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  // Partners
+  const [partners, setPartners] = useState<Partner[]>([]);
+  const [showCreatePartner, setShowCreatePartner] = useState(false);
+  const [creatingPartner, setCreatingPartner] = useState(false);
+  const [partnerError, setPartnerError] = useState("");
+  const [partnerForm, setPartnerForm] = useState({ name: "", nameEn: "", email: "", phone: "", password: "", category: "", logoUrl: "", websiteUrl: "", contactPhone: "", contractStartDate: "", contractEndDate: "", referralDiscountRate: "", memberBenefitRate: "", memberBenefitCode: "", commissionRate: "10", commissionType: "percentage", managerCommissionType: "percentage_of_partner", managerCommissionRate: "10", notes: "" });
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/contracts", { cache: "no-store" });
+      const json = await res.json().catch(() => ({}));
+      setData((json as { manager?: ManagerSelfData }).manager ?? null);
+    } finally { setLoading(false); }
+  }, []);
+
+  const loadAgentComms = useCallback(async () => {
+    const res = await fetch("/api/admin/contracts?view=commissions", { cache: "no-store" });
+    const json = await res.json().catch(() => ({}));
+    setAgentComms(Array.isArray((json as { commissions?: SalesAgentCommissionRow[] }).commissions) ? (json as { commissions: SalesAgentCommissionRow[] }).commissions : []);
+  }, []);
+
+  const loadMgrComms = useCallback(async () => {
+    const res = await fetch("/api/admin/contracts?view=manager_commissions", { cache: "no-store" });
+    const json = await res.json().catch(() => ({}));
+    setMgrComms(Array.isArray((json as { managerCommissions?: ManagerCommissionRow[] }).managerCommissions) ? (json as { managerCommissions: ManagerCommissionRow[] }).managerCommissions : []);
+  }, []);
+
+  const loadPartners = useCallback(async () => {
+    const res = await fetch("/api/admin/contracts?view=partners", { cache: "no-store" });
+    const json = await res.json().catch(() => ({}));
+    setPartners(Array.isArray((json as { partners?: Partner[] }).partners) ? (json as { partners: Partner[] }).partners : []);
+  }, []);
+
+  const loadPartnerComms = useCallback(async () => {
+    const res = await fetch("/api/admin/contracts?view=partner_commissions", { cache: "no-store" });
+    const json = await res.json().catch(() => ({}));
+    setPartnerComms(Array.isArray((json as { partnerCommissions?: PartnerManagerCommissionRow[] }).partnerCommissions) ? (json as { partnerCommissions: PartnerManagerCommissionRow[] }).partnerCommissions : []);
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    if (tab === "agent_comms") void loadAgentComms();
+    if (tab === "my_comms") void loadMgrComms();
+    if (tab === "partners") void loadPartners();
+    if (tab === "partner_comms") void loadPartnerComms();
+  }, [tab, loadAgentComms, loadMgrComms, loadPartners, loadPartnerComms]);
+
+  const handleCreate = async () => {
+    if (!form.name.trim() || !form.email.trim() || !form.password.trim()) { setCreateError("الاسم والبريد وكلمة المرور مطلوبة."); return; }
+    setCreating(true); setCreateError("");
+    try {
+      const res = await fetch("/api/admin/contracts", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: form.name.trim(), email: form.email.trim(), phone: form.phone.trim() || undefined, password: form.password.trim(), notes: form.notes.trim() || undefined }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) { setCreateError((json as { error?: string }).error ?? "حدث خطأ."); return; }
+      setShowCreate(false);
+      setForm({ name: "", email: "", phone: "", password: "", notes: "" });
+      void load();
+    } finally { setCreating(false); }
+  };
+
+  const openDetail = async (agent: SalesAgentRow) => {
+    setDetailLoading(true);
+    try {
+      const res = await fetch(`/api/admin/contracts?agentId=${agent.id}`, { cache: "no-store" });
+      const json = await res.json().catch(() => ({}));
+      setSelectedAgent((json as { agent?: AgentDetail }).agent ?? null);
+    } finally { setDetailLoading(false); }
+  };
+
+  if (loading) return <p className="text-sm text-[#d7aabd] p-6">جاري التحميل...</p>;
+  if (!data) return <p className="text-sm text-red-400 p-6">لم يتم العثور على حساب المدير.</p>;
+
+  const commTypeLabel: Record<string, string> = {
+    percentage_of_agents: "% من عمولة المندوبين", percentage_of_revenue: "% من قيمة الاشتراك", fixed: "مبلغ ثابت لكل اشتراك",
+  };
+
+  return (
+    <div className="space-y-6 p-4">
+      <style>{`@media print { .print-hidden { display:none!important; } body { background:white; color:black; } }`}</style>
+
+      <div className="flex items-center justify-between flex-wrap gap-3 print-hidden">
+        <div>
+          <h2 className="text-2xl font-black text-white">لوحة مدير التعاقدات — {data.name}</h2>
+          <p className="text-sm text-gray-400 mt-0.5">نوع عمولتك: <span className="text-pink-300 font-bold">{commTypeLabel[data.commissionType] ?? data.commissionType}</span> ({data.commissionRate}{data.commissionType === "fixed" ? " ج.م" : "%"})</p>
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          <PrintButton />
+          <button onClick={() => setShowCreate(true)} className="rounded-xl bg-gradient-to-r from-pink-600 to-pink-500 px-5 py-2.5 text-sm font-black text-white hover:opacity-90">+ إضافة مندوب</button>
+          <button onClick={() => setShowCreatePartner(true)} className="rounded-xl bg-gray-700 px-5 py-2.5 text-sm font-black text-white hover:bg-gray-600">+ إضافة شريك</button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        {[
+          { label: "عدد مناديبي", value: data.agents.length },
+          { label: "عملاء أُحيلوا", value: data.agents.reduce((s, a) => s + a.referralsCount, 0) },
+          { label: "عمولتي المعلقة", value: `${data.pendingCommission.toFixed(2)} ج.م` },
+          { label: "عمولتي المحصّلة", value: `${data.settledCommission.toFixed(2)} ج.م` },
+        ].map((s) => (
+          <div key={s.label} className={CARD + " text-center"}>
+            <p className="text-2xl font-black text-pink-300">{s.value}</p>
+            <p className="text-xs text-[#d7aabd] mt-1">{s.label}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex gap-2 print-hidden flex-wrap">
+        {([["agents", "مناديبي"], ["agent_comms", "عمولات مناديبي"], ["my_comms", "عمولاتي"], ["partners", "الشركاء"], ["partner_comms", "عمولات الشركاء"]] as const).map(([key, label]) => (
+          <button key={key} onClick={() => setTab(key)} className={`rounded-xl px-4 py-2 text-sm font-bold transition-colors ${tab === key ? "bg-pink-600 text-white" : "bg-gray-800 text-gray-400 hover:text-white"}`}>{label}</button>
+        ))}
+      </div>
+
+      {/* Agents tab */}
+      {tab === "agents" && (
+        <div className={CARD + " space-y-4"}>
+          {data.agents.length === 0 ? <p className="text-sm text-[#d7aabd]">لا يوجد مناديب بعد. أضف أول مندوب!</p> : (
+            <div className="space-y-4">
+              {data.agents.map((a) => (
+                <div key={a.id} className="rounded-xl border border-gray-700 bg-gray-800/50 p-4 space-y-3">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div>
+                      <p className="font-black text-white">{a.name}</p>
+                      <p className="text-xs text-gray-400">{a.user.email}</p>
+                      <p className="text-xs text-gray-500">{a.user.phone ?? "لا يوجد هاتف"}</p>
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={`text-xs rounded-full px-2 py-0.5 ${a.isActive ? "bg-emerald-900/30 text-emerald-400" : "bg-red-900/30 text-red-400"}`}>{a.isActive ? "نشط" : "موقوف"}</span>
+                      <code className="text-pink-300 text-xs bg-gray-900 px-2 py-0.5 rounded">{a.referralCode}</code>
+                      <button onClick={() => void openDetail(a)} className="rounded-lg bg-gray-700 px-2 py-1 text-xs font-bold text-white hover:bg-gray-600">تفاصيل</button>
+                    </div>
+                  </div>
+                  <ReferralLink code={a.referralCode} />
+                  <div className="grid grid-cols-4 gap-2 text-center text-xs">
+                    <div className="rounded-lg bg-gray-900 py-1.5"><p className="font-bold text-white">{a.referralsCount}</p><p className="text-gray-400">عملاء</p></div>
+                    <div className="rounded-lg bg-gray-900 py-1.5"><p className="font-bold text-yellow-400">{a.pendingCommission.toFixed(0)} ج.م</p><p className="text-gray-400">معلق</p></div>
+                    <div className="rounded-lg bg-gray-900 py-1.5"><p className="font-bold text-emerald-400">{a.settledCommission.toFixed(0)} ج.م</p><p className="text-gray-400">محصّل</p></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Agent commissions tab */}
+      {tab === "agent_comms" && (
+        <div className={CARD + " space-y-4"}>
+          {agentComms.length === 0 ? <p className="text-sm text-[#d7aabd]">لا توجد عمولات بعد.</p> : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-right">
+                <thead><tr className="border-b border-gray-700 text-xs text-gray-400">
+                  <th className="pb-2 font-bold">المندوب</th><th className="pb-2 font-bold">العميل</th>
+                  <th className="pb-2 font-bold">الباقة</th><th className="pb-2 font-bold">العمولة</th>
+                  <th className="pb-2 font-bold">الحالة</th><th className="pb-2 font-bold">التاريخ</th>
+                </tr></thead>
+                <tbody>
+                  {agentComms.map((c) => (
+                    <tr key={c.id} className="border-b border-gray-800/50">
+                      <td className="py-2 text-white">{c.agentName}</td>
+                      <td className="py-2"><p className="text-white">{c.customerName}</p><p className="text-xs text-gray-400">{c.customerEmail}</p></td>
+                      <td className="py-2 text-gray-300">{c.membershipName}</td>
+                      <td className="py-2 font-bold text-pink-300">{c.amount} ج.م</td>
+                      <td className="py-2"><StatusBadge status={c.status} /></td>
+                      <td className="py-2 text-gray-400">{new Date(c.createdAt).toLocaleDateString("ar-EG")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* My commissions tab */}
+      {tab === "my_comms" && (
+        <div className={CARD + " space-y-4"}>
+          {mgrComms.length === 0 ? <p className="text-sm text-[#d7aabd]">لا توجد عمولات بعد.</p> : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-right">
+                <thead><tr className="border-b border-gray-700 text-xs text-gray-400">
+                  <th className="pb-2 font-bold">المندوب</th><th className="pb-2 font-bold">العميل</th>
+                  <th className="pb-2 font-bold">الباقة</th><th className="pb-2 font-bold">عمولتي</th>
+                  <th className="pb-2 font-bold">الحالة</th><th className="pb-2 font-bold">تاريخ التحصيل</th>
+                </tr></thead>
+                <tbody>
+                  {mgrComms.map((c) => (
+                    <tr key={c.id} className="border-b border-gray-800/50">
+                      <td className="py-2 text-white">{c.agentName ?? "—"}</td>
+                      <td className="py-2 text-gray-300">{c.customerName ?? "—"}</td>
+                      <td className="py-2 text-gray-300">{c.membershipName ?? "—"}</td>
+                      <td className="py-2 font-bold text-pink-300">{c.amount} ج.م</td>
+                      <td className="py-2"><StatusBadge status={c.status} /></td>
+                      <td className="py-2 text-gray-400">{c.settledAt ? new Date(c.settledAt).toLocaleDateString("ar-EG") : "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Partners tab */}
+      {tab === "partners" && (
+        <div className={CARD + " space-y-4"}>
+          {partners.length === 0 ? <p className="text-sm text-[#d7aabd]">لا يوجد شركاء بعد. أضف أول شريك!</p> : (
+            <div className="space-y-4">
+              {partners.map((p) => (
+                <div key={p.id} className="rounded-xl border border-gray-700 bg-gray-800/50 p-4 space-y-3">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div>
+                      <p className="font-black text-white">{p.name}</p>
+                      <p className="text-xs text-gray-400">{p.linkedUser?.email} · {p.category}</p>
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={`text-xs rounded-full px-2 py-0.5 ${p.isActive ? "bg-emerald-900/30 text-emerald-400" : "bg-red-900/30 text-red-400"}`}>{p.isActive ? "نشط" : "موقوف"}</span>
+                      {p.referralToken && <code className="text-pink-300 text-xs bg-gray-900 px-2 py-0.5 rounded">{p.referralToken}</code>}
+                    </div>
+                  </div>
+                  {p.referralToken ? (
+                    <ReferralLink code={p.referralToken} label={p.referralLinkLabel ?? "لينك الشريك"} token={p.referralToken} baseUrl="/?ref=" />
+                  ) : (
+                    <div className="rounded-lg bg-gray-900 px-3 py-2 text-xs text-yellow-300">لا يوجد لينك إحالة نشط لهذا الشريك.</div>
+                  )}
+                  <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                    <div className="rounded-lg bg-gray-900 py-1.5"><p className="font-bold text-white">{p.linksCount}</p><p className="text-gray-400">لينكات</p></div>
+                    <div className="rounded-lg bg-gray-900 py-1.5"><p className="font-bold text-yellow-400">{p.totalCommissionPending.toFixed(0)} ج.م</p><p className="text-gray-400">معلق</p></div>
+                    <div className="rounded-lg bg-gray-900 py-1.5"><p className="font-bold text-emerald-400">{p.totalCommissionPaid.toFixed(0)} ج.م</p><p className="text-gray-400">محصل</p></div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="rounded-lg bg-gray-900 px-3 py-2"><span className="text-gray-400">عمولة الشريك: </span><span className="font-bold text-white">{p.commissionRate}{p.commissionType === "percentage" ? "%" : " ج.م"}</span></div>
+                    <div className="rounded-lg bg-gray-900 px-3 py-2"><span className="text-gray-400">عمولتي: </span><span className="font-bold text-pink-300">{p.managerCommissionRate ?? 0}{p.managerCommissionType === "percentage_of_partner" ? "% من عمولته" : " ج.م ثابت"}</span></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Partner commissions tab */}
+      {tab === "partner_comms" && (
+        <div className={CARD + " space-y-4"}>
+          {partnerComms.length === 0 ? <p className="text-sm text-[#d7aabd]">لا توجد عمولات شركاء بعد.</p> : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-right">
+                <thead><tr className="border-b border-gray-700 text-xs text-gray-400">
+                  <th className="pb-2 font-bold">الشريك</th><th className="pb-2 font-bold">العميل</th>
+                  <th className="pb-2 font-bold">الباقة</th><th className="pb-2 font-bold">عمولتي</th>
+                  <th className="pb-2 font-bold">الحالة</th><th className="pb-2 font-bold">تاريخ التحصيل</th>
+                  <th className="pb-2 font-bold">التاريخ</th>
+                </tr></thead>
+                <tbody>
+                  {partnerComms.map((c) => (
+                    <tr key={c.id} className="border-b border-gray-800/50">
+                      <td className="py-2 text-white">{c.partnerName ?? "—"}</td>
+                      <td className="py-2"><p className="text-white">{c.customerName ?? "—"}</p><p className="text-xs text-gray-400">{c.customerEmail ?? "—"}</p></td>
+                      <td className="py-2 text-gray-300">{c.membershipName ?? "—"}</td>
+                      <td className="py-2 font-bold text-pink-300">{c.amount} ج.م</td>
+                      <td className="py-2"><StatusBadge status={c.status} /></td>
+                      <td className="py-2 text-gray-400">{c.settledAt ? new Date(c.settledAt).toLocaleDateString("ar-EG") : "—"}</td>
+                      <td className="py-2 text-gray-400">{new Date(c.createdAt).toLocaleDateString("ar-EG")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Create partner modal */}
+      {showCreatePartner && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 print-hidden">
+          <div className="w-full max-w-2xl rounded-2xl border border-gray-700 bg-gray-900 p-6 space-y-5 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-black text-white">إضافة شريك جديد</h3>
+              <button onClick={() => setShowCreatePartner(false)} className="text-2xl leading-none text-gray-500 hover:text-white">×</button>
+            </div>
+
+            <div className="rounded-xl border border-yellow-500/30 bg-yellow-950/20 px-4 py-3 text-xs text-yellow-300">
+              ⏳ سيتم إرسال طلب للأدمن للمراجعة والموافقة — لن يظهر الشريك في الموقع حتى تتم الموافقة.
+            </div>
+
+            {partnerError && <p className="text-sm text-red-400">{partnerError}</p>}
+
+            <div className="grid grid-cols-2 gap-4">
+              {/* Name */}
+              <div className="space-y-1">
+                <label className="block text-xs font-bold text-gray-400">اسم الشريك *</label>
+                <input value={partnerForm.name} onChange={(e) => setPartnerForm({ ...partnerForm, name: e.target.value })} className={INPUT} />
+              </div>
+              {/* Name EN */}
+              <div className="space-y-1">
+                <label className="block text-xs font-bold text-gray-400">الاسم بالإنجليزية</label>
+                <input value={partnerForm.nameEn} onChange={(e) => setPartnerForm({ ...partnerForm, nameEn: e.target.value })} className={INPUT} placeholder="Partner name in English" dir="ltr" />
+              </div>
+              {/* Category */}
+              <div className="space-y-1">
+                <label className="block text-xs font-bold text-gray-400">الفئة *</label>
+                <select value={partnerForm.category} onChange={(e) => setPartnerForm({ ...partnerForm, category: e.target.value })} className={INPUT}>
+                  <option value="">اختر الفئة...</option>
+                  {Object.entries(CATEGORY_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                </select>
+              </div>
+              {/* Contact Phone */}
+              <div className="space-y-1">
+                <label className="block text-xs font-bold text-gray-400">رقم التواصل</label>
+                <input value={partnerForm.contactPhone} onChange={(e) => setPartnerForm({ ...partnerForm, contactPhone: e.target.value })} className={INPUT} placeholder="01xxxxxxxxx" />
+              </div>
+              {/* Email */}
+              <div className="space-y-1">
+                <label className="block text-xs font-bold text-gray-400">البريد الإلكتروني *</label>
+                <input type="email" value={partnerForm.email} onChange={(e) => setPartnerForm({ ...partnerForm, email: e.target.value })} className={INPUT} dir="ltr" />
+              </div>
+              {/* Phone */}
+              <div className="space-y-1">
+                <label className="block text-xs font-bold text-gray-400">هاتف الحساب</label>
+                <input value={partnerForm.phone} onChange={(e) => setPartnerForm({ ...partnerForm, phone: e.target.value })} className={INPUT} placeholder="01xxxxxxxxx" />
+              </div>
+              {/* Password */}
+              <div className="col-span-2 space-y-1">
+                <label className="block text-xs font-bold text-gray-400">كلمة المرور</label>
+                <input type="text" value={partnerForm.password} onChange={(e) => setPartnerForm({ ...partnerForm, password: e.target.value })} className={INPUT} placeholder="FitZone@Partner!" dir="ltr" />
+              </div>
+              {/* Commission */}
+              <div className="space-y-1">
+                <label className="block text-xs font-bold text-gray-400">عمولة الشريك</label>
+                <input type="number" value={partnerForm.commissionRate} onChange={(e) => setPartnerForm({ ...partnerForm, commissionRate: e.target.value })} className={INPUT} />
+              </div>
+              <div className="space-y-1">
+                <label className="block text-xs font-bold text-gray-400">نوع العمولة</label>
+                <select value={partnerForm.commissionType} onChange={(e) => setPartnerForm({ ...partnerForm, commissionType: e.target.value })} className={INPUT}>
+                  <option value="percentage">نسبة مئوية %</option>
+                  <option value="fixed">مبلغ ثابت ج.م</option>
+                </select>
+              </div>
+              {/* Manager Commission */}
+              <div className="space-y-1">
+                <label className="block text-xs font-bold text-gray-400">عمولتي</label>
+                <input type="number" value={partnerForm.managerCommissionRate} onChange={(e) => setPartnerForm({ ...partnerForm, managerCommissionRate: e.target.value })} className={INPUT} />
+              </div>
+              <div className="space-y-1">
+                <label className="block text-xs font-bold text-gray-400">نوع عمولتي</label>
+                <select value={partnerForm.managerCommissionType} onChange={(e) => setPartnerForm({ ...partnerForm, managerCommissionType: e.target.value })} className={INPUT}>
+                  <option value="percentage_of_partner">% من عمولة الشريك</option>
+                  <option value="fixed">مبلغ ثابت لكل اشتراك</option>
+                </select>
+              </div>
+              {/* Contract dates */}
+              <div className="space-y-1">
+                <label className="block text-xs font-bold text-gray-400">تاريخ بداية التعاقد</label>
+                <input type="date" value={partnerForm.contractStartDate} onChange={(e) => setPartnerForm({ ...partnerForm, contractStartDate: e.target.value })} className={INPUT} />
+              </div>
+              <div className="space-y-1">
+                <label className="block text-xs font-bold text-gray-400">تاريخ نهاية التعاقد</label>
+                <input type="date" value={partnerForm.contractEndDate} onChange={(e) => setPartnerForm({ ...partnerForm, contractEndDate: e.target.value })} className={INPUT} />
+              </div>
+              {/* Referral & member benefit */}
+              <div className="space-y-1">
+                <label className="block text-xs font-bold text-gray-400">خصم رابط الإحالة % <span className="font-normal text-gray-500">(خصم على الجيم للعميل)</span></label>
+                <input type="number" min="0" max="100" value={partnerForm.referralDiscountRate} onChange={(e) => setPartnerForm({ ...partnerForm, referralDiscountRate: e.target.value })} className={INPUT} placeholder="مثال: 10" />
+              </div>
+              <div className="space-y-1">
+                <label className="block text-xs font-bold text-gray-400">خصم ميزة الأعضاء % <span className="font-normal text-gray-500">(عند الشريك)</span></label>
+                <input type="number" min="0" max="100" value={partnerForm.memberBenefitRate} onChange={(e) => setPartnerForm({ ...partnerForm, memberBenefitRate: e.target.value })} className={INPUT} placeholder="مثال: 15" />
+              </div>
+              <div className="col-span-2 space-y-1">
+                <label className="block text-xs font-bold text-gray-400">كود ميزة الأعضاء</label>
+                <div className="flex gap-2">
+                  <input value={partnerForm.memberBenefitCode} onChange={(e) => setPartnerForm({ ...partnerForm, memberBenefitCode: e.target.value.toUpperCase() })} className={`${INPUT} flex-1`} placeholder="مثال: FITZONE-PARTNER" dir="ltr" />
+                  <button type="button" onClick={() => setPartnerForm({ ...partnerForm, memberBenefitCode: generatePartnerBenefitCode() })}
+                    className="rounded-xl border border-pink-500/40 bg-pink-600/20 px-3 text-xs font-black text-pink-200 hover:bg-pink-600/30 whitespace-nowrap">
+                    إنشاء تلقائي
+                  </button>
+                </div>
+              </div>
+              {/* Logo & Website */}
+              <div className="space-y-1">
+                <label className="block text-xs font-bold text-gray-400">رابط الشعار (logo)</label>
+                <input value={partnerForm.logoUrl} onChange={(e) => setPartnerForm({ ...partnerForm, logoUrl: e.target.value })} className={INPUT} placeholder="https://..." dir="ltr" />
+                {partnerForm.logoUrl && <img src={partnerForm.logoUrl} alt="معاينة" className="h-12 w-12 mt-1 rounded-xl border border-white/10 object-contain bg-white p-1" />}
+              </div>
+              <div className="space-y-1">
+                <label className="block text-xs font-bold text-gray-400">الموقع الإلكتروني</label>
+                <input value={partnerForm.websiteUrl} onChange={(e) => setPartnerForm({ ...partnerForm, websiteUrl: e.target.value })} className={INPUT} placeholder="https://..." dir="ltr" />
+              </div>
+              {/* Notes */}
+              <div className="col-span-2 space-y-1">
+                <label className="block text-xs font-bold text-gray-400">ملاحظات</label>
+                <textarea value={partnerForm.notes} onChange={(e) => setPartnerForm({ ...partnerForm, notes: e.target.value })} rows={2} className={INPUT + " resize-none"} />
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={async () => {
+                  if (!partnerForm.name.trim() || !partnerForm.email.trim() || !partnerForm.category.trim()) { setPartnerError("الاسم والبريد والفئة مطلوبة."); return; }
+                  setCreatingPartner(true); setPartnerError("");
+                  try {
+                    const res = await fetch("/api/admin/contracts", {
+                      method: "POST", headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        type: "partner",
+                        name: partnerForm.name.trim(), nameEn: partnerForm.nameEn.trim() || undefined,
+                        email: partnerForm.email.trim(), phone: partnerForm.phone.trim() || undefined,
+                        password: partnerForm.password.trim() || undefined,
+                        category: partnerForm.category.trim(),
+                        logoUrl: partnerForm.logoUrl.trim() || undefined,
+                        websiteUrl: partnerForm.websiteUrl.trim() || undefined,
+                        contactPhone: partnerForm.contactPhone.trim() || undefined,
+                        contractStartDate: partnerForm.contractStartDate || undefined,
+                        contractEndDate: partnerForm.contractEndDate || undefined,
+                        referralDiscountRate: partnerForm.referralDiscountRate !== "" ? Number(partnerForm.referralDiscountRate) : undefined,
+                        memberBenefitRate: partnerForm.memberBenefitRate !== "" ? Number(partnerForm.memberBenefitRate) : undefined,
+                        memberBenefitCode: partnerForm.memberBenefitCode.trim() || undefined,
+                        commissionRate: Number(partnerForm.commissionRate), commissionType: partnerForm.commissionType,
+                        managerCommissionType: partnerForm.managerCommissionType, managerCommissionRate: Number(partnerForm.managerCommissionRate),
+                        notes: partnerForm.notes.trim() || undefined,
+                      }),
+                    });
+                    const json = await res.json().catch(() => ({}));
+                    if (!res.ok) { setPartnerError((json as { error?: string }).error ?? "حدث خطأ."); return; }
+                    setShowCreatePartner(false);
+                    setPartnerForm({ name: "", nameEn: "", email: "", phone: "", password: "", category: "", logoUrl: "", websiteUrl: "", contactPhone: "", contractStartDate: "", contractEndDate: "", referralDiscountRate: "", memberBenefitRate: "", memberBenefitCode: "", commissionRate: "10", commissionType: "percentage", managerCommissionType: "percentage_of_partner", managerCommissionRate: "10", notes: "" });
+                    void loadPartners();
+                  } finally { setCreatingPartner(false); }
+                }}
+                disabled={creatingPartner}
+                className="flex-1 rounded-xl bg-pink-600 py-2.5 font-black text-white disabled:opacity-50"
+              >{creatingPartner ? "جاري الإرسال..." : "إرسال للمراجعة والموافقة"}</button>
+              <button onClick={() => setShowCreatePartner(false)} className="rounded-xl bg-gray-800 px-5 py-2.5 font-bold text-gray-300">إلغاء</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create agent modal */}
+      {showCreate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 print-hidden">
+          <div className="w-full max-w-md rounded-2xl border border-gray-700 bg-gray-900 p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+            <h3 className="text-lg font-black text-white">إضافة مندوب جديد</h3>
+            {createError && <p className="text-sm text-red-400">{createError}</p>}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2"><label className="block text-xs font-bold text-gray-400 mb-1">الاسم *</label><input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={INPUT} placeholder="اسم المندوب" /></div>
+              <div><label className="block text-xs font-bold text-gray-400 mb-1">البريد *</label><input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className={INPUT} /></div>
+              <div><label className="block text-xs font-bold text-gray-400 mb-1">الهاتف</label><input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className={INPUT} /></div>
+              <div className="col-span-2"><label className="block text-xs font-bold text-gray-400 mb-1">كلمة المرور *</label><input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className={INPUT} placeholder="6 أحرف على الأقل" /></div>
+            </div>
+            <div><label className="block text-xs font-bold text-gray-400 mb-1">ملاحظات</label><textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} rows={2} className={INPUT + " resize-none"} /></div>
+            <p className="text-xs text-gray-500">العمولة والخصومات يحددها الأدمن لاحقاً.</p>
+            <div className="flex gap-2">
+              <button onClick={() => void handleCreate()} disabled={creating} className="flex-1 rounded-xl bg-pink-600 py-2.5 font-black text-white disabled:opacity-50">{creating ? "جاري الإنشاء..." : "إنشاء الحساب"}</button>
+              <button onClick={() => setShowCreate(false)} className="rounded-xl bg-gray-800 px-5 py-2.5 font-bold text-gray-300">إلغاء</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Agent detail drawer */}
+      {(selectedAgent || detailLoading) && (
+        <div className="fixed inset-0 z-50 flex items-center justify-end bg-black/60 p-4 print-hidden">
+          <div className="w-full max-w-lg h-full rounded-2xl border border-gray-700 bg-gray-900 overflow-y-auto">
+            <div className="p-5 space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-black text-white">{selectedAgent?.name ?? "جاري التحميل..."}</h3>
+                <button onClick={() => setSelectedAgent(null)} className="text-gray-400 hover:text-white text-xl">×</button>
+              </div>
+              {detailLoading ? <p className="text-sm text-[#d7aabd]">جاري التحميل...</p> : selectedAgent ? (
+                <>
+                  <ReferralLink code={selectedAgent.referralCode} />
+                  <div className="grid grid-cols-3 gap-3">
+                    {[
+                      { label: "عملاء", value: selectedAgent.referrals.length },
+                      { label: "اشتركوا", value: selectedAgent.referrals.filter((r) => r.convertedAt).length },
+                      { label: "معلق", value: `${selectedAgent.pendingCommission.toFixed(0)} ج.م` },
+                    ].map((s) => (
+                      <div key={s.label} className="rounded-xl bg-gray-800 p-3 text-center">
+                        <p className="font-black text-pink-300">{s.value}</p>
+                        <p className="text-xs text-gray-400">{s.label}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs font-bold text-gray-400">العملاء ({selectedAgent.referrals.length})</p>
+                  <div className="space-y-2 max-h-56 overflow-y-auto">
+                    {selectedAgent.referrals.map((r) => (
+                      <div key={r.id} className="flex items-center justify-between rounded-lg bg-gray-800 px-3 py-2 text-sm">
+                        <div><p className="text-white">{r.user.name ?? "—"}</p><p className="text-xs text-gray-400">{r.user.phone ?? r.user.email ?? "—"}</p></div>
+                        <span className={r.convertedAt ? "text-emerald-400 text-xs" : "text-gray-500 text-xs"}>{r.convertedAt ? "✓ مشترك" : "لم يشترك"}</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Admin View ───────────────────────────────────────────────────────────────
+export default function Contracts() {
+  const [userRole, setUserRole] = useState<string | null>(null);
+  const [roleLoaded, setRoleLoaded] = useState(false);
+
+  const [tab, setTab] = useState<"managers" | "agents" | "commissions" | "manager_commissions" | "partners" | "partner_commissions">("managers");
+  const [managers, setManagers] = useState<ContractsManagerRow[]>([]);
+  const [agents, setAgents] = useState<SalesAgentRow[]>([]);
+  const [commissions, setCommissions] = useState<SalesAgentCommissionRow[]>([]);
+  const [managerComms, setManagerComms] = useState<ManagerCommissionRow[]>([]);
+  const [partners, setPartners] = useState<Partner[]>([]);
+  const [partnerComms, setPartnerComms] = useState<PartnerManagerCommissionRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [deleteMgrConfirm, setDeleteMgrConfirm] = useState<ContractsManagerRow | null>(null);
+  const [deleteMgrInput, setDeleteMgrInput] = useState("");
+
+  const [showCreateMgr, setShowCreateMgr] = useState(false);
+  const [showCreateAgent, setShowCreateAgent] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState("");
+
+  const EMPTY_MGR_FORM = { name: "", email: "", phone: "", password: "", commissionType: "percentage_of_agents", commissionRate: "", notes: "" };
+  const EMPTY_AGENT_FORM = { name: "", email: "", phone: "", password: "", commissionRate: "", commissionType: "percentage", clientDiscountType: "percentage", clientDiscountValue: "", maxClientDiscount: "", managerId: "", notes: "" };
+  const [mgrForm, setMgrForm] = useState(EMPTY_MGR_FORM);
+  const [agentForm, setAgentForm] = useState(EMPTY_AGENT_FORM);
+
+  const [editAgent, setEditAgent] = useState<SalesAgentRow | null>(null);
+  const [editMgr, setEditMgr] = useState<ContractsManagerRow | null>(null);
+  const [editPartner, setEditPartner] = useState<Partner | null>(null);
+  const [editAgentForm, setEditAgentForm] = useState({ name: "", email: "", phone: "", password: "", managerId: "", commissionRate: "", commissionType: "percentage", clientDiscountType: "percentage", clientDiscountValue: "", maxClientDiscount: "", isActive: true, notes: "" });
+  const [editMgrForm, setEditMgrForm] = useState({ name: "", email: "", phone: "", password: "", commissionType: "percentage_of_agents", commissionRate: "", isActive: true, notes: "" });
+  const [editPartnerForm, setEditPartnerForm] = useState({ name: "", email: "", phone: "", password: "", category: "", managerId: "", commissionRate: "", commissionType: "percentage", managerCommissionType: "percentage_of_partner", managerCommissionRate: "", isActive: true, showOnPublicPage: true, notes: "" });
+  const [editSaving, setEditSaving] = useState(false);
+
+  const [selectedAgent, setSelectedAgent] = useState<SalesAgentRow | null>(null);
+  const [agentDetail, setAgentDetail] = useState<AgentDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [selectedMgr, setSelectedMgr] = useState<ContractsManagerRow | null>(null);
+  const [mgrDetail, setMgrDetail] = useState<{ agents: SalesAgentRow[]; pendingCommission: number; settledCommission: number } | null>(null);
+  const [mgrDetailLoading, setMgrDetailLoading] = useState(false);
+
+  const printRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    void fetch("/api/admin/session", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d: unknown) => { setUserRole((d as { user?: { role?: string } })?.user?.role ?? null); })
+      .catch(() => null)
+      .finally(() => setRoleLoaded(true));
+  }, []);
+
+  const loadManagers = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/contracts?view=managers", { cache: "no-store" });
+      const json = await res.json().catch(() => ({}));
+      setManagers(Array.isArray((json as { managers?: ContractsManagerRow[] }).managers) ? (json as { managers: ContractsManagerRow[] }).managers : []);
+    } finally { setLoading(false); }
+  }, []);
+
+  const loadAgents = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/contracts", { cache: "no-store" });
+      const json = await res.json().catch(() => ({}));
+      setAgents(Array.isArray((json as { agents?: SalesAgentRow[] }).agents) ? (json as { agents: SalesAgentRow[] }).agents : []);
+    } finally { setLoading(false); }
+  }, []);
+
+  const loadComms = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/contracts?view=commissions", { cache: "no-store" });
+      const json = await res.json().catch(() => ({}));
+      setCommissions(Array.isArray((json as { commissions?: SalesAgentCommissionRow[] }).commissions) ? (json as { commissions: SalesAgentCommissionRow[] }).commissions : []);
+    } finally { setLoading(false); }
+  }, []);
+
+  const loadMgrComms = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/contracts?view=manager_commissions", { cache: "no-store" });
+      const json = await res.json().catch(() => ({}));
+      setManagerComms(Array.isArray((json as { managerCommissions?: ManagerCommissionRow[] }).managerCommissions) ? (json as { managerCommissions: ManagerCommissionRow[] }).managerCommissions : []);
+    } finally { setLoading(false); }
+  }, []);
+
+  const loadPartners = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/contracts?view=partners", { cache: "no-store" });
+      const json = await res.json().catch(() => ({}));
+      setPartners(Array.isArray((json as { partners?: Partner[] }).partners) ? (json as { partners: Partner[] }).partners : []);
+    } finally { setLoading(false); }
+  }, []);
+
+  const loadPartnerComms = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/contracts?view=partner_commissions", { cache: "no-store" });
+      const json = await res.json().catch(() => ({}));
+      setPartnerComms(Array.isArray((json as { partnerCommissions?: PartnerManagerCommissionRow[] }).partnerCommissions) ? (json as { partnerCommissions: PartnerManagerCommissionRow[] }).partnerCommissions : []);
+    } finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => {
+    if (!roleLoaded || !userRole || userRole === "agent" || userRole === "contracts_manager") return;
+    if (tab === "managers") void loadManagers();
+    else if (tab === "agents") void loadAgents();
+    else if (tab === "commissions") void loadComms();
+    else if (tab === "manager_commissions") void loadMgrComms();
+    else if (tab === "partners") void loadPartners();
+    else if (tab === "partner_commissions") void loadPartnerComms();
+  }, [roleLoaded, userRole, tab, loadManagers, loadAgents, loadComms, loadMgrComms, loadPartners, loadPartnerComms]);
+
+  if (!roleLoaded) return <p className="text-sm text-[#d7aabd] p-6">جاري التحميل...</p>;
+  if (userRole === "agent") return <AgentDashboard />;
+  if (userRole === "contracts_manager") return <ManagerDashboard />;
+
+  // ── Admin actions ──
+  const handleCreateMgr = async () => {
+    if (!mgrForm.name.trim() || !mgrForm.email.trim() || !mgrForm.password.trim()) { setCreateError("الاسم والبريد وكلمة المرور مطلوبة."); return; }
+    setCreating(true); setCreateError("");
+    try {
+      const res = await fetch("/api/admin/contracts", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "manager", name: mgrForm.name.trim(), email: mgrForm.email.trim(), phone: mgrForm.phone.trim() || undefined, password: mgrForm.password.trim(), commissionType: mgrForm.commissionType, commissionRate: mgrForm.commissionRate ? Number(mgrForm.commissionRate) : 0, notes: mgrForm.notes.trim() || undefined }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) { setCreateError((json as { error?: string }).error ?? "حدث خطأ."); return; }
+      setShowCreateMgr(false); setMgrForm(EMPTY_MGR_FORM); void loadManagers();
+    } finally { setCreating(false); }
+  };
+
+  const handleCreateAgent = async () => {
+    if (!agentForm.name.trim() || !agentForm.email.trim() || !agentForm.password.trim()) { setCreateError("الاسم والبريد وكلمة المرور مطلوبة."); return; }
+    setCreating(true); setCreateError("");
+    try {
+      const res = await fetch("/api/admin/contracts", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: agentForm.name.trim(), email: agentForm.email.trim(), phone: agentForm.phone.trim() || undefined,
+          password: agentForm.password.trim(), commissionRate: agentForm.commissionRate ? Number(agentForm.commissionRate) : 0,
+          commissionType: agentForm.commissionType, clientDiscountType: agentForm.clientDiscountType,
+          clientDiscountValue: agentForm.clientDiscountValue ? Number(agentForm.clientDiscountValue) : 0,
+          maxClientDiscount: agentForm.maxClientDiscount ? Number(agentForm.maxClientDiscount) : null,
+          managerId: agentForm.managerId || undefined, notes: agentForm.notes.trim() || undefined,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) { setCreateError((json as { error?: string }).error ?? "حدث خطأ."); return; }
+      setShowCreateAgent(false); setAgentForm(EMPTY_AGENT_FORM); void loadAgents();
+    } finally { setCreating(false); }
+  };
+
+  const openEditAgent = (a: SalesAgentRow) => {
+    setEditAgent(a);
+    setEditAgentForm({ name: a.name, email: a.user.email ?? "", phone: a.user.phone ?? "", password: "", managerId: a.managerId ?? "", commissionRate: String(a.commissionRate), commissionType: a.commissionType, clientDiscountType: a.clientDiscountType, clientDiscountValue: String(a.clientDiscountValue), maxClientDiscount: a.maxClientDiscount != null ? String(a.maxClientDiscount) : "", isActive: a.isActive, notes: a.notes ?? "" });
+  };
+  const openEditMgr = (m: ContractsManagerRow) => {
+    setEditMgr(m);
+    setEditMgrForm({ name: m.name, email: m.user.email ?? "", phone: m.user.phone ?? "", password: "", commissionType: m.commissionType, commissionRate: String(m.commissionRate), isActive: m.isActive, notes: m.notes ?? "" });
+  };
+  const openEditPartner = (p: Partner) => {
+    setEditPartner(p);
+    setEditPartnerForm({ name: p.name, email: p.linkedUser?.email ?? "", phone: p.linkedUser?.phone ?? p.contactPhone ?? "", password: "", category: p.category, managerId: p.managerId ?? "", commissionRate: String(p.commissionRate), commissionType: p.commissionType, managerCommissionType: p.managerCommissionType ?? "percentage_of_partner", managerCommissionRate: p.managerCommissionRate != null ? String(p.managerCommissionRate) : "", isActive: p.isActive, showOnPublicPage: p.showOnPublicPage, notes: p.notes ?? "" });
+  };
+
+  const handleEditAgent = async () => {
+    if (!editAgent) return;
+    setEditSaving(true);
+    try {
+      const res = await fetch("/api/admin/contracts", {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: editAgent.id, name: editAgentForm.name.trim(), email: editAgentForm.email.trim(), phone: editAgentForm.phone.trim(), password: editAgentForm.password.trim() || undefined, managerId: editAgentForm.managerId || null, commissionRate: editAgentForm.commissionRate ? Number(editAgentForm.commissionRate) : undefined, commissionType: editAgentForm.commissionType, clientDiscountType: editAgentForm.clientDiscountType, clientDiscountValue: editAgentForm.clientDiscountValue ? Number(editAgentForm.clientDiscountValue) : undefined, maxClientDiscount: editAgentForm.maxClientDiscount ? Number(editAgentForm.maxClientDiscount) : null, isActive: editAgentForm.isActive, notes: editAgentForm.notes.trim() || undefined }),
+      });
+      if (res.ok) { setEditAgent(null); void loadAgents(); }
+      else { const d = await res.json().catch(() => ({})); window.alert((d as { error?: string }).error ?? "حدث خطأ."); }
+    } finally { setEditSaving(false); }
+  };
+
+  const handleEditMgr = async () => {
+    if (!editMgr) return;
+    setEditSaving(true);
+    try {
+      const res = await fetch("/api/admin/contracts", {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ managerId: editMgr.id, name: editMgrForm.name.trim(), email: editMgrForm.email.trim(), phone: editMgrForm.phone.trim(), password: editMgrForm.password.trim() || undefined, commissionType: editMgrForm.commissionType, commissionRate: editMgrForm.commissionRate ? Number(editMgrForm.commissionRate) : undefined, isActive: editMgrForm.isActive, notes: editMgrForm.notes.trim() || undefined }),
+      });
+      if (res.ok) { setEditMgr(null); void loadManagers(); }
+      else { const d = await res.json().catch(() => ({})); window.alert((d as { error?: string }).error ?? "حدث خطأ."); }
+    } finally { setEditSaving(false); }
+  };
+
+  const handleEditPartner = async () => {
+    if (!editPartner) return;
+    setEditSaving(true);
+    try {
+      const res = await fetch("/api/admin/contracts", {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          partnerId: editPartner.id,
+          name: editPartnerForm.name.trim(),
+          email: editPartnerForm.email.trim(),
+          phone: editPartnerForm.phone.trim(),
+          password: editPartnerForm.password.trim() || undefined,
+          category: editPartnerForm.category.trim(),
+          contactPhone: editPartnerForm.phone.trim(),
+          managerId: editPartnerForm.managerId || null,
+          commissionRate: editPartnerForm.commissionRate ? Number(editPartnerForm.commissionRate) : 0,
+          commissionType: editPartnerForm.commissionType,
+          managerCommissionType: editPartnerForm.managerCommissionType || null,
+          managerCommissionRate: editPartnerForm.managerCommissionRate ? Number(editPartnerForm.managerCommissionRate) : null,
+          isActive: editPartnerForm.isActive,
+          showOnPublicPage: editPartnerForm.showOnPublicPage,
+          notes: editPartnerForm.notes.trim() || undefined,
+        }),
+      });
+      if (res.ok) { setEditPartner(null); void loadPartners(); }
+      else { const d = await res.json().catch(() => ({})); window.alert((d as { error?: string }).error ?? "حدث خطأ."); }
+    } finally { setEditSaving(false); }
+  };
+
+  const settleAgentComm = async (agentId: string) => {
+    await fetch("/api/admin/contracts", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ agentId, action: "settle_commissions" }) });
+    void loadAgents(); void loadComms();
+  };
+
+  const settleMgrComm = async (managerId: string) => {
+    await fetch("/api/admin/contracts", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "settle_manager_commissions", managerId }) });
+    void loadManagers(); void loadMgrComms();
+  };
+
+  const deleteAgent = async (a: SalesAgentRow) => {
+    if (!window.confirm(`حذف المندوب "${a.name}"؟`)) return;
+    const res = await fetch("/api/admin/contracts", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ agentId: a.id }) });
+    if (res.ok) void loadAgents();
+  };
+
+  const deleteMgr = (m: ContractsManagerRow) => {
+    setDeleteMgrConfirm(m);
+    setDeleteMgrInput("");
+  };
+
+  const confirmDeleteMgr = async () => {
+    if (!deleteMgrConfirm) return;
+    const res = await fetch("/api/admin/contracts", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ managerId: deleteMgrConfirm.id }) });
+    if (res.ok) { setDeleteMgrConfirm(null); setDeleteMgrInput(""); void loadManagers(); }
+  };
+
+  const openAgentDetail = async (a: SalesAgentRow) => {
+    setSelectedAgent(a); setDetailLoading(true);
+    try {
+      const res = await fetch(`/api/admin/contracts?agentId=${a.id}`, { cache: "no-store" });
+      const json = await res.json().catch(() => ({}));
+      setAgentDetail((json as { agent?: AgentDetail }).agent ?? null);
+    } finally { setDetailLoading(false); }
+  };
+
+  const openMgrDetail = async (m: ContractsManagerRow) => {
+    setSelectedMgr(m); setMgrDetailLoading(true);
+    try {
+      const res = await fetch(`/api/admin/contracts?managerId=${m.id}`, { cache: "no-store" });
+      const json = await res.json().catch(() => ({}));
+      const d = (json as { manager?: { agents: SalesAgentRow[]; pendingCommission: number; settledCommission: number } }).manager;
+      setMgrDetail(d ?? null);
+    } finally { setMgrDetailLoading(false); }
+  };
+
+  const commTypeLabel: Record<string, string> = { percentage_of_agents: "% من عمولة مناديبه", percentage_of_revenue: "% من إيراد الاشتراكات", fixed: "مبلغ ثابت / اشتراك" };
+
+  const totalPendingAgents = agents.reduce((s, a) => s + a.pendingCommission, 0);
+  const totalPendingMgrs = managers.reduce((s, m) => s + m.pendingCommission, 0);
+
+  return (
+    <div className="space-y-6 p-1">
+      <style>{`@media print { .print-hidden { display:none!important; } body { background:white; color:black; } .print-table th, .print-table td { border: 1px solid #ccc; padding: 4px 8px; } }`}</style>
+
+      <div className="flex items-center justify-between flex-wrap gap-3 print-hidden">
+        <div>
+          <h2 className="text-2xl font-black text-white">التعاقدات والمناديب</h2>
+          <p className="text-sm text-[#d7aabd] mt-0.5">إدارة مديري التعاقدات والمناديب وعمولاتهم</p>
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          <PrintButton />
+          <button onClick={() => { setShowCreateAgent(true); setCreateError(""); }} className="rounded-xl bg-gray-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-gray-600">+ مندوب جديد</button>
+          <button onClick={() => { setShowCreateMgr(true); setCreateError(""); }} className="rounded-xl bg-gradient-to-r from-pink-600 to-pink-500 px-5 py-2.5 text-sm font-black text-white hover:opacity-90">+ مدير تعاقدات</button>
+        </div>
+      </div>
+
+      {/* Summary cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        {[
+          { label: "مديري التعاقدات", value: managers.length },
+          { label: "عدد المناديب", value: agents.length },
+          { label: "عمولات مناديب معلقة", value: `${totalPendingAgents.toFixed(0)} ج.م` },
+          { label: "عمولات مديرين معلقة", value: `${totalPendingMgrs.toFixed(0)} ج.م` },
+        ].map((s) => (
+          <div key={s.label} className={CARD + " text-center"}>
+            <p className="text-2xl font-black text-pink-300">{s.value}</p>
+            <p className="text-xs text-[#d7aabd] mt-1">{s.label}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-2 print-hidden flex-wrap">
+        {([["managers", "المديرون"], ["agents", "المناديب"], ["commissions", "عمولات المناديب"], ["manager_commissions", "عمولات المديرين"], ["partners", "الشركاء"], ["partner_commissions", "عمولات الشركاء"]] as const).map(([key, label]) => (
+          <button key={key} onClick={() => setTab(key)} className={`rounded-xl px-4 py-2 text-sm font-bold transition-colors ${tab === key ? "bg-pink-600 text-white" : "bg-gray-800 text-gray-400 hover:text-white"}`}>{label}</button>
+        ))}
+      </div>
+
+      {/* ── Managers tab ── */}
+      {tab === "managers" && (
+        <div className={CARD + " space-y-4"} ref={printRef}>
+          {loading ? <p className="text-sm text-[#d7aabd]">جاري التحميل...</p> : managers.length === 0 ? <p className="text-sm text-[#d7aabd]">لا يوجد مديرو تعاقدات. أضف أول مدير!</p> : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-right print-table">
+                <thead><tr className="border-b border-gray-700 text-xs text-gray-400">
+                  <th className="pb-3 font-bold">المدير</th><th className="pb-3 font-bold">نوع عمولته</th>
+                  <th className="pb-3 font-bold">النسبة</th><th className="pb-3 font-bold">المناديب</th>
+                  <th className="pb-3 font-bold">معلق</th><th className="pb-3 font-bold">محصّل</th>
+                  <th className="pb-3 font-bold">الحالة</th><th className="pb-3 font-bold print-hidden">إجراءات</th>
+                </tr></thead>
+                <tbody>
+                  {managers.map((m) => (
+                    <tr key={m.id} className="border-b border-gray-800/50 hover:bg-white/5 cursor-pointer" onClick={() => void openMgrDetail(m)}>
+                      <td className="py-3"><p className="font-bold text-white">{m.name}</p><p className="text-xs text-gray-400">{m.user.email}</p></td>
+                      <td className="py-3 text-gray-300 text-xs">{commTypeLabel[m.commissionType] ?? m.commissionType}</td>
+                      <td className="py-3 text-center text-gray-300">{m.commissionRate}{m.commissionType === "fixed" ? " ج.م" : "%"}</td>
+                      <td className="py-3 text-center text-white">{m.agentsCount}</td>
+                      <td className="py-3 text-center text-yellow-400">{m.pendingCommission.toFixed(0)} ج.م</td>
+                      <td className="py-3 text-center text-emerald-400">{m.settledCommission.toFixed(0)} ج.م</td>
+                      <td className="py-3 text-center"><span className={`text-xs rounded-full px-2 py-0.5 ${m.isActive ? "bg-emerald-900/30 text-emerald-400" : "bg-red-900/30 text-red-400"}`}>{m.isActive ? "نشط" : "موقوف"}</span></td>
+                      <td className="py-3 print-hidden" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex gap-1 flex-wrap">
+                          <button onClick={() => openEditMgr(m)} className="rounded-lg bg-gray-700 px-2 py-1 text-xs font-bold text-white hover:bg-gray-600">تعديل</button>
+                          {m.pendingCommission > 0 && <button onClick={() => void settleMgrComm(m.id)} className="rounded-lg bg-emerald-800 px-2 py-1 text-xs font-bold text-white hover:bg-emerald-700">تحصيل</button>}
+                          <button onClick={() => void deleteMgr(m)} className="rounded-lg bg-red-900/50 px-2 py-1 text-xs font-bold text-red-400 hover:bg-red-900">حذف</button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Agents tab ── */}
+      {tab === "agents" && (
+        <div className={CARD + " space-y-4"}>
+          {loading ? <p className="text-sm text-[#d7aabd]">جاري التحميل...</p> : agents.length === 0 ? <p className="text-sm text-[#d7aabd]">لا يوجد مناديب.</p> : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-right print-table">
+                <thead><tr className="border-b border-gray-700 text-xs text-gray-400">
+                  <th className="pb-3 font-bold">المندوب</th><th className="pb-3 font-bold">المدير</th>
+                  <th className="pb-3 font-bold">الكود</th><th className="pb-3 font-bold">العملاء</th>
+                  <th className="pb-3 font-bold">اشتركوا</th><th className="pb-3 font-bold">عمولته</th>
+                  <th className="pb-3 font-bold">خصم العميل</th><th className="pb-3 font-bold">معلق</th>
+                  <th className="pb-3 font-bold">محصّل</th><th className="pb-3 font-bold">الحالة</th>
+                  <th className="pb-3 font-bold print-hidden">إجراءات</th>
+                </tr></thead>
+                <tbody>
+                  {agents.map((a) => (
+                    <tr key={a.id} className="border-b border-gray-800/50 hover:bg-white/5 cursor-pointer" onClick={() => void openAgentDetail(a)}>
+                      <td className="py-3"><p className="font-bold text-white">{a.name}</p><p className="text-xs text-gray-400">{a.user.email}</p></td>
+                      <td className="py-3 text-xs text-gray-400">{a.managerName ?? "—"}</td>
+                      <td className="py-3"><code className="text-pink-300 text-xs bg-gray-900 px-2 py-0.5 rounded">{a.referralCode}</code></td>
+                      <td className="py-3 text-center text-white">{a.referralsCount}</td>
+                      <td className="py-3 text-center text-emerald-400">{a.convertedCount}</td>
+                      <td className="py-3 text-center text-gray-300">{a.commissionRate}{a.commissionType === "percentage" ? "%" : " ج.م"}</td>
+                      <td className="py-3 text-center text-gray-300">{a.clientDiscountValue}{a.clientDiscountType === "percentage" ? "%" : " ج.م"}</td>
+                      <td className="py-3 text-center text-yellow-400">{a.pendingCommission.toFixed(0)} ج.م</td>
+                      <td className="py-3 text-center text-emerald-400">{a.settledCommission.toFixed(0)} ج.م</td>
+                      <td className="py-3 text-center"><span className={`text-xs rounded-full px-2 py-0.5 ${a.isActive ? "bg-emerald-900/30 text-emerald-400" : "bg-red-900/30 text-red-400"}`}>{a.isActive ? "نشط" : "موقوف"}</span></td>
+                      <td className="py-3 print-hidden" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex gap-1 flex-wrap">
+                          <button onClick={() => openEditAgent(a)} className="rounded-lg bg-gray-700 px-2 py-1 text-xs font-bold text-white hover:bg-gray-600">تعديل</button>
+                          {a.pendingCommission > 0 && <button onClick={() => void settleAgentComm(a.id)} className="rounded-lg bg-emerald-800 px-2 py-1 text-xs font-bold text-white hover:bg-emerald-700">تحصيل</button>}
+                          <button onClick={() => void deleteAgent(a)} className="rounded-lg bg-red-900/50 px-2 py-1 text-xs font-bold text-red-400 hover:bg-red-900">حذف</button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Agent commissions tab ── */}
+      {tab === "commissions" && (
+        <div className={CARD + " space-y-4"}>
+          {loading ? <p className="text-sm text-[#d7aabd]">جاري التحميل...</p> : commissions.length === 0 ? <p className="text-sm text-[#d7aabd]">لا توجد عمولات.</p> : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-right print-table">
+                <thead><tr className="border-b border-gray-700 text-xs text-gray-400">
+                  <th className="pb-3 font-bold">المندوب</th><th className="pb-3 font-bold">العميل</th>
+                  <th className="pb-3 font-bold">الباقة</th><th className="pb-3 font-bold">المبلغ</th>
+                  <th className="pb-3 font-bold">الحالة</th><th className="pb-3 font-bold">تاريخ التحصيل</th>
+                  <th className="pb-3 font-bold">التاريخ</th>
+                </tr></thead>
+                <tbody>
+                  {commissions.map((c) => (
+                    <tr key={c.id} className="border-b border-gray-800/50">
+                      <td className="py-2 text-white">{c.agentName}</td>
+                      <td className="py-2"><p className="text-white">{c.customerName}</p><p className="text-xs text-gray-400">{c.customerEmail}</p></td>
+                      <td className="py-2 text-gray-300">{c.membershipName}</td>
+                      <td className="py-2 font-bold text-pink-300">{c.amount} ج.م</td>
+                      <td className="py-2"><StatusBadge status={c.status} /></td>
+                      <td className="py-2 text-gray-400">{c.settledAt ? new Date(c.settledAt).toLocaleDateString("ar-EG") : "—"}</td>
+                      <td className="py-2 text-gray-400">{new Date(c.createdAt).toLocaleDateString("ar-EG")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Manager commissions tab ── */}
+      {tab === "manager_commissions" && (
+        <div className={CARD + " space-y-4"}>
+          {loading ? <p className="text-sm text-[#d7aabd]">جاري التحميل...</p> : managerComms.length === 0 ? <p className="text-sm text-[#d7aabd]">لا توجد عمولات مديرين.</p> : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-right print-table">
+                <thead><tr className="border-b border-gray-700 text-xs text-gray-400">
+                  <th className="pb-3 font-bold">المدير</th><th className="pb-3 font-bold">المندوب</th>
+                  <th className="pb-3 font-bold">العميل</th><th className="pb-3 font-bold">الباقة</th>
+                  <th className="pb-3 font-bold">عمولة المدير</th><th className="pb-3 font-bold">الحالة</th>
+                  <th className="pb-3 font-bold">تاريخ التحصيل</th><th className="pb-3 font-bold">التاريخ</th>
+                </tr></thead>
+                <tbody>
+                  {managerComms.map((c) => (
+                    <tr key={c.id} className="border-b border-gray-800/50">
+                      <td className="py-2 font-bold text-white">{c.managerName}</td>
+                      <td className="py-2 text-gray-300">{c.agentName ?? "—"}</td>
+                      <td className="py-2 text-gray-300">{c.customerName ?? "—"}</td>
+                      <td className="py-2 text-gray-300">{c.membershipName ?? "—"}</td>
+                      <td className="py-2 font-bold text-pink-300">{c.amount} ج.م</td>
+                      <td className="py-2"><StatusBadge status={c.status} /></td>
+                      <td className="py-2 text-gray-400">{c.settledAt ? new Date(c.settledAt).toLocaleDateString("ar-EG") : "—"}</td>
+                      <td className="py-2 text-gray-400">{new Date(c.createdAt).toLocaleDateString("ar-EG")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Create Manager Modal ── */}
+      {/* Partners tab */}
+      {tab === "partners" && (
+        <div className={CARD + " space-y-4"}>
+          {loading ? <p className="text-sm text-[#d7aabd]">جاري التحميل...</p> : partners.length === 0 ? <p className="text-sm text-[#d7aabd]">لا يوجد شركاء.</p> : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-right print-table">
+                <thead><tr className="border-b border-gray-700 text-xs text-gray-400">
+                  <th className="pb-3 font-bold">الشريك</th><th className="pb-3 font-bold">المدير</th>
+                  <th className="pb-3 font-bold">لينك الإحالة</th><th className="pb-3 font-bold">عمولة الشريك</th>
+                  <th className="pb-3 font-bold">عمولة المدير</th><th className="pb-3 font-bold">معلق</th>
+                  <th className="pb-3 font-bold">محصل</th><th className="pb-3 font-bold">الحالة</th>
+                </tr></thead>
+                <tbody>
+                  {partners.map((p) => (
+                    <tr key={p.id} className="border-b border-gray-800/50 hover:bg-white/5">
+                      <td className="py-3"><p className="font-bold text-white">{p.name}</p><p className="text-xs text-gray-400">{p.linkedUser?.email} · {p.category}</p></td>
+                      <td className="py-3 text-xs text-gray-400">{p.managerName ?? "—"}</td>
+                      <td className="py-3">{p.referralToken ? <code className="text-pink-300 text-xs bg-gray-900 px-2 py-0.5 rounded">{p.referralToken}</code> : <span className="text-xs text-gray-500">—</span>}</td>
+                      <td className="py-3 text-center text-gray-300">{p.commissionRate}{p.commissionType === "percentage" ? "%" : " ج.م"}</td>
+                      <td className="py-3 text-center text-pink-300">{p.managerCommissionRate ?? 0}{p.managerCommissionType === "percentage_of_partner" ? "%" : " ج.م"}</td>
+                      <td className="py-3 text-center text-yellow-400">{p.totalCommissionPending.toFixed(0)} ج.م</td>
+                      <td className="py-3 text-center text-emerald-400">{p.totalCommissionPaid.toFixed(0)} ج.م</td>
+                      <td className="py-3 text-center"><span className={`text-xs rounded-full px-2 py-0.5 ${p.isActive ? "bg-emerald-900/30 text-emerald-400" : "bg-red-900/30 text-red-400"}`}>{p.isActive ? "نشط" : "موقوف"}</span></td>
+                      <td className="py-3 print-hidden"><button onClick={() => openEditPartner(p)} className="rounded-lg bg-gray-700 px-2 py-1 text-xs font-bold text-white hover:bg-gray-600">تعديل</button></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Partner commissions tab */}
+      {tab === "partner_commissions" && (
+        <div className={CARD + " space-y-4"}>
+          {loading ? <p className="text-sm text-[#d7aabd]">جاري التحميل...</p> : partnerComms.length === 0 ? <p className="text-sm text-[#d7aabd]">لا توجد عمولات شركاء.</p> : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-right print-table">
+                <thead><tr className="border-b border-gray-700 text-xs text-gray-400">
+                  <th className="pb-3 font-bold">المدير</th><th className="pb-3 font-bold">الشريك</th>
+                  <th className="pb-3 font-bold">العميل</th><th className="pb-3 font-bold">الباقة</th>
+                  <th className="pb-3 font-bold">عمولة المدير</th><th className="pb-3 font-bold">الحالة</th>
+                  <th className="pb-3 font-bold">تاريخ التحصيل</th><th className="pb-3 font-bold">التاريخ</th>
+                </tr></thead>
+                <tbody>
+                  {partnerComms.map((c) => (
+                    <tr key={c.id} className="border-b border-gray-800/50">
+                      <td className="py-2 font-bold text-white">{c.managerName}</td>
+                      <td className="py-2 text-gray-300">{c.partnerName ?? "—"}</td>
+                      <td className="py-2"><p className="text-white">{c.customerName ?? "—"}</p><p className="text-xs text-gray-400">{c.customerEmail ?? "—"}</p></td>
+                      <td className="py-2 text-gray-300">{c.membershipName ?? "—"}</td>
+                      <td className="py-2 font-bold text-pink-300">{c.amount} ج.م</td>
+                      <td className="py-2"><StatusBadge status={c.status} /></td>
+                      <td className="py-2 text-gray-400">{c.settledAt ? new Date(c.settledAt).toLocaleDateString("ar-EG") : "—"}</td>
+                      <td className="py-2 text-gray-400">{new Date(c.createdAt).toLocaleDateString("ar-EG")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {showCreateMgr && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 print-hidden">
+          <div className="w-full max-w-md rounded-2xl border border-gray-700 bg-gray-900 p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+            <h3 className="text-lg font-black text-white">إضافة مدير تعاقدات</h3>
+            {createError && <p className="text-sm text-red-400">{createError}</p>}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2"><label className="block text-xs font-bold text-gray-400 mb-1">الاسم *</label><input value={mgrForm.name} onChange={(e) => setMgrForm({ ...mgrForm, name: e.target.value })} className={INPUT} /></div>
+              <div><label className="block text-xs font-bold text-gray-400 mb-1">البريد *</label><input type="email" value={mgrForm.email} onChange={(e) => setMgrForm({ ...mgrForm, email: e.target.value })} className={INPUT} /></div>
+              <div><label className="block text-xs font-bold text-gray-400 mb-1">الهاتف</label><input value={mgrForm.phone} onChange={(e) => setMgrForm({ ...mgrForm, phone: e.target.value })} className={INPUT} /></div>
+              <div className="col-span-2"><label className="block text-xs font-bold text-gray-400 mb-1">كلمة المرور *</label><input type="password" value={mgrForm.password} onChange={(e) => setMgrForm({ ...mgrForm, password: e.target.value })} className={INPUT} placeholder="6 أحرف على الأقل" /></div>
+            </div>
+            <div className="border-t border-gray-700 pt-3 space-y-3">
+              <p className="text-xs font-bold text-pink-400">إعدادات عمولة المدير</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2">
+                  <label className="block text-xs font-bold text-gray-400 mb-1">نوع العمولة</label>
+                  <select value={mgrForm.commissionType} onChange={(e) => setMgrForm({ ...mgrForm, commissionType: e.target.value })} className={INPUT}>
+                    <option value="percentage_of_agents">نسبة % من عمولة مناديبه</option>
+                    <option value="percentage_of_revenue">نسبة % من قيمة الاشتراكات</option>
+                    <option value="fixed">مبلغ ثابت لكل اشتراك (ج.م)</option>
+                  </select>
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs font-bold text-gray-400 mb-1">{mgrForm.commissionType === "fixed" ? "المبلغ الثابت (ج.م)" : "النسبة (%)"}</label>
+                  <input type="number" value={mgrForm.commissionRate} onChange={(e) => setMgrForm({ ...mgrForm, commissionRate: e.target.value })} className={INPUT} placeholder="0" />
+                </div>
+              </div>
+            </div>
+            <div><label className="block text-xs font-bold text-gray-400 mb-1">ملاحظات</label><textarea value={mgrForm.notes} onChange={(e) => setMgrForm({ ...mgrForm, notes: e.target.value })} rows={2} className={INPUT + " resize-none"} /></div>
+            <div className="flex gap-2">
+              <button onClick={() => void handleCreateMgr()} disabled={creating} className="flex-1 rounded-xl bg-pink-600 py-2.5 font-black text-white disabled:opacity-50">{creating ? "جاري الإنشاء..." : "إنشاء الحساب"}</button>
+              <button onClick={() => setShowCreateMgr(false)} className="rounded-xl bg-gray-800 px-5 py-2.5 font-bold text-gray-300">إلغاء</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Create Agent Modal ── */}
+      {showCreateAgent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 print-hidden">
+          <div className="w-full max-w-lg rounded-2xl border border-gray-700 bg-gray-900 p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+            <h3 className="text-lg font-black text-white">إضافة مندوب جديد</h3>
+            {createError && <p className="text-sm text-red-400">{createError}</p>}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2"><label className="block text-xs font-bold text-gray-400 mb-1">الاسم *</label><input value={agentForm.name} onChange={(e) => setAgentForm({ ...agentForm, name: e.target.value })} className={INPUT} /></div>
+              <div><label className="block text-xs font-bold text-gray-400 mb-1">البريد *</label><input type="email" value={agentForm.email} onChange={(e) => setAgentForm({ ...agentForm, email: e.target.value })} className={INPUT} /></div>
+              <div><label className="block text-xs font-bold text-gray-400 mb-1">الهاتف</label><input value={agentForm.phone} onChange={(e) => setAgentForm({ ...agentForm, phone: e.target.value })} className={INPUT} /></div>
+              <div className="col-span-2"><label className="block text-xs font-bold text-gray-400 mb-1">كلمة المرور *</label><input type="password" value={agentForm.password} onChange={(e) => setAgentForm({ ...agentForm, password: e.target.value })} className={INPUT} placeholder="6 أحرف على الأقل" /></div>
+              <div className="col-span-2">
+                <label className="block text-xs font-bold text-gray-400 mb-1">المدير المسؤول (اختياري)</label>
+                <select value={agentForm.managerId} onChange={(e) => setAgentForm({ ...agentForm, managerId: e.target.value })} className={INPUT}>
+                  <option value="">بدون مدير</option>
+                  {managers.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="border-t border-gray-700 pt-3">
+              <p className="text-xs font-bold text-pink-400 mb-3">إعدادات العمولة والخصم</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className="block text-xs font-bold text-gray-400 mb-1">عمولة المندوب</label><input type="number" value={agentForm.commissionRate} onChange={(e) => setAgentForm({ ...agentForm, commissionRate: e.target.value })} className={INPUT} placeholder="0" /></div>
+                <div><label className="block text-xs font-bold text-gray-400 mb-1">نوع العمولة</label><select value={agentForm.commissionType} onChange={(e) => setAgentForm({ ...agentForm, commissionType: e.target.value })} className={INPUT}><option value="percentage">نسبة %</option><option value="fixed">ثابت ج.م</option></select></div>
+                <div><label className="block text-xs font-bold text-gray-400 mb-1">خصم العميل</label><input type="number" value={agentForm.clientDiscountValue} onChange={(e) => setAgentForm({ ...agentForm, clientDiscountValue: e.target.value })} className={INPUT} placeholder="0" /></div>
+                <div><label className="block text-xs font-bold text-gray-400 mb-1">نوع الخصم</label><select value={agentForm.clientDiscountType} onChange={(e) => setAgentForm({ ...agentForm, clientDiscountType: e.target.value })} className={INPUT}><option value="percentage">نسبة %</option><option value="fixed">ثابت ج.م</option></select></div>
+                <div><label className="block text-xs font-bold text-gray-400 mb-1">حد أقصى للخصم</label><input type="number" value={agentForm.maxClientDiscount} onChange={(e) => setAgentForm({ ...agentForm, maxClientDiscount: e.target.value })} className={INPUT} placeholder="اختياري" /></div>
+              </div>
+            </div>
+            <div><label className="block text-xs font-bold text-gray-400 mb-1">ملاحظات</label><textarea value={agentForm.notes} onChange={(e) => setAgentForm({ ...agentForm, notes: e.target.value })} rows={2} className={INPUT + " resize-none"} /></div>
+            <div className="flex gap-2">
+              <button onClick={() => void handleCreateAgent()} disabled={creating} className="flex-1 rounded-xl bg-pink-600 py-2.5 font-black text-white disabled:opacity-50">{creating ? "جاري الإنشاء..." : "إنشاء الحساب"}</button>
+              <button onClick={() => setShowCreateAgent(false)} className="rounded-xl bg-gray-800 px-5 py-2.5 font-bold text-gray-300">إلغاء</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Edit Agent Modal ── */}
+      {editAgent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 print-hidden">
+          <div className="w-full max-w-md rounded-2xl border border-gray-700 bg-gray-900 p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+            <h3 className="text-lg font-black text-white">تعديل: {editAgent.name}</h3>
+            <div className="grid grid-cols-2 gap-3">
+              <div><label className="block text-xs font-bold text-gray-400 mb-1">عمولة المندوب</label><input type="number" value={editAgentForm.commissionRate} onChange={(e) => setEditAgentForm({ ...editAgentForm, commissionRate: e.target.value })} className={INPUT} /></div>
+              <div><label className="block text-xs font-bold text-gray-400 mb-1">نوع العمولة</label><select value={editAgentForm.commissionType} onChange={(e) => setEditAgentForm({ ...editAgentForm, commissionType: e.target.value })} className={INPUT}><option value="percentage">نسبة %</option><option value="fixed">ثابت ج.م</option></select></div>
+              <div><label className="block text-xs font-bold text-gray-400 mb-1">خصم العميل</label><input type="number" value={editAgentForm.clientDiscountValue} onChange={(e) => setEditAgentForm({ ...editAgentForm, clientDiscountValue: e.target.value })} className={INPUT} /></div>
+              <div><label className="block text-xs font-bold text-gray-400 mb-1">نوع الخصم</label><select value={editAgentForm.clientDiscountType} onChange={(e) => setEditAgentForm({ ...editAgentForm, clientDiscountType: e.target.value })} className={INPUT}><option value="percentage">نسبة %</option><option value="fixed">ثابت ج.م</option></select></div>
+              <div><label className="block text-xs font-bold text-gray-400 mb-1">حد أقصى للخصم</label><input type="number" value={editAgentForm.maxClientDiscount} onChange={(e) => setEditAgentForm({ ...editAgentForm, maxClientDiscount: e.target.value })} className={INPUT} /></div>
+              <div><label className="block text-xs font-bold text-gray-400 mb-1">الحالة</label><select value={editAgentForm.isActive ? "1" : "0"} onChange={(e) => setEditAgentForm({ ...editAgentForm, isActive: e.target.value === "1" })} className={INPUT}><option value="1">نشط</option><option value="0">موقوف</option></select></div>
+            </div>
+            <div className="grid grid-cols-2 gap-3 border-t border-gray-700 pt-3">
+              <div className="col-span-2"><label className="block text-xs font-bold text-gray-400 mb-1">الاسم</label><input value={editAgentForm.name} onChange={(e) => setEditAgentForm({ ...editAgentForm, name: e.target.value })} className={INPUT} /></div>
+              <div><label className="block text-xs font-bold text-gray-400 mb-1">البريد</label><input type="email" value={editAgentForm.email} onChange={(e) => setEditAgentForm({ ...editAgentForm, email: e.target.value })} className={INPUT} /></div>
+              <div><label className="block text-xs font-bold text-gray-400 mb-1">الهاتف</label><input value={editAgentForm.phone} onChange={(e) => setEditAgentForm({ ...editAgentForm, phone: e.target.value })} className={INPUT} /></div>
+              <div className="col-span-2"><label className="block text-xs font-bold text-gray-400 mb-1">كلمة مرور جديدة</label><input type="password" value={editAgentForm.password} onChange={(e) => setEditAgentForm({ ...editAgentForm, password: e.target.value })} className={INPUT} placeholder="اتركها فارغة بدون تغيير" /></div>
+              <div className="col-span-2"><label className="block text-xs font-bold text-gray-400 mb-1">المدير المسؤول</label><select value={editAgentForm.managerId} onChange={(e) => setEditAgentForm({ ...editAgentForm, managerId: e.target.value })} className={INPUT}><option value="">بدون مدير</option>{managers.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</select></div>
+            </div>
+            <div><label className="block text-xs font-bold text-gray-400 mb-1">ملاحظات</label><textarea value={editAgentForm.notes} onChange={(e) => setEditAgentForm({ ...editAgentForm, notes: e.target.value })} rows={2} className={INPUT + " resize-none"} /></div>
+            <div className="flex gap-2">
+              <button onClick={() => void handleEditAgent()} disabled={editSaving} className="flex-1 rounded-xl bg-pink-600 py-2.5 font-black text-white disabled:opacity-50">{editSaving ? "جاري الحفظ..." : "حفظ التعديلات"}</button>
+              <button onClick={() => setEditAgent(null)} className="rounded-xl bg-gray-800 px-5 py-2.5 font-bold text-gray-300">إلغاء</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Edit Manager Modal ── */}
+      {editMgr && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 print-hidden">
+          <div className="w-full max-w-sm rounded-2xl border border-gray-700 bg-gray-900 p-6 space-y-4">
+            <h3 className="text-lg font-black text-white">تعديل: {editMgr.name}</h3>
+            <div className="space-y-3">
+              <div><label className="block text-xs font-bold text-gray-400 mb-1">نوع عمولته</label>
+                <select value={editMgrForm.commissionType} onChange={(e) => setEditMgrForm({ ...editMgrForm, commissionType: e.target.value })} className={INPUT}>
+                  <option value="percentage_of_agents">نسبة % من عمولة مناديبه</option>
+                  <option value="percentage_of_revenue">نسبة % من إيراد الاشتراكات</option>
+                  <option value="fixed">مبلغ ثابت / اشتراك</option>
+                </select>
+              </div>
+              <div><label className="block text-xs font-bold text-gray-400 mb-1">{editMgrForm.commissionType === "fixed" ? "المبلغ (ج.م)" : "النسبة (%)"}</label><input type="number" value={editMgrForm.commissionRate} onChange={(e) => setEditMgrForm({ ...editMgrForm, commissionRate: e.target.value })} className={INPUT} /></div>
+              <div><label className="block text-xs font-bold text-gray-400 mb-1">الحالة</label><select value={editMgrForm.isActive ? "1" : "0"} onChange={(e) => setEditMgrForm({ ...editMgrForm, isActive: e.target.value === "1" })} className={INPUT}><option value="1">نشط</option><option value="0">موقوف</option></select></div>
+              <div><label className="block text-xs font-bold text-gray-400 mb-1">الاسم</label><input value={editMgrForm.name} onChange={(e) => setEditMgrForm({ ...editMgrForm, name: e.target.value })} className={INPUT} /></div>
+              <div><label className="block text-xs font-bold text-gray-400 mb-1">البريد</label><input type="email" value={editMgrForm.email} onChange={(e) => setEditMgrForm({ ...editMgrForm, email: e.target.value })} className={INPUT} /></div>
+              <div><label className="block text-xs font-bold text-gray-400 mb-1">الهاتف</label><input value={editMgrForm.phone} onChange={(e) => setEditMgrForm({ ...editMgrForm, phone: e.target.value })} className={INPUT} /></div>
+              <div><label className="block text-xs font-bold text-gray-400 mb-1">كلمة مرور جديدة</label><input type="password" value={editMgrForm.password} onChange={(e) => setEditMgrForm({ ...editMgrForm, password: e.target.value })} className={INPUT} placeholder="اتركها فارغة بدون تغيير" /></div>
+              <div><label className="block text-xs font-bold text-gray-400 mb-1">ملاحظات</label><textarea value={editMgrForm.notes} onChange={(e) => setEditMgrForm({ ...editMgrForm, notes: e.target.value })} rows={2} className={INPUT + " resize-none"} /></div>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => void handleEditMgr()} disabled={editSaving} className="flex-1 rounded-xl bg-pink-600 py-2.5 font-black text-white disabled:opacity-50">{editSaving ? "جاري الحفظ..." : "حفظ"}</button>
+              <button onClick={() => setEditMgr(null)} className="rounded-xl bg-gray-800 px-5 py-2.5 font-bold text-gray-300">إلغاء</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Agent Detail Drawer ── */}
+      {/* Edit Partner Modal */}
+      {editPartner && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 print-hidden">
+          <div className="w-full max-w-lg rounded-2xl border border-gray-700 bg-gray-900 p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+            <h3 className="text-lg font-black text-white">تعديل: {editPartner.name}</h3>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2"><label className="block text-xs font-bold text-gray-400 mb-1">الاسم</label><input value={editPartnerForm.name} onChange={(e) => setEditPartnerForm({ ...editPartnerForm, name: e.target.value })} className={INPUT} /></div>
+              <div><label className="block text-xs font-bold text-gray-400 mb-1">البريد</label><input type="email" value={editPartnerForm.email} onChange={(e) => setEditPartnerForm({ ...editPartnerForm, email: e.target.value })} className={INPUT} /></div>
+              <div><label className="block text-xs font-bold text-gray-400 mb-1">الهاتف</label><input value={editPartnerForm.phone} onChange={(e) => setEditPartnerForm({ ...editPartnerForm, phone: e.target.value })} className={INPUT} /></div>
+              <div className="col-span-2"><label className="block text-xs font-bold text-gray-400 mb-1">كلمة مرور جديدة</label><input type="password" value={editPartnerForm.password} onChange={(e) => setEditPartnerForm({ ...editPartnerForm, password: e.target.value })} className={INPUT} placeholder="اتركها فارغة بدون تغيير" /></div>
+              <div className="col-span-2"><label className="block text-xs font-bold text-gray-400 mb-1">الفئة</label>
+                <select value={editPartnerForm.category} onChange={(e) => setEditPartnerForm({ ...editPartnerForm, category: e.target.value })} className={INPUT}>
+                  <option value="">اختر الفئة...</option>
+                  {Object.entries(CATEGORY_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                </select>
+              </div>
+              <div className="col-span-2"><label className="block text-xs font-bold text-gray-400 mb-1">مدير التعاقدات</label><select value={editPartnerForm.managerId} onChange={(e) => setEditPartnerForm({ ...editPartnerForm, managerId: e.target.value })} className={INPUT}><option value="">بدون مدير</option>{managers.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</select></div>
+              <div><label className="block text-xs font-bold text-gray-400 mb-1">عمولة الشريك</label><input type="number" value={editPartnerForm.commissionRate} onChange={(e) => setEditPartnerForm({ ...editPartnerForm, commissionRate: e.target.value })} className={INPUT} /></div>
+              <div><label className="block text-xs font-bold text-gray-400 mb-1">نوعها</label><select value={editPartnerForm.commissionType} onChange={(e) => setEditPartnerForm({ ...editPartnerForm, commissionType: e.target.value })} className={INPUT}><option value="percentage">نسبة %</option><option value="fixed">ثابت ج.م</option></select></div>
+              <div><label className="block text-xs font-bold text-gray-400 mb-1">عمولة المدير</label><input type="number" value={editPartnerForm.managerCommissionRate} onChange={(e) => setEditPartnerForm({ ...editPartnerForm, managerCommissionRate: e.target.value })} className={INPUT} /></div>
+              <div><label className="block text-xs font-bold text-gray-400 mb-1">نوعها</label><select value={editPartnerForm.managerCommissionType} onChange={(e) => setEditPartnerForm({ ...editPartnerForm, managerCommissionType: e.target.value })} className={INPUT}><option value="percentage_of_partner">% من عمولة الشريك</option><option value="fixed">ثابت ج.م</option></select></div>
+              <div><label className="block text-xs font-bold text-gray-400 mb-1">الحالة</label><select value={editPartnerForm.isActive ? "1" : "0"} onChange={(e) => setEditPartnerForm({ ...editPartnerForm, isActive: e.target.value === "1" })} className={INPUT}><option value="1">نشط</option><option value="0">موقوف</option></select></div>
+              <div><label className="block text-xs font-bold text-gray-400 mb-1">ظهور عام</label><select value={editPartnerForm.showOnPublicPage ? "1" : "0"} onChange={(e) => setEditPartnerForm({ ...editPartnerForm, showOnPublicPage: e.target.value === "1" })} className={INPUT}><option value="1">ظاهر</option><option value="0">مخفي</option></select></div>
+            </div>
+            <div><label className="block text-xs font-bold text-gray-400 mb-1">ملاحظات</label><textarea value={editPartnerForm.notes} onChange={(e) => setEditPartnerForm({ ...editPartnerForm, notes: e.target.value })} rows={2} className={INPUT + " resize-none"} /></div>
+            <div className="flex gap-2">
+              <button onClick={() => void handleEditPartner()} disabled={editSaving} className="flex-1 rounded-xl bg-pink-600 py-2.5 font-black text-white disabled:opacity-50">{editSaving ? "جاري الحفظ..." : "حفظ التعديلات"}</button>
+              <button onClick={() => setEditPartner(null)} className="rounded-xl bg-gray-800 px-5 py-2.5 font-bold text-gray-300">إلغاء</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {selectedAgent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-end bg-black/60 p-4 print-hidden">
+          <div className="w-full max-w-lg h-full rounded-2xl border border-gray-700 bg-gray-900 overflow-y-auto">
+            <div className="p-5 space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-black text-white">{selectedAgent.name}</h3>
+                <button onClick={() => { setSelectedAgent(null); setAgentDetail(null); }} className="text-gray-400 hover:text-white text-xl">×</button>
+              </div>
+              {selectedAgent.managerName && <p className="text-xs text-gray-400">المدير: <span className="text-pink-300">{selectedAgent.managerName}</span></p>}
+              <ReferralLink code={selectedAgent.referralCode} />
+              {detailLoading ? <p className="text-sm text-[#d7aabd]">جاري التحميل...</p> : agentDetail ? (
+                <>
+                  <div className="grid grid-cols-3 gap-3">
+                    {[
+                      { label: "عملاء", value: agentDetail.referrals.length },
+                      { label: "اشتركوا", value: agentDetail.referrals.filter((r) => r.convertedAt).length },
+                      { label: "معلق", value: `${agentDetail.pendingCommission.toFixed(0)} ج.م` },
+                    ].map((s) => (
+                      <div key={s.label} className="rounded-xl bg-gray-800 p-3 text-center">
+                        <p className="font-black text-pink-300">{s.value}</p>
+                        <p className="text-xs text-gray-400">{s.label}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs font-bold text-gray-400">العملاء ({agentDetail.referrals.length})</p>
+                  <div className="space-y-2 max-h-56 overflow-y-auto">
+                    {agentDetail.referrals.map((r) => (
+                      <div key={r.id} className="flex items-center justify-between rounded-lg bg-gray-800 px-3 py-2 text-sm">
+                        <div><p className="text-white">{r.user.name ?? "—"}</p><p className="text-xs text-gray-400">{r.user.phone ?? r.user.email ?? "—"}</p></div>
+                        <span className={r.convertedAt ? "text-emerald-400 text-xs" : "text-gray-500 text-xs"}>{r.convertedAt ? "✓ مشترك" : "لم يشترك"}</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Manager Detail Drawer ── */}
+      {selectedMgr && (
+        <div className="fixed inset-0 z-50 flex items-center justify-end bg-black/60 p-4 print-hidden">
+          <div className="w-full max-w-lg h-full rounded-2xl border border-gray-700 bg-gray-900 overflow-y-auto">
+            <div className="p-5 space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-black text-white">{selectedMgr.name}</h3>
+                <button onClick={() => { setSelectedMgr(null); setMgrDetail(null); }} className="text-gray-400 hover:text-white text-xl">×</button>
+              </div>
+              <p className="text-sm text-gray-400">{selectedMgr.user.email} · {selectedMgr.user.phone ?? ""}</p>
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  { label: "مناديبه", value: mgrDetail?.agents.length ?? selectedMgr.agentsCount },
+                  { label: "نوع عمولته", value: commTypeLabel[selectedMgr.commissionType] ?? selectedMgr.commissionType },
+                  { label: "معلق", value: `${(mgrDetail?.pendingCommission ?? selectedMgr.pendingCommission).toFixed(0)} ج.م` },
+                  { label: "محصّل", value: `${(mgrDetail?.settledCommission ?? selectedMgr.settledCommission).toFixed(0)} ج.م` },
+                ].map((s) => (
+                  <div key={s.label} className="rounded-xl bg-gray-800 p-3 text-center">
+                    <p className="font-black text-pink-300 text-sm">{s.value}</p>
+                    <p className="text-xs text-gray-400">{s.label}</p>
+                  </div>
+                ))}
+              </div>
+              {mgrDetailLoading ? <p className="text-sm text-[#d7aabd]">جاري التحميل...</p> : mgrDetail && mgrDetail.agents.length > 0 ? (
+                <>
+                  <p className="text-xs font-bold text-gray-400">مناديبه ({mgrDetail.agents.length})</p>
+                  <div className="space-y-2 max-h-72 overflow-y-auto">
+                    {mgrDetail.agents.map((a) => (
+                      <div key={a.id} className="rounded-lg bg-gray-800 px-3 py-2 space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <div><p className="text-white font-bold text-sm">{a.name}</p><p className="text-xs text-gray-400">{a.user.email}</p></div>
+                          <div className="text-right text-xs">
+                            <p className="text-yellow-400">{a.pendingCommission.toFixed(0)} ج.م معلق</p>
+                            <p className="text-emerald-400">{a.settledCommission.toFixed(0)} ج.م محصّل</p>
+                          </div>
+                        </div>
+                        <ReferralLink code={a.referralCode} />
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Delete ContractsManager confirmation dialog ── */}
+      {deleteMgrConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,.75)" }}>
+          <div className="w-full max-w-md rounded-2xl border border-red-900/50 bg-[#1a0a10] p-6 shadow-2xl">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-900/40 flex items-center justify-center text-xl">⚠️</div>
+              <div>
+                <h3 className="text-white font-black text-base">حذف مدير التعاقدات</h3>
+                <p className="text-red-400 text-xs font-bold">هذا الإجراء لا يمكن التراجع عنه</p>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-red-800/40 bg-red-950/30 p-4 mb-4 space-y-2 text-sm">
+              <p className="text-gray-200">
+                أنت على وشك حذف مدير التعاقدات <span className="text-white font-black">&quot;{deleteMgrConfirm.name}&quot;</span>
+              </p>
+              {deleteMgrConfirm.agentsCount > 0 && (
+                <div className="flex items-start gap-2 text-yellow-400">
+                  <span className="mt-0.5 shrink-0">⚠️</span>
+                  <p>
+                    <span className="font-bold">{deleteMgrConfirm.agentsCount} مندوب</span> مرتبطون بهذا المدير — سيصبحون بدون مدير ولن يظهروا في أي لوحة تعاقدات حتى يتم إعادة تعيينهم يدوياً.
+                  </p>
+                </div>
+              )}
+              {(deleteMgrConfirm.pendingCommission > 0 || deleteMgrConfirm.settledCommission > 0) && (
+                <div className="flex items-start gap-2 text-orange-400">
+                  <span className="mt-0.5 shrink-0">💸</span>
+                  <p>
+                    عمولات مسجّلة:{" "}
+                    {deleteMgrConfirm.pendingCommission > 0 && <span className="font-bold">{deleteMgrConfirm.pendingCommission.toFixed(2)} ج.م معلّقة </span>}
+                    {deleteMgrConfirm.settledCommission > 0 && <span className="font-bold">{deleteMgrConfirm.settledCommission.toFixed(2)} ج.م محصّلة </span>}
+                    — ستُحذف جميعها نهائياً.
+                  </p>
+                </div>
+              )}
+              <div className="flex items-start gap-2 text-gray-400">
+                <span className="mt-0.5 shrink-0">🔐</span>
+                <p>سيُسحب منه صلاحية الأدمن ويعود عضواً عادياً.</p>
+              </div>
+            </div>
+
+            <p className="text-gray-400 text-xs mb-2">
+              اكتب اسم المدير <span className="text-white font-bold">&quot;{deleteMgrConfirm.name}&quot;</span> للتأكيد:
+            </p>
+            <input
+              type="text"
+              value={deleteMgrInput}
+              onChange={e => setDeleteMgrInput(e.target.value)}
+              placeholder={deleteMgrConfirm.name}
+              className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white placeholder-gray-600 focus:border-red-500/50 focus:outline-none mb-4"
+            />
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => void confirmDeleteMgr()}
+                disabled={deleteMgrInput.trim() !== deleteMgrConfirm.name.trim()}
+                className="flex-1 rounded-xl bg-red-700 py-2.5 text-sm font-black text-white transition-colors hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-30"
+              >
+                تأكيد الحذف النهائي
+              </button>
+              <button
+                onClick={() => { setDeleteMgrConfirm(null); setDeleteMgrInput(""); }}
+                className="flex-1 rounded-xl border border-white/10 py-2.5 text-sm font-bold text-gray-300 transition-colors hover:bg-white/5"
+              >
+                إلغاء
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

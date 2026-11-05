@@ -1,0 +1,607 @@
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { NextRequest } from "next/server";
+import { PrismaClient } from "@prisma/client";
+
+const guardMock = vi.fn();
+
+vi.mock("@/lib/admin-authorization-server", () => ({
+  requireAdminPermission: (...args: unknown[]) => guardMock(...args),
+}));
+
+import {
+  GET as getCoachAttendanceRoute,
+  POST as saveCoachAttendanceRoute,
+} from "@/app/api/admin/coach-class-attendance/route";
+
+type TestRouteHandler = (request: NextRequest) => Promise<Response>;
+
+const getCoachAttendance =
+  getCoachAttendanceRoute as unknown as TestRouteHandler;
+
+const saveCoachAttendance =
+  saveCoachAttendanceRoute as unknown as TestRouteHandler;
+
+const raw = process.env.DATABASE_URL;
+
+if (!raw) {
+  throw new Error("REFUSING: DATABASE_URL missing");
+}
+
+const url = new URL(raw);
+
+if (
+  process.env.APP_ENV !== "test" ||
+  process.env.NODE_ENV !== "test" ||
+  url.hostname !== "127.0.0.1" ||
+  decodeURIComponent(url.username) !== "fitzone_test_user" ||
+  url.pathname !== "/fitzone_test"
+) {
+  throw new Error("REFUSING: coach API tests require fitzone_test");
+}
+
+const db = new PrismaClient();
+
+const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+let adminId = "";
+
+let scheduledEmployeeId = "";
+let substituteEmployeeId = "";
+
+let scheduledTrainerId = "";
+let substituteTrainerId = "";
+let unlinkedTrainerId = "";
+
+let classId = "";
+let unlinkedClassId = "";
+
+let schedule1Id = "";
+let schedule2Id = "";
+let schedule3Id = "";
+let scheduleLockedId = "";
+let unlinkedScheduleId = "";
+
+function allow(permission: string) {
+  guardMock.mockResolvedValue({
+    session: {
+      id: adminId,
+      user: {
+        id: adminId,
+        name: "Coach API Admin",
+        email: `coach-api-${stamp}@test.local`,
+        role: "admin",
+      },
+    },
+    role: "admin",
+    permission,
+  });
+}
+
+function deny(status: number, permission: string) {
+  guardMock.mockResolvedValue({
+    error: new Response(
+      JSON.stringify({
+        error: status === 401 ? "Unauthorized" : "Forbidden",
+      }),
+      {
+        status,
+        headers: {
+          "content-type": "application/json",
+        },
+      },
+    ),
+    permission,
+  });
+}
+
+function postRequest(body: Record<string, unknown>) {
+  return new NextRequest("http://localhost/api/admin/coach-class-attendance", {
+    method: "POST",
+    body: JSON.stringify(body),
+    headers: {
+      "content-type": "application/json",
+    },
+  });
+}
+
+async function createSchedule(
+  targetClassId: string,
+  date: string,
+  time: string,
+) {
+  return db.schedule.create({
+    data: {
+      classId: targetClassId,
+      date: new Date(`${date}T00:00:00.000Z`),
+      time,
+      availableSpots: 10,
+      isActive: true,
+    },
+  });
+}
+
+async function cleanup() {
+  await db.auditLog.deleteMany({
+    where: {
+      OR: [
+        {
+          actorUserId: adminId || "__none__",
+        },
+        {
+          targetType: "CoachClassAttendance",
+          details: {
+            contains: stamp,
+          },
+        },
+      ],
+    },
+  });
+
+  await db.coachClassAttendance.deleteMany({
+    where: {
+      OR: [
+        {
+          classId: classId || "__none__",
+        },
+        {
+          classId: unlinkedClassId || "__none__",
+        },
+      ],
+    },
+  });
+
+  await db.attendancePeriod.deleteMany({
+    where: {
+      monthKey: {
+        in: ["2032-01", "2032-02"],
+      },
+    },
+  });
+
+  const scheduleIds = [
+    schedule1Id,
+    schedule2Id,
+    schedule3Id,
+    scheduleLockedId,
+    unlinkedScheduleId,
+  ].filter(Boolean);
+
+  if (scheduleIds.length) {
+    await db.schedule.deleteMany({
+      where: {
+        id: {
+          in: scheduleIds,
+        },
+      },
+    });
+  }
+
+  const classIds = [classId, unlinkedClassId].filter(Boolean);
+
+  if (classIds.length) {
+    await db.class.deleteMany({
+      where: {
+        id: {
+          in: classIds,
+        },
+      },
+    });
+  }
+
+  const trainerIds = [
+    scheduledTrainerId,
+    substituteTrainerId,
+    unlinkedTrainerId,
+  ].filter(Boolean);
+
+  if (trainerIds.length) {
+    await db.trainer.deleteMany({
+      where: {
+        id: {
+          in: trainerIds,
+        },
+      },
+    });
+  }
+
+  const employeeIds = [scheduledEmployeeId, substituteEmployeeId].filter(
+    Boolean,
+  );
+
+  if (employeeIds.length) {
+    await db.employeeProfile.deleteMany({
+      where: {
+        id: {
+          in: employeeIds,
+        },
+      },
+    });
+  }
+
+  if (adminId) {
+    await db.user.deleteMany({
+      where: {
+        id: adminId,
+      },
+    });
+  }
+}
+
+beforeAll(async () => {
+  await cleanup();
+
+  const admin = await db.user.create({
+    data: {
+      name: "Coach API Admin",
+      email: `coach-api-${stamp}@test.local`,
+      role: "admin",
+      adminAccess: true,
+      isActive: true,
+    },
+  });
+
+  adminId = admin.id;
+
+  const scheduledEmployee = await db.employeeProfile.create({
+    data: {
+      employeeCode: `TEST-COACH-API-E1-${stamp}`,
+      name: "Scheduled Coach API Employee",
+      employmentStatus: "active",
+      payrollEnabled: true,
+    },
+  });
+
+  scheduledEmployeeId = scheduledEmployee.id;
+
+  const substituteEmployee = await db.employeeProfile.create({
+    data: {
+      employeeCode: `TEST-COACH-API-E2-${stamp}`,
+      name: "Substitute Coach API Employee",
+      employmentStatus: "active",
+      payrollEnabled: true,
+    },
+  });
+
+  substituteEmployeeId = substituteEmployee.id;
+
+  const scheduledTrainer = await db.trainer.create({
+    data: {
+      name: `TEST Coach API Scheduled ${stamp}`,
+      specialty: "Test",
+      employeeId: scheduledEmployeeId,
+    },
+  });
+
+  scheduledTrainerId = scheduledTrainer.id;
+
+  const substituteTrainer = await db.trainer.create({
+    data: {
+      name: `TEST Coach API Substitute ${stamp}`,
+      specialty: "Test",
+      employeeId: substituteEmployeeId,
+    },
+  });
+
+  substituteTrainerId = substituteTrainer.id;
+
+  const unlinkedTrainer = await db.trainer.create({
+    data: {
+      name: `TEST Coach API Unlinked ${stamp}`,
+      specialty: "Test",
+    },
+  });
+
+  unlinkedTrainerId = unlinkedTrainer.id;
+
+  const classRow = await db.class.create({
+    data: {
+      name: `TEST Coach API Class ${stamp}`,
+      trainerId: scheduledTrainerId,
+      type: "fitness",
+      duration: 60,
+      intensity: "medium",
+      maxSpots: 10,
+    },
+  });
+
+  classId = classRow.id;
+
+  const unlinkedClass = await db.class.create({
+    data: {
+      name: `TEST Coach API Unlinked Class ${stamp}`,
+      trainerId: unlinkedTrainerId,
+      type: "fitness",
+      duration: 45,
+      intensity: "medium",
+      maxSpots: 10,
+    },
+  });
+
+  unlinkedClassId = unlinkedClass.id;
+
+  schedule1Id = (await createSchedule(classId, "2032-01-05", "09:00")).id;
+
+  schedule2Id = (await createSchedule(classId, "2032-01-06", "10:00")).id;
+
+  schedule3Id = (await createSchedule(classId, "2032-01-07", "11:00")).id;
+
+  scheduleLockedId = (await createSchedule(classId, "2032-02-05", "12:00")).id;
+
+  unlinkedScheduleId = (
+    await createSchedule(unlinkedClassId, "2032-01-08", "13:00")
+  ).id;
+});
+
+afterAll(async () => {
+  await cleanup();
+  await db.$disconnect();
+});
+
+describe("Coach Class Attendance admin API — authorization", () => {
+  it("GET requires coach_class_attendance_view", async () => {
+    deny(401, "coach_class_attendance_view");
+
+    const response = await getCoachAttendance(
+      new NextRequest(
+        "http://localhost/api/admin/coach-class-attendance?month=2032-01",
+      ),
+    );
+
+    expect(response.status).toBe(401);
+
+    expect(guardMock).toHaveBeenLastCalledWith("coach_class_attendance_view");
+  });
+
+  it("POST requires coach_class_attendance_manage", async () => {
+    deny(403, "coach_class_attendance_manage");
+
+    const response = await saveCoachAttendance(
+      postRequest({
+        scheduleId: schedule1Id,
+        status: "present",
+      }),
+    );
+
+    expect(response.status).toBe(403);
+
+    expect(guardMock).toHaveBeenLastCalledWith("coach_class_attendance_manage");
+  });
+});
+
+describe("Coach Class Attendance admin API — behavior", () => {
+  it("creates present attendance through service", async () => {
+    allow("coach_class_attendance_manage");
+
+    const response = await saveCoachAttendance(
+      postRequest({
+        scheduleId: schedule1Id,
+        status: "present",
+      }),
+    );
+
+    expect(response.status).toBe(200);
+
+    const body = await response.json();
+
+    expect(body.attendance.status).toBe("present");
+
+    expect(body.attendance.scheduledTrainerId).toBe(scheduledTrainerId);
+
+    expect(body.attendance.actualTrainerId).toBe(scheduledTrainerId);
+
+    const audit = await db.auditLog.findFirst({
+      where: {
+        targetId: body.attendance.id,
+        actorUserId: adminId,
+        action: "coach_class_attendance_create",
+      },
+    });
+
+    expect(audit).toBeTruthy();
+  });
+
+  it("rejects correction without edit reason", async () => {
+    allow("coach_class_attendance_manage");
+
+    const response = await saveCoachAttendance(
+      postRequest({
+        scheduleId: schedule1Id,
+        status: "absent",
+      }),
+    );
+
+    expect(response.status).toBe(400);
+
+    const body = await response.json();
+
+    expect(body.code).toBe("COACH_CLASS_ATTENDANCE_EDIT_REASON_REQUIRED");
+
+    const row = await db.coachClassAttendance.findUniqueOrThrow({
+      where: {
+        scheduleId: schedule1Id,
+      },
+    });
+
+    expect(row.status).toBe("present");
+  });
+
+  it("updates same occurrence with edit reason and no duplicate", async () => {
+    allow("coach_class_attendance_manage");
+
+    const response = await saveCoachAttendance(
+      postRequest({
+        scheduleId: schedule1Id,
+        status: "absent",
+        editReason: "Corrected by attendance admin",
+      }),
+    );
+
+    expect(response.status).toBe(200);
+
+    const body = await response.json();
+
+    expect(body.attendance.status).toBe("absent");
+
+    expect(
+      await db.coachClassAttendance.count({
+        where: {
+          scheduleId: schedule1Id,
+        },
+      }),
+    ).toBe(1);
+
+    const audit = await db.auditLog.findFirst({
+      where: {
+        targetId: body.attendance.id,
+        actorUserId: adminId,
+        action: "coach_class_attendance_update",
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
+    expect(audit).toBeTruthy();
+
+    const details = JSON.parse(audit!.details || "{}");
+
+    expect(details.editReason).toBe("Corrected by attendance admin");
+  });
+
+  it("records substitute trainer", async () => {
+    allow("coach_class_attendance_manage");
+
+    const response = await saveCoachAttendance(
+      postRequest({
+        scheduleId: schedule2Id,
+        status: "substitute",
+        actualTrainerId: substituteTrainerId,
+      }),
+    );
+
+    expect(response.status).toBe(200);
+
+    const body = await response.json();
+
+    expect(body.attendance.status).toBe("substitute");
+
+    expect(body.attendance.scheduledTrainerId).toBe(scheduledTrainerId);
+
+    expect(body.attendance.actualTrainerId).toBe(substituteTrainerId);
+
+    expect(body.attendance.actualEmployeeId).toBe(substituteEmployeeId);
+  });
+
+  it("rejects substitute without actual trainer", async () => {
+    allow("coach_class_attendance_manage");
+
+    const response = await saveCoachAttendance(
+      postRequest({
+        scheduleId: schedule3Id,
+        status: "substitute",
+      }),
+    );
+
+    expect(response.status).toBe(400);
+
+    const body = await response.json();
+
+    expect(body.code).toBe("COACH_CLASS_ATTENDANCE_SUBSTITUTE_REQUIRED");
+  });
+
+  it("rejects attendance when scheduled trainer has no employee link", async () => {
+    allow("coach_class_attendance_manage");
+
+    const response = await saveCoachAttendance(
+      postRequest({
+        scheduleId: unlinkedScheduleId,
+        status: "present",
+      }),
+    );
+
+    expect(response.status).toBe(409);
+
+    const body = await response.json();
+
+    expect(body.code).toBe(
+      "COACH_CLASS_ATTENDANCE_SCHEDULED_TRAINER_NOT_LINKED",
+    );
+  });
+
+  it("GET month returns rows and implicit open period", async () => {
+    allow("coach_class_attendance_view");
+
+    const response = await getCoachAttendance(
+      new NextRequest(
+        "http://localhost/api/admin/coach-class-attendance?month=2032-01",
+      ),
+    );
+
+    expect(response.status).toBe(200);
+
+    const body = await response.json();
+
+    expect(Array.isArray(body.rows)).toBe(true);
+
+    expect(
+      body.rows.some(
+        (row: { scheduleId: string | null }) => row.scheduleId === schedule1Id,
+      ),
+    ).toBe(true);
+
+    expect(body.period.monthKey).toBe("2032-01");
+
+    expect(body.period.status).toBe("open");
+  });
+
+  it("locked month rejects coach attendance", async () => {
+    await db.attendancePeriod.upsert({
+      where: {
+        monthKey: "2032-02",
+      },
+      create: {
+        monthKey: "2032-02",
+        status: "locked",
+        lockedAt: new Date(),
+        lockedById: adminId,
+      },
+      update: {
+        status: "locked",
+        lockedAt: new Date(),
+        lockedById: adminId,
+      },
+    });
+
+    allow("coach_class_attendance_manage");
+
+    const response = await saveCoachAttendance(
+      postRequest({
+        scheduleId: scheduleLockedId,
+        status: "present",
+      }),
+    );
+
+    expect(response.status).toBe(409);
+
+    const body = await response.json();
+
+    expect(body.code).toBe("COACH_CLASS_ATTENDANCE_PERIOD_LOCKED");
+  });
+
+  it("rejects invalid status with 400", async () => {
+    allow("coach_class_attendance_manage");
+
+    const response = await saveCoachAttendance(
+      postRequest({
+        scheduleId: schedule3Id,
+        status: "invalid",
+      }),
+    );
+
+    expect(response.status).toBe(400);
+
+    const body = await response.json();
+
+    expect(body.code).toBe("COACH_CLASS_ATTENDANCE_INVALID_STATUS");
+  });
+});

@@ -1,0 +1,111 @@
+import { NextRequest, NextResponse } from "next/server";
+import { createPendingOAuthToken, findExistingOAuthUser, getAppBaseUrl } from "@/lib/oauth";
+import { APP_SESSION_COOKIE, createAppSessionToken, getAppSessionCookieOptions } from "@/lib/app-session";
+import { assertExternalSideEffectsAllowed } from "@/lib/staging-safety";
+import { FRIEND_OFFER_RETURN_COOKIE, normalizeFriendOfferReturn } from "@/lib/friend-offer-auth-return";
+
+
+function clearFriendOfferReturn(res: NextResponse) {
+  res.cookies.set(FRIEND_OFFER_RETURN_COOKIE, "", {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 0,
+  });
+  return res;
+}
+
+export async function GET(req: NextRequest) {
+  const base = getAppBaseUrl();
+  const { searchParams } = new URL(req.url);
+  const code = searchParams.get("code");
+  const state = searchParams.get("state");
+  const savedState = req.cookies.get("oauth_state")?.value;
+  const friendReturn = normalizeFriendOfferReturn(req.cookies.get(FRIEND_OFFER_RETURN_COOKIE)?.value ?? null);
+
+  if (!code || !state || !savedState || state !== savedState) {
+    return clearFriendOfferReturn(NextResponse.redirect(`${base}/login?error=oauth_failed`));
+  }
+
+  try {
+    assertExternalSideEffectsAllowed("Google OAuth");
+    const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        code,
+        client_id: process.env.GOOGLE_CLIENT_ID!,
+        client_secret: process.env.GOOGLE_CLIENT_SECRET!,
+        redirect_uri: `${base}/api/auth/oauth/google/callback`,
+        grant_type: "authorization_code",
+      }),
+    });
+    const tokens = (await tokenRes.json()) as { access_token?: string };
+    if (!tokens.access_token) throw new Error("no_token");
+
+    const profileRes = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+      headers: { Authorization: `Bearer ${tokens.access_token}` },
+    });
+    const profile = (await profileRes.json()) as { sub?: string; email?: string; name?: string };
+    if (!profile.sub) throw new Error("no_sub");
+
+    const existing = await findExistingOAuthUser({
+      provider: "google",
+      providerId: profile.sub,
+      email: profile.email ?? null,
+    });
+
+    if (!existing) {
+      if (!profile.email) throw new Error("no_email");
+
+      const pendingToken = createPendingOAuthToken({
+        provider: "google",
+        providerId: profile.sub,
+        email: profile.email,
+        name: profile.name ?? null,
+      });
+
+      const res = NextResponse.redirect(`${base}/google-consent`);
+      res.cookies.set("oauth_pending_profile", pendingToken, {
+        httpOnly: true,
+        maxAge: 600,
+        path: "/",
+        sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
+      });
+      res.cookies.set("oauth_pending_session", "", { httpOnly: true, maxAge: 0, path: "/" });
+      res.cookies.set("oauth_state", "", { httpOnly: true, maxAge: 0, path: "/" });
+      return res;
+    }
+
+    if (existing.requiresVerification && existing.user.email) {
+      const verifyParams = new URLSearchParams({ email: existing.user.email });
+      if (!existing.emailSent) verifyParams.set("sent", "0");
+      if (friendReturn) verifyParams.set("callbackUrl", friendReturn);
+      return clearFriendOfferReturn(NextResponse.redirect(`${base}/verify-email?${verifyParams.toString()}`));
+    }
+
+    // Admin/staff/partner/trainer accounts must use the admin login page
+    if (existing.user.role !== "member") {
+      return clearFriendOfferReturn(NextResponse.redirect(`${base}/login?error=admin_account`));
+    }
+
+    const token = createAppSessionToken({
+      id: existing.user.id,
+      email: existing.user.email ?? "",
+      name: existing.user.name ?? "عضو FitZone",
+      role: "member",
+    });
+
+    const res = NextResponse.redirect(`${base}${friendReturn ?? "/"}`);
+    res.cookies.set(APP_SESSION_COOKIE, token, getAppSessionCookieOptions());
+    res.cookies.set("oauth_pending_profile", "", { httpOnly: true, maxAge: 0, path: "/" });
+    res.cookies.set("oauth_pending_session", "", { httpOnly: true, maxAge: 0, path: "/" });
+    res.cookies.set("oauth_state", "", { httpOnly: true, maxAge: 0, path: "/" });
+    return clearFriendOfferReturn(res);
+  } catch (err) {
+    console.error("[GOOGLE_CALLBACK]", err);
+    return clearFriendOfferReturn(NextResponse.redirect(`${base}/login?error=oauth_failed`));
+  }
+}

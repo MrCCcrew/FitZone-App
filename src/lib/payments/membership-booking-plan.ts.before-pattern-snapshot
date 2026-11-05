@@ -1,0 +1,456 @@
+export type MembershipBookingAction = "back_to_schedule" | "back_to_plan";
+
+export class MembershipBookingPlanError extends Error {
+  action?: MembershipBookingAction;
+
+  constructor(message: string, action?: MembershipBookingAction) {
+    super(message);
+    this.name = "MembershipBookingPlanError";
+    this.action = action;
+  }
+}
+
+type BookingPlanInput = {
+  tx: any;
+  userId: string;
+  userMembershipId: string;
+  startDate: Date;
+  endDate: Date;
+  selectedScheduleIds: string[];
+  plan: {
+    kind: string;
+    sessionsCount: number | null;
+    duration: number;
+  };
+};
+
+export async function applyMembershipBookingPlanTx({
+  tx,
+  userId,
+  userMembershipId,
+  startDate,
+  endDate,
+  selectedScheduleIds: rawSelectedScheduleIds,
+  plan,
+}: BookingPlanInput) {
+  const selectedScheduleIds = [
+    ...new Set(
+      rawSelectedScheduleIds.filter(
+        (id) => typeof id === "string" && id.trim() !== "",
+      ),
+    ),
+  ];
+
+  if (selectedScheduleIds.length === 0) {
+    return {
+      selectedScheduleIds,
+      plannedScheduleIds: [] as string[],
+      createdCount: 0,
+      bookedSchedules: [] as {
+        date: Date;
+        time: string;
+        className: string;
+        trainerName: string;
+      }[],
+    };
+  }
+
+  const weekCap = Math.min(12, plan.sessionsCount ?? 12);
+
+  if (selectedScheduleIds.length > weekCap) {
+    throw new MembershipBookingPlanError(
+      `لا يمكن اختيار أكثر من ${weekCap} موعداً في الأسبوع لهذا الاشتراك.`,
+      "back_to_schedule",
+    );
+  }
+
+  if (
+    plan.kind !== "trial" &&
+    plan.sessionsCount &&
+    plan.duration
+  ) {
+    const minPerWeek = Math.ceil(
+      (plan.sessionsCount * 7) / plan.duration,
+    );
+
+    if (minPerWeek > weekCap) {
+      throw new MembershipBookingPlanError(
+        `هذه الباقة تتطلب حضور ${minPerWeek} مواعيد في الأسبوع على الأقل ` +
+          `لتغطية ${plan.sessionsCount} حصة خلال ${plan.duration} يوم، ` +
+          `وهو أكثر من الحد الأقصى المسموح به. يرجى اختيار باقة مختلفة.`,
+        "back_to_plan",
+      );
+    }
+
+    if (selectedScheduleIds.length < minPerWeek) {
+      const theoreticalTotal = Math.floor(
+        selectedScheduleIds.length * (plan.duration / 7),
+      );
+
+      throw new MembershipBookingPlanError(
+        `عدد المواعيد المختارة (${selectedScheduleIds.length} في الأسبوع) لا يكفي لتغطية حصص اشتراكك. ` +
+          `بهذا الاختيار ستحصلين على ${theoreticalTotal} حصة فقط خلال مدة الاشتراك (${plan.duration} يوم)، ` +
+          `بينما اشتراكك يشمل ${plan.sessionsCount} حصة. ` +
+          `يلزم اختيار ${minPerWeek} مواعيد في الأسبوع على الأقل.`,
+        "back_to_schedule",
+      );
+    }
+  }
+
+  const week1Schedules = await tx.schedule.findMany({
+    where: {
+      id: { in: selectedScheduleIds },
+    },
+    include: {
+      class: {
+        include: {
+          trainer: true,
+        },
+      },
+    },
+  });
+
+  if (week1Schedules.length !== selectedScheduleIds.length) {
+    throw new MembershipBookingPlanError(
+      "تعذر العثور على بعض المواعيد المختارة.",
+      "back_to_schedule",
+    );
+  }
+
+  // Maximum two selected sessions on the same day.
+  const dayCounts = new Map<string, number>();
+
+  for (const schedule of week1Schedules) {
+    const dayKey = new Date(schedule.date)
+      .toISOString()
+      .slice(0, 10);
+
+    dayCounts.set(
+      dayKey,
+      (dayCounts.get(dayKey) ?? 0) + 1,
+    );
+  }
+
+  for (const count of dayCounts.values()) {
+    if (count > 2) {
+      throw new MembershipBookingPlanError(
+        "لا يمكن اختيار أكثر من حصتين في اليوم الواحد.",
+        "back_to_schedule",
+      );
+    }
+  }
+
+  /*
+   * Important for idempotency:
+   * a schedule may currently have zero free spots because THIS membership
+   * already owns its reservation. That must not make a repeated application
+   * fail.
+   */
+  const existingWeek1ForCurrentMembership =
+    await tx.booking.findMany({
+      where: {
+        userMembershipId,
+        scheduleId: {
+          in: selectedScheduleIds,
+        },
+      },
+      select: {
+        scheduleId: true,
+      },
+    });
+
+  const ownedWeek1Ids = new Set(
+    existingWeek1ForCurrentMembership.map(
+      (booking: { scheduleId: string }) =>
+        booking.scheduleId,
+    ),
+  );
+
+  for (const schedule of week1Schedules) {
+    if (!schedule.isActive) {
+      throw new MembershipBookingPlanError(
+        "أحد المواعيد المختارة غير متاح حاليًا.",
+        "back_to_schedule",
+      );
+    }
+
+    if (
+      schedule.availableSpots <= 0 &&
+      !ownedWeek1Ids.has(schedule.id)
+    ) {
+      throw new MembershipBookingPlanError(
+        "أحد المواعيد المختارة لم يعد به أماكن متاحة.",
+        "back_to_schedule",
+      );
+    }
+  }
+
+  // Weekly pattern = class + time + weekday.
+  const patternKey = (
+    classId: string,
+    time: string,
+    dayOfWeek: number,
+  ) => `${classId}|${time}|${dayOfWeek}`;
+
+  const patterns = week1Schedules.map((schedule: any) => ({
+    classId: schedule.classId,
+    time: schedule.time,
+    dayOfWeek: new Date(schedule.date).getUTCDay(),
+  }));
+
+  const patternSet = new Set(
+    patterns.map((pattern: any) =>
+      patternKey(
+        pattern.classId,
+        pattern.time,
+        pattern.dayOfWeek,
+      ),
+    ),
+  );
+
+  const classIds = [
+    ...new Set(
+      patterns.map(
+        (pattern: { classId: string }) => pattern.classId,
+      ),
+    ),
+  ];
+
+  // Schedule.date represents a calendar day (stored at UTC midnight), while
+  // membership startDate includes the exact payment/activation time.
+  //
+  // Comparing directly against startDate would incorrectly exclude a selected
+  // schedule on the membership's first calendar day:
+  //   schedule.date = 2026-08-15 00:00 UTC
+  //   startDate     = 2026-08-15 10:01 UTC
+  //
+  // Normalize only the lower bound to the start of that UTC calendar day.
+  const schedulePeriodStart = new Date(startDate);
+  schedulePeriodStart.setUTCHours(0, 0, 0, 0);
+
+  const allMatchingSchedules = await tx.schedule.findMany({
+    where: {
+      classId: {
+        in: classIds,
+      },
+      date: {
+        gte: schedulePeriodStart,
+        lte: endDate,
+      },
+      isActive: true,
+    },
+    include: {
+      class: {
+        include: {
+          trainer: true,
+        },
+      },
+    },
+    orderBy: [
+      { date: "asc" },
+      { time: "asc" },
+      { id: "asc" },
+    ],
+  });
+
+  const repeated = allMatchingSchedules.filter(
+    (schedule: any) =>
+      patternSet.has(
+        patternKey(
+          schedule.classId,
+          schedule.time,
+          new Date(schedule.date).getUTCDay(),
+        ),
+      ),
+  );
+
+  const totalLimit =
+    plan.sessionsCount ??
+    Math.round(
+      selectedScheduleIds.length * (plan.duration / 7),
+    );
+
+  const schedulesToBook = repeated.slice(0, totalLimit);
+
+  const week1IdSet = new Set(selectedScheduleIds);
+
+  let createdCount = 0;
+
+  /*
+   * Process sequentially with schedule row locking.
+   *
+   * This gives:
+   * LOCK → ownership check → conflict check → spot check → CREATE → decrement
+   *
+   * and prevents duplicate webhook/recovery calls from decrementing twice.
+   */
+  for (const schedule of schedulesToBook) {
+    await tx.$queryRaw`
+      SELECT \`id\`, \`availableSpots\`
+      FROM \`Schedule\`
+      WHERE \`id\` = ${schedule.id}
+      FOR UPDATE
+    `;
+
+    // Already owned by this membership = successful idempotent outcome.
+    const owned = await tx.booking.findFirst({
+      where: {
+        userMembershipId,
+        scheduleId: schedule.id,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (owned) {
+      continue;
+    }
+
+    /*
+     * A booking belonging to another membership for the same user must never
+     * silently masquerade as a booking for this membership.
+     */
+    const otherBooking = await tx.booking.findFirst({
+      where: {
+        userId,
+        scheduleId: schedule.id,
+        NOT: {
+          userMembershipId,
+        },
+        status: {
+          in: ["confirmed", "attended", "noshow"],
+        },
+      },
+      select: {
+        id: true,
+        userMembershipId: true,
+        userMembership: {
+          select: {
+            status: true,
+            pendingExpiresAt: true,
+          },
+        },
+      },
+    });
+
+    if (otherBooking) {
+      const isWeek1 = week1IdSet.has(schedule.id);
+
+      /*
+       * Week-1 is explicitly chosen by the customer.
+       * Never silently drop it.
+       *
+       * An expired pending membership should already have been removed by the
+       * shared cleanup before a retry reaches this function.
+       */
+      if (isWeek1) {
+        throw new MembershipBookingPlanError(
+          "أحد المواعيد المختارة مرتبط بحجز سابق لم يتم تحريره بعد. يرجى إعادة المحاولة.",
+          "back_to_schedule",
+        );
+      }
+
+      // Preserve historical behaviour for later recurring occurrences:
+      // another legitimate booking by the same user is not duplicated.
+      continue;
+    }
+
+    const currentSchedule = await tx.schedule.findUnique({
+      where: {
+        id: schedule.id,
+      },
+      select: {
+        availableSpots: true,
+      },
+    });
+
+    if (
+      !currentSchedule ||
+      currentSchedule.availableSpots <= 0
+    ) {
+      if (week1IdSet.has(schedule.id)) {
+        throw new MembershipBookingPlanError(
+          "أحد المواعيد المختارة لم يعد به أماكن متاحة.",
+          "back_to_schedule",
+        );
+      }
+
+      // Future recurring occurrence being full is non-fatal,
+      // matching the existing business behaviour.
+      continue;
+    }
+
+    await tx.booking.create({
+      data: {
+        userId,
+        scheduleId: schedule.id,
+        userMembershipId,
+        status: "confirmed",
+        paidAmount: schedule.class.price,
+        paymentMethod: "cash",
+      },
+    });
+
+    await tx.schedule.update({
+      where: {
+        id: schedule.id,
+      },
+      data: {
+        availableSpots: {
+          decrement: 1,
+        },
+      },
+    });
+
+    createdCount++;
+  }
+
+  /*
+   * IMPORTANT:
+   * Build the response from bookings actually owned by THIS membership.
+   * Never report theoretical schedules that were skipped.
+   */
+  const actualBookings = await tx.booking.findMany({
+    where: {
+      userMembershipId,
+      scheduleId: {
+        in: schedulesToBook.map((schedule: any) => schedule.id),
+      },
+      status: {
+        in: ["confirmed", "attended", "noshow"],
+      },
+    },
+    include: {
+      schedule: {
+        include: {
+          class: {
+            include: {
+              trainer: true,
+            },
+          },
+        },
+      },
+    },
+    orderBy: {
+      createdAt: "asc",
+    },
+  });
+
+  return {
+    selectedScheduleIds,
+    plannedScheduleIds: schedulesToBook.map(
+      (schedule: any) => schedule.id,
+    ),
+    createdCount,
+    bookedSchedules: actualBookings.map(
+      (booking: any) => ({
+        date: booking.schedule.date,
+        time: booking.schedule.time,
+        className: booking.schedule.class.name,
+        trainerName:
+          booking.schedule.class.trainer?.name ?? "",
+      }),
+    ),
+  };
+}

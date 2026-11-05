@@ -1,0 +1,376 @@
+import { NextResponse } from "next/server";
+import { requireAdminFeature } from "@/lib/admin-guard";
+import { db } from "@/lib/db";
+import { ensureDefaultProductCategories } from "@/lib/product-categories";
+import { clearPublicApiCache } from "@/lib/public-cache";
+import { logAudit } from "@/lib/audit-context";
+
+async function checkAdmin() {
+  const guard = await requireAdminFeature("products");
+  return "error" in guard ? guard.error : null;
+}
+
+const EMOJI: Record<string, string> = {
+  supplement: "🧴",
+  gear: "🏋️",
+  clothing: "👕",
+  accessory: "🧢",
+  shoes: "👟",
+};
+
+function parseJsonList(value: string | null) {
+  try {
+    return value ? JSON.parse(value) : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function GET() {
+  const err = await checkAdmin();
+  if (err) return err;
+
+  await ensureDefaultProductCategories();
+
+  const [products, categories] = await Promise.all([
+    db.product.findMany({
+      where: { deletedAt: null },
+      include: {
+        supplier: { select: { id: true, name: true } },
+        variants: {
+          where: { isActive: true },
+          select: {
+            id: true,
+            size: true,
+            color: true,
+            sku: true,
+            barcode: true,
+            stock: true,
+            costPrice: true,
+            price: true,
+            isActive: true,
+          },
+          orderBy: [{ size: "asc" }, { color: "asc" }],
+        },
+      },
+      orderBy: { name: "asc" },
+    }),
+    db.productCategory.findMany(),
+  ]);
+
+  const result = await Promise.all(
+    products.map(async (product) => {
+      const sold = await db.orderItem.aggregate({
+        where: { productId: product.id },
+        _sum: { quantity: true },
+      });
+
+      const category = categories.find((entry) => entry.key === product.category);
+
+      return {
+        id: product.id,
+        name: product.name,
+        nameEn: product.nameEn,
+        category: product.category,
+        categoryLabel: category?.label ?? product.category,
+        categoryLabelEn: category?.labelEn ?? category?.label ?? product.category,
+        sizeType: (category?.sizeType ?? "none") as "none" | "clothing" | "shoes",
+        price: product.price,
+        oldPrice: product.oldPrice,
+        vatEnabled: product.vatEnabled,
+        stock: product.stock,
+        averageCost: product.averageCost,
+        lastPurchaseCost: product.lastPurchaseCost,
+        sold: sold._sum.quantity ?? 0,
+        active: product.isActive,
+        emoji: EMOJI[product.category] ?? "🛍️",
+        description: product.description ?? "",
+        descriptionEn: product.descriptionEn ?? "",
+        images: parseJsonList(product.images),
+        sizes: parseJsonList(product.sizes),
+        colors: parseJsonList(product.colors),
+        faqs: parseJsonList(product.faqs),
+        whoShouldBuy: parseJsonList(product.whoShouldBuy),
+        importantInfo: product.importantInfo ?? "",
+        disclaimer: product.disclaimer ?? "",
+        editorialReview: product.editorialReview ?? "",
+        unitLabel: product.unitLabel ?? "",
+        // Admin-only internal fields
+        supplierId: product.supplierId ?? null,
+        supplierName: product.supplier?.name ?? null,
+        costPrice: product.costPrice ?? null,
+        variants: product.variants.map((variant) => ({
+          id: variant.id,
+          size: variant.size,
+          color: variant.color,
+          sku: variant.sku,
+          barcode: variant.barcode,
+          stock: variant.stock,
+          costPrice: variant.costPrice,
+          price: variant.price,
+          isActive: variant.isActive,
+        })),
+        barcode: product.barcode ?? null,
+        isFeatured: product.isFeatured ?? false,
+        isNew: product.isNew ?? false,
+        isBestSeller: product.isBestSeller ?? false,
+        isSpecialOffer: product.isSpecialOffer ?? false,
+      };
+    }),
+  );
+
+  return NextResponse.json(result);
+}
+
+export async function POST(req: Request) {
+  const err = await checkAdmin();
+  if (err) return err;
+
+  await ensureDefaultProductCategories();
+
+  const body = await req.json();
+  const {
+    name, nameEn, category, price, oldPrice, vatEnabled, stock,
+    description, descriptionEn, images, sizes, colors, faqs,
+    whoShouldBuy, importantInfo, disclaimer, editorialReview, unitLabel,
+    supplierId, costPrice, barcode, isFeatured, isNew, isBestSeller, isSpecialOffer,
+  } = body;
+
+  if (!name || price == null) {
+    return NextResponse.json({ error: "بيانات المنتج ناقصة." }, { status: 400 });
+  }
+
+  // Parse and validate stock and cost
+  const stockNum = Number(stock ?? 0);
+  const costNum = Number(costPrice ?? 0);
+
+  // Validate finite numbers
+  if (!Number.isFinite(stockNum) || !Number.isFinite(costNum)) {
+    return NextResponse.json({ error: "قيم المخزون أو التكلفة غير صحيحة." }, { status: 400 });
+  }
+
+  // Reject negative values
+  if (stockNum < 0 || costNum < 0) {
+    return NextResponse.json({ error: "المخزون والتكلفة يجب أن تكون قيم موجبة." }, { status: 400 });
+  }
+
+  // Validation: Opening stock requires cost
+  if (stockNum > 0 && costNum <= 0) {
+    return NextResponse.json({
+      error: "يجب إدخال تكلفة المنتج (Cost Price) عند تحديد مخزون افتتاحي أكبر من صفر.",
+    }, { status: 400 });
+  }
+
+  const categoryRecord = await db.productCategory.findFirst({
+    where: { key: String(category ?? "gear") },
+  });
+
+  // Transaction: Create product + opening stock movement
+  const product = await db.$transaction(async (tx) => {
+    // Create product with final values
+    const newProduct = await tx.product.create({
+      data: {
+        name: String(name),
+        nameEn: nameEn ? String(nameEn) : null,
+        category: categoryRecord?.key ?? "gear",
+        price: Number(price),
+        oldPrice: oldPrice ? Number(oldPrice) : null,
+        vatEnabled: Boolean(vatEnabled ?? false),
+        stock: stockNum,
+        averageCost: stockNum > 0 ? costNum : 0,
+        lastPurchaseCost: 0,
+        description: description ? String(description) : null,
+        descriptionEn: descriptionEn ? String(descriptionEn) : null,
+        images: Array.isArray(images) ? JSON.stringify(images.filter(Boolean)) : null,
+        sizes: Array.isArray(sizes) ? JSON.stringify(sizes.filter(Boolean)) : null,
+        colors: Array.isArray(colors) ? JSON.stringify(colors.filter(Boolean)) : null,
+        faqs: Array.isArray(faqs) ? JSON.stringify(faqs) : null,
+        whoShouldBuy: Array.isArray(whoShouldBuy) ? JSON.stringify(whoShouldBuy) : null,
+        importantInfo: importantInfo ? String(importantInfo) : null,
+        disclaimer: disclaimer ? String(disclaimer) : null,
+        editorialReview: editorialReview ? String(editorialReview) : null,
+        unitLabel: unitLabel ? String(unitLabel) : null,
+        isActive: true,
+        supplierId: supplierId ? String(supplierId) : null,
+        costPrice: costPrice != null ? Number(costPrice) : null,
+        barcode: barcode ? String(barcode) : null,
+        isFeatured: Boolean(isFeatured ?? false),
+        isNew: Boolean(isNew ?? false),
+        isBestSeller: Boolean(isBestSeller ?? false),
+        isSpecialOffer: Boolean(isSpecialOffer ?? false),
+      },
+      include: { supplier: { select: { name: true } } },
+    });
+
+    // Create opening stock movement if stock > 0
+    if (stockNum > 0) {
+      await tx.inventoryMovement.create({
+        data: {
+          productId: newProduct.id,
+          type: "opening_stock",
+          quantityChange: stockNum,
+          quantityBefore: 0,
+          quantityAfter: stockNum,
+          unitCost: costNum,
+          averageCostBefore: 0,
+          averageCostAfter: costNum,
+          referenceType: "product_opening_stock",
+          referenceId: newProduct.id,
+          notes: "رصيد افتتاحي من شاشة إضافة المنتج",
+        },
+      });
+    }
+
+    return newProduct;
+  });
+
+  void logAudit({ action: "create", targetType: "product", targetId: product.id, details: { name: product.name, price: product.price } });
+  clearPublicApiCache();
+
+  return NextResponse.json({
+    id: product.id,
+    name: product.name,
+    nameEn: product.nameEn,
+    category: product.category,
+    categoryLabel: categoryRecord?.label ?? product.category,
+    categoryLabelEn: categoryRecord?.labelEn ?? categoryRecord?.label ?? product.category,
+    sizeType: (categoryRecord?.sizeType ?? "none") as "none" | "clothing" | "shoes",
+    price: product.price,
+    oldPrice: product.oldPrice,
+    vatEnabled: product.vatEnabled,
+    stock: product.stock,
+    sold: 0,
+    active: product.isActive,
+    emoji: EMOJI[product.category] ?? "🛍️",
+    description: product.description ?? "",
+    descriptionEn: product.descriptionEn ?? "",
+    images: Array.isArray(images) ? images.filter(Boolean) : [],
+    sizes: Array.isArray(sizes) ? sizes.filter(Boolean) : [],
+    colors: Array.isArray(colors) ? colors.filter(Boolean) : [],
+    faqs: Array.isArray(faqs) ? faqs : [],
+    whoShouldBuy: Array.isArray(whoShouldBuy) ? whoShouldBuy : [],
+    importantInfo: importantInfo ?? "",
+    disclaimer: disclaimer ?? "",
+    editorialReview: editorialReview ?? "",
+    unitLabel: product.unitLabel ?? "",
+    supplierId: product.supplierId ?? null,
+    supplierName: product.supplier?.name ?? null,
+    costPrice: product.costPrice ?? null,
+    barcode: product.barcode ?? null,
+    isFeatured: product.isFeatured,
+    isNew: product.isNew,
+    isBestSeller: product.isBestSeller,
+    isSpecialOffer: product.isSpecialOffer,
+  });
+}
+
+export async function PATCH(req: Request) {
+  const err = await checkAdmin();
+  if (err) return err;
+
+  const body = await req.json();
+  const { id, active, ...rest } = body;
+
+  if (!id) {
+    return NextResponse.json({ error: "معرّف المنتج مطلوب." }, { status: 400 });
+  }
+
+  // Read current product to validate stock changes
+  const current = await db.product.findUnique({
+    where: { id: String(id) },
+    select: { id: true, stock: true },
+  });
+
+  if (!current) {
+    return NextResponse.json({ error: "المنتج غير موجود." }, { status: 404 });
+  }
+
+  // Validate stock changes
+  if (rest.stock !== undefined) {
+    const requestedStock = Number(rest.stock);
+
+    // Reject invalid values
+    if (!Number.isFinite(requestedStock)) {
+      return NextResponse.json({ error: "قيمة المخزون غير صحيحة." }, { status: 400 });
+    }
+
+    if (requestedStock < 0) {
+      return NextResponse.json({ error: "المخزون يجب أن يكون قيمة موجبة." }, { status: 400 });
+    }
+
+    // Reject if stock changed
+    if (requestedStock !== current.stock) {
+      return NextResponse.json({
+        error: "لا يمكن تعديل المخزون من شاشة المنتج. استخدم حركة تسوية المخزون.",
+      }, { status: 400 });
+    }
+
+    // If stock unchanged, allow for compatibility but don't write it
+    // (skip adding to data object)
+  }
+
+  const data: Record<string, unknown> = {};
+  if (active !== undefined) data.isActive = Boolean(active);
+  if (rest.name !== undefined) data.name = String(rest.name);
+  if (rest.nameEn !== undefined) data.nameEn = rest.nameEn ? String(rest.nameEn) : null;
+  if (rest.price !== undefined) data.price = Number(rest.price);
+  if (rest.oldPrice !== undefined) data.oldPrice = rest.oldPrice ? Number(rest.oldPrice) : null;
+  if (rest.vatEnabled !== undefined) data.vatEnabled = Boolean(rest.vatEnabled);
+  // Stock modification removed - handled above
+  if (rest.description !== undefined) data.description = rest.description ? String(rest.description) : null;
+  if (rest.descriptionEn !== undefined) data.descriptionEn = rest.descriptionEn ? String(rest.descriptionEn) : null;
+  if (rest.images !== undefined) data.images = Array.isArray(rest.images) ? JSON.stringify(rest.images.filter(Boolean)) : null;
+  if (rest.sizes !== undefined) data.sizes = Array.isArray(rest.sizes) ? JSON.stringify(rest.sizes.filter(Boolean)) : null;
+  if (rest.colors !== undefined) data.colors = Array.isArray(rest.colors) ? JSON.stringify(rest.colors.filter(Boolean)) : null;
+  if (rest.faqs !== undefined) data.faqs = Array.isArray(rest.faqs) ? JSON.stringify(rest.faqs) : null;
+  if (rest.whoShouldBuy !== undefined) data.whoShouldBuy = Array.isArray(rest.whoShouldBuy) ? JSON.stringify(rest.whoShouldBuy) : null;
+  if (rest.importantInfo !== undefined) data.importantInfo = rest.importantInfo ? String(rest.importantInfo) : null;
+  if (rest.disclaimer !== undefined) data.disclaimer = rest.disclaimer ? String(rest.disclaimer) : null;
+  if (rest.editorialReview !== undefined) data.editorialReview = rest.editorialReview ? String(rest.editorialReview) : null;
+  if (rest.unitLabel !== undefined) data.unitLabel = rest.unitLabel ? String(rest.unitLabel) : null;
+  // Admin-only internal fields
+  if (rest.supplierId !== undefined) data.supplierId = rest.supplierId ? String(rest.supplierId) : null;
+  if (rest.costPrice !== undefined) data.costPrice = rest.costPrice != null ? Number(rest.costPrice) : null;
+  if (rest.barcode !== undefined) data.barcode = rest.barcode ? String(rest.barcode) : null;
+  if (rest.isFeatured !== undefined) data.isFeatured = Boolean(rest.isFeatured);
+  if (rest.isNew !== undefined) data.isNew = Boolean(rest.isNew);
+  if (rest.isBestSeller !== undefined) data.isBestSeller = Boolean(rest.isBestSeller);
+  if (rest.isSpecialOffer !== undefined) data.isSpecialOffer = Boolean(rest.isSpecialOffer);
+
+  if (rest.category !== undefined) {
+    const categoryRecord = await db.productCategory.findFirst({
+      where: { key: String(rest.category) },
+    });
+    data.category = categoryRecord?.key ?? String(rest.category);
+  }
+
+  const updated = await db.product.update({
+    where: { id: String(id) },
+    data,
+    select: { name: true },
+  });
+
+  void logAudit({ action: "update", targetType: "product", targetId: String(id), details: { name: updated.name, changes: Object.keys(data) } });
+  clearPublicApiCache();
+  return NextResponse.json({ success: true });
+}
+
+export async function DELETE(req: Request) {
+  const err = await checkAdmin();
+  if (err) return err;
+
+  const { id } = await req.json();
+  if (!id) {
+    return NextResponse.json({ error: "معرّف المنتج مطلوب." }, { status: 400 });
+  }
+
+  const p = await db.product.findUnique({ where: { id: String(id) }, select: { name: true } });
+  // Soft delete — preserves order history and inventory records
+  await db.product.update({
+    where: { id: String(id) },
+    data: { deletedAt: new Date(), isActive: false },
+  });
+  void logAudit({ action: "delete", targetType: "product", targetId: String(id), details: { name: p?.name } });
+  clearPublicApiCache();
+  return NextResponse.json({ success: true });
+}

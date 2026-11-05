@@ -1,0 +1,5 @@
+Contact: mailto:info@fitzoneland.com
+Expires: 2027-04-13T00:00:00.000Z
+Preferred-Languages: ar, en
+Canonical: https://fitzoneland.com/.well-known/security.txt
+Policy: https://fitzoneland.com/privacy
