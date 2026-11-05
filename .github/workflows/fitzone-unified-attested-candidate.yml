@@ -47,13 +47,13 @@ jobs:
           set -euo pipefail
           [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]]
           test "$GITHUB_REPOSITORY" = "MrCCcrew/FitZone-App"
-          test "$GITHUB_REF" = "refs/heads/release/fitzone-attestation-20261105"
+          test "$GITHUB_REF" = "refs/heads/main"
           test "$CANDIDATE_SHA" = "0ca9650c0a9b80af1d8ae1a8208f273da06a1785"
           echo "APPROVED_CANDIDATE_PIN=PASS"
           echo "ISOLATED_WORKFLOW_BRANCH=PASS"
 
       - name: Checkout candidate commit without persistent credentials
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ inputs.candidate_sha }}
           persist-credentials: false
@@ -85,7 +85,7 @@ jobs:
           echo "DEPLOYMENT=NONE"
 
       - name: Checkout pinned release verification tools
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: 1c21264dc386a10ee6c28d2464ddced245ad5cab
           path: .trusted-release-tools
@@ -103,7 +103,7 @@ jobs:
           echo "DEPLOYMENT=NONE"
 
       - name: Configure Node.js 22
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: "22"
           cache: npm
@@ -398,9 +398,9 @@ jobs:
           echo "DEPLOYMENT=NONE"
 
       - name: Upload signed-build candidate package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: fitzone-unified-attested-NOT-DEPLOYED
+          name: fitzone-unified-attested-NOT-DEPLOYED-${{ github.run_id }}-${{ github.run_attempt }}
           path: cloud-unified-candidate/
           retention-days: 7
           compression-level: 0
@@ -419,9 +419,9 @@ jobs:
 
     steps:
       - name: Download exact build output
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          name: fitzone-unified-attested-NOT-DEPLOYED
+          name: fitzone-unified-attested-NOT-DEPLOYED-${{ github.run_id }}-${{ github.run_attempt }}
           path: cloud-unified-candidate
 
       - name: Verify archived output checksum
@@ -435,7 +435,7 @@ jobs:
           echo "DEPLOYMENT=NONE"
 
       - name: Checkout independently pinned verification tools
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: 1c21264dc386a10ee6c28d2464ddced245ad5cab
           path: .trusted-release-tools
@@ -589,7 +589,157 @@ jobs:
           print("DEPLOYMENT=NONE")
           PY
 
+      - name: Checkout independently pinned application source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 0ca9650c0a9b80af1d8ae1a8208f273da06a1785
+          path: .pinned-candidate-source
+          persist-credentials: false
+
+      - name: Independently compare archived source to pinned Git tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C .pinned-candidate-source rev-parse HEAD)" = "0ca9650c0a9b80af1d8ae1a8208f273da06a1785"
+          test "$(git -C .pinned-candidate-source rev-parse --show-object-format)" = "sha1"
+          python3 - <<'PY'
+          import hashlib
+          import stat
+          import subprocess
+          import tarfile
+          from pathlib import PurePosixPath
+
+          source_dir = ".pinned-candidate-source"
+          archive = (
+              "cloud-unified-candidate/"
+              "fitzone-unified-candidate.tar.gz"
+          )
+
+          directories = (
+              "public/",
+              "prisma/",
+              "src/",
+              "scripts/",
+              "ops/",
+          )
+
+          root_files = {
+              "package.json",
+              "package-lock.json",
+              "next.config.ts",
+              "prisma.config.ts",
+              "tsconfig.json",
+              "postcss.config.mjs",
+              "tailwind.config.ts",
+              "middleware.ts",
+              "ecosystem.config.js",
+          }
+
+          def in_scope(name):
+              return (
+                  name in root_files
+                  or any(name.startswith(prefix) for prefix in directories)
+              )
+
+          result = subprocess.run(
+              [
+                  "git", "-C", source_dir,
+                  "ls-tree", "-r", "-z", "--full-tree", "HEAD",
+              ],
+              capture_output=True,
+              check=True,
+          )
+
+          expected = {}
+          for record in result.stdout.split(b"\0"):
+              if not record:
+                  continue
+
+              metadata, name_bytes = record.split(b"\t", 1)
+              mode, kind, oid = metadata.decode("ascii").split(" ")
+              name = name_bytes.decode("utf-8", "surrogateescape")
+
+              if not in_scope(name):
+                  continue
+
+              if kind != "blob" or mode not in ("100644", "100755"):
+                  raise SystemExit("UNSAFE_PINNED_SOURCE_OBJECT")
+
+              expected[name] = oid
+
+          if not expected or not root_files.issubset(expected):
+              raise SystemExit("PINNED_SOURCE_TREE_INCOMPLETE")
+
+          seen = set()
+
+          with tarfile.open(archive, mode="r|gz") as stream:
+              for member in stream:
+                  name = member.name
+                  while name.startswith("./"):
+                      name = name[2:]
+
+                  if not name or name == ".":
+                      continue
+
+                  parts = PurePosixPath(name).parts
+                  if name.startswith("/") or ".." in parts:
+                      raise SystemExit("UNSAFE_ARCHIVE_PATH")
+
+                  if not in_scope(name):
+                      continue
+
+                  if member.isdir():
+                      continue
+
+                  if name in seen:
+                      raise SystemExit("DUPLICATE_ARCHIVED_SOURCE_FILE")
+                  seen.add(name)
+
+                  if not member.isfile():
+                      raise SystemExit("NONREGULAR_ARCHIVED_SOURCE_FILE")
+
+                  expected_oid = expected.get(name)
+                  if expected_oid is None:
+                      raise SystemExit(
+                          "UNTRACKED_ARCHIVED_SOURCE_FILE: " + name
+                      )
+
+                  hasher = hashlib.sha1()
+                  hasher.update(
+                      b"blob " + str(member.size).encode("ascii") + b"\0"
+                  )
+
+                  contents = stream.extractfile(member)
+                  if contents is None:
+                      raise SystemExit("ARCHIVED_SOURCE_UNREADABLE")
+
+                  with contents:
+                      while True:
+                          chunk = contents.read(1024 * 1024)
+                          if not chunk:
+                              break
+                          hasher.update(chunk)
+
+                  if hasher.hexdigest() != expected_oid:
+                      raise SystemExit(
+                          "ARCHIVED_SOURCE_GIT_BLOB_MISMATCH: " + name
+                      )
+
+          missing = set(expected) - seen
+          if missing:
+              raise SystemExit(
+                  "ARCHIVED_SOURCE_MISSING_FILES: " + str(len(missing))
+              )
+
+          print("PINNED_GIT_SOURCE_FILES=" + str(len(expected)))
+          print("ARCHIVED_SOURCE_FILES=" + str(len(seen)))
+          print("INDEPENDENT_PINNED_GIT_SOURCE_PARITY=PASS")
+          print("ARCHIVED_SOURCE_EXTRA_FILES=NONE")
+          print("ARCHIVED_SOURCE_MISSING_FILES=NONE")
+          print("ATTESTATION_SIGNING=NOT_YET_EXECUTED")
+          PY
+
       - name: Attest verified candidate archive
-        uses: actions/attest@v4
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
         with:
           subject-path: cloud-unified-candidate/fitzone-unified-candidate.tar.gz
